@@ -235,6 +235,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - En `f8f3d49ab` pasó la batería agrupada con identidad de código sensible al
     modo y la alineación volatile, y comprobación de anchos y alineaciones
     exactos en IR. [Evidencia](TANDA-08-TIPOS-C.md#validación-de-identidad-y-anchos-volatile).
+  - En `d14fab758` pasó el caso de almacenamiento de puntero global volatile
+    de 64 bits: C y NativeSharp emiten acquire/release y el objeto apuntado
+    conserva su calificación. [Evidencia](TANDA-08-TIPOS-C.md#validación-del-puntero-global-volatile).
 - [ ] T08-016. Mapear arreglos de tamaño conocido.
 - [ ] T08-017. Definir la representación de punteros a función C.
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.

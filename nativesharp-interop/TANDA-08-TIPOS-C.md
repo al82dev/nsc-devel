@@ -1187,3 +1187,17 @@ La prueba de identidad de código informó 12 comprobaciones aprobadas, incluida
 la diferenciación de los opcionales de modo y alineación. El fixture de records
 exigió i8/1, i16/2 e i64/8 en IR para los seis globales y ejecutó O0–O3; los
 siete casos de la batería concluyeron. Esto no cierra T08-015 ni la tanda 08.
+
+## Validación del puntero global volatile
+
+La batería `validar-tanda-08.cmd` en `d14fab758` terminó con código 0 tras
+construcción incremental. En el fixture de records, Clang emitió lectura
+`atomic volatile ptr` acquire y escritura release del global de puntero; el IR
+de NativeSharp mostró las mismas operaciones y alineación de ocho bytes. El
+fixture también comprobó que la escritura al objeto apuntado permanece ordinaria
+y ejecutó el programa mixto en O0–O3. Los siete casos agrupados terminaron.
+
+El resultado cubre el almacenamiento directo del puntero global bajo la
+opción MS y alineación conocidas, no todos los accesos indirectos o campos. La
+tanda 08 y T08-015 siguen abiertos. La construcción volvió a presentar las
+advertencias de inicializadores del archivo CppClangSessionTests.cpp.
