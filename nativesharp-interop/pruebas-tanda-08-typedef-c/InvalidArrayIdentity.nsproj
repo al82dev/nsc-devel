@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>CArrayIdentityInvalid</Name></PropertyGroup><ItemGroup><Compile Include="InvalidArrayIdentity.ns" /><CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" /></ItemGroup></Project>

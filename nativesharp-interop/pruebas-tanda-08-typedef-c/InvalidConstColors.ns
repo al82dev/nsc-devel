@@ -1,0 +1,1 @@
+int Main() { c_colors_mutate(c_colors_get()); return 0; }

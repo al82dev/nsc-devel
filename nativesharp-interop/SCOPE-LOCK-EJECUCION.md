@@ -11,6 +11,8 @@ la proyección rechaza esos elementos. Permitir cambio localizado en
 tipo importado y layout comprobados; preservar const y seguir rechazando
 volatile y elementos puntero. El enum tiene además un fallo independiente de
 conversión del enumerador; no usarlo para ocultar el resultado de la llamada.
+Inicializar el arreglo enum mediante una función C para aislar esa limitación;
+agregar rechazos de punteros const e identidades de elemento incompatibles.
 
 Agregar al fixture una función C que modifica una matriz por puntero y otra
 que devuelve puntero a matriz const. Verificar mutación real O0–O3; rechazar

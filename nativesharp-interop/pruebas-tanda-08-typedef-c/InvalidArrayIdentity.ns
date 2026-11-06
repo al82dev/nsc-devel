@@ -1,0 +1,1 @@
+int Main() { CColorArray colors; c_points_mutate(&colors); return 0; }
