@@ -761,13 +761,15 @@ int main(int argc, char** argv)
         LibraryMetadataCppBinaryDependency second;
         second.libraryFileName = "two.lib";
         model->cppBinaryDependencies = {first, second, first};
+        model->cppCRecordCatalog = {1, 2, 3, 4};
         std::vector<std::shared_ptr<const LibraryMetadata>> modules = {model};
         nativesharp::compilation::PrecompiledSurfaceReachability reachability(modules, {false});
         reachability.reach({"Keep"});
         const auto reduced = reachability.prunedMetadata(0);
         ok &= expect(reduced != model && reduced->types.size() == 1 &&
                          reduced->types[0].identityKey == keep.identityKey &&
-                         reduced->cppBinaryDependencies == model->cppBinaryDependencies,
+                         reduced->cppBinaryDependencies == model->cppBinaryDependencies &&
+                         reduced->cppCRecordCatalog == model->cppCRecordCatalog,
                      "precompiled surface pruning retains C++ binary dependency order and repetitions");
         nativesharp::compilation::PrecompiledSurfaceReachability full(modules, {true});
         ok &= expect(full.prunedMetadata(0) == model &&
