@@ -1345,6 +1345,17 @@ bool resolveBuildSettings(
         message = "linker must be NSLink";
         return false;
     }
+    if (const auto configured = environmentValue("NSC_LINKER"))
+    {
+        std::string name = fs::path(*configured).filename().string();
+        std::transform(name.begin(), name.end(), name.begin(),
+            [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+        if (name == "lld-link" || name == "lld-link.exe")
+        {
+            message = "project build does not yet support the lld-link selection; use an explicit emit command";
+            return false;
+        }
+    }
     linkTimeOptimization = options.linkTimeOptimization.value_or(sidecar.build.linkTimeOptimization);
     if (linkTimeOptimization != "none" && linkTimeOptimization != "full" && linkTimeOptimization != "thin")
     {
