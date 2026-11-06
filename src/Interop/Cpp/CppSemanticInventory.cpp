@@ -296,6 +296,7 @@ CppSemanticGlobalSelection selectCppSemanticGlobal(
             a.threadLocal == b.threadLocal && a.dllImport == b.dllImport && a.type.kind == b.type.kind &&
             a.type.canonicalSpelling == b.type.canonicalSpelling &&
             a.type.unqualifiedCanonicalSpelling == b.type.unqualifiedCanonicalSpelling &&
+            a.type.ieeeBinary64 == b.type.ieeeBinary64 &&
             a.type.isConst == b.type.isConst && a.type.isVolatile == b.type.isVolatile &&
             a.type.sizeBits == b.type.sizeBits && a.type.alignmentBits == b.type.alignmentBits;
     };
@@ -435,6 +436,7 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
     const auto sameScalar = [](const CppType& a, const CppType& b) {
         return a.kind == b.kind && a.canonicalSpelling == b.canonicalSpelling &&
             a.unqualifiedCanonicalSpelling == b.unqualifiedCanonicalSpelling &&
+            a.ieeeBinary64 == b.ieeeBinary64 &&
             a.isConst == b.isConst && a.isVolatile == b.isVolatile && a.isRestrict == b.isRestrict &&
             a.sizeBits == b.sizeBits && a.alignmentBits == b.alignmentBits;
     };

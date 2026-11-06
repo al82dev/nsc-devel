@@ -527,6 +527,7 @@ bool sameMemberType(const CppType& a, const CppType& b, unsigned depth = 0)
 {
     if (depth > 64 || a.kind != b.kind || a.canonicalSpelling != b.canonicalSpelling ||
         a.unqualifiedCanonicalSpelling != b.unqualifiedCanonicalSpelling ||
+        a.ieeeBinary64 != b.ieeeBinary64 ||
         a.isConst != b.isConst || a.isVolatile != b.isVolatile || a.isRestrict != b.isRestrict || a.sizeBits != b.sizeBits ||
         a.alignmentBits != b.alignmentBits || a.arrayCount != b.arrayCount ||
         a.isIncompleteArray != b.isIncompleteArray ||
