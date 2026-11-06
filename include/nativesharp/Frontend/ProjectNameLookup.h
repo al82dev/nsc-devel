@@ -103,7 +103,7 @@ struct CppImportedTypeDeclaration final
     // True only when Clang supplied declarations but no complete definition.
     bool isIncomplete = false;
     // Declaration identity from Clang; not proof of layout or ABI compatibility.
-    std::optional<std::string> clangUsr;
+    std::optional<std::string> clangUsr = std::nullopt;
 };
 
 class ProjectNameLookup final

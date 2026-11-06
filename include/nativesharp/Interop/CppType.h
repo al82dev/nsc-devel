@@ -22,7 +22,7 @@ struct CppRecordTypeIdentity
     std::vector<std::string> containingRecords;
     bool anonymousContext = false;
     bool specializationContext = false;
-    std::optional<std::string> clangUsr;
+    std::optional<std::string> clangUsr = std::nullopt;
 };
 
 struct CppEnumTypeIdentity
@@ -30,7 +30,7 @@ struct CppEnumTypeIdentity
     std::string name;
     std::string qualifiedName;
     bool anonymousContext = false;
-    std::optional<std::string> clangUsr;
+    std::optional<std::string> clangUsr = std::nullopt;
 };
 
 // Sizes describe a C/C++ object type, not the ABI rules for passing or returning it.
