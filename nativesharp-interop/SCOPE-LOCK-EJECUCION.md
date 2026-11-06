@@ -3344,6 +3344,9 @@ volatile alineados. Permitir cambios en `src/Interop/Cpp/CppSemanticFunction.cpp
 `OopLlvmArraysAndStores.cpp` para proyectar y transportar únicamente ese
 contrato cuando el modo MS y alineación estén probados. Extender el fixture y
 sus comprobaciones de IR; conservar accesos subalineados sin orden atómico.
+La primera comparación encontró que el selector LLVM de globales excluye la
+identidad estructural `fn:`. Permitir el ajuste de `OopLlvmSupport.h` para
+incluir ese tipo bajo las mismas condiciones de modo, anchura y alineación.
 Para el fallo observado, reutilizar el mapeo de firma de funciones existente
 en `include/nativesharp/Interop/CppSemanticFunction.h` y
 `src/Interop/Cpp/CppSemanticFunction.cpp`, y conectarlo a campos C en
