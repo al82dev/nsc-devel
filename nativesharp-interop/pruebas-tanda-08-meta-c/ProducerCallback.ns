@@ -1,0 +1,8 @@
+namespace Published
+{
+    public struct Bridge
+    {
+        public static CSharedCallback GetCallback() { return get_shared_callback(); }
+        public static CCallbackHolder* GetHolder() { return get_callback_holder(); }
+    }
+}

@@ -1,0 +1,9 @@
+int Main()
+{
+    CSharedCallback direct = Published.Bridge.GetCallback();
+    if (direct(40) != 42) return 1;
+    CCallbackHolder* holder = Published.Bridge.GetHolder();
+    CSharedCallback member = holder->run;
+    if (member(40) != 42) return 2;
+    return 0;
+}

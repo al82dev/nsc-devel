@@ -2,6 +2,10 @@
 _Static_assert(_Generic((enum CWideUnsigned)0, unsigned int: 1, default: 0), "enum must be unsigned");
 static CRecord record = { 17, CGlobalChoice };
 static CUnionShared shared_union = { 42 };
+static int add_two(int value) { return value + 2; }
+static CCallbackHolder callback_holder = { add_two };
+CSharedCallback get_shared_callback(void) { return add_two; }
+CCallbackHolder* get_callback_holder(void) { return &callback_holder; }
 CUnionShared* get_shared_union(void) { return &shared_union; }
 CUnionShared get_shared_union_value(void) { return shared_union; }
 int read_shared_union(CUnionShared value) { return value.value; }
