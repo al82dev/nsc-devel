@@ -23,3 +23,7 @@ direcciones aparece el diagnóstico específico de const, acompañado también p
 un mensaje genérico de dirección de campo de bits; la fila como argumento se
 rechaza por incompatibilidad de tipos. El script se ajusta para verificar los
 mensajes pertinentes; esa versión aún está pendiente de repetición.
+
+La repetición del fixture con esas expectativas pasó de O0 a O3 para los casos
+positivos y rechazó los tres nuevos usos. Se mantiene documentado el mensaje
+genérico adicional y no se afirma cobertura completa de escape.
