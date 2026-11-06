@@ -2,7 +2,7 @@
   <PropertyGroup><Name>CSharedConsumer</Name></PropertyGroup>
   <ItemGroup>
     <Compile Include="Shared.ns" />
-    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" />
     <LibraryReference Include="CPublishedProducer.lib" />
   </ItemGroup>
 </Project>
