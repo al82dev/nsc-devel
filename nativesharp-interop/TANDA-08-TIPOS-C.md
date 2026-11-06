@@ -933,6 +933,17 @@ IR C ya pasó; al aislar el caso de records, NSC informó que una variable fuera
 de todo namespace no está soportada. Los casos positivo y negativo se mueven al
 namespace `AliasState`. Las pruebas aún deben repetirse antes de concluir nada.
 
+## Validación agrupada tras correcciones
+
+En `0231c6ecb`, `call nativesharp-interop\validar-tanda-08.cmd` terminó con
+código 0. Se construyeron incrementalmente NSC y frontend ON/OFF; pasaron las
+pruebas de sesión Clang y serialización, y los siete fixtures valores,
+incompleto, record-c, union, layout, callback y enum-funcion. Record-c ejecutó
+O0, O1, O2 y O3, los controles de IR y diagnósticos incluidos en su script.
+Esta evidencia cubre esos casos, no demuestra todos los tipos ni resuelve TLS,
+calificadores anidados o la prueba de clonación del componente no incluida en
+esta batería. La tanda y sus ítems incompletos permanecen abiertos.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.
