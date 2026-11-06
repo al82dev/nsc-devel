@@ -195,6 +195,39 @@ private:
     bool alterTarget_;
 };
 
+class MissingFieldUsrSession final : public CppInteropSession
+{
+public:
+    explicit MissingFieldUsrSession(std::unique_ptr<CppInteropSession> inner) : inner_(std::move(inner)) {}
+    CppSessionState state() const noexcept override { return inner_->state(); }
+    CppSessionOptions optionsSnapshot() const override { return inner_->optionsSnapshot(); }
+    std::vector<CppSessionDiagnostic> diagnosticsSnapshot() const override { return inner_->diagnosticsSnapshot(); }
+    std::optional<bool> microsoftVolatileSemantics() const override { return inner_->microsoftVolatileSemantics(); }
+    std::optional<std::size_t> topLevelDeclarationCount() const override { return inner_->topLevelDeclarationCount(); }
+    std::optional<std::vector<CppFunctionDeclaration>> freeFunctionsSnapshot() const override { return inner_->freeFunctionsSnapshot(); }
+    std::optional<std::vector<CppRecordDeclaration>> recordsSnapshot() const override
+    {
+        auto records = inner_->recordsSnapshot();
+        if (records)
+            for (auto& record : *records)
+                if (record.name == "Widget")
+                    for (auto& field : record.fields)
+                        if (field.name == "value") field.clangUsr.reset();
+        return records;
+    }
+    std::optional<std::vector<CppTypeAliasDeclaration>> typeAliasesSnapshot() const override { return inner_->typeAliasesSnapshot(); }
+    std::optional<std::vector<CppEnumDeclaration>> enumsSnapshot() const override { return inner_->enumsSnapshot(); }
+    std::optional<std::vector<CppGlobalDeclaration>> globalsSnapshot() const override { return inner_->globalsSnapshot(); }
+    std::optional<std::vector<CppNamespaceDeclaration>> namespacesSnapshot() const override { return inner_->namespacesSnapshot(); }
+    std::optional<std::vector<std::filesystem::path>> sourceFilesSnapshot() const override { return inner_->sourceFilesSnapshot(); }
+    std::optional<std::vector<CppSourceFileContent>> sourceFileContentsSnapshot() const override { return inner_->sourceFileContentsSnapshot(); }
+    std::optional<bool> structurallyEquivalentRecord(const CppInteropSession& other, std::string_view name) const override
+    { return inner_->structurallyEquivalentRecord(other, name); }
+    CppSessionCloseResult close() override { return inner_->close(); }
+private:
+    std::unique_ptr<CppInteropSession> inner_;
+};
+
 class AlteredFieldUsrSession final : public CppInteropSession
 {
 public:
@@ -5379,6 +5412,50 @@ int main(int argc, char** argv)
                 }
                 ok &= expect(fieldModePreserved, "imported field preserves its record group's volatile mode");
                 ok &= expect(fieldUsrPreserved, "imported field symbol preserves its Clang USR");
+                {
+                    nativesharp::frontend::ProjectCompilation recoveredFields;
+                    recoveredFields.setSourceBufferProvider([](const std::filesystem::path& source)
+                        -> std::optional<std::string> {
+                        if (source.filename() == "Main.ns") return "int Main() { return 0; }\n";
+                        return std::nullopt;
+                    });
+                    auto firstOptions = options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp, "");
+                    auto secondOptions = options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp, "");
+                    firstOptions.input = CppFileInput{methodHeader};
+                    secondOptions.input = CppFileInput{methodHeader};
+                    auto first = open(factory, std::move(firstOptions));
+                    auto second = open(factory, std::move(secondOptions));
+                    std::optional<std::string> expectedUsr;
+                    if (second)
+                        if (auto records = second->recordsSnapshot())
+                            for (const auto& record : *records)
+                                if (record.name == "Widget")
+                                    for (const auto& field : record.fields)
+                                        if (field.name == "value") expectedUsr = field.clangUsr;
+                    bool recovered = false;
+                    if (first && second && expectedUsr)
+                    {
+                        CppProjectSessions group;
+                        group.projectFile = std::filesystem::absolute(path);
+                        group.sessions.push_back(std::make_unique<MissingFieldUsrSession>(std::move(first)));
+                        group.sessions.push_back(std::move(second));
+                        std::vector<CppProjectSessions> groups;
+                        groups.push_back(std::move(group));
+                        std::string error;
+                        const bool ready = recoveredFields.setCppProjectSessions(std::move(groups), error) &&
+                            recoveredFields.setExperimentalCppTypeProvider(provideExperimentalCppRecordCandidates, error) &&
+                            recoveredFields.setExperimentalCppTypeSelector(selectExperimentalCppRecordTypesForCompilation, error) &&
+                            recoveredFields.setExperimentalCppInstanceFieldProvider(provideExperimentalCppInstanceFields, error) &&
+                            recoveredFields.enableExperimentalCppInstanceFieldLoweringForTests(error) &&
+                            recoveredFields.compileProjectMembers(path, error);
+                        const auto* names = recoveredFields.nameLookup();
+                        const auto* members = recoveredFields.memberModel();
+                        const auto owner = names ? names->typeOrdinalForIdentity("Semantic::Demo.Widget") : std::nullopt;
+                        const auto fields = owner && members ? members->findMembers(*owner, "value") : std::span<const std::size_t>{};
+                        recovered = ready && fields.size() == 1 && members->members()[fields[0]].cppClangUsr == expectedUsr;
+                    }
+                    ok &= expect(recovered, "field provider recovers a later known USR into the imported symbol");
+                }
                 nativesharp::frontend::ProjectCompilation guardedFields;
                 std::string fieldGuardError;
                 const bool fieldGuardConfigured = configure(guardedFields, fieldGuardError) &&
