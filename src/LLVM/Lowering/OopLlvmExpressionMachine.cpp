@@ -3,6 +3,7 @@
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
+#include "PackedArrayAlignment.h"
 
 namespace nativesharp::llvm_backend
 {
@@ -1478,6 +1479,8 @@ bool OopLlvmImplementation::lowerExpressionFrame030PointerLoad(
     LLVMTypeRef pointee = llvmType(current->typeKey, error);
     if (pointee == nullptr) { values.push_back(nullptr); return true; }
     LLVMValueRef load = LLVMBuildLoad2(builder_, pointee, pointer, "pointer.load");
+    if (const auto alignment = fieldArrayElementAlignment(current->children.front().get()))
+        LLVMSetAlignment(load, static_cast<unsigned>(*alignment));
     if (current->volatileAccess) LLVMSetVolatile(load, 1);
     values.push_back(load);
     return true;

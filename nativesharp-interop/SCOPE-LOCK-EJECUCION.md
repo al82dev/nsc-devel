@@ -1,5 +1,16 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Alineación de elementos de arreglo en un campo
+
+T08-010/T08-012/T08-016: derivar en LLVM la alineación garantizada de un
+elemento indexado directamente desde un campo de arreglo, incluyendo rangos
+multidimensionales, mediante la alineación MIR del campo y los strides.
+Aplicarla en cargas y escrituras simples y compuestas. No habilitar todavía
+arreglos empaquetados ni alterar indexación de punteros que no provienen de
+FieldAddress. Presupuesto: nuevo PackedArrayAlignment.h privado, las dos
+unidades LLVM que realizan los accesos, fixtures y registros Markdown. LLVM
+externo y NSLink protegidos; pruebas agrupadas por tanda.
+
 ## Optimizaciones del fixture de layout C
 
 T08-010/T08-012/T08-020: ejecutar el proyecto mixto de layout también en O1,

@@ -3,6 +3,7 @@
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
+#include "PackedArrayAlignment.h"
 
 namespace nativesharp::llvm_backend
 {
@@ -170,6 +171,8 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         else
         {
             previous = LLVMBuildLoad2(builder_, targetType, address, "compound.load");
+            if (const auto alignment = fieldArrayElementAlignment(node->children[0].get()))
+                LLVMSetAlignment(previous, static_cast<unsigned>(*alignment));
             if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::FieldAddress &&
                 node->children[0]->alignment != 0)
                 LLVMSetAlignment(previous, static_cast<unsigned>(node->children[0]->alignment));
@@ -198,6 +201,8 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         else
         {
             LLVMValueRef store = LLVMBuildStore(builder_, updated, address);
+            if (const auto alignment = fieldArrayElementAlignment(node->children[0].get()))
+                LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
             if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::FieldAddress &&
                 node->children[0]->alignment != 0)
                 LLVMSetAlignment(store, static_cast<unsigned>(node->children[0]->alignment));
@@ -401,6 +406,8 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             enterBlock(readyBlock);
         }
         LLVMValueRef store = LLVMBuildStore(builder_, value, address);
+        if (const auto alignment = fieldArrayElementAlignment(node->children[0].get()))
+            LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
         if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::FieldAddress &&
             node->children[0]->alignment != 0)
             LLVMSetAlignment(store, static_cast<unsigned>(node->children[0]->alignment));
