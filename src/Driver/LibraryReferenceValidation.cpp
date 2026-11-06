@@ -323,9 +323,20 @@ bool validateLibraryReference(const compilation::LibraryReference &reference,
         linkedLibraries.insert(libraryKey);
         libraries.push_back(reference.libraryPath);
     }
-    // Keep the producer's linker order and repetitions; a static archive does not contain these inputs.
+    // Preserve order and repetitions within this producer while avoiding an input
+    // already supplied by a previous producer or the enclosing project.
+    std::vector<std::string> currentCppDependencies;
     for (const auto &dependency : cppDependencies)
-        libraries.push_back(dependency.libraryPath);
+    {
+        const std::string key = foldedPathKey(dependency.libraryPath);
+        if (!linkedLibraries.contains(key))
+        {
+            libraries.push_back(dependency.libraryPath);
+            currentCppDependencies.push_back(key);
+        }
+    }
+    for (const auto &key : currentCppDependencies)
+        linkedLibraries.insert(key);
     return true;
 }
 

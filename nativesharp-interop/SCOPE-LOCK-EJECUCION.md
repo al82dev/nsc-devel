@@ -30,6 +30,17 @@ estado estático propios, de O0 a O3. Permitir únicamente esos archivos, el
 script del fixture y registros; no cambiar producción sin observar y delimitar
 un fallo concreto.
 
+En el fixture de dos productores, ambos declaran el mismo `api.lib` y el
+consumidor falla con NSL1021 en `external_double`. La construcción estática
+con `buildStaticObjects` no incorpora esa biblioteca al archivo productor;
+`validateLibraryReference` añade la ruta de metadata para cada productor sin
+consultar `linkedLibraries`. Permitir exclusivamente
+`src/Driver/LibraryReferenceValidation.cpp`, el proyecto del segundo productor,
+el tracking y los registros para omitir una dependencia C/C++ cuya misma ruta
+ya fue añadida por un productor anterior. Conservar orden y repeticiones dentro
+de cada lista individual, validación de identidad de metadata y NSLink intacto;
+probar los dos productores con la misma dependencia y la batería agrupada.
+
 ## Redeclaraciones C con prototipo más preciso
 
 Ampliar `pruebas-tanda-08-prototipos-c` con declaraciones compatibles `f()`
