@@ -1,5 +1,20 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Punteros globales C a volatile void
+
+T08-004/T08-008/T08-015: el mapeador de funciones C admite un parámetro
+`volatile void*`, pero `CppSemanticInventory.cpp` rechaza explícitamente
+ese mismo tipo como global. Permitir su proyección inmediata con el mismo
+calificador, sin habilitar apuntados anidados ni alterar C++. El objeto void
+no se desreferencia: se pasa a una función C declarada con su calificador.
+
+Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`,
+`tests/unit/CppClangSessionTests.cpp`, el fixture
+`nativesharp-interop/pruebas-tanda-08-record-c`, tracking y registros. Añadir
+controles de global y arreglo, paso a función, rechazo de descarte de volatile
+y rechazo de desreferencia; validar junto a la tanda con construcción
+incremental. LLVM, NSLink y la instalación de C: permanecen protegidos.
+
 ## Arreglo global C de punteros a volatile
 
 Objetivo T08-015/T08-016: conservar el calificador del objeto apuntado en un
