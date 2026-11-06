@@ -2,6 +2,11 @@
 
 ## Typedef C en proyectos reales
 
+Contrastar operaciones mixtas entre enum C unsigned e int signed mediante
+funciones de referencia compiladas por Clang; cubrir comparación y suma.
+Registrar cualquier diferencia antes de decidir la semántica o modificar el
+compilador, sin cambiar reglas numéricas generales de NativeSharp.
+
 La prueba de enum de 8 bits generó negación i8 y devolvió 5: la ruta iterativa
 `src/Frontend/HIR/ExpressionStatementMachine/HirCompletionSimpleFrames.cpp`
 omitió la promoción preparada para la ruta recursiva. Permitir ese archivo y

@@ -28,4 +28,6 @@ int c_unsigned_verify(CUnsigned value);
 unsigned int c_unsigned_plus_one(void);
 unsigned int c_unsigned_half(void);
 unsigned int c_unsigned_remainder(void);
+int c_unsigned_eq_negative(void);
+unsigned int c_unsigned_add_two(void);
 COperation c_operation(void);

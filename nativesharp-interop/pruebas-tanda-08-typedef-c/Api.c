@@ -21,5 +21,7 @@ int c_unsigned_verify(CUnsigned value) { return value == U_HIGH; }
 unsigned int c_unsigned_plus_one(void) { CUnsigned value = U_HIGH; return value + 1U; }
 unsigned int c_unsigned_half(void) { CUnsigned value = U_HIGH; return value / 2U; }
 unsigned int c_unsigned_remainder(void) { CUnsigned value = U_HIGH; return value % 2U; }
+int c_unsigned_eq_negative(void) { CUnsigned value = U_HIGH; int negative = -1; return value == negative; }
+unsigned int c_unsigned_add_two(void) { CUnsigned value = U_HIGH; int two = 2; return value + two; }
 static int increment(int x) { return x + 1; }
 COperation c_operation(void) { return increment; }
