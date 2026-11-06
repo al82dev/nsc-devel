@@ -167,6 +167,9 @@ CppSemanticFunctionResult projectFunction(
     if (function.variadic && (function.languageLinkage != CppLanguageLinkage::C ||
                               function.callingConvention != "cdecl"))
         return failure("variadic C++ or non-cdecl functions are not yet projected");
+    const bool cUnprototyped = function.languageLinkage == CppLanguageLinkage::C && !function.hasPrototype;
+    if (cUnprototyped && (function.callingConvention != "cdecl" || !function.parameters.empty()))
+        return failure("unprototyped C function with unsupported definition or calling convention");
     const CppType mappedReturn = function.languageLinkage == CppLanguageLinkage::C
         ? invocationTypeForC(function.returnType, true) : function.returnType;
     const bool cRecordValues = function.languageLinkage == CppLanguageLinkage::C;
@@ -201,7 +204,7 @@ CppSemanticFunctionResult projectFunction(
     symbol.cppCallingConvention = function.callingConvention;
     symbol.cppReturnType = function.returnType;
     symbol.cppDllImport = function.dllImport;
-    symbol.isVariadic = function.variadic;
+    symbol.isVariadic = function.variadic || cUnprototyped;
     symbol.cppCanonicalIdentity = *function.externalSymbol + "|" + resultType->canonicalCppType + "(";
     symbol.signatureKey = function.name + "(";
     if (function.location) symbol.sourcePath = function.location->file.generic_string();
@@ -227,7 +230,7 @@ CppSemanticFunctionResult projectFunction(
         symbol.signatureKey += parameterType->nativeSharpTypeKey;
         symbol.cppCanonicalIdentity += parameterType->canonicalCppType;
     }
-    if (function.variadic)
+    if (symbol.isVariadic)
     {
         if (!function.parameters.empty()) { symbol.signatureKey.push_back(','); symbol.cppCanonicalIdentity.push_back(','); }
         symbol.signatureKey += "...";
