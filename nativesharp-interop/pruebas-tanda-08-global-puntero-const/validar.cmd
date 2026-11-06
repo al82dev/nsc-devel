@@ -38,11 +38,13 @@ if not errorlevel 1 (echo Se acepto perdida de const por direccion. & exit /b 1)
 findstr /i /c:"cannot take the address of an array element with a const pointee" "%DEST%\InvalidAddress.log" >nul
 if errorlevel 1 (echo El rechazo de direccion no identifica el contrato. & exit /b 1)
 echo Perdida de const por asignacion o direccion rechazada.
-for %%I in (InvalidInferred InvalidArgument) do (
-  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\%%I.nsproj" -O0 --no-artifact-cache -o "%DEST%\%%I.exe" > "%DEST%\%%I.log" 2>&1
-  if not errorlevel 1 (echo Se acepto perdida de const en %%I. & exit /b 1)
-  findstr /i /c:"error:" "%DEST%\%%I.log" >nul
-  if errorlevel 1 (echo Falta diagnostico de error en %%I. & exit /b 1)
-)
-echo Los escapes por inferencia y argumentos se rechazaron; revisar diagnosticos.
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidInferred.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidInferred.exe" > "%DEST%\InvalidInferred.log" 2>&1
+if not errorlevel 1 (echo Se acepto escritura por puntero inferido. & exit /b 1)
+findstr /i /c:"error: left side of assignment is not assignable" "%DEST%\InvalidInferred.log" >nul
+if errorlevel 1 (echo El rechazo del puntero inferido no corresponde a la escritura. & exit /b 1)
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidArgument.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidArgument.exe" > "%DEST%\InvalidArgument.log" 2>&1
+if not errorlevel 1 (echo Se acepto el arreglo como argumento mutable. & exit /b 1)
+findstr /i /c:"no viable overload of namespace function 'c_mutate' accepts the argument types" "%DEST%\InvalidArgument.log" >nul
+if errorlevel 1 (echo El rechazo del argumento no corresponde a la llamada. & exit /b 1)
+echo Los escapes por inferencia y argumentos se rechazaron.
 exit /b 0

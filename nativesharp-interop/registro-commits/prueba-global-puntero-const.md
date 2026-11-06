@@ -25,3 +25,9 @@ O0–O3. No se acreditan aún matrices, otros tipos ni todas las rutas de escape
 Se preparan dos controles adicionales de pérdida de const: un puntero local
 inferido desde el elemento y el paso del arreglo a una función C que espera
 `int**`. Los diagnósticos deben inspeccionarse; aún no se han ejecutado.
+
+Con build `207aab239dce1116` el puntero inferido se rechazó al escribir sobre
+el dato; pasar el arreglo se rechazó porque no se encontró una sobrecarga con
+tipos compatibles. Esto no prueba una conversión general de arreglos a
+punteros calificados. Se fijan ambos diagnósticos esperados en el script; la
+versión ajustada de ese control aún debe repetirse.
