@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## HIR de campos alcanzados por puntero a struct volatile
+
+Propagar volatile al campo cuando el receptor es una dirección obtenida por
+desreferencia y esa dirección ya está calificada. Archivo:
+HirCompletionValueFrames.cpp y documentación. Una carga volatile del propio
+puntero no califica el objeto; preservar esa separación. La importación de
+punteros C a struct volatile sigue pendiente hasta preparar sus pruebas.
+
 ## Dirección de un local con apuntado volatile
 
 Impedir provisionalmente obtener la dirección de un local cuyo tipo inferido

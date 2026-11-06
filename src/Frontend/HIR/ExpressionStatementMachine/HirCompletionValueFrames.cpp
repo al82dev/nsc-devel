@@ -164,7 +164,8 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledInstanceFieldFrame(
         if (lowered && lowered->volatileAccess &&
             (lowered->kind == ProjectOopHirNodeKind::NamespaceStateAddress ||
              lowered->kind == ProjectOopHirNodeKind::FieldAddress ||
-             lowered->kind == ProjectOopHirNodeKind::RawElementAddress))
+             lowered->kind == ProjectOopHirNodeKind::RawElementAddress ||
+             lowered->kind == ProjectOopHirNodeKind::AddressValue))
             field->volatileAccess = true;
         field->baseReceiver = binding.baseReceiver;
         field->children.push_back(std::move(lowered));

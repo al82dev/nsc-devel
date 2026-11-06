@@ -20,6 +20,9 @@ La desreferencia y el índice preparan la propagación del calificador al
 almacenamiento resultante. Falta conectar HIR, conversiones y validación.
 HIR prepara la marca volatile de la carga y de la dirección del objeto
 apuntado; no se ha activado ni comprobado la ruta.
+El acceso a un campo también prepara la propagación desde una dirección
+desreferenciada ya calificada, sin asumir que el puntero lo esté. Aún falta
+habilitar y validar el apuntado a struct volatile.
 Se preparó además la conservación en locales inferidos y el rechazo de una
 inicialización explícita que descartaría el calificador; falta cubrir
 asignaciones y los demás recorridos antes de habilitar la importación.
