@@ -3102,6 +3102,7 @@ int main(int argc, char** argv)
                 const auto result = captureCppCRecordSnapshot(entries, groups.groups.front());
                 const auto* snapshot = std::get_if<CppCRecordSnapshot>(&result);
                 if (!snapshot || snapshot->identityKey != identity->key() || snapshot->kind != kind ||
+                    snapshot->moduleName != "Semantic" || snapshot->name != name ||
                     snapshot->complete != complete || snapshot->targetTriple != "x86_64-pc-windows-msvc") return false;
                 return complete ? snapshot->sizeBits == record->sizeBits &&
                     snapshot->alignmentBits == record->alignmentBits && snapshot->fields.size() == record->fields.size() :
@@ -3220,6 +3221,11 @@ int main(int argc, char** argv)
                 ok &= expect(!metadata_detail::encodeCRecordCatalog(invalid, preserved, codecError) &&
                              preserved == std::vector<std::uint8_t>{0x42},
                              "C record codec rejects duplicate identities without changing output");
+                invalid = *catalog;
+                invalid.front().name = "DifferentName";
+                ok &= expect(!metadata_detail::encodeCRecordCatalog(invalid, preserved, codecError) &&
+                             preserved == std::vector<std::uint8_t>{0x42},
+                             "C record codec rejects identity components that disagree with the key");
                 invalid = *catalog;
                 const auto incomplete = std::find_if(invalid.begin(), invalid.end(),
                     [](const auto& record) { return !record.complete; });
