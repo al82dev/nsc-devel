@@ -194,6 +194,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     declaraciones y miembros capturados; la batería agrupada pasó. Todavía falta
     integrar y verificar su uso en selección y persistencia antes de cerrar el
     ítem. [Evidencia](TANDA-08-TIPOS-C.md#identificadores-usr-de-clang).
+  - En `92d212d3e` pasó la batería con USR en tipos record/enum referidos y
+    detección de funciones de un mismo USR con símbolos incompatibles. La
+    persistencia y otras categorías de declaraciones siguen pendientes.
+    [Evidencia](TANDA-08-TIPOS-C.md#referencias-y-conflictos-de-usr).
 - [ ] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
 - [ ] T08-004. Importar declaraciones de variables globales C.
 - [ ] T08-005. Importar alias de tipos declarados con `typedef`.

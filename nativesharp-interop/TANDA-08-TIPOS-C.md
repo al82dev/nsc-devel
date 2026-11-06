@@ -1217,3 +1217,18 @@ ausente si Clang no lo produce. La selección y persistencia aún no se basan en
 él; estas pruebas no acreditan todas las declaraciones o configuraciones. Por
 eso T08-002 permanece abierto. Se observaron advertencias de inicializadores en
 CppSemanticRecord.cpp, CppSemanticInventory.cpp y CppClangSessionTests.cpp.
+
+## Referencias y conflictos de USR
+
+La batería `validar-tanda-08.cmd` sobre `92d212d3e` terminó con código 0.
+La prueba de sesión comprobó que record y enum referidos en firmas conservan
+el USR de sus declaraciones, y que las búsquedas directa e indexada detectan
+una contradicción sintética entre símbolos externos del mismo USR. Un control
+mantiene alias compatibles de un símbolo con identidades distintas. Los siete
+casos mixtos de la batería terminaron y records se ejecutó en O0–O3.
+
+El resultado no demuestra todos los casos de identidad, persistencia o ABI.
+La compilación presentó una advertencia por el nuevo campo ausente en un
+inicializador sintético; el commit `ef9ee91d9` lo inicializa explícitamente y
+queda pendiente verificar esa corrección en la próxima construcción agrupada.
+T08-002 y la tanda 08 continúan abiertos.
