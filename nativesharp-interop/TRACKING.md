@@ -241,6 +241,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - Preparados `656034022`, `0e4bf14bb` y `8d4417cfd`: mapeo y pruebas de
     arreglos C const de records y enums empaquetados, con lectura y rechazos
     de escritura y dirección. Todavía no construidos ni validados.
+  - Actualización: NSC se construyó incrementalmente y layout pasó O0–O3;
+    se verificaron lecturas y rechazos de escritura y dirección. La primera
+    ejecución encontró expectativas de diagnóstico erróneas, corregidas en
+    `a519938a0`. La validación completa de la tanda y el ítem siguen pendientes.
   - Preparado, pendiente de validación agrupada: parámetros con enlace C de un
     nivel a void, escalares, structs y enums volatile. La función C realiza los
     accesos y se conserva el tipo de Clang; las pruebas incluyen const y

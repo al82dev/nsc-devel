@@ -1320,6 +1320,15 @@ los valores en ejecución y rechaza tomar la dirección. No se ha ejecutado.
 Los campos empaquetados C++ y los campos C de punteros, agregados y bitfields
 siguen pendientes, así como otras formas de acceso; no se cierra la tanda.
 
+## Validación dirigida de arreglos C const de records y enums
+
+La construcción incremental de NSC terminó con código 0. En layout se
+ejecutaron las lecturas de arrays const de record y enum en O0–O3 y se
+rechazaron escrituras y direcciones que pierden const. La primera ejecución
+se detuvo por expectativas incorrectas de diagnóstico; `a519938a0` las
+ajustó a los mensajes observados y la repetición terminó con código 0. Esto
+no sustituye la validación completa de la tanda ni demuestra todas las formas.
+
 ## Validación dirigida de enum C empaquetado
 
 Sobre `5a54916fe`, la construcción incremental de NSC terminó con código 0;
