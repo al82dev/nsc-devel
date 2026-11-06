@@ -2993,6 +2993,7 @@ int main(int argc, char** argv)
                             if (!identity) { why = "record identity unavailable"; return false; }
                             output.push_back({*identity, nativesharp::frontend::NamedTypeDeclarationKind::Struct,
                                 nativesharp::frontend::NamedTypeAccessibility::Public, 0, "probe.c"});
+                            output.back().clangUsr = recordSnapshot->clangUsr;
                             if (recordSnapshot->sizeBits && recordSnapshot->alignmentBits)
                                 output.back().objectLayout = nativesharp::frontend::CppImportedObjectLayout{
                                     *recordSnapshot->sizeBits / 8, *recordSnapshot->alignmentBits / 8};
@@ -3039,6 +3040,17 @@ int main(int argc, char** argv)
                                  nestedArray->type.nativeSharpTypeKey == "type:" + pairIdentity->key() + "[3][2]" &&
                                  nestedArray->byteOffset == 8,
                                  "nested C record and array fields retain imported identities and offsets");
+                    if (outer && !outer->fields.empty() && outer->fields[0].type.recordIdentity &&
+                        recordAliasCompilation.nameLookup())
+                    {
+                        auto different = *outer;
+                        different.fields[0].type.recordIdentity->clangUsr = "different-record-usr";
+                        ok &= expect(recordSnapshot && recordSnapshot->clangUsr &&
+                            !projectCppSemanticInstanceField(different, 0, 0, "Semantic", "x86_64-pc-windows-msvc",
+                                                             recordAliasCompilation.nameLookup()),
+                            "record field projection rejects a different known declaration USR");
+                    }
+                    else ok &= expect(false, "record field identity fixture is available");
                     const auto* device = cRecords ? recordByName(*cRecords, "CDevice") : nullptr;
                     const auto volatileField = device ? projectCppSemanticInstanceField(
                         *device, 0, 0, "Semantic", "x86_64-pc-windows-msvc", recordAliasCompilation.nameLookup()) : std::nullopt;
