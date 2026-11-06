@@ -62,6 +62,27 @@ volatile int volatile_array[3] = { 1, 2, 3 };
 volatile int volatile_matrix[2][2] = { { 1, 2 }, { 3, 4 } };
 int read_volatile_arrays(void) { return volatile_array[1] + volatile_matrix[1][1]; }
 void write_volatile_arrays(int value) { volatile_array[1] = value; volatile_matrix[1][1] = value; }
+volatile _Bool volatile_bool_array[2];
+volatile signed char volatile_i8_array[2];
+volatile unsigned char volatile_u8_array[2];
+volatile short volatile_i16_array[2];
+volatile unsigned short volatile_u16_array[2];
+volatile long long volatile_i64_array[2];
+volatile unsigned long long volatile_u64_array[2];
+volatile float volatile_f32_array[2];
+volatile double volatile_f64_array[2];
+void reference_volatile_scalar_arrays(void)
+{
+    volatile_bool_array[1] = 1; (void)volatile_bool_array[1];
+    volatile_i8_array[1] = 2; (void)volatile_i8_array[1];
+    volatile_u8_array[1] = 3; (void)volatile_u8_array[1];
+    volatile_i16_array[1] = 4; (void)volatile_i16_array[1];
+    volatile_u16_array[1] = 5; (void)volatile_u16_array[1];
+    volatile_i64_array[1] = 6; (void)volatile_i64_array[1];
+    volatile_u64_array[1] = 7; (void)volatile_u64_array[1];
+    volatile_f32_array[1] = 1.5f; (void)volatile_f32_array[1];
+    volatile_f64_array[1] = 2.5; (void)volatile_f64_array[1];
+}
 struct GlobalOnly global_record = { 1 };
 static volatile struct GlobalOnly volatile_record_storage = { 9 };
 volatile struct GlobalOnly* volatile_record_pointer_array[2] = { &volatile_record_storage, &volatile_record_storage };
