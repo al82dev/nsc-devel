@@ -372,14 +372,28 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
         ? frameType->typeKey
         : frameDelegate != nullptr ? frameDelegate->resultTypeKey : "<error>";
     bool directCVolatileInt = false;
-    if (resultType == "builtin:int" && lowered &&
-        lowered->kind == ProjectOopHirNodeKind::NamespaceStateValue &&
-        lowered->namespaceStateOrdinal && namespaceFunctionModel_ &&
-        *lowered->namespaceStateOrdinal < namespaceFunctionModel_->states().size())
+    const ProjectOopHirNode* provenance = lowered.get();
+    bool indexedCGlobal = false;
+    if (provenance && provenance->kind == ProjectOopHirNodeKind::PointerLoad &&
+        provenance->typeKey == "builtin:int*" && provenance->children.size() == 1)
     {
-        const auto& state = namespaceFunctionModel_->states()[*lowered->namespaceStateOrdinal];
+        provenance = provenance->children.front().get();
+        unsigned depth = 0;
+        while (provenance && provenance->kind == ProjectOopHirNodeKind::RawElementAddress &&
+               provenance->children.size() == 2 && ++depth <= 64)
+            provenance = provenance->children.front().get();
+        indexedCGlobal = depth > 0 && depth <= 64 && provenance &&
+            provenance->kind == ProjectOopHirNodeKind::NamespaceStateAddress;
+    }
+    if (resultType == "builtin:int" && provenance &&
+        (provenance->kind == ProjectOopHirNodeKind::NamespaceStateValue || indexedCGlobal) &&
+        provenance->namespaceStateOrdinal && namespaceFunctionModel_ &&
+        *provenance->namespaceStateOrdinal < namespaceFunctionModel_->states().size())
+    {
+        const auto& state = namespaceFunctionModel_->states()[*provenance->namespaceStateOrdinal];
         directCVolatileInt = state.isCppExternal && state.cppCGlobal &&
-            state.declaredTypeKey == "builtin:int*" && state.cppPointerPointeeVolatile &&
+            (indexedCGlobal ? state.declaredTypeKey.starts_with("builtin:int*[")
+                            : state.declaredTypeKey == "builtin:int*") && state.cppPointerPointeeVolatile &&
             state.cppMicrosoftVolatileSemantics == std::optional<bool>{true};
     }
         if (frame.syntax->tokenKind() == lexer::TokenKind::PlusPlus ||
