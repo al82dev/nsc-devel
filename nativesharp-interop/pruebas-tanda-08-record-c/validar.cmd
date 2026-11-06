@@ -123,7 +123,7 @@ copy /y "%~dp0ConstRecordPointerConversion.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-record-pointer-conversion.exe" > "%DEST%\const-record-pointer-conversion.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /i /c:"const" /c:"readonly" /c:"mutability" "%DEST%\const-record-pointer-conversion.log" >nul
+findstr /c:"would discard pointee constness" "%DEST%\const-record-pointer-conversion.log" >nul
 if errorlevel 1 exit /b 1
 copy /y "%~dp0VolatileRecordGlobal.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
