@@ -58,6 +58,8 @@ El inventario inicial también prepara la proyección con el modo C, aun sin
 lookup; la comprobación correspondiente está pendiente de ejecución.
 También se prepararon casos negativos de escape por tupla y conversión
 explícita; esperan ejecución y no completan la auditoría de escapes.
+Se preparó una barrera específica al tomar la dirección de un local cuyo
+apuntado es volatile: un doble puntero todavía perdería el calificador interno.
 El mismo fixture incluye lectura del apuntado const volatile y rechazo de
 escritura; estas comprobaciones esperan ejecución.
 Se añadió el caso opuesto: puntero const a dato volatile, con escritura

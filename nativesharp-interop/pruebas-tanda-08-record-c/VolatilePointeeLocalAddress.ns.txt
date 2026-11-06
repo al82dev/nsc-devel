@@ -1,0 +1,6 @@
+int Main()
+{
+    var value = volatile_pointee;
+    int** address = &value;
+    return 0;
+}

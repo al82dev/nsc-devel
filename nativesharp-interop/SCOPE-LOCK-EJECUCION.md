@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Dirección de un local con apuntado volatile
+
+Impedir provisionalmente obtener la dirección de un local cuyo tipo inferido
+contiene volatile en el apuntado, ya que T** aún no conserva ese calificador
+interior. Archivo: IdentifierAnalyzer.cpp, fixture pruebas-tanda-08-record-c y
+documentación. No modificar la asignabilidad del local ni la dirección de
+punteros ordinarios. Preparar diagnóstico y prueba para la tanda agrupada.
+
 ## Puntero C const a escalar volatile
 
 Preparar comprobación de que const del puntero impide reasignarlo, pero no

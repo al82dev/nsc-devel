@@ -273,7 +273,7 @@ void ProjectMethodBodyModel::completeLocalIdentifier(
     // is admitted here and its new owner roots are validated/accumulated in
     // analyzeAssignment; `const borrowed` remains immutable.
     result.assignable = !local.isConst;
-    result.addressable = true;
+    result.addressable = !local.pointerPointeeVolatile;
     result.readonlyReceiver = local.isConst;
     result.pointerPointeeReadonly = local.pointerPointeeReadonly;
     result.pointerPointeeVolatile = local.pointerPointeeVolatile;
@@ -1224,6 +1224,8 @@ if (operation == TokenKind::Amp)
             expression->range(),
             operand.volatileStorage
                 ? "cannot take the address of volatile storage until qualified pointers are supported"
+                : operand.pointerPointeeVolatile
+                ? "cannot take the address of a pointer to volatile storage until nested qualified pointers are supported"
                 : operand.readonlyReceiver
                 ? "cannot take the address of readonly storage until qualified pointers are supported"
                 : "bit fields have no address; operand of & must name addressable storage, "
