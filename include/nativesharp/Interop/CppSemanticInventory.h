@@ -140,6 +140,8 @@ struct CppSemanticGlobal
     bool pointerPointeeVolatile = false;
     // Absent if the originating sessions do not provide a single known value.
     std::optional<bool> microsoftVolatileSemantics;
+    std::optional<std::uint64_t> storageSizeBits;
+    std::optional<std::uint64_t> declarationAlignmentBits;
 };
 struct CppSemanticGlobalFailure { std::string message; };
 using CppSemanticGlobalResult = std::variant<CppSemanticGlobal, CppSemanticGlobalFailure>;

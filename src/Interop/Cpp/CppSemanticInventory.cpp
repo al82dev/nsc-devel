@@ -181,7 +181,8 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
                              global.type.kind == CppTypeKind::Pointer && global.type.element &&
                                  global.type.element->isConst, global.dllImport,
                              global.type.kind == CppTypeKind::Pointer && global.type.element &&
-                                 global.type.element->isVolatile};
+                                 global.type.element->isVolatile, std::nullopt, global.type.sizeBits,
+                             global.declarationAlignmentBits};
 }
 
 CppSemanticGlobalResult projectCppSemanticGlobal(
@@ -278,11 +279,21 @@ CppSemanticGlobalSelection selectCppSemanticGlobal(
         {
             result.candidate = *candidate;
             auto option = first.microsoftVolatileSemantics;
+            auto alignment = first.declaration.declarationAlignmentBits;
             for (const auto i : result.declarationIndices)
+            {
                 if (entries[i].microsoftVolatileSemantics != option) option = std::nullopt;
+                if (!entries[i].declaration.declarationAlignmentBits) alignment = std::nullopt;
+                else if (alignment) alignment = std::min(*alignment, *entries[i].declaration.declarationAlignmentBits);
+            }
             for (const auto i : result.aliasIndices)
+            {
                 if (entries[i].microsoftVolatileSemantics != option) option = std::nullopt;
+                if (!entries[i].declaration.declarationAlignmentBits) alignment = std::nullopt;
+                else if (alignment) alignment = std::min(*alignment, *entries[i].declaration.declarationAlignmentBits);
+            }
             result.candidate->microsoftVolatileSemantics = option;
+            result.candidate->declarationAlignmentBits = alignment;
         }
     return result;
 }

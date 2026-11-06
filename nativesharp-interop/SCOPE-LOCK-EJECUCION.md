@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Tamaño y alineación al seleccionar un global
+
+Conservar el tamaño capturado de Clang y una cota conservadora de alineación al
+seleccionar un global: mínimo entre declaraciones conocidas y ausencia si
+alguna es desconocida. No decidir aún elegibilidad atómica ni cambiar el IR.
+Archivos: CppSemanticInventory.h/.cpp y documentación; preparar pruebas y
+validar con la tanda.
+
 ## Prueba de alineación de globales Clang
 
 Preparar un global con alineación explícita de 16 bytes y un arreglo incompleto,

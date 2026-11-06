@@ -1061,6 +1061,13 @@ Se preparó una sesión con un global de alineación explícita de 16 bytes y un
 arreglo incompleto; el snapshot debe conservar 128 bits y ausencia. Pendiente
 de ejecución agrupada.
 
+## Tamaño y alineación al seleccionar un global
+
+La proyección prepara el tamaño en bits y la selección conserva la menor
+alineación conocida de todas las declaraciones y aliases; si alguna es
+desconocida, la alineación resultante también lo es. El dato aún no se usa
+para decidir acceso atómico y espera pruebas y validación agrupada.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.
