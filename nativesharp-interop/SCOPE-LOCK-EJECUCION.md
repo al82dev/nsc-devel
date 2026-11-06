@@ -3337,6 +3337,13 @@ almacenados en un global y campo volatile, con intercambio de escrituras entre
 C y NativeSharp. Comparar también su IR frente a Clang en Windows x64 antes de
 atribuir soporte a las reglas de orden volatile; no modificar producción sin
 identificar y registrar primero las rutas concretas.
+Clang confirmó acquire/release para lectura/escritura de punteros a función
+volatile alineados. Permitir cambios en `src/Interop/Cpp/CppSemanticFunction.cpp`,
+`src/Frontend/HIR/ExpressionStatementMachine/HirNameExpressionLowering.cpp`,
+`src/LLVM/Lowering/PackedArrayAlignment.h`, `OopLlvmExpressionMachine.cpp` y
+`OopLlvmArraysAndStores.cpp` para proyectar y transportar únicamente ese
+contrato cuando el modo MS y alineación estén probados. Extender el fixture y
+sus comprobaciones de IR; conservar accesos subalineados sin orden atómico.
 Para el fallo observado, reutilizar el mapeo de firma de funciones existente
 en `include/nativesharp/Interop/CppSemanticFunction.h` y
 `src/Interop/Cpp/CppSemanticFunction.cpp`, y conectarlo a campos C en
