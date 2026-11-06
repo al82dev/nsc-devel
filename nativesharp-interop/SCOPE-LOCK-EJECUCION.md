@@ -3314,6 +3314,10 @@ Ampliar `nativesharp-interop/pruebas-tanda-08-callback` y su documentación
 para probar el retorno de un puntero a función C, su llamada desde NativeSharp
 y su tránsito de vuelta a C. Ejecutar la matriz O0–O3 agrupada. No modificar
 producción sin delimitar primero el archivo y el defecto observados.
+Ampliar además `pruebas-tanda-08-meta-c` con productor NativeSharp
+precompilado y consumidor que compartan un callback C y un struct que lo
+almacena. Probar retorno, campo y llamada en O0–O3; limitar edición al
+fixture, scripts y registros hasta observar cualquier defecto concreto.
 Agregar un proyecto separado para leer e invocar un puntero a función desde un
 campo de struct C y desde un global C, sin alterar el caso ya validado.
 Extender ese proyecto para escribir callbacks en el campo y en el global y
