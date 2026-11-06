@@ -257,6 +257,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     aliases transitivos y aislamiento entre proyectos. No acredita persistencia
     ni la validación completa de la tanda.
 - [ ] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
+  - Preparados `20b3a49c9` y `beb379767`: búsqueda de funciones C/C++
+    globales como último recurso dentro de namespaces y controles de prioridad
+    y namespace anidado. Pendientes de construcción y ejecución agrupadas.
   - Matriz `96de93e42`: llamadas escalares y con puntero pasan en ámbito
     global y fallan dentro de namespace por nombre desconocido. Es necesario
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
