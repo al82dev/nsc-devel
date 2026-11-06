@@ -198,10 +198,17 @@ bool isNsLinkExecutable(const std::filesystem::path& executable)
     return name == "nslink" || name == "nslink.exe";
 }
 
+bool isLldLinkExecutable(const std::filesystem::path& executable)
+{
+    const std::string name = executableName(executable);
+    return name == "lld-link" || name == "lld-link.exe";
+}
+
 std::string linkerProductName(const std::filesystem::path& executable)
 {
     const std::string name = executableName(executable);
     if (name == "llvm-lib" || name == "llvm-lib.exe") return "llvm-lib";
+    if (isLldLinkExecutable(executable)) return "lld-link";
     return "NSLink";
 }
 
@@ -225,9 +232,9 @@ std::filesystem::path resolveConfiguredNsLink(
     std::string& error)
 {
     const std::filesystem::path candidate(configured);
-    if (!isNsLinkExecutable(candidate))
+    if (!isNsLinkExecutable(candidate) && !isLldLinkExecutable(candidate))
     {
-        error = "NSC_LINKER must name nslink.exe: '" + std::string(configured) + "'";
+        error = "NSC_LINKER must name nslink.exe or lld-link.exe: '" + std::string(configured) + "'";
         return {};
     }
     if (candidate.has_parent_path())

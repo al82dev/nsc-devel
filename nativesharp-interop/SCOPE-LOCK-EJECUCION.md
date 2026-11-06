@@ -4225,8 +4225,11 @@ El objeto NativeSharp y el runtime real de NSC enlazaron y ejecutaron con
 LLD y el CRT estático sin modificar NSLink. Para permitir integrar este
 camino se extiende solo la selección explícita de `NSC_LINKER` para reconocer
 `lld-link`, conservando NSLink como predeterminado y el rechazo de otros
-ejecutables. Presupuesto: `src/Linker/LldLinker.cpp`, pruebas existentes de
-selección en `tests/unit/WindowsLinkerTests.cpp` y registros Markdown.
+ejecutables. Presupuesto: `src/Linker/LldLinker.cpp`, `src/Driver/ProjectCommands.cpp`,
+ayuda de `src/Driver/DriverHelp.cpp`, prueba separada de selección en
+`nativesharp-interop` y registros Markdown. El comando `build` rechazará de
+forma explícita LLD hasta que su selección de proyecto esté integrada, evitando
+reportar NSLink mientras se ejecuta LLD.
 Esta selección no aporta por sí sola detección TLS, CRT ni enlace automático;
 el caso completo y la validación de la tanda siguen pendientes. No se cambia
 NSLink ni LLVM y no se despliega en C:.

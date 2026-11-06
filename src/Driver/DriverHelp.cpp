@@ -242,7 +242,7 @@ void printHelpSpanishPart1(std::ostream &output)
               "sin ellos se conservan los mínimos normativos 64 y 16384.\n"
            << "--profile=debug selecciona O0 con depuración completa; --profile=release selecciona O2 con "
               "tablas de líneas.\n"
-           << "NSC_LINKER selecciona NSLink y NSC_LLVM_LIB selecciona el bibliotecario estático.\n"
+           << "NSC_LINKER selecciona NSLink o lld-link; NSC_LLVM_LIB selecciona el bibliotecario estático.\n"
            << "Este ejecutable pertenece a la línea de desarrollo NativeSharp 3.0; "
               "la documentación se distribuye por separado.\n";
 }
@@ -298,7 +298,7 @@ void printHelpEnglishPart1(std::ostream &output)
               "O2 with line tables. Explicit -O and -g flags override profile defaults.\n"
            << "Debug flags -g0, -gline-tables-only and -g are independent from "
               "optimization and currently apply to project OOP object/executable emission.\n"
-           << "NSC_LINKER selects NSLink; NSC_LLVM_LIB independently "
+           << "NSC_LINKER selects NSLink or lld-link; NSC_LLVM_LIB independently "
               "selects the static librarian.\n"
            << "Stage 37 semantics remain preserved: static members, deterministic "
               "initialization, const and readonly.\n"
