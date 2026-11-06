@@ -9,6 +9,13 @@ Presupuesto: NamespaceFunctionSymbol.h, CppSemanticFunction.cpp,
 CppSemanticFunctionGroups.cpp, suite de sesión y registros Markdown.
 No modifica formato persistente, LLVM externo ni NSLink; validar por tanda.
 
+## Identidad de alias C en resolución
+
+T08-002: conciliar los USR conocidos de observaciones del mismo alias al
+resolverlo, incluso si una observación intermedia no tiene USR. Presupuesto:
+QualifiedTypeNames.cpp, CppClangSessionTests.cpp, TRACKING.md y registros
+Markdown. No cambia persistencia ni LLVM o NSLink; validación por tanda.
+
 ## Identidad de global C en selección y símbolo
 
 T08-002/T08-004: conservar el USR opcional de declaraciones globales C
