@@ -809,9 +809,39 @@ void ProjectMethodBodyModel::analyzeRawIndex(
         const bool readonlyElement = (base.readonlyReceiver &&
             (validFixedIndices || validFlexibleIndex)) ||
             (validPointerIndex && base.pointerPointeeReadonly);
+        bool unalignedImportedFieldElement = false;
+        if (validFixedIndices && memberModel_ != nullptr)
+        {
+            const ast::AstNode* root = expression;
+            while (root != nullptr && root->kind() == ast::AstNodeKind::IndexExpression)
+                root = root->first();
+            const MethodNameBinding* binding = root ? nameBinding(root, methodMemberOrdinal) : nullptr;
+            if (binding && (binding->kind == MethodNameBindingKind::ExplicitObjectField ||
+                            binding->kind == MethodNameBindingKind::ExplicitThisField ||
+                            binding->kind == MethodNameBindingKind::ExplicitBaseField ||
+                            binding->kind == MethodNameBindingKind::ImplicitField) &&
+                binding->candidateMemberOrdinals.size() == 1 &&
+                binding->candidateMemberOrdinals.front() < memberModel_->members().size())
+            {
+                const auto& field = memberModel_->members()[binding->candidateMemberOrdinals.front()];
+                std::string elementKey = field.declaredTypeKey;
+                while (const auto element = ProjectMemberModel::fixedArrayElementTypeKey(elementKey))
+                    elementKey = *element;
+                std::uint64_t naturalAlignment = 0;
+                if (elementKey == "builtin:bool" || elementKey == "builtin:sbyte" ||
+                    elementKey == "builtin:byte") naturalAlignment = 1;
+                else if (elementKey == "builtin:short" || elementKey == "builtin:ushort") naturalAlignment = 2;
+                else if (elementKey == "builtin:int" || elementKey == "builtin:uint" ||
+                         elementKey == "builtin:float") naturalAlignment = 4;
+                else if (elementKey == "builtin:long" || elementKey == "builtin:ulong" ||
+                         elementKey == "builtin:double" || elementKey.ends_with('*')) naturalAlignment = 8;
+                unalignedImportedFieldElement = field.isCppExternal && field.explicitFieldAlignment &&
+                    naturalAlignment != 0 && *field.explicitFieldAlignment < naturalAlignment;
+            }
+        }
         result.assignable = !readonlyElement &&
             !ProjectMemberModel::fixedArrayElementTypeKey(result.typeKey).has_value();
-        result.addressable = !result.volatileStorage;
+        result.addressable = !result.volatileStorage && !unalignedImportedFieldElement;
         result.readonlyReceiver = readonlyElement;
         result.onePastEndAddress = fixedOnePastAddress;
         coreBindings_.push_back(MethodCoreBinding{

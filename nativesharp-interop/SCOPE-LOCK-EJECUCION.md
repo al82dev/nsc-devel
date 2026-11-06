@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Dirección de elementos de arreglos C empaquetados
+
+T08-016: en la indexación fija de un campo importado, impedir que el elemento
+sea expuesto por dirección o referencia cuando la alineación efectiva del
+campo sea inferior a la natural del elemento escalar o puntero. Conservar los
+accesos directos y las demás clases de índices. El proyector mantiene la
+barrera para arreglos empaquetados hasta preparar el circuito completo.
+Presupuesto: IndexAndRangeExpressions.cpp, fixture layout y registros Markdown.
+LLVM y NSLink protegidos; validación agrupada de la tanda.
+
 ## Alineación de elementos de arreglo en un campo
 
 T08-010/T08-012/T08-016: derivar en LLVM la alineación garantizada de un
