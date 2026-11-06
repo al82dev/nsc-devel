@@ -1434,6 +1434,11 @@ bool verifyBinaryClosureMetadata(
             error = "metadata before 1.43 cannot represent C source provenance";
             return false;
         }
+        if (hasProvenance && metadata.cppCRecordCatalog[0] == 2 && metadata.formatMinor < 44)
+        {
+            error = "metadata before 1.44 cannot represent C floating format";
+            return false;
+        }
         if (!decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, detail) ||
             (records.empty() && enums.empty()) ||
             !(hasProvenance ? encodeCTypeCatalogWithProvenance(records, enums, canonical, detail) :
