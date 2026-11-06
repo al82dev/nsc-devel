@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Puntero C const a escalar volatile
+
+Preparar comprobación de que const del puntero impide reasignarlo, pero no
+impide escribir su apuntado volatile. Archivos: fixture
+pruebas-tanda-08-record-c y documentación. Ejecutar en la validación agrupada;
+no extrapolar a todos los niveles de indirección.
+
 ## Proyección inicial de globales con modo C
 
 Conservar el modo C de la sesión al proyectar el inventario inicial de

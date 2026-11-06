@@ -1,0 +1,5 @@
+int Main()
+{
+    fixed_volatile_pointee = volatile_pointee;
+    return 0;
+}

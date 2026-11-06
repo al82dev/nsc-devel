@@ -60,6 +60,8 @@ También se prepararon casos negativos de escape por tupla y conversión
 explícita; esperan ejecución y no completan la auditoría de escapes.
 El mismo fixture incluye lectura del apuntado const volatile y rechazo de
 escritura; estas comprobaciones esperan ejecución.
+Se añadió el caso opuesto: puntero const a dato volatile, con escritura
+permitida en el dato y rechazo de reasignación del puntero. Sin ejecutar.
 Se conectó además el resultado C de puntero a escalar volatile con el
 metadato de Clang y se preparó su prueba mixta. Los resultados agregados y
 anidados siguen diferidos; ninguna de estas rutas se ha validado todavía.

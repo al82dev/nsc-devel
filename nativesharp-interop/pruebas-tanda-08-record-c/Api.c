@@ -18,6 +18,7 @@ volatile int shared_volatile = 7;
 static volatile int pointee_storage = 7;
 volatile int* volatile_pointee = &pointee_storage;
 const volatile int* const_volatile_pointee = &pointee_storage;
+volatile int* const fixed_volatile_pointee = &pointee_storage;
 int read_volatile_pointee(void) { return pointee_storage; }
 volatile int* get_volatile_pointee(void) { return &pointee_storage; }
 int read_plain_int(int* value) { return *value; }

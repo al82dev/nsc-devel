@@ -30,6 +30,8 @@ int Main()
     var returned_volatile = get_volatile_pointee();
     *returned_volatile = 65;
     if (*returned_volatile != 65 || read_volatile_pointee() != 65) return 28;
+    *fixed_volatile_pointee = 66;
+    if (*fixed_volatile_pointee != 66 || read_volatile_pointee() != 66) return 29;
     shared_array[1] = 19;
     int* shared_element = &shared_array[1];
     if (*shared_element != 19) return 10;
