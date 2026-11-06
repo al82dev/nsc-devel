@@ -244,6 +244,8 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-006. Mapear los tipos enteros C con su tamaño y signo efectivos.
   - `8be3c138f` prepara un control mixto de campo y arreglo `_Bool`, con
     tamaño, alineación, offsets, lectura y escritura. No ejecutado todavía.
+  - `fe2fddfca` añade argumentos y resultados `_Bool` en llamada C; pendiente
+    de ejecución, no demuestra aún su ABI.
 - [ ] T08-007. Mapear los tipos de punto flotante según el objetivo.
 - [ ] T08-008. Mapear el tipo `void` en parámetros y resultados donde corresponda.
 - [ ] T08-009. Mapear enumeraciones y sus valores representables.
