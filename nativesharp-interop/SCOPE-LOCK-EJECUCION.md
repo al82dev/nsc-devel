@@ -9,7 +9,7 @@ release en escritura solo si la alineación efectiva del elemento alcanza ese
 ancho. Mantener accesos no atómicos de elementos subalineados y del campo
 entero anidado observado en Clang; no inferir el modo ni aplicarlo a punteros
 cargados. Presupuesto: MirNodeMachine.cpp, OopLlvmSupport.h,
-OopLlvmExpressionMachine.cpp, OopLlvmArraysAndStores.cpp, fixture layout y
+OopLlvmExpressionMachine.cpp, OopLlvmArraysAndStores.cpp, PackedArrayAlignment.h, fixture layout y
 registros Markdown. LLVM externo y NSLink protegidos; validar por tanda.
 
 ## Modo volatile de campo y elemento en HIR
