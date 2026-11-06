@@ -1492,7 +1492,7 @@ bool OopLlvmImplementation::lowerExpressionFrame030PointerLoad(
         LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
         LLVMSetAlignment(load, static_cast<unsigned>(*alignment));
     }
-    if (const auto alignment = clangMsVolatileGlobalIntArrayAlignment(current->children.front().get()))
+    if (const auto alignment = clangMsVolatileGlobalScalarArrayAlignment(current->children.front().get()))
     {
         LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
         LLVMSetAlignment(load, static_cast<unsigned>(*alignment));

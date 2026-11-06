@@ -287,14 +287,25 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNamespaceStateNameBi
             state.cppStorageSizeBits == std::optional<std::uint64_t>{bits} &&
             state.cppDeclarationAlignmentBits && *state.cppDeclarationAlignmentBits >= bits)
             node->cppAtomicAlignmentBytes = static_cast<std::size_t>(bits / 8);
-        // Preserve only the alignment proven for imported C arrays of int.
+        // Preserve the alignment proven for the supported imported C scalar arrays.
         // The individual element's address is checked again against every stride.
-        if (state.cppCGlobal && state.declaredTypeKey.starts_with("builtin:int[") &&
+        std::uint64_t arrayBits = 0;
+        if (state.declaredTypeKey.starts_with("builtin:sbyte[") ||
+            state.declaredTypeKey.starts_with("builtin:byte[")) arrayBits = 8;
+        else if (state.declaredTypeKey.starts_with("builtin:short[") ||
+                 state.declaredTypeKey.starts_with("builtin:ushort[")) arrayBits = 16;
+        else if (state.declaredTypeKey.starts_with("builtin:int[") ||
+                 state.declaredTypeKey.starts_with("builtin:uint[") ||
+                 state.declaredTypeKey.starts_with("builtin:float[")) arrayBits = 32;
+        else if (state.declaredTypeKey.starts_with("builtin:long[") ||
+                 state.declaredTypeKey.starts_with("builtin:ulong[") ||
+                 state.declaredTypeKey.starts_with("builtin:double[")) arrayBits = 64;
+        if (state.cppCGlobal && arrayBits != 0 &&
             state.cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
-            state.cppStorageSizeBits && *state.cppStorageSizeBits >= 32 &&
-            state.cppDeclarationAlignmentBits && *state.cppDeclarationAlignmentBits >= 32 &&
-            *state.cppDeclarationAlignmentBits % 32 == 0)
-            node->cppAtomicAlignmentBytes = 4;
+            state.cppStorageSizeBits && *state.cppStorageSizeBits >= arrayBits &&
+            state.cppDeclarationAlignmentBits && *state.cppDeclarationAlignmentBits >= arrayBits &&
+            *state.cppDeclarationAlignmentBits % arrayBits == 0)
+            node->cppAtomicAlignmentBytes = static_cast<std::size_t>(arrayBits / 8);
     }
     node->memberOrdinal =
         (memberModel_ != nullptr ? memberModel_->members().size() : 0) + stateOrdinal;

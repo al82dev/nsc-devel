@@ -52,25 +52,35 @@ inline std::optional<std::uint64_t> clangMsVolatileEnumElementAlignment(
     return width;
 }
 
-// The root marker is set only for a C global int array with proven alignment.
+// The root marker is set only for supported C global scalar arrays with proven alignment.
 // Each raw index must preserve that alignment, including multidimensional strides.
-inline std::optional<std::uint64_t> clangMsVolatileGlobalIntArrayAlignment(
+inline std::optional<std::uint64_t> clangMsVolatileGlobalScalarArrayAlignment(
     const frontend::ProjectOopMirNode* node) noexcept
 {
     if (!node || node->kind != frontend::ProjectOopMirNodeKind::RawElementAddress ||
-        node->typeKey != "builtin:int" || !node->volatileAccess) return std::nullopt;
+        !node->volatileAccess) return std::nullopt;
+    const auto& elementType = node->typeKey;
+    std::uint64_t width = 0;
+    if (elementType == "builtin:sbyte" || elementType == "builtin:byte") width = 1;
+    else if (elementType == "builtin:short" || elementType == "builtin:ushort") width = 2;
+    else if (elementType == "builtin:int" || elementType == "builtin:uint" ||
+             elementType == "builtin:float") width = 4;
+    else if (elementType == "builtin:long" || elementType == "builtin:ulong" ||
+             elementType == "builtin:double") width = 8;
+    if (width == 0) return std::nullopt;
     unsigned depth = 0;
     while (node && node->kind == frontend::ProjectOopMirNodeKind::RawElementAddress)
     {
         if (++depth > 128 || node->children.size() != 2 || !node->children.front() ||
-            node->immediate == 0 || node->immediate % 4 != 0) return std::nullopt;
+            node->immediate == 0 || node->immediate % width != 0) return std::nullopt;
         node = node->children.front().get();
     }
     if (!node || node->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
         !node->volatileAccess || !node->cppMicrosoftVolatileSemantics.value_or(false) ||
-        node->cppAtomicAlignmentBytes != std::optional<std::uint64_t>{4} ||
-        !node->typeKey.starts_with("builtin:int[")) return std::nullopt;
-    return 4;
+        node->cppAtomicAlignmentBytes != std::optional<std::uint64_t>{width} ||
+        !node->typeKey.starts_with(elementType) || node->typeKey.size() <= elementType.size() ||
+        node->typeKey[elementType.size()] != '[') return std::nullopt;
+    return width;
 }
 
 inline bool clangMsVolatileDirectCIntPointee(const frontend::ProjectOopMirNode* node) noexcept

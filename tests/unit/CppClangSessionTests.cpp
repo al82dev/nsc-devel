@@ -481,22 +481,22 @@ int main(int argc, char** argv)
         globalElement.children.push_back(std::move(globalRow));
         globalElement.children.push_back(std::make_unique<ProjectOopMirNode>());
         auto* globalRoot = globalElement.children.front()->children.front().get();
-        ok &= expect(nativesharp::llvm_backend::clangMsVolatileGlobalIntArrayAlignment(&globalElement) == 4,
+        ok &= expect(nativesharp::llvm_backend::clangMsVolatileGlobalScalarArrayAlignment(&globalElement) == 4,
                      "C volatile global array preserves alignment across both strides");
         globalRoot->cppAtomicAlignmentBytes.reset();
-        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileGlobalIntArrayAlignment(&globalElement),
+        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileGlobalScalarArrayAlignment(&globalElement),
                      "unknown global alignment does not acquire an atomic order");
         globalRoot->cppAtomicAlignmentBytes = 4;
         globalRoot->cppMicrosoftVolatileSemantics = false;
-        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileGlobalIntArrayAlignment(&globalElement),
+        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileGlobalScalarArrayAlignment(&globalElement),
                      "a non-MS volatile mode does not acquire an MS atomic order");
         globalRoot->cppMicrosoftVolatileSemantics = true;
         globalElement.children.front()->immediate = 10;
-        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileGlobalIntArrayAlignment(&globalElement),
+        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileGlobalScalarArrayAlignment(&globalElement),
                      "a subaligned stride cannot acquire an atomic order");
         globalElement.children.front()->immediate = 12;
         globalRoot->kind = ProjectOopMirNodeKind::LocalAddress;
-        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileGlobalIntArrayAlignment(&globalElement),
+        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileGlobalScalarArrayAlignment(&globalElement),
                      "a local array is not mistaken for an imported C global");
         ProjectOopMirNode directPointee;
         directPointee.kind = ProjectOopMirNodeKind::PointerLoad;
