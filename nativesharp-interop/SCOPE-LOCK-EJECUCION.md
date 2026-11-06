@@ -18,6 +18,15 @@ destino y USR. Presupuesto: `src/Interop/Internal/CppCRecordMetadataCodec.h/.cpp
 coincidencia de contratos no establece identidad nominal ni habilita conversiones;
 el caso compartido permanece abierto. Validar junto con los cambios acumulados.
 
+## Procedencia del buffer de declaraciones Clang
+
+Capturar para declaraciones de record con ubicación física directa la huella
+SHA-256 del buffer que Clang analizó, su ruta física y offset. Presupuesto:
+`include/nativesharp/Interop/CppRecordDeclaration.h`, `src/Interop/Cpp/ClangSession.cpp`,
+`tests/unit/CppClangSessionTests.cpp`, tracking y registros Markdown. No leer el
+archivo de nuevo ni atribuir procedencia de archivo a expansiones de macro. No
+serializar, conciliar identidades ni habilitar conversiones con esta fase.
+
 ## Identidad de funciones C importadas
 
 T08-002/T08-003: conservar USR opcional en la proyección de función y
