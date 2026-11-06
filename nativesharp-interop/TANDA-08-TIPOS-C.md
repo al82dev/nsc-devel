@@ -2,6 +2,18 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Ampliación de globales C de record: 2026-11-06
+
+Con `25f0c00fe` y `e4efafa23`, la validación agrupada terminó con código 0:
+ON/OFF, sesión Clang, restauración, serialización y los siete proyectos pasaron.
+El fixture de Windows x64 O0 comprobó también una matriz de structs, una union
+global y un doble puntero, compartiendo los datos con una función C.
+
+Los globales `const struct` y `volatile struct` se rechazaron con
+`C/C++ global type is not yet mapped`; esto es una limitación pendiente, no
+soporte de calificadores. Siguen abiertas las tareas generales de records,
+globales, arreglos, punteros y calificadores.
+
 ## Validación agrupada de globales C de struct: 2026-11-06
 
 Tras `96b857499`, `9f9ba2b64` y `a4a0b2aad`, la batería agrupada del
