@@ -113,6 +113,11 @@ tiene definición única, layout completo instalado y tamaño/alineación coinci
 con Clang. Mantener rechazo de records C++ y definiciones múltiples no probadas.
 Presupuesto: CppSemanticFunction.cpp, controles de sesión, fixture de metadata C
 y registros. Comprobar después ABI directo e indirecto con Clang en conjunto.
+Propagar a MIR los layouts de records C completos que ya tienen objectLayout
+verificado y admitirlos en el cálculo de layout nominal, sin habilitar records
+C++ ni registros incompletos o de acceso exclusivamente por puntero. Presupuesto:
+ProjectObjectLayoutModel.cpp, MirLayoutImporter.cpp, controles de sesión y
+fixture de metadata C. Preservar offsets de campos ya validados y probar ABI.
 Transportar los bytes verificados del catálogo desde la superficie de metadata
 hasta PrecompiledSyntaxModule; presupuesto adicional: PrecompiledSyntaxModule.h,
 PrecompiledProjectPreparation.cpp y controles existentes. No habilitar 1.42
