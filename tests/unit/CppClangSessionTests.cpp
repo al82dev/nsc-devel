@@ -153,6 +153,32 @@ private:
     std::unique_ptr<CppInteropSession> inner_;
 };
 
+class AlteredEnumeratorUsrSession final : public CppInteropSession
+{
+public:
+    AlteredEnumeratorUsrSession(std::unique_ptr<CppInteropSession> inner, std::optional<std::string> usr)
+        : inner_(std::move(inner)), usr_(std::move(usr)) {}
+    CppSessionState state() const noexcept override { return inner_->state(); }
+    CppSessionOptions optionsSnapshot() const override { return inner_->optionsSnapshot(); }
+    std::vector<CppSessionDiagnostic> diagnosticsSnapshot() const override { return inner_->diagnosticsSnapshot(); }
+    std::optional<std::size_t> topLevelDeclarationCount() const override { return inner_->topLevelDeclarationCount(); }
+    std::optional<std::vector<CppFunctionDeclaration>> freeFunctionsSnapshot() const override { return inner_->freeFunctionsSnapshot(); }
+    std::optional<std::vector<CppRecordDeclaration>> recordsSnapshot() const override { return inner_->recordsSnapshot(); }
+    std::optional<std::vector<CppEnumDeclaration>> enumsSnapshot() const override
+    {
+        auto enums = inner_->enumsSnapshot();
+        if (enums)
+            for (auto& item : *enums)
+                for (auto& value : item.enumerators)
+                    if (value.name == "Choice") value.clangUsr = usr_;
+        return enums;
+    }
+    CppSessionCloseResult close() override { return inner_->close(); }
+private:
+    std::unique_ptr<CppInteropSession> inner_;
+    std::optional<std::string> usr_;
+};
+
 class AlteredFieldUsrSession final : public CppInteropSession
 {
 public:
@@ -1475,6 +1501,32 @@ int main(int argc, char** argv)
                                 std::span<const nativesharp::frontend::CppFunctionDemand>(&demand, 1), states, enumError);
                             const bool correct = provided && states.size() == 1 && states[0].isCppEnumConstant &&
                                 states[0].isConst && !states[0].isCppExternal && states[0].integerValue == 0xfffffffdULL;
+                            const auto checkEnumeratorUsr = [&](bool conflict) {
+                                std::vector<CppProjectSessions> groups(1);
+                                groups[0].projectFile = otherProject->projectFile();
+                                const auto add = [&](std::optional<std::string> usr) {
+                                    auto session = open(factory, options(argv[1], argv[2], argv[3],
+                                        CppLanguageMode::C, "enum ChoiceType { Choice = -3 };\n"));
+                                    if (!session) return false;
+                                    groups[0].sessions.push_back(std::make_unique<AlteredEnumeratorUsrSession>(
+                                        std::move(session), std::move(usr)));
+                                    return true;
+                                };
+                                if (!add("test:choice") || !add(std::nullopt) ||
+                                    !add(conflict ? "test:other-choice" : "test:choice")) return false;
+                                std::vector<nativesharp::frontend::NamespaceStateSymbol> projected;
+                                std::string error;
+                                if (!provideCppSemanticEnumConstants(finalGraph, groups,
+                                    std::span<const nativesharp::frontend::CppFunctionDemand>(&demand, 1),
+                                    projected, error) || projected.size() != 1) return false;
+                                return conflict ? !projected[0].cppImportError.empty() :
+                                    projected[0].isCppEnumConstant && projected[0].cppImportError.empty() &&
+                                    projected[0].cppClangUsr == "test:choice";
+                            };
+                            ok &= expect(checkEnumeratorUsr(false),
+                                "matching enumerator USRs survive an unknown observation");
+                            ok &= expect(checkEnumeratorUsr(true),
+                                "different enumerator USRs conflict across an unknown observation");
                             std::vector<nativesharp::frontend::CppImportedTypeDeclaration> enumTypes;
                             const bool typeProvided = provideCppEnumTypes(finalGraph, enumGroups, enumTypes, enumError);
                             const bool correctType = typeProvided && enumTypes.size() == 1 &&
