@@ -789,8 +789,9 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
         (!field.isReadonly || readonlyOnThis);
     // C++ qualified storage cannot be exposed through an unqualified pointer until
     // the pointer type carries the field's const/volatile contract.
-    result.addressable = !field.isBitField &&
-        !(field.isCppExternal && (field.isReadonly || field.isVolatile || receiver.readonlyReceiver));
+    result.volatileStorage = receiver.volatileStorage || (field.isCppExternal && field.isVolatile);
+    result.addressable = !field.isBitField && !result.volatileStorage &&
+        !(field.isCppExternal && (field.isReadonly || receiver.readonlyReceiver));
     result.readonlyReceiver = receiver.readonlyReceiver || field.isReadonly;
     result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
     result.pointerNullable = field.declaredPointerNullable;

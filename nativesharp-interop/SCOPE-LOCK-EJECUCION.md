@@ -1699,6 +1699,13 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Evidencia: `NamespaceStateSymbol.isCppReadonly` establece `readonlyReceiver`, que `MemberAccessAnalyzer.cpp` propaga y consulta para asignación, pero el campo importado aún puede ser direccionable aunque el receptor sea readonly.
 - Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, `src/Frontend/Bodies/MemberAccessAnalyzer.cpp`, fixtures y script de `pruebas-tanda-08-record-c`, y registros Markdown. Conservar rechazo de volatile struct, punteros calificados y arrays const de record hasta implementar sus contratos. Agrupar y validar los casos de lectura, escritura y dirección.
 
+### Global C volatile struct
+
+- Objetivo: preservar `volatile` al leer y escribir campos de un struct global C y rechazar su dirección como puntero sin calificar. No trasladar el calificador del almacenamiento de un puntero al objeto apuntado.
+- Evidencia: el inventario rechaza el record volatile; el estado transporta `isVolatile`, pero el análisis de campos y `HirCompletionValueFrames.cpp` solo consideran el calificador declarado en el propio campo.
+- Presupuesto: `include/nativesharp/Frontend/Internal/MethodBody/ExpressionResult.h`, `src/Interop/Cpp/CppSemanticInventory.cpp`, `src/Frontend/Bodies/IdentifierAnalyzer.cpp`, `src/Frontend/Bodies/MemberAccessAnalyzer.cpp`, `src/Frontend/Bodies/ExpressionCore/IndexAndRangeExpressions.cpp`, `src/Frontend/HIR/ExpressionStatementMachine/HirCompletionValueFrames.cpp`, fixtures de `pruebas-tanda-08-record-c` y registros Markdown. No habilitar ABI por valor ni punteros a volatile; preservar las regresiones existentes.
+- Validar lectura/escritura compartida con C, IR de cargas y escrituras volatile, dirección rechazada y regresiones de arreglo y puntero con una validación agrupada.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.

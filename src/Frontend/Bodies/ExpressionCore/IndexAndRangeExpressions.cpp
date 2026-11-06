@@ -804,12 +804,13 @@ void ProjectMethodBodyModel::analyzeRawIndex(
         result.typeKey = validFixedIndices ? indexedType : validFlexibleIndex
             ? *flexibleElementType : std::string(base.typeKey.substr(0, base.typeKey.size() - 1));
         result.valid = true;
+        result.volatileStorage = validFixedIndices && base.volatileStorage;
         const bool readonlyElement = (base.readonlyReceiver &&
             (validFixedIndices || validFlexibleIndex)) ||
             (validPointerIndex && base.pointerPointeeReadonly);
         result.assignable = !readonlyElement &&
             !ProjectMemberModel::fixedArrayElementTypeKey(result.typeKey).has_value();
-        result.addressable = true;
+        result.addressable = !result.volatileStorage;
         result.readonlyReceiver = readonlyElement;
         result.onePastEndAddress = fixedOnePastAddress;
         coreBindings_.push_back(MethodCoreBinding{

@@ -999,6 +999,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     result.addressable = !state.isCppEnumConstant && !(state.isCppExternal &&
         (state.isVolatile || state.isCppReadonly || state.cppPointerPointeeReadonly));
     result.readonlyReceiver = state.isConst || state.isCppReadonly;
+    result.volatileStorage = state.isCppExternal && state.isVolatile;
     result.pointerPointeeReadonly = state.cppPointerPointeeReadonly;
     recordNameBinding(MethodNameBinding{
         MethodNameBindingKind::NamespaceState,

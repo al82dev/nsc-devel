@@ -99,4 +99,6 @@ struct ExpressionResult final
     std::optional<std::int64_t> flowIntegerMaximum;
     std::optional<std::size_t> flowActiveVariantCase;
     bool flowRuntimeCheckElided = false;
+    // Qualification of this storage, not of any object reached through a pointer value.
+    bool volatileStorage = false;
 };
