@@ -9,6 +9,13 @@ Presupuesto: NamespaceFunctionSymbol.h, CppSemanticFunction.cpp,
 CppSemanticFunctionGroups.cpp, suite de sesión y registros Markdown.
 No modifica formato persistente, LLVM externo ni NSLink; validar por tanda.
 
+## Comprobación agrupada de visibilidad e identidad
+
+Construcción incremental de NSC y la suite de sesión ON en A:/nsc-interop-build;
+ejecutar la suite y los fixtures de matriz y sombras de pruebas-tanda-08-meta-c.
+Registrar evidencia en TRACKING.md, TANDA-08-TIPOS-C.md y registro de commits.
+No es la validación completa de la tanda; LLVM y NSLink no se modifican.
+
 ## Funciones C/C++ globales desde namespace NativeSharp
 
 T08-003/T08-004/T08-009: incluir el ámbito global en la demanda y usar sus funciones importadas
