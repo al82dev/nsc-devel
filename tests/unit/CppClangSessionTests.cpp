@@ -6347,6 +6347,27 @@ int main(int argc, char** argv)
                                 type.kind == nativesharp::frontend::NamedTypeDeclarationKind::Enum;
                     if (!ready) std::cerr << "C record enum dependency: " << dependencyError << '\n';
                     ok &= expect(ready && selectedShade, "record field selects its enum dependency without a direct type use");
+                    if (ready && selectedShade && fieldDependency.nameLookup() && fieldDependency.projectGraph())
+                    {
+                        const auto& lookup = *fieldDependency.nameLookup();
+                        for (const auto& type : lookup.namedTypes())
+                        {
+                            if (type.identity.name() != "Shade") continue;
+                            auto inventory = collectCppSemanticEnums(*fieldDependency.projectGraph(), fieldDependency.cppProjectSessions());
+                            const auto* entries = std::get_if<std::vector<CppSemanticEnumEntry>>(&inventory);
+                            if (!entries) { ok &= expect(false, "enum reconstruction inventory is available"); break; }
+                            const std::vector<std::string> wanted{type.identity.key()};
+                            auto captured = captureCppCEnumCatalog(*entries, type.projectOrdinal, type.identity.moduleName(), wanted);
+                            const auto* values = std::get_if<std::vector<CppCEnumSnapshot>>(&captured);
+                            std::vector<nativesharp::frontend::NamespaceStateSymbol> constants;
+                            const bool rebuilt = values && reconstructCEnumConstants(*values, type.projectOrdinal,
+                                type.identity.moduleName(), "x86_64-pc-windows-msvc", lookup, constants, dependencyError);
+                            ok &= expect(rebuilt && constants.size() == 1 && constants[0].name == "Dark" &&
+                                         constants[0].integerValue == 1 && constants[0].isCppEnumConstant,
+                                         "C enum metadata reconstructs its constant with the original value");
+                            break;
+                        }
+                    }
                 }
                 {
                     nativesharp::frontend::ProjectCompilation functionDependency;
@@ -6491,6 +6512,16 @@ int main(int argc, char** argv)
                             metadata_detail::decodeCTypeCatalog(catalogBytes, catalogRecords, catalogEnums, dependencyError);
                         ok &= expect(supplied && catalogRecords.size() == 2 && catalogEnums.empty(),
                                      "C metadata provider selects public record and transitive field dependency");
+                        if (supplied && !catalogRecords.empty())
+                        {
+                            const auto ordinal = recordDependencies.nameLookup()->typeOrdinalForIdentity(catalogRecords.front().identityKey);
+                            const auto* imported = ordinal ? recordDependencies.nameLookup()->cppImportedType(*ordinal) : nullptr;
+                            std::vector<nativesharp::frontend::CppImportedInstanceField> fields;
+                            const bool rebuilt = imported && reconstructCImportedFields(catalogRecords, imported->projectOrdinal,
+                                catalogRecords.front().moduleName, "x86_64-pc-windows-msvc", *recordDependencies.nameLookup(), fields, dependencyError);
+                            ok &= expect(rebuilt && fields.size() == 3,
+                                         "C metadata reconstructs scalar, array and pointer fields");
+                        }
                     }
                 }
                 {
