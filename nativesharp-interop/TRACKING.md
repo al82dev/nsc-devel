@@ -543,6 +543,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     con biblioteca separada O0–O3. El local por valor se rechaza con un
     diagnóstico específico de tipo incompleto; faltan otros usos.
     [Evidencia](registro-commits/prueba-punteros-opacos-c.md).
+  - El mismo fixture pasó O0–O3 con un global `Opaque**` y con una union C
+    opaca en retorno, parámetros y global; la union por valor se rechazó con
+    diagnóstico de tipo incompleto. No cubre todos los contratos de punteros.
+    [Evidencia](registro-commits/prueba-punteros-opacos-c.md).
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
   - La matriz volatile de 8, 16, 32 y 64 bits pasó O0–O3 y su control IR:

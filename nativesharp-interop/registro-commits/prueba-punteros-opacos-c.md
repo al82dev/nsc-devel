@@ -23,3 +23,8 @@ mensaje exacto de la limitación de lifetime. La tanda sigue abierta.
 Se amplía el fixture con un global `Opaque**` y punteros a una union C cuya
 definición también es privada, más un control negativo de union por valor.
 La matriz ampliada aún no se ha ejecutado.
+
+Con build `6b5448c0a735018f`, la matriz ampliada pasó O0–O3 para el global de
+doble puntero y para los punteros a union opaca. Los controles de struct y
+union por valor rechazaron ambos casos con el diagnóstico específico de tipo
+incompleto. No se cubren todas las indirecciones ni todos los calificadores.
