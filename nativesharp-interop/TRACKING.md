@@ -265,6 +265,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.
 - [ ] T08-019. Presentar diagnósticos útiles al usar una declaración incompleta de forma inválida.
 - [ ] T08-020. Comparar tamaño, alineación y offsets importados con los calculados por Clang.
+  - Preparado en `ad9b0a694` y `03cd47d50`: alineación explícita en el IR de
+    accesos directos a campos y prueba mixta de lectura y escrituras. Falta
+    ejecutarla y transportar la alineación efectiva de campos empaquetados.
 
 ## 09. Llamadas, enlace y datos C
 

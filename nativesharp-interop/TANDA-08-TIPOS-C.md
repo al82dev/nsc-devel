@@ -1283,3 +1283,14 @@ destino de `??=`; `212bb5e48` prepara el ejercicio con valor nulo y no nulo,
 y una comprobación de las instrucciones dentro de los bloques de fallback.
 La suite mixta aún no se ha ejecutado y el cambio no cubre accesos indirectos,
 campos o arreglos volatile.
+
+## Alineación en accesos directos de campo preparada
+
+La proyección aún rechaza campos cuya alineación natural no está garantizada
+por el record o el desplazamiento. MIR ya conserva alineación de campo, pero
+las instrucciones LLVM ordinarias no la indicaban. `ad9b0a694` emite esa
+alineación en cargas y escrituras directa y compuesta; `03cd47d50` prepara
+una comprobación de IR y ejecución mixta para un campo alineado naturalmente.
+La prueba sigue pendiente. El soporte empaquetado requiere además transportar
+la alineación efectiva y resolver las direcciones escapadas y accesos anidados;
+no se ha habilitado ni se cierra T08-020.
