@@ -48,6 +48,10 @@ opaco exige que el propietario importado sea el proyecto directo incluso si
 la identidad ya fue reconciliada. Permitir el ajuste localizado en
 `src/Interop/Cpp/CppSemanticInventory.cpp` para emplear la identidad canónica
 reconciliada, conservando controles de origen, USR y rechazo de conflictos.
+Ampliar el fixture con un consumidor que usa una copia del header en otra
+ruta y solicita intercambiar los punteros; debe rechazarse sin evidencia de
+origen común. Copiar únicamente al directorio de pruebas en A: y conservar el
+header original.
 La prueba positiva reproduce el rechazo del global `Opaque*` en O0. Las
 firmas de funciones aceptan el puntero, pero `mapGlobalType` exige layout al
 recorrer su objeto apuntado. Permitir `src/Interop/Cpp/CppSemanticInventory.cpp`

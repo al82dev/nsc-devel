@@ -9,7 +9,7 @@ set "TEMP=%DEST%"
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
 set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
-for %%F in (OpaqueApi.h OpaqueApi.c OpaqueConsumer.ns OpaqueConsumer.nsproj OpaqueInvalid.ns OpaqueInvalid.nsproj OpaqueUnionInvalid.ns OpaqueUnionInvalid.nsproj OpaqueProducer.ns OpaqueProducer.nsproj OpaquePublished.ns OpaquePublished.nsproj OpaqueShared.ns OpaqueShared.nsproj) do (
+for %%F in (OpaqueApi.h OpaqueApi.c OpaqueConsumer.ns OpaqueConsumer.nsproj OpaqueInvalid.ns OpaqueInvalid.nsproj OpaqueUnionInvalid.ns OpaqueUnionInvalid.nsproj OpaqueProducer.ns OpaqueProducer.nsproj OpaquePublished.ns OpaquePublished.nsproj OpaqueShared.ns OpaqueShared.nsproj OpaqueOther.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -46,4 +46,11 @@ if not errorlevel 1 (echo Union incompleta por valor aceptada. & exit /b 1)
 findstr /i /c:"C object local 'value' cannot be created by value because its type is incomplete" "%DEST%\invalid-union.log" >nul
 if errorlevel 1 (echo Falta diagnostico especifico de union incompleta. & exit /b 1)
 echo Union por valor rechazada por tipo incompleto.
+copy /y "%DEST%\OpaqueApi.h" "%DEST%\OpaqueOther.h" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\OpaqueOther.nsproj" -O0 --no-artifact-cache -o "%DEST%\other.exe" > "%DEST%\other.log" 2>&1
+if not errorlevel 1 (echo Se conciliaron headers de origen distinto. & exit /b 1)
+findstr /i /c:"type alias conflicts with a native type" "%DEST%\other.log" >nul
+if errorlevel 1 (echo El rechazo de origen distinto no corresponde al conflicto esperado. & exit /b 1)
+echo Header con origen distinto rechazado.
 exit /b 0
