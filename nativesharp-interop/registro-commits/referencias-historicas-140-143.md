@@ -13,3 +13,14 @@ NSMETA 1.45 y aceptados por el verificador actual con Object ABI 3:
 La prueba debe aceptar estas referencias porque declaran Object ABI 3, a
 diferencia de las referencias anteriores con ABI 1 o 2. Pendiente repetir la
 validación agrupada con las cuatro referencias incorporadas.
+
+## Resultado de la validación agrupada
+
+Con la construcción incremental `85d0346a4c41393f`, pasaron las tres pruebas
+independientes: `nsc.stage48_2.library-metadata`,
+`nsc.library-metadata-version-tolerance` y `nsc.library-metadata-merger`
+(3/3, código 0). Las referencias 1.40–1.44 se leyeron con el verificador
+actual; las referencias con Object ABI antiguo mantienen su rechazo explícito.
+Los temporales quedaron en A: y no se activó la actualización automática de
+referencias. Esta comprobación no cierra la tanda 08 ni demuestra todos los
+contratos de interoperabilidad.
