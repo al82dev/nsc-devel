@@ -12,7 +12,7 @@ No modifica formato persistente, LLVM externo ni NSLink; validar por tanda.
 ## Identidad de enumeradores C
 
 T08-002: conservar y conciliar USR conocidos de enumeradores C al proyectar y
-seleccionar constantes. Presupuesto: CppSemanticInventory.h/.cpp,
+seleccionar constantes y al conciliar sus definiciones enum. Presupuesto: CppSemanticInventory.h/.cpp,
 CppClangSessionTests.cpp, TRACKING.md y registros Markdown. No cambia LLVM,
 NSLink ni formatos persistentes; validación agrupada por tanda.
 
