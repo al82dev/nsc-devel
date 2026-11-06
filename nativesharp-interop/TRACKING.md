@@ -271,6 +271,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     pasó en O0–O3, con alineación 1 en IR y rechazo de dirección. La suite de
     sesión y el cálculo interno también pasaron. Falta la batería completa y
     otras formas de arreglos y calificadores.
+  - Validación dirigida en `a0dc6fc71`: arreglos C empaquetados `const`,
+    `volatile` y `int*[2]` pasaron IR O0, ejecución O0–O3 y casos negativos.
+    Quedan otras combinaciones y la batería completa de la tanda.
 - [ ] T08-017. Definir la representación de punteros a función C.
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.
 - [ ] T08-019. Presentar diagnósticos útiles al usar una declaración incompleta de forma inválida.

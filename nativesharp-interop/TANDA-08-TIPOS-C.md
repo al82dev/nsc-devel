@@ -1320,6 +1320,18 @@ los valores en ejecución y rechaza tomar la dirección. No se ha ejecutado.
 Los campos empaquetados C++ y los campos C de punteros, agregados y bitfields
 siguen pendientes, así como otras formas de acceso; no se cierra la tanda.
 
+## Validación dirigida de arreglos empaquetados calificados y de punteros
+
+En `a0dc6fc71`, la construcción incremental de NSC terminó con código 0 y
+el proyecto layout terminó con código 0 en O0–O3. Comprobó lectura de un
+arreglo const, lectura y escritura volatile con alineación 1 en el IR O0,
+y carga/escritura de slots `int*[2]` alineados a 1 y acceso a sus apuntados.
+Los casos negativos rechazaron escritura const y direcciones de slots
+volatile y puntero subalineado. Clang emitió `load/store volatile` con
+alineación 1 en una consulta aislada del mismo objetivo. Se observó una
+advertencia existente de inicialización. Esta evidencia no cubre todas las
+formas calificadas ni reemplaza la batería completa de la tanda.
+
 ## Validación dirigida de matriz C empaquetada
 
 En `2343368d8` se construyeron incrementalmente NSC y la suite de sesión;
