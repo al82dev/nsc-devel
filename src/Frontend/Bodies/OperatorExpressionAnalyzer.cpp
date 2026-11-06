@@ -389,6 +389,11 @@ bool ProjectMethodBodyModel::analyzeEnumBinary(
     // implicit numeric conversions for enums.
     const bool bitwise = operation == TokenKind::Amp || operation == TokenKind::Pipe ||
         operation == TokenKind::Caret;
+    const auto leftCEnum = cppImportedCEnumUnderlying(nameLookup_, left.typeKey);
+    const auto rightCEnum = cppImportedCEnumUnderlying(nameLookup_, right.typeKey);
+    if (bitwise && (leftCEnum || rightCEnum) &&
+        (!isEnumTypeKey(left.typeKey) || leftCEnum) &&
+        (!isEnumTypeKey(right.typeKey) || rightCEnum)) return false;
     if (bitwise && (isEnumTypeKey(left.typeKey) || isEnumTypeKey(right.typeKey)))
     {
         if (left.typeKey != right.typeKey || !isEnumTypeKey(left.typeKey))
@@ -721,9 +726,13 @@ bool ProjectMethodBodyModel::analyzeShiftBinary(
     // is why a shift over a type narrower than int failed as well: `(int)(someUshort >> 8)` has
     // to be int, the promoted left type, not something common to a ushort and an int literal.
     if (!isShift(operation)) return false;
-    if (!ProjectTypeConversion::isIntegral(left.typeKey) ||
-        !ProjectTypeConversion::isIntegral(right.typeKey) ||
-        left.typeKey == "builtin:bool" || right.typeKey == "builtin:bool")
+    const auto leftCEnum = cppImportedCEnumUnderlying(nameLookup_, left.typeKey);
+    const auto rightCEnum = cppImportedCEnumUnderlying(nameLookup_, right.typeKey);
+    const std::string leftType = leftCEnum.value_or(left.typeKey);
+    const std::string rightType = rightCEnum.value_or(right.typeKey);
+    if (!ProjectTypeConversion::isIntegral(leftType) ||
+        !ProjectTypeConversion::isIntegral(rightType) ||
+        leftType == "builtin:bool" || rightType == "builtin:bool")
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
@@ -732,7 +741,7 @@ bool ProjectMethodBodyModel::analyzeShiftBinary(
             "shift operands must be integral in Stage 34");
         return true;
     }
-    result.typeKey = shiftResultType(left.typeKey);
+    result.typeKey = shiftResultType(leftType);
     result.valid = true;
     return true;
 }

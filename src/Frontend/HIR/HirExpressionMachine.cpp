@@ -973,6 +973,13 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerUnaryExpressionImplC
     {
         return nullptr;
     }
+    if (cppImportedCEnumUnderlying(nameLookup_, operand->typeKey) && operand->typeKey != resultType &&
+        ProjectTypeConversion::isIntegral(resultType))
+    {
+        ProjectImplicitConversion conversion{ProjectConversionKind::IntegralPromotion, 1,
+                                             operand->typeKey, resultType, std::nullopt};
+        operand = wrapImplicitConversion(std::move(operand), conversion, expression->first());
+    }
     node->children.push_back(std::move(operand));
     return node;
 }

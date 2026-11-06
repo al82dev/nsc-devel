@@ -14,6 +14,7 @@
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
+#include "nativesharp/Frontend/CppImportedEnumNumeric.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
@@ -1363,8 +1364,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnaryNum
 if (operation == TokenKind::Plus || operation == TokenKind::Minus || operation == TokenKind::Tilde)
 {
     // NSC-LIMIT-012. `~enum` preserves the enum identity; unary + and - remain numeric-only.
-    const bool enumComplement = operation == TokenKind::Tilde && isEnumTypeKey(operand.typeKey);
-    if ((!ProjectTypeConversion::isNumeric(operand.typeKey) || operand.typeKey == "builtin:bool") &&
+    const auto cEnum = cppImportedCEnumUnderlying(nameLookup_, operand.typeKey);
+    const bool enumComplement = !cEnum && operation == TokenKind::Tilde && isEnumTypeKey(operand.typeKey);
+    const std::string numericType = cEnum.value_or(operand.typeKey);
+    if ((!ProjectTypeConversion::isNumeric(numericType) || numericType == "builtin:bool") &&
         !enumComplement)
     {
         diagnostics.report(
@@ -1374,7 +1377,7 @@ if (operation == TokenKind::Plus || operation == TokenKind::Minus || operation =
             "unary numeric operator requires numeric operand");
         return result;
     }
-    result.typeKey = operand.typeKey;
+    result.typeKey = cEnum ? shiftResultType(numericType) : operand.typeKey;
     result.valid = true;
     if (operation == TokenKind::Plus)
     {
