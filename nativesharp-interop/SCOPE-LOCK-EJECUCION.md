@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Prueba aislada de contrato volatile en llamadas
+
+Inyectar un global puntero con apuntado volatile y proyectar las funciones C
+reales del fixture de Clang. Preparar caso aceptado cuando el parámetro
+conserva volatile y rechazo cuando lo descarta. Archivos:
+CppClangSessionTests.cpp y documentación; la importación real continúa cerrada
+y la ejecución se agrupa al finalizar la tanda.
+
 ## Correspondencia volatile en argumentos de llamada
 
 Permitir que un argumento con apuntado volatile alcance un parámetro que

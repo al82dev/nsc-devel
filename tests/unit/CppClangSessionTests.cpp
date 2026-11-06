@@ -2537,6 +2537,40 @@ int main(int argc, char** argv)
         ok &= expect(pointerNestedConst &&
                      std::holds_alternative<CppSemanticFunctionFailure>(projectCppSemanticFunction(*pointerNestedConst, 0, "Semantic")),
                      "nested qualified pointees are not silently mapped to mutable pointers");
+        if (pointerRead && volatileSymbol)
+        {
+            const auto projectedRead = projectCppSemanticFunction(*pointerRead, 0, "Semantic");
+            const auto* readSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projectedRead);
+            for (int scenario = 0; scenario < 2; ++scenario)
+            {
+                nativesharp::frontend::NamespaceStateSymbol state;
+                state.projectOrdinal = 0;
+                state.moduleName = "Semantic";
+                state.name = "volatile_ptr";
+                state.declaredTypeKey = "builtin:int*";
+                state.storageName = "volatile_ptr";
+                state.isCppExternal = true;
+                state.cppPointerPointeeVolatile = true;
+                state.accessibility = nativesharp::frontend::NamespaceFunctionAccessibility::Public;
+                nativesharp::frontend::ProjectCompilation check;
+                check.setSourceBufferProvider([scenario](const std::filesystem::path& path)
+                    -> std::optional<std::string> {
+                    if (path.filename() != "Main.ns") return std::nullopt;
+                    return scenario == 0 ? "int Main() { return ptr_volatile(volatile_ptr); }\n"
+                                         : "int Main() { return ptr_read(volatile_ptr); }\n";
+                });
+                std::string error;
+                const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                const bool configured = readSymbol && check.setCppImportedFunctions({*volatileSymbol, *readSymbol}, error) &&
+                    check.setExperimentalCppImportedStates({state}, error);
+                const bool ready = configured && check.compileProjectMethodBodies(path, error);
+                bool expectedDiagnostic = false;
+                for (const auto& diagnostic : check.diagnostics().diagnostics())
+                    expectedDiagnostic |= diagnostic.message().find("no viable overload") != std::string::npos;
+                ok &= expect(configured && (scenario == 0 ? ready : !ready && expectedDiagnostic),
+                             "volatile pointee call requires a matching parameter contract");
+            }
+        }
         if (pointerConst)
         {
             const auto projectedConst = projectCppSemanticFunction(*pointerConst, 0, "Semantic");
