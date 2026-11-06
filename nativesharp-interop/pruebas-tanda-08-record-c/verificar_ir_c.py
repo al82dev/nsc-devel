@@ -10,6 +10,10 @@ for name, instructions in {
     "read_volatile_void": (r"\bload (?:atomic )?volatile i32\b",),
     "bump_volatile_record": (r"\bload (?:atomic )?volatile i32\b", r"\bstore (?:atomic )?volatile i32\b"),
     "read_const_volatile_record": (r"\bload (?:atomic )?volatile i32\b",),
+    "check_volatile_record_pointer": (
+        r"\bload atomic volatile (?:ptr|i64), ptr @volatile_record_pointer acquire, align 8\b",
+        r"\bstore atomic volatile (?:ptr|i64) [^\n]*@volatile_record_pointer release, align 8\b",
+    ),
 }.items():
     match = re.search(r"^define\b[^\n]*@" + name + r"\([^\n]*\)[^{]*\{(.*?)^\}", ir, re.M | re.S)
     if not match or any(re.search(instruction, match.group(1)) is None for instruction in instructions):
