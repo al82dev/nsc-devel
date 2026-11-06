@@ -922,6 +922,8 @@ void ProjectMemberModel::initializeMemberPointerAndOwnership(
     symbol.ffiUnwindPolicy = memberNode->ffiUnwindPolicy();
     symbol.declaredPointerPointeeReadonly = memberNode->typeSyntax() != nullptr &&
         memberNode->typeSyntax()->isPointeeConst();
+    symbol.declaredPointerPointeeVolatile = memberNode->typeSyntax() != nullptr &&
+        memberNode->typeSyntax()->isPointeeVolatile();
     const language::PointerContract declaredPointer =
         pointerContractFromSyntax(memberNode->typeSyntax());
     symbol.declaredPointerNullable = declaredPointer.nullable;
@@ -1046,6 +1048,8 @@ void ProjectMemberModel::initializeMethodParameter(
     parameter.typeKey = canonicalTypeKey(parameterNode->typeSyntax(), nameLookup);
     parameter.pointerPointeeReadonly = parameter.typeSyntax != nullptr &&
         parameter.typeSyntax->isPointeeConst();
+    parameter.pointerPointeeVolatile = parameter.typeSyntax != nullptr &&
+        parameter.typeSyntax->isPointeeVolatile();
     const language::PointerContract parameterPointer =
         pointerContractFromSyntax(parameter.typeSyntax);
     parameter.pointerNullable = parameterPointer.nullable;

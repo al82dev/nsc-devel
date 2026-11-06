@@ -16,6 +16,8 @@ no aparece en la configuración incremental ON; incorporarlo o verificarlo en
 una configuración habilitada antes de afirmar esa cobertura.
 El patrón genérico y el volcado de sintaxis preparan la distinción volatile;
 esto no cambia por sí solo la identidad ABI ni activa un typedef.
+También se preparó la lectura del dato en declaraciones de parámetros,
+miembros y adaptadores de función; falta conectar los aliases y validar.
 
 ## Calificador volatile del objeto apuntado: base en preparación
 

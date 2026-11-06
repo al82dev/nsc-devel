@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Contrato de apuntado volatile en declaraciones tipadas
+
+Preparar lectura del dato de TypeSyntax para parámetros y miembros, y para el
+adaptador de funciones. Archivos: ProjectNamespaceFunctionModel.cpp,
+BuildAndDeclaration.cpp, MethodBodyBuildCoordinator.cpp y documentación.
+Todavía no se habilita ningún typedef; los valores ordinarios siguen falsos.
+
 ## Identidad y volcado del apuntado volatile en sintaxis
 
 Conservar el calificador en el patrón genérico y hacerlo visible en el volcado

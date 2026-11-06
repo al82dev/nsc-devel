@@ -583,6 +583,8 @@ MethodParameterSymbol ProjectNamespaceFunctionModel::initializeNamespaceFunction
     parameter.typeKey = memberModel.canonicalTypeKey(parameter.typeSyntax, nameLookup);
     parameter.pointerPointeeReadonly = parameter.typeSyntax != nullptr &&
         parameter.typeSyntax->isPointeeConst();
+    parameter.pointerPointeeVolatile = parameter.typeSyntax != nullptr &&
+        parameter.typeSyntax->isPointeeVolatile();
     parameter.ownership = ownershipKindFromSyntax(parameter.typeSyntax);
     parameter.fileId = declaration.fileId;
     parameter.range = parameterNode.range();
