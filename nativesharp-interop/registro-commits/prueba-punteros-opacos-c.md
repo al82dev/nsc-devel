@@ -16,3 +16,6 @@ El local por valor se rechazó por la limitación general de lifetime C/C++, no
 por un diagnóstico específico de tipo incompleto; esto no demuestra el
 diagnóstico solicitado en T08-019. Se ajusta el control a ese mensaje real y
 queda pendiente repetir el script ajustado.
+
+El script ajustado pasó en la repetición con el mismo build y comprobó el
+mensaje exacto de la limitación de lifetime. La tanda sigue abierta.
