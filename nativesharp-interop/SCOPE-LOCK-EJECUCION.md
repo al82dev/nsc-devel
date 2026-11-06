@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Identidad de global C en selección y símbolo
+
+T08-002/T08-004: conservar el USR opcional de declaraciones globales C
+seleccionadas hasta NamespaceStateSymbol; rechazar USR conocidos y distintos
+en el mismo grupo sin inventar uno ausente. Presupuesto:
+CppSemanticInventory.h/.cpp, NamespaceStateSymbol.h, suite de sesión y
+registros Markdown. No altera formato persistente. LLVM y NSLink protegidos;
+validación agrupada de la tanda.
+
 ## Selección de campos con USR contradictorio
 
 T08-002: al seleccionar definiciones repetidas de un record, rechazar campos
