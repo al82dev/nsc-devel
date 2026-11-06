@@ -32,3 +32,35 @@ debe conservarse o comprobarse antes de emitir operaciones atómicas.
 Estos hallazgos son inspección de código y de IR previo. No implementan el
 transporte de modo, no cierran T08-015 y requieren validación con el compilador
 actual, incluidos controles de reasignación y convergencia de flujo.
+
+## Puntos concretos del flujo
+
+`BodyScopeAndFlow.cpp` captura y restaura `OwnershipFlowStorageFacts` por
+identidad de local o parámetro. `joinOwnershipStorageFact` conserva hechos
+como no nulidad únicamente cuando ambas ramas los garantizan. El modo volatile
+no está entre los hechos capturados. Las asignaciones llaman a
+`invalidateAssignedStorage` y las llamadas con parámetros `ref` u `out`
+invalidan hechos en `CallAnalyzer.cpp`; una implementación de procedencia
+debe considerar ambas rutas y el reinicio entre funciones en
+`MethodBodyCallableLifecycle.cpp`.
+
+`StatementAnalyzer.cpp` captura y combina estados en condicionales, ciclos,
+`switch` y `try`. Un detalle que impide aplicar directamente una marca al
+inicializador es el retorno a la cabecera de un ciclo: el cuerpo puede cambiar
+el puntero y una iteración posterior reutilizar la misma expresión de acceso.
+El código analiza la condición una vez y calcula la salida con los estados de
+entrada y vuelta; eso, por sí solo, no demuestra que un hecho anotado en un
+uso dentro del cuerpo sea válido para todas las iteraciones. Antes de emitir
+órdenes distintos por procedencia hay que demostrar el tratamiento del
+back-edge o elegir una representación conservadora correcta para ese uso.
+
+Las expresiones condicionales y `??` combinan el calificador del apuntado con
+OR y la alineación conocida con el mínimo. Esas operaciones no establecen por
+sí mismas cómo combinar modos diferentes o desconocidos. El modo de acceso y
+la alineación demostrada son decisiones independientes: no basta conservar
+una marca MS si no puede justificarse la alineación que exige la operación.
+
+Este mapa identifica lugares a investigar; no presupone que `volatile` sea
+intrínseco al valor del puntero ni que el modelo de hechos existente pueda
+reutilizarse sin cambios. Se debe comparar el contrato de acceso del lenguaje
+con Clang para cada modo antes de definir la unión e implementar la solución.
