@@ -190,6 +190,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - La construcción incremental y suite de sesión pasaron con los controles
+    agrupados de identidad hasta `b8bb920ef`. Falta probar la recuperación de
+    USR en el proveedor completo y resolver persistencia. [Evidencia](TANDA-08-TIPOS-C.md#validación-dirigida-agrupada-identidades-y-_bool).
   - Preparados `42fbf7a22`, `0232e6924` y `303592a34`: conciliación
     transitiva del USR de campo y recuperación cuando la primera definición
     no lo contiene. Prueba de conflicto preparada; falta probar el proveedor
@@ -246,6 +249,8 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-004. Importar declaraciones de variables globales C.
 - [ ] T08-005. Importar alias de tipos declarados con `typedef`.
 - [ ] T08-006. Mapear los tipos enteros C con su tamaño y signo efectivos.
+  - La prueba mixta `_Bool` de campo, arreglo y llamada pasó O0–O3. Es una
+    muestra, no el cierre del ítem. [Evidencia](TANDA-08-TIPOS-C.md#validación-dirigida-agrupada-identidades-y-_bool).
   - `8be3c138f` prepara un control mixto de campo y arreglo `_Bool`, con
     tamaño, alineación, offsets, lectura y escritura. No ejecutado todavía.
   - `fe2fddfca` añade argumentos y resultados `_Bool` en llamada C; pendiente
@@ -253,6 +258,8 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-007. Mapear los tipos de punto flotante según el objetivo.
 - [ ] T08-008. Mapear el tipo `void` en parámetros y resultados donde corresponda.
 - [ ] T08-009. Mapear enumeraciones y sus valores representables.
+  - La suite dirigida pasó para identidad, tipo de enumerador y conflicto de
+    destino; no constituye cierre. [Evidencia](TANDA-08-TIPOS-C.md#validación-dirigida-agrupada-identidades-y-_bool).
   - Preparados `dad00a35d` y `63cce8a8d`: detectar destinos contradictorios
     al seleccionar constantes C, con un control de igual identidad y valor.
     Pendientes de construcción y ejecución agrupadas.

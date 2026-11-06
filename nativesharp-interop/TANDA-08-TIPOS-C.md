@@ -1342,6 +1342,23 @@ terminó con código 0. Comprobó transporte de USR presentes y ausentes hasta e
 metadato y símbolo, y selección de definiciones con campos de USR iguales,
 contradictorios o ausentes. No acredita persistencia ni todas las declaraciones.
 
+## Validación dirigida agrupada: identidades y `_Bool`
+
+Sobre el código hasta `b8bb920ef`, se construyeron incrementalmente `nsc` y
+`nsc_cpp_session_tests` con interoperabilidad activada. Ambos terminaron con
+código 0; NSC pasó su comprobación de runtime estático. La suite de sesión
+terminó con código 0, incluidos los controles preparados de alias, enumeradores
+y USR transitivos de campos. El compilador emitió advertencias de inicializadores
+en la proyección y 23 advertencias al construir la suite.
+
+El fixture `pruebas-tanda-08-layout/validar.cmd` terminó con código 0 en
+O0–O3. Comparó tamaño, alineación y desplazamientos de `_Bool`, lectura y
+escritura de campo y arreglo entre C y NativeSharp, y argumentos/resultados de
+la función C con ambos valores. También ejecutó los demás controles incluidos
+en ese fixture. No demuestra todas las formas de `_Bool` ni la tanda completa.
+La prueba de recuperación de USR por el proveedor completo y la persistencia
+de declaraciones entre bibliotecas siguen pendientes.
+
 ## Persistencia de identidad de campos C: frontera observada
 
 El catálogo `LibraryMetadataCppBinaryDependency` y su codec conservan nombres,
