@@ -503,7 +503,8 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-011. Importar la declaración y campos de una `union` C.
   - Campos de bits con y sin signo superpuestos a entero y bytes pasaron
     lectura y escritura cruzada con C en O0–O3. Es una muestra dirigida;
-    volatile, metadata para esta forma y otros layouts siguen pendientes.
+    otros layouts siguen pendientes. El caso volatile y la publicación
+    precompilada se comprobaron en la muestra adicional de T08-015.
     [Evidencia](registro-commits/prueba-union-bitfields-c.md).
   - Las unions de ocho bytes con miembro double o struct anidado pasaron
     O0–O3 para retorno y paso por valor y acceso anidado.
@@ -521,10 +522,12 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-013. Representar tipos declarados pero incompletos sin inventar su tamaño.
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
-  - Campos de bits `volatile` enteros C en structs normales y empaquetados:
-    ejecución cruzada O0–O3 y comparación de IR con Clang para cuatro accesos
-    pasaron. Faltan otros layouts, unions y metadata precompilada para esta
-    forma; no cierra el ítem. [Evidencia](registro-commits/prueba-volatile-bitfields-c.md).
+  - Campos de bits `volatile` enteros C en structs normales, empaquetados y
+    una union: ejecución cruzada O0–O3 y comparación de IR con Clang para seis
+    accesos pasaron. Con productor precompilado también pasaron dos consumidores
+    y el control de su IR. Faltan otros layouts; no cierra el ítem.
+    [Evidencia](registro-commits/prueba-volatile-bitfields-c.md) y
+    [metadata](registro-commits/prueba-metadata-volatile-bitfields.md).
   - Diferencia reproducida en `8c6ddf489`: al acceder por puntero a un enum
     volatile alineado dentro de un arreglo C, Clang emite release/acquire y
     NSC emite volatile ordinario. El nuevo control falla en NSC; falta corregir
