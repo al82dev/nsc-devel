@@ -2,6 +2,24 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Matrices y records C anidados calificados: 2026-11-06
+
+Con `4e5c8fbfa`, `44f51e8e4`, `1706dfdc8`, `57d2da108`, `73b8896f3` y
+`fb021f5c8`, la validación agrupada terminó con código 0: pasaron las
+construcciones incrementales ON/OFF, la suite Clang, restauración,
+serialización y los siete proyectos preparados.
+
+El fixture Windows x64 O0 leyó una matriz de structs const y escribió y leyó
+una matriz volatile, contrastando con C y con instrucciones volatile en IR.
+Comprobó un campo anidado volatile y un campo puntero: la carga del puntero es
+volatile y la escritura en el objeto apuntado es ordinaria. Se rechazaron la
+escritura const y las direcciones sin calificador con diagnósticos específicos.
+
+La primera ejecución detectó una escritura apuntada incorrectamente volatile;
+`57d2da108` separó la dirección de destino de la carga del puntero. Estas
+muestras no demuestran todos los tipos, calificadores o combinaciones; los
+ítems generales de la tanda 08 siguen abiertos.
+
 ## Global C volatile struct: 2026-11-06
 
 Con `3bc7897e1`, `f6a2b98ea`, `e0b846d90`, `e539befce`, `d79d793e1` y
