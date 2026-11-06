@@ -238,6 +238,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-013. Representar tipos declarados pero incompletos sin inventar su tamaño.
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
+  - Preparados `656034022`, `0e4bf14bb` y `8d4417cfd`: mapeo y pruebas de
+    arreglos C const de records y enums empaquetados, con lectura y rechazos
+    de escritura y dirección. Todavía no construidos ni validados.
   - Preparado, pendiente de validación agrupada: parámetros con enlace C de un
     nivel a void, escalares, structs y enums volatile. La función C realiza los
     accesos y se conserva el tipo de Clang; las pruebas incluyen const y
