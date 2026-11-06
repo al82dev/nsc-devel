@@ -1,2 +1,7 @@
 int Inspect(Published.Wrapper* wrapper) { return wrapper->value->value; }
-int Main() { return 0; }
+int Main()
+{
+    var value = Published.Bridge.Get();
+    if (value->value != 17) return 1;
+    return 0;
+}
