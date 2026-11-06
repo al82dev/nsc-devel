@@ -600,6 +600,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     `volatile int*` con modo MS conocido. Los controles aún no se ejecutan;
     locales, parámetros y arreglos de punteros siguen pendientes.
     [Detalle](registro-commits/control-puntero-directo-volatile-ms.md).
+  - Mapeada la pérdida de procedencia de modo MS al guardar el puntero en un
+    local, y el requisito de manejar reasignaciones y ramas antes de emitir
+    órdenes. [Detalle](registro-commits/procedencia-puntero-volatile-local.md).
   - La referencia Clang emitió lectura `atomic volatile` con `acquire` para
     `volatile_array[1]`; un IR NS anterior contiene `load volatile` sin ese
     orden. Pendiente reproducir con el compilador actualizado y corregir el
