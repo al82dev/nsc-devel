@@ -201,6 +201,16 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         LLVMValueRef storedValue = updated;
         if (bitField)
         {
+            const auto* field = node->children[0].get();
+            if (field->volatileAccess && field->cppMicrosoftVolatileSemantics.has_value())
+            {
+                LLVMTypeRef storageType = bitFieldStorageType(field, error);
+                if (storageType == nullptr) return nullptr;
+                previousStorage = LLVMBuildLoad2(
+                    builder_, storageType, address, "bitfield.compound.storage.reload");
+                LLVMSetAlignment(previousStorage, static_cast<unsigned>(field->alignment));
+                LLVMSetVolatile(previousStorage, 1);
+            }
             LLVMValueRef merged = insertBitField(
                 node->children[0].get(), previousStorage, updated, error);
             if (merged == nullptr) return nullptr;
