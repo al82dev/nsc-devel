@@ -1,0 +1,12 @@
+int Main()
+{
+    var value = get_volatile_bits();
+    var packed = get_packed_volatile_bits();
+    init_volatile_bits(value, packed);
+    if (value->first != 5 || value->delta != -3) return 1;
+    if (packed->prefix != 11 || packed->first != 12 || packed->delta != -4) return 2;
+    value->first = 6; value->delta = -7;
+    packed->first = 7; packed->delta = -2;
+    if (check_volatile_bits(value, packed) != 1) return 3;
+    return 0;
+}

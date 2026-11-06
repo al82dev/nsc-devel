@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CVolatileBitFields</Name></PropertyGroup>
+  <ItemGroup><Compile Include="Volatile.ns" /><CppLibraryReference Header="VolatileApi.h" Language="C" Standard="c11" Library="volatile-api.lib" /></ItemGroup>
+</Project>
