@@ -53,4 +53,11 @@ if not errorlevel 1 (echo Se conciliaron headers de origen distinto. & exit /b 1
 findstr /i /c:"type alias conflicts with a native type" "%DEST%\other.log" >nul
 if errorlevel 1 (echo El rechazo de origen distinto no corresponde al conflicto esperado. & exit /b 1)
 echo Header con origen distinto rechazado.
+echo /* changed after producer build */>> "%DEST%\OpaqueApi.h"
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\OpaqueShared.nsproj" -O0 --no-artifact-cache -o "%DEST%\changed.exe" > "%DEST%\changed.log" 2>&1
+if not errorlevel 1 (echo Se concilio header modificado. & exit /b 1)
+findstr /i /c:"type alias conflicts with a native type" "%DEST%\changed.log" >nul
+if errorlevel 1 (echo El rechazo del header modificado no corresponde al conflicto esperado. & exit /b 1)
+echo Header modificado rechazado.
 exit /b 0

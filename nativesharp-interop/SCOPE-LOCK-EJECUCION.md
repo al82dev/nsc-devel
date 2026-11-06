@@ -58,6 +58,10 @@ Ampliar el fixture con un consumidor que usa una copia del header en otra
 ruta y solicita intercambiar los punteros; debe rechazarse sin evidencia de
 origen común. Copiar únicamente al directorio de pruebas en A: y conservar el
 header original.
+En el mismo fixture, después de generar el productor, modificar únicamente la
+copia del header situada en el directorio de salida y comprobar que el
+consumidor la rechaza por falta de procedencia coincidente. El archivo fuente
+original queda intacto y se restaura la copia al iniciar cada ejecución.
 La prueba positiva reproduce el rechazo del global `Opaque*` en O0. Las
 firmas de funciones aceptan el puntero, pero `mapGlobalType` exige layout al
 recorrer su objeto apuntado. Permitir `src/Interop/Cpp/CppSemanticInventory.cpp`
