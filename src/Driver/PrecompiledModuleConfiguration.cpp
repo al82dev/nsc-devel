@@ -450,6 +450,8 @@ bool configurePrecompiledModules(
         if (!compilation.setCppProjectSessions(
                 std::move(std::get<interop::CppGraphSessions>(opened).projects), error))
             return false;
+        if (hasSessions && !compilation.setCppMetadataCatalogProvider(
+                interop::provideCppCRecordMetadataCatalog, error)) return false;
         if (hasSessions && !compilation.setCppNamespaceProvider(
                 [](const auto& graph, auto projects, auto& output, auto& providerError) {
                     auto inventory = interop::collectCppNamespaces(graph, projects);
