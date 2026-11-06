@@ -1355,6 +1355,13 @@ std::vector<std::size_t> ProjectNamespaceFunctionModel::resolveFunctionCandidate
     }
     std::sort(candidates.begin(), candidates.end());
     candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+    if (candidates.empty() && !lexicalNamespace.empty())
+    {
+        candidates = candidatesInNamespace(nameLookup, projectOrdinal, "", functionName);
+        std::erase_if(candidates, [&](std::size_t ordinal) {
+            return ordinal >= functions_.size() || functions_[ordinal].cppCanonicalIdentity.empty();
+        });
+    }
     return candidates;
 }
 
@@ -1450,6 +1457,8 @@ void ProjectNamespaceFunctionModel::captureCppFunctionDemand(
         for (const auto& imported : environment.importedNamespaces)
             if (std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), imported) ==
                 demand.lookupNamespaces.end()) demand.lookupNamespaces.push_back(imported);
+        if (std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), std::string{}) ==
+            demand.lookupNamespaces.end()) demand.lookupNamespaces.emplace_back();
     }
     else if (const auto resolved = resolveNamespace(nameLookup, unit.projectOrdinal(), lexicalNamespace,
                                                      environment, std::string(written.substr(0, dot))))
