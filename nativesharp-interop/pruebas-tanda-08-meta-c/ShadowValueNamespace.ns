@@ -1,0 +1,7 @@
+namespace Published
+{
+    int shared_c_number = 45;
+    int CGlobalChoice = 9;
+    public struct Bridge { public static int Get() { return shared_c_number + CGlobalChoice; } }
+}
+int Main() { if (Published.Bridge.Get() != 54) return 1; return 0; }
