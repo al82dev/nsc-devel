@@ -9,6 +9,7 @@
 #include "nativesharp/Interop/CppSemanticInventory.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include <algorithm>
+#include <functional>
 #include <map>
 #include <numeric>
 #include <set>
@@ -745,6 +746,77 @@ CppCRecordCatalogResult captureCppCRecordCatalog(
     for (std::size_t i = 1; i < result.size(); ++i)
         if (result[i - 1].identityKey == result[i].identityKey)
             return CppCRecordSnapshotFailure{"duplicate C record identity in catalog"};
+    return result;
+}
+
+CppCRecordClosureResult collectCppCRecordClosure(
+    std::span<const CppSemanticRecordEntry> inventory, std::span<const CppRecordGroup> groups,
+    std::size_t projectOrdinal, std::span<const std::string> seedIdentityKeys)
+{
+    std::map<std::string, std::size_t> byIdentity;
+    for (std::size_t i = 0; i < groups.size(); ++i)
+        if (groups[i].projectOrdinal == projectOrdinal &&
+            !byIdentity.emplace(groups[i].identity.key(), i).second)
+            return CppCRecordSnapshotFailure{"ambiguous C record identity in project"};
+    std::set<std::size_t> selected;
+    std::vector<std::size_t> pending;
+    const auto addRecord = [&](const std::string& key, const std::optional<std::string>& usr) -> bool {
+        const auto found = byIdentity.find(key);
+        if (found == byIdentity.end()) return false;
+        const auto& group = groups[found->second];
+        if (usr && !usr->empty() && group.clangUsr && !group.clangUsr->empty() && usr != group.clangUsr)
+            return false;
+        if (selected.insert(found->second).second) pending.push_back(found->second);
+        return true;
+    };
+    for (const auto& seed : seedIdentityKeys)
+        if (!addRecord(seed, std::nullopt)) return CppCRecordSnapshotFailure{"C record seed is unavailable: " + seed};
+    std::set<std::string> enums;
+    std::string failure;
+    while (!pending.empty())
+    {
+        const auto index = pending.back(); pending.pop_back();
+        auto captured = captureCppCRecordSnapshot(inventory, groups[index]);
+        if (const auto* why = std::get_if<CppCRecordSnapshotFailure>(&captured)) return *why;
+        const auto& record = std::get<CppCRecordSnapshot>(captured);
+        const std::string module = groups[index].identity.moduleName();
+        std::function<bool(const CppType&, unsigned)> visit = [&](const CppType& type, unsigned depth) {
+            if (depth > 64) { failure = "C record dependency exceeds type depth"; return false; }
+            if (type.kind == CppTypeKind::Record)
+            {
+                const auto identity = projectCppRecordTypeIdentity(type, module);
+                if (!identity || !addRecord(identity->key(), type.recordIdentity ? type.recordIdentity->clangUsr : std::nullopt))
+                { failure = "C record field dependency is unavailable or incompatible"; return false; }
+            }
+            if (type.kind == CppTypeKind::Enumeration)
+            {
+                if (!type.enumIdentity || type.enumIdentity->anonymousContext || type.enumIdentity->name.empty())
+                { failure = "C enum field dependency has no importable identity"; return false; }
+                const compilation::TypeIdentity identity(module, {}, {}, type.enumIdentity->name);
+                if (!identity.isValid()) { failure = "C enum field identity is invalid"; return false; }
+                enums.insert(identity.key());
+            }
+            if (type.element && !visit(*type.element, depth + 1)) return false;
+            if (type.enumUnderlying && !visit(*type.enumUnderlying, depth + 1)) return false;
+            if (type.function)
+            {
+                if (!visit(type.function->returnType, depth + 1)) return false;
+                for (const auto& parameter : type.function->parameterTypes)
+                    if (!visit(parameter, depth + 1)) return false;
+            }
+            return true;
+        };
+        for (const auto& field : record.fields)
+            if (!visit(field.type, 0)) return CppCRecordSnapshotFailure{failure};
+    }
+    std::vector<CppRecordGroup> selectedGroups;
+    selectedGroups.reserve(selected.size());
+    for (const auto index : selected) selectedGroups.push_back(groups[index]);
+    auto captured = captureCppCRecordCatalog(inventory, selectedGroups);
+    if (const auto* why = std::get_if<CppCRecordSnapshotFailure>(&captured)) return *why;
+    CppCRecordClosure result;
+    result.records = std::move(std::get<std::vector<CppCRecordSnapshot>>(captured));
+    result.enumIdentityKeys.assign(enums.begin(), enums.end());
     return result;
 }
 

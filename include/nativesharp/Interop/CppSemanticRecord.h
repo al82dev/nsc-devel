@@ -149,6 +149,16 @@ CppCRecordSnapshotResult captureCppCRecordSnapshot(
 using CppCRecordCatalogResult = std::variant<std::vector<CppCRecordSnapshot>, CppCRecordSnapshotFailure>;
 CppCRecordCatalogResult captureCppCRecordCatalog(
     std::span<const CppSemanticRecordEntry> inventory, std::span<const CppRecordGroup> groups);
+struct CppCRecordClosure
+{
+    std::vector<CppCRecordSnapshot> records;
+    std::vector<std::string> enumIdentityKeys;
+};
+using CppCRecordClosureResult = std::variant<CppCRecordClosure, CppCRecordSnapshotFailure>;
+// Seeds and transitive field references are resolved within one project.
+CppCRecordClosureResult collectCppCRecordClosure(
+    std::span<const CppSemanticRecordEntry> inventory, std::span<const CppRecordGroup> groups,
+    std::size_t projectOrdinal, std::span<const std::string> seedIdentityKeys);
 
 enum class CppSignatureRecordStatus { Matched, Unprojectable, Missing };
 struct CppSignatureRecordDependency
