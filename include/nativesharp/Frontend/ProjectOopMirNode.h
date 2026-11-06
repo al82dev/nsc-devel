@@ -145,6 +145,8 @@ struct ProjectOopMirNode final
     bool stackPromotedObject = false;
     // Item 308. Mirrors ProjectOopHirNode::volatileAccess without re-inferring declarations.
     bool volatileAccess = false;
+    // Mirrors the imported-global option without assuming eligibility for atomics.
+    std::optional<bool> cppMicrosoftVolatileSemantics;
     bool allocationFailureReturnsNull = false;
     bool zeroInitialize = false;
     bool baseReceiver = false;

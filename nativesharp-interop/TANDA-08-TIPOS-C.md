@@ -1028,6 +1028,15 @@ opción. No cambia todavía el análisis del acceso ni el IR; falta validarlo.
 El caso existente del proveedor compara el valor del símbolo con la opción
 efectiva de su sesión. Es una comprobación preparada y todavía no ejecutada.
 
+## Transporte inicial de opción volatile a HIR y MIR
+
+Los nodos de acceso directo a un global C/C++ volatile conservan la opción
+seleccionada desde el símbolo, pasando de HIR a MIR. La identidad HIR y las dos
+banderas del formato MIR distinguen true, false y desconocido; se cambian las
+versiones de identidad para evitar reutilización previa. Este dato aún no es
+una prueba de alineación o elegibilidad y no modifica el IR generado. Faltan
+propagación por campos y punteros, pruebas y validación agrupada.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

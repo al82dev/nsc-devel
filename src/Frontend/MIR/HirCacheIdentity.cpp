@@ -131,6 +131,8 @@ void appendNodeFlags(std::string& out, const ProjectOopHirNode& node)
         node.catchAll, node.catchHasFilter, node.catchExhaustive,
         node.interfaceCleanupDispatch};
     for (const bool value : values) CachePayloadWriter::byte(out, value ? 1U : 0U);
+    CachePayloadWriter::byte(out, node.cppMicrosoftVolatileSemantics.has_value() ? 1U : 0U);
+    CachePayloadWriter::byte(out, node.cppMicrosoftVolatileSemantics.value_or(false) ? 1U : 0U);
     CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.ownership));
     CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.objectLifetimeOwnership));
     CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.storageOwnership));
@@ -212,7 +214,7 @@ void appendFunctionVectors(std::string& out, const ProjectOopHirFunction& functi
 std::string serializeHirCacheIdentity(const ProjectOopHirFunction& function)
 {
     std::string out;
-    CachePayloadWriter::string(out, "nsc-hir-cache-identity-v1");
+    CachePayloadWriter::string(out, "nsc-hir-cache-identity-v2");
     CachePayloadWriter::u64(out, function.memberOrdinal);
     appendOptionalSize(out, function.namespaceFunctionOrdinal);
     CachePayloadWriter::u64(out, function.declaringTypeOrdinal);

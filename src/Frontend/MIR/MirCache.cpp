@@ -172,7 +172,7 @@ std::string preLowerMirCacheKey(
     std::size_t functionOrdinal)
 {
     std::string material;
-    internal::CachePayloadWriter::string(material, "nsc-mir-prelower-key-v2");
+    internal::CachePayloadWriter::string(material, "nsc-mir-prelower-key-v3");
     internal::CachePayloadWriter::string(material, compilationIdentity);
     internal::CachePayloadWriter::u64(material, functionOrdinal);
     internal::CachePayloadWriter::string(material, serializeHirCacheIdentity(function));
@@ -290,6 +290,8 @@ void appendMirNodeFlags(std::string& out, const ProjectOopMirNode& node)
     setFlag(27, node.inlineAssemblyHasSideEffects);
     setFlag(28, node.inlineAssemblyClobbersMemory);
     setFlag(29, node.inlineAssemblyClobbersFlags);
+    setFlag(30, node.cppMicrosoftVolatileSemantics.has_value());
+    setFlag(31, node.cppMicrosoftVolatileSemantics.value_or(false));
     internal::CachePayloadWriter::u32(out, flags);
 }
 
@@ -523,6 +525,7 @@ void applyMirNodeFlags(std::uint32_t flags, ProjectOopMirNode& node)
     node.inlineAssemblyHasSideEffects = flag(27);
     node.inlineAssemblyClobbersMemory = flag(28);
     node.inlineAssemblyClobbersFlags = flag(29);
+    node.cppMicrosoftVolatileSemantics = flag(30) ? std::optional<bool>{flag(31)} : std::nullopt;
 }
 
 bool readMirOptionalU64(

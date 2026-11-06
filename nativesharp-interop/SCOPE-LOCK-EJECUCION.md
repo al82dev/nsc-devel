@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Transporte inicial de opción volatile a HIR y MIR
+
+Transportar el valor de sesión, incluido desconocido, desde un global externo
+volatile a su nodo HIR y MIR y conservarlo en las identidades y caché MIR. No
+emitir órdenes atómicos ni extenderlo aún a campos o punteros. Archivos: nodos
+HIR/MIR, HirNameExpressionLowering.cpp, MirNodeMachine.cpp, HirCacheIdentity.cpp,
+MirCache.cpp y documentación. Preparar pruebas y validar en conjunto.
+
 ## Prueba de opción volatile en símbolo global
 
 Preparar comprobación de que el símbolo producido conserva la opción de su
