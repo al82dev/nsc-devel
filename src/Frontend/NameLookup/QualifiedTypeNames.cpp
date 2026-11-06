@@ -29,6 +29,7 @@
 #include <filesystem>
 #include <functional>
 #include <iterator>
+#include <memory>
 #include <sstream>
 #include <unordered_set>
 #include <utility>
@@ -581,7 +582,30 @@ bool ProjectNameLookup::expandCppTypeAlias(
             for (auto* parameter : parameters) mutableSyntax->addTypeArgument(parameter);
             return true;
         }
-        const auto mapped = cppAliasBuiltinType(selected->declaration.underlyingType);
+        const auto& aliasType = selected->declaration.underlyingType;
+        if (selected->targetTriple == "x86_64-pc-windows-msvc" &&
+            aliasType.kind == interop::CppTypeKind::Pointer && aliasType.element &&
+            aliasType.element->isVolatile && aliasType.element->kind != interop::CppTypeKind::Pointer)
+        {
+            auto unqualifiedElement = std::make_shared<interop::CppType>(*aliasType.element);
+            unqualifiedElement->isVolatile = false;
+            interop::CppType normalized = aliasType;
+            normalized.element = std::move(unqualifiedElement);
+            const auto volatileAlias = cppAliasBuiltinType(normalized);
+            if (!volatileAlias || volatileAlias->pointerDepth != 1 || !syntax->modifiers().empty() ||
+                syntax->isPointeeConst() || syntax->isPointeeVolatile())
+                return report(diagnostics::DiagnosticId::InvalidUsingTarget,
+                              "C/C++ volatile pointer alias cannot yet be represented safely: '" +
+                              syntax->baseName() + "'");
+            auto* mutableSyntax = const_cast<ast::TypeSyntax*>(syntax);
+            mutableSyntax->setBaseTokenKind(volatileAlias->token);
+            mutableSyntax->setBaseName(std::string(volatileAlias->name));
+            mutableSyntax->prependModifiers(cppPointerModifiers(aliasType));
+            mutableSyntax->setPointeeConst(volatileAlias->pointeeConst);
+            mutableSyntax->setPointeeVolatile();
+            return true;
+        }
+        const auto mapped = cppAliasBuiltinType(aliasType);
         if (selected->targetTriple != "x86_64-pc-windows-msvc" || !mapped ||
             (mapped->pointeeConst && !syntax->modifiers().empty()) ||
             (syntax->isPointeeConst() && mapped->pointerDepth != 0))

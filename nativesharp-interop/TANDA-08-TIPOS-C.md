@@ -820,6 +820,14 @@ un retorno y un local NativeSharp; escribe a través del puntero y compara con
 la función C que lee esa memoria. Es una prueba preparada: la proyección del
 alias y la ejecución agrupada aún están pendientes.
 
+## Proyección de alias C a puntero escalar volatile
+
+La resolución de nombres ya prepara la proyección de aliases a punteros de
+un nivel con apuntado escalar volatile y conserva const. El mapeo consulta una
+copia sin volatile, conserva el original de Clang y registra el calificador en
+TypeSyntax. Modificadores externos y formas no representadas siguen rechazados.
+La prueba del proyecto mixto y las regresiones de la tanda están pendientes.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

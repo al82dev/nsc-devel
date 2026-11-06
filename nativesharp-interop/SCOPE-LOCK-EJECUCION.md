@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Proyección de alias C a puntero escalar volatile
+
+Proyectar un alias de puntero de un nivel a escalar volatile como TypeSyntax,
+conservando const y volatile, sin mutar el tipo capturado por Clang. Mantener
+rechazados usos con modificadores externos y formas aún no representadas.
+Archivos: QualifiedTypeNames.cpp y documentación. El caso preparado y las
+regresiones se ejecutarán con la validación agrupada de la tanda 08.
+
 ## Caso de alias C de puntero a volatile
 
 Preparar el proyecto mixto existente para comprobar que un typedef C de puntero
