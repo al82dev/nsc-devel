@@ -190,6 +190,8 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - `495878320` prepara la prueba integrada que recupera el USR de campo de
+    una segunda sesión hasta el símbolo. Pendiente de construcción y ejecución.
   - La construcción incremental y suite de sesión pasaron con los controles
     agrupados de identidad hasta `b8bb920ef`. Falta probar la recuperación de
     USR en el proveedor completo y resolver persistencia. [Evidencia](TANDA-08-TIPOS-C.md#validación-dirigida-agrupada-identidades-y-_bool).
