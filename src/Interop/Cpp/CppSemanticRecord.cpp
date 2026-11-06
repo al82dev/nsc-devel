@@ -542,7 +542,8 @@ bool sameCapturedMembers(const CppRecordDeclaration& a, const CppRecordDeclarati
             a.bases[i].offsetBits != b.bases[i].offsetBits || !sameMemberType(a.bases[i].type, b.bases[i].type)) return false;
     for (std::size_t i = 0; i < a.fields.size(); ++i)
         if (a.fields[i].name != b.fields[i].name || a.fields[i].access != b.fields[i].access ||
-            (a.fields[i].clangUsr && b.fields[i].clangUsr && a.fields[i].clangUsr != b.fields[i].clangUsr) ||
+            (a.fields[i].clangUsr && !a.fields[i].clangUsr->empty() && b.fields[i].clangUsr &&
+             !b.fields[i].clangUsr->empty() && a.fields[i].clangUsr != b.fields[i].clangUsr) ||
             a.fields[i].offsetBits != b.fields[i].offsetBits || a.fields[i].bitWidth != b.fields[i].bitWidth ||
             !sameMemberType(a.fields[i].type, b.fields[i].type)) return false;
     for (std::size_t i = 0; i < a.staticFields.size(); ++i)
@@ -575,11 +576,21 @@ std::optional<std::size_t> selectCppRecordMemberDefinition(
     if (group.status != CppRecordGroupStatus::OneDefinition &&
         group.status != CppRecordGroupStatus::MultipleDefinitionsPointerCompatible) return std::nullopt;
     std::optional<std::size_t> first;
+    std::vector<std::optional<std::string>> knownFieldUsrs;
     for (const auto i : group.inventoryIndices)
     {
         if (i >= inventory.size()) return std::nullopt;
         const auto& item = inventory[i].declaration;
         if (!item.complete) continue;
+        if (!first) knownFieldUsrs.resize(item.fields.size());
+        if (knownFieldUsrs.size() != item.fields.size()) return std::nullopt;
+        for (std::size_t field = 0; field < item.fields.size(); ++field)
+        {
+            const auto& usr = item.fields[field].clangUsr;
+            if (!usr || usr->empty()) continue;
+            if (knownFieldUsrs[field] && knownFieldUsrs[field] != usr) return std::nullopt;
+            knownFieldUsrs[field] = usr;
+        }
         if (!first) { first = i; continue; }
         const auto& prior = inventory[*first].declaration;
         if (!prior.location || !item.location || prior.location->line != item.location->line ||
