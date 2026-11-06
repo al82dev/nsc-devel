@@ -765,6 +765,25 @@ void ProjectMethodBodyModel::analyzeRawIndex(
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return;
     const bool validPointerIndex = base.valid && rawPointerBase && indices.size() == 1 &&
         indices.front().valid && ProjectTypeConversion::isIntegral(indices.front().typeKey);
+    if (validPointerIndex && nameLookup_)
+    {
+        const std::string element = base.typeKey.substr(0, base.typeKey.size() - 1);
+        if (element.starts_with("type:") && !element.ends_with("*"))
+        {
+            const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(element).substr(5));
+            const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+            if (imported && imported->isIncomplete &&
+                (imported->origin == CppImportedTypeOrigin::CStruct ||
+                 imported->origin == CppImportedTypeOrigin::CUnion))
+            {
+                diagnostics.report(diagnostics::DiagnosticId::IncompleteType,
+                    diagnostics::DiagnosticSeverity::Error, expression->range(),
+                    "pointer arithmetic requires a complete C type; '" +
+                        imported->identity.fullyQualifiedName() + "' has no element size");
+                return;
+            }
+        }
+    }
     const bool validFlexibleIndex = base.valid && flexibleElementType.has_value() &&
         indices.size() == 1 && indices.front().valid &&
         ProjectTypeConversion::isIntegral(indices.front().typeKey) &&
