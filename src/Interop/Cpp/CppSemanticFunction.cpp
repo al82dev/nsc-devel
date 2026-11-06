@@ -61,6 +61,13 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         if (found == records->end() || (found->second != CppRecordGroupStatus::ForwardOnly &&
                                        found->second != CppRecordGroupStatus::OneDefinition &&
                                        found->second != CppRecordGroupStatus::MultipleDefinitionsPointerCompatible)) return std::nullopt;
+        if (lookup && type.recordIdentity && type.recordIdentity->clangUsr)
+        {
+            const auto ordinal = lookup->typeOrdinalForIdentity(identity->key());
+            const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+            if (imported && imported->clangUsr && imported->clangUsr != type.recordIdentity->clangUsr)
+                return std::nullopt;
+        }
         return CppScalarTypeMapping{"type:" + identity->key(), type.canonicalSpelling, false, false};
     }
     if (type.kind == CppTypeKind::Pointer && type.element && type.element->kind == CppTypeKind::Function)

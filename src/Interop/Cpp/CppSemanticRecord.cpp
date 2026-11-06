@@ -49,6 +49,8 @@ std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type, std:
             const auto ordinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
             const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
             if (!target || !imported || imported->projectOrdinal != projectOrdinal || !imported->objectLayout ||
+                (element->recordIdentity && element->recordIdentity->clangUsr && imported->clangUsr &&
+                 element->recordIdentity->clangUsr != imported->clangUsr) ||
                 imported->isIncomplete || !element->sizeBits || *element->sizeBits % 8 != 0 ||
                 *element->sizeBits / 8 != imported->objectLayout->sizeBytes || !element->alignmentBits ||
                 *element->alignmentBits % 8 != 0 ||
@@ -88,6 +90,8 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         const auto ordinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
         const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
         if (target && imported && imported->projectOrdinal == projectOrdinal && imported->objectLayout &&
+            (!field.type.recordIdentity || !field.type.recordIdentity->clangUsr || !imported->clangUsr ||
+             field.type.recordIdentity->clangUsr == imported->clangUsr) &&
             !imported->isIncomplete && field.type.sizeBits && *field.type.sizeBits % 8 == 0 &&
             *field.type.sizeBits / 8 == imported->objectLayout->sizeBytes && field.type.alignmentBits &&
             *field.type.alignmentBits % 8 == 0 &&
@@ -107,7 +111,9 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
             const auto target = projectCppRecordTypeIdentity(*field.type.element, moduleName);
             const auto ordinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
             const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
-            if (target && imported && imported->projectOrdinal == projectOrdinal)
+            if (target && imported && imported->projectOrdinal == projectOrdinal &&
+                (!field.type.element->recordIdentity || !field.type.element->recordIdentity->clangUsr ||
+                 !imported->clangUsr || field.type.element->recordIdentity->clangUsr == imported->clangUsr))
                 element = CppScalarTypeMapping{"type:" + target->key(), field.type.element->canonicalSpelling, false, false};
         }
         if (element)
@@ -151,7 +157,9 @@ std::optional<CppSemanticStaticField> projectCppSemanticStaticField(
             const auto target = projectCppRecordTypeIdentity(*field.type.element, moduleName);
             const auto ordinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
             const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
-            if (target && imported && imported->projectOrdinal == projectOrdinal)
+            if (target && imported && imported->projectOrdinal == projectOrdinal &&
+                (!field.type.element->recordIdentity || !field.type.element->recordIdentity->clangUsr ||
+                 !imported->clangUsr || field.type.element->recordIdentity->clangUsr == imported->clangUsr))
                 element = CppScalarTypeMapping{"type:" + target->key(), field.type.element->canonicalSpelling, false, false};
         }
         if (element)

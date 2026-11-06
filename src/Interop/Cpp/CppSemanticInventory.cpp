@@ -105,6 +105,8 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
             const auto ordinal = identity ? lookup->typeOrdinalForIdentity(identity->key()) : std::nullopt;
             const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
             if (!identity || !imported || imported->projectOrdinal != projectOrdinal ||
+                (type.recordIdentity && type.recordIdentity->clangUsr && imported->clangUsr &&
+                 type.recordIdentity->clangUsr != imported->clangUsr) ||
                 !imported->deferredImportError.empty() || imported->isIncomplete || !imported->objectLayout ||
                 !type.sizeBits || *type.sizeBits % 8 != 0 ||
                 *type.sizeBits / 8 != imported->objectLayout->sizeBytes || !type.alignmentBits ||

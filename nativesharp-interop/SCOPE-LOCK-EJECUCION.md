@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Correspondencia de USR en referencias de record
+
+T08-002/T08-010: al proyectar un record C/C++ referido desde funciones,
+globales o campos, comprobar que su USR conocido coincide con el tipo
+instalado; mantener la ruta existente cuando falte información y preservar
+todos los controles de layout. Archivos: CppSemanticFunction.cpp,
+CppSemanticInventory.cpp, CppSemanticRecord.cpp, CppClangSessionTests.cpp y
+registros Markdown. Validar el conjunto con la tanda.
+
 ## Identidad de records agrupados
 
 T08-002/T08-010/T08-011: al agrupar records de un mismo nombre y proyecto,
