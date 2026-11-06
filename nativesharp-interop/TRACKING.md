@@ -190,6 +190,11 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Comprobación agrupada tras `1a29352cc`: construcción incremental del objetivo
+    `nsc_cpp_session_tests` y ejecución de la suite terminaron con código 0. En
+    la primera ejecución hubo cinco fallos de fixtures; se corrigieron en
+    `e5a47ea7f` y `1a29352cc`. La compilación emitió advertencias de campos sin
+    inicializador. Esto no sustituye la validación completa ni cierra el ítem.
   - Preparados `0760bfe48` y `3fcdb2f21`: comprobación de tipos C en el
     proveedor del cierre externo y controles de módulo ausente y destino
     incompatible. Sin construir ni ejecutar; el recorrido real sigue abierto.

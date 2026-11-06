@@ -1596,3 +1596,14 @@ para rechazar una alineación que no es potencia de dos y conservar un campo
 sintético con offset 9 y alineación 1. No se han ejecutado esas pruebas; el
 proyector sigue rechazando fields empaquetados, y quedan por tratar direcciones
 escapadas, accesos anidados y otros consumidores antes de habilitarlos.
+
+## Comprobación agrupada del catálogo C y consumidor sintético
+
+Con la configuración ON existente se construyó incrementalmente
+`nsc_cpp_session_tests`. La suite falló inicialmente en cuatro aserciones de
+una captura que exigía un archivo físico y en un consumidor que duplicaba el
+nombre del módulo. Tras corregir ambos fixtures en `e5a47ea7f` y `1a29352cc`,
+se reconstruyó el objetivo incrementalmente y la suite terminó con código 0.
+La compilación informó advertencias de inicializadores faltantes, incluidas 29
+en el archivo de la suite. No se ejecutó la batería completa de la tanda ni se
+habilitó la publicación de NSMETA 1.42; el objetivo sigue abierto.
