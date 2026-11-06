@@ -24,4 +24,5 @@ int c_point_sum(const CPoint* point);
 CColor c_color(void);
 CColor c_echo_color(CColor color);
 int c_unsigned_verify(CUnsigned value);
+unsigned int c_unsigned_plus_one(void);
 COperation c_operation(void);

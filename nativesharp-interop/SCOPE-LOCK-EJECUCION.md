@@ -2,6 +2,10 @@
 
 ## Typedef C en proyectos reales
 
+Preparar comprobación de operaciones aritméticas sobre enums C importados,
+comparando el resultado unsigned con una función C y manteniendo un control
+para enum NativeSharp. Registrar fallos antes de modificar producción.
+
 Clang Windows confirma con `_Static_assert` que el enum previo sin tipo fijo
 es signed pese al literal unsigned. Fijar explícitamente `unsigned int` en el
 fixture (extensión admitida por Clang en C11) y conservar una comprobación C;

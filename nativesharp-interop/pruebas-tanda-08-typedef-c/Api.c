@@ -17,5 +17,6 @@ int c_point_sum(const CPoint* point) { return point->x + point->y; }
 CColor c_color(void) { return COLOR_BLUE; }
 CColor c_echo_color(CColor color) { return color; }
 int c_unsigned_verify(CUnsigned value) { return value == U_HIGH; }
+unsigned int c_unsigned_plus_one(void) { CUnsigned value = U_HIGH; return value + 1U; }
 static int increment(int x) { return x + 1; }
 COperation c_operation(void) { return increment; }

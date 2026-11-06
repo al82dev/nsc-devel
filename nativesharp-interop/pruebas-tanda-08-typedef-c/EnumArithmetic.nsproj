@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>CEnumArithmetic</Name></PropertyGroup><ItemGroup><Compile Include="EnumArithmetic.ns" /><CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" /></ItemGroup></Project>

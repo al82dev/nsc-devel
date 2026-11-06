@@ -1,0 +1,10 @@
+int Main()
+{
+    CColor color = COLOR_BLUE;
+    int sum = color + 3;
+    if (sum != 5) return 1;
+    CUnsigned high = U_HIGH;
+    uint wrapped = high + 1U;
+    if (wrapped != c_unsigned_plus_one()) return 2;
+    return 0;
+}
