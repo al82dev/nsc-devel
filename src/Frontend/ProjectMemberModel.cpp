@@ -428,8 +428,18 @@ bool ProjectMemberModel::build(
             imported.byteOffset % alignment != 0 || ownerLayout->alignmentBytes % alignment != 0 ||
             membersByName_[*ordinal].contains(imported.name))
         {
+            const char* reason = !owner ? "owner missing" :
+                owner->projectOrdinal != imported.projectOrdinal ? "owner project mismatch" :
+                !ownerLayout ? "owner layout missing" : invalidBits ? "invalid bitfield" :
+                alignment == 0 || (alignment & (alignment - 1)) != 0 ? "invalid alignment" :
+                !cppCallableRecordIsVisible(imported.typeKey, imported.projectOrdinal, nameLookup) ? "field type not visible" :
+                imported.byteOffset > ownerLayout->sizeBytes ? "offset outside owner" :
+                width > ownerLayout->sizeBytes - imported.byteOffset ? "field exceeds owner" :
+                imported.byteOffset % alignment != 0 || ownerLayout->alignmentBytes % alignment != 0 ? "unaligned field" :
+                "duplicate member";
             diagnostics.report(diagnostics::DiagnosticId::InvalidType, diagnostics::DiagnosticSeverity::Error,
-                SourceRange{}, "C++ instance field owner, layout or name is invalid");
+                SourceRange{}, "C++ instance field owner, layout or name is invalid: " +
+                    imported.ownerIdentityKey + "." + imported.name + " (" + reason + ")");
             return false;
         }
         ClassMemberSymbol member;
