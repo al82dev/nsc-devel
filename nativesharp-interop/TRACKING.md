@@ -264,6 +264,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     global y fallan dentro de namespace por nombre desconocido. Es necesario
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
 - [ ] T08-004. Importar declaraciones de variables globales C.
+  - Preparados `1753aa723` y `0cb1b4300`: búsqueda de valores C globales
+    desde namespaces como último recurso y controles de acceso y sombras;
+    pendientes de construcción y ejecución agrupadas.
 - [ ] T08-005. Importar alias de tipos declarados con `typedef`.
 - [ ] T08-006. Mapear los tipos enteros C con su tamaño y signo efectivos.
   - La prueba mixta `_Bool` de campo, arreglo y llamada pasó O0–O3. Es una
