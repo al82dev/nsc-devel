@@ -22,7 +22,7 @@ namespace nativesharp::interop
 {
 namespace
 {
-using RecordIndex = std::unordered_map<std::string, CppRecordGroupStatus>;
+using RecordIndex = std::unordered_map<std::string, const CppRecordGroup*>;
 
 CppType invocationTypeForC(const CppType& type, bool allowAggregate)
 {
@@ -58,9 +58,12 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         const auto identity = projectCppRecordTypeIdentity(type, moduleName);
         if (!identity) return std::nullopt;
         const auto found = records->find(identity->key());
-        if (found == records->end() || (found->second != CppRecordGroupStatus::ForwardOnly &&
-                                       found->second != CppRecordGroupStatus::OneDefinition &&
-                                       found->second != CppRecordGroupStatus::MultipleDefinitionsPointerCompatible)) return std::nullopt;
+        if (found == records->end() || !found->second ||
+            (found->second->status != CppRecordGroupStatus::ForwardOnly &&
+             found->second->status != CppRecordGroupStatus::OneDefinition &&
+             found->second->status != CppRecordGroupStatus::MultipleDefinitionsPointerCompatible)) return std::nullopt;
+        if (type.recordIdentity && type.recordIdentity->clangUsr && found->second->clangUsr &&
+            type.recordIdentity->clangUsr != found->second->clangUsr) return std::nullopt;
         if (lookup && type.recordIdentity && type.recordIdentity->clangUsr)
         {
             const auto ordinal = lookup->typeOrdinalForIdentity(identity->key());
@@ -211,7 +214,7 @@ CppSemanticFunctionResult projectCppSemanticFunctionWithRecords(
     for (const auto& group : records.groups)
     {
         if (group.projectOrdinal != projectOrdinal) continue;
-        if (!index.emplace(group.identity.key(), group.status).second)
+        if (!index.emplace(group.identity.key(), &group).second)
             return CppSemanticFunctionFailure{"duplicate record group for project"};
     }
     return projectFunction(function, projectOrdinal, moduleName, &index, lookup);
@@ -239,7 +242,7 @@ CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(
         return fail("C++ instance method contract is not yet mapped");
     RecordIndex recordIndex;
     if (records) for (const auto& group : records->groups)
-        if (group.projectOrdinal == projectOrdinal && !recordIndex.emplace(group.identity.key(), group.status).second)
+        if (group.projectOrdinal == projectOrdinal && !recordIndex.emplace(group.identity.key(), &group).second)
             return fail("duplicate record group for project");
     auto result = mapFunctionType(method.returnType, true, records ? &recordIndex : nullptr, moduleName);
     if (!result) return fail("C++ instance method return type is not yet mapped");
@@ -292,7 +295,7 @@ CppSemanticStaticMethodResult projectCppSemanticStaticMethod(
         method.canonicalFunctionType.empty()) return fail("C++ static method contract is not yet mapped");
     RecordIndex recordIndex;
     if (records) for (const auto& group : records->groups)
-        if (group.projectOrdinal == projectOrdinal && !recordIndex.emplace(group.identity.key(), group.status).second)
+        if (group.projectOrdinal == projectOrdinal && !recordIndex.emplace(group.identity.key(), &group).second)
             return fail("duplicate record group for project");
     auto result = mapFunctionType(method.returnType, true, records ? &recordIndex : nullptr, moduleName);
     if (!result) return fail("C++ static method return type is not yet mapped");

@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## USR de record en proyección de firmas sin lookup
+
+T08-002/T08-003: la proyección aislada de funciones y métodos conserva solo
+el estado del grupo y pierde su USR cuando no recibe ProjectNameLookup.
+Mantener acceso al grupo durante la proyección y comprobar el USR conocido del
+tipo referido. Preservar validación de estado y duplicados. Archivos:
+CppSemanticFunction.cpp, CppClangSessionTests.cpp y registros Markdown.
+Prueba y validación agrupadas con la tanda.
+
 ## USR de tipos en aliases
 
 T08-002/T08-005: conservar el USR del record o enum subyacente en la
