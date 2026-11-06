@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Alias C a apuntado const volatile
+
+Preparar lectura del alias combinado y comprobación de rechazo de escritura.
+Archivos: Api.h, Main.ns, ConstVolatileAliasWrite.ns.txt y validar.cmd del
+fixture de records C, y documentación. Validación agrupada aún pendiente.
+
 ## Conversión explícita al alias volatile
 
 Preparar un caso positivo que convierte al alias C, escribe por el resultado y

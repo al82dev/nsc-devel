@@ -840,6 +840,11 @@ El caso positivo preparado convierte un puntero al alias, escribe el valor 71
 y exige verlo desde C y en una escritura LLVM volatile. Queda por ejecutar en
 la validación agrupada, sin afirmar compatibilidad para conversiones anidadas.
 
+## Alias C a apuntado const volatile
+
+El fixture prepara lectura mediante `ConstVolatileIntPtr` y un caso negativo
+que intenta escribir por él. La comprobación agrupada todavía no se ha ejecutado.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

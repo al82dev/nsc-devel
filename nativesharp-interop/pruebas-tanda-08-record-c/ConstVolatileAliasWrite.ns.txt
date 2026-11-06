@@ -1,0 +1,6 @@
+int Main()
+{
+    ConstVolatileIntPtr value = const_volatile_pointee;
+    *value = 1;
+    return 0;
+}
