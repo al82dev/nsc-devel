@@ -361,7 +361,7 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
         value.hasPrototype = function->getType()->getAs<clang::FunctionProtoType>() != nullptr;
         value.externalLinkage = function->isExternallyVisible();
         const auto* definition = function->getDefinition();
-        value.isCStaticInlineDefinition = value.languageLinkage == CppLanguageLinkage::C &&
+        value.isCStaticInlineDefinition = !astContext.getLangOpts().CPlusPlus &&
             !value.externalLinkage && definition && definition->getStorageClass() == clang::SC_Static &&
             definition->isInlineSpecified() && definition->hasBody();
         value.dllImport = function->hasAttr<clang::DLLImportAttr>();
