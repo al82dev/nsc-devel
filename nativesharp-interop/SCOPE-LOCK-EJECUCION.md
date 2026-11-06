@@ -88,6 +88,16 @@ Presupuesto: `src/Interop/Internal/CppCRecordMetadataCodec.h/.cpp`,
 identidades ni habilitar conversiones; comprobar el origen del record raíz y
 de cada record dependiente. Mantener errores y salidas transaccionales.
 
+## Mapa de declaraciones C reconciliables visibles
+
+Construir un mapa entre records de sesiones activas y catálogos precompilados
+visibles, solo cuando coincidan procedencia y cierre comprobado. Presupuesto:
+`include/nativesharp/Interop/CppSemanticRecord.h`, `src/Interop/Cpp/CppSemanticRecord.cpp`,
+`tests/unit/CppClangSessionTests.cpp`, tracking y registros. Múltiples candidatos,
+dependencias ausentes y origen no comprobable no deben producir una equivalencia.
+El mapa se prepara sin alterar aún la búsqueda ni permitir conversiones. Agrupar
+la validación con la conexión a resolución cuando esté implementada.
+
 ## Identidad de funciones C importadas
 
 T08-002/T08-003: conservar USR opcional en la proyección de función y
