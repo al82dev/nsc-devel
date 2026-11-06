@@ -4624,6 +4624,16 @@ void ProjectMethodBodyModel::analyzeVariable(
     {
         const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(typeKey).substr(5));
         const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+        if (imported && imported->isIncomplete &&
+            (imported->origin == CppImportedTypeOrigin::CStruct || imported->origin == CppImportedTypeOrigin::CUnion))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::IncompleteType,
+                diagnostics::DiagnosticSeverity::Error,
+                variable->range(),
+                "C object local '" + variable->text() + "' cannot be created by value because its type is incomplete");
+            return;
+        }
         const bool cValue = imported && imported->objectLayout && !imported->isIncomplete &&
             imported->deferredImportError.empty() &&
             (imported->origin == CppImportedTypeOrigin::CStruct || imported->origin == CppImportedTypeOrigin::CUnion ||

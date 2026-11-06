@@ -10,6 +10,12 @@ ni se permita un objeto por valor. Mantener salidas en A:, usar Clang y NSC
 experimentales existentes y no modificar producción antes de reproducir y
 delimitar una falla. Validar la matriz O0–O3 agrupada; LLVM y NSLink son de
 solo lectura.
+El fixture por valor produce un mensaje genérico de lifetime aunque la
+declaración C es incompleta. Permitir una comprobación localizada en
+`src/Frontend/Bodies/StatementAnalyzer.cpp` para emitir `IncompleteType` con
+el motivo real antes de la barrera de lifetime, únicamente para structs y
+unions C incompletos. Preservar el rechazo anterior de tipos completos y
+verificar el diagnóstico concreto y las regresiones existentes.
 La prueba positiva reproduce el rechazo del global `Opaque*` en O0. Las
 firmas de funciones aceptan el puntero, pero `mapGlobalType` exige layout al
 recorrer su objeto apuntado. Permitir `src/Interop/Cpp/CppSemanticInventory.cpp`
