@@ -107,6 +107,17 @@ importada, tanto en observación como en el selector final. Presupuesto:
 registros. Esta fase no cambia todavía búsqueda, conversiones ni semántica;
 validar destinos antes de usarlos en la siguiente fase.
 
+## Resolución de nombres C reconciliados
+
+Conectar únicamente identidades C previamente comprobadas al índice de nombres,
+revisar visibilidad, unificar candidatos y conservar la observación del grupo
+Clang. Presupuesto: `include/nativesharp/Frontend/ProjectNameLookup.h`,
+`src/Frontend/ProjectNameLookup.cpp`, `src/Frontend/NameLookup/TypeVisibility.cpp`,
+`src/Frontend/NameLookup/QualifiedNamespaces.cpp`,
+`src/Frontend/NameLookup/QualifiedTypeNames.cpp`, `src/Interop/Cpp/CppSemanticRecord.cpp`,
+controles de sesión, tracking y registros. No deducir equivalencias por nombre
+ni extenderlas a C++; la proyección de firmas y ABI aún debe conectarse y probarse.
+
 ## Identidad de funciones C importadas
 
 T08-002/T08-003: conservar USR opcional en la proyección de función y
