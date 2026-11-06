@@ -148,6 +148,17 @@ sesión, tracking y registros. No equiparar enums por nombre o USR aislados;
 el alcance de este paso depende del cierre del record validado. Enums no
 alcanzados por ese cierre conservan la resolución previa. Validación agrupada.
 
+## Comparación numérica de enum C importado
+
+Permitir comparaciones de un enum C completo con operandos numéricos usando
+su representación validada y las reglas numéricas de NativeSharp; conservar
+ancho y signo al emitir conversiones. Presupuesto:
+`include/nativesharp/Frontend/CppImportedEnumNumeric.h`,
+`src/Frontend/Bodies/OperatorExpressionAnalyzer.cpp`,
+`src/Frontend/HIR/HirExpressionMachine.cpp`, fixtures de metadata C, tracking
+y registros. No alterar enums nativos ni modificar asignaciones generales.
+La validación debe abarcar signos, anchuras y fases semántica/LLVM agrupadas.
+
 ## Identidad de funciones C importadas
 
 T08-002/T08-003: conservar USR opcional en la proyección de función y
