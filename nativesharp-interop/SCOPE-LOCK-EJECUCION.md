@@ -70,6 +70,10 @@ Transportar los bytes verificados del catálogo desde la superficie de metadata
 hasta PrecompiledSyntaxModule; presupuesto adicional: PrecompiledSyntaxModule.h,
 PrecompiledProjectPreparation.cpp y controles existentes. No habilitar 1.42
 ni instalar declaraciones en este paso.
+Preparar reconstrucción de declaraciones desde todos los módulos precompilados,
+resolviendo su módulo propietario en el grafo y rechazando duplicados
+incompatibles. Presupuesto: CppCRecordMetadataCodec.h/.cpp y controles de
+sesión; no instalar todavía en el frontend ni habilitar el formato.
 Preparar un proveedor opcional de catálogo para el productor de metadata, sin
 activarlo desde el driver. Presupuesto adicional: ProjectCompilation.h/.cpp,
 LibraryMetadataConstruction.cpp y controles de sesión. El productor sin
