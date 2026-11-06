@@ -42,6 +42,12 @@ conciliar declaraciones incompletas con mismo tipo, USR, triple y procedencia
 directa verificada por archivo, huella y desplazamiento. Rechazar información
 ausente o discrepante; probar también headers modificados o distintos. No
 desplegar ni cambiar NSLink o LLVM.
+La suite encontró expectativas históricas que ahora reciben procedencia también
+para el record incompleto y por eso dejan de representar los catálogos 1/2.
+Mantener esos controles con sus datos históricos y agregar controles explícitos
+de las nuevas versiones. Permitir `src/Interop/LibraryMetadataPayload.cpp`: la
+proyección ABI reconoce el formato flotante solo en catálogo 2 y debe hacerlo
+también en 4 al retirar la procedencia, sin cambiar las huellas antiguas.
 La primera construcción con procedencia pasó el conflicto de alias, pero el
 fixture se detuvo al proyectar `opaque_current` y `union_current`: el global
 opaco exige que el propietario importado sea el proyecto directo incluso si

@@ -768,7 +768,7 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
             std::string error;
             if (decodeCTypeCatalogWithProvenance(abiCatalog, records, enums, error))
             {
-                const bool hasFloatingFormat = abiCatalog[0] == 2;
+                const bool hasFloatingFormat = abiCatalog[0] == 2 || abiCatalog[0] == 4;
                 for (auto& record : records) record.sourceProvenance.reset();
                 const bool encoded = hasFloatingFormat ?
                     encodeCTypeCatalogWithProvenance(records, enums, withoutProvenance, error) :
