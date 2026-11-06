@@ -433,6 +433,7 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
     using Key = std::pair<std::size_t, std::string>;
     std::map<Key, const CppSemanticEnumEntry*> selected;
     std::map<Key, std::string> knownUsrs;
+    std::map<std::pair<Key, std::string>, std::string> knownEnumeratorUsrs;
     std::set<Key> conflicts;
     for (const auto& entry : std::get<std::vector<CppSemanticEnumEntry>>(inventory))
     {
@@ -445,6 +446,13 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
         {
             const auto [known, inserted] = knownUsrs.emplace(key, *value.clangUsr);
             if (!inserted && known->second != *value.clangUsr) conflicts.insert(key);
+        }
+        for (const auto& enumerator : value.enumerators)
+        {
+            if (!enumerator.clangUsr || enumerator.clangUsr->empty()) continue;
+            const auto [known, inserted] = knownEnumeratorUsrs.emplace(
+                std::pair{key, enumerator.name}, *enumerator.clangUsr);
+            if (!inserted && known->second != *enumerator.clangUsr) conflicts.insert(key);
         }
         const auto [where, inserted] = selected.emplace(key, &entry);
         if (!inserted)
