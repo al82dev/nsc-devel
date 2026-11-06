@@ -2,6 +2,23 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Global C volatile struct: 2026-11-06
+
+Con `3bc7897e1`, `f6a2b98ea`, `e0b846d90`, `e539befce`, `d79d793e1` y
+`eb7f93bee`, la validación agrupada terminó con código 0. Pasaron ON/OFF, la
+suite de Clang, restauración y serialización, y los siete proyectos preparados.
+
+En Windows x64 O0, NativeSharp escribió y leyó un campo de un global C
+`volatile struct`, contrastado con C. El IR contiene carga y escritura
+`volatile` dirigidas a ese global. La dirección del campo como puntero sin
+calificar fue rechazada con diagnóstico específico. En el caso separado de un
+puntero global volatile, el IR muestra una carga volatile del puntero y una
+escritura ordinaria en el objeto apuntado.
+
+Esta evidencia cubre los fixtures descritos; no demuestra todos los campos,
+anidamientos, arreglos de records calificados, punteros a volatile, TLS ni
+configuraciones. T08-015 continúa abierto.
+
 ## Global C const struct: 2026-11-06
 
 Con `0c9a80722`, `66de02635` y `d74f40926`, la validación agrupada terminó con
