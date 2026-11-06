@@ -601,6 +601,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     el arreglo y la matriz de records empaquetados, con comprobación de IR O0
     y rechazo de direcciones subalineadas. T08-016 sigue abierto.
 - [ ] T08-017. Definir la representación de punteros a función C.
+  - La prueba O0 identificó que un callback en campo de struct C no se
+    proyecta y otro en global C se rechaza por tipo no mapeado. El lanzador
+    devolvió 0 pese a detenerse sin los marcadores finales; validar también el
+    contenido del resultado. [Detalle](registro-commits/callback-c-campo-global.md).
   - Un callback C `int(int)` retornado, llamado desde NativeSharp y pasado de
     vuelta a C compiló y ejecutó O0–O3. No cubre todas las firmas ni
     convenciones. [Evidencia](registro-commits/callback-c-retornado.md).
