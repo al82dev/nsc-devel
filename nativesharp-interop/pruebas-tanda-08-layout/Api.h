@@ -9,6 +9,7 @@ int layout_bool_alignment(void);
 int layout_bool_flag_offset(void);
 int layout_bool_values_offset(void);
 int layout_bool_check(void);
+_Bool layout_bool_flip(_Bool value);
 enum PackedMood { PackedSad = -3, PackedHappy = 7 };
 #pragma pack(push, 1)
 typedef struct Packed { char tag; int value; } Packed;

@@ -103,5 +103,6 @@ int Main()
     flags->values[0] = false;
     flags->values[1] = true;
     if (!flags->flag || flags->values[0] || !flags->values[1] || layout_bool_check() == 0) return 37;
+    if (!layout_bool_flip(false) || layout_bool_flip(true)) return 38;
     return 0;
 }

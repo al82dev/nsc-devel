@@ -1,6 +1,7 @@
 #include "Api.h"
 static CBoolFields sample_bool_fields = { 3, 0, { 1, 0 } };
 CBoolFields* layout_bool_fields(void) { return &sample_bool_fields; }
+_Bool layout_bool_flip(_Bool value) { return !value; }
 int layout_bool_size(void) { return (int)sizeof(CBoolFields); }
 int layout_bool_alignment(void) { return (int)_Alignof(CBoolFields); }
 int layout_bool_flag_offset(void) { return (int)__builtin_offsetof(CBoolFields, flag); }
