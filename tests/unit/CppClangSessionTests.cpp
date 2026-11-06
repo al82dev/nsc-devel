@@ -1533,10 +1533,18 @@ int main(int argc, char** argv)
                         auto inventory = collectCppSemanticRecords(finalGraph, recordGroups);
                         const auto* entries = std::get_if<std::vector<CppSemanticRecordEntry>>(&inventory);
                         bool first = false, second = false, item = false, anonymous = false, forward = false;
+                        bool recordModesPreserved = entries && !entries->empty();
                         std::optional<std::uint32_t> hashA, hashB, hashAgain;
                         if (entries)
                             for (const auto& entry : *entries)
                             {
+                                const auto origin = std::find_if(recordGroups.begin(), recordGroups.end(),
+                                    [&](const auto& group) { return group.projectFile == entry.projectFile; });
+                                recordModesPreserved &= origin != recordGroups.end() &&
+                                    entry.referenceIndex < origin->sessions.size() &&
+                                    origin->sessions[entry.referenceIndex] &&
+                                    entry.microsoftVolatileSemantics ==
+                                        origin->sessions[entry.referenceIndex]->microsoftVolatileSemantics();
                                 first |= entry.projectOrdinal == 1 && entry.referenceIndex == 0 &&
                                     entry.declaration.name == "Shared" && entry.declaration.sizeBits == 32 && entry.identity;
                                 second |= entry.projectOrdinal == 1 && entry.referenceIndex == 1 &&
@@ -1554,6 +1562,8 @@ int main(int argc, char** argv)
                             }
                         ok &= expect(first && second && item && anonymous,
                                      "record inventory retains conflicting definitions, origins and anonymous entries");
+                        ok &= expect(recordModesPreserved,
+                                     "record inventory preserves each originating session volatile mode");
                         ok &= expect(forward && hashA && hashB && hashAgain && *hashA != *hashB && *hashA == *hashAgain,
                                      "Clang ODR fingerprints distinguish equal-size fields and remain stable across sessions");
                         if (entries)
