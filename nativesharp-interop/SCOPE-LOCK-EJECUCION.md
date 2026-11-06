@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Redeclaraciones C con prototipo más preciso
+
+Ampliar `pruebas-tanda-08-prototipos-c` con declaraciones compatibles `f()`
+seguidas de `f(int)` y `g(void)`, comprobando llamadas válidas y rechazo de
+aridad incorrecta. Investigar si la sesión usa la declaración más completa.
+No cambiar producción sin reproducir el fallo y registrar el alcance.
+
 ## Funciones C con y sin prototipo
 
 Preparar un fixture independiente para contrastar `f(void)` con la declaración
