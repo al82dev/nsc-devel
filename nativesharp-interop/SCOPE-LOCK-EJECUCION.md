@@ -1,5 +1,24 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Arreglo global C de punteros a volatile
+
+Objetivo T08-015/T08-016: conservar el calificador del objeto apuntado en un
+arreglo global C de punteros a `volatile`, siguiendo el camino existente para
+punteros a `const`. El slot del arreglo permanece asignable; los accesos al
+objeto apuntado deben conservar volatile y las conversiones que lo descartan
+deben rechazarse. La representación actual rechaza expresamente estos arreglos
+en `CppSemanticInventory.cpp`; el análisis de índices solo propaga el
+calificador de apuntado readonly.
+
+Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`,
+`src/Frontend/Bodies/ExpressionCore/IndexAndRangeExpressions.cpp`, los fixtures
+de `nativesharp-interop/pruebas-tanda-08-record-c`, tracking y registros de
+esta tanda. Preservar punteros anidados que no puedan representarse, NSLink,
+LLVM y la instalación en C:. Añadir controles de lectura, escritura,
+conversión que descarte volatile y dirección del slot; comprobar IR y
+ejecución en validación agrupada incremental. No declarar completado el ítem
+por esta única forma de declaración.
+
 ## TLS de una DLL C
 
 Preparar un fixture separado `pruebas-tanda-08-tls-c/directo` con un global
