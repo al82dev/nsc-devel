@@ -8,3 +8,8 @@ slot porque esa operación requeriría preservar calificadores anidados.
 
 El cambio está preparado; faltan los fixtures y su validación agrupada. No se
 afirma interoperabilidad funcional ni cierre de T08-015 o T08-016.
+
+La revisión de `CppAliasBuiltinType.h` mostró que el helper general rechaza
+`volatile`; por ello el camino de arreglos proyecta este caso mediante el
+mapeador del elemento, que conserva las restricciones de profundidad del
+puntero. Los demás tipos no representables siguen rechazándose.
