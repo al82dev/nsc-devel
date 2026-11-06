@@ -1068,7 +1068,7 @@ bool verifyGenericAndExternalTypeCatalogues(
     if (!verifyBinaryClosureMetadata(metadata, error)) return false;
     std::vector<CppCRecordSnapshot> records;
     std::vector<CppCEnumSnapshot> enums;
-    if (!decodeCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error)) return false;
+    if (!decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error)) return false;
     const auto includeCType = [&](const std::string& identity) {
         const std::string key = "type:" + identity;
         const auto module = metadataTypeModule(key);
@@ -1428,9 +1428,17 @@ bool verifyBinaryClosureMetadata(
         std::vector<CppCEnumSnapshot> enums;
         std::vector<std::uint8_t> canonical;
         std::string detail;
-        if (!decodeCTypeCatalog(metadata.cppCRecordCatalog, records, enums, detail) ||
+        const bool hasProvenance = isCTypeCatalogWithProvenance(metadata.cppCRecordCatalog);
+        if (hasProvenance && metadata.formatMinor < 43)
+        {
+            error = "metadata before 1.43 cannot represent C source provenance";
+            return false;
+        }
+        if (!decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, detail) ||
             (records.empty() && enums.empty()) ||
-            !encodeCTypeCatalog(records, enums, canonical, detail) || canonical != metadata.cppCRecordCatalog)
+            !(hasProvenance ? encodeCTypeCatalogWithProvenance(records, enums, canonical, detail) :
+                              encodeCTypeCatalog(records, enums, canonical, detail)) ||
+            canonical != metadata.cppCRecordCatalog)
         {
             error = "invalid C record catalogue: " + detail;
             return false;
