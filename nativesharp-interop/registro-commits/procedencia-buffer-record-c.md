@@ -6,5 +6,6 @@ vez por archivo durante cada recorrido; no relee el archivo ni atribuye una
 ubicación directa a declaraciones generadas mediante macros. La ruta puede ser
 virtual y por sí sola no prueba procedencia física ni identidad nominal.
 
+La construcción incremental de la suite y su ejecución terminaron con código 0.
 La información es transitoria y todavía no se serializa ni utiliza para unir
-identidades. Se requieren controles y construcción incremental antes de usarla.
+identidades. El caso de encabezado compartido sigue pendiente.

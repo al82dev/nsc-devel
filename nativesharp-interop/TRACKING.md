@@ -190,6 +190,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Clang captura la huella del buffer y el offset de records con ubicación
+    directa; la suite pasó. Los nombres pueden ser virtuales y estos datos aún
+    no se serializan ni unen identidades. [Evidencia](registro-commits/procedencia-buffer-record-c.md).
   - Existe una comparación de contratos completos entre módulos, validada por
     la suite de sesión. No prueba procedencia común ni habilita conversiones;
     el caso de encabezado compartido sigue fallando. [Evidencia](registro-commits/comparacion-contratos-record-c.md).
