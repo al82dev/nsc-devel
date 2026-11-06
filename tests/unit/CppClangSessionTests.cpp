@@ -6395,7 +6395,8 @@ int main(int argc, char** argv)
                     CppProjectSessions group;
                     group.projectFile = std::filesystem::absolute(path);
                     group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
-                        CppLanguageMode::C, "enum Shade { Dark = 1 }; struct Box { enum Shade color; };\n")));
+                        CppLanguageMode::C, "enum Shade { Dark = 1 }; struct Box { enum Shade color; }; "
+                        "struct Box make_box(void); void take_box(struct Box value);\n")));
                     std::vector<CppProjectSessions> groups;
                     groups.push_back(std::move(group));
                     std::string dependencyError;
@@ -6413,6 +6414,39 @@ int main(int argc, char** argv)
                     if (ready && selectedShade && fieldDependency.nameLookup() && fieldDependency.projectGraph())
                     {
                         const auto& lookup = *fieldDependency.nameLookup();
+                        auto recordInventory = collectCppSemanticRecords(*fieldDependency.projectGraph(), fieldDependency.cppProjectSessions());
+                        auto functionInventory = collectCppSemanticFunctions(*fieldDependency.projectGraph(), fieldDependency.cppProjectSessions());
+                        const auto* recordEntries = std::get_if<std::vector<CppSemanticRecordEntry>>(&recordInventory);
+                        const auto* functionEntries = std::get_if<std::vector<CppSemanticInventoryEntry>>(&functionInventory);
+                        bool returnedRecord = false, parameterRecord = false, rejectedLayout = false, rejectedCpp = false;
+                        if (recordEntries && functionEntries)
+                        {
+                            const auto recordGroups = groupCppSemanticRecords(*recordEntries);
+                            for (const auto& entry : *functionEntries)
+                            {
+                                if (entry.declaration.name != "make_box" && entry.declaration.name != "take_box") continue;
+                                const auto& moduleName = fieldDependency.projectGraph()->projects()[entry.projectOrdinal].moduleName();
+                                auto projection = projectCppSemanticFunctionWithRecords(entry.declaration,
+                                    entry.projectOrdinal, moduleName, recordGroups, &lookup);
+                                const auto* function = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projection);
+                                if (entry.declaration.name == "make_box")
+                                {
+                                    returnedRecord = function && function->declaredTypeKey.starts_with("type:");
+                                    auto wrong = entry.declaration;
+                                    wrong.returnType.sizeBits = 128;
+                                    rejectedLayout = std::holds_alternative<CppSemanticFunctionFailure>(
+                                        projectCppSemanticFunctionWithRecords(wrong, entry.projectOrdinal, moduleName, recordGroups, &lookup));
+                                    wrong = entry.declaration;
+                                    wrong.languageLinkage = CppLanguageLinkage::Cpp;
+                                    rejectedCpp = std::holds_alternative<CppSemanticFunctionFailure>(
+                                        projectCppSemanticFunctionWithRecords(wrong, entry.projectOrdinal, moduleName, recordGroups, &lookup));
+                                }
+                                else parameterRecord = function && function->parameters.size() == 1 &&
+                                    function->parameters[0].typeKey.starts_with("type:");
+                            }
+                        }
+                        ok &= expect(returnedRecord && parameterRecord && rejectedLayout && rejectedCpp,
+                                     "C record value projection checks return, parameter, layout and language linkage");
                         LibraryMetadata api;
                         LibraryMetadataNamespaceFunction function;
                         for (const auto& type : lookup.namedTypes())
