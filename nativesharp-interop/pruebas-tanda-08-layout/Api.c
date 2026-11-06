@@ -1,6 +1,11 @@
 #include "Api.h"
 static Pair sample_pair = { 1, 2 };
 static Packed sample_packed = { 1, 2 };
+static PackedArray sample_packed_array = { 1, { { 1, 2, 3 }, { 4, 5, 6 } } };
+PackedArray* layout_packed_array(void) { return &sample_packed_array; }
+int layout_packed_array_value(void) { return sample_packed_array.values[1][2]; }
+int layout_packed_array_size(void) { return (int)sizeof(PackedArray); }
+int layout_packed_array_offset(void) { return (int)__builtin_offsetof(PackedArray, values); }
 static PackedTwo sample_packed_two = { 1, 2, 3, 4.0 };
 PackedTwo* layout_packed_two(void) { return &sample_packed_two; }
 int layout_packed_two_check(void)

@@ -38,5 +38,11 @@ int Main()
     packedTwo->integer += 1;
     packedTwo->real = 6.5;
     if (packedTwo->integer != 9 || packedTwo->real != 6.5 || layout_packed_two_check() == 0) return 17;
+    if (sizeof(PackedArray) != (nuint)layout_packed_array_size() ||
+        offsetof(PackedArray, values) != (nuint)layout_packed_array_offset()) return 18;
+    PackedArray* packedArray = layout_packed_array();
+    packedArray->values[1][2] = 40;
+    packedArray->values[1][2] += 2;
+    if (packedArray->values[1][2] != 42 || layout_packed_array_value() != 42) return 19;
     return 0;
 }

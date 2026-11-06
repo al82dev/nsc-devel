@@ -4,7 +4,12 @@ typedef struct Container { char tag; Pair pairs[2][3]; Cell cell; } Container;
 #pragma pack(push, 1)
 typedef struct Packed { char tag; int value; } Packed;
 typedef struct PackedPointer { char tag; int* value; } PackedPointer;
+typedef struct PackedArray { char tag; int values[2][3]; } PackedArray;
 #pragma pack(pop)
+PackedArray* layout_packed_array(void);
+int layout_packed_array_value(void);
+int layout_packed_array_size(void);
+int layout_packed_array_offset(void);
 #pragma pack(push, 2)
 typedef struct PackedTwo { char tag; short aligned; int integer; double real; } PackedTwo;
 #pragma pack(pop)
