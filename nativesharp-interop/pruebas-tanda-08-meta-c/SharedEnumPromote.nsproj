@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CSharedEnumPromotionConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="SharedEnumPromote.ns" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" />
+    <LibraryReference Include="CPublishedProducer.lib" />
+  </ItemGroup>
+</Project>

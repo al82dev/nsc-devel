@@ -33,6 +33,10 @@ for %%O in (0 1 2 3) do (
   call :run %%O sharedenum
   if errorlevel 1 exit /b 1
 )
+for %%O in (0 1 2 3) do (
+  call :run %%O enumpromote
+  if errorlevel 1 exit /b 1
+)
 call :run 0 conflict
 if errorlevel 1 exit /b 1
 echo Public C type metadata consumer compiled and ran in O0 through O3.
@@ -42,7 +46,7 @@ exit /b 0
 set "DEST=%TASK_META_ROOT%\O%~1-%~2"
 if not exist "%DEST%" mkdir "%DEST%"
 if errorlevel 1 exit /b 1
-for %%F in (Api.h Api.c Conflict.h Independent.h Independent.c Producer.nsproj Producer.ns Consumer.nsproj Consumer.ns Inferred.nsproj Inferred.ns Independent.nsproj Independent.ns Shared.nsproj Shared.ns SharedValue.nsproj SharedValue.ns SharedEnum.nsproj SharedEnum.ns) do (
+for %%F in (Api.h Api.c Conflict.h Independent.h Independent.c Producer.nsproj Producer.ns Consumer.nsproj Consumer.ns Inferred.nsproj Inferred.ns Independent.nsproj Independent.ns Shared.nsproj Shared.ns SharedValue.nsproj SharedValue.ns SharedEnum.nsproj SharedEnum.ns SharedEnumPromote.nsproj SharedEnumPromote.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -76,6 +80,14 @@ if /I "%~2"=="sharedenum" (
   "%DEST%\SharedEnum.exe"
   if errorlevel 1 exit /b 1
   echo Shared C enum passed O%~1.
+  exit /b 0
+)
+if /I "%~2"=="enumpromote" (
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\SharedEnumPromote.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\SharedEnumPromote.exe"
+  if errorlevel 1 exit /b 1
+  "%DEST%\SharedEnumPromote.exe"
+  if errorlevel 1 exit /b 1
+  echo C enum integer comparison passed O%~1.
   exit /b 0
 )
 if /I "%~2"=="independent" (
