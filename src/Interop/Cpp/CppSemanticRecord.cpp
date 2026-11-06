@@ -1115,7 +1115,7 @@ bool reconstructPrecompiledCMembers(std::span<const frontend::PrecompiledSyntaxM
         if (module.cppCTypeCatalog.empty()) continue;
         std::vector<CppCRecordSnapshot> records;
         std::vector<CppCEnumSnapshot> enums;
-        if (!metadata_detail::decodeCTypeCatalog(module.cppCTypeCatalog, records, enums, error)) return false;
+        if (!metadata_detail::decodeVersionedCTypeCatalog(module.cppCTypeCatalog, records, enums, error)) return false;
         for (const auto& record : records)
         {
             if (!seenTypes.insert(record.identityKey).second) continue;

@@ -510,6 +510,20 @@ bool decodeCTypeCatalogWithProvenance(std::span<const std::uint8_t> bytes,
     records = std::move(decodedRecords); enums = std::move(decodedEnums); error.clear(); return true;
 }
 
+bool isCTypeCatalogWithProvenance(std::span<const std::uint8_t> bytes) noexcept
+{
+    // A legacy catalogue begins with a record-block length of at least four.
+    return bytes.size() >= 4 && bytes[0] == 1 && bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0;
+}
+
+bool decodeVersionedCTypeCatalog(std::span<const std::uint8_t> bytes,
+    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums, std::string& error)
+{
+    return isCTypeCatalogWithProvenance(bytes) ?
+        decodeCTypeCatalogWithProvenance(bytes, records, enums, error) :
+        decodeCTypeCatalog(bytes, records, enums, error);
+}
+
 bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
     std::span<const CppCEnumSnapshot> enums, std::size_t projectOrdinal,
     std::string_view moduleName, std::string_view targetTriple, std::string_view sourcePath,
@@ -590,7 +604,7 @@ bool reconstructPrecompiledCImportedTypes(std::span<const frontend::PrecompiledS
         if (module.cppCTypeCatalog.empty()) continue;
         std::vector<CppCRecordSnapshot> records;
         std::vector<CppCEnumSnapshot> enums;
-        if (!decodeCTypeCatalog(module.cppCTypeCatalog, records, enums, error)) return false;
+        if (!decodeVersionedCTypeCatalog(module.cppCTypeCatalog, records, enums, error)) return false;
         const auto add = [&](std::string_view identity, std::string_view owner,
                              std::span<const CppCRecordSnapshot> oneRecord,
                              std::span<const CppCEnumSnapshot> oneEnum) {
@@ -598,7 +612,7 @@ bool reconstructPrecompiledCImportedTypes(std::span<const frontend::PrecompiledS
             if (project == projectByModule.end() || ambiguousModules.contains(std::string(owner)))
             { error = "C type owner is missing or ambiguous: " + std::string(owner); return false; }
             std::vector<std::uint8_t> canonical;
-            if (!encodeCTypeCatalog(oneRecord, oneEnum, canonical, error)) return false;
+            if (!encodeCTypeCatalogWithProvenance(oneRecord, oneEnum, canonical, error)) return false;
             const auto [previous, inserted] = seen.emplace(std::string(identity), canonical);
             if (!inserted)
             {
