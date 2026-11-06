@@ -1,5 +1,21 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Orden al desreferenciar puntero obtenido directamente de arreglo global C
+
+T08-015: el fixture de arreglos de `volatile int*` ejecuta correctamente,
+pero su IR muestra accesos volatile sin acquire/release, mientras Clang MS
+emite esos órdenes para el apuntado int. Extender la ruta de desreferencia
+directa únicamente cuando la carga del puntero procede de elementos de un
+arreglo global C importado, con modo MS conocido y el calificador conservado.
+No aplicar la marca al almacenamiento del puntero, ni a locales, parámetros,
+campos o casts; esos contratos siguen pendientes.
+
+Presupuesto: `src/Frontend/HIR/ExpressionStatementMachine/HirCompletionTerminalFrames.cpp`,
+el fixture `nativesharp-interop/pruebas-tanda-08-record-c`, tracking y
+registros. Verificar origen siguiendo exclusivamente nodos de índice fijo
+hasta el global C resuelto; incluir matriz, `const volatile`, puntero constante
+y controles IR. No modificar NSLink, LLVM externo ni la instalación de C:.
+
 ## Orden al desreferenciar directamente un global C volatile int*
 
 T08-015: el IR comparado muestra que Clang MS usa acquire/release al acceder
