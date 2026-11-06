@@ -8,6 +8,9 @@ Se agrega al resultado semántico y al registro de expresiones un dato separado
 del volatile del almacenamiento del puntero. Por ahora se inicia en falso y
 ninguna declaración adicional queda habilitada; falta conectar productores,
 conversiones, consumidores, accesos y pruebas. El cambio aún no fue construido.
+Se preparó el transporte desde la descripción de globales importados hasta el
+resultado semántico. La barrera de importación sigue activa y no se demuestra
+todavía uso de punteros a volatile.
 
 ## Parámetros C puntero a escalar volatile: implementación pendiente de validar
 

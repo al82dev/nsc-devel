@@ -59,5 +59,6 @@ struct NamespaceStateSymbol final
     // Nonempty when a C/C++ declaration cannot yet be represented. Report only
     // if semantic lookup selects it; locals and members may shadow the name.
     std::string cppImportError;
+    bool cppPointerPointeeVolatile = false;
 };
 }

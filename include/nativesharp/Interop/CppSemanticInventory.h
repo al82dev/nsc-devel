@@ -137,6 +137,7 @@ struct CppSemanticGlobal
     bool isConst = false;
     bool pointerPointeeReadonly = false;
     bool dllImport = false;
+    bool pointerPointeeVolatile = false;
 };
 struct CppSemanticGlobalFailure { std::string message; };
 using CppSemanticGlobalResult = std::variant<CppSemanticGlobal, CppSemanticGlobalFailure>;

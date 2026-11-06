@@ -983,7 +983,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
             "cannot import C/C++ global '" + reference.writtenName + "': " + state.cppImportError);
         return result;
     }
-    if (state.isCppExternal && (state.isVolatile || state.isCppReadonly || state.cppPointerPointeeReadonly) &&
+    if (state.isCppExternal && (state.isVolatile || state.isCppReadonly || state.cppPointerPointeeReadonly ||
+                                state.cppPointerPointeeVolatile) &&
         formingAddressOperand_ && expression == formingAddressTarget_)
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
@@ -997,10 +998,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     result.assignable = !state.isConst && !state.isCppReadonly &&
         !(state.isCppExternal && ProjectMemberModel::fixedArrayElementTypeKey(state.declaredTypeKey).has_value());
     result.addressable = !state.isCppEnumConstant && !(state.isCppExternal &&
-        (state.isVolatile || state.isCppReadonly || state.cppPointerPointeeReadonly));
+        (state.isVolatile || state.isCppReadonly || state.cppPointerPointeeReadonly ||
+         state.cppPointerPointeeVolatile));
     result.readonlyReceiver = state.isConst || state.isCppReadonly;
     result.volatileStorage = state.isCppExternal && state.isVolatile;
     result.pointerPointeeReadonly = state.cppPointerPointeeReadonly;
+    result.pointerPointeeVolatile = state.cppPointerPointeeVolatile;
     recordNameBinding(MethodNameBinding{
         MethodNameBindingKind::NamespaceState,
         expression,

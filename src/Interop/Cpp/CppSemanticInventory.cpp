@@ -169,7 +169,9 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
                              global.name, type->nativeSharpTypeKey, type->canonicalCppType,
                              *global.externalSymbol, type->isVolatile, type->isConst,
                              global.type.kind == CppTypeKind::Pointer && global.type.element &&
-                                 global.type.element->isConst, global.dllImport};
+                                 global.type.element->isConst, global.dllImport,
+                             global.type.kind == CppTypeKind::Pointer && global.type.element &&
+                                 global.type.element->isVolatile};
 }
 
 CppSemanticGlobalResult projectCppSemanticGlobal(
@@ -316,6 +318,7 @@ static bool provideGlobalsWithLookup(
                     state.isVolatile = selected.candidate->isVolatile;
                     state.isCppReadonly = selected.candidate->isConst;
                     state.cppPointerPointeeReadonly = selected.candidate->pointerPointeeReadonly;
+                    state.cppPointerPointeeVolatile = selected.candidate->pointerPointeeVolatile;
                     state.cppDllImport = selected.candidate->dllImport;
                 }
                 else

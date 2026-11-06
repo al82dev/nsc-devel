@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Calificador volatile del apuntado en globales importados
+
+Preparar el transporte desde CppSemanticGlobal hasta NamespaceStateSymbol y el
+resultado semántico. Añadir sólo el dato inmediato; no retirar la barrera que
+rechaza punteros a volatile hasta conectar conversiones y generación.
+Archivos: CppSemanticInventory.h/.cpp, NamespaceStateSymbol.h,
+IdentifierAnalyzer.cpp y documentación. Mantener la toma de dirección
+restringida; no modificar snapshots sin una ruta demostrada ni cerrar el ítem.
+
 ## Calificador volatile del objeto inmediatamente apuntado: base semántica
 
 Preparar un indicador separado del volatile del almacenamiento del puntero,
