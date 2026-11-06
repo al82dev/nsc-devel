@@ -1,0 +1,7 @@
+int Main()
+{
+    var fromLibrary = Published.Bridge.Get();
+    Other* fromHeader = get_other();
+    if (fromLibrary->value != 17 || fromHeader->value != 42) return 1;
+    return 0;
+}

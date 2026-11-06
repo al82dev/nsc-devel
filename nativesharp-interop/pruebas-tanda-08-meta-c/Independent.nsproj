@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CIndependentConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Independent.ns" />
+    <CppLibraryReference Header="Independent.h" Language="C" Standard="c11" Library="api.lib" />
+    <LibraryReference Include="CPublishedProducer.lib" />
+  </ItemGroup>
+</Project>
