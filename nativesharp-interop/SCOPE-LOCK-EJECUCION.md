@@ -7,6 +7,13 @@ contrastar acceso de C y NativeSharp a campos de bits volatile en structs
 normales y empaquetados. Guardar IR de Clang en `A:/nsc-interop-build` y
 documentar anchos, alineación y órdenes observados. No modificar producción
 sin identificar el contrato efectivo y registrar su alcance.
+La prueba rechaza los miembros volatile. Clang x64 MS registra unidades
+discretas iniciadas por el primer campo de cada secuencia de almacenamiento;
+para la muestra observada usa lecturas/escrituras volatile i32 alineadas a 4
+o a 1 en el record empaquetado. Permitir `CppSemanticRecord.cpp` para calcular
+esas unidades a partir de offsets y tamaños ya observados, y fixture/IR para
+comparar. Mantener rechazo cuando los datos no permitan justificar el layout;
+no atribuir la comparación de esta muestra a todos los objetivos o layouts.
 
 ## Campos de bits en unions C
 
