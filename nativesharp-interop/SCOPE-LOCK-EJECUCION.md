@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Arreglos escalares C empaquetados
+
+T08-010/T08-012/T08-016: permitir arreglos fijos C subalineados solo si todos
+sus niveles son completos y no calificados y el elemento final es escalar
+booleano, entero o flotante. Conservar la alineación efectiva hasta LLVM y
+proteger dirección del arreglo y sus elementos. Mantener rechazados arreglos
+de punteros, records, enums, calificados o C++ cuando estén subalineados.
+Presupuesto: CppSemanticRecord.cpp, MemberAccessAnalyzer.cpp, fixture layout,
+registros Markdown. LLVM y NSLink protegidos; validación agrupada.
+
 ## Dirección de elementos de arreglos C empaquetados
 
 T08-016: en la indexación fija de un campo importado, impedir que el elemento

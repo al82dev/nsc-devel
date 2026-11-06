@@ -790,14 +790,17 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
     // C++ qualified storage cannot be exposed through an unqualified pointer until
     // the pointer type carries the field's const/volatile contract.
     result.volatileStorage = receiver.volatileStorage || (field.isCppExternal && field.isVolatile);
+    std::string alignedElementKey = field.declaredTypeKey;
+    while (const auto element = ProjectMemberModel::fixedArrayElementTypeKey(alignedElementKey))
+        alignedElementKey = *element;
     std::uint64_t naturalScalarAlignment = 0;
-    if (field.declaredTypeKey == "builtin:short" || field.declaredTypeKey == "builtin:ushort")
+    if (alignedElementKey == "builtin:short" || alignedElementKey == "builtin:ushort")
         naturalScalarAlignment = 2;
-    else if (field.declaredTypeKey == "builtin:int" || field.declaredTypeKey == "builtin:uint" ||
-             field.declaredTypeKey == "builtin:float") naturalScalarAlignment = 4;
-    else if (field.declaredTypeKey == "builtin:long" || field.declaredTypeKey == "builtin:ulong" ||
-             field.declaredTypeKey == "builtin:double") naturalScalarAlignment = 8;
-    else if (field.declaredTypeKey.ends_with('*')) naturalScalarAlignment = 8;
+    else if (alignedElementKey == "builtin:int" || alignedElementKey == "builtin:uint" ||
+             alignedElementKey == "builtin:float") naturalScalarAlignment = 4;
+    else if (alignedElementKey == "builtin:long" || alignedElementKey == "builtin:ulong" ||
+             alignedElementKey == "builtin:double") naturalScalarAlignment = 8;
+    else if (alignedElementKey.ends_with('*')) naturalScalarAlignment = 8;
     const bool unalignedImportedField = field.isCppExternal && field.explicitFieldAlignment &&
         naturalScalarAlignment != 0 && *field.explicitFieldAlignment < naturalScalarAlignment;
     result.addressable = !field.isBitField && !result.volatileStorage &&

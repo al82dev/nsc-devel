@@ -86,10 +86,22 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         (recordAlignment & (recordAlignment - 1)) != 0) return std::nullopt;
     const auto effectiveAlignment = std::min(naturalAlignment,
         std::gcd(recordAlignment, *field.offsetBits / 8));
+    const CppType* arrayElement = &field.type;
+    bool scalarArray = field.type.kind == CppTypeKind::Array;
+    while (scalarArray && arrayElement && arrayElement->kind == CppTypeKind::Array)
+    {
+        if (arrayElement->isConst || arrayElement->isVolatile || !arrayElement->arrayCount ||
+            *arrayElement->arrayCount == 0 || !arrayElement->element) scalarArray = false;
+        else arrayElement = arrayElement->element.get();
+    }
+    scalarArray = scalarArray && arrayElement && !arrayElement->isConst && !arrayElement->isVolatile &&
+        (arrayElement->kind == CppTypeKind::Boolean || arrayElement->kind == CppTypeKind::SignedInteger ||
+         arrayElement->kind == CppTypeKind::UnsignedInteger || arrayElement->kind == CppTypeKind::Floating);
     if (effectiveAlignment < naturalAlignment &&
         (record.isCxx || (field.type.kind != CppTypeKind::Boolean &&
          field.type.kind != CppTypeKind::SignedInteger && field.type.kind != CppTypeKind::UnsignedInteger &&
-         field.type.kind != CppTypeKind::Floating && field.type.kind != CppTypeKind::Pointer))) return std::nullopt;
+         field.type.kind != CppTypeKind::Floating && field.type.kind != CppTypeKind::Pointer &&
+         !scalarArray))) return std::nullopt;
     auto mapped = mapCppScalarType(field.type);
     if (!mapped && !record.isCxx && field.type.kind == CppTypeKind::Array)
         mapped = projectCArrayField(field.type, projectOrdinal, moduleName, lookup);
