@@ -593,6 +593,11 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     [Evidencia](registro-commits/prueba-opacos-header-compartido.md).
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
+  - Construcción incremental, sesión Clang y fixture mixto O0–O3 pasaron para
+    los casos preparados de globales y arreglos volatile; el IR confirmó los
+    órdenes directos comprobados. Locales y punteros obtenidos de arreglos
+    conservan una discrepancia de orden. No cierra el ítem.
+    [Evidencia](registro-commits/validacion-agrupada-volatile-08.md).
   - En la referencia Clang, desreferenciar `volatile int*` usa acquire/release;
     un IR NS anterior solo marca volatile. Falta conservar procedencia y
     alineación de apuntados. [Evidencia](registro-commits/ir-puntero-volatile-ms.md).
