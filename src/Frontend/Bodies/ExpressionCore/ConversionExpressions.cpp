@@ -392,6 +392,16 @@ ProjectMethodBodyModel::analyzeExpressionKindCastExpression(
     result.pointerKnownAlignment = targetPointerContract.knownAlignment;
     result.pointerAddressSpace = targetPointerContract.addressSpace;
     result.onePastEndPointer = operand.onePastEndPointer;
+    if (result.valid && operand.pointerPointeeVolatile &&
+        (ProjectTypeConversion::isPointer(result.typeKey) ||
+         isPointerSizedIntegralTypeKey(result.typeKey)))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "conversion would discard pointer pointee volatile qualification");
+        result.valid = false;
+        return result;
+    }
     const std::string_view namedCast = expression->auxiliaryText().starts_with("cast:")
         ? std::string_view(expression->auxiliaryText()).substr(5U)
         : std::string_view{};

@@ -22,6 +22,8 @@ También se preparó la propagación en operaciones aritméticas de punteros,
 coalescencia y condicionales; permanece sin ejecutar.
 Se preparó el rechazo de asignaciones que perderían el volatile inmediato;
 la ruta de entrada continúa cerrada.
+Las conversiones a puntero o entero también quedan rechazadas de forma
+provisional si perderían el calificador; aún no se ejecutó la validación.
 
 ## Parámetros C puntero a escalar volatile: implementación pendiente de validar
 

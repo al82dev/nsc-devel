@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Conversiones explícitas de punteros a volatile
+
+Impedir provisionalmente que una conversión produzca un puntero o entero y
+descarte el calificador mientras no exista sintaxis y semántica de destino
+calificado. Archivo: ConversionExpressions.cpp y documentación. No cambiar la
+conducta de punteros ordinarios; la importación sigue bloqueada.
+
 ## Asignaciones de punteros con apuntado volatile
 
 Preparar el rechazo de asignaciones que perderían el volatile inmediato del
