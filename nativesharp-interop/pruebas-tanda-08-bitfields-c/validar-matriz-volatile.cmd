@@ -21,8 +21,6 @@ llvm-lib.exe /nologo /out:"%DEST%\matrix-api.lib" "%DEST%\matrix-api.obj"
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Matrix.nsproj" > "%DEST%\matrix-nsc.ll"
 if errorlevel 1 exit /b 1
-python "%~dp0verificar-ir-matriz-volatile.py" "%DEST%\matrix-clang.ll" "%DEST%\matrix-nsc.ll"
-if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Matrix.nsproj" -O%%O --no-artifact-cache -o "%DEST%\matrix-O%%O.exe"
   if errorlevel 1 exit /b 1
@@ -30,4 +28,6 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 exit /b 1
   echo Matriz volatile O%%O: resultado esperado cero.
 )
+python "%~dp0verificar-ir-matriz-volatile.py" "%DEST%\matrix-clang.ll" "%DEST%\matrix-nsc.ll"
+if errorlevel 1 exit /b 1
 exit /b 0

@@ -17,15 +17,22 @@ def accesses(function):
 
 clang = Path(sys.argv[1]).read_text(encoding="utf-8")
 nsc = Path(sys.argv[2]).read_text(encoding="utf-8")
-for suffix, width, alignment in [("Small", "8", "1"), ("Medium", "16", "2"),
-                                  ("Word", "32", "4"), ("Wide", "64", "8")]:
+failures = []
+for suffix, width, c_alignment, n_alignment in [("Small", "8", "8", "1"), ("Medium", "16", "2", "2"),
+                                               ("Word", "32", "4", "4"), ("Wide", "64", "8", "8")]:
     for prefix in ("Read", "Increment"):
         c_name = "@matrix_" + prefix.lower() + "_" + suffix.lower() + "("
         n_name = "__" + prefix + suffix + "__"
-        expected = [("load", "", width, alignment)]
+        c_expected = [("load", "", width, c_alignment)]
+        n_expected = [("load", "", width, n_alignment)]
         if prefix == "Increment":
-            expected.append(("store", "", width, alignment))
+            c_expected += [("load", "", width, c_alignment), ("store", "", width, c_alignment)]
+            n_expected += [("store", "", width, n_alignment)]
         c_actual, n_actual = accesses(body(clang, c_name)), accesses(body(nsc, n_name))
-        if c_actual != expected or n_actual != expected:
-            raise SystemExit(f"{c_name}: clang={c_actual}; nsc={n_actual}; expected={expected}")
+        if c_actual != c_expected or n_actual != n_expected:
+            failures.append(f"{c_name}: clang={c_actual}; nsc={n_actual}")
+        if c_actual != n_actual:
+            failures.append(f"{c_name}: diferencia observada: clang={c_actual}; nsc={n_actual}")
+if failures:
+    raise SystemExit("\n".join(failures))
 print("Matriz IR volatile: anchos, alineaciones y secuencias coinciden con Clang.")
