@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Parámetro C puntero a void volatile
+
+Preparar una llamada a función con enlace C que recibe volatile void* y
+preservar el tipo original y const del apuntado. Archivos: proyección
+CppSemanticFunction.cpp, fixture pruebas-tanda-08-record-c y documentación.
+El fixture convierte el puntero dentro de C y comprueba la lectura; las
+restricciones generales y la validación agrupada siguen vigentes.
+
 ## Parámetros C puntero a enum volatile
 
 Extender la proyección de parámetros con enlace C a un enum importado y

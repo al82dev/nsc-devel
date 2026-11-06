@@ -8,6 +8,7 @@ int read_parent(struct Parent* value);
 void add_distinct(int* restrict destination, const int* restrict source);
 int bump_volatile(volatile int* value);
 int read_const_volatile(const volatile int* value);
+int read_volatile_void(volatile void* value);
 struct Device { volatile int counter; };
 struct Device* get_device(void);
 int read_device(struct Device* value);

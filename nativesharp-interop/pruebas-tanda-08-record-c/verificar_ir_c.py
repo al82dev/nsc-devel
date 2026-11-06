@@ -7,6 +7,7 @@ ir = Path(sys.argv[1]).read_text(encoding="utf-8")
 for name, instructions in {
     "bump_volatile": ("load volatile i32", "store volatile i32"),
     "read_const_volatile": ("load volatile i32",),
+    "read_volatile_void": ("load volatile i32",),
     "bump_volatile_record": ("load volatile i32", "store volatile i32"),
     "read_const_volatile_record": ("load volatile i32",),
 }.items():

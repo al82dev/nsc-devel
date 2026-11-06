@@ -145,7 +145,8 @@ CppSemanticFunctionResult projectFunction(
         if (function.languageLinkage == CppLanguageLinkage::C &&
             mappedInput.kind == CppTypeKind::Pointer && mappedInput.element &&
             mappedInput.element->isVolatile &&
-            (mappedInput.element->kind == CppTypeKind::Boolean ||
+            (mappedInput.element->kind == CppTypeKind::Void ||
+             mappedInput.element->kind == CppTypeKind::Boolean ||
              mappedInput.element->kind == CppTypeKind::SignedInteger ||
              mappedInput.element->kind == CppTypeKind::UnsignedInteger ||
              mappedInput.element->kind == CppTypeKind::Floating ||

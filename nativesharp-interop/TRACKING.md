@@ -204,7 +204,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
   - Preparado, pendiente de validación agrupada: parámetros con enlace C de un
-    nivel a escalares, structs y enums volatile. La función C realiza los
+    nivel a void, escalares, structs y enums volatile. La función C realiza los
     accesos y se conserva el tipo de Clang; las pruebas incluyen const y
     ejecución mixta. Siguen pendientes los punteros volatile que NativeSharp
     accede directamente y los demás contratos. [Detalle](TANDA-08-TIPOS-C.md).

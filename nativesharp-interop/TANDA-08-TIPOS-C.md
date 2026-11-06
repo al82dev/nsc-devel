@@ -17,6 +17,7 @@ reconocido por el inventario. La prueba de ejecución conjunta queda pendiente.
 Se preparó además el caso equivalente para enum C, también pendiente de
 construcción y ejecución; un caso negativo exige rechazo cuando la llamada
 descartaría const del apuntado.
+También se preparó volatile void* como parámetro C, con lectura dentro de C.
 
 El fixture de escalares y structs incluye una comprobación específica del IR C
 para exigir accesos volatile dentro de cada función correspondiente. La

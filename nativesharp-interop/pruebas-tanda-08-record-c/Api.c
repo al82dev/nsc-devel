@@ -8,6 +8,7 @@ int read_parent(struct Parent* value) { return value->child.value + value->child
 void add_distinct(int* restrict destination, const int* restrict source) { *destination += *source; }
 int bump_volatile(volatile int* value) { *value += 2; return *value; }
 int read_const_volatile(const volatile int* value) { return *value; }
+int read_volatile_void(volatile void* value) { return *(volatile int*)value; }
 static struct Device device = { 7 };
 struct Device* get_device(void) { return &device; }
 int read_device(struct Device* value) { return value->counter; }
