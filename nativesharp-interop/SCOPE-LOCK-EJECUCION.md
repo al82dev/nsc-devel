@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Arreglos escalares C empaquetados const y volatile
+
+T08-015/T08-016: conservar const y volatile de todos los niveles de arreglos
+escalares fijos C en el campo importado y su acceso, incluida alineación
+reducida. Mantener restringidos arreglos subalineados de punteros, records,
+enums y C++, y no alterar aliases generales. Presupuesto:
+CppSemanticRecord.cpp, fixture layout y registros Markdown. LLVM y NSLink
+protegidos; validación agrupada por tanda.
+
 ## Arreglos escalares C empaquetados
 
 T08-010/T08-012/T08-016: permitir arreglos fijos C subalineados solo si todos

@@ -22,6 +22,36 @@ namespace
 std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type, std::size_t projectOrdinal,
     std::string_view moduleName, const frontend::ProjectNameLookup* lookup)
 {
+    const CppType* scalar = &type;
+    std::vector<std::uint64_t> scalarDimensions;
+    bool readonly = false;
+    bool isVolatile = false;
+    while (scalar && scalar->kind == CppTypeKind::Array && scalarDimensions.size() < 64)
+    {
+        if (!scalar->arrayCount || *scalar->arrayCount == 0 || !scalar->element) return std::nullopt;
+        readonly |= scalar->isConst;
+        isVolatile |= scalar->isVolatile;
+        scalarDimensions.push_back(*scalar->arrayCount);
+        scalar = scalar->element.get();
+    }
+    if (!scalarDimensions.empty() && scalar && scalar->kind != CppTypeKind::Array &&
+        (scalar->kind == CppTypeKind::Boolean || scalar->kind == CppTypeKind::SignedInteger ||
+         scalar->kind == CppTypeKind::UnsignedInteger || scalar->kind == CppTypeKind::Floating))
+    {
+        readonly |= scalar->isConst;
+        isVolatile |= scalar->isVolatile;
+        CppType unqualified = *scalar;
+        unqualified.isConst = false;
+        unqualified.isVolatile = false;
+        auto mapped = mapCppScalarType(unqualified);
+        if (!mapped) return std::nullopt;
+        for (auto dimension = scalarDimensions.rbegin(); dimension != scalarDimensions.rend(); ++dimension)
+            mapped->nativeSharpTypeKey += "[" + std::to_string(*dimension) + "]";
+        mapped->canonicalCppType = type.canonicalSpelling;
+        mapped->isConst = readonly;
+        mapped->isVolatile = isVolatile;
+        return mapped;
+    }
     const auto array = frontend::cppAliasArrayType(type);
     std::string key;
     std::vector<std::uint64_t> dimensions;
@@ -90,11 +120,10 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     bool scalarArray = field.type.kind == CppTypeKind::Array;
     while (scalarArray && arrayElement && arrayElement->kind == CppTypeKind::Array)
     {
-        if (arrayElement->isConst || arrayElement->isVolatile || !arrayElement->arrayCount ||
-            *arrayElement->arrayCount == 0 || !arrayElement->element) scalarArray = false;
+        if (!arrayElement->arrayCount || *arrayElement->arrayCount == 0 || !arrayElement->element) scalarArray = false;
         else arrayElement = arrayElement->element.get();
     }
-    scalarArray = scalarArray && arrayElement && !arrayElement->isConst && !arrayElement->isVolatile &&
+    scalarArray = scalarArray && arrayElement &&
         (arrayElement->kind == CppTypeKind::Boolean || arrayElement->kind == CppTypeKind::SignedInteger ||
          arrayElement->kind == CppTypeKind::UnsignedInteger || arrayElement->kind == CppTypeKind::Floating);
     if (effectiveAlignment < naturalAlignment &&
