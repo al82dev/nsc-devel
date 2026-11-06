@@ -847,7 +847,8 @@ void ProjectMethodBodyModel::analyzeRawIndex(
         // Indexing selects the pointer, not the pointed-to object: preserve its
         // readonly contract while keeping the slot assignable.
         const bool qualifiedPointerElement = validFixedIndices && base.pointerPointeeReadonly &&
-            ProjectTypeConversion::isPointer(result.typeKey);
+            (ProjectTypeConversion::isPointer(result.typeKey) ||
+             ProjectMemberModel::fixedArrayElementTypeKey(result.typeKey).has_value());
         if (qualifiedPointerElement && formingAddressOperand_ && expression == formingAddressTarget_)
         {
             diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
