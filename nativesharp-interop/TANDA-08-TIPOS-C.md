@@ -1320,6 +1320,13 @@ los valores en ejecución y rechaza tomar la dirección. No se ha ejecutado.
 Los campos empaquetados C++ y los campos C de punteros, agregados y bitfields
 siguen pendientes, así como otras formas de acceso; no se cierra la tanda.
 
+## Validación dirigida de identidad de función C
+
+En la misma suite ejecutada sobre `710700a37`, pasaron los controles de
+retención de un USR conocido, rechazo de USR contradictorios para la misma
+función y conservación de alias con nombres diferentes. El resultado no cubre
+persistencia ni todas las declaraciones.
+
 ## Validación dirigida de identidad de global C
 
 Sobre `710700a37`, la suite de sesión se construyó incrementalmente con 23
