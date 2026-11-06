@@ -29,6 +29,11 @@ bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
 bool decodeCTypeCatalog(std::span<const std::uint8_t> bytes,
                         std::vector<CppCRecordSnapshot>& records,
                         std::vector<CppCEnumSnapshot>& enums, std::string& error);
+// Prepared versioned envelope; not used by NSMETA 1.42.
+bool encodeCTypeCatalogWithProvenance(std::span<const CppCRecordSnapshot> records,
+    std::span<const CppCEnumSnapshot> enums, std::vector<std::uint8_t>& output, std::string& error);
+bool decodeCTypeCatalogWithProvenance(std::span<const std::uint8_t> bytes,
+    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums, std::string& error);
 // Reconstructs declarations for a single producer module; fields and constants
 // are installed separately. Output remains unchanged on failure.
 bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,

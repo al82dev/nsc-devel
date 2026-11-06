@@ -6,6 +6,7 @@
 #include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
 
 #include <algorithm>
+#include <exception>
 #include <iterator>
 #include <limits>
 #include <map>
@@ -435,6 +436,77 @@ bool decodeCTypeCatalog(std::span<const std::uint8_t> bytes,
     if (!encodeCTypeCatalog(decodedRecords, decodedEnums, canonical, error) || canonical.size() != bytes.size() ||
         !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
     { if (error.empty()) error = "noncanonical C type catalogue"; return false; }
+    records = std::move(decodedRecords); enums = std::move(decodedEnums); error.clear(); return true;
+}
+
+bool encodeCTypeCatalogWithProvenance(std::span<const CppCRecordSnapshot> records,
+    std::span<const CppCEnumSnapshot> enums, std::vector<std::uint8_t>& output, std::string& error)
+{
+    std::vector<std::uint8_t> base;
+    if (!encodeCTypeCatalog(records, enums, base, error)) return false;
+    ByteWriter writer;
+    writer.u32(1);
+    writer.u64(static_cast<std::uint64_t>(base.size()));
+    writer.raw(base);
+    writer.u32(static_cast<std::uint32_t>(records.size()));
+    for (const auto& record : records)
+    {
+        writer.u8(record.sourceProvenance.has_value());
+        if (!record.sourceProvenance) continue;
+        const auto& source = *record.sourceProvenance;
+        std::string path;
+        try
+        {
+            const auto utf8 = source.sourcePath.generic_u8string();
+            path.assign(reinterpret_cast<const char*>(utf8.data()), utf8.size());
+        }
+        catch (const std::exception&) { error = "invalid C provenance path encoding"; return false; }
+        const auto validHex = [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); };
+        if (!record.complete || path.empty() || source.bufferSha256.size() != 64 ||
+            !std::all_of(source.bufferSha256.begin(), source.bufferSha256.end(), validHex) ||
+            !putText(writer, path) || !putText(writer, source.bufferSha256))
+        { error = "invalid C record source provenance"; return false; }
+        writer.u32(source.byteOffset);
+    }
+    output = writer.takeBytes(); error.clear(); return true;
+}
+
+bool decodeCTypeCatalogWithProvenance(std::span<const std::uint8_t> bytes,
+    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums, std::string& error)
+{
+    ByteReader reader(bytes);
+    std::uint32_t version = 0, count = 0;
+    std::uint64_t baseSize = 0;
+    if (!reader.u32(version) || version != 1 || !reader.u64(baseSize) || baseSize > reader.remaining())
+    { error = "invalid C provenance catalogue envelope"; return false; }
+    std::vector<std::uint8_t> base(static_cast<std::size_t>(baseSize));
+    std::vector<CppCRecordSnapshot> decodedRecords;
+    std::vector<CppCEnumSnapshot> decodedEnums;
+    if (!reader.raw(base) || !decodeCTypeCatalog(base, decodedRecords, decodedEnums, error)) return false;
+    if (!reader.u32(count) || count != decodedRecords.size())
+    { error = "C provenance record count mismatch"; return false; }
+    for (auto& record : decodedRecords)
+    {
+        bool present = false;
+        if (!getFlag(reader, present)) { error = "invalid C provenance flag"; return false; }
+        if (!present) continue;
+        std::string path, digest;
+        std::uint32_t offset = 0;
+        if (!reader.text(path) || !reader.text(digest) || !reader.u32(offset))
+        { error = "truncated C source provenance"; return false; }
+        try
+        {
+            const std::u8string utf8(reinterpret_cast<const char8_t*>(path.data()), path.size());
+            record.sourceProvenance = CppRecordDeclaration::SourceProvenance{
+                std::filesystem::path(utf8), std::move(digest), offset};
+        }
+        catch (const std::exception&) { error = "invalid C provenance path encoding"; return false; }
+    }
+    if (!reader.atEnd()) { error = "trailing C provenance data"; return false; }
+    std::vector<std::uint8_t> canonical;
+    if (!encodeCTypeCatalogWithProvenance(decodedRecords, decodedEnums, canonical, error) ||
+        canonical.size() != bytes.size() || !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
+    { if (error.empty()) error = "noncanonical C provenance catalogue"; return false; }
     records = std::move(decodedRecords); enums = std::move(decodedEnums); error.clear(); return true;
 }
 
