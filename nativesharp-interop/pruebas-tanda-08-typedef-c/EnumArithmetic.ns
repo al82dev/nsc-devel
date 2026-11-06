@@ -9,5 +9,9 @@ int Main()
     uint half = high / 2U;
     uint remainder = high % 2U;
     if (half != c_unsigned_half() || remainder != c_unsigned_remainder()) return 3;
+    uint top = high >> 31;
+    uint mask = high & 255U;
+    int negative = -color;
+    if (top != 1 || mask != 255 || negative != -2) return 4;
     return 0;
 }

@@ -2,6 +2,10 @@
 
 ## Typedef C en proyectos reales
 
+Ampliar el grupo de operaciones de enum C con desplazamiento, operador
+unario y máscara; comprobar resultado unsigned y mantener control de enum
+NativeSharp. Observar fallos antes de modificar esas rutas semánticas.
+
 La prueba de aritmética rechazó sumas con enum C signed y unsigned; el control
 de enum NativeSharp también se rechaza. Permitir el ajuste localizado de
 `src/Frontend/Bodies/OperatorExpressionAnalyzer.cpp` para usar el tipo
