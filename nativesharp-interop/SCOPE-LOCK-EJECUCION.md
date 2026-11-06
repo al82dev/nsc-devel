@@ -1,5 +1,18 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Campos C empaquetados de enums y arreglos de records o enums
+
+T08-009/T08-010/T08-012/T08-016: proyectar campos C subalineados que sean
+enums y arreglos fijos de enums o records completos, sin alterar la ruta C++.
+Conservar las comprobaciones de identidad, tamaño y alineación del proyector;
+respetar la alineación al acceder y evitar que escapen direcciones
+subalineadas. Esta entrada amplía las restricciones históricas de las entradas
+inferiores para estas formas concretas, sin borrarlas. Presupuesto:
+CppSemanticRecord.cpp, fixture layout, verificador de IR, tracking y registros
+Markdown. LLVM y NSLink protegidos; construcción incremental y validación
+agrupada. Volatile, tipos incompletos y demás formas no representadas siguen
+fuera de esta ampliación.
+
 ## Records C anidados subalineados
 
 T08-010/T08-012: proyectar campos record C completos y compatibles aunque
