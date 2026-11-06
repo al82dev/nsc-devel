@@ -1,0 +1,9 @@
+namespace PublishedRecordCallback
+{
+    public struct Bridge
+    {
+        public static RecordCallback Get() { return get_record_callback(); }
+        public static RecordCallbackHolder* GetHolder() { return get_record_callback_holder(); }
+        public static RecordCallback GetGlobal() { return record_callback_global; }
+    }
+}

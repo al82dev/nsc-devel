@@ -1,0 +1,12 @@
+int Main()
+{
+    CallbackPayload item;
+    item.value = 39;
+    RecordCallback callback = PublishedRecordCallback.Bridge.Get();
+    if (callback(&item) != 42) return 1;
+    RecordCallbackHolder* holder = PublishedRecordCallback.Bridge.GetHolder();
+    if (holder->run(&item) != 42) return 2;
+    RecordCallback global = PublishedRecordCallback.Bridge.GetGlobal();
+    if (global(&item) != 42) return 3;
+    return 0;
+}

@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CRecordCallbackConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="RecordConsumer.ns" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" />
+    <LibraryReference Include="CRecordCallbackProducer.lib" />
+  </ItemGroup>
+</Project>

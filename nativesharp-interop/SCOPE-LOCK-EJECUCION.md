@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Callback con record C en biblioteca precompilada
+
+T08-017: comprobar la publicación y el consumo de un callback C que recibe
+`CallbackPayload*` mediante una biblioteca NativeSharp precompilada, usando
+el fixture de callbacks y el mismo header C. Permitir nuevos proyectos,
+fuentes y script en `pruebas-tanda-08-callback`, tracking y bitácora; salidas
+en `A:/nsc-interop-build`. No cambiar producción o metadata sin reproducir el
+fallo y delimitar la causa. La prueba no cubre record por valor ni otras
+firmas o convenciones.
+
 ## Otras operaciones sobre punteros C incompletos
 
 T08-013/T08-019: reproducir por separado `+=`, incremento e índice de un
