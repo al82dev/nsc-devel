@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Opción volatile al seleccionar un global
+
+Conservar la opción efectiva en el candidato seleccionado solo si todas sus
+declaraciones y aliases coinciden y el valor está disponible; preservar ausencia
+ante discrepancia o desconocimiento. No alterar todavía emisión ni diagnósticos.
+Archivos: CppSemanticInventory.h/.cpp y documentación. Preparar pruebas y
+validar el conjunto de la tanda.
+
 ## Prueba de procedencia de volatile en globales
 
 Preparar comprobación de que los globales C y C++ conservan el valor de su

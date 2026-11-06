@@ -275,7 +275,15 @@ CppSemanticGlobalSelection selectCppSemanticGlobal(
             result.conflict = "incompatible C/C++ global symbol alias";
     if (result.conflict.empty() && result.unsupportedIndices.empty())
         if (const auto* candidate = std::get_if<CppSemanticGlobal>(&first.projection))
+        {
             result.candidate = *candidate;
+            auto option = first.microsoftVolatileSemantics;
+            for (const auto i : result.declarationIndices)
+                if (entries[i].microsoftVolatileSemantics != option) option = std::nullopt;
+            for (const auto i : result.aliasIndices)
+                if (entries[i].microsoftVolatileSemantics != option) option = std::nullopt;
+            result.candidate->microsoftVolatileSemantics = option;
+        }
     return result;
 }
 

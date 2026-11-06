@@ -1005,6 +1005,13 @@ semántico ni altera la selección o el IR. Falta comprobarlo en la batería.
 Se preparó la comparación entre las entradas C y C++ y sus respectivas sesiones
 de origen, sin fijar el valor a partir del triple. Aún no se ha ejecutado.
 
+## Opción volatile al seleccionar un global
+
+La selección conserva la opción de Clang en su candidato si todas las entradas
+del mismo nombre y símbolo coinciden. Si discrepan o alguna es desconocida, el
+resultado es desconocido: no se elige silenciosamente una sesión. Todavía no se
+genera orden atómico ni se ha validado esta etapa.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.
