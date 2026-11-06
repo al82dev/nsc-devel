@@ -478,6 +478,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     arreglos fijos de records empaquetados y controles de acceso, dirección e
     IR. No se han construido ni ejecutado estos cambios; el ítem sigue abierto.
 - [ ] T08-011. Importar la declaración y campos de una `union` C.
+  - Un caso dirigido de miembro escrito desde NativeSharp y byte superpuesto
+    leído desde C compiló, enlazó y ejecutó en O0. Faltan O1–O3 y otros
+    contratos. [Evidencia](registro-commits/prueba-union-c-superpuesta.md).
 - [ ] T08-012. Obtener de Clang tamaño, alineación y desplazamiento de cada campo.
 - [ ] T08-013. Representar tipos declarados pero incompletos sin inventar su tamaño.
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
