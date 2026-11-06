@@ -10,6 +10,7 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include <algorithm>
 #include <map>
+#include <numeric>
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
@@ -75,10 +76,20 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     const auto& field = record.fields[fieldIndex];
     if (!identity || field.name.empty() || field.access != CppAccess::Public || field.bitWidth ||
         !field.offsetBits || *field.offsetBits % 8 != 0 || !field.type.sizeBits || !field.type.alignmentBits ||
-        *field.type.alignmentBits == 0 || *record.alignmentBits % *field.type.alignmentBits != 0 ||
-        *field.offsetBits % *field.type.alignmentBits != 0 ||
+        *field.type.alignmentBits == 0 || *field.type.alignmentBits % 8 != 0 ||
+        *record.alignmentBits == 0 || *record.alignmentBits % 8 != 0 || *field.type.sizeBits % 8 != 0 ||
         *field.type.sizeBits == 0 || *field.offsetBits > *record.sizeBits ||
         *field.type.sizeBits > *record.sizeBits - *field.offsetBits) return std::nullopt;
+    const auto naturalAlignment = *field.type.alignmentBits / 8;
+    const auto recordAlignment = *record.alignmentBits / 8;
+    if ((naturalAlignment & (naturalAlignment - 1)) != 0 ||
+        (recordAlignment & (recordAlignment - 1)) != 0) return std::nullopt;
+    const auto effectiveAlignment = std::min(naturalAlignment,
+        std::gcd(recordAlignment, *field.offsetBits / 8));
+    if (effectiveAlignment < naturalAlignment &&
+        (record.isCxx || (field.type.kind != CppTypeKind::Boolean &&
+         field.type.kind != CppTypeKind::SignedInteger && field.type.kind != CppTypeKind::UnsignedInteger &&
+         field.type.kind != CppTypeKind::Floating))) return std::nullopt;
     auto mapped = mapCppScalarType(field.type);
     if (!mapped && !record.isCxx && field.type.kind == CppTypeKind::Array)
         mapped = projectCArrayField(field.type, projectOrdinal, moduleName, lookup);
@@ -126,7 +137,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     if (!mapped || field.type.kind == CppTypeKind::Void) return std::nullopt;
     return CppSemanticInstanceField{projectOrdinal, identity->key(), field.name,
                                     std::move(*mapped), *field.offsetBits / 8, pointeeReadonly,
-                                    *field.type.sizeBits / 8, *field.type.alignmentBits / 8};
+                                    *field.type.sizeBits / 8, effectiveAlignment};
 }
 
 frontend::CppImportedInstanceField toCppImportedInstanceField(const CppSemanticInstanceField& field)
