@@ -4211,3 +4211,11 @@ biblioteca C mediante LLD y comprueba el aislamiento por hilo. Presupuesto:
 `A:/nsc-interop-build`. El punto de entrada auxiliar es solo instrumento de
 prueba: no acredita todavía el arranque normal de NSC ni cierra la tanda.
 
+# TLS estático: arranque NativeSharp de referencia
+
+Ampliar la referencia LLD para usar el IR de runtime emitido por NSC y su
+punto `__nativesharp_start`, con un adaptador de nombre de Main como instrumento.
+Presupuesto: `pruebas-tanda-08-tls-c/lld`, tracking y registro Markdown.
+Construcción y salidas solo en A:; NSLink y la instalación de C: protegidos.
+La prueba no demuestra todavía que NSC integre el enlace LLD en su flujo normal.
+
