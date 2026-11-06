@@ -5,6 +5,7 @@
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 #include "nativesharp/Frontend/ProjectMetaprogrammingModel.h"
+#include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
@@ -393,6 +394,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::loadRawIndexAddress(
         frame.syntax,
         frame.core->resultTypeKey);
     value->volatileAccess = address->volatileAccess;
+    value->cppMicrosoftVolatileSemantics = address->cppMicrosoftVolatileSemantics;
+    value->cppAtomicAlignmentBytes = address->cppAtomicAlignmentBytes;
     value->children.push_back(std::move(address));
     return value;
 }
@@ -427,6 +430,20 @@ void ProjectOopHirModel::finishArrayRawIndex(
         address->volatileAccess = (frame.baseIsFixedArray && base && base->volatileAccess) ||
             (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray &&
              baseType && baseType->pointerPointeeVolatile);
+        if (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray &&
+            elementType == "builtin:int" && address->volatileAccess && base &&
+            base->kind == ProjectOopHirNodeKind::NamespaceStateValue && base->namespaceStateOrdinal &&
+            namespaceFunctionModel_ && *base->namespaceStateOrdinal < namespaceFunctionModel_->states().size())
+        {
+            const auto& state = namespaceFunctionModel_->states()[*base->namespaceStateOrdinal];
+            if (state.isCppExternal && state.cppCGlobal && state.declaredTypeKey == "builtin:int*" &&
+                state.cppPointerPointeeVolatile &&
+                state.cppMicrosoftVolatileSemantics == std::optional<bool>{true})
+            {
+                address->cppMicrosoftVolatileSemantics = true;
+                address->cppAtomicAlignmentBytes = 4;
+            }
+        }
         if (frame.baseIsFixedArray && base &&
             (base->kind == ProjectOopHirNodeKind::FieldAddress ||
              base->kind == ProjectOopHirNodeKind::RawElementAddress))
