@@ -1,0 +1,13 @@
+int Main()
+{
+    MoodCallbackHolder* holder = get_mood_callback_holder();
+    MoodCallback member = holder->callback;
+    MoodCallback global = shared_mood_callback;
+    if (read_mood(member(current_mood())) != -3) return 1;
+    if (read_mood(global(current_mood())) != -3) return 2;
+    MoodCallback replacement = (Mood value) => value;
+    holder->callback = replacement;
+    shared_mood_callback = replacement;
+    if (run_shared_mood_callback(current_mood()) != -3) return 3;
+    return 0;
+}

@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Callback C almacenado con enum en la firma
+
+T08-017: reproducir la importación de `MoodCallback`, que recibe y devuelve un
+enum C, desde un campo y un global. Usar el fixture de enum C existente,
+registrar evidencia en NSC y salidas en A:. No cambiar producción hasta
+reproducir la causa; no dar por resuelta la semántica de operaciones mixtas
+entre enum C y enteros, que es una cuestión separada.
+
 ## Dependencia de record solo en callback global C
 
 T08-017: comprobar la selección de un record C que aparece únicamente como

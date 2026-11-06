@@ -4,6 +4,11 @@ int read_const_volatile_mood(const volatile enum Mood* value) { return *value; }
 enum Mood current_mood(void) { return Sad; }
 int read_mood(enum Mood value) { return (int)value; }
 enum Mood apply_mood(MoodCallback callback, enum Mood value) { return callback(value); }
+static enum Mood echo_mood(enum Mood value) { return value; }
+static MoodCallbackHolder mood_callback_holder = { echo_mood };
+MoodCallback shared_mood_callback = echo_mood;
+MoodCallbackHolder* get_mood_callback_holder(void) { return &mood_callback_holder; }
+int run_shared_mood_callback(enum Mood value) { return (int)shared_mood_callback(value); }
 static struct MoodData data = { Happy, { Happy, Happy } };
 struct MoodData* get_mood_data(void) { return &data; }
 int read_mood_data(struct MoodData* value) { return (int)value->value + (int)value->values[1]; }
