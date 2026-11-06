@@ -6,6 +6,11 @@ Agregar un fixture independiente bajo `pruebas-tanda-08-bitfields-c` que
 contraste lectura y escritura de miembros de bits superpuestos con miembros
 enteros y bytes, con y sin signo, en O0–O3. Registrar resultado y alcance.
 No modificar producción hasta identificar el fallo y registrar su presupuesto.
+El fixture rechazó los miembros `first` y `delta` en O0. Permitir cambios en
+`src/Interop/Cpp/CppSemanticRecord.cpp` para proyectar campos de bits no
+volatile de union C dentro de su almacenamiento; conservar las comprobaciones
+de límites y las restricciones para struct y C++. Ejecutar el fixture junto a
+la prueba directa, metadata y regresiones existentes.
 
 ## Campos de bits C a través de biblioteca precompilada
 
