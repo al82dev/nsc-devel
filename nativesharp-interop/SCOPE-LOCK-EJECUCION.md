@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Unions y metadata de campos C volatile
+
+Ampliar el fixture `pruebas-tanda-08-bitfields-c` para cubrir unions con
+campos volatile superpuestos y bibliotecas precompiladas que publican structs
+y unions de este tipo. Verificar ejecución O0–O3 y comparar el IR de funciones
+equivalentes de Clang y NSC. No modificar producción sin una falla demostrada
+y un alcance adicional registrado; conservar resultados en el tracking.
+
 ## Análisis de campos de bits C volatile
 
 Preparar un fixture independiente en `pruebas-tanda-08-bitfields-c` para
