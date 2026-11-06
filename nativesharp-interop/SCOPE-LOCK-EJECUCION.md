@@ -76,6 +76,10 @@ Preparar el proveedor de catálogo para capturar enums de firmas y dependencias
 de campos, ahora que existen el codec y la reconstrucción por separado. Presupuesto:
 CppSemanticRecord.cpp y controles de sesión; conservar el proveedor sin instalar,
 el formato 1.42 deshabilitado y rechazar las definiciones ausentes o conflictivas.
+Preparar proveedores combinados para campos y valores provenientes de sesiones
+y de catálogos precompilados: filtrar enumeradores por demanda y visibilidad,
+detectar colisiones y preservar las salidas si falla la reconstrucción. Presupuesto:
+CppSemanticRecord.h/.cpp y controles de sesión. No conectarlos aún al driver.
 Transportar los bytes verificados del catálogo desde la superficie de metadata
 hasta PrecompiledSyntaxModule; presupuesto adicional: PrecompiledSyntaxModule.h,
 PrecompiledProjectPreparation.cpp y controles existentes. No habilitar 1.42
