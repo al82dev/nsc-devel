@@ -415,6 +415,7 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
         {
             const auto& prior = where->second->declaration;
             bool same = where->second->targetTriple == entry.targetTriple &&
+                (!prior.clangUsr || !value.clangUsr || prior.clangUsr == value.clangUsr) &&
                 prior.sizeBits == value.sizeBits && prior.alignmentBits == value.alignmentBits &&
                 prior.underlyingType && prior.underlyingType->canonicalSpelling == value.underlyingType->canonicalSpelling &&
                 prior.enumerators.size() == value.enumerators.size();
@@ -439,6 +440,7 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
             frontend::NamedTypeAccessibility::Public, key.first, value.location->file.generic_string()};
         type.objectLayout = frontend::CppImportedObjectLayout{*value.sizeBits / 8, *value.alignmentBits / 8};
         type.enumBase = frontend::CppImportedEnumBase{base->token, std::string(base->name)};
+        type.clangUsr = value.clangUsr;
         if (conflicts.contains(key)) type.deferredImportError = "conflicting C enum declarations: " + value.name;
         result.push_back(std::move(type));
     }
@@ -745,6 +747,9 @@ CppSignatureEnumResult collectCppSignatureEnumDependencies(
                 const auto found = candidates.find({function.projectOrdinal, identity.key()});
                 if (found == candidates.end())
                     result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Missing, std::nullopt});
+                else if (type->enumIdentity->clangUsr && enumCandidates[found->second].clangUsr &&
+                         type->enumIdentity->clangUsr != enumCandidates[found->second].clangUsr)
+                    result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Unprojectable, std::nullopt});
                 else
                     result.push_back({functionIndex, parameter, depth, CppSignatureEnumStatus::Matched, found->second});
             }

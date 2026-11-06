@@ -22,6 +22,8 @@ inline std::optional<CppScalarTypeMapping> projectCppSemanticEnumType(
     const auto ordinal = lookup->typeOrdinalForIdentity(identity.key());
     const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
     if (!imported || imported->projectOrdinal != projectOrdinal || !imported->enumBase ||
+        (type.enumIdentity && type.enumIdentity->clangUsr && imported->clangUsr &&
+         type.enumIdentity->clangUsr != imported->clangUsr) ||
         !imported->deferredImportError.empty() || imported->enumBase->token != enumeration->base.token ||
         !imported->objectLayout || !type.sizeBits || *type.sizeBits % 8 ||
         *type.sizeBits / 8 != imported->objectLayout->sizeBytes || !type.alignmentBits ||

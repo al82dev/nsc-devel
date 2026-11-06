@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Identidad de enum al resolver firmas C
+
+T08-002/T08-009: el proveedor y el vínculo de firmas C seleccionan enums por
+nombre y representación; ahora que Clang aporta USR, conservarlo en el tipo
+importado y evitar asociar una firma con otro USR conocido. Conservar las
+comprobaciones de representación y el comportamiento cuando falta algún USR.
+Archivos: ProjectNameLookup.h, CppSemanticInventory.cpp, CppSemanticEnumType.h,
+CppClangSessionTests.cpp y registros Markdown. No presentar USR igual como
+prueba de ABI. Las pruebas se agrupan con la tanda.
+
 ## Inicializador de prueba de identidad referida
 
 La compilación de `92d212d3e` advirtió que el fixture sintético de
