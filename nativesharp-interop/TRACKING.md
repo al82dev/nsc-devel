@@ -190,6 +190,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Preparados `0cd9159d5`, `0e15a9d9e`, `3d0ccfb7b` y `caa3f7f89`:
+    reconciliación de declaraciones adelantadas de enum y captura de enums
+    usados por firmas o campos en el proveedor, con controles. Sin construir
+    ni ejecutar; el proveedor no está instalado y 1.42 sigue deshabilitado.
   - Preparados `aa79163fd` y `393008d20`: selector combinado y control de
     sesiones activas. Sin conectar ni ejecutar; la reconciliación de una misma
     identidad entre sesión y biblioteca sigue pendiente.
