@@ -216,6 +216,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - Preparado en `ac71663a7` y `1454f719f`: propagación de alineación por
     campos anidados y caso MIR que distingue valores puntero. Sin ejecutar;
     los records anidados subalineados aún no se proyectan.
+  - Actualización: `fb1796115`, `6670efd01` y `2627824b6` habilitan y
+    prueban el record C anidado empaquetado. El fixture de layout pasó en
+    O0–O3, con IR O0 y rechazo de dirección; la suite interna de sesión pasó.
+    Se revisan arreglos dentro de records subalineados. La tanda sigue abierta.
 - [ ] T08-011. Importar la declaración y campos de una `union` C.
 - [ ] T08-012. Obtener de Clang tamaño, alineación y desplazamiento de cada campo.
 - [ ] T08-013. Representar tipos declarados pero incompletos sin inventar su tamaño.

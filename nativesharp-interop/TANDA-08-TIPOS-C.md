@@ -1328,6 +1328,19 @@ preparada en `1454f719f` distingue una dirección subalineada de un puntero
 cargado. Todavía no se ejecutó y el proyector no habilita records anidados
 subalineados; faltan las pruebas y la protección de direcciones.
 
+### Actualización: validación dirigida de records C anidados
+
+`fb1796115` protege la dirección de campos anidados subalineados;
+`6670efd01` habilita su proyección C y `2627824b6` añade el fixture.
+La construcción incremental de `nsc` y el fixture de layout terminaron con
+código 0: compara tamaño y desplazamiento con C, ejecuta lecturas y escrituras
+en O0, O1, O2 y O3, verifica `align 1` en IR O0 y rechaza una dirección
+subalineada. La construcción incremental de `nsc_cpp_session_tests` produjo
+el ejecutable y su ejecución terminó con código 0, incluido el control de
+alineación anidada y puntero cargado. Esto no constituye la validación completa
+de la tanda. Se debe revisar el escape de dirección de arreglos dentro del
+record subalineado antes de afirmar cobertura de ese caso.
+
 ## Validación dirigida de arreglos empaquetados calificados y de punteros
 
 En `a0dc6fc71`, la construcción incremental de NSC terminó con código 0 y
