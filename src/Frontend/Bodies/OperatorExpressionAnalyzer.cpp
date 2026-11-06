@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "nativesharp/Frontend/CppImportedEnumNumeric.h"
 #include "Support/OwnershipArgumentClassification.h"
 #include "Support/OperatorClassification.h"
 #include "Support/IntegralConstantArithmetic.h"
@@ -664,7 +665,12 @@ bool ProjectMethodBodyModel::analyzeBinaryComparison(
     const bool referenceCompatible =
         classifyImplicit(left.typeKey, right.typeKey, left.integerConstant).exists() ||
         classifyImplicit(right.typeKey, left.typeKey, right.integerConstant).exists();
-    const bool compatible = left.typeKey == right.typeKey ||
+    const auto leftEnum = cppImportedCEnumUnderlying(nameLookup_, left.typeKey);
+    const auto rightEnum = cppImportedCEnumUnderlying(nameLookup_, right.typeKey);
+    const bool compatibleCEnum = (leftEnum || rightEnum) && ProjectTypeConversion::commonNumericType(
+        leftEnum.value_or(left.typeKey), rightEnum.value_or(right.typeKey),
+        left.integerConstant, right.integerConstant).has_value();
+    const bool compatible = left.typeKey == right.typeKey || compatibleCEnum ||
         ProjectTypeConversion::commonNumericType(
             left.typeKey, right.typeKey,
             left.integerConstant, right.integerConstant).has_value() || referenceCompatible;

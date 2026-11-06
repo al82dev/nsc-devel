@@ -7,6 +7,7 @@
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 #include "nativesharp/Frontend/ProjectMetaprogrammingModel.h"
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
+#include "nativesharp/Frontend/CppImportedEnumNumeric.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/Language/ExpressionErgonomics.h"
@@ -534,6 +535,16 @@ std::optional<std::string> ProjectOopHirModel::numericBinaryOperandType(
     const std::string& resultType) const
 {
     if (ProjectTypeConversion::isNumeric(resultType)) return resultType;
+    const auto leftEnum = cppImportedCEnumUnderlying(nameLookup_, left.typeKey);
+    const auto rightEnum = cppImportedCEnumUnderlying(nameLookup_, right.typeKey);
+    if (isComparison(expression->tokenKind()) && left.typeKey != right.typeKey && (leftEnum || rightEnum))
+    {
+        const auto* leftBinding = expressionType(expression->first());
+        const auto* rightBinding = expressionType(expression->second());
+        return ProjectTypeConversion::commonNumericType(leftEnum.value_or(left.typeKey),
+            rightEnum.value_or(right.typeKey), leftBinding ? leftBinding->integerConstant : std::nullopt,
+            rightBinding ? rightBinding->integerConstant : std::nullopt);
+    }
     if (!isComparison(expression->tokenKind()) ||
         !ProjectTypeConversion::isNumeric(left.typeKey) ||
         !ProjectTypeConversion::isNumeric(right.typeKey))
@@ -555,11 +566,17 @@ void ProjectOopHirModel::convertNumericBinaryOperands(
 {
     const MethodExpressionTypeBinding* leftType = expressionType(expression->first());
     const MethodExpressionTypeBinding* rightType = expressionType(expression->second());
-    const ProjectImplicitConversion leftConversion = ProjectTypeConversion::classifyImplicit(
+    const auto leftEnum = cppImportedCEnumUnderlying(nameLookup_, left->typeKey);
+    const auto rightEnum = cppImportedCEnumUnderlying(nameLookup_, right->typeKey);
+    const ProjectImplicitConversion leftConversion = leftEnum ?
+        ProjectImplicitConversion{ProjectConversionKind::IntegralPromotion, 1, left->typeKey, numericOperandType, std::nullopt} :
+        ProjectTypeConversion::classifyImplicit(
         left->typeKey,
         numericOperandType,
         leftType != nullptr ? leftType->integerConstant : std::nullopt);
-    const ProjectImplicitConversion rightConversion = ProjectTypeConversion::classifyImplicit(
+    const ProjectImplicitConversion rightConversion = rightEnum ?
+        ProjectImplicitConversion{ProjectConversionKind::IntegralPromotion, 1, right->typeKey, numericOperandType, std::nullopt} :
+        ProjectTypeConversion::classifyImplicit(
         right->typeKey,
         numericOperandType,
         rightType != nullptr ? rightType->integerConstant : std::nullopt);
