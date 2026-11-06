@@ -2,6 +2,12 @@
 
 ## Typedef C en proyectos reales
 
+La prueba de aritmética rechazó sumas con enum C signed y unsigned; el control
+de enum NativeSharp también se rechaza. Permitir el ajuste localizado de
+`src/Frontend/Bodies/OperatorExpressionAnalyzer.cpp` para usar el tipo
+subyacente solo de enums C importados, preservando las reglas de enum NS.
+Comprobar lowering, signo y resultado frente a C.
+
 Preparar comprobación de operaciones aritméticas sobre enums C importados,
 comparando el resultado unsigned con una función C y manteniendo un control
 para enum NativeSharp. Registrar fallos antes de modificar producción.

@@ -853,8 +853,11 @@ bool ProjectMethodBodyModel::analyzeArithmeticBinary(
     diagnostics::DiagnosticEngine& diagnostics) const
 {
     if (!isArithmetic(operation)) return false;
+    const auto leftEnum = cppImportedCEnumUnderlying(nameLookup_, left.typeKey);
+    const auto rightEnum = cppImportedCEnumUnderlying(nameLookup_, right.typeKey);
     const std::optional<std::string> common = ProjectTypeConversion::commonNumericType(
-        left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
+        leftEnum.value_or(left.typeKey), rightEnum.value_or(right.typeKey),
+        left.integerConstant, right.integerConstant);
     if (!common.has_value())
     {
         diagnostics.report(
