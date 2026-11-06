@@ -7,6 +7,10 @@ typedefs C escalares, cadena de alias, arreglos de dimensiones fijas, enum,
 struct y callback en un proyecto NativeSharp enlazado con una biblioteca C.
 Probar O0–O3 y registrar las barreras sin modificar producción hasta
 identificar la causa. Salidas únicamente en `A:/nsc-interop-build/tanda08-typedef-c`.
+La primera ejecución no importó `c_matrix_sum` con parámetro puntero a matriz;
+conservar ese hallazgo y cambiar el fixture principal para pasar dos elementos
+escalares, de forma que se puedan observar también los demás alias. El
+puntero a matriz permanece como contrato pendiente, no se considera resuelto.
 
 ## Arreglos globales C de punteros constantes
 
