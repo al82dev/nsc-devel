@@ -601,6 +601,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     el arreglo y la matriz de records empaquetados, con comprobación de IR O0
     y rechazo de direcciones subalineadas. T08-016 sigue abierto.
 - [ ] T08-017. Definir la representación de punteros a función C.
+  - Escrituras a campo y global de callback e invocación desde C pasaron
+    O0–O3; escrituras a sus variantes const se rechazaron en O0.
+    [Detalle](registro-commits/callback-c-escritura-const.md).
   - Tras el mapeo de campo/global y el ajuste de layout, los callbacks
     `int(int)` almacenados en ambos lugares pasaron O0–O3 junto con el caso
     retornado. [Evidencia](registro-commits/callback-c-campo-global.md).
