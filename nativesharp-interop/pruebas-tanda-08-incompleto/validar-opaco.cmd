@@ -9,7 +9,7 @@ set "TEMP=%DEST%"
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
 set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
-for %%F in (OpaqueApi.h OpaqueApi.c OpaqueConsumer.ns OpaqueConsumer.nsproj OpaqueInvalid.ns OpaqueInvalid.nsproj) do (
+for %%F in (OpaqueApi.h OpaqueApi.c OpaqueConsumer.ns OpaqueConsumer.nsproj OpaqueInvalid.ns OpaqueInvalid.nsproj OpaqueUnionInvalid.ns OpaqueUnionInvalid.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -29,4 +29,9 @@ if not errorlevel 1 (echo Objeto incompleto por valor aceptado. & exit /b 1)
 findstr /i /c:"C object local 'value' cannot be created by value because its type is incomplete" "%DEST%\invalid.log" >nul
 if errorlevel 1 (echo Falta diagnostico de objeto incompleto. & exit /b 1)
 echo Objeto por valor rechazado por tipo incompleto.
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\OpaqueUnionInvalid.nsproj" -O0 --no-artifact-cache -o "%DEST%\invalid-union.exe" > "%DEST%\invalid-union.log" 2>&1
+if not errorlevel 1 (echo Union incompleta por valor aceptada. & exit /b 1)
+findstr /i /c:"C object local 'value' cannot be created by value because its type is incomplete" "%DEST%\invalid-union.log" >nul
+if errorlevel 1 (echo Falta diagnostico especifico de union incompleta. & exit /b 1)
+echo Union por valor rechazada por tipo incompleto.
 exit /b 0

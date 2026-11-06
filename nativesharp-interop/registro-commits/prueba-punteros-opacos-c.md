@@ -19,3 +19,7 @@ queda pendiente repetir el script ajustado.
 
 El script ajustado pasó en la repetición con el mismo build y comprobó el
 mensaje exacto de la limitación de lifetime. La tanda sigue abierta.
+
+Se amplía el fixture con un global `Opaque**` y punteros a una union C cuya
+definición también es privada, más un control negativo de union por valor.
+La matriz ampliada aún no se ha ejecutado.

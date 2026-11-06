@@ -16,6 +16,10 @@ declaración C es incompleta. Permitir una comprobación localizada en
 el motivo real antes de la barrera de lifetime, únicamente para structs y
 unions C incompletos. Preservar el rechazo anterior de tipos completos y
 verificar el diagnóstico concreto y las regresiones existentes.
+Extender el mismo fixture con un global C `Opaque**` y una `union` opaca,
+incluidos retorno, argumento, global y rechazo de local por valor. La
+definición de la union permanece privada en el archivo C. Registrar resultados
+por separado; no modificar producción antes de demostrar una falla.
 La prueba positiva reproduce el rechazo del global `Opaque*` en O0. Las
 firmas de funciones aceptan el puntero, pero `mapGlobalType` exige layout al
 recorrer su objeto apuntado. Permitir `src/Interop/Cpp/CppSemanticInventory.cpp`

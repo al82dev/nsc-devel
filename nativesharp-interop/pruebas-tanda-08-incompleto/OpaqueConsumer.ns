@@ -5,5 +5,12 @@ int Main()
     opaque_set(value, 42);
     if (opaque_read(opaque_current) != 42) return 2;
     opaque_current = value;
+    Opaque** slot = opaque_slot;
+    if (opaque_read(*slot) != 42) return 3;
+    OpaqueUnion* other = union_get();
+    if (union_read(other) != 8 || union_read(union_current) != 8) return 4;
+    union_set(other, 31);
+    if (union_read(union_current) != 31) return 5;
+    union_current = other;
     return 0;
 }
