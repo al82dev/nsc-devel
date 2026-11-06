@@ -14,6 +14,8 @@ punteros constantes. Permitir un cambio localizado en
 como readonly del arreglo, sin alterar el calificador del dato apuntado y sin
 habilitar volatile ni calificadores anidados no representados. Comprobar las
 operaciones y escapes antes de declarar soportada esta forma.
+Agregar un control que intente pasar el arreglo de slots constantes a una
+función C que recibe `int**`; debe rechazarse, ya que podría reasignarlos.
 
 ## Pruebas independientes de metadata histórica C
 

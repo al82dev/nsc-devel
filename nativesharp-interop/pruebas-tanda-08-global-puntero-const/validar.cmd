@@ -9,7 +9,7 @@ set "TEMP=%DEST%"
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
 set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
-for %%F in (Api.h Api.c Project.nsproj Main.ns Invalid.nsproj Invalid.ns InvalidEscape.nsproj InvalidEscape.ns InvalidAddress.nsproj InvalidAddress.ns InvalidInferred.nsproj InvalidInferred.ns InvalidArgument.nsproj InvalidArgument.ns InvalidMatrix.nsproj InvalidMatrix.ns InvalidMatrixEscape.nsproj InvalidMatrixEscape.ns InvalidMatrixAddress.nsproj InvalidMatrixAddress.ns InvalidMatrixRowAddress.nsproj InvalidMatrixRowAddress.ns InvalidMatrixRowArgument.nsproj InvalidMatrixRowArgument.ns InvalidFixed.nsproj InvalidFixed.ns InvalidFixedAddress.nsproj InvalidFixedAddress.ns) do (
+for %%F in (Api.h Api.c Project.nsproj Main.ns Invalid.nsproj Invalid.ns InvalidEscape.nsproj InvalidEscape.ns InvalidAddress.nsproj InvalidAddress.ns InvalidInferred.nsproj InvalidInferred.ns InvalidArgument.nsproj InvalidArgument.ns InvalidMatrix.nsproj InvalidMatrix.ns InvalidMatrixEscape.nsproj InvalidMatrixEscape.ns InvalidMatrixAddress.nsproj InvalidMatrixAddress.ns InvalidMatrixRowAddress.nsproj InvalidMatrixRowAddress.ns InvalidMatrixRowArgument.nsproj InvalidMatrixRowArgument.ns InvalidFixed.nsproj InvalidFixed.ns InvalidFixedAddress.nsproj InvalidFixedAddress.ns InvalidFixedArgument.nsproj InvalidFixedArgument.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -78,4 +78,9 @@ if not errorlevel 1 (echo Se acepto escapar la direccion de un puntero constante
 findstr /i /c:"readonly" /c:"const" "%DEST%\InvalidFixedAddress.log" >nul
 if errorlevel 1 (echo El rechazo de direccion no identifica el calificador. & exit /b 1)
 echo Reasignacion y escape del slot constante rechazados.
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidFixedArgument.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidFixedArgument.exe" > "%DEST%\InvalidFixedArgument.log" 2>&1
+if not errorlevel 1 (echo Se acepto el arreglo de slots constantes como argumento mutable. & exit /b 1)
+findstr /i /c:"no viable overload" /c:"const" /c:"readonly" "%DEST%\InvalidFixedArgument.log" >nul
+if errorlevel 1 (echo El rechazo del argumento no identifica el contrato. & exit /b 1)
+echo Argumento mutable de slots constantes rechazado.
 exit /b 0

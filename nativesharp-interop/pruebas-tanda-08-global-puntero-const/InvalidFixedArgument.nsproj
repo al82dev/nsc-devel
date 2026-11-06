@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CGlobalFixedPointerArgumentInvalid</Name></PropertyGroup>
+  <ItemGroup><Compile Include="InvalidFixedArgument.ns" /><CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" /></ItemGroup>
+</Project>
