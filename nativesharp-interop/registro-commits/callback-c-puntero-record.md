@@ -35,7 +35,8 @@ se ha construido ni validado; no cierra T08-017.
 
 Se prepararon además controles de sesión Clang para el mismo mapeador con
 lookup real: identidad válida, ausencia de contexto, propietario incorrecto y
-USR diferente. Son pruebas pendientes de construcción y ejecución.
+USR diferente. La construcción incremental terminó y
+`nsc.cpp-interop.session` pasó 1/1 con esos controles.
 
 La introducción del lookup no habilita indirectamente callbacks con enums:
 esas firmas requieren su propio tratamiento y comprobación. Se mantiene el
@@ -50,3 +51,11 @@ Con el compilador anterior, esta variante también se rechazó: `holder->run`
 no encuentra el campo compatible y `record_callback_global` conserva el
 diagnóstico de tipo no mapeado. Por ello el fallo reproducido no depende de la
 forma de invocación directa.
+
+## Validación de ejecución
+
+Con NSC build `3f82235fd35e7b9a`, el script de callbacks terminó con código 0.
+El caso retornado y los callbacks en campo y global, con acceso mediante
+local y llamada directa, se compilaron, enlazaron y ejecutaron en O0–O3. El
+resultado corresponde a la firma `int(CallbackPayload*)` de este fixture, no
+a todas las firmas de callbacks ni a su metadata precompilada.

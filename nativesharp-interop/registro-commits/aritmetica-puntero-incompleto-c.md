@@ -23,3 +23,10 @@ tras reproducir en cada caso un fallo de layout durante el descenso. El script
 exige los diagnósticos semánticos de las tres rutas y ejecuta el control
 `Opaque**` con aritmética, incremento e índice en O0–O3. Las correcciones y
 controles están preparados, todavía no construidos ni validados.
+
+Con NSC build `3f82235fd35e7b9a`, `validar-opaco.cmd` terminó con código 0.
+El control de `Opaque**` se ejecutó en O0–O3 y los casos negativos de `+`,
+`-`, `+=`, incremento e índice recibieron el diagnóstico semántico preparado.
+Los usos opacos, incluidos los de biblioteca precompilada, también pasaron los
+casos existentes del script. La prueba no cubre todas las operaciones ni
+cierra T08-013 o T08-019.

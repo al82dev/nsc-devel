@@ -779,8 +779,8 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     el arreglo y la matriz de records empaquetados, con comprobación de IR O0
     y rechazo de direcciones subalineadas. T08-016 sigue abierto.
 - [ ] T08-017. Definir la representación de punteros a función C.
-  - La llamada directa a callback escalar en campo y global generó IR con llamadas indirectas; ejecución O0–O3 preparada, aún pendiente. [Detalle](registro-commits/callback-c-invocacion-directa.md).
-  - Preparada la proyección contextual de callback almacenado con puntero a record C, tras reproducir el rechazo en campo y global. La matriz O0–O3 está preparada y pendiente de validación. [Detalle](registro-commits/callback-c-puntero-record.md).
+  - La llamada directa a callback escalar en campo y global pasó O0–O3. [Detalle](registro-commits/callback-c-invocacion-directa.md).
+  - El callback almacenado con puntero a record C pasó O0–O3 para retorno, campo y global; la prueba de sesión pasó con controles de identidad. [Detalle](registro-commits/callback-c-puntero-record.md).
   - La lectura y escritura de callback volatile en global y campo pasaron
     O0–O3; el IR conserva acquire/release para alineación 8 y volatile
     ordinario para `pack(1)`, como Clang. [Detalle](registro-commits/ir-callback-volatile.md).
@@ -811,10 +811,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     vuelta a C compiló y ejecutó O0–O3. No cubre todas las firmas ni
     convenciones. [Evidencia](registro-commits/callback-c-retornado.md).
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.
-  - Preparado un caso real de sombra local de global y enumerador C, con comprobación de resolución después del bloque y del valor de C. Pendiente de ejecutar en la batería agrupada. [Detalle](registro-commits/sombra-local-valores-c.md).
+  - Un caso real de sombra local de global y enumerador C pasó O0, con comprobación de resolución después del bloque y del valor de C. [Detalle](registro-commits/sombra-local-valores-c.md).
 - [ ] T08-019. Presentar diagnósticos útiles al usar una declaración incompleta de forma inválida.
-  - Preparados diagnósticos para `+=`, incremento e índice sobre punteros a records C incompletos y control de puntero a puntero; pendientes de validación agrupada. [Detalle](registro-commits/aritmetica-puntero-incompleto-c.md).
-  - Preparado un diagnóstico semántico para aritmética `+`/`-` sobre punteros a structs y unions C incompletos, con control de `Opaque**`; construcción y validación pendientes. [Detalle](registro-commits/aritmetica-puntero-incompleto-c.md).
+  - Los diagnósticos para `+`, `-`, `+=`, incremento e índice sobre records C incompletos pasaron sus casos negativos; el control `Opaque**` pasó O0–O3. [Detalle](registro-commits/aritmetica-puntero-incompleto-c.md).
   - El local C incompleto por valor produce un diagnóstico específico; la
     prueba anterior de `sizeof` también pasó. Faltan otras operaciones y
     combinaciones. [Evidencia](registro-commits/diagnostico-local-incompleto-c.md).

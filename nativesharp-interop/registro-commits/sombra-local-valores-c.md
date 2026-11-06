@@ -7,5 +7,6 @@ función C. Al salir del bloque accede a los nombres C, para detectar tanto una
 resolución local incorrecta como una sombra que escape de su ámbito.
 
 El caso quedó incluido en `validar-sombras.cmd` para la validación agrupada.
-Está preparado, no ejecutado; su presencia no demuestra todavía que el
-compilador resuelva el caso ni cierra T08-018.
+Con NSC build `3f82235fd35e7b9a`, `validar-sombras.cmd` terminó con código 0
+y ejecutó el caso junto con las otras sombras preparadas en O0. Esto no cubre
+todas las colisiones ni cierra T08-018.

@@ -12,3 +12,8 @@ indirecta, ambas con argumento 39. Esto no demuestra la ejecución: se agregó e
 caso a `validar.cmd` para compilarlo, enlazarlo y ejecutarlo en O0–O3 junto con
 el resto del grupo. El fixture de callback con puntero a record incluye ahora
 también las llamadas directas, pendientes de construcción y validación.
+
+Actualización: con NSC build `3f82235fd35e7b9a`, `validar.cmd` terminó con
+código 0 y ejecutó la llamada directa escalar en O0–O3. También ejecutó el
+caso directo de firma con puntero a record. Son casos dirigidos; no cierran
+T08-017.
