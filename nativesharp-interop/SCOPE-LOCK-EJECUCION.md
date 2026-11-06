@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Cierre de dependencias de campos por USR
+
+T08-002/T08-010: al recorrer dependencias transitivas de campos C, no resolver
+un record o enum por nombre si ambos USR son conocidos y difieren, incluso si
+el tipo ya fue seleccionado. Conservar controles de layout y conflictos y la
+ruta existente con USR ausente. Archivos: CppSemanticRecord.cpp,
+CppClangSessionTests.cpp y registros Markdown. Validación agrupada por tanda.
+
 ## USR de record en proyección de firmas sin lookup
 
 T08-002/T08-003: la proyección aislada de funciones y métodos conserva solo

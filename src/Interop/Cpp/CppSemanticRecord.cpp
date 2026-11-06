@@ -1129,11 +1129,24 @@ bool selectExperimentalCppRecordTypesForCompilation(
                     element = element->element.get();
                 if (!element || element->kind != CppTypeKind::Record) continue;
                 const auto identity = projectCppRecordTypeIdentity(*element, group.identity.moduleName());
-                if (!identity || selectedIdentities.contains(identity->key())) continue;
+                if (!identity) continue;
+                if (selectedIdentities.contains(identity->key()))
+                {
+                    const auto selected = std::find_if(output.begin(), output.end(), [&](const auto& item) {
+                        return item.projectOrdinal == group.projectOrdinal && item.identity.key() == identity->key();
+                    });
+                    if (selected != output.end() && element->recordIdentity && element->recordIdentity->clangUsr &&
+                        selected->clangUsr && element->recordIdentity->clangUsr != selected->clangUsr)
+                    { error = "C field record dependency has a different Clang USR: " + identity->key(); return false; }
+                    continue;
+                }
                 const auto target = std::find_if(candidates.types.begin(), candidates.types.end(), [&](const auto& item) {
                     return item.projectOrdinal == group.projectOrdinal && item.identity.key() == identity->key();
                 });
                 if (target == candidates.types.end()) { error = "C field record dependency is unavailable: " + identity->key(); return false; }
+                if (element->recordIdentity && element->recordIdentity->clangUsr && target->clangUsr &&
+                    element->recordIdentity->clangUsr != target->clangUsr)
+                { error = "C field record dependency has a different Clang USR: " + identity->key(); return false; }
                 const auto index = static_cast<std::size_t>(target - candidates.types.begin());
                 const auto groupIndex = candidates.groupByImportedType[index];
                 const auto status = observation.groups.groups[groupIndex].status;
@@ -1172,6 +1185,8 @@ bool selectExperimentalCppRecordTypesForCompilation(
                 return item.projectOrdinal == group.projectOrdinal && item.identity.key() == identity.key();
             });
             if (candidate == enumCandidates.end()) continue;
+            if (type->enumIdentity->clangUsr && candidate->clangUsr && type->enumIdentity->clangUsr != candidate->clangUsr)
+            { error = "C enum field dependency has a different Clang USR: " + candidate->identity.name(); return false; }
             if (!candidate->deferredImportError.empty()) { error = candidate->deferredImportError; return false; }
             if (std::find(observation.collidingEnumIdentities.begin(), observation.collidingEnumIdentities.end(),
                           candidate->identity.key()) != observation.collidingEnumIdentities.end())
