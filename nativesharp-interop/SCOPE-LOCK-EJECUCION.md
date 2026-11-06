@@ -124,6 +124,9 @@ StatementAnalyzer.cpp, controles existentes y fixture de metadata C.
 En OopLlvmStatements.cpp usar la inicialización de valor ordinaria para locales
 struct/union C con layout validado; conservar construcción in situ para C++ y
 el rechazo de tipos incompletos. Verificarlo con el fixture directo e indirecto.
+Agregar al fixture de metadata un proyecto C directo que use `var` y llamadas
+con retorno y parámetro record sin escribir los nombres de esos tipos en NS;
+ejecutarlo en O0–O3 con los demás casos para comprobar inferencia y selección.
 Transportar los bytes verificados del catálogo desde la superficie de metadata
 hasta PrecompiledSyntaxModule; presupuesto adicional: PrecompiledSyntaxModule.h,
 PrecompiledProjectPreparation.cpp y controles existentes. No habilitar 1.42
