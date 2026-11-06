@@ -3058,6 +3058,48 @@ int main(int argc, char** argv)
                                  std::holds_alternative<CppCRecordSnapshotFailure>(
                                      captureCppCRecordSnapshot(entries, conflictingGroups.groups.front())),
                                  "C record snapshot rejects conflicting observations");
+                    std::vector<CppSemanticRecordEntry> nestedEntries{{{}, 0, 0, "x86_64-pc-windows-msvc", *pair, identity}};
+                    nestedEntries.push_back(nestedEntries.front());
+                    for (std::size_t i = 0; i < nestedEntries.size(); ++i)
+                    {
+                        auto& field = nestedEntries[i].declaration.fields.front();
+                        field.type = CppType{};
+                        field.type.kind = CppTypeKind::Pointer;
+                        auto nested = std::make_shared<CppType>();
+                        nested->kind = CppTypeKind::Function;
+                        auto signature = std::make_shared<CppFunctionType>();
+                        signature->returnType.kind = CppTypeKind::Record;
+                        signature->returnType.recordIdentity = CppRecordTypeIdentity{};
+                        signature->returnType.recordIdentity->name = "Nested";
+                        CppType argument;
+                        argument.kind = CppTypeKind::Enumeration;
+                        argument.enumIdentity = CppEnumTypeIdentity{};
+                        argument.enumIdentity->name = "Color";
+                        if (i == 1)
+                        {
+                            signature->returnType.recordIdentity->clangUsr = "nested-record";
+                            argument.enumIdentity->clangUsr = "nested-enum";
+                        }
+                        signature->parameterTypes.push_back(std::move(argument));
+                        nested->function = std::move(signature);
+                        field.type.element = std::move(nested);
+                    }
+                    auto nestedGroups = groupCppSemanticRecords(nestedEntries);
+                    if (nestedGroups.groups.size() == 1)
+                    {
+                        nestedGroups.groups.front().status = CppRecordGroupStatus::MultipleDefinitionsPointerCompatible;
+                        const auto nestedResult = captureCppCRecordSnapshot(nestedEntries, nestedGroups.groups.front());
+                        const auto* nestedSnapshot = std::get_if<CppCRecordSnapshot>(&nestedResult);
+                        const auto* function = nestedSnapshot && nestedSnapshot->fields.front().type.element ?
+                            nestedSnapshot->fields.front().type.element->function.get() : nullptr;
+                        const auto& original = nestedEntries.front().declaration.fields.front().type.element->function;
+                        ok &= expect(function && function->returnType.recordIdentity->clangUsr == "nested-record" &&
+                                     function->parameterTypes.front().enumIdentity->clangUsr == "nested-enum" &&
+                                     !original->returnType.recordIdentity->clangUsr &&
+                                     !original->parameterTypes.front().enumIdentity->clangUsr,
+                                     "C record snapshot reconciles nested identities without changing observations");
+                    }
+                    else ok &= expect(false, "C record snapshot groups nested identity observations");
                 }
             }
         }
