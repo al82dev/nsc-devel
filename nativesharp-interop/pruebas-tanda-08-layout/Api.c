@@ -1,6 +1,17 @@
 #include "Api.h"
 static Pair sample_pair = { 1, 2 };
 static Packed sample_packed = { 1, 2 };
+static PackedTwo sample_packed_two = { 1, 2, 3, 4.0 };
+PackedTwo* layout_packed_two(void) { return &sample_packed_two; }
+int layout_packed_two_check(void)
+{
+    return sample_packed_two.aligned == 7 && sample_packed_two.integer == 9 &&
+           sample_packed_two.real == 6.5;
+}
+int layout_packed_two_size(void) { return (int)sizeof(PackedTwo); }
+int layout_packed_two_alignment(void) { return (int)_Alignof(PackedTwo); }
+int layout_packed_two_integer_offset(void) { return (int)__builtin_offsetof(PackedTwo, integer); }
+int layout_packed_two_real_offset(void) { return (int)__builtin_offsetof(PackedTwo, real); }
 static int packed_pointer_initial = 3;
 static int packed_pointer_target = 4;
 static PackedPointer sample_packed_pointer = { 1, &packed_pointer_initial };

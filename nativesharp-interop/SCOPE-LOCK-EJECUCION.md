@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Comprobación ampliada de campos C con pack(2)
+
+T08-010/T08-012/T08-020: ampliar el fixture existente con campos short,
+int y double bajo `pack(2)`, comparar layout y valores con C, exigir IR con
+alineación 2 y comprobar que un campo short naturalmente alineado conserva su
+dirección utilizable. Presupuesto: fixture pruebas-tanda-08-layout y registros
+Markdown. Sin cambios de producción ni compilación completa por ítem.
+
 ## Campo puntero C empaquetado
 
 T08-010/T08-012/T08-014: permitir la proyección de un campo puntero C ya

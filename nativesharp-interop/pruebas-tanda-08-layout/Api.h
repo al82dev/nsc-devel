@@ -5,6 +5,15 @@ typedef struct Container { char tag; Pair pairs[2][3]; Cell cell; } Container;
 typedef struct Packed { char tag; int value; } Packed;
 typedef struct PackedPointer { char tag; int* value; } PackedPointer;
 #pragma pack(pop)
+#pragma pack(push, 2)
+typedef struct PackedTwo { char tag; short aligned; int integer; double real; } PackedTwo;
+#pragma pack(pop)
+PackedTwo* layout_packed_two(void);
+int layout_packed_two_check(void);
+int layout_packed_two_size(void);
+int layout_packed_two_alignment(void);
+int layout_packed_two_integer_offset(void);
+int layout_packed_two_real_offset(void);
 PackedPointer* layout_packed_pointer(void);
 int* layout_packed_pointer_target(void);
 int layout_packed_pointer_value(void);

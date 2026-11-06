@@ -1,0 +1,6 @@
+int Main()
+{
+    PackedTwo* packed = layout_packed_two();
+    double* unsafeAddress = &packed->real;
+    return (int)*unsafeAddress;
+}

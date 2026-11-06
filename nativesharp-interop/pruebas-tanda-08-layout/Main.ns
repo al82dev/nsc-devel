@@ -27,5 +27,16 @@ int Main()
     pointer->value = layout_packed_pointer_target();
     *pointer->value = 8;
     if (layout_packed_pointer_value() != 8) return 15;
+    if (sizeof(PackedTwo) != (nuint)layout_packed_two_size() ||
+        alignof(PackedTwo) != (nuint)layout_packed_two_alignment() ||
+        offsetof(PackedTwo, integer) != (nuint)layout_packed_two_integer_offset() ||
+        offsetof(PackedTwo, real) != (nuint)layout_packed_two_real_offset()) return 16;
+    PackedTwo* packedTwo = layout_packed_two();
+    short* aligned = &packedTwo->aligned;
+    *aligned = (short)7;
+    packedTwo->integer = 8;
+    packedTwo->integer += 1;
+    packedTwo->real = 6.5;
+    if (packedTwo->integer != 9 || packedTwo->real != 6.5 || layout_packed_two_check() == 0) return 17;
     return 0;
 }
