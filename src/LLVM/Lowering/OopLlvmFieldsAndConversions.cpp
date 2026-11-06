@@ -71,9 +71,9 @@ LLVMValueRef OopLlvmImplementation::extractBitField(
         const frontend::builtins::IntegerTypeInfo* enumInfo = findEnumUnderlyingInfo(nameLookup_, node->typeKey);
         const unsigned logicalWidth = enumInfo != nullptr
             ? enumInfo->width : integerWidth(node->typeKey);
-        if (logicalWidth != storageBits)
+        if (logicalWidth == 0 || logicalWidth > 64 || bitWidth > logicalWidth)
         {
-            return failValue(error, "item 329 bit-field logical type does not match its allocation unit");
+            return failValue(error, "item 329 bit-field logical width is invalid");
         }
         const bool signedField = enumInfo != nullptr ? enumInfo->isSigned : isSignedInteger(node->typeKey);
         if (signedField && bitWidth < storageBits)
@@ -83,6 +83,14 @@ LLVMValueRef OopLlvmImplementation::extractBitField(
             extracted = LLVMBuildShl(builder_, extracted, shift, "bitfield.sign.left");
             extracted = LLVMBuildAShr(builder_, extracted, shift, "bitfield.sign.extend");
         }
+        if (logicalWidth > storageBits)
+        {
+            LLVMTypeRef logicalType = LLVMIntTypeInContext(context_, logicalWidth);
+            extracted = signedField ? LLVMBuildSExt(builder_, extracted, logicalType, "bitfield.logical.sext")
+                                    : LLVMBuildZExt(builder_, extracted, logicalType, "bitfield.logical.zext");
+        }
+        else if (logicalWidth < storageBits)
+            extracted = LLVMBuildTrunc(builder_, extracted, LLVMIntTypeInContext(context_, logicalWidth), "bitfield.logical.trunc");
         return extracted;
     }
 
@@ -113,10 +121,14 @@ LLVMValueRef OopLlvmImplementation::insertBitField(
             const frontend::builtins::IntegerTypeInfo* enumInfo = findEnumUnderlyingInfo(nameLookup_, node->typeKey);
             const unsigned logicalWidth = enumInfo != nullptr
                 ? enumInfo->width : integerWidth(node->typeKey);
-            if (logicalWidth != storageBits)
+            if (logicalWidth == 0 || logicalWidth > 64 || bitWidth > logicalWidth)
             {
-                return failValue(error, "item 329 bit-field store type does not match its allocation unit");
+                return failValue(error, "item 329 bit-field store logical width is invalid");
             }
+            if (logicalWidth > storageBits)
+                widened = LLVMBuildTrunc(builder_, value, storageType, "bitfield.store.trunc");
+            else if (logicalWidth < storageBits)
+                widened = LLVMBuildZExt(builder_, value, storageType, "bitfield.store.zext");
         }
         LLVMValueRef bits = LLVMBuildAnd(
             builder_, widened, LLVMConstInt(storageType, lowMask, 0), "bitfield.value.mask");
