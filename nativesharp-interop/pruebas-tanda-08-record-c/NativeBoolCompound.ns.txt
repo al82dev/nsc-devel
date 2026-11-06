@@ -1,0 +1,6 @@
+int Main()
+{
+    bool value = false;
+    value |= true;
+    return 0;
+}

@@ -1,0 +1,5 @@
+int Main()
+{
+    volatile_bool_array[0] |= true;
+    return 0;
+}

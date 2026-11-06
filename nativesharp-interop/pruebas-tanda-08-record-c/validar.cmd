@@ -299,6 +299,18 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project
 if not errorlevel 1 exit /b 1
 findstr /c:"no viable overload of namespace function 'bump_volatile_record'" "%DEST%\const-volatile-record-parameter.log" >nul
 if errorlevel 1 exit /b 1
+copy /y "%~dp0VolatileBoolArrayCompound.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-bool-compound.exe" > "%DEST%\volatile-bool-compound.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"compound assignment requires compatible numeric operands" "%DEST%\volatile-bool-compound.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0NativeBoolCompound.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\native-bool-compound.exe" > "%DEST%\native-bool-compound.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"compound assignment requires compatible numeric operands" "%DEST%\native-bool-compound.log" >nul
+if errorlevel 1 exit /b 1
 copy /y "%~dp0VolatilePointerArrayDiscard.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-pointer-array-discard.exe" > "%DEST%\volatile-pointer-array-discard.log" 2>&1
