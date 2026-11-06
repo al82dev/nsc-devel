@@ -1,5 +1,16 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Campos escalares C empaquetados
+
+T08-010/T08-012/T08-020: habilitar acceso directo a campos escalares C cuya
+alineación efectiva sea menor que la natural, calculada con alineación del
+record y offset de Clang. No habilitar campos empaquetados C++, agregados,
+punteros ni bitfields. Impedir exponer como puntero ordinario la dirección de
+un campo escalar desalineado; preservar acceso directo, const y volatile.
+Presupuesto: CppSemanticRecord.cpp, MemberAccessAnalyzer.cpp, fixture de layout,
+CppClangSessionTests.cpp y registros Markdown. NSLink y LLVM protegidos;
+validación dirigida agrupada y después batería al cerrar la tanda.
+
 ## Transporte de alineación efectiva importada
 
 T08-010/T08-012/T08-020: conservar `byteAlignment` de un campo importado en

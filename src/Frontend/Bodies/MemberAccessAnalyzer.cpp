@@ -790,8 +790,17 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
     // C++ qualified storage cannot be exposed through an unqualified pointer until
     // the pointer type carries the field's const/volatile contract.
     result.volatileStorage = receiver.volatileStorage || (field.isCppExternal && field.isVolatile);
+    std::uint64_t naturalScalarAlignment = 0;
+    if (field.declaredTypeKey == "builtin:short" || field.declaredTypeKey == "builtin:ushort")
+        naturalScalarAlignment = 2;
+    else if (field.declaredTypeKey == "builtin:int" || field.declaredTypeKey == "builtin:uint" ||
+             field.declaredTypeKey == "builtin:float") naturalScalarAlignment = 4;
+    else if (field.declaredTypeKey == "builtin:long" || field.declaredTypeKey == "builtin:ulong" ||
+             field.declaredTypeKey == "builtin:double") naturalScalarAlignment = 8;
+    const bool unalignedImportedScalar = field.isCppExternal && field.explicitFieldAlignment &&
+        naturalScalarAlignment != 0 && *field.explicitFieldAlignment < naturalScalarAlignment;
     result.addressable = !field.isBitField && !result.volatileStorage &&
-        !field.declaredPointerPointeeVolatile &&
+        !field.declaredPointerPointeeVolatile && !unalignedImportedScalar &&
         !(field.isCppExternal && (field.isReadonly || receiver.readonlyReceiver));
     result.readonlyReceiver = receiver.readonlyReceiver || field.isReadonly;
     result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
