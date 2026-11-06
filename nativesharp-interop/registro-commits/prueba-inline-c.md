@@ -9,3 +9,5 @@ Se amplía el encabezado con una variable y una función internas no utilizadas 
 Validación posterior, build `3aa5707a6d2b2cc7`: `validar.cmd` pasó en O0–O3 para el ejecutable directo y para la biblioteca precompilada con su consumidor, aun sin definición de `external_unused`. La prueba acredita estos casos y no cierra el ítem ni la tanda.
 
 Se añade un segundo productor precompilado que incluye el mismo encabezado; el consumidor alterna llamadas y comprueba que ambos contadores y variables internas conservan estado independiente. Pendiente de la validación agrupada.
+
+En O0, cuando ambos productores declararon `api.lib`, NSLink reportó NSL1021 por la doble definición de `external_double` procedente del mismo archivo objeto. Este resultado no determina el aislamiento de los estáticos. El segundo productor no llama a esa función externa: se elimina de su referencia la biblioteca opcional para aislar el caso. La duplicación de dependencias compartidas permanece pendiente y no se modifica NSLink.
