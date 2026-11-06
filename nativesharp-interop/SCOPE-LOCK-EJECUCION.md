@@ -1693,6 +1693,12 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Ampliación de pruebas: añadir matriz de structs y union global C al mismo fixture, comprobando las escrituras desde C. Incluir casos negativos de global record const y volatile mientras sus calificadores no se proyectan. No cambiar producción salvo que las pruebas agrupadas evidencien un defecto concreto.
 - Añadir también un puntero global doble al mismo struct para comprobar indirectamente la lectura de sus dos niveles y la identidad del tipo. No habilita conversiones de punteros calificados.
 
+### Global C const struct
+
+- Objetivo: permitir leer campos de un struct global C const, sin permitir modificar ni obtener un puntero mutable a sus campos.
+- Evidencia: `NamespaceStateSymbol.isCppReadonly` establece `readonlyReceiver`, que `MemberAccessAnalyzer.cpp` propaga y consulta para asignación, pero el campo importado aún puede ser direccionable aunque el receptor sea readonly.
+- Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, `src/Frontend/Bodies/MemberAccessAnalyzer.cpp`, fixtures y script de `pruebas-tanda-08-record-c`, y registros Markdown. Conservar rechazo de volatile struct, punteros calificados y arrays const de record hasta implementar sus contratos. Agrupar y validar los casos de lectura, escritura y dirección.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.
