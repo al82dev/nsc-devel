@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Optimizaciones del fixture de layout C
+
+T08-010/T08-012/T08-020: ejecutar el proyecto mixto de layout también en O1,
+O2 y O3, conservando el análisis IR O0 y los casos negativos. No reconstruir
+NSC entre opciones. Presupuesto: validar.cmd del fixture layout y registro
+Markdown; la batería completa continúa pendiente.
+
 ## Comprobación ampliada de campos C con pack(2)
 
 T08-010/T08-012/T08-020: ampliar el fixture existente con campos short,
