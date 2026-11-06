@@ -1,5 +1,23 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Orden de accesos a arreglos globales C volatile int
+
+T08-015: Clang Windows x64 emitió `load atomic volatile i32 ... acquire` y
+`store atomic volatile i32 ... release` para `volatile_array[1]` y
+`volatile_matrix[1][1]`; un IR NS previo emite accesos volatile sin esos
+órdenes. Corregir únicamente elementos `int` de arreglos globales C importados
+con modo MS y alineación de al menos cuatro bytes acreditada por Clang.
+Conservar accesos ordinarios ante alineación insuficiente o modo desconocido;
+no modificar campos, punteros arbitrarios, otros tipos ni NSLink.
+
+Presupuesto: `src/Frontend/HIR/ExpressionStatementMachine/HirNameExpressionLowering.cpp`,
+`src/LLVM/Lowering/PackedArrayAlignment.h`,
+`src/LLVM/Lowering/OopLlvmArraysAndStores.cpp`,
+`src/LLVM/Lowering/OopLlvmExpressionMachine.cpp`, el fixture
+`pruebas-tanda-08-record-c`, tracking y registros. Demostrar la procedencia
+desde un global externo, la alineación del origen y la de cada paso antes de
+asignar órdenes; validar el IR y ejecutar la batería agrupada incremental.
+
 ## Punteros globales C a volatile void
 
 T08-004/T08-008/T08-015: el mapeador de funciones C admite un parámetro
