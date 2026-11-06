@@ -923,6 +923,7 @@ int main(int argc, char** argv)
         if (built && !catalog.empty())
         {
         nativesharp::interop::LibraryMetadata model;
+        model.formatMinor = 41;
         model.moduleName = "BinaryCatalogTest";
         model.producerVersion = "test";
         model.targetTriple = "x86_64-pc-windows-msvc";
