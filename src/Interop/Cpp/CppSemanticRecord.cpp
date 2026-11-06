@@ -126,6 +126,8 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     scalarArray = scalarArray && arrayElement &&
         (arrayElement->kind == CppTypeKind::Boolean || arrayElement->kind == CppTypeKind::SignedInteger ||
          arrayElement->kind == CppTypeKind::UnsignedInteger || arrayElement->kind == CppTypeKind::Floating);
+    const bool recordArray = field.type.kind == CppTypeKind::Array && arrayElement &&
+        arrayElement->kind == CppTypeKind::Record && !arrayElement->isVolatile;
     const auto pointerArray = frontend::cppAliasArrayType(field.type);
     const bool representablePointerArray = pointerArray && pointerArray->element.pointerDepth > 0 &&
         !pointerArray->element.pointeeConst && pointerArray->element.token != lexer::TokenKind::KwVoid;
@@ -134,7 +136,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
          field.type.kind != CppTypeKind::SignedInteger && field.type.kind != CppTypeKind::UnsignedInteger &&
          field.type.kind != CppTypeKind::Floating && field.type.kind != CppTypeKind::Pointer &&
          field.type.kind != CppTypeKind::Record &&
-         !scalarArray && !representablePointerArray))) return std::nullopt;
+         !scalarArray && !recordArray && !representablePointerArray))) return std::nullopt;
     auto mapped = mapCppScalarType(field.type);
     if (!mapped && !record.isCxx && field.type.kind == CppTypeKind::Array)
         mapped = projectCArrayField(field.type, projectOrdinal, moduleName, lookup);
