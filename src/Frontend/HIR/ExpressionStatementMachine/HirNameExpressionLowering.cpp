@@ -269,7 +269,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNamespaceStateNameBi
     node->namespaceStateOrdinal = stateOrdinal;
     node->volatileAccess = state.isVolatile;
     if (state.isCppExternal && state.isVolatile)
+    {
         node->cppMicrosoftVolatileSemantics = state.cppMicrosoftVolatileSemantics;
+        if (state.cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
+            state.cppStorageSizeBits == std::optional<std::uint64_t>{32} &&
+            state.cppDeclarationAlignmentBits && *state.cppDeclarationAlignmentBits >= 32 &&
+            (state.declaredTypeKey == "builtin:int" || state.declaredTypeKey == "builtin:uint"))
+            node->cppAtomicAlignmentBytes = 4;
+    }
     node->memberOrdinal =
         (memberModel_ != nullptr ? memberModel_->members().size() : 0) + stateOrdinal;
     node->stringValue = state.storageName;

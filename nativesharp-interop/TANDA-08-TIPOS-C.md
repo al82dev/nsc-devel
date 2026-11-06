@@ -1084,6 +1084,13 @@ dato para emitir instrucciones atómicas. Falta validación agrupada.
 El caso del proveedor prepara comprobación del tamaño de int y la presencia de
 alineación para el símbolo importado. Aún no se ha ejecutado.
 
+## Alineación probada de global volatile de 32 bits
+
+Para un global C/C++ volatile `int` o `uint`, la ruta HIR prepara cuatro bytes
+de alineación únicamente si Clang declaró tamaño de 32 bits, alineación al menos
+de 32 bits y MSVolatile activo. MIR conserva esa alineación ya existente en su
+formato, y se invalidan claves de caché. Aún no cambia la emisión ni se valida.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

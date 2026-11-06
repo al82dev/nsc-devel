@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Alineación probada de global volatile de 32 bits
+
+Preparar en HIR y MIR una alineación mínima de cuatro bytes solo para globales
+externos volatile int/uint de 32 bits con opción MS activa y alineación conocida
+de al menos 32 bits. Conservarla en identidad y caché; no emitir todavía
+atomicidad ni inferir soporte para otros tamaños. Archivos: ProjectOopHirNode.h,
+HirNameExpressionLowering.cpp, MirNodeMachine.cpp, HirCacheIdentity.cpp,
+MirCache.cpp y documentación. Validación agrupada pendiente.
+
 ## Prueba de tamaño y alineación en símbolo global
 
 Ampliar el caso del proveedor para exigir tamaño y alineación conocidos en el

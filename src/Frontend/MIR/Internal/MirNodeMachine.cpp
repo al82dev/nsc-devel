@@ -144,6 +144,7 @@ void ProjectOopMirModel::MirNodeMachine::copyAttributes(
     result->stackPromotedObject = node->stackPromotedObject;
     result->volatileAccess = node->volatileAccess;
     result->cppMicrosoftVolatileSemantics = node->cppMicrosoftVolatileSemantics;
+    if (node->cppAtomicAlignmentBytes) result->alignment = *node->cppAtomicAlignmentBytes;
     result->baseReceiver = node->baseReceiver;
     result->targetIsInterface = node->targetIsInterface;
     result->dynamicDestruction = node->dynamicDestruction;

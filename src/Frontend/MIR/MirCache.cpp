@@ -172,7 +172,7 @@ std::string preLowerMirCacheKey(
     std::size_t functionOrdinal)
 {
     std::string material;
-    internal::CachePayloadWriter::string(material, "nsc-mir-prelower-key-v3");
+    internal::CachePayloadWriter::string(material, "nsc-mir-prelower-key-v4");
     internal::CachePayloadWriter::string(material, compilationIdentity);
     internal::CachePayloadWriter::u64(material, functionOrdinal);
     internal::CachePayloadWriter::string(material, serializeHirCacheIdentity(function));

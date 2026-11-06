@@ -161,6 +161,8 @@ struct ProjectOopHirNode final
     bool volatileAccess = false;
     // Effective Clang option for an imported global access; not an atomicity proof.
     std::optional<bool> cppMicrosoftVolatileSemantics;
+    // Proven minimum alignment for a direct imported volatile scalar access.
+    std::optional<std::size_t> cppAtomicAlignmentBytes;
     bool baseReceiver = false;
     bool interfaceDispatch = false;
     bool targetIsInterface = false;
