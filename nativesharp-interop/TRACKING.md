@@ -190,6 +190,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Preparados `fc640a3dd`, `450f82c32`, `dd083f39d` y `2fede90da`:
+    validaciones iniciales del catálogo y controles de duplicados, layouts
+    incompletos y campos fuera de límites. Todavía sin ejecutar; la validación
+    semántica completa y su integración en NSMETA siguen pendientes.
   - Preparados `50dc5bc`, `a6ae824d7`, `e5ccee5ae` y `9967412b0`:
     codec interno y controles iniciales de ida/vuelta y truncamiento. Aún sin
     compilar ni ejecutar; faltan validación semántica, integración en NSMETA,
