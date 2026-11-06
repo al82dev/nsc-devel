@@ -3015,6 +3015,27 @@ int main(int argc, char** argv)
             ok &= expect(checkOrigin("Pair", CppImportedTypeOrigin::CStruct) &&
                          checkOrigin("AnonUnion", CppImportedTypeOrigin::CUnion),
                          "C struct and union retain their distinct origin and target");
+            const auto checkSnapshot = [&](std::string_view name, CppRecordKind kind, bool complete) {
+                const auto record = std::find_if(cRecords->begin(), cRecords->end(),
+                    [&](const auto& value) { return value.name == name; });
+                if (record == cRecords->end()) return false;
+                const auto identity = projectCppRecordIdentity(*record, "Semantic");
+                if (!identity) return false;
+                const std::vector<CppSemanticRecordEntry> entries{{{}, 0, 0, "x86_64-pc-windows-msvc", *record, identity}};
+                const auto groups = groupCppSemanticRecords(entries);
+                if (groups.groups.size() != 1) return false;
+                const auto result = captureCppCRecordSnapshot(entries, groups.groups.front());
+                const auto* snapshot = std::get_if<CppCRecordSnapshot>(&result);
+                if (!snapshot || snapshot->identityKey != identity->key() || snapshot->kind != kind ||
+                    snapshot->complete != complete || snapshot->targetTriple != "x86_64-pc-windows-msvc") return false;
+                return complete ? snapshot->sizeBits == record->sizeBits &&
+                    snapshot->alignmentBits == record->alignmentBits && snapshot->fields.size() == record->fields.size() :
+                    !snapshot->sizeBits && !snapshot->alignmentBits && snapshot->fields.empty();
+            };
+            ok &= expect(checkSnapshot("Pair", CppRecordKind::Struct, true) &&
+                         checkSnapshot("AnonUnion", CppRecordKind::Union, true) &&
+                         checkSnapshot("Incomplete", CppRecordKind::Struct, false),
+                         "C record snapshots preserve complete struct and union or an incomplete declaration");
             const auto pair = std::find_if(cRecords->begin(), cRecords->end(),
                 [](const auto& value) { return value.name == "Pair"; });
             if (pair != cRecords->end())
@@ -3032,6 +3053,11 @@ int main(int argc, char** argv)
                                  prepared->types[0].origin == CppImportedTypeOrigin::Unknown &&
                                  !prepared->types[0].targetTriple,
                                  "conflicting observations do not invent an origin or target");
+                    const auto conflictingGroups = groupCppSemanticRecords(entries);
+                    ok &= expect(conflictingGroups.groups.size() == 1 &&
+                                 std::holds_alternative<CppCRecordSnapshotFailure>(
+                                     captureCppCRecordSnapshot(entries, conflictingGroups.groups.front())),
+                                 "C record snapshot rejects conflicting observations");
                 }
             }
         }
