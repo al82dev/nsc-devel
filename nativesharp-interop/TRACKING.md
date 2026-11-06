@@ -522,11 +522,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-013. Representar tipos declarados pero incompletos sin inventar su tamaño.
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
-  - La matriz volatile de 8, 16, 32 y 64 bits funciona numéricamente en
-    O0–O3, pero el control de IR falla: Clang ejecuta dos cargas volatile en
-    cada incremento y NSC una; además Clang anota alineación 8 frente a 1 en
-    una carga i8. La cantidad de accesos puede ser observable en dispositivos;
-    falta determinar el contrato aplicable y resolver la diferencia. No cerrar.
+  - La matriz volatile de 8, 16, 32 y 64 bits pasó O0–O3 y su control IR:
+    en las actualizaciones C importadas NSC ahora emite dos cargas y una
+    escritura, como Clang. La alineación i8 de NSC sigue siendo menor y
+    conservadora. Otros layouts y contratos permanecen pendientes. No cerrar.
     [Evidencia](registro-commits/prueba-matriz-volatile-bitfields.md).
   - Campos de bits `volatile` enteros C en structs normales, empaquetados y
     una union: ejecución cruzada O0–O3 y comparación de IR con Clang para seis
