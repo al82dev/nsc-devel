@@ -10,7 +10,10 @@ identidad, proyección y consumidores. El cambio no se ha construido ni validado
 Se preparó además la persistencia del dato y el incremento de esquemas de
 caché genérica y sintáctica; falta comprobar su restauración.
 Se prepararon comprobaciones de clonación y de ida y vuelta del dato junto con
-restrict. No se han ejecutado todavía.
+restrict. No se han ejecutado todavía. La batería actual incluye la prueba de
+ida y vuelta, pero el target de componentes que contiene la prueba de clonación
+no aparece en la configuración incremental ON; incorporarlo o verificarlo en
+una configuración habilitada antes de afirmar esa cobertura.
 
 ## Calificador volatile del objeto apuntado: base en preparación
 
