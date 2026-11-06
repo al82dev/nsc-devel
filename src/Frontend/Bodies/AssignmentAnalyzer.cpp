@@ -2038,6 +2038,22 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishPointerCo
             "a non-void pointer supports only '+=' and '-=' with an integral right-hand side");
         return {};
     }
+    const std::string element = left.typeKey.substr(0, left.typeKey.size() - 1);
+    if (nameLookup_ && element.starts_with("type:") && !element.ends_with("*"))
+    {
+        const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(element).substr(5));
+        const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+        if (imported && imported->isIncomplete &&
+            (imported->origin == CppImportedTypeOrigin::CStruct ||
+             imported->origin == CppImportedTypeOrigin::CUnion))
+        {
+            diagnostics.report(diagnostics::DiagnosticId::IncompleteType,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "pointer arithmetic requires a complete C type; '" +
+                    imported->identity.fullyQualifiedName() + "' has no element size");
+            return {};
+        }
+    }
     left.assignable = false;
     invalidateAssignedStorage(expression->first(), scopeOrdinal);
     return left;

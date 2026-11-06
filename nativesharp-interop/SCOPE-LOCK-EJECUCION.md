@@ -1,5 +1,22 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Otras operaciones sobre punteros C incompletos
+
+T08-013/T08-019: reproducir por separado `+=`, incremento e índice de un
+puntero a `Opaque` C incompleto usando el proyecto de la prueba de aritmética.
+Permitir solo los fixtures en `pruebas-tanda-08-incompleto`, las salidas bajo
+`A:/nsc-interop-build` y la bitácora. No modificar producción sin identificar
+el resultado y la ruta de cada operación.
+Reproducción con NSC `bd1f1ac94128ecb4`: `+=` e incremento llegan al descenso
+y fallan con `compound pointer update cannot determine the element layout`;
+el índice falla con `C2.1 cannot determine raw element layout`. Permitir
+correcciones localizadas en `src/Frontend/Bodies/AssignmentAnalyzer.cpp`,
+`src/Frontend/Bodies/IdentifierAnalyzer.cpp` y
+`src/Frontend/Bodies/ExpressionCore/IndexAndRangeExpressions.cpp`; limitar
+los diagnósticos a records C importados que sean incompletos, preservar los
+punteros a punteros y los usos que no requieren tamaño. Permitir el script de
+validación existente y los registros Markdown de los tres casos.
+
 ## Aritmética de puntero a record C incompleto
 
 T08-013/T08-019: comprobar si `Opaque* + 1` intenta usar un tamaño para un
