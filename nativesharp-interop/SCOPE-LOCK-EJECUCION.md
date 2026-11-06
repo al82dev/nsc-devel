@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Const del retorno de función NativeSharp con alias C
+
+Conservar el const del apuntado del tipo declarado cuando se adapta una función
+NativeSharp; preservar la vía de resultados C previamente existente. Archivo:
+MethodBodyBuildCoordinator.cpp y documentación. La validación agrupada sigue
+pendiente y cubrirá también el alias combinado const volatile.
+
 ## Control de alias volatile con indirección adicional
 
 Preparar un caso que exija diagnóstico para el uso del alias seguido de otro

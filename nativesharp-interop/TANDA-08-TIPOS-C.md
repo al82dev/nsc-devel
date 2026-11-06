@@ -845,6 +845,13 @@ la validación agrupada, sin afirmar compatibilidad para conversiones anidadas.
 El fixture prepara lectura mediante `ConstVolatileIntPtr` y un caso negativo
 que intenta escribir por él. La comprobación agrupada todavía no se ha ejecutado.
 
+## Const del retorno de función NativeSharp con alias C
+
+El adaptador de funciones obtenía readonly solo del tipo de resultado de Clang,
+por lo que un retorno NativeSharp declarado mediante un alias C podía perder
+const. También consulta ahora el tipo declarado, como hace para volatile. Falta
+comprobarlo con una función NativeSharp y la validación agrupada de la tanda.
+
 ## Prueba de estado global con alias volatile
 
 El fixture prepara un global NativeSharp del tipo importado; comprueba una
