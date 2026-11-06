@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Asignaciones de punteros con apuntado volatile
+
+Preparar el rechazo de asignaciones que perderían el volatile inmediato del
+apuntado. Archivos: AssignmentAnalyzer.cpp y documentación; el flujo sigue
+deshabilitado en la importación hasta conectar llamadas, conversiones, retornos
+y pruebas. No cambiar el contrato de otras conversiones de punteros.
+
 ## Propagación del apuntado volatile en expresiones
 
 Conservar el calificador inmediato en aritmética de punteros, coalescencia y

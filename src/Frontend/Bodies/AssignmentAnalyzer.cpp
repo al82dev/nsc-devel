@@ -1886,6 +1886,14 @@ bool ProjectMethodBodyModel::validatePlainAssignmentConversion(
                 left.typeKey + "'");
         return false;
     }
+    if (ProjectTypeConversion::isPointer(left.typeKey) &&
+        right.pointerPointeeVolatile && !left.pointerPointeeVolatile)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, expression->second()->range(),
+            "assignment would discard pointer pointee volatile qualification");
+        return false;
+    }
     if (!ProjectTypeConversion::isPointer(left.typeKey) ||
         language::pointerContractImplicitlyAssignable(
             pointerContract(

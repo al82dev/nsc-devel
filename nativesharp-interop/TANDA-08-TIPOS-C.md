@@ -20,6 +20,8 @@ inicialización explícita que descartaría el calificador; falta cubrir
 asignaciones y los demás recorridos antes de habilitar la importación.
 También se preparó la propagación en operaciones aritméticas de punteros,
 coalescencia y condicionales; permanece sin ejecutar.
+Se preparó el rechazo de asignaciones que perderían el volatile inmediato;
+la ruta de entrada continúa cerrada.
 
 ## Parámetros C puntero a escalar volatile: implementación pendiente de validar
 
