@@ -64,3 +64,35 @@ Este mapa identifica lugares a investigar; no presupone que `volatile` sea
 intrínseco al valor del puntero ni que el modelo de hechos existente pueda
 reutilizarse sin cambios. Se debe comparar el contrato de acceso del lenguaje
 con Clang para cada modo antes de definir la unión e implementar la solución.
+
+## Comparación del modo de la unidad consumidora
+
+Clang 23.1.0, build `ea7d852a70e8bdfaf601d6626a760f9771b2c4b4`, compiló
+`pruebas-tanda-08-record-c/VolatileAccessMode.c` con el objetivo
+`x86_64-pc-windows-msvc`, C11 y O0. En dos invocaciones que solo cambiaron
+entre `-fms-volatile` y `-fno-ms-volatile`, la misma lectura y escritura por
+parámetro produjeron, respectivamente:
+
+- MS: `load atomic volatile i32 ... acquire, align 4` y
+  `store atomic volatile i32 ... release, align 4`.
+- ISO: `load volatile i32 ... align 4` y `store volatile i32 ... align 4`.
+
+Los resultados están en `A:/nsc-interop-build/tanda08-record-c/` como
+`volatile-mode-ms.ll` y `volatile-mode-iso.ll`. La fuente de Clang
+`clang/lib/CodeGen/CGAtomic.cpp`, función `LValueIsSuitableForInlineAtomic`,
+consulta `CGM.getLangOpts().MSVolatile` y comprueba el lvalue y la viabilidad
+de la operación; no consulta la procedencia del puntero. `CGExpr.cpp` aplica
+esa decisión al generar cada lectura y escritura. La prueba propia de Clang
+`clang/test/CodeGen/ms-volatile.c`, función `test2`, incluye punteros
+recibidos como parámetros.
+
+**Consecuencia para el diseño:** el experimento demuestra que la opción de la
+unidad que realiza el acceso determina el orden en esos casos. No demuestra
+que el modo registrado durante la importación describa las opciones con que
+se construyó la biblioteca binaria, ni que deba heredarse desde el puntero.
+Actualmente `CppSemanticInventory.cpp` conserva el modo de la sesión que leyó
+cada declaración, y `HirCompletionTerminalFrames.cpp` lo usa para un acceso
+directo a un global C. Esto requiere revisar el contrato del acceso generado
+por NSC, incluyendo importaciones con opciones divergentes, antes de extender
+ese comportamiento a locales, campos, parámetros y retornos. La comparación
+no cambia el código de producción ni cierra T08-015.

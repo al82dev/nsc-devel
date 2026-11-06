@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Comparación del modo volatile de la unidad consumidora
+
+T08-015: contrastar con Clang Windows x64 si el orden de una lectura y
+escritura a través de un parámetro `volatile int*` depende de la opción de la
+unidad que realiza el acceso. Agregar únicamente la fuente C de referencia en
+`pruebas-tanda-08-record-c`, conservar el IR bajo `A:/nsc-interop-build` y
+registrar las conclusiones en la bitácora existente. No cambiar la semántica
+de NSC ni atribuir el modo de una unidad al binario de otra sin evidencia.
+
 ## Orden de acceso a arreglos globales C volatile _Bool
 
 T08-006/T08-015/T08-016: Clang Windows x64 emite acceso atómico volatile a
