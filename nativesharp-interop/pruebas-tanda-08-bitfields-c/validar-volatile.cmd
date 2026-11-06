@@ -21,6 +21,8 @@ llvm-lib.exe /nologo /out:"%DEST%\volatile-api.lib" "%DEST%\volatile-api.obj"
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Volatile.nsproj" > "%DEST%\volatile-nsc.ll"
 if errorlevel 1 exit /b 1
+python "%~dp0verificar-ir-volatile.py" "%DEST%\volatile-api.ll" "%DEST%\volatile-nsc.ll"
+if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Volatile.nsproj" -O%%O --no-artifact-cache -o "%DEST%\volatile-O%%O.exe"
   if errorlevel 1 exit /b 1
