@@ -282,6 +282,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     empaquetados, protección de su dirección y prueba mixta con `pack(1)`;
     aún sin ejecutar. Los agregados, punteros y campos C++ empaquetados siguen
     pendientes.
+  - Validación dirigida en `291bc4cdb`: suite de sesión Clang y proyecto layout
+    pasaron; este último verificó `int` con `pack(1)` en O0, IR con alineación
+    1 y rechazo de dirección. La batería completa y el resto de formas siguen
+    pendientes. [Detalle](TANDA-08-TIPOS-C.md#validación-dirigida-de-campo-c-empaquetado).
 
 ## 09. Llamadas, enlace y datos C
 

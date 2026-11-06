@@ -1320,6 +1320,21 @@ los valores en ejecución y rechaza tomar la dirección. No se ha ejecutado.
 Los campos empaquetados C++ y los campos C de punteros, agregados y bitfields
 siguen pendientes, así como otras formas de acceso; no se cierra la tanda.
 
+## Validación dirigida de campo C empaquetado
+
+Sobre `291bc4cdb`, la construcción incremental de NSC y del objetivo
+`nsc_cpp_session_tests` terminó con código 0. La suite de sesión terminó con
+código 0, incluidos los escenarios internos de alineación. El proyecto layout
+terminó con código 0 en Windows x64 O0: comparó `sizeof`, `alignof` y `offsetof`
+del record `pack(1)` con Clang, verificó lectura y escritura simple y compuesta
+de `int`, comprobó el IR con `align 1` y rechazó tomar la dirección del campo.
+No acredita otras optimizaciones, tipos o formas de acceso, ni sustituye la
+batería completa. Se observaron advertencias existentes de inicialización.
+
+El build fue incremental, pero el comentario añadido a `ClassMemberSymbol.h`
+provocó 244 tareas dependientes. No repetir cambios documentales en ese
+encabezado para evitar recompilaciones innecesarias.
+
 ## Transporte de alineación importada preparado
 
 `6b065035e` conserva `byteAlignment` en el miembro importado y el modelo de
