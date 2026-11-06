@@ -410,6 +410,11 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     aliases transitivos y aislamiento entre proyectos. No acredita persistencia
     ni la validación completa de la tanda.
 - [ ] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
+  - Declaraciones C11 sin prototipo `f()` admiten argumentos con promociones
+    en la muestra Windows x64; `f(void)` rechaza argumentos adicionales. El
+    fixture pasó O0–O3 y la sesión Clang pasó. Faltan otras convenciones,
+    definiciones antiguas y conciliación general; no cierra el ítem.
+    [Evidencia](registro-commits/prueba-prototipos-c.md).
   - La matriz de cinco llamadas pasó tras `20b3a49c9`; tres controles de
     sombras pasaron en O0. [Evidencia](TANDA-08-TIPOS-C.md#validación-dirigida-de-visibilidad-e-identidad).
   - Preparados `20b3a49c9` y `beb379767`: búsqueda de funciones C/C++
@@ -449,6 +454,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     condicionado, con construcción en curso. La metadata aún no persiste el
     dato. [Evidencia](registro-commits/prueba-long-double-c.md).
 - [ ] T08-008. Mapear el tipo `void` en parámetros y resultados donde corresponda.
+  - La muestra C11 pasó retorno `void`, parámetro y retorno `void*` y prototipo
+    de cero argumentos en O0–O3, con rechazo de argumento extra. No cubre
+    todas las posiciones o combinaciones. [Evidencia](registro-commits/prueba-prototipos-c.md).
 - [ ] T08-009. Mapear enumeraciones y sus valores representables.
   - Pasó `nsc.stage51.enum-oop-support`, incluido el rechazo existente de
     comparación de enum nativo con entero no nulo. No cubre todas sus reglas.
