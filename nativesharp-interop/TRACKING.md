@@ -203,6 +203,11 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-013. Representar tipos declarados pero incompletos sin inventar su tamaño.
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
+  - Preparado, pendiente de validación agrupada: parámetros con enlace C de un
+    nivel a escalares, structs y enums volatile. La función C realiza los
+    accesos y se conserva el tipo de Clang; las pruebas incluyen const y
+    ejecución mixta. Siguen pendientes los punteros volatile que NativeSharp
+    accede directamente y los demás contratos. [Detalle](TANDA-08-TIPOS-C.md).
 - [ ] T08-016. Mapear arreglos de tamaño conocido.
 - [ ] T08-017. Definir la representación de punteros a función C.
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.
