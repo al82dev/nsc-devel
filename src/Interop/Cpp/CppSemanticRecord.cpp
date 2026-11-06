@@ -358,6 +358,7 @@ CppRecordGroups groupCppSemanticRecords(std::span<const CppSemanticRecordEntry> 
         group.status = conflict ? CppRecordGroupStatus::Conflict :
             definitions == 0 ? CppRecordGroupStatus::ForwardOnly :
             definitions == 1 ? CppRecordGroupStatus::OneDefinition : CppRecordGroupStatus::MultipleDefinitionsUnverified;
+        if (!conflict) group.clangUsr = std::move(knownUsr);
     }
     return result;
 }
@@ -575,6 +576,10 @@ CppSignatureRecordResult collectCppSignatureRecordDependencies(
                         const auto found = byIdentity.find({function.projectOrdinal, identity->key()});
                         if (found == byIdentity.end())
                             result.push_back({functionIndex, parameter, depth, CppSignatureRecordStatus::Missing, std::nullopt});
+                        else if (type->recordIdentity && type->recordIdentity->clangUsr &&
+                                 groups.groups[found->second].clangUsr &&
+                                 type->recordIdentity->clangUsr != groups.groups[found->second].clangUsr)
+                            result.push_back({functionIndex, parameter, depth, CppSignatureRecordStatus::Unprojectable, std::nullopt});
                         else
                             result.push_back({functionIndex, parameter, depth, CppSignatureRecordStatus::Matched, found->second});
                     }

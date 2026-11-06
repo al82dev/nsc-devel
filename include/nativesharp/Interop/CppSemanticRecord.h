@@ -93,6 +93,7 @@ struct CppRecordGroup
     compilation::TypeIdentity identity;
     std::vector<std::size_t> inventoryIndices;
     CppRecordGroupStatus status = CppRecordGroupStatus::ForwardOnly;
+    std::optional<std::string> clangUsr = std::nullopt;
 };
 struct CppRecordGroups
 {

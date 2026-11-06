@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Dependencias de record en firmas
+
+T08-002/T08-003: conservar el USR acordado en cada grupo de records y comprobar
+el USR del tipo de firma al seleccionar la dependencia; un desacuerdo conocido
+no debe seleccionar otro record por nombre. Preservar la resolución anterior
+si alguno falta y los controles de estado, layout y comparación estructural.
+Archivos: CppSemanticRecord.h/.cpp, CppClangSessionTests.cpp y registros
+Markdown. La prueba se ejecutará con la validación agrupada de la tanda.
+
 ## Correspondencia de USR en referencias de record
 
 T08-002/T08-010: al proyectar un record C/C++ referido desde funciones,
