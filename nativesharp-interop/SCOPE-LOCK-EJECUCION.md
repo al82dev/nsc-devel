@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Campos de bits en unions C
+
+Agregar un fixture independiente bajo `pruebas-tanda-08-bitfields-c` que
+contraste lectura y escritura de miembros de bits superpuestos con miembros
+enteros y bytes, con y sin signo, en O0–O3. Registrar resultado y alcance.
+No modificar producción hasta identificar el fallo y registrar su presupuesto.
+
 ## Campos de bits C a través de biblioteca precompilada
 
 Extender `pruebas-tanda-08-bitfields-c` con productor NativeSharp, consumidor
