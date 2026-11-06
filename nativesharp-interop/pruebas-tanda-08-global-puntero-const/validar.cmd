@@ -47,11 +47,13 @@ if not errorlevel 1 (echo Se acepto el arreglo como argumento mutable. & exit /b
 findstr /i /c:"no viable overload of namespace function 'c_mutate' accepts the argument types" "%DEST%\InvalidArgument.log" >nul
 if errorlevel 1 (echo El rechazo del argumento no corresponde a la llamada. & exit /b 1)
 echo Los escapes por inferencia y argumentos se rechazaron.
-for %%I in (InvalidMatrix InvalidMatrixEscape) do (
-  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\%%I.nsproj" -O0 --no-artifact-cache -o "%DEST%\%%I.exe" > "%DEST%\%%I.log" 2>&1
-  if not errorlevel 1 (echo Se acepto perdida de const en %%I. & exit /b 1)
-  findstr /i /c:"error:" "%DEST%\%%I.log" >nul
-  if errorlevel 1 (echo Falta diagnostico de error en %%I. & exit /b 1)
-)
-echo Escritura y escape de matriz rechazados; revisar diagnosticos.
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidMatrix.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidMatrix.exe" > "%DEST%\InvalidMatrix.log" 2>&1
+if not errorlevel 1 (echo Se acepto escritura mediante la matriz. & exit /b 1)
+findstr /i /c:"error: left side of assignment is not assignable" "%DEST%\InvalidMatrix.log" >nul
+if errorlevel 1 (echo El rechazo de escritura de matriz no corresponde a la operacion. & exit /b 1)
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidMatrixEscape.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidMatrixEscape.exe" > "%DEST%\InvalidMatrixEscape.log" 2>&1
+if not errorlevel 1 (echo Se acepto perdida de const desde matriz. & exit /b 1)
+findstr /i /c:"would discard pointee constness" "%DEST%\InvalidMatrixEscape.log" >nul
+if errorlevel 1 (echo El rechazo de matriz no identifica la perdida de const. & exit /b 1)
+echo Escritura y escape de matriz rechazados.
 exit /b 0
