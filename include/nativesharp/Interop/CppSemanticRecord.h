@@ -18,6 +18,7 @@ namespace nativesharp::frontend { class ProjectCompilation; }
 namespace nativesharp::interop
 {
 struct CppSemanticInventoryEntry;
+struct LibraryMetadata;
 // Anonymous contexts cannot be addressed by a NativeSharp source name.
 std::optional<compilation::TypeIdentity> projectCppRecordIdentity(
     const CppRecordDeclaration& record, std::string_view moduleName);
@@ -159,6 +160,8 @@ using CppCRecordClosureResult = std::variant<CppCRecordClosure, CppCRecordSnapsh
 CppCRecordClosureResult collectCppCRecordClosure(
     std::span<const CppSemanticRecordEntry> inventory, std::span<const CppRecordGroup> groups,
     std::size_t projectOrdinal, std::span<const std::string> seedIdentityKeys);
+bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compilation,
+    const LibraryMetadata& metadata, std::vector<std::uint8_t>& output, std::string& error);
 
 enum class CppSignatureRecordStatus { Matched, Unprojectable, Missing };
 struct CppSignatureRecordDependency

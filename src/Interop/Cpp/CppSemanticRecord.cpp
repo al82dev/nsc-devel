@@ -7,9 +7,14 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Interop/CppNamespaceInventory.h"
 #include "nativesharp/Interop/CppSemanticInventory.h"
+#include "nativesharp/Interop/LibraryMetadata.h"
+#include "nativesharp/Language/CallableSemantics.h"
+#include "../Internal/CppCRecordMetadataCodec.h"
+#include "../Internal/LibraryMetadataCodecSupport.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include <algorithm>
 #include <functional>
+#include <iterator>
 #include <map>
 #include <numeric>
 #include <set>
@@ -818,6 +823,89 @@ CppCRecordClosureResult collectCppCRecordClosure(
     result.records = std::move(std::get<std::vector<CppCRecordSnapshot>>(captured));
     result.enumIdentityKeys.assign(enums.begin(), enums.end());
     return result;
+}
+
+bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compilation,
+    const LibraryMetadata& metadata, std::vector<std::uint8_t>& output, std::string& error)
+{
+    const auto* lookup = compilation.nameLookup();
+    const auto* graph = compilation.projectGraph();
+    if (!lookup || !graph) { error = "C record metadata requires a compiled project lookup"; return false; }
+    std::map<std::size_t, std::set<std::string>> seeds;
+    std::function<bool(const std::string&, unsigned)> visit = [&](const std::string& key, unsigned depth) {
+        if (depth > 64) { error = "metadata function type exceeds depth limit"; return false; }
+        if (key.starts_with("fn:"))
+        {
+            const auto function = language::parseFunctionTypeIdentity(key);
+            if (!function) { error = "metadata contains an invalid function type"; return false; }
+            if (!visit(function->result, depth + 1) || !visit(function->errorType, depth + 1)) return false;
+            for (const auto& parameter : function->parameters)
+                if (!visit(parameter, depth + 1)) return false;
+            return true;
+        }
+        const auto base = metadata_detail::metadataBaseTypeKey(key);
+        if (!base.starts_with("type:")) return true;
+        const auto ordinal = lookup->typeOrdinalForIdentity(std::string_view(base).substr(5));
+        const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+        if (!imported) return true;
+        if (imported->origin == frontend::CppImportedTypeOrigin::CEnum)
+        { error = "C enum metadata catalogue is not yet available: " + base; return false; }
+        if (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
+            imported->origin != frontend::CppImportedTypeOrigin::CUnion)
+        { error = "imported record metadata origin is unsupported or unresolved: " + base; return false; }
+        seeds[imported->projectOrdinal].insert(imported->identity.key());
+        return true;
+    };
+    const auto visitCallable = [&](const auto& callable) {
+        if (!visit(callable.declaredTypeKey, 0) || !visit(callable.declaredErrorTypeKey, 0)) return false;
+        for (const auto& parameter : callable.parameters) if (!visit(parameter.typeKey, 0)) return false;
+        return true;
+    };
+    for (const auto& type : metadata.types)
+    {
+        if (!visit(type.baseTypeKey, 0) || !visit(type.delegateReturnTypeKey, 0) ||
+            !visit(type.delegateErrorTypeKey, 0)) return false;
+        for (const auto& key : type.interfaceTypeKeys) if (!visit(key, 0)) return false;
+        for (const auto& key : type.delegateParameterTypeKeys) if (!visit(key, 0)) return false;
+        for (const auto& field : type.fields) if (!visit(field.typeKey, 0)) return false;
+        for (const auto& item : type.associatedItems) if (!visit(item.typeKey, 0)) return false;
+        for (const auto& variant : type.variantCases) if (!visit(variant.payloadTypeKey, 0)) return false;
+    }
+    for (const auto& member : metadata.members) if (!visitCallable(member)) return false;
+    for (const auto& function : metadata.namespaceFunctions) if (!visitCallable(function)) return false;
+    for (const auto& state : metadata.namespaceStates) if (!visit(state.declaredTypeKey, 0)) return false;
+    for (const auto& specialization : metadata.genericSpecializations)
+        for (const auto& key : specialization.typeArguments) if (!visit(key, 0)) return false;
+    for (const auto& exported : metadata.exports)
+    {
+        if (!visit(exported.returnTypeKey, 0)) return false;
+        for (const auto& key : exported.parameterTypeKeys) if (!visit(key, 0)) return false;
+    }
+    if (seeds.empty()) { output.clear(); error.clear(); return true; }
+    auto inventoryResult = collectCppSemanticRecords(*graph, compilation.cppProjectSessions());
+    if (const auto* failure = std::get_if<CppSemanticRecordFailure>(&inventoryResult))
+    { error = failure->message; return false; }
+    const auto& inventory = std::get<std::vector<CppSemanticRecordEntry>>(inventoryResult);
+    auto grouped = groupCppSemanticRecords(inventory);
+    auto refined = refineCppRecordGroupsForPointerTransport(inventory, grouped, compilation.cppProjectSessions());
+    if (const auto* failure = std::get_if<CppRecordStructuralComparisonFailure>(&refined))
+    { error = failure->message; return false; }
+    const auto& groups = std::get<CppRecordGroups>(refined).groups;
+    std::vector<CppCRecordSnapshot> records;
+    for (const auto& [project, identities] : seeds)
+    {
+        const std::vector<std::string> requested(identities.begin(), identities.end());
+        auto closure = collectCppCRecordClosure(inventory, groups, project, requested);
+        if (const auto* failure = std::get_if<CppCRecordSnapshotFailure>(&closure))
+        { error = failure->message; return false; }
+        auto& selected = std::get<CppCRecordClosure>(closure);
+        if (!selected.enumIdentityKeys.empty())
+        { error = "C enum field metadata catalogue is not yet available: " + selected.enumIdentityKeys.front(); return false; }
+        records.insert(records.end(), std::make_move_iterator(selected.records.begin()),
+                       std::make_move_iterator(selected.records.end()));
+    }
+    std::sort(records.begin(), records.end(), [](const auto& a, const auto& b) { return a.identityKey < b.identityKey; });
+    return metadata_detail::encodeCRecordCatalog(records, output, error);
 }
 
 CppRecordRefinementResult refineCppRecordGroupsForPointerTransport(
