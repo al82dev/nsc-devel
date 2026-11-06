@@ -55,8 +55,8 @@ for %%P in (i8:8:1 u8:8:1 i16:16:2 u16:16:2 i64:64:8 u64:64:8) do (
     if errorlevel 1 (echo Falta escritura volatile release con ancho y alineacion de %%A. & exit /b 1)
   )
 )
-findstr /r /c:"store volatile i32 61, ptr" "%DEST%\project.ll" >nul
-if errorlevel 1 (echo Falta escritura volatile en el objeto apuntado. & exit /b 1)
+findstr /r /c:"store atomic volatile i32 61, ptr .*release, align 4" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura volatile release en el objeto apuntado. & exit /b 1)
 findstr /r /c:"store volatile i32 69, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile mediante alias tipado. & exit /b 1)
 findstr /r /c:"store volatile i32 71, ptr" "%DEST%\project.ll" >nul
