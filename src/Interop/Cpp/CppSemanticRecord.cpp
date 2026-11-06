@@ -731,6 +731,16 @@ CppCRecordSnapshotResult captureCppCRecordSnapshot(
     snapshot.valueLayoutUsable = group.status == CppRecordGroupStatus::OneDefinition;
     snapshot.sizeBits = record.sizeBits;
     snapshot.alignmentBits = record.alignmentBits;
+    snapshot.sourceProvenance = record.sourceProvenance;
+    for (const auto index : group.inventoryIndices)
+    {
+        const auto& observed = inventory[index].declaration;
+        if (observed.complete && observed.sourceProvenance != snapshot.sourceProvenance)
+        {
+            snapshot.sourceProvenance.reset();
+            break;
+        }
+    }
     snapshot.fields = record.fields;
     for (std::size_t field = 0; field < snapshot.fields.size(); ++field)
         for (const auto index : group.inventoryIndices)

@@ -140,6 +140,8 @@ struct CppCRecordSnapshot
     std::string name;
     std::string targetTriple;
     std::optional<std::string> clangUsr;
+    // Transient until a versioned metadata representation is introduced.
+    std::optional<CppRecordDeclaration::SourceProvenance> sourceProvenance;
     std::optional<bool> microsoftVolatileSemantics;
     CppRecordKind kind = CppRecordKind::Struct;
     bool complete = false;

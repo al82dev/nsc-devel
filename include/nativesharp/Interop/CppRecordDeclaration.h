@@ -87,6 +87,7 @@ struct CppRecordDeclaration
         std::filesystem::path sourcePath;
         std::string bufferSha256;
         std::uint32_t byteOffset = 0;
+        bool operator==(const SourceProvenance&) const = default;
     };
     std::string name;
     std::string qualifiedName;
