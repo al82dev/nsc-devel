@@ -84,6 +84,31 @@ bool ProjectNameLookup::setCppImportedTypes(std::vector<CppImportedTypeDeclarati
                 return false;
         }
     }
+    const auto sameLayout = [](const auto& left, const auto& right) {
+        return left.has_value() == right.has_value() && (!left ||
+            (left->sizeBytes == right->sizeBytes && left->alignmentBytes == right->alignmentBytes));
+    };
+    for (const auto& type : types)
+    {
+        if (!type.reconciledIdentityKey) continue;
+        const auto& targetKey = *type.reconciledIdentityKey;
+        if (targetKey.empty() || targetKey == type.identity.key() ||
+            std::count_if(types.begin(), types.end(), [&](const auto& item) {
+                return item.identity.key() == targetKey;
+            }) != 1) return false;
+        const auto target = std::find_if(types.begin(), types.end(), [&](const auto& item) {
+            return item.identity.key() == targetKey;
+        });
+        if (target->reconciledIdentityKey || type.projectOrdinal == target->projectOrdinal ||
+            (type.origin != CppImportedTypeOrigin::CStruct && type.origin != CppImportedTypeOrigin::CUnion) ||
+            type.origin != target->origin || type.kind != target->kind ||
+            type.identity.fullyQualifiedName() != target->identity.fullyQualifiedName() ||
+            !type.targetTriple || type.targetTriple != target->targetTriple ||
+            !type.clangUsr || type.clangUsr->empty() || type.clangUsr != target->clangUsr ||
+            type.isIncomplete != target->isIncomplete || !type.deferredImportError.empty() ||
+            !target->deferredImportError.empty() || !sameLayout(type.objectLayout, target->objectLayout) ||
+            !sameLayout(type.memberAccessLayout, target->memberAccessLayout)) return false;
+    }
     cppImportedTypes_ = std::move(types);
     return true;
 }
