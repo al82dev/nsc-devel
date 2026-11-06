@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Rechazo de pérdida volatile en alias a enum
+
+Preparar el caso negativo de pasar un alias a enum volatile a una función
+NativeSharp que espera puntero ordinario. Archivos: fixture enum-funcion, su
+script y documentación. El caso espera validación agrupada.
+
 ## Rechazo de pérdida volatile en alias a struct
 
 Preparar el caso negativo de pasar un alias a struct volatile a una función C

@@ -899,6 +899,12 @@ El fixture prepara un local del alias a enum volatile, escribe y lee por él y
 contrasta el resultado con C. El script ya inspecciona accesos volatile de enum;
 no se ha ejecutado el caso nuevo.
 
+## Rechazo de pérdida volatile en alias a enum
+
+El fixture prepara una llamada a una función NativeSharp con puntero ordinario
+desde un alias a enum volatile y exige el diagnóstico correspondiente. Pendiente
+de ejecución conjunta.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

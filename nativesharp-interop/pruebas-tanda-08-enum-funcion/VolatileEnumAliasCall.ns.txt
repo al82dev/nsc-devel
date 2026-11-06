@@ -1,0 +1,10 @@
+int read_plain_mood(Mood* value)
+{
+    return (int)*value;
+}
+
+int Main()
+{
+    VolatileMoodPtr value = volatile_mood_ptr;
+    return read_plain_mood(value);
+}
