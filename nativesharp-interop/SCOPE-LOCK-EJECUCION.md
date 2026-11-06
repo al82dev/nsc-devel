@@ -118,6 +118,16 @@ Clang. Presupuesto: `include/nativesharp/Frontend/ProjectNameLookup.h`,
 controles de sesión, tracking y registros. No deducir equivalencias por nombre
 ni extenderlas a C++; la proyección de firmas y ABI aún debe conectarse y probarse.
 
+## Firmas de funciones C reconciliadas
+
+Proyectar los records C reconciliados al ordinal canónico en firmas y conservar
+sus grupos Clang para verificar ABI y USR. Presupuesto:
+`include/nativesharp/Frontend/ProjectNameLookup.h`, `src/Frontend/ProjectNameLookup.cpp`,
+`src/Interop/Cpp/CppSemanticFunction.cpp`, `src/Interop/Cpp/CppSemanticFunctionGroups.cpp`,
+controles y fixtures existentes de metadata C, tracking y registros. No alterar
+firmas C++ ni aceptar conversiones sin la reconciliación previamente validada.
+Validación agrupada pendiente.
+
 ## Identidad de funciones C importadas
 
 T08-002/T08-003: conservar USR opcional en la proyección de función y
