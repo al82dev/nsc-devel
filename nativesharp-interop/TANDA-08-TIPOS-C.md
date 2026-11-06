@@ -2,17 +2,24 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
-## Globales C de struct: validación pendiente de corrección
+## Validación agrupada de globales C de struct: 2026-11-06
 
 Tras `96b857499`, `9f9ba2b64` y `a4a0b2aad`, la batería agrupada del
 2026-11-05 terminó con código 1. La construcción ON/OFF, la suite Clang y los
 demás proyectos pasaron, pero el proyecto `record-c` falló con
 `Stage 40 cannot map named value type to LLVM carrier: type:CRecordPointer::GlobalOnly`.
 
-La proyección alcanzó el backend, pero falta representar de forma segura el
-almacenamiento externo del record y su indexado sin habilitar por accidente
-el paso, construcción o copia por valor de records no verificados. El fixture
-de struct global, puntero y arreglo queda preparado; ninguno se declara validado.
+`ad312479d` añadió la declaración física del almacenamiento externo usando el
+layout observado. La repetición de `call nativesharp-interop\validar-tanda-08.cmd`
+terminó con código 0: pasaron las construcciones incrementales ON/OFF, la suite
+Clang, restauración, serialización y los siete proyectos preparados.
+
+En Windows x64 O0, NativeSharp escribió un campo de un struct global C, un campo
+mediante un puntero global y otro en un arreglo global de structs; una función C
+comprobó los tres valores. El nombre del struct no aparece en código NativeSharp
+ni en las firmas invocadas. Esto no demuestra copia, construcción o paso por valor,
+calificadores de record, matrices de records ni todas las colisiones. T08-004,
+T08-010, T08-015 y T08-016 siguen abiertos.
 
 ## Validación agrupada de arreglos globales volatile: 2026-11-05
 
