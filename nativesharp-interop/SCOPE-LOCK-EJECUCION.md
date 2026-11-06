@@ -23,6 +23,7 @@ T08-002: conciliar USR de campo entre todas las definiciones completas, incluso
 cuando la primera no lo reporte. Presupuesto: CppSemanticRecord.cpp,
 CppClangSessionTests.cpp, TRACKING.md y registros Markdown. No cambia LLVM,
 NSLink ni persistencia; validación agrupada.
+Incluir el control integrado que recupera el USR en el símbolo de campo.
 
 ## Layout C de booleanos
 
