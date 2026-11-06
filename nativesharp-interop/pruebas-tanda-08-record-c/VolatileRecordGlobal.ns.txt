@@ -1,4 +1,5 @@
 int Main()
 {
-    return global_record_volatile.value;
+    int* pointer = &global_record_volatile.value;
+    return 0;
 }

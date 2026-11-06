@@ -31,4 +31,6 @@ union GlobalUnion { int value; unsigned char bytes[4]; };
 extern union GlobalUnion global_union;
 extern const struct GlobalOnly global_record_const;
 extern volatile struct GlobalOnly global_record_volatile;
+extern struct GlobalOnly* volatile volatile_record_pointer;
+int read_volatile_record(void);
 int read_global_records(void);
