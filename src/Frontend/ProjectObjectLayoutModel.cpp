@@ -140,10 +140,16 @@ bool ProjectObjectLayoutModel::build(
                 owner && owner->objectLayout ? &*owner->objectLayout : nullptr;
             const auto physical = valueLayoutForTypeKey(nameLookup, member.declaredTypeKey);
             const auto alignment = member.explicitFieldAlignment.value_or(physical ? physical->second : 0);
+            const auto storageSize = member.explicitBitStorageSize.value_or(physical ? physical->first : 0);
+            const bool invalidBits = member.isBitField &&
+                (!member.explicitBitOffset || !member.explicitBitWidth || !member.explicitBitStorageSize ||
+                 !storageSize || storageSize > 8 || (storageSize & (storageSize - 1)) != 0 ||
+                 *member.explicitBitOffset >= storageSize * 8 || !*member.explicitBitWidth ||
+                 *member.explicitBitWidth > storageSize * 8 - *member.explicitBitOffset);
             if (!ownerLayout || !member.explicitFieldOffset || !physical ||
-                physical->second == 0 || alignment == 0 || (alignment & (alignment - 1)) != 0 ||
+                invalidBits || physical->second == 0 || alignment == 0 || (alignment & (alignment - 1)) != 0 ||
                 alignment > physical->second || *member.explicitFieldOffset > ownerLayout->sizeBytes ||
-                physical->first > ownerLayout->sizeBytes - *member.explicitFieldOffset ||
+                storageSize > ownerLayout->sizeBytes - *member.explicitFieldOffset ||
                 *member.explicitFieldOffset % alignment != 0 ||
                 ownerLayout->alignmentBytes % alignment != 0)
             {
@@ -152,7 +158,7 @@ bool ProjectObjectLayoutModel::build(
                 break;
             }
             experimentalCppFieldLayouts_.push_back(ObjectFieldLayout{ordinal, *member.explicitFieldOffset,
-                physical->first, alignment, member.declaredTypeKey, std::nullopt, std::nullopt});
+                storageSize, alignment, member.declaredTypeKey, member.explicitBitOffset, member.explicitBitWidth});
         }
     }
     if (!diagnostics.hasErrors())
