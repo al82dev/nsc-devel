@@ -372,6 +372,16 @@ bool compareCRecordContracts(const CppCRecordSnapshot& left, const CppCRecordSna
     normalized.identityKey = left.identityKey;
     if (!encodeCRecordCatalog(std::span(&normalized, 1), rightBytes, error)) return false;
     result = leftBytes == rightBytes ? CRecordContractComparison::Matching : CRecordContractComparison::Different;
+    if (result == CRecordContractComparison::Matching)
+    {
+        std::vector<std::uint8_t> leftFormats, rightFormats;
+        if (!collectCatalogueFloatFormats(std::span(&left, 1), {}, leftFormats) ||
+            !collectCatalogueFloatFormats(std::span(&right, 1), {}, rightFormats))
+        { error = "invalid C record floating format"; return false; }
+        if (leftFormats != rightFormats ||
+            std::find(leftFormats.begin(), leftFormats.end(), 0) != leftFormats.end())
+            result = CRecordContractComparison::Insufficient;
+    }
     error.clear();
     return true;
 }
