@@ -6400,8 +6400,36 @@ int main(int argc, char** argv)
                         ok &= expect(supplied && records.size() == 1 && enums.size() == 1 &&
                                      enums[0].declaration.name == "Shade",
                                      "C metadata provider includes enum dependency of record field");
-                        if (supplied)
+                        if (supplied && records.size() == 1 && enums.size() == 1)
                         {
+                            auto closureMetadata = api;
+                            closureMetadata.formatMinor = 42;
+                            closureMetadata.moduleName = records[0].moduleName;
+                            closureMetadata.targetTriple = records[0].targetTriple;
+                            closureMetadata.cppCRecordCatalog = bytes;
+                            const auto checkClosure = [&](const LibraryMetadata& metadata) {
+                                std::unordered_set<std::string> declared, specialized, external;
+                                return metadata_detail::verifyGenericAndExternalTypeCatalogues(
+                                           metadata, declared, specialized, external, dependencyError) &&
+                                    metadata_detail::verifyAllMetadataTypeReferences(
+                                           metadata, declared, specialized, external, dependencyError);
+                            };
+                            ok &= expect(checkClosure(closureMetadata),
+                                         "metadata closure accepts a local C record from its validated catalogue");
+                            auto missingCatalog = closureMetadata;
+                            missingCatalog.cppCRecordCatalog.clear();
+                            ok &= expect(!checkClosure(missingCatalog),
+                                         "metadata closure still rejects the missing local C record");
+                            auto duplicateType = closureMetadata;
+                            LibraryMetadataType duplicate;
+                            duplicate.identityKey = records[0].identityKey;
+                            duplicateType.types.push_back(std::move(duplicate));
+                            ok &= expect(!checkClosure(duplicateType),
+                                         "metadata closure rejects a C and NativeSharp type identity collision");
+                            auto wrongTarget = closureMetadata;
+                            wrongTarget.targetTriple = "different-target";
+                            ok &= expect(!checkClosure(wrongTarget),
+                                         "metadata closure rejects a catalogue from another target");
                             nativesharp::frontend::PrecompiledSyntaxModule module;
                             module.metadataPath = std::filesystem::path(argv[2]) / "shade.nsmeta";
                             module.cppCTypeCatalog = bytes;
