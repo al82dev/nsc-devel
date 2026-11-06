@@ -4,6 +4,11 @@ Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en C
 
 ## Calificador volatile del objeto apuntado: base en preparación
 
+Los párrafos siguientes registran la secuencia de cambios; las barreras que se
+describen como activas corresponden al momento de cada preparación. El estado
+posterior es la proyección limitada del global C escalar descrita más abajo,
+todavía sin validar y con su auditoría de escapes pendiente.
+
 Se agrega al resultado semántico y al registro de expresiones un dato separado
 del volatile del almacenamiento del puntero. Por ahora se inicia en falso y
 ninguna declaración adicional queda habilitada; falta conectar productores,
