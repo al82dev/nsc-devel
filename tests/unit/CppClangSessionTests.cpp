@@ -402,6 +402,27 @@ int main(int argc, char** argv)
     CppClangSessionFactory factory;
     bool ok = true;
     {
+        nativesharp::frontend::ProjectCompilation compilation;
+        LibraryMetadata metadata;
+        std::vector<std::uint8_t> output{9};
+        std::string error;
+        ok &= expect(compilation.collectCppMetadataCatalog(metadata, output, error) && output.empty(),
+                     "absent C metadata provider returns an empty catalogue");
+        const bool configuredFailure = compilation.setCppMetadataCatalogProvider(
+            [](const auto&, const auto&, auto& bytes, auto& why) {
+                bytes = {1, 2}; why = "fixture failure"; return false;
+            }, error);
+        output = {9};
+        ok &= expect(configuredFailure && !compilation.collectCppMetadataCatalog(metadata, output, error) &&
+                     output == std::vector<std::uint8_t>{9} && error == "fixture failure",
+                     "failed C metadata provider does not publish partial output");
+        const bool configuredSuccess = compilation.setCppMetadataCatalogProvider(
+            [](const auto&, const auto&, auto& bytes, auto&) { bytes = {3, 4}; return true; }, error);
+        ok &= expect(configuredSuccess && compilation.collectCppMetadataCatalog(metadata, output, error) &&
+                     output == std::vector<std::uint8_t>({3, 4}) && error.empty(),
+                     "C metadata provider publishes complete output on success");
+    }
+    {
         using nativesharp::frontend::ProjectOopMirNode;
         using nativesharp::frontend::ProjectOopMirNodeKind;
         auto field = std::make_unique<ProjectOopMirNode>();
