@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Aliases a records y enums volatile
+
+Preparar la proyección de aliases de un puntero a record o enum volatile ya
+importado; conservar identidad y const y rechazar niveles externos aún no
+representados. No mutar el tipo de Clang. Archivos: QualifiedTypeNames.cpp y
+documentación; las pruebas y validación agrupada siguen pendientes.
+
 ## Prueba de campo NativeSharp con alias volatile
 
 Preparar un campo NativeSharp tipado con el alias C: comprobar escritura al

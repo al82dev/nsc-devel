@@ -876,6 +876,13 @@ Se preparó un campo del alias importado con escritura observable desde C y una
 comprobación de IR volatile; otro caso intenta perder el calificador al leerlo.
 Las pruebas esperan la ejecución agrupada.
 
+## Aliases a records y enums volatile
+
+La búsqueda normaliza una copia del apuntado solo para localizar el record o
+enum, y conserva volatile en TypeSyntax. Usa la comprobación de identidad ya
+existente y mantiene el rechazo de modificadores externos. La cobertura y la
+validación agrupada están pendientes; no se declara el soporte verificado.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

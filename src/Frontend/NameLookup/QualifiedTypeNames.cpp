@@ -235,8 +235,20 @@ bool ProjectNameLookup::expandCppTypeAlias(
             if (!nativeCandidates.empty()) return true;
             continue;
         }
-        const auto record = cppAliasRecordType(selected->declaration.underlyingType);
-        const auto enumeration = cppAliasEnumType(selected->declaration.underlyingType);
+        const auto& originalAlias = selected->declaration.underlyingType;
+        const bool volatileAliasPointee = originalAlias.kind == interop::CppTypeKind::Pointer &&
+            originalAlias.element && originalAlias.element->isVolatile &&
+            (originalAlias.element->kind == interop::CppTypeKind::Record ||
+             originalAlias.element->kind == interop::CppTypeKind::Enumeration);
+        interop::CppType normalizedAlias = originalAlias;
+        if (volatileAliasPointee)
+        {
+            auto element = std::make_shared<interop::CppType>(*originalAlias.element);
+            element->isVolatile = false;
+            normalizedAlias.element = std::move(element);
+        }
+        const auto record = cppAliasRecordType(normalizedAlias);
+        const auto enumeration = cppAliasEnumType(normalizedAlias);
         if (!nativeCandidates.empty())
         {
             if (record && record->pointerDepth == 0 && !record->pointeeConst && nativeCandidates.size() == 1)
@@ -279,8 +291,10 @@ bool ProjectNameLookup::expandCppTypeAlias(
                                               "ambiguous imported enum for alias '" + syntax->baseName() + "'");
                     target = &imported;
                 }
-            if (!target || (enumeration->pointeeConst && !syntax->modifiers().empty()) ||
-                (syntax->isPointeeConst() && enumeration->pointerDepth != 0))
+            if (!target || (volatileAliasPointee &&
+                (!syntax->modifiers().empty() || syntax->isPointeeConst() || syntax->isPointeeVolatile())) ||
+                (enumeration->pointeeConst && !syntax->modifiers().empty()) ||
+                ((syntax->isPointeeConst() || syntax->isPointeeVolatile()) && enumeration->pointerDepth != 0))
                 return report(diagnostics::DiagnosticId::InvalidUsingTarget,
                               "C/C++ enum alias cannot yet be resolved safely: '" + syntax->baseName() + "'");
             auto* mutableSyntax = const_cast<ast::TypeSyntax*>(syntax);
@@ -290,6 +304,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
             mutableSyntax->setOriginNamespace("");
             mutableSyntax->prependModifiers(cppPointerModifiers(selected->declaration.underlyingType));
             mutableSyntax->setPointeeConst(mutableSyntax->isPointeeConst() || enumeration->pointeeConst);
+            mutableSyntax->setPointeeVolatile(mutableSyntax->isPointeeVolatile() || volatileAliasPointee);
             return true;
         }
         if (record && selected->targetTriple == "x86_64-pc-windows-msvc")
@@ -303,8 +318,10 @@ bool ProjectNameLookup::expandCppTypeAlias(
                                               "ambiguous imported record for alias '" + syntax->baseName() + "'");
                     target = &imported;
                 }
-            if (!target || (record->pointeeConst && !syntax->modifiers().empty()) ||
-                (syntax->isPointeeConst() && record->pointerDepth != 0))
+            if (!target || (volatileAliasPointee &&
+                (!syntax->modifiers().empty() || syntax->isPointeeConst() || syntax->isPointeeVolatile())) ||
+                (record->pointeeConst && !syntax->modifiers().empty()) ||
+                ((syntax->isPointeeConst() || syntax->isPointeeVolatile()) && record->pointerDepth != 0))
                 return report(diagnostics::DiagnosticId::InvalidUsingTarget,
                               "C/C++ record alias cannot yet be resolved safely: '" + syntax->baseName() + "'");
             auto* mutableSyntax = const_cast<ast::TypeSyntax*>(syntax);
@@ -314,6 +331,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
             mutableSyntax->setOriginNamespace("");
             mutableSyntax->prependModifiers(cppPointerModifiers(selected->declaration.underlyingType));
             mutableSyntax->setPointeeConst(mutableSyntax->isPointeeConst() || record->pointeeConst);
+            mutableSyntax->setPointeeVolatile(mutableSyntax->isPointeeVolatile() || volatileAliasPointee);
             return true;
         }
         const auto& incompleteArray = selected->declaration.underlyingType;
