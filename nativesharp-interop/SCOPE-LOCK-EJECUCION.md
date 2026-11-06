@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Protección de direcciones de records C anidados
+
+T08-010/T08-012: identificar por su layout natural un campo record C importado
+subalineado e impedir que su dirección o la de sus campos interiores escape
+como puntero ordinario. No propagar la restricción desde el almacenamiento de
+un puntero hacia su objeto apuntado. No habilitar todavía el proyector de
+records subalineados. Presupuesto: MemberAccessAnalyzer.cpp, fixture layout y
+registros Markdown. LLVM externo y NSLink protegidos; validación agrupada.
+
 ## Alineación de campos y arreglos anidados
 
 T08-010/T08-012/T08-016: combinar la alineación MIR de un campo con la de

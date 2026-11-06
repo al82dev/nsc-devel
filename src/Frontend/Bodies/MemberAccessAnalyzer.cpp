@@ -801,10 +801,20 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
     else if (alignedElementKey == "builtin:long" || alignedElementKey == "builtin:ulong" ||
              alignedElementKey == "builtin:double") naturalScalarAlignment = 8;
     else if (alignedElementKey.ends_with('*')) naturalScalarAlignment = 8;
+    else if (field.isCppExternal && nameLookup_ && alignedElementKey.starts_with("type:"))
+    {
+        const auto ordinal = namedTypeOrdinalForTypeKey(alignedElementKey);
+        const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+        if (imported && imported->objectLayout)
+            naturalScalarAlignment = imported->objectLayout->alignmentBytes;
+    }
     const bool unalignedImportedField = field.isCppExternal && field.explicitFieldAlignment &&
         naturalScalarAlignment != 0 && *field.explicitFieldAlignment < naturalScalarAlignment;
+    const bool unaddressableValueReceiver = field.isCppExternal && !typeReceiver &&
+        !ProjectTypeConversion::isPointer(receiver.typeKey) && !receiver.addressable &&
+        !receiver.readonlyReceiver && !receiver.volatileStorage;
     result.addressable = !field.isBitField && !result.volatileStorage &&
-        !field.declaredPointerPointeeVolatile && !unalignedImportedField &&
+        !field.declaredPointerPointeeVolatile && !unalignedImportedField && !unaddressableValueReceiver &&
         !(field.isCppExternal && (field.isReadonly || receiver.readonlyReceiver));
     result.readonlyReceiver = receiver.readonlyReceiver || field.isReadonly;
     result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
