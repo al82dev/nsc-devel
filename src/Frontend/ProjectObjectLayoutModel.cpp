@@ -139,18 +139,20 @@ bool ProjectObjectLayoutModel::build(
             const auto* ownerLayout = owner && owner->memberAccessLayout ? &*owner->memberAccessLayout :
                 owner && owner->objectLayout ? &*owner->objectLayout : nullptr;
             const auto physical = valueLayoutForTypeKey(nameLookup, member.declaredTypeKey);
+            const auto alignment = member.explicitFieldAlignment.value_or(physical ? physical->second : 0);
             if (!ownerLayout || !member.explicitFieldOffset || !physical ||
-                physical->second == 0 || *member.explicitFieldOffset > ownerLayout->sizeBytes ||
+                physical->second == 0 || alignment == 0 || (alignment & (alignment - 1)) != 0 ||
+                alignment > physical->second || *member.explicitFieldOffset > ownerLayout->sizeBytes ||
                 physical->first > ownerLayout->sizeBytes - *member.explicitFieldOffset ||
-                *member.explicitFieldOffset % physical->second != 0 ||
-                ownerLayout->alignmentBytes % physical->second != 0)
+                *member.explicitFieldOffset % alignment != 0 ||
+                ownerLayout->alignmentBytes % alignment != 0)
             {
                 diagnostics.report(diagnostics::DiagnosticId::InvalidType, diagnostics::DiagnosticSeverity::Error,
                     SourceRange{}, "invalid C++ instance field layout");
                 break;
             }
             experimentalCppFieldLayouts_.push_back(ObjectFieldLayout{ordinal, *member.explicitFieldOffset,
-                physical->first, physical->second, member.declaredTypeKey, std::nullopt, std::nullopt});
+                physical->first, alignment, member.declaredTypeKey, std::nullopt, std::nullopt});
         }
     }
     if (!diagnostics.hasErrors())

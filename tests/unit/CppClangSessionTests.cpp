@@ -5091,7 +5091,8 @@ int main(int argc, char** argv)
                 const auto valueFields = fieldOwner && fieldMembers ? fieldMembers->findMembers(*fieldOwner, "value") : std::span<const std::size_t>{};
                 const auto* valueField = valueFields.size() == 1 ? &fieldMembers->members()[valueFields[0]] : nullptr;
                 ok &= expect(fieldsReady && valueField && valueField->isCppExternal &&
-                             valueField->explicitFieldOffset == 4 && valueField->declaredTypeKey == "builtin:int" &&
+                             valueField->explicitFieldOffset == 4 && valueField->explicitFieldAlignment == 4 &&
+                             valueField->declaredTypeKey == "builtin:int" &&
                              !automaticFields.setExperimentalCppInstanceFieldProvider({}, fieldsError),
                              "project compilation obtains instance field metadata from a physical C++ header");
                 nativesharp::frontend::ProjectCompilation guardedFields;

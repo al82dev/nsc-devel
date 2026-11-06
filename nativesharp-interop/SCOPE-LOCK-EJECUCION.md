@@ -1,5 +1,16 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Transporte de alineación efectiva importada
+
+T08-010/T08-012/T08-020: conservar `byteAlignment` de un campo importado en
+el símbolo y usarla en el layout importado con comprobación de potencia de
+dos, límites y divisibilidad. La semántica de `align(N)` de campos NativeSharp
+permanece intacta. El importador sigue rechazando campos empaquetados hasta
+resolver direcciones escapadas y accesos indirectos. Presupuesto:
+ClassMemberSymbol.h, ProjectMemberModel.cpp, ProjectObjectLayoutModel.cpp,
+CppClangSessionTests.cpp y registros Markdown. LLVM y NSLink protegidos;
+validación agrupada al cierre de la tanda.
+
 ## Verificador de bloques de coalescencia
 
 La prueba dirigida llegó al IR esperado, pero el verificador no acepta los

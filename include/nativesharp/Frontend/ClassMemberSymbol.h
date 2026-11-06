@@ -197,6 +197,7 @@ struct ClassMemberSymbol final
     std::optional<std::uint64_t> explicitFieldOffset;
     // `align(N)` on an instance field raises that field's placement alignment and therefore the
     // containing aggregate's alignment. It is a minimum, never a request to weaken natural layout.
+    // For an imported C/C++ field only, this is instead its effective storage alignment.
     std::optional<std::uint64_t> explicitFieldAlignment;
     // Item 326. A promoted field is a semantic alias owned by the containing type. It is not a
     // second physical field: the source member remains inside the anonymous aggregate and this

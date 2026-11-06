@@ -417,6 +417,7 @@ bool ProjectMemberModel::build(
         const auto width = imported.byteSize ? imported.byteSize : experimentalCppFieldBytes(imported.typeKey);
         const auto alignment = imported.byteAlignment ? imported.byteAlignment : width;
         if (!owner || owner->projectOrdinal != imported.projectOrdinal || !ownerLayout ||
+            alignment == 0 || (alignment & (alignment - 1)) != 0 ||
             !cppCallableRecordIsVisible(imported.typeKey, imported.projectOrdinal, nameLookup) ||
             imported.byteOffset > ownerLayout->sizeBytes ||
             width > ownerLayout->sizeBytes - imported.byteOffset ||
@@ -438,6 +439,7 @@ bool ProjectMemberModel::build(
         member.isVolatile = imported.isVolatile;
         member.isCppExternal = true;
         member.explicitFieldOffset = imported.byteOffset;
+        member.explicitFieldAlignment = alignment;
         const auto memberOrdinal = members_.size();
         members_.push_back(std::move(member));
         membersByType_[*ordinal].push_back(memberOrdinal);
