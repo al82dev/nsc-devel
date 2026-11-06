@@ -12,5 +12,9 @@ int Main()
     UnsignedShort b = 20;
     UnsignedInt c = 27;
     if (mix_integers(a, b, c) != 42) return 5;
+    Callback returned = get_callback();
+    if (returned(39) != 42) return 6;
+    Callback echoed = echo_callback(returned);
+    if (echoed(39) != 42 || apply_callback(echoed, 39) != 42) return 7;
     return 0;
 }

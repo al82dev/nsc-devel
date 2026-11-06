@@ -1,6 +1,8 @@
 typedef int (*Callback)(int value);
 int apply_callback(Callback callback, int value);
 int apply_callback_ptr(Callback *callback, int value);
+Callback get_callback(void);
+Callback echo_callback(Callback callback);
 typedef float FloatValue;
 typedef double DoubleValue;
 FloatValue add_float(FloatValue a, FloatValue b);
