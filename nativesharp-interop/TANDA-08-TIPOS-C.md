@@ -1320,6 +1320,14 @@ los valores en ejecución y rechaza tomar la dirección. No se ha ejecutado.
 Los campos empaquetados C++ y los campos C de punteros, agregados y bitfields
 siguen pendientes, así como otras formas de acceso; no se cierra la tanda.
 
+## Validación dirigida de arreglos C volatile de records y enums
+
+Sobre `6568a1890` la construcción incremental de NSC terminó con código 0.
+El fixture layout pasó O0–O3; comprobó lectura y escritura compartidas con C,
+IR O0 con operaciones volatile alineadas a 1 y rechazo de direcciones sin
+calificador para los arreglos probados. Se observó la advertencia existente de
+inicializador en CppSemanticRecord.cpp. No cierra el ítem ni la tanda.
+
 ## Validación dirigida de arreglos C const de records y enums
 
 La construcción incremental de NSC terminó con código 0. En layout se

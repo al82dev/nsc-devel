@@ -240,6 +240,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
   - Preparados `9ce8f6a8d`, `cec4a8c6f` y `b312fc47a`: arrays C de record y
     enum volatile, con acceso mixto, direcciones e IR. Sin construir ni validar.
+  - Actualización: construcción incremental y layout pasaron en O0–O3; se
+    comprobaron acceso compartido, IR volatile con alineación 1 y rechazo de
+    direcciones. La evidencia es dirigida y la tanda permanece abierta.
   - Preparados `656034022`, `0e4bf14bb` y `8d4417cfd`: mapeo y pruebas de
     arreglos C const de records y enums empaquetados, con lectura y rechazos
     de escritura y dirección. Todavía no construidos ni validados.
