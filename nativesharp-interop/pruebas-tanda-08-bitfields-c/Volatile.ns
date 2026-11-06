@@ -1,3 +1,8 @@
+int ReadFirst(VolatileBits* value) { return (int)value->first; }
+void WriteFirst(VolatileBits* value, uint number) { value->first = number; }
+int ReadPackedFirst(PackedVolatileBits* value) { return (int)value->first; }
+void WritePackedFirst(PackedVolatileBits* value, uint number) { value->first = number; }
+
 int Main()
 {
     var value = get_volatile_bits();
