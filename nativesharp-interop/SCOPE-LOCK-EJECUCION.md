@@ -9,6 +9,14 @@ Presupuesto: NamespaceFunctionSymbol.h, CppSemanticFunction.cpp,
 CppSemanticFunctionGroups.cpp, suite de sesión y registros Markdown.
 No modifica formato persistente, LLVM externo ni NSLink; validar por tanda.
 
+## Captura persistible de records C
+
+T08-002/T08-010/T08-011/T08-013: preparar una captura propia de record C con
+identidad, destino, completitud, dimensiones y tipos/campos observados por
+Clang; rechazar grupos incompatibles sin fingir persistencia. Presupuesto:
+CppSemanticRecord.h/.cpp, CppClangSessionTests.cpp, TRACKING.md y registros
+Markdown. No altera todavía el formato, LLVM ni NSLink; validación agrupada.
+
 ## Procedencia y destino de tipos importados
 
 T08-002/T08-010/T08-011/T08-013: conservar en el tipo importado si Clang lo
