@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppSemanticRecord.h"
+#include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/Interop/CppSemanticEnumType.h"
 #include "nativesharp/Frontend/CppAliasArrayType.h"
 #include "nativesharp/Interop/CppSemanticFunctionGroups.h"
@@ -158,6 +159,8 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
          field.type.kind != CppTypeKind::Record && field.type.kind != CppTypeKind::Enumeration &&
          !scalarArray && !recordArray && !enumArray && !representablePointerArray))) return std::nullopt;
     auto mapped = mapCppScalarType(field.type);
+    if (!mapped && !record.isCxx)
+        mapped = projectCppStoredFunctionPointer(field.type);
     if (!mapped && !record.isCxx && field.type.kind == CppTypeKind::Array)
         mapped = projectCArrayField(field.type, projectOrdinal, moduleName, lookup);
     if (!mapped && !record.isCxx)
