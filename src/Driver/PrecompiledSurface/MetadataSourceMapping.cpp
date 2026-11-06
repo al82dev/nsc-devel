@@ -150,14 +150,20 @@ bool sourceCoreTypeForMetadataKey(const std::string &typeKey, std::string &sourc
     {
         const auto function = language::parseFunctionTypeIdentity(typeKey);
         if (!function || function->carrier != language::FunctionCarrier::Pointer ||
-            function->callingConvention != language::CallingConvention::C || function->variadic ||
+            function->callingConvention == language::CallingConvention::NativeSharp ||
+            (function->variadic && (function->parameters.empty() ||
+                (function->callingConvention != language::CallingConvention::C &&
+                 function->callingConvention != language::CallingConvention::Win64))) ||
             function->isUnsafe || function->isNoHeap || function->isAsync || function->nullable ||
             !function->lifetime.empty() || !function->errorType.empty())
         {
             error = "metadata-backed source import cannot materialize this function type";
             return false;
         }
-        sourceType = "fn* C(";
+        sourceType = "fn* ";
+        sourceType += function->callingConvention == language::CallingConvention::C ?
+            "C" : std::string(language::callingConventionName(function->callingConvention));
+        sourceType += "(";
         for (std::size_t i = 0; i < function->parameters.size(); ++i)
         {
             std::string parameter;
@@ -165,6 +171,7 @@ bool sourceCoreTypeForMetadataKey(const std::string &typeKey, std::string &sourc
             if (i != 0) sourceType += ", ";
             sourceType += parameter;
         }
+        if (function->variadic) sourceType += ", ...";
         std::string result;
         if (!sourceTypeForMetadataKey(function->result, result, error)) return false;
         sourceType += ") -> " + result;
