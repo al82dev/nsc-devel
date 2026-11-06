@@ -2,6 +2,20 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Resultado C de puntero a const: 2026-11-06
+
+Con `a06de3940`, `b199dd0d7` y `fd32bd2fc`, la validación agrupada terminó con
+código 0: pasaron ON/OFF, la suite Clang, restauración, serialización y los
+siete proyectos preparados. La primera ejecución había fallado porque la suite
+esperaba que un retorno `const int*` fuera rechazado; se actualizó para exigir
+la proyección y conservación del tipo de Clang, manteniendo otros rechazos.
+
+En Windows x64 O0 se leyeron resultados `const int*` y `const struct*`, y el
+segundo se pasó a una función C compatible. Se rechazaron escrituras, conversión
+mutable y llamada a función mutable, con los diagnósticos comprobados por el
+fixture. No se cubren todos los tipos, niveles, retornos C++ ni punteros a
+volatile; T08-014 y T08-015 continúan abiertos.
+
 ## Puntero global C a struct const: 2026-11-06
 
 Con `d6fe4cb64`, `1425ee99e`, `71503d94a` y `8dfdc278c`, la validación
