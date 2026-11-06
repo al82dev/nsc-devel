@@ -29,6 +29,7 @@ int Main()
     if (volatile_array[1] != 19 || volatile_matrix[1][1] != 23 || read_volatile_arrays() != 42) return 9;
     global_record.value = 10;
     global_record_pointer->value = 13;
+    if ((*global_record_pointer_pointer)->value != 13) return 12;
     global_record_array[1].value = 19;
     global_record_matrix[1][1].value = 23;
     global_union.value = 29;

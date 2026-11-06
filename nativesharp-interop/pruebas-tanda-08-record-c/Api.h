@@ -24,6 +24,7 @@ int read_volatile_arrays(void);
 struct GlobalOnly { int value; };
 extern struct GlobalOnly global_record;
 extern struct GlobalOnly* global_record_pointer;
+extern struct GlobalOnly** global_record_pointer_pointer;
 extern struct GlobalOnly global_record_array[2];
 extern struct GlobalOnly global_record_matrix[2][2];
 union GlobalUnion { int value; unsigned char bytes[4]; };

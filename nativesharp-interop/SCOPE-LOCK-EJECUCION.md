@@ -1691,6 +1691,7 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - La batería agrupada posterior a `a4a0b2aad` terminó con código 1: el caso `record-c` falla al mapear el carrier LLVM del record importado `GlobalOnly`; los otros seis proyectos pasaron. Investigar la declaración de almacenamiento externo en `src/LLVM/Lowering/OopLlvmStaticState.cpp`, el mapeo y el indexado, preservando las barreras de construcción y ABI por valor. La siguiente batería debe repetirse después de agrupar las correcciones.
 - Presupuesto de corrección: añadir `src/LLVM/Lowering/OopLlvmStaticState.cpp`. Para almacenamiento externo de records completos usar únicamente su tamaño físico verificado y dimensiones comprobadas; no crear un carrier general de valor ni habilitar ABI o construcción por valor. Mantener trazabilidad y validación agrupada.
 - Ampliación de pruebas: añadir matriz de structs y union global C al mismo fixture, comprobando las escrituras desde C. Incluir casos negativos de global record const y volatile mientras sus calificadores no se proyectan. No cambiar producción salvo que las pruebas agrupadas evidencien un defecto concreto.
+- Añadir también un puntero global doble al mismo struct para comprobar indirectamente la lectura de sus dos niveles y la identidad del tipo. No habilita conversiones de punteros calificados.
 
 ### Global enum const
 

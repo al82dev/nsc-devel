@@ -24,6 +24,7 @@ int read_volatile_arrays(void) { return volatile_array[1] + volatile_matrix[1][1
 struct GlobalOnly global_record = { 1 };
 static struct GlobalOnly global_record_target = { 2 };
 struct GlobalOnly* global_record_pointer = &global_record_target;
+struct GlobalOnly** global_record_pointer_pointer = &global_record_pointer;
 struct GlobalOnly global_record_array[2] = { { 3 }, { 4 } };
 struct GlobalOnly global_record_matrix[2][2] = { { { 1 }, { 2 } }, { { 3 }, { 4 } } };
 union GlobalUnion global_union = { 0 };
