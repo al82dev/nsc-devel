@@ -129,7 +129,8 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         // bit-field storage. Clang's AST provides absolute bit coordinates.
         if (!identity || record.isCxx || record.kind != CppRecordKind::Struct ||
             field.name.empty() || field.access != CppAccess::Public || field.type.isVolatile ||
-            !field.offsetBits || !*field.bitWidth || !field.type.sizeBits ||
+            !field.offsetBits || !*field.bitWidth || !field.type.sizeBits || !field.type.alignmentBits ||
+            !*field.type.alignmentBits || *field.type.alignmentBits % 8 ||
             *field.type.sizeBits > 64 || *field.bitWidth > *field.type.sizeBits ||
             *field.offsetBits > *record.sizeBits || *field.bitWidth > *record.sizeBits - *field.offsetBits ||
             *record.sizeBits % 8 || *record.alignmentBits % 8 || !*record.alignmentBits ||
@@ -144,10 +145,24 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         const auto recordBytes = *record.sizeBits / 8;
         if (bytes * 8 < neededBits || byteOffset > recordBytes || bytes > recordBytes - byteOffset)
             return std::nullopt;
+        std::size_t runBegin = fieldIndex;
+        std::size_t runEnd = fieldIndex + 1;
+        while (runBegin > 0 && record.fields[runBegin - 1].bitWidth &&
+               *record.fields[runBegin - 1].bitWidth != 0) --runBegin;
+        while (runEnd < record.fields.size() && record.fields[runEnd].bitWidth &&
+               *record.fields[runEnd].bitWidth != 0) ++runEnd;
         for (std::size_t i = 0; i < record.fields.size(); ++i)
         {
-            if (i == fieldIndex || record.fields[i].bitWidth) continue;
             const auto& other = record.fields[i];
+            if (other.bitWidth)
+            {
+                if (!*other.bitWidth || (i >= runBegin && i < runEnd)) continue;
+                if (!other.offsetBits || *other.offsetBits > *record.sizeBits ||
+                    *other.bitWidth > *record.sizeBits - *other.offsetBits) return std::nullopt;
+                if (*other.offsetBits < (byteOffset + bytes) * 8 &&
+                    *other.offsetBits + *other.bitWidth > byteOffset * 8) return std::nullopt;
+                continue;
+            }
             if (!other.offsetBits || *other.offsetBits % 8) return std::nullopt;
             const auto otherStart = *other.offsetBits / 8;
             if (otherStart >= byteOffset + bytes) continue;
@@ -158,7 +173,8 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         }
         const auto mapped = mapCppScalarType(field.type);
         if (!mapped) return std::nullopt;
-        const auto alignment = std::min(bytes, std::gcd(*record.alignmentBits / 8, byteOffset));
+        const auto alignment = std::min({bytes, *field.type.alignmentBits / 8,
+            std::gcd(*record.alignmentBits / 8, byteOffset)});
         if (!alignment || (alignment & (alignment - 1)) != 0) return std::nullopt;
         return CppSemanticInstanceField{projectOrdinal, identity->key(), field.name, *mapped,
             byteOffset, false, bytes, alignment, field.clangUsr, bitOffset, *field.bitWidth};
