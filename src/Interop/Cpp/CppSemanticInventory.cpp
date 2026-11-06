@@ -404,6 +404,7 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
     { error = failure->message; return false; }
     using Key = std::pair<std::size_t, std::string>;
     std::map<Key, const CppSemanticEnumEntry*> selected;
+    std::map<Key, std::string> knownUsrs;
     std::set<Key> conflicts;
     for (const auto& entry : std::get<std::vector<CppSemanticEnumEntry>>(inventory))
     {
@@ -412,6 +413,11 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
             !value.sizeBits || !value.alignmentBits || !value.location ||
             entry.projectOrdinal >= graph.projects().size()) continue;
         const Key key{entry.projectOrdinal, value.name};
+        if (value.clangUsr && !value.clangUsr->empty())
+        {
+            const auto [known, inserted] = knownUsrs.emplace(key, *value.clangUsr);
+            if (!inserted && known->second != *value.clangUsr) conflicts.insert(key);
+        }
         const auto [where, inserted] = selected.emplace(key, &entry);
         if (!inserted)
         {
@@ -442,7 +448,8 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
             frontend::NamedTypeAccessibility::Public, key.first, value.location->file.generic_string()};
         type.objectLayout = frontend::CppImportedObjectLayout{*value.sizeBits / 8, *value.alignmentBits / 8};
         type.enumBase = frontend::CppImportedEnumBase{base->token, std::string(base->name)};
-        type.clangUsr = value.clangUsr;
+        if (const auto known = knownUsrs.find(key); known != knownUsrs.end() && !conflicts.contains(key))
+            type.clangUsr = known->second;
         if (conflicts.contains(key)) type.deferredImportError = "conflicting C enum declarations: " + value.name;
         result.push_back(std::move(type));
     }
