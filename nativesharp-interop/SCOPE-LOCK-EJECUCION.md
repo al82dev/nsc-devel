@@ -9,6 +9,13 @@ Presupuesto: NamespaceFunctionSymbol.h, CppSemanticFunction.cpp,
 CppSemanticFunctionGroups.cpp, suite de sesión y registros Markdown.
 No modifica formato persistente, LLVM externo ni NSLink; validar por tanda.
 
+## Identidad de enumeradores C
+
+T08-002: conservar y conciliar USR conocidos de enumeradores C al proyectar y
+seleccionar constantes. Presupuesto: CppSemanticInventory.h/.cpp,
+CppClangSessionTests.cpp, TRACKING.md y registros Markdown. No cambia LLVM,
+NSLink ni formatos persistentes; validación agrupada por tanda.
+
 ## Identidad de alias C en resolución
 
 T08-002: conciliar los USR conocidos de observaciones del mismo alias al
