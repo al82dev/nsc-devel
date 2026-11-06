@@ -190,6 +190,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - La suite de sesión pasó sobre `3e6405f55`, incluida la recuperación del
+    USR en el proveedor y conflictos de tipos anidados. Persistencia y cierre
+    siguen pendientes. [Evidencia](TANDA-08-TIPOS-C.md#validación-dirigida-de-visibilidad-e-identidad).
   - Diagnóstico dirigido: el productor aislado llega a verificación de metadata,
     que rechaza `CRecord` como tipo local no declarado. La variante con llamada
     C falla antes por identificador desconocido. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
@@ -257,6 +260,8 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     aliases transitivos y aislamiento entre proyectos. No acredita persistencia
     ni la validación completa de la tanda.
 - [ ] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
+  - La matriz de cinco llamadas pasó tras `20b3a49c9`; tres controles de
+    sombras pasaron en O0. [Evidencia](TANDA-08-TIPOS-C.md#validación-dirigida-de-visibilidad-e-identidad).
   - Preparados `20b3a49c9` y `beb379767`: búsqueda de funciones C/C++
     globales como último recurso dentro de namespaces y controles de prioridad
     y namespace anidado. Pendientes de construcción y ejecución agrupadas.
@@ -264,6 +269,8 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     global y fallan dentro de namespace por nombre desconocido. Es necesario
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
 - [ ] T08-004. Importar declaraciones de variables globales C.
+  - El acceso desde namespace y dos controles de sombras pasaron en O0 tras
+    `1753aa723`. Cobertura general y TLS siguen pendientes. [Evidencia](TANDA-08-TIPOS-C.md#validación-dirigida-de-visibilidad-e-identidad).
   - Preparados `1753aa723` y `0cb1b4300`: búsqueda de valores C globales
     desde namespaces como último recurso y controles de acceso y sombras;
     pendientes de construcción y ejecución agrupadas.

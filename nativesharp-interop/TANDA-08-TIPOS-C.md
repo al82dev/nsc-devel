@@ -1342,6 +1342,27 @@ terminó con código 0. Comprobó transporte de USR presentes y ausentes hasta e
 metadato y símbolo, y selección de definiciones con campos de USR iguales,
 contradictorios o ausentes. No acredita persistencia ni todas las declaraciones.
 
+## Validación dirigida de visibilidad e identidad
+
+Sobre el código hasta `3e6405f55`, NSC y `nsc_cpp_session_tests` se
+construyeron incrementalmente ON con código 0; el contrato de runtime estático
+pasó. La suite de sesión terminó con código 0, incluidos el proveedor que
+recupera el USR de campo de otra sesión y los conflictos de USR en tipos
+anidados. Hubo una advertencia de inicializador en la proyección de records y
+23 al construir la suite.
+
+Con el NSC de hash `ce758a4517f3ba83`, la matriz de llamadas terminó con cinco
+códigos 0: resultado escalar y puntero en ámbito global y namespace, y
+namespace anidado. El script de sombras terminó con código 0 en O0 en sus seis
+ejecutables: función del namespace, función por using, método propio, acceso a
+global y enumerador C, y sombras de estados por namespace y using. Esto no
+cubre todos los casos de sobrecarga, calificadores o niveles de optimización.
+
+El fixture completo de tipo C publicado ya supera la llamada `get_c_record`,
+pero sigue fallando al verificar metadatos: `CRecord` no está declarado en el
+catálogo local. El consumidor no se construyó. La validación completa de la
+tanda y la persistencia siguen pendientes.
+
 ## Tipo C en API de biblioteca: diagnóstico dirigido
 
 La matriz de `96de93e42`, ejecutada con el mismo NSC precompilado, produjo:
