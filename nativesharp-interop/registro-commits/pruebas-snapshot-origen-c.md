@@ -2,4 +2,5 @@
 
 Los controles ejercen la propagación desde la declaración capturada por Clang,
 la coincidencia de observaciones y el descarte de huellas contradictorias. Son
-datos transitorios; la serialización y la validación agrupada están pendientes.
+datos transitorios; la suite de sesión pasó con código 0. La serialización en
+las bibliotecas y la validación completa de la tanda están pendientes.
