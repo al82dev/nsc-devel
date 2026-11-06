@@ -1347,6 +1347,25 @@ if (operation == TokenKind::PlusPlus || operation == TokenKind::MinusMinus)
             "increment/decrement requires a modifiable numeric or non-void pointer operand");
         return result;
     }
+    if (pointerOperand && nameLookup_)
+    {
+        const std::string element = operand.typeKey.substr(0, operand.typeKey.size() - 1);
+        if (element.starts_with("type:") && !element.ends_with("*"))
+        {
+            const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(element).substr(5));
+            const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+            if (imported && imported->isIncomplete &&
+                (imported->origin == CppImportedTypeOrigin::CStruct ||
+                 imported->origin == CppImportedTypeOrigin::CUnion))
+            {
+                diagnostics.report(diagnostics::DiagnosticId::IncompleteType,
+                    diagnostics::DiagnosticSeverity::Error, expression->range(),
+                    "pointer arithmetic requires a complete C type; '" +
+                        imported->identity.fullyQualifiedName() + "' has no element size");
+                return result;
+            }
+        }
+    }
     result.typeKey = operand.typeKey;
     result.valid = true;
     return result;

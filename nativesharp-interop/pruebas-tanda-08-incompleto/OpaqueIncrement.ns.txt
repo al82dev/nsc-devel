@@ -1,0 +1,1 @@
+int Main() { Opaque* value = opaque_get(); value++; return 0; }
