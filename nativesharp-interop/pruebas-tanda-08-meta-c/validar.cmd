@@ -37,6 +37,10 @@ for %%O in (0 1 2 3) do (
   call :run %%O enumpromote
   if errorlevel 1 exit /b 1
 )
+for %%O in (0 1 2 3) do (
+  call :run %%O sharedunion
+  if errorlevel 1 exit /b 1
+)
 call :run 0 conflict
 if errorlevel 1 exit /b 1
 echo Public C type metadata consumer compiled and ran in O0 through O3.
@@ -46,7 +50,7 @@ exit /b 0
 set "DEST=%TASK_META_ROOT%\O%~1-%~2"
 if not exist "%DEST%" mkdir "%DEST%"
 if errorlevel 1 exit /b 1
-for %%F in (Api.h Api.c Conflict.h Independent.h Independent.c Producer.nsproj Producer.ns Consumer.nsproj Consumer.ns Inferred.nsproj Inferred.ns Independent.nsproj Independent.ns Shared.nsproj Shared.ns SharedValue.nsproj SharedValue.ns SharedEnum.nsproj SharedEnum.ns SharedEnumPromote.nsproj SharedEnumPromote.ns) do (
+for %%F in (Api.h Api.c Conflict.h Independent.h Independent.c Producer.nsproj Producer.ns Consumer.nsproj Consumer.ns Inferred.nsproj Inferred.ns Independent.nsproj Independent.ns Shared.nsproj Shared.ns SharedValue.nsproj SharedValue.ns SharedEnum.nsproj SharedEnum.ns SharedEnumPromote.nsproj SharedEnumPromote.ns ProducerUnion.ns SharedUnion.ns SharedUnion.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -58,6 +62,10 @@ if /I "%~2"=="value" (
 )
 if /I "%~2"=="sharedvalue" (
   copy /y "%~dp0ProducerValue.ns" "%DEST%\Producer.ns" >nul
+  if errorlevel 1 exit /b 1
+)
+if /I "%~2"=="sharedunion" (
+  copy /y "%~dp0ProducerUnion.ns" "%DEST%\Producer.ns" >nul
   if errorlevel 1 exit /b 1
 )
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 -O%~1 "%DEST%\Api.c" -o "%DEST%\api.obj"
@@ -74,6 +82,14 @@ if /I "%~2"=="inferred" (
 )
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\Producer.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\CPublishedProducer.lib"
 if errorlevel 1 exit /b 1
+if /I "%~2"=="sharedunion" (
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\SharedUnion.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\SharedUnion.exe"
+  if errorlevel 1 exit /b 1
+  "%DEST%\SharedUnion.exe"
+  if errorlevel 1 exit /b 1
+  echo Shared C union metadata passed O%~1.
+  exit /b 0
+)
 if /I "%~2"=="sharedenum" (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\SharedEnum.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\SharedEnum.exe"
   if errorlevel 1 exit /b 1

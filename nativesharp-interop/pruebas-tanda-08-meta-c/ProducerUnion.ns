@@ -1,0 +1,8 @@
+namespace Published
+{
+    public struct Bridge
+    {
+        public static CUnionShared* Get() { return get_shared_union(); }
+        public static CUnionShared GetValue() { return get_shared_union_value(); }
+    }
+}

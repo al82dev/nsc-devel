@@ -1,6 +1,10 @@
 #include "Api.h"
 _Static_assert(_Generic((enum CWideUnsigned)0, unsigned int: 1, default: 0), "enum must be unsigned");
 static CRecord record = { 17, CGlobalChoice };
+static CUnionShared shared_union = { 42 };
+CUnionShared* get_shared_union(void) { return &shared_union; }
+CUnionShared get_shared_union_value(void) { return shared_union; }
+int read_shared_union(CUnionShared value) { return value.value; }
 CRecord* get_c_record(void) { return &record; }
 CRecord get_c_record_value(void) { return record; }
 CBig get_c_big(void) { CBig value = { 11, 22, 33 }; return value; }

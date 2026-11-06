@@ -1,0 +1,9 @@
+int Main()
+{
+    CUnionShared* fromLibrary = Published.Bridge.Get();
+    CUnionShared* fromHeader = get_shared_union();
+    if (fromLibrary != fromHeader || fromHeader->value != 42) return 1;
+    CUnionShared fromValue = Published.Bridge.GetValue();
+    if (read_shared_union(fromValue) != 42) return 2;
+    return 0;
+}
