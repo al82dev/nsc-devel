@@ -3314,6 +3314,8 @@ Ampliar `nativesharp-interop/pruebas-tanda-08-callback` y su documentación
 para probar el retorno de un puntero a función C, su llamada desde NativeSharp
 y su tránsito de vuelta a C. Ejecutar la matriz O0–O3 agrupada. No modificar
 producción sin delimitar primero el archivo y el defecto observados.
+Agregar un proyecto separado para leer e invocar un puntero a función desde un
+campo de struct C y desde un global C, sin alterar el caso ya validado.
 
 Extender el mismo fixture con parámetros y retornos C de unions de 4 y 12
 bytes, para contrastar la clasificación ABI directa e indirecta en Windows
