@@ -450,6 +450,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     desde namespaces como último recurso y controles de acceso y sombras;
     pendientes de construcción y ejecución agrupadas.
 - [ ] T08-005. Importar alias de tipos declarados con `typedef`.
+  - El puntero `const CMatrix*` y su variante mutable llegaron a funciones C y
+    ejecutaron O0–O3; se rechazaron `const` y dimensiones incompatibles.
+    La suite de sesión pasó. Otras clases de matrices siguen pendientes.
+    [Evidencia](registro-commits/proyeccion-puntero-matriz-c.md).
   - Un proyecto real pasó de O0 a O3 con alias escalares encadenados, matriz
     local, enum, struct y callback. Una función `const CMatrix*` sigue sin
     importarse y tiene prueba separada. [Evidencia](registro-commits/proyecto-typedef-c.md).
