@@ -67,3 +67,13 @@ if not re.search(r"store i32 90, ptr %field\.addr\d*, align 1", record_matrix):
 if not re.search(r"load i32, ptr %field\.addr\d*, align 1", record_matrix):
     print("Falta lectura alineada a 1 del record en matriz")
     sys.exit(1)
+
+packed_enum = ir.split("call ptr @layout_packed_enum()", 1)[-1].split(
+    "call i32 @layout_packed_enum_sum()", 1)[0]
+for address in ("field\\.addr", "raw\\.element\\.addr"):
+    if not re.search(r"store i32 [^\n]*ptr %" + address + r"\d*, align 1", packed_enum):
+        print("Falta escritura alineada a 1 del enum empaquetado")
+        sys.exit(1)
+    if not re.search(r"load i32, ptr %" + address + r"\d*, align 1", packed_enum):
+        print("Falta lectura alineada a 1 del enum empaquetado")
+        sys.exit(1)
