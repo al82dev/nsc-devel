@@ -1454,6 +1454,22 @@ int main(int argc, char** argv)
                         if (entries)
                         {
                             const auto grouped = groupCppSemanticRecords(*entries);
+                            const auto originalRecord = std::find_if(entries->begin(), entries->end(),
+                                [](const auto& entry) { return entry.identity && entry.declaration.clangUsr; });
+                            bool differentRecordUsrConflicts = false;
+                            if (originalRecord != entries->end())
+                            {
+                                auto changed = *entries;
+                                changed.push_back(*originalRecord);
+                                changed.back().declaration.clangUsr = "different-record-usr";
+                                const auto changedGroups = groupCppSemanticRecords(changed);
+                                for (const auto& group : changedGroups.groups)
+                                    if (group.projectOrdinal == originalRecord->projectOrdinal &&
+                                        group.identity.key() == originalRecord->identity->key())
+                                        differentRecordUsrConflicts = group.status == CppRecordGroupStatus::Conflict;
+                            }
+                            ok &= expect(differentRecordUsrConflicts,
+                                         "record grouping detects distinct known Clang USRs for one projected name");
                             bool sharedConflict = false, sameConflict = false, equalUnverified = false;
                             bool oneDefinition = false, forwardOnly = false, forwardAndDefinition = false, anonymousRetained = false;
                             for (const auto& group : grouped.groups)
