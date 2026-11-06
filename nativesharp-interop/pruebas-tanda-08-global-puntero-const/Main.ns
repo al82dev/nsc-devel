@@ -1,0 +1,7 @@
+int Main()
+{
+    if (*c_slots[0] != 11 || *c_slots[1] != 22) return 1;
+    c_slots[0] = c_other();
+    if (*c_slots[0] != 33 || c_verify() != 1) return 2;
+    return 0;
+}

@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Arreglos globales C de punteros a const
+
+Preparar el fixture `nativesharp-interop/pruebas-tanda-08-global-puntero-const`
+para un arreglo global C de dos punteros a `const int`: leer el dato, cambiar
+un elemento del arreglo por otro puntero compatible y verificar el resultado
+desde C; rechazar que se escriba a través del puntero al dato const. Mantener
+las salidas bajo `A:/nsc-interop-build`, registrar los resultados y no modificar
+producción antes de reproducir el fallo y acotar la ruta responsable. LLVM y
+NSLink permanecen de solo lectura.
+
 ## Funciones C static inline de encabezados
 
 Investigar la importación y materialización de funciones C `static inline`
