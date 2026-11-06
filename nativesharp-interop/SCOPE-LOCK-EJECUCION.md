@@ -1,5 +1,22 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Orden al desreferenciar directamente un global C volatile int*
+
+T08-015: el IR comparado muestra que Clang MS usa acquire/release al acceder
+al entero mediante un `volatile int*`, mientras el IR NS anterior omite el
+orden. Tratar exclusivamente `*global` cuando el operando resuelto es el
+valor directo de un global C importado `volatile int*` con modo MS conocido.
+El puntero C válido a int debe satisfacer la alineación natural de cuatro;
+no aplicar esta inferencia a casts, miembros, parámetros, locales, arreglos de
+punteros ni a otros tipos. Esas rutas siguen pendientes por procedencia.
+
+Presupuesto: `src/Frontend/HIR/ExpressionStatementMachine/HirCompletionTerminalFrames.cpp`,
+`src/LLVM/Lowering/PackedArrayAlignment.h`,
+`src/LLVM/Lowering/OopLlvmArraysAndStores.cpp`,
+`src/LLVM/Lowering/OopLlvmExpressionMachine.cpp`, el fixture
+`pruebas-tanda-08-record-c`, tracking y registros. Los controles deberán
+comparar lectura y escritura de ese global; no se modifican NSLink ni LLVM.
+
 ## Orden de accesos a arreglos globales C volatile int
 
 T08-015: Clang Windows x64 emitió `load atomic volatile i32 ... acquire` y
