@@ -2950,6 +2950,40 @@ int main(int argc, char** argv)
                          (*enumSnapshots)[0].declaration.enumerators[0].clangUsr == "value-usr" &&
                          (*enumSnapshots)[0].declaration.enumerators[0].decimalValue == "-3",
                          "C enum catalogue reconciles identities and preserves exact signed values");
+            {
+                auto forward = enumEntry;
+                forward.declaration.complete = false;
+                forward.declaration.underlyingType.reset();
+                forward.declaration.sizeBits.reset();
+                forward.declaration.alignmentBits.reset();
+                forward.declaration.enumerators.clear();
+                forward.declaration.clangUsr = "enum-usr";
+                auto definition = enumEntry;
+                definition.declaration.clangUsr.reset();
+                const std::vector<CppSemanticEnumEntry> withForward{forward, definition};
+                const auto captured = captureCppCEnumCatalog(withForward, 0, "Semantic", enumSeeds);
+                const auto* snapshots = std::get_if<std::vector<CppCEnumSnapshot>>(&captured);
+                ok &= expect(snapshots && snapshots->size() == 1 &&
+                             (*snapshots)[0].declaration.clangUsr == "enum-usr" &&
+                             (*snapshots)[0].declaration.enumerators.size() == definition.declaration.enumerators.size(),
+                             "C enum catalogue reconciles a forward declaration with its definition");
+                auto conflicting = forward;
+                conflicting.declaration.clangUsr = "other-enum-usr";
+                const std::vector<CppSemanticEnumEntry> conflict{forward, definition, conflicting};
+                ok &= expect(std::holds_alternative<CppCEnumSnapshotFailure>(
+                                 captureCppCEnumCatalog(conflict, 0, "Semantic", enumSeeds)),
+                             "C enum catalogue rejects conflicting forward identities");
+                conflicting = forward;
+                conflicting.targetTriple = "another-target";
+                const std::vector<CppSemanticEnumEntry> targetConflict{forward, definition, conflicting};
+                ok &= expect(std::holds_alternative<CppCEnumSnapshotFailure>(
+                                 captureCppCEnumCatalog(targetConflict, 0, "Semantic", enumSeeds)),
+                             "C enum catalogue rejects conflicting forward targets");
+                const std::vector<CppSemanticEnumEntry> onlyForward{forward};
+                ok &= expect(std::holds_alternative<CppCEnumSnapshotFailure>(
+                                 captureCppCEnumCatalog(onlyForward, 0, "Semantic", enumSeeds)),
+                             "C enum catalogue requires a complete definition");
+            }
             if (enumSnapshots)
             {
                 std::vector<std::uint8_t> bytes;
