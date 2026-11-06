@@ -15,6 +15,8 @@ call "%~dp0construir-frontend-tanda1.cmd" nsc_syntax_tree_serialization_equivale
 if errorlevel 1 exit /b 1
 call "%~dp0construir-frontend-tanda1.cmd" nsc_project_oop_lowering_tests ON
 if errorlevel 1 exit /b 1
+call "%~dp0construir-frontend-tanda1.cmd" nsc_namespace_function_llvm_tests ON
+if errorlevel 1 exit /b 1
 call "%~dp0construir-frontend-tanda1.cmd" nsc_frontend OFF
 if errorlevel 1 exit /b 1
 set "TASK_FAILED=0"
@@ -31,6 +33,11 @@ set "NSC_PROJECT_OOP_LOWERING_FOCUS=mir-cache-restore-depth"
 A:\nsc-interop-build\tanda1-ON\tests\nsc_project_oop_lowering_tests.exe
 if errorlevel 1 set "TASK_FAILED=1"
 set "NSC_PROJECT_OOP_LOWERING_FOCUS="
+echo === Identidad de codigo MIR ===
+pushd "%TEMP%"
+A:\nsc-interop-build\tanda1-ON\tests\nsc_namespace_function_llvm_tests.exe
+if errorlevel 1 set "TASK_FAILED=1"
+popd
 for %%T in (valores incompleto record-c union layout callback enum-funcion) do call :run_case %%T
 if "%TASK_FAILED%"=="1" (
   echo La validacion de la tanda 08 contiene fallos; revisar la salida anterior.
