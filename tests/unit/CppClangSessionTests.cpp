@@ -3270,6 +3270,45 @@ int main(int argc, char** argv)
                     ok &= expect(withProvenance && recovered.size() == provenanceCatalog.size() &&
                                  recovered[recordIndex].sourceProvenance == provenanceRecord->sourceProvenance,
                                  "versioned C catalogue retains UTF-8 source provenance");
+                    if (!provenanceRecord->fields.empty() && provenanceRecord->sizeBits &&
+                        *provenanceRecord->sizeBits >= 64)
+                    {
+                        auto floatingCatalog = provenanceCatalog;
+                        auto& field = floatingCatalog[recordIndex].fields.front();
+                        CppType floating;
+                        floating.kind = CppTypeKind::Floating;
+                        floating.spelling = "long double";
+                        floating.canonicalSpelling = "long double";
+                        floating.unqualifiedCanonicalSpelling = "long double";
+                        floating.sizeBits = 64;
+                        floating.alignmentBits = 64;
+                        floating.ieeeBinary64 = true;
+                        field.type = floating;
+                        field.offsetBits = 0;
+                        std::vector<std::uint8_t> floatingBytes;
+                        std::vector<CppCRecordSnapshot> floatingRecords;
+                        std::vector<CppCEnumSnapshot> floatingEnums;
+                        const bool floatingRoundTrip = metadata_detail::encodeCTypeCatalogWithProvenance(
+                            floatingCatalog, {}, floatingBytes, codecError) &&
+                            metadata_detail::decodeCTypeCatalogWithProvenance(
+                                floatingBytes, floatingRecords, floatingEnums, codecError);
+                        ok &= expect(floatingRoundTrip && floatingBytes[0] == 2 &&
+                                     floatingRecords[recordIndex].fields.front().type.ieeeBinary64,
+                                     "versioned C catalogue preserves confirmed long double format");
+                        auto missingFormat = floatingCatalog[recordIndex];
+                        missingFormat.fields.front().type.ieeeBinary64 = false;
+                        auto confirmed = floatingCatalog[recordIndex];
+                        confirmed.clangUsr = "float-record-usr";
+                        missingFormat.clangUsr = confirmed.clangUsr;
+                        metadata_detail::CRecordContractComparison floatComparison{};
+                        ok &= expect(metadata_detail::compareCRecordContracts(confirmed, missingFormat, floatComparison, codecError) &&
+                                     floatComparison == metadata_detail::CRecordContractComparison::Insufficient,
+                                     "C record comparison does not infer an unknown floating format");
+                        if (!floatingBytes.empty()) floatingBytes.back() = 2;
+                        ok &= expect(!metadata_detail::decodeCTypeCatalogWithProvenance(
+                                         floatingBytes, floatingRecords, floatingEnums, codecError),
+                                     "C catalogue rejects an invalid floating format flag");
+                    }
                     std::vector<std::uint8_t> oldCatalog;
                     std::vector<CppCRecordSnapshot> oldRecords;
                     const bool oldFormat = metadata_detail::encodeCRecordCatalog(provenanceCatalog, oldCatalog, codecError) &&
