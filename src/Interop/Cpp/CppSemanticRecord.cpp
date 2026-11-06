@@ -843,6 +843,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     const auto* graph = compilation.projectGraph();
     if (!lookup || !graph) { error = "C record metadata requires a compiled project lookup"; return false; }
     std::map<std::size_t, std::set<std::string>> seeds;
+    std::map<std::size_t, std::set<std::string>> enumSeeds;
     std::function<bool(const std::string&, unsigned)> visit = [&](const std::string& key, unsigned depth) {
         if (depth > 64) { error = "metadata function type exceeds depth limit"; return false; }
         if (key.starts_with("fn:"))
@@ -860,7 +861,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
         if (!imported) return true;
         if (imported->origin == frontend::CppImportedTypeOrigin::CEnum)
-        { error = "C enum metadata catalogue is not yet available: " + base; return false; }
+        { enumSeeds[imported->projectOrdinal].insert(imported->identity.key()); return true; }
         if (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
             imported->origin != frontend::CppImportedTypeOrigin::CUnion)
         { error = "imported record metadata origin is unsupported or unresolved: " + base; return false; }
@@ -892,7 +893,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         if (!visit(exported.returnTypeKey, 0)) return false;
         for (const auto& key : exported.parameterTypeKeys) if (!visit(key, 0)) return false;
     }
-    if (seeds.empty()) { output.clear(); error.clear(); return true; }
+    if (seeds.empty() && enumSeeds.empty()) { output.clear(); error.clear(); return true; }
     auto inventoryResult = collectCppSemanticRecords(*graph, compilation.cppProjectSessions());
     if (const auto* failure = std::get_if<CppSemanticRecordFailure>(&inventoryResult))
     { error = failure->message; return false; }
@@ -911,12 +912,62 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         { error = failure->message; return false; }
         auto& selected = std::get<CppCRecordClosure>(closure);
         if (!selected.enumIdentityKeys.empty())
-        { error = "C enum field metadata catalogue is not yet available: " + selected.enumIdentityKeys.front(); return false; }
+            enumSeeds[project].insert(selected.enumIdentityKeys.begin(), selected.enumIdentityKeys.end());
         records.insert(records.end(), std::make_move_iterator(selected.records.begin()),
                        std::make_move_iterator(selected.records.end()));
     }
     std::sort(records.begin(), records.end(), [](const auto& a, const auto& b) { return a.identityKey < b.identityKey; });
-    return metadata_detail::encodeCTypeCatalog(records, {}, output, error);
+    std::vector<CppCEnumSnapshot> enums;
+    if (!enumSeeds.empty())
+    {
+        auto enumInventory = collectCppSemanticEnums(*graph, compilation.cppProjectSessions());
+        if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&enumInventory))
+        { error = failure->message; return false; }
+        const auto& entries = std::get<std::vector<CppSemanticEnumEntry>>(enumInventory);
+        for (const auto& [project, identities] : enumSeeds)
+        {
+            if (identities.empty()) continue;
+            if (project >= graph->projects().size()) { error = "C enum project is unavailable"; return false; }
+            const std::vector<std::string> requested(identities.begin(), identities.end());
+            auto captured = captureCppCEnumCatalog(entries, project, graph->projects()[project].moduleName(), requested);
+            if (const auto* failure = std::get_if<CppCEnumSnapshotFailure>(&captured))
+            { error = failure->message; return false; }
+            auto& selected = std::get<std::vector<CppCEnumSnapshot>>(captured);
+            enums.insert(enums.end(), std::make_move_iterator(selected.begin()), std::make_move_iterator(selected.end()));
+        }
+    }
+    std::sort(enums.begin(), enums.end(), [](const auto& a, const auto& b) { return a.identityKey < b.identityKey; });
+    for (const auto& record : records)
+    {
+        std::function<bool(const CppType&, unsigned)> checkEnum = [&](const CppType& type, unsigned depth) {
+            if (depth > 64) { error = "C enum field dependency exceeds type depth"; return false; }
+            if (type.kind == CppTypeKind::Enumeration)
+            {
+                if (!type.enumIdentity) { error = "C enum field identity is unavailable"; return false; }
+                const compilation::TypeIdentity identity(record.moduleName, {}, {}, type.enumIdentity->name);
+                const auto found = std::find_if(enums.begin(), enums.end(), [&](const auto& value) {
+                    return value.identityKey == identity.key();
+                });
+                if (!identity.isValid() || found == enums.end() || found->targetTriple != record.targetTriple ||
+                    (type.enumIdentity->clangUsr && found->declaration.clangUsr &&
+                     type.enumIdentity->clangUsr != found->declaration.clangUsr) ||
+                    (type.sizeBits && type.sizeBits != found->declaration.sizeBits) ||
+                    (type.alignmentBits && type.alignmentBits != found->declaration.alignmentBits))
+                { error = "C enum field dependency conflicts with its definition: " + identity.key(); return false; }
+            }
+            if (type.element && !checkEnum(*type.element, depth + 1)) return false;
+            if (type.enumUnderlying && !checkEnum(*type.enumUnderlying, depth + 1)) return false;
+            if (type.function)
+            {
+                if (!checkEnum(type.function->returnType, depth + 1)) return false;
+                for (const auto& parameter : type.function->parameterTypes)
+                    if (!checkEnum(parameter, depth + 1)) return false;
+            }
+            return true;
+        };
+        for (const auto& field : record.fields) if (!checkEnum(field.type, 0)) return false;
+    }
+    return metadata_detail::encodeCTypeCatalog(records, enums, output, error);
 }
 
 bool selectCppTypesWithPrecompiledCatalogs(const frontend::ProjectCompilation& compilation,
