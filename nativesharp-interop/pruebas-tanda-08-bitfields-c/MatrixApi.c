@@ -11,3 +11,6 @@ void matrix_increment_small(VolatileMatrix* value) { value->small++; }
 void matrix_increment_medium(VolatileMatrix* value) { value->medium++; }
 void matrix_increment_word(VolatileMatrix* value) { value->word++; }
 void matrix_increment_wide(VolatileMatrix* value) { value->wide++; }
+int matrix_post_word(VolatileMatrix* value) { return value->word++; }
+int matrix_pre_word(VolatileMatrix* value) { return ++value->word; }
+void matrix_add_word(VolatileMatrix* value) { value->word += 2; }
