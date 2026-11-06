@@ -3271,6 +3271,35 @@ int main(int argc, char** argv)
                 ok &= expect(roundTrip && encoded == reencoded && decoded.size() == catalog->size(),
                              "C record catalog codec preserves its complete encoding");
                 auto provenanceCatalog = *catalog;
+                for (auto& record : provenanceCatalog)
+                    if (!record.complete) record.sourceProvenance.reset();
+                {
+                    std::vector<std::uint8_t> forwardBytes;
+                    std::vector<CppCRecordSnapshot> forwardRecords;
+                    std::vector<CppCEnumSnapshot> forwardEnums;
+                    const auto forward = std::find_if(catalog->begin(), catalog->end(),
+                        [](const auto& record) { return !record.complete && record.sourceProvenance.has_value(); });
+                    const bool forwardRoundTrip = forward != catalog->end() &&
+                        metadata_detail::encodeCTypeCatalogWithProvenance(*catalog, {}, forwardBytes, codecError) &&
+                        !forwardBytes.empty() && forwardBytes[0] == 3 &&
+                        metadata_detail::decodeVersionedCTypeCatalog(forwardBytes, forwardRecords, forwardEnums, codecError);
+                    const auto recoveredForward = std::find_if(forwardRecords.begin(), forwardRecords.end(),
+                        [](const auto& record) { return !record.complete && record.sourceProvenance.has_value(); });
+                    ok &= expect(forwardRoundTrip && recoveredForward != forwardRecords.end() &&
+                                 recoveredForward->sourceProvenance == forward->sourceProvenance,
+                                 "version 3 preserves incomplete C record provenance");
+                    LibraryMetadata forwardMetadata;
+                    forwardMetadata.formatMinor = 44;
+                    forwardMetadata.targetTriple = "x86_64-pc-windows-msvc";
+                    forwardMetadata.moduleName = "Semantic";
+                    forwardMetadata.producerVersion = "forward-test";
+                    forwardMetadata.cppCRecordCatalog = forwardBytes;
+                    ok &= expect(forwardRoundTrip && !metadata_detail::verifyBinaryClosureMetadata(forwardMetadata, codecError),
+                                 "metadata 1.44 rejects incomplete C provenance");
+                    forwardMetadata.formatMinor = 45;
+                    ok &= expect(forwardRoundTrip && metadata_detail::verifyBinaryClosureMetadata(forwardMetadata, codecError),
+                                 "metadata 1.45 accepts incomplete C provenance");
+                }
                 const auto provenanceRecord = std::find_if(provenanceCatalog.begin(), provenanceCatalog.end(),
                     [](const auto& item) { return item.complete; });
                 if (provenanceRecord != provenanceCatalog.end())
@@ -3332,6 +3361,19 @@ int main(int argc, char** argv)
                         formatMetadata.formatMinor = 44;
                         ok &= expect(metadata_detail::verifyBinaryClosureMetadata(formatMetadata, codecError),
                                      "current metadata accepts a canonical floating format catalogue");
+                        auto mixedCatalog = floatingCatalog;
+                        for (std::size_t i = 0; i < mixedCatalog.size(); ++i)
+                            if (!mixedCatalog[i].complete) mixedCatalog[i].sourceProvenance = (*catalog)[i].sourceProvenance;
+                        auto mixedMetadata = formatMetadata;
+                        mixedMetadata.formatMinor = 45;
+                        const bool mixedEncoded = metadata_detail::encodeCTypeCatalogWithProvenance(
+                            mixedCatalog, {}, mixedMetadata.cppCRecordCatalog, codecError);
+                        ok &= expect(mixedEncoded && !mixedMetadata.cppCRecordCatalog.empty() &&
+                                     mixedMetadata.cppCRecordCatalog[0] == 4 &&
+                                     metadata_detail::verifyBinaryClosureMetadata(mixedMetadata, codecError) &&
+                                     metadata_detail::encodeAbiProjection(mixedMetadata) ==
+                                         metadata_detail::encodeAbiProjection(formatMetadata),
+                                     "version 4 retains floating ABI while excluding incomplete provenance");
                         auto movedSource = floatingCatalog;
                         movedSource[recordIndex].sourceProvenance->sourcePath = "different/source.h";
                         auto movedMetadata = formatMetadata;
@@ -3511,6 +3553,8 @@ int main(int argc, char** argv)
                              "metadata validates a canonical C record catalogue for its target");
                 {
                     auto withOrigin = *catalog;
+                    for (auto& record : withOrigin)
+                        if (!record.complete) record.sourceProvenance.reset();
                     auto completeRecord = std::find_if(withOrigin.begin(), withOrigin.end(),
                         [](const auto& record) { return record.complete; });
                     if (completeRecord != withOrigin.end())
