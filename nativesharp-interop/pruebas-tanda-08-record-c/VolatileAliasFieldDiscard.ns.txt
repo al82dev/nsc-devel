@@ -1,0 +1,9 @@
+struct VolatileAliasHolder { public VolatileIntPtr value; }
+
+int Main()
+{
+    VolatileAliasHolder holder;
+    holder.value = volatile_pointee;
+    int* plain = holder.value;
+    return 0;
+}

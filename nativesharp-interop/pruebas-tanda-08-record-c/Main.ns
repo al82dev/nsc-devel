@@ -1,3 +1,5 @@
+struct VolatileAliasHolder { public VolatileIntPtr value; }
+
 VolatileIntPtr global_volatile_alias;
 
 VolatileIntPtr forward_volatile_alias(VolatileIntPtr value)
@@ -56,6 +58,10 @@ int Main()
     global_volatile_alias = volatile_pointee;
     *global_volatile_alias = 72;
     if (read_volatile_pointee() != 72) return 36;
+    VolatileAliasHolder holder;
+    holder.value = volatile_pointee;
+    *holder.value = 73;
+    if (read_volatile_pointee() != 73) return 38;
     shared_array[1] = 19;
     int* shared_element = &shared_array[1];
     if (*shared_element != 19) return 10;

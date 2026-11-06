@@ -43,6 +43,8 @@ findstr /r /c:"store volatile i32 71, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile despues de la conversion al alias. & exit /b 1)
 findstr /r /c:"store volatile i32 72, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile desde el global NativeSharp. & exit /b 1)
+findstr /r /c:"store volatile i32 73, ptr" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura volatile desde el campo NativeSharp. & exit /b 1)
 findstr /r /c:"store volatile i32 67, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile del campo apuntado. & exit /b 1)
 findstr /r /c:"store volatile i32 68, ptr" "%DEST%\project.ll" >nul
@@ -316,6 +318,12 @@ if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-alias-nested.exe" > "%DEST%\volatile-alias-nested.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /c:"volatile pointer alias cannot yet be represented safely" "%DEST%\volatile-alias-nested.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0VolatileAliasFieldDiscard.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-alias-field-discard.exe" > "%DEST%\volatile-alias-field-discard.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"would discard pointer pointee volatile qualification" "%DEST%\volatile-alias-field-discard.log" >nul
 if errorlevel 1 exit /b 1
 echo Record C por puntero: resultado esperado cero.
 exit /b 0

@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Prueba de campo NativeSharp con alias volatile
+
+Preparar un campo NativeSharp tipado con el alias C: comprobar escritura al
+apuntado en IR y memoria C, y rechazo de conversión del campo a puntero sin
+volatile. Archivos: fixture de records C, su script y documentación. Espera la
+validación agrupada de la tanda.
+
 ## Prueba de retorno NativeSharp const volatile
 
 Preparar lectura del resultado NativeSharp declarado con alias C const volatile

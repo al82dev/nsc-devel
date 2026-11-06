@@ -870,6 +870,12 @@ Se preparó un caso que exige rechazo explícito al añadir un puntero al alias,
 para evitar perder volatile antes de implementar la representación anidada.
 Este control no cierra ese soporte y aún no ha sido ejecutado.
 
+## Prueba de campo NativeSharp con alias volatile
+
+Se preparó un campo del alias importado con escritura observable desde C y una
+comprobación de IR volatile; otro caso intenta perder el calificador al leerlo.
+Las pruebas esperan la ejecución agrupada.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.
