@@ -1,0 +1,6 @@
+int Main()
+{
+    PackedConstAggregates* value = layout_packed_const_aggregates();
+    int* unsafeAddress = &value->pairs[1].b;
+    return 0;
+}
