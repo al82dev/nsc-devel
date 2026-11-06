@@ -3085,6 +3085,23 @@ int main(int argc, char** argv)
                 catalogMetadata.cppCRecordCatalog = encoded;
                 ok &= expect(roundTrip && metadata_detail::verifyBinaryClosureMetadata(catalogMetadata, codecError),
                              "metadata validates a canonical C record catalogue for its target");
+                const auto payload = metadata_detail::encodePayload(catalogMetadata, 3, true);
+                LibraryMetadata decodedPayload;
+                decodedPayload.formatMinor = 42;
+                const bool payloadRead = metadata_detail::decodePayload(payload, decodedPayload, codecError);
+                ok &= expect(payloadRead && decodedPayload.cppCRecordCatalog == encoded,
+                             "prepared metadata payload preserves the C record catalogue");
+                auto withoutCatalog = catalogMetadata;
+                withoutCatalog.cppCRecordCatalog.clear();
+                ok &= expect(metadata_detail::encodeAbiProjection(catalogMetadata) !=
+                                 metadata_detail::encodeAbiProjection(withoutCatalog),
+                             "public C record catalogue contributes to the ABI projection");
+                auto truncatedPayload = payload;
+                if (!truncatedPayload.empty()) truncatedPayload.pop_back();
+                LibraryMetadata truncatedDecoded;
+                truncatedDecoded.formatMinor = 42;
+                ok &= expect(!metadata_detail::decodePayload(truncatedPayload, truncatedDecoded, codecError),
+                             "metadata payload rejects a truncated C record catalogue");
                 catalogMetadata.targetTriple = "different-target";
                 ok &= expect(!metadata_detail::verifyBinaryClosureMetadata(catalogMetadata, codecError),
                              "metadata rejects a C record catalogue from another target");
