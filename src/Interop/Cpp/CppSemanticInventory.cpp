@@ -212,7 +212,8 @@ CppSemanticGlobalInventoryResult collectCppSemanticGlobals(
             const auto options = session->optionsSnapshot();
             for (auto& declaration : *declarations)
             {
-                auto projection = projectCppSemanticGlobal(declaration, *owner, graph.projects()[*owner].moduleName());
+                auto projection = projectGlobalWithLookup(declaration, *owner,
+                    graph.projects()[*owner].moduleName(), nullptr, options.language == CppLanguageMode::C);
                 result.push_back({group.projectFile, index, *owner, options.targetTriple,
                                   std::move(declaration), std::move(projection),
                                   options.language == CppLanguageMode::C});

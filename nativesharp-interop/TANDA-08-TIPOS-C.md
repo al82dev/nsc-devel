@@ -54,6 +54,8 @@ preparó su caso de lectura y escritura. La compilación, ejecución y auditorí
 de escapes siguen pendientes; no equivale a soporte general de punteros
 calificados. Se prepararon comprobaciones de IR y rechazos de pérdida del
 calificador en inicialización y llamadas.
+El inventario inicial también prepara la proyección con el modo C, aun sin
+lookup; la comprobación correspondiente está pendiente de ejecución.
 También se prepararon casos negativos de escape por tupla y conversión
 explícita; esperan ejecución y no completan la auditoría de escapes.
 El mismo fixture incluye lectura del apuntado const volatile y rechazo de

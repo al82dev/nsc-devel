@@ -1132,7 +1132,7 @@ int main(int argc, char** argv)
                     std::vector<CppProjectSessions> groups(2);
                     groups[0].projectFile = otherProject->projectFile();
                     groups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
-                        CppLanguageMode::C, "struct Opaque; int other_value(void); int pointer_value(struct Opaque* p); extern int c_global; static int internal_global;\n")));
+                        CppLanguageMode::C, "struct Opaque; int other_value(void); int pointer_value(struct Opaque* p); extern int c_global; extern volatile int* c_volatile_pointer; static int internal_global;\n")));
                     groups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
                         CppLanguageMode::C, "int other_value(void);\n")));
                     groups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
@@ -1155,6 +1155,7 @@ int main(int argc, char** argv)
                         const auto* entries = std::get_if<std::vector<CppSemanticGlobalEntry>>(&globals);
                         bool cGlobal = false, cppGlobal = false, internalRejected = false;
                         bool volatileProjected = false, constProjected = false, tlsRejected = false;
+                        bool volatilePointerProjected = false;
                         if (entries)
                             for (const auto& entry : *entries)
                             {
@@ -1164,6 +1165,9 @@ int main(int argc, char** argv)
                                     cGlobal = symbol && entry.projectOrdinal == 1 && entry.referenceIndex == 0 &&
                                         symbol->externalSymbol == "c_global" && symbol->typeKey == "builtin:int" &&
                                         symbol->namespaceName.empty() && entry.targetTriple == "x86_64-pc-windows-msvc";
+                                if (entry.declaration.name == "c_volatile_pointer")
+                                    volatilePointerProjected = symbol && symbol->pointerPointeeVolatile &&
+                                        symbol->typeKey == "builtin:int*";
                                 if (entry.declaration.name == "shared")
                                     cppGlobal = symbol && entry.projectOrdinal == 2 && entry.referenceIndex == 0 &&
                                         symbol->externalSymbol == "?shared@feature@@3HA" && symbol->namespaceName == "feature" &&
@@ -1174,7 +1178,8 @@ int main(int argc, char** argv)
                                 if (entry.declaration.name == "limit") constProjected = symbol && symbol->isConst;
                                 if (entry.declaration.name == "tls") tlsRejected = rejected && entry.declaration.threadLocal;
                             }
-                        ok &= expect(entries && entries->size() == 7 && cGlobal && cppGlobal && internalRejected &&
+                        ok &= expect(entries && entries->size() == 8 && cGlobal && cppGlobal && internalRejected &&
+                                     volatilePointerProjected &&
                                      volatileProjected && constProjected && tlsRejected,
                                      "global inventory preserves project, exact symbol, type and unsupported storage contracts");
                         if (entries)

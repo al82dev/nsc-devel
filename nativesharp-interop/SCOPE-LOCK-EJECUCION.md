@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Proyección inicial de globales con modo C
+
+Conservar el modo C de la sesión al proyectar el inventario inicial de
+globales, también cuando el proveedor no recibe ProjectNameLookup. Archivos:
+CppSemanticInventory.cpp, CppClangSessionTests.cpp y documentación. Preparar
+comprobación del global puntero volatile; validar junto con la tanda.
+
 ## Pruebas de escapes de puntero C volatile
 
 Preparar controles del proyecto mixto para comprobar que una tupla o una
