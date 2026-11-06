@@ -1,0 +1,6 @@
+int Main()
+{
+    PackedConstAggregates* value = layout_packed_const_aggregates();
+    value->pairs[1].b = 7;
+    return 0;
+}

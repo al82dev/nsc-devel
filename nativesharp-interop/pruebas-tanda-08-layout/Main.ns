@@ -74,5 +74,8 @@ int Main()
     packedEnum->values[1] = layout_packed_enum_new();
     if (packedEnum->value != layout_packed_enum_new() ||
         packedEnum->values[1] != layout_packed_enum_new() || layout_packed_enum_sum() != 14) return 28;
+    PackedConstAggregates* constAggregates = layout_packed_const_aggregates();
+    if (constAggregates->pairs[1].b != 5 ||
+        constAggregates->moods[1] != layout_packed_enum_new()) return 29;
     return 0;
 }

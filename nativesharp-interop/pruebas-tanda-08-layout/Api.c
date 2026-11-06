@@ -1,5 +1,7 @@
 #include "Api.h"
 static Pair sample_pair = { 1, 2 };
+static PackedConstAggregates sample_packed_const_aggregates = { 1, { { 2, 3 }, { 4, 5 } }, { PackedSad, PackedHappy } };
+PackedConstAggregates* layout_packed_const_aggregates(void) { return &sample_packed_const_aggregates; }
 static PackedEnum sample_packed_enum = { 1, PackedSad, { PackedSad, PackedSad } };
 PackedEnum* layout_packed_enum(void) { return &sample_packed_enum; }
 enum PackedMood layout_packed_enum_new(void) { return PackedHappy; }

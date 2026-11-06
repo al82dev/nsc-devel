@@ -1,0 +1,6 @@
+int Main()
+{
+    PackedConstAggregates* value = layout_packed_const_aggregates();
+    value->moods[1] = layout_packed_enum_new();
+    return 0;
+}

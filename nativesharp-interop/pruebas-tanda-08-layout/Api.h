@@ -14,7 +14,9 @@ typedef struct PackedNestedArray { char tag; InnerArray nested; } PackedNestedAr
 typedef struct PackedRecordArray { char tag; Pair values[2]; } PackedRecordArray;
 typedef struct PackedRecordMatrix { char tag; Pair values[2][2]; } PackedRecordMatrix;
 typedef struct PackedEnum { char tag; enum PackedMood value; enum PackedMood values[2]; } PackedEnum;
+typedef struct PackedConstAggregates { char tag; const Pair pairs[2]; const enum PackedMood moods[2]; } PackedConstAggregates;
 #pragma pack(pop)
+PackedConstAggregates* layout_packed_const_aggregates(void);
 PackedEnum* layout_packed_enum(void);
 enum PackedMood layout_packed_enum_new(void);
 int layout_packed_enum_sum(void);
