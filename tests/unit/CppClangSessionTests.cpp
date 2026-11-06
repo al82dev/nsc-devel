@@ -6522,6 +6522,37 @@ int main(int argc, char** argv)
                              *compilation.projectGraph(), compilation.units(), compilation.diagnostics()),
                          "imported record cannot be assigned to a nonexistent project");
             ok &= expect(!wrongOwner.cppImportedTypeIndex(0), "failed lookup does not publish imported provenance");
+            {
+                const nativesharp::compilation::TypeIdentity producerIdentity("ProducerModule",
+                    namespaceIdentity->namespaceSegments(), namespaceIdentity->containingTypes(), namespaceIdentity->name());
+                nativesharp::frontend::CppImportedTypeDeclaration live{*namespaceIdentity,
+                    nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                    nativesharp::frontend::NamedTypeAccessibility::Public, 0, "live.h"};
+                auto producer = live;
+                producer.identity = producerIdentity;
+                producer.projectOrdinal = 1;
+                producer.sourcePath = "producer.nsmeta";
+                for (auto* item : {&live, &producer})
+                {
+                    item->origin = nativesharp::frontend::CppImportedTypeOrigin::CStruct;
+                    item->targetTriple = "x86_64-pc-windows-msvc";
+                    item->clangUsr = "record-usr";
+                    item->objectLayout = nativesharp::frontend::CppImportedObjectLayout{8, 4};
+                }
+                live.reconciledIdentityKey = producer.identity.key();
+                nativesharp::frontend::ProjectNameLookup reconciledLookup;
+                auto conflicting = producer;
+                conflicting.clangUsr = "different-usr";
+                ok &= expect(!reconciledLookup.setCppImportedTypes({live, conflicting}) &&
+                             !reconciledLookup.setCppImportedTypes({live}) &&
+                             reconciledLookup.setCppImportedTypes({live, producer}),
+                             "C reconciled identities require a matching unique target without poisoning lookup");
+                auto chained = producer;
+                chained.reconciledIdentityKey = live.identity.key();
+                nativesharp::frontend::ProjectNameLookup chainedLookup;
+                ok &= expect(!chainedLookup.setCppImportedTypes({live, chained}),
+                             "C reconciled identities reject cyclic target chains");
+            }
             nativesharp::frontend::ProjectCompilation duplicateCompilation;
             duplicateCompilation.setSourceBufferProvider([](const std::filesystem::path& source)
                 -> std::optional<std::string> {
