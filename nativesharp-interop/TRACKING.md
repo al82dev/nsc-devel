@@ -215,6 +215,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - Preparados `225bc09d9`, `3e031af96` y `6ec5e377e`: proyección C de
     campos y arreglos enum empaquetados, casos mixtos, direcciones e IR.
     Pendientes de construcción y validación agrupada.
+  - Actualización: la construcción incremental y layout finalizaron con código
+    0 en O0–O3; el fixture verificó campo y arreglo enum, IR y sus rechazos de
+    dirección. Es una comprobación dirigida, no el cierre de T08-009.
 - [ ] T08-010. Importar la declaración y campos de un `struct` C.
   - Preparado en `ac71663a7` y `1454f719f`: propagación de alineación por
     campos anidados y caso MIR que distingue valores puntero. Sin ejecutar;
