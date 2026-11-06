@@ -485,6 +485,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     de cero argumentos en O0–O3, con rechazo de argumento extra. No cubre
     todas las posiciones o combinaciones. [Evidencia](registro-commits/prueba-prototipos-c.md).
 - [ ] T08-009. Mapear enumeraciones y sus valores representables.
+  - Los enteros se convirtieron a enum C en inicializaciones, asignaciones y
+    argumentos O0–O3, incluidos truncamiento y extensión de signo; un enum NS
+    conservó su rechazo. Esto resuelve la limitación de enumeradores descrita
+    abajo para esas formas, sin cerrar el ítem. [Evidencia](registro-commits/conversion-entero-enum-c.md).
   - Pasó `nsc.stage51.enum-oop-support`, incluido el rechazo existente de
     comparación de enum nativo con entero no nulo. No cubre todas sus reglas.
   - La matriz de metadata C pasó O0–O3 para comparaciones enum-entero,
