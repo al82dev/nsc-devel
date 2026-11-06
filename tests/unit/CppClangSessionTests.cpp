@@ -521,6 +521,11 @@ int main(int argc, char** argv)
         globalRoot->cppAtomicAlignmentBytes = 1;
         ok &= expect(!nativesharp::llvm_backend::clangMsVolatileGlobalScalarArrayAlignment(&globalElement),
                      "bool does not enter the scalar-array path before its storage is verified");
+        ok &= expect(nativesharp::llvm_backend::clangMsVolatileGlobalBoolArray(&globalElement),
+                     "a marked C bool array uses the byte-storage path");
+        globalRoot->cppMicrosoftVolatileSemantics = false;
+        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileGlobalBoolArray(&globalElement),
+                     "a non-MS bool array does not enter the atomic byte-storage path");
         ProjectOopMirNode directPointee;
         directPointee.kind = ProjectOopMirNodeKind::PointerLoad;
         directPointee.typeKey = "builtin:int";

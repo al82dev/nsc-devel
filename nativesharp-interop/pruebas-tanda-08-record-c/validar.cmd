@@ -105,6 +105,10 @@ findstr /r /c:"load atomic volatile.*@volatile_matrix.*acquire, align 4" "%DEST%
 if errorlevel 1 (echo Falta lectura acquire volatile de la matriz. & exit /b 1)
 findstr /r /c:"store atomic volatile.*@volatile_matrix.*release, align 4" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura release volatile de la matriz. & exit /b 1)
+findstr /r /c:"load atomic volatile i8.*@volatile_bool_array.*acquire, align 1" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta lectura acquire de almacenamiento bool C. & exit /b 1)
+findstr /r /c:"store atomic volatile i8.*@volatile_bool_array.*release, align 1" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura release de almacenamiento bool C. & exit /b 1)
 for %%P in (i8:8:1 u8:8:1 i16:16:2 u16:16:2 u32:32:4 i64:64:8 u64:64:8) do (
   for /f "tokens=1,2,3 delims=:" %%A in ("%%P") do (
     findstr /r /c:"load atomic volatile i%%B.*@volatile_%%A_array.*acquire, align %%C" "%DEST%\project.ll" >nul
