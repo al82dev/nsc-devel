@@ -1343,6 +1343,14 @@ int main(int argc, char** argv)
                             ok &= expect(compatibleAlias.candidate && compatibleAlias.conflict.empty() &&
                                          compatibleAlias.aliasIndices.size() == 1,
                                          "compatible global aliases with different USRs retain their shared symbol");
+                            auto indirect = repeated.back();
+                            indirect.declaration.qualifiedName = "feature::indirect";
+                            indirect.declaration.externalSymbol = "indirect_symbol";
+                            repeated.insert(repeated.begin(), indirect);
+                            const auto transitiveConflict = selectCppSemanticGlobal(repeated, 2, "feature::shared");
+                            ok &= expect(!transitiveConflict.candidate && !transitiveConflict.conflict.empty() &&
+                                         transitiveConflict.aliasIndices.size() == 2,
+                                         "global aliases discover USR conflicts transitively regardless of inventory order");
                             }
                         }
                     }

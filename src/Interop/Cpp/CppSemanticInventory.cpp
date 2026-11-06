@@ -253,17 +253,29 @@ CppSemanticGlobalSelection selectCppSemanticGlobal(
         if (entry.declaration.clangUsr && !entry.declaration.clangUsr->empty())
             usrs.push_back(*entry.declaration.clangUsr);
     }
-    for (std::size_t i = 0; i < entries.size(); ++i)
+    std::vector<bool> included(entries.size(), false);
+    bool expanded = true;
+    while (expanded)
     {
-        const auto& entry = entries[i];
-        if (entry.projectOrdinal != projectOrdinal || !entry.declaration.externalLinkage ||
-            entry.declaration.qualifiedName == qualifiedName) continue;
-        const bool sameSymbol = entry.declaration.externalSymbol &&
-            std::find(symbols.begin(), symbols.end(), *entry.declaration.externalSymbol) != symbols.end();
-        const bool sameUsr = entry.declaration.clangUsr && !entry.declaration.clangUsr->empty() &&
-            std::find(usrs.begin(), usrs.end(), *entry.declaration.clangUsr) != usrs.end();
-        if (sameSymbol || sameUsr)
+        expanded = false;
+        for (std::size_t i = 0; i < entries.size(); ++i)
+        {
+            const auto& entry = entries[i];
+            if (included[i] || entry.projectOrdinal != projectOrdinal || !entry.declaration.externalLinkage ||
+                entry.declaration.qualifiedName == qualifiedName) continue;
+            const bool sameSymbol = entry.declaration.externalSymbol &&
+                std::find(symbols.begin(), symbols.end(), *entry.declaration.externalSymbol) != symbols.end();
+            const bool sameUsr = entry.declaration.clangUsr && !entry.declaration.clangUsr->empty() &&
+                std::find(usrs.begin(), usrs.end(), *entry.declaration.clangUsr) != usrs.end();
+            if (!sameSymbol && !sameUsr) continue;
+            included[i] = true;
             result.aliasIndices.push_back(i);
+            if (entry.declaration.externalSymbol && !entry.declaration.externalSymbol->empty())
+                symbols.push_back(*entry.declaration.externalSymbol);
+            if (entry.declaration.clangUsr && !entry.declaration.clangUsr->empty())
+                usrs.push_back(*entry.declaration.clangUsr);
+            expanded = true;
+        }
     }
     if (result.declarationIndices.empty()) return result;
     const auto& first = entries[result.declarationIndices.front()];

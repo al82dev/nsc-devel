@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Cierre transitivo de aliases de globales
+
+T08-002/T08-004: la relación entre globales por símbolo o USR puede tener más
+de un salto. Recorrerla dentro del proyecto antes de comparar contratos para
+que una contradicción indirecta no quede oculta. Preservar las observaciones
+internas fuera de la selección externa y evitar duplicados. Presupuesto:
+CppSemanticInventory.cpp, CppClangSessionTests.cpp y registros Markdown.
+LLVM y NSLink protegidos; validación agrupada por tanda.
+
 ## Globales con identidad Clang contradictoria
 
 T08-002/T08-004: una demanda de global debe detectar declaraciones del mismo
