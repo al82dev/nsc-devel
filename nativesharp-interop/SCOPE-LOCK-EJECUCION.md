@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Matriz de unidades y operaciones de campos C volatile
+
+Preparar un fixture independiente bajo `pruebas-tanda-08-bitfields-c` para
+unidades de 8, 16, 32 y 64 bits, barreras de anchura cero y operaciones de
+lectura, escritura e incremento. Comparar IR con Clang y ejecutar O0–O3.
+Registrar fallos y resultados antes de cambiar producción; toda salida queda
+en `A:/nsc-interop-build`.
+
 ## Unions y metadata de campos C volatile
 
 Ampliar el fixture `pruebas-tanda-08-bitfields-c` para cubrir unions con
