@@ -59,6 +59,8 @@ escritura; estas comprobaciones esperan ejecución.
 Se conectó además el resultado C de puntero a escalar volatile con el
 metadato de Clang y se preparó su prueba mixta. Los resultados agregados y
 anidados siguen diferidos; ninguna de estas rutas se ha validado todavía.
+La suite prepara controles separados para que firmas C++ con apuntado volatile
+no se proyecten antes de resolver sus contratos y sobrecargas.
 Se preparó asimismo el rechazo provisional al retornar ese puntero mediante
 un tipo que no representa volatile; no está ejecutado.
 Se preparó el transporte en identificadores de parámetros y el rechazo

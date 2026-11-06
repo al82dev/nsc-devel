@@ -6377,6 +6377,7 @@ int main(int argc, char** argv)
                                     "extern volatile int* cpp_volatile_pointee; extern int* const* cpp_nested_const; "
                                     "extern thread_local int tls_value; }\n"
                                     "namespace tools { int blend(int); double blend(double); int* pointer_identity(int* p); "
+                                    "int cpp_volatile_argument(volatile int*); volatile int* cpp_volatile_result(); "
                                     "int qualify(int*); int qualify(const int*); "
                                     "static int local(int); const int* pointer(const int* p); "
                                     "struct Opaque; void handle(Opaque* p); long widths(long long v); }\n"
@@ -6388,6 +6389,13 @@ int main(int argc, char** argv)
     {
         ok &= expect(cpp->topLevelDeclarationCount().value_or(0) > 0, "C++ AST remains available");
         auto functions = cpp->freeFunctionsSnapshot();
+        for (const auto* name : {"tools::cpp_volatile_argument", "tools::cpp_volatile_result"})
+        {
+            const auto* declaration = functions ? functionByName(*functions, name) : nullptr;
+            ok &= expect(declaration && std::holds_alternative<CppSemanticFunctionFailure>(
+                             projectCppSemanticFunction(*declaration, 0, "Semantic")),
+                         "C++ volatile pointer signatures remain deferred");
+        }
         const auto* cppVar = functions ? functionByName(*functions, "cpp_var") : nullptr;
         ok &= expect(cppVar && std::holds_alternative<CppSemanticFunctionFailure>(
                          projectCppSemanticFunction(*cppVar, 0, "Semantic")),

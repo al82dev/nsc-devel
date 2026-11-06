@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Control de límites de resultados y parámetros C++
+
+Preparar controles de Clang que comprueben que la normalización de tipos de
+enlace C no habilita por accidente firmas C++ con apuntado volatile sin su
+resolución de sobrecargas. Archivos: CppClangSessionTests.cpp y documentación.
+El soporte C++ permanece en el objetivo y requiere implementación posterior.
+
 ## Resultado C puntero a escalar volatile
 
 Proyectar el resultado C de un nivel a escalar volatile preservando el tipo
