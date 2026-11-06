@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Modo volatile Clang en inventario de records
+
+T08-015: conservar la opción efectiva MSVolatile reportada por cada sesión
+en cada observación de record, sin inferirla del triple. Solo inventario;
+no modifica la semántica emitida ni resuelve conflictos entre sesiones.
+Presupuesto: CppSemanticRecord.h/.cpp y registros Markdown. LLVM externo y
+NSLink protegidos. Construcción y validación agrupadas de la tanda.
+
 ## Comparación de volatile C alineado en agregados
 
 T08-015/T08-016: contrastar el orden y alineación que emiten Clang y NSC al
