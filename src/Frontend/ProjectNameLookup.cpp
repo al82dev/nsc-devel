@@ -279,6 +279,12 @@ std::size_t ProjectNameLookup::canonicalCppTypeOrdinal(std::size_t ordinal) cons
     return found == reconciledCppTypeOrdinals_.end() ? ordinal : found->second;
 }
 
+bool ProjectNameLookup::isReconciledCppTypeIdentity(std::string_view identity) const
+{
+    const auto ordinal = indexes_->typeOrdinalForIdentity(identity);
+    return ordinal && reconciledCppTypeOrdinals_.contains(*ordinal);
+}
+
 std::optional<std::size_t> ProjectNameLookup::cppImportedTypeIndex(std::size_t typeOrdinal) const noexcept
 {
     const auto found = cppImportedTypeIndices_.find(typeOrdinal);

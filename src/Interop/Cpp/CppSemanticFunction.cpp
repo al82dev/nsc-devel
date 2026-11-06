@@ -65,6 +65,16 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
              found->second->status != CppRecordGroupStatus::MultipleDefinitionsPointerCompatible)) return std::nullopt;
         if (type.recordIdentity && type.recordIdentity->clangUsr && found->second->clangUsr &&
             type.recordIdentity->clangUsr != found->second->clangUsr) return std::nullopt;
+        std::string projectedIdentity = identity->key();
+        const bool reconciled = lookup && lookup->isReconciledCppTypeIdentity(identity->key());
+        if (reconciled)
+        {
+            const auto ordinal = lookup->typeOrdinalForIdentity(identity->key());
+            const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+            if (!imported || (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
+                              imported->origin != frontend::CppImportedTypeOrigin::CUnion)) return std::nullopt;
+            projectedIdentity = imported->identity.key();
+        }
         if (depth == 0)
         {
             if (found->second->status != CppRecordGroupStatus::OneDefinition || !lookup || !owner ||
@@ -72,7 +82,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
                 return std::nullopt;
             const auto ordinal = lookup->typeOrdinalForIdentity(identity->key());
             const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
-            if (!imported || imported->projectOrdinal != *owner || !imported->objectLayout ||
+            if (!imported || (!reconciled && imported->projectOrdinal != *owner) || !imported->objectLayout ||
                 !imported->deferredImportError.empty() ||
                 (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
                  imported->origin != frontend::CppImportedTypeOrigin::CUnion) ||
@@ -87,7 +97,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
             if (imported && imported->clangUsr && imported->clangUsr != type.recordIdentity->clangUsr)
                 return std::nullopt;
         }
-        return CppScalarTypeMapping{"type:" + identity->key(), type.canonicalSpelling, false, false};
+        return CppScalarTypeMapping{"type:" + projectedIdentity, type.canonicalSpelling, false, false};
     }
     if (type.kind == CppTypeKind::Pointer && type.element && type.element->kind == CppTypeKind::Function)
     {

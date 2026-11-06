@@ -383,8 +383,9 @@ static bool provideCppSemanticFunctionsImpl(
         std::erase_if(groups.groups, [&](const auto& group) {
             const auto ordinal = lookup->typeOrdinalForIdentity(group.identity.key());
             const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
-            return !imported || imported->projectOrdinal != group.projectOrdinal ||
-                imported->identity.key() != group.identity.key();
+            const bool reconciled = lookup->isReconciledCppTypeIdentity(group.identity.key());
+            return !imported || (!reconciled && (imported->projectOrdinal != group.projectOrdinal ||
+                imported->identity.key() != group.identity.key()));
         });
         for (auto& entry : entries)
             if (std::holds_alternative<CppSemanticFunctionFailure>(entry.projection) &&
