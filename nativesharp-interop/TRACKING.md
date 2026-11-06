@@ -593,9 +593,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     [Evidencia](registro-commits/prueba-opacos-header-compartido.md).
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
+  - Validación agrupada posterior: compilación incremental, sesión 1/1 y fixture mixto O0–O3 con comprobaciones de IR y diagnósticos negativos; el caso booleano compuesto permanece rechazado. [Resultado y límites](registro-commits/validacion-agrupada-volatile-escalares-bool.md).
   - Clang confirmó acquire/release en arreglos globales C de enteros de
-    8–64 bits y float/double. Preparada la extensión y controles de NSC;
-    falta validarlos. `_Bool` usa una ruta de almacenamiento i8 separada.
+    8–64 bits y float/double. La validación agrupada posterior comprobó los
+    controles preparados. `_Bool` usa una ruta de almacenamiento i8 separada.
     [Detalle](registro-commits/control-orden-array-escalar-ms.md).
   - Preparadas lectura y asignación simple de arreglo global C `_Bool`
     volatile mediante i8 acquire/release y conversión a bool i1. Aún no
