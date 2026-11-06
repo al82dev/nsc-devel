@@ -11,6 +11,7 @@
 #include "nativesharp/Source/SourceManager.h"
 #include <sstream>
 #include "../../src/Interop/Cpp/ClangSessionSupport.h"
+#include "../../src/LLVM/Lowering/PackedArrayAlignment.h"
 #include <clang/Frontend/ASTUnit.h>
 #include <clang/Frontend/FrontendActions.h>
 #include <atomic>
@@ -322,6 +323,28 @@ int main(int argc, char** argv)
     }
     CppClangSessionFactory factory;
     bool ok = true;
+    {
+        using nativesharp::frontend::ProjectOopMirNode;
+        using nativesharp::frontend::ProjectOopMirNodeKind;
+        auto field = std::make_unique<ProjectOopMirNode>();
+        field->kind = ProjectOopMirNodeKind::FieldAddress;
+        field->alignment = 2;
+        auto row = std::make_unique<ProjectOopMirNode>();
+        row->kind = ProjectOopMirNodeKind::RawElementAddress;
+        row->immediate = 12;
+        row->children.push_back(std::move(field));
+        row->children.push_back(std::make_unique<ProjectOopMirNode>());
+        ProjectOopMirNode element;
+        element.kind = ProjectOopMirNodeKind::RawElementAddress;
+        element.immediate = 4;
+        element.children.push_back(std::move(row));
+        element.children.push_back(std::make_unique<ProjectOopMirNode>());
+        ok &= expect(nativesharp::llvm_backend::fieldArrayElementAlignment(&element) == 2,
+                     "nested array field alignment respects record alignment and strides");
+        element.children.front()->children.front()->kind = ProjectOopMirNodeKind::LocalAddress;
+        ok &= expect(!nativesharp::llvm_backend::fieldArrayElementAlignment(&element),
+                     "raw indexing without a field root does not invent field alignment");
+    }
     {
         using namespace nativesharp;
         interop::CppSessionDiagnostic fatal;
