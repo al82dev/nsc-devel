@@ -61,7 +61,8 @@ productor. No asociar ni convertir identidades a partir de la envoltura.
 Elevar la versión menor de metadata a 1.43 y emitir la envoltura de procedencia
 solo al generar metadata 1.43; conservar lectura y escritura de 1.42. Presupuesto:
 `include/nativesharp/Interop/LibraryMetadata.h`, `src/Interop/Cpp/CppSemanticRecord.cpp`,
-`src/Interop/LibraryMetadataPayload.cpp`, `src/Interop/Internal/CppCRecordMetadataCodec.h/.cpp`,
+`src/Interop/LibraryMetadataConstruction.cpp`, `src/Interop/LibraryMetadataPayload.cpp`,
+`src/Interop/Internal/CppCRecordMetadataCodec.h/.cpp`,
 `tests/unit/CppClangSessionTests.cpp`, fixtures existentes de metadata C, tracking
 y registros. Probar ambos formatos y el productor/consumidor agrupados. La
 procedencia no debe cambiar la huella ABI pública; la integridad de toda la
