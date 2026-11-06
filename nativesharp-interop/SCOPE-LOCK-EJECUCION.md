@@ -1744,6 +1744,7 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 
 - Objetivo: comprobar que las operaciones y calificadores ya probados en `pruebas-tanda-08-record-c` siguen funcionando al compilar NativeSharp con O2.
 - Presupuesto: `nativesharp-interop/pruebas-tanda-08-record-c/validar.cmd` y registro Markdown. Conservar inspección IR O0 y pruebas negativas; generar y ejecutar un segundo binario O2 contra la misma biblioteca C. No inferir cobertura de otras arquitecturas ni de todas las optimizaciones.
+- Ampliación: ejecutar también O1 y O3 en el mismo conjunto, usando el mismo objeto C, para comprobar las cuatro opciones de NSC sin reconstruir el compilador por cada caso.
 
 ### Global enum const
 

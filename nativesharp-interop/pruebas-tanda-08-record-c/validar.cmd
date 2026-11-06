@@ -65,9 +65,17 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project
 if errorlevel 1 exit /b 1
 "%DEST%\program.exe"
 if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O1 --no-artifact-cache -o "%DEST%\program-o1.exe"
+if errorlevel 1 exit /b 1
+"%DEST%\program-o1.exe"
+if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O2 --no-artifact-cache -o "%DEST%\program-o2.exe"
 if errorlevel 1 exit /b 1
 "%DEST%\program-o2.exe"
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O3 --no-artifact-cache -o "%DEST%\program-o3.exe"
+if errorlevel 1 exit /b 1
+"%DEST%\program-o3.exe"
 if errorlevel 1 exit /b 1
 copy /y "%~dp0ArrayAssign.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
