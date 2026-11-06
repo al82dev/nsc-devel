@@ -596,7 +596,8 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
                 parameter.pointerAddressSpace));
     const bool implicitExtensionReceiverPass = hasForwardedReceiver && argumentOrdinal == 0;
     if (!conversion.exists() || discardsPointeeConst || violatesPointerContract ||
-        arguments[argumentOrdinal].pointerPointeeVolatile ||
+        (arguments[argumentOrdinal].pointerPointeeVolatile &&
+         (packElement || !parameter.pointerPointeeVolatile)) ||
         (!implicitExtensionReceiverPass &&
          parameter.passKind != arguments[argumentOrdinal].argumentPassKind))
     {
@@ -4266,7 +4267,8 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
                 parameter.pointerHasProvenance, parameter.pointerKnownAlignment,
                 parameter.pointerAddressSpace));
     if (!conversion.exists() || discardsPointeeConst || violatesPointerContract ||
-        argument.pointerPointeeVolatile)
+        (argument.pointerPointeeVolatile &&
+         (packElement || !parameter.pointerPointeeVolatile)))
         candidateBinding.viable = false;
     else if (packElement &&
         (argument.ownership != sema::OwnershipKind::None || argument.ownershipTransfer ||

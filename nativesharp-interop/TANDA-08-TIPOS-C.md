@@ -30,6 +30,8 @@ faltan contratos por parámetro y auditoría de llamadas indirectas y variádica
 Se preparó un dato de contrato volatile para parámetros y su serialización;
 el esquema de snapshot cambia a v2 para no leer con el formato anterior.
 La compatibilidad por reanálisis de snapshots anteriores debe verificarse.
+La resolución ordinaria prepara la aceptación sólo cuando el parámetro también
+conserva volatile; las vías indirectas y variádicas siguen sin auditar.
 Se preparó asimismo el rechazo provisional al retornar ese puntero mediante
 un tipo que no representa volatile; no está ejecutado.
 Una prueba interna preparada inyecta un global con símbolo de Clang para

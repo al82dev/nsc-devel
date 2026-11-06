@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Correspondencia volatile en argumentos de llamada
+
+Permitir que un argumento con apuntado volatile alcance un parámetro que
+conserva explícitamente ese contrato; seguir rechazando su pérdida y los
+paquetes sin contrato equivalente. Archivos: CallAnalyzer.cpp,
+ConstructorCandidateEvaluation.cpp y documentación. Mantener cerrada la
+importación de globales hasta cubrir llamadas indirectas y variádicas.
+
 ## Contrato volatile de parámetros y snapshot
 
 Conservar en MethodParameterSymbol el volatile inmediato de parámetros C
