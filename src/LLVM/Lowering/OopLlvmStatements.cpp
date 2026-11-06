@@ -246,7 +246,12 @@ bool OopLlvmImplementation::lowerLocalDeclarationStatement(
                     const auto cppOrdinal = node->typeKey.starts_with("type:")
                         ? nameLookup_.typeOrdinalForIdentity(std::string_view(node->typeKey).substr(5))
                         : std::nullopt;
-                    if (!node->referenceLocal && cppOrdinal && nameLookup_.cppImportedType(*cppOrdinal))
+                    const auto* imported = cppOrdinal ? nameLookup_.cppImportedType(*cppOrdinal) : nullptr;
+                    const bool cValue = imported && imported->objectLayout && !imported->isIncomplete &&
+                        imported->deferredImportError.empty() &&
+                        (imported->origin == frontend::CppImportedTypeOrigin::CStruct ||
+                         imported->origin == frontend::CppImportedTypeOrigin::CUnion);
+                    if (!node->referenceLocal && imported && !cValue)
                     {
                         if (initializer->kind != frontend::ProjectOopMirNodeKind::ValueConstruct ||
                             initializer->targetTypeOrdinal != cppOrdinal ||
