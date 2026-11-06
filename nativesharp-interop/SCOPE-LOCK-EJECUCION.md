@@ -49,6 +49,10 @@ Preparar la captura de enumeraciones C requeridas, con tipo subyacente,
 valores exactos e identidades reconciliadas; archivos CppSemanticInventory.h/.cpp
 y controles de sesión. No sustituir todavía el rechazo del proveedor hasta
 disponer de codec y reconstrucción de enums.
+Ampliar el codec interno para transportar conjuntamente records y enums C;
+los accesos exclusivos de records deben rechazar enums en vez de descartarlos.
+Presupuesto: CppCRecordMetadataCodec.h/.cpp, LibraryMetadataVerification.cpp y
+controles de sesión. El formato 1.42 permanece deshabilitado.
 Preparar un proveedor opcional de catálogo para el productor de metadata, sin
 activarlo desde el driver. Presupuesto adicional: ProjectCompilation.h/.cpp,
 LibraryMetadataConstruction.cpp y controles de sesión. El productor sin
