@@ -106,6 +106,9 @@ CppSemanticFunctionGroupsResult groupCppSemanticFunctions(
         if (inserted)
         {
             result.groups.push_back({*symbol, {index}});
+            result.groups.back().symbol.cppClangUsr = declaration.clangUsr;
+            if (result.groups.back().symbol.cppClangUsr && result.groups.back().symbol.cppClangUsr->empty())
+                result.groups.back().symbol.cppClangUsr.reset();
             continue;
         }
         auto& group = result.groups[it->second];
@@ -119,6 +122,12 @@ CppSemanticFunctionGroupsResult groupCppSemanticFunctions(
             symbol->moduleName != group.symbol.moduleName ||
             symbol->cppCanonicalIdentity != group.symbol.cppCanonicalIdentity)
             return CppSemanticFunctionGroupFailure{first, index, "conflicting declarations for one external function"};
+        if (declaration.clangUsr && !declaration.clangUsr->empty())
+        {
+            if (group.symbol.cppClangUsr && group.symbol.cppClangUsr != declaration.clangUsr)
+                return CppSemanticFunctionGroupFailure{first, index, "conflicting Clang USRs for one function"};
+            group.symbol.cppClangUsr = declaration.clangUsr;
+        }
         group.inventoryIndices.push_back(index);
     }
     return result;

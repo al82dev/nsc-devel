@@ -47,6 +47,7 @@ struct NamespaceFunctionSymbol final
     // Non-empty only for a declaration imported from C/C++; its identity stays distinct from
     // the NativeSharp representation key used for value types and overload candidates.
     std::string cppCanonicalIdentity;
+    std::optional<std::string> cppClangUsr;
     std::string cppCallingConvention;
     // Original Clang types retain qualifiers at every captured level. They do
     // not, by themselves, authorize emitting noalias or changing call ABI.

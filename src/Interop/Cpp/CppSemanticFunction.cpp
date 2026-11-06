@@ -156,6 +156,7 @@ CppSemanticFunctionResult projectFunction(
     symbol.moduleName = std::string(moduleName);
     symbol.namespaceName = std::move(nsNamespace);
     symbol.name = function.name;
+    symbol.cppClangUsr = function.clangUsr;
     symbol.declaredTypeKey = resultType->nativeSharpTypeKey;
     symbol.mangledName = *function.externalSymbol;
     symbol.cppCallingConvention = function.callingConvention;
