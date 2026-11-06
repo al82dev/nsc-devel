@@ -8,6 +8,10 @@ aislamiento desde C. Generar además un consumidor C con Clang/lld y registrar
 sus relocaciones como referencia del ABI. Usar solo
 `A:/nsc-interop-build/tanda08-tls-directo`; no cambiar producción ni NSLink
 hasta observar y delimitar los resultados.
+Clang rechazó `thread` junto con `dllimport` y `dllexport` en Windows MSVC.
+Probar en el mismo fixture declaraciones TLS sin esos atributos y exportación
+por `/export:...,DATA`; conservar los diagnósticos originales y no asumir que
+la biblioteca de importación pueda satisfacer relocaciones TLS de COFF.
 
 El fixture TLS estático falla por `_tls_index` en NSLink. Sin modificarlo,
 preparar una variante en `pruebas-tanda-08-tls-c` donde Clang y lld construyan

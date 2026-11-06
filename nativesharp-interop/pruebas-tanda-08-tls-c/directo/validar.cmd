@@ -15,7 +15,7 @@ for %%F in (TlsApi.h TlsApi.c Native.ns Project.nsproj Probe.c) do (
 )
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\TlsApi.c" -o "%DEST%\api.obj" > "%DEST%\dll-compile.log" 2>&1
 if errorlevel 1 (echo Compilacion DLL fallo. & exit /b 1)
-lld-link.exe /nologo /dll /noentry /nodefaultlib /include:_tls_used /out:"%DEST%\api.dll" /implib:"%DEST%\api.lib" "%DEST%\api.obj" "A:\vc2026-runtime\lib\x64\release\libcmt.lib" "A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\um\x64\kernel32.lib" > "%DEST%\dll-link.log" 2>&1
+lld-link.exe /nologo /dll /noentry /nodefaultlib /include:_tls_used /export:tls_exported,DATA /out:"%DEST%\api.dll" /implib:"%DEST%\api.lib" "%DEST%\api.obj" "A:\vc2026-runtime\lib\x64\release\libcmt.lib" "A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\um\x64\kernel32.lib" > "%DEST%\dll-link.log" 2>&1
 if errorlevel 1 (echo Enlace DLL fallo. & exit /b 1)
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Probe.c" -o "%DEST%\probe.obj" > "%DEST%\probe-compile.log" 2>&1
 if errorlevel 1 (echo Compilacion consumidor C fallo. & exit /b 1)

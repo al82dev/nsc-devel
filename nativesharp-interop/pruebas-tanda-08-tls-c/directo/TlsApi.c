@@ -4,7 +4,7 @@ typedef Dword (__stdcall *ThreadRoutine)(void*);
 __declspec(dllimport) Handle __stdcall CreateThread(void*, unsigned long long, ThreadRoutine, void*, Dword, Dword*);
 __declspec(dllimport) Dword __stdcall WaitForSingleObject(Handle, Dword);
 __declspec(dllimport) int __stdcall CloseHandle(Handle);
-__declspec(dllexport) __declspec(thread) int tls_exported = 3;
+__declspec(thread) int tls_exported = 3;
 __declspec(dllexport) int tls_read(void) { return tls_exported; }
 static Dword __stdcall worker(void* context)
 {
