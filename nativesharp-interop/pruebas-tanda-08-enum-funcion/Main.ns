@@ -29,6 +29,8 @@ int Main()
     VolatileMoodPtr typed_volatile_mood = volatile_mood_ptr;
     *typed_volatile_mood = current_mood();
     if (read_mood(*typed_volatile_mood) != -3 || read_volatile_mood() != -3) return 19;
+    ConstVolatileMoodPtr readonly_volatile_mood = volatile_mood_ptr;
+    if (read_mood(*readonly_volatile_mood) != -3) return 20;
     array_states[0] = array_states[1];
     matrix_states[1][0] = matrix_states[1][1];
     if ((int)array_states[0] != 8 || (int)matrix_states[1][0] != 12 || read_state_arrays() != 20) return 12;

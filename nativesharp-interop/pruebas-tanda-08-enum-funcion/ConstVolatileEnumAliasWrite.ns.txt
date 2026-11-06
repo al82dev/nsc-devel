@@ -1,0 +1,6 @@
+int Main()
+{
+    ConstVolatileMoodPtr value = volatile_mood_ptr;
+    *value = current_mood();
+    return 0;
+}

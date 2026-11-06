@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Alias C a enum const volatile
+
+Preparar lectura mediante alias a enum const volatile y rechazo de escritura.
+Archivos: fixture enum-funcion, su script y documentación. La ejecución se
+reserva para la siguiente validación agrupada de la tanda.
+
 ## Alias C a struct const volatile
 
 Preparar lectura de un campo mediante alias a struct const volatile y rechazo

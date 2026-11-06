@@ -69,5 +69,11 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project
 if not errorlevel 1 exit /b 1
 findstr /c:"no viable overload of namespace function 'read_plain_mood'" "%DEST%\volatile-enum-alias-call.log" >nul
 if errorlevel 1 exit /b 1
+copy /y "%~dp0ConstVolatileEnumAliasWrite.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-volatile-enum-alias-write.exe" > "%DEST%\const-volatile-enum-alias-write.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"left side of assignment is not assignable" "%DEST%\const-volatile-enum-alias-write.log" >nul
+if errorlevel 1 exit /b 1
 echo Enum C en funciones: resultado esperado cero.
 exit /b 0
