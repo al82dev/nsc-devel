@@ -975,6 +975,9 @@ public:
                 if (variable->isFileVarDecl() && !variable->isExternallyVisible() &&
                     !generator->HandleTopLevelDecl(clang::DeclGroupRef(const_cast<clang::VarDecl*>(variable))))
                     return std::nullopt;
+                if (variable->isFileVarDecl() && !variable->isExternallyVisible() &&
+                    variable->getActingDefinition() == variable)
+                    generator->CompleteTentativeDefinition(const_cast<clang::VarDecl*>(variable));
             }
         }
         std::vector<std::string> originalNames;
