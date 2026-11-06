@@ -98,7 +98,7 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
     {
         if (type.kind == CppTypeKind::Record)
         {
-            if (!cLanguage || !lookup || type.isVolatile) return std::nullopt;
+            if (!cLanguage || !lookup) return std::nullopt;
             const auto identity = projectCppRecordTypeIdentity(type, moduleName);
             const auto ordinal = identity ? lookup->typeOrdinalForIdentity(identity->key()) : std::nullopt;
             const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
@@ -108,7 +108,7 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
                 *type.sizeBits / 8 != imported->objectLayout->sizeBytes || !type.alignmentBits ||
                 *type.alignmentBits % 8 != 0 ||
                 *type.alignmentBits / 8 != imported->objectLayout->alignmentBytes) return std::nullopt;
-            return CppScalarTypeMapping{"type:" + identity->key(), type.canonicalSpelling, type.isConst, false};
+            return CppScalarTypeMapping{"type:" + identity->key(), type.canonicalSpelling, type.isConst, type.isVolatile};
         }
         if (type.kind == CppTypeKind::Enumeration)
         {
