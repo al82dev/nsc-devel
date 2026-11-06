@@ -212,6 +212,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-007. Mapear los tipos de punto flotante según el objetivo.
 - [ ] T08-008. Mapear el tipo `void` en parámetros y resultados donde corresponda.
 - [ ] T08-009. Mapear enumeraciones y sus valores representables.
+  - Preparados `225bc09d9`, `3e031af96` y `6ec5e377e`: proyección C de
+    campos y arreglos enum empaquetados, casos mixtos, direcciones e IR.
+    Pendientes de construcción y validación agrupada.
 - [ ] T08-010. Importar la declaración y campos de un `struct` C.
   - Preparado en `ac71663a7` y `1454f719f`: propagación de alineación por
     campos anidados y caso MIR que distingue valores puntero. Sin ejecutar;
