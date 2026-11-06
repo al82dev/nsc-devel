@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Modo volatile en campos importados
+
+T08-015: transportar el modo efectivo desde observaciones de record hasta el
+campo y su símbolo, conservando desconocido cuando una observación del grupo
+no coincide o carece de dato. No cambia aún HIR, MIR ni código generado.
+Presupuesto: CppImportedInstanceField.h, ClassMemberSymbol.h,
+CppSemanticRecord.cpp, ProjectMemberModel.cpp y registros Markdown. LLVM
+externo y NSLink protegidos. Validación agrupada de la tanda.
+
 ## Modo volatile Clang en inventario de records
 
 T08-015: conservar la opción efectiva MSVolatile reportada por cada sesión
