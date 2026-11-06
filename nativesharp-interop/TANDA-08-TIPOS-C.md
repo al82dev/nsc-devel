@@ -7,6 +7,8 @@ Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en C
 Se preparó un dato de volatile inmediato en la sintaxis de tipos y se conserva
 en sus rutas de clonación. Ningún alias lo activa todavía: faltan caché,
 identidad, proyección y consumidores. El cambio no se ha construido ni validado.
+Se preparó además la persistencia del dato y el incremento de esquemas de
+caché genérica y sintáctica; falta comprobar su restauración.
 
 ## Calificador volatile del objeto apuntado: base en preparación
 

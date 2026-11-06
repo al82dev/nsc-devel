@@ -46,7 +46,7 @@ std::string computeTemplateSourceFingerprint(
 }
 
 // NSC305-C01. The C1 cache schema version (bump on any format change).
-static constexpr std::string_view templateCacheSchema = "nsc-c1-template-v4";
+static constexpr std::string_view templateCacheSchema = "nsc-c1-template-v5";
 
 // Writes both FileIds and offsets so a restored tree preserves diagnostic and dump locations
 // exactly. The enclosing syntax-product codec validates unit identity before accepting the tree.
@@ -183,6 +183,7 @@ bool deserializeTemplateRecord(std::string_view bytes, GenericTemplateRecord& re
     internal::CachePayloadWriter::string(out, type.opaqueResultTraitName());
     internal::CachePayloadWriter::byte(out, type.isExplicitTraitImplementation() ? 1U : 0U);
     internal::CachePayloadWriter::byte(out, type.isPointeeConst() ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, type.isPointeeVolatile() ? 1U : 0U);
     internal::CachePayloadWriter::byte(out, type.isTuple() ? 1U : 0U);
     internal::CachePayloadWriter::byte(out, type.isFunction() ? 1U : 0U);
     internal::CachePayloadWriter::byte(out, type.isPackExpansion() ? 1U : 0U);
@@ -227,6 +228,7 @@ static bool readTypeSyntaxQualifiers(
     std::string& opaqueResultTraitName,
     std::uint8_t& explicitTrait,
     std::uint8_t& pointeeConst,
+    std::uint8_t& pointeeVolatile,
     std::uint8_t& tuple,
     std::uint8_t& function,
     std::uint8_t& pack)
@@ -234,7 +236,7 @@ static bool readTypeSyntaxQualifiers(
     return reader.byte(ownership) && reader.byte(reference) && reader.string(lifetimeName) &&
         reader.byte(dynamicTrait) && reader.byte(opaqueResult) &&
         reader.string(opaqueResultTraitName) && reader.byte(explicitTrait) &&
-        reader.byte(pointeeConst) && reader.byte(tuple) && reader.byte(function) &&
+        reader.byte(pointeeConst) && reader.byte(pointeeVolatile) && reader.byte(tuple) && reader.byte(function) &&
         reader.byte(pack);
 }
 
@@ -278,6 +280,7 @@ static void applyTypeSyntaxQualifiers(
     std::string opaqueResultTraitName,
     std::uint8_t explicitTrait,
     std::uint8_t pointeeConst,
+    std::uint8_t pointeeVolatile,
     std::uint8_t tuple,
     std::uint8_t function,
     std::uint8_t pack)
@@ -290,6 +293,7 @@ static void applyTypeSyntaxQualifiers(
     type.setOpaqueResultTraitName(std::move(opaqueResultTraitName));
     type.setExplicitTraitImplementation(explicitTrait != 0U);
     type.setPointeeConst(pointeeConst != 0U);
+    type.setPointeeVolatile(pointeeVolatile != 0U);
     type.setTuple(tuple != 0U);
     type.setFunction(function != 0U);
     type.setPackExpansion(pack != 0U);
@@ -336,7 +340,7 @@ static void applyTypeSyntaxOrigin(
     std::uint32_t tokenKind = 0;
     std::string baseName, lifetimeName, opaqueResultTraitName, functionLifetimeName;
     std::uint8_t ownership = 0, reference = 0, dynamicTrait = 0, opaqueResult = 0;
-    std::uint8_t explicitTrait = 0, pointeeConst = 0, tuple = 0, function = 0, pack = 0;
+    std::uint8_t explicitTrait = 0, pointeeConst = 0, pointeeVolatile = 0, tuple = 0, function = 0, pack = 0;
     std::uint8_t carrier = 0, convention = 0, variadic = 0, unsafe = 0, noHeap = 0;
     std::uint8_t async = 0, nullable = 0, hasProject = 0, hasNamespace = 0;
     std::vector<std::string> tupleNames;
@@ -344,7 +348,7 @@ static void applyTypeSyntaxOrigin(
     std::string originNamespace;
     if (!readTypeSyntaxHeader(reader, range, tokenKind, baseName) ||
         !readTypeSyntaxQualifiers(reader, ownership, reference, lifetimeName, dynamicTrait,
-            opaqueResult, opaqueResultTraitName, explicitTrait, pointeeConst, tuple, function,
+            opaqueResult, opaqueResultTraitName, explicitTrait, pointeeConst, pointeeVolatile, tuple, function,
             pack) ||
         !readTypeSyntaxFunction(reader, carrier, convention, variadic, unsafe, noHeap, async,
             nullable, functionLifetimeName, tupleNames) ||
@@ -354,7 +358,7 @@ static void applyTypeSyntaxOrigin(
     type.setBaseTokenKind(static_cast<lexer::TokenKind>(tokenKind));
     type.setBaseName(std::move(baseName));
     applyTypeSyntaxQualifiers(type, ownership, reference, std::move(lifetimeName), dynamicTrait,
-        opaqueResult, std::move(opaqueResultTraitName), explicitTrait, pointeeConst, tuple,
+        opaqueResult, std::move(opaqueResultTraitName), explicitTrait, pointeeConst, pointeeVolatile, tuple,
         function, pack);
     applyTypeSyntaxFunction(type, carrier, convention, variadic, unsafe, noHeap, async, nullable,
         std::move(functionLifetimeName));
@@ -517,21 +521,21 @@ static bool deserializeTypeSyntaxConstExpression(
         static_cast<lexer::TokenKind>(tokenKind), std::move(baseName));
     std::string lifetimeName, opaqueResultTraitName, functionLifetimeName;
     std::uint8_t ownership = 0, reference = 0, dynamicTrait = 0, opaqueResult = 0;
-    std::uint8_t explicitTrait = 0, pointeeConst = 0, tuple = 0, function = 0, pack = 0;
+    std::uint8_t explicitTrait = 0, pointeeConst = 0, pointeeVolatile = 0, tuple = 0, function = 0, pack = 0;
     std::uint8_t carrier = 0, convention = 0, variadic = 0, unsafe = 0, noHeap = 0;
     std::uint8_t async = 0, nullable = 0, hasProject = 0, hasNamespace = 0;
     std::vector<std::string> tupleNames;
     std::uint64_t project = 0;
     std::string originNamespace;
     if (!readTypeSyntaxQualifiers(reader, ownership, reference, lifetimeName, dynamicTrait,
-            opaqueResult, opaqueResultTraitName, explicitTrait, pointeeConst, tuple, function,
+            opaqueResult, opaqueResultTraitName, explicitTrait, pointeeConst, pointeeVolatile, tuple, function,
             pack) ||
         !readTypeSyntaxFunction(reader, carrier, convention, variadic, unsafe, noHeap, async,
             nullable, functionLifetimeName, tupleNames) ||
         !readTypeSyntaxOrigin(reader, hasProject, project, hasNamespace, originNamespace))
         return nullptr;
     applyTypeSyntaxQualifiers(*type, ownership, reference, std::move(lifetimeName), dynamicTrait,
-        opaqueResult, std::move(opaqueResultTraitName), explicitTrait, pointeeConst, tuple,
+        opaqueResult, std::move(opaqueResultTraitName), explicitTrait, pointeeConst, pointeeVolatile, tuple,
         function, pack);
     applyTypeSyntaxFunction(*type, carrier, convention, variadic, unsafe, noHeap, async, nullable,
         std::move(functionLifetimeName));

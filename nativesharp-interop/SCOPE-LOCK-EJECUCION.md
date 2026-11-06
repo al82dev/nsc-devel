@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Persistencia de sintaxis de apuntado volatile
+
+Conservar el nuevo dato de TypeSyntax en la escritura y lectura de árboles de
+tipos. Incrementar los esquemas de caché genérica y unidad sintáctica que
+reutilizan el formato para no interpretar bytes antiguos con el diseño nuevo.
+Archivos: TemplateCatalogCodec.cpp, SyntaxProductCacheCodec.cpp y documentación.
+La ruta de alias todavía no se activa; verificar restauración en la tanda.
+
 ## Base de sintaxis para typedefs con apuntado volatile
 
 Añadir el dato de volatile inmediato a TypeSyntax y conservarlo en las rutas
