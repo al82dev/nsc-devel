@@ -3322,6 +3322,8 @@ capturar explícitamente semántica IEEE binary64 desde Clang y usarla al
 mapear `long double`. No inferir el formato solo por el ancho. La persistencia
 de este dato en metadata queda pendiente de diseño y validación propia; no
 declarar soporte de bibliotecas precompiladas hasta resolverla.
+Preparar en el fixture flotante un productor NativeSharp precompilado y un
+consumidor con el mismo encabezado para detectar pérdida del formato capturado.
 
 # Punteros a función C devueltos al consumidor
 
