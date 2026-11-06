@@ -1328,6 +1328,17 @@ lectura y escritura del puntero con alineación 1, acceso al objeto apuntado y
 rechazo de su dirección como `int**`. Aún no se ha ejecutado; punteros a
 volatile y otras formas empaquetadas continúan pendientes.
 
+## Validación dirigida de puntero y pack(2)
+
+Sobre `ec926675f` se construyó NSC incrementalmente; el fixture layout pasó
+en O0. `e6f4cb130` agregó O1–O3 y el fixture volvió a terminar con código 0.
+El caso `pack(1)` comprobó la carga y escritura de un campo `int*` con
+alineación 1, el uso del objeto apuntado y el rechazo de `&campo`. El caso
+`pack(2)` comparó layout con C, ejecutó accesos a short, int y double,
+comprobó en IR O0 alineación 2 para int y double, admitió `&short` alineado
+y rechazó `&double` subalineado. No demuestra otros tipos, ABI ni el resto de
+la tanda, cuya batería completa continúa pendiente.
+
 ## Validación dirigida de campo C empaquetado
 
 Sobre `291bc4cdb`, la construcción incremental de NSC y del objetivo

@@ -289,6 +289,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
   - Preparado en `988b339e4` y `86eee7601`: campo puntero C empaquetado,
     protección de la dirección `T**` y prueba mixta; todavía sin ejecutar.
+  - Validación dirigida en `e6f4cb130`: fixture layout pasó O0–O3 con el campo
+    puntero `pack(1)` y campos `short`, `int` y `double` en `pack(2)`; IR O0
+    y diagnósticos de dirección incluidos. La batería completa sigue pendiente.
 
 ## 09. Llamadas, enlace y datos C
 
