@@ -93,9 +93,6 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
         const CppType* element = &type;
         while (element && element->kind == CppTypeKind::Array) element = element->element.get();
         if (!element) return std::nullopt;
-        // The array representation does not yet retain qualifiers on each pointed-to type.
-        if (element->kind == CppTypeKind::Pointer && element->element && element->element->isVolatile)
-            return std::nullopt;
         auto mapped = mapGlobalType(*element, projectOrdinal, moduleName, lookup, cLanguage);
         if (!mapped || mapped->isConst || mapped->isVolatile) return std::nullopt;
         for (auto dimension = array->dimensions.rbegin(); dimension != array->dimensions.rend(); ++dimension)
@@ -209,8 +206,8 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
                              *global.externalSymbol, type->isVolatile, type->isConst,
                              pointerStorage->kind == CppTypeKind::Pointer && pointerStorage->element &&
                                  pointerStorage->element->isConst, global.dllImport,
-                             global.type.kind == CppTypeKind::Pointer && global.type.element &&
-                                 global.type.element->isVolatile, std::nullopt, global.type.sizeBits,
+                             pointerStorage->kind == CppTypeKind::Pointer && pointerStorage->element &&
+                                 pointerStorage->element->isVolatile, std::nullopt, global.type.sizeBits,
                              global.declarationAlignmentBits};
 }
 

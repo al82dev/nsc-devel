@@ -849,17 +849,24 @@ void ProjectMethodBodyModel::analyzeRawIndex(
         const bool qualifiedPointerElement = validFixedIndices && base.pointerPointeeReadonly &&
             (ProjectTypeConversion::isPointer(result.typeKey) ||
              ProjectMemberModel::fixedArrayElementTypeKey(result.typeKey).has_value());
-        if (qualifiedPointerElement && formingAddressOperand_ && expression == formingAddressTarget_)
+        const bool volatilePointerElement = validFixedIndices && base.pointerPointeeVolatile &&
+            (ProjectTypeConversion::isPointer(result.typeKey) ||
+             ProjectMemberModel::fixedArrayElementTypeKey(result.typeKey).has_value());
+        if ((qualifiedPointerElement || volatilePointerElement) && formingAddressOperand_ &&
+            expression == formingAddressTarget_)
         {
             diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
                 diagnostics::DiagnosticSeverity::Error, expression->range(),
-                "cannot take the address of an array element with a const pointee until nested pointer qualifiers are supported");
+                volatilePointerElement
+                    ? "cannot take the address of an array element with a volatile pointee until nested pointer qualifiers are supported"
+                    : "cannot take the address of an array element with a const pointee until nested pointer qualifiers are supported");
             result.valid = false;
             return;
         }
         result.pointerPointeeReadonly = qualifiedPointerElement;
+        result.pointerPointeeVolatile = volatilePointerElement;
         result.addressable = !result.volatileStorage && !unalignedImportedFieldElement &&
-            !qualifiedPointerElement;
+            !qualifiedPointerElement && !volatilePointerElement;
         result.readonlyReceiver = readonlyElement;
         result.onePastEndAddress = fixedOnePastAddress;
         coreBindings_.push_back(MethodCoreBinding{
