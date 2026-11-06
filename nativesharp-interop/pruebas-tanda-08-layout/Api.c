@@ -1,5 +1,9 @@
 #include "Api.h"
 static Pair sample_pair = { 1, 2 };
+static PackedEnum sample_packed_enum = { 1, PackedSad, { PackedSad, PackedSad } };
+PackedEnum* layout_packed_enum(void) { return &sample_packed_enum; }
+enum PackedMood layout_packed_enum_new(void) { return PackedHappy; }
+int layout_packed_enum_sum(void) { return sample_packed_enum.value + sample_packed_enum.values[1]; }
 static PackedRecordMatrix sample_packed_record_matrix = { 1, { { { 1, 2 }, { 3, 4 } }, { { 5, 6 }, { 7, 8 } } } };
 PackedRecordMatrix* layout_packed_record_matrix(void) { return &sample_packed_record_matrix; }
 int layout_packed_record_matrix_value(void) { return sample_packed_record_matrix.values[1][1].b; }

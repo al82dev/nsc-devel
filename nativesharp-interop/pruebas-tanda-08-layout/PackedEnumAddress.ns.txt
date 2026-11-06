@@ -1,0 +1,6 @@
+int Main()
+{
+    PackedEnum* packed = layout_packed_enum();
+    PackedMood* unsafeAddress = &packed->value;
+    return 0;
+}

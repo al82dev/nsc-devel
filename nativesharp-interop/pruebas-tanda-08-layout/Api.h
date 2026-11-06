@@ -2,6 +2,7 @@ typedef struct Pair { char a; int b; } Pair;
 typedef union Cell { int integer; double real; } Cell;
 typedef struct Container { char tag; Pair pairs[2][3]; Cell cell; } Container;
 typedef struct InnerArray { int values[2]; } InnerArray;
+enum PackedMood { PackedSad = -3, PackedHappy = 7 };
 #pragma pack(push, 1)
 typedef struct Packed { char tag; int value; } Packed;
 typedef struct PackedPointer { char tag; int* value; } PackedPointer;
@@ -12,7 +13,11 @@ typedef struct PackedNested { char tag; Pair nested; } PackedNested;
 typedef struct PackedNestedArray { char tag; InnerArray nested; } PackedNestedArray;
 typedef struct PackedRecordArray { char tag; Pair values[2]; } PackedRecordArray;
 typedef struct PackedRecordMatrix { char tag; Pair values[2][2]; } PackedRecordMatrix;
+typedef struct PackedEnum { char tag; enum PackedMood value; enum PackedMood values[2]; } PackedEnum;
 #pragma pack(pop)
+PackedEnum* layout_packed_enum(void);
+enum PackedMood layout_packed_enum_new(void);
+int layout_packed_enum_sum(void);
 PackedRecordMatrix* layout_packed_record_matrix(void);
 int layout_packed_record_matrix_value(void);
 PackedRecordArray* layout_packed_record_array(void);

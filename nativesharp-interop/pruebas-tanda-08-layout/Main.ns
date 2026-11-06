@@ -69,5 +69,10 @@ int Main()
     PackedRecordMatrix* recordMatrix = layout_packed_record_matrix();
     recordMatrix->values[1][1].b = 90;
     if (recordMatrix->values[1][1].b != 90 || layout_packed_record_matrix_value() != 90) return 27;
+    PackedEnum* packedEnum = layout_packed_enum();
+    packedEnum->value = layout_packed_enum_new();
+    packedEnum->values[1] = layout_packed_enum_new();
+    if (packedEnum->value != layout_packed_enum_new() ||
+        packedEnum->values[1] != layout_packed_enum_new() || layout_packed_enum_sum() != 14) return 28;
     return 0;
 }
