@@ -24,6 +24,7 @@
 #include "Internal/TemplateSourcePiece.h"
 #include "Internal/ByteReader.h"
 #include "Internal/ByteWriter.h"
+#include "Internal/CppCRecordMetadataCodec.h"
 
 #include <algorithm>
 #include <array>
@@ -758,10 +759,21 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
     appendErrorTypeProjection(metadata, projection);
     if (metadata.formatMinor >= 42 && !metadata.cppCRecordCatalog.empty())
     {
+        std::vector<std::uint8_t> abiCatalog = metadata.cppCRecordCatalog;
+        if (isCTypeCatalogWithProvenance(abiCatalog))
+        {
+            std::vector<CppCRecordSnapshot> records;
+            std::vector<CppCEnumSnapshot> enums;
+            std::vector<std::uint8_t> withoutProvenance;
+            std::string error;
+            if (decodeCTypeCatalogWithProvenance(abiCatalog, records, enums, error) &&
+                encodeCTypeCatalog(records, enums, withoutProvenance, error))
+                abiCatalog = std::move(withoutProvenance);
+        }
         ByteWriter catalogue;
         catalogue.text("NSMETA-C-RECORD-CATALOGUE-1");
-        catalogue.u64(static_cast<std::uint64_t>(metadata.cppCRecordCatalog.size()));
-        catalogue.raw(metadata.cppCRecordCatalog);
+        catalogue.u64(static_cast<std::uint64_t>(abiCatalog.size()));
+        catalogue.raw(abiCatalog);
         appendCatalogueBytes(projection, catalogue);
     }
     return projection;
