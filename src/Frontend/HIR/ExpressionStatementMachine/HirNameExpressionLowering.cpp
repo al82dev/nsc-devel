@@ -274,8 +274,10 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNamespaceStateNameBi
         std::uint64_t bits = 0;
         if (state.declaredTypeKey == "builtin:sbyte" || state.declaredTypeKey == "builtin:byte") bits = 8;
         else if (state.declaredTypeKey == "builtin:short" || state.declaredTypeKey == "builtin:ushort") bits = 16;
-        else if (state.declaredTypeKey == "builtin:int" || state.declaredTypeKey == "builtin:uint") bits = 32;
-        else if (state.declaredTypeKey == "builtin:long" || state.declaredTypeKey == "builtin:ulong") bits = 64;
+        else if (state.declaredTypeKey == "builtin:int" || state.declaredTypeKey == "builtin:uint" ||
+                 state.declaredTypeKey == "builtin:float") bits = 32;
+        else if (state.declaredTypeKey == "builtin:long" || state.declaredTypeKey == "builtin:ulong" ||
+                 state.declaredTypeKey == "builtin:double") bits = 64;
         else if (state.declaredTypeKey.ends_with('*')) bits = 64;
         if (bits != 0 && state.cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
             state.cppStorageSizeBits == std::optional<std::uint64_t>{bits} &&

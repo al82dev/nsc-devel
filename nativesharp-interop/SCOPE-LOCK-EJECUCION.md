@@ -1,5 +1,16 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Globales C volatile de punto flotante
+
+T08-007/T08-015: Clang 23.1.0 en Windows x64 emite `load atomic volatile
+float acquire` y `store atomic volatile float release` para globales float
+naturales. La ruta de NSC solo atribuye este orden a enteros y punteros.
+Extenderla a float de 32 y double de 64 bits únicamente cuando Clang confirme
+modo MS, tamaño y alineación suficiente. Preservar las rutas sin esas garantías.
+Presupuesto: HirNameExpressionLowering.cpp, OopLlvmSupport.h, fixture
+pruebas-tanda-08-record-c y registros Markdown. LLVM y NSLink protegidos;
+construcción incremental y validación agrupada de la tanda.
+
 ## Cierre transitivo de aliases de globales
 
 T08-002/T08-004: la relación entre globales por símbolo o USR puede tener más

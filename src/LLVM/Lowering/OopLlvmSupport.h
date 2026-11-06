@@ -40,8 +40,10 @@ inline bool isClangMsVolatileScalarGlobal(const frontend::ProjectOopMirNode* nod
     const auto bytes = *node->cppAtomicAlignmentBytes;
     return (bytes == 1 && (node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte")) ||
         (bytes == 2 && (node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort")) ||
-        (bytes == 4 && (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint")) ||
+        (bytes == 4 && (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint" ||
+                        node->typeKey == "builtin:float")) ||
         (bytes == 8 && (node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong" ||
+                        node->typeKey == "builtin:double" ||
                         node->typeKey.ends_with('*')));
 }
 
