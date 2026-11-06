@@ -190,6 +190,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Preparados `b2e5033ec`, `971340701` y `2ec390076`: proyección de records C
+    por valor con layout comprobado, controles semánticos y fixture directo e
+    indirecto. Aún no construidos ni ejecutados; no se acredita el ABI.
   - Con `81b6851c9`, el productor/consumidor con enum C en firma, campo y
     constante pasó O0–O3. La variante que devuelve record C por valor falló
     en O0 al importar `get_c_record_value`; `mapFunctionType` limita records a
