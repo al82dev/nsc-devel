@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Evidencia de alineación atómica en MIR
+
+Para T08-015, conservar en MIR la alineación atómica opcional ya calculada en
+HIR: `alignment == 1` por sí solo no distingue un byte comprobado de un dato
+ausente. Archivos autorizados: ProjectOopMirNode.h, MirNodeMachine.cpp,
+MirCache.cpp, ProjectOopLoweringTests.cpp y registros Markdown. Preservar la
+emisión existente y versionar la identidad de caché. Preparar la prueba de
+restauración; ejecutarla con la validación agrupada de la tanda. NSLink y LLVM
+permanecen protegidos.
+
 ## Enlace de prueba de lowering MIR
 
 El enlace de nsc_project_oop_lowering_tests falló por el símbolo

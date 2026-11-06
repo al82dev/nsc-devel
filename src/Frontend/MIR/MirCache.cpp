@@ -172,7 +172,7 @@ std::string preLowerMirCacheKey(
     std::size_t functionOrdinal)
 {
     std::string material;
-    internal::CachePayloadWriter::string(material, "nsc-mir-prelower-key-v4");
+    internal::CachePayloadWriter::string(material, "nsc-mir-prelower-key-v5");
     internal::CachePayloadWriter::string(material, compilationIdentity);
     internal::CachePayloadWriter::u64(material, functionOrdinal);
     internal::CachePayloadWriter::string(material, serializeHirCacheIdentity(function));
@@ -344,6 +344,7 @@ void appendMirNodeOptionals(std::string& out, const ProjectOopMirNode& node)
     appendMirOptionalU64(out, node.bitOffset);
     appendMirOptionalU64(out, node.bitWidth);
     appendMirOptionalU64(out, node.replaySpillOffset);
+    appendMirOptionalU64(out, node.cppAtomicAlignmentBytes);
 }
 
 void appendMirNodeVectors(std::string& out, const ProjectOopMirNode& node)
@@ -588,7 +589,8 @@ bool readMirNodeOptionals(internal::CachePayloadReader& reader, ProjectOopMirNod
         !readMirOptionalEnum(reader, node.conversionKind) ||
         !readMirOptionalU64(reader, node.bitOffset) ||
         !readMirOptionalU64(reader, node.bitWidth) ||
-        !readMirOptionalU64(reader, node.replaySpillOffset))
+        !readMirOptionalU64(reader, node.replaySpillOffset) ||
+        !readMirOptionalU64(reader, node.cppAtomicAlignmentBytes))
         return false;
     return true;
 }

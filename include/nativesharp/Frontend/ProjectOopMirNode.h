@@ -147,6 +147,8 @@ struct ProjectOopMirNode final
     bool volatileAccess = false;
     // Mirrors the imported-global option without assuming eligibility for atomics.
     std::optional<bool> cppMicrosoftVolatileSemantics;
+    // Present only when the imported access has a proven atomic alignment.
+    std::optional<std::size_t> cppAtomicAlignmentBytes;
     bool allocationFailureReturnsNull = false;
     bool zeroInitialize = false;
     bool baseReceiver = false;
