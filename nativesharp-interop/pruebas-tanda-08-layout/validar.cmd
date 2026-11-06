@@ -118,7 +118,8 @@ for %%F in (PackedConstRecordAddress PackedConstEnumAddress) do (
   if errorlevel 1 exit /b 1
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\%%F.exe" > "%DEST%\%%F.log" 2>&1
   if not errorlevel 1 exit /b 1
-  findstr /i /c:"addressable storage" "%DEST%\%%F.log" >nul
+  if /i "%%F"=="PackedConstRecordAddress" findstr /i /c:"readonly storage" "%DEST%\%%F.log" >nul
+  if /i "%%F"=="PackedConstEnumAddress" findstr /i /c:"discard pointee constness" "%DEST%\%%F.log" >nul
   if errorlevel 1 exit /b 1
 )
 echo Layout C comparado: resultado esperado cero.
