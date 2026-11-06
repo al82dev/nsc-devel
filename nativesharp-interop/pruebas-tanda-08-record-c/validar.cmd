@@ -27,6 +27,8 @@ llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\project.ll"
 if errorlevel 1 exit /b 1
+python "%~dp0verificar_ir_coalescencia.py" "%DEST%\project.ll"
+if errorlevel 1 exit /b 1
 findstr /r /c:"load volatile.*%%field.addr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta lectura LLVM volatile del campo. & exit /b 1)
 findstr /r /c:"store volatile.*%%field.addr" "%DEST%\project.ll" >nul

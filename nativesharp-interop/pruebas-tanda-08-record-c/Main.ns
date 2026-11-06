@@ -115,6 +115,11 @@ int Main()
     if (global_record_volatile.value != 41 || read_volatile_record() != 41) return 14;
     volatile_record_pointer = global_record_pointer;
     if (check_volatile_record_pointer() == 0) return 43;
+    volatile_record_pointer = null;
+    volatile_record_pointer ??= global_record_pointer;
+    if (volatile_record_pointer != global_record_pointer) return 45;
+    volatile_record_pointer ??= null;
+    if (volatile_record_pointer != global_record_pointer) return 46;
     volatile_record_pointer->value = 17;
     if (volatile_record_pointer->value != 17) return 15;
     if (readonly_record_matrix[1][1].value != 31) return 16;
