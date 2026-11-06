@@ -61,6 +61,7 @@ int read_readonly_array(void) { return readonly_array[1]; }
 volatile int volatile_array[3] = { 1, 2, 3 };
 volatile int volatile_matrix[2][2] = { { 1, 2 }, { 3, 4 } };
 int read_volatile_arrays(void) { return volatile_array[1] + volatile_matrix[1][1]; }
+void write_volatile_arrays(int value) { volatile_array[1] = value; volatile_matrix[1][1] = value; }
 struct GlobalOnly global_record = { 1 };
 static volatile struct GlobalOnly volatile_record_storage = { 9 };
 volatile struct GlobalOnly* volatile_record_pointer_array[2] = { &volatile_record_storage, &volatile_record_storage };

@@ -49,6 +49,7 @@ int read_readonly_array(void);
 extern volatile int volatile_array[3];
 extern volatile int volatile_matrix[2][2];
 int read_volatile_arrays(void);
+void write_volatile_arrays(int value);
 struct GlobalOnly { int value; };
 typedef volatile struct GlobalOnly* VolatileGlobalPtr;
 typedef const volatile struct GlobalOnly* ConstVolatileGlobalPtr;
