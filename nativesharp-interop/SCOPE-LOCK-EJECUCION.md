@@ -89,6 +89,10 @@ tipos C de un catálogo validado y exigir la dependencia existente para tipos de
 otros módulos, sin permitir colisiones con tipos NativeSharp o especializaciones.
 Presupuesto: LibraryMetadataVerification.cpp y controles de sesión; conservar
 1.42 y el proveedor deshabilitados hasta la integración y validación conjunta.
+Extender el cierre de tipos externos entre bibliotecas para reconocer un tipo C
+presente en el catálogo validado del módulo dueño, conservando el rechazo de
+proveedor ausente o tipo no declarado. Presupuesto: MetadataSourceMapping.cpp,
+controles unitarios de interoperabilidad y registros. No habilitar 1.42.
 Transportar los bytes verificados del catálogo desde la superficie de metadata
 hasta PrecompiledSyntaxModule; presupuesto adicional: PrecompiledSyntaxModule.h,
 PrecompiledProjectPreparation.cpp y controles existentes. No habilitar 1.42
