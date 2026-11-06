@@ -4,6 +4,8 @@ typedef struct Container { char tag; Pair pairs[2][3]; Cell cell; } Container;
 int pair_size(void);
 int pair_alignment(void);
 int pair_b_offset(void);
+Pair* layout_pair(void);
+int layout_pair_value(void);
 int cell_size(void);
 int cell_alignment(void);
 int cell_real_offset(void);

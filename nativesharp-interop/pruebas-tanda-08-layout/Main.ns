@@ -10,5 +10,9 @@ int Main()
     if (alignof(Container) != (nuint)container_alignment()) return 8;
     if (offsetof(Container, pairs) != (nuint)container_pairs_offset()) return 9;
     if (offsetof(Container, cell) != (nuint)container_cell_offset()) return 10;
+    Pair* pair = layout_pair();
+    pair->b = 29;
+    pair->b += 3;
+    if (pair->b != 32 || layout_pair_value() != 32) return 11;
     return 0;
 }
