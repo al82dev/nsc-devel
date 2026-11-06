@@ -46,7 +46,8 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
             fixedDimensions.push_back(*base->arrayCount);
             base = base->element.get();
         }
-        if (base && base->kind != CppTypeKind::Pointer &&
+        if (base && (base->kind != CppTypeKind::Pointer ||
+                     (cLanguage && base->isConst && !base->isVolatile)) &&
             (readonly || isVolatile || base->isConst || base->isVolatile))
         {
             readonly |= base->isConst;

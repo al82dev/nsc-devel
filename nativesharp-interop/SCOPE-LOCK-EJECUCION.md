@@ -8,6 +8,12 @@ son mutables. Comprobar lectura, escritura al dato y verificación desde C en
 O0–O3; rechazar reasignación del slot y escape por dirección que permita
 reasignarlo. Usar salidas en A: y no cambiar producción antes de observar y
 delimitar el fallo. Mantener las pruebas previas de punteros a const.
+El fixture produjo `C/C++ global type is not yet mapped` para el arreglo de
+punteros constantes. Permitir un cambio localizado en
+`src/Interop/Cpp/CppSemanticInventory.cpp` para transportar el const del slot
+como readonly del arreglo, sin alterar el calificador del dato apuntado y sin
+habilitar volatile ni calificadores anidados no representados. Comprobar las
+operaciones y escapes antes de declarar soportada esta forma.
 
 ## Pruebas independientes de metadata histórica C
 
