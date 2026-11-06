@@ -24,6 +24,8 @@ extern volatile int volatile_array[3];
 extern volatile int volatile_matrix[2][2];
 int read_volatile_arrays(void);
 struct GlobalOnly { int value; };
+int bump_volatile_record(volatile struct GlobalOnly* value);
+int read_const_volatile_record(const volatile struct GlobalOnly* value);
 extern struct GlobalOnly global_record;
 extern struct GlobalOnly* global_record_pointer;
 extern struct GlobalOnly** global_record_pointer_pointer;

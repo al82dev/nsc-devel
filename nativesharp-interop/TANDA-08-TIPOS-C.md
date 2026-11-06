@@ -12,6 +12,9 @@ La construcción y validación agrupada están pendientes; no se afirma soporte
 hasta disponer de resultados. Los retornos, globales, callbacks, punteros
 anidados y la resolución de sobrecargas C++ no se habilitan con este cambio.
 
+La misma proyección se preparó para un puntero de un nivel a un struct C
+reconocido por el inventario. La prueba de ejecución conjunta queda pendiente.
+
 ## Optimización del proyecto mixto de records C: 2026-11-06
 
 Con `bb85ea5e2` y `6cbe3f99a`, `call nativesharp-interop\validar-tanda-08.cmd`

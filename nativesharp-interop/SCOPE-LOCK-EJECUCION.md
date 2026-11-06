@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Parámetros C puntero a struct volatile
+
+Extender la misma entrada de enlace C a un struct importado y reconocido por
+el inventario; mantener const y el tipo original. Archivos autorizados:
+CppSemanticFunction.cpp, CppClangSessionTests.cpp, el fixture
+pruebas-tanda-08-record-c y esta documentación. No habilitar el consumo de
+punteros volatile desde NS, resultados, callbacks ni punteros anidados.
+Verificar en la validación agrupada la llamada real y la conservación de const.
+
 ## Parámetros C puntero a escalar volatile
 
 Se proyectan parámetros de enlace C de un nivel a escalares volatile para

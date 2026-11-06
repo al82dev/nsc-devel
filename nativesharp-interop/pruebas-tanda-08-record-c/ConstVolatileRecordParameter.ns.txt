@@ -1,0 +1,4 @@
+int Main()
+{
+    return bump_volatile_record(get_const_globalonly());
+}
