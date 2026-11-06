@@ -597,6 +597,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     `volatile_array[1]`; un IR NS anterior contiene `load volatile` sin ese
     orden. Pendiente reproducir con el compilador actualizado y corregir el
     contrato concreto. [Evidencia](registro-commits/ir-global-array-volatile-ms.md).
+  - Preparada una corrección restringida a arreglos globales C `volatile int`
+    con origen, modo MS y alineación acreditados. Los controles incluyen
+    orden en IR y casos negativos de alineación; aún no están ejecutados.
+    [Detalle](registro-commits/control-orden-array-volatile.md).
   - Preparada la propagación de punteros a `volatile` en arreglos globales C,
     con controles para matriz, `const volatile`, descarte del calificador y
     dirección del slot. La implementación y las pruebas aún esperan la
