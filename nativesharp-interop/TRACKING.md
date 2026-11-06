@@ -593,6 +593,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     [Evidencia](registro-commits/prueba-opacos-header-compartido.md).
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
+  - En la referencia Clang, desreferenciar `volatile int*` usa acquire/release;
+    un IR NS anterior solo marca volatile. Falta conservar procedencia y
+    alineación de apuntados. [Evidencia](registro-commits/ir-puntero-volatile-ms.md).
   - La referencia Clang emitió lectura `atomic volatile` con `acquire` para
     `volatile_array[1]`; un IR NS anterior contiene `load volatile` sin ese
     orden. Pendiente reproducir con el compilador actualizado y corregir el
