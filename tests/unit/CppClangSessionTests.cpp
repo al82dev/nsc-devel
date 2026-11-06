@@ -3177,6 +3177,19 @@ int main(int argc, char** argv)
                                  nestedArray->type.nativeSharpTypeKey == "type:" + pairIdentity->key() + "[3][2]" &&
                                  nestedArray->byteOffset == 8,
                                  "nested C record and array fields retain imported identities and offsets");
+                    if (outer && nested && !outer->fields.empty())
+                    {
+                        const auto imported = toCppImportedInstanceField(*nested);
+                        auto withoutUsr = *outer;
+                        withoutUsr.fields[0].clangUsr = std::nullopt;
+                        const auto unknown = projectCppSemanticInstanceField(withoutUsr, 0, 0, "Semantic",
+                            "x86_64-pc-windows-msvc", recordAliasCompilation.nameLookup());
+                        ok &= expect(outer->fields[0].clangUsr && nested->clangUsr == outer->fields[0].clangUsr &&
+                                     imported.clangUsr == nested->clangUsr && unknown && !unknown->clangUsr &&
+                                     !toCppImportedInstanceField(*unknown).clangUsr,
+                                     "C field projection preserves present and absent Clang USRs");
+                    }
+                    else ok &= expect(false, "C field USR projection requires a projected field");
                     if (outer && !outer->fields.empty() && outer->fields[0].type.recordIdentity &&
                         recordAliasCompilation.nameLookup())
                     {
