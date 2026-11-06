@@ -1,0 +1,8 @@
+#include "Api.h"
+static int calls;
+void reset_calls(void) { calls = 0; }
+int read_calls(void) { return calls; }
+void* identity_pointer(void* value) { ++calls; return value; }
+int no_arguments(void) { return 17; }
+int old_style(int value, double fraction) { return value + (int)(fraction * 10); }
+int old_style_noargs(void) { return 23; }

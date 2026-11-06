@@ -1,0 +1,10 @@
+int Main()
+{
+    reset_calls();
+    if (identity_pointer(null) != null || read_calls() != 1) return 1;
+    if (no_arguments() != 17 || old_style_noargs() != 23) return 2;
+    byte value = 3;
+    float fraction = 1.5f;
+    if (old_style(value, fraction) != 18) return 3;
+    return 0;
+}

@@ -1,0 +1,1 @@
+int Main() { return no_arguments(1); }
