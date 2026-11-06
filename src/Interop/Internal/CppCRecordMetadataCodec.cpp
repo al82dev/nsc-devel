@@ -229,6 +229,7 @@ bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
             record.fields.size() > maxItems || !putText(writer, record.identityKey) ||
             !putText(writer, record.targetTriple) || !putOptionalText(writer, record.clangUsr))
         { error = "invalid C record identity"; return false; }
+        writer.u8(record.microsoftVolatileSemantics ? (*record.microsoftVolatileSemantics ? 2 : 1) : 0);
         writer.u8(static_cast<std::uint8_t>(record.kind)); writer.u8(record.complete);
         putOptionalNumber(writer, record.sizeBits); putOptionalNumber(writer, record.alignmentBits);
         writer.u32(static_cast<std::uint32_t>(record.fields.size()));
@@ -259,15 +260,17 @@ bool decodeCRecordCatalog(std::span<const std::uint8_t> bytes,
     {
         CppCRecordSnapshot record;
         std::uint8_t kind = 0;
+        std::uint8_t volatileMode = 0;
         std::uint32_t fields = 0;
         if (!reader.text(record.identityKey) || record.identityKey.empty() ||
             !reader.text(record.targetTriple) || record.targetTriple.empty() ||
-            !getOptionalText(reader, record.clangUsr) || !reader.u8(kind) ||
+            !getOptionalText(reader, record.clangUsr) || !reader.u8(volatileMode) || volatileMode > 2 || !reader.u8(kind) ||
             (kind != static_cast<std::uint8_t>(CppRecordKind::Struct) && kind != static_cast<std::uint8_t>(CppRecordKind::Union)) ||
             !getFlag(reader, record.complete) || !getOptionalNumber(reader, record.sizeBits) ||
             !getOptionalNumber(reader, record.alignmentBits) || !reader.u32(fields) ||
             fields > maxItems || fields > reader.remaining())
         { error = "invalid C record"; return false; }
+        if (volatileMode != 0) record.microsoftVolatileSemantics = volatileMode == 2;
         record.kind = static_cast<CppRecordKind>(kind);
         record.fields.reserve(fields);
         for (std::uint32_t j = 0; j < fields; ++j)
