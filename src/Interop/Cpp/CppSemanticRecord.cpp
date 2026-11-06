@@ -918,6 +918,98 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     return metadata_detail::encodeCTypeCatalog(records, {}, output, error);
 }
 
+bool reconstructCImportedFields(std::span<const CppCRecordSnapshot> records,
+    std::size_t projectOrdinal, std::string_view moduleName, std::string_view targetTriple,
+    const frontend::ProjectNameLookup& lookup, std::vector<frontend::CppImportedInstanceField>& output,
+    std::string& error)
+{
+    std::vector<frontend::CppImportedInstanceField> result;
+    for (const auto& snapshot : records)
+    {
+        const auto ordinal = lookup.typeOrdinalForIdentity(snapshot.identityKey);
+        const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+        const auto expectedOrigin = snapshot.kind == CppRecordKind::Union ?
+            frontend::CppImportedTypeOrigin::CUnion : frontend::CppImportedTypeOrigin::CStruct;
+        if ((snapshot.kind != CppRecordKind::Struct && snapshot.kind != CppRecordKind::Union) ||
+            snapshot.moduleName != moduleName || snapshot.targetTriple != targetTriple || !imported ||
+            imported->projectOrdinal != projectOrdinal || imported->origin != expectedOrigin ||
+            imported->targetTriple != snapshot.targetTriple || imported->clangUsr != snapshot.clangUsr ||
+            imported->isIncomplete != !snapshot.complete)
+        { error = "C record is not installed with matching identity"; return false; }
+        if (!snapshot.complete) continue;
+        const auto& layout = snapshot.valueLayoutUsable ? imported->objectLayout : imported->memberAccessLayout;
+        if (!snapshot.sizeBits || !snapshot.alignmentBits || !layout || *snapshot.sizeBits % 8 ||
+            *snapshot.alignmentBits % 8 || layout->sizeBytes != *snapshot.sizeBits / 8 ||
+            layout->alignmentBytes != *snapshot.alignmentBits / 8)
+        { error = "C record is not installed with matching layout"; return false; }
+        CppRecordDeclaration record;
+        record.name = snapshot.name;
+        record.namespaceSegments = snapshot.namespaceSegments;
+        record.containingRecords = snapshot.containingRecords;
+        record.kind = snapshot.kind;
+        record.complete = true;
+        record.isCxx = false;
+        record.sizeBits = snapshot.sizeBits;
+        record.alignmentBits = snapshot.alignmentBits;
+        record.fields = snapshot.fields;
+        for (std::size_t i = 0; i < record.fields.size(); ++i)
+        {
+            if (record.fields[i].name.empty() && record.fields[i].bitWidth) continue;
+            const auto field = projectCppSemanticInstanceField(record, i, projectOrdinal, moduleName, targetTriple, &lookup);
+            if (!field || field->ownerIdentityKey != snapshot.identityKey)
+            { error = "C record field cannot be reconstructed: " + snapshot.identityKey + "." + record.fields[i].name; return false; }
+            auto projected = toCppImportedInstanceField(*field);
+            projected.microsoftVolatileSemantics = snapshot.microsoftVolatileSemantics;
+            result.push_back(std::move(projected));
+        }
+    }
+    output = std::move(result); error.clear(); return true;
+}
+
+bool reconstructCEnumConstants(std::span<const CppCEnumSnapshot> enums,
+    std::size_t projectOrdinal, std::string_view moduleName, std::string_view targetTriple,
+    const frontend::ProjectNameLookup& lookup, std::vector<frontend::NamespaceStateSymbol>& output,
+    std::string& error)
+{
+    std::vector<frontend::NamespaceStateSymbol> result;
+    std::set<std::string> names;
+    for (const auto& snapshot : enums)
+    {
+        const auto ordinal = lookup.typeOrdinalForIdentity(snapshot.identityKey);
+        const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+        if (snapshot.targetTriple != targetTriple || !imported || imported->projectOrdinal != projectOrdinal ||
+            imported->origin != frontend::CppImportedTypeOrigin::CEnum || imported->targetTriple != snapshot.targetTriple ||
+            imported->clangUsr != snapshot.declaration.clangUsr)
+        { error = "C enum is not installed with matching identity"; return false; }
+        CppSemanticEnumEntry entry{{}, 0, projectOrdinal, snapshot.targetTriple, snapshot.declaration};
+        for (std::size_t i = 0; i < entry.declaration.enumerators.size(); ++i)
+        {
+            auto projected = projectCppEnumConstant(entry, i);
+            if (const auto* failure = std::get_if<CppSemanticEnumConstantFailure>(&projected))
+            { error = failure->message; return false; }
+            const auto& value = std::get<CppSemanticEnumConstant>(projected);
+            if (!names.insert(value.name).second)
+            { error = "conflicting C enumerator name: " + value.name; return false; }
+            frontend::NamespaceStateSymbol state;
+            state.projectOrdinal = projectOrdinal;
+            state.moduleName = std::string(moduleName);
+            state.name = value.name;
+            state.accessibility = frontend::NamespaceFunctionAccessibility::Public;
+            state.isConst = true;
+            state.isCppEnumConstant = true;
+            state.cppClangUsr = value.clangUsr;
+            state.declaredTypeKey = value.typeKey;
+            state.initializerKind = frontend::NamespaceStateInitializerKind::Integer;
+            state.integerValue = value.bits;
+            state.identityKey = "state:" + state.moduleName + "::." + state.name;
+            state.storageName = "__nsc_cenum_" + std::to_string(state.moduleName.size()) + "_" +
+                state.moduleName + "_" + std::to_string(state.name.size()) + "_" + state.name;
+            result.push_back(std::move(state));
+        }
+    }
+    output = std::move(result); error.clear(); return true;
+}
+
 CppRecordRefinementResult refineCppRecordGroupsForPointerTransport(
     std::span<const CppSemanticRecordEntry> inventory, const CppRecordGroups& groups,
     std::span<const CppProjectSessions> projects)

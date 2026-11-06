@@ -13,11 +13,12 @@
 #include <string_view>
 #include <variant>
 
-namespace nativesharp::frontend { class ProjectCompilation; }
+namespace nativesharp::frontend { class ProjectCompilation; struct NamespaceStateSymbol; }
 
 namespace nativesharp::interop
 {
 struct CppSemanticInventoryEntry;
+struct CppCEnumSnapshot;
 struct LibraryMetadata;
 // Anonymous contexts cannot be addressed by a NativeSharp source name.
 std::optional<compilation::TypeIdentity> projectCppRecordIdentity(
@@ -167,6 +168,14 @@ CppCRecordClosureResult collectCppCRecordClosure(
     std::size_t projectOrdinal, std::span<const std::string> seedIdentityKeys);
 bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compilation,
     const LibraryMetadata& metadata, std::vector<std::uint8_t>& output, std::string& error);
+bool reconstructCImportedFields(std::span<const CppCRecordSnapshot> records,
+    std::size_t projectOrdinal, std::string_view moduleName, std::string_view targetTriple,
+    const frontend::ProjectNameLookup& lookup, std::vector<frontend::CppImportedInstanceField>& output,
+    std::string& error);
+bool reconstructCEnumConstants(std::span<const CppCEnumSnapshot> enums,
+    std::size_t projectOrdinal, std::string_view moduleName, std::string_view targetTriple,
+    const frontend::ProjectNameLookup& lookup, std::vector<frontend::NamespaceStateSymbol>& output,
+    std::string& error);
 
 enum class CppSignatureRecordStatus { Matched, Unprojectable, Missing };
 struct CppSignatureRecordDependency
