@@ -31,3 +31,6 @@ el dato; pasar el arreglo se rechazó porque no se encontró una sobrecarga con
 tipos compatibles. Esto no prueba una conversión general de arreglos a
 punteros calificados. Se fijan ambos diagnósticos esperados en el script; la
 versión ajustada de ese control aún debe repetirse.
+
+La repetición de `validar.cmd` con los mensajes concretos pasó, junto con el
+caso positivo O0–O3 y los otros controles negativos, con el mismo build.
