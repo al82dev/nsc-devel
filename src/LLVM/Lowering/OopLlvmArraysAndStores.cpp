@@ -171,10 +171,10 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         {
             previous = LLVMBuildLoad2(builder_, targetType, address, "compound.load");
             if (node->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
-            if (isClangMsVolatileI32Global(node->children[0].get()))
+            if (isClangMsVolatileIntegerGlobal(node->children[0].get()))
             {
                 LLVMSetOrdering(previous, LLVMAtomicOrderingAcquire);
-                LLVMSetAlignment(previous, 4);
+                LLVMSetAlignment(previous, static_cast<unsigned>(*node->children[0]->cppAtomicAlignmentBytes));
             }
         }
         if (previous == nullptr) return nullptr;
@@ -196,10 +196,10 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         {
             LLVMValueRef store = LLVMBuildStore(builder_, updated, address);
             if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
-            if (isClangMsVolatileI32Global(node->children[0].get()))
+            if (isClangMsVolatileIntegerGlobal(node->children[0].get()))
             {
                 LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
-                LLVMSetAlignment(store, 4);
+                LLVMSetAlignment(store, static_cast<unsigned>(*node->children[0]->cppAtomicAlignmentBytes));
             }
         }
         if (storedValue == nullptr) return nullptr;
@@ -396,10 +396,10 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         }
         LLVMValueRef store = LLVMBuildStore(builder_, value, address);
         if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
-        if (isClangMsVolatileI32Global(node->children[0].get()))
+        if (isClangMsVolatileIntegerGlobal(node->children[0].get()))
         {
             LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
-            LLVMSetAlignment(store, 4);
+            LLVMSetAlignment(store, static_cast<unsigned>(*node->children[0]->cppAtomicAlignmentBytes));
         }
         if (liveness.has_value()) setArrayElementAlive(*liveness, true);
         if (node->localOrdinal.has_value())

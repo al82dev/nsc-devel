@@ -31,13 +31,17 @@ namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
 
-inline bool isClangMsVolatileI32Global(const frontend::ProjectOopMirNode* node) noexcept
+inline bool isClangMsVolatileIntegerGlobal(const frontend::ProjectOopMirNode* node) noexcept
 {
-    return node && node->volatileAccess && node->cppMicrosoftVolatileSemantics.value_or(false) &&
-        node->alignment == 4 &&
-        (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") &&
-        (node->kind == frontend::ProjectOopMirNodeKind::NamespaceStateLoad ||
-         node->kind == frontend::ProjectOopMirNodeKind::NamespaceStateAddress);
+    if (!node || !node->volatileAccess || !node->cppMicrosoftVolatileSemantics.value_or(false) ||
+        !node->cppAtomicAlignmentBytes || node->alignment != *node->cppAtomicAlignmentBytes ||
+        (node->kind != frontend::ProjectOopMirNodeKind::NamespaceStateLoad &&
+         node->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress)) return false;
+    const auto bytes = *node->cppAtomicAlignmentBytes;
+    return (bytes == 1 && (node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte")) ||
+        (bytes == 2 && (node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort")) ||
+        (bytes == 4 && (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint")) ||
+        (bytes == 8 && (node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong"));
 }
 
 std::optional<LLVMAtomicOrdering> orderedAtomicLoadOrdering(std::uint64_t encoded);
