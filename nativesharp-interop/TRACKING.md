@@ -521,6 +521,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-013. Representar tipos declarados pero incompletos sin inventar su tamaño.
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
+  - Campos de bits `volatile` enteros C en structs normales y empaquetados:
+    ejecución cruzada O0–O3 y comparación de IR con Clang para cuatro accesos
+    pasaron. Faltan otros layouts, unions y metadata precompilada para esta
+    forma; no cierra el ítem. [Evidencia](registro-commits/prueba-volatile-bitfields-c.md).
   - Diferencia reproducida en `8c6ddf489`: al acceder por puntero a un enum
     volatile alineado dentro de un arreglo C, Clang emite release/acquire y
     NSC emite volatile ordinario. El nuevo control falla en NSC; falta corregir
