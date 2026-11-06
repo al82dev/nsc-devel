@@ -1,5 +1,9 @@
 namespace Published
 {
     public struct Wrapper { public CRecord* value; }
-    public struct Bridge { public static CRecord* Get() { return get_c_record(); } }
+    public struct Bridge
+    {
+        public static CRecord* Get() { return get_c_record(); }
+        public static CGlobalKind GetKind() { return get_c_kind(); }
+    }
 }

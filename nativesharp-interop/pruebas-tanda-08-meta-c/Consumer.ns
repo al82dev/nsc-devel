@@ -3,5 +3,7 @@ int Main()
 {
     var value = Published.Bridge.Get();
     if (value->value != 17) return 1;
+    if (value->kind != Published.Bridge.GetKind()) return 2;
+    if (CGlobalChoice != 21) return 3;
     return 0;
 }
