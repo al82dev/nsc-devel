@@ -5,6 +5,11 @@ VolatileIntPtr forward_volatile_alias(VolatileIntPtr value)
     return value;
 }
 
+ConstVolatileIntPtr forward_const_volatile_alias(ConstVolatileIntPtr value)
+{
+    return value;
+}
+
 int Main()
 {
     Pair* item = make_pair();
@@ -47,6 +52,7 @@ int Main()
     if (read_volatile_pointee() != 71) return 34;
     ConstVolatileIntPtr readonly_volatile_alias = const_volatile_pointee;
     if (*readonly_volatile_alias != 71) return 35;
+    if (*forward_const_volatile_alias(readonly_volatile_alias) != 71) return 37;
     global_volatile_alias = volatile_pointee;
     *global_volatile_alias = 72;
     if (read_volatile_pointee() != 72) return 36;

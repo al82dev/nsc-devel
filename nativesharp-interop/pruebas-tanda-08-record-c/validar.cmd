@@ -299,6 +299,12 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project
 if not errorlevel 1 exit /b 1
 findstr /c:"left side of assignment is not assignable" "%DEST%\const-volatile-alias-write.log" >nul
 if errorlevel 1 exit /b 1
+copy /y "%~dp0ConstVolatileAliasReturnWrite.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-volatile-alias-return-write.exe" > "%DEST%\const-volatile-alias-return-write.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"left side of assignment is not assignable" "%DEST%\const-volatile-alias-return-write.log" >nul
+if errorlevel 1 exit /b 1
 copy /y "%~dp0VolatileAliasGlobalAddress.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-alias-global-address.exe" > "%DEST%\volatile-alias-global-address.log" 2>&1

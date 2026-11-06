@@ -852,6 +852,12 @@ por lo que un retorno NativeSharp declarado mediante un alias C podía perder
 const. También consulta ahora el tipo declarado, como hace para volatile. Falta
 comprobarlo con una función NativeSharp y la validación agrupada de la tanda.
 
+## Prueba de retorno NativeSharp const volatile
+
+El fixture prepara una función NativeSharp que retorna el alias C combinado;
+el caso positivo lee por el resultado y el negativo intenta escribir por él.
+No se ha ejecutado todavía la batería agrupada.
+
 ## Prueba de estado global con alias volatile
 
 El fixture prepara un global NativeSharp del tipo importado; comprueba una

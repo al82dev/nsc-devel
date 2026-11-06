@@ -1,0 +1,10 @@
+ConstVolatileIntPtr forward_const_volatile_alias(ConstVolatileIntPtr value)
+{
+    return value;
+}
+
+int Main()
+{
+    *forward_const_volatile_alias(const_volatile_pointee) = 1;
+    return 0;
+}

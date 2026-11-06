@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Prueba de retorno NativeSharp const volatile
+
+Preparar lectura del resultado NativeSharp declarado con alias C const volatile
+y rechazo de escritura al apuntado. Archivos: fixture de records C, su script
+y documentación. Ambos casos esperan la validación agrupada de la tanda.
+
 ## Const del retorno de función NativeSharp con alias C
 
 Conservar el const del apuntado del tipo declarado cuando se adapta una función
