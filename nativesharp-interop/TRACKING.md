@@ -410,11 +410,12 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     aliases transitivos y aislamiento entre proyectos. No acredita persistencia
     ni la validación completa de la tanda.
 - [ ] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
-  - `static inline` de encabezados todavía no se puede llamar desde NSC. Se
-    preparó emisión IR aislada con CodeGen de Clang y la suite de sesión pasó
-    para funciones juntas, llamada entre ellas y estado estático. Faltan
-    identidad por proyecto, selección e integración del objeto en el enlace.
-    [Evidencia](registro-commits/prueba-inline-c.md).
+  - Funciones C `static inline` de un encabezado se llamaron desde NSC en
+    O0–O3, directamente y mediante dos bibliotecas NativeSharp precompiladas;
+    en la muestra cada productor conservó su propio estado estático. Una
+    dependencia binaria compartida declarada por ambos provocó NSL1021 y queda
+    pendiente; ThinLTO y otras combinaciones también. La muestra no cierra el
+    ítem. [Evidencia](registro-commits/prueba-inline-c.md).
   - La sesión selecciona un prototipo C disponible entre redeclaraciones
     compatibles. El fixture pasó llamadas válidas O0–O3 y rechazó aridad
     incorrecta tanto si el prototipo aparece antes como después de `f()`.

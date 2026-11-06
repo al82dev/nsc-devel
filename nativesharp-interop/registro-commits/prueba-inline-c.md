@@ -11,3 +11,5 @@ Validación posterior, build `3aa5707a6d2b2cc7`: `validar.cmd` pasó en O0–O3 
 Se añade un segundo productor precompilado que incluye el mismo encabezado; el consumidor alterna llamadas y comprueba que ambos contadores y variables internas conservan estado independiente. Pendiente de la validación agrupada.
 
 En O0, cuando ambos productores declararon `api.lib`, NSLink reportó NSL1021 por la doble definición de `external_double` procedente del mismo archivo objeto. Este resultado no determina el aislamiento de los estáticos. El segundo productor no llama a esa función externa: se elimina de su referencia la biblioteca opcional para aislar el caso. La duplicación de dependencias compartidas permanece pendiente y no se modifica NSLink.
+
+Con esa modificación del fixture, `validar.cmd` pasó en O0–O3 con build `3aa5707a6d2b2cc7`: los contadores avanzaron independientemente y los valores guardados no se mezclaron. El error de dependencia duplicada sigue abierto; este resultado no valida todos los casos de múltiples proyectos ni ThinLTO.
