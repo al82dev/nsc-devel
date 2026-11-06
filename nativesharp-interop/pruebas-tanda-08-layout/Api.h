@@ -12,6 +12,7 @@ typedef struct PackedNested { char tag; Pair nested; } PackedNested;
 typedef struct PackedNestedArray { char tag; InnerArray nested; } PackedNestedArray;
 #pragma pack(pop)
 PackedNestedArray* layout_packed_nested_array(void);
+int layout_packed_nested_array_value(void);
 PackedNested* layout_packed_nested(void);
 int layout_packed_nested_value(void);
 int layout_packed_nested_size(void);

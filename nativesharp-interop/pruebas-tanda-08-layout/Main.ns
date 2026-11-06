@@ -58,5 +58,9 @@ int Main()
     nested->nested.b = 61;
     nested->nested.b += 1;
     if (nested->nested.b != 62 || layout_packed_nested_value() != 62) return 24;
+    PackedNestedArray* nestedArray = layout_packed_nested_array();
+    nestedArray->nested.values[1] = 70;
+    nestedArray->nested.values[1] += 2;
+    if (nestedArray->nested.values[1] != 72 || layout_packed_nested_array_value() != 72) return 25;
     return 0;
 }
