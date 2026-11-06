@@ -1320,6 +1320,14 @@ los valores en ejecución y rechaza tomar la dirección. No se ha ejecutado.
 Los campos empaquetados C++ y los campos C de punteros, agregados y bitfields
 siguen pendientes, así como otras formas de acceso; no se cierra la tanda.
 
+## Validación dirigida de arreglos C const volatile
+
+Con NSC construido incrementalmente en `6568a1890`, el fixture layout pasó en
+O0–O3 con lecturas de arreglos const volatile de record y enum, lectura
+volatile alineada a 1 en IR O0 y rechazo de escrituras y direcciones. El control
+de diagnóstico se hizo específico en `610c4b097` y la repetición pasó. Esto es
+evidencia dirigida; no cierra T08-015 ni la tanda.
+
 ## Validación dirigida de arreglos C volatile de records y enums
 
 Sobre `6568a1890` la construcción incremental de NSC terminó con código 0.
