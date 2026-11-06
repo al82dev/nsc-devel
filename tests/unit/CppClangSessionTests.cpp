@@ -1252,6 +1252,18 @@ int main(int argc, char** argv)
                             ok &= expect(unknownVolatile.candidate &&
                                          !unknownVolatile.candidate->microsoftVolatileSemantics.has_value(),
                                          "global selection retains unknown volatile options as unknown");
+                            repeated[selected.declarationIndices[0]].declaration.declarationAlignmentBits = 128;
+                            repeated.back().declaration.declarationAlignmentBits = 32;
+                            const auto conservativeAlignment = selectCppSemanticGlobal(repeated, 2, "feature::shared");
+                            ok &= expect(conservativeAlignment.candidate &&
+                                         conservativeAlignment.candidate->storageSizeBits == std::optional<std::uint64_t>{32} &&
+                                         conservativeAlignment.candidate->declarationAlignmentBits == std::optional<std::uint64_t>{32},
+                                         "global selection retains the type size and conservative alignment");
+                            repeated.back().declaration.declarationAlignmentBits = std::nullopt;
+                            const auto unknownAlignment = selectCppSemanticGlobal(repeated, 2, "feature::shared");
+                            ok &= expect(unknownAlignment.candidate &&
+                                         !unknownAlignment.candidate->declarationAlignmentBits.has_value(),
+                                         "global selection does not invent an unknown alignment");
                             repeated.back().declaration.type.canonicalSpelling = "double";
                             const auto conflict = selectCppSemanticGlobal(repeated, 2, "feature::shared");
                             ok &= expect(!conflict.candidate && !conflict.conflict.empty() &&

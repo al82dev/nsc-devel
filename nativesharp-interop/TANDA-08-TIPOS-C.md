@@ -1068,6 +1068,11 @@ alineación conocida de todas las declaraciones y aliases; si alguna es
 desconocida, la alineación resultante también lo es. El dato aún no se usa
 para decidir acceso atómico y espera pruebas y validación agrupada.
 
+## Prueba de tamaño y alineación de global seleccionado
+
+Se prepararon declaraciones con alineaciones distintas y desconocida, y se
+comprueba el tamaño del tipo. La prueba no se ha ejecutado todavía.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

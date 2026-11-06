@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Prueba de tamaño y alineación de global seleccionado
+
+Preparar controles de tamaño, mínimo de alineaciones y alineación desconocida
+para declaraciones repetidas. Archivos: CppClangSessionTests.cpp y documentación.
+Ejecutar con la siguiente validación agrupada.
+
 ## Tamaño y alineación al seleccionar un global
 
 Conservar el tamaño capturado de Clang y una cota conservadora de alineación al
