@@ -1,5 +1,17 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Orden de enum volatile C alineado en arreglo de campo
+
+T08-015: en índices de arreglos fijos de campos C importados, reconocer un
+elemento enum por su identidad y layout importados y conservar su ancho cuando
+el modo MSVolatile efectivo está acreditado. Emitir acquire en lectura y
+release en escritura solo si la alineación efectiva del elemento alcanza ese
+ancho. Mantener accesos no atómicos de elementos subalineados y del campo
+entero anidado observado en Clang; no inferir el modo ni aplicarlo a punteros
+cargados. Presupuesto: MirNodeMachine.cpp, OopLlvmSupport.h,
+OopLlvmExpressionMachine.cpp, OopLlvmArraysAndStores.cpp, fixture layout y
+registros Markdown. LLVM externo y NSLink protegidos; validar por tanda.
+
 ## Modo volatile de campo y elemento en HIR
 
 T08-015: conservar el modo efectivo del campo importado en sus nodos HIR y
