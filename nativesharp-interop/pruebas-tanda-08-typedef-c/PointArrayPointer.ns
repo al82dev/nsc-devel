@@ -1,0 +1,10 @@
+int Main()
+{
+    CPointArray points;
+    points[0].x = 3;
+    points[1].y = 4;
+    if (c_points_sum(&points) != 7) return 1;
+    c_points_mutate(&points);
+    if (points[0].x != 12 || c_points_sum(&points) != 16) return 2;
+    return 0;
+}

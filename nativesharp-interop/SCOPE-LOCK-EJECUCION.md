@@ -2,6 +2,10 @@
 
 ## Typedef C en proyectos reales
 
+Ampliar el fixture con punteros a arreglos fijos de struct y enum C. Probar
+identidad, lectura y mutación en C, ejecución O0–O3 y rechazo de const o tipos
+incompatibles. No cambiar producción hasta observar los fallos concretos.
+
 Agregar al fixture una función C que modifica una matriz por puntero y otra
 que devuelve puntero a matriz const. Verificar mutación real O0–O3; rechazar
 pasar la matriz const o una matriz de dimensiones distintas al parámetro mutable.
