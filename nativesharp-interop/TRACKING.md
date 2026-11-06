@@ -190,6 +190,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - La reconciliación del mismo encabezado C en biblioteca precompilada y
+    consumidor compiló, enlazó y ejecutó de O0 a O3. Un encabezado modificado
+    se rechazó; la suite de sesión pasó. No acredita todas las identidades ni
+    cierra la tanda. [Evidencia](registro-commits/firmas-record-c-reconciliado.md).
   - Preparados el transporte y la validación del destino reconciliado; aún no
     afectan la resolución de nombres y esperan validación agrupada.
     [Detalle](registro-commits/validacion-destino-identidad-c.md).
