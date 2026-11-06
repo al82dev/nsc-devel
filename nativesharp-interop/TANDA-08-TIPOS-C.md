@@ -15,7 +15,8 @@ anidados y la resolución de sobrecargas C++ no se habilitan con este cambio.
 La misma proyección se preparó para un puntero de un nivel a un struct C
 reconocido por el inventario. La prueba de ejecución conjunta queda pendiente.
 Se preparó además el caso equivalente para enum C, también pendiente de
-construcción y ejecución.
+construcción y ejecución; un caso negativo exige rechazo cuando la llamada
+descartaría const del apuntado.
 
 El fixture de escalares y structs incluye una comprobación específica del IR C
 para exigir accesos volatile dentro de cada función correspondiente. La

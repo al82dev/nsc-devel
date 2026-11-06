@@ -1,0 +1,6 @@
+int Main()
+{
+    Mood const* value = &shared_mood;
+    if (read_const_volatile_mood(value) != -3) return 1;
+    return update_volatile_mood(value);
+}
