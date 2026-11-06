@@ -93,6 +93,24 @@ inline bool clangMsVolatileDirectCIntPointee(const frontend::ProjectOopMirNode* 
         node->cppAtomicAlignmentBytes == std::optional<std::uint64_t>{4};
 }
 
+// A C _Bool occupies one byte even though the NS expression value is i1.
+inline bool clangMsVolatileGlobalBoolArray(const frontend::ProjectOopMirNode* node) noexcept
+{
+    if (!node || node->kind != frontend::ProjectOopMirNodeKind::RawElementAddress ||
+        node->typeKey != "builtin:bool" || !node->volatileAccess) return false;
+    unsigned depth = 0;
+    while (node && node->kind == frontend::ProjectOopMirNodeKind::RawElementAddress)
+    {
+        if (++depth > 128 || node->children.size() != 2 || !node->children.front() ||
+            node->immediate == 0) return false;
+        node = node->children.front().get();
+    }
+    return node && node->kind == frontend::ProjectOopMirNodeKind::NamespaceStateAddress &&
+        node->volatileAccess && node->cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
+        node->cppAtomicAlignmentBytes == std::optional<std::uint64_t>{1} &&
+        node->typeKey.starts_with("builtin:bool[");
+}
+
 inline std::optional<std::uint64_t> clangMsVolatileFunctionFieldAlignment(
     const frontend::ProjectOopMirNode* node) noexcept
 {

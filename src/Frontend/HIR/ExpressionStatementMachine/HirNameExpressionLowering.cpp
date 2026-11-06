@@ -290,7 +290,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNamespaceStateNameBi
         // Preserve the alignment proven for the supported imported C scalar arrays.
         // The individual element's address is checked again against every stride.
         std::uint64_t arrayBits = 0;
-        if (state.declaredTypeKey.starts_with("builtin:sbyte[") ||
+        if (state.declaredTypeKey.starts_with("builtin:bool[") ||
+            state.declaredTypeKey.starts_with("builtin:sbyte[") ||
             state.declaredTypeKey.starts_with("builtin:byte[")) arrayBits = 8;
         else if (state.declaredTypeKey.starts_with("builtin:short[") ||
                  state.declaredTypeKey.starts_with("builtin:ushort[")) arrayBits = 16;
