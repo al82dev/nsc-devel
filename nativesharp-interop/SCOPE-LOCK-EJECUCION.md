@@ -66,6 +66,10 @@ Preparar la proyección de campos y enumeradores guardados reutilizando las
 reglas C existentes; rechazar datos no proyectables sin salida parcial.
 Presupuesto: CppSemanticRecord.h/.cpp y controles de sesión. No instalar aún
 en el consumidor hasta resolver visibilidad y colisiones.
+Transportar los bytes verificados del catálogo desde la superficie de metadata
+hasta PrecompiledSyntaxModule; presupuesto adicional: PrecompiledSyntaxModule.h,
+PrecompiledProjectPreparation.cpp y controles existentes. No habilitar 1.42
+ni instalar declaraciones en este paso.
 Preparar un proveedor opcional de catálogo para el productor de metadata, sin
 activarlo desde el driver. Presupuesto adicional: ProjectCompilation.h/.cpp,
 LibraryMetadataConstruction.cpp y controles de sesión. El productor sin
