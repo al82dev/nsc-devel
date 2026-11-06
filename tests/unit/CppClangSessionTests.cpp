@@ -3210,6 +3210,37 @@ int main(int argc, char** argv)
                     metadata_detail::encodeCRecordCatalog(decoded, reencoded, codecError);
                 ok &= expect(roundTrip && encoded == reencoded && decoded.size() == catalog->size(),
                              "C record catalog codec preserves its complete encoding");
+                const auto comparisonRecord = std::find_if(catalog->begin(), catalog->end(),
+                    [](const auto& item) { return item.complete && !item.fields.empty(); });
+                if (comparisonRecord != catalog->end())
+                {
+                    auto first = *comparisonRecord;
+                    first.clangUsr = "test-record-usr";
+                    auto second = first;
+                    second.moduleName = "OtherModule";
+                    std::vector<nativesharp::compilation::TypeNameSegment> containers;
+                    for (const auto& name : second.containingRecords) containers.push_back({name, 0});
+                    second.identityKey = nativesharp::compilation::TypeIdentity(second.moduleName,
+                        second.namespaceSegments, std::move(containers), second.name).key();
+                    metadata_detail::CRecordContractComparison comparison{};
+                    const auto compare = [&] { return metadata_detail::compareCRecordContracts(first, second, comparison, codecError); };
+                    ok &= expect(compare() && comparison == metadata_detail::CRecordContractComparison::Matching,
+                                 "C record contracts match across module identities without asserting nominal identity");
+                    second.fields.front().name += "_different";
+                    ok &= expect(compare() && comparison == metadata_detail::CRecordContractComparison::Different,
+                                 "C record contracts distinguish field changes");
+                    second = first; second.targetTriple = "other-target";
+                    ok &= expect(compare() && comparison == metadata_detail::CRecordContractComparison::Different,
+                                 "C record contracts distinguish target triples");
+                    second = first; second.clangUsr.reset();
+                    ok &= expect(compare() && comparison == metadata_detail::CRecordContractComparison::Insufficient,
+                                 "C record comparison requires both USRs");
+                    second = first; second.fields.front().offsetBits = *second.sizeBits + 1;
+                    comparison = metadata_detail::CRecordContractComparison::Matching;
+                    ok &= expect(!compare() && comparison == metadata_detail::CRecordContractComparison::Matching,
+                                 "invalid C record comparison leaves its result unchanged");
+                }
+                else ok &= expect(false, "C record contract comparison has a complete test record");
                 LibraryMetadata catalogMetadata;
                 catalogMetadata.formatMinor = 42;
                 catalogMetadata.targetTriple = "x86_64-pc-windows-msvc";
