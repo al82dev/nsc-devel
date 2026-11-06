@@ -3315,6 +3315,13 @@ para comprobar el formato efectivo de `long double` en Clang 23 y su uso por
 argumento, resultado y campo desde NativeSharp, con O0–O3. Salidas en
 `A:/nsc-interop-build/tanda08-flotante-c`. No cambiar producción hasta
 comprobar representación y delimitar el alcance.
+El caso confirmado en Windows x64 usa IEEE binary64 y ABI double, mientras
+NSC rechaza el typedef. Permitir `CppType.h`, `ClangSession.cpp`,
+`CppScalarTypeMapping.cpp`, `CppAliasBuiltinType.h` y los registros para
+capturar explícitamente semántica IEEE binary64 desde Clang y usarla al
+mapear `long double`. No inferir el formato solo por el ancho. La persistencia
+de este dato en metadata queda pendiente de diseño y validación propia; no
+declarar soporte de bibliotecas precompiladas hasta resolverla.
 
 # Punteros a función C devueltos al consumidor
 
