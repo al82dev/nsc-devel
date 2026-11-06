@@ -91,6 +91,8 @@ findstr /c:"load atomic volatile ptr, ptr @volatile_record_pointer acquire, alig
 if errorlevel 1 (echo Falta lectura volatile acquire del puntero. & exit /b 1)
 findstr /r /c:"store atomic volatile ptr .*@volatile_record_pointer release, align 8" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile release del puntero. & exit /b 1)
+findstr /r /c:"load atomic volatile ptr, ptr @global_record_pointer" "%DEST%\project.ll" >nul
+if not errorlevel 1 (echo Se califico incorrectamente el puntero ordinario. & exit /b 1)
 findstr /r /c:"store i32 17, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura ordinaria en el objeto apuntado. & exit /b 1)
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\program.exe"
