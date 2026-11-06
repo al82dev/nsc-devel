@@ -22,3 +22,9 @@ grafos, órdenes ni repeticiones de bibliotecas; no se modificó NSLink.
 
 Se amplía el control para que ambos productores invoquen la dependencia C y
 para que el consumidor la declare y llame directamente. Pendiente de ejecución.
+
+El fixture ampliado pasó O0–O3 con el build `66725a00ab433111`: ambos
+productores llamaron a la función externa, el consumidor la llamó directamente
+y los estados estáticos independientes conservaron los valores esperados.
+El enlace informó tres bibliotecas: los dos productores y una dependencia C.
+No se prueban todavía todos los órdenes ni grafos de bibliotecas.
