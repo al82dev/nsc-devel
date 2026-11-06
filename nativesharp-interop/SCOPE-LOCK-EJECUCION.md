@@ -9,6 +9,15 @@ tracking y registros Markdown. Preservar el rechazo de identidades no conciliada
 no suponer equivalencia por nombre ni USR. Verificar con construcción incremental
 y pruebas dirigidas agrupadas antes de concluir cualquier soporte.
 
+## Comparación de contratos de records C precompilados
+
+Preparar comparación determinista de snapshots de records C entre módulos,
+usando el codec existente, con controles de dimensiones, campos, calificadores,
+destino y USR. Presupuesto: `src/Interop/Internal/CppCRecordMetadataCodec.h/.cpp`,
+`tests/unit/CppClangSessionTests.cpp`, tracking y registros Markdown. La
+coincidencia de contratos no establece identidad nominal ni habilita conversiones;
+el caso compartido permanece abierto. Validar junto con los cambios acumulados.
+
 ## Identidad de funciones C importadas
 
 T08-002/T08-003: conservar USR opcional en la proyección de función y
