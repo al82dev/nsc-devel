@@ -843,7 +843,14 @@ void ProjectMethodBodyModel::analyzeRawIndex(
         }
         result.assignable = !readonlyElement &&
             !ProjectMemberModel::fixedArrayElementTypeKey(result.typeKey).has_value();
-        result.addressable = !result.volatileStorage && !unalignedImportedFieldElement;
+        // A fixed array can carry the qualification of each pointer's pointee.
+        // Indexing selects the pointer, not the pointed-to object: preserve its
+        // readonly contract while keeping the slot assignable.
+        const bool qualifiedPointerElement = validFixedIndices && base.pointerPointeeReadonly &&
+            ProjectTypeConversion::isPointer(result.typeKey);
+        result.pointerPointeeReadonly = qualifiedPointerElement;
+        result.addressable = !result.volatileStorage && !unalignedImportedFieldElement &&
+            !qualifiedPointerElement;
         result.readonlyReceiver = readonlyElement;
         result.onePastEndAddress = fixedOnePastAddress;
         coreBindings_.push_back(MethodCoreBinding{
