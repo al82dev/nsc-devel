@@ -118,6 +118,9 @@ verificado y admitirlos en el cálculo de layout nominal, sin habilitar records
 C++ ni registros incompletos o de acceso exclusivamente por puntero. Presupuesto:
 ProjectObjectLayoutModel.cpp, MirLayoutImporter.cpp, controles de sesión y
 fixture de metadata C. Preservar offsets de campos ya validados y probar ABI.
+Permitir variables locales por valor únicamente para struct/union C con layout
+completo instalado; mantener el rechazo previo para C++ e incompletos. Presupuesto:
+StatementAnalyzer.cpp, controles existentes y fixture de metadata C.
 Transportar los bytes verificados del catálogo desde la superficie de metadata
 hasta PrecompiledSyntaxModule; presupuesto adicional: PrecompiledSyntaxModule.h,
 PrecompiledProjectPreparation.cpp y controles existentes. No habilitar 1.42
