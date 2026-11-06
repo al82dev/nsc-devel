@@ -2,6 +2,12 @@
 
 ## Typedef C en proyectos reales
 
+Preparar caso independiente de asignación e inicialización de enumeradores C
+a variables, elementos de arreglo y parámetros del enum importado. Comparar
+también el tipo de un enumerador en contexto entero y preservar un control de
+enum NativeSharp. Registrar fallos y no modificar producción sin delimitar
+clasificación y lowering de la conversión.
+
 Ampliar el fixture con punteros a arreglos fijos de struct y enum C. Probar
 identidad, lectura y mutación en C, ejecución O0–O3 y rechazo de const o tipos
 incompatibles. No cambiar producción hasta observar los fallos concretos.

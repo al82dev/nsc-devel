@@ -9,7 +9,7 @@ set "TEMP=%DEST%"
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
 set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
-for %%F in (Api.h Api.c Main.ns Project.nsproj MatrixPointer.ns MatrixPointer.nsproj InvalidConstMatrix.ns InvalidConstMatrix.nsproj InvalidMatrixSize.ns InvalidMatrixSize.nsproj PointArrayPointer.ns PointArrayPointer.nsproj ColorArrayPointer.ns ColorArrayPointer.nsproj InvalidConstPoints.ns InvalidConstPoints.nsproj InvalidConstColors.ns InvalidConstColors.nsproj InvalidArrayIdentity.ns InvalidArrayIdentity.nsproj) do (
+for %%F in (Api.h Api.c Main.ns Project.nsproj MatrixPointer.ns MatrixPointer.nsproj InvalidConstMatrix.ns InvalidConstMatrix.nsproj InvalidMatrixSize.ns InvalidMatrixSize.nsproj PointArrayPointer.ns PointArrayPointer.nsproj ColorArrayPointer.ns ColorArrayPointer.nsproj InvalidConstPoints.ns InvalidConstPoints.nsproj InvalidConstColors.ns InvalidConstColors.nsproj InvalidArrayIdentity.ns InvalidArrayIdentity.nsproj Enumerator.ns Enumerator.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )

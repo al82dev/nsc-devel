@@ -21,4 +21,5 @@ void c_colors_init(CColorArray* colors);
 const CColorArray* c_colors_get(void);
 int c_point_sum(const CPoint* point);
 CColor c_color(void);
+CColor c_echo_color(CColor color);
 COperation c_operation(void);

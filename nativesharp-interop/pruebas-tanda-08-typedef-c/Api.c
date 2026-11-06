@@ -13,5 +13,6 @@ void c_colors_init(CColorArray* colors) { (*colors)[0] = COLOR_RED; (*colors)[1]
 const CColorArray* c_colors_get(void) { static const CColorArray value = { COLOR_RED, COLOR_BLUE }; return &value; }
 int c_point_sum(const CPoint* point) { return point->x + point->y; }
 CColor c_color(void) { return COLOR_BLUE; }
+CColor c_echo_color(CColor color) { return color; }
 static int increment(int x) { return x + 1; }
 COperation c_operation(void) { return increment; }

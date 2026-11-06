@@ -1,0 +1,12 @@
+int Main()
+{
+    CColor color = COLOR_RED;
+    CColorArray colors;
+    colors[0] = COLOR_RED;
+    colors[1] = COLOR_BLUE;
+    if (c_echo_color(COLOR_BLUE) != COLOR_BLUE) return 1;
+    int raw = COLOR_BLUE;
+    if (raw != 2 || color != COLOR_RED) return 2;
+    if (c_colors_sum(&colors) != 3) return 3;
+    return 0;
+}
