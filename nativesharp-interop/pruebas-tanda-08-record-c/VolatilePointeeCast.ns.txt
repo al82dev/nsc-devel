@@ -1,0 +1,5 @@
+int Main()
+{
+    int* value = (int*)volatile_pointee;
+    return 0;
+}

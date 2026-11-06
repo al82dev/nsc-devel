@@ -54,6 +54,8 @@ preparó su caso de lectura y escritura. La compilación, ejecución y auditorí
 de escapes siguen pendientes; no equivale a soporte general de punteros
 calificados. Se prepararon comprobaciones de IR y rechazos de pérdida del
 calificador en inicialización y llamadas.
+También se prepararon casos negativos de escape por tupla y conversión
+explícita; esperan ejecución y no completan la auditoría de escapes.
 El mismo fixture incluye lectura del apuntado const volatile y rechazo de
 escritura; estas comprobaciones esperan ejecución.
 Se conectó además el resultado C de puntero a escalar volatile con el

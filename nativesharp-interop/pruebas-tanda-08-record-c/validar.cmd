@@ -239,5 +239,17 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project
 if not errorlevel 1 exit /b 1
 findstr /c:"would discard pointer pointee volatile qualification" "%DEST%\volatile-result-discard.log" >nul
 if errorlevel 1 exit /b 1
+copy /y "%~dp0VolatilePointeeTuple.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-pointee-tuple.exe" > "%DEST%\volatile-pointee-tuple.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"tuple element cannot yet preserve pointer pointee volatile qualification" "%DEST%\volatile-pointee-tuple.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0VolatilePointeeCast.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-pointee-cast.exe" > "%DEST%\volatile-pointee-cast.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"conversion would discard pointer pointee volatile qualification" "%DEST%\volatile-pointee-cast.log" >nul
+if errorlevel 1 exit /b 1
 echo Record C por puntero: resultado esperado cero.
 exit /b 0

@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Pruebas de escapes de puntero C volatile
+
+Preparar controles del proyecto mixto para comprobar que una tupla o una
+conversión explícita no pierden el calificador del apuntado. Archivos:
+fixture pruebas-tanda-08-record-c y documentación. Son barreras provisionales
+y no sustituyen la representación completa de tipos calificados. Ejecución
+con la validación agrupada.
+
 ## Control de límites de resultados y parámetros C++
 
 Preparar controles de Clang que comprueben que la normalización de tipos de
