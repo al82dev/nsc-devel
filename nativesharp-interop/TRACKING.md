@@ -242,6 +242,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     volatile alineado dentro de un arreglo C, Clang emite release/acquire y
     NSC emite volatile ordinario. El nuevo control falla en NSC; falta corregir
     el orden sin cambiar la semántica de los campos que Clang deja ordinarios.
+  - Preparados `270816da5` y `758458cb1`: cada record observado conserva el
+    modo efectivo de su sesión y existe un control de procedencia. Falta
+    ejecutar la suite y transportar o conciliar el modo hasta los accesos;
+    la generación de código todavía no cambia y el control anterior sigue fallando.
   - Preparados `f301a1a16` y `03830c483`: lectura, IR y rechazo de escritura
     para arreglos C de record y enum const volatile. Sin ejecutar.
   - Actualización: layout pasó en O0–O3 con lecturas, IR volatile alineado a 1
