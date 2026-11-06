@@ -1400,6 +1400,14 @@ std::vector<std::size_t> ProjectNamespaceFunctionModel::resolveStateCandidates(
     }
     std::sort(candidates.begin(), candidates.end());
     candidates.erase(std::unique(candidates.begin(), candidates.end()), candidates.end());
+    if (candidates.empty() && !lexicalNamespace.empty())
+    {
+        candidates = stateCandidatesInNamespace(nameLookup, projectOrdinal, "", stateName);
+        std::erase_if(candidates, [&](std::size_t ordinal) {
+            return ordinal >= states_.size() ||
+                (!states_[ordinal].isCppExternal && !states_[ordinal].isCppEnumConstant);
+        });
+    }
     return candidates;
 }
 
