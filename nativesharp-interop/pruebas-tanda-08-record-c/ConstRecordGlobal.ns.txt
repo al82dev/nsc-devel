@@ -1,0 +1,4 @@
+int Main()
+{
+    return global_record_const.value;
+}

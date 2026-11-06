@@ -25,4 +25,8 @@ struct GlobalOnly global_record = { 1 };
 static struct GlobalOnly global_record_target = { 2 };
 struct GlobalOnly* global_record_pointer = &global_record_target;
 struct GlobalOnly global_record_array[2] = { { 3 }, { 4 } };
-int read_global_records(void) { return global_record.value + global_record_pointer->value + global_record_array[1].value; }
+struct GlobalOnly global_record_matrix[2][2] = { { { 1 }, { 2 } }, { { 3 }, { 4 } } };
+union GlobalUnion global_union = { 0 };
+const struct GlobalOnly global_record_const = { 7 };
+volatile struct GlobalOnly global_record_volatile = { 8 };
+int read_global_records(void) { return global_record.value + global_record_pointer->value + global_record_array[1].value + global_record_matrix[1][1].value + global_union.value; }
