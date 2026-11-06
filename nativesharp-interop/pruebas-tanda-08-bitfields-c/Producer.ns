@@ -1,0 +1,10 @@
+namespace Published
+{
+    public struct Bridge
+    {
+        public static Bits* Get() { return get_bits(); }
+        public static PackedBits* GetPacked() { return get_packed_bits(); }
+        public static void Init(Bits* value, PackedBits* packed) { init_bits(value, packed); }
+        public static int Check(Bits* value, PackedBits* packed) { return check_bits(value, packed); }
+    }
+}

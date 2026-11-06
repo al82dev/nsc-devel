@@ -1,0 +1,12 @@
+int Main()
+{
+    Bits* value = Published.Bridge.Get();
+    PackedBits* packed = Published.Bridge.GetPacked();
+    Published.Bridge.Init(value, packed);
+    if (value->first != 5 || value->delta != -3 || value->second != 37 || value->third != 9) return 2;
+    if (packed->prefix != 11 || packed->small != 12 || packed->negative != -4) return 3;
+    value->first = 6; value->delta = -7; value->second = 31; value->third = 10;
+    packed->small = 7; packed->negative = -2;
+    if (Published.Bridge.Check(value, packed) != 1) return 4;
+    return 0;
+}

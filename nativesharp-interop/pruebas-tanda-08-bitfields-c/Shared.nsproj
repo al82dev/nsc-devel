@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CBitFieldsShared</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Shared.ns" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" />
+    <LibraryReference Include="CBitFieldsProducer.lib" />
+  </ItemGroup>
+</Project>
