@@ -9,7 +9,7 @@ if not exist "%DEST%" mkdir "%DEST%"
 if errorlevel 1 exit /b 1
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Api.c RecordProducer.ns RecordProducer.nsproj RecordConsumer.ns RecordConsumer.nsproj) do (
+for %%F in (Api.h Api.c RecordProducer.ns RecordProducer.nsproj RecordConsumer.ns RecordConsumer.nsproj RecordConsumerNoHeader.ns RecordConsumerNoHeader.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -25,6 +25,10 @@ for %%O in (%LEVELS%) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\RecordConsumer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe"
   if errorlevel 1 exit /b 1
   "%DEST%\consumer-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\RecordConsumerNoHeader.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-no-header-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  "%DEST%\consumer-no-header-O%%O.exe"
   if errorlevel 1 exit /b 1
   echo Callback C con record precompilado O%%O: correcto.
 )

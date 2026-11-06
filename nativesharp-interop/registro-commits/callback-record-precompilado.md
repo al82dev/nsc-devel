@@ -13,3 +13,7 @@ argumento conserva la matriz O0–O3 para la validación agrupada.
 Con el build `3f82235fd35e7b9a`, el diagnóstico O0 produjo la biblioteca y su
 NSMETA, compiló y enlazó el consumidor y ejecutó los tres accesos con código 0.
 O1–O3 y otras firmas permanecen pendientes; esta muestra no cierra T08-017.
+
+Se preparó un segundo consumidor que no incluye el header: infiere el puntero
+al record, el callback y el holder desde la API publicada por el productor.
+Su ejecución está pendiente; el consumidor con header permanece como control.

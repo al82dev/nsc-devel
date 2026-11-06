@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Callback precompilado con record sin header en el consumidor
+
+T08-017: comprobar si la metadata de la biblioteca productora permite que un
+consumidor infiera y use el callback C, el record apuntado y su holder sin
+volver a importar el header. Permitir ajustes en los fixtures C y NativeSharp
+de `pruebas-tanda-08-callback`, su script precompilado y la bitácora, con
+salidas en A:. No modificar producción hasta reproducir un fallo y determinar
+su causa. La prueba directa con header sigue siendo un control independiente.
+
 ## Cobertura del validador de la tanda 08
 
 El inventario de `validar*.cmd` bajo `pruebas-tanda-08-*` muestra validadores

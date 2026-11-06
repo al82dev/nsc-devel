@@ -31,6 +31,7 @@ typedef unsigned short UnsignedShort;
 typedef unsigned int UnsignedInt;
 int mix_integers(SignedByte a, UnsignedShort b, UnsignedInt c);
 typedef struct CallbackPayload { int value; } CallbackPayload;
+CallbackPayload* get_callback_payload(void);
 typedef int (*RecordCallback)(CallbackPayload* value);
 typedef struct RecordCallbackHolder { RecordCallback run; } RecordCallbackHolder;
 RecordCallback get_record_callback(void);

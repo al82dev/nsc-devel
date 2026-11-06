@@ -25,6 +25,8 @@ FloatValue add_float(FloatValue a, FloatValue b) { return a + b; }
 DoubleValue add_double(DoubleValue a, DoubleValue b) { return a + b; }
 int mix_integers(SignedByte a, UnsignedShort b, UnsignedInt c) { return (int)a + (int)b + (int)c; }
 static int add_payload(CallbackPayload* value) { return value->value + 3; }
+static CallbackPayload callback_payload = { 39 };
+CallbackPayload* get_callback_payload(void) { return &callback_payload; }
 static RecordCallbackHolder record_callback_holder = { add_payload };
 RecordCallback record_callback_global = add_payload;
 RecordCallback get_record_callback(void) { return add_payload; }

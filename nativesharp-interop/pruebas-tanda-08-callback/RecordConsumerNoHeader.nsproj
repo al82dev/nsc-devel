@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CRecordCallbackConsumerNoHeader</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="RecordConsumerNoHeader.ns" />
+    <LibraryReference Include="CRecordCallbackProducer.lib" />
+  </ItemGroup>
+</Project>
