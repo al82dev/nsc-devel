@@ -84,6 +84,11 @@ Preparar un control integrado en CppClangSessionTests.cpp que instale un catálo
 en un módulo precompilado sintético y configure selector y proveedores combinados
 en ProjectCompilation. Comprobar resolución de tipo, campo y enumerador y una
 declaración NativeSharp de la superficie. No habilitar el formato ni el driver.
+Preparar la verificación de referencias NSMETA para reconocer como locales los
+tipos C de un catálogo validado y exigir la dependencia existente para tipos de
+otros módulos, sin permitir colisiones con tipos NativeSharp o especializaciones.
+Presupuesto: LibraryMetadataVerification.cpp y controles de sesión; conservar
+1.42 y el proveedor deshabilitados hasta la integración y validación conjunta.
 Transportar los bytes verificados del catálogo desde la superficie de metadata
 hasta PrecompiledSyntaxModule; presupuesto adicional: PrecompiledSyntaxModule.h,
 PrecompiledProjectPreparation.cpp y controles existentes. No habilitar 1.42
