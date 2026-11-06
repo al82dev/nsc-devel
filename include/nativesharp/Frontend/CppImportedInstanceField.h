@@ -22,5 +22,7 @@ struct CppImportedInstanceField final
     std::uint64_t byteAlignment = 0;
     std::optional<bool> microsoftVolatileSemantics;
     std::optional<std::string> clangUsr;
+    std::optional<std::uint64_t> bitOffset;
+    std::optional<std::uint64_t> bitWidth;
 };
 }

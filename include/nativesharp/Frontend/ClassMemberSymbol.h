@@ -201,6 +201,10 @@ struct ClassMemberSymbol final
     // containing aggregate's alignment. It is a minimum, never a request to weaken natural layout.
     // For an imported C/C++ field only, this is instead its effective storage alignment.
     std::optional<std::uint64_t> explicitFieldAlignment;
+    // Imported C bit fields use their measured byte window and bit coordinates.
+    std::optional<std::uint64_t> explicitBitOffset;
+    std::optional<std::uint64_t> explicitBitWidth;
+    std::optional<std::uint64_t> explicitBitStorageSize;
     // Item 326. A promoted field is a semantic alias owned by the containing type. It is not a
     // second physical field: the source member remains inside the anonymous aggregate and this
     // path names the compiler-generated carrier fields that lead from the containing object to it.
