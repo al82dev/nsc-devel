@@ -2016,6 +2016,18 @@ int main(int argc, char** argv)
                                          "function redeclarations with conflicting DLL import attributes are rejected");
                             auto conflictingUsr = *entries;
                             const auto& original = (*entries)[groupedValue->groups[0].inventoryIndices[0]];
+                            std::vector<CppSemanticInventoryEntry> sameNameUsr{original, original};
+                            sameNameUsr[0].declaration.clangUsr = std::nullopt;
+                            sameNameUsr[1].declaration.clangUsr = "known-function-usr";
+                            const auto knownFunctionUsr = groupCppSemanticFunctions(sameNameUsr);
+                            const auto* knownGroups = std::get_if<CppSemanticFunctionGroups>(&knownFunctionUsr);
+                            const bool knownRetained = knownGroups && knownGroups->groups.size() == 1 &&
+                                knownGroups->groups[0].symbol.cppClangUsr == std::optional<std::string>{"known-function-usr"};
+                            sameNameUsr[0].declaration.clangUsr = "different-function-usr";
+                            const auto conflictingFunctionUsr = groupCppSemanticFunctions(sameNameUsr);
+                            ok &= expect(knownRetained &&
+                                         std::holds_alternative<CppSemanticFunctionGroupFailure>(conflictingFunctionUsr),
+                                         "function grouping retains known USR and rejects same-name contradictions");
                             conflictingUsr.push_back(original);
                             conflictingUsr.back().declaration.qualifiedName += "_other_name";
                             conflictingUsr.back().declaration.externalSymbol = "different_external_symbol";
