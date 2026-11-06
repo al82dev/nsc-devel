@@ -13,5 +13,10 @@ int Main()
     uint mask = high & 255U;
     int negative = -color;
     if (top != 1 || mask != 255 || negative != -2) return 4;
+    CTiny tiny = TINY_MAX;
+    int tinyNegative = -tiny;
+    int tinyShift = tiny >> 1;
+    int tinyMask = tiny & 15;
+    if (tinyNegative != -255 || tinyShift != 127 || tinyMask != 15) return 5;
     return 0;
 }
