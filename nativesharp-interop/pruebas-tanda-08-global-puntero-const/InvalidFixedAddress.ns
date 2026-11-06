@@ -1,0 +1,5 @@
+int Main()
+{
+    int** slot = &c_fixed_slots[0];
+    return 0;
+}

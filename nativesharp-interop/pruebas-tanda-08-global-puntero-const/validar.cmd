@@ -9,7 +9,7 @@ set "TEMP=%DEST%"
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
 set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
-for %%F in (Api.h Api.c Project.nsproj Main.ns Invalid.nsproj Invalid.ns InvalidEscape.nsproj InvalidEscape.ns InvalidAddress.nsproj InvalidAddress.ns InvalidInferred.nsproj InvalidInferred.ns InvalidArgument.nsproj InvalidArgument.ns InvalidMatrix.nsproj InvalidMatrix.ns InvalidMatrixEscape.nsproj InvalidMatrixEscape.ns InvalidMatrixAddress.nsproj InvalidMatrixAddress.ns InvalidMatrixRowAddress.nsproj InvalidMatrixRowAddress.ns InvalidMatrixRowArgument.nsproj InvalidMatrixRowArgument.ns) do (
+for %%F in (Api.h Api.c Project.nsproj Main.ns Invalid.nsproj Invalid.ns InvalidEscape.nsproj InvalidEscape.ns InvalidAddress.nsproj InvalidAddress.ns InvalidInferred.nsproj InvalidInferred.ns InvalidArgument.nsproj InvalidArgument.ns InvalidMatrix.nsproj InvalidMatrix.ns InvalidMatrixEscape.nsproj InvalidMatrixEscape.ns InvalidMatrixAddress.nsproj InvalidMatrixAddress.ns InvalidMatrixRowAddress.nsproj InvalidMatrixRowAddress.ns InvalidMatrixRowArgument.nsproj InvalidMatrixRowArgument.ns InvalidFixed.nsproj InvalidFixed.ns InvalidFixedAddress.nsproj InvalidFixedAddress.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -69,4 +69,13 @@ if not errorlevel 1 (echo Se acepto la fila como argumento mutable. & exit /b 1)
 findstr /i /c:"no viable overload of namespace function 'c_mutate' accepts the argument types" "%DEST%\InvalidMatrixRowArgument.log" >nul
 if errorlevel 1 (echo El rechazo de fila no corresponde a la llamada. & exit /b 1)
 echo Direcciones y argumento de fila rechazados.
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidFixed.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidFixed.exe" > "%DEST%\InvalidFixed.log" 2>&1
+if not errorlevel 1 (echo Se acepto reasignar un puntero constante. & exit /b 1)
+findstr /i /c:"error: left side of assignment is not assignable" "%DEST%\InvalidFixed.log" >nul
+if errorlevel 1 (echo El rechazo no corresponde a la reasignacion del slot. & exit /b 1)
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidFixedAddress.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidFixedAddress.exe" > "%DEST%\InvalidFixedAddress.log" 2>&1
+if not errorlevel 1 (echo Se acepto escapar la direccion de un puntero constante. & exit /b 1)
+findstr /i /c:"readonly" /c:"const" "%DEST%\InvalidFixedAddress.log" >nul
+if errorlevel 1 (echo El rechazo de direccion no identifica el calificador. & exit /b 1)
+echo Reasignacion y escape del slot constante rechazados.
 exit /b 0

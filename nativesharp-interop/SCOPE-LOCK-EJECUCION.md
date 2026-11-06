@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Arreglos globales C de punteros constantes
+
+Extender `pruebas-tanda-08-global-puntero-const` con un arreglo global C
+`int * const[2]`: sus slots no pueden reasignarse, pero sus datos apuntados
+son mutables. Comprobar lectura, escritura al dato y verificación desde C en
+O0–O3; rechazar reasignación del slot y escape por dirección que permita
+reasignarlo. Usar salidas en A: y no cambiar producción antes de observar y
+delimitar el fallo. Mantener las pruebas previas de punteros a const.
+
 ## Pruebas independientes de metadata histórica C
 
 La ampliación a 1.45 descubrió que falta la referencia histórica 1.44. El
