@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Opción volatile en símbolo de global importado
+
+Conservar en NamespaceStateSymbol el valor conocido o desconocido del candidato
+de global C/C++ seleccionado. Los globales NativeSharp y la emisión de código
+permanecen sin cambios. Archivos: NamespaceStateSymbol.h,
+CppSemanticInventory.cpp y documentación. Preparar prueba y validar en tanda.
+
 ## Prueba de selección de opción volatile
 
 Preparar controles de acuerdo, desacuerdo y opción desconocida al seleccionar

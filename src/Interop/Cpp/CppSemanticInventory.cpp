@@ -339,6 +339,7 @@ static bool provideGlobalsWithLookup(
                     state.isCppReadonly = selected.candidate->isConst;
                     state.cppPointerPointeeReadonly = selected.candidate->pointerPointeeReadonly;
                     state.cppPointerPointeeVolatile = selected.candidate->pointerPointeeVolatile;
+                    state.cppMicrosoftVolatileSemantics = selected.candidate->microsoftVolatileSemantics;
                     state.cppDllImport = selected.candidate->dllImport;
                 }
                 else

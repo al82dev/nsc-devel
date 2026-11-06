@@ -1017,6 +1017,12 @@ genera orden atómico ni se ha validado esta etapa.
 La suite de sesión prepara entradas repetidas con opciones iguales, distintas
 y desconocidas; exige conservar únicamente el valor acordado. Aún no ejecutada.
 
+## Opción volatile en símbolo de global importado
+
+El proveedor copia la opción seleccionada al símbolo externo; ausencia sigue
+representando un valor no conocido. Los estados NativeSharp no reciben esa
+opción. No cambia todavía el análisis del acceso ni el IR; falta validarlo.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

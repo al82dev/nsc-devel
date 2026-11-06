@@ -10,6 +10,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -60,5 +61,7 @@ struct NamespaceStateSymbol final
     // if semantic lookup selects it; locals and members may shadow the name.
     std::string cppImportError;
     bool cppPointerPointeeVolatile = false;
+    // Only populated for a C/C++ global; absence means the option is unknown.
+    std::optional<bool> cppMicrosoftVolatileSemantics;
 };
 }
