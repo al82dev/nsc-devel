@@ -1239,5 +1239,19 @@ Están preparados cambios para conservar el USR en los tipos de enum y record
 instalados y detectar discrepancias conocidas al asociar referencias de
 firmas, globales y campos. La coincidencia de USR no reemplaza controles de
 layout, representación, ODR ni comparación estructural. Se añadieron pruebas
-de conflicto para enums y records. Estos cambios aún no se han compilado ni
-validado; se comprobarán junto con el resto de la tanda. T08-002 sigue abierto.
+de conflicto para enums y records. En el momento de esa preparación aún no se
+habían compilado ni validado; el resultado dirigido figura a continuación.
+La batería completa de la tanda y T08-002 siguen pendientes.
+
+## Prueba dirigida de identidades en tipos
+
+Sobre `248a77b0e` se construyó incrementalmente el objetivo
+`nsc_cpp_session_tests` y se ejecutó la suite con el Clang de A; ambos pasos
+terminaron con código 0. La suite incluye los controles preparados de identidad
+de enums, grupos y firmas de records, aliases y cierre de dependencias de campos.
+La construcción mostró advertencias existentes de inicialización de
+`deferredImportError`. La advertencia del campo `clangUsr` en el inicializador
+sintético ya no apareció en la salida de esta compilación.
+
+Esta comprobación dirigida no sustituye la batería completa ni demuestra la
+persistencia o el conjunto completo de T08-002; la tanda 08 permanece abierta.

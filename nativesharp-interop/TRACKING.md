@@ -198,9 +198,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     detección de funciones de un mismo USR con símbolos incompatibles. La
     persistencia y otras categorías de declaraciones siguen pendientes.
     [Evidencia](TANDA-08-TIPOS-C.md#referencias-y-conflictos-de-usr).
-  - Preparado, sin validar todavía: conservar USR en tipos importados y
-    comprobarlo al asociar enums y records referidos. Las comprobaciones de
-    layout y representación permanecen; el ítem sigue abierto.
+  - Validación dirigida en `248a77b0e`: la suite de sesión Clang pasó con
+    controles de USR para enums, records, aliases y dependencias de campos.
+    Falta la batería completa de la tanda y persisten contratos sin cubrir.
+    [Evidencia](TANDA-08-TIPOS-C.md#prueba-dirigida-de-identidades-en-tipos).
 - [ ] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
 - [ ] T08-004. Importar declaraciones de variables globales C.
 - [ ] T08-005. Importar alias de tipos declarados con `typedef`.
