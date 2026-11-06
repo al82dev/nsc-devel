@@ -8182,7 +8182,7 @@ int main(int argc, char** argv)
 
     const std::string usrSource =
         "typedef int Count; enum Color { Red, Blue }; struct Point { int x; int y; }; "
-        "extern int counter; int measure(struct Point*); int other(void);";
+        "extern int counter; int measure(struct Point*); enum Color paint(enum Color); int other(void);";
     auto usrFirst = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C, usrSource));
     auto usrSecond = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C, usrSource));
     ok &= expect(usrFirst && usrSecond, "independent sessions open for Clang declaration identities");
@@ -8197,6 +8197,7 @@ int main(int argc, char** argv)
         const auto* measure = functions ? functionByName(*functions, "measure") : nullptr;
         const auto* measureAgain = functionsAgain ? functionByName(*functionsAgain, "measure") : nullptr;
         const auto* other = functions ? functionByName(*functions, "other") : nullptr;
+        const auto* paint = functions ? functionByName(*functions, "paint") : nullptr;
         const auto* global = globals ? globalByName(*globals, "counter") : nullptr;
         const auto* record = records ? recordByName(*records, "Point") : nullptr;
         ok &= expect(measure && measureAgain && measure->clangUsr &&
@@ -8212,6 +8213,14 @@ int main(int argc, char** argv)
                      enums->front().enumerators[0].clangUsr != enums->front().enumerators[1].clangUsr &&
                      aliases && !aliases->empty() && aliases->front().clangUsr,
                      "C global, record, fields, enum, enumerators and alias preserve Clang USRs");
+        ok &= expect(measure && measure->parameters.size() == 1 && measure->parameters[0].type.element &&
+                     measure->parameters[0].type.element->recordIdentity && record && record->clangUsr &&
+                     measure->parameters[0].type.element->recordIdentity->clangUsr == record->clangUsr &&
+                     paint && paint->returnType.enumIdentity && enums && !enums->empty() &&
+                     enums->front().clangUsr && paint->returnType.enumIdentity->clangUsr == enums->front().clangUsr &&
+                     paint->parameters.size() == 1 && paint->parameters[0].type.enumIdentity &&
+                     paint->parameters[0].type.enumIdentity->clangUsr == enums->front().clangUsr,
+                     "C function signatures preserve the USRs of referenced record and enum declarations");
         usrFirst->close();
         ok &= expect(measure && measure->clangUsr && record && record->clangUsr,
                      "copied USRs remain available after closing their session");
