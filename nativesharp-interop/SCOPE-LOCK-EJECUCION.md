@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Prueba aislada del apuntado volatile en globales
+
+Inyectar exclusivamente en CppClangSessionTests un global con tipo y símbolo
+de Clang y marca de apuntado volatile. Comprobar semántica, IR de carga y
+escritura, y rechazo de pérdida de calificador. No retirar la barrera real de
+importación. Archivos: tests/unit/CppClangSessionTests.cpp y documentación.
+Ejecutar con la validación agrupada incremental de la tanda.
+
 ## Protección provisional del retorno de punteros volatile
 
 Rechazar retornos que descartarían el volatile inmediato mientras los tipos de

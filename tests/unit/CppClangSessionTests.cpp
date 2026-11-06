@@ -6433,6 +6433,54 @@ int main(int argc, char** argv)
                 }
             }
             else ok &= expect(false, "Clang exposes pointer to readonly scalar");
+            const auto* volatilePointee = globalByName(*globals, "tools::cpp_volatile_pointee");
+            if (volatilePointee && volatilePointee->externalSymbol)
+            for (int scenario = 0; scenario < 4; ++scenario)
+            {
+                nativesharp::frontend::NamespaceStateSymbol state;
+                state.projectOrdinal = 0;
+                state.moduleName = "Semantic";
+                state.namespaceName = "tools";
+                state.name = "cpp_volatile_pointee";
+                state.declaredTypeKey = "builtin:int*";
+                state.storageName = *volatilePointee->externalSymbol;
+                state.isCppExternal = true;
+                state.cppPointerPointeeVolatile = true;
+                state.accessibility = nativesharp::frontend::NamespaceFunctionAccessibility::Public;
+                nativesharp::frontend::ProjectCompilation check;
+                check.setSourceBufferProvider([scenario](const std::filesystem::path& path)
+                    -> std::optional<std::string> {
+                    if (path.filename() != "Main.ns") return std::nullopt;
+                    if (scenario == 0)
+                        return "int Main() { var p = tools.cpp_volatile_pointee; *p = 42; return *p + p[0]; }\n";
+                    if (scenario == 1)
+                        return "int Main() { int* p = tools.cpp_volatile_pointee; return 0; }\n";
+                    if (scenario == 2)
+                        return "int Main() { int value = 0; int* p = &value; p = tools.cpp_volatile_pointee; return 0; }\n";
+                    return "int* result() { return tools.cpp_volatile_pointee; } int Main() { return 0; }\n";
+                });
+                std::string error;
+                const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
+                const bool configured = check.setExperimentalCppImportedStates({state}, error);
+                const bool ready = configured && (scenario == 0
+                    ? check.compileProjectOopMir(path, error) : check.compileProjectMethodBodies(path, error));
+                bool expectedDiagnostic = false;
+                for (const auto& diagnostic : check.diagnostics().diagnostics())
+                    expectedDiagnostic |= diagnostic.message().find("volatile qualification") != std::string::npos;
+                ok &= expect(configured && (scenario == 0 ? ready : !ready && expectedDiagnostic),
+                             "volatile pointee global preserves access and rejects qualifier loss");
+                if (scenario == 0 && ready && check.oopMirModel() && check.nameLookup())
+                {
+                    nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
+                    auto module = lowerer.lower(*check.nameLookup(), *check.oopMirModel());
+                    const bool valid = module && module->verify(error);
+                    const auto ir = module ? module->text() : std::string{};
+                    ok &= expect(valid && ir.find("load volatile i32") != std::string::npos &&
+                                 ir.find("store volatile i32") != std::string::npos,
+                                 "injected volatile pointee emits volatile load and store");
+                }
+            }
+            else ok &= expect(false, "Clang exposes the volatile pointee fixture");
             std::vector<nativesharp::frontend::NamespaceStateSymbol> pointerStates;
             for (const auto* name : {"tools::cpp_const_pointer", "tools::cpp_volatile_pointer"})
             {

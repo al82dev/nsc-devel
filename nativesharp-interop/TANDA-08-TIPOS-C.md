@@ -29,6 +29,9 @@ rechazo temporal de argumentos con apuntado volatile. No es soporte final:
 faltan contratos por parámetro y auditoría de llamadas indirectas y variádicas.
 Se preparó asimismo el rechazo provisional al retornar ese puntero mediante
 un tipo que no representa volatile; no está ejecutado.
+Una prueba interna preparada inyecta un global con símbolo de Clang para
+ejercitar el acceso, el IR y los rechazos de inicialización, asignación y
+retorno. No habilita la importación real y aún no se ha ejecutado.
 
 ## Parámetros C puntero a escalar volatile: implementación pendiente de validar
 
