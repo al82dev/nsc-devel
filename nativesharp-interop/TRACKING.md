@@ -232,6 +232,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     ejecución mixta O0–O3. La restauración MIR preservó las alineaciones
     opcionales. Otros tipos y formas de acceso siguen pendientes.
     [Evidencia](TANDA-08-TIPOS-C.md#validación-de-globales-volatile-enteros).
+  - En `f8f3d49ab` pasó la batería agrupada con identidad de código sensible al
+    modo y la alineación volatile, y comprobación de anchos y alineaciones
+    exactos en IR. [Evidencia](TANDA-08-TIPOS-C.md#validación-de-identidad-y-anchos-volatile).
 - [ ] T08-016. Mapear arreglos de tamaño conocido.
 - [ ] T08-017. Definir la representación de punteros a función C.
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.

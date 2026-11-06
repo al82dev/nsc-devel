@@ -1175,3 +1175,15 @@ La restauración MIR alterna ausencia de prueba de alineación y valores de 1,
 CppSemanticRecord.cpp y CppClangSessionTests.cpp; no impidieron la batería.
 Este resultado no acredita volatile en campos, punteros, otros tipos, ni la
 totalidad del ítem T08-015. La tanda 08 sigue abierta.
+
+## Validación de identidad y anchos volatile
+
+La primera batería en `cb60b585e` se detuvo porque el nuevo objetivo de prueba
+no enlazaba `nsc_precompiled`; también se observó una advertencia sobre el span
+temporal de la prueba. Los commits `98b4907de` y `f8f3d49ab` corrigen ambos.
+
+La repetición de `validar-tanda-08.cmd` en `f8f3d49ab` terminó con código 0.
+La prueba de identidad de código informó 12 comprobaciones aprobadas, incluida
+la diferenciación de los opcionales de modo y alineación. El fixture de records
+exigió i8/1, i16/2 e i64/8 en IR para los seis globales y ejecutó O0–O3; los
+siete casos de la batería concluyeron. Esto no cierra T08-015 ni la tanda 08.
