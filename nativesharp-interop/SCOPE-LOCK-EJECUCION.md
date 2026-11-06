@@ -14,6 +14,11 @@ puntero a matriz permanece como contrato pendiente, no se considera resuelto.
 Conservar la firma y el consumidor de puntero a matriz en archivos propios del
 fixture para poder repetirlos independientemente; no sustituir la comprobación
 por un rechazo esperado. Registrar el resultado antes de modificar producción.
+La inspección de `mapFunctionType` confirma que no representa el array que
+apunta el parámetro. Permitir cambios localizados en
+`src/Interop/Cpp/CppSemanticFunction.cpp` para arrays C fijos de escalares
+apuntados, reteniendo dimensiones y const; rechazar volatile y formas anidadas
+sin representación. Comprobar llamadas y rechazos antes de ampliar el alcance.
 
 ## Arreglos globales C de punteros constantes
 

@@ -48,6 +48,30 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
     bool allowCRecordValue = false)
 {
     if (depth > 64) return std::nullopt;
+    if (type.kind == CppTypeKind::Array && depth > 0 && allowCRecordValue)
+    {
+        const CppType* element = &type;
+        std::vector<std::uint64_t> dimensions;
+        bool readonly = false;
+        while (element && element->kind == CppTypeKind::Array)
+        {
+            if (element->isVolatile || !element->arrayCount || *element->arrayCount == 0 ||
+                !element->element || dimensions.size() >= 64) return std::nullopt;
+            readonly |= element->isConst;
+            dimensions.push_back(*element->arrayCount);
+            element = element->element.get();
+        }
+        if (!element || element->isVolatile || element->kind == CppTypeKind::Pointer ||
+            element->kind == CppTypeKind::Record || element->kind == CppTypeKind::Enumeration ||
+            element->kind == CppTypeKind::Void) return std::nullopt;
+        const auto scalar = mapCppScalarType(*element);
+        if (!scalar) return std::nullopt;
+        readonly |= scalar->isConst;
+        auto key = scalar->nativeSharpTypeKey;
+        for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend(); ++dimension)
+            key += "[" + std::to_string(*dimension) + "]";
+        return CppScalarTypeMapping{std::move(key), type.canonicalSpelling, readonly, false};
+    }
     if (type.kind == CppTypeKind::Enumeration && lookup && !type.isVolatile)
     {
         return owner ? projectCppSemanticEnumType(type, *owner, moduleName, lookup) : std::nullopt;
@@ -133,9 +157,13 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
     if (type.canonicalSpelling.empty() || type.sizeBits != 64 || !type.element ||
         type.isConst || type.isVolatile || (type.element->isConst && !readonlyScalar) || type.element->isVolatile)
         return std::nullopt;
-    auto element = mapFunctionType(*type.element, false, records, moduleName, depth + 1, lookup, owner);
+    auto element = mapFunctionType(*type.element, false, records, moduleName, depth + 1, lookup, owner,
+                                   allowCRecordValue);
     if (!element) return std::nullopt;
-    return CppScalarTypeMapping{element->nativeSharpTypeKey + "*", type.canonicalSpelling, readonlyScalar, false};
+    if (type.element->kind == CppTypeKind::Array && element->isConst && !allowReadonlyPointee)
+        return std::nullopt;
+    return CppScalarTypeMapping{element->nativeSharpTypeKey + "*", type.canonicalSpelling,
+                                readonlyScalar || (type.element->kind == CppTypeKind::Array && element->isConst), false};
 }
 }
 
