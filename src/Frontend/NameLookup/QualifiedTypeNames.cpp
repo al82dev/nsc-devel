@@ -249,6 +249,9 @@ bool ProjectNameLookup::expandCppTypeAlias(
         }
         const auto record = cppAliasRecordType(normalizedAlias);
         const auto enumeration = cppAliasEnumType(normalizedAlias);
+        const auto compatibleUsr = [](const auto& left, const auto& right) {
+            return !left || !right || left == right;
+        };
         if (!nativeCandidates.empty())
         {
             if (record && record->pointerDepth == 0 && !record->pointeeConst && nativeCandidates.size() == 1)
@@ -262,6 +265,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     for (const auto& imported : cppImportedTypes_)
                         if (imported.projectOrdinal == selected->projectOrdinal &&
                             imported.identity.key() == declaration->identity.key() &&
+                            compatibleUsr(record->clangUsr, imported.clangUsr) &&
                             imported.sourcePath == declaration->parts.front().sourcePath) return true;
             }
             if (enumeration && enumeration->pointerDepth == 0 && !enumeration->pointeeConst &&
@@ -273,6 +277,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     for (const auto& imported : cppImportedTypes_)
                         if (imported.projectOrdinal == selected->projectOrdinal && imported.enumBase &&
                             imported.identity.key() == declaration->identity.key() &&
+                            compatibleUsr(enumeration->clangUsr, imported.clangUsr) &&
                             imported.sourcePath == declaration->parts.front().sourcePath &&
                             imported.enumBase->token == enumeration->base.token) return true;
             }
@@ -284,6 +289,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
             const CppImportedTypeDeclaration* target = nullptr;
             for (const auto& imported : cppImportedTypes_)
                 if (imported.projectOrdinal == selected->projectOrdinal && imported.enumBase &&
+                    compatibleUsr(enumeration->clangUsr, imported.clangUsr) &&
                     imported.identity.fullyQualifiedName() == enumeration->name &&
                     imported.enumBase->token == enumeration->base.token)
                 {
@@ -312,6 +318,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
             const CppImportedTypeDeclaration* target = nullptr;
             for (const auto& imported : cppImportedTypes_)
                 if (imported.projectOrdinal == selected->projectOrdinal &&
+                    compatibleUsr(record->clangUsr, imported.clangUsr) &&
                     imported.identity.fullyQualifiedName() == record->canonicalName)
                 {
                     if (target) return report(diagnostics::DiagnosticId::AmbiguousTypeName,
@@ -362,6 +369,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
                 const std::string identity = enumeration ? enumeration->name : record->canonicalName;
                 const auto found = std::find_if(cppImportedTypes_.begin(), cppImportedTypes_.end(), [&](const auto& item) {
                     return item.projectOrdinal == selected->projectOrdinal && item.identity.fullyQualifiedName() == identity &&
+                        compatibleUsr(enumeration ? enumeration->clangUsr : record->clangUsr, item.clangUsr) &&
                         item.deferredImportError.empty() && (enumeration ? item.enumBase && item.enumBase->token == enumeration->base.token
                                                                               : item.kind == NamedTypeDeclarationKind::Struct);
                 });
@@ -449,6 +457,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
                 return report(diagnostics::DiagnosticId::InvalidUsingTarget, "C array alias element cannot be represented safely");
             const auto imported = std::find_if(cppImportedTypes_.begin(), cppImportedTypes_.end(), [&](const auto& item) {
                 return item.projectOrdinal == selected->projectOrdinal && item.identity.fullyQualifiedName() == identity &&
+                    compatibleUsr(enumElement ? enumElement->clangUsr : recordElement->clangUsr, item.clangUsr) &&
                     item.deferredImportError.empty() && (enumElement ? item.enumBase && item.enumBase->token == enumElement->base.token
                                                                          : item.kind == NamedTypeDeclarationKind::Struct);
             });
@@ -573,6 +582,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
                 if (name.empty()) return nullptr;
                 const auto found = std::find_if(cppImportedTypes_.begin(), cppImportedTypes_.end(), [&](const auto& item) {
                     return item.projectOrdinal == selected->projectOrdinal && item.identity.fullyQualifiedName() == canonical &&
+                        compatibleUsr(enumType ? enumType->clangUsr : recordType->clangUsr, item.clangUsr) &&
                         item.deferredImportError.empty() && (enumType ? item.enumBase && item.enumBase->token == enumType->base.token
                                                                      : item.kind == NamedTypeDeclarationKind::Struct);
                 });
