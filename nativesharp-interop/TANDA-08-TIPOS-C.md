@@ -13,6 +13,8 @@ resultado semántico. La barrera de importación sigue activa y no se demuestra
 todavía uso de punteros a volatile.
 La desreferencia y el índice preparan la propagación del calificador al
 almacenamiento resultante. Falta conectar HIR, conversiones y validación.
+HIR prepara la marca volatile de la carga y de la dirección del objeto
+apuntado; no se ha activado ni comprobado la ruta.
 
 ## Parámetros C puntero a escalar volatile: implementación pendiente de validar
 

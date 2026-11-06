@@ -431,16 +431,23 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
                 ProjectOopHirNodeKind::PointerLoad,
                 frame.syntax,
                 resultType);
+            const auto* operandType = expressionType(frame.syntax->first());
+            load->volatileAccess = operandType && operandType->pointerPointeeVolatile;
             load->children.push_back(std::move(lowered));
             lowered = std::move(load);
         }
-        else if (lowered && lowered->volatileAccess)
+        else if (lowered)
         {
-            // The operand is a volatile pointer value. Its load remains volatile,
-            // but the storage it addresses is not qualified by that fact.
-            auto address = makeNode(ProjectOopHirNodeKind::AddressValue, frame.syntax, resultType);
-            address->children.push_back(std::move(lowered));
-            lowered = std::move(address);
+            const auto* operandType = expressionType(frame.syntax->first());
+            const bool volatilePointee = operandType && operandType->pointerPointeeVolatile;
+            if (lowered->volatileAccess || volatilePointee)
+            {
+                // Qualify the target independently of the pointer value's own load.
+                auto address = makeNode(ProjectOopHirNodeKind::AddressValue, frame.syntax, resultType);
+                address->volatileAccess = volatilePointee;
+                address->children.push_back(std::move(lowered));
+                lowered = std::move(address);
+            }
         }
 }
 

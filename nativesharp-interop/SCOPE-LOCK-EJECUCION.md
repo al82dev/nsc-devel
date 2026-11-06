@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Preparación HIR de accesos al objeto volatile apuntado
+
+Usar el dato semántico inmediato para marcar la carga por desreferencia y la
+dirección de destino de escrituras e índices; no confundirlo con el volatile
+del almacenamiento del puntero. Archivos: HirCompletionTerminalFrames.cpp,
+HirCompletionAccessFrames.cpp y documentación. No retirar la barrera de
+importación hasta completar la propagación y las pruebas.
+
 ## Preparación de accesos al objeto volatile apuntado
 
 Propagar al resultado semántico de desreferencia e índice el volatile inmediato

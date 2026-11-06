@@ -424,7 +424,9 @@ void ProjectOopHirModel::finishArrayRawIndex(
             frame.syntax,
             elementType);
         address->elementTypeKey = elementType;
-        address->volatileAccess = frame.baseIsFixedArray && base && base->volatileAccess;
+        address->volatileAccess = (frame.baseIsFixedArray && base && base->volatileAccess) ||
+            (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray &&
+             baseType && baseType->pointerPointeeVolatile);
         applyRawIndexTrailingBounds(*address, frame);
         address->children.push_back(std::move(base));
         address->children.push_back(std::move(frame.operands[dimension]));
