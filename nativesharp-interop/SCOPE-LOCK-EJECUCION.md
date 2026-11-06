@@ -69,6 +69,16 @@ procedencia no debe cambiar la huella ABI pública; la integridad de toda la
 metadata sigue protegida por su hash. La activación no prueba que declaraciones
 de módulos distintos sean equivalentes.
 
+## Evidencia común de declaración C entre módulos
+
+Preparar una comprobación compartida de origen y contrato del record raíz:
+archivo existente equivalente, huella del buffer, offset y contrato capturado.
+Presupuesto: `src/Interop/Internal/CppCRecordMetadataCodec.h/.cpp`,
+`tests/unit/CppClangSessionTests.cpp`, tracking y registros. El resultado no
+certifica dependencias transitivas ni habilita conversiones; la conciliación
+integral debe comprobar también records y enums dependientes. Conservar errores
+y estados insuficientes sin alterar salidas. Validación agrupada.
+
 ## Identidad de funciones C importadas
 
 T08-002/T08-003: conservar USR opcional en la proyección de función y
