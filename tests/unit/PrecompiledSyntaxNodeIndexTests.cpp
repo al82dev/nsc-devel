@@ -110,6 +110,7 @@ int main()
         ast::AstArena arena;
         auto* node = arena.make<ast::AstNode>(ast::AstNodeKind::VariableDeclarationStatement, SourceRange{});
         auto* type = arena.make<ast::TypeSyntax>(SourceRange{}, lexer::TokenKind::KwInt, "int");
+        type->setPointeeVolatile();
         ast::TypeModifierSyntax inner;
         inner.importedCRestrict = true;
         type->addModifier(inner);
@@ -120,10 +121,11 @@ int main()
         ast::AstArena restoredArena;
         const auto* restored = frontend::internal::deserializeAstNodeTree(restoredArena, reader);
         const auto* restoredType = restored ? restored->typeSyntax() : nullptr;
-        tests.expect(restoredType && restoredType->modifiers().size() == 2 &&
+        tests.expect(restoredType && restoredType->isPointeeVolatile() &&
+                     restoredType->modifiers().size() == 2 &&
                      restoredType->modifiers()[0].importedCRestrict &&
                      !restoredType->modifiers()[1].importedCRestrict,
-                     "syntax serialization preserves restrict on the correct pointer level");
+                     "syntax serialization preserves volatile pointee and restrict on the correct pointer level");
     }
     const std::filesystem::path sourceRoot(NSC_SOURCE_DIR);
     std::size_t compared = 0;

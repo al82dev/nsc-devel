@@ -58,6 +58,7 @@ void testCloneTypeCompleteAndIndependent(TestContext& context)
     source->setOpaqueResultTraitName("Display");
     source->setExplicitTraitImplementation();
     source->setPointeeConst();
+    source->setPointeeVolatile();
     source->setTuple();
     TypeSyntax* tupleElement = sourceArena.make<TypeSyntax>(
         nativesharp::SourceRange{}, TokenKind::KwInt, "int");
@@ -109,7 +110,8 @@ void testCloneTypeCompleteAndIndependent(TestContext& context)
             clone->isOpaqueResult() == source->isOpaqueResult() &&
             clone->opaqueResultTraitName() == source->opaqueResultTraitName() &&
             clone->isExplicitTraitImplementation() == source->isExplicitTraitImplementation() &&
-            clone->isPointeeConst() == source->isPointeeConst(),
+            clone->isPointeeConst() == source->isPointeeConst() &&
+            clone->isPointeeVolatile() == source->isPointeeVolatile(),
         "TP-PAR-514 cloneParsedType must preserve every nominal, ownership, lifetime, and trait field");
     context.expect(clone->isTuple() && clone->tupleElementNames() == source->tupleElementNames() &&
             clone->typeArguments().size() == 1 && clone->typeArguments()[0] != tupleElement &&

@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Pruebas de clonación y persistencia del apuntado volatile
+
+Ampliar los casos existentes de clonación de TypeSyntax y serialización del
+árbol para exigir conservación del dato volatile independiente de const y
+restrict. Archivos: PrecompiledSyntaxNodeIndexTests.cpp,
+ParserConstructionCloneFinalModule.cpp y documentación. Preparar para la
+validación agrupada, sin afirmar resultado antes de ejecutarla.
+
 ## Persistencia de sintaxis de apuntado volatile
 
 Conservar el nuevo dato de TypeSyntax en la escritura y lectura de árboles de

@@ -9,6 +9,8 @@ en sus rutas de clonación. Ningún alias lo activa todavía: faltan caché,
 identidad, proyección y consumidores. El cambio no se ha construido ni validado.
 Se preparó además la persistencia del dato y el incremento de esquemas de
 caché genérica y sintáctica; falta comprobar su restauración.
+Se prepararon comprobaciones de clonación y de ida y vuelta del dato junto con
+restrict. No se han ejecutado todavía.
 
 ## Calificador volatile del objeto apuntado: base en preparación
 
