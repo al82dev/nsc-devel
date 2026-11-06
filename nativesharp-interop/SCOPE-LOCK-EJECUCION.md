@@ -105,6 +105,9 @@ su resultado junto con los demás casos de la tanda.
 Ampliar pruebas-tanda-08-meta-c para publicar un enum C en una firma y en un
 campo de record, consumir su constante y contrastar las cuatro optimizaciones
 O0–O3 en directorios separados. Mantener los artefactos en A: y NSLink protegido.
+En el mismo fixture agregar un retorno C de record por valor, publicarlo en la
+API NativeSharp y verificar sus campos en el consumidor; no inferir por ello
+compatibilidad por valor de records arbitrarios.
 Transportar los bytes verificados del catálogo desde la superficie de metadata
 hasta PrecompiledSyntaxModule; presupuesto adicional: PrecompiledSyntaxModule.h,
 PrecompiledProjectPreparation.cpp y controles existentes. No habilitar 1.42
