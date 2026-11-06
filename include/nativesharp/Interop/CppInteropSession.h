@@ -50,6 +50,12 @@ struct CppImplicitLifetimeDeclaration
     bool dllImport = false;
 };
 
+struct CppCInlineIRExport
+{
+    std::string name;
+    std::string symbol;
+};
+
 // Implementations own their compiler state. Snapshots remain valid after close.
 // close() is idempotent; no caller may use implementation-specific state after it.
 // Callers must keep the session alive during every call and coordinate destruction.
@@ -83,6 +89,9 @@ public:
     // Experimental isolated IR only; no object, linkage, or lifetime integration is implied.
     virtual std::optional<std::string> emitImplicitLifetimeIR(
         std::string_view, CppImplicitLifetimeKind) const { return std::nullopt; }
+    // Isolated C static-inline IR; the caller owns symbol uniqueness and linkage integration.
+    virtual std::optional<std::string> emitCStaticInlineIR(
+        const std::vector<CppCInlineIRExport>&) const { return std::nullopt; }
     // Experimental structural comparison only; nullopt means no reliable comparison was possible.
     // A true result is not proof of full ODR or ABI equivalence.
     virtual std::optional<bool> structurallyEquivalentRecord(

@@ -923,6 +923,65 @@ public:
         module->print(stream, nullptr);
         return ir;
     }
+    std::optional<std::string> emitCStaticInlineIR(
+        const std::vector<CppCInlineIRExport>& requests) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || requests.empty() || ast_->getASTContext().getLangOpts().CPlusPlus)
+            return std::nullopt;
+        auto& context = ast_->getASTContext();
+        std::vector<const clang::FunctionDecl*> selected;
+        std::set<std::string> names, symbols;
+        for (const auto& request : requests)
+        {
+            if (request.name.empty() || request.symbol.empty() ||
+                !names.insert(request.name).second || !symbols.insert(request.symbol).second)
+                return std::nullopt;
+            const clang::FunctionDecl* match = nullptr;
+            for (const auto* declaration : context.getTranslationUnitDecl()->decls())
+            {
+                const auto* candidate = llvm::dyn_cast<clang::FunctionDecl>(declaration);
+                if (!candidate || candidate->getNameAsString() != request.name ||
+                    candidate->getStorageClass() != clang::SC_Static || !candidate->isInlineSpecified()) continue;
+                const auto* definition = candidate->getDefinition();
+                if (!definition || !definition->hasBody() || (match && match != definition)) return std::nullopt;
+                match = definition;
+            }
+            if (!match) return std::nullopt;
+            selected.push_back(match);
+        }
+        llvm::LLVMContext llvmContext;
+        auto generator = clang::CreateLLVMCodeGen(ast_->getDiagnostics(), "nsc.c.inline",
+            ast_->getVirtualFileSystemPtr(), ast_->getHeaderSearchOpts(), ast_->getPreprocessorOpts(),
+            ast_->getCodeGenOpts(), llvmContext);
+        if (!generator) return std::nullopt;
+        generator->Initialize(context);
+        std::vector<std::string> originalNames;
+        for (const auto* function : selected)
+        {
+            if (!generator->HandleTopLevelDecl(clang::DeclGroupRef(const_cast<clang::FunctionDecl*>(function))))
+                return std::nullopt;
+            const clang::GlobalDecl declaration(function);
+            originalNames.push_back(generator->GetMangledName(declaration).str());
+            if (!generator->GetAddrOfGlobal(declaration, false)) return std::nullopt;
+        }
+        generator->HandleTranslationUnit(context);
+        auto module = generator->ReleaseModule();
+        if (!module) return std::nullopt;
+        for (std::size_t i = 0; i < requests.size(); ++i)
+        {
+            auto* function = module->getFunction(originalNames[i]);
+            if (!function || function->isDeclaration() || module->getNamedValue(requests[i].symbol))
+                return std::nullopt;
+            function->setName(requests[i].symbol);
+            function->setLinkage(llvm::GlobalValue::ExternalLinkage);
+        }
+        if (llvm::verifyModule(*module, &llvm::errs())) return std::nullopt;
+        std::string ir;
+        llvm::raw_string_ostream stream(ir);
+        module->print(stream, nullptr);
+        return ir;
+    }
     std::optional<bool> structurallyEquivalentRecord(
         const CppInteropSession& other, std::string_view name) const override
     {
