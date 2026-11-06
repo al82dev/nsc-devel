@@ -3103,6 +3103,7 @@ int main(int argc, char** argv)
                 const auto* snapshot = std::get_if<CppCRecordSnapshot>(&result);
                 if (!snapshot || snapshot->identityKey != identity->key() || snapshot->kind != kind ||
                     snapshot->moduleName != "Semantic" || snapshot->name != name ||
+                    snapshot->valueLayoutUsable != complete ||
                     snapshot->complete != complete || snapshot->targetTriple != "x86_64-pc-windows-msvc") return false;
                 return complete ? snapshot->sizeBits == record->sizeBits &&
                     snapshot->alignmentBits == record->alignmentBits && snapshot->fields.size() == record->fields.size() :
@@ -3354,6 +3355,8 @@ int main(int argc, char** argv)
                                      "C record snapshot reconciles nested identities without changing observations");
                         ok &= expect(nestedSnapshot && !nestedSnapshot->microsoftVolatileSemantics,
                                      "C record snapshot does not invent a conflicting volatile model");
+                        ok &= expect(nestedSnapshot && !nestedSnapshot->valueLayoutUsable,
+                                     "repeated C record observations do not claim value layout");
                         nestedEntries.back().microsoftVolatileSemantics = true;
                         const auto agreedResult = captureCppCRecordSnapshot(nestedEntries, nestedGroups.groups.front());
                         const auto* agreed = std::get_if<CppCRecordSnapshot>(&agreedResult);
@@ -3365,7 +3368,8 @@ int main(int argc, char** argv)
                         ok &= expect(agreed && agreed->microsoftVolatileSemantics == true &&
                                      metadata_detail::encodeCRecordCatalog(agreedCatalog, volatileBytes, volatileError) &&
                                      metadata_detail::decodeCRecordCatalog(volatileBytes, volatileDecoded, volatileError) &&
-                                     volatileDecoded.size() == 1 && volatileDecoded[0].microsoftVolatileSemantics == true,
+                                     volatileDecoded.size() == 1 && volatileDecoded[0].microsoftVolatileSemantics == true &&
+                                     !volatileDecoded[0].valueLayoutUsable,
                                      "C record snapshot and codec preserve a consistent volatile model");
                     }
                     else ok &= expect(false, "C record snapshot groups nested identity observations");
