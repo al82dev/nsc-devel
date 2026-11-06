@@ -25,6 +25,8 @@ for %%O in (0 1 2 3) do (
   call :run %%O shared
   if errorlevel 1 exit /b 1
 )
+call :run 0 conflict
+if errorlevel 1 exit /b 1
 echo Public C type metadata consumer compiled and ran in O0 through O3.
 exit /b 0
 
@@ -32,7 +34,7 @@ exit /b 0
 set "DEST=%TASK_META_ROOT%\O%~1-%~2"
 if not exist "%DEST%" mkdir "%DEST%"
 if errorlevel 1 exit /b 1
-for %%F in (Api.h Api.c Independent.h Independent.c Producer.nsproj Producer.ns Consumer.nsproj Consumer.ns Inferred.nsproj Inferred.ns Independent.nsproj Independent.ns Shared.nsproj Shared.ns) do (
+for %%F in (Api.h Api.c Conflict.h Independent.h Independent.c Producer.nsproj Producer.ns Consumer.nsproj Consumer.ns Inferred.nsproj Inferred.ns Independent.nsproj Independent.ns Shared.nsproj Shared.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -66,6 +68,16 @@ if /I "%~2"=="independent" (
   "%DEST%\Independent.exe"
   if errorlevel 1 exit /b 1
   echo Independent C header consumer passed O%~1.
+  exit /b 0
+)
+if /I "%~2"=="conflict" (
+  copy /y "%DEST%\Conflict.h" "%DEST%\Api.h" >nul
+  if errorlevel 1 exit /b 1
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Shared.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\Conflict.exe" > "%DEST%\conflict.log" 2>&1
+  if not errorlevel 1 exit /b 1
+  findstr /L /C:"C/C++ type alias conflicts" "%DEST%\conflict.log" >nul
+  if errorlevel 1 exit /b 1
+  echo Changed C header was rejected.
   exit /b 0
 )
 if /I "%~2"=="shared" (
