@@ -2,6 +2,21 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Puntero global C a struct const: 2026-11-06
+
+Con `d6fe4cb64`, `1425ee99e`, `71503d94a` y `8dfdc278c`, la validación
+agrupada terminó con código 0: pasaron ON/OFF, la suite Clang, restauración,
+serialización y los siete proyectos. El fixture Windows x64 O0 leyó el campo
+apuntado y lo pasó a una función C que acepta `const struct*`; también asignó
+un puntero mutable al global de apuntado const.
+
+Se rechazaron la escritura al campo, su dirección mutable, la conversión a
+puntero mutable y la llamada a una función que requiere `struct*`. Después,
+`e4025eb6f` añadió el control positivo de esa misma función con puntero mutable;
+el fixture actualizado se ejecutó con el compilador ya construido y terminó con
+código 0. No se demuestran niveles adicionales ni punteros a volatile; T08-014
+y T08-015 continúan abiertos.
+
 ## Matrices y records C anidados calificados: 2026-11-06
 
 Con `4e5c8fbfa`, `44f51e8e4`, `1706dfdc8`, `57d2da108`, `73b8896f3` y
