@@ -17,5 +17,6 @@ struct CppTypeAliasDeclaration
     CppType underlyingType;
     std::optional<CppSourcePoint> location;
     bool insideAnonymousNamespace = false;
+    std::optional<std::string> clangUsr;
 };
 }

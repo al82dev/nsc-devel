@@ -1,5 +1,17 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Identificadores de declaraciones de Clang
+
+T08-002: capturar opcionalmente el USR que proporciona Clang 23.1.0 para las
+declaraciones de funciones, globales, enums, enumeradores, aliases, records,
+campos, métodos, campos estáticos y namespaces. Un USR no demuestra ABI ni
+compatibilidad entre declaraciones; si Clang no lo genera se conserva ausencia.
+Presupuesto: estructuras de snapshots `include/nativesharp/Interop/Cpp*Declaration.h`,
+CppGlobalDeclaration.h, ClangSession.cpp, CMakeLists.txt,
+CppClangSessionTests.cpp y registros Markdown. No cambiar aún selección ni
+semántica. Pruebas de estabilidad y diferenciación agrupadas con la tanda;
+NSLink y fuentes LLVM permanecen protegidos.
+
 ## Almacenamiento de puntero global importado volatile
 
 T08-015: para un global C/C++ importado cuyo propio puntero es volatile, de 64 bits

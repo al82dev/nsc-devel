@@ -40,5 +40,7 @@ struct CppFunctionDeclaration
     // An external spelling does not guarantee that a particular binary defines the symbol.
     std::optional<std::string> externalSymbol;
     std::optional<CppSourcePoint> location;
+    // Opaque Clang USR; absence means Clang could not produce one.
+    std::optional<std::string> clangUsr;
 };
 }

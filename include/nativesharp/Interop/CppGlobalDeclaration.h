@@ -22,5 +22,6 @@ struct CppGlobalDeclaration
     std::optional<CppSourcePoint> location;
     // Effective alignment of the declaration in bits, absent for incomplete types.
     std::optional<std::uint64_t> declarationAlignmentBits;
+    std::optional<std::string> clangUsr;
 };
 }

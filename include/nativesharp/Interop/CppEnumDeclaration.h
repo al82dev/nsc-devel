@@ -20,6 +20,7 @@ struct CppEnumeratorDeclaration
     std::optional<CppSourcePoint> location;
     // Type of the enumerator expression, which need not be the enum's storage type.
     CppType valueType;
+    std::optional<std::string> clangUsr;
 };
 
 struct CppEnumDeclaration
@@ -35,5 +36,6 @@ struct CppEnumDeclaration
     bool isCxx = true;
     std::optional<std::uint64_t> sizeBits;
     std::optional<std::uint64_t> alignmentBits;
+    std::optional<std::string> clangUsr;
 };
 }
