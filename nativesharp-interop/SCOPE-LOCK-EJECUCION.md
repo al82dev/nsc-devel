@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Observación de tipos C en bibliotecas precompiladas
+
+Corregir la observación preliminar cuando coexisten una referencia a biblioteca
+NativeSharp con catálogo C y una sesión Clang activa. Presupuesto: `src/Interop/Cpp/CppSemanticRecord.cpp`,
+`tests/unit/CppClangSessionTests.cpp`, los fixtures existentes de `pruebas-tanda-08-meta-c`,
+tracking y registros Markdown. Preservar el rechazo de identidades no conciliadas;
+no suponer equivalencia por nombre ni USR. Verificar con construcción incremental
+y pruebas dirigidas agrupadas antes de concluir cualquier soporte.
+
 ## Identidad de funciones C importadas
 
 T08-002/T08-003: conservar USR opcional en la proyección de función y
