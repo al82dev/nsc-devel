@@ -68,6 +68,9 @@ void ProjectMethodBodyModel::initializeNamespaceCallableAdapters(
         adapter.name = function.name;
         adapter.declaredTypeSyntax = function.declaredTypeSyntax;
         adapter.declaredTypeKey = function.declaredTypeKey;
+        adapter.declaredPointerPointeeReadonly = function.cppReturnType &&
+            function.cppReturnType->kind == interop::CppTypeKind::Pointer &&
+            function.cppReturnType->element && function.cppReturnType->element->isConst;
         adapter.declaredErrorTypeSyntax = function.declaredErrorTypeSyntax;
         adapter.declaredErrorTypeKey = function.declaredErrorTypeKey;
         adapter.effects = function.effects;

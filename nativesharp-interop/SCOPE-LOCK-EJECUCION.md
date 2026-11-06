@@ -1724,6 +1724,13 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Preparar lectura y comprobación C, rechazo de escritura al campo y de conversión a puntero mutable, y un caso positivo del puntero mutable existente; validar el conjunto y las regresiones agrupadamente.
 - Ampliar el mismo fixture con el paso del puntero readonly a una función C `const struct*`, la asignación de un puntero mutable al global readonly y el rechazo de pasarlo a una función que requiere `struct*`. Comprobar la causa exacta del rechazo.
 
+### Resultado C puntero a const
+
+- Objetivo: permitir resultados de funciones C `const T*` cuando T sea escalar o struct proyectado, conservando readonly al desreferenciar, pasar o guardar el resultado.
+- Evidencia: `projectFunction` prohíbe el apuntado const en resultados; `NamespaceFunctionSymbol.cppReturnType` lo conserva, pero el adaptador de llamadas no lo transfiere a `declaredPointerPointeeReadonly`.
+- Presupuesto: `src/Interop/Cpp/CppSemanticFunction.cpp`, `src/Frontend/Bodies/MethodBodyBuildCoordinator.cpp`, fixtures y script de `pruebas-tanda-08-record-c`, y registros Markdown. No habilitar punteros a volatile ni niveles anidados no representados; preservar llamadas NativeSharp y barreras de ABI.
+- Verificar lectura de resultado escalar y struct, paso a función const y rechazos de escritura, conversión mutable y paso a función mutable. Ejecutar el conjunto agrupado y registrar causas exactas.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.

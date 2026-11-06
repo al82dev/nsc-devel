@@ -101,7 +101,7 @@ CppSemanticFunctionResult projectFunction(
     if (function.variadic && (function.languageLinkage != CppLanguageLinkage::C ||
                               function.callingConvention != "cdecl"))
         return failure("variadic C++ or non-cdecl functions are not yet projected");
-    const auto resultType = mapFunctionType(function.returnType, false, records, moduleName, 0, lookup, projectOrdinal);
+    const auto resultType = mapFunctionType(function.returnType, true, records, moduleName, 0, lookup, projectOrdinal);
     if (!resultType) return failure("C/C++ return type is not yet mapped");
 
     std::string cppNamespace;
