@@ -190,6 +190,11 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Con los cambios hasta `5da7cf5b6`, la matriz de metadata C compiló, enlazó
+    y ejecutó de O0 a O3, incluidos retorno directo de record de 8 bytes y
+    parámetro/retorno indirectos de record de 12 bytes. La suite de sesión pasó
+    con código 0; persistieron 29 advertencias en su compilación. No demuestra
+    todos los layouts, ABI ni completa la validación de la tanda.
   - Preparados `b2e5033ec`, `971340701` y `2ec390076`: proyección de records C
     por valor con layout comprobado, controles semánticos y fixture directo e
     indirecto. Aún no construidos ni ejecutados; no se acredita el ABI.

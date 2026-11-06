@@ -1628,3 +1628,11 @@ O3. La variante de retorno de record C por valor falló en O0 con identificador
 desconocido para `get_c_record_value`; la proyección actual rechaza records de
 valor directamente en la firma. La matriz total devuelve error y el soporte por
 valor requiere implementar y verificar el contrato ABI antes de cerrar la tanda.
+
+La proyección y propagación del layout C, junto con la distinción de locales C
+y C++, permitieron repetir la matriz tras `5da7cf5b6`: pasó O0–O3 con retorno
+directo de un record C de 8 bytes y parámetro/retorno indirectos de un record de
+12 bytes. El productor y consumidor eran procesos de compilación separados. La
+suite de sesión también pasó después de construcción incremental, con 29
+advertencias de inicializadores en su archivo principal. Esto es evidencia para
+esos casos concretos; no cierra otros tamaños, definiciones repetidas ni la tanda.
