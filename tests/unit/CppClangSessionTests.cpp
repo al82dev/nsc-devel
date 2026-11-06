@@ -5580,6 +5580,41 @@ int main(int argc, char** argv)
                              "optional record observer runs once and does not install placeholders into production lookup");
             }
             {
+                const auto checkAliasUsr = [&](bool conflict) {
+                    nativesharp::frontend::ProjectCompilation compilation;
+                    compilation.setSourceBufferProvider([](const std::filesystem::path& source)
+                        -> std::optional<std::string> {
+                        if (source.filename() == "Main.ns")
+                            return "int Use(Count value) { return value; } int Main() { return 0; }\n";
+                        return std::nullopt;
+                    });
+                    CppProjectSessions group;
+                    group.projectFile = std::filesystem::absolute(path);
+                    group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
+                        CppLanguageMode::C, "typedef int Count;\n")));
+                    std::vector<CppProjectSessions> groups;
+                    groups.push_back(std::move(group));
+                    std::string error;
+                    const bool configured = compilation.setCppProjectSessions(std::move(groups), error) &&
+                        compilation.setCppTypeAliasProvider([&](const auto& graph, auto sessions, auto& aliases, auto& providerError) {
+                            if (!provideCppTypeAliases(graph, sessions, aliases, providerError) || aliases.empty()) return false;
+                            auto first = aliases.front();
+                            first.declaration.clangUsr = "test:count";
+                            auto missing = first;
+                            missing.declaration.clangUsr.reset();
+                            auto last = first;
+                            if (conflict) last.declaration.clangUsr = "test:other-count";
+                            aliases = {std::move(first), std::move(missing), std::move(last)};
+                            return true;
+                        }, error);
+                    const bool bound = configured && compilation.compileProjectNames(path, error);
+                    return configured && (conflict ? !bound && compilation.diagnostics().hasErrors() :
+                                                     bound && !compilation.diagnostics().hasErrors());
+                };
+                ok &= expect(checkAliasUsr(false), "matching alias USRs resolve across an unknown observation");
+                ok &= expect(checkAliasUsr(true), "conflicting alias USRs remain ambiguous across an unknown observation");
+            }
+            {
                 nativesharp::frontend::ProjectCompilation aliasObservation;
                 aliasObservation.setSourceBufferProvider([](const std::filesystem::path& source)
                     -> std::optional<std::string> {
