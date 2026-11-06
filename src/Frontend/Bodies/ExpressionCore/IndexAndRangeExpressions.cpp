@@ -835,8 +835,10 @@ void ProjectMethodBodyModel::analyzeRawIndex(
                          elementKey == "builtin:float") naturalAlignment = 4;
                 else if (elementKey == "builtin:long" || elementKey == "builtin:ulong" ||
                          elementKey == "builtin:double" || elementKey.ends_with('*')) naturalAlignment = 8;
-                unalignedImportedFieldElement = field.isCppExternal && field.explicitFieldAlignment &&
-                    naturalAlignment != 0 && *field.explicitFieldAlignment < naturalAlignment;
+                unalignedImportedFieldElement = field.isCppExternal &&
+                    ((!base.addressable && !base.readonlyReceiver && !base.volatileStorage) ||
+                     (field.explicitFieldAlignment && naturalAlignment != 0 &&
+                      *field.explicitFieldAlignment < naturalAlignment));
             }
         }
         result.assignable = !readonlyElement &&
