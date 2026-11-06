@@ -1232,3 +1232,12 @@ La compilación presentó una advertencia por el nuevo campo ausente en un
 inicializador sintético; el commit `ef9ee91d9` lo inicializa explícitamente y
 queda pendiente verificar esa corrección en la próxima construcción agrupada.
 T08-002 y la tanda 08 continúan abiertos.
+
+## Asociación de USR en tipos importados: preparación
+
+Están preparados cambios para conservar el USR en los tipos de enum y record
+instalados y detectar discrepancias conocidas al asociar referencias de
+firmas, globales y campos. La coincidencia de USR no reemplaza controles de
+layout, representación, ODR ni comparación estructural. Se añadieron pruebas
+de conflicto para enums y records. Estos cambios aún no se han compilado ni
+validado; se comprobarán junto con el resto de la tanda. T08-002 sigue abierto.
