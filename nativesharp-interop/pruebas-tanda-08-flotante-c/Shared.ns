@@ -1,0 +1,7 @@
+int Main()
+{
+    CFloatRecord* record = Published.Bridge.Get();
+    record->value = add_long_double(1.25, 2.5);
+    if (check_float_record(record) != 1) return 1;
+    return 0;
+}

@@ -1,0 +1,7 @@
+namespace Published
+{
+    public struct Bridge
+    {
+        public static CFloatRecord* Get() { return get_float_record(); }
+    }
+}
