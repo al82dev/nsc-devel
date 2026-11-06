@@ -139,6 +139,17 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
 }
 }
 
+std::optional<CppScalarTypeMapping> projectCppStoredFunctionPointer(const CppType& type)
+{
+    if (type.kind != CppTypeKind::Pointer || type.isVolatile || !type.element ||
+        type.element->kind != CppTypeKind::Function) return std::nullopt;
+    CppType unqualified = type;
+    unqualified.isConst = false;
+    auto mapped = mapFunctionType(unqualified);
+    if (mapped) mapped->isConst = type.isConst;
+    return mapped;
+}
+
 namespace
 {
 CppSemanticFunctionResult projectFunction(

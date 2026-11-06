@@ -31,6 +31,10 @@ struct CppSemanticFunctionFailure
 using CppSemanticFunctionResult =
     std::variant<frontend::NamespaceFunctionSymbol, CppSemanticFunctionFailure>;
 
+// Maps a stored C function pointer using the same prototype rules as function
+// signatures; volatile storage and unrepresentable prototypes stay unsupported.
+std::optional<CppScalarTypeMapping> projectCppStoredFunctionPointer(const CppType& type);
+
 // Projects externally named free functions using representable scalar types and supported
 // 64-bit pointers, including parameters to const scalars, into the NSC name index. This does
 // not classify the full call ABI or implement C++ overload resolution.
