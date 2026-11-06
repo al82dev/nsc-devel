@@ -24,6 +24,8 @@ cuando la primera no lo reporte. Presupuesto: CppSemanticRecord.cpp,
 CppClangSessionTests.cpp, TRACKING.md y registros Markdown. No cambia LLVM,
 NSLink ni persistencia; validación agrupada.
 Incluir el control integrado que recupera el USR en el símbolo de campo.
+Comparar también identidades conocidas de tipos record y enum anidados entre
+todas las observaciones compatibles, con prueba de ausencia inicial.
 
 ## Layout C de booleanos
 
