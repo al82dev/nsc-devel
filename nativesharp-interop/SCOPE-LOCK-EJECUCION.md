@@ -128,6 +128,15 @@ controles y fixtures existentes de metadata C, tracking y registros. No alterar
 firmas C++ ni aceptar conversiones sin la reconciliación previamente validada.
 Validación agrupada pendiente.
 
+## Variables locales de enums C importados
+
+Corregir la barrera de vida de objetos que rechaza un enum C completo al
+inferir un local. Presupuesto: `src/Frontend/Bodies/StatementAnalyzer.cpp`,
+`src/LLVM/Lowering/OopLlvmStatements.cpp`, fixtures existentes de metadata C,
+tracking y registros. Mantener la barrera para C++ y enums sin representación
+validada. La conciliación de enums y enumeradores entre módulos sigue aparte;
+agrupar su validación con el resto de correcciones de la tanda.
+
 ## Identidad de funciones C importadas
 
 T08-002/T08-003: conservar USR opcional en la proyección de función y
