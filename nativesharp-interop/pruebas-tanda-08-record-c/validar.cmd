@@ -129,7 +129,7 @@ copy /y "%~dp0ConstRecordPointerCall.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-record-pointer-call.exe" > "%DEST%\const-record-pointer-call.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /i /c:"no viable" /c:"no matching" /c:"no overload" "%DEST%\const-record-pointer-call.log" >nul
+findstr /c:"no viable overload of namespace function 'write_mutable_globalonly'" "%DEST%\const-record-pointer-call.log" >nul
 if errorlevel 1 exit /b 1
 copy /y "%~dp0VolatileRecordGlobal.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
