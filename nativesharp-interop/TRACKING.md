@@ -190,6 +190,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Preparados `e66e9a8b7`, `acfae78ac` y `735b69a7e`: codec conjunto de
+    records y enums, verificación de destino y controles de ida/vuelta. No se
+    ha ejecutado; el proveedor todavía no incorpora enums y falta reconstrucción.
   - Preparados `af91e8174` y `bed297cca`: captura reconciliada de enums C y
     control de valores e identidades. Sin ejecución; faltan codec, integración
     al proveedor, reconstrucción y casos adicionales como declaraciones incompletas.
