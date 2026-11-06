@@ -433,6 +433,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - `fe2fddfca` añade argumentos y resultados `_Bool` en llamada C; pendiente
     de ejecución, no demuestra aún su ABI.
 - [ ] T08-007. Mapear los tipos de punto flotante según el objetivo.
+  - `long double` IEEE binary64 pasó en uso directo y biblioteca precompilada
+    O0–O3. La suite pasó controles de catálogo, versión y fingerprint. Otras
+    representaciones y contratos siguen pendientes.
+    [Evidencia](registro-commits/metadata-long-double-c.md).
   - Preparada una extensión versionada del catálogo para conservar el formato
     IEEE de `long double`, compararlo y reflejarlo en el fingerprint sin la
     procedencia. La construcción y los controles están en curso; no se afirma
