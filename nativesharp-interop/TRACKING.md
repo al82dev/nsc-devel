@@ -196,6 +196,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - Preparados `b8f581cdc`, `3125e3dda` y `a72a8157e`: selección y transporte
     del USR de global C al símbolo, con controles de conflicto y alias. Sin
     construir ni ejecutar; la persistencia continúa pendiente.
+  - Actualización: la suite de sesión construida incrementalmente pasó con los
+    controles de USR de global, contradicciones y alias. No acredita persistencia
+    ni cierra T08-002.
   - Preparados `f2d136227` y `52a45b8b5`: selección de miembros repetidos
     rechaza USR de campo conocidos y contradictorios, con controles para USR
     iguales y ausentes. Sin construir ni ejecutar.

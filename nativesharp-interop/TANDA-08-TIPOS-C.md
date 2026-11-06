@@ -1320,6 +1320,13 @@ los valores en ejecución y rechaza tomar la dirección. No se ha ejecutado.
 Los campos empaquetados C++ y los campos C de punteros, agregados y bitfields
 siguen pendientes, así como otras formas de acceso; no se cierra la tanda.
 
+## Validación dirigida de identidad de global C
+
+Sobre `710700a37`, la suite de sesión se construyó incrementalmente con 23
+advertencias de inicializadores y terminó con código 0. Pasaron la retención
+de USR conocido en selección y símbolo, el rechazo de contradicción para el
+mismo nombre y los controles de alias. No demuestra persistencia.
+
 ## Validación dirigida de identidad de campo C
 
 Sobre `624fe3856`, la construcción incremental de `nsc_cpp_session_tests`
