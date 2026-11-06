@@ -1,0 +1,10 @@
+int Main()
+{
+    FloatValue floating = make_float_value();
+    if (check_float_value(floating) != 1) return 1;
+    PointValue pair = make_point_value();
+    if (pair.point.x != 17 || pair.point.y != 25) return 2;
+    pair.point.y = 26;
+    if (point_sum(pair) != 43) return 3;
+    return 0;
+}

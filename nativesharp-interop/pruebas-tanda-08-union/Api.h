@@ -1,5 +1,8 @@
 typedef union Value { int integer; unsigned char bytes[4]; } Value;
 typedef union BigValue { int words[3]; unsigned char bytes[12]; } BigValue;
+typedef union FloatValue { double number; unsigned long long bits; } FloatValue;
+typedef struct Point { int x; int y; } Point;
+typedef union PointValue { Point point; unsigned char bytes[8]; } PointValue;
 Value* get_value(void);
 int first_byte(Value* value);
 void set_integer(Value* value, int number);
@@ -8,3 +11,7 @@ Value make_value(int number);
 int value_integer(Value value);
 BigValue make_big(void);
 int big_sum(BigValue value);
+FloatValue make_float_value(void);
+int check_float_value(FloatValue value);
+PointValue make_point_value(void);
+int point_sum(PointValue value);
