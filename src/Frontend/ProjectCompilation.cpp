@@ -350,6 +350,28 @@ bool ProjectCompilation::setCppRecordObserver(CppRecordObserver observer, std::s
     return true;
 }
 
+bool ProjectCompilation::setCppMetadataCatalogProvider(CppMetadataCatalogProvider provider, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "C metadata catalog provider must be set before compilation starts";
+        return false;
+    }
+    cppMetadataCatalogProvider_ = std::move(provider);
+    error.clear();
+    return true;
+}
+
+bool ProjectCompilation::collectCppMetadataCatalog(const interop::LibraryMetadata& metadata,
+                                                   std::vector<std::uint8_t>& output, std::string& error) const
+{
+    std::vector<std::uint8_t> result;
+    if (cppMetadataCatalogProvider_ && !cppMetadataCatalogProvider_(*this, metadata, result, error)) return false;
+    output = std::move(result);
+    error.clear();
+    return true;
+}
+
 bool ProjectCompilation::setCppProjectSessions(
     std::vector<interop::CppProjectSessions> sessions, std::string& error)
 {

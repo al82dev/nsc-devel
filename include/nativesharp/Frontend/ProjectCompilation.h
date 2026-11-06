@@ -33,6 +33,7 @@
 #include "Internal/ProjectSyntaxSourceRead.h"
 
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -48,6 +49,8 @@ namespace nativesharp::driver
 {
 class CompilationWorkerPool;
 }
+
+namespace nativesharp::interop { struct LibraryMetadata; }
 
 namespace nativesharp::frontend
 {
@@ -92,6 +95,8 @@ public:
         const compilation::ProjectGraph&, std::span<const interop::CppProjectSessions>,
         const ProjectNameLookup&, std::vector<CppImportedStaticField>&, std::string&)>;
     using CppRecordObserver = std::function<void(const ProjectCompilation&)>;
+    using CppMetadataCatalogProvider = std::function<bool(
+        const ProjectCompilation&, const interop::LibraryMetadata&, std::vector<std::uint8_t>&, std::string&)>;
 
     void setLifetime(ProjectCompilationLifetime& lifetime) noexcept;
     // Must be called before the first compilation attempt. Ownership is transferred.
@@ -126,6 +131,9 @@ public:
     bool setCppNamespaceProvider(CppNamespaceProvider provider, std::string& error);
     bool setCppGlobalProvider(CppGlobalProvider provider, std::string& error);
     bool setCppRecordObserver(CppRecordObserver observer, std::string& error);
+    bool setCppMetadataCatalogProvider(CppMetadataCatalogProvider provider, std::string& error);
+    bool collectCppMetadataCatalog(const interop::LibraryMetadata& metadata,
+                                   std::vector<std::uint8_t>& output, std::string& error) const;
     void setCompilationJobs(std::size_t jobs) noexcept;
     void setProjectLoadOptions(compilation::ProjectLoadOptions options);
     const compilation::ProjectLoadOptions& projectLoadOptions() const noexcept;
@@ -346,6 +354,7 @@ private:
     CppNamespaceProvider cppNamespaceProvider_;
     CppGlobalProvider cppGlobalProvider_;
     CppRecordObserver cppRecordObserver_;
+    CppMetadataCatalogProvider cppMetadataCatalogProvider_;
     bool cppImportedFunctionsConfigured_ = false;
     bool compilationAttempted_ = false;
     std::optional<compilation::ProjectGraph> projectGraph_;
