@@ -190,6 +190,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - La comparación de origen y dependencias de records C pasó la suite de
+    sesión, incluidos ciclos y enums. No está conectada a la resolución y no
+    cierra el caso compartido. [Detalle](registro-commits/comparacion-cierre-c.md).
   - Preparada comparación del record raíz que verifica contrato, archivo,
     offset y huella vigente. Falta validarla y comprobar dependencias transitivas;
     aún no se habilita la conciliación. [Detalle](registro-commits/origen-compartido-record-c.md).
