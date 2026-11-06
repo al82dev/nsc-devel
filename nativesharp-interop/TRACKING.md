@@ -435,6 +435,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-007. Mapear los tipos de punto flotante según el objetivo.
 - [ ] T08-008. Mapear el tipo `void` en parámetros y resultados donde corresponda.
 - [ ] T08-009. Mapear enumeraciones y sus valores representables.
+  - La prueba del enum compartido detectó rechazo de locales inferidos y
+    ambigüedad de enumeradores. Se prepararon correcciones; aún no se han
+    validado. [Detalle](registro-commits/prueba-enum-c-compartido.md).
   - La suite dirigida pasó para identidad, tipo de enumerador y conflicto de
     destino; no constituye cierre. [Evidencia](TANDA-08-TIPOS-C.md#validación-dirigida-agrupada-identidades-y-_bool).
   - Preparados `dad00a35d` y `63cce8a8d`: detectar destinos contradictorios
@@ -450,6 +453,8 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     0 en O0–O3; el fixture verificó campo y arreglo enum, IR y sus rechazos de
     dirección. Es una comprobación dirigida, no el cierre de T08-009.
 - [ ] T08-010. Importar la declaración y campos de un `struct` C.
+  - Records compartidos por valor de 8 y 12 bytes pasaron O0–O3 en el caso
+    productor/consumidor. [Evidencia](registro-commits/prueba-record-c-compartido-valor.md).
   - Preparado en `ac71663a7` y `1454f719f`: propagación de alineación por
     campos anidados y caso MIR que distingue valores puntero. Sin ejecutar;
     los records anidados subalineados aún no se proyectan.
