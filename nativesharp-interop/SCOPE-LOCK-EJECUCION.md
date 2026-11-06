@@ -3308,6 +3308,13 @@ para probar lecturas y escrituras superpuestas en ambos sentidos y ejecutar el
 caso en O0–O3. Mantener los resultados en `A:/nsc-interop-build/tanda08-union`.
 No modificar producción sin identificar y registrar antes el alcance necesario.
 
+# Punteros a función C devueltos al consumidor
+
+Ampliar `nativesharp-interop/pruebas-tanda-08-callback` y su documentación
+para probar el retorno de un puntero a función C, su llamada desde NativeSharp
+y su tránsito de vuelta a C. Ejecutar la matriz O0–O3 agrupada. No modificar
+producción sin delimitar primero el archivo y el defecto observados.
+
 Extender el mismo fixture con parámetros y retornos C de unions de 4 y 12
 bytes, para contrastar la clasificación ABI directa e indirecta en Windows
 x64. Registrar el resultado sin atribuir compatibilidad general a la muestra.
