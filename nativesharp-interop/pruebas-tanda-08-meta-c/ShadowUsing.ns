@@ -1,0 +1,4 @@
+using Helpers;
+namespace Helpers { public int get_c_number() { return 32; } }
+namespace Published { public struct Bridge { public static int Get() { return get_c_number(); } } }
+int Main() { if (Published.Bridge.Get() != 32) return 1; return 0; }
