@@ -955,6 +955,31 @@ Esta evidencia cubre esos casos, no demuestra todos los tipos ni resuelve TLS,
 calificadores anidados o la prueba de clonación del componente no incluida en
 esta batería. La tanda y sus ítems incompletos permanecen abiertos.
 
+## Diferencia de orden en volatile de Clang para Windows
+
+**Evidencia directa:** con el comando C11 del fixture y el objetivo
+`x86_64-pc-windows-msvc`, `A:/nsc-interop-build/tanda08-record-c/api.ll`
+contiene en `bump_volatile` una lectura `load atomic volatile i32 ... acquire`
+y una escritura `store atomic volatile i32 ... release`. En el IR generado por
+NSC, los controles actuales comprueban `load volatile` y `store volatile` sin
+exigir orden atómico. `src/LLVM/Lowering/OopLlvmArraysAndStores.cpp` aplica
+`LLVMSetVolatile`, mientras `src/LLVM/LlvmCApi.h` señala que el orden atómico es
+un contrato separado. En la fuente de Clang 23.1.0,
+`clang/lib/CodeGen/CGAtomic.cpp`, `LValueIsSuitableForInlineAtomic` depende de
+`MSVolatile`, tamaño y posibilidad de operación en línea; no todos los accesos
+volatile reciben necesariamente el mismo tratamiento.
+
+**Conclusión:** la batería que pasó acredita los casos de valor e instrucciones
+volátiles que verifica, pero no acredita equivalencia de orden ni sincronización
+con código C compilado bajo esa opción. No se debe cerrar T08-015 con ella.
+
+**Pendiente:** determinar cómo se fija y transporta la opción efectiva de cada
+sesión Clang hasta los accesos importados, distinguirla de la semántica propia
+de NativeSharp, representar orden y alineación en las fases intermedias cuando
+corresponda, y verificar cargas y escrituras de distintos tamaños, alineaciones,
+campos y opciones contra el IR de Clang. No convertir indiscriminadamente todos
+los accesos NativeSharp en atómicos ni asumir que volatile siempre sincroniza.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.
