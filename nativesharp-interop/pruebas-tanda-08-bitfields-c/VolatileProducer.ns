@@ -1,0 +1,13 @@
+namespace Published
+{
+    public struct VolatileBridge
+    {
+        public static VolatileBits* Get() { return get_volatile_bits(); }
+        public static PackedVolatileBits* GetPacked() { return get_packed_volatile_bits(); }
+        public static VolatileUnionBits* GetUnion() { return get_volatile_union_bits(); }
+        public static void Init(VolatileBits* value, PackedVolatileBits* packed) { init_volatile_bits(value, packed); }
+        public static int Check(VolatileBits* value, PackedVolatileBits* packed) { return check_volatile_bits(value, packed); }
+        public static void InitUnion(VolatileUnionBits* value) { init_volatile_union_bits(value); }
+        public static int CheckUnion(VolatileUnionBits* value) { return check_volatile_union_bits(value); }
+    }
+}

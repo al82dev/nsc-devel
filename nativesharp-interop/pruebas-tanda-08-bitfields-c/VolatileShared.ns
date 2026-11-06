@@ -1,0 +1,15 @@
+int Main()
+{
+    var value = Published.VolatileBridge.Get();
+    var packed = Published.VolatileBridge.GetPacked();
+    var unionValue = Published.VolatileBridge.GetUnion();
+    Published.VolatileBridge.Init(value, packed);
+    if (value->first != 5 || value->delta != -3 || packed->first != 12 || packed->delta != -4) return 1;
+    value->first = 6; value->delta = -7; packed->first = 7; packed->delta = -2;
+    if (Published.VolatileBridge.Check(value, packed) != 1) return 2;
+    Published.VolatileBridge.InitUnion(unionValue);
+    if (unionValue->first != 5 || unionValue->delta != -3) return 3;
+    unionValue->delta = -7; unionValue->first = 3;
+    if (Published.VolatileBridge.CheckUnion(unionValue) != 1) return 4;
+    return 0;
+}

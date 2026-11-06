@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CVolatileBitsMetadata</Name></PropertyGroup>
+  <ItemGroup><Compile Include="VolatileShared.ns" /><LibraryReference Include="CVolatileBitFieldsProducer.lib" /></ItemGroup>
+</Project>
