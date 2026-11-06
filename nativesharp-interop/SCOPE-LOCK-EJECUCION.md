@@ -62,6 +62,10 @@ Preparar la reconstrucción de declaraciones de tipos C y enum para un módulo y
 ordinal de proyecto explícitos, a partir del catálogo validado. Presupuesto:
 CppCRecordMetadataCodec.h/.cpp y controles de sesión. Campos y constantes se
 reconstruirán por separado; no conectar todavía al consumidor ni habilitar 1.42.
+Preparar la proyección de campos y enumeradores guardados reutilizando las
+reglas C existentes; rechazar datos no proyectables sin salida parcial.
+Presupuesto: CppSemanticRecord.h/.cpp y controles de sesión. No instalar aún
+en el consumidor hasta resolver visibilidad y colisiones.
 Preparar un proveedor opcional de catálogo para el productor de metadata, sin
 activarlo desde el driver. Presupuesto adicional: ProjectCompilation.h/.cpp,
 LibraryMetadataConstruction.cpp y controles de sesión. El productor sin
