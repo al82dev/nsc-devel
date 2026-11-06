@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/Frontend/ProjectOopMirNode.h"
+#include "nativesharp/Language/CallableSemantics.h"
 
 #include <cstdint>
 #include <numeric>
@@ -49,5 +50,18 @@ inline std::optional<std::uint64_t> clangMsVolatileEnumElementAlignment(
     const auto guaranteed = fieldArrayElementAlignment(node);
     if (!guaranteed || *guaranteed < width || *guaranteed % width != 0) return std::nullopt;
     return width;
+}
+
+inline std::optional<std::uint64_t> clangMsVolatileFunctionFieldAlignment(
+    const frontend::ProjectOopMirNode* node) noexcept
+{
+    if (!node || (node->kind != frontend::ProjectOopMirNodeKind::FieldAddress &&
+                  node->kind != frontend::ProjectOopMirNodeKind::FieldLoad) ||
+        !node->volatileAccess || !node->cppMicrosoftVolatileSemantics.value_or(false)) return std::nullopt;
+    const auto function = language::parseFunctionTypeIdentity(node->typeKey);
+    if (!function || function->carrier != language::FunctionCarrier::Pointer) return std::nullopt;
+    const auto alignment = fieldOrArrayAddressAlignment(node);
+    if (!alignment || *alignment < 8 || *alignment % 8 != 0) return std::nullopt;
+    return 8;
 }
 }
