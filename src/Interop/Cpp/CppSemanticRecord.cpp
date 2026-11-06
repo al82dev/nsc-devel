@@ -56,6 +56,7 @@ std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type, std:
     std::string key;
     std::vector<std::uint64_t> dimensions;
     bool aggregateReadonly = false;
+    bool aggregateVolatile = false;
     if (array)
     {
         if (array->element.token == lexer::TokenKind::KwVoid || array->element.pointeeConst) return std::nullopt;
@@ -67,19 +68,22 @@ std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type, std:
         const CppType* element = &type;
         while (element && element->kind == CppTypeKind::Array && dimensions.size() < 64)
         {
-            if (element->isVolatile || !element->arrayCount || *element->arrayCount == 0)
+            if (!element->arrayCount || *element->arrayCount == 0)
                 return std::nullopt;
             aggregateReadonly |= element->isConst;
+            aggregateVolatile |= element->isVolatile;
             dimensions.push_back(*element->arrayCount);
             element = element->element.get();
         }
         if (dimensions.empty() || !element) return std::nullopt;
         aggregateReadonly |= element->isConst;
+        aggregateVolatile |= element->isVolatile;
         CppType unqualified = *element;
         unqualified.isConst = false;
+        unqualified.isVolatile = false;
         const auto mapped = projectCppSemanticEnumType(unqualified, projectOrdinal, moduleName, lookup);
         if (mapped) key = mapped->nativeSharpTypeKey;
-        else if (lookup && element->kind == CppTypeKind::Record && !element->isVolatile)
+        else if (lookup && element->kind == CppTypeKind::Record)
         {
             const auto target = projectCppRecordTypeIdentity(*element, moduleName);
             const auto ordinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
@@ -97,7 +101,7 @@ std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type, std:
     }
     for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend(); ++dimension)
         key += "[" + std::to_string(*dimension) + "]";
-    return CppScalarTypeMapping{std::move(key), type.canonicalSpelling, aggregateReadonly, false};
+    return CppScalarTypeMapping{std::move(key), type.canonicalSpelling, aggregateReadonly, aggregateVolatile};
 }
 }
 
@@ -132,9 +136,9 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         (arrayElement->kind == CppTypeKind::Boolean || arrayElement->kind == CppTypeKind::SignedInteger ||
          arrayElement->kind == CppTypeKind::UnsignedInteger || arrayElement->kind == CppTypeKind::Floating);
     const bool recordArray = field.type.kind == CppTypeKind::Array && arrayElement &&
-        arrayElement->kind == CppTypeKind::Record && !arrayElement->isVolatile;
+        arrayElement->kind == CppTypeKind::Record;
     const bool enumArray = field.type.kind == CppTypeKind::Array && arrayElement &&
-        arrayElement->kind == CppTypeKind::Enumeration && !arrayElement->isVolatile;
+        arrayElement->kind == CppTypeKind::Enumeration;
     const auto pointerArray = frontend::cppAliasArrayType(field.type);
     const bool representablePointerArray = pointerArray && pointerArray->element.pointerDepth > 0 &&
         !pointerArray->element.pointeeConst && pointerArray->element.token != lexer::TokenKind::KwVoid;
