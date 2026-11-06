@@ -423,6 +423,56 @@ bool provideCppInteropTypes(const compilation::ProjectGraph& graph,
     return true;
 }
 
+CppCEnumCatalogResult captureCppCEnumCatalog(
+    std::span<const CppSemanticEnumEntry> inventory, std::size_t projectOrdinal,
+    std::string_view moduleName, std::span<const std::string> requiredIdentityKeys)
+{
+    std::set<std::string> requested(requiredIdentityKeys.begin(), requiredIdentityKeys.end());
+    std::map<std::string, CppCEnumSnapshot> result;
+    const auto sameScalar = [](const CppType& a, const CppType& b) {
+        return a.kind == b.kind && a.canonicalSpelling == b.canonicalSpelling &&
+            a.unqualifiedCanonicalSpelling == b.unqualifiedCanonicalSpelling &&
+            a.isConst == b.isConst && a.isVolatile == b.isVolatile && a.isRestrict == b.isRestrict &&
+            a.sizeBits == b.sizeBits && a.alignmentBits == b.alignmentBits;
+    };
+    const auto reconcileUsr = [](std::optional<std::string>& a, const std::optional<std::string>& b) {
+        if (!b || b->empty()) return true;
+        if (a && !a->empty() && a != b) return false;
+        a = b;
+        return true;
+    };
+    for (const auto& entry : inventory)
+    {
+        const auto& value = entry.declaration;
+        if (entry.projectOrdinal != projectOrdinal || value.isCxx || value.name.empty()) continue;
+        const compilation::TypeIdentity identity(std::string(moduleName), {}, {}, value.name);
+        if (!identity.isValid() || !requested.contains(identity.key())) continue;
+        if (!value.complete || !value.underlyingType || !value.sizeBits || !value.alignmentBits ||
+            !*value.sizeBits || !*value.alignmentBits || entry.targetTriple.empty())
+            return CppCEnumSnapshotFailure{"incomplete C enum observation: " + identity.key()};
+        const auto [it, inserted] = result.emplace(identity.key(), CppCEnumSnapshot{identity.key(), entry.targetTriple, value});
+        if (inserted) continue;
+        auto& prior = it->second.declaration;
+        bool same = it->second.targetTriple == entry.targetTriple && prior.scoped == value.scoped &&
+            prior.sizeBits == value.sizeBits && prior.alignmentBits == value.alignmentBits &&
+            sameScalar(*prior.underlyingType, *value.underlyingType) &&
+            prior.enumerators.size() == value.enumerators.size() && reconcileUsr(prior.clangUsr, value.clangUsr);
+        for (std::size_t i = 0; same && i < prior.enumerators.size(); ++i)
+        {
+            auto& a = prior.enumerators[i]; const auto& b = value.enumerators[i];
+            same = a.name == b.name && a.decimalValue == b.decimalValue && a.valueBits == b.valueBits &&
+                a.valueIsUnsigned == b.valueIsUnsigned && sameScalar(a.valueType, b.valueType) &&
+                reconcileUsr(a.clangUsr, b.clangUsr);
+        }
+        if (!same) return CppCEnumSnapshotFailure{"conflicting C enum observations: " + identity.key()};
+    }
+    if (result.size() != requested.size()) return CppCEnumSnapshotFailure{"required C enum is unavailable"};
+    std::vector<CppCEnumSnapshot> catalog;
+    catalog.reserve(result.size());
+    for (auto& [key, value] : result) { static_cast<void>(key); catalog.push_back(std::move(value)); }
+    return catalog;
+}
+
 bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
     std::span<const CppProjectSessions> projects,
     std::vector<frontend::CppImportedTypeDeclaration>& types, std::string& error)

@@ -98,6 +98,17 @@ using CppSemanticEnumInventoryResult =
 // declarations have been resolved; values are not inserted into NSC here.
 CppSemanticEnumInventoryResult collectCppSemanticEnums(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects);
+struct CppCEnumSnapshot
+{
+    std::string identityKey;
+    std::string targetTriple;
+    CppEnumDeclaration declaration;
+};
+struct CppCEnumSnapshotFailure { std::string message; };
+using CppCEnumCatalogResult = std::variant<std::vector<CppCEnumSnapshot>, CppCEnumSnapshotFailure>;
+CppCEnumCatalogResult captureCppCEnumCatalog(
+    std::span<const CppSemanticEnumEntry> inventory, std::size_t projectOrdinal,
+    std::string_view moduleName, std::span<const std::string> requiredIdentityKeys);
 bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
     std::span<const CppProjectSessions> projects,
     std::vector<frontend::CppImportedTypeDeclaration>& types, std::string& error);
