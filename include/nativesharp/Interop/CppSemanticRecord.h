@@ -140,7 +140,7 @@ struct CppCRecordSnapshot
     std::string name;
     std::string targetTriple;
     std::optional<std::string> clangUsr;
-    // Transient until a versioned metadata representation is introduced.
+    // Present in the versioned provenance catalogue when the source was observed.
     std::optional<CppRecordDeclaration::SourceProvenance> sourceProvenance;
     std::optional<bool> microsoftVolatileSemantics;
     CppRecordKind kind = CppRecordKind::Struct;
@@ -241,8 +241,15 @@ CppRecordBindingResult selectCppRecordBindings(
 
 struct CppRecordObservation
 {
+    struct Reconciliation
+    {
+        std::size_t projectOrdinal;
+        std::string liveIdentityKey;
+        std::string precompiledIdentityKey;
+    };
     std::vector<CppSemanticRecordEntry> inventory;
     CppRecordGroups groups;
+    std::vector<Reconciliation> reconciliations;
     CppRecordBindingSelection selection;
     std::vector<frontend::CppImportedTypeDeclaration> referencedEnumTypes;
     std::vector<std::string> collidingEnumIdentities;

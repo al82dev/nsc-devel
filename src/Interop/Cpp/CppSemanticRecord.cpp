@@ -1579,6 +1579,68 @@ CppRecordObservationResult selectExperimentalCppRecordTypes(const CppRecordObser
     return selected;
 }
 
+static bool collectVisibleCRecordReconciliations(
+    const frontend::ProjectCompilation& compilation, const frontend::ProjectNameLookup& lookup,
+    const CppRecordObservation& observation, std::vector<CppRecordObservation::Reconciliation>& output,
+    std::string& error)
+{
+    const auto* graph = compilation.projectGraph();
+    if (!graph) { error = "C record reconciliation requires a project graph"; return false; }
+    struct Catalog { std::vector<CppCRecordSnapshot> records; std::vector<CppCEnumSnapshot> enums; };
+    std::vector<Catalog> catalogs;
+    for (const auto& module : compilation.precompiledModules())
+    {
+        if (module.cppCTypeCatalog.empty()) continue;
+        Catalog catalog;
+        if (!metadata_detail::decodeVersionedCTypeCatalog(module.cppCTypeCatalog,
+                catalog.records, catalog.enums, error)) return false;
+        catalogs.push_back(std::move(catalog));
+    }
+    if (catalogs.empty()) { output.clear(); error.clear(); return true; }
+    auto enumInventory = collectCppSemanticEnums(*graph, compilation.cppProjectSessions());
+    if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&enumInventory))
+    { error = failure->message; return false; }
+    const auto& enumEntries = std::get<std::vector<CppSemanticEnumEntry>>(enumInventory);
+    std::vector<CppRecordObservation::Reconciliation> reconciliations;
+    for (const auto& group : observation.groups.groups)
+    {
+        if (group.projectOrdinal >= lookup.modules().size() || !lookup.modules()[group.projectOrdinal] ||
+            group.inventoryIndices.empty() || group.projectOrdinal >= graph->projects().size()) continue;
+        const auto first = group.inventoryIndices.front();
+        if (first >= observation.inventory.size() || observation.inventory[first].declaration.isCxx) continue;
+        const std::vector<std::string> seeds{group.identity.key()};
+        auto captured = collectCppCRecordClosure(observation.inventory, observation.groups.groups,
+                                                 group.projectOrdinal, seeds);
+        const auto* closure = std::get_if<CppCRecordClosure>(&captured);
+        if (!closure) continue;
+        auto enumCapture = captureCppCEnumCatalog(enumEntries, group.projectOrdinal,
+            graph->projects()[group.projectOrdinal].moduleName(), closure->enumIdentityKeys);
+        const auto* liveEnums = std::get_if<std::vector<CppCEnumSnapshot>>(&enumCapture);
+        if (!liveEnums) continue;
+        const auto visible = lookup.modules()[group.projectOrdinal]->visibleProjectOrdinals();
+        std::set<std::string> matches;
+        for (const auto& catalog : catalogs)
+            for (const auto& candidate : catalog.records)
+            {
+                if (candidate.name != group.identity.name() || candidate.identityKey == group.identity.key()) continue;
+                const auto owner = std::find_if(graph->projects().begin(), graph->projects().end(),
+                    [&](const auto& project) { return project.moduleName() == candidate.moduleName; });
+                if (owner == graph->projects().end()) continue;
+                const auto ownerOrdinal = static_cast<std::size_t>(owner - graph->projects().begin());
+                if (std::find(visible.begin(), visible.end(), ownerOrdinal) == visible.end()) continue;
+                metadata_detail::CRecordContractComparison verdict{};
+                if (!metadata_detail::compareCRecordClosureEvidence(closure->records, *liveEnums,
+                        group.identity.key(), catalog.records, catalog.enums, candidate.identityKey,
+                        verdict, error)) return false;
+                if (verdict == metadata_detail::CRecordContractComparison::Matching)
+                    matches.insert(candidate.identityKey);
+            }
+        if (matches.size() == 1)
+            reconciliations.push_back({group.projectOrdinal, group.identity.key(), *matches.begin()});
+    }
+    output = std::move(reconciliations); error.clear(); return true;
+}
+
 CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilation& compilation)
 {
     const auto* graph = compilation.projectGraph();
@@ -1639,6 +1701,8 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
     nativeLookup.build(*graph, units, diagnostics);
     if (!nativeLookup.hasTypeIndex())
         return CppRecordObservationFailure{"cannot index NativeSharp declarations for observation"};
+    if (!collectVisibleCRecordReconciliations(compilation, nativeLookup, result, result.reconciliations, error))
+        return CppRecordObservationFailure{std::move(error)};
     std::vector<frontend::CppImportedTypeDeclaration> filteredTypes;
     std::vector<std::size_t> filteredGroups;
     for (std::size_t index = 0; index < inputs.types.size(); ++index)
