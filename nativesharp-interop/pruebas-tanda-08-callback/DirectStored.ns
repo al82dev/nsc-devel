@@ -1,0 +1,7 @@
+int Main()
+{
+    CallbackHolder* holder = get_callback_holder();
+    if (holder->run(39) != 42) return 1;
+    if (shared_callback(39) != 42) return 2;
+    return 0;
+}

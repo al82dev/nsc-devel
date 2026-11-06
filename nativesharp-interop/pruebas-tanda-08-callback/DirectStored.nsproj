@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CDirectStoredCallback</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="DirectStored.ns" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" />
+  </ItemGroup>
+</Project>

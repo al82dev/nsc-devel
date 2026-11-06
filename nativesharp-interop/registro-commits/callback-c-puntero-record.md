@@ -40,8 +40,8 @@ USR diferente. Son pruebas pendientes de construcción y ejecución.
 Para aislar la proyección del almacenamiento de la resolución de una llamada
 escrita directamente sobre un campo o global, el fixture lee cada callback
 en una variable local antes de invocarlo. Es la forma ya utilizada por el
-fixture escalar `Stored.ns`. La invocación directa de un campo o global es un
-caso separado que no debe darse por cubierto con esta prueba.
+fixture escalar `Stored.ns`. Posteriormente se agregaron también las llamadas
+directas al campo y global; ambas esperan validación con el cambio preparado.
 Con el compilador anterior, esta variante también se rechazó: `holder->run`
 no encuentra el campo compatible y `record_callback_global` conserva el
 diagnóstico de tipo no mapeado. Por ello el fallo reproducido no depende de la

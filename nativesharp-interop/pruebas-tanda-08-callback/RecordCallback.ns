@@ -9,5 +9,7 @@ int Main()
     if (member(&item) != 42) return 2;
     RecordCallback global = record_callback_global;
     if (global(&item) != 42) return 3;
+    if (holder->run(&item) != 42) return 4;
+    if (record_callback_global(&item) != 42) return 5;
     return 0;
 }

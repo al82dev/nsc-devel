@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Llamada directa a callback C almacenado
+
+T08-017: comprobar primero con el callback escalar existente `int(int)` si
+una llamada escrita directamente sobre `holder->run` o el global C
+`shared_callback` se resuelve y baja correctamente. Crear el caso dentro de
+`pruebas-tanda-08-callback`, registrar diagnóstico y conservar salidas en
+`A:/nsc-interop-build`. No modificar producción antes de identificar una
+causa específica; no extrapolar el resultado a firmas de record, casos C++ o
+convenciones no probadas.
+
 ## Callback C con puntero a record en la firma
 
 T08-017: reproducir y abordar el consumo de un callback C cuya firma recibe
