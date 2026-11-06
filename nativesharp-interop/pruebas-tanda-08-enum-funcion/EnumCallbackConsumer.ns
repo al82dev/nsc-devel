@@ -1,0 +1,9 @@
+int Main()
+{
+    var value = PublishedEnumCallback.Bridge.GetMood();
+    var callback = PublishedEnumCallback.Bridge.GetCallback();
+    if ((int)callback(value) != -3) return 1;
+    var holder = PublishedEnumCallback.Bridge.GetHolder();
+    if ((int)holder->callback(value) != -3) return 2;
+    return 0;
+}

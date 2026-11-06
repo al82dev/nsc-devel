@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CEnumCallbackNoHeader</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="EnumCallbackConsumer.ns" />
+    <LibraryReference Include="CEnumCallbackProducer.lib" />
+  </ItemGroup>
+</Project>

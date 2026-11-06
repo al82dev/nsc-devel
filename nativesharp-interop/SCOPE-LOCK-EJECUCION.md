@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Callback almacenado con enum en metadata precompilada
+
+T08-017: preparar un productor NativeSharp que publique un callback y un
+holder C con `enum Mood` en su firma, y consumidores con el mismo header y sin
+referencia al header. En el segundo caso ocultar solo la copia del header del
+directorio de pruebas durante la compilación y restaurarla. Permitir fixtures
+y script en `pruebas-tanda-08-enum-funcion`, incorporación al validador de la
+tanda, tracking y bitácora. No modificar producción ni metadata sin reproducir
+un fallo específico; no resolver por inferencia las operaciones mixtas de enum.
+
 ## Callback C almacenado con enum en la firma
 
 T08-017: reproducir la importación de `MoodCallback`, que recibe y devuelve un

@@ -1,0 +1,9 @@
+namespace PublishedEnumCallback
+{
+    public struct Bridge
+    {
+        public static MoodCallback GetCallback() { return shared_mood_callback; }
+        public static MoodCallbackHolder* GetHolder() { return get_mood_callback_holder(); }
+        public static Mood GetMood() { return current_mood(); }
+    }
+}
