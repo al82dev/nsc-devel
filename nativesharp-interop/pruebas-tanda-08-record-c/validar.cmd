@@ -49,6 +49,8 @@ findstr /r /c:"store volatile i32 43,.*@volatile_record_matrix" "%DEST%\project.
 if errorlevel 1 (echo Falta escritura volatile de matriz de structs. & exit /b 1)
 findstr /r /c:"store volatile i32 50," "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile de campo anidado. & exit /b 1)
+findstr /c:"load volatile ptr, ptr getelementptr (i8, ptr @volatile_nested_record" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta lectura volatile del campo puntero anidado. & exit /b 1)
 findstr /r /c:"store i32 47, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura ordinaria por puntero de campo volatile. & exit /b 1)
 findstr /r /c:"store volatile i32 47," "%DEST%\project.ll" >nul
@@ -103,7 +105,7 @@ copy /y "%~dp0ConstRecordAddress.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-record-address.exe" > "%DEST%\const-record-address.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /c:"operand of & must name addressable storage" "%DEST%\const-record-address.log" >nul
+findstr /c:"cannot take the address of readonly storage until qualified pointers are supported" "%DEST%\const-record-address.log" >nul
 if errorlevel 1 exit /b 1
 copy /y "%~dp0VolatileRecordGlobal.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
@@ -121,7 +123,7 @@ copy /y "%~dp0ConstRecordMatrixAddress.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-record-matrix-address.exe" > "%DEST%\const-record-matrix-address.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /c:"operand of & must name addressable storage" "%DEST%\const-record-matrix-address.log" >nul
+findstr /c:"cannot take the address of readonly storage until qualified pointers are supported" "%DEST%\const-record-matrix-address.log" >nul
 if errorlevel 1 exit /b 1
 copy /y "%~dp0VolatileRecordMatrixAddress.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
