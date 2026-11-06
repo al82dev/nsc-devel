@@ -6438,6 +6438,26 @@ int main(int argc, char** argv)
                                 "type:" + records[0].identityKey, "type:" + enums[0].identityKey};
                             ok &= expect(checkClosure(externalCatalog),
                                          "metadata closure accepts C types of another module only when dependencies are recorded");
+                            const auto provider = std::make_shared<LibraryMetadata>(closureMetadata);
+                            const auto user = std::make_shared<LibraryMetadata>(externalCatalog);
+                            const std::vector<nativesharp::driver::LoadedPrecompiledMetadata> loaded{
+                                {{}, {}, provider, {}}, {{}, {}, user, {}}};
+                            const std::unordered_map<std::string, std::filesystem::path> noSources;
+                            ok &= expect(nativesharp::driver::validatePrecompiledExternalTypeClosure(
+                                             loaded, noSources, dependencyError),
+                                         "external closure recognizes record and enum C in the owning provider");
+                            const std::vector<nativesharp::driver::LoadedPrecompiledMetadata> missingProvider{
+                                {{}, {}, user, {}}};
+                            ok &= expect(!nativesharp::driver::validatePrecompiledExternalTypeClosure(
+                                             missingProvider, noSources, dependencyError),
+                                         "external closure rejects C types without their provider");
+                            auto invalidProvider = std::make_shared<LibraryMetadata>(closureMetadata);
+                            invalidProvider->targetTriple = "different-target";
+                            const std::vector<nativesharp::driver::LoadedPrecompiledMetadata> invalidLoaded{
+                                {{}, {}, invalidProvider, {}}, {{}, {}, user, {}}};
+                            ok &= expect(!nativesharp::driver::validatePrecompiledExternalTypeClosure(
+                                             invalidLoaded, noSources, dependencyError),
+                                         "external closure rejects a provider with an incompatible C catalogue");
                             nativesharp::frontend::PrecompiledSyntaxModule module;
                             module.metadataPath = std::filesystem::path(argv[2]) / "shade.nsmeta";
                             module.cppCTypeCatalog = bytes;
