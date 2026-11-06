@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Código de error del build incremental
+
+La batería en d3dc414a8 continuó tras un enlace fallido con código -1 porque
+`if errorlevel 1` no detectó ese valor negativo. Normalizar todo código no cero
+del helper a 1. Archivos: construir-frontend-tanda1.cmd y documentación.
+Repetir la validación tras corregir el enlace y las rutas.
+
 ## Configuración del objetivo de prueba MIR
 
 La batería en c552a69b9 se detuvo porque `NSC_BUILD_TESTS` estaba desactivado y

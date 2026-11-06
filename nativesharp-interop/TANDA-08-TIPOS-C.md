@@ -1056,6 +1056,13 @@ configuró la misma carpeta ON con `NSC_BUILD_TESTS=ON` y se añadió ese paso a
 script; se seguirán construyendo solo los objetivos explícitos. Las pruebas
 funcionales no llegaron a ejecutarse y deben repetirse.
 
+## Código de error del build incremental
+
+La ejecución en `d3dc414a8` observó un fallo de enlace MIR con código -1, pero
+el llamador continuó porque comprueba `errorlevel 1`. El helper ahora convierte
+cualquier resultado no cero a 1. La prueba de este control queda para la
+validación agrupada después de resolver el enlace.
+
 ## Alineación declarada de global C/C++
 
 El snapshot de globales prepara la captura de `ASTContext::getDeclAlign` en

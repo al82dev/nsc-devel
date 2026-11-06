@@ -13,4 +13,5 @@ set "TASK_MODE=%~2"
 if "%TASK_MODE%"=="" set "TASK_MODE=OFF"
 if /I not "%TASK_MODE%"=="ON" if /I not "%TASK_MODE%"=="OFF" exit /b 2
 cmake --build A:/nsc-interop-build/tanda1-%TASK_MODE% --target %TASK_TARGET% --parallel 4
-exit /b %ERRORLEVEL%
+if not "%ERRORLEVEL%"=="0" exit /b 1
+exit /b 0
