@@ -1320,6 +1320,14 @@ los valores en ejecución y rechaza tomar la dirección. No se ha ejecutado.
 Los campos empaquetados C++ y los campos C de punteros, agregados y bitfields
 siguen pendientes, así como otras formas de acceso; no se cierra la tanda.
 
+## Alineación de elementos de arreglos en campos preparada
+
+`4a18050a6` deriva una alineación garantizada en LLVM para elementos indexados
+directamente desde un campo, combinando la alineación MIR del campo con los
+strides, y la aplica a cargas y escrituras. `3f88e82e0` prepara una prueba de
+matriz y un control sin campo de origen. Aún no se han ejecutado; los arreglos
+empaquetados continúan rechazados hasta cubrir también sus direcciones.
+
 ## Campo puntero C empaquetado preparado
 
 `988b339e4` extiende la proyección reducida al almacenamiento de punteros C y

@@ -264,6 +264,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     pasó IR y ejecución O0–O3 con globales flotantes y `??=`. La batería
     completa y las demás formas de volatile siguen pendientes.
 - [ ] T08-016. Mapear arreglos de tamaño conocido.
+  - Preparado en `4a18050a6` y `3f88e82e0`: transporte de alineación de
+    elementos indexados desde campos y prueba MIR sintética. Aún sin ejecutar;
+    arreglos empaquetados y protección de sus direcciones siguen pendientes.
 - [ ] T08-017. Definir la representación de punteros a función C.
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.
 - [ ] T08-019. Presentar diagnósticos útiles al usar una declaración incompleta de forma inválida.
