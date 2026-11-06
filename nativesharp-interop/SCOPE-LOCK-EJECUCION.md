@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Funciones C con y sin prototipo
+
+Preparar un fixture independiente para contrastar `f(void)` con la declaración
+C antigua `f()`, retorno void, puntero void y promociones de argumentos sin
+prototipo en Windows x64. Usar Clang como referencia y salidas en
+`A:/nsc-interop-build`; no modificar producción antes de registrar un fallo
+y el alcance de su corrección. Registrar resultados y controles negativos.
+
 ## Actualizaciones volatile de campos C importados
 
 La matriz mostró que Clang lee la unidad una vez para el valor previo y otra
