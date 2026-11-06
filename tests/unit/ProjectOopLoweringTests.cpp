@@ -4,6 +4,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "../../src/Frontend/HIR/HirLoweringSupport.h"
 #include "../../src/Frontend/MIR/MirConstantEvaluator.h"
+#include "../../src/Frontend/MIR/HirCacheIdentity.h"
 #include "nativesharp/Frontend/ProjectOopMirModelDumper.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
@@ -21532,6 +21533,16 @@ void testDeepMirMoveNextFrameLocalAppend(TestContext& tests)
 
 void testDeepMirCacheRestore(TestContext& tests)
 {
+    nativesharp::frontend::ProjectOopHirFunction identityFunction;
+    identityFunction.body = std::make_unique<nativesharp::frontend::ProjectOopHirNode>();
+    const auto unknownIdentity = nativesharp::frontend::serializeHirCacheIdentity(identityFunction);
+    identityFunction.body->cppMicrosoftVolatileSemantics = false;
+    const auto disabledIdentity = nativesharp::frontend::serializeHirCacheIdentity(identityFunction);
+    identityFunction.body->cppMicrosoftVolatileSemantics = true;
+    const auto enabledIdentity = nativesharp::frontend::serializeHirCacheIdentity(identityFunction);
+    tests.expect(unknownIdentity != disabledIdentity && unknownIdentity != enabledIdentity &&
+                     disabledIdentity != enabledIdentity,
+                 "HIR cache identity distinguishes unknown, disabled and enabled Clang volatile semantics");
     constexpr std::size_t nestingDepth = 32768U;
     std::unique_ptr<ProjectOopMirNode> root;
     for (std::size_t depth = nestingDepth; depth-- > 0U;)

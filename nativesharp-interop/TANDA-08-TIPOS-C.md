@@ -1043,6 +1043,11 @@ La prueba existente de restauración profunda prepara nodos con valores true,
 false y desconocido y los compara tras serializar y restaurar. El script de la
 tanda construirá el ejecutable y ejecutará su modalidad enfocada. No ejecutada.
 
+## Prueba de identidad HIR de opción volatile
+
+La misma prueba enfocada prepara una función HIR y exige identidades distintas
+para opción desconocida, desactivada y activada. No se ha ejecutado todavía.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

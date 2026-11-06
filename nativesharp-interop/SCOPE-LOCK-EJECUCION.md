@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Prueba de identidad HIR de opción volatile
+
+Preparar una comprobación de que los tres estados de la opción producen
+identidades HIR diferentes. Archivos: ProjectOopLoweringTests.cpp y
+documentación. Se ejecutará con la modalidad enfocada ya añadida a la tanda.
+
 ## Prueba de restauración MIR de opción volatile
 
 Ampliar la prueba existente de restauración MIR para alternar los tres estados
