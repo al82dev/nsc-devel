@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Enlace de prueba de lowering MIR
+
+El enlace de nsc_project_oop_lowering_tests falló por el símbolo
+PrecompiledSemanticSnapshotCodec::decode, usado por nsc_frontend y definido en
+nsc_precompiled. Añadir esa biblioteca a ese objetivo de prueba. Archivos:
+CMakeLists.txt y documentación. Repetir enlace y validación agrupada.
+
 ## Rutas de ejecutables de prueba con NSC_BUILD_TESTS
 
 Con `NSC_BUILD_TESTS=ON`, CMake genera las tres pruebas de sintaxis y MIR bajo

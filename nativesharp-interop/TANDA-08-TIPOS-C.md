@@ -1070,6 +1070,13 @@ Con la configuración ON, CMake enlaza los ejecutables de sintaxis y MIR bajo
 pruebas de sintaxis mostradas podían ser antiguas y la MIR no se encontró. Se
 ajustaron las rutas; esa ejecución no acredita las tres pruebas y debe repetirse.
 
+## Enlace de prueba de lowering MIR
+
+El enlace dirigido del objetivo MIR falló con `undefined symbol` para
+`PrecompiledSemanticSnapshotCodec::decode`, referenciado por `nsc_frontend` y
+definido en `nsc_precompiled`. Se añadió esta biblioteca solo a ese objetivo de
+prueba. Deben repetirse el enlace y la batería antes de darlo por corregido.
+
 ## Alineación declarada de global C/C++
 
 El snapshot de globales prepara la captura de `ASTContext::getDeclAlign` en
