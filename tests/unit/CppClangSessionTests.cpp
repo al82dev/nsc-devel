@@ -1802,6 +1802,24 @@ int main(int argc, char** argv)
                                         }
                                         ok &= expect(sameUsrSelected && conflictRejected && absentRetained,
                                                      "repeated members reject conflicting known field USRs without inventing missing ones");
+                                        auto transitiveEntries = usrEntries;
+                                        auto transitiveGroup = record;
+                                        auto& firstFields = transitiveEntries[transitiveGroup.inventoryIndices.front()].declaration.fields;
+                                        bool transitiveRejected = false, emptyAccepted = false;
+                                        if (!firstFields.empty())
+                                        {
+                                            firstFields[0].clangUsr.reset();
+                                            transitiveEntries[transitiveGroup.inventoryIndices.back()].declaration.fields[0].clangUsr = "field-one";
+                                            auto third = transitiveEntries[transitiveGroup.inventoryIndices.back()];
+                                            third.declaration.fields[0].clangUsr = "field-two";
+                                            transitiveGroup.inventoryIndices.push_back(transitiveEntries.size());
+                                            transitiveEntries.push_back(std::move(third));
+                                            transitiveRejected = !selectCppRecordMemberDefinition(transitiveEntries, transitiveGroup);
+                                            transitiveEntries.back().declaration.fields[0].clangUsr = std::string{};
+                                            emptyAccepted = selectCppRecordMemberDefinition(transitiveEntries, transitiveGroup).has_value();
+                                        }
+                                        ok &= expect(transitiveRejected && emptyAccepted,
+                                                     "field USR conflicts remain visible after an initially missing observation");
                                         auto signatureEntries = *entries;
                                         for (const auto i : record.inventoryIndices)
                                         {
