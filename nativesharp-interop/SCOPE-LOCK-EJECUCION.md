@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Campos de bits C a través de biblioteca precompilada
+
+Extender `pruebas-tanda-08-bitfields-c` con productor NativeSharp, consumidor
+y script para verificar la reconstrucción del catálogo C y accesos a campos con
+signo y empaquetados en O0–O3. Registrar evidencia en tracking y Markdown.
+No cambiar producción hasta identificar y documentar una falla concreta.
+
 ## Observación de tipos C en bibliotecas precompiladas
 
 Corregir la observación preliminar cuando coexisten una referencia a biblioteca
