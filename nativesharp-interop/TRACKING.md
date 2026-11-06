@@ -605,6 +605,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     `volatile int*` con modo MS conocido. Los controles aún no se ejecutan;
     locales, parámetros y arreglos de punteros siguen pendientes.
     [Detalle](registro-commits/control-puntero-directo-volatile-ms.md).
+  - Preparada la extensión para desreferenciar el puntero obtenido directamente
+    de un arreglo o matriz global C, con controles para distinguir el slot del
+    objeto apuntado. Aún no validada; los demás orígenes siguen pendientes.
+    [Detalle](registro-commits/control-puntero-array-volatile-ms.md).
   - Mapeada la pérdida de procedencia de modo MS al guardar el puntero en un
     local, y el requisito de manejar reasignaciones y ramas antes de emitir
     órdenes. [Detalle](registro-commits/procedencia-puntero-volatile-local.md).
