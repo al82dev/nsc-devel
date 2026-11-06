@@ -67,5 +67,11 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project
 if not errorlevel 1 exit /b 1
 findstr /i /c:"cannot take the address of volatile storage" "%DEST%\packed-volatile-address.log" >nul
 if errorlevel 1 exit /b 1
+copy /y "%~dp0PackedPointerArrayAddress.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\packed-pointer-array-address.exe" > "%DEST%\packed-pointer-array-address.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /i /c:"addressable storage" "%DEST%\packed-pointer-array-address.log" >nul
+if errorlevel 1 exit /b 1
 echo Layout C comparado: resultado esperado cero.
 exit /b 0

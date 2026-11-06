@@ -1,0 +1,6 @@
+int Main()
+{
+    PackedPointers* packed = layout_packed_pointers();
+    int** unsafeAddress = &packed->slots[1];
+    return **unsafeAddress;
+}

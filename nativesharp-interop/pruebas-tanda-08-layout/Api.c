@@ -22,6 +22,9 @@ int layout_packed_two_integer_offset(void) { return (int)__builtin_offsetof(Pack
 int layout_packed_two_real_offset(void) { return (int)__builtin_offsetof(PackedTwo, real); }
 static int packed_pointer_initial = 3;
 static int packed_pointer_target = 4;
+static PackedPointers sample_packed_pointers = { 1, { &packed_pointer_initial, &packed_pointer_target } };
+PackedPointers* layout_packed_pointers(void) { return &sample_packed_pointers; }
+int layout_packed_pointers_value(void) { return *sample_packed_pointers.slots[1]; }
 static PackedPointer sample_packed_pointer = { 1, &packed_pointer_initial };
 PackedPointer* layout_packed_pointer(void) { return &sample_packed_pointer; }
 int* layout_packed_pointer_target(void) { return &packed_pointer_target; }

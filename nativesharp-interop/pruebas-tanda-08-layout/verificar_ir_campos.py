@@ -22,6 +22,8 @@ patterns = (
     r"store i32 [^\n]*ptr %raw\.element\.addr(?:\d+)?, align 1",
     r"%pointer\.load(?:\d+)? = load volatile i32, ptr %raw\.element\.addr(?:\d+)?, align 1",
     r"store volatile i32 [^\n]*ptr %raw\.element\.addr(?:\d+)?, align 1",
+    r"%pointer\.load(?:\d+)? = load ptr, ptr %raw\.element\.addr(?:\d+)?, align 1",
+    r"store ptr [^\n]*ptr %raw\.element\.addr(?:\d+)?, align 1",
 )
 if any(re.search(pattern, ir) is None for pattern in patterns):
     print("Falta alineacion de campo C en lectura o escritura simple/compuesta")
