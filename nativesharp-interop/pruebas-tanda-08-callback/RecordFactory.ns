@@ -1,0 +1,10 @@
+int Main()
+{
+    RecordFactory factory = get_record_factory();
+    CallbackPayload* value = factory();
+    if (value->value != 39) return 1;
+    RecordFactoryHolder* holder = get_record_factory_holder();
+    if (holder->make()->value != 39) return 2;
+    if (record_factory_global()->value != 39) return 3;
+    return 0;
+}

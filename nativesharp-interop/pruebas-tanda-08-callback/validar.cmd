@@ -9,7 +9,7 @@ set "TEMP=%DEST%"
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
 set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
-for %%F in (Project.nsproj Main.ns Stored.nsproj Stored.ns ConstField.nsproj ConstField.ns ConstGlobal.nsproj ConstGlobal.ns Volatile.nsproj Volatile.ns RecordCallback.nsproj RecordCallback.ns DirectStored.nsproj DirectStored.ns Api.h Api.c) do (
+for %%F in (Project.nsproj Main.ns Stored.nsproj Stored.ns ConstField.nsproj ConstField.ns ConstGlobal.nsproj ConstGlobal.ns Volatile.nsproj Volatile.ns RecordCallback.nsproj RecordCallback.ns DirectStored.nsproj DirectStored.ns RecordFactory.nsproj RecordFactory.ns Api.h Api.c) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -38,6 +38,11 @@ for %%O in (0 1 2 3) do (
   "%DEST%\record-callback-O%%O.exe"
   if errorlevel 1 exit /b 1
   echo Callback C con puntero a record O%%O: resultado esperado cero.
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\RecordFactory.nsproj" -O%%O --no-artifact-cache -o "%DEST%\record-factory-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  "%DEST%\record-factory-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  echo Callback C con resultado puntero a record O%%O: resultado esperado cero.
 )
 for %%N in (ConstField ConstGlobal) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\%%N.nsproj" -O0 --no-artifact-cache -o "%DEST%\%%N.exe" > "%DEST%\%%N.log" 2>&1

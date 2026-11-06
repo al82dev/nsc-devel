@@ -27,6 +27,10 @@ int mix_integers(SignedByte a, UnsignedShort b, UnsignedInt c) { return (int)a +
 static int add_payload(CallbackPayload* value) { return value->value + 3; }
 static CallbackPayload callback_payload = { 39 };
 CallbackPayload* get_callback_payload(void) { return &callback_payload; }
+static RecordFactoryHolder record_factory_holder = { get_callback_payload };
+RecordFactory record_factory_global = get_callback_payload;
+RecordFactory get_record_factory(void) { return get_callback_payload; }
+RecordFactoryHolder* get_record_factory_holder(void) { return &record_factory_holder; }
 static RecordCallbackHolder record_callback_holder = { add_payload };
 RecordCallback record_callback_global = add_payload;
 RecordCallback get_record_callback(void) { return add_payload; }

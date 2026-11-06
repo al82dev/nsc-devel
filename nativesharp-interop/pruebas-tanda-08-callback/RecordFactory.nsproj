@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CRecordFactory</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="RecordFactory.ns" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" />
+  </ItemGroup>
+</Project>
