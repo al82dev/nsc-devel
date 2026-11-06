@@ -13,6 +13,16 @@ Ampliar el mismo fixture con controles que rechacen perder el `const` al
 asignar un elemento a `int*` y al obtener la dirección del slot, ya que el
 tipo anidado tendría que conservar el calificador. No habilitar la proyección
 hasta conservar estas protecciones.
+El caso positivo falla porque `mapGlobalType` rechaza `pointeeConst`; el
+estado global solo transmite ese dato para un puntero superior y
+`analyzeRawIndex` no lo transporta al puntero resultante. Permitir cambios en
+`src/Interop/Cpp/CppSemanticInventory.cpp` y
+`src/Frontend/Bodies/ExpressionCore/IndexAndRangeExpressions.cpp` para el caso
+C global unidimensional de punteros simples a escalar const: proyectar el
+tipo, conservar el calificador al indexar y no permitir obtener la dirección
+del slot como puntero sin calificadores. Mantener otros arreglos calificados
+rechazados; validar lectura, reasignación, escritura, escape y dirección con
+la batería agrupada y pruebas existentes de arreglos.
 
 ## Funciones C static inline de encabezados
 

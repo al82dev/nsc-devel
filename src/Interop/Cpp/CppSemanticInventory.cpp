@@ -86,7 +86,9 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
             mapped->canonicalCppType = type.canonicalSpelling;
             return mapped;
         }
-        if (array->element.pointeeConst) return std::nullopt;
+        if (array->element.pointeeConst &&
+            (!cLanguage || array->dimensions.size() != 1 || array->element.pointerDepth != 1))
+            return std::nullopt;
         const CppType* element = &type;
         while (element && element->kind == CppTypeKind::Array) element = element->element.get();
         if (!element) return std::nullopt;
@@ -181,11 +183,15 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         if (cppNamespace[i] == ':' && i + 1 < cppNamespace.size() && cppNamespace[i + 1] == ':')
         { nsNamespace.push_back('.'); ++i; }
         else nsNamespace.push_back(cppNamespace[i]);
+    const CppType* pointerStorage = &global.type;
+    if (cLanguage && pointerStorage->kind == CppTypeKind::Array && pointerStorage->element &&
+        pointerStorage->element->kind == CppTypeKind::Pointer)
+        pointerStorage = pointerStorage->element.get();
     return CppSemanticGlobal{projectOrdinal, std::string(moduleName), std::move(nsNamespace),
                              global.name, type->nativeSharpTypeKey, type->canonicalCppType,
                              *global.externalSymbol, type->isVolatile, type->isConst,
-                             global.type.kind == CppTypeKind::Pointer && global.type.element &&
-                                 global.type.element->isConst, global.dllImport,
+                             pointerStorage->kind == CppTypeKind::Pointer && pointerStorage->element &&
+                                 pointerStorage->element->isConst, global.dllImport,
                              global.type.kind == CppTypeKind::Pointer && global.type.element &&
                                  global.type.element->isVolatile, std::nullopt, global.type.sizeBits,
                              global.declarationAlignmentBits};
