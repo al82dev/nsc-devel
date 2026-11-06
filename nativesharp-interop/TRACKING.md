@@ -435,6 +435,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-007. Mapear los tipos de punto flotante según el objetivo.
 - [ ] T08-008. Mapear el tipo `void` en parámetros y resultados donde corresponda.
 - [ ] T08-009. Mapear enumeraciones y sus valores representables.
+  - Enum compartido y enumerador resueltos en O0–O3. La comparación directa
+    entre enum C y enumerador entero falla en O0; requiere promoción numérica
+    en análisis y generación. [Detalle](registro-commits/prueba-promocion-enum-c.md).
   - La prueba del enum compartido detectó rechazo de locales inferidos y
     ambigüedad de enumeradores. Se prepararon correcciones; aún no se han
     validado. [Detalle](registro-commits/prueba-enum-c-compartido.md).
