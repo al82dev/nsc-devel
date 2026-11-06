@@ -10,3 +10,6 @@ de layout pasó. Los controles negativos se rechazaron respectivamente por
 escritura no asignable y pérdida de const al inicializar `int*`; se ajusta el
 script para exigir esos mensajes concretos. Falta repetir el script ajustado;
 no se acreditan todas las dimensiones ni rutas de escape.
+
+La repetición con el script que exige los diagnósticos específicos pasó con
+el mismo build; el resultado no cierra T08-016 ni la tanda.
