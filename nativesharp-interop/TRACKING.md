@@ -190,6 +190,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Con `81b6851c9`, el productor/consumidor con enum C en firma, campo y
+    constante pasó O0–O3. La variante que devuelve record C por valor falló
+    en O0 al importar `get_c_record_value`; `mapFunctionType` limita records a
+    punteros. La matriz completa termina con error y el caso sigue pendiente.
   - Comprobación real con `20d0a28e0`: NSC construyó el productor con tipo C en
     su API, el consumidor enlazó por LibraryReference y su ejecutable terminó
     con código 0 en O0. La suite de sesión pasó después de corregir el fixture

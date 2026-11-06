@@ -1619,3 +1619,12 @@ incrementalmente, la suite pasó con código 0, incluidos los controles del code
 1.42 y la compatibilidad básica de 1.41. Se observaron advertencias de campos
 sin inicializador. Esta evidencia no cubre O1–O3, todas las formas de tipos ni
 la batería completa de la tanda.
+
+## Enum y record por valor en metadata
+
+Con `81b6851c9`, el fixture productor/consumidor que publica un enum C en una
+firma y un campo, y usa su constante, compiló, enlazó y ejecutó en O0, O1, O2 y
+O3. La variante de retorno de record C por valor falló en O0 con identificador
+desconocido para `get_c_record_value`; la proyección actual rechaza records de
+valor directamente en la firma. La matriz total devuelve error y el soporte por
+valor requiere implementar y verificar el contrato ABI antes de cerrar la tanda.
