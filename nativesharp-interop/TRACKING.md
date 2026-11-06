@@ -593,6 +593,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     [Evidencia](registro-commits/prueba-opacos-header-compartido.md).
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
+  - Clang confirmó acquire/release en arreglos globales C de enteros de
+    8–64 bits y float/double. Preparada la extensión y controles de NSC;
+    falta validarlos. `_Bool` permanece bajo investigación.
+    [Detalle](registro-commits/control-orden-array-escalar-ms.md).
   - Construcción incremental, sesión Clang y fixture mixto O0–O3 pasaron para
     los casos preparados de globales y arreglos volatile; el IR confirmó los
     órdenes directos comprobados. Locales y punteros obtenidos de arreglos
