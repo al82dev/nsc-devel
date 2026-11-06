@@ -33,6 +33,7 @@
 #include "nativesharp/Interop/CppScalarTypeMapping.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/Interop/CppSemanticRecord.h"
+#include "../../src/Interop/Internal/CppCRecordMetadataCodec.h"
 #include "nativesharp/Interop/CppSemanticInventory.h"
 #include "nativesharp/Interop/CppSemanticFunctionGroups.h"
 #include "nativesharp/Interop/CppNamespaceInventory.h"
@@ -3051,6 +3052,22 @@ int main(int argc, char** argv)
             ok &= expect(catalogEntries.size() == 2 && catalog && catalog->size() == 2 &&
                          (*catalog)[0].identityKey < (*catalog)[1].identityKey,
                          "C record catalog is ordered deterministically");
+            if (catalog)
+            {
+                std::vector<std::uint8_t> encoded, reencoded;
+                std::vector<CppCRecordSnapshot> decoded;
+                std::string codecError;
+                const bool roundTrip = metadata_detail::encodeCRecordCatalog(*catalog, encoded, codecError) &&
+                    metadata_detail::decodeCRecordCatalog(encoded, decoded, codecError) &&
+                    metadata_detail::encodeCRecordCatalog(decoded, reencoded, codecError);
+                ok &= expect(roundTrip && encoded == reencoded && decoded.size() == catalog->size(),
+                             "C record catalog codec preserves its complete encoding");
+                if (!encoded.empty()) encoded.pop_back();
+                const auto priorSize = decoded.size();
+                ok &= expect(!metadata_detail::decodeCRecordCatalog(encoded, decoded, codecError) &&
+                             decoded.size() == priorSize,
+                             "C record catalog codec rejects truncation without changing output");
+            }
             if (!catalogGroups.empty())
             {
                 catalogGroups.push_back(catalogGroups.front());
