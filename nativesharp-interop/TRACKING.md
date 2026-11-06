@@ -601,6 +601,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     el arreglo y la matriz de records empaquetados, con comprobación de IR O0
     y rechazo de direcciones subalineadas. T08-016 sigue abierto.
 - [ ] T08-017. Definir la representación de punteros a función C.
+  - El callback almacenado volatile aún se rechaza como campo y global. Clang
+    emitió una carga atómica acquire de puntero alineado para ambos; falta
+    preservar y comprobar el orden completo antes de habilitar el acceso.
+    [Detalle](registro-commits/callback-c-volatile.md).
   - Los callbacks vectorcall y C variádico retornados desde biblioteca
     precompilada se invocaron O0–O3; NSMETA conserva sus identidades.
     [Detalle](registro-commits/convenciones-callback-metadata.md).
