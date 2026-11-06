@@ -123,6 +123,46 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         (record.kind == CppRecordKind::Union && record.isCxx) || fieldIndex >= record.fields.size()) return std::nullopt;
     const auto identity = projectCppRecordIdentity(record, moduleName);
     const auto& field = record.fields[fieldIndex];
+    if (field.bitWidth)
+    {
+        // For nonvolatile C structs, use a bounded byte window containing only
+        // bit-field storage. Clang's AST provides absolute bit coordinates.
+        if (!identity || record.isCxx || record.kind != CppRecordKind::Struct ||
+            field.name.empty() || field.access != CppAccess::Public || field.type.isVolatile ||
+            !field.offsetBits || !*field.bitWidth || !field.type.sizeBits ||
+            *field.type.sizeBits > 64 || *field.bitWidth > *field.type.sizeBits ||
+            *field.offsetBits > *record.sizeBits || *field.bitWidth > *record.sizeBits - *field.offsetBits ||
+            *record.sizeBits % 8 || *record.alignmentBits % 8 || !*record.alignmentBits ||
+            (field.type.kind != CppTypeKind::SignedInteger &&
+             field.type.kind != CppTypeKind::UnsignedInteger && field.type.kind != CppTypeKind::Boolean))
+            return std::nullopt;
+        const std::uint64_t byteOffset = *field.offsetBits / 8;
+        const std::uint64_t bitOffset = *field.offsetBits % 8;
+        const std::uint64_t neededBits = bitOffset + *field.bitWidth;
+        std::uint64_t bytes = 1;
+        while (bytes < 8 && bytes * 8 < neededBits) bytes *= 2;
+        const auto recordBytes = *record.sizeBits / 8;
+        if (bytes * 8 < neededBits || byteOffset > recordBytes || bytes > recordBytes - byteOffset)
+            return std::nullopt;
+        for (std::size_t i = 0; i < record.fields.size(); ++i)
+        {
+            if (i == fieldIndex || record.fields[i].bitWidth) continue;
+            const auto& other = record.fields[i];
+            if (!other.offsetBits || *other.offsetBits % 8) return std::nullopt;
+            const auto otherStart = *other.offsetBits / 8;
+            if (otherStart >= byteOffset + bytes) continue;
+            if (!other.type.sizeBits || *other.type.sizeBits % 8) return std::nullopt;
+            if (otherStart > recordBytes || *other.type.sizeBits / 8 > recordBytes - otherStart)
+                return std::nullopt;
+            if (otherStart + *other.type.sizeBits / 8 > byteOffset) return std::nullopt;
+        }
+        const auto mapped = mapCppScalarType(field.type);
+        if (!mapped) return std::nullopt;
+        const auto alignment = std::min(bytes, std::gcd(*record.alignmentBits / 8, byteOffset));
+        if (!alignment || (alignment & (alignment - 1)) != 0) return std::nullopt;
+        return CppSemanticInstanceField{projectOrdinal, identity->key(), field.name, *mapped,
+            byteOffset, false, bytes, alignment, field.clangUsr, bitOffset, *field.bitWidth};
+    }
     if (!identity || field.name.empty() || field.access != CppAccess::Public || field.bitWidth ||
         !field.offsetBits || *field.offsetBits % 8 != 0 || !field.type.sizeBits || !field.type.alignmentBits ||
         *field.type.alignmentBits == 0 || *field.type.alignmentBits % 8 != 0 ||
@@ -214,7 +254,7 @@ frontend::CppImportedInstanceField toCppImportedInstanceField(const CppSemanticI
 {
     return {field.projectOrdinal, field.ownerIdentityKey, field.name, field.type.nativeSharpTypeKey,
             field.byteOffset, field.type.isConst, field.type.isVolatile, field.pointeeReadonly,
-            field.byteSize, field.byteAlignment, std::nullopt, field.clangUsr};
+            field.byteSize, field.byteAlignment, std::nullopt, field.clangUsr, field.bitOffset, field.bitWidth};
 }
 
 std::optional<CppSemanticStaticField> projectCppSemanticStaticField(
