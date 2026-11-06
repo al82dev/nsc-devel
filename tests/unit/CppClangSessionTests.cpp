@@ -2934,6 +2934,24 @@ int main(int argc, char** argv)
         if (color)
         {
             CppSemanticEnumEntry enumEntry{{}, 0, 0, "x86_64-pc-windows-msvc", *color};
+            std::vector<CppSemanticEnumEntry> enumEntries{enumEntry, enumEntry};
+            enumEntries[0].declaration.clangUsr.reset();
+            enumEntries[0].declaration.enumerators[0].clangUsr.reset();
+            enumEntries[1].declaration.clangUsr = "enum-usr";
+            enumEntries[1].declaration.enumerators[0].clangUsr = "value-usr";
+            const nativesharp::compilation::TypeIdentity colorIdentity("Semantic", {}, {}, "Color");
+            const std::vector<std::string> enumSeeds{colorIdentity.key()};
+            const auto enumCatalog = captureCppCEnumCatalog(enumEntries, 0, "Semantic", enumSeeds);
+            const auto* enumSnapshots = std::get_if<std::vector<CppCEnumSnapshot>>(&enumCatalog);
+            ok &= expect(enumSnapshots && enumSnapshots->size() == 1 &&
+                         (*enumSnapshots)[0].declaration.clangUsr == "enum-usr" &&
+                         (*enumSnapshots)[0].declaration.enumerators[0].clangUsr == "value-usr" &&
+                         (*enumSnapshots)[0].declaration.enumerators[0].decimalValue == "-3",
+                         "C enum catalogue reconciles identities and preserves exact signed values");
+            enumEntries[1].declaration.enumerators[0].decimalValue = "-4";
+            ok &= expect(std::holds_alternative<CppCEnumSnapshotFailure>(
+                             captureCppCEnumCatalog(enumEntries, 0, "Semantic", enumSeeds)),
+                         "C enum catalogue rejects conflicting values");
             const auto negative = projectCppEnumConstant(enumEntry, 0);
             const auto positive = projectCppEnumConstant(enumEntry, 1);
             const auto* negativeValue = std::get_if<CppSemanticEnumConstant>(&negative);
