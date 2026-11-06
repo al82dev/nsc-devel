@@ -102,6 +102,9 @@ pruebas-tanda-08-meta-c, tracking y registros. Mantener el rechazo de identidade
 activas/precompiladas aún no conciliadas y validar la ruta real antes del cierre.
 Añadir ese fixture a validar-tanda-08.cmd para que la batería agrupada registre
 su resultado junto con los demás casos de la tanda.
+Ampliar pruebas-tanda-08-meta-c para publicar un enum C en una firma y en un
+campo de record, consumir su constante y contrastar las cuatro optimizaciones
+O0–O3 en directorios separados. Mantener los artefactos en A: y NSLink protegido.
 Transportar los bytes verificados del catálogo desde la superficie de metadata
 hasta PrecompiledSyntaxModule; presupuesto adicional: PrecompiledSyntaxModule.h,
 PrecompiledProjectPreparation.cpp y controles existentes. No habilitar 1.42
