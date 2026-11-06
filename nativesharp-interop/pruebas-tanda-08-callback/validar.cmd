@@ -40,6 +40,8 @@ clang.exe -S -emit-llvm --target=x86_64-pc-windows-msvc -std=c11 -O0 "%DEST%\Api
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Volatile.nsproj" > "%DEST%\volatile.ll"
 if errorlevel 1 exit /b 1
+python "%~dp0verificar_ir.py" "%DEST%\api.ll" "%DEST%\volatile.ll"
+if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Volatile.nsproj" -O%%O --no-artifact-cache -o "%DEST%\volatile-O%%O.exe"
   if errorlevel 1 exit /b 1
