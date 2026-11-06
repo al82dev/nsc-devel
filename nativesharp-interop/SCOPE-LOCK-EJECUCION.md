@@ -80,6 +80,10 @@ Preparar proveedores combinados para campos y valores provenientes de sesiones
 y de catálogos precompilados: filtrar enumeradores por demanda y visibilidad,
 detectar colisiones y preservar las salidas si falla la reconstrucción. Presupuesto:
 CppSemanticRecord.h/.cpp y controles de sesión. No conectarlos aún al driver.
+Preparar un control integrado en CppClangSessionTests.cpp que instale un catálogo
+en un módulo precompilado sintético y configure selector y proveedores combinados
+en ProjectCompilation. Comprobar resolución de tipo, campo y enumerador y una
+declaración NativeSharp de la superficie. No habilitar el formato ni el driver.
 Transportar los bytes verificados del catálogo desde la superficie de metadata
 hasta PrecompiledSyntaxModule; presupuesto adicional: PrecompiledSyntaxModule.h,
 PrecompiledProjectPreparation.cpp y controles existentes. No habilitar 1.42
