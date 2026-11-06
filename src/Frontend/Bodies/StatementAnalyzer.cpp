@@ -4623,7 +4623,11 @@ void ProjectMethodBodyModel::analyzeVariable(
     if (!isReferenceLocal && typeKey.starts_with("type:"))
     {
         const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(typeKey).substr(5));
-        if (ordinal && nameLookup_->cppImportedTypeIndex(*ordinal) && !cppLocalLifetimeAnalysisForTests_)
+        const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+        const bool cValue = imported && imported->objectLayout && !imported->isIncomplete &&
+            imported->deferredImportError.empty() &&
+            (imported->origin == CppImportedTypeOrigin::CStruct || imported->origin == CppImportedTypeOrigin::CUnion);
+        if (imported && !cValue && !cppLocalLifetimeAnalysisForTests_)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::IncompleteType,
