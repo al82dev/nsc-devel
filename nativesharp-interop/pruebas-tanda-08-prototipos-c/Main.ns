@@ -6,5 +6,6 @@ int Main()
     byte value = 3;
     float fraction = 1.5f;
     if (old_style(value, fraction) != 18) return 3;
+    if (refined(4) != 15 || refined_zero() != 29) return 4;
     return 0;
 }

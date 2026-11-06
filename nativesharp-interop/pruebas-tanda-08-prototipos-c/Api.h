@@ -4,3 +4,7 @@ void* identity_pointer(void* value);
 int no_arguments(void);
 int old_style();
 int old_style_noargs();
+int refined();
+int refined(int value);
+int refined_zero();
+int refined_zero(void);

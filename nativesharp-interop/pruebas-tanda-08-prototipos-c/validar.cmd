@@ -9,7 +9,7 @@ set "TEMP=%DEST%"
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
 set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
-for %%F in (Api.h Api.c Project.nsproj Main.ns Invalid.ns.txt) do (
+for %%F in (Api.h Api.c Project.nsproj Main.ns Invalid.ns.txt InvalidRefined.ns.txt InvalidRefinedZero.ns.txt) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -31,4 +31,13 @@ if not errorlevel 1 exit /b 1
 findstr /i /c:"no_arguments" "%DEST%\invalid.log" >nul
 if errorlevel 1 exit /b 1
 echo Prototipo sin argumentos rechaza argumentos adicionales.
+for %%F in (InvalidRefined InvalidRefinedZero) do (
+  copy /y "%DEST%\%%F.ns.txt" "%DEST%\Main.ns" >nul
+  if errorlevel 1 exit /b 1
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\%%F.exe" > "%DEST%\%%F.log" 2>&1
+  if not errorlevel 1 exit /b 1
+  findstr /i /c:"no overload" "%DEST%\%%F.log" >nul
+  if errorlevel 1 exit /b 1
+  echo Redeclaracion %%F rechaza aridad incorrecta.
+)
 exit /b 0
