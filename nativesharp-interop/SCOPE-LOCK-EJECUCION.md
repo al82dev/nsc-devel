@@ -3329,6 +3329,9 @@ Para el fallo confirmado, permitir `src/Interop/Internal/CppCRecordMetadataCodec
 y los controles existentes para una extensión versionada y canónica del
 catálogo. Preservar lectura y huellas anteriores, incluir formato flotante en
 comparación y fingerprint sin procedencia y rechazar metadata incompatible.
+Permitir además `src/Interop/LibraryMetadataConstruction.cpp`: el productor
+elige por defecto la variante anterior y debe promoverla solo si el catálogo
+real contiene formato IEEE; preservar la versión anterior cuando no lo usa.
 Ampliar el control escalar existente en `tests/unit/CppClangSessionTests.cpp`
 para distinguir tamaño 64 sin evidencia IEEE y formato IEEE acreditado.
 Preparar en el fixture flotante un productor NativeSharp precompilado y un
