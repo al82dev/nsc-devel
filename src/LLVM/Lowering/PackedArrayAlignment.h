@@ -52,6 +52,27 @@ inline std::optional<std::uint64_t> clangMsVolatileEnumElementAlignment(
     return width;
 }
 
+// The root marker is set only for a C global int array with proven alignment.
+// Each raw index must preserve that alignment, including multidimensional strides.
+inline std::optional<std::uint64_t> clangMsVolatileGlobalIntArrayAlignment(
+    const frontend::ProjectOopMirNode* node) noexcept
+{
+    if (!node || node->kind != frontend::ProjectOopMirNodeKind::RawElementAddress ||
+        node->typeKey != "builtin:int" || !node->volatileAccess) return std::nullopt;
+    unsigned depth = 0;
+    while (node && node->kind == frontend::ProjectOopMirNodeKind::RawElementAddress)
+    {
+        if (++depth > 128 || node->children.size() != 2 || !node->children.front() ||
+            node->immediate == 0 || node->immediate % 4 != 0) return std::nullopt;
+        node = node->children.front().get();
+    }
+    if (!node || node->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
+        !node->volatileAccess || !node->cppMicrosoftVolatileSemantics.value_or(false) ||
+        node->cppAtomicAlignmentBytes != std::optional<std::uint64_t>{4} ||
+        !node->typeKey.starts_with("builtin:int[")) return std::nullopt;
+    return 4;
+}
+
 inline std::optional<std::uint64_t> clangMsVolatileFunctionFieldAlignment(
     const frontend::ProjectOopMirNode* node) noexcept
 {

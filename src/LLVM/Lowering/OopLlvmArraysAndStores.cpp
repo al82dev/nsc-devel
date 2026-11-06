@@ -188,6 +188,11 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 LLVMSetOrdering(previous, LLVMAtomicOrderingAcquire);
                 LLVMSetAlignment(previous, static_cast<unsigned>(*alignment));
             }
+            if (const auto alignment = clangMsVolatileGlobalIntArrayAlignment(node->children[0].get()))
+            {
+                LLVMSetOrdering(previous, LLVMAtomicOrderingAcquire);
+                LLVMSetAlignment(previous, static_cast<unsigned>(*alignment));
+            }
             if (isClangMsVolatileScalarGlobal(node->children[0].get()))
             {
                 LLVMSetOrdering(previous, LLVMAtomicOrderingAcquire);
@@ -235,6 +240,11 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
             }
             if (const auto alignment = clangMsVolatileEnumElementAlignment(node->children[0].get()))
+            {
+                LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
+                LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
+            }
+            if (const auto alignment = clangMsVolatileGlobalIntArrayAlignment(node->children[0].get()))
             {
                 LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
                 LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
@@ -451,6 +461,11 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
         }
         if (const auto alignment = clangMsVolatileEnumElementAlignment(node->children[0].get()))
+        {
+            LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
+            LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
+        }
+        if (const auto alignment = clangMsVolatileGlobalIntArrayAlignment(node->children[0].get()))
         {
             LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
             LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
