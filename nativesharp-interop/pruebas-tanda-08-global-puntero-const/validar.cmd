@@ -75,12 +75,12 @@ findstr /i /c:"error: left side of assignment is not assignable" "%DEST%\Invalid
 if errorlevel 1 (echo El rechazo no corresponde a la reasignacion del slot. & exit /b 1)
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidFixedAddress.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidFixedAddress.exe" > "%DEST%\InvalidFixedAddress.log" 2>&1
 if not errorlevel 1 (echo Se acepto escapar la direccion de un puntero constante. & exit /b 1)
-findstr /i /c:"readonly" /c:"const" "%DEST%\InvalidFixedAddress.log" >nul
+findstr /i /c:"would discard pointee constness" "%DEST%\InvalidFixedAddress.log" >nul
 if errorlevel 1 (echo El rechazo de direccion no identifica el calificador. & exit /b 1)
 echo Reasignacion y escape del slot constante rechazados.
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidFixedArgument.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidFixedArgument.exe" > "%DEST%\InvalidFixedArgument.log" 2>&1
 if not errorlevel 1 (echo Se acepto el arreglo de slots constantes como argumento mutable. & exit /b 1)
-findstr /i /c:"no viable overload" /c:"const" /c:"readonly" "%DEST%\InvalidFixedArgument.log" >nul
+findstr /i /c:"no viable overload of namespace function 'c_mutate' accepts the argument types" "%DEST%\InvalidFixedArgument.log" >nul
 if errorlevel 1 (echo El rechazo del argumento no identifica el contrato. & exit /b 1)
 echo Argumento mutable de slots constantes rechazado.
 exit /b 0
