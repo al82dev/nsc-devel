@@ -3322,6 +3322,13 @@ capturar explícitamente semántica IEEE binary64 desde Clang y usarla al
 mapear `long double`. No inferir el formato solo por el ancho. La persistencia
 de este dato en metadata queda pendiente de diseño y validación propia; no
 declarar soporte de bibliotecas precompiladas hasta resolverla.
+Para el fallo confirmado, permitir `src/Interop/Internal/CppCRecordMetadataCodec.cpp`,
+`src/Interop/Internal/CppCRecordMetadataCodec.h`, `src/Interop/LibraryMetadataPayload.cpp`,
+`src/Interop/LibraryMetadataVerification.cpp`, `src/Interop/Cpp/CppSemanticRecord.cpp`,
+`src/Interop/Cpp/CppSemanticInventory.cpp`, `include/nativesharp/Interop/LibraryMetadata.h`
+y los controles existentes para una extensión versionada y canónica del
+catálogo. Preservar lectura y huellas anteriores, incluir formato flotante en
+comparación y fingerprint sin procedencia y rechazar metadata incompatible.
 Ampliar el control escalar existente en `tests/unit/CppClangSessionTests.cpp`
 para distinguir tamaño 64 sin evidencia IEEE y formato IEEE acreditado.
 Preparar en el fixture flotante un productor NativeSharp precompilado y un
