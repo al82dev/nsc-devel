@@ -1,5 +1,8 @@
 #include "Api.h"
 static Pair sample_pair = { 1, 2 };
+static PackedRecordArray sample_packed_record_array = { 1, { { 2, 3 }, { 4, 5 } } };
+PackedRecordArray* layout_packed_record_array(void) { return &sample_packed_record_array; }
+int layout_packed_record_array_value(void) { return sample_packed_record_array.values[1].b; }
 static PackedNestedArray sample_packed_nested_array = { 1, { { 2, 3 } } };
 PackedNestedArray* layout_packed_nested_array(void) { return &sample_packed_nested_array; }
 int layout_packed_nested_array_value(void) { return sample_packed_nested_array.nested.values[1]; }

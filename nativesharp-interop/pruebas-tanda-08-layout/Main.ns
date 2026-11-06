@@ -62,5 +62,9 @@ int Main()
     nestedArray->nested.values[1] = 70;
     nestedArray->nested.values[1] += 2;
     if (nestedArray->nested.values[1] != 72 || layout_packed_nested_array_value() != 72) return 25;
+    PackedRecordArray* recordArray = layout_packed_record_array();
+    recordArray->values[1].b = 80;
+    recordArray->values[1].b += 2;
+    if (recordArray->values[1].b != 82 || layout_packed_record_array_value() != 82) return 26;
     return 0;
 }

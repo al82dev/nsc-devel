@@ -10,7 +10,10 @@ typedef struct PackedQualified { char tag; const int fixed[2]; volatile int stat
 typedef struct PackedPointers { char tag; int* slots[2]; } PackedPointers;
 typedef struct PackedNested { char tag; Pair nested; } PackedNested;
 typedef struct PackedNestedArray { char tag; InnerArray nested; } PackedNestedArray;
+typedef struct PackedRecordArray { char tag; Pair values[2]; } PackedRecordArray;
 #pragma pack(pop)
+PackedRecordArray* layout_packed_record_array(void);
+int layout_packed_record_array_value(void);
 PackedNestedArray* layout_packed_nested_array(void);
 int layout_packed_nested_array_value(void);
 PackedNested* layout_packed_nested(void);
