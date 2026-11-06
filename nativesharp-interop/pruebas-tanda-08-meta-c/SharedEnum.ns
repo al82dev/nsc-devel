@@ -1,0 +1,7 @@
+int Main()
+{
+    var fromLibrary = Published.Bridge.GetKind();
+    var fromHeader = get_c_kind();
+    if (fromLibrary != fromHeader || fromHeader != CGlobalChoice) return 1;
+    return 0;
+}

@@ -29,6 +29,10 @@ for %%O in (0 1 2 3) do (
   call :run %%O sharedvalue
   if errorlevel 1 exit /b 1
 )
+for %%O in (0 1 2 3) do (
+  call :run %%O sharedenum
+  if errorlevel 1 exit /b 1
+)
 call :run 0 conflict
 if errorlevel 1 exit /b 1
 echo Public C type metadata consumer compiled and ran in O0 through O3.
@@ -38,7 +42,7 @@ exit /b 0
 set "DEST=%TASK_META_ROOT%\O%~1-%~2"
 if not exist "%DEST%" mkdir "%DEST%"
 if errorlevel 1 exit /b 1
-for %%F in (Api.h Api.c Conflict.h Independent.h Independent.c Producer.nsproj Producer.ns Consumer.nsproj Consumer.ns Inferred.nsproj Inferred.ns Independent.nsproj Independent.ns Shared.nsproj Shared.ns SharedValue.nsproj SharedValue.ns) do (
+for %%F in (Api.h Api.c Conflict.h Independent.h Independent.c Producer.nsproj Producer.ns Consumer.nsproj Consumer.ns Inferred.nsproj Inferred.ns Independent.nsproj Independent.ns Shared.nsproj Shared.ns SharedValue.nsproj SharedValue.ns SharedEnum.nsproj SharedEnum.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -62,6 +66,14 @@ if /I "%~2"=="inferred" (
   "%DEST%\Inferred.exe"
   if errorlevel 1 exit /b 1
   echo Inferred C record consumer passed O%~1.
+  exit /b 0
+)
+if /I "%~2"=="sharedenum" (
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\SharedEnum.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\SharedEnum.exe"
+  if errorlevel 1 exit /b 1
+  "%DEST%\SharedEnum.exe"
+  if errorlevel 1 exit /b 1
+  echo Shared C enum passed O%~1.
   exit /b 0
 )
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\Producer.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\CPublishedProducer.lib"
