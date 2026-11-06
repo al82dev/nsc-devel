@@ -1,0 +1,5 @@
+int Main()
+{
+    *volatile_void_global = 1;
+    return 0;
+}

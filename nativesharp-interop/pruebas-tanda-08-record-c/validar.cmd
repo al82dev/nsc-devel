@@ -269,6 +269,18 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project
 if not errorlevel 1 exit /b 1
 findstr /c:"would discard pointer pointee volatile qualification" "%DEST%\volatile-pointer-array-discard.log" >nul
 if errorlevel 1 exit /b 1
+copy /y "%~dp0VolatileVoidGlobalDiscard.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-void-global-discard.exe" > "%DEST%\volatile-void-global-discard.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"would discard pointer pointee volatile qualification" "%DEST%\volatile-void-global-discard.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0VolatileVoidGlobalDereference.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-void-global-dereference.exe" > "%DEST%\volatile-void-global-dereference.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"operand of * must be a non-void pointer" "%DEST%\volatile-void-global-dereference.log" >nul
+if errorlevel 1 exit /b 1
 copy /y "%~dp0VolatilePointerArrayCall.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-pointer-array-call.exe" > "%DEST%\volatile-pointer-array-call.log" 2>&1

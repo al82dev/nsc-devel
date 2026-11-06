@@ -37,6 +37,8 @@ int check_volatile_integers(void)
 }
 static volatile int pointee_storage = 7;
 static volatile int pointer_array_storage = 11;
+volatile void* volatile_void_global = &pointer_array_storage;
+volatile void* volatile_void_array[2] = { &pointee_storage, &pointer_array_storage };
 volatile int* volatile_pointer_array[2] = { &pointee_storage, &pointer_array_storage };
 volatile int* volatile_pointer_matrix[2][2] = {
     { &pointee_storage, &pointer_array_storage }, { &pointer_array_storage, &pointee_storage }

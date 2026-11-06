@@ -27,6 +27,8 @@ int check_volatile_floats(void);
 int check_volatile_integers(void);
 extern volatile int* volatile_pointee;
 extern volatile int* volatile_pointer_array[2];
+extern volatile void* volatile_void_global;
+extern volatile void* volatile_void_array[2];
 extern volatile int* volatile_pointer_matrix[2][2];
 extern const volatile int* const_volatile_pointer_array[2];
 extern volatile int* const fixed_volatile_pointer_array[2];

@@ -1,0 +1,5 @@
+int Main()
+{
+    void* plain = volatile_void_global;
+    return 0;
+}
