@@ -131,7 +131,6 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
             (depth != 0 || current->kind == CppTypeKind::Pointer))) return std::nullopt;
         ++depth;
     }
-    if (current->kind == CppTypeKind::Record && current->isConst) return std::nullopt;
     const auto element = mapGlobalType(*current, projectOrdinal, moduleName, lookup, cLanguage);
     if (!element) return std::nullopt;
     return CppScalarTypeMapping{element->nativeSharpTypeKey + std::string(depth, '*'),

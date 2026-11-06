@@ -1716,6 +1716,13 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Primera batería: código 1 porque `*volatile_nested_record.target = 47` produjo una carga volatile del puntero seguida incorrectamente de `store volatile` en el apuntado. En `finishStorageUnaryFrame` la desreferenciación usada como dirección devuelve el nodo de carga del puntero y su indicador se interpreta como calificador del destino. Añadir `src/Frontend/HIR/ExpressionStatementMachine/HirCompletionTerminalFrames.cpp` al presupuesto y separar ambos nodos sin eliminar la carga volatile; repetir la validación agrupada.
 - La repetición terminó con código 0 y el IR confirmó la carga volatile seguida de escritura ordinaria. El rechazo de una dirección de campo readonly sigue mencionando incorrectamente bit fields. Añadir `src/Frontend/Bodies/IdentifierAnalyzer.cpp` al presupuesto y dar un diagnóstico de readonly; comprobar el texto en ambos fixtures const y exigir en el IR la carga volatile del campo puntero anidado.
 
+### Global C puntero a struct const
+
+- Objetivo: proyectar un global C `const struct*`, conservando la inmutabilidad del apuntado en accesos y conversiones; no confundirla con const del propio puntero.
+- Evidencia: `mapGlobalType` rechaza explícitamente el record const aun cuando `NamespaceStateSymbol.cppPointerPointeeReadonly` y el análisis de desreferenciación ya transportan readonly. La ruta no está verificada de extremo a extremo.
+- Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, fixtures y script de `pruebas-tanda-08-record-c`, y registros Markdown. Si las pruebas revelan errores de semántica o HIR, registrar antes los archivos concretos. No habilitar punteros a volatile ni niveles de indirección calificados no representados.
+- Preparar lectura y comprobación C, rechazo de escritura al campo y de conversión a puntero mutable, y un caso positivo del puntero mutable existente; validar el conjunto y las regresiones agrupadamente.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.
