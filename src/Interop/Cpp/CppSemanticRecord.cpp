@@ -5,6 +5,7 @@
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
+#include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
 #include "nativesharp/Interop/CppNamespaceInventory.h"
 #include "nativesharp/Interop/CppSemanticInventory.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
@@ -1008,6 +1009,55 @@ bool reconstructCEnumConstants(std::span<const CppCEnumSnapshot> enums,
         }
     }
     output = std::move(result); error.clear(); return true;
+}
+
+bool reconstructPrecompiledCMembers(std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const compilation::ProjectGraph& graph, std::string_view targetTriple,
+    const frontend::ProjectNameLookup& lookup, std::vector<frontend::CppImportedInstanceField>& fields,
+    std::vector<frontend::NamespaceStateSymbol>& constants, std::string& error)
+{
+    std::vector<frontend::CppImportedTypeDeclaration> checkedTypes;
+    if (!metadata_detail::reconstructPrecompiledCImportedTypes(modules, graph, targetTriple, checkedTypes, error))
+        return false;
+    std::vector<frontend::CppImportedInstanceField> resultFields;
+    std::vector<frontend::NamespaceStateSymbol> resultConstants;
+    std::set<std::string> seenTypes;
+    std::set<std::pair<std::size_t, std::string>> seenConstants;
+    for (const auto& module : modules)
+    {
+        if (module.cppCTypeCatalog.empty()) continue;
+        std::vector<CppCRecordSnapshot> records;
+        std::vector<CppCEnumSnapshot> enums;
+        if (!metadata_detail::decodeCTypeCatalog(module.cppCTypeCatalog, records, enums, error)) return false;
+        for (const auto& record : records)
+        {
+            if (!seenTypes.insert(record.identityKey).second) continue;
+            const auto ordinal = lookup.typeOrdinalForIdentity(record.identityKey);
+            const auto* owner = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+            if (!owner) { error = "precompiled C record is missing from name lookup"; return false; }
+            std::vector<frontend::CppImportedInstanceField> one;
+            if (!reconstructCImportedFields(std::span(&record, 1), owner->projectOrdinal,
+                    owner->identity.moduleName(), targetTriple, lookup, one, error)) return false;
+            resultFields.insert(resultFields.end(), std::make_move_iterator(one.begin()), std::make_move_iterator(one.end()));
+        }
+        for (const auto& enumeration : enums)
+        {
+            if (!seenTypes.insert(enumeration.identityKey).second) continue;
+            const auto ordinal = lookup.typeOrdinalForIdentity(enumeration.identityKey);
+            const auto* owner = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+            if (!owner) { error = "precompiled C enum is missing from name lookup"; return false; }
+            std::vector<frontend::NamespaceStateSymbol> one;
+            if (!reconstructCEnumConstants(std::span(&enumeration, 1), owner->projectOrdinal,
+                    owner->identity.moduleName(), targetTriple, lookup, one, error)) return false;
+            for (auto& constant : one)
+            {
+                if (!seenConstants.emplace(constant.projectOrdinal, constant.name).second)
+                { error = "precompiled C enumerators have conflicting names: " + constant.name; return false; }
+                resultConstants.push_back(std::move(constant));
+            }
+        }
+    }
+    fields = std::move(resultFields); constants = std::move(resultConstants); error.clear(); return true;
 }
 
 CppRecordRefinementResult refineCppRecordGroupsForPointerTransport(

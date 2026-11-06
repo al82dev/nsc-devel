@@ -13,7 +13,7 @@
 #include <string_view>
 #include <variant>
 
-namespace nativesharp::frontend { class ProjectCompilation; struct NamespaceStateSymbol; }
+namespace nativesharp::frontend { class ProjectCompilation; struct NamespaceStateSymbol; struct PrecompiledSyntaxModule; }
 
 namespace nativesharp::interop
 {
@@ -176,6 +176,10 @@ bool reconstructCEnumConstants(std::span<const CppCEnumSnapshot> enums,
     std::size_t projectOrdinal, std::string_view moduleName, std::string_view targetTriple,
     const frontend::ProjectNameLookup& lookup, std::vector<frontend::NamespaceStateSymbol>& output,
     std::string& error);
+bool reconstructPrecompiledCMembers(std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const compilation::ProjectGraph& graph, std::string_view targetTriple,
+    const frontend::ProjectNameLookup& lookup, std::vector<frontend::CppImportedInstanceField>& fields,
+    std::vector<frontend::NamespaceStateSymbol>& constants, std::string& error);
 
 enum class CppSignatureRecordStatus { Matched, Unprojectable, Missing };
 struct CppSignatureRecordDependency
