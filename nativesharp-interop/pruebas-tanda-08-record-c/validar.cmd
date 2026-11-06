@@ -73,10 +73,10 @@ findstr /r /c:"store volatile i32 68, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile del campo del resultado C. & exit /b 1)
 findstr /r /c:"store volatile i32 70, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile del campo anidado apuntado. & exit /b 1)
-findstr /r /c:"load volatile.*@volatile_array" "%DEST%\project.ll" >nul
-if errorlevel 1 (echo Falta lectura LLVM volatile del arreglo. & exit /b 1)
-findstr /r /c:"store volatile.*@volatile_array" "%DEST%\project.ll" >nul
-if errorlevel 1 (echo Falta escritura LLVM volatile del arreglo. & exit /b 1)
+findstr /r /c:"load atomic volatile.*@volatile_array.*acquire, align 4" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta lectura acquire volatile del arreglo. & exit /b 1)
+findstr /r /c:"store atomic volatile.*@volatile_array.*release, align 4" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura release volatile del arreglo. & exit /b 1)
 findstr /r /c:"store.*volatile i32 97" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile mediante puntero del arreglo. & exit /b 1)
 findstr /r /c:"store.*volatile i32 98" "%DEST%\project.ll" >nul
@@ -85,10 +85,10 @@ findstr /r /c:"store.*volatile i32 99" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile mediante puntero constante. & exit /b 1)
 findstr /r /c:"store.*volatile i32 101" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile mediante puntero de struct. & exit /b 1)
-findstr /r /c:"load volatile.*@volatile_matrix" "%DEST%\project.ll" >nul
-if errorlevel 1 (echo Falta lectura LLVM volatile de la matriz. & exit /b 1)
-findstr /r /c:"store volatile.*@volatile_matrix" "%DEST%\project.ll" >nul
-if errorlevel 1 (echo Falta escritura LLVM volatile de la matriz. & exit /b 1)
+findstr /r /c:"load atomic volatile.*@volatile_matrix.*acquire, align 4" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta lectura acquire volatile de la matriz. & exit /b 1)
+findstr /r /c:"store atomic volatile.*@volatile_matrix.*release, align 4" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura release volatile de la matriz. & exit /b 1)
 findstr /r /c:"load volatile.*@global_record_volatile" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta lectura LLVM volatile del campo global. & exit /b 1)
 findstr /r /c:"store volatile.*@global_record_volatile" "%DEST%\project.ll" >nul

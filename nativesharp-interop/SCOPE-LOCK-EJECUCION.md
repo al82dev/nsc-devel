@@ -15,7 +15,8 @@ Presupuesto: `src/Frontend/HIR/ExpressionStatementMachine/HirNameExpressionLower
 `src/Interop/Cpp/CppSemanticInventory.cpp`,
 `src/LLVM/Lowering/PackedArrayAlignment.h`,
 `src/LLVM/Lowering/OopLlvmArraysAndStores.cpp`,
-`src/LLVM/Lowering/OopLlvmExpressionMachine.cpp`, el fixture
+`src/LLVM/Lowering/OopLlvmExpressionMachine.cpp`,
+`tests/unit/CppClangSessionTests.cpp`, el fixture
 `pruebas-tanda-08-record-c`, tracking y registros. Demostrar la procedencia
 desde un global externo, la alineación del origen y la de cada paso antes de
 asignar órdenes; validar el IR y ejecutar la batería agrupada incremental.

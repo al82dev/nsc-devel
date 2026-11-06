@@ -1419,11 +1419,15 @@ int main(int argc, char** argv)
                             unsupportedDemand.lookupName = "tls";
                             auto invisibleDemand = globalDemand;
                             invisibleDemand.visibleProjects = {1};
-                            const std::vector demands{globalDemand, globalDemand, unsupportedDemand, invisibleDemand};
+                            nativesharp::frontend::CppFunctionDemand cDemand;
+                            cDemand.lookupName = "c_global";
+                            cDemand.lookupNamespaces = {""};
+                            cDemand.visibleProjects = {1};
+                            const std::vector demands{globalDemand, globalDemand, unsupportedDemand, invisibleDemand, cDemand};
                             std::vector<nativesharp::frontend::NamespaceStateSymbol> provided;
                             std::string providerError;
                             const bool providedOk = provideCppSemanticGlobals(finalGraph, groups, demands, provided, providerError);
-                            bool foundShared = false, foundDeferred = false;
+                            bool foundShared = false, foundDeferred = false, foundCOrigin = false;
                             for (const auto& state : provided)
                             {
                                 foundShared |= state.name == "shared" && state.projectOrdinal == 2 &&
@@ -1431,11 +1435,13 @@ int main(int argc, char** argv)
                                     state.cppMicrosoftVolatileSemantics.has_value() &&
                                     state.cppMicrosoftVolatileSemantics == groups[1].sessions[0]->microsoftVolatileSemantics() &&
                                     state.cppStorageSizeBits == std::optional<std::uint64_t>{32} &&
-                                    state.cppDeclarationAlignmentBits.has_value();
+                                    state.cppDeclarationAlignmentBits.has_value() && !state.cppCGlobal;
+                                foundCOrigin |= state.name == "c_global" && state.projectOrdinal == 1 &&
+                                    state.cppCGlobal && state.cppImportError.empty();
                                 foundDeferred |= state.name == "tls" && state.projectOrdinal == 2 &&
                                     state.cppImportError.find("thread-local") != std::string::npos;
                             }
-                            ok &= expect(providedOk && provided.size() == 2 && foundShared && foundDeferred,
+                            ok &= expect(providedOk && provided.size() == 3 && foundShared && foundDeferred && foundCOrigin,
                                          "global provider deduplicates demands, keeps project visibility and defers unsupported storage");
                             const auto selected = selectCppSemanticGlobal(*entries, 2, "feature::shared");
                             const auto providedShared = std::find_if(provided.begin(), provided.end(),
