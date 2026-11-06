@@ -2,6 +2,11 @@
 
 ## Typedef C en proyectos reales
 
+La prueba de enum de 8 bits generó negación i8 y devolvió 5: la ruta iterativa
+`src/Frontend/HIR/ExpressionStatementMachine/HirCompletionSimpleFrames.cpp`
+omitió la promoción preparada para la ruta recursiva. Permitir ese archivo y
+aplicar la misma conversión antes de la operación; comprobar el IR y O0–O3.
+
 Ampliar el grupo de operaciones de enum C con desplazamiento, operador
 unario y máscara; comprobar resultado unsigned y mantener control de enum
 NativeSharp. Observar fallos antes de modificar esas rutas semánticas.

@@ -3,6 +3,7 @@
 
 #include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
+#include "nativesharp/Frontend/CppImportedEnumNumeric.h"
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 #include "nativesharp/Frontend/ProjectMetaprogrammingModel.h"
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
@@ -274,6 +275,13 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledBuiltinUnaryFrame(
         auto unary = makeNode(
             ProjectOopHirNodeKind::Unary, frame.syntax, resultType);
         unary->operation = frame.syntax->tokenKind();
+        if (lowered && cppImportedCEnumUnderlying(nameLookup_, lowered->typeKey) &&
+            lowered->typeKey != resultType && ProjectTypeConversion::isIntegral(resultType))
+        {
+            ProjectImplicitConversion conversion{ProjectConversionKind::IntegralPromotion, 1,
+                                                 lowered->typeKey, resultType, std::nullopt};
+            lowered = wrapImplicitConversion(std::move(lowered), conversion, frame.syntax->first());
+        }
         unary->children.push_back(std::move(lowered));
         lowered = std::move(unary);
         frames.pop_back();
