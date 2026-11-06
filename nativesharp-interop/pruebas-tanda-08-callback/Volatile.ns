@@ -1,0 +1,12 @@
+int Main()
+{
+    VolatileCallbackHolder* holder = get_volatile_holder();
+    Callback field = holder->run;
+    Callback global = volatile_callback;
+    if (field(39) != 42 || global(39) != 42) return 1;
+    Callback replacement = (int value) => value + 5;
+    holder->run = replacement;
+    volatile_callback = replacement;
+    if (run_volatile_holder(holder, 37) != 42 || run_volatile_global(37) != 42) return 2;
+    return 0;
+}
