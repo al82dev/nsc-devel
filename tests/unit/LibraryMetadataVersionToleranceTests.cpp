@@ -102,8 +102,17 @@ int main()
         "historical-1.37.nsmeta";
     tests.expect(std::filesystem::is_regular_file(archivedPath),
         "the immutable pre-1.40 metadata fixture exists");
-    expectReadable(tests, codec, archivedPath,
-        "metadata emitted before the 1.40 section remains readable");
+    LibraryMetadata archived;
+    error.clear();
+    const bool archivedRead = codec.read(archivedPath, archived, error);
+    tests.expect(archivedRead && archived.formatMajor == 1 && archived.formatMinor == 37,
+        "the immutable pre-1.40 metadata remains readable (" + error + ")");
+    error.clear();
+    const bool archivedCompatible = archivedRead && codec.verifyCurrentCompiler(archived, error);
+    tests.expect(archivedRead && !archivedCompatible && archived.objectAbiVersion == 2 &&
+            error.find("object ABI expected 3, found 2; recompile the library with the current compiler") !=
+                std::string::npos,
+        "the archived object ABI 2 metadata is rejected at the ABI 3 boundary (" + error + ")");
 
     const std::vector<std::uint8_t> current = readBytes(currentPath);
     tests.expect(current.size() >= 12U, "metadata fixture contains the fixed header");

@@ -13,6 +13,10 @@ con el de los bytes emitidos; y probar la etiqueta futura sobre un modelo
 serializado con el formato actual, no sobre un payload 1.40 truncado para 1.46.
 Las referencias ausentes 1.40–1.43 siguen pendientes; no fabricar ni reescribir
 referencias históricas para hacer pasar la prueba.
+Permitir `tests/unit/LibraryMetadataVersionToleranceTests.cpp`: distinguir que
+el lector puede descodificar la referencia auténtica 1.37 de que el compilador
+pueda usarla; exigir el rechazo explícito por Object ABI 2 frente a 3. Mantener
+los controles de aceptación de formatos futuros cuyo contenido sea compatible.
 
 ## Punteros C a tipo incompleto entre módulos
 
