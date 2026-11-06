@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Modo volatile de campo y elemento en HIR
+
+T08-015: conservar el modo efectivo del campo importado en sus nodos HIR y
+propagarlo por direcciones de arreglos fijos, sin transferirlo desde el valor
+de un puntero cargado hacia su apuntado. No habilita aún operaciones atómicas.
+Presupuesto: HirNameExpressionLowering.cpp, HirCompletionValueFrames.cpp,
+HirCompletionAccessFrames.cpp y registros Markdown. LLVM externo y NSLink
+protegidos; validación agrupada.
+
 ## Modo volatile en campos importados
 
 T08-015: transportar el modo efectivo desde observaciones de record hasta el
