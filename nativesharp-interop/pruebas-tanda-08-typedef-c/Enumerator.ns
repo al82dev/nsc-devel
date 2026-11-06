@@ -14,5 +14,11 @@ int Main()
     int negative = -1;
     CUnsigned unsignedColor = negative;
     if (c_unsigned_verify(unsignedColor) != 1) return 5;
+    long wide = 4294967297L;
+    CColor narrowed = wide;
+    if (c_echo_color(narrowed) != COLOR_RED) return 6;
+    sbyte small = -1;
+    CUnsigned extended = small;
+    if (c_unsigned_verify(extended) != 1) return 7;
     return 0;
 }
