@@ -601,6 +601,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     volatile mediante i8 acquire/release y conversión a bool i1. Aún no
     validadas; las operaciones compuestas siguen pendientes.
     [Detalle](registro-commits/control-array-volatile-bool.md).
+  - El análisis de código indica que NSC rechaza asignaciones compuestas
+    numéricas con bool. Preparados controles negativos para bool NS y `_Bool`
+    importado; no se consideran soporte de la operación.
+    [Detalle](registro-commits/control-bool-compuesto.md).
   - Construcción incremental, sesión Clang y fixture mixto O0–O3 pasaron para
     los casos preparados de globales y arreglos volatile; el IR confirmó los
     órdenes directos comprobados. Locales y punteros obtenidos de arreglos
