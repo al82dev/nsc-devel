@@ -190,6 +190,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Preparados `f2d136227` y `52a45b8b5`: selección de miembros repetidos
+    rechaza USR de campo conocidos y contradictorios, con controles para USR
+    iguales y ausentes. Sin construir ni ejecutar.
   - Preparados `b16bc21b2`, `3932eca4a`, `8f773abfb` y `1f869f545`: USR
     opcional de campo hasta metadato y símbolo, con controles de presencia y
     ausencia. Sin construir ni validar; selección y persistencia siguen abiertas.

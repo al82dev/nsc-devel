@@ -1320,6 +1320,16 @@ los valores en ejecución y rechaza tomar la dirección. No se ha ejecutado.
 Los campos empaquetados C++ y los campos C de punteros, agregados y bitfields
 siguen pendientes, así como otras formas de acceso; no se cierra la tanda.
 
+## Persistencia de identidad de campos C: frontera observada
+
+`ClassMemberSnapshotCodec.cpp` no serializa `cppClangUsr` ni
+`cppMicrosoftVolatileSemantics`. La captura de miembros usa nodos de la unidad
+NativeSharp (`MemberCollection.cpp` y `SnapshotMembers.cpp`); los campos C
+se agregan por el proveedor en `ProjectMemberModel.cpp`. Es necesario comprobar
+el flujo completo de publicación y recuperación de esas dependencias antes de
+elegir un formato de persistencia: añadir bytes al codec de miembros nativos
+no demuestra por sí solo que se capturen los campos C. T08-002 sigue abierto.
+
 ## Diferencia de orden en enum volatile alineado dentro de agregado
 
 ### Actualización: corrección y validación dirigida
