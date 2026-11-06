@@ -1,0 +1,5 @@
+int Main()
+{
+    Opaque value;
+    return 0;
+}

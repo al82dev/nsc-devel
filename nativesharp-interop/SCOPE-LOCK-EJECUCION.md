@@ -1,5 +1,16 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Punteros C a tipo incompleto entre módulos
+
+Ampliar `nativesharp-interop/pruebas-tanda-08-incompleto` con una biblioteca C
+que define privadamente un struct opaco. Un proyecto NativeSharp consumirá
+punteros devueltos por C, los pasará a funciones C y accederá a un global de
+puntero al mismo tipo; la prueba negativa verificará que no se invente tamaño
+ni se permita un objeto por valor. Mantener salidas en A:, usar Clang y NSC
+experimentales existentes y no modificar producción antes de reproducir y
+delimitar una falla. Validar la matriz O0–O3 agrupada; LLVM y NSLink son de
+solo lectura.
+
 ## Arreglos globales C de punteros a const
 
 Preparar el fixture `nativesharp-interop/pruebas-tanda-08-global-puntero-const`

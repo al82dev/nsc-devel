@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>COpaqueInvalid</Name></PropertyGroup>
+  <ItemGroup><Compile Include="OpaqueInvalid.ns" /><CppLibraryReference Header="OpaqueApi.h" Language="C" Standard="c11" Library="opaque.lib" /></ItemGroup>
+</Project>

@@ -1,0 +1,9 @@
+int Main()
+{
+    Opaque* value = opaque_get();
+    if (opaque_read(value) != 17 || opaque_read(opaque_current) != 17) return 1;
+    opaque_set(value, 42);
+    if (opaque_read(opaque_current) != 42) return 2;
+    opaque_current = value;
+    return 0;
+}
