@@ -190,6 +190,11 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Cambio posterior a las notas históricas de abajo: `7c9668a9f`, `b2d88f6f7`
+    y `2fbe2256f` habilitan NSMETA 1.42 y conectan el productor y consumidor de
+    catálogos C. `4c399a685` incorpora el fixture real a la batería. Los cambios
+    aún no se han construido ni ejecutado; falta compatibilidad y validación de
+    extremo a extremo, además de conciliar identidades compartidas.
   - Comprobación agrupada tras `1a29352cc`: construcción incremental del objetivo
     `nsc_cpp_session_tests` y ejecución de la suite terminaron con código 0. En
     la primera ejecución hubo cinco fallos de fixtures; se corrigieron en
