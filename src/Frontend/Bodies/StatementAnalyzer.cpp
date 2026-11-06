@@ -5756,6 +5756,13 @@ bool ProjectMethodBodyModel::validatePointerReturn(
     const ExpressionResult& value,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
+    if (ProjectTypeConversion::isPointer(method.declaredTypeKey) && value.pointerPointeeVolatile)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, statement->first()->range(),
+            "return would discard pointer pointee volatile qualification");
+        return false;
+    }
     if (!ProjectTypeConversion::isPointer(method.declaredTypeKey) ||
         language::pointerContractImplicitlyAssignable(
             pointerContract(

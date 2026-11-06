@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Protección provisional del retorno de punteros volatile
+
+Rechazar retornos que descartarían el volatile inmediato mientras los tipos de
+resultado no lo representan. Archivo: StatementAnalyzer.cpp y documentación.
+No afecta retornos ordinarios; la importación sigue bloqueada hasta completar
+los demás recorridos y validar de forma agrupada.
+
 ## Protección provisional de argumentos con apuntado volatile
 
 Preparar el rechazo de argumentos volatile en las rutas ordinarias de resolución
