@@ -245,6 +245,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-007. Mapear los tipos de punto flotante según el objetivo.
 - [ ] T08-008. Mapear el tipo `void` en parámetros y resultados donde corresponda.
 - [ ] T08-009. Mapear enumeraciones y sus valores representables.
+  - Preparados `dad00a35d` y `63cce8a8d`: detectar destinos contradictorios
+    al seleccionar constantes C, con un control de igual identidad y valor.
+    Pendientes de construcción y ejecución agrupadas.
   - Preparados `3d98466c5` y `d07e26b4a`: la conciliación de enums compara el
     tipo efectivo de sus enumeradores y añade un control de conflicto con el
     mismo valor. Pendientes de construcción y ejecución agrupadas.
