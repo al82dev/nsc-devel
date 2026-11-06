@@ -1,4 +1,6 @@
 #include "../Internal/DriverInternal.h"
+#include "../../Interop/Internal/CppCRecordMetadataCodec.h"
+#include "../../Interop/Internal/LibraryMetadataCodecSupport.h"
 
 namespace nativesharp::driver
 {
@@ -384,13 +386,22 @@ bool metadataProvidesType(const interop::LibraryMetadata &metadata, const std::s
     const std::string typeKey = metadataBaseTypeKey(writtenTypeKey);
     if (metadataTypeForKey(metadata, typeKey) != nullptr)
         return true;
-    return std::ranges::any_of(metadata.genericSpecializations,
+    if (std::ranges::any_of(metadata.genericSpecializations,
                                [&](const auto &specialization)
                                {
                                    const std::optional<std::string> candidate =
                                        metadataSpecializedTypeKey(specialization);
                                    return candidate.has_value() && *candidate == typeKey;
-                               });
+                               })) return true;
+    const auto owner = metadataTypeModule(typeKey);
+    if (!owner || *owner != metadata.moduleName || metadata.cppCRecordCatalog.empty()) return false;
+    std::string error;
+    if (!interop::metadata_detail::verifyBinaryClosureMetadata(metadata, error)) return false;
+    std::vector<interop::CppCRecordSnapshot> records;
+    std::vector<interop::CppCEnumSnapshot> enums;
+    if (!interop::metadata_detail::decodeCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error)) return false;
+    return std::ranges::any_of(records, [&](const auto &record) { return "type:" + record.identityKey == typeKey; }) ||
+           std::ranges::any_of(enums, [&](const auto &enumeration) { return "type:" + enumeration.identityKey == typeKey; });
 }
 
 bool validatePrecompiledExternalTypeClosure(
