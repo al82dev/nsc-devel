@@ -3322,6 +3322,8 @@ capturar explícitamente semántica IEEE binary64 desde Clang y usarla al
 mapear `long double`. No inferir el formato solo por el ancho. La persistencia
 de este dato en metadata queda pendiente de diseño y validación propia; no
 declarar soporte de bibliotecas precompiladas hasta resolverla.
+Ampliar el control escalar existente en `tests/unit/CppClangSessionTests.cpp`
+para distinguir tamaño 64 sin evidencia IEEE y formato IEEE acreditado.
 Preparar en el fixture flotante un productor NativeSharp precompilado y un
 consumidor con el mismo encabezado para detectar pérdida del formato capturado.
 
