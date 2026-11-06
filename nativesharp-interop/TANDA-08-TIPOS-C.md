@@ -1048,6 +1048,14 @@ tanda construirá el ejecutable y ejecutará su modalidad enfocada. No ejecutada
 La misma prueba enfocada prepara una función HIR y exige identidades distintas
 para opción desconocida, desactivada y activada. No se ha ejecutado todavía.
 
+## Configuración del objetivo de prueba MIR
+
+La batería de `c552a69b9` compiló NSC pero se detuvo con `unknown target
+nsc_project_oop_lowering_tests`: el build tenía `NSC_BUILD_TESTS=OFF`. Se
+configuró la misma carpeta ON con `NSC_BUILD_TESTS=ON` y se añadió ese paso al
+script; se seguirán construyendo solo los objetivos explícitos. Las pruebas
+funcionales no llegaron a ejecutarse y deben repetirse.
+
 ## Alineación declarada de global C/C++
 
 El snapshot de globales prepara la captura de `ASTContext::getDeclAlign` en

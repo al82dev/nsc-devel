@@ -3,6 +3,8 @@ setlocal
 set "PATH=A:\al82dev-clang\bin;A:\nsc-interop-build\tanda1-ON\bin;%PATH%"
 set "TMP=A:\nsc-interop-build\temp"
 set "TEMP=%TMP%"
+cmake -S "%~dp0.." -B A:/nsc-interop-build/tanda1-ON -DNSC_BUILD_TESTS=ON
+if errorlevel 1 exit /b 1
 call "%~dp0construir-frontend-tanda1.cmd" nsc ON
 if errorlevel 1 exit /b 1
 call "%~dp0construir-frontend-tanda1.cmd" nsc_cpp_session_tests ON

@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Configuración del objetivo de prueba MIR
+
+La batería en c552a69b9 se detuvo porque `NSC_BUILD_TESTS` estaba desactivado y
+no existía el objetivo de restauración MIR. Habilitarlo en la configuración ON
+existente antes de construir los objetivos nombrados, sin compilar todos los
+tests. Archivos: validar-tanda-08.cmd y documentación. Repetir la batería.
+
 ## Prueba de orden MS en global directo
 
 Exigir IR acquire/release del global volatile de 32 bits y comprobar desde C la
