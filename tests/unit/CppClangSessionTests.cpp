@@ -3328,6 +3328,34 @@ int main(int argc, char** argv)
                 ok &= expect(roundTrip && combinedEncoded && metadata_detail::verifyBinaryClosureMetadata(catalogMetadata, codecError),
                              "metadata validates a canonical C record catalogue for its target");
                 {
+                    auto withOrigin = *catalog;
+                    auto completeRecord = std::find_if(withOrigin.begin(), withOrigin.end(),
+                        [](const auto& record) { return record.complete; });
+                    if (completeRecord != withOrigin.end())
+                    {
+                        completeRecord->sourceProvenance = CppRecordDeclaration::SourceProvenance{
+                            std::filesystem::path("headers/source.h"), std::string(64, 'b'), 12};
+                        auto newerMetadata = catalogMetadata;
+                        const bool encodedOrigin = metadata_detail::encodeCTypeCatalogWithProvenance(
+                            withOrigin, {}, newerMetadata.cppCRecordCatalog, codecError);
+                        newerMetadata.formatMinor = 42;
+                        const bool oldRejected = encodedOrigin &&
+                            !metadata_detail::verifyBinaryClosureMetadata(newerMetadata, codecError);
+                        newerMetadata.formatMinor = 43;
+                        const bool newAccepted = encodedOrigin &&
+                            metadata_detail::verifyBinaryClosureMetadata(newerMetadata, codecError);
+                        std::vector<CppCRecordSnapshot> decodedVersioned;
+                        std::vector<CppCEnumSnapshot> enumsVersioned;
+                        const bool readNew = metadata_detail::decodeVersionedCTypeCatalog(
+                            newerMetadata.cppCRecordCatalog, decodedVersioned, enumsVersioned, codecError);
+                        const bool readOld = metadata_detail::decodeVersionedCTypeCatalog(
+                            catalogMetadata.cppCRecordCatalog, decodedVersioned, enumsVersioned, codecError);
+                        ok &= expect(oldRejected && newAccepted && readNew && readOld,
+                                     "versioned C provenance requires metadata 1.43 and legacy catalogues remain readable");
+                    }
+                    else ok &= expect(false, "versioned catalogue has a complete record");
+                }
+                {
                     LibraryMetadataCodec codec;
                     const auto metadataFile = std::filesystem::path(argv[2]) / "cpp-catalog-42.nsmeta";
                     LibraryMetadata reread;
