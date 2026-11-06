@@ -2,7 +2,7 @@
   <PropertyGroup><Name>CIndependentConsumer</Name></PropertyGroup>
   <ItemGroup>
     <Compile Include="Independent.ns" />
-    <CppLibraryReference Header="Independent.h" Language="C" Standard="c11" Library="api.lib" />
+    <CppLibraryReference Header="Independent.h" Language="C" Standard="c11" Library="independent.lib" />
     <LibraryReference Include="CPublishedProducer.lib" />
   </ItemGroup>
 </Project>
