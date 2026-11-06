@@ -3252,6 +3252,42 @@ int main(int argc, char** argv)
                     metadata_detail::encodeCRecordCatalog(decoded, reencoded, codecError);
                 ok &= expect(roundTrip && encoded == reencoded && decoded.size() == catalog->size(),
                              "C record catalog codec preserves its complete encoding");
+                auto provenanceCatalog = *catalog;
+                const auto provenanceRecord = std::find_if(provenanceCatalog.begin(), provenanceCatalog.end(),
+                    [](const auto& item) { return item.complete; });
+                if (provenanceRecord != provenanceCatalog.end())
+                {
+                    provenanceRecord->sourceProvenance = CppRecordDeclaration::SourceProvenance{
+                        std::filesystem::path(u8"headers/ni\u00f1o.h"), std::string(64, 'a'), 27};
+                    const auto recordIndex = static_cast<std::size_t>(provenanceRecord - provenanceCatalog.begin());
+                    std::vector<std::uint8_t> envelope;
+                    std::vector<CppCRecordSnapshot> recovered;
+                    std::vector<CppCEnumSnapshot> recoveredEnums;
+                    const bool withProvenance = metadata_detail::encodeCTypeCatalogWithProvenance(
+                        provenanceCatalog, {}, envelope, codecError) &&
+                        metadata_detail::decodeCTypeCatalogWithProvenance(envelope, recovered, recoveredEnums, codecError);
+                    ok &= expect(withProvenance && recovered.size() == provenanceCatalog.size() &&
+                                 recovered[recordIndex].sourceProvenance == provenanceRecord->sourceProvenance,
+                                 "versioned C catalogue retains UTF-8 source provenance");
+                    std::vector<std::uint8_t> oldCatalog;
+                    std::vector<CppCRecordSnapshot> oldRecords;
+                    const bool oldFormat = metadata_detail::encodeCRecordCatalog(provenanceCatalog, oldCatalog, codecError) &&
+                        metadata_detail::decodeCRecordCatalog(oldCatalog, oldRecords, codecError);
+                    ok &= expect(oldFormat && !oldRecords[recordIndex].sourceProvenance,
+                                 "C record catalogue 1.42 does not silently change its format");
+                    auto truncated = envelope;
+                    if (!truncated.empty()) truncated.pop_back();
+                    const auto recoveredSize = recovered.size();
+                    ok &= expect(!metadata_detail::decodeCTypeCatalogWithProvenance(truncated, recovered, recoveredEnums, codecError) &&
+                                 recovered.size() == recoveredSize,
+                                 "truncated provenance catalogue preserves previous outputs");
+                    provenanceRecord->sourceProvenance->bufferSha256 = "invalid";
+                    const auto previousSize = envelope.size();
+                    ok &= expect(!metadata_detail::encodeCTypeCatalogWithProvenance(provenanceCatalog, {}, envelope, codecError) &&
+                                 envelope.size() == previousSize,
+                                 "provenance catalogue rejects an invalid digest without replacing output");
+                }
+                else ok &= expect(false, "provenance codec has a complete C record");
                 const auto comparisonRecord = std::find_if(catalog->begin(), catalog->end(),
                     [](const auto& item) { return item.complete && !item.fields.empty(); });
                 if (comparisonRecord != catalog->end())
