@@ -1323,6 +1323,26 @@ int main(int argc, char** argv)
                             const auto targetConflict = selectCppSemanticGlobal(repeated, 2, "feature::shared");
                             ok &= expect(!targetConflict.candidate && !targetConflict.conflict.empty(),
                                          "a symbol alias from a different target cannot be merged");
+                            repeated.back() = (*entries)[selected.declarationIndices[0]];
+                            repeated[selected.declarationIndices[0]].declaration.clangUsr = "test-global-usr";
+                            repeated.back().declaration.clangUsr = "test-global-usr";
+                            repeated.back().declaration.qualifiedName = "feature::other_name";
+                            repeated.back().declaration.externalSymbol = "different_symbol";
+                            const auto usrConflict = selectCppSemanticGlobal(repeated, 2, "feature::shared");
+                            ok &= expect(!usrConflict.candidate && !usrConflict.conflict.empty() &&
+                                         usrConflict.aliasIndices.size() == 1,
+                                         "the same global USR cannot hide a different external symbol under another name");
+                            repeated.back().projectOrdinal = 1;
+                            const auto isolatedUsr = selectCppSemanticGlobal(repeated, 2, "feature::shared");
+                            ok &= expect(isolatedUsr.candidate && isolatedUsr.conflict.empty(),
+                                         "global USR conflicts do not cross project ownership");
+                            repeated.back().projectOrdinal = 2;
+                            repeated.back().declaration.externalSymbol = repeated[selected.declarationIndices[0]].declaration.externalSymbol;
+                            repeated.back().declaration.clangUsr = "other-global-usr";
+                            const auto compatibleAlias = selectCppSemanticGlobal(repeated, 2, "feature::shared");
+                            ok &= expect(compatibleAlias.candidate && compatibleAlias.conflict.empty() &&
+                                         compatibleAlias.aliasIndices.size() == 1,
+                                         "compatible global aliases with different USRs retain their shared symbol");
                             }
                         }
                     }

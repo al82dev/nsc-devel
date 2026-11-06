@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Globales con identidad Clang contradictoria
+
+T08-002/T08-004: una demanda de global debe detectar declaraciones del mismo
+proyecto y USR conocido aunque difieran nombre o símbolo, y comprobar su
+contrato existente. Preservar aliases compatibles, identidad desconocida,
+aislamiento entre proyectos, alineación y opciones volatile. Presupuesto:
+CppSemanticInventory.cpp, CppClangSessionTests.cpp y registros Markdown.
+LLVM y NSLink protegidos; validación completa agrupada al terminar la tanda.
+
 ## Cierre de dependencias de campos por USR
 
 T08-002/T08-010: al recorrer dependencias transitivas de campos C, no resolver
