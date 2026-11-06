@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Preparación de accesos al objeto volatile apuntado
+
+Propagar al resultado semántico de desreferencia e índice el volatile inmediato
+del apuntado; preservar la restricción de obtener direcciones sin tipo
+calificado. Archivos: IdentifierAnalyzer.cpp, IndexAndRangeExpressions.cpp y
+documentación. La importación y las conversiones siguen bloqueadas; el campo
+preparado se mantiene inactivo para código ordinario. HIR y pruebas se
+conectan en cambios posteriores antes de habilitar declaraciones.
+
 ## Calificador volatile del apuntado en globales importados
 
 Preparar el transporte desde CppSemanticGlobal hasta NamespaceStateSymbol y el

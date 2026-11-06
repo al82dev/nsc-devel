@@ -804,7 +804,8 @@ void ProjectMethodBodyModel::analyzeRawIndex(
         result.typeKey = validFixedIndices ? indexedType : validFlexibleIndex
             ? *flexibleElementType : std::string(base.typeKey.substr(0, base.typeKey.size() - 1));
         result.valid = true;
-        result.volatileStorage = validFixedIndices && base.volatileStorage;
+        result.volatileStorage = (validFixedIndices && base.volatileStorage) ||
+            (validPointerIndex && base.pointerPointeeVolatile);
         const bool readonlyElement = (base.readonlyReceiver &&
             (validFixedIndices || validFlexibleIndex)) ||
             (validPointerIndex && base.pointerPointeeReadonly);

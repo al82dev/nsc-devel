@@ -11,6 +11,8 @@ conversiones, consumidores, accesos y pruebas. El cambio aún no fue construido.
 Se preparó el transporte desde la descripción de globales importados hasta el
 resultado semántico. La barrera de importación sigue activa y no se demuestra
 todavía uso de punteros a volatile.
+La desreferencia y el índice preparan la propagación del calificador al
+almacenamiento resultante. Falta conectar HIR, conversiones y validación.
 
 ## Parámetros C puntero a escalar volatile: implementación pendiente de validar
 

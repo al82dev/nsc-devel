@@ -1295,7 +1295,8 @@ if (operation == TokenKind::Star)
     result.typeKey = operand.typeKey.substr(0, operand.typeKey.size() - 1);
     result.valid = true;
     result.assignable = !operand.pointerPointeeReadonly;
-    result.addressable = true;
+    result.volatileStorage = operand.pointerPointeeVolatile;
+    result.addressable = !result.volatileStorage;
     result.readonlyReceiver = operand.pointerPointeeReadonly;
     return result;
 }
