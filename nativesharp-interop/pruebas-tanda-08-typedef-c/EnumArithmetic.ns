@@ -18,5 +18,9 @@ int Main()
     int tinyShift = tiny >> 1;
     int tinyMask = tiny & 15;
     if (tinyNegative != -255 || tinyShift != 127 || tinyMask != 15) return 5;
+    int tinyComplement = ~tiny;
+    int tinyCombined = tiny | tiny;
+    int shiftByEnum = 8 >> color;
+    if (tinyComplement != -256 || tinyCombined != 255 || shiftByEnum != 2) return 6;
     return 0;
 }
