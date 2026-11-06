@@ -190,6 +190,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Preparados `5671a4dd7`, `d9af38b62` y `7bd1a92c9`: proveedor opcional
+    de catálogo y conexión al productor, con controles. El driver no lo instala,
+    1.42 sigue deshabilitado y la ejecución agrupada permanece pendiente.
   - Preparados `093caf820` y `6fcce1baf`: sección delimitada del catálogo C
     y contribución a la huella ABI, con controles internos. El minor 1.42 sigue
     deshabilitado; falta reconstrucción y ejecutar la validación agrupada.
