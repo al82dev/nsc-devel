@@ -117,7 +117,7 @@ inline constexpr std::uint16_t kMetadataFormatMajor = 1;
 // MINOR 42: imported C record and enum declarations required by a public API.
 // MINOR 43: optional source provenance for imported C record declarations.
 // MINOR 44: C catalogue carries confirmed floating-point representation.
-inline constexpr std::uint16_t kMetadataFormatMinor = 44;
+inline constexpr std::uint16_t kMetadataFormatMinor = 45;
 
 // NSMETA 1.39. These bits version producer language capabilities that affect private lowering
 // and debug behavior without changing the public NativeSharp ABI projection. Older files decode

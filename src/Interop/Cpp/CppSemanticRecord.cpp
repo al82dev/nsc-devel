@@ -1091,12 +1091,16 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     if (metadata.formatMinor >= 43)
     {
         if (!metadata_detail::encodeCTypeCatalogWithProvenance(records, enums, output, error)) return false;
+        if (metadata.formatMinor < 45 && !output.empty() && output[0] >= 3)
+        { error = "metadata before 1.45 cannot represent incomplete C source provenance"; output.clear(); return false; }
         if (metadata.formatMinor < 44 && !output.empty() && output[0] == 2)
         { error = "metadata before 1.44 cannot represent C floating format"; output.clear(); return false; }
         return true;
     }
     std::vector<std::uint8_t> checked;
     if (!metadata_detail::encodeCTypeCatalogWithProvenance(records, enums, checked, error)) return false;
+    if (!checked.empty() && checked[0] >= 3)
+    { error = "metadata before 1.45 cannot represent incomplete C source provenance"; return false; }
     if (!checked.empty() && checked[0] == 2)
     { error = "metadata before 1.44 cannot represent C floating format"; return false; }
     return metadata_detail::encodeCTypeCatalog(records, enums, output, error);
