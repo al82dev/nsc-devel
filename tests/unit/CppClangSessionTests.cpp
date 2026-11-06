@@ -6610,14 +6610,14 @@ int main(int argc, char** argv)
                         std::vector<CppCRecordSnapshot> records;
                         std::vector<CppCEnumSnapshot> enums;
                         const bool supplied = provideCppCRecordMetadataCatalog(fieldDependency, api, bytes, dependencyError) &&
-                            metadata_detail::decodeCTypeCatalog(bytes, records, enums, dependencyError);
+                            metadata_detail::decodeVersionedCTypeCatalog(bytes, records, enums, dependencyError);
                         ok &= expect(supplied && records.size() == 1 && enums.size() == 1 &&
                                      enums[0].declaration.name == "Shade",
                                      "C metadata provider includes enum dependency of record field");
                         if (supplied && records.size() == 1 && enums.size() == 1)
                         {
                             auto closureMetadata = api;
-                            closureMetadata.formatMinor = 42;
+                            closureMetadata.formatMinor = api.formatMinor;
                             closureMetadata.moduleName = records[0].moduleName;
                             closureMetadata.targetTriple = records[0].targetTriple;
                             closureMetadata.cppCRecordCatalog = bytes;
@@ -6819,7 +6819,7 @@ int main(int argc, char** argv)
                         std::vector<CppCRecordSnapshot> records;
                         std::vector<CppCEnumSnapshot> enums;
                         const bool supplied = provideCppCRecordMetadataCatalog(functionDependency, api, bytes, dependencyError) &&
-                            metadata_detail::decodeCTypeCatalog(bytes, records, enums, dependencyError);
+                            metadata_detail::decodeVersionedCTypeCatalog(bytes, records, enums, dependencyError);
                         ok &= expect(supplied && records.empty() && enums.size() == 1 &&
                                      enums[0].declaration.name == "Mood",
                                      "C metadata provider includes enum used directly in a signature");
@@ -6945,7 +6945,7 @@ int main(int argc, char** argv)
                         std::vector<CppCRecordSnapshot> catalogRecords;
                         std::vector<CppCEnumSnapshot> catalogEnums;
                         const bool supplied = provideCppCRecordMetadataCatalog(recordDependencies, api, catalogBytes, dependencyError) &&
-                            metadata_detail::decodeCTypeCatalog(catalogBytes, catalogRecords, catalogEnums, dependencyError);
+                            metadata_detail::decodeVersionedCTypeCatalog(catalogBytes, catalogRecords, catalogEnums, dependencyError);
                         ok &= expect(supplied && catalogRecords.size() == 2 && catalogEnums.empty(),
                                      "C metadata provider selects public record and transitive field dependency");
                         if (supplied && !catalogRecords.empty())
