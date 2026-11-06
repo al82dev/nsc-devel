@@ -107,6 +107,30 @@ int main()
         const ProjectOopMirCacheIdentityIndex identityIndex(mir);
         tests.expect(!identity.empty() && identity == identityIndex.identity(ordinals, ordinals),
             "cache identity index preserves namespace function and call ordinals");
+
+        ProjectOopMirNode* node = mir.functions().empty() ? nullptr : mir.functions().front().body.get();
+        tests.expect(node != nullptr, "cache identity test has a MIR body");
+        if (node != nullptr)
+        {
+            const auto savedMode = node->cppMicrosoftVolatileSemantics;
+            const auto savedAlignment = node->cppAtomicAlignmentBytes;
+            node->cppMicrosoftVolatileSemantics.reset();
+            node->cppAtomicAlignmentBytes.reset();
+            const auto unknown = projectOopMirCacheIdentity(mir, ordinals, ordinals);
+            node->cppMicrosoftVolatileSemantics = false;
+            const auto disabled = projectOopMirCacheIdentity(mir, ordinals, ordinals);
+            node->cppMicrosoftVolatileSemantics = true;
+            const auto enabled = projectOopMirCacheIdentity(mir, ordinals, ordinals);
+            node->cppAtomicAlignmentBytes = 1;
+            const auto alignedOne = projectOopMirCacheIdentity(mir, ordinals, ordinals);
+            node->cppAtomicAlignmentBytes = 4;
+            const auto alignedFour = projectOopMirCacheIdentity(mir, ordinals, ordinals);
+            tests.expect(unknown != disabled && unknown != enabled && disabled != enabled &&
+                    enabled != alignedOne && alignedOne != alignedFour,
+                "code cache identity distinguishes volatile mode and proven alignment");
+            node->cppMicrosoftVolatileSemantics = savedMode;
+            node->cppAtomicAlignmentBytes = savedAlignment;
+        }
     }
 
     std::filesystem::remove_all(root, ignored);
