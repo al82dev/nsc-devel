@@ -15,6 +15,8 @@ T08-002: conservar y conciliar USR conocidos de enumeradores C al proyectar y
 seleccionar constantes y al conciliar sus definiciones enum. Presupuesto: CppSemanticInventory.h/.cpp,
 CppClangSessionTests.cpp, TRACKING.md y registros Markdown. No cambia LLVM,
 NSLink ni formatos persistentes; validación agrupada por tanda.
+T08-009: al comparar definiciones enum, preservar también el tipo efectivo de
+cada enumerador, no solo su nombre y valor, dentro del mismo presupuesto.
 
 ## Identidad de alias C en resolución
 
