@@ -21,6 +21,7 @@
 #include <clang/Tooling/Tooling.h>
 #include <clang/UnifiedSymbolResolution/USRGeneration.h>
 #include <llvm/ADT/SmallString.h>
+#include <llvm/ADT/APFloat.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
 #include <llvm/IR/Verifier.h>
@@ -94,7 +95,11 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
     }
     else if (raw->isSignedIntegerType()) result.kind = CppTypeKind::SignedInteger;
     else if (raw->isUnsignedIntegerType()) result.kind = CppTypeKind::UnsignedInteger;
-    else if (raw->isRealFloatingType()) result.kind = CppTypeKind::Floating;
+    else if (raw->isRealFloatingType())
+    {
+        result.kind = CppTypeKind::Floating;
+        result.ieeeBinary64 = &context.getFloatTypeSemantics(canonical) == &llvm::APFloat::IEEEdouble();
+    }
     else if (raw->isPointerType()) { result.kind = CppTypeKind::Pointer; element = raw->getPointeeType(); }
     else if (raw->isLValueReferenceType()) { result.kind = CppTypeKind::LValueReference; element = raw->getPointeeType(); }
     else if (raw->isRValueReferenceType()) { result.kind = CppTypeKind::RValueReference; element = raw->getPointeeType(); }
