@@ -411,6 +411,7 @@ void ProjectMethodBodyModel::recordMovedArrayElement(
         (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(element.typeKey));
     moveBindings_.push_back(std::move(move));
     result.typeKey = element.typeKey;
+    result.pointerPointeeVolatile = element.pointerPointeeVolatile;
     result.valid = true;
     result.assignable = false;
     result.ownership = sema::OwnershipKind::Owned;
@@ -531,6 +532,7 @@ bool ProjectMethodBodyModel::tryOwnedFieldMoveSource(
         memberModel_->typeRequiresValueDrop(fieldSource.typeKey);
     moveBindings_.push_back(std::move(move));
     result.typeKey = fieldSource.typeKey;
+    result.pointerPointeeVolatile = fieldSource.pointerPointeeVolatile;
     result.valid = true;
     result.assignable = false;
     result.ownership = sema::OwnershipKind::Owned;
@@ -574,6 +576,7 @@ bool ProjectMethodBodyModel::analyzeMovedIteratorCurrent(
     move.clearSourceStorage = true;
     moveBindings_.push_back(std::move(move));
     result.typeKey = member.typeKey;
+    result.pointerPointeeVolatile = member.pointerPointeeVolatile;
     result.ownership = sema::OwnershipKind::Owned;
     result.ownershipTransfer = true;
     return true;
@@ -709,6 +712,7 @@ bool ProjectMethodBodyModel::completeLocalMove(
         invalidateHistoricalBorrowsOfOwnerLocal(sourceOrdinal);
     }
     result.typeKey = local.typeKey;
+    result.pointerPointeeVolatile = local.pointerPointeeVolatile;
     result.callableTrait = local.callableTrait;
     result.ownershipSourceLocalOrdinal = sourceOrdinal;
     result.objectLifetimeOwnership = local.objectLifetimeOwnership;
@@ -836,6 +840,7 @@ bool ProjectMethodBodyModel::completeParameterMove(
         invalidateHistoricalBorrowsOfOwnedParameter(sourceOrdinal);
     }
     result.typeKey = parameter.typeKey;
+    result.pointerPointeeVolatile = parameter.pointerPointeeVolatile;
     result.ownershipSourceParameterOrdinal = sourceOrdinal;
     result.objectLifetimeOwnership = sema::OwnershipKind::Owned;
     result.storageOwnership = sema::OwnershipKind::Owned;

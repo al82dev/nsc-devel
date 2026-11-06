@@ -43,6 +43,8 @@ Se preparó asimismo el rechazo provisional al retornar ese puntero mediante
 un tipo que no representa volatile; no está ejecutado.
 Se preparó el transporte en identificadores de parámetros y el rechazo
 provisional de inicialización de campos que descartaría el calificador.
+Se preparó además la conservación del calificador en resultados de move para
+locales, parámetros, campos, elementos e iteradores; aún no se ha validado.
 Una prueba interna preparada inyecta un global con símbolo de Clang para
 ejercitar el acceso, el IR y los rechazos de inicialización, asignación y
 retorno. No habilita la importación real y aún no se ha ejecutado.

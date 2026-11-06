@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Propagación volatile en move
+
+Conservar el calificador inmediato al construir el resultado de move para
+locales, parámetros, campos y elementos. Archivo: MoveExpressions.cpp y
+documentación. No habilitar la importación ni modificar ownership; falta
+validación agrupada.
+
 ## Uso de parámetros volatile e inicialización de campos
 
 Propagar el contrato de parámetro por valor a su expresión y rechazar
