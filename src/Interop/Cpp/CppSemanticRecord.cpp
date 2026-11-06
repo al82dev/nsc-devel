@@ -722,6 +722,10 @@ CppRecordObservationResult prepareCppRecordObservation(
             return CppRecordObservationFailure{"empty or invalid record group"};
         std::string sourcePath;
         std::optional<std::string> knownUsr;
+        std::optional<frontend::CppImportedTypeOrigin> knownOrigin;
+        std::optional<std::string> knownTarget;
+        bool originConflict = false;
+        bool targetConflict = false;
         std::optional<frontend::CppImportedObjectLayout> objectLayout;
         bool usrConflict = false;
         bool deferred = !group.identity.containingTypes().empty();
@@ -734,6 +738,17 @@ CppRecordObservationResult prepareCppRecordObservation(
             if (!entry.identity || entry.projectOrdinal != group.projectOrdinal ||
                 entry.identity->key() != group.identity.key())
                 return CppRecordObservationFailure{"record inventory does not match group identity"};
+            const auto origin = entry.declaration.isCxx ? frontend::CppImportedTypeOrigin::CppRecord :
+                entry.declaration.kind == CppRecordKind::Union ? frontend::CppImportedTypeOrigin::CUnion :
+                frontend::CppImportedTypeOrigin::CStruct;
+            if (knownOrigin && *knownOrigin != origin) originConflict = true;
+            else knownOrigin = origin;
+            if (!entry.targetTriple.empty())
+            {
+                if (knownTarget && *knownTarget != entry.targetTriple) targetConflict = true;
+                else knownTarget = entry.targetTriple;
+            }
+            else targetConflict = true;
             if (entry.declaration.location && sourcePath.empty())
                 sourcePath = entry.declaration.location->file.generic_string();
             if (entry.declaration.clangUsr && !entry.declaration.clangUsr->empty())
@@ -773,6 +788,10 @@ CppRecordObservationResult prepareCppRecordObservation(
                                 frontend::NamedTypeAccessibility::Public, group.projectOrdinal,
                                 std::move(sourcePath), objectLayout, memberAccessLayout});
         result.types.back().isIncomplete = group.status == CppRecordGroupStatus::ForwardOnly;
+        if (group.status != CppRecordGroupStatus::Conflict && !originConflict && knownOrigin)
+            result.types.back().origin = *knownOrigin;
+        if (group.status != CppRecordGroupStatus::Conflict && !targetConflict)
+            result.types.back().targetTriple = knownTarget;
         if (group.status != CppRecordGroupStatus::Conflict && !usrConflict) result.types.back().clangUsr = knownUsr;
         result.groupByImportedType.push_back(groupIndex);
     }

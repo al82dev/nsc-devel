@@ -488,6 +488,11 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
             frontend::NamedTypeAccessibility::Public, key.first, value.location->file.generic_string()};
         type.objectLayout = frontend::CppImportedObjectLayout{*value.sizeBits / 8, *value.alignmentBits / 8};
         type.enumBase = frontend::CppImportedEnumBase{base->token, std::string(base->name)};
+        if (!conflicts.contains(key))
+        {
+            type.origin = frontend::CppImportedTypeOrigin::CEnum;
+            if (!entry->targetTriple.empty()) type.targetTriple = entry->targetTriple;
+        }
         if (const auto known = knownUsrs.find(key); known != knownUsrs.end() && !conflicts.contains(key))
             type.clangUsr = known->second;
         if (conflicts.contains(key)) type.deferredImportError = "conflicting C enum declarations: " + value.name;

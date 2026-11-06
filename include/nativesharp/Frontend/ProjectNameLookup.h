@@ -85,6 +85,8 @@ struct CppImportedEnumBase final
     std::string name;
 };
 
+enum class CppImportedTypeOrigin { Unknown, CStruct, CUnion, CEnum, CppRecord };
+
 struct CppImportedTypeDeclaration final
 {
     compilation::TypeIdentity identity;
@@ -104,6 +106,9 @@ struct CppImportedTypeDeclaration final
     bool isIncomplete = false;
     // Declaration identity from Clang; not proof of layout or ABI compatibility.
     std::optional<std::string> clangUsr = std::nullopt;
+    // Unknown means the observations did not establish a single origin.
+    CppImportedTypeOrigin origin = CppImportedTypeOrigin::Unknown;
+    std::optional<std::string> targetTriple = std::nullopt;
 };
 
 class ProjectNameLookup final
