@@ -1363,6 +1363,18 @@ int main(int argc, char** argv)
                             const auto dependencies = functions ? collectCppSignatureEnumDependencies(finalGraph, *functions, enumTypes)
                                 : CppSignatureEnumResult{CppSignatureEnumFailure{"function fixture unavailable"}};
                             const auto* enumDependencies = std::get_if<std::vector<CppSignatureEnumDependency>>(&dependencies);
+                            auto wrongIdentity = enumTypes;
+                            if (!wrongIdentity.empty()) wrongIdentity[0].clangUsr = "different-enum-usr";
+                            const auto mismatched = functions ? collectCppSignatureEnumDependencies(finalGraph, *functions, wrongIdentity)
+                                : CppSignatureEnumResult{CppSignatureEnumFailure{"function fixture unavailable"}};
+                            const auto* mismatchedDependencies = std::get_if<std::vector<CppSignatureEnumDependency>>(&mismatched);
+                            bool rejectsMismatchedIdentity = mismatchedDependencies && !mismatchedDependencies->empty();
+                            if (mismatchedDependencies)
+                                for (const auto& dependency : *mismatchedDependencies)
+                                    rejectsMismatchedIdentity &= dependency.status == CppSignatureEnumStatus::Unprojectable &&
+                                        !dependency.candidateIndex;
+                            ok &= expect(!enumTypes.empty() && enumTypes[0].clangUsr && rejectsMismatchedIdentity,
+                                         "enum signature dependency rejects a different known Clang USR");
                             bool resultDependency = false, parameterDependency = false;
                             bool callbackResult = false, callbackParameter = false;
                             if (enumDependencies)
