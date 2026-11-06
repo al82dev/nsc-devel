@@ -18,5 +18,10 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Invalid
 if not errorlevel 1 (echo Se acepto aritmetica en enum NativeSharp. & exit /b 1)
 findstr /i /c:"binary operator requires compatible numeric operands" "%DEST%\InvalidNativeEnumArithmetic.log" >nul
 if errorlevel 1 (echo El rechazo no corresponde a la aritmetica del enum NS. & exit /b 1)
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\NativeEnumBitwise.nsproj" -O0 --no-artifact-cache -o "%DEST%\NativeEnumBitwise.exe"
+if errorlevel 1 exit /b 1
+"%DEST%\NativeEnumBitwise.exe"
+if errorlevel 1 exit /b 1
+echo Bitwise enum NativeSharp conservado.
 echo ARITMETICA ENUM C COMPLETA
 exit /b 0

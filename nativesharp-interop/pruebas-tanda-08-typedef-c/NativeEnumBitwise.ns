@@ -1,0 +1,7 @@
+enum NativeMode { First = 1, Second = 2 }
+int Main()
+{
+    NativeMode both = NativeMode.First | NativeMode.Second;
+    if ((both & NativeMode.First) != NativeMode.First) return 1;
+    return 0;
+}

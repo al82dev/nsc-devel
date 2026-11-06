@@ -10,6 +10,8 @@ aplicar la misma conversión antes de la operación; comprobar el IR y O0–O3.
 Ampliar el grupo de operaciones de enum C con desplazamiento, operador
 unario y máscara; comprobar resultado unsigned y mantener control de enum
 NativeSharp. Observar fallos antes de modificar esas rutas semánticas.
+Comprobar positivamente las operaciones bit a bit del mismo enum NativeSharp
+además del control negativo de suma, para conservar su contrato previo.
 El fixture rechazó los tres operadores. Permitir cambios en
 `src/Frontend/Bodies/OperatorExpressionAnalyzer.cpp`,
 `src/Frontend/Bodies/IdentifierAnalyzer.cpp` y
