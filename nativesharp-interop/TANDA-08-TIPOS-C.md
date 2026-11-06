@@ -41,6 +41,8 @@ El fixture también prepara controles que mantienen diferidos los retornos y
 punteros anidados volatile; aún no fueron ejecutados.
 Se preparó asimismo el rechazo provisional al retornar ese puntero mediante
 un tipo que no representa volatile; no está ejecutado.
+Se preparó el transporte en identificadores de parámetros y el rechazo
+provisional de inicialización de campos que descartaría el calificador.
 Una prueba interna preparada inyecta un global con símbolo de Clang para
 ejercitar el acceso, el IR y los rechazos de inicialización, asignación y
 retorno. No habilita la importación real y aún no se ha ejecutado.

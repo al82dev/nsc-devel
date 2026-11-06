@@ -396,6 +396,7 @@ void ProjectMethodBodyModel::initializeParameterIdentifierResult(
     result.objectLifetimeOwnership = parameter.ownership;
     result.storageOwnership = parameter.ownership;
     result.pointerPointeeReadonly = !byReferenceParameter && parameter.pointerPointeeReadonly;
+    result.pointerPointeeVolatile = !byReferenceParameter && parameter.pointerPointeeVolatile;
     if (!byReferenceParameter)
     {
         result.pointerNullable = parameter.pointerNullable;

@@ -612,6 +612,14 @@ bool ProjectMethodBodyModel::validateFieldInitializerConversion(
     diagnostics::DiagnosticEngine& diagnostics) const
 {
     if (ProjectTypeConversion::isPointer(field.declaredTypeKey) &&
+        initializer.pointerPointeeVolatile)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, field.syntax->first()->range(),
+            "field initializer would discard pointer pointee volatile qualification");
+        return false;
+    }
+    if (ProjectTypeConversion::isPointer(field.declaredTypeKey) &&
         !language::pointerContractImplicitlyAssignable(
             pointerContract(
                 initializer.pointerNullable,

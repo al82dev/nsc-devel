@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Uso de parámetros volatile e inicialización de campos
+
+Propagar el contrato de parámetro por valor a su expresión y rechazar
+provisionalmente la inicialización de un campo cuyo tipo no conserva volatile.
+Archivos: IdentifierAnalyzer.cpp, MethodBodyBuildCoordinator.cpp y
+documentación. No se habilita sintaxis nueva ni se retira la barrera de
+importación; faltan pruebas agrupadas.
+
 ## Límites de parámetros y resultados volatile anidados
 
 Añadir controles al fixture de Clang para asegurar que el soporte preparado de
