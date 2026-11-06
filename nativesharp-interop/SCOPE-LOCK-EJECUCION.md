@@ -3315,6 +3315,16 @@ contrastar con Clang lectura y escritura de campos de bits C con y sin signo,
 campos de anchura cero, almacenamiento compartido y `pack(1)`; salidas solo en
 `A:/nsc-interop-build/tanda08-bitfields-c`. No cambiar producción hasta
 localizar el contrato y registrar los archivos afectados.
+Para campos C no volatile de struct en Windows x64, transportar coordenadas
+de bits derivadas del AST y un acceso por ventana de bytes comprobada. Permitir
+`include/nativesharp/Interop/CppSemanticRecord.h`,
+`include/nativesharp/Frontend/CppImportedInstanceField.h`,
+`include/nativesharp/Frontend/ClassMemberSymbol.h`,
+`src/Interop/Cpp/CppSemanticRecord.cpp`, `src/Frontend/ProjectMemberModel.cpp`,
+`src/Frontend/ProjectObjectLayoutModel.cpp` y
+`src/LLVM/Lowering/OopLlvmFieldsAndConversions.cpp`; conservar la protección
+de direcciones y rechazar casos cuyo acceso seguro no esté demostrado. Los
+campos volatile, unions y formas no representadas permanecen pendientes.
 
 # Contrato de long double C en Windows x64
 
