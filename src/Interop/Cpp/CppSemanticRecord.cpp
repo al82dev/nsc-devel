@@ -125,9 +125,10 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     const auto& field = record.fields[fieldIndex];
     if (field.bitWidth)
     {
-        // For nonvolatile C structs, use a bounded byte window containing only
-        // bit-field storage. Clang's AST provides absolute bit coordinates.
-        if (!identity || record.isCxx || record.kind != CppRecordKind::Struct ||
+        // Clang supplies absolute coordinates; union members intentionally overlap.
+        // Struct windows must not overlap independent fields or bit-field runs.
+        if (!identity || record.isCxx ||
+            (record.kind != CppRecordKind::Struct && record.kind != CppRecordKind::Union) ||
             field.name.empty() || field.access != CppAccess::Public || field.type.isVolatile ||
             !field.offsetBits || !*field.bitWidth || !field.type.sizeBits || !field.type.alignmentBits ||
             !*field.type.alignmentBits || *field.type.alignmentBits % 8 ||
@@ -151,7 +152,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
                *record.fields[runBegin - 1].bitWidth != 0) --runBegin;
         while (runEnd < record.fields.size() && record.fields[runEnd].bitWidth &&
                *record.fields[runEnd].bitWidth != 0) ++runEnd;
-        for (std::size_t i = 0; i < record.fields.size(); ++i)
+        for (std::size_t i = 0; record.kind == CppRecordKind::Struct && i < record.fields.size(); ++i)
         {
             const auto& other = record.fields[i];
             if (other.bitWidth)
