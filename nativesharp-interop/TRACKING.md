@@ -190,6 +190,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Redeclaraciones adelantadas adicionales de struct y union opacos en el
+    mismo header pasaron O0–O3 con el consumidor directo y precompilado; se
+    mantuvieron los rechazos de origen distinto y header modificado. No cubre
+    todas las redeclaraciones. [Evidencia](registro-commits/redeclaraciones-opacas-c.md).
   - Declaraciones adelantadas de struct y union del mismo header se
     reconciliaron entre productor precompilado y consumidor en O0–O3. Una
     copia en otra ruta y el header modificado fueron rechazados. Catálogos
