@@ -35,6 +35,16 @@ findstr /r /c:"load atomic volatile i32, ptr @shared_volatile acquire, align 4" 
 if errorlevel 1 (echo Falta lectura volatile acquire del global. & exit /b 1)
 findstr /r /c:"store atomic volatile i32 .*@shared_volatile release, align 4" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile release del global. & exit /b 1)
+for %%F in (project api) do (
+  findstr /c:"load atomic volatile float, ptr @volatile_f32 acquire, align 4" "%DEST%\%%F.ll" >nul
+  if errorlevel 1 (echo Falta lectura acquire float en %%F. & exit /b 1)
+  findstr /r /c:"store atomic volatile float .*@volatile_f32 release, align 4" "%DEST%\%%F.ll" >nul
+  if errorlevel 1 (echo Falta escritura release float en %%F. & exit /b 1)
+  findstr /c:"load atomic volatile double, ptr @volatile_f64 acquire, align 8" "%DEST%\%%F.ll" >nul
+  if errorlevel 1 (echo Falta lectura acquire double en %%F. & exit /b 1)
+  findstr /r /c:"store atomic volatile double .*@volatile_f64 release, align 8" "%DEST%\%%F.ll" >nul
+  if errorlevel 1 (echo Falta escritura release double en %%F. & exit /b 1)
+)
 for %%P in (i8:8:1 u8:8:1 i16:16:2 u16:16:2 i64:64:8 u64:64:8) do (
   for /f "tokens=1,2,3 delims=:" %%A in ("%%P") do (
     findstr /c:"load atomic volatile i%%B, ptr @volatile_%%A acquire, align %%C" "%DEST%\project.ll" >nul

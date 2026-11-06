@@ -1,4 +1,13 @@
 #include "Api.h"
+volatile float volatile_f32 = 0.0f;
+volatile double volatile_f64 = 0.0;
+int check_volatile_floats(void)
+{
+    if (volatile_f32 != 1.5f || volatile_f64 != 2.5) return 0;
+    volatile_f32 = 3.5f;
+    volatile_f64 = 4.5;
+    return 1;
+}
 static Pair pair = { 17 };
 Pair* make_pair(void) { return &pair; }
 int read_pair(Pair* value) { return value->value; }

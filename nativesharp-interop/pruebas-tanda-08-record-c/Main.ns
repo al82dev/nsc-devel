@@ -46,6 +46,10 @@ int Main()
     if (volatile_i8 != 12 || volatile_u8 != 13 || volatile_i16 != 1200 ||
         volatile_u16 != 1300 || volatile_i64 != 120000 || volatile_u64 != 130000 ||
         check_volatile_integers() == 0) return 42;
+    volatile_f32 = 1.5f;
+    volatile_f64 = 2.5;
+    if (volatile_f32 != 1.5f || volatile_f64 != 2.5 || check_volatile_floats() == 0 ||
+        volatile_f32 != 3.5f || volatile_f64 != 4.5) return 44;
     *volatile_pointee = 61;
     var volatile_alias = volatile_pointee;
     volatile_alias[0] = *volatile_alias + 1;
