@@ -9485,9 +9485,14 @@ int main(int argc, char** argv)
         CppType unusualFloat;
         unusualFloat.kind = CppTypeKind::Floating;
         unusualFloat.canonicalSpelling = "long double";
+        unusualFloat.unqualifiedCanonicalSpelling = "long double";
         unusualFloat.sizeBits = 64;
         ok &= expect(!mapCppScalarType(unusualFloat),
                      "equal width alone does not establish floating-point representation");
+        unusualFloat.ieeeBinary64 = true;
+        const auto binary64LongDouble = mapCppScalarType(unusualFloat);
+        ok &= expect(binary64LongDouble && binary64LongDouble->nativeSharpTypeKey == "builtin:double",
+                     "Clang-confirmed IEEE binary64 long double maps to the double carrier");
         for (const auto& [name, key] : std::vector<std::pair<const char*, const char*>>{
                  {"scalars::v", "builtin:void"}, {"scalars::b", "builtin:bool"},
                  {"scalars::i8", "builtin:sbyte"}, {"scalars::u8", "builtin:byte"},
