@@ -435,6 +435,8 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-007. Mapear los tipos de punto flotante según el objetivo.
 - [ ] T08-008. Mapear el tipo `void` en parámetros y resultados donde corresponda.
 - [ ] T08-009. Mapear enumeraciones y sus valores representables.
+  - Pasó `nsc.stage51.enum-oop-support`, incluido el rechazo existente de
+    comparación de enum nativo con entero no nulo. No cubre todas sus reglas.
   - La matriz de metadata C pasó O0–O3 para comparaciones enum-entero,
     incluyendo enum estrecho con signo y enum de 32 bits con base unsigned
     explícita; también pasó `nsc.cpp-interop.session`. La promoción aplica las
@@ -478,6 +480,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     arreglos fijos de records empaquetados y controles de acceso, dirección e
     IR. No se han construido ni ejecutado estos cambios; el ítem sigue abierto.
 - [ ] T08-011. Importar la declaración y campos de una `union` C.
+  - Un productor precompilado y un consumidor con el mismo encabezado C
+    conciliaron una union por puntero y por valor en O0–O3.
+    [Evidencia](registro-commits/prueba-union-c-metadata.md).
   - Lectura y escritura superpuestas entre C y NativeSharp y paso y retorno por
     valor de unions de 4 y 12 bytes pasaron O0–O3 en Windows x64. Es evidencia
     dirigida; faltan layouts y formas de uso. [Detalle](registro-commits/prueba-union-c-por-valor.md).
