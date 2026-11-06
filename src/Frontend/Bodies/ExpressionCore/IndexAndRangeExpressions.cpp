@@ -848,6 +848,13 @@ void ProjectMethodBodyModel::analyzeRawIndex(
         // readonly contract while keeping the slot assignable.
         const bool qualifiedPointerElement = validFixedIndices && base.pointerPointeeReadonly &&
             ProjectTypeConversion::isPointer(result.typeKey);
+        if (qualifiedPointerElement && formingAddressOperand_ && expression == formingAddressTarget_)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "cannot take the address of an array element with a const pointee until nested pointer qualifiers are supported");
+            return;
+        }
         result.pointerPointeeReadonly = qualifiedPointerElement;
         result.addressable = !result.volatileStorage && !unalignedImportedFieldElement &&
             !qualifiedPointerElement;

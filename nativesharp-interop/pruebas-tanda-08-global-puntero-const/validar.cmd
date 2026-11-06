@@ -26,14 +26,16 @@ for %%O in (0 1 2 3) do (
 )
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Invalid.nsproj" -O0 --no-artifact-cache -o "%DEST%\invalid.exe" > "%DEST%\invalid.log" 2>&1
 if not errorlevel 1 (echo Escritura indebida aceptada. & exit /b 1)
-findstr /i /c:"const" /c:"readonly" "%DEST%\invalid.log" >nul
+findstr /i /c:"error: left side of assignment is not assignable" "%DEST%\invalid.log" >nul
 if errorlevel 1 (echo El rechazo no identifica const o readonly. & exit /b 1)
 echo Escritura al dato const rechazada.
-for %%I in (InvalidEscape InvalidAddress) do (
-  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\%%I.nsproj" -O0 --no-artifact-cache -o "%DEST%\%%I.exe" > "%DEST%\%%I.log" 2>&1
-  if not errorlevel 1 (echo Se acepto perdida de const en %%I. & exit /b 1)
-  findstr /i /c:"const" /c:"readonly" /c:"address" "%DEST%\%%I.log" >nul
-  if errorlevel 1 (echo El rechazo de %%I no identifica el contrato. & exit /b 1)
-)
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidEscape.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidEscape.exe" > "%DEST%\InvalidEscape.log" 2>&1
+if not errorlevel 1 (echo Se acepto perdida de const por asignacion. & exit /b 1)
+findstr /i /c:"would discard pointee constness" "%DEST%\InvalidEscape.log" >nul
+if errorlevel 1 (echo El rechazo de asignacion no identifica el contrato. & exit /b 1)
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidAddress.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidAddress.exe" > "%DEST%\InvalidAddress.log" 2>&1
+if not errorlevel 1 (echo Se acepto perdida de const por direccion. & exit /b 1)
+findstr /i /c:"cannot take the address of an array element with a const pointee" "%DEST%\InvalidAddress.log" >nul
+if errorlevel 1 (echo El rechazo de direccion no identifica el contrato. & exit /b 1)
 echo Perdida de const por asignacion o direccion rechazada.
 exit /b 0
