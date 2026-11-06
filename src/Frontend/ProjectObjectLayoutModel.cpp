@@ -628,9 +628,11 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutNamedType(
     const NamedTypeDeclaration& type = nameLookup_->namedTypes()[typeOrdinal];
     if (const auto* imported = nameLookup_->cppImportedType(typeOrdinal))
     {
-        // An imported C enum has a verified integer representation. Other imported
-        // records retain their separate value/lifetime restrictions.
-        if (imported->kind == NamedTypeDeclarationKind::Enum && imported->enumBase && imported->objectLayout &&
+        // Only C records with a verified value layout have trivial C value semantics.
+        const bool cRecord = imported->origin == CppImportedTypeOrigin::CStruct ||
+            imported->origin == CppImportedTypeOrigin::CUnion;
+        const bool cEnum = imported->kind == NamedTypeDeclarationKind::Enum && imported->enumBase;
+        if ((cRecord || cEnum) && imported->objectLayout &&
             imported->deferredImportError.empty() && !imported->isIncomplete)
             return TypeLayout{imported->objectLayout->sizeBytes, imported->objectLayout->alignmentBytes};
         diagnostics.report(
