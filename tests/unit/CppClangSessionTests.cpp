@@ -3126,6 +3126,7 @@ int main(int argc, char** argv)
                     enumType.enumBase = nativesharp::frontend::CppImportedEnumBase{
                         nativesharp::lexer::TokenKind::KwInt, "int"};
                     enumType.objectLayout = nativesharp::frontend::CppImportedObjectLayout{4, 4};
+                    if (color) enumType.clangUsr = color->clangUsr;
                     const auto aliasesSnapshot = cAliases;
                     const bool configured = enumAliasCompilation.setExperimentalCppImportedTypes({enumType}, error) &&
                         enumAliasCompilation.setCppTypeAliasProvider(
