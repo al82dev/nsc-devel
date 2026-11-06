@@ -6,6 +6,11 @@ Ampliar `pruebas-tanda-08-prototipos-c` con declaraciones compatibles `f()`
 seguidas de `f(int)` y `g(void)`, comprobando llamadas válidas y rechazo de
 aridad incorrecta. Investigar si la sesión usa la declaración más completa.
 No cambiar producción sin reproducir el fallo y registrar el alcance.
+El fixture aceptó `refined()` pese al prototipo posterior `refined(int)`.
+Permitir `src/Interop/Cpp/ClangSession.cpp`, `tests/unit/CppClangSessionTests.cpp`
+y el fixture para seleccionar, entre redeclaraciones C de la misma entidad,
+un prototipo disponible usando Clang. Comprobar ambos órdenes y proteger el
+comportamiento C++ y las llamadas realmente sin prototipo.
 
 ## Funciones C con y sin prototipo
 
