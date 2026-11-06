@@ -1048,6 +1048,13 @@ tanda construirá el ejecutable y ejecutará su modalidad enfocada. No ejecutada
 La misma prueba enfocada prepara una función HIR y exige identidades distintas
 para opción desconocida, desactivada y activada. No se ha ejecutado todavía.
 
+## Alineación declarada de global C/C++
+
+El snapshot de globales prepara la captura de `ASTContext::getDeclAlign` en
+bits para tipos completos; un tipo incompleto conserva ausencia. Este dato aún
+no prueba que una operación atómica sea elegible ni se usa para emitir IR.
+Faltan pruebas y validación agrupada.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

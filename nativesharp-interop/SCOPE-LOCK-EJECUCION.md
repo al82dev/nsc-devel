@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Alineación declarada de global C/C++
+
+Capturar desde ASTContext la alineación efectiva de cada declaración global de
+tipo completo, sin inventarla para tipos incompletos. Archivos:
+CppGlobalDeclaration.h, ClangSession.cpp y documentación. No alterar todavía
+selección ni emisión; preparar pruebas y validar con la tanda.
+
 ## Prueba de identidad HIR de opción volatile
 
 Preparar una comprobación de que los tres estados de la opción producen

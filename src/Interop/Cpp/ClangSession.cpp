@@ -378,6 +378,9 @@ void collectGlobals(const clang::DeclContext& context, clang::ASTContext& astCon
         value.name = variable->getNameAsString();
         value.qualifiedName = variable->getQualifiedNameAsString();
         value.type = describeType(variable->getType(), astContext);
+        if (!variable->getType()->isIncompleteType())
+            value.declarationAlignmentBits =
+                astContext.getDeclAlign(variable).getQuantity() * astContext.getCharWidth();
         value.externalLinkage = variable->isExternallyVisible();
         value.threadLocal = variable->getTLSKind() != clang::VarDecl::TLS_None;
         value.dllImport = variable->hasAttr<clang::DLLImportAttr>();

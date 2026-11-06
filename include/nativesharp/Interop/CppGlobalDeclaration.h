@@ -4,6 +4,7 @@
 #include "nativesharp/Interop/CppType.h"
 
 #include <optional>
+#include <cstdint>
 #include <string>
 
 namespace nativesharp::interop
@@ -19,5 +20,7 @@ struct CppGlobalDeclaration
     // A name supplied by Clang does not prove that a linked library defines it.
     std::optional<std::string> externalSymbol;
     std::optional<CppSourcePoint> location;
+    // Effective alignment of the declaration in bits, absent for incomplete types.
+    std::optional<std::uint64_t> declarationAlignmentBits;
 };
 }
