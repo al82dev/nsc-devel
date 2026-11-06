@@ -1,5 +1,19 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Orden en el índice directo de global C volatile int*
+
+T08-015: complementar `*global` con `global[indice]` cuando el receptor es
+directamente un global C importado `volatile int*` con modo MS. El stride de
+int preserva la alineación natural de cuatro; emitir acquire/release sin
+transferir la marca al almacenamiento del puntero. Punteros desde locales,
+parámetros, campos o resultados de otras expresiones siguen pendientes.
+
+Presupuesto: `src/Frontend/HIR/ExpressionStatementMachine/HirCompletionAccessFrames.cpp`,
+`src/LLVM/Lowering/PackedArrayAlignment.h`, el fixture
+`pruebas-tanda-08-record-c`, tracking y registros. Conservar las rutas de
+arreglos y campos existentes; validar la escritura y la lectura indexadas con
+IR y ejecución junto a los demás cambios de la tanda.
+
 ## Orden al desreferenciar puntero obtenido directamente de arreglo global C
 
 T08-015: el fixture de arreglos de `volatile int*` ejecuta correctamente,
