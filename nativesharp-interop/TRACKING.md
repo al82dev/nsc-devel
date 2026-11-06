@@ -190,6 +190,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Preparados `0760bfe48` y `3fcdb2f21`: comprobación de tipos C en el
+    proveedor del cierre externo y controles de módulo ausente y destino
+    incompatible. Sin construir ni ejecutar; el recorrido real sigue abierto.
   - Preparados `96ac0e1f1`, `db982963e` y `7fc29af1d`: reconocimiento del
     catálogo C validado al verificar referencias NSMETA, con controles de tipos
     locales, colisiones, destino y dependencias externas. Sin construir ni
