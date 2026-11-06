@@ -12,7 +12,7 @@ No modifica formato persistente, LLVM externo ni NSLink; validar por tanda.
 ## Layout C de booleanos
 
 T08-006/T08-010/T08-016/T08-020: añadir al fixture de layout C campos y
-arreglos `_Bool`, tamaños, offsets y lectura/escritura mixta. Presupuesto:
+arreglos `_Bool`, tamaños, offsets, llamadas y lectura/escritura mixta. Presupuesto:
 pruebas-tanda-08-layout/Api.h, Api.c, Main.ns, TRACKING.md y registros
 Markdown. No se modifica LLVM ni NSLink; la ejecución es por tanda agrupada.
 
