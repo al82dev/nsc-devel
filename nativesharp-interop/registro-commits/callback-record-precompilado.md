@@ -20,6 +20,17 @@ El consumidor con header permanece como control.
 
 Con el build `3f82235fd35e7b9a`, el diagnóstico O0 compiló, enlazó y ejecutó
 los consumidores con y sin referencia explícita al header, con resultado 0.
-El archivo original seguía disponible en el directorio de trabajo; esta prueba
+En esa primera ejecución el archivo seguía disponible en el directorio de trabajo; esta prueba
 no demuestra que el consumo funcione después de retirarlo. O1–O3 siguen
 pendientes de la matriz agrupada.
+
+Se preparó una comprobación más fuerte: el script oculta la copia de `Api.h`
+en el directorio de pruebas después de generar el productor, intenta compilar
+el consumidor y restaura la copia incluso si el compilador devuelve error.
+El header fuente permanece intacto.
+
+El diagnóstico O0 terminó con código 0 con la copia usada por el productor
+temporalmente ausente. Al terminar, `fc /b` confirmó que la copia restaurada
+coincide con el header del repositorio y no quedó el archivo oculto. La fuente
+del repositorio seguía presente; no se afirma aislamiento de todo el sistema
+de archivos. O1–O3 siguen pendientes de la matriz agrupada.

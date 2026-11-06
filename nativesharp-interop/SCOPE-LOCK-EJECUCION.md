@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Callback precompilado con header temporalmente ausente
+
+T08-017: en el directorio fijo de prueba
+`A:/nsc-interop-build/tanda08-callback-precompilado`, ocultar temporalmente la
+copia de `Api.h` después de construir el productor y comprobar que el
+consumidor sin referencia al header se compile y ejecute. Restaurar la copia
+incluso si el compilador falla. Permitir modificar el script del fixture y la
+bitácora; no tocar el header fuente del repositorio ni modificar producción.
+
 ## Callback precompilado con record sin header en el consumidor
 
 T08-017: comprobar si la metadata de la biblioteca productora permite que un
