@@ -9,6 +9,14 @@ Presupuesto: NamespaceFunctionSymbol.h, CppSemanticFunction.cpp,
 CppSemanticFunctionGroups.cpp, suite de sesión y registros Markdown.
 No modifica formato persistente, LLVM externo ni NSLink; validar por tanda.
 
+## Comprobación incremental de cambios acumulados
+
+T08-002/T08-006/T08-009: construir incrementalmente los objetivos NSC y suite
+de sesión ON en A:/nsc-interop-build; ejecutar la suite y el fixture de layout
+para los cambios acumulados de identidad, enums y `_Bool`. Registrar evidencia
+en TRACKING.md, TANDA-08-TIPOS-C.md y registro de commits. No es la validación
+completa de la tanda; LLVM, NSLink y los insumos de VC permanecen sin modificar.
+
 ## Identidad de campo con observación inicial incompleta
 
 T08-002: conciliar USR de campo entre todas las definiciones completas, incluso
