@@ -19,6 +19,8 @@ Markdown. No altera todavía el formato, LLVM ni NSLink; validación agrupada.
 Conservar también identidades USR conocidas de tipos anidados de cada campo,
 incluyendo elementos, tipos subyacentes y firmas de función, cuando la primera
 observación compatible no las tenga. No modificar los árboles originales.
+Preparar la recopilación de grupos C seleccionados en un catálogo ordenado por
+identidad: rechazar duplicados o una captura fallida sin producir salida parcial.
 
 ## Procedencia y destino de tipos importados
 
