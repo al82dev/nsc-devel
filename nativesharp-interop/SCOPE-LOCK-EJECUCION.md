@@ -1,5 +1,17 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Cobertura del validador de la tanda 08
+
+El inventario de `validar*.cmd` bajo `pruebas-tanda-08-*` muestra validadores
+que `validar-tanda-08.cmd` no invoca, incluidos opacos, bitfields, TLS, typedef,
+sombras y callback precompilado. Permitir modificar el validador principal,
+tracking y bitácora para incluir explícitamente todos los validadores del
+inventario en orden de dependencias y agrupar los targets ON en una sola
+construcción incremental. No alterar los fixtures para convertir fallos en
+éxitos. El enum mixto y TLS conocido pueden hacer fallar el gate y deben
+seguir visibles; agregar su ejecución no los declara resueltos. No ejecutar
+el gate integral hasta la validación de la tanda.
+
 ## Callback con record C en biblioteca precompilada
 
 T08-017: comprobar la publicación y el consumo de un callback C que recibe

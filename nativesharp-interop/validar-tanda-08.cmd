@@ -5,17 +5,7 @@ set "TMP=A:\nsc-interop-build\temp"
 set "TEMP=%TMP%"
 cmake -S "%~dp0.." -B A:/nsc-interop-build/tanda1-ON -DNSC_BUILD_TESTS=ON
 if errorlevel 1 exit /b 1
-call "%~dp0construir-frontend-tanda1.cmd" nsc ON
-if errorlevel 1 exit /b 1
-call "%~dp0construir-frontend-tanda1.cmd" nsc_cpp_session_tests ON
-if errorlevel 1 exit /b 1
-call "%~dp0construir-frontend-tanda1.cmd" nsc_precompiled_syntax_node_index_tests ON
-if errorlevel 1 exit /b 1
-call "%~dp0construir-frontend-tanda1.cmd" nsc_syntax_tree_serialization_equivalence_tests ON
-if errorlevel 1 exit /b 1
-call "%~dp0construir-frontend-tanda1.cmd" nsc_project_oop_lowering_tests ON
-if errorlevel 1 exit /b 1
-call "%~dp0construir-frontend-tanda1.cmd" nsc_namespace_function_llvm_tests ON
+call "%~dp0construir-frontend-tanda1.cmd" "nsc nsc_cpp_session_tests nsc_precompiled_syntax_node_index_tests nsc_syntax_tree_serialization_equivalence_tests nsc_project_oop_lowering_tests nsc_namespace_function_llvm_tests" ON
 if errorlevel 1 exit /b 1
 call "%~dp0construir-frontend-tanda1.cmd" nsc_frontend OFF
 if errorlevel 1 exit /b 1
@@ -39,6 +29,26 @@ A:\nsc-interop-build\tanda1-ON\tests\nsc_namespace_function_llvm_tests.exe
 if errorlevel 1 set "TASK_FAILED=1"
 popd
 for %%T in (valores incompleto record-c union layout callback enum-funcion) do call :run_case %%T
+for %%T in (global-puntero-const flotante-c inline-c prototipos-c typedef-c bitfields-c tls-c) do call :run_case %%T
+for %%T in (
+  pruebas-tanda-08-incompleto\validar-opaco.cmd
+  pruebas-tanda-08-callback\validar-record-precompilado.cmd
+  pruebas-tanda-08-typedef-c\validar-puntero.cmd
+  pruebas-tanda-08-typedef-c\validar-enumerador.cmd
+  pruebas-tanda-08-typedef-c\validar-enum-mixto.cmd
+  pruebas-tanda-08-typedef-c\validar-enum-entero.cmd
+  pruebas-tanda-08-typedef-c\validar-enum-aritmetica.cmd
+  pruebas-tanda-08-typedef-c\validar-agregados.cmd
+  pruebas-tanda-08-bitfields-c\validar-volatile.cmd
+  pruebas-tanda-08-bitfields-c\validar-volatile-metadata.cmd
+  pruebas-tanda-08-bitfields-c\validar-union.cmd
+  pruebas-tanda-08-bitfields-c\validar-metadata.cmd
+  pruebas-tanda-08-bitfields-c\validar-matriz-volatile.cmd
+  pruebas-tanda-08-tls-c\validar-dll.cmd
+  pruebas-tanda-08-tls-c\directo\validar.cmd
+  pruebas-tanda-08-meta-c\validar-productor.cmd
+  pruebas-tanda-08-meta-c\validar-sombras.cmd
+) do call :run_script %%T
 echo === Publicacion y consumo de tipo C por NSMETA ===
 call "%~dp0pruebas-tanda-08-meta-c\validar.cmd"
 if errorlevel 1 set "TASK_FAILED=1"
@@ -52,5 +62,16 @@ exit /b 0
 :run_case
 echo === Caso %~1 ===
 call "%~dp0pruebas-tanda-08-%~1\validar.cmd"
+if errorlevel 1 set "TASK_FAILED=1"
+exit /b 0
+
+:run_script
+echo === Caso %~1 ===
+if not exist "%~dp0%~1" (
+  echo Falta el validador %~1.
+  set "TASK_FAILED=1"
+  exit /b 0
+)
+call "%~dp0%~1"
 if errorlevel 1 set "TASK_FAILED=1"
 exit /b 0
