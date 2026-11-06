@@ -2,6 +2,11 @@
 
 ## Typedef C en proyectos reales
 
+La comparación mixta devolvió 7: HIR promueve `uint` e `int` a `long`, mientras
+Clang C aplica unsigned. Separar ese caso en un proyecto independiente y dejar
+pendiente la decisión de semántica solicitada al usuario. No cambiar reglas
+numéricas ni hacer pasar la prueba alterando silenciosamente su expectativa.
+
 Contrastar operaciones mixtas entre enum C unsigned e int signed mediante
 funciones de referencia compiladas por Clang; cubrir comparación y suma.
 Registrar cualquier diferencia antes de decidir la semántica o modificar el

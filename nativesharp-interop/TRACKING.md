@@ -485,6 +485,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     de cero argumentos en O0–O3, con rechazo de argumento extra. No cubre
     todas las posiciones o combinaciones. [Evidencia](registro-commits/prueba-prototipos-c.md).
 - [ ] T08-009. Mapear enumeraciones y sus valores representables.
+  - Una comparación mixta enum C unsigned / int signed difiere entre las
+    promociones NS y C; pendiente decisión sobre semántica de la expresión.
+    [Evidencia](registro-commits/enum-c-mixto-referencia.md).
   - Aritmética, desplazamiento y operadores bitwise/unarios pasaron muestras
     signed, unsigned y enum de 8 bits O0–O3; AND/OR de enum NS se preservó.
     La validación de la tanda y otras combinaciones siguen pendientes.

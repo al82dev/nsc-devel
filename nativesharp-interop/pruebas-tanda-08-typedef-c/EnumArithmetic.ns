@@ -22,10 +22,5 @@ int Main()
     int tinyCombined = tiny | tiny;
     int shiftByEnum = 8 >> color;
     if (tinyComplement != -256 || tinyCombined != 255 || shiftByEnum != 2) return 6;
-    int signedNegative = -1;
-    int signedTwo = 2;
-    if ((high == signedNegative) != (c_unsigned_eq_negative() == 1)) return 7;
-    long mixedSum = high + signedTwo;
-    if (mixedSum != c_unsigned_add_two()) return 8;
     return 0;
 }

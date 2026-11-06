@@ -13,7 +13,7 @@ for %%F in (Api.h Api.c Main.ns Project.nsproj MatrixPointer.ns MatrixPointer.ns
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
-for %%F in (EnumToInteger InvalidNativeEnumToInteger EnumArithmetic InvalidNativeEnumArithmetic NativeEnumBitwise) do (
+for %%F in (EnumToInteger InvalidNativeEnumToInteger EnumArithmetic InvalidNativeEnumArithmetic NativeEnumBitwise EnumMixed) do (
   copy /y "%~dp0%%F.ns" "%DEST%\%%F.ns" >nul
   if errorlevel 1 exit /b 1
   copy /y "%~dp0%%F.nsproj" "%DEST%\%%F.nsproj" >nul
