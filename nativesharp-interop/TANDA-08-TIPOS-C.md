@@ -1201,3 +1201,19 @@ El resultado cubre el almacenamiento directo del puntero global bajo la
 opción MS y alineación conocidas, no todos los accesos indirectos o campos. La
 tanda 08 y T08-015 siguen abiertos. La construcción volvió a presentar las
 advertencias de inicializadores del archivo CppClangSessionTests.cpp.
+
+## Identificadores USR de Clang
+
+En `dfe590633`, `validar-tanda-08.cmd` terminó con código 0. Los snapshots
+conservan el USR opcional proporcionado por la API oficial de Clang para las
+declaraciones y miembros capturados. Las pruebas comprobaron estabilidad de
+una función C entre dos sesiones, diferenciación de funciones, campos y
+enumeradores, conservación después de cerrar la sesión y diferenciación de
+métodos C++ sobrecargados. También comprobaron la presencia en global, alias,
+record, enum, campo estático y namespace.
+
+El USR no demuestra equivalencia ABI ni validez de una biblioteca y puede estar
+ausente si Clang no lo produce. La selección y persistencia aún no se basan en
+él; estas pruebas no acreditan todas las declaraciones o configuraciones. Por
+eso T08-002 permanece abierto. Se observaron advertencias de inicializadores en
+CppSemanticRecord.cpp, CppSemanticInventory.cpp y CppClangSessionTests.cpp.
