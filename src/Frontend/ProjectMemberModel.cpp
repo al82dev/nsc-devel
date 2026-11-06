@@ -439,7 +439,8 @@ bool ProjectMemberModel::build(
                 "duplicate member";
             diagnostics.report(diagnostics::DiagnosticId::InvalidType, diagnostics::DiagnosticSeverity::Error,
                 SourceRange{}, "C++ instance field owner, layout or name is invalid: " +
-                    imported.ownerIdentityKey + "." + imported.name + " (" + reason + ")");
+                    imported.ownerIdentityKey + "." + imported.name + " (" + reason +
+                    "; type=" + imported.typeKey + "; project=" + std::to_string(imported.projectOrdinal) + ")");
             return false;
         }
         ClassMemberSymbol member;
