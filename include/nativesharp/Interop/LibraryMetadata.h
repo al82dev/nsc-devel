@@ -114,7 +114,8 @@ inline constexpr std::uint16_t kMetadataFormatMajor = 1;
 // binders/outlives edges as an explicit semantic catalogue in addition to materializable source.
 // MINOR 38 (2026-10-04): extern-C parameters publish buffer-length and callback-lifetime
 // contracts; members publish the explicit unwind-boundary policy.
-inline constexpr std::uint16_t kMetadataFormatMinor = 41;
+// MINOR 42: imported C record and enum declarations required by a public API.
+inline constexpr std::uint16_t kMetadataFormatMinor = 42;
 
 // NSMETA 1.39. These bits version producer language capabilities that affect private lowering
 // and debug behavior without changing the public NativeSharp ABI projection. Older files decode
@@ -284,7 +285,7 @@ struct LibraryMetadata final
     std::vector<LibraryMetadataBinaryDependency> binaryDependencies;
     // NSMETA 1.41: private C/C++ binary inputs, in linker order.
     std::vector<LibraryMetadataCppBinaryDependency> cppBinaryDependencies;
-    // Prepared for 1.42; older formats must reject a nonempty encoded C record catalogue.
+    // NSMETA 1.42: C declarations required to reconstruct this library's API.
     std::vector<std::uint8_t> cppCRecordCatalog;
     // Private `extern C from` callees referenced by this archive. The final consumer materializes
     // their import libraries even though the declarations themselves are not public metadata.
