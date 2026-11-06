@@ -1519,9 +1519,14 @@ int main(int argc, char** argv)
                                 if (!provideCppSemanticEnumConstants(finalGraph, groups,
                                     std::span<const nativesharp::frontend::CppFunctionDemand>(&demand, 1),
                                     projected, error) || projected.size() != 1) return false;
-                                return conflict ? !projected[0].cppImportError.empty() :
+                                std::vector<nativesharp::frontend::CppImportedTypeDeclaration> types;
+                                if (!provideCppEnumTypes(finalGraph, groups, types, error) || types.size() != 1)
+                                    return false;
+                                const bool typeAgrees = conflict ? !types[0].deferredImportError.empty() :
+                                                                   types[0].deferredImportError.empty();
+                                return typeAgrees && (conflict ? !projected[0].cppImportError.empty() :
                                     projected[0].isCppEnumConstant && projected[0].cppImportError.empty() &&
-                                    projected[0].cppClangUsr == "test:choice";
+                                    projected[0].cppClangUsr == "test:choice");
                             };
                             ok &= expect(checkEnumeratorUsr(false),
                                 "matching enumerator USRs survive an unknown observation");
