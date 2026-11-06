@@ -1,0 +1,8 @@
+int Main()
+{
+    Value small = make_value(42);
+    if (value_integer(small) != 42) return 1;
+    BigValue big = make_big();
+    if (big_sum(big) != 31) return 2;
+    return 0;
+}

@@ -1,5 +1,10 @@
 typedef union Value { int integer; unsigned char bytes[4]; } Value;
+typedef union BigValue { int words[3]; unsigned char bytes[12]; } BigValue;
 Value* get_value(void);
 int first_byte(Value* value);
 void set_integer(Value* value, int number);
 int get_integer(Value* value);
+Value make_value(int number);
+int value_integer(Value value);
+BigValue make_big(void);
+int big_sum(BigValue value);
