@@ -329,6 +329,8 @@ int main(int argc, char** argv)
         auto field = std::make_unique<ProjectOopMirNode>();
         field->kind = ProjectOopMirNodeKind::FieldAddress;
         field->alignment = 2;
+        field->children.push_back(std::make_unique<ProjectOopMirNode>());
+        field->children.back()->kind = ProjectOopMirNodeKind::LocalValue;
         auto row = std::make_unique<ProjectOopMirNode>();
         row->kind = ProjectOopMirNodeKind::RawElementAddress;
         row->immediate = 12;
@@ -344,6 +346,22 @@ int main(int argc, char** argv)
         element.children.front()->children.front()->kind = ProjectOopMirNodeKind::LocalAddress;
         ok &= expect(!nativesharp::llvm_backend::fieldArrayElementAlignment(&element),
                      "raw indexing without a field root does not invent field alignment");
+        auto parent = std::make_unique<ProjectOopMirNode>();
+        parent->kind = ProjectOopMirNodeKind::FieldAddress;
+        parent->alignment = 1;
+        parent->immediate = 1;
+        parent->children.push_back(std::make_unique<ProjectOopMirNode>());
+        parent->children.back()->kind = ProjectOopMirNodeKind::LocalValue;
+        ProjectOopMirNode nested;
+        nested.kind = ProjectOopMirNodeKind::FieldLoad;
+        nested.alignment = 4;
+        nested.immediate = 4;
+        nested.children.push_back(std::move(parent));
+        ok &= expect(nativesharp::llvm_backend::fieldOrArrayAddressAlignment(&nested) == 1,
+                     "nested field access respects the subaligned parent address");
+        nested.children.front()->kind = ProjectOopMirNodeKind::FieldLoad;
+        ok &= expect(nativesharp::llvm_backend::fieldOrArrayAddressAlignment(&nested) == 4,
+                     "a loaded pointer does not inherit the alignment of its storage slot");
     }
     {
         using namespace nativesharp;
