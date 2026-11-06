@@ -97,6 +97,28 @@ void ProjectOopMirModel::importNamedStructLayouts(
             layout.hasExplicitFieldOffsets, abiPassingForSize(layout.size),
             imported, requiresDrop, dropGlueEntryName, layout.fields});
     }
+    for (std::size_t ordinal = 0; ordinal < nameLookup.namedTypes().size(); ++ordinal)
+    {
+        const auto* imported = nameLookup.cppImportedType(ordinal);
+        if (!imported || !imported->objectLayout || imported->isIncomplete ||
+            !imported->deferredImportError.empty() ||
+            (imported->origin != CppImportedTypeOrigin::CStruct &&
+             imported->origin != CppImportedTypeOrigin::CUnion)) continue;
+        std::vector<ObjectFieldLayout> fields;
+        for (std::size_t index = 0; index < memberModel.members().size(); ++index)
+        {
+            const auto& member = memberModel.members()[index];
+            if (member.declaringTypeOrdinal != ordinal || member.isStatic ||
+                !member.isCppExternal || member.kind != ClassMemberKind::Field) continue;
+            if (const auto* field = objectLayoutModel.fieldLayoutForMember(index)) fields.push_back(*field);
+        }
+        const auto& layout = *imported->objectLayout;
+        structLayouts_.push_back(ProjectOopMirStructLayout{
+            ordinal, "type:" + imported->identity.key(), layout.sizeBytes, layout.alignmentBytes,
+            imported->origin == CppImportedTypeOrigin::CUnion, 0, 0, true,
+            abiPassingForSize(layout.sizeBytes), nameLookup.namedTypes()[ordinal].isPrecompiled,
+            false, {}, std::move(fields)});
+    }
 }
 
 void ProjectOopMirModel::collectTupleTypeKey(
