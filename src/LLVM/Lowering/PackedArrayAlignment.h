@@ -8,20 +8,33 @@
 
 namespace nativesharp::llvm_backend
 {
-// Only fixed-array element addresses rooted directly in a field carry this proof.
+inline std::optional<std::uint64_t> fieldOrArrayAddressAlignment(
+    const frontend::ProjectOopMirNode* node, unsigned depth = 0) noexcept
+{
+    if (!node) return std::nullopt;
+    if (depth > 128) return 1;
+    if (node->kind == frontend::ProjectOopMirNodeKind::FieldAddress ||
+        node->kind == frontend::ProjectOopMirNodeKind::FieldLoad)
+    {
+        if (node->alignment == 0 || node->children.size() != 1 || !node->children.front()) return std::nullopt;
+        const auto* receiver = node->children.front().get();
+        // A FieldLoad receiver is a loaded value, potentially a pointer; it is not its slot address.
+        if (receiver->kind != frontend::ProjectOopMirNodeKind::FieldAddress &&
+            receiver->kind != frontend::ProjectOopMirNodeKind::RawElementAddress) return node->alignment;
+        const auto parent = fieldOrArrayAddressAlignment(receiver, depth + 1);
+        return parent ? std::gcd(node->alignment, std::gcd(*parent, node->immediate)) : 1;
+    }
+    if (node->kind != frontend::ProjectOopMirNodeKind::RawElementAddress || node->children.size() != 2 ||
+        !node->children.front() || node->immediate == 0) return std::nullopt;
+    const auto parent = fieldOrArrayAddressAlignment(node->children.front().get(), depth + 1);
+    return parent ? std::optional<std::uint64_t>{std::gcd(*parent, node->immediate)} : std::nullopt;
+}
+
+// Pointer-based indexing without a field-address root has no field alignment proof.
 inline std::optional<std::uint64_t> fieldArrayElementAlignment(
     const frontend::ProjectOopMirNode* node) noexcept
 {
-    std::uint64_t strideGcd = 0;
-    while (node && node->kind == frontend::ProjectOopMirNodeKind::RawElementAddress)
-    {
-        if (node->children.size() != 2 || !node->children.front() || node->immediate == 0)
-            return std::nullopt;
-        strideGcd = std::gcd(strideGcd, node->immediate);
-        node = node->children.front().get();
-    }
-    if (strideGcd == 0 || !node || node->kind != frontend::ProjectOopMirNodeKind::FieldAddress ||
-        node->alignment == 0) return std::nullopt;
-    return std::gcd(strideGcd, node->alignment);
+    if (!node || node->kind != frontend::ProjectOopMirNodeKind::RawElementAddress) return std::nullopt;
+    return fieldOrArrayAddressAlignment(node);
 }
 }

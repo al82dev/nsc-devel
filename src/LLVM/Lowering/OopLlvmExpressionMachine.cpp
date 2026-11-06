@@ -477,8 +477,8 @@ bool OopLlvmImplementation::lowerExpressionFrame004FieldLoad(
     LLVMTypeRef type = llvmType(current->typeKey, error);
     if (address == nullptr || type == nullptr) { values.push_back(nullptr); return true; }
     LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "field.load");
-    if (current->alignment != 0)
-        LLVMSetAlignment(load, static_cast<unsigned>(current->alignment));
+    if (const auto alignment = fieldOrArrayAddressAlignment(current))
+        LLVMSetAlignment(load, static_cast<unsigned>(*alignment));
     if (current->volatileAccess) LLVMSetVolatile(load, 1);
     const std::string record =
         runtimeDebugFieldLoadRecord(*current, "FIELD-LOAD-END");

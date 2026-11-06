@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Alineación de campos y arreglos anidados
+
+T08-010/T08-012/T08-016: combinar la alineación MIR de un campo con la de
+direcciones de campos y elementos de arreglo que forman su receptor por valor;
+no propagar alineación a través de un puntero cargado. Aplicar a accesos y
+conservar test de procedencia sin campo. No habilitar aún records anidados
+subalineados. Presupuesto: PackedArrayAlignment.h privado, dos unidades LLVM
+de acceso, CppClangSessionTests.cpp y registros Markdown. LLVM externo y
+NSLink protegidos; validación agrupada por tanda.
+
 ## Arreglos C empaquetados de punteros representables
 
 T08-014/T08-016: permitir arreglos fijos C subalineados de punteros que el

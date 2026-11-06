@@ -175,7 +175,8 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 LLVMSetAlignment(previous, static_cast<unsigned>(*alignment));
             if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::FieldAddress &&
                 node->children[0]->alignment != 0)
-                LLVMSetAlignment(previous, static_cast<unsigned>(node->children[0]->alignment));
+                if (const auto alignment = fieldOrArrayAddressAlignment(node->children[0].get()))
+                    LLVMSetAlignment(previous, static_cast<unsigned>(*alignment));
             if (node->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
             if (isClangMsVolatileScalarGlobal(node->children[0].get()))
             {
@@ -205,7 +206,8 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
             if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::FieldAddress &&
                 node->children[0]->alignment != 0)
-                LLVMSetAlignment(store, static_cast<unsigned>(node->children[0]->alignment));
+                if (const auto alignment = fieldOrArrayAddressAlignment(node->children[0].get()))
+                    LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
             if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
             if (isClangMsVolatileScalarGlobal(node->children[0].get()))
             {
@@ -410,7 +412,8 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
         if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::FieldAddress &&
             node->children[0]->alignment != 0)
-            LLVMSetAlignment(store, static_cast<unsigned>(node->children[0]->alignment));
+            if (const auto alignment = fieldOrArrayAddressAlignment(node->children[0].get()))
+                LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
         if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
         if (isClangMsVolatileScalarGlobal(node->children[0].get()))
         {
