@@ -205,6 +205,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
     {
         const CppImportedTypeAlias* selected = nullptr;
         std::string selectedName;
+        std::optional<std::string> knownAliasUsr;
         std::vector<std::size_t> nativeCandidates;
         for (const auto& spelling : rung.spellings)
         {
@@ -226,6 +227,14 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     selected->declaration.underlyingType.canonicalSpelling != alias.declaration.underlyingType.canonicalSpelling))
                     return report(diagnostics::DiagnosticId::AmbiguousTypeName,
                                   "conflicting C/C++ type alias '" + syntax->baseName() + "'");
+                const auto& usr = alias.declaration.clangUsr;
+                if (usr && !usr->empty())
+                {
+                    if (knownAliasUsr && *knownAliasUsr != *usr)
+                        return report(diagnostics::DiagnosticId::AmbiguousTypeName,
+                                      "conflicting C/C++ type alias '" + syntax->baseName() + "'");
+                    knownAliasUsr = usr;
+                }
                 selected = &alias;
                 selectedName = qualified;
             }
