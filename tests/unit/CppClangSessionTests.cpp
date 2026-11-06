@@ -6386,6 +6386,20 @@ int main(int argc, char** argv)
                     if (ready && selectedShade && fieldDependency.nameLookup() && fieldDependency.projectGraph())
                     {
                         const auto& lookup = *fieldDependency.nameLookup();
+                        LibraryMetadata api;
+                        LibraryMetadataNamespaceFunction function;
+                        for (const auto& type : lookup.namedTypes())
+                            if (type.identity.name() == "Box")
+                                function.declaredTypeKey = "type:" + type.identity.key() + "*";
+                        api.namespaceFunctions.push_back(std::move(function));
+                        std::vector<std::uint8_t> bytes;
+                        std::vector<CppCRecordSnapshot> records;
+                        std::vector<CppCEnumSnapshot> enums;
+                        const bool supplied = provideCppCRecordMetadataCatalog(fieldDependency, api, bytes, dependencyError) &&
+                            metadata_detail::decodeCTypeCatalog(bytes, records, enums, dependencyError);
+                        ok &= expect(supplied && records.size() == 1 && enums.size() == 1 &&
+                                     enums[0].declaration.name == "Shade",
+                                     "C metadata provider includes enum dependency of record field");
                         for (const auto& type : lookup.namedTypes())
                         {
                             if (type.identity.name() != "Shade") continue;
@@ -6432,6 +6446,23 @@ int main(int argc, char** argv)
                     if (!ready) std::cerr << "C function enum dependency: " << dependencyError << '\n';
                     ok &= expect(ready && selectedMood,
                                  "function demand selects its enum result without an explicit type use");
+                    if (ready && selectedMood && functionDependency.nameLookup())
+                    {
+                        LibraryMetadata api;
+                        LibraryMetadataNamespaceFunction function;
+                        for (const auto& type : functionDependency.nameLookup()->namedTypes())
+                            if (type.identity.name() == "Mood")
+                                function.declaredTypeKey = "type:" + type.identity.key();
+                        api.namespaceFunctions.push_back(std::move(function));
+                        std::vector<std::uint8_t> bytes;
+                        std::vector<CppCRecordSnapshot> records;
+                        std::vector<CppCEnumSnapshot> enums;
+                        const bool supplied = provideCppCRecordMetadataCatalog(functionDependency, api, bytes, dependencyError) &&
+                            metadata_detail::decodeCTypeCatalog(bytes, records, enums, dependencyError);
+                        ok &= expect(supplied && records.empty() && enums.size() == 1 &&
+                                     enums[0].declaration.name == "Mood",
+                                     "C metadata provider includes enum used directly in a signature");
+                    }
                 }
                 {
                     nativesharp::frontend::ProjectCompilation callbackDependency;
