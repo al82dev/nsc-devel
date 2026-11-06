@@ -2948,6 +2948,24 @@ int main(int argc, char** argv)
                          (*enumSnapshots)[0].declaration.enumerators[0].clangUsr == "value-usr" &&
                          (*enumSnapshots)[0].declaration.enumerators[0].decimalValue == "-3",
                          "C enum catalogue reconciles identities and preserves exact signed values");
+            if (enumSnapshots)
+            {
+                std::vector<std::uint8_t> bytes;
+                std::vector<CppCRecordSnapshot> decodedRecords;
+                std::vector<CppCEnumSnapshot> decodedEnums;
+                std::string codecError;
+                const bool encoded = metadata_detail::encodeCTypeCatalog({}, *enumSnapshots, bytes, codecError);
+                const bool decoded = encoded && metadata_detail::decodeCTypeCatalog(bytes, decodedRecords, decodedEnums, codecError);
+                ok &= expect(decoded && decodedRecords.empty() && decodedEnums.size() == 1 &&
+                             decodedEnums[0].declaration.underlyingType &&
+                             decodedEnums[0].declaration.enumerators[0].decimalValue == "-3" &&
+                             decodedEnums[0].declaration.enumerators[0].clangUsr == "value-usr",
+                             "C type codec preserves enum type, signed value and identity");
+                if (!bytes.empty()) bytes.pop_back();
+                ok &= expect(!metadata_detail::decodeCTypeCatalog(bytes, decodedRecords, decodedEnums, codecError) &&
+                             decodedEnums.size() == 1,
+                             "C type codec rejects truncated enum without changing outputs");
+            }
             enumEntries[1].declaration.enumerators[0].decimalValue = "-4";
             ok &= expect(std::holds_alternative<CppCEnumSnapshotFailure>(
                              captureCppCEnumCatalog(enumEntries, 0, "Semantic", enumSeeds)),
@@ -3121,14 +3139,14 @@ int main(int argc, char** argv)
                 LibraryMetadata catalogMetadata;
                 catalogMetadata.formatMinor = 42;
                 catalogMetadata.targetTriple = "x86_64-pc-windows-msvc";
-                catalogMetadata.cppCRecordCatalog = encoded;
-                ok &= expect(roundTrip && metadata_detail::verifyBinaryClosureMetadata(catalogMetadata, codecError),
+                const bool combinedEncoded = metadata_detail::encodeCTypeCatalog(*catalog, {}, catalogMetadata.cppCRecordCatalog, codecError);
+                ok &= expect(roundTrip && combinedEncoded && metadata_detail::verifyBinaryClosureMetadata(catalogMetadata, codecError),
                              "metadata validates a canonical C record catalogue for its target");
                 const auto payload = metadata_detail::encodePayload(catalogMetadata, 3, true);
                 LibraryMetadata decodedPayload;
                 decodedPayload.formatMinor = 42;
                 const bool payloadRead = metadata_detail::decodePayload(payload, decodedPayload, codecError);
-                ok &= expect(payloadRead && decodedPayload.cppCRecordCatalog == encoded,
+                ok &= expect(payloadRead && decodedPayload.cppCRecordCatalog == catalogMetadata.cppCRecordCatalog,
                              "prepared metadata payload preserves the C record catalogue");
                 auto withoutCatalog = catalogMetadata;
                 withoutCatalog.cppCRecordCatalog.clear();
@@ -6423,9 +6441,10 @@ int main(int argc, char** argv)
                         api.namespaceFunctions.push_back(std::move(function));
                         std::vector<std::uint8_t> catalogBytes;
                         std::vector<CppCRecordSnapshot> catalogRecords;
+                        std::vector<CppCEnumSnapshot> catalogEnums;
                         const bool supplied = provideCppCRecordMetadataCatalog(recordDependencies, api, catalogBytes, dependencyError) &&
-                            metadata_detail::decodeCRecordCatalog(catalogBytes, catalogRecords, dependencyError);
-                        ok &= expect(supplied && catalogRecords.size() == 2,
+                            metadata_detail::decodeCTypeCatalog(catalogBytes, catalogRecords, catalogEnums, dependencyError);
+                        ok &= expect(supplied && catalogRecords.size() == 2 && catalogEnums.empty(),
                                      "C metadata provider selects public record and transitive field dependency");
                     }
                 }
