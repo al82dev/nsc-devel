@@ -129,7 +129,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         // Struct windows must not overlap independent fields or bit-field runs.
         if (!identity || record.isCxx ||
             (record.kind != CppRecordKind::Struct && record.kind != CppRecordKind::Union) ||
-            field.name.empty() || field.access != CppAccess::Public || field.type.isVolatile ||
+            field.name.empty() || field.access != CppAccess::Public ||
             !field.offsetBits || !*field.bitWidth || !field.type.sizeBits || !field.type.alignmentBits ||
             !*field.type.alignmentBits || *field.type.alignmentBits % 8 ||
             *field.type.sizeBits > 64 || *field.bitWidth > *field.type.sizeBits ||
@@ -138,11 +138,49 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
             (field.type.kind != CppTypeKind::SignedInteger &&
              field.type.kind != CppTypeKind::UnsignedInteger && field.type.kind != CppTypeKind::Boolean))
             return std::nullopt;
-        const std::uint64_t byteOffset = *field.offsetBits / 8;
-        const std::uint64_t bitOffset = *field.offsetBits % 8;
-        const std::uint64_t neededBits = bitOffset + *field.bitWidth;
+        std::uint64_t byteOffset = *field.offsetBits / 8;
+        std::uint64_t bitOffset = *field.offsetBits % 8;
+        std::uint64_t neededBits = bitOffset + *field.bitWidth;
         std::uint64_t bytes = 1;
-        while (bytes < 8 && bytes * 8 < neededBits) bytes *= 2;
+        if (field.type.isVolatile)
+        {
+            // MS CodeGen uses discrete storage units beginning at the first
+            // field in each run, not the minimum window around the member.
+            std::uint64_t start = 0, tail = 0;
+            bool active = false;
+            if (record.kind == CppRecordKind::Union)
+            {
+                if (*field.offsetBits != 0) return std::nullopt;
+                tail = *field.type.sizeBits;
+                active = true;
+            }
+            else for (std::size_t i = 0; i <= fieldIndex; ++i)
+            {
+                const auto& candidate = record.fields[i];
+                if (!candidate.bitWidth || !*candidate.bitWidth) { active = false; continue; }
+                if (!candidate.offsetBits || !candidate.type.sizeBits || !*candidate.type.sizeBits ||
+                    *candidate.type.sizeBits > 64 || *candidate.type.sizeBits % 8 ||
+                    *candidate.offsetBits > *record.sizeBits) return std::nullopt;
+                if (!active || *candidate.offsetBits >= tail)
+                {
+                    start = *candidate.offsetBits;
+                    if (*candidate.type.sizeBits > *record.sizeBits - start) return std::nullopt;
+                    tail = start + *candidate.type.sizeBits;
+                    active = true;
+                }
+                if (*candidate.offsetBits < start || *candidate.offsetBits > tail ||
+                    *candidate.bitWidth > tail - *candidate.offsetBits) return std::nullopt;
+            }
+            if (!active || start % 8 || tail <= start || (tail - start) % 8 ||
+                *field.offsetBits < start || *field.offsetBits > tail ||
+                *field.bitWidth > tail - *field.offsetBits) return std::nullopt;
+            byteOffset = start / 8;
+            bitOffset = *field.offsetBits - start;
+            bytes = (tail - start) / 8;
+            if (bytes > 8 || (bytes & (bytes - 1)) != 0) return std::nullopt;
+            neededBits = bitOffset + *field.bitWidth;
+        }
+        else while (bytes < 8 && bytes * 8 < neededBits) bytes *= 2;
         const auto recordBytes = *record.sizeBits / 8;
         if (bytes * 8 < neededBits || byteOffset > recordBytes || bytes > recordBytes - byteOffset)
             return std::nullopt;
