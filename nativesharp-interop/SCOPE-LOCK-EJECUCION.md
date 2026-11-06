@@ -1,5 +1,16 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Identidad de caché de código para volatile importado
+
+T08-015: `writeNodeFlags` no incorpora la opción MS volatile ni la evidencia de
+alineación, aunque `isClangMsVolatileIntegerGlobal` cambia el IR según ambas.
+Una identidad igual puede reutilizar código con orden distinto. Añadir ambos
+opcionales a la identidad de definición y versionarla; probar los tres estados
+de la opción y ausencia/presencia de alineación sobre un mismo MIR. Archivos:
+ProjectOopMirCacheIdentity.cpp, NamespaceFunctionLlvmTests.cpp,
+validar-tanda-08.cmd y registros Markdown. La verificación se agrupa con la
+tanda; NSLink y el árbol LLVM son de solo lectura.
+
 ## Globales volatile enteros de 8, 16 y 64 bits
 
 T08-015: extender la ruta de globales directos importados a enteros con y sin

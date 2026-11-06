@@ -98,6 +98,8 @@ void writeNodeFlags(IdentityWriter& output, const frontend::ProjectOopMirNode& n
     output.scalar(node.placementConstructed);
     output.scalar(node.stackPromotedObject);
     output.scalar(node.volatileAccess);
+    output.optional(node.cppMicrosoftVolatileSemantics);
+    output.optional(node.cppAtomicAlignmentBytes);
     output.scalar(node.allocationFailureReturnsNull);
     output.scalar(node.zeroInitialize);
     output.scalar(node.baseReceiver);
@@ -502,7 +504,7 @@ void ProjectOopMirCacheIdentityIndex::computeFunctionDigests(
         declarationDigests_[ordinal] = identityDigest(declaration.take());
 
         IdentityWriter definition;
-        definition.text("NativeSharp.ProjectOopMirCacheIdentity.Definition.v1");
+        definition.text("NativeSharp.ProjectOopMirCacheIdentity.Definition.v2");
         writeFunction(definition, function, true);
         definitionDigests_[ordinal] = identityDigest(definition.take());
     }
