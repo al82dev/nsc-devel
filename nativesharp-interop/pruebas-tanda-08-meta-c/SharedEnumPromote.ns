@@ -2,5 +2,9 @@ int Main()
 {
     var fromHeader = get_c_kind();
     if (fromHeader != CGlobalChoice) return 1;
+    var small = get_small();
+    if (small >= 0 || small != -1 || CPositive <= small) return 2;
+    var high = get_high();
+    if (high != 2147483648u || high <= 1) return 3;
     return 0;
 }

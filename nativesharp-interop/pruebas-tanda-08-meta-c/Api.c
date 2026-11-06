@@ -8,3 +8,5 @@ enum CGlobalKind get_c_kind(void) { return record.kind; }
 int get_c_number(void) { return record.value; }
 int shared_c_number = 17;
 int get_shared_c_number(void) { return shared_c_number; }
+enum CSignedSmall get_small(void) { return CNegative; }
+enum CWideUnsigned get_high(void) { return CHigh; }
