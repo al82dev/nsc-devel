@@ -7,3 +7,7 @@ en los dos primeros y rechazo del tercero. El presupuesto de la tanda incluye
 ahora esta prueba para validarla junto con los casos mixtos.
 
 La prueba está preparada y aún no se ha ejecutado.
+
+Se agregó una declaración equivalente C++ como control negativo para comprobar
+que la nueva proyección continúa limitada a C y no habilita esa ruta por
+accidente. Este control también espera la validación agrupada.

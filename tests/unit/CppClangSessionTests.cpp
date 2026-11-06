@@ -1336,7 +1336,7 @@ int main(int argc, char** argv)
                         CppLanguageMode::Cpp, "namespace other { namespace deep {} }\n")));
                     groups[1].projectFile = project->projectFile();
                     groups[1].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
-                        CppLanguageMode::Cpp, "namespace feature { int value(int); double value(double); extern int shared; extern const int limit; extern volatile int io; extern thread_local int tls; static int local; }\n")));
+                        CppLanguageMode::Cpp, "namespace feature { int value(int); double value(double); extern int shared; extern const int limit; extern volatile int io; extern volatile int* cpp_volatile_array[2]; extern thread_local int tls; static int local; }\n")));
                     groups[1].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
                         CppLanguageMode::C, "int other_value(void);\n")));
                     std::vector<Project> originalOrder{*otherProject, *project};
@@ -1352,7 +1352,7 @@ int main(int argc, char** argv)
                         bool volatileProjected = false, constProjected = false, tlsRejected = false;
                         bool volatilePointerProjected = false;
                         bool volatileArrayProjected = false, constVolatileArrayProjected = false;
-                        bool nestedVolatileArrayRejected = false;
+                        bool nestedVolatileArrayRejected = false, cppVolatileArrayRejected = false;
                         bool cVolatileOptionRetained = false, cppVolatileOptionRetained = false;
                         if (entries)
                             for (const auto& entry : *entries)
@@ -1378,6 +1378,8 @@ int main(int argc, char** argv)
                                         symbol->pointerPointeeReadonly && symbol->typeKey == "builtin:int*[3][2]";
                                 if (entry.declaration.name == "c_nested_volatile_array")
                                     nestedVolatileArrayRejected = rejected != nullptr;
+                                if (entry.declaration.name == "cpp_volatile_array")
+                                    cppVolatileArrayRejected = rejected != nullptr;
                                 if (entry.declaration.name == "shared")
                                 {
                                     cppGlobal = symbol && entry.projectOrdinal == 2 && entry.referenceIndex == 0 &&
@@ -1392,9 +1394,9 @@ int main(int argc, char** argv)
                                 if (entry.declaration.name == "limit") constProjected = symbol && symbol->isConst;
                                 if (entry.declaration.name == "tls") tlsRejected = rejected && entry.declaration.threadLocal;
                             }
-                        ok &= expect(entries && entries->size() == 11 && cGlobal && cppGlobal && internalRejected &&
+                        ok &= expect(entries && entries->size() == 12 && cGlobal && cppGlobal && internalRejected &&
                                      volatilePointerProjected && volatileArrayProjected && constVolatileArrayProjected &&
-                                     nestedVolatileArrayRejected &&
+                                     nestedVolatileArrayRejected && cppVolatileArrayRejected &&
                                      volatileProjected && constProjected && tlsRejected,
                                      "global inventory preserves project, exact symbol, type and unsupported storage contracts");
                         ok &= expect(cVolatileOptionRetained && cppVolatileOptionRetained,
