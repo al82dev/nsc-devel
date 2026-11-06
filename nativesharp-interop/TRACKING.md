@@ -190,6 +190,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Preparados `6c30db324` y `3b6b56a3c`: procedencia struct/union/enum C o
+    record C++ y triple consensuado en el frontend, con controles de origen y
+    conflicto. Aún no se serializan ni se han construido o ejecutado.
   - La suite de sesión pasó sobre `3e6405f55`, incluida la recuperación del
     USR en el proveedor y conflictos de tipos anidados. Persistencia y cierre
     siguen pendientes. [Evidencia](TANDA-08-TIPOS-C.md#validación-dirigida-de-visibilidad-e-identidad).
