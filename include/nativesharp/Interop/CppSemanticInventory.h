@@ -111,6 +111,7 @@ struct CppSemanticEnumConstant
     std::string name;
     std::string typeKey;
     std::uint64_t bits;
+    std::optional<std::string> clangUsr;
 };
 struct CppSemanticEnumConstantFailure { std::string message; };
 using CppSemanticEnumConstantResult =

@@ -524,7 +524,7 @@ CppSemanticEnumConstantResult projectCppEnumConstant(
             return CppSemanticEnumConstantFailure{"enum constant is outside its unsigned type"};
     }
     if (width < 64) bits &= (std::uint64_t{1} << width) - 1;
-    return CppSemanticEnumConstant{entry.projectOrdinal, value.name, mapped->nativeSharpTypeKey, bits};
+    return CppSemanticEnumConstant{entry.projectOrdinal, value.name, mapped->nativeSharpTypeKey, bits, value.clangUsr};
 }
 
 static bool provideValuesWithLookup(
@@ -602,6 +602,7 @@ bool provideCppSemanticEnumConstants(
                     demand.lookupNamespaces.end() ||
                 !seen.emplace(owner, demand.lookupName).second) continue;
             std::optional<CppSemanticEnumConstant> selected;
+            std::optional<std::string> knownUsr;
             std::string failure;
             bool found = false;
             for (const auto& entry : entries)
@@ -615,6 +616,12 @@ bool provideCppSemanticEnumConstants(
                     if (const auto* reason = std::get_if<CppSemanticEnumConstantFailure>(&projected))
                     { failure = reason->message; continue; }
                     auto value = std::get<CppSemanticEnumConstant>(std::move(projected));
+                    if (value.clangUsr && !value.clangUsr->empty())
+                    {
+                        if (knownUsr && *knownUsr != *value.clangUsr)
+                            failure = "conflicting C enumerator identities";
+                        else knownUsr = value.clangUsr;
+                    }
                     if (selected && (selected->typeKey != value.typeKey || selected->bits != value.bits))
                         failure = "conflicting C enumerator declarations";
                     else selected = std::move(value);
@@ -636,6 +643,7 @@ bool provideCppSemanticEnumConstants(
             {
                 state.isConst = true;
                 state.isCppEnumConstant = true;
+                state.cppClangUsr = knownUsr;
                 state.declaredTypeKey = selected->typeKey;
                 state.initializerKind = frontend::NamespaceStateInitializerKind::Integer;
                 state.integerValue = selected->bits;
