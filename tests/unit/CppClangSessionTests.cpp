@@ -1234,6 +1234,22 @@ int main(int argc, char** argv)
                             const auto same = selectCppSemanticGlobal(repeated, 2, "feature::shared");
                             ok &= expect(same.candidate && same.declarationIndices.size() == 2 && same.conflict.empty(),
                                          "identical external global declarations retain both origins");
+                            repeated[selected.declarationIndices[0]].microsoftVolatileSemantics = true;
+                            repeated.back().microsoftVolatileSemantics = true;
+                            const auto agreedVolatile = selectCppSemanticGlobal(repeated, 2, "feature::shared");
+                            ok &= expect(agreedVolatile.candidate &&
+                                         agreedVolatile.candidate->microsoftVolatileSemantics == std::optional<bool>{true},
+                                         "global selection retains an agreed effective volatile option");
+                            repeated.back().microsoftVolatileSemantics = false;
+                            const auto differingVolatile = selectCppSemanticGlobal(repeated, 2, "feature::shared");
+                            ok &= expect(differingVolatile.candidate &&
+                                         !differingVolatile.candidate->microsoftVolatileSemantics.has_value(),
+                                         "global selection does not choose between different volatile options");
+                            repeated.back().microsoftVolatileSemantics = std::nullopt;
+                            const auto unknownVolatile = selectCppSemanticGlobal(repeated, 2, "feature::shared");
+                            ok &= expect(unknownVolatile.candidate &&
+                                         !unknownVolatile.candidate->microsoftVolatileSemantics.has_value(),
+                                         "global selection retains unknown volatile options as unknown");
                             repeated.back().declaration.type.canonicalSpelling = "double";
                             const auto conflict = selectCppSemanticGlobal(repeated, 2, "feature::shared");
                             ok &= expect(!conflict.candidate && !conflict.conflict.empty() &&

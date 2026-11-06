@@ -1012,6 +1012,11 @@ del mismo nombre y símbolo coinciden. Si discrepan o alguna es desconocida, el
 resultado es desconocido: no se elige silenciosamente una sesión. Todavía no se
 genera orden atómico ni se ha validado esta etapa.
 
+## Prueba de selección de opción volatile
+
+La suite de sesión prepara entradas repetidas con opciones iguales, distintas
+y desconocidas; exige conservar únicamente el valor acordado. Aún no ejecutada.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

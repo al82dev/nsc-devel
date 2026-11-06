@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Prueba de selección de opción volatile
+
+Preparar controles de acuerdo, desacuerdo y opción desconocida al seleccionar
+declaraciones repetidas de un global. Archivos: CppClangSessionTests.cpp y
+documentación. Ejecutar con la batería agrupada.
+
 ## Opción volatile al seleccionar un global
 
 Conservar la opción efectiva en el candidato seleccionado solo si todas sus
