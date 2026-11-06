@@ -20,6 +20,10 @@ Extender el mismo fixture con un global C `Opaque**` y una `union` opaca,
 incluidos retorno, argumento, global y rechazo de local por valor. La
 definición de la union permanece privada en el archivo C. Registrar resultados
 por separado; no modificar producción antes de demostrar una falla.
+Ampliar el fixture con un productor NativeSharp precompilado que publique
+funciones con punteros a ambos tipos opacos y un consumidor que use esa
+superficie sin importar directamente el encabezado C. Probar O0–O3; no
+modificar producción antes de reproducir y delimitar una falla.
 La prueba positiva reproduce el rechazo del global `Opaque*` en O0. Las
 firmas de funciones aceptan el puntero, pero `mapGlobalType` exige layout al
 recorrer su objeto apuntado. Permitir `src/Interop/Cpp/CppSemanticInventory.cpp`

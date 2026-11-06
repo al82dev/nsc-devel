@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>COpaquePublished</Name></PropertyGroup>
+  <ItemGroup><Compile Include="OpaquePublished.ns" /><LibraryReference Include="COpaqueProducer.lib" /></ItemGroup>
+</Project>

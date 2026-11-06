@@ -1,0 +1,10 @@
+namespace PublishedOpaque
+{
+    public struct Bridge
+    {
+        public static Opaque* Get() { return opaque_get(); }
+        public static int Read(Opaque* value) { return opaque_read(value); }
+        public static OpaqueUnion* GetUnion() { return union_get(); }
+        public static int ReadUnion(OpaqueUnion* value) { return union_read(value); }
+    }
+}
