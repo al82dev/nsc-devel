@@ -476,21 +476,21 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     O0–O3. La suite pasó controles de catálogo, versión y fingerprint. Otras
     representaciones y contratos siguen pendientes.
     [Evidencia](registro-commits/metadata-long-double-c.md).
-  - Preparada una extensión versionada del catálogo para conservar el formato
+  - Registro histórico previo a la validación: preparada una extensión versionada del catálogo para conservar el formato
     IEEE de `long double`, compararlo y reflejarlo en el fingerprint sin la
     procedencia. La construcción y los controles están en curso; no se afirma
     compatibilidad hasta ejecutarlos. [Detalle](registro-commits/catalogo-ieee64-versionado.md).
-  - El caso directo de `long double` pasó O0 después de capturar el formato
+  - Registro histórico del fallo corregido: el caso directo de `long double` pasó O0 después de capturar el formato
     IEEE; el consumidor precompilado falló al reconstruir el campo y detuvo
     la matriz. [Evidencia](registro-commits/metadata-long-double-c.md).
-  - Clang confirmó `long double` IEEE binary64 y ABI `double` en el fixture
+  - Registro histórico anterior a la corrección: Clang confirmó `long double` IEEE binary64 y ABI `double` en el fixture
     Windows x64; NSC rechazó el typedef. Se preparó captura explícita y mapeo
     condicionado, con construcción en curso. La metadata aún no persiste el
     dato. [Evidencia](registro-commits/prueba-long-double-c.md).
 - [ ] T08-008. Mapear el tipo `void` en parámetros y resultados donde corresponda.
-  - Preparada la proyección de globales y arreglos C `volatile void*`, con
-    controles de paso a función y rechazos de descarte y desreferencia. Aún
-    esperan validación agrupada. [Detalle](registro-commits/prueba-volatile-void-global.md).
+  - La validación agrupada del fixture de records pasó los casos preparados de
+    globales y arreglos C `volatile void*`, con los controles negativos incluidos.
+    [Detalle](registro-commits/validacion-agrupada-volatile-08.md).
   - La muestra C11 pasó retorno `void`, parámetro y retorno `void*` y prototipo
     de cero argumentos en O0–O3, con rechazo de argumento extra. No cubre
     todas las posiciones o combinaciones. [Evidencia](registro-commits/prueba-prototipos-c.md).
