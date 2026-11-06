@@ -478,9 +478,11 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     0 en O0–O3; el fixture verificó campo y arreglo enum, IR y sus rechazos de
     dirección. Es una comprobación dirigida, no el cierre de T08-009.
 - [ ] T08-010. Importar la declaración y campos de un `struct` C.
-  - Los campos de bits C se capturan pero todavía no se proyectan. El fixture
-    mixto confirmó el rechazo en O0; falta transportar su almacenamiento y
-    descenso exactos. [Evidencia](registro-commits/prueba-bitfields-c.md).
+  - Los campos de bits enteros no volátiles en structs C se proyectan con
+    coordenadas de Clang. El fixture mixto de lectura y escritura, incluidos
+    campos con signo y empaquetados, pasó en O0–O3. Quedan pendientes unions,
+    volatile, metadata precompilada y otras formas de uso. Es cobertura dirigida,
+    no cierre del ítem. [Evidencia](registro-commits/validacion-bitfields-c.md).
   - Records compartidos por valor de 8 y 12 bytes pasaron O0–O3 en el caso
     productor/consumidor. [Evidencia](registro-commits/prueba-record-c-compartido-valor.md).
   - Preparado en `ac71663a7` y `1454f719f`: propagación de alineación por
