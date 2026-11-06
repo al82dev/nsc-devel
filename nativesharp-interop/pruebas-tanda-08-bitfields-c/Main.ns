@@ -3,7 +3,7 @@ int Main()
     Bits* value = get_bits();
     PackedBits* packed = get_packed_bits();
     init_bits(value, packed);
-    if (sizeof(Bits) != bits_size() || sizeof(PackedBits) != packed_bits_size()) return 1;
+    if ((int)sizeof(Bits) != bits_size() || (int)sizeof(PackedBits) != packed_bits_size()) return 1;
     if (value->first != 5 || value->delta != -3 || value->second != 37 || value->third != 9) return 2;
     if (packed->prefix != 11 || packed->small != 12 || packed->negative != -4) return 3;
     value->first = 6; value->delta = -7; value->second = 31; value->third = 10;
