@@ -1,0 +1,5 @@
+int Main()
+{
+    int* value = c_matrix[1][0];
+    return 0;
+}

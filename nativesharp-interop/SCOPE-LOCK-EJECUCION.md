@@ -27,6 +27,10 @@ Ampliar los controles del mismo fixture con un puntero inferido desde un slot
 y con el arreglo utilizado como argumento de una función que acepta `int**`.
 Ambas rutas deben rechazar la pérdida de const; no modificar producción hasta
 reproducir una falla específica.
+Extender el fixture con una matriz C `const int *[2][2]`, lectura, reasignación
+y comprobación desde C; preparar rechazos de escritura y conversión a puntero
+mutable para un elemento. No modificar producción antes de reproducir el fallo
+y acotar la propagación del calificador entre dimensiones.
 El caso positivo y los rechazos pasaron, pero pedir `&c_slots[0]` emitió el
 mensaje genérico de campo de bits, aunque el elemento no lo es. Permitir una
 comprobación localizada en `IndexAndRangeExpressions.cpp` y ajustar el script

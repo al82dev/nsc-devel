@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CGlobalConstPointersInvalidMatrix</Name></PropertyGroup>
+  <ItemGroup><Compile Include="InvalidMatrix.ns" /><CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" /></ItemGroup>
+</Project>

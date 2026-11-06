@@ -1,0 +1,5 @@
+int Main()
+{
+    *c_matrix[1][0] = 44;
+    return 0;
+}
