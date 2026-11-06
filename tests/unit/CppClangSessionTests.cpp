@@ -3332,6 +3332,79 @@ int main(int argc, char** argv)
                     ok &= expect(hashed && fileSize && sourceEvidence() &&
                                  comparison == metadata_detail::CRecordContractComparison::Matching,
                                  "C root evidence matches an unchanged physical source and contract");
+                    auto compareClosure = [&] {
+                        return metadata_detail::compareCRecordClosureEvidence(std::span(&first, 1), {}, first.identityKey,
+                            std::span(&second, 1), {}, second.identityKey, comparison, codecError);
+                    };
+                    ok &= expect(compareClosure() && comparison == metadata_detail::CRecordContractComparison::Matching,
+                                 "C closure accepts a record without foreign dependencies");
+                    if (first.sizeBits && *first.sizeBits >= 64)
+                    {
+                        CppType self;
+                        self.kind = CppTypeKind::Record;
+                        CppRecordTypeIdentity selfIdentity;
+                        selfIdentity.name = first.name;
+                        selfIdentity.namespaceSegments = first.namespaceSegments;
+                        selfIdentity.containingRecords = first.containingRecords;
+                        selfIdentity.clangUsr = first.clangUsr;
+                        self.recordIdentity = std::move(selfIdentity);
+                        CppType pointer;
+                        pointer.kind = CppTypeKind::Pointer;
+                        pointer.sizeBits = 64;
+                        pointer.element = std::make_shared<CppType>(self);
+                        first.fields.front().offsetBits = 0;
+                        first.fields.front().type = pointer;
+                        second = first;
+                        ok &= expect(compareClosure() && comparison == metadata_detail::CRecordContractComparison::Matching,
+                                     "C closure terminates on a self-referential pointer");
+                        self.recordIdentity->name = "MissingDependency";
+                        pointer.element = std::make_shared<CppType>(self);
+                        first.fields.front().type = pointer;
+                        second = first;
+                        ok &= expect(compareClosure() && comparison == metadata_detail::CRecordContractComparison::Insufficient,
+                                     "C closure does not accept a missing record dependency");
+                    }
+                    else ok &= expect(false, "C closure test record can hold a pointer");
+                    first = *comparisonRecord;
+                    first.clangUsr = "test-record-usr";
+                    first.sourceProvenance = CppRecordDeclaration::SourceProvenance{
+                        actualFile, nativesharp::basic::sha256Hex(digest), 0};
+                    second = first;
+                    if (!enumCatalog.empty() && enumCatalog.front().declaration.clangUsr &&
+                        !enumCatalog.front().declaration.enumerators.empty())
+                    {
+                        auto leftEnum = enumCatalog.front();
+                        auto rightEnum = leftEnum;
+                        CppType enumField;
+                        enumField.kind = CppTypeKind::Enumeration;
+                        enumField.sizeBits = leftEnum.declaration.sizeBits;
+                        enumField.enumIdentity = CppEnumTypeIdentity{
+                            leftEnum.declaration.name, leftEnum.declaration.qualifiedName, false,
+                            leftEnum.declaration.clangUsr};
+                        first.fields.front().offsetBits = 0;
+                        first.fields.front().type = enumField;
+                        second = first;
+                        const auto enumClosure = [&] {
+                            return metadata_detail::compareCRecordClosureEvidence(std::span(&first, 1),
+                                std::span(&leftEnum, 1), first.identityKey, std::span(&second, 1),
+                                std::span(&rightEnum, 1), second.identityKey, comparison, codecError);
+                        };
+                        ok &= expect(enumClosure() && comparison == metadata_detail::CRecordContractComparison::Matching,
+                                     "C closure checks a matching enum field dependency");
+                        rightEnum.declaration.enumerators.front().decimalValue = "77";
+                        ok &= expect(enumClosure() && comparison == metadata_detail::CRecordContractComparison::Different,
+                                     "C closure rejects changed enum constants");
+                        first = *comparisonRecord;
+                        first.clangUsr = "test-record-usr";
+                        first.sourceProvenance = CppRecordDeclaration::SourceProvenance{
+                            actualFile, nativesharp::basic::sha256Hex(digest), 0};
+                        second = first;
+                    }
+                    else ok &= expect(false, "C closure test includes an enum with identity");
+                    second.fields.front().name += "_different";
+                    ok &= expect(compareClosure() && comparison == metadata_detail::CRecordContractComparison::Different,
+                                 "C closure rejects differing record contracts");
+                    second = first;
                     second.sourceProvenance->byteOffset = 1;
                     ok &= expect(sourceEvidence() && comparison == metadata_detail::CRecordContractComparison::Different,
                                  "C root evidence distinguishes declaration offsets");
