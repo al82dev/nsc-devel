@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Prueba de consulta de volatile efectivo
+
+Preparar controles de disponibilidad del valor de Clang en sesión activa y
+ausencia tras cierre, sin suponer el valor por el triple. Archivos:
+CppClangSessionTests.cpp y documentación. Ejecutar con la tanda agrupada.
+
 ## Consulta de volatile efectivo de Clang
 
 Exponer mediante la sesión el valor real de LangOpts.MSVolatile, con nullopt si

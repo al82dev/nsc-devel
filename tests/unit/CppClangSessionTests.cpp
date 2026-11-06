@@ -8131,7 +8131,11 @@ int main(int argc, char** argv)
     auto fromFile = open(factory, std::move(fromFileOptions));
     ok &= expect(static_cast<bool>(fromFile), "file input, relative include and ordered macros work");
     if (fromFile)
+    {
         ok &= expect(fromFile->optionsSnapshot().macros.size() == 3, "session retains its options");
+        ok &= expect(fromFile->microsoftVolatileSemantics().has_value(),
+                     "live Clang session exposes its effective MS volatile option");
+    }
 
     auto firstOptions = options(argv[1], argv[2], argv[3], CppLanguageMode::C,
         "#if SESSION_PICK == 1\nint first_session(void);\n#else\nint second_session(void);\n#endif\n");
@@ -8211,6 +8215,8 @@ int main(int argc, char** argv)
         ok &= expect(c->close().succeeded && c->close().succeeded, "close is idempotent");
         ok &= expect(c->state() == CppSessionState::Closed && !c->topLevelDeclarationCount(),
                      "closed session does not expose an AST");
+        ok &= expect(!c->microsoftVolatileSemantics(),
+                     "closed Clang session does not expose an effective volatile option");
         ok &= expect(!c->typeAliasesSnapshot() && cAliases && !cAliases->empty(),
                      "copied C typedef snapshots survive closing the Clang session");
         ok &= expect(!c->enumsSnapshot() && cEnums && !cEnums->empty(),

@@ -988,6 +988,12 @@ Devuelve ausencia después del cierre o si la implementación no lo ofrece. Esta
 consulta aún no transporta la opción al análisis ni cambia el IR; falta cubrirla
 con pruebas y completar la representación por acceso.
 
+## Prueba de consulta de volatile efectivo
+
+Se preparó comprobación de disponibilidad de la opción en una sesión real y
+de ausencia después de cerrarla. No presupone que el triple determine el valor.
+La prueba aún no se ha ejecutado.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.
