@@ -5,7 +5,7 @@
 T08-015: conservar la opción efectiva MSVolatile reportada por cada sesión
 en cada observación de record, sin inferirla del triple. Solo inventario;
 no modifica la semántica emitida ni resuelve conflictos entre sesiones.
-Presupuesto: CppSemanticRecord.h/.cpp y registros Markdown. LLVM externo y
+Presupuesto: CppSemanticRecord.h/.cpp, CppClangSessionTests.cpp y registros Markdown. LLVM externo y
 NSLink protegidos. Construcción y validación agrupadas de la tanda.
 
 ## Comparación de volatile C alineado en agregados
