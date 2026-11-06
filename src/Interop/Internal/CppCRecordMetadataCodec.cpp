@@ -1,10 +1,14 @@
 #include "CppCRecordMetadataCodec.h"
 #include "ByteReader.h"
 #include "ByteWriter.h"
+#include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Frontend/CppAliasBuiltinType.h"
+#include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
 
 #include <algorithm>
+#include <iterator>
 #include <limits>
+#include <map>
 #include <memory>
 #include <set>
 #include <utility>
@@ -462,6 +466,61 @@ bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
         type.objectLayout = frontend::CppImportedObjectLayout{*enumeration.sizeBits / 8, alignment};
         type.enumBase = frontend::CppImportedEnumBase{base->token, std::string(base->name)};
         result.push_back(std::move(type));
+    }
+    output = std::move(result); error.clear(); return true;
+}
+
+bool reconstructPrecompiledCImportedTypes(std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const compilation::ProjectGraph& graph, std::string_view targetTriple,
+    std::vector<frontend::CppImportedTypeDeclaration>& output, std::string& error)
+{
+    std::map<std::string, std::size_t> projectByModule;
+    std::set<std::string> ambiguousModules;
+    for (std::size_t i = 0; i < graph.projects().size(); ++i)
+    {
+        const auto& name = graph.projects()[i].moduleName();
+        if (!projectByModule.emplace(name, i).second) ambiguousModules.insert(name);
+    }
+    std::map<std::string, std::vector<std::uint8_t>> seen;
+    std::vector<frontend::CppImportedTypeDeclaration> result;
+    for (const auto& module : modules)
+    {
+        if (module.cppCTypeCatalog.empty()) continue;
+        std::vector<CppCRecordSnapshot> records;
+        std::vector<CppCEnumSnapshot> enums;
+        if (!decodeCTypeCatalog(module.cppCTypeCatalog, records, enums, error)) return false;
+        const auto add = [&](std::string_view identity, std::string_view owner,
+                             std::span<const CppCRecordSnapshot> oneRecord,
+                             std::span<const CppCEnumSnapshot> oneEnum) {
+            const auto project = projectByModule.find(std::string(owner));
+            if (project == projectByModule.end() || ambiguousModules.contains(std::string(owner)))
+            { error = "C type owner is missing or ambiguous: " + std::string(owner); return false; }
+            std::vector<std::uint8_t> canonical;
+            if (!encodeCTypeCatalog(oneRecord, oneEnum, canonical, error)) return false;
+            const auto [previous, inserted] = seen.emplace(std::string(identity), canonical);
+            if (!inserted)
+            {
+                if (previous->second != canonical)
+                { error = "precompiled C type definitions conflict: " + std::string(identity); return false; }
+                return true;
+            }
+            std::vector<frontend::CppImportedTypeDeclaration> reconstructed;
+            if (!reconstructCImportedTypes(oneRecord, oneEnum, project->second, owner, targetTriple,
+                    module.metadataPath.generic_string(), reconstructed, error)) return false;
+            result.insert(result.end(), std::make_move_iterator(reconstructed.begin()),
+                          std::make_move_iterator(reconstructed.end()));
+            return true;
+        };
+        for (const auto& record : records)
+            if (!add(record.identityKey, record.moduleName, std::span(&record, 1), {})) return false;
+        for (const auto& item : enums)
+        {
+            const auto separator = item.identityKey.find("::");
+            if (separator == std::string::npos || separator == 0)
+            { error = "precompiled C enum has invalid identity"; return false; }
+            if (!add(item.identityKey, std::string_view(item.identityKey).substr(0, separator), {},
+                     std::span(&item, 1))) return false;
+        }
     }
     output = std::move(result); error.clear(); return true;
 }

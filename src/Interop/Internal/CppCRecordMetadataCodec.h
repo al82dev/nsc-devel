@@ -9,6 +9,8 @@
 #include <string_view>
 #include <vector>
 
+namespace nativesharp::frontend { struct PrecompiledSyntaxModule; }
+
 namespace nativesharp::interop::metadata_detail
 {
 // Internal catalogue codec. It does not by itself publish an NSMETA section.
@@ -28,5 +30,8 @@ bool decodeCTypeCatalog(std::span<const std::uint8_t> bytes,
 bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
     std::span<const CppCEnumSnapshot> enums, std::size_t projectOrdinal,
     std::string_view moduleName, std::string_view targetTriple, std::string_view sourcePath,
+    std::vector<frontend::CppImportedTypeDeclaration>& output, std::string& error);
+bool reconstructPrecompiledCImportedTypes(std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const compilation::ProjectGraph& graph, std::string_view targetTriple,
     std::vector<frontend::CppImportedTypeDeclaration>& output, std::string& error);
 }
