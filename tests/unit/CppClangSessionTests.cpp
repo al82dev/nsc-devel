@@ -1853,6 +1853,39 @@ int main(int argc, char** argv)
                                         }
                                         ok &= expect(transitiveRejected && emptyAccepted,
                                                      "field USR conflicts remain visible after an initially missing observation");
+                                        const auto nestedIdentityConflict = [&](bool isEnum) {
+                                            auto nestedEntries = usrEntries;
+                                            auto nestedGroup = record;
+                                            for (const auto index : nestedGroup.inventoryIndices)
+                                            {
+                                                auto& type = nestedEntries[index].declaration.fields[0].type;
+                                                if (isEnum)
+                                                {
+                                                    type.kind = CppTypeKind::Enumeration;
+                                                    type.enumIdentity = CppEnumTypeIdentity{};
+                                                    type.enumIdentity->name = "Nested";
+                                                }
+                                                else
+                                                {
+                                                    type.kind = CppTypeKind::Record;
+                                                    type.recordIdentity = CppRecordTypeIdentity{};
+                                                    type.recordIdentity->name = "Nested";
+                                                }
+                                            }
+                                            auto& second = nestedEntries[nestedGroup.inventoryIndices.back()].declaration.fields[0].type;
+                                            if (isEnum) second.enumIdentity->clangUsr = "nested-one";
+                                            else second.recordIdentity->clangUsr = "nested-one";
+                                            auto third = nestedEntries[nestedGroup.inventoryIndices.back()];
+                                            auto& thirdType = third.declaration.fields[0].type;
+                                            if (isEnum) thirdType.enumIdentity->clangUsr = "nested-two";
+                                            else thirdType.recordIdentity->clangUsr = "nested-two";
+                                            nestedGroup.inventoryIndices.push_back(nestedEntries.size());
+                                            nestedEntries.push_back(std::move(third));
+                                            return !selectCppRecordMemberDefinition(nestedEntries, nestedGroup);
+                                        };
+                                        ok &= expect(!usrEntries[record.inventoryIndices.front()].declaration.fields.empty() &&
+                                                     nestedIdentityConflict(false) && nestedIdentityConflict(true),
+                                                     "nested record and enum USR conflicts are detected across missing observations");
                                         auto signatureEntries = *entries;
                                         for (const auto i : record.inventoryIndices)
                                         {
