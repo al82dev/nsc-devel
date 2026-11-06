@@ -6501,6 +6501,14 @@ int main(int argc, char** argv)
                                  "C record dependencies handle cycles and reject a conflicting native type");
                     if (ready && !collide && recordDependencies.nameLookup())
                     {
+                        std::vector<nativesharp::frontend::CppImportedTypeDeclaration> selectedTypes;
+                        const bool selectedOk = selectCppTypesWithPrecompiledCatalogs(recordDependencies, selectedTypes, dependencyError);
+                        const bool hasBranch = std::any_of(selectedTypes.begin(), selectedTypes.end(),
+                            [](const auto& type) { return type.identity.name() == "Branch"; });
+                        const bool hasLeaf = std::any_of(selectedTypes.begin(), selectedTypes.end(),
+                            [](const auto& type) { return type.identity.name() == "Leaf"; });
+                        ok &= expect(selectedOk && hasBranch && hasLeaf,
+                                     "combined C type selector preserves live-session dependencies");
                         LibraryMetadata api;
                         LibraryMetadataNamespaceFunction function;
                         for (const auto& type : recordDependencies.nameLookup()->namedTypes())
