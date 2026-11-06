@@ -558,8 +558,12 @@ bool encodeCTypeCatalogWithProvenance(std::span<const CppCRecordSnapshot> record
 {
     std::vector<std::uint8_t> base;
     if (!encodeCTypeCatalog(records, enums, base, error)) return false;
+    std::vector<std::uint8_t> formats;
+    if (!collectCatalogueFloatFormats(records, enums, formats))
+    { error = "invalid floating format in C catalogue"; return false; }
+    const bool hasFloatFormats = std::any_of(formats.begin(), formats.end(), [](auto value) { return value != 0; });
     ByteWriter writer;
-    writer.u32(1);
+    writer.u32(hasFloatFormats ? 2 : 1);
     writer.u64(static_cast<std::uint64_t>(base.size()));
     writer.raw(base);
     writer.u32(static_cast<std::uint32_t>(records.size()));
@@ -582,6 +586,11 @@ bool encodeCTypeCatalogWithProvenance(std::span<const CppCRecordSnapshot> record
         { error = "invalid C record source provenance"; return false; }
         writer.u32(source.byteOffset);
     }
+    if (hasFloatFormats)
+    {
+        writer.u32(static_cast<std::uint32_t>(formats.size()));
+        for (const auto format : formats) writer.u8(format);
+    }
     output = writer.takeBytes(); error.clear(); return true;
 }
 
@@ -591,7 +600,7 @@ bool decodeCTypeCatalogWithProvenance(std::span<const std::uint8_t> bytes,
     ByteReader reader(bytes);
     std::uint32_t version = 0, count = 0;
     std::uint64_t baseSize = 0;
-    if (!reader.u32(version) || version != 1 || !reader.u64(baseSize) || baseSize > reader.remaining())
+    if (!reader.u32(version) || (version != 1 && version != 2) || !reader.u64(baseSize) || baseSize > reader.remaining())
     { error = "invalid C provenance catalogue envelope"; return false; }
     std::vector<std::uint8_t> base(static_cast<std::size_t>(baseSize));
     std::vector<CppCRecordSnapshot> decodedRecords;
@@ -616,6 +625,17 @@ bool decodeCTypeCatalogWithProvenance(std::span<const std::uint8_t> bytes,
         }
         catch (const std::exception&) { error = "invalid C provenance path encoding"; return false; }
     }
+    if (version == 2)
+    {
+        std::uint32_t formatCount = 0;
+        if (!reader.u32(formatCount) || formatCount > maxItems || formatCount > reader.remaining())
+        { error = "invalid C floating format count"; return false; }
+        std::vector<std::uint8_t> formats(formatCount);
+        for (auto& format : formats)
+            if (!reader.u8(format) || format > 1) { error = "invalid C floating format"; return false; }
+        if (!restoreCatalogueFloatFormats(decodedRecords, decodedEnums, formats))
+        { error = "C floating format does not match catalogue types"; return false; }
+    }
     if (!reader.atEnd()) { error = "trailing C provenance data"; return false; }
     std::vector<std::uint8_t> canonical;
     if (!encodeCTypeCatalogWithProvenance(decodedRecords, decodedEnums, canonical, error) ||
@@ -627,7 +647,8 @@ bool decodeCTypeCatalogWithProvenance(std::span<const std::uint8_t> bytes,
 bool isCTypeCatalogWithProvenance(std::span<const std::uint8_t> bytes) noexcept
 {
     // A legacy catalogue begins with a record-block length of at least four.
-    return bytes.size() >= 4 && bytes[0] == 1 && bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0;
+    return bytes.size() >= 4 && (bytes[0] == 1 || bytes[0] == 2) &&
+        bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0;
 }
 
 bool decodeVersionedCTypeCatalog(std::span<const std::uint8_t> bytes,
