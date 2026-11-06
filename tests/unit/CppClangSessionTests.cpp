@@ -2796,6 +2796,9 @@ int main(int argc, char** argv)
                                   "void* ptr_void(void* p); int ptr_nested_const(const int** p);\n"
                                   "int c_no_prototype(); int c_void_prototype(void);\n"
                                   "int c_refined(); int c_refined(int); int c_reverse(int); int c_reverse();\n"
+                                  "static inline int inline_add(int x) { return x + 1; }\n"
+                                  "static inline int inline_composed(int x) { return inline_add(x) + 2; }\n"
+                                  "static inline int inline_counter(void) { static int count; return ++count; }\n"
                                   "int bridge_probe(size_t n, ...);\n"
                                   "struct Pair { char a; int b; }; struct OuterPair { struct Pair nested; struct Pair array[2][3]; }; struct CDevice { volatile int counter; }; struct Incomplete;\n"
                                   "#define DECLARE_MACRO_RECORD struct MacroRecord { int x; };\nDECLARE_MACRO_RECORD\n"
@@ -2817,6 +2820,17 @@ int main(int argc, char** argv)
     ok &= expect(static_cast<bool>(c), "valid C translation unit opens");
     if (c)
     {
+        const std::vector<CppCInlineIRExport> inlineExports{
+            {"inline_add", "nsc_inline_add"}, {"inline_composed", "nsc_inline_composed"},
+            {"inline_counter", "nsc_inline_counter"}};
+        const auto inlineIr = c->emitCStaticInlineIR(inlineExports);
+        ok &= expect(inlineIr && inlineIr->find("@nsc_inline_add") != std::string::npos &&
+                     inlineIr->find("@nsc_inline_composed") != std::string::npos &&
+                     inlineIr->find("@nsc_inline_counter") != std::string::npos &&
+                     inlineIr->find("inline_counter.count") != std::string::npos &&
+                     !c->emitCStaticInlineIR({{"missing", "nsc_missing"}}) &&
+                     !c->emitCStaticInlineIR({{"inline_add", "same"}, {"inline_counter", "same"}}),
+                     "Clang emits selected C static inline functions and internal state into one IR module");
         const auto namespaces = c->namespacesSnapshot();
         ok &= expect(namespaces && namespaces->empty(), "C translation unit has no C++ namespaces");
         ok &= expect(c->state() == CppSessionState::Ready, "C session is ready");
