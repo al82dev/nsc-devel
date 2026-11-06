@@ -84,7 +84,7 @@ struct CppRecordDeclaration
 {
     struct SourceProvenance
     {
-        std::filesystem::path physicalPath;
+        std::filesystem::path sourcePath;
         std::string bufferSha256;
         std::uint32_t byteOffset = 0;
     };

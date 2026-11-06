@@ -20,11 +20,12 @@ el caso compartido permanece abierto. Validar junto con los cambios acumulados.
 
 ## Procedencia del buffer de declaraciones Clang
 
-Capturar para declaraciones de record con ubicación física directa la huella
-SHA-256 del buffer que Clang analizó, su ruta física y offset. Presupuesto:
+Capturar para declaraciones de record con ubicación directa la huella SHA-256
+del buffer que Clang analizó, su nombre de archivo y offset. El nombre puede
+corresponder a un archivo virtual, y no demuestra procedencia física. Presupuesto:
 `include/nativesharp/Interop/CppRecordDeclaration.h`, `src/Interop/Cpp/ClangSession.cpp`,
 `tests/unit/CppClangSessionTests.cpp`, tracking y registros Markdown. No leer el
-archivo de nuevo ni atribuir procedencia de archivo a expansiones de macro. No
+archivo de nuevo ni atribuir ubicación directa a expansiones de macro. No
 serializar, conciliar identidades ni habilitar conversiones con esta fase.
 
 ## Identidad de funciones C importadas
