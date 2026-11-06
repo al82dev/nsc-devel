@@ -257,6 +257,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     `volatile double` con orden MS y prueba mixta de IR y ejecución. Clang
     confirmó el orden en ejemplos aislados; la prueba NSC sigue pendiente.
     [Detalle](TANDA-08-TIPOS-C.md#globales-volatile-flotantes-preparados).
+  - Preparado en `f0c570a7c` y `212bb5e48`: orden acquire/release para `??=`
+    sobre puntero global C volatile con modo MS y alineación acreditados; prueba
+    de ambas ramas e IR pendiente de ejecución agrupada.
 - [ ] T08-016. Mapear arreglos de tamaño conocido.
 - [ ] T08-017. Definir la representación de punteros a función C.
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.

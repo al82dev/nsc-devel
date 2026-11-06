@@ -1275,3 +1275,11 @@ esos tipos cuando modo MS, tamaño y alineación son conocidos y suficientes.
 `94cf8a6aa` prepara la comparación de IR entre C y NativeSharp y la ejecución
 mixta dentro del fixture record C. Esa prueba aún no se ha ejecutado; no se
 declaran completos T08-007, T08-015 ni otras formas de volatile.
+
+## Coalescencia sobre puntero global volatile preparada
+
+`f0c570a7c` aplica la comprobación existente de orden MS al leer y escribir el
+destino de `??=`; `212bb5e48` prepara el ejercicio con valor nulo y no nulo,
+y una comprobación de las instrucciones dentro de los bloques de fallback.
+La suite mixta aún no se ha ejecutado y el cambio no cubre accesos indirectos,
+campos o arreglos volatile.
