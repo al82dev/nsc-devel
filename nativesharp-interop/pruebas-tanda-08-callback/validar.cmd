@@ -9,7 +9,7 @@ set "TEMP=%DEST%"
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
 set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
-for %%F in (Project.nsproj Main.ns Api.h Api.c) do (
+for %%F in (Project.nsproj Main.ns Stored.nsproj Stored.ns Api.h Api.c) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -23,5 +23,10 @@ for %%O in (0 1 2 3) do (
   "%DEST%\program-O%%O.exe"
   if errorlevel 1 exit /b 1
   echo Callback C O%%O: resultado esperado cero.
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Stored.nsproj" -O%%O --no-artifact-cache -o "%DEST%\stored-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  "%DEST%\stored-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  echo Callback C en campo y global O%%O: resultado esperado cero.
 )
 exit /b 0
