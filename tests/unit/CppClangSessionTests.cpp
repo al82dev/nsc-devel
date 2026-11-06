@@ -2794,6 +2794,7 @@ int main(int argc, char** argv)
                                   "int ptr_const(const int* p); int ptr_volatile(volatile int* p); int** ptr_nested(int** p);\n"
                                   "volatile int* ptr_volatile_result(void); void ptr_volatile_nested(volatile int** p);\n"
                                   "void* ptr_void(void* p); int ptr_nested_const(const int** p);\n"
+                                  "int c_no_prototype(); int c_void_prototype(void);\n"
                                   "int bridge_probe(size_t n, ...);\n"
                                   "struct Pair { char a; int b; }; struct OuterPair { struct Pair nested; struct Pair array[2][3]; }; struct CDevice { volatile int counter; }; struct Incomplete;\n"
                                   "#define DECLARE_MACRO_RECORD struct MacroRecord { int x; };\nDECLARE_MACRO_RECORD\n"
@@ -3829,6 +3830,18 @@ int main(int argc, char** argv)
         const auto* pointerVolatile = cFunctions ? functionByName(*cFunctions, "ptr_volatile") : nullptr;
         const auto* pointerNested = cFunctions ? functionByName(*cFunctions, "ptr_nested") : nullptr;
         const auto* pointerVoid = cFunctions ? functionByName(*cFunctions, "ptr_void") : nullptr;
+        const auto* noPrototype = cFunctions ? functionByName(*cFunctions, "c_no_prototype") : nullptr;
+        const auto* voidPrototype = cFunctions ? functionByName(*cFunctions, "c_void_prototype") : nullptr;
+        const auto noPrototypeProjection = noPrototype ? projectCppSemanticFunction(*noPrototype, 0, "Semantic")
+            : CppSemanticFunctionResult{CppSemanticFunctionFailure{"fixture unavailable"}};
+        const auto voidPrototypeProjection = voidPrototype ? projectCppSemanticFunction(*voidPrototype, 0, "Semantic")
+            : CppSemanticFunctionResult{CppSemanticFunctionFailure{"fixture unavailable"}};
+        const auto* noPrototypeSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&noPrototypeProjection);
+        const auto* voidPrototypeSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&voidPrototypeProjection);
+        ok &= expect(noPrototype && !noPrototype->hasPrototype && noPrototypeSymbol && noPrototypeSymbol->isVariadic &&
+                     voidPrototype && voidPrototype->hasPrototype && voidPrototypeSymbol && !voidPrototypeSymbol->isVariadic &&
+                     noPrototypeSymbol->parameters.empty() && voidPrototypeSymbol->parameters.empty(),
+                     "C no-prototype declaration differs from a void parameter prototype");
         const auto* pointerNestedConst = cFunctions ? functionByName(*cFunctions, "ptr_nested_const") : nullptr;
         const auto projectedVolatile = pointerVolatile
             ? projectCppSemanticFunction(*pointerVolatile, 0, "Semantic")
