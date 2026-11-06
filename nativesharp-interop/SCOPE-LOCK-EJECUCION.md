@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Global C puntero a escalar const volatile
+
+Preparar la prueba de lectura y de rechazo de escritura de un apuntado con
+ambos calificadores, sin habilitar tipos adicionales. Archivos: fixture
+pruebas-tanda-08-record-c y documentación; ejecución junto con la tanda.
+
 ## Global C puntero a escalar volatile
 
 Preparar la importación de un global C cuyo apuntado inmediato es escalar

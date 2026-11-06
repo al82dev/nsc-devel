@@ -1,0 +1,5 @@
+int Main()
+{
+    *const_volatile_pointee = 12;
+    return 0;
+}
