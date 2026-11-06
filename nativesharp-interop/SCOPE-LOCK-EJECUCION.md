@@ -46,6 +46,16 @@ límites, orden, hash y canonicalidad. Presupuesto: `src/Interop/Internal/CppCRe
 la versión NSMETA ni usar la extensión en bibliotecas hasta completar lectura,
 escritura y compatibilidad de extremo a extremo. Validación agrupada.
 
+## Lectura preparada de catálogos C versionados
+
+Agregar selección explícita entre catálogo 1.42 y envoltura de procedencia;
+permitir la segunda solo en metadata 1.43 o posterior. Presupuesto:
+`src/Interop/Internal/CppCRecordMetadataCodec.h/.cpp`,
+`src/Interop/LibraryMetadataVerification.cpp`, `src/Interop/Cpp/CppSemanticRecord.cpp`,
+`src/Driver/PrecompiledSurface/MetadataSourceMapping.cpp`, pruebas de sesión,
+tracking y registros. No incrementar aún la versión escrita ni conectar el
+productor. No asociar ni convertir identidades a partir de la envoltura.
+
 ## Identidad de funciones C importadas
 
 T08-002/T08-003: conservar USR opcional en la proyección de función y
