@@ -329,6 +329,18 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
             !seen.insert(function->getCanonicalDecl()).second)
             continue;
 
+        // A C entity can be declared first without a prototype and later with
+        // one. Clang has already checked the redeclarations for compatibility;
+        // prefer the most recent declaration carrying its composite prototype.
+        if (function->getLanguageLinkage() == clang::CLanguageLinkage)
+        {
+            const auto* latest = function->getMostRecentDecl();
+            if (latest->getType()->getAs<clang::FunctionProtoType>()) function = latest;
+            else for (const auto* redeclaration : function->redecls())
+                if (redeclaration->getType()->getAs<clang::FunctionProtoType>())
+                { function = redeclaration; break; }
+        }
+
         CppFunctionDeclaration value;
         value.clangUsr = declarationUsr(function);
         value.name = function->getNameAsString();
