@@ -4,6 +4,7 @@
 
 #include "nativesharp/AST/AstNode.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
+#include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/LLVM/DebugPrefixMap.h"
 #include "nativesharp/LLVM/FloatingPointMode.h"
 #include "nativesharp/LLVM/FloatingPointModeScope.h"
@@ -44,7 +45,7 @@ inline bool isClangMsVolatileScalarGlobal(const frontend::ProjectOopMirNode* nod
                         node->typeKey == "builtin:float")) ||
         (bytes == 8 && (node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong" ||
                         node->typeKey == "builtin:double" ||
-                        node->typeKey.ends_with('*')));
+                        node->typeKey.ends_with('*') || language::isFunctionTypeIdentity(node->typeKey)));
 }
 
 std::optional<LLVMAtomicOrdering> orderedAtomicLoadOrdering(std::uint64_t encoded);
