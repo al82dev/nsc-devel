@@ -201,12 +201,20 @@ ProjectImplicitConversion ProjectConversionClassifier::classifyImplicit(
         inheritanceModel_.typeOrdinalForTypeKey(sourceTypeKey);
     const std::optional<std::size_t> targetType =
         inheritanceModel_.typeOrdinalForTypeKey(targetTypeKey);
+    const ProjectNameLookup* lookup = inheritanceModel_.nameLookup();
+    const auto* sourceImported = lookup && sourceType ? lookup->cppImportedType(*sourceType) : nullptr;
+    const auto* targetImported = lookup && targetType ? lookup->cppImportedType(*targetType) : nullptr;
+    const auto isCEnum = [](const auto* type) {
+        return type && type->origin == CppImportedTypeOrigin::CEnum && type->enumBase &&
+            type->deferredImportError.empty();
+    };
+    if (isCEnum(sourceImported) &&
+        (ProjectTypeConversion::isIntegral(targetTypeKey) || isCEnum(targetImported)))
+        return ProjectImplicitConversion{ProjectConversionKind::Numeric, 3,
+                                         std::string(sourceTypeKey), std::string(targetTypeKey), std::nullopt};
     if (targetType && ProjectTypeConversion::isIntegral(sourceTypeKey))
     {
-        const ProjectNameLookup* lookup = inheritanceModel_.nameLookup();
-        const auto* imported = lookup ? lookup->cppImportedType(*targetType) : nullptr;
-        if (imported && imported->origin == CppImportedTypeOrigin::CEnum && imported->enumBase &&
-            imported->deferredImportError.empty())
+        if (isCEnum(targetImported))
             return ProjectImplicitConversion{ProjectConversionKind::Numeric, 3,
                                              std::string(sourceTypeKey), std::string(targetTypeKey), std::nullopt};
     }
