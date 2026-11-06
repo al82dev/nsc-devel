@@ -82,6 +82,12 @@ struct CppImplicitLifetimeMembers
 
 struct CppRecordDeclaration
 {
+    struct SourceProvenance
+    {
+        std::filesystem::path physicalPath;
+        std::string bufferSha256;
+        std::uint32_t byteOffset = 0;
+    };
     std::string name;
     std::string qualifiedName;
     std::vector<std::string> namespaceSegments;
@@ -98,6 +104,8 @@ struct CppRecordDeclaration
     // Presence only, including lazily declared members. Does not prove viability or symbol emission.
     std::optional<CppImplicitLifetimeMembers> implicitLifetimeMembers;
     std::optional<CppSourcePoint> location;
+    // Captured from Clang's parsed buffer; unavailable for macro locations.
+    std::optional<SourceProvenance> sourceProvenance;
     std::vector<CppBaseDeclaration> bases;
     std::vector<CppRecordField> fields;
     std::vector<CppStaticField> staticFields;

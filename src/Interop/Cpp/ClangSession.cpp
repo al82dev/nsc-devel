@@ -1,5 +1,6 @@
 #include "nativesharp/Interop/CppClangSessionFactory.h"
 #include "ClangSessionSupport.h"
+#include "nativesharp/Basic/Sha256.h"
 
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/ASTStructuralEquivalence.h>
@@ -29,6 +30,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <iterator>
+#include <map>
 #include <mutex>
 #include <set>
 #include <string_view>
@@ -434,18 +436,18 @@ CppAccess describeAccess(clang::AccessSpecifier access)
 
 void collectRecords(const clang::DeclContext& context, clang::ASTContext& astContext,
                     clang::MangleContext& mangler, std::set<const clang::TagDecl*>& seen,
-                    std::vector<CppRecordDeclaration>& result)
+                    std::vector<CppRecordDeclaration>& result, std::map<unsigned, std::string>& bufferHashes)
 {
     for (const clang::Decl* declaration : context.decls())
     {
         if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
         {
-            collectRecords(*nested, astContext, mangler, seen, result);
+            collectRecords(*nested, astContext, mangler, seen, result, bufferHashes);
             continue;
         }
         if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
         {
-            collectRecords(*linkage, astContext, mangler, seen, result);
+            collectRecords(*linkage, astContext, mangler, seen, result, bufferHashes);
             continue;
         }
         const auto* record = llvm::dyn_cast<clang::RecordDecl>(declaration);
@@ -491,6 +493,27 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
         if (location.isValid())
             value.location = CppSourcePoint{
                 pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
+        const auto physical = record->getLocation();
+        if (physical.isFileID())
+        {
+            const auto& source = astContext.getSourceManager();
+            const auto filename = source.getFilename(physical);
+            const auto file = source.getFileID(physical);
+            bool invalid = false;
+            const auto contents = source.getBufferData(file, &invalid);
+            if (!invalid && !filename.empty() && filename.front() != '<')
+            {
+                const auto key = file.getHashValue();
+                auto [position, inserted] = bufferHashes.try_emplace(key);
+                if (inserted)
+                {
+                    const auto* data = reinterpret_cast<const std::uint8_t*>(contents.data());
+                    position->second = basic::sha256Hex(basic::sha256(std::span(data, contents.size())));
+                }
+                value.sourceProvenance = CppRecordDeclaration::SourceProvenance{
+                    pathFromUtf8(filename.str().c_str()), position->second, source.getFileOffset(physical)};
+            }
+        }
         if (value.complete)
         {
             if (!value.specializationContext)
@@ -635,7 +658,7 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
         }
         result.push_back(std::move(value));
         if (record->isCompleteDefinition())
-            collectRecords(*record, astContext, mangler, seen, result);
+            collectRecords(*record, astContext, mangler, seen, result, bufferHashes);
     }
 }
 
@@ -719,7 +742,8 @@ public:
         std::unique_ptr<clang::MangleContext> mangler(context.createMangleContext());
         std::vector<CppRecordDeclaration> result;
         std::set<const clang::TagDecl*> seen;
-        collectRecords(*context.getTranslationUnitDecl(), context, *mangler, seen, result);
+        std::map<unsigned, std::string> bufferHashes;
+        collectRecords(*context.getTranslationUnitDecl(), context, *mangler, seen, result, bufferHashes);
         return result;
     }
     std::optional<std::vector<CppTypeAliasDeclaration>> typeAliasesSnapshot() const override
