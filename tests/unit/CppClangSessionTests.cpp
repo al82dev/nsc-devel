@@ -1631,6 +1631,20 @@ int main(int argc, char** argv)
                                              rejectedValue && rejectedSpecialization && rejectedWrongOwner && rejectedDuplicate && rejectedUnverified,
                                              "isolated record pointer projection preserves identity and rejects unsafe or ambiguous records");
                                 const auto dependencyResult = collectCppSignatureRecordDependencies(finalGraph, *signatureEntries, grouped);
+                                auto wrongRecordUsr = grouped;
+                                bool changedRecordUsr = false;
+                                for (auto& group : wrongRecordUsr.groups)
+                                    if (group.projectOrdinal == 1 && group.identity.name() == "OnlyForward" && group.clangUsr)
+                                    { group.clangUsr = "different-record-usr"; changedRecordUsr = true; }
+                                const auto wrongUsrResult = collectCppSignatureRecordDependencies(
+                                    finalGraph, *signatureEntries, wrongRecordUsr);
+                                bool rejectedWrongRecordUsr = false;
+                                if (const auto* wrong = std::get_if<std::vector<CppSignatureRecordDependency>>(&wrongUsrResult))
+                                    for (const auto& dependency : *wrong)
+                                        rejectedWrongRecordUsr |= (*signatureEntries)[dependency.functionIndex].declaration.name == "store" &&
+                                            dependency.status == CppSignatureRecordStatus::Unprojectable && !dependency.groupIndex;
+                                ok &= expect(changedRecordUsr && rejectedWrongRecordUsr,
+                                             "record signature association rejects a different known Clang USR");
                                 if (const auto* dependencies = std::get_if<std::vector<CppSignatureRecordDependency>>(&dependencyResult))
                                     for (const auto& dependency : *dependencies)
                                     {
