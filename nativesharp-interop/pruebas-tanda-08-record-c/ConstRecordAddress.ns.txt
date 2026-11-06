@@ -1,0 +1,5 @@
+int Main()
+{
+    int* pointer = &global_record_const.value;
+    return 0;
+}

@@ -77,7 +77,13 @@ copy /y "%~dp0ConstRecordGlobal.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-record.exe" > "%DEST%\const-record.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /c:"C/C++ global type is not yet mapped" "%DEST%\const-record.log" >nul
+findstr /c:"left side of assignment is not assignable" "%DEST%\const-record.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0ConstRecordAddress.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-record-address.exe" > "%DEST%\const-record-address.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"operand of & must name addressable storage" "%DEST%\const-record-address.log" >nul
 if errorlevel 1 exit /b 1
 copy /y "%~dp0VolatileRecordGlobal.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1

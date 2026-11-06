@@ -34,5 +34,6 @@ int Main()
     global_record_matrix[1][1].value = 23;
     global_union.value = 29;
     if (read_global_records() != 94) return 11;
+    if (global_record_const.value != 7) return 13;
     return 0;
 }
