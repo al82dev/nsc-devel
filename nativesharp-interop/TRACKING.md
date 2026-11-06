@@ -296,6 +296,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     Quedan otras combinaciones y la batería completa de la tanda.
   - Preparados `764d93ba0` y `aa48d2539`: matriz empaquetada C de records,
     acceso mixto, dirección e IR. Pendiente de construcción y validación.
+  - Actualización: la construcción incremental y layout pasaron en O0–O3 para
+    el arreglo y la matriz de records empaquetados, con comprobación de IR O0
+    y rechazo de direcciones subalineadas. T08-016 sigue abierto.
 - [ ] T08-017. Definir la representación de punteros a función C.
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.
 - [ ] T08-019. Presentar diagnósticos útiles al usar una declaración incompleta de forma inválida.

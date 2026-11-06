@@ -1320,15 +1320,22 @@ los valores en ejecución y rechaza tomar la dirección. No se ha ejecutado.
 Los campos empaquetados C++ y los campos C de punteros, agregados y bitfields
 siguen pendientes, así como otras formas de acceso; no se cierra la tanda.
 
-## Alineación de campos anidados preparada
-
-### Validación dirigida de enum C empaquetado
+## Validación dirigida de enum C empaquetado
 
 Sobre `5a54916fe`, la construcción incremental de NSC terminó con código 0;
 el fixture layout ejecutó O0–O3, verificó IR O0 con alineación 1, comparó
 acceso al campo y arreglo enum con C y rechazó sus direcciones subalineadas.
 Se observó una advertencia de inicializador en CppSemanticRecord.cpp. Esto no
 demuestra todos los enums ni sustituye la batería completa de la tanda.
+
+## Validación dirigida de arreglos de records C empaquetados
+
+La misma construcción incremental y el fixture layout terminaron con código
+0 para el arreglo y matriz de records en O0–O3. Se verificó escritura y
+lectura compartidas con C, alineación 1 de ambas formas en IR O0 y el rechazo
+de direcciones subalineadas. Otras formas y la batería completa siguen abiertas.
+
+## Alineación de campos anidados preparada
 
 `ac71663a7` combina alineación y offsets a través de direcciones de campo y
 elementos de arreglo, deteniéndose al encontrar un valor cargado. La suite
