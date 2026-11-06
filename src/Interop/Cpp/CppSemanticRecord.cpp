@@ -126,11 +126,14 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     scalarArray = scalarArray && arrayElement &&
         (arrayElement->kind == CppTypeKind::Boolean || arrayElement->kind == CppTypeKind::SignedInteger ||
          arrayElement->kind == CppTypeKind::UnsignedInteger || arrayElement->kind == CppTypeKind::Floating);
+    const auto pointerArray = frontend::cppAliasArrayType(field.type);
+    const bool representablePointerArray = pointerArray && pointerArray->element.pointerDepth > 0 &&
+        !pointerArray->element.pointeeConst && pointerArray->element.token != lexer::TokenKind::KwVoid;
     if (effectiveAlignment < naturalAlignment &&
         (record.isCxx || (field.type.kind != CppTypeKind::Boolean &&
          field.type.kind != CppTypeKind::SignedInteger && field.type.kind != CppTypeKind::UnsignedInteger &&
          field.type.kind != CppTypeKind::Floating && field.type.kind != CppTypeKind::Pointer &&
-         !scalarArray))) return std::nullopt;
+         !scalarArray && !representablePointerArray))) return std::nullopt;
     auto mapped = mapCppScalarType(field.type);
     if (!mapped && !record.isCxx && field.type.kind == CppTypeKind::Array)
         mapped = projectCArrayField(field.type, projectOrdinal, moduleName, lookup);

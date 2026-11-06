@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Arreglos C empaquetados de punteros representables
+
+T08-014/T08-016: permitir arreglos fijos C subalineados de punteros que el
+mapeador de arrays ya representa sin perder calificadores. Mantener la
+alineación del almacenamiento al indexar y proteger la dirección de un slot
+subalineado; no cambiar la alineación del objeto apuntado. No habilitar
+punteros a const/volatile ni arreglos de records o enums subalineados.
+Presupuesto: CppSemanticRecord.cpp, fixture layout y registros Markdown;
+LLVM y NSLink protegidos. Validación agrupada por tanda.
+
 ## Arreglos escalares C empaquetados const y volatile
 
 T08-015/T08-016: conservar const y volatile de todos los niveles de arreglos
