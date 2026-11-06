@@ -5,3 +5,19 @@ función y almacenada en un campo y un global. NativeSharp crea el record y
 llama el callback desde las tres rutas; la implementación C lee su campo.
 Esta primera preparación no demuestra soporte. Se investigará el diagnóstico
 antes de cambiar producción y se validará la solución junto a la tanda.
+
+## Reproducción y causa
+
+Con NSC build `bd1f1ac94128ecb4` y el proyecto compilado por
+`--dump-project-oop-llvm`, el compilador reportó que el receptor
+`RecordCallbackHolder` no tiene un miembro compatible `run` y que el global
+`record_callback_global` tiene un tipo C/C++ todavía no mapeado. No reportó
+error en la línea que obtiene y llama el callback retornado; al fallar el
+proyecto no se llegó a generar ni ejecutar su IR completo.
+
+En `CppSemanticRecord.cpp` y `CppSemanticInventory.cpp`, la proyección de
+callbacks almacenados llama `projectCppStoredFunctionPointer(field.type)` o
+su equivalente para globales. Esta función invoca `mapFunctionType` sin
+`ProjectNameLookup`, propietario ni módulo, y la rama de record exige un
+índice de records. Así se pierde la resolución necesaria para
+`CallbackPayload*`. La ruta de retorno de funciones usa otro contexto.

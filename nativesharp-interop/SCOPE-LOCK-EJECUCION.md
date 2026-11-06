@@ -9,6 +9,19 @@ el punto de fallo; las salidas van a `A:/nsc-interop-build`. No habilitar paso
 de records por valor, calificadores anidados ni convenciones no comprobadas.
 Antes de modificar producción, registrar la causa y los archivos necesarios.
 
+Reproducción: `RecordCallback.ns` llega al análisis de la llamada retornada,
+pero el campo `RecordCallbackHolder.run` no se proyecta y el global
+`record_callback_global` se rechaza como tipo no mapeado. Ambos invocan
+`projectCppStoredFunctionPointer` sin contexto de tipos; el mapeador de
+firmas necesita lookup e identidad para resolver `CallbackPayload*`.
+Permitir `include/nativesharp/Interop/CppSemanticFunction.h`,
+`src/Interop/Cpp/CppSemanticFunction.cpp`,
+`src/Interop/Cpp/CppSemanticInventory.cpp` y
+`src/Interop/Cpp/CppSemanticRecord.cpp`, más pruebas y bitácora de esta ruta.
+Conservar las comprobaciones de origen C, proyecto o reconciliación, USR y
+conflictos; no autorizar records por valor ni alterar las otras rutas del
+mapeador. Verificar junto a los controles existentes en la batería agrupada.
+
 ## Sombra local de valores C importados
 
 T08-018: ampliar el fixture existente `pruebas-tanda-08-meta-c` con un caso
