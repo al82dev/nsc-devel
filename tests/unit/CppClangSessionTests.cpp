@@ -1211,7 +1211,9 @@ int main(int argc, char** argv)
                             for (const auto& state : provided)
                             {
                                 foundShared |= state.name == "shared" && state.projectOrdinal == 2 &&
-                                    state.storageName == "?shared@feature@@3HA" && state.cppImportError.empty();
+                                    state.storageName == "?shared@feature@@3HA" && state.cppImportError.empty() &&
+                                    state.cppMicrosoftVolatileSemantics.has_value() &&
+                                    state.cppMicrosoftVolatileSemantics == groups[1].sessions[0]->microsoftVolatileSemantics();
                                 foundDeferred |= state.name == "tls" && state.projectOrdinal == 2 &&
                                     state.cppImportError.find("thread-local") != std::string::npos;
                             }

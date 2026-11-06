@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Prueba de opción volatile en símbolo global
+
+Preparar comprobación de que el símbolo producido conserva la opción de su
+sesión real. Archivos: CppClangSessionTests.cpp y documentación. Ejecutar con
+la siguiente validación agrupada.
+
 ## Opción volatile en símbolo de global importado
 
 Conservar en NamespaceStateSymbol el valor conocido o desconocido del candidato

@@ -1023,6 +1023,11 @@ El proveedor copia la opción seleccionada al símbolo externo; ausencia sigue
 representando un valor no conocido. Los estados NativeSharp no reciben esa
 opción. No cambia todavía el análisis del acceso ni el IR; falta validarlo.
 
+## Prueba de opción volatile en símbolo global
+
+El caso existente del proveedor compara el valor del símbolo con la opción
+efectiva de su sesión. Es una comprobación preparada y todavía no ejecutada.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.
