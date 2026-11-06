@@ -1182,6 +1182,7 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
     if (!provideCppSemanticValuesWithLookup(graph, projects, lookup, demands, live, error) ||
         !reconstructPrecompiledCMembers(modules, graph, "x86_64-pc-windows-msvc", lookup,
                                        fields, constants, error)) return false;
+    const auto liveCount = live.size();
     using Key = std::tuple<std::size_t, std::string, std::string>;
     std::map<Key, std::size_t> names;
     for (std::size_t i = 0; i < live.size(); ++i)
@@ -1210,6 +1211,47 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             candidate.isConst = false;
             candidate.storageName.clear();
             candidate.cppImportError = "precompiled C enumerator conflicts with another imported value";
+        }
+    }
+    if (liveCount && live.size() > liveCount)
+    {
+        auto observed = collectCppSemanticEnums(graph, projects);
+        if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&observed))
+        { error = failure->message; return false; }
+        const auto& enums = std::get<std::vector<CppSemanticEnumEntry>>(observed);
+        for (std::size_t index = 0; index < liveCount; ++index)
+        {
+            auto& item = live[index];
+            if (!item.isCppEnumConstant || !item.cppClangUsr || item.cppClangUsr->empty() ||
+                item.projectOrdinal >= graph.projects().size()) continue;
+            std::set<std::string> candidates;
+            for (const auto& enumeration : enums)
+            {
+                if (enumeration.projectOrdinal != item.projectOrdinal || enumeration.declaration.isCxx ||
+                    enumeration.declaration.name.empty()) continue;
+                const bool hasValue = std::any_of(enumeration.declaration.enumerators.begin(),
+                    enumeration.declaration.enumerators.end(), [&](const auto& value) {
+                        return value.name == item.name && value.clangUsr == item.cppClangUsr;
+                    });
+                if (!hasValue) continue;
+                const compilation::TypeIdentity enumIdentity(graph.projects()[item.projectOrdinal].moduleName(),
+                    {}, {}, enumeration.declaration.name);
+                if (!lookup.isReconciledCppTypeIdentity(enumIdentity.key())) continue;
+                const auto ordinal = lookup.typeOrdinalForIdentity(enumIdentity.key());
+                const auto* canonical = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+                if (!canonical || canonical->origin != frontend::CppImportedTypeOrigin::CEnum) continue;
+                for (std::size_t target = liveCount; target < live.size(); ++target)
+                {
+                    const auto& other = live[target];
+                    if (other.projectOrdinal == canonical->projectOrdinal && other.isCppEnumConstant &&
+                        other.cppClangUsr == item.cppClangUsr && other.name == item.name &&
+                        other.namespaceName == item.namespaceName && other.declaredTypeKey == item.declaredTypeKey &&
+                        other.initializerKind == item.initializerKind && other.integerValue == item.integerValue &&
+                        other.cppImportError.empty() && item.cppImportError.empty())
+                        candidates.insert(other.identityKey);
+                }
+            }
+            if (candidates.size() == 1) item.cppReconciledStateKey = *candidates.begin();
         }
     }
     output = std::move(live); error.clear(); return true;

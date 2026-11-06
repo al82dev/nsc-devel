@@ -966,7 +966,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     ExpressionResult result;
     if (namespaceFunctionModel_ == nullptr || reference.candidateStateOrdinals.empty())
         return result;
-    if (reference.candidateStateOrdinals.size() != 1)
+    std::vector<std::size_t> candidates = reference.candidateStateOrdinals;
+    const auto& states = namespaceFunctionModel_->states();
+    std::erase_if(candidates, [&](const auto ordinal) {
+        if (ordinal >= states.size() || !states[ordinal].cppReconciledStateKey) return false;
+        return std::any_of(reference.candidateStateOrdinals.begin(), reference.candidateStateOrdinals.end(),
+            [&](const auto other) { return other < states.size() && other != ordinal &&
+                states[other].identityKey == *states[ordinal].cppReconciledStateKey; });
+    });
+    if (candidates.size() != 1)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidMemberAccess,
@@ -976,7 +984,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
         return result;
     }
 
-    const std::size_t stateOrdinal = reference.candidateStateOrdinals.front();
+    const std::size_t stateOrdinal = candidates.front();
     if (stateOrdinal >= namespaceFunctionModel_->states().size()) return result;
     const NamespaceStateSymbol& state = namespaceFunctionModel_->states()[stateOrdinal];
     if (!state.cppImportError.empty())

@@ -66,5 +66,7 @@ struct NamespaceStateSymbol final
     std::optional<std::uint64_t> cppStorageSizeBits;
     std::optional<std::uint64_t> cppDeclarationAlignmentBits;
     std::optional<std::string> cppClangUsr;
+    // Counterpart established through a reconciled enum, not by the value name alone.
+    std::optional<std::string> cppReconciledStateKey;
 };
 }
