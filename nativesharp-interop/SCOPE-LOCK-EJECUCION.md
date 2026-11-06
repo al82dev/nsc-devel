@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Verificador de IR C con volatile atómico
+
+La batería de la revisión 7c9a765b6 falló en bump_volatile: Clang emitió
+`load atomic volatile i32` y `store atomic volatile i32`, que el verificador
+de texto rechazaba. Aceptar también esa forma manteniendo la exigencia de
+volatile dentro de cada función. Archivos: verificar_ir_c.py y documentación.
+No cambiar Clang ni la semántica del programa. Repetir la validación agrupada.
+
 ## Rechazo de pérdida volatile en alias a enum
 
 Preparar el caso negativo de pasar un alias a enum volatile a una función

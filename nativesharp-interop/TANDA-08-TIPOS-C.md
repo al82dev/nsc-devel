@@ -915,6 +915,17 @@ de tipos invalidó 328 acciones incrementales. Hubo una advertencia cuyo texto
 completo no quedó capturado; no se presenta como examinada. No se ejecutaron
 las pruebas funcionales ni se cierra ningún ítem con esta construcción.
 
+## Primer control agrupado posterior
+
+`validar-tanda-08.cmd` en `7c9a765b6` terminó con código 1. La construcción
+ON/OFF y las suites de serialización finalizaron; valores, incompleto, unión,
+layout, callback y enum reportaron éxito. Record C se detuvo antes de ejecutar
+NSC: el IR de Clang contiene `load atomic volatile i32` y `store atomic volatile
+i32`, mientras el verificador buscaba solo la forma sin `atomic`. Se ajusta la
+comprobación para aceptar ambas sin eliminar la exigencia de volatile. Hay
+advertencias de inicialización en CppClangSessionTests; la salida de esa suite
+no mostró un resumen explícito. Repetir la batería y conservar la tanda abierta.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.
