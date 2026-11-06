@@ -1812,6 +1812,38 @@ int main(int argc, char** argv)
                                 conflictingDll.back().projectOrdinal, conflictingDll.back().declaration.qualifiedName);
                             ok &= expect(std::holds_alternative<CppSemanticFunctionGroupFailure>(conflict),
                                          "function redeclarations with conflicting DLL import attributes are rejected");
+                            auto conflictingUsr = *entries;
+                            const auto& original = (*entries)[groupedValue->groups[0].inventoryIndices[0]];
+                            conflictingUsr.push_back(original);
+                            conflictingUsr.back().declaration.qualifiedName += "_other_name";
+                            conflictingUsr.back().declaration.externalSymbol = "different_external_symbol";
+                            const auto byUsr = selectCppSemanticFunctions(
+                                conflictingUsr, original.projectOrdinal, original.declaration.qualifiedName);
+                            ok &= expect(original.declaration.clangUsr &&
+                                         std::holds_alternative<CppSemanticFunctionGroupFailure>(byUsr),
+                                         "same Clang USR with a different external symbol conflicts across names");
+                            nativesharp::frontend::CppFunctionDemand usrDemand;
+                            const auto separator = original.declaration.qualifiedName.rfind("::");
+                            usrDemand.lookupName = separator == std::string::npos ? original.declaration.qualifiedName :
+                                original.declaration.qualifiedName.substr(separator + 2);
+                            std::string usrNamespace = separator == std::string::npos ? "" :
+                                original.declaration.qualifiedName.substr(0, separator);
+                            for (std::size_t p = 0; (p = usrNamespace.find("::", p)) != std::string::npos; ++p)
+                                usrNamespace.replace(p, 2, ".");
+                            usrDemand.lookupNamespaces = {usrNamespace};
+                            usrDemand.visibleProjects = {original.projectOrdinal};
+                            const std::vector usrDemands{usrDemand};
+                            const auto indexedUsr = selectCppSemanticDemands(conflictingUsr, usrDemands, true);
+                            const auto* usrMatches = std::get_if<std::vector<CppSemanticDemandCandidates>>(&indexedUsr);
+                            ok &= expect(usrMatches && usrMatches->size() == 1 && usrMatches->front().deferredConflict,
+                                         "indexed lookup retains the conflict for a different name with the same USR");
+                            auto distinctAliases = *entries;
+                            distinctAliases.push_back(original);
+                            distinctAliases.back().declaration.qualifiedName += "_alias";
+                            distinctAliases.back().declaration.clangUsr = "independent-usr";
+                            ok &= expect(std::holds_alternative<CppSemanticFunctionGroups>(
+                                             groupCppSemanticFunctions(distinctAliases)),
+                                         "different USRs may remain compatible aliases of one external symbol");
                         }
                         const auto absent = selectCppSemanticFunctions(*entries, 1, "missing_function");
                         const auto* absentValue = std::get_if<CppSemanticFunctionGroups>(&absent);
