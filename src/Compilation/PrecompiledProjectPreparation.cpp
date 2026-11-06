@@ -454,7 +454,8 @@ bool materializeModules(
                 : std::filesystem::path{},
             moduleMetadataDigest(entry, repository),
             std::move(publicApiSnapshot),
-            pruned});
+            pruned,
+            surface.cppCRecordCatalog});
     }
     return true;
 }

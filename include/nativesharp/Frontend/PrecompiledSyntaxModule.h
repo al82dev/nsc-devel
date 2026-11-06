@@ -5,6 +5,7 @@
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 
 #include <filesystem>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -41,5 +42,7 @@ struct PrecompiledSyntaxModule final
     //     unidad de API se genera desde la metadata podada, así que ningún snapshot publicado le
     //     aplica.
     bool surfacePruned = false;
+    // Verified C type catalogue carried with this metadata surface; not yet installed.
+    std::vector<std::uint8_t> cppCTypeCatalog;
 };
 }
