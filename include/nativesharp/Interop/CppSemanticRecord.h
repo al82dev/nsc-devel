@@ -13,7 +13,7 @@
 #include <string_view>
 #include <variant>
 
-namespace nativesharp::frontend { class ProjectCompilation; struct NamespaceStateSymbol; struct PrecompiledSyntaxModule; }
+namespace nativesharp::frontend { class ProjectCompilation; struct NamespaceStateSymbol; struct PrecompiledSyntaxModule; struct CppFunctionDemand; }
 
 namespace nativesharp::interop
 {
@@ -182,6 +182,14 @@ bool reconstructPrecompiledCMembers(std::span<const frontend::PrecompiledSyntaxM
     const compilation::ProjectGraph& graph, std::string_view targetTriple,
     const frontend::ProjectNameLookup& lookup, std::vector<frontend::CppImportedInstanceField>& fields,
     std::vector<frontend::NamespaceStateSymbol>& constants, std::string& error);
+bool provideCppFieldsWithPrecompiledCatalogs(const compilation::ProjectGraph& graph,
+    std::span<const CppProjectSessions> projects, std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const frontend::ProjectNameLookup& lookup, std::vector<frontend::CppImportedInstanceField>& output,
+    std::string& error);
+bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& graph,
+    std::span<const CppProjectSessions> projects, std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const frontend::ProjectNameLookup& lookup, std::span<const frontend::CppFunctionDemand> demands,
+    std::vector<frontend::NamespaceStateSymbol>& output, std::string& error);
 
 enum class CppSignatureRecordStatus { Matched, Unprojectable, Missing };
 struct CppSignatureRecordDependency

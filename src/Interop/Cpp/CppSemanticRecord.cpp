@@ -8,6 +8,7 @@
 #include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
 #include "nativesharp/Interop/CppNamespaceInventory.h"
 #include "nativesharp/Interop/CppSemanticInventory.h"
+#include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "../Internal/CppCRecordMetadataCodec.h"
@@ -19,6 +20,7 @@
 #include <map>
 #include <numeric>
 #include <set>
+#include <tuple>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -1133,6 +1135,72 @@ bool reconstructPrecompiledCMembers(std::span<const frontend::PrecompiledSyntaxM
         }
     }
     fields = std::move(resultFields); constants = std::move(resultConstants); error.clear(); return true;
+}
+
+bool provideCppFieldsWithPrecompiledCatalogs(const compilation::ProjectGraph& graph,
+    std::span<const CppProjectSessions> projects, std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const frontend::ProjectNameLookup& lookup, std::vector<frontend::CppImportedInstanceField>& output,
+    std::string& error)
+{
+    std::vector<frontend::CppImportedInstanceField> live, restored;
+    std::vector<frontend::NamespaceStateSymbol> constants;
+    if (!provideExperimentalCppInstanceFields(graph, projects, lookup, live, error) ||
+        !reconstructPrecompiledCMembers(modules, graph, "x86_64-pc-windows-msvc", lookup,
+                                       restored, constants, error)) return false;
+    std::set<std::pair<std::string, std::string>> names;
+    for (const auto& field : live)
+        if (!names.emplace(field.ownerIdentityKey, field.name).second)
+        { error = "duplicate live C/C++ field: " + field.ownerIdentityKey + "." + field.name; return false; }
+    for (auto& field : restored)
+    {
+        if (!names.emplace(field.ownerIdentityKey, field.name).second)
+        { error = "live and precompiled C field require reconciliation: " + field.ownerIdentityKey + "." + field.name; return false; }
+        live.push_back(std::move(field));
+    }
+    output = std::move(live); error.clear(); return true;
+}
+
+bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& graph,
+    std::span<const CppProjectSessions> projects, std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const frontend::ProjectNameLookup& lookup, std::span<const frontend::CppFunctionDemand> demands,
+    std::vector<frontend::NamespaceStateSymbol>& output, std::string& error)
+{
+    std::vector<frontend::NamespaceStateSymbol> live, constants;
+    std::vector<frontend::CppImportedInstanceField> fields;
+    if (!provideCppSemanticValuesWithLookup(graph, projects, lookup, demands, live, error) ||
+        !reconstructPrecompiledCMembers(modules, graph, "x86_64-pc-windows-msvc", lookup,
+                                       fields, constants, error)) return false;
+    using Key = std::tuple<std::size_t, std::string, std::string>;
+    std::map<Key, std::size_t> names;
+    for (std::size_t i = 0; i < live.size(); ++i)
+        if (!names.emplace(Key{live[i].projectOrdinal, live[i].namespaceName, live[i].name}, i).second)
+        { error = "duplicate live C/C++ value: " + live[i].name; return false; }
+    for (auto& constant : constants)
+    {
+        const bool demanded = std::any_of(demands.begin(), demands.end(), [&](const auto& demand) {
+            return demand.lookupName == constant.name &&
+                std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), constant.projectOrdinal) != demand.visibleProjects.end() &&
+                std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), constant.namespaceName) != demand.lookupNamespaces.end();
+        });
+        if (!demanded) continue;
+        const Key key{constant.projectOrdinal, constant.namespaceName, constant.name};
+        const auto found = names.find(key);
+        if (found == names.end())
+        {
+            names.emplace(key, live.size());
+            live.push_back(std::move(constant));
+        }
+        else
+        {
+            auto& candidate = live[found->second];
+            candidate.isCppExternal = true;
+            candidate.isCppEnumConstant = false;
+            candidate.isConst = false;
+            candidate.storageName.clear();
+            candidate.cppImportError = "precompiled C enumerator conflicts with another imported value";
+        }
+    }
+    output = std::move(live); error.clear(); return true;
 }
 
 CppRecordRefinementResult refineCppRecordGroupsForPointerTransport(
