@@ -108,7 +108,8 @@ int main()
         tests.expect(!identity.empty() && identity == identityIndex.identity(ordinals, ordinals),
             "cache identity index preserves namespace function and call ordinals");
 
-        ProjectOopMirNode* node = mir.functions().empty() ? nullptr : mir.functions().front().body.get();
+        const auto functions = mir.functions();
+        ProjectOopMirNode* node = functions.empty() ? nullptr : functions.front().body.get();
         tests.expect(node != nullptr, "cache identity test has a MIR body");
         if (node != nullptr)
         {
