@@ -28,6 +28,15 @@ corresponder a un archivo virtual, y no demuestra procedencia física. Presupues
 archivo de nuevo ni atribuir ubicación directa a expansiones de macro. No
 serializar, conciliar identidades ni habilitar conversiones con esta fase.
 
+## Procedencia transitoria en snapshots C
+
+Transportar el origen del buffer analizado al snapshot C de la definición,
+únicamente si todas las definiciones observadas lo comparten. Presupuesto:
+`include/nativesharp/Interop/CppRecordDeclaration.h`, `include/nativesharp/Interop/CppSemanticRecord.h`,
+`src/Interop/Cpp/CppSemanticRecord.cpp`, `tests/unit/CppClangSessionTests.cpp`,
+tracking y registros. No cambiar aún el codec 1.42 ni tratar datos transitorios
+como prueba de identidad. La serialización requiere compatibilidad explícita.
+
 ## Identidad de funciones C importadas
 
 T08-002/T08-003: conservar USR opcional en la proyección de función y
