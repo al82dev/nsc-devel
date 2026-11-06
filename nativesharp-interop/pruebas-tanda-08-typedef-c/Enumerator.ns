@@ -8,5 +8,11 @@ int Main()
     int raw = COLOR_BLUE;
     if (raw != 2 || color != COLOR_RED) return 2;
     if (c_colors_sum(&colors) != 3) return 3;
+    int dynamicValue = 2;
+    CColor dynamicColor = dynamicValue;
+    if (c_echo_color(dynamicColor) != COLOR_BLUE) return 4;
+    int negative = -1;
+    CUnsigned unsignedColor = negative;
+    if (c_unsigned_verify(unsignedColor) != 1) return 5;
     return 0;
 }

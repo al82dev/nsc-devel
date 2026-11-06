@@ -1,0 +1,2 @@
+enum NativeMode { First = 1 }
+int Main() { int number = 1; NativeMode value = number; return 0; }

@@ -14,5 +14,6 @@ const CColorArray* c_colors_get(void) { static const CColorArray value = { COLOR
 int c_point_sum(const CPoint* point) { return point->x + point->y; }
 CColor c_color(void) { return COLOR_BLUE; }
 CColor c_echo_color(CColor color) { return color; }
+int c_unsigned_verify(CUnsigned value) { return value == U_HIGH; }
 static int increment(int x) { return x + 1; }
 COperation c_operation(void) { return increment; }

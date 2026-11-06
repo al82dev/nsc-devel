@@ -14,5 +14,10 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 exit /b 1
   echo Enumerador C O%%O ejecutado correctamente.
 )
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidNativeEnum.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidNativeEnum.exe" > "%DEST%\InvalidNativeEnum.log" 2>&1
+if not errorlevel 1 (echo Se acepto conversion entera a enum NativeSharp. & exit /b 1)
+findstr /i /c:"cannot initialize local 'value'" "%DEST%\InvalidNativeEnum.log" >nul
+if errorlevel 1 (echo El rechazo no corresponde al enum NativeSharp. & exit /b 1)
+echo Enum NativeSharp mantiene sus reglas.
 echo ENUMERADOR C COMPLETO
 exit /b 0
