@@ -22,6 +22,12 @@ for %%I in (InvalidConstPoints InvalidConstColors InvalidArrayIdentity) do (
   findstr /i /c:"no viable overload of namespace function" "%DEST%\%%I.log" >nul
   if errorlevel 1 (echo El rechazo de %%I no corresponde a la llamada. & exit /b 1)
 )
+findstr /i /c:"no viable overload of namespace function 'c_points_mutate' accepts the argument types" "%DEST%\InvalidConstPoints.log" >nul
+if errorlevel 1 exit /b 1
+findstr /i /c:"no viable overload of namespace function 'c_colors_mutate' accepts the argument types" "%DEST%\InvalidConstColors.log" >nul
+if errorlevel 1 exit /b 1
+findstr /i /c:"no viable overload of namespace function 'c_points_mutate' accepts the argument types" "%DEST%\InvalidArrayIdentity.log" >nul
+if errorlevel 1 exit /b 1
 echo Argumentos de agregados incompatibles rechazados.
 echo ARREGLOS AGREGADOS COMPLETOS
 exit /b 0

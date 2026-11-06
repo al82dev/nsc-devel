@@ -669,6 +669,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     pasó IR y ejecución O0–O3 con globales flotantes y `??=`. La batería
     completa y las demás formas de volatile siguen pendientes.
 - [ ] T08-016. Mapear arreglos de tamaño conocido.
+  - Punteros C a arreglos fijos de struct y enum pasaron lectura y mutación
+    O0–O3; se rechazaron argumentos const e identidades distintas. El enum se
+    inicializó desde C por otra limitación pendiente. [Evidencia](registro-commits/proyeccion-arreglo-agregado-c.md).
   - `int * const[2][2]` y `const int * const[2]` pasaron lectura y modificación
     permitida en O0–O3; escritura y escapes indebidos se rechazaron. Persisten
     otras formas y la validación completa. [Evidencia](registro-commits/prueba-matriz-puntero-fijo.md).
