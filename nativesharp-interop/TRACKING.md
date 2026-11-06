@@ -190,6 +190,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Preparados `aa79163fd` y `393008d20`: selector combinado y control de
+    sesiones activas. Sin conectar ni ejecutar; la reconciliación de una misma
+    identidad entre sesión y biblioteca sigue pendiente.
   - Preparados `220abbd7c` y `2dcc699de`: combinación de campos y constantes
     desde catálogos precompilados, con controles de duplicados y conflictos.
     Sin ejecutar ni instalar en el consumidor; visibilidad sigue pendiente.
