@@ -22,6 +22,16 @@ observación compatible no las tenga. No modificar los árboles originales.
 Preparar la recopilación de grupos C seleccionados en un catálogo ordenado por
 identidad: rechazar duplicados o una captura fallida sin producir salida parcial.
 
+## Codificación interna de tipos C para metadata
+
+T08-002/T08-010/T08-011/T08-013: preparar un codec binario interno del catálogo
+de records C que preserve los árboles de tipos, calificadores, identidades,
+offsets y dimensiones, con límites de profundidad y validación de entradas.
+Presupuesto inicial: src/Interop/Internal/CppCRecordMetadataCodec.h/.cpp,
+CMakeLists.txt, controles de codec y registros Markdown. No cambiar todavía la
+versión NSMETA ni la publicación hasta integrar verificación, huella ABI,
+fusión y reconstrucción; la configuración sin Clang debe seguir disponible.
+
 ## Procedencia y destino de tipos importados
 
 T08-002/T08-010/T08-011/T08-013: conservar en el tipo importado si Clang lo
