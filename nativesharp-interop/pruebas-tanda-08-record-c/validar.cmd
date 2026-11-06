@@ -77,12 +77,14 @@ findstr /r /c:"load atomic volatile.*@volatile_array.*acquire, align 4" "%DEST%\
 if errorlevel 1 (echo Falta lectura acquire volatile del arreglo. & exit /b 1)
 findstr /r /c:"store atomic volatile.*@volatile_array.*release, align 4" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura release volatile del arreglo. & exit /b 1)
-findstr /r /c:"store.*volatile i32 97" "%DEST%\project.ll" >nul
-if errorlevel 1 (echo Falta escritura volatile mediante puntero del arreglo. & exit /b 1)
-findstr /r /c:"store.*volatile i32 98" "%DEST%\project.ll" >nul
-if errorlevel 1 (echo Falta escritura volatile mediante puntero de la matriz. & exit /b 1)
-findstr /r /c:"store.*volatile i32 99" "%DEST%\project.ll" >nul
-if errorlevel 1 (echo Falta escritura volatile mediante puntero constante. & exit /b 1)
+findstr /r /c:"store atomic volatile i32 97, ptr .*release, align 4" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura release mediante puntero del arreglo. & exit /b 1)
+findstr /r /c:"store atomic volatile i32 98, ptr .*release, align 4" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura release mediante puntero de la matriz. & exit /b 1)
+findstr /r /c:"store atomic volatile i32 99, ptr .*release, align 4" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura release mediante puntero constante. & exit /b 1)
+findstr /r /c:"load atomic volatile i32, ptr %%pointer.load.*acquire, align 4" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta lectura acquire mediante puntero del arreglo. & exit /b 1)
 findstr /r /c:"store.*volatile i32 101" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile mediante puntero de struct. & exit /b 1)
 findstr /r /c:"store atomic volatile i32 61, ptr .*release, align 4" "%DEST%\project.ll" >nul
