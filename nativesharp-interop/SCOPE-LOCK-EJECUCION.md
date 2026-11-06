@@ -3332,6 +3332,11 @@ campo de struct C y desde un global C, sin alterar el caso ya validado.
 Extender ese proyecto para escribir callbacks en el campo y en el global y
 comprobar su invocación desde C; agregar controles de lectura y rechazo de
 escritura para un global y un campo con puntero a función const.
+Preparar en el mismo fixture un proyecto separado para callbacks C
+almacenados en un global y campo volatile, con intercambio de escrituras entre
+C y NativeSharp. Comparar también su IR frente a Clang en Windows x64 antes de
+atribuir soporte a las reglas de orden volatile; no modificar producción sin
+identificar y registrar primero las rutas concretas.
 Para el fallo observado, reutilizar el mapeo de firma de funciones existente
 en `include/nativesharp/Interop/CppSemanticFunction.h` y
 `src/Interop/Cpp/CppSemanticFunction.cpp`, y conectarlo a campos C en
