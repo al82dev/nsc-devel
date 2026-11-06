@@ -194,6 +194,87 @@ bool getType(ByteReader& reader, CppType& type, unsigned depth)
     return true;
 }
 
+bool collectFloatFormats(const CppType& type, std::vector<std::uint8_t>& flags, unsigned depth)
+{
+    if (depth > maxDepth || flags.size() > maxItems) return false;
+    const bool candidate = type.kind == CppTypeKind::Floating &&
+        type.unqualifiedCanonicalSpelling == "long double";
+    if (type.ieeeBinary64 && (!candidate || type.sizeBits != 64)) return false;
+    if (candidate) flags.push_back(type.ieeeBinary64 ? 1 : 0);
+    if (type.enumUnderlying && !collectFloatFormats(*type.enumUnderlying, flags, depth + 1)) return false;
+    if (type.element && !collectFloatFormats(*type.element, flags, depth + 1)) return false;
+    if (type.function)
+    {
+        if (!collectFloatFormats(type.function->returnType, flags, depth + 1)) return false;
+        for (const auto& parameter : type.function->parameterTypes)
+            if (!collectFloatFormats(parameter, flags, depth + 1)) return false;
+    }
+    return flags.size() <= maxItems;
+}
+
+bool restoreFloatFormats(CppType& type, std::span<const std::uint8_t> flags, std::size_t& index, unsigned depth)
+{
+    if (depth > maxDepth) return false;
+    if (type.kind == CppTypeKind::Floating && type.unqualifiedCanonicalSpelling == "long double")
+    {
+        if (index >= flags.size() || flags[index] > 1 || (flags[index] && type.sizeBits != 64)) return false;
+        type.ieeeBinary64 = flags[index++] != 0;
+    }
+    if (type.enumUnderlying)
+    {
+        auto child = std::make_shared<CppType>(*type.enumUnderlying);
+        if (!restoreFloatFormats(*child, flags, index, depth + 1)) return false;
+        type.enumUnderlying = std::move(child);
+    }
+    if (type.element)
+    {
+        auto child = std::make_shared<CppType>(*type.element);
+        if (!restoreFloatFormats(*child, flags, index, depth + 1)) return false;
+        type.element = std::move(child);
+    }
+    if (type.function)
+    {
+        auto function = std::make_shared<CppFunctionType>(*type.function);
+        if (!restoreFloatFormats(function->returnType, flags, index, depth + 1)) return false;
+        for (auto& parameter : function->parameterTypes)
+            if (!restoreFloatFormats(parameter, flags, index, depth + 1)) return false;
+        type.function = std::move(function);
+    }
+    return true;
+}
+
+bool collectCatalogueFloatFormats(std::span<const CppCRecordSnapshot> records,
+    std::span<const CppCEnumSnapshot> enums, std::vector<std::uint8_t>& flags)
+{
+    flags.clear();
+    for (const auto& record : records)
+        for (const auto& field : record.fields)
+            if (!collectFloatFormats(field.type, flags, 0)) return false;
+    for (const auto& item : enums)
+    {
+        if (item.declaration.underlyingType && !collectFloatFormats(*item.declaration.underlyingType, flags, 0)) return false;
+        for (const auto& value : item.declaration.enumerators)
+            if (!collectFloatFormats(value.valueType, flags, 0)) return false;
+    }
+    return true;
+}
+
+bool restoreCatalogueFloatFormats(std::vector<CppCRecordSnapshot>& records,
+    std::vector<CppCEnumSnapshot>& enums, std::span<const std::uint8_t> flags)
+{
+    std::size_t index = 0;
+    for (auto& record : records)
+        for (auto& field : record.fields)
+            if (!restoreFloatFormats(field.type, flags, index, 0)) return false;
+    for (auto& item : enums)
+    {
+        if (item.declaration.underlyingType && !restoreFloatFormats(*item.declaration.underlyingType, flags, index, 0)) return false;
+        for (auto& value : item.declaration.enumerators)
+            if (!restoreFloatFormats(value.valueType, flags, index, 0)) return false;
+    }
+    return index == flags.size();
+}
+
 bool validateRecords(std::span<const CppCRecordSnapshot> records, std::string& error)
 {
     for (std::size_t i = 0; i < records.size(); ++i)
