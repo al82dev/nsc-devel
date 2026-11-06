@@ -87,3 +87,10 @@ for address in ("field\\.addr", "raw\\.element\\.addr"):
     if not re.search(r"load volatile i32, ptr %" + address + r"\d*, align 1", volatile_aggregate):
         print("Falta lectura volatile alineada a 1 del agregado")
         sys.exit(1)
+
+const_volatile = ir.split("call ptr @layout_packed_const_volatile_aggregates()", 1)[-1].split(
+    "ret i32 32", 1)[0]
+for address in ("field\\.addr", "raw\\.element\\.addr"):
+    if not re.search(r"load volatile i32, ptr %" + address + r"\d*, align 1", const_volatile):
+        print("Falta lectura const volatile alineada a 1 del agregado")
+        sys.exit(1)
