@@ -32,3 +32,8 @@ No se prueban todavía todos los órdenes ni grafos de bibliotecas.
 Se prepara un control adicional: el consumidor utiliza también las funciones
 inline con estado del mismo encabezado, y comprueba que su contador y variable
 estática son independientes de los dos productores. Pendiente de validación.
+
+La ejecución agrupada de `validar.cmd` con build `66725a00ab433111` pasó
+O0–O3: el consumidor y los dos productores mantuvieron tres copias de estado
+independientes al usar el mismo encabezado. No acredita sesiones múltiples
+dentro de un único proyecto ni otras combinaciones de enlace.
