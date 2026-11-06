@@ -238,6 +238,8 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-013. Representar tipos declarados pero incompletos sin inventar su tamaño.
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
+  - Preparados `f301a1a16` y `03830c483`: lectura, IR y rechazo de escritura
+    para arreglos C de record y enum const volatile. Sin ejecutar.
   - Preparados `9ce8f6a8d`, `cec4a8c6f` y `b312fc47a`: arrays C de record y
     enum volatile, con acceso mixto, direcciones e IR. Sin construir ni validar.
   - Actualización: construcción incremental y layout pasaron en O0–O3; se
