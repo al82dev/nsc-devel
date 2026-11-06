@@ -6,6 +6,7 @@ typedef struct CPoint { int x; int y; } CPoint;
 typedef int (*COperation)(int);
 CCountAlias c_double(CCountAlias value);
 int c_matrix_sum(int first, int second);
+int c_matrix_ptr(const CMatrix* matrix);
 int c_point_sum(const CPoint* point);
 CColor c_color(void);
 COperation c_operation(void);

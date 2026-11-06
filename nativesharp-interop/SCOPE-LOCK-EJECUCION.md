@@ -11,6 +11,9 @@ La primera ejecución no importó `c_matrix_sum` con parámetro puntero a matriz
 conservar ese hallazgo y cambiar el fixture principal para pasar dos elementos
 escalares, de forma que se puedan observar también los demás alias. El
 puntero a matriz permanece como contrato pendiente, no se considera resuelto.
+Conservar la firma y el consumidor de puntero a matriz en archivos propios del
+fixture para poder repetirlos independientemente; no sustituir la comprobación
+por un rechazo esperado. Registrar el resultado antes de modificar producción.
 
 ## Arreglos globales C de punteros constantes
 
