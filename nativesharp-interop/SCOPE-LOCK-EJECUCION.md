@@ -12,7 +12,8 @@ calificador de apuntado readonly.
 
 Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`,
 `src/Frontend/Bodies/ExpressionCore/IndexAndRangeExpressions.cpp`, los fixtures
-de `nativesharp-interop/pruebas-tanda-08-record-c`, tracking y registros de
+de `nativesharp-interop/pruebas-tanda-08-record-c`,
+`tests/unit/CppClangSessionTests.cpp`, tracking y registros de
 esta tanda. Preservar punteros anidados que no puedan representarse, NSLink,
 LLVM y la instalación en C:. Añadir controles de lectura, escritura,
 conversión que descarte volatile y dirección del slot; comprobar IR y

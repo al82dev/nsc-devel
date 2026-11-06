@@ -1327,7 +1327,7 @@ int main(int argc, char** argv)
                     std::vector<CppProjectSessions> groups(2);
                     groups[0].projectFile = otherProject->projectFile();
                     groups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
-                        CppLanguageMode::C, "struct Opaque; int other_value(void); int pointer_value(struct Opaque* p); extern int c_global; extern volatile int* c_volatile_pointer; static int internal_global;\n")));
+                        CppLanguageMode::C, "struct Opaque; int other_value(void); int pointer_value(struct Opaque* p); extern int c_global; extern volatile int* c_volatile_pointer; extern volatile int* c_volatile_array[2]; extern const volatile int* c_const_volatile_array[2][3]; extern volatile int** c_nested_volatile_array[2]; static int internal_global;\n")));
                     groups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
                         CppLanguageMode::C, "int other_value(void);\n")));
                     groups[0].sessions.push_back(open(factory, options(argv[1], argv[2], argv[3],
@@ -1351,6 +1351,8 @@ int main(int argc, char** argv)
                         bool cGlobal = false, cppGlobal = false, internalRejected = false;
                         bool volatileProjected = false, constProjected = false, tlsRejected = false;
                         bool volatilePointerProjected = false;
+                        bool volatileArrayProjected = false, constVolatileArrayProjected = false;
+                        bool nestedVolatileArrayRejected = false;
                         bool cVolatileOptionRetained = false, cppVolatileOptionRetained = false;
                         if (entries)
                             for (const auto& entry : *entries)
@@ -1368,6 +1370,14 @@ int main(int argc, char** argv)
                                 if (entry.declaration.name == "c_volatile_pointer")
                                     volatilePointerProjected = symbol && symbol->pointerPointeeVolatile &&
                                         symbol->typeKey == "builtin:int*";
+                                if (entry.declaration.name == "c_volatile_array")
+                                    volatileArrayProjected = symbol && symbol->pointerPointeeVolatile &&
+                                        !symbol->pointerPointeeReadonly && symbol->typeKey == "builtin:int*[2]";
+                                if (entry.declaration.name == "c_const_volatile_array")
+                                    constVolatileArrayProjected = symbol && symbol->pointerPointeeVolatile &&
+                                        symbol->pointerPointeeReadonly && symbol->typeKey == "builtin:int*[3][2]";
+                                if (entry.declaration.name == "c_nested_volatile_array")
+                                    nestedVolatileArrayRejected = rejected != nullptr;
                                 if (entry.declaration.name == "shared")
                                 {
                                     cppGlobal = symbol && entry.projectOrdinal == 2 && entry.referenceIndex == 0 &&
@@ -1382,8 +1392,9 @@ int main(int argc, char** argv)
                                 if (entry.declaration.name == "limit") constProjected = symbol && symbol->isConst;
                                 if (entry.declaration.name == "tls") tlsRejected = rejected && entry.declaration.threadLocal;
                             }
-                        ok &= expect(entries && entries->size() == 8 && cGlobal && cppGlobal && internalRejected &&
-                                     volatilePointerProjected &&
+                        ok &= expect(entries && entries->size() == 11 && cGlobal && cppGlobal && internalRejected &&
+                                     volatilePointerProjected && volatileArrayProjected && constVolatileArrayProjected &&
+                                     nestedVolatileArrayRejected &&
                                      volatileProjected && constProjected && tlsRejected,
                                      "global inventory preserves project, exact symbol, type and unsupported storage contracts");
                         ok &= expect(cVolatileOptionRetained && cppVolatileOptionRetained,
