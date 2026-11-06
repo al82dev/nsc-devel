@@ -141,12 +141,13 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
 
 std::optional<CppScalarTypeMapping> projectCppStoredFunctionPointer(const CppType& type)
 {
-    if (type.kind != CppTypeKind::Pointer || type.isVolatile || !type.element ||
+    if (type.kind != CppTypeKind::Pointer || !type.element ||
         type.element->kind != CppTypeKind::Function) return std::nullopt;
     CppType unqualified = type;
     unqualified.isConst = false;
+    unqualified.isVolatile = false;
     auto mapped = mapFunctionType(unqualified);
-    if (mapped) mapped->isConst = type.isConst;
+    if (mapped) { mapped->isConst = type.isConst; mapped->isVolatile = type.isVolatile; }
     return mapped;
 }
 

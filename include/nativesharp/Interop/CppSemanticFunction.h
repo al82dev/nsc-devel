@@ -32,7 +32,7 @@ using CppSemanticFunctionResult =
     std::variant<frontend::NamespaceFunctionSymbol, CppSemanticFunctionFailure>;
 
 // Maps a stored C function pointer using the same prototype rules as function
-// signatures; volatile storage and unrepresentable prototypes stay unsupported.
+// signatures; preserve storage qualifiers and reject unrepresentable prototypes.
 std::optional<CppScalarTypeMapping> projectCppStoredFunctionPointer(const CppType& type);
 
 // Projects externally named free functions using representable scalar types and supported
