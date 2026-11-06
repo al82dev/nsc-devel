@@ -540,9 +540,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-012. Obtener de Clang tamaño, alineación y desplazamiento de cada campo.
 - [ ] T08-013. Representar tipos declarados pero incompletos sin inventar su tamaño.
   - Un puntero a struct C incompleto se usó en retorno, parámetros y global
-    con biblioteca separada O0–O3. El local por valor se rechaza por la
-    limitación general de lifetime; falta diagnosticar específicamente el tipo
-    incompleto y cubrir otros usos. [Evidencia](registro-commits/prueba-punteros-opacos-c.md).
+    con biblioteca separada O0–O3. El local por valor se rechaza con un
+    diagnóstico específico de tipo incompleto; faltan otros usos.
+    [Evidencia](registro-commits/prueba-punteros-opacos-c.md).
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
   - La matriz volatile de 8, 16, 32 y 64 bits pasó O0–O3 y su control IR:
@@ -700,6 +700,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     convenciones. [Evidencia](registro-commits/callback-c-retornado.md).
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.
 - [ ] T08-019. Presentar diagnósticos útiles al usar una declaración incompleta de forma inválida.
+  - El local C incompleto por valor produce un diagnóstico específico; la
+    prueba anterior de `sizeof` también pasó. Faltan otras operaciones y
+    combinaciones. [Evidencia](registro-commits/diagnostico-local-incompleto-c.md).
 - [ ] T08-020. Comparar tamaño, alineación y offsets importados con los calculados por Clang.
   - Preparado en `ad9b0a694` y `03cd47d50`: alineación explícita en el IR de
     accesos directos a campos y prueba mixta de lectura y escrituras. Falta
