@@ -21,7 +21,7 @@ clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Probe.c" -o "%DEST
 if errorlevel 1 (echo Compilacion consumidor C fallo. & exit /b 1)
 llvm-readobj.exe --relocations "%DEST%\probe.obj" > "%DEST%\probe-relocations.txt" 2>&1
 if errorlevel 1 exit /b 1
-lld-link.exe /nologo /nodefaultlib /subsystem:console /entry:mainCRTStartup /include:_tls_used /out:"%DEST%\probe.exe" "%DEST%\probe.obj" "%DEST%\api.lib" "A:\vc2026-runtime\lib\x64\release\libcmt.lib" "A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\um\x64\kernel32.lib" > "%DEST%\probe-link.log" 2>&1
+lld-link.exe /nologo /nodefaultlib /subsystem:console /entry:mainCRTStartup /include:_tls_used /out:"%DEST%\probe.exe" "%DEST%\probe.obj" "%DEST%\api.lib" "A:\vc2026-runtime\lib\x64\release\libcmt.lib" "A:\vc2026-runtime\lib\x64\release\libcpmt.lib" "A:\vc2026-runtime\lib\x64\release\libvcruntime.lib" "A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\ucrt\x64\libucrt.lib" "A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\um\x64\kernel32.lib" > "%DEST%\probe-link.log" 2>&1
 if errorlevel 1 (echo Enlace consumidor C fallo. & exit /b 1)
 "%DEST%\probe.exe"
 if errorlevel 1 (echo Consumidor C TLS fallo. & exit /b 1)

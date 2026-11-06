@@ -444,6 +444,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     global y fallan dentro de namespace por nombre desconocido. Es necesario
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
 - [ ] T08-004. Importar declaraciones de variables globales C.
+  - Clang rechaza `thread` con `dllimport`/`dllexport`; al exportar por el
+    enlazador, el consumidor C pide `SECREL tls_exported` y la import library
+    solo ofrece `__imp_tls_exported`. NSC rechaza TLS directo por ahora.
+    [Evidencia](registro-commits/tls-c-dll-directo.md).
   - Una DLL C con directorio TLS real aisló el estado de dos hilos al ser
     llamada desde NS O0–O3. El acceso directo al global y el TLS estático en
     NSLink siguen pendientes. [Evidencia](registro-commits/tls-c-dll.md).
