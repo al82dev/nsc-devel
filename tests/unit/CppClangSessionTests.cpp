@@ -35,6 +35,7 @@
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #include "../../src/Interop/Internal/CppCRecordMetadataCodec.h"
+#include "../../src/Interop/Internal/LibraryMetadataCodecSupport.h"
 #include "nativesharp/Interop/CppSemanticInventory.h"
 #include "nativesharp/Interop/CppSemanticFunctionGroups.h"
 #include "nativesharp/Interop/CppNamespaceInventory.h"
@@ -3078,6 +3079,15 @@ int main(int argc, char** argv)
                     metadata_detail::encodeCRecordCatalog(decoded, reencoded, codecError);
                 ok &= expect(roundTrip && encoded == reencoded && decoded.size() == catalog->size(),
                              "C record catalog codec preserves its complete encoding");
+                LibraryMetadata catalogMetadata;
+                catalogMetadata.formatMinor = 42;
+                catalogMetadata.targetTriple = "x86_64-pc-windows-msvc";
+                catalogMetadata.cppCRecordCatalog = encoded;
+                ok &= expect(roundTrip && metadata_detail::verifyBinaryClosureMetadata(catalogMetadata, codecError),
+                             "metadata validates a canonical C record catalogue for its target");
+                catalogMetadata.targetTriple = "different-target";
+                ok &= expect(!metadata_detail::verifyBinaryClosureMetadata(catalogMetadata, codecError),
+                             "metadata rejects a C record catalogue from another target");
                 auto nestedCatalog = *catalog;
                 const auto nestedRecord = std::find_if(nestedCatalog.begin(), nestedCatalog.end(),
                     [](const auto& record) { return record.complete && !record.fields.empty(); });
