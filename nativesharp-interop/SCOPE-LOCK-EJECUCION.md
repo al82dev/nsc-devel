@@ -9,6 +9,15 @@ Presupuesto: NamespaceFunctionSymbol.h, CppSemanticFunction.cpp,
 CppSemanticFunctionGroups.cpp, suite de sesión y registros Markdown.
 No modifica formato persistente, LLVM externo ni NSLink; validar por tanda.
 
+## Procedencia y destino de tipos importados
+
+T08-002/T08-010/T08-011/T08-013: conservar en el tipo importado si Clang lo
+observó como struct, union o enum C, o como record C++, y el triple consensuado.
+Sin inventar procedencia en grupos contradictorios. Presupuesto:
+ProjectNameLookup.h, CppSemanticRecord.cpp, CppSemanticInventory.cpp,
+CppClangSessionTests.cpp, TRACKING.md y registros Markdown. No modifica el
+formato persistente todavía, LLVM ni NSLink; validación agrupada.
+
 ## Comprobación agrupada de visibilidad e identidad
 
 Construcción incremental de NSC y la suite de sesión ON en A:/nsc-interop-build;
