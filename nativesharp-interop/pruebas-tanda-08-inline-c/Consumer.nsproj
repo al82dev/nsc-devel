@@ -1,4 +1,4 @@
 <Project>
   <PropertyGroup><Name>CInlineConsumer</Name></PropertyGroup>
-  <ItemGroup><Compile Include="Consumer.ns" /><LibraryReference Include="CInlineProducer.lib" /><LibraryReference Include="CInlineProducerSecond.lib" /></ItemGroup>
+  <ItemGroup><Compile Include="Consumer.ns" /><LibraryReference Include="CInlineProducer.lib" /><LibraryReference Include="CInlineProducerSecond.lib" /><CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" /></ItemGroup>
 </Project>

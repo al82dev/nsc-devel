@@ -40,6 +40,11 @@ el tracking y los registros para omitir una dependencia C/C++ cuya misma ruta
 ya fue añadida por un productor anterior. Conservar orden y repeticiones dentro
 de cada lista individual, validación de identidad de metadata y NSLink intacto;
 probar los dos productores con la misma dependencia y la batería agrupada.
+Ampliar el fixture existente para que ambos productores llamen al símbolo C
+externo y el consumidor declare y utilice directamente el mismo encabezado y
+la misma biblioteca. Se permiten `ProducerSecond.ns`, `Consumer.ns`,
+`Consumer.nsproj` y sus registros; no modificar producción sin reproducir y
+delimitar una falla.
 
 ## Redeclaraciones C con prototipo más preciso
 

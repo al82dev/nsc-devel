@@ -8,5 +8,6 @@ int Main()
     if (Published.Bridge.Count() != 3) return 5;
     PublishedSecond.Bridge.Set(42);
     if (PublishedSecond.Bridge.Get() != 42 || Published.Bridge.Get() != 37) return 6;
+    if (PublishedSecond.Bridge.Compose(5) != 16 || external_double(10) != 20) return 7;
     return 0;
 }

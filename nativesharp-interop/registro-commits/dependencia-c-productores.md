@@ -19,3 +19,6 @@ productores declarando `api.lib` compiló, enlazó y ejecutó en O0–O3; ambos
 estados estáticos continuaron independientes. La matriz de metadata C existente
 pasó y `nsc.cpp-interop.session` pasó 1/1. El resultado no demuestra todos los
 grafos, órdenes ni repeticiones de bibliotecas; no se modificó NSLink.
+
+Se amplía el control para que ambos productores invoquen la dependencia C y
+para que el consumidor la declare y llame directamente. Pendiente de ejecución.
