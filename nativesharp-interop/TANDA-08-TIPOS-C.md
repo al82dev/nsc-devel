@@ -1322,6 +1322,18 @@ siguen pendientes, así como otras formas de acceso; no se cierra la tanda.
 
 ## Diferencia de orden en enum volatile alineado dentro de agregado
 
+### Actualización: corrección y validación dirigida
+
+Con los cambios hasta `301139ed1`, NSC y `nsc_cpp_session_tests` se
+construyeron incrementalmente y la suite terminó con código 0. El proyecto
+layout pasó en O0–O3 y el comparador verificó release/acquire para el enum
+alineado frente a Clang; los controles de IR de los casos empaquetados de
+alineación 1 también pasaron. La construcción de la suite emitió 23
+advertencias de inicializadores. No se demuestra todo volatile ni se cierra la
+tanda; faltan variantes y la batería completa.
+
+### Hallazgo original
+
 `a9abdcf63` permite comparar accesos C y NativeSharp mediante puntero al mismo
 tipo alineado. Clang 23.1.0 emitió `store atomic volatile` release y `load
 atomic volatile` acquire para el elemento enum, ambos con alineación 4. NSC
