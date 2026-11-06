@@ -1,0 +1,5 @@
+int Main()
+{
+    readonly_callback = get_callback();
+    return 0;
+}

@@ -1,0 +1,6 @@
+int Main()
+{
+    CallbackHolder* holder = get_callback_holder();
+    holder->fixed = get_callback();
+    return 0;
+}

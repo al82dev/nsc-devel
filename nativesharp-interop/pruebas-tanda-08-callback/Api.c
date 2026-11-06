@@ -4,9 +4,12 @@ int apply_callback_ptr(Callback *callback, int value) { return (*callback)(value
 static int add_three(int value) { return value + 3; }
 Callback get_callback(void) { return add_three; }
 Callback echo_callback(Callback callback) { return callback; }
-static CallbackHolder holder = { add_three };
+static CallbackHolder holder = { add_three, add_three };
 CallbackHolder* get_callback_holder(void) { return &holder; }
 Callback shared_callback = add_three;
+Callback const readonly_callback = add_three;
+int run_holder(CallbackHolder* item, int value) { return item->run(value); }
+int run_shared(int value) { return shared_callback(value); }
 FloatValue add_float(FloatValue a, FloatValue b) { return a + b; }
 DoubleValue add_double(DoubleValue a, DoubleValue b) { return a + b; }
 int mix_integers(SignedByte a, UnsignedShort b, UnsignedInt c) { return (int)a + (int)b + (int)c; }

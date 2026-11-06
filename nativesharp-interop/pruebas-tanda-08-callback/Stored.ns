@@ -5,5 +5,12 @@ int Main()
     if (member(39) != 42) return 1;
     Callback global = shared_callback;
     if (global(39) != 42) return 2;
+    Callback fixed = holder->fixed;
+    Callback readonlyGlobal = readonly_callback;
+    if (fixed(39) != 42 || readonlyGlobal(39) != 42) return 3;
+    Callback replacement = (int value) => value + 5;
+    holder->run = replacement;
+    shared_callback = replacement;
+    if (run_holder(holder, 37) != 42 || run_shared(37) != 42) return 4;
     return 0;
 }
