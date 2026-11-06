@@ -27,7 +27,8 @@ std::optional<CppScalarTypeMapping> mapCppScalarType(const CppType& type)
     else if (type.kind == CppTypeKind::Floating)
     {
         if (type.unqualifiedCanonicalSpelling == "float" && type.sizeBits == 32) key = "builtin:float";
-        else if (type.unqualifiedCanonicalSpelling == "double" && type.sizeBits == 64) key = "builtin:double";
+        else if (type.sizeBits == 64 && (type.unqualifiedCanonicalSpelling == "double" ||
+                 (type.unqualifiedCanonicalSpelling == "long double" && type.ieeeBinary64))) key = "builtin:double";
     }
     if (key.empty()) return std::nullopt;
     return CppScalarTypeMapping{std::string(key), type.canonicalSpelling, type.isConst, type.isVolatile};

@@ -56,7 +56,8 @@ inline std::optional<CppAliasBuiltinType> cppAliasBuiltinType(const interop::Cpp
     {
         if (current->unqualifiedCanonicalSpelling == "float" && current->sizeBits == 32)
             set(T::KwFloat, "float");
-        else if (current->unqualifiedCanonicalSpelling == "double" && current->sizeBits == 64)
+        else if (current->sizeBits == 64 && (current->unqualifiedCanonicalSpelling == "double" ||
+                 (current->unqualifiedCanonicalSpelling == "long double" && current->ieeeBinary64)))
             set(T::KwDouble, "double");
     }
     if (token == T::Invalid) return std::nullopt;
