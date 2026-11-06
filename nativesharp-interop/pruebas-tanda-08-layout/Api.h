@@ -1,6 +1,7 @@
 typedef struct Pair { char a; int b; } Pair;
 typedef union Cell { int integer; double real; } Cell;
 typedef struct Container { char tag; Pair pairs[2][3]; Cell cell; } Container;
+typedef struct InnerArray { int values[2]; } InnerArray;
 #pragma pack(push, 1)
 typedef struct Packed { char tag; int value; } Packed;
 typedef struct PackedPointer { char tag; int* value; } PackedPointer;
@@ -8,7 +9,9 @@ typedef struct PackedArray { char tag; int values[2][3]; } PackedArray;
 typedef struct PackedQualified { char tag; const int fixed[2]; volatile int status[2]; } PackedQualified;
 typedef struct PackedPointers { char tag; int* slots[2]; } PackedPointers;
 typedef struct PackedNested { char tag; Pair nested; } PackedNested;
+typedef struct PackedNestedArray { char tag; InnerArray nested; } PackedNestedArray;
 #pragma pack(pop)
+PackedNestedArray* layout_packed_nested_array(void);
 PackedNested* layout_packed_nested(void);
 int layout_packed_nested_value(void);
 int layout_packed_nested_size(void);
