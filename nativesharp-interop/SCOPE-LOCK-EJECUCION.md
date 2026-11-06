@@ -3323,6 +3323,10 @@ materialización de tipos no reconoce `fn:`. Permitir la reconstrucción de
 prototipos de puntero C en `src/Driver/PrecompiledSurface/MetadataSourceMapping.cpp`,
 conservando el rechazo de efectos y formas que no se puedan reconstruir y
 registrando las limitaciones y pruebas. No modificar el formato NSMETA.
+Ampliar esa reconstrucción a convenciones C admitidas por el parser y a
+variadicidad válida, manteniendo efectos y carriers no representados como
+rechazo. Extender `pruebas-tanda-08-meta-c` con callbacks vectorcall y C
+variádico y comprobar el consumidor real en O0–O3.
 Agregar un proyecto separado para leer e invocar un puntero a función desde un
 campo de struct C y desde un global C, sin alterar el caso ya validado.
 Extender ese proyecto para escribir callbacks en el campo y en el global y
