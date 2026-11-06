@@ -4076,6 +4076,7 @@ void ProjectMethodBodyModel::analyzeVariableInitializer(
     diagnostics::DiagnosticEngine& diagnostics,
     const language::PointerContract& declaredPointerContract,
     bool declaredPointerPointeeReadonly,
+    bool declaredPointerPointeeVolatile,
     bool isVarInferred,
     bool isReferenceLocal,
     bool isReadonlyReference,
@@ -4124,8 +4125,8 @@ void ProjectMethodBodyModel::analyzeVariableInitializer(
     pendingOnePastEndPointer = initializer.onePastEndPointer;
     pendingPointerPointeeReadonly = declaredPointerPointeeReadonly ||
         initializer.pointerPointeeReadonly;
-    pendingPointerPointeeVolatile = initializer.pointerPointeeVolatile;
-    if (!isVarInferred && initializer.pointerPointeeVolatile &&
+    pendingPointerPointeeVolatile = declaredPointerPointeeVolatile || initializer.pointerPointeeVolatile;
+    if (!isVarInferred && initializer.pointerPointeeVolatile && !declaredPointerPointeeVolatile &&
         ProjectTypeConversion::isPointer(typeKey))
         diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error, variable->first()->range(),
@@ -4524,9 +4525,11 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
     bool pendingOnePastEndPointer = false;
     const bool declaredPointerPointeeReadonly = variable->typeSyntax() != nullptr &&
         variable->typeSyntax()->isPointeeConst();
+    const bool declaredPointerPointeeVolatile = variable->typeSyntax() != nullptr &&
+        variable->typeSyntax()->isPointeeVolatile();
     const language::PointerContract declaredPointerContract = pointerContractFromSyntax(variable->typeSyntax());
     bool pendingPointerPointeeReadonly = declaredPointerPointeeReadonly;
-    bool pendingPointerPointeeVolatile = false;
+    bool pendingPointerPointeeVolatile = declaredPointerPointeeVolatile;
     bool pendingPointerNullable = declaredPointerContract.nullable;
     bool pendingPointerHasProvenance = declaredPointerContract.hasProvenance;
     std::size_t pendingPointerKnownAlignment = declaredPointerContract.knownAlignment;
@@ -4538,7 +4541,7 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
         pendingOnePastEndPointer, pendingPointerPointeeReadonly, pendingPointerPointeeVolatile, pendingPointerNullable,
         pendingPointerHasProvenance, pendingPointerKnownAlignment, pendingPointerAddressSpace,
         variable, typeKey, methodMemberOrdinal, scopeOrdinal, diagnostics,
-        declaredPointerContract, declaredPointerPointeeReadonly, isVarInferred,
+        declaredPointerContract, declaredPointerPointeeReadonly, declaredPointerPointeeVolatile, isVarInferred,
         isReferenceLocal, isReadonlyReference, isPinnedReferenceLocal, isMoveOnly,
         isRaii, isBorrowed, isForeachEnumerator, managedDelegate,
         raiiOwnsNativeArrayBuffer, raiiBorrowedElementArray);

@@ -1137,6 +1137,7 @@ private:
         diagnostics::DiagnosticEngine& diagnostics,
         const language::PointerContract& declaredPointerContract,
         bool declaredPointerPointeeReadonly,
+        bool declaredPointerPointeeVolatile,
         bool isVarInferred,
         bool isReferenceLocal,
         bool isReadonlyReference,

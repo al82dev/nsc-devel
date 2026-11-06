@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Contrato de apuntado volatile en locales tipados
+
+Preparar que un local con tipo cuya sintaxis conserva volatile mantenga ese
+contrato y acepte un inicializador compatible; seguir rechazando su pérdida
+hacia un tipo sin calificador. Archivos: ProjectMethodBodyModel.h,
+StatementAnalyzer.cpp y documentación. La activación de aliases y la
+validación agrupada siguen pendientes.
+
 ## Contrato de apuntado volatile en declaraciones tipadas
 
 Preparar lectura del dato de TypeSyntax para parámetros y miembros, y para el

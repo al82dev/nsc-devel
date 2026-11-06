@@ -18,6 +18,8 @@ El patrón genérico y el volcado de sintaxis preparan la distinción volatile;
 esto no cambia por sí solo la identidad ABI ni activa un typedef.
 También se preparó la lectura del dato en declaraciones de parámetros,
 miembros y adaptadores de función; falta conectar los aliases y validar.
+Los locales tipados preparan la preservación del dato y su comprobación en
+inicializadores. Ningún typedef lo activa todavía.
 
 ## Calificador volatile del objeto apuntado: base en preparación
 
