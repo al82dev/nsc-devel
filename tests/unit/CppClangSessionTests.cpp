@@ -3352,6 +3352,22 @@ int main(int argc, char** argv)
                             catalogMetadata.cppCRecordCatalog, decodedVersioned, enumsVersioned, codecError);
                         ok &= expect(oldRejected && newAccepted && readNew && readOld,
                                      "versioned C provenance requires metadata 1.43 and legacy catalogues remain readable");
+                        ok &= expect(metadata_detail::encodeAbiProjection(newerMetadata) ==
+                                     metadata_detail::encodeAbiProjection(catalogMetadata),
+                                     "C source provenance does not change the public ABI projection");
+                        LibraryMetadataCodec metadataCodec;
+                        LibraryMetadata loadedOrigin;
+                        const auto originFile = std::filesystem::path(argv[2]) / "cpp-catalog-43.nsmeta";
+                        const bool originRoundTrip = metadataCodec.writeModel(newerMetadata, originFile, codecError) &&
+                            metadataCodec.read(originFile, loadedOrigin, codecError) &&
+                            metadataCodec.verifyCurrentCompiler(loadedOrigin, codecError) &&
+                            loadedOrigin.formatMinor == 43 && metadata_detail::decodeVersionedCTypeCatalog(
+                                loadedOrigin.cppCRecordCatalog, decodedVersioned, enumsVersioned, codecError);
+                        const auto foundOrigin = std::find_if(decodedVersioned.begin(), decodedVersioned.end(),
+                            [&](const auto& item) { return item.identityKey == completeRecord->identityKey; });
+                        ok &= expect(originRoundTrip && foundOrigin != decodedVersioned.end() &&
+                                     foundOrigin->sourceProvenance == completeRecord->sourceProvenance,
+                                     "metadata 1.43 writes and reads a C source provenance catalogue");
                     }
                     else ok &= expect(false, "versioned catalogue has a complete record");
                 }
