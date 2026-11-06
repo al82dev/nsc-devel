@@ -1,0 +1,9 @@
+namespace PublishedSecond
+{
+    public struct Bridge
+    {
+        public static int Count() { return header_counter(); }
+        public static void Set(int value) { header_set(value); }
+        public static int Get() { return header_get(); }
+    }
+}

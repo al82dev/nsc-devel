@@ -23,6 +23,13 @@ para preservar estado interno y añadir los objetos al bundle del producto.
 Verificar funciones dependientes, estado estático, llamadas externas y O0–O3;
 probar también bibliotecas precompiladas y colisiones antes de ampliar el cierre.
 
+Ampliar ese fixture con `ProducerSecond.ns`, `ProducerSecond.nsproj` y su
+consumidor existente para enlazar dos bibliotecas NativeSharp precompiladas que
+incluyen el mismo encabezado C. Comprobar que cada una conserva contador y
+estado estático propios, de O0 a O3. Permitir únicamente esos archivos, el
+script del fixture y registros; no cambiar producción sin observar y delimitar
+un fallo concreto.
+
 ## Redeclaraciones C con prototipo más preciso
 
 Ampliar `pruebas-tanda-08-prototipos-c` con declaraciones compatibles `f()`

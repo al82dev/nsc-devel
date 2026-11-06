@@ -7,3 +7,5 @@ El primer intento falló en O0: NSC no reconoce los tres identificadores `static
 Se amplía el encabezado con una variable y una función internas no utilizadas que referencian un símbolo externo sin definición. El enlace del consumidor debe seguir funcionando: una declaración que no se usa no debe imponer esa dependencia. Pendiente de validación agrupada.
 
 Validación posterior, build `3aa5707a6d2b2cc7`: `validar.cmd` pasó en O0–O3 para el ejecutable directo y para la biblioteca precompilada con su consumidor, aun sin definición de `external_unused`. La prueba acredita estos casos y no cierra el ítem ni la tanda.
+
+Se añade un segundo productor precompilado que incluye el mismo encabezado; el consumidor alterna llamadas y comprueba que ambos contadores y variables internas conservan estado independiente. Pendiente de la validación agrupada.
