@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Identidad Clang de campo C importado
+
+T08-002: conservar el USR opcional capturado por Clang al proyectar un campo
+de instancia hasta el metadato importado, sin usar su ausencia como identidad
+inventada ni afirmar persistencia completa. Presupuesto: CppSemanticRecord.h,
+CppSemanticRecord.cpp, CppImportedInstanceField.h, suite de sesión y registros
+Markdown. LLVM externo y NSLink protegidos; validación agrupada por tanda.
+
 ## Orden de enum volatile C alineado en arreglo de campo
 
 T08-015: en índices de arreglos fijos de campos C importados, reconocer un
