@@ -88,6 +88,10 @@ bool ProjectNameLookup::setCppImportedTypes(std::vector<CppImportedTypeDeclarati
         return left.has_value() == right.has_value() && (!left ||
             (left->sizeBytes == right->sizeBytes && left->alignmentBytes == right->alignmentBytes));
     };
+    const auto sameEnumBase = [](const auto& left, const auto& right) {
+        return left.has_value() == right.has_value() && (!left ||
+            (left->token == right->token && left->name == right->name));
+    };
     for (const auto& type : types)
     {
         if (!type.reconciledIdentityKey) continue;
@@ -100,13 +104,16 @@ bool ProjectNameLookup::setCppImportedTypes(std::vector<CppImportedTypeDeclarati
             return item.identity.key() == targetKey;
         });
         if (target->reconciledIdentityKey || type.projectOrdinal == target->projectOrdinal ||
-            (type.origin != CppImportedTypeOrigin::CStruct && type.origin != CppImportedTypeOrigin::CUnion) ||
+            (type.origin != CppImportedTypeOrigin::CStruct && type.origin != CppImportedTypeOrigin::CUnion &&
+             type.origin != CppImportedTypeOrigin::CEnum) ||
             type.origin != target->origin || type.kind != target->kind ||
             type.identity.fullyQualifiedName() != target->identity.fullyQualifiedName() ||
             !type.targetTriple || type.targetTriple != target->targetTriple ||
             !type.clangUsr || type.clangUsr->empty() || type.clangUsr != target->clangUsr ||
             type.isIncomplete != target->isIncomplete || !type.deferredImportError.empty() ||
-            !target->deferredImportError.empty() || !sameLayout(type.objectLayout, target->objectLayout) ||
+            !target->deferredImportError.empty() || !sameEnumBase(type.enumBase, target->enumBase) ||
+            (type.origin == CppImportedTypeOrigin::CEnum && !type.enumBase) ||
+            !sameLayout(type.objectLayout, target->objectLayout) ||
             !sameLayout(type.memberAccessLayout, target->memberAccessLayout)) return false;
     }
     cppImportedTypes_ = std::move(types);

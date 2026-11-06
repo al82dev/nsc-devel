@@ -21,7 +21,8 @@ inline std::optional<CppScalarTypeMapping> projectCppSemanticEnumType(
     const compilation::TypeIdentity identity(std::string(moduleName), {}, {}, enumeration->name);
     const auto ordinal = lookup->typeOrdinalForIdentity(identity.key());
     const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
-    if (!imported || imported->projectOrdinal != projectOrdinal || !imported->enumBase ||
+    const bool reconciled = lookup->isReconciledCppTypeIdentity(identity.key());
+    if (!imported || (!reconciled && imported->projectOrdinal != projectOrdinal) || !imported->enumBase ||
         (type.enumIdentity && type.enumIdentity->clangUsr && imported->clangUsr &&
          type.enumIdentity->clangUsr != imported->clangUsr) ||
         !imported->deferredImportError.empty() || imported->enumBase->token != enumeration->base.token ||
@@ -29,6 +30,6 @@ inline std::optional<CppScalarTypeMapping> projectCppSemanticEnumType(
         *type.sizeBits / 8 != imported->objectLayout->sizeBytes || !type.alignmentBits ||
         *type.alignmentBits % 8 || *type.alignmentBits / 8 != imported->objectLayout->alignmentBytes)
         return std::nullopt;
-    return CppScalarTypeMapping{"type:" + identity.key(), type.canonicalSpelling, type.isConst, false};
+    return CppScalarTypeMapping{"type:" + imported->identity.key(), type.canonicalSpelling, type.isConst, false};
 }
 }
