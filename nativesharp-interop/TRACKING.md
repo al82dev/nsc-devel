@@ -257,6 +257,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     aliases transitivos y aislamiento entre proyectos. No acredita persistencia
     ni la validación completa de la tanda.
 - [ ] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
+  - Matriz `96de93e42`: llamadas escalares y con puntero pasan en ámbito
+    global y fallan dentro de namespace por nombre desconocido. Es necesario
+    resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
 - [ ] T08-004. Importar declaraciones de variables globales C.
 - [ ] T08-005. Importar alias de tipos declarados con `typedef`.
 - [ ] T08-006. Mapear los tipos enteros C con su tamaño y signo efectivos.

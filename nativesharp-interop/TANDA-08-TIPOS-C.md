@@ -1344,6 +1344,16 @@ contradictorios o ausentes. No acredita persistencia ni todas las declaraciones.
 
 ## Tipo C en API de biblioteca: diagnóstico dirigido
 
+La matriz de `96de93e42`, ejecutada con el mismo NSC precompilado, produjo:
+`GlobalScalar=0`, `GlobalPointer=0`, `NamespaceScalar=1` y
+`NamespacePointer=1`. Los dos casos de namespace reportaron identificador
+desconocido para la función C. En esta muestra el fallo depende del ámbito,
+no del resultado escalar frente al puntero. La captura de demandas y la
+resolución de funciones consultan el namespace léxico y los importados, pero
+no buscan por sí mismas el ámbito global. Antes de cambiarlo debe preservarse
+la prioridad de nombres locales e imports y comprobar la regla de NSC; esta
+matriz no comprueba todos los casos de sombras ni namespaces anidados.
+
 Con el NSC de hash `3cfae0e8fc412141` (construido desde los cambios hasta
 `b8bb920ef`), `pruebas-tanda-08-meta-c/validar.cmd` terminó con código 1 al
 analizar `get_c_record` dentro del método del productor: identificador
