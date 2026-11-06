@@ -31,6 +31,13 @@ Extender el fixture con una matriz C `const int *[2][2]`, lectura, reasignación
 y comprobación desde C; preparar rechazos de escritura y conversión a puntero
 mutable para un elemento. No modificar producción antes de reproducir el fallo
 y acotar la propagación del calificador entre dimensiones.
+El fixture positivo confirmó `C/C++ global type is not yet mapped` para la
+matriz. Permitir `src/Interop/Cpp/CppSemanticInventory.cpp` y
+`src/Frontend/Bodies/ExpressionCore/IndexAndRangeExpressions.cpp` para
+proyectar arreglos C de dimensiones fijas con elemento puntero simple a
+escalar const, conservar la marca entre índices y proteger direcciones que la
+perderían. Mantener los demás casos no representables rechazados; comprobar la
+matriz, sus controles negativos y la regresión de layout.
 El caso positivo y los rechazos pasaron, pero pedir `&c_slots[0]` emitió el
 mensaje genérico de campo de bits, aunque el elemento no lo es. Permitir una
 comprobación localizada en `IndexAndRangeExpressions.cpp` y ajustar el script

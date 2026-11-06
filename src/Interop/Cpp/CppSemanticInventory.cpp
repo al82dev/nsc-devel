@@ -87,7 +87,7 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
             return mapped;
         }
         if (array->element.pointeeConst &&
-            (!cLanguage || array->dimensions.size() != 1 || array->element.pointerDepth != 1))
+            (!cLanguage || array->element.pointerDepth != 1))
             return std::nullopt;
         const CppType* element = &type;
         while (element && element->kind == CppTypeKind::Array) element = element->element.get();
@@ -184,8 +184,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         { nsNamespace.push_back('.'); ++i; }
         else nsNamespace.push_back(cppNamespace[i]);
     const CppType* pointerStorage = &global.type;
-    if (cLanguage && pointerStorage->kind == CppTypeKind::Array && pointerStorage->element &&
-        pointerStorage->element->kind == CppTypeKind::Pointer)
+    while (cLanguage && pointerStorage->kind == CppTypeKind::Array && pointerStorage->element)
         pointerStorage = pointerStorage->element.get();
     return CppSemanticGlobal{projectOrdinal, std::string(moduleName), std::move(nsNamespace),
                              global.name, type->nativeSharpTypeKey, type->canonicalCppType,
