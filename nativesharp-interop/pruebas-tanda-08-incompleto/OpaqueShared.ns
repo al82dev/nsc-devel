@@ -1,0 +1,10 @@
+int Main()
+{
+    Opaque* value = PublishedOpaque.Bridge.Get();
+    OpaqueUnion* other = PublishedOpaque.Bridge.GetUnion();
+    if (opaque_read(value) != 17 || PublishedOpaque.Bridge.Read(opaque_get()) != 17) return 1;
+    if (union_read(other) != 8 || PublishedOpaque.Bridge.ReadUnion(union_get()) != 8) return 2;
+    opaque_current = value;
+    union_current = other;
+    return 0;
+}

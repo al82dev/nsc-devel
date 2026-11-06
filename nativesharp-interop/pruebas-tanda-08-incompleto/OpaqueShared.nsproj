@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>COpaqueShared</Name></PropertyGroup>
+  <ItemGroup><Compile Include="OpaqueShared.ns" /><LibraryReference Include="COpaqueProducer.lib" /><CppLibraryReference Header="OpaqueApi.h" Language="C" Standard="c11" Library="opaque.lib" /></ItemGroup>
+</Project>

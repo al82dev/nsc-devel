@@ -24,6 +24,10 @@ Ampliar el fixture con un productor NativeSharp precompilado que publique
 funciones con punteros a ambos tipos opacos y un consumidor que use esa
 superficie sin importar directamente el encabezado C. Probar O0–O3; no
 modificar producción antes de reproducir y delimitar una falla.
+Extender el fixture de metadata opaca con un consumidor que importa el mismo
+header que el productor y cruza punteros de struct y union entre funciones
+C y métodos publicados. Comprobar O0–O3; no modificar producción antes de
+reproducir y delimitar una falla.
 La prueba positiva reproduce el rechazo del global `Opaque*` en O0. Las
 firmas de funciones aceptan el puntero, pero `mapGlobalType` exige layout al
 recorrer su objeto apuntado. Permitir `src/Interop/Cpp/CppSemanticInventory.cpp`
