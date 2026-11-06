@@ -18,6 +18,7 @@
 #include <clang/Frontend/ASTUnit.h>
 #include <clang/Sema/Sema.h>
 #include <clang/Tooling/Tooling.h>
+#include <clang/UnifiedSymbolResolution/USRGeneration.h>
 #include <llvm/ADT/SmallString.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
@@ -37,6 +38,15 @@ namespace nativesharp::interop
 {
 namespace
 {
+std::optional<std::string> declarationUsr(const clang::Decl* declaration)
+{
+    if (!declaration) return std::nullopt;
+    llvm::SmallString<128> value;
+    if (clang::index::generateUSRForDecl(declaration->getCanonicalDecl(), value) || value.empty())
+        return std::nullopt;
+    return std::string(value.str());
+}
+
 std::string utf8(const std::filesystem::path& path)
 {
     const auto value = path.u8string();
@@ -182,6 +192,7 @@ void collectEnums(const clang::DeclContext& context, clang::ASTContext& astConte
             continue;
         if (const auto* definition = enumeration->getDefinition()) enumeration = definition;
         CppEnumDeclaration value;
+        value.clangUsr = declarationUsr(enumeration);
         value.isCxx = astContext.getLangOpts().CPlusPlus;
         const auto* anonymousAlias = !value.isCxx && enumeration->getName().empty()
             ? enumeration->getTypedefNameForAnonDecl() : nullptr;
@@ -208,6 +219,7 @@ void collectEnums(const clang::DeclContext& context, clang::ASTContext& astConte
                 llvm::SmallString<32> digits;
                 integer.toString(digits, 10);
                 CppEnumeratorDeclaration item;
+                item.clangUsr = declarationUsr(enumerator);
                 item.name = enumerator->getNameAsString();
                 item.decimalValue = std::string(digits.str());
                 item.valueBits = integer.getBitWidth();
@@ -243,6 +255,7 @@ void collectTypeAliases(const clang::DeclContext& context, clang::ASTContext& as
             !seen.insert(alias->getCanonicalDecl()).second)
             continue;
         CppTypeAliasDeclaration value;
+        value.clangUsr = declarationUsr(alias);
         value.name = alias->getNameAsString();
         value.qualifiedName = alias->getQualifiedNameAsString();
         value.insideAnonymousNamespace = alias->isInAnonymousNamespace();
@@ -267,6 +280,7 @@ void collectNamespaces(const clang::DeclContext& context, clang::ASTContext& ast
         if (seen.insert(item->getCanonicalDecl()).second)
         {
             CppNamespaceDeclaration value;
+            value.clangUsr = declarationUsr(item);
             value.qualifiedName = item->getQualifiedNameAsString();
             value.isInline = item->isInline();
             value.isAnonymous = anonymous;
@@ -306,6 +320,7 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
             continue;
 
         CppFunctionDeclaration value;
+        value.clangUsr = declarationUsr(function);
         value.name = function->getNameAsString();
         value.qualifiedName = function->getQualifiedNameAsString();
         value.canonicalFunctionType = function->getType().getCanonicalType().getAsString();
@@ -375,6 +390,7 @@ void collectGlobals(const clang::DeclContext& context, clang::ASTContext& astCon
             !seen.insert(variable->getCanonicalDecl()).second)
             continue;
         CppGlobalDeclaration value;
+        value.clangUsr = declarationUsr(variable);
         value.name = variable->getNameAsString();
         value.qualifiedName = variable->getQualifiedNameAsString();
         value.type = describeType(variable->getType(), astContext);
@@ -441,6 +457,7 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
         if (record->getName().empty() && !anonymousAlias) continue;
 
         CppRecordDeclaration value;
+        value.clangUsr = declarationUsr(record);
         value.isCxx = astContext.getLangOpts().CPlusPlus;
         value.name = anonymousAlias ? anonymousAlias->getNameAsString() : record->getNameAsString();
         value.qualifiedName = anonymousAlias ? anonymousAlias->getQualifiedNameAsString()
@@ -489,6 +506,7 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
             for (const clang::FieldDecl* field : record->fields())
             {
                 CppRecordField projected;
+                projected.clangUsr = declarationUsr(field);
                 projected.name = field->getNameAsString();
                 projected.type = describeType(field->getType(), astContext);
                 projected.access = value.isCxx ? describeAccess(field->getAccess()) : CppAccess::Public;
@@ -535,6 +553,7 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                     const auto* field = llvm::dyn_cast<clang::VarDecl>(member);
                     if (!field || !field->isStaticDataMember() || field->isImplicit()) continue;
                     CppStaticField projected;
+                    projected.clangUsr = declarationUsr(field);
                     projected.name = field->getNameAsString();
                     projected.type = describeType(field->getType(), astContext);
                     projected.access = describeAccess(field->getAccess());
@@ -558,6 +577,7 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                     if (method->isImplicit() || method->isDependentContext() ||
                         method->getDescribedFunctionTemplate()) continue;
                     CppMethodDeclaration projected;
+                    projected.clangUsr = declarationUsr(method);
                     const auto* ctor = llvm::dyn_cast<clang::CXXConstructorDecl>(method);
                     const auto* dtor = llvm::dyn_cast<clang::CXXDestructorDecl>(method);
                     projected.kind = ctor ? CppMethodKind::Constructor :
