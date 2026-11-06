@@ -260,6 +260,11 @@ ProjectObjectLayoutModel::valueLayoutForTypeKey(
     std::string_view typeKey) const
 {
     if (language::isAnonymousLambdaTypeIdentity(typeKey)) return {{0, 1}};
+    if (language::isFunctionTypeIdentity(typeKey))
+    {
+        const auto pointer = targetLayout_.layoutOf(BuiltinLayoutKind::Pointer);
+        return {{pointer.size, pointer.alignment}};
+    }
     // NS304-T06-F05: `ref:<T>` / `refmut:<T>` is a reference (a pointer) into the frame.
     if (typeKey.starts_with("ref:") || typeKey.starts_with("refmut:")) return {{8, 8}};
     if (typeKey == "builtin:bool" || typeKey == "builtin:sbyte" || typeKey == "builtin:byte" ||
