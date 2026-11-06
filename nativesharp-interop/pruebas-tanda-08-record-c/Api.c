@@ -42,6 +42,7 @@ volatile int* volatile_pointer_matrix[2][2] = {
     { &pointee_storage, &pointer_array_storage }, { &pointer_array_storage, &pointee_storage }
 };
 const volatile int* const_volatile_pointer_array[2] = { &pointee_storage, &pointer_array_storage };
+volatile int* const fixed_volatile_pointer_array[2] = { &pointer_array_storage, &pointee_storage };
 int read_volatile_pointer_array(void) { return *volatile_pointer_array[0]; }
 volatile int* volatile_pointee = &pointee_storage;
 const volatile int* const_volatile_pointee = &pointee_storage;
@@ -60,6 +61,7 @@ volatile int volatile_matrix[2][2] = { { 1, 2 }, { 3, 4 } };
 int read_volatile_arrays(void) { return volatile_array[1] + volatile_matrix[1][1]; }
 struct GlobalOnly global_record = { 1 };
 static volatile struct GlobalOnly volatile_record_storage = { 9 };
+volatile struct GlobalOnly* volatile_record_pointer_array[2] = { &volatile_record_storage, &volatile_record_storage };
 volatile struct GlobalOnly* volatile_record_target = &volatile_record_storage;
 int read_volatile_record_target(void) { return volatile_record_storage.value; }
 volatile struct GlobalOnly* get_volatile_record_target(void) { return &volatile_record_storage; }

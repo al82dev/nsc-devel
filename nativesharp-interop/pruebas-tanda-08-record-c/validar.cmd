@@ -81,6 +81,10 @@ findstr /r /c:"store.*volatile i32 97" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile mediante puntero del arreglo. & exit /b 1)
 findstr /r /c:"store.*volatile i32 98" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile mediante puntero de la matriz. & exit /b 1)
+findstr /r /c:"store.*volatile i32 99" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura volatile mediante puntero constante. & exit /b 1)
+findstr /r /c:"store.*volatile i32 101" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura volatile mediante puntero de struct. & exit /b 1)
 findstr /r /c:"load volatile.*@volatile_matrix" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta lectura LLVM volatile de la matriz. & exit /b 1)
 findstr /r /c:"store volatile.*@volatile_matrix" "%DEST%\project.ll" >nul
@@ -282,6 +286,12 @@ if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-pointer-array-address.exe" > "%DEST%\volatile-pointer-array-address.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /c:"cannot take the address of an array element with a volatile pointee" "%DEST%\volatile-pointer-array-address.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0FixedVolatilePointerArraySlot.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\fixed-volatile-pointer-array-slot.exe" > "%DEST%\fixed-volatile-pointer-array-slot.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"left side of assignment is not assignable" "%DEST%\fixed-volatile-pointer-array-slot.log" >nul
 if errorlevel 1 exit /b 1
 copy /y "%~dp0VolatilePointeeDiscard.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1

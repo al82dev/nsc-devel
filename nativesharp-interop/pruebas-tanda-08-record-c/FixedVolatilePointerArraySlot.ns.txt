@@ -1,0 +1,5 @@
+int Main()
+{
+    fixed_volatile_pointer_array[0] = volatile_pointer_array[0];
+    return 0;
+}
