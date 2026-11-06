@@ -485,6 +485,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     de cero argumentos en O0–O3, con rechazo de argumento extra. No cubre
     todas las posiciones o combinaciones. [Evidencia](registro-commits/prueba-prototipos-c.md).
 - [ ] T08-009. Mapear enumeraciones y sus valores representables.
+  - Valores de enum C se convirtieron a int, long y otro enum C en O0–O3;
+    Clang verificó las bases signed/unsigned y el IR conserva sus extensiones.
+    Enum NS mantiene su rechazo. [Evidencia](registro-commits/conversion-enum-c-entero.md).
   - Los enteros se convirtieron a enum C en inicializaciones, asignaciones y
     argumentos O0–O3, incluidos truncamiento y extensión de signo; un enum NS
     conservó su rechazo. Esto resuelve la limitación de enumeradores descrita
