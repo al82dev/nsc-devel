@@ -4219,3 +4219,25 @@ Presupuesto: `pruebas-tanda-08-tls-c/lld`, tracking y registro Markdown.
 Construcción y salidas solo en A:; NSLink y la instalación de C: protegidos.
 La prueba no demuestra todavía que NSC integre el enlace LLD en su flujo normal.
 
+# TLS estático: selección explícita de LLD desde NSC
+
+El objeto NativeSharp y el runtime real de NSC enlazaron y ejecutaron con
+LLD y el CRT estático sin modificar NSLink. Para permitir integrar este
+camino se extiende solo la selección explícita de `NSC_LINKER` para reconocer
+`lld-link`, conservando NSLink como predeterminado y el rechazo de otros
+ejecutables. Presupuesto: `src/Linker/LldLinker.cpp`, pruebas existentes de
+selección en `tests/unit/WindowsLinkerTests.cpp` y registros Markdown.
+Esta selección no aporta por sí sola detección TLS, CRT ni enlace automático;
+el caso completo y la validación de la tanda siguen pendientes. No se cambia
+NSLink ni LLVM y no se despliega en C:.
+
+# TLS estático: runtime real conservado por NSC
+
+Reproducir el enlace TLS con el `runtime.obj` generado por el flujo real de
+NSC para el proyecto, conservado mediante `NSC_KEEP_LINK_TEMPS`, y con un
+objeto NativeSharp del mismo proyecto. Enlazar ambos con LLD sin adaptador de
+Main y comprobar aislamiento por hilo en O0–O3. Presupuesto:
+`pruebas-tanda-08-tls-c/lld`, evidencia Markdown y seguimiento. Salidas solo
+en A:; NSLink, LLVM y la instalación en C: permanecen protegidos. Esta prueba
+no cambia el enlace predeterminado ni cierra por sí sola la tanda 08.
+
