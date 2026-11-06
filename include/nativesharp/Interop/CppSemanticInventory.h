@@ -142,6 +142,7 @@ struct CppSemanticGlobal
     std::optional<bool> microsoftVolatileSemantics;
     std::optional<std::uint64_t> storageSizeBits;
     std::optional<std::uint64_t> declarationAlignmentBits;
+    std::optional<std::string> clangUsr;
 };
 struct CppSemanticGlobalFailure { std::string message; };
 using CppSemanticGlobalResult = std::variant<CppSemanticGlobal, CppSemanticGlobalFailure>;

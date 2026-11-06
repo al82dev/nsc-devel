@@ -279,6 +279,13 @@ CppSemanticGlobalSelection selectCppSemanticGlobal(
     }
     if (result.declarationIndices.empty()) return result;
     const auto& first = entries[result.declarationIndices.front()];
+    std::optional<std::string> knownUsr;
+    for (const auto i : result.declarationIndices)
+        if (const auto& usr = entries[i].declaration.clangUsr; usr && !usr->empty())
+        {
+            if (knownUsr && *knownUsr != *usr) result.conflict = "conflicting C/C++ global declaration USRs";
+            else knownUsr = *usr;
+        }
     const auto compatible = [&](const CppSemanticGlobalEntry& entry) {
         const auto& a = first.declaration;
         const auto& b = entry.declaration;
@@ -299,6 +306,7 @@ CppSemanticGlobalSelection selectCppSemanticGlobal(
         if (const auto* candidate = std::get_if<CppSemanticGlobal>(&first.projection))
         {
             result.candidate = *candidate;
+            result.candidate->clangUsr = knownUsr;
             auto option = first.microsoftVolatileSemantics;
             auto alignment = first.declaration.declarationAlignmentBits;
             for (const auto i : result.declarationIndices)
@@ -374,6 +382,7 @@ static bool provideGlobalsWithLookup(
                     state.cppMicrosoftVolatileSemantics = selected.candidate->microsoftVolatileSemantics;
                     state.cppStorageSizeBits = selected.candidate->storageSizeBits;
                     state.cppDeclarationAlignmentBits = selected.candidate->declarationAlignmentBits;
+                    state.cppClangUsr = selected.candidate->clangUsr;
                     state.cppDllImport = selected.candidate->dllImport;
                 }
                 else

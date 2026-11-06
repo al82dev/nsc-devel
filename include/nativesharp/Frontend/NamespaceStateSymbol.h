@@ -65,5 +65,6 @@ struct NamespaceStateSymbol final
     std::optional<bool> cppMicrosoftVolatileSemantics;
     std::optional<std::uint64_t> cppStorageSizeBits;
     std::optional<std::uint64_t> cppDeclarationAlignmentBits;
+    std::optional<std::string> cppClangUsr;
 };
 }
