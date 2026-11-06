@@ -190,6 +190,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Preparados `8ca16bf34` y `02934b968`: captura estructurada de records C y
+    controles de struct, union, declaración incompleta y conflicto. Pendientes
+    de construcción y ejecución agrupadas; no hay serialización ni reconstrucción
+    de esta captura en metadata, por lo que la publicación sigue sin resolverse.
   - Preparados `6c30db324` y `3b6b56a3c`: procedencia struct/union/enum C o
     record C++ y triple consensuado en el frontend, con controles de origen y
     conflicto. Aún no se serializan ni se han construido o ejecutado.
