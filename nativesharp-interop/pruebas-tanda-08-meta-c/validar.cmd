@@ -17,6 +17,10 @@ for %%O in (0 1 2 3) do (
   call :run %%O inferred
   if errorlevel 1 exit /b 1
 )
+for %%O in (0 1 2 3) do (
+  call :run %%O shared
+  if errorlevel 1 exit /b 1
+)
 echo Public C type metadata consumer compiled and ran in O0 through O3.
 exit /b 0
 
@@ -24,7 +28,7 @@ exit /b 0
 set "DEST=%TASK_META_ROOT%\O%~1-%~2"
 if not exist "%DEST%" mkdir "%DEST%"
 if errorlevel 1 exit /b 1
-for %%F in (Api.h Api.c Producer.nsproj Producer.ns Consumer.nsproj Consumer.ns Inferred.nsproj Inferred.ns) do (
+for %%F in (Api.h Api.c Producer.nsproj Producer.ns Consumer.nsproj Consumer.ns Inferred.nsproj Inferred.ns Shared.nsproj Shared.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -48,6 +52,14 @@ if /I "%~2"=="inferred" (
 )
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\Producer.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\CPublishedProducer.lib"
 if errorlevel 1 exit /b 1
+if /I "%~2"=="shared" (
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Shared.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\Shared.exe"
+  if errorlevel 1 exit /b 1
+  "%DEST%\Shared.exe"
+  if errorlevel 1 exit /b 1
+  echo Shared C header consumer passed O%~1.
+  exit /b 0
+)
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Consumer.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\Consumer.exe"
 if errorlevel 1 exit /b 1
 "%DEST%\Consumer.exe"

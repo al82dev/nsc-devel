@@ -1,0 +1,7 @@
+int Main()
+{
+    CRecord* fromLibrary = Published.Bridge.Get();
+    CRecord* fromHeader = get_c_record();
+    if (fromLibrary != fromHeader || fromLibrary->value != 17) return 1;
+    return 0;
+}
