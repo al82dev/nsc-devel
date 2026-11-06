@@ -26,6 +26,8 @@ extern volatile double volatile_f64;
 int check_volatile_floats(void);
 int check_volatile_integers(void);
 extern volatile int* volatile_pointee;
+extern volatile int* volatile_pointer_array[2];
+int read_volatile_pointer_array(void);
 typedef volatile int* VolatileIntPtr;
 typedef const volatile int* ConstVolatileIntPtr;
 extern const volatile int* const_volatile_pointee;

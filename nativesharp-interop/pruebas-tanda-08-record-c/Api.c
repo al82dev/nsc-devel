@@ -36,6 +36,9 @@ int check_volatile_integers(void)
         volatile_u16 == 1300 && volatile_i64 == 120000 && volatile_u64 == 130000;
 }
 static volatile int pointee_storage = 7;
+static volatile int pointer_array_storage = 11;
+volatile int* volatile_pointer_array[2] = { &pointee_storage, &pointer_array_storage };
+int read_volatile_pointer_array(void) { return *volatile_pointer_array[0]; }
 volatile int* volatile_pointee = &pointee_storage;
 const volatile int* const_volatile_pointee = &pointee_storage;
 volatile int* const fixed_volatile_pointee = &pointee_storage;

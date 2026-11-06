@@ -1,0 +1,5 @@
+int Main()
+{
+    int* plain = volatile_pointer_array[0];
+    return 0;
+}
