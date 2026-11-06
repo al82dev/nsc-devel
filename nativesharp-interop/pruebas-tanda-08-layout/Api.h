@@ -16,7 +16,9 @@ typedef struct PackedRecordMatrix { char tag; Pair values[2][2]; } PackedRecordM
 typedef struct PackedEnum { char tag; enum PackedMood value; enum PackedMood values[2]; } PackedEnum;
 typedef struct PackedConstAggregates { char tag; const Pair pairs[2]; const enum PackedMood moods[2]; } PackedConstAggregates;
 typedef struct PackedVolatileAggregates { char tag; volatile Pair pairs[2]; volatile enum PackedMood moods[2]; } PackedVolatileAggregates;
+typedef struct PackedConstVolatileAggregates { char tag; const volatile Pair pairs[2]; const volatile enum PackedMood moods[2]; } PackedConstVolatileAggregates;
 #pragma pack(pop)
+PackedConstVolatileAggregates* layout_packed_const_volatile_aggregates(void);
 PackedVolatileAggregates* layout_packed_volatile_aggregates(void);
 int layout_packed_volatile_aggregates_sum(void);
 typedef struct ConstAggregates { const Pair pairs[2]; const enum PackedMood moods[2]; } ConstAggregates;

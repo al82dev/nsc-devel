@@ -85,5 +85,8 @@ int Main()
     if (volatileAggregates->pairs[1].b != 91 ||
         volatileAggregates->moods[1] != layout_packed_enum_new() ||
         layout_packed_volatile_aggregates_sum() != 98) return 31;
+    PackedConstVolatileAggregates* constVolatileAggregates = layout_packed_const_volatile_aggregates();
+    if (constVolatileAggregates->pairs[1].b != 5 ||
+        constVolatileAggregates->moods[1] != layout_packed_enum_new()) return 32;
     return 0;
 }

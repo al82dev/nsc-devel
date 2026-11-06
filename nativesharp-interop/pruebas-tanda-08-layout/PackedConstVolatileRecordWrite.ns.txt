@@ -1,0 +1,6 @@
+int Main()
+{
+    PackedConstVolatileAggregates* value = layout_packed_const_volatile_aggregates();
+    value->pairs[1].b = 7;
+    return 0;
+}

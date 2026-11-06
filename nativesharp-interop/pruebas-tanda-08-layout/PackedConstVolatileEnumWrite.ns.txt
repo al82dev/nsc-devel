@@ -1,0 +1,6 @@
+int Main()
+{
+    PackedConstVolatileAggregates* value = layout_packed_const_volatile_aggregates();
+    value->moods[1] = layout_packed_enum_new();
+    return 0;
+}
