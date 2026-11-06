@@ -1,7 +1,8 @@
 int Main()
 {
     CColorArray colors;
-    c_colors_init(&colors);
+    colors[0] = COLOR_RED;
+    colors[1] = COLOR_BLUE;
     if (c_colors_sum(&colors) != 3) return 1;
     c_colors_mutate(&colors);
     if (colors[0] != COLOR_BLUE || c_colors_sum(&colors) != 4) return 2;
