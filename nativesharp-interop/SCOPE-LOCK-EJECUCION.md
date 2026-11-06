@@ -93,6 +93,13 @@ Extender el cierre de tipos externos entre bibliotecas para reconocer un tipo C
 presente en el catálogo validado del módulo dueño, conservando el rechazo de
 proveedor ausente o tipo no declarado. Presupuesto: MetadataSourceMapping.cpp,
 controles unitarios de interoperabilidad y registros. No habilitar 1.42.
+Conectar en NSC la producción y consumo de catálogos C mediante NSMETA 1.42:
+actualizar el máximo de formato, instalar el proveedor del productor para sesiones
+C/C++, y configurar selector, campos y valores combinados cuando se cargue un
+catálogo precompilado. Presupuesto: LibraryMetadata.h,
+PrecompiledModuleConfiguration.cpp, pruebas de metadata/sesión y fixture
+pruebas-tanda-08-meta-c, tracking y registros. Mantener el rechazo de identidades
+activas/precompiladas aún no conciliadas y validar la ruta real antes del cierre.
 Transportar los bytes verificados del catálogo desde la superficie de metadata
 hasta PrecompiledSyntaxModule; presupuesto adicional: PrecompiledSyntaxModule.h,
 PrecompiledProjectPreparation.cpp y controles existentes. No habilitar 1.42
