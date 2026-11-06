@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Contrato de apuntado volatile en campos
+
+Preparar la propagación desde campos y sus respaldos automáticos, permitir
+inicializadores cuyo destino ya conserva volatile y mantener protegida la
+dirección del campo frente a pérdida en un nivel anidado. Archivos:
+IdentifierAnalyzer.cpp, MemberAccessAnalyzer.cpp, MethodBodyBuildCoordinator.cpp
+y documentación. Los aliases todavía no activan el dato; validar por tanda.
+
 ## Contrato de apuntado volatile en locales tipados
 
 Preparar que un local con tipo cuya sintaxis conserva volatile mantenga ese

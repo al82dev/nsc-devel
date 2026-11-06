@@ -595,9 +595,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeImplicit
     result.valid = true;
     result.assignable = !readonlyThis && !field.isConst &&
         (!field.isReadonly || readonlyFieldAssignable(field, methodMemberOrdinal));
-    result.addressable = !field.isBitField;
+    result.addressable = !field.isBitField && !field.declaredPointerPointeeVolatile;
     result.readonlyReceiver = readonlyThis || field.isReadonly;
     result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
+    result.pointerPointeeVolatile = field.declaredPointerPointeeVolatile;
     result.pointerNullable = field.declaredPointerNullable;
     result.pointerHasProvenance = field.declaredPointerHasProvenance;
     result.pointerKnownAlignment = field.declaredPointerKnownAlignment;
@@ -689,8 +690,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeProperty
         result.typeKey = field.declaredTypeKey;
         result.valid = true;
         result.assignable = true;
-        result.addressable = true;
+        result.addressable = !field.declaredPointerPointeeVolatile;
         result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
+        result.pointerPointeeVolatile = field.declaredPointerPointeeVolatile;
         result.pointerNullable = field.declaredPointerNullable;
         result.pointerHasProvenance = field.declaredPointerHasProvenance;
         result.pointerKnownAlignment = field.declaredPointerKnownAlignment;

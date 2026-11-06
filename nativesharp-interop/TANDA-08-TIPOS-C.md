@@ -20,6 +20,8 @@ También se preparó la lectura del dato en declaraciones de parámetros,
 miembros y adaptadores de función; falta conectar los aliases y validar.
 Los locales tipados preparan la preservación del dato y su comprobación en
 inicializadores. Ningún typedef lo activa todavía.
+Se preparó la misma conservación para campos y respaldos automáticos; faltan
+pruebas de extremo a extremo y activación del alias.
 
 ## Calificador volatile del objeto apuntado: base en preparación
 

@@ -791,9 +791,11 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
     // the pointer type carries the field's const/volatile contract.
     result.volatileStorage = receiver.volatileStorage || (field.isCppExternal && field.isVolatile);
     result.addressable = !field.isBitField && !result.volatileStorage &&
+        !field.declaredPointerPointeeVolatile &&
         !(field.isCppExternal && (field.isReadonly || receiver.readonlyReceiver));
     result.readonlyReceiver = receiver.readonlyReceiver || field.isReadonly;
     result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
+    result.pointerPointeeVolatile = field.declaredPointerPointeeVolatile;
     result.pointerNullable = field.declaredPointerNullable;
     result.pointerHasProvenance = field.declaredPointerHasProvenance;
     result.pointerKnownAlignment = field.declaredPointerKnownAlignment;
@@ -855,8 +857,9 @@ bool ProjectMethodBodyModel::analyzePropertyMember(
         result.typeKey = field.declaredTypeKey;
         result.valid = true;
         result.assignable = true;
-        result.addressable = true;
+        result.addressable = !field.declaredPointerPointeeVolatile;
         result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
+        result.pointerPointeeVolatile = field.declaredPointerPointeeVolatile;
         result.pointerNullable = field.declaredPointerNullable;
         result.pointerHasProvenance = field.declaredPointerHasProvenance;
         result.pointerKnownAlignment = field.declaredPointerKnownAlignment;

@@ -616,7 +616,7 @@ bool ProjectMethodBodyModel::validateFieldInitializerConversion(
     diagnostics::DiagnosticEngine& diagnostics) const
 {
     if (ProjectTypeConversion::isPointer(field.declaredTypeKey) &&
-        initializer.pointerPointeeVolatile)
+        initializer.pointerPointeeVolatile && !field.declaredPointerPointeeVolatile)
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error, field.syntax->first()->range(),
