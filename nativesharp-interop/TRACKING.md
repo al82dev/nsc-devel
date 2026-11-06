@@ -590,6 +590,11 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     [Evidencia](registro-commits/prueba-opacos-header-compartido.md).
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
+  - Preparada la propagación de punteros a `volatile` en arreglos globales C,
+    con controles para matriz, `const volatile`, descarte del calificador y
+    dirección del slot. La implementación y las pruebas aún esperan la
+    validación agrupada; no cierran este ítem.
+    [Detalle](registro-commits/prueba-arreglo-punteros-volatile.md).
   - La matriz volatile de 8, 16, 32 y 64 bits pasó O0–O3 y su control IR:
     en las actualizaciones C importadas NSC ahora emite dos cargas y una
     escritura, como Clang. La alineación i8 de NSC sigue siendo menor y
