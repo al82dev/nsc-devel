@@ -1309,6 +1309,17 @@ El caso incluyó globales volatile float y double, coalescencia y las pruebas
 negativas existentes. Estas son comprobaciones dirigidas: no sustituyen la
 batería completa ni acreditan campos empaquetados o todos los calificadores.
 
+## Campos escalares C empaquetados preparados
+
+`ec8ff30ee` impide que la dirección de un campo escalar importado con
+alineación insuficiente escape como puntero ordinario. `c8eb0e3cd` calcula la
+alineación efectiva a partir del record y el offset y permite la proyección
+reducida para escalares C. `5c0835d96` prepara un fixture `pack(1)` que compara
+layout con Clang, verifica cargas y escrituras alineadas a 1 en IR, comprueba
+los valores en ejecución y rechaza tomar la dirección. No se ha ejecutado.
+Los campos empaquetados C++ y los campos C de punteros, agregados y bitfields
+siguen pendientes, así como otras formas de acceso; no se cierra la tanda.
+
 ## Transporte de alineación importada preparado
 
 `6b065035e` conserva `byteAlignment` en el miembro importado y el modelo de

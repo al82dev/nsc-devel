@@ -278,6 +278,11 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     importada en el modelo y casos internos de alineación. Aún sin ejecutar;
     el proyector sigue rechazando campos empaquetados.
 
+  - Preparado en `ec8ff30ee`, `c8eb0e3cd` y `5c0835d96`: campos escalares C
+    empaquetados, protección de su dirección y prueba mixta con `pack(1)`;
+    aún sin ejecutar. Los agregados, punteros y campos C++ empaquetados siguen
+    pendientes.
+
 ## 09. Llamadas, enlace y datos C
 
 - [ ] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas.
