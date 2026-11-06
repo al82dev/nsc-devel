@@ -609,6 +609,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     de un arreglo o matriz global C, con controles para distinguir el slot del
     objeto apuntado. Aún no validada; los demás orígenes siguen pendientes.
     [Detalle](registro-commits/control-puntero-array-volatile-ms.md).
+  - Preparado el acceso `global[indice]` para un global C `volatile int*` con
+    controles de IR; falta validación agrupada y no cubre otros orígenes.
+    [Detalle](registro-commits/control-indice-puntero-volatile-ms.md).
   - Mapeada la pérdida de procedencia de modo MS al guardar el puntero en un
     local, y el requisito de manejar reasignaciones y ramas antes de emitir
     órdenes. [Detalle](registro-commits/procedencia-puntero-volatile-local.md).
