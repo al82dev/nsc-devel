@@ -6503,8 +6503,13 @@ int main(int argc, char** argv)
                                 fieldDependency.cppProjectSessions(), modules, lookup, demands, values, dependencyError);
                             ok &= expect(collision && values.size() == 1 && !values[0].cppImportError.empty(),
                                          "combined value provider defers live and precompiled value collisions");
-                            module.ownerProjectFile = std::filesystem::absolute(path);
-                            module.moduleName = fieldDependency.projectGraph()->projects().front().moduleName();
+                            const auto consumerDirectory = std::filesystem::path(argv[2]) / "cpp-fixtures" / "precompiled-c-consumer";
+                            std::filesystem::create_directories(consumerDirectory);
+                            const auto consumerProject = std::filesystem::absolute(consumerDirectory / "Consumer.nsproj");
+                            { std::ofstream file(consumerProject); file << "<Project><PropertyGroup><Name>Consumer</Name></PropertyGroup></Project>\n"; }
+                            { std::ofstream file(consumerDirectory / "Main.ns"); file << "int Main() { return 0; }\n"; }
+                            module.ownerProjectFile = consumerProject;
+                            module.moduleName = records[0].moduleName;
                             module.sourceText = "namespace Published { public struct Value {} }\n";
                             { std::ofstream file(module.metadataPath); file << "synthetic metadata fixture"; }
                             nativesharp::frontend::ProjectCompilation consumer;
@@ -6528,7 +6533,7 @@ int main(int argc, char** argv)
                                         return provideCppValuesWithPrecompiledCatalogs(graph, projects,
                                             consumer.precompiledModules(), *names, wanted, out, why);
                                     }, dependencyError);
-                            const bool consumed = configured && consumer.compileProjectMembers(path, dependencyError);
+                            const bool consumed = configured && consumer.compileProjectMembers(consumerProject, dependencyError);
                             bool hasNativeType = false, hasCType = false;
                             if (consumed && consumer.nameLookup())
                                 for (const auto& type : consumer.nameLookup()->namedTypes())
