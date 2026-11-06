@@ -5759,7 +5759,8 @@ bool ProjectMethodBodyModel::validatePointerReturn(
     const ExpressionResult& value,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
-    if (ProjectTypeConversion::isPointer(method.declaredTypeKey) && value.pointerPointeeVolatile)
+    if (ProjectTypeConversion::isPointer(method.declaredTypeKey) && value.pointerPointeeVolatile &&
+        !method.declaredPointerPointeeVolatile)
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error, statement->first()->range(),

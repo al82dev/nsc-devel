@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Retorno con apuntado volatile declarado
+
+Permitir que un retorno de puntero conserve volatile cuando la declaración del
+método ya lleva ese calificador, sin permitir que desaparezca al retornar un
+puntero no calificado. Archivos: StatementAnalyzer.cpp y documentación. La
+activación de aliases y la validación agrupada de la tanda siguen pendientes.
+
 ## Contrato de apuntado volatile en campos
 
 Preparar la propagación desde campos y sus respaldos automáticos, permitir

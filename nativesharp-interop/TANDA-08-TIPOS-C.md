@@ -805,3 +805,10 @@ una prueba preparada con un struct NS homónimo. Las demandas de funciones se
 capturan después del índice de nombres (`ProjectCompilationSnapshots.cpp`),
 por lo que seleccionar los enums de una firma requiere resolver ese orden;
 no basta con proyectar la función al final. Esta ruta no se ha validado.
+# Retorno con apuntado volatile declarado
+
+`validatePointerReturn` rechazaba todo retorno de puntero cuyo apuntado era
+volatile, incluso si la declaración de destino conservaba el mismo calificador.
+Se permite ese caso y se mantiene el rechazo cuando el destino carece de él.
+La prueba funcional y la activación del tipo por alias siguen pendientes y se
+comprobarán en la validación agrupada de la tanda 08.
