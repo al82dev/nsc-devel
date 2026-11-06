@@ -30,6 +30,7 @@
 #include "nativesharp/Interop/CppProjectSessions.h"
 #include "nativesharp/Interop/CppBinaryDependencies.h"
 #include "nativesharp/Interop/LibraryMetadataCodec.h"
+#include "nativesharp/Interop/LibraryMetadataMerger.h"
 #include "nativesharp/Interop/CppScalarTypeMapping.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/Interop/CppSemanticRecord.h"
@@ -934,6 +935,21 @@ int main(int argc, char** argv)
         oldModel.formatMinor = 40;
         ok &= expect(!codec.writeModel(oldModel, root / "invalid-old.nsmeta", metadataError),
                      "NSMETA 1.40 refuses to silently discard C++ dependencies");
+        auto cCatalogModel = model;
+        cCatalogModel.cppCRecordCatalog = {1, 2, 3};
+        nativesharp::interop::LibraryMetadataMerger merger;
+        nativesharp::interop::LibraryMetadata mergedCatalog;
+        const std::vector<nativesharp::interop::LibraryMetadata> matchingCatalogs{cCatalogModel, cCatalogModel};
+        ok &= expect(merger.merge(matchingCatalogs, mergedCatalog, metadataError) &&
+                     mergedCatalog.cppCRecordCatalog == cCatalogModel.cppCRecordCatalog,
+                     "metadata merger preserves matching C record catalogues");
+        auto disagreeingCatalog = cCatalogModel;
+        disagreeingCatalog.cppCRecordCatalog = {4};
+        const std::vector<nativesharp::interop::LibraryMetadata> disagreeingCatalogs{cCatalogModel, disagreeingCatalog};
+        ok &= expect(!merger.merge(disagreeingCatalogs, mergedCatalog, metadataError),
+                     "metadata merger rejects conflicting C record catalogues");
+        ok &= expect(!codec.writeModel(cCatalogModel, root / "old-c-records.nsmeta", metadataError),
+                     "NSMETA 1.41 refuses to discard a C record catalogue");
         oldModel.cppBinaryDependencies.clear();
         nativesharp::interop::LibraryMetadata oldDecoded;
         const bool oldRoundTrip = codec.writeModel(oldModel, root / "old.nsmeta", metadataError) &&
