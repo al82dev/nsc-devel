@@ -21,6 +21,10 @@ for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\VolatileProducer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\CVolatileBitFieldsProducer.lib"
   if errorlevel 1 exit /b 1
   for %%P in (VolatileShared VolatileMetadata) do (
+    if %%O==0 (
+      nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\%%P.nsproj" > "%DEST%\%%P.ll"
+      if errorlevel 1 exit /b 1
+    )
     nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\%%P.nsproj" -O%%O --no-artifact-cache -o "%DEST%\%%P-O%%O.exe"
     if errorlevel 1 exit /b 1
     "%DEST%\%%P-O%%O.exe"
