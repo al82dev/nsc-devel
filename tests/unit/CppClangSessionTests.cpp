@@ -1646,6 +1646,25 @@ int main(int argc, char** argv)
                                         const bool rejected = !selectCppRecordMemberDefinition(candidateEntries, record);
                                         ok &= expect(selected && rejected,
                                                      "repeated members require equal captured contracts at one physical source location");
+                                        auto usrEntries = *entries;
+                                        for (const auto i : record.inventoryIndices)
+                                        {
+                                            auto& declaration = usrEntries[i].declaration;
+                                            declaration.location = CppSourcePoint{std::filesystem::path(argv[3]), 1, 1};
+                                            if (!declaration.fields.empty()) declaration.fields[0].clangUsr = "shared-field-usr";
+                                        }
+                                        const bool sameUsrSelected = selectCppRecordMemberDefinition(usrEntries, record).has_value();
+                                        bool conflictRejected = false, absentRetained = false;
+                                        auto& usrFields = usrEntries[record.inventoryIndices.back()].declaration.fields;
+                                        if (!usrFields.empty())
+                                        {
+                                            usrFields[0].clangUsr = "different-field-usr";
+                                            conflictRejected = !selectCppRecordMemberDefinition(usrEntries, record);
+                                            usrFields[0].clangUsr = std::nullopt;
+                                            absentRetained = selectCppRecordMemberDefinition(usrEntries, record).has_value();
+                                        }
+                                        ok &= expect(sameUsrSelected && conflictRejected && absentRetained,
+                                                     "repeated members reject conflicting known field USRs without inventing missing ones");
                                         auto signatureEntries = *entries;
                                         for (const auto i : record.inventoryIndices)
                                         {
