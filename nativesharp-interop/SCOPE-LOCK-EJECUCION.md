@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Símbolos contradictorios de una misma función Clang
+
+T08-002/T08-003: el agrupador usa símbolo de enlace y nombre; dos snapshots con
+el mismo USR y propietario pero símbolos externos distintos pueden presentarse
+como candidatos independientes. Detectar la contradicción antes de agrupar,
+sin fusionar USR ni omitir verificaciones ABI y sin rechazar alias con USR
+distintos que compartan símbolo. Presupuesto: CppSemanticFunctionGroups.cpp,
+CppClangSessionTests.cpp y registros Markdown. La validación se agrupa por tanda.
+
 ## Identidad de tipos referidos por declaraciones C
 
 T08-002: conservar en CppType el USR de la declaración canónica de cada record

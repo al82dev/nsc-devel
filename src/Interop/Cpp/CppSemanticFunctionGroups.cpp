@@ -49,6 +49,7 @@ CppSemanticFunctionGroupsResult groupCppSemanticFunctions(
     using Key = std::tuple<std::size_t, std::string, std::string>;
     std::map<Key, std::size_t> groupByKey;
     std::map<Key, std::size_t> firstExternalByKey;
+    std::map<std::pair<std::size_t, std::string>, std::size_t> firstExternalByUsr;
     CppSemanticFunctionGroups result;
     for (std::size_t index = 0; index < entries.size(); ++index)
     {
@@ -59,6 +60,23 @@ CppSemanticFunctionGroupsResult groupCppSemanticFunctions(
             if (entry.targetTriple.empty() || declaration.canonicalFunctionType.empty() ||
                 declaration.callingConvention.empty() || declaration.qualifiedName.empty())
                 return CppSemanticFunctionGroupFailure{index, index, "function identity is incomplete"};
+            if (declaration.clangUsr && !declaration.clangUsr->empty())
+            {
+                const auto [prior, inserted] = firstExternalByUsr.emplace(
+                    std::make_pair(entry.projectOrdinal, *declaration.clangUsr), index);
+                if (!inserted)
+                {
+                    const auto& original = entries[prior->second];
+                    if (entry.targetTriple != original.targetTriple ||
+                        declaration.externalSymbol != original.declaration.externalSymbol ||
+                        declaration.canonicalFunctionType != original.declaration.canonicalFunctionType ||
+                        declaration.callingConvention != original.declaration.callingConvention ||
+                        declaration.languageLinkage != original.declaration.languageLinkage ||
+                        declaration.dllImport != original.declaration.dllImport)
+                        return CppSemanticFunctionGroupFailure{
+                            prior->second, index, "conflicting declarations for one Clang USR"};
+                }
+            }
             Key key{entry.projectOrdinal, {}, *declaration.externalSymbol};
             const auto [first, inserted] = firstExternalByKey.emplace(std::move(key), index);
             if (!inserted)
