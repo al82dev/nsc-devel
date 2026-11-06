@@ -15,3 +15,9 @@ trazar cómo se preserva ese calificador al indexar y desreferenciar.
 Se agregan dos controles negativos: asignar un elemento a un `int*` mutable y
 tomar la dirección del slot como `int**`. Ambos deben rechazar la pérdida del
 calificador; todavía no se ejecutaron con la proyección habilitada.
+
+Validación posterior con build `207aab239dce1116`: lectura y reasignación del
+slot, con verificación desde C, pasaron O0–O3. Los controles negativos
+rechazaron la escritura al dato, la conversión a `int*` y la dirección del slot;
+el último ahora emite un diagnóstico específico. El fixture de layout C pasó
+O0–O3. No se acreditan aún matrices, otros tipos ni todas las rutas de escape.

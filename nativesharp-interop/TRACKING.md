@@ -641,6 +641,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     pasó IR y ejecución O0–O3 con globales flotantes y `??=`. La batería
     completa y las demás formas de volatile siguen pendientes.
 - [ ] T08-016. Mapear arreglos de tamaño conocido.
+  - Un arreglo global C `const int *[2]` pasó lectura y reasignación de slots
+    en O0–O3; se rechazaron escritura al dato, conversión a `int*` y dirección
+    del slot. La regresión de layout pasó. Faltan otras dimensiones, tipos y
+    rutas de escape; no cierra el ítem. [Evidencia](registro-commits/prueba-global-puntero-const.md).
   - Preparado en `4a18050a6` y `3f88e82e0`: transporte de alineación de
     elementos indexados desde campos y prueba MIR sintética. Aún sin ejecutar;
     arreglos empaquetados y protección de sus direcciones siguen pendientes.
