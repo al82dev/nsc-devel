@@ -1,0 +1,5 @@
+int Main()
+{
+    int** value = &c_slots[0];
+    return 0;
+}

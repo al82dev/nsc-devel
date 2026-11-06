@@ -11,3 +11,7 @@ caso positivo en O0: `cannot import C/C++ global 'c_slots': C/C++ global type
 is not yet mapped`. No se llegó al enlace ni al control negativo. El inventario
 rechaza expresamente arreglos con `pointeeConst`; antes de habilitarlos hay que
 trazar cómo se preserva ese calificador al indexar y desreferenciar.
+
+Se agregan dos controles negativos: asignar un elemento a un `int*` mutable y
+tomar la dirección del slot como `int**`. Ambos deben rechazar la pérdida del
+calificador; todavía no se ejecutaron con la proyección habilitada.

@@ -9,7 +9,7 @@ set "TEMP=%DEST%"
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
 set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
-for %%F in (Api.h Api.c Project.nsproj Main.ns Invalid.nsproj Invalid.ns) do (
+for %%F in (Api.h Api.c Project.nsproj Main.ns Invalid.nsproj Invalid.ns InvalidEscape.nsproj InvalidEscape.ns InvalidAddress.nsproj InvalidAddress.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -29,4 +29,11 @@ if not errorlevel 1 (echo Escritura indebida aceptada. & exit /b 1)
 findstr /i /c:"const" /c:"readonly" "%DEST%\invalid.log" >nul
 if errorlevel 1 (echo El rechazo no identifica const o readonly. & exit /b 1)
 echo Escritura al dato const rechazada.
+for %%I in (InvalidEscape InvalidAddress) do (
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\%%I.nsproj" -O0 --no-artifact-cache -o "%DEST%\%%I.exe" > "%DEST%\%%I.log" 2>&1
+  if not errorlevel 1 (echo Se acepto perdida de const en %%I. & exit /b 1)
+  findstr /i /c:"const" /c:"readonly" /c:"address" "%DEST%\%%I.log" >nul
+  if errorlevel 1 (echo El rechazo de %%I no identifica el contrato. & exit /b 1)
+)
+echo Perdida de const por asignacion o direccion rechazada.
 exit /b 0

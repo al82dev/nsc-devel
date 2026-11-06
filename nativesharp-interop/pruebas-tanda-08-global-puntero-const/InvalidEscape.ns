@@ -1,0 +1,6 @@
+int Main()
+{
+    int* value = c_slots[0];
+    *value = 44;
+    return 0;
+}

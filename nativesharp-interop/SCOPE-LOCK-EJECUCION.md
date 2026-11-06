@@ -9,6 +9,10 @@ desde C; rechazar que se escriba a través del puntero al dato const. Mantener
 las salidas bajo `A:/nsc-interop-build`, registrar los resultados y no modificar
 producción antes de reproducir el fallo y acotar la ruta responsable. LLVM y
 NSLink permanecen de solo lectura.
+Ampliar el mismo fixture con controles que rechacen perder el `const` al
+asignar un elemento a `int*` y al obtener la dirección del slot, ya que el
+tipo anidado tendría que conservar el calificador. No habilitar la proyección
+hasta conservar estas protecciones.
 
 ## Funciones C static inline de encabezados
 
