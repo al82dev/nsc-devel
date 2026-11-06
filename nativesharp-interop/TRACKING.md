@@ -781,6 +781,7 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     el arreglo y la matriz de records empaquetados, con comprobación de IR O0
     y rechazo de direcciones subalineadas. T08-016 sigue abierto.
 - [ ] T08-017. Definir la representación de punteros a función C.
+  - Un callback global con record usado solo en su firma se importó y permitió resolver un campo mediante `var`; llegó a IR, con ejecución O0–O3 pendiente. [Detalle](registro-commits/callback-global-record-inferido.md).
   - Un callback C cuyo resultado es un puntero a record pasó O0–O3 en retorno de función, campo y global. [Detalle](registro-commits/callback-retorno-puntero-record.md).
   - Un callback NativeSharp sin capturas que recibe un puntero a record C se pasó y almacenó para llamadas C y pasó O0–O3. [Detalle](registro-commits/callback-record-nativesharp-a-c.md).
   - Un consumidor precompilado sin referencia explícita al header usó el callback con record en O0–O3 con la copia usada por el productor temporalmente ausente. [Detalle](registro-commits/callback-record-precompilado.md).

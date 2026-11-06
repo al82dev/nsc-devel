@@ -1,0 +1,8 @@
+int Main()
+{
+    var factory = record_factory_global;
+    var value = factory();
+    if (value == null) return 1;
+    if (value->value != 39) return 2;
+    return 0;
+}

@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Dependencia de record solo en callback global C
+
+T08-017: comprobar la selección de un record C que aparece únicamente como
+resultado de la firma de un callback global usado con `var`, sin que el código
+NativeSharp nombre el record ni el alias del callback. Ampliar los fixtures de
+`pruebas-tanda-08-callback`, su script, tracking y bitácora; salidas en A:.
+No modificar producción antes de reproducir y delimitar un fallo.
+
 ## Callback C cuyo resultado es un puntero a record
 
 T08-017: comprobar `CallbackPayload* (*)(void)` retornado por C y almacenado
