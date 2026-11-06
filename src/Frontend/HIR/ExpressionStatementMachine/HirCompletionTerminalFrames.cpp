@@ -3,6 +3,7 @@
 
 #include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
+#include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
@@ -370,6 +371,17 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
     const std::string resultType = frameType != nullptr
         ? frameType->typeKey
         : frameDelegate != nullptr ? frameDelegate->resultTypeKey : "<error>";
+    bool directCVolatileInt = false;
+    if (resultType == "builtin:int" && lowered &&
+        lowered->kind == ProjectOopHirNodeKind::NamespaceStateValue &&
+        lowered->namespaceStateOrdinal && namespaceFunctionModel_ &&
+        *lowered->namespaceStateOrdinal < namespaceFunctionModel_->states().size())
+    {
+        const auto& state = namespaceFunctionModel_->states()[*lowered->namespaceStateOrdinal];
+        directCVolatileInt = state.isCppExternal && state.cppCGlobal &&
+            state.declaredTypeKey == "builtin:int*" && state.cppPointerPointeeVolatile &&
+            state.cppMicrosoftVolatileSemantics == std::optional<bool>{true};
+    }
         if (frame.syntax->tokenKind() == lexer::TokenKind::PlusPlus ||
             frame.syntax->tokenKind() == lexer::TokenKind::MinusMinus)
         {
@@ -433,6 +445,11 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
                 resultType);
             const auto* operandType = expressionType(frame.syntax->first());
             load->volatileAccess = operandType && operandType->pointerPointeeVolatile;
+            if (directCVolatileInt && load->volatileAccess)
+            {
+                load->cppMicrosoftVolatileSemantics = true;
+                load->cppAtomicAlignmentBytes = 4;
+            }
             load->children.push_back(std::move(lowered));
             lowered = std::move(load);
         }
@@ -445,6 +462,11 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
                 // Qualify the target independently of the pointer value's own load.
                 auto address = makeNode(ProjectOopHirNodeKind::AddressValue, frame.syntax, resultType);
                 address->volatileAccess = volatilePointee;
+                if (directCVolatileInt && volatilePointee)
+                {
+                    address->cppMicrosoftVolatileSemantics = true;
+                    address->cppAtomicAlignmentBytes = 4;
+                }
                 address->children.push_back(std::move(lowered));
                 lowered = std::move(address);
             }
