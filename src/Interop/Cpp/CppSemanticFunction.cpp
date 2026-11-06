@@ -91,9 +91,6 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
     }
     if (type.kind == CppTypeKind::Enumeration && lookup && !type.isVolatile)
     {
-        // The stored-callback extension only authorizes record pointers;
-        // providing lookup must not silently enable enum callback signatures.
-        if (allowCStoredRecordPointer) return std::nullopt;
         return owner ? projectCppSemanticEnumType(type, *owner, moduleName, lookup) : std::nullopt;
     }
     if (type.kind == CppTypeKind::Record)

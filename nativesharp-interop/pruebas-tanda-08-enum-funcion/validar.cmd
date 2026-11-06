@@ -9,7 +9,7 @@ set "TEMP=%DEST%"
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
 set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
-for %%F in (Project.nsproj Main.ns Api.h Api.c) do (
+for %%F in (Project.nsproj Main.ns Api.h Api.c StoredCallback.ns StoredCallback.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -33,6 +33,13 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project
 if errorlevel 1 exit /b 1
 "%DEST%\program.exe"
 if errorlevel 1 exit /b 1
+for %%O in (0 1 2 3) do (
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\StoredCallback.nsproj" -O%%O --no-artifact-cache -o "%DEST%\stored-callback-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  "%DEST%\stored-callback-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  echo Callback almacenado con enum C O%%O: resultado esperado cero.
+)
 copy /y "%~dp0Shadow.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\shadow.exe"

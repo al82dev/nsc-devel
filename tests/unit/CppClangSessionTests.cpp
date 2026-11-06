@@ -7278,9 +7278,26 @@ int main(int argc, char** argv)
                             wrongOwnerRejected = !projectCppStoredFunctionPointer(source, owner + 1, module, lookup).has_value();
                             const auto enumAlias = std::find_if(callbackAliases->begin(), callbackAliases->end(),
                                 [](const auto& value) { return value.name == "Visitor"; });
-                            ok &= expect(enumAlias != callbackAliases->end() &&
-                                !projectCppStoredFunctionPointer(enumAlias->underlyingType, owner, module, lookup),
-                                "record callback context does not enable enum callback signatures");
+                            bool enumValid = false, enumWrongUsrRejected = false;
+                            if (enumAlias != callbackAliases->end() && enumAlias->underlyingType.element &&
+                                enumAlias->underlyingType.element->function)
+                            {
+                                const auto& enumSource = enumAlias->underlyingType;
+                                enumValid = projectCppStoredFunctionPointer(enumSource, owner, module, lookup).has_value();
+                                auto enumFunction = std::make_shared<CppType>(*enumSource.element);
+                                auto enumSignature = std::make_shared<CppFunctionType>(*enumFunction->function);
+                                if (enumSignature->returnType.enumIdentity &&
+                                    enumSignature->returnType.enumIdentity->clangUsr)
+                                {
+                                    enumSignature->returnType.enumIdentity->clangUsr = "wrong:enum:usr";
+                                    enumFunction->function = std::move(enumSignature);
+                                    CppType wrongEnum = enumSource;
+                                    wrongEnum.element = std::move(enumFunction);
+                                    enumWrongUsrRejected = !projectCppStoredFunctionPointer(wrongEnum, owner, module, lookup).has_value();
+                                }
+                            }
+                            ok &= expect(enumValid && enumWrongUsrRejected,
+                                "stored callback resolves enum only with matching imported identity");
                             auto functionNode = std::make_shared<CppType>(*source.element);
                             auto signature = std::make_shared<CppFunctionType>(*functionNode->function);
                             if (signature->parameterTypes.size() == 1 && signature->parameterTypes[0].element)

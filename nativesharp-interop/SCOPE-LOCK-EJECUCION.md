@@ -7,6 +7,13 @@ enum C, desde un campo y un global. Usar el fixture de enum C existente,
 registrar evidencia en NSC y salidas en A:. No cambiar producción hasta
 reproducir la causa; no dar por resuelta la semántica de operaciones mixtas
 entre enum C y enteros, que es una cuestión separada.
+Reproducción con NSC build `3f82235fd35e7b9a`: el campo no se proyecta y el
+global se rechaza por tipo no mapeado. El mapeador de callbacks almacenados
+rechaza explícitamente enums pese a recibir el lookup que verifica identidad,
+representación y proyecto. Permitir modificar
+`src/Interop/Cpp/CppSemanticFunction.cpp`, `tests/unit/CppClangSessionTests.cpp`,
+los fixtures y el script de enum, tracking y bitácora. Mantener las validaciones
+de `projectCppSemanticEnumType`, sin cambiar promociones ni operaciones de enum.
 
 ## Dependencia de record solo en callback global C
 
