@@ -994,6 +994,12 @@ Se preparó comprobación de disponibilidad de la opción en una sesión real y
 de ausencia después de cerrarla. No presupone que el triple determine el valor.
 La prueba aún no se ha ejecutado.
 
+## Procedencia de volatile en inventario de globales
+
+Cada entrada de global copia la opción efectiva desde su sesión de origen; el
+valor desconocido permanece distinto de false. Todavía no se propaga al símbolo
+semántico ni altera la selección o el IR. Falta comprobarlo en la batería.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

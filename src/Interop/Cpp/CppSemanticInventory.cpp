@@ -212,13 +212,14 @@ CppSemanticGlobalInventoryResult collectCppSemanticGlobals(
             auto declarations = session->globalsSnapshot();
             if (!declarations) return CppSemanticInventoryFailure{group.projectFile, index, "C/C++ session is not available"};
             const auto options = session->optionsSnapshot();
+            const auto microsoftVolatileSemantics = session->microsoftVolatileSemantics();
             for (auto& declaration : *declarations)
             {
                 auto projection = projectGlobalWithLookup(declaration, *owner,
                     graph.projects()[*owner].moduleName(), nullptr, options.language == CppLanguageMode::C);
                 result.push_back({group.projectFile, index, *owner, options.targetTriple,
                                   std::move(declaration), std::move(projection),
-                                  options.language == CppLanguageMode::C});
+                                  options.language == CppLanguageMode::C, microsoftVolatileSemantics});
             }
         }
     }

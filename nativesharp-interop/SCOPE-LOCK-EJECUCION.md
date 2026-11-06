@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Procedencia de volatile en inventario de globales
+
+Conservar en cada entrada del inventario de globales la opción efectiva de su
+sesión, incluida la ausencia cuando no está disponible. No cambiar selección ni
+emisión todavía. Archivos: CppSemanticInventory.h/.cpp y documentación; preparar
+prueba y validar junto con la tanda.
+
 ## Prueba de consulta de volatile efectivo
 
 Preparar controles de disponibilidad del valor de Clang en sesión activa y

@@ -155,6 +155,8 @@ struct CppSemanticGlobalEntry
     CppSemanticGlobalResult projection;
     // Record storage is only projected under the C object model.
     bool cLanguage = false;
+    // Effective option of the originating session; absent when unavailable.
+    std::optional<bool> microsoftVolatileSemantics;
 };
 using CppSemanticGlobalInventoryResult =
     std::variant<std::vector<CppSemanticGlobalEntry>, CppSemanticInventoryFailure>;
