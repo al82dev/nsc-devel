@@ -205,7 +205,9 @@ bool validateRecords(std::span<const CppCRecordSnapshot> records, std::string& e
         for (const auto& field : record.fields)
         {
             if (!field.offsetBits || *field.offsetBits > *record.sizeBits ||
-                (field.bitWidth && *field.bitWidth > *record.sizeBits - *field.offsetBits))
+                (field.bitWidth && *field.bitWidth > *record.sizeBits - *field.offsetBits) ||
+                (!field.bitWidth && field.type.sizeBits &&
+                 *field.type.sizeBits > *record.sizeBits - *field.offsetBits))
             { error = "C record field is outside its layout"; return false; }
         }
     }
