@@ -980,6 +980,14 @@ corresponda, y verificar cargas y escrituras de distintos tamaños, alineaciones
 campos y opciones contra el IR de Clang. No convertir indiscriminadamente todos
 los accesos NativeSharp en atómicos ni asumir que volatile siempre sincroniza.
 
+## Consulta de volatile efectivo de Clang
+
+La sesión Clang ahora expone `microsoftVolatileSemantics()` consultando
+`ASTContext::getLangOpts().MSVolatile` bajo el mismo bloqueo de sus snapshots.
+Devuelve ausencia después del cierre o si la implementación no lo ofrece. Esta
+consulta aún no transporta la opción al análisis ni cambia el IR; falta cubrirla
+con pruebas y completar la representación por acceso.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

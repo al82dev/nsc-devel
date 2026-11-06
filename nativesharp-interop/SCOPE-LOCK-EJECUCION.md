@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Consulta de volatile efectivo de Clang
+
+Exponer mediante la sesión el valor real de LangOpts.MSVolatile, con nullopt si
+no está disponible o la sesión cerró. No inferirlo del triple ni modificar aún
+la emisión de NativeSharp. Archivos: CppInteropSession.h, ClangSession.cpp y
+documentación. Preparar pruebas y ejecutar con la batería agrupada de la tanda.
+
 ## Alias C a enum const volatile
 
 Preparar lectura mediante alias a enum const volatile y rechazo de escritura.

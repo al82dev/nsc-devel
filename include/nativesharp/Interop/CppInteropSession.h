@@ -62,6 +62,9 @@ public:
     virtual CppSessionState state() const noexcept = 0;
     virtual CppSessionOptions optionsSnapshot() const = 0;
     virtual std::vector<CppSessionDiagnostic> diagnosticsSnapshot() const = 0;
+    // Effective Clang language option, not an inference from the target triple.
+    // nullopt means unavailable or that the session has closed.
+    virtual std::optional<bool> microsoftVolatileSemantics() const { return std::nullopt; }
     // Empty after close; the count is a control query, not a C++ import API.
     virtual std::optional<std::size_t> topLevelDeclarationCount() const = 0;
     // Initial projection: concrete free functions in namespaces and linkage specifications.

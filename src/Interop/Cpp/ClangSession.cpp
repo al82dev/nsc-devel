@@ -662,6 +662,12 @@ public:
         std::lock_guard lock(mutex_);
         return diagnostics_;
     }
+    std::optional<bool> microsoftVolatileSemantics() const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_) return std::nullopt;
+        return ast_->getASTContext().getLangOpts().MSVolatile;
+    }
     std::optional<std::size_t> topLevelDeclarationCount() const override
     {
         std::lock_guard lock(mutex_);
