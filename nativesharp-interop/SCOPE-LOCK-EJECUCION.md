@@ -66,6 +66,9 @@ Preparar la proyección de campos y enumeradores guardados reutilizando las
 reglas C existentes; rechazar datos no proyectables sin salida parcial.
 Presupuesto: CppSemanticRecord.h/.cpp y controles de sesión. No instalar aún
 en el consumidor hasta resolver visibilidad y colisiones.
+Preparar combinación transaccional de campos y constantes de catálogos
+precompilados, comprobando propietarios y duplicados; archivos
+CppSemanticRecord.h/.cpp y controles de sesión. No activar todavía el formato.
 Transportar los bytes verificados del catálogo desde la superficie de metadata
 hasta PrecompiledSyntaxModule; presupuesto adicional: PrecompiledSyntaxModule.h,
 PrecompiledProjectPreparation.cpp y controles existentes. No habilitar 1.42
