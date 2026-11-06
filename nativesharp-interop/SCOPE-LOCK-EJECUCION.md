@@ -45,6 +45,10 @@ Mantener 1.42 deshabilitado como versión pública hasta conectar reconstrucció
 Preparar en CppSemanticRecord.h/.cpp la selección de referencias de la API y
 su cierre para el proveedor; no instalarlo aún. Reportar enums sin catálogo en
 vez de producir metadata incompleta; incluir controles de sesión.
+Preparar la captura de enumeraciones C requeridas, con tipo subyacente,
+valores exactos e identidades reconciliadas; archivos CppSemanticInventory.h/.cpp
+y controles de sesión. No sustituir todavía el rechazo del proveedor hasta
+disponer de codec y reconstrucción de enums.
 Preparar un proveedor opcional de catálogo para el productor de metadata, sin
 activarlo desde el driver. Presupuesto adicional: ProjectCompilation.h/.cpp,
 LibraryMetadataConstruction.cpp y controles de sesión. El productor sin
