@@ -67,6 +67,7 @@ volatile signed char volatile_i8_array[2];
 volatile unsigned char volatile_u8_array[2];
 volatile short volatile_i16_array[2];
 volatile unsigned short volatile_u16_array[2];
+volatile unsigned int volatile_u32_array[2];
 volatile long long volatile_i64_array[2];
 volatile unsigned long long volatile_u64_array[2];
 volatile float volatile_f32_array[2];
@@ -78,6 +79,7 @@ void reference_volatile_scalar_arrays(void)
     volatile_u8_array[1] = 3; (void)volatile_u8_array[1];
     volatile_i16_array[1] = 4; (void)volatile_i16_array[1];
     volatile_u16_array[1] = 5; (void)volatile_u16_array[1];
+    volatile_u32_array[1] = 8; (void)volatile_u32_array[1];
     volatile_i64_array[1] = 6; (void)volatile_i64_array[1];
     volatile_u64_array[1] = 7; (void)volatile_u64_array[1];
     volatile_f32_array[1] = 1.5f; (void)volatile_f32_array[1];

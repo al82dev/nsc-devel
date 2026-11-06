@@ -55,6 +55,7 @@ extern volatile signed char volatile_i8_array[2];
 extern volatile unsigned char volatile_u8_array[2];
 extern volatile short volatile_i16_array[2];
 extern volatile unsigned short volatile_u16_array[2];
+extern volatile unsigned int volatile_u32_array[2];
 extern volatile long long volatile_i64_array[2];
 extern volatile unsigned long long volatile_u64_array[2];
 extern volatile float volatile_f32_array[2];

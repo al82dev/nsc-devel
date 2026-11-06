@@ -13,3 +13,6 @@ char usan i8/alineación 1; short usa i16/alineación 2; long long usa
 i64/alineación 8; float usa float/alineación 4 y double usa double/alineación
 8. Esta evidencia solo cubre esos globales y esa configuración. No prueba
 todavía el IR de NSC ni los accesos por punteros o campos.
+
+Se añadió además un arreglo de unsigned int a la referencia para comprobar
+explícitamente el caso de 32 bits sin signo; aún falta generar su IR.
