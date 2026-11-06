@@ -5,6 +5,7 @@ int Main()
     var small = get_small();
     if (small >= 0 || small != -1 || CPositive <= small) return 2;
     var high = get_high();
-    if (high != 2147483648u || high <= 1) return 3;
+    if (high != 2147483648u) return 3;
+    if (high <= 1) return 4;
     return 0;
 }
