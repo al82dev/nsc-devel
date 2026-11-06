@@ -202,6 +202,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     controles de USR para enums, records, aliases y dependencias de campos.
     Falta la batería completa de la tanda y persisten contratos sin cubrir.
     [Evidencia](TANDA-08-TIPOS-C.md#prueba-dirigida-de-identidades-en-tipos).
+  - En `52d502125` pasó la suite dirigida con selección de globales por USR,
+    aliases transitivos y aislamiento entre proyectos. No acredita persistencia
+    ni la validación completa de la tanda.
 - [ ] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
 - [ ] T08-004. Importar declaraciones de variables globales C.
 - [ ] T08-005. Importar alias de tipos declarados con `typedef`.

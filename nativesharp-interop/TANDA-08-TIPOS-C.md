@@ -1255,3 +1255,12 @@ sintético ya no apareció en la salida de esta compilación.
 
 Esta comprobación dirigida no sustituye la batería completa ni demuestra la
 persistencia o el conjunto completo de T08-002; la tanda 08 permanece abierta.
+
+## Selección de identidad de globales: validación dirigida
+
+En `52d502125`, la construcción incremental de `nsc_cpp_session_tests` y su
+ejecución con Clang de A terminaron con código 0. La suite incluye ahora
+conflicto de símbolo para un USR común, separación entre proyectos, alias
+compatibles con USR distintos y un conflicto transitivo en orden inverso.
+La compilación emitió advertencias de inicialización de `deferredImportError`.
+La suite no valida persistencia ni sustituye la batería completa de la tanda.
