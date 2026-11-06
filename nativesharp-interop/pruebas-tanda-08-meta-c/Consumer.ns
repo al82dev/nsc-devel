@@ -5,5 +5,7 @@ int Main()
     if (value->value != 17) return 1;
     if (value->kind != Published.Bridge.GetKind()) return 2;
     if (CGlobalChoice != 21) return 3;
+    var copy = Published.Bridge.GetValue();
+    if (copy.value != 17 || copy.kind != Published.Bridge.GetKind()) return 4;
     return 0;
 }
