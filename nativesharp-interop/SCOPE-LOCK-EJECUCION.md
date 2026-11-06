@@ -1714,6 +1714,7 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, fixtures y script de `pruebas-tanda-08-record-c`, y registros Markdown. Si la batería revela un defecto, ampliar el presupuesto únicamente a las rutas semánticas o HIR identificadas. Mantener rechazados punteros a volatile y ABI de records por valor no verificado.
 - Preparar lectura de matriz const, escritura y lectura de matriz volatile, campos de structs anidados, comprobación C, IR y rechazos de escritura/dirección; verificar conjuntamente al finalizar el conjunto.
 - Primera batería: código 1 porque `*volatile_nested_record.target = 47` produjo una carga volatile del puntero seguida incorrectamente de `store volatile` en el apuntado. En `finishStorageUnaryFrame` la desreferenciación usada como dirección devuelve el nodo de carga del puntero y su indicador se interpreta como calificador del destino. Añadir `src/Frontend/HIR/ExpressionStatementMachine/HirCompletionTerminalFrames.cpp` al presupuesto y separar ambos nodos sin eliminar la carga volatile; repetir la validación agrupada.
+- La repetición terminó con código 0 y el IR confirmó la carga volatile seguida de escritura ordinaria. El rechazo de una dirección de campo readonly sigue mencionando incorrectamente bit fields. Añadir `src/Frontend/Bodies/IdentifierAnalyzer.cpp` al presupuesto y dar un diagnóstico de readonly; comprobar el texto en ambos fixtures const y exigir en el IR la carga volatile del campo puntero anidado.
 
 ### Global enum const
 

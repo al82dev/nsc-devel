@@ -1219,6 +1219,8 @@ if (operation == TokenKind::Amp)
             expression->range(),
             operand.volatileStorage
                 ? "cannot take the address of volatile storage until qualified pointers are supported"
+                : operand.readonlyReceiver
+                ? "cannot take the address of readonly storage until qualified pointers are supported"
                 : "bit fields have no address; operand of & must name addressable storage, "
                   "not a bit field or temporary value");
         return result;
