@@ -68,6 +68,8 @@ if /I "%~2"=="inferred" (
   echo Inferred C record consumer passed O%~1.
   exit /b 0
 )
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\Producer.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\CPublishedProducer.lib"
+if errorlevel 1 exit /b 1
 if /I "%~2"=="sharedenum" (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\SharedEnum.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\SharedEnum.exe"
   if errorlevel 1 exit /b 1
@@ -76,8 +78,6 @@ if /I "%~2"=="sharedenum" (
   echo Shared C enum passed O%~1.
   exit /b 0
 )
-nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\Producer.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\CPublishedProducer.lib"
-if errorlevel 1 exit /b 1
 if /I "%~2"=="independent" (
   clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 -O%~1 "%DEST%\Independent.c" -o "%DEST%\independent.obj"
   if errorlevel 1 exit /b 1
