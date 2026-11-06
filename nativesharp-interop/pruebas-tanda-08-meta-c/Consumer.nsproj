@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CPublishedConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+    <LibraryReference Include="CPublishedProducer.lib" />
+  </ItemGroup>
+</Project>

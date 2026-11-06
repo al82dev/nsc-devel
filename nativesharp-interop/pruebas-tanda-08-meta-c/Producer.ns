@@ -1,0 +1,4 @@
+namespace Published
+{
+    public struct Wrapper { public CRecord* value; }
+}

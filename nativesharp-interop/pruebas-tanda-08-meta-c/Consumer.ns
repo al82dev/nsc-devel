@@ -1,0 +1,2 @@
+int Inspect(Published.Wrapper* wrapper) { return wrapper->value->value; }
+int Main() { return 0; }
