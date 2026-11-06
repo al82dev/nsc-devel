@@ -72,6 +72,14 @@ volatile long long volatile_i64_array[2];
 volatile unsigned long long volatile_u64_array[2];
 volatile float volatile_f32_array[2];
 volatile double volatile_f64_array[2];
+int check_volatile_scalar_arrays(void)
+{
+    return volatile_i8_array[1] == 12 && volatile_u8_array[1] == 13 &&
+        volatile_i16_array[1] == 1200 && volatile_u16_array[1] == 1300 &&
+        volatile_u32_array[1] == 1400 && volatile_i64_array[1] == 120000 &&
+        volatile_u64_array[1] == 130000 && volatile_f32_array[1] == 1.5f &&
+        volatile_f64_array[1] == 2.5;
+}
 void reference_volatile_scalar_arrays(void)
 {
     volatile_bool_array[1] = 1; (void)volatile_bool_array[1];

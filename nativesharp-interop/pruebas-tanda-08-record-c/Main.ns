@@ -90,6 +90,20 @@ int Main()
     if (volatile_array[1] != 19 || volatile_matrix[1][1] != 23 || read_volatile_arrays() != 42) return 9;
     volatile_array[1] += 1;
     if (volatile_array[1] != 20) return 52;
+    volatile_i8_array[1] = (sbyte)12;
+    volatile_u8_array[1] = (byte)13;
+    volatile_i16_array[1] = (short)1200;
+    volatile_u16_array[1] = (ushort)1300;
+    volatile_u32_array[1] = (uint)1400;
+    volatile_i64_array[1] = 120000;
+    volatile_u64_array[1] = 130000;
+    volatile_f32_array[1] = 1.5f;
+    volatile_f64_array[1] = 2.5;
+    if (volatile_i8_array[1] != 12 || volatile_u8_array[1] != 13 ||
+        volatile_i16_array[1] != 1200 || volatile_u16_array[1] != 1300 ||
+        volatile_u32_array[1] != 1400 || volatile_i64_array[1] != 120000 ||
+        volatile_u64_array[1] != 130000 || volatile_f32_array[1] != 1.5f ||
+        volatile_f64_array[1] != 2.5 || check_volatile_scalar_arrays() == 0) return 55;
     volatile_pointer_array[0] = volatile_pointer_array[1];
     *volatile_pointer_array[0] = 97;
     if (*volatile_pointer_array[0] != 97 || read_volatile_pointer_array() != 97) return 47;

@@ -61,6 +61,7 @@ extern volatile unsigned long long volatile_u64_array[2];
 extern volatile float volatile_f32_array[2];
 extern volatile double volatile_f64_array[2];
 void reference_volatile_scalar_arrays(void);
+int check_volatile_scalar_arrays(void);
 struct GlobalOnly { int value; };
 typedef volatile struct GlobalOnly* VolatileGlobalPtr;
 typedef const volatile struct GlobalOnly* ConstVolatileGlobalPtr;

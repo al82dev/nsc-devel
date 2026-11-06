@@ -498,6 +498,29 @@ int main(int argc, char** argv)
         globalRoot->kind = ProjectOopMirNodeKind::LocalAddress;
         ok &= expect(!nativesharp::llvm_backend::clangMsVolatileGlobalScalarArrayAlignment(&globalElement),
                      "a local array is not mistaken for an imported C global");
+        globalRoot->kind = ProjectOopMirNodeKind::NamespaceStateAddress;
+        globalRoot->typeKey = "builtin:ushort[3][2]";
+        globalRoot->cppAtomicAlignmentBytes = 2;
+        globalElement.typeKey = "builtin:ushort";
+        globalElement.immediate = 2;
+        globalElement.children.front()->immediate = 6;
+        ok &= expect(nativesharp::llvm_backend::clangMsVolatileGlobalScalarArrayAlignment(&globalElement) == 2,
+                     "C volatile unsigned short array preserves its two-byte width");
+        globalRoot->typeKey = "builtin:double[3][2]";
+        globalRoot->cppAtomicAlignmentBytes = 8;
+        globalElement.typeKey = "builtin:double";
+        globalElement.immediate = 8;
+        globalElement.children.front()->immediate = 24;
+        ok &= expect(nativesharp::llvm_backend::clangMsVolatileGlobalScalarArrayAlignment(&globalElement) == 8,
+                     "C volatile double array preserves its eight-byte width");
+        globalRoot->typeKey = "builtin:long[3][2]";
+        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileGlobalScalarArrayAlignment(&globalElement),
+                     "a scalar array root with a different element type is rejected");
+        globalElement.typeKey = "builtin:bool";
+        globalRoot->typeKey = "builtin:bool[3][2]";
+        globalRoot->cppAtomicAlignmentBytes = 1;
+        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileGlobalScalarArrayAlignment(&globalElement),
+                     "bool does not enter the scalar-array path before its storage is verified");
         ProjectOopMirNode directPointee;
         directPointee.kind = ProjectOopMirNodeKind::PointerLoad;
         directPointee.typeKey = "builtin:int";

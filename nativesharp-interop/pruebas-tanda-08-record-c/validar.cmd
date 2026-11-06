@@ -105,6 +105,22 @@ findstr /r /c:"load atomic volatile.*@volatile_matrix.*acquire, align 4" "%DEST%
 if errorlevel 1 (echo Falta lectura acquire volatile de la matriz. & exit /b 1)
 findstr /r /c:"store atomic volatile.*@volatile_matrix.*release, align 4" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura release volatile de la matriz. & exit /b 1)
+for %%P in (i8:8:1 u8:8:1 i16:16:2 u16:16:2 u32:32:4 i64:64:8 u64:64:8) do (
+  for /f "tokens=1,2,3 delims=:" %%A in ("%%P") do (
+    findstr /r /c:"load atomic volatile i%%B.*@volatile_%%A_array.*acquire, align %%C" "%DEST%\project.ll" >nul
+    if errorlevel 1 (echo Falta lectura acquire del arreglo %%A. & exit /b 1)
+    findstr /r /c:"store atomic volatile i%%B.*@volatile_%%A_array.*release, align %%C" "%DEST%\project.ll" >nul
+    if errorlevel 1 (echo Falta escritura release del arreglo %%A. & exit /b 1)
+  )
+)
+findstr /r /c:"load atomic volatile float.*@volatile_f32_array.*acquire, align 4" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta lectura acquire del arreglo float. & exit /b 1)
+findstr /r /c:"store atomic volatile float.*@volatile_f32_array.*release, align 4" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura release del arreglo float. & exit /b 1)
+findstr /r /c:"load atomic volatile double.*@volatile_f64_array.*acquire, align 8" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta lectura acquire del arreglo double. & exit /b 1)
+findstr /r /c:"store atomic volatile double.*@volatile_f64_array.*release, align 8" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura release del arreglo double. & exit /b 1)
 findstr /r /c:"load volatile.*@global_record_volatile" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta lectura LLVM volatile del campo global. & exit /b 1)
 findstr /r /c:"store volatile.*@global_record_volatile" "%DEST%\project.ll" >nul
