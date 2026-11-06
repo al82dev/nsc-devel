@@ -129,10 +129,15 @@ CppSemanticFunctionGroupsResult selectCppSemanticFunctions(
     std::string_view qualifiedName)
 {
     std::set<std::string> symbols;
+    std::set<std::string> usrs;
     for (const auto& entry : entries)
-        if (entry.projectOrdinal == projectOrdinal && entry.declaration.qualifiedName == qualifiedName &&
-            entry.declaration.externalSymbol && !entry.declaration.externalSymbol->empty())
-            symbols.insert(*entry.declaration.externalSymbol);
+        if (entry.projectOrdinal == projectOrdinal && entry.declaration.qualifiedName == qualifiedName)
+        {
+            if (entry.declaration.externalSymbol && !entry.declaration.externalSymbol->empty())
+                symbols.insert(*entry.declaration.externalSymbol);
+            if (entry.declaration.clangUsr && !entry.declaration.clangUsr->empty())
+                usrs.insert(*entry.declaration.clangUsr);
+        }
 
     std::vector<CppSemanticInventoryEntry> selected;
     std::vector<std::size_t> originalIndices;
@@ -141,7 +146,8 @@ CppSemanticFunctionGroupsResult selectCppSemanticFunctions(
         const auto& entry = entries[i];
         if (entry.projectOrdinal != projectOrdinal) continue;
         if (entry.declaration.qualifiedName != qualifiedName &&
-            (!entry.declaration.externalSymbol || !symbols.contains(*entry.declaration.externalSymbol)))
+            (!entry.declaration.externalSymbol || !symbols.contains(*entry.declaration.externalSymbol)) &&
+            (!entry.declaration.clangUsr || !usrs.contains(*entry.declaration.clangUsr)))
             continue;
         selected.push_back(entry);
         originalIndices.push_back(i);
@@ -173,12 +179,15 @@ CppSemanticDemandSelection selectCppSemanticDemands(
     using Key = std::pair<std::size_t, std::string_view>;
     std::map<Key, std::vector<std::size_t>> byName;
     std::map<Key, std::vector<std::size_t>> bySymbol;
+    std::map<Key, std::vector<std::size_t>> byUsr;
     for (std::size_t i = 0; i < entries.size(); ++i)
     {
         const auto& entry = entries[i];
         byName[{entry.projectOrdinal, entry.declaration.qualifiedName}].push_back(i);
         if (entry.declaration.externalSymbol && !entry.declaration.externalSymbol->empty())
             bySymbol[{entry.projectOrdinal, *entry.declaration.externalSymbol}].push_back(i);
+        if (entry.declaration.clangUsr && !entry.declaration.clangUsr->empty())
+            byUsr[{entry.projectOrdinal, *entry.declaration.clangUsr}].push_back(i);
     }
     const auto lookup = [&](std::size_t project, const std::string& qualified)
         -> CppSemanticFunctionGroupsResult {
@@ -188,10 +197,19 @@ CppSemanticDemandSelection selectCppSemanticDemands(
         for (const auto i : named->second)
         {
             const auto& external = entries[i].declaration.externalSymbol;
-            if (!external || external->empty()) continue;
-            const auto aliases = bySymbol.find({project, *external});
-            if (aliases != bySymbol.end())
-                indices.insert(indices.end(), aliases->second.begin(), aliases->second.end());
+            if (external && !external->empty())
+            {
+                const auto aliases = bySymbol.find({project, *external});
+                if (aliases != bySymbol.end())
+                    indices.insert(indices.end(), aliases->second.begin(), aliases->second.end());
+            }
+            const auto& usr = entries[i].declaration.clangUsr;
+            if (usr && !usr->empty())
+            {
+                const auto matching = byUsr.find({project, *usr});
+                if (matching != byUsr.end())
+                    indices.insert(indices.end(), matching->second.begin(), matching->second.end());
+            }
         }
         std::sort(indices.begin(), indices.end());
         indices.erase(std::unique(indices.begin(), indices.end()), indices.end());
@@ -283,11 +301,13 @@ CppDeferredFunctionResult materializeCppDeferredFunctions(
                 return CppDeferredFunctionFailure{i, "conflict does not belong to the demand"};
             const auto relevant = [&](const CppSemanticInventoryEntry& source) {
                 if (source.declaration.qualifiedName == qualified) return true;
-                if (!source.declaration.externalSymbol || source.declaration.externalSymbol->empty()) return false;
                 return std::any_of(entries.begin(), entries.end(), [&](const auto& named) {
                     return named.projectOrdinal == selection.projectOrdinal &&
-                        named.declaration.qualifiedName == qualified && named.declaration.externalSymbol &&
-                        *named.declaration.externalSymbol == *source.declaration.externalSymbol;
+                        named.declaration.qualifiedName == qualified &&
+                        ((source.declaration.externalSymbol && !source.declaration.externalSymbol->empty() &&
+                          named.declaration.externalSymbol == source.declaration.externalSymbol) ||
+                         (source.declaration.clangUsr && !source.declaration.clangUsr->empty() &&
+                          named.declaration.clangUsr == source.declaration.clangUsr));
                 });
             };
             if (!relevant(entries[conflict.firstIndex]) || !relevant(entries[conflict.conflictingIndex]))

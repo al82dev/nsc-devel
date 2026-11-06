@@ -8,6 +8,8 @@ como candidatos independientes. Detectar la contradicción antes de agrupar,
 sin fusionar USR ni omitir verificaciones ABI y sin rechazar alias con USR
 distintos que compartan símbolo. Presupuesto: CppSemanticFunctionGroups.cpp,
 CppClangSessionTests.cpp y registros Markdown. La validación se agrupa por tanda.
+La selección por demanda también debe incluir las entradas del mismo USR y
+conservar sus orígenes para reportar conflictos diferidos.
 
 ## Identidad de tipos referidos por declaraciones C
 
