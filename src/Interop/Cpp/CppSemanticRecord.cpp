@@ -905,7 +905,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                        std::make_move_iterator(selected.records.end()));
     }
     std::sort(records.begin(), records.end(), [](const auto& a, const auto& b) { return a.identityKey < b.identityKey; });
-    return metadata_detail::encodeCRecordCatalog(records, output, error);
+    return metadata_detail::encodeCTypeCatalog(records, {}, output, error);
 }
 
 CppRecordRefinementResult refineCppRecordGroupsForPointerTransport(

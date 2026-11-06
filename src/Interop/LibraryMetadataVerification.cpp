@@ -1401,10 +1401,12 @@ bool verifyBinaryClosureMetadata(
     if (!metadata.cppCRecordCatalog.empty())
     {
         std::vector<CppCRecordSnapshot> records;
+        std::vector<CppCEnumSnapshot> enums;
         std::vector<std::uint8_t> canonical;
         std::string detail;
-        if (!decodeCRecordCatalog(metadata.cppCRecordCatalog, records, detail) || records.empty() ||
-            !encodeCRecordCatalog(records, canonical, detail) || canonical != metadata.cppCRecordCatalog)
+        if (!decodeCTypeCatalog(metadata.cppCRecordCatalog, records, enums, detail) ||
+            (records.empty() && enums.empty()) ||
+            !encodeCTypeCatalog(records, enums, canonical, detail) || canonical != metadata.cppCRecordCatalog)
         {
             error = "invalid C record catalogue: " + detail;
             return false;
@@ -1413,6 +1415,12 @@ bool verifyBinaryClosureMetadata(
             if (record.targetTriple != metadata.targetTriple)
             {
                 error = "C record catalogue target does not match metadata target";
+                return false;
+            }
+        for (const auto& enumeration : enums)
+            if (enumeration.targetTriple != metadata.targetTriple)
+            {
+                error = "C enum catalogue target does not match metadata target";
                 return false;
             }
     }
