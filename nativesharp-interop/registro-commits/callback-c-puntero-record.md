@@ -21,3 +21,14 @@ su equivalente para globales. Esta función invoca `mapFunctionType` sin
 `ProjectNameLookup`, propietario ni módulo, y la rama de record exige un
 índice de records. Así se pierde la resolución necesaria para
 `CallbackPayload*`. La ruta de retorno de funciones usa otro contexto.
+
+## Cambio preparado
+
+El mapeador de callbacks almacenados recibe el proyecto, módulo y lookup de
+tipos ya disponibles en los dos consumidores. Para un puntero directo a
+record dentro de la firma, intenta usar un tipo C importado sin conflicto,
+verifica su propietario o reconciliación y rechaza identidades USR opuestas.
+La ruta es específica de callbacks almacenados; los parámetros o resultados
+record por valor y las formas sin información de identidad siguen rechazados.
+El fixture se incorporó a la matriz O0–O3. El cambio está preparado y aún no
+se ha construido ni validado; no cierra T08-017.

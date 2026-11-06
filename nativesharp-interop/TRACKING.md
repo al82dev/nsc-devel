@@ -779,6 +779,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     el arreglo y la matriz de records empaquetados, con comprobación de IR O0
     y rechazo de direcciones subalineadas. T08-016 sigue abierto.
 - [ ] T08-017. Definir la representación de punteros a función C.
+  - Preparada la proyección contextual de callback almacenado con puntero a record C, tras reproducir el rechazo en campo y global. La matriz O0–O3 está preparada y pendiente de validación. [Detalle](registro-commits/callback-c-puntero-record.md).
   - La lectura y escritura de callback volatile en global y campo pasaron
     O0–O3; el IR conserva acquire/release para alineación 8 y volatile
     ordinario para `pack(1)`, como Clang. [Detalle](registro-commits/ir-callback-volatile.md).

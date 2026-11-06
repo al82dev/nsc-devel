@@ -255,7 +255,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
          !scalarArray && !recordArray && !enumArray && !representablePointerArray))) return std::nullopt;
     auto mapped = mapCppScalarType(field.type);
     if (!mapped && !record.isCxx)
-        mapped = projectCppStoredFunctionPointer(field.type);
+        mapped = projectCppStoredFunctionPointer(field.type, projectOrdinal, moduleName, lookup);
     if (!mapped && !record.isCxx && field.type.kind == CppTypeKind::Array)
         mapped = projectCArrayField(field.type, projectOrdinal, moduleName, lookup);
     if (!mapped && !record.isCxx)

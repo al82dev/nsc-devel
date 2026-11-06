@@ -30,7 +30,7 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
     std::string_view moduleName, const frontend::ProjectNameLookup* lookup, bool cLanguage)
 {
     if (cLanguage)
-        if (auto callback = projectCppStoredFunctionPointer(type)) return callback;
+        if (auto callback = projectCppStoredFunctionPointer(type, projectOrdinal, moduleName, lookup)) return callback;
     if (type.kind == CppTypeKind::Array)
     {
         const CppType* base = &type;
