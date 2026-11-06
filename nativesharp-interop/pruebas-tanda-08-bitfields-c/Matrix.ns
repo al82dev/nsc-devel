@@ -1,0 +1,17 @@
+int ReadSmall(VolatileMatrix* value) { return (int)value->small; }
+int ReadMedium(VolatileMatrix* value) { return (int)value->medium; }
+int ReadWord(VolatileMatrix* value) { return (int)value->word; }
+int ReadWide(VolatileMatrix* value) { return (int)value->wide; }
+void IncrementSmall(VolatileMatrix* value) { value->small++; }
+void IncrementMedium(VolatileMatrix* value) { value->medium++; }
+void IncrementWord(VolatileMatrix* value) { value->word++; }
+void IncrementWide(VolatileMatrix* value) { value->wide++; }
+int Main()
+{
+    var value = matrix_get();
+    matrix_init(value);
+    if (ReadSmall(value) != 5 || ReadMedium(value) != -4 || ReadWord(value) != 21 || ReadWide(value) != 300) return 1;
+    IncrementSmall(value); IncrementMedium(value); IncrementWord(value); IncrementWide(value);
+    if (matrix_check(value) != 1) return 2;
+    return 0;
+}
