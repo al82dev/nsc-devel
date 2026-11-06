@@ -21,3 +21,7 @@ slot, con verificación desde C, pasaron O0–O3. Los controles negativos
 rechazaron la escritura al dato, la conversión a `int*` y la dirección del slot;
 el último ahora emite un diagnóstico específico. El fixture de layout C pasó
 O0–O3. No se acreditan aún matrices, otros tipos ni todas las rutas de escape.
+
+Se preparan dos controles adicionales de pérdida de const: un puntero local
+inferido desde el elemento y el paso del arreglo a una función C que espera
+`int**`. Los diagnósticos deben inspeccionarse; aún no se han ejecutado.

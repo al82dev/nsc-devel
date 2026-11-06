@@ -23,6 +23,10 @@ tipo, conservar el calificador al indexar y no permitir obtener la dirección
 del slot como puntero sin calificadores. Mantener otros arreglos calificados
 rechazados; validar lectura, reasignación, escritura, escape y dirección con
 la batería agrupada y pruebas existentes de arreglos.
+Ampliar los controles del mismo fixture con un puntero inferido desde un slot
+y con el arreglo utilizado como argumento de una función que acepta `int**`.
+Ambas rutas deben rechazar la pérdida de const; no modificar producción hasta
+reproducir una falla específica.
 El caso positivo y los rechazos pasaron, pero pedir `&c_slots[0]` emitió el
 mensaje genérico de campo de bits, aunque el elemento no lo es. Permitir una
 comprobación localizada en `IndexAndRangeExpressions.cpp` y ajustar el script
