@@ -429,6 +429,19 @@ int ProjectOopMirModel::MirNodeMachine::lowerRawElementAddress(
     }
     result->immediate = layout->first;
     result->alignment = layout->second;
+    if (node->volatileAccess && node->cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
+        node->elementTypeKey.starts_with("type:") &&
+        (layout->first == 1 || layout->first == 2 || layout->first == 4 || layout->first == 8) &&
+        layout->second >= layout->first)
+    {
+        const auto ordinal = model_.nameLookup_->typeOrdinalForIdentity(
+            std::string_view(node->elementTypeKey).substr(5));
+        const auto* imported = ordinal ? model_.nameLookup_->cppImportedType(*ordinal) : nullptr;
+        if (imported && imported->enumBase && imported->objectLayout &&
+            imported->objectLayout->sizeBytes == layout->first &&
+            imported->objectLayout->alignmentBytes == layout->second)
+            result->cppAtomicAlignmentBytes = layout->first;
+    }
     // NS304-T13-F06: the flexible array's `Length` bounds-check data, resolved by the HIR
     // from [TrailingStorage(...)]; the raw element address emits `index < Length`.
     result->hasTrailingLengthBounds = node->hasTrailingLengthBounds;
