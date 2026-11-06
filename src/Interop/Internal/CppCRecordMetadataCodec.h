@@ -6,6 +6,7 @@
 #include <cstdint>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace nativesharp::interop::metadata_detail
@@ -22,4 +23,10 @@ bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
 bool decodeCTypeCatalog(std::span<const std::uint8_t> bytes,
                         std::vector<CppCRecordSnapshot>& records,
                         std::vector<CppCEnumSnapshot>& enums, std::string& error);
+// Reconstructs declarations for a single producer module; fields and constants
+// are installed separately. Output remains unchanged on failure.
+bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
+    std::span<const CppCEnumSnapshot> enums, std::size_t projectOrdinal,
+    std::string_view moduleName, std::string_view targetTriple, std::string_view sourcePath,
+    std::vector<frontend::CppImportedTypeDeclaration>& output, std::string& error);
 }

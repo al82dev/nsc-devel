@@ -1,6 +1,7 @@
 #include "CppCRecordMetadataCodec.h"
 #include "ByteReader.h"
 #include "ByteWriter.h"
+#include "nativesharp/Frontend/CppAliasBuiltinType.h"
 
 #include <algorithm>
 #include <limits>
@@ -401,5 +402,67 @@ bool decodeCTypeCatalog(std::span<const std::uint8_t> bytes,
         !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
     { if (error.empty()) error = "noncanonical C type catalogue"; return false; }
     records = std::move(decodedRecords); enums = std::move(decodedEnums); error.clear(); return true;
+}
+
+bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
+    std::span<const CppCEnumSnapshot> enums, std::size_t projectOrdinal,
+    std::string_view moduleName, std::string_view targetTriple, std::string_view sourcePath,
+    std::vector<frontend::CppImportedTypeDeclaration>& output, std::string& error)
+{
+    if (moduleName.empty() || targetTriple != "x86_64-pc-windows-msvc" || sourcePath.empty())
+    { error = "C type reconstruction requires module, target and source"; return false; }
+    std::vector<std::uint8_t> verified;
+    if (!encodeCTypeCatalog(records, enums, verified, error)) return false;
+    std::vector<frontend::CppImportedTypeDeclaration> result;
+    result.reserve(records.size() + enums.size());
+    for (const auto& record : records)
+    {
+        if (record.moduleName != moduleName || record.targetTriple != targetTriple)
+        { error = "C record module or target does not match consumer"; return false; }
+        std::vector<compilation::TypeNameSegment> containers;
+        for (const auto& name : record.containingRecords) containers.push_back({name, 0});
+        compilation::TypeIdentity identity(record.moduleName, record.namespaceSegments, std::move(containers), record.name);
+        frontend::CppImportedTypeDeclaration type{std::move(identity), frontend::NamedTypeDeclarationKind::Struct,
+            frontend::NamedTypeAccessibility::Public, projectOrdinal, std::string(sourcePath)};
+        type.origin = record.kind == CppRecordKind::Union ? frontend::CppImportedTypeOrigin::CUnion :
+                                                          frontend::CppImportedTypeOrigin::CStruct;
+        type.targetTriple = record.targetTriple;
+        type.clangUsr = record.clangUsr;
+        type.isIncomplete = !record.complete;
+        if (record.complete)
+        {
+            const auto alignment = *record.alignmentBits / 8;
+            if ((alignment & (alignment - 1)) != 0)
+            { error = "C record alignment is not a power of two"; return false; }
+            const frontend::CppImportedObjectLayout layout{*record.sizeBits / 8, alignment};
+            if (record.valueLayoutUsable) type.objectLayout = layout;
+            else type.memberAccessLayout = layout;
+        }
+        result.push_back(std::move(type));
+    }
+    for (const auto& item : enums)
+    {
+        const auto& enumeration = item.declaration;
+        compilation::TypeIdentity identity(std::string(moduleName), {}, {}, enumeration.name);
+        const auto base = enumeration.underlyingType ? frontend::cppAliasBuiltinType(*enumeration.underlyingType) : std::nullopt;
+        if (!identity.isValid() || identity.key() != item.identityKey || item.targetTriple != targetTriple ||
+            !base || base->pointerDepth != 0 || !enumeration.underlyingType->sizeBits ||
+            *enumeration.underlyingType->sizeBits != *enumeration.sizeBits ||
+            (enumeration.underlyingType->kind != CppTypeKind::SignedInteger &&
+             enumeration.underlyingType->kind != CppTypeKind::UnsignedInteger))
+        { error = "C enum identity, target or underlying type is invalid"; return false; }
+        const auto alignment = *enumeration.alignmentBits / 8;
+        if ((alignment & (alignment - 1)) != 0)
+        { error = "C enum alignment is not a power of two"; return false; }
+        frontend::CppImportedTypeDeclaration type{std::move(identity), frontend::NamedTypeDeclarationKind::Enum,
+            frontend::NamedTypeAccessibility::Public, projectOrdinal, std::string(sourcePath)};
+        type.origin = frontend::CppImportedTypeOrigin::CEnum;
+        type.targetTriple = item.targetTriple;
+        type.clangUsr = enumeration.clangUsr;
+        type.objectLayout = frontend::CppImportedObjectLayout{*enumeration.sizeBits / 8, alignment};
+        type.enumBase = frontend::CppImportedEnumBase{base->token, std::string(base->name)};
+        result.push_back(std::move(type));
+    }
+    output = std::move(result); error.clear(); return true;
 }
 }
