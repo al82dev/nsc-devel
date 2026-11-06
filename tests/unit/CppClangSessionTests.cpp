@@ -3092,6 +3092,10 @@ int main(int argc, char** argv)
                     complete->fields.front().offsetBits = *complete->sizeBits + 1;
                     ok &= expect(!metadata_detail::encodeCRecordCatalog(invalid, preserved, codecError),
                                  "C record codec rejects an out-of-bounds field");
+                    complete->fields.front().offsetBits = 0;
+                    complete->fields.front().type.sizeBits = *complete->sizeBits + 8;
+                    ok &= expect(!metadata_detail::encodeCRecordCatalog(invalid, preserved, codecError),
+                                 "C record codec rejects a field whose size exceeds its record");
                 }
                 else ok &= expect(false, "C record codec test includes a complete record with fields");
             }
