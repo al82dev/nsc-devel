@@ -615,6 +615,7 @@ bool provideCppSemanticEnumConstants(
                 !seen.emplace(owner, demand.lookupName).second) continue;
             std::optional<CppSemanticEnumConstant> selected;
             std::optional<std::string> knownUsr;
+            std::optional<std::string> targetTriple;
             std::string failure;
             bool found = false;
             for (const auto& entry : entries)
@@ -624,6 +625,9 @@ bool provideCppSemanticEnumConstants(
                 {
                     if (entry.declaration.enumerators[i].name != demand.lookupName) continue;
                     found = true;
+                    if (targetTriple && *targetTriple != entry.targetTriple)
+                        failure = "conflicting C enumerator target triples";
+                    else targetTriple = entry.targetTriple;
                     auto projected = projectCppEnumConstant(entry, i);
                     if (const auto* reason = std::get_if<CppSemanticEnumConstantFailure>(&projected))
                     { failure = reason->message; continue; }
