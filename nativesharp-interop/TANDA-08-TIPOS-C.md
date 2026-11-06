@@ -1264,3 +1264,14 @@ conflicto de símbolo para un USR común, separación entre proyectos, alias
 compatibles con USR distintos y un conflicto transitivo en orden inverso.
 La compilación emitió advertencias de inicialización de `deferredImportError`.
 La suite no valida persistencia ni sustituye la batería completa de la tanda.
+
+## Globales volatile flotantes preparados
+
+Con Clang 23.1.0 y `x86_64-pc-windows-msvc`, ejemplos independientes de
+`volatile float` y `volatile double` emitieron carga atómica volatile acquire
+y escritura atómica volatile release, respectivamente alineadas a 4 y 8 bytes.
+`ae43f0699` extiende la ruta ya utilizada por NSC para enteros y punteros a
+esos tipos cuando modo MS, tamaño y alineación son conocidos y suficientes.
+`94cf8a6aa` prepara la comparación de IR entre C y NativeSharp y la ejecución
+mixta dentro del fixture record C. Esa prueba aún no se ha ejecutado; no se
+declaran completos T08-007, T08-015 ni otras formas de volatile.

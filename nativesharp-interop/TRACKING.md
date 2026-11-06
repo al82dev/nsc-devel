@@ -253,6 +253,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - En `d14fab758` pasó el caso de almacenamiento de puntero global volatile
     de 64 bits: C y NativeSharp emiten acquire/release y el objeto apuntado
     conserva su calificación. [Evidencia](TANDA-08-TIPOS-C.md#validación-del-puntero-global-volatile).
+  - Preparado en `ae43f0699` y `94cf8a6aa`: globales C `volatile float` y
+    `volatile double` con orden MS y prueba mixta de IR y ejecución. Clang
+    confirmó el orden en ejemplos aislados; la prueba NSC sigue pendiente.
+    [Detalle](TANDA-08-TIPOS-C.md#globales-volatile-flotantes-preparados).
 - [ ] T08-016. Mapear arreglos de tamaño conocido.
 - [ ] T08-017. Definir la representación de punteros a función C.
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.
