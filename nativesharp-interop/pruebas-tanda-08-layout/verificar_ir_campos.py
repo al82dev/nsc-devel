@@ -77,3 +77,13 @@ for address in ("field\\.addr", "raw\\.element\\.addr"):
     if not re.search(r"load i32, ptr %" + address + r"\d*, align 1", packed_enum):
         print("Falta lectura alineada a 1 del enum empaquetado")
         sys.exit(1)
+
+volatile_aggregate = ir.split("call ptr @layout_packed_volatile_aggregates()", 1)[-1].split(
+    "call i32 @layout_packed_volatile_aggregates_sum()", 1)[0]
+for address in ("field\\.addr", "raw\\.element\\.addr"):
+    if not re.search(r"store volatile i32 [^\n]*ptr %" + address + r"\d*, align 1", volatile_aggregate):
+        print("Falta escritura volatile alineada a 1 del agregado")
+        sys.exit(1)
+    if not re.search(r"load volatile i32, ptr %" + address + r"\d*, align 1", volatile_aggregate):
+        print("Falta lectura volatile alineada a 1 del agregado")
+        sys.exit(1)
