@@ -28,6 +28,20 @@ Extender el fixture de metadata opaca con un consumidor que importa el mismo
 header que el productor y cruza punteros de struct y union entre funciones
 C y métodos publicados. Comprobar O0–O3; no modificar producción antes de
 reproducir y delimitar una falla.
+El consumidor con el mismo header se detuvo por conflicto de alias `Opaque`.
+La captura `ForwardOnly` descarta procedencia, el codec no admite procedencia
+en incompletos y la comparación los considera insuficientes. Permitir cambios
+localizados en `src/Interop/Cpp/CppSemanticRecord.cpp`,
+`src/Interop/Internal/CppCRecordMetadataCodec.cpp`,
+`src/Interop/LibraryMetadataConstruction.cpp`,
+`src/Interop/LibraryMetadataVerification.cpp`,
+`include/nativesharp/Interop/LibraryMetadata.h`, la suite de sesión, el fixture
+opaco y sus registros. Conservar lectura y bytes de catálogos antiguos;
+versionar la extensión y promover metadata únicamente cuando se use. Solo
+conciliar declaraciones incompletas con mismo tipo, USR, triple y procedencia
+directa verificada por archivo, huella y desplazamiento. Rechazar información
+ausente o discrepante; probar también headers modificados o distintos. No
+desplegar ni cambiar NSLink o LLVM.
 La prueba positiva reproduce el rechazo del global `Opaque*` en O0. Las
 firmas de funciones aceptan el puntero, pero `mapGlobalType` exige layout al
 recorrer su objeto apuntado. Permitir `src/Interop/Cpp/CppSemanticInventory.cpp`

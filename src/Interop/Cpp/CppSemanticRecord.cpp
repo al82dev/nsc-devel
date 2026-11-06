@@ -820,7 +820,17 @@ CppCRecordSnapshotResult captureCppCRecordSnapshot(
     snapshot.clangUsr = knownUsr;
     snapshot.microsoftVolatileSemantics = volatileModeAgrees ? volatileMode : std::nullopt;
     snapshot.kind = *kind;
-    if (group.status == CppRecordGroupStatus::ForwardOnly) return snapshot;
+    if (group.status == CppRecordGroupStatus::ForwardOnly)
+    {
+        snapshot.sourceProvenance = inventory[group.inventoryIndices.front()].declaration.sourceProvenance;
+        for (const auto index : group.inventoryIndices)
+            if (inventory[index].declaration.sourceProvenance != snapshot.sourceProvenance)
+            {
+                snapshot.sourceProvenance.reset();
+                break;
+            }
+        return snapshot;
+    }
     const auto selected = selectCppRecordMemberDefinition(inventory, group);
     if (!selected) return fail("C record definition or member identity is not reconciled");
     const auto& record = inventory[*selected].declaration;

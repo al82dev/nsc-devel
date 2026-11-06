@@ -3178,6 +3178,7 @@ int main(int argc, char** argv)
                 return complete ? snapshot->sourceProvenance == record->sourceProvenance &&
                     snapshot->sizeBits == record->sizeBits &&
                     snapshot->alignmentBits == record->alignmentBits && snapshot->fields.size() == record->fields.size() :
+                    snapshot->sourceProvenance == record->sourceProvenance &&
                     !snapshot->sizeBits && !snapshot->alignmentBits && snapshot->fields.empty();
             };
             ok &= expect(checkSnapshot("Pair", CppRecordKind::Struct, true) &&
