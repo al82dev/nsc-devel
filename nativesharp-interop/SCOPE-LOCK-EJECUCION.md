@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Control de alias volatile con indirección adicional
+
+Preparar un caso que exija diagnóstico para el uso del alias seguido de otro
+puntero mientras ese nivel no conserve su calificador. Archivos: fixture de
+records C, script y documentación. Es una protección provisional; los niveles
+anidados siguen dentro del objetivo y la prueba espera validación agrupada.
+
 ## Prueba de estado global con alias volatile
 
 Preparar un estado global NS tipado con el alias C: asignar el puntero,

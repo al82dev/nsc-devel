@@ -305,5 +305,11 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project
 if not errorlevel 1 exit /b 1
 findstr /c:"cannot take the address of this global until nested pointer qualifiers are supported" "%DEST%\volatile-alias-global-address.log" >nul
 if errorlevel 1 exit /b 1
+copy /y "%~dp0VolatileAliasNested.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-alias-nested.exe" > "%DEST%\volatile-alias-nested.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"volatile pointer alias cannot yet be represented safely" "%DEST%\volatile-alias-nested.log" >nul
+if errorlevel 1 exit /b 1
 echo Record C por puntero: resultado esperado cero.
 exit /b 0

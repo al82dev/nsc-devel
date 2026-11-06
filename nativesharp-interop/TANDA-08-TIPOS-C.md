@@ -851,6 +851,12 @@ El fixture prepara un global NativeSharp del tipo importado; comprueba una
 escritura observable desde C y en IR, y el rechazo de tomar su dirección mientras
 la representación anidada no exista. Son casos no ejecutados aún.
 
+## Control de alias volatile con indirección adicional
+
+Se preparó un caso que exige rechazo explícito al añadir un puntero al alias,
+para evitar perder volatile antes de implementar la representación anidada.
+Este control no cierra ese soporte y aún no ha sido ejecutado.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.
