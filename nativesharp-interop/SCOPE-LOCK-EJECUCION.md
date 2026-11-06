@@ -56,6 +56,15 @@ permitir la segunda solo en metadata 1.43 o posterior. Presupuesto:
 tracking y registros. No incrementar aún la versión escrita ni conectar el
 productor. No asociar ni convertir identidades a partir de la envoltura.
 
+## Activación versionada de procedencia en metadata C
+
+Elevar la versión menor de metadata a 1.43 y emitir la envoltura de procedencia
+solo al generar metadata 1.43; conservar lectura y escritura de 1.42. Presupuesto:
+`include/nativesharp/Interop/LibraryMetadata.h`, `src/Interop/Cpp/CppSemanticRecord.cpp`,
+`tests/unit/CppClangSessionTests.cpp`, fixtures existentes de metadata C, tracking
+y registros. Probar ambos formatos y el productor/consumidor agrupados. La
+activación no prueba que declaraciones de módulos distintos sean equivalentes.
+
 ## Identidad de funciones C importadas
 
 T08-002/T08-003: conservar USR opcional en la proyección de función y
