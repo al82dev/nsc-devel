@@ -4626,7 +4626,8 @@ void ProjectMethodBodyModel::analyzeVariable(
         const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
         const bool cValue = imported && imported->objectLayout && !imported->isIncomplete &&
             imported->deferredImportError.empty() &&
-            (imported->origin == CppImportedTypeOrigin::CStruct || imported->origin == CppImportedTypeOrigin::CUnion);
+            (imported->origin == CppImportedTypeOrigin::CStruct || imported->origin == CppImportedTypeOrigin::CUnion ||
+             (imported->origin == CppImportedTypeOrigin::CEnum && imported->enumBase));
         if (imported && !cValue && !cppLocalLifetimeAnalysisForTests_)
         {
             diagnostics.report(

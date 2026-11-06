@@ -250,7 +250,8 @@ bool OopLlvmImplementation::lowerLocalDeclarationStatement(
                     const bool cValue = imported && imported->objectLayout && !imported->isIncomplete &&
                         imported->deferredImportError.empty() &&
                         (imported->origin == frontend::CppImportedTypeOrigin::CStruct ||
-                         imported->origin == frontend::CppImportedTypeOrigin::CUnion);
+                         imported->origin == frontend::CppImportedTypeOrigin::CUnion ||
+                         (imported->origin == frontend::CppImportedTypeOrigin::CEnum && imported->enumBase));
                     if (!node->referenceLocal && imported && !cValue)
                     {
                         if (initializer->kind != frontend::ProjectOopMirNodeKind::ValueConstruct ||
