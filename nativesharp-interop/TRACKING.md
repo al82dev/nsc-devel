@@ -485,6 +485,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     de cero argumentos en O0–O3, con rechazo de argumento extra. No cubre
     todas las posiciones o combinaciones. [Evidencia](registro-commits/prueba-prototipos-c.md).
 - [ ] T08-009. Mapear enumeraciones y sus valores representables.
+  - Aritmética, desplazamiento y operadores bitwise/unarios pasaron muestras
+    signed, unsigned y enum de 8 bits O0–O3; AND/OR de enum NS se preservó.
+    La validación de la tanda y otras combinaciones siguen pendientes.
+    [Evidencia](registro-commits/proyeccion-aritmetica-enum-c.md).
   - Valores de enum C se convirtieron a int, long y otro enum C en O0–O3;
     Clang verificó las bases signed/unsigned y el IR conserva sus extensiones.
     Enum NS mantiene su rechazo. [Evidencia](registro-commits/conversion-enum-c-entero.md).
