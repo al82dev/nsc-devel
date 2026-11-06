@@ -54,7 +54,7 @@ struct CppType
     std::shared_ptr<const CppType> element;
     // Present for a captured function type when the recursion limit permits it.
     std::shared_ptr<const CppFunctionType> function;
-    // Set only when Clang confirms IEEE binary64 semantics for this floating type.
+    // Set for long double only when Clang confirms IEEE binary64 semantics.
     bool ieeeBinary64 = false;
 };
 

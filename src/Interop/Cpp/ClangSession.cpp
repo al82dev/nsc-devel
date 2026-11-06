@@ -98,7 +98,8 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
     else if (raw->isRealFloatingType())
     {
         result.kind = CppTypeKind::Floating;
-        result.ieeeBinary64 = &context.getFloatTypeSemantics(canonical) == &llvm::APFloat::IEEEdouble();
+        result.ieeeBinary64 = result.unqualifiedCanonicalSpelling == "long double" &&
+            &context.getFloatTypeSemantics(canonical) == &llvm::APFloat::IEEEdouble();
     }
     else if (raw->isPointerType()) { result.kind = CppTypeKind::Pointer; element = raw->getPointeeType(); }
     else if (raw->isLValueReferenceType()) { result.kind = CppTypeKind::LValueReference; element = raw->getPointeeType(); }
