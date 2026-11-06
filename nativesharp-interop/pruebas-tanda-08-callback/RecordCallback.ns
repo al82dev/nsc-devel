@@ -11,5 +11,12 @@ int Main()
     if (global(&item) != 42) return 3;
     if (holder->run(&item) != 42) return 4;
     if (record_callback_global(&item) != 42) return 5;
+    RecordCallback replacement = (CallbackPayload* value) => value->value + 5;
+    item.value = 37;
+    if (apply_record_callback(replacement, &item) != 42) return 6;
+    holder->run = replacement;
+    record_callback_global = replacement;
+    if (run_record_callback_holder(holder, &item) != 42) return 7;
+    if (run_record_callback_global(&item) != 42) return 8;
     return 0;
 }

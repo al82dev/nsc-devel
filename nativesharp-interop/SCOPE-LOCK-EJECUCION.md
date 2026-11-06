@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Callback NativeSharp con puntero a record invocado por C
+
+T08-017: comprobar un callback sin capturas escrito en NativeSharp con firma
+`int(CallbackPayload*)`, pasado a una función C y asignado a un campo y a un
+global C para que funciones C lo invoquen. Ampliar solo el fixture de callbacks
+existente, tracking y bitácora; usar salidas en A:. No cambiar producción sin
+reproducir y delimitar un fallo. No atribuir soporte a capturas ni lifetime
+posterior al proceso con este caso.
+
 ## Callback precompilado con header temporalmente ausente
 
 T08-017: en el directorio fijo de prueba

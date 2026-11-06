@@ -37,3 +37,6 @@ typedef struct RecordCallbackHolder { RecordCallback run; } RecordCallbackHolder
 RecordCallback get_record_callback(void);
 RecordCallbackHolder* get_record_callback_holder(void);
 extern RecordCallback record_callback_global;
+int apply_record_callback(RecordCallback callback, CallbackPayload* value);
+int run_record_callback_holder(RecordCallbackHolder* holder, CallbackPayload* value);
+int run_record_callback_global(CallbackPayload* value);

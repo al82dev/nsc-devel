@@ -31,3 +31,6 @@ static RecordCallbackHolder record_callback_holder = { add_payload };
 RecordCallback record_callback_global = add_payload;
 RecordCallback get_record_callback(void) { return add_payload; }
 RecordCallbackHolder* get_record_callback_holder(void) { return &record_callback_holder; }
+int apply_record_callback(RecordCallback callback, CallbackPayload* value) { return callback(value); }
+int run_record_callback_holder(RecordCallbackHolder* holder, CallbackPayload* value) { return holder->run(value); }
+int run_record_callback_global(CallbackPayload* value) { return record_callback_global(value); }
