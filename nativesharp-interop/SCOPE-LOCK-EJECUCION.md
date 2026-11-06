@@ -108,6 +108,11 @@ O0–O3 en directorios separados. Mantener los artefactos en A: y NSLink protegi
 En el mismo fixture agregar un retorno C de record por valor, publicarlo en la
 API NativeSharp y verificar sus campos en el consumidor; no inferir por ello
 compatibilidad por valor de records arbitrarios.
+Implementar proyección por valor para funciones de enlace C cuando el record C
+tiene definición única, layout completo instalado y tamaño/alineación coincidentes
+con Clang. Mantener rechazo de records C++ y definiciones múltiples no probadas.
+Presupuesto: CppSemanticFunction.cpp, controles de sesión, fixture de metadata C
+y registros. Comprobar después ABI directo e indirecto con Clang en conjunto.
 Transportar los bytes verificados del catálogo desde la superficie de metadata
 hasta PrecompiledSyntaxModule; presupuesto adicional: PrecompiledSyntaxModule.h,
 PrecompiledProjectPreparation.cpp y controles existentes. No habilitar 1.42
