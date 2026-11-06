@@ -1,5 +1,22 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Orden de arreglos globales C volatile escalares
+
+Clang confirmó acquire/release para arreglos globales de enteros de 8, 16,
+32 y 64 bits y flotantes de 32 y 64 bits en Windows x64. Extender a esos
+tipos la ruta existente de arreglo global C cuando origen, modo MS, ancho y
+alineación están acreditados; comprobar cada stride. `_Bool` permanece en
+investigación hasta verificar su representación LLVM de almacenamiento.
+No modificar campos, punteros arbitrarios, C++ ni otros destinos.
+
+Presupuesto: `src/Frontend/HIR/ExpressionStatementMachine/HirNameExpressionLowering.cpp`,
+`src/LLVM/Lowering/PackedArrayAlignment.h`,
+`src/LLVM/Lowering/OopLlvmArraysAndStores.cpp`,
+`src/LLVM/Lowering/OopLlvmExpressionMachine.cpp`,
+`tests/unit/CppClangSessionTests.cpp`, el fixture
+`pruebas-tanda-08-record-c`, tracking y registros. Agregar controles de IR y
+ejecución y validarlos junto con los cambios acumulados de la tanda.
+
 ## Referencia Clang para arreglos globales C volatile escalares
 
 T08-006/T08-007/T08-015/T08-016: obtener IR de lectura y escritura de
