@@ -25,6 +25,7 @@ typedef struct ConstAggregates { const Pair pairs[2]; const enum PackedMood mood
 typedef struct AlignedVolatileAggregates { volatile Pair pairs[2]; volatile enum PackedMood moods[2]; } AlignedVolatileAggregates;
 AlignedVolatileAggregates* layout_aligned_volatile_aggregates(void);
 int layout_aligned_volatile_update(void);
+int layout_aligned_volatile_pointer(AlignedVolatileAggregates* value);
 ConstAggregates* layout_const_aggregates(void);
 PackedConstAggregates* layout_packed_const_aggregates(void);
 PackedEnum* layout_packed_enum(void);
