@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Análisis de campos de bits C volatile
+
+Preparar un fixture independiente en `pruebas-tanda-08-bitfields-c` para
+contrastar acceso de C y NativeSharp a campos de bits volatile en structs
+normales y empaquetados. Guardar IR de Clang en `A:/nsc-interop-build` y
+documentar anchos, alineación y órdenes observados. No modificar producción
+sin identificar el contrato efectivo y registrar su alcance.
+
 ## Campos de bits en unions C
 
 Agregar un fixture independiente bajo `pruebas-tanda-08-bitfields-c` que
