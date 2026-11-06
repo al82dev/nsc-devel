@@ -507,6 +507,10 @@ CppRecordStructuralComparisonResult compareCppRecordDefinitions(
 }
 
 namespace {
+bool compatibleKnownUsr(const std::optional<std::string>& a, const std::optional<std::string>& b)
+{
+    return !a || a->empty() || !b || b->empty() || a == b;
+}
 bool sameMemberType(const CppType& a, const CppType& b, unsigned depth = 0)
 {
     if (depth > 64 || a.kind != b.kind || a.canonicalSpelling != b.canonicalSpelling ||
@@ -521,12 +525,14 @@ bool sameMemberType(const CppType& a, const CppType& b, unsigned depth = 0)
         static_cast<bool>(a.function) != static_cast<bool>(b.function)) return false;
     if (a.enumIdentity && (a.enumIdentity->name != b.enumIdentity->name ||
         a.enumIdentity->qualifiedName != b.enumIdentity->qualifiedName ||
-        a.enumIdentity->anonymousContext != b.enumIdentity->anonymousContext)) return false;
+        a.enumIdentity->anonymousContext != b.enumIdentity->anonymousContext ||
+        !compatibleKnownUsr(a.enumIdentity->clangUsr, b.enumIdentity->clangUsr))) return false;
     if (a.recordIdentity && (a.recordIdentity->name != b.recordIdentity->name ||
         a.recordIdentity->namespaceSegments != b.recordIdentity->namespaceSegments ||
         a.recordIdentity->containingRecords != b.recordIdentity->containingRecords ||
         a.recordIdentity->anonymousContext != b.recordIdentity->anonymousContext ||
-        a.recordIdentity->specializationContext != b.recordIdentity->specializationContext)) return false;
+        a.recordIdentity->specializationContext != b.recordIdentity->specializationContext ||
+        !compatibleKnownUsr(a.recordIdentity->clangUsr, b.recordIdentity->clangUsr))) return false;
     if (a.element && !sameMemberType(*a.element, *b.element, depth + 1)) return false;
     if (a.enumUnderlying && !sameMemberType(*a.enumUnderlying, *b.enumUnderlying, depth + 1)) return false;
     if (a.function)
@@ -585,6 +591,7 @@ std::optional<std::size_t> selectCppRecordMemberDefinition(
         group.status != CppRecordGroupStatus::MultipleDefinitionsPointerCompatible) return std::nullopt;
     std::optional<std::size_t> first;
     std::vector<std::optional<std::string>> knownFieldUsrs;
+    std::vector<std::size_t> previousDefinitions;
     for (const auto i : group.inventoryIndices)
     {
         if (i >= inventory.size()) return std::nullopt;
@@ -599,10 +606,13 @@ std::optional<std::size_t> selectCppRecordMemberDefinition(
             if (knownFieldUsrs[field] && knownFieldUsrs[field] != usr) return std::nullopt;
             knownFieldUsrs[field] = usr;
         }
+        for (const auto previous : previousDefinitions)
+            if (!sameCapturedMembers(inventory[previous].declaration, item)) return std::nullopt;
+        previousDefinitions.push_back(i);
         if (!first) { first = i; continue; }
         const auto& prior = inventory[*first].declaration;
         if (!prior.location || !item.location || prior.location->line != item.location->line ||
-            prior.location->column != item.location->column || !sameCapturedMembers(prior, item)) return std::nullopt;
+            prior.location->column != item.location->column) return std::nullopt;
         std::error_code ec;
         if (!std::filesystem::equivalent(prior.location->file, item.location->file, ec) || ec) return std::nullopt;
     }
