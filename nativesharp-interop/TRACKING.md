@@ -433,6 +433,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - `fe2fddfca` añade argumentos y resultados `_Bool` en llamada C; pendiente
     de ejecución, no demuestra aún su ABI.
 - [ ] T08-007. Mapear los tipos de punto flotante según el objetivo.
+  - Clang confirmó `long double` IEEE binary64 y ABI `double` en el fixture
+    Windows x64; NSC rechazó el typedef. Se preparó captura explícita y mapeo
+    condicionado, con construcción en curso. La metadata aún no persiste el
+    dato. [Evidencia](registro-commits/prueba-long-double-c.md).
 - [ ] T08-008. Mapear el tipo `void` en parámetros y resultados donde corresponda.
 - [ ] T08-009. Mapear enumeraciones y sus valores representables.
   - Pasó `nsc.stage51.enum-oop-support`, incluido el rechazo existente de
