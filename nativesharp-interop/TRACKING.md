@@ -287,6 +287,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     1 y rechazo de dirección. La batería completa y el resto de formas siguen
     pendientes. [Detalle](TANDA-08-TIPOS-C.md#validación-dirigida-de-campo-c-empaquetado).
 
+  - Preparado en `988b339e4` y `86eee7601`: campo puntero C empaquetado,
+    protección de la dirección `T**` y prueba mixta; todavía sin ejecutar.
+
 ## 09. Llamadas, enlace y datos C
 
 - [ ] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas.

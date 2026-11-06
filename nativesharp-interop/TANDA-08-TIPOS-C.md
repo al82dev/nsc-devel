@@ -1320,6 +1320,14 @@ los valores en ejecución y rechaza tomar la dirección. No se ha ejecutado.
 Los campos empaquetados C++ y los campos C de punteros, agregados y bitfields
 siguen pendientes, así como otras formas de acceso; no se cierra la tanda.
 
+## Campo puntero C empaquetado preparado
+
+`988b339e4` extiende la proyección reducida al almacenamiento de punteros C y
+protege la dirección del campo. `86eee7601` prepara un fixture que verifica
+lectura y escritura del puntero con alineación 1, acceso al objeto apuntado y
+rechazo de su dirección como `int**`. Aún no se ha ejecutado; punteros a
+volatile y otras formas empaquetadas continúan pendientes.
+
 ## Validación dirigida de campo C empaquetado
 
 Sobre `291bc4cdb`, la construcción incremental de NSC y del objetivo
