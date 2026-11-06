@@ -1,0 +1,10 @@
+int Main()
+{
+    CRecord fromLibrary = Published.Bridge.GetValue();
+    CRecord fromHeader = get_c_record_value();
+    if (fromLibrary.value != 17 || fromHeader.value != 17) return 1;
+    CBig bigFromLibrary = Published.Bridge.GetBig();
+    CBig bigFromHeader = echo_c_big(get_c_big());
+    if (bigFromLibrary.second != 27 || bigFromHeader.second != 27) return 2;
+    return 0;
+}

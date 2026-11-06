@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CSharedValueConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="SharedValue.ns" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" />
+    <LibraryReference Include="CPublishedProducer.lib" />
+  </ItemGroup>
+</Project>
