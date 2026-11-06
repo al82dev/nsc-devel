@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Selección de campos con USR contradictorio
+
+T08-002: al seleccionar definiciones repetidas de un record, rechazar campos
+correspondientes cuyos USR Clang estén presentes y discrepen. Mantener las
+comprobaciones existentes y no inventar identidad cuando falte un USR.
+Presupuesto: CppSemanticRecord.cpp, CppClangSessionTests.cpp y registros
+Markdown. LLVM externo y NSLink protegidos; validación agrupada de la tanda.
+
 ## Identidad Clang de campo C importado
 
 T08-002: conservar el USR opcional capturado por Clang al proyectar un campo
