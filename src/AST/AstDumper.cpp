@@ -194,6 +194,7 @@ void AstDumper::dumpType(const TypeSyntax* typeSyntax, std::ostream& output) con
         dumpTypeArguments(typeSyntax, output);
     }
     if (typeSyntax->isPointeeConst()) output << " const";
+    if (typeSyntax->isPointeeVolatile()) output << " volatile";
     dumpTypeModifiers(typeSyntax, output);
 }
 

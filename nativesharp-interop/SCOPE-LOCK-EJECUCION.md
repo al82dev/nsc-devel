@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Identidad y volcado del apuntado volatile en sintaxis
+
+Conservar el calificador en el patrón genérico y hacerlo visible en el volcado
+de TypeSyntax, sin modificar la identidad ABI de punteros. Archivos:
+GenericPatterns.cpp, AstDumper.cpp y documentación. La proyección de typedefs
+sigue deshabilitada y la verificación se agrupa con la tanda.
+
 ## Pruebas de clonación y persistencia del apuntado volatile
 
 Ampliar los casos existentes de clonación de TypeSyntax y serialización del

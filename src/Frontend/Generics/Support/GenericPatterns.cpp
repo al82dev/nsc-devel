@@ -113,6 +113,7 @@ static std::string genericTypePattern(
         }
     }
     if (syntax->isPointeeConst()) result += " const-pointee";
+    if (syntax->isPointeeVolatile()) result += " volatile-pointee";
     if (syntax->isPackExpansion()) result += "...";
     for (const ast::TypeModifierSyntax& modifier : syntax->modifiers())
     {

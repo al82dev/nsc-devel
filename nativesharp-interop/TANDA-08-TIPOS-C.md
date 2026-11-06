@@ -14,6 +14,8 @@ restrict. No se han ejecutado todavía. La batería actual incluye la prueba de
 ida y vuelta, pero el target de componentes que contiene la prueba de clonación
 no aparece en la configuración incremental ON; incorporarlo o verificarlo en
 una configuración habilitada antes de afirmar esa cobertura.
+El patrón genérico y el volcado de sintaxis preparan la distinción volatile;
+esto no cambia por sí solo la identidad ABI ni activa un typedef.
 
 ## Calificador volatile del objeto apuntado: base en preparación
 
