@@ -11,9 +11,10 @@ No modifica formato persistente, LLVM externo ni NSLink; validar por tanda.
 
 ## Funciones C/C++ globales desde namespace NativeSharp
 
-T08-003: incluir el ámbito global en la demanda y usar sus funciones importadas
+T08-003/T08-004/T08-009: incluir el ámbito global en la demanda y usar sus funciones importadas
 como última opción si no hay candidatos léxicos ni importados por using. Mantener
 el comportamiento de funciones NativeSharp globales y las prioridades existentes.
+Aplicar la misma prioridad a globales C y constantes de enumerador importadas.
 Presupuesto: ProjectNamespaceFunctionModel.cpp, pruebas-tanda-08-meta-c/*,
 CppClangSessionTests.cpp, TRACKING.md y registros Markdown; validación agrupada.
 
