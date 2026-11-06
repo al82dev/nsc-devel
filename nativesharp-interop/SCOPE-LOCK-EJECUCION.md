@@ -1,5 +1,17 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Referencia Clang para arreglos globales C volatile escalares
+
+T08-006/T08-007/T08-015/T08-016: obtener IR de lectura y escritura de
+arreglos globales C volatile de `_Bool`, enteros de 8, 16 y 64 bits con y
+sin signo, `float` y `double`. Comparar anchos, órdenes y alineaciones con
+Clang Windows x64 antes de extender la corrección actualmente limitada a int.
+
+Presupuesto: `nativesharp-interop/pruebas-tanda-08-record-c/Api.h`, `Api.c`,
+tracking y registros. IR temporal exclusivamente en `A:/nsc-interop-build`.
+No modificar producción basándose solo en esta preparación; conservar NSLink,
+LLVM externo y la instalación de C:.
+
 ## Índice de puntero obtenido de arreglo global C
 
 T08-015: completar la combinación `arreglo[i][j]` cuando el primer índice
