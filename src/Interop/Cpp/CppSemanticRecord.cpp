@@ -983,9 +983,18 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         };
         for (const auto& field : record.fields) if (!checkEnum(field.type, 0)) return false;
     }
-    return metadata.formatMinor >= 43 ?
-        metadata_detail::encodeCTypeCatalogWithProvenance(records, enums, output, error) :
-        metadata_detail::encodeCTypeCatalog(records, enums, output, error);
+    if (metadata.formatMinor >= 43)
+    {
+        if (!metadata_detail::encodeCTypeCatalogWithProvenance(records, enums, output, error)) return false;
+        if (metadata.formatMinor < 44 && !output.empty() && output[0] == 2)
+        { error = "metadata before 1.44 cannot represent C floating format"; output.clear(); return false; }
+        return true;
+    }
+    std::vector<std::uint8_t> checked;
+    if (!metadata_detail::encodeCTypeCatalogWithProvenance(records, enums, checked, error)) return false;
+    if (!checked.empty() && checked[0] == 2)
+    { error = "metadata before 1.44 cannot represent C floating format"; return false; }
+    return metadata_detail::encodeCTypeCatalog(records, enums, output, error);
 }
 
 bool selectCppTypesWithPrecompiledCatalogs(const frontend::ProjectCompilation& compilation,
