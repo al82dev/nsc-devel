@@ -1320,6 +1320,17 @@ los valores en ejecución y rechaza tomar la dirección. No se ha ejecutado.
 Los campos empaquetados C++ y los campos C de punteros, agregados y bitfields
 siguen pendientes, así como otras formas de acceso; no se cierra la tanda.
 
+## Validación dirigida de matriz C empaquetada
+
+En `2343368d8` se construyeron incrementalmente NSC y la suite de sesión;
+ambas construcciones y la suite terminaron con código 0. El proyecto layout
+pasó O0–O3: comparó tamaño y offset con Clang, escribió y leyó un campo
+`int[2][3]` de `pack(1)`, verificó alineación 1 en IR O0 y rechazó exponer
+la dirección del elemento. La prueba interna comprobó el cálculo de
+alineación para dos strides y el control sin origen de campo. Se observaron
+advertencias existentes de inicialización. Esta evidencia no cubre arreglos
+de punteros, records, enums o calificados ni sustituye la batería completa.
+
 ## Alineación de elementos de arreglos en campos preparada
 
 `4a18050a6` deriva una alineación garantizada en LLVM para elementos indexados

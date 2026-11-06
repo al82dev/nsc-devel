@@ -267,6 +267,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - Preparado en `4a18050a6` y `3f88e82e0`: transporte de alineación de
     elementos indexados desde campos y prueba MIR sintética. Aún sin ejecutar;
     arreglos empaquetados y protección de sus direcciones siguen pendientes.
+  - Validación dirigida en `2343368d8`: matriz C `int[2][3]` con `pack(1)`
+    pasó en O0–O3, con alineación 1 en IR y rechazo de dirección. La suite de
+    sesión y el cálculo interno también pasaron. Falta la batería completa y
+    otras formas de arreglos y calificadores.
 - [ ] T08-017. Definir la representación de punteros a función C.
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.
 - [ ] T08-019. Presentar diagnósticos útiles al usar una declaración incompleta de forma inválida.
