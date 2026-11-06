@@ -1732,6 +1732,12 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Verificar lectura de resultado escalar y struct, paso a función const y rechazos de escritura, conversión mutable y paso a función mutable. Ejecutar el conjunto agrupado y registrar causas exactas.
 - La primera batería terminó con código 1: los proyectos mixtos pasaron, pero la suite aún exigía rechazar `tools::pointer`, que retorna `const int*`. Añadir `tests/unit/CppClangSessionTests.cpp` al presupuesto para comprobar que el resultado conserva el tipo de Clang y mantener el rechazo de los casos interno e incompleto.
 
+### Requisito de globales C locales por hilo
+
+- Objetivo: comprobar la infraestructura necesaria para T08-004/T08-015 antes de proyectar globales C TLS. `CppGlobalDeclaration.threadLocal` se captura, pero el inventario lo rechaza; no se ha demostrado que el enlazado y el arranque preserven almacenamiento por hilo.
+- Presupuesto: nuevo fixture `nativesharp-interop/pruebas-tanda-08-tls-c` y registro Markdown. Salidas solo en `A:/nsc-interop-build/tanda08-tls-c`. Usar Clang oficial y NSC/NSLink existentes; NSLink y el árbol LLVM son de solo lectura.
+- Una biblioteca C con `__declspec(thread)` ofrece una función que verifica valor inicial e independencia entre hilo principal y un hilo Win32. NativeSharp llama esa función sin importar todavía el global. Registrar por separado compilación, enlace y ejecución; un fallo no autoriza modificar NSLink. No incluir el fixture como gate de la batería hasta conocer el comportamiento.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.
