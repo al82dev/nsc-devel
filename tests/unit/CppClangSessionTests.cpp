@@ -152,6 +152,42 @@ private:
     std::unique_ptr<CppInteropSession> inner_;
 };
 
+class AlteredFieldUsrSession final : public CppInteropSession
+{
+public:
+    explicit AlteredFieldUsrSession(std::unique_ptr<CppInteropSession> inner) : inner_(std::move(inner)) {}
+    CppSessionState state() const noexcept override { return inner_->state(); }
+    CppSessionOptions optionsSnapshot() const override { return inner_->optionsSnapshot(); }
+    std::vector<CppSessionDiagnostic> diagnosticsSnapshot() const override { return inner_->diagnosticsSnapshot(); }
+    std::optional<bool> microsoftVolatileSemantics() const override { return inner_->microsoftVolatileSemantics(); }
+    std::optional<std::size_t> topLevelDeclarationCount() const override { return inner_->topLevelDeclarationCount(); }
+    std::optional<std::vector<CppFunctionDeclaration>> freeFunctionsSnapshot() const override { return inner_->freeFunctionsSnapshot(); }
+    std::optional<std::vector<CppRecordDeclaration>> recordsSnapshot() const override
+    {
+        auto records = inner_->recordsSnapshot();
+        if (records)
+            for (auto& record : *records)
+                if (record.name == "Branch")
+                    for (auto& field : record.fields)
+                        if (field.name == "items" && field.type.element && field.type.element->recordIdentity)
+                        {
+                            auto element = std::make_shared<CppType>(*field.type.element);
+                            element->recordIdentity->clangUsr = "different-record-usr";
+                            field.type.element = std::move(element);
+                        }
+        return records;
+    }
+    std::optional<std::vector<CppTypeAliasDeclaration>> typeAliasesSnapshot() const override { return inner_->typeAliasesSnapshot(); }
+    std::optional<std::vector<CppEnumDeclaration>> enumsSnapshot() const override { return inner_->enumsSnapshot(); }
+    std::optional<std::vector<CppGlobalDeclaration>> globalsSnapshot() const override { return inner_->globalsSnapshot(); }
+    std::optional<std::vector<CppNamespaceDeclaration>> namespacesSnapshot() const override { return inner_->namespacesSnapshot(); }
+    std::optional<std::vector<std::filesystem::path>> sourceFilesSnapshot() const override { return inner_->sourceFilesSnapshot(); }
+    std::optional<std::vector<CppSourceFileContent>> sourceFileContentsSnapshot() const override { return inner_->sourceFileContentsSnapshot(); }
+    CppSessionCloseResult close() override { return inner_->close(); }
+private:
+    std::unique_ptr<CppInteropSession> inner_;
+};
+
 CppSessionOptions options(const char* resource, const char* working, const char* driver,
                           CppLanguageMode mode, std::string source)
 {
