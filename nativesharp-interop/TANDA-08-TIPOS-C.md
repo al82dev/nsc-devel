@@ -17,6 +17,10 @@ reconocido por el inventario. La prueba de ejecución conjunta queda pendiente.
 Se preparó además el caso equivalente para enum C, también pendiente de
 construcción y ejecución.
 
+El fixture de escalares y structs incluye una comprobación específica del IR C
+para exigir accesos volatile dentro de cada función correspondiente. La
+comprobación preparada está pendiente de ejecución.
+
 ## Optimización del proyecto mixto de records C: 2026-11-06
 
 Con `bb85ea5e2` y `6cbe3f99a`, `call nativesharp-interop\validar-tanda-08.cmd`
