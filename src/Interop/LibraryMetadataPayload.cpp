@@ -562,6 +562,11 @@ std::vector<std::uint8_t> encodePayload(
             writer.raw(dependency.runtimeDigest);
         }
     }
+    if (metadata.formatMinor >= 42)
+    {
+        writer.u64(static_cast<std::uint64_t>(metadata.cppCRecordCatalog.size()));
+        writer.raw(metadata.cppCRecordCatalog);
+    }
     return writer.bytes();
 }
 
@@ -751,6 +756,14 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
     appendAssociatedItemProjection(metadata, projection);
     appendEscapeProjection(metadata, projection);
     appendErrorTypeProjection(metadata, projection);
+    if (metadata.formatMinor >= 42 && !metadata.cppCRecordCatalog.empty())
+    {
+        ByteWriter catalogue;
+        catalogue.text("NSMETA-C-RECORD-CATALOGUE-1");
+        catalogue.u64(static_cast<std::uint64_t>(metadata.cppCRecordCatalog.size()));
+        catalogue.raw(metadata.cppCRecordCatalog);
+        appendCatalogueBytes(projection, catalogue);
+    }
     return projection;
 }
 
@@ -1978,6 +1991,15 @@ bool decodePayload(
             { error = "truncated C/C++ binary-dependency metadata"; return false; }
             metadata.cppBinaryDependencies.push_back(std::move(dependency));
         }
+    }
+    if (metadata.formatMinor >= 42)
+    {
+        std::uint64_t size = 0;
+        if (!reader.u64(size) || size > kMaximumPayloadSize || size > reader.remaining())
+        { error = "invalid C record catalogue size"; return false; }
+        metadata.cppCRecordCatalog.resize(static_cast<std::size_t>(size));
+        if (!reader.raw(metadata.cppCRecordCatalog))
+        { error = "truncated C record catalogue"; return false; }
     }
     if (!reader.atEnd())
     {
