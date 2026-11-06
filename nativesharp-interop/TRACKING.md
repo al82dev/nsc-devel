@@ -190,6 +190,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - El productor real conserva procedencia en metadata 1.43; la suite y el
+    consumidor con encabezado independiente pasaron. El encabezado compartido
+    sigue fallando por conflicto de alias. [Evidencia](registro-commits/orden-version-productor-c.md).
   - La suite pasó con propagación del origen al snapshot y un codec versionado
     preparado que preserva 1.42. No está conectado a las bibliotecas ni une
     identidades. [Evidencia](registro-commits/codec-procedencia-c.md).
