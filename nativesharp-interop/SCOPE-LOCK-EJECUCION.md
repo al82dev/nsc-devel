@@ -127,6 +127,9 @@ el rechazo de tipos incompletos. Verificarlo con el fixture directo e indirecto.
 Agregar al fixture de metadata un proyecto C directo que use `var` y llamadas
 con retorno y parámetro record sin escribir los nombres de esos tipos en NS;
 ejecutarlo en O0–O3 con los demás casos para comprobar inferencia y selección.
+Agregar al fixture un consumidor que combine la LibraryReference y su propio
+CppLibraryReference del mismo encabezado C; verificar asignación y lectura de
+punteros obtenidos de ambas fuentes. Conservarlo en la matriz como prueba real.
 Transportar los bytes verificados del catálogo desde la superficie de metadata
 hasta PrecompiledSyntaxModule; presupuesto adicional: PrecompiledSyntaxModule.h,
 PrecompiledProjectPreparation.cpp y controles existentes. No habilitar 1.42
