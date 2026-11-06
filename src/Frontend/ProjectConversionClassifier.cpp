@@ -201,6 +201,15 @@ ProjectImplicitConversion ProjectConversionClassifier::classifyImplicit(
         inheritanceModel_.typeOrdinalForTypeKey(sourceTypeKey);
     const std::optional<std::size_t> targetType =
         inheritanceModel_.typeOrdinalForTypeKey(targetTypeKey);
+    if (targetType && ProjectTypeConversion::isIntegral(sourceTypeKey))
+    {
+        const ProjectNameLookup* lookup = inheritanceModel_.nameLookup();
+        const auto* imported = lookup ? lookup->cppImportedType(*targetType) : nullptr;
+        if (imported && imported->origin == CppImportedTypeOrigin::CEnum && imported->enumBase &&
+            imported->deferredImportError.empty())
+            return ProjectImplicitConversion{ProjectConversionKind::Numeric, 3,
+                                             std::string(sourceTypeKey), std::string(targetTypeKey), std::nullopt};
+    }
     if (const auto reference = classifyReferenceConversion(
             sourceTypeKey, targetTypeKey, sourceType, targetType);
         reference.has_value())

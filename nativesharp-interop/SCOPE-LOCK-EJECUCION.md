@@ -7,6 +7,13 @@ a variables, elementos de arreglo y parámetros del enum importado. Comparar
 también el tipo de un enumerador en contexto entero y preservar un control de
 enum NativeSharp. Registrar fallos y no modificar producción sin delimitar
 clasificación y lowering de la conversión.
+La ejecución encontró rechazos `builtin:int` a enum C en los tres contextos.
+La clasificación central no distingue el origen C; LLVM ya obtiene el ancho y
+signo subyacentes para conversiones de enums. Permitir cambios localizados en
+`include/nativesharp/Frontend/ProjectInheritanceModel.h` y
+`src/Frontend/ProjectConversionClassifier.cpp` para reconocer conversión de
+enteros hacia enum C importado, manteniendo intactos enums NativeSharp. Agregar
+controles de argumentos, valores variables, ancho y signo, y enum NativeSharp.
 
 Ampliar el fixture con punteros a arreglos fijos de struct y enum C. Probar
 identidad, lectura y mutación en C, ejecución O0–O3 y rechazo de const o tipos

@@ -46,6 +46,7 @@ public:
     std::optional<std::size_t> typeOrdinalForTypeKey(std::string_view typeKey) const noexcept;
     std::string typeKeyForOrdinal(std::size_t typeOrdinal) const;
     bool isBuilt() const noexcept;
+    const ProjectNameLookup* nameLookup() const noexcept { return nameLookup_; }
 
     // EN: Plan item 3.6. Accepted snapshots, set before build(). A class whose parts are all in a
     //     snapshot unit takes its base class from the `inheritance` section instead of resolving
