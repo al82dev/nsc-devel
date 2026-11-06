@@ -1,5 +1,21 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Aritmética de puntero a record C incompleto
+
+T08-013/T08-019: comprobar si `Opaque* + 1` intenta usar un tamaño para un
+struct C que solo tiene declaración incompleta. Preparar un caso reproducible
+en `pruebas-tanda-08-incompleto`, conservar las salidas en
+`A:/nsc-interop-build` y registrar el diagnóstico o IR producido. Los usos de
+punteros opacos sin aritmética deben seguir admitidos. No modificar producción
+hasta demostrar el comportamiento y delimitar la corrección.
+Reproducción: `--dump-project-oop-llvm` termina con `CC1 cannot determine the
+element layout of 'type:COpaqueArithmetic::Opaque'` durante el descenso. La
+comprobación de `analyzePointerArithmetic` rechaza `void` pero no consulta el
+estado incompleto de un record C. Permitir el cambio localizado en
+`src/Frontend/Bodies/OperatorExpressionAnalyzer.cpp`, además de los fixtures,
+su script de validación y la bitácora. El caso cubre `+` y `-` analizados por
+esa función; `+=`, incrementos e índices son rutas distintas aún no cubiertas.
+
 ## Llamada directa a callback C almacenado
 
 T08-017: comprobar primero con el callback escalar existente `int(int)` si

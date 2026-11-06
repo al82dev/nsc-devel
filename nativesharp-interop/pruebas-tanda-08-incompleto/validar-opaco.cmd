@@ -9,7 +9,7 @@ set "TEMP=%DEST%"
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
 set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
-for %%F in (OpaqueApi.h OpaqueApi.c OpaqueConsumer.ns OpaqueConsumer.nsproj OpaqueInvalid.ns OpaqueInvalid.nsproj OpaqueUnionInvalid.ns OpaqueUnionInvalid.nsproj OpaqueProducer.ns OpaqueProducer.nsproj OpaquePublished.ns OpaquePublished.nsproj OpaqueShared.ns OpaqueShared.nsproj OpaqueOther.nsproj) do (
+for %%F in (OpaqueApi.h OpaqueApi.c OpaqueConsumer.ns OpaqueConsumer.nsproj OpaqueInvalid.ns OpaqueInvalid.nsproj OpaqueUnionInvalid.ns OpaqueUnionInvalid.nsproj OpaqueProducer.ns OpaqueProducer.nsproj OpaquePublished.ns OpaquePublished.nsproj OpaqueShared.ns OpaqueShared.nsproj OpaqueOther.nsproj OpaqueArithmetic.ns OpaqueArithmetic.nsproj OpaquePointerArithmetic.ns OpaquePointerArithmetic.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -23,6 +23,11 @@ for %%O in (0 1 2 3) do (
   "%DEST%\opaque-O%%O.exe"
   if errorlevel 1 exit /b 1
   echo Punteros a tipo incompleto O%%O: resultado esperado cero.
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\OpaquePointerArithmetic.nsproj" -O%%O --no-artifact-cache -o "%DEST%\pointer-arithmetic-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  "%DEST%\pointer-arithmetic-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  echo Aritmetica de puntero a puntero opaco O%%O: resultado esperado cero.
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\OpaqueProducer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\COpaqueProducer.lib"
   if errorlevel 1 exit /b 1
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\OpaquePublished.nsproj" -O%%O --no-artifact-cache -o "%DEST%\published-O%%O.exe"
@@ -36,6 +41,12 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 exit /b 1
   echo Punteros opacos con header compartido O%%O: resultado esperado cero.
 )
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\OpaqueArithmetic.nsproj" > "%DEST%\arithmetic.log" 2>&1
+if not errorlevel 1 (echo Aritmetica de record incompleto aceptada. & exit /b 1)
+findstr /c:"pointer arithmetic requires a complete C type" "%DEST%\arithmetic.log" >nul
+if errorlevel 1 (echo Falta diagnostico de aritmetica sobre tipo incompleto. & exit /b 1)
+findstr /c:"OpaqueUnion" "%DEST%\arithmetic.log" >nul
+if errorlevel 1 (echo Falta diagnostico de aritmetica sobre union incompleta. & exit /b 1)
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\OpaqueInvalid.nsproj" -O0 --no-artifact-cache -o "%DEST%\invalid.exe" > "%DEST%\invalid.log" 2>&1
 if not errorlevel 1 (echo Objeto incompleto por valor aceptado. & exit /b 1)
 findstr /i /c:"C object local 'value' cannot be created by value because its type is incomplete" "%DEST%\invalid.log" >nul

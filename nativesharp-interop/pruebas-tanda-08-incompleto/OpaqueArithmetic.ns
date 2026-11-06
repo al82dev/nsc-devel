@@ -1,0 +1,10 @@
+int Main()
+{
+    Opaque* value = opaque_get();
+    Opaque* next = value + 1;
+    OpaqueUnion* unionValue = union_get();
+    OpaqueUnion* previous = unionValue - 1;
+    if (next == null) return 1;
+    if (previous == null) return 2;
+    return 0;
+}

@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>COpaqueArithmetic</Name></PropertyGroup>
+  <ItemGroup><Compile Include="OpaqueArithmetic.ns" /><CppLibraryReference Header="OpaqueApi.h" Language="C" Standard="c11" Library="opaque.lib" /></ItemGroup>
+</Project>

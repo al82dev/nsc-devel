@@ -786,6 +786,23 @@ bool ProjectMethodBodyModel::analyzePointerArithmetic(
             "pointer arithmetic requires a pointer to a sized type; 'void*' has no element size");
         return true;
     }
+    if (nameLookup_ && element.starts_with("type:") && !element.ends_with("*"))
+    {
+        const auto ordinal = nameLookup_->typeOrdinalForIdentity(std::string_view(element).substr(5));
+        const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+        if (imported && imported->isIncomplete &&
+            (imported->origin == CppImportedTypeOrigin::CStruct ||
+             imported->origin == CppImportedTypeOrigin::CUnion))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::IncompleteType,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->range(),
+                "pointer arithmetic requires a complete C type; '" +
+                    imported->identity.fullyQualifiedName() + "' has no element size");
+            return true;
+        }
+    }
     if (bothPointers)
     {
         // Diferencia. Solo entre punteros del MISMO tipo: restar direcciones de tipos
