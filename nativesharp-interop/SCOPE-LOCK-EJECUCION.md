@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Records C anidados subalineados
+
+T08-010/T08-012: proyectar campos record C completos y compatibles aunque
+su alineación efectiva sea menor que la natural; conservar los controles de
+identidad, tamaño y layout del tipo interior. Mantener barreras de C++,
+record volatile y demás formas aún no representadas. Presupuesto:
+CppSemanticRecord.cpp, fixture layout y registros Markdown; LLVM externo y
+NSLink protegidos. Validación agrupada por tanda.
+
 ## Protección de direcciones de records C anidados
 
 T08-010/T08-012: identificar por su layout natural un campo record C importado
