@@ -17,3 +17,9 @@ el mismo build; el resultado no cierra T08-016 ni la tanda.
 Se preparan tres controles adicionales: dirección de un slot, dirección de una
 fila y paso de una fila a `int**`. Están pendientes de ejecución e inspección
 de sus diagnósticos; un rechazo genérico no acredita por sí solo el contrato.
+
+Con build `9f214f1dc786940c` los tres controles se rechazaron. Para las dos
+direcciones aparece el diagnóstico específico de const, acompañado también por
+un mensaje genérico de dirección de campo de bits; la fila como argumento se
+rechaza por incompatibilidad de tipos. El script se ajusta para verificar los
+mensajes pertinentes; esa versión aún está pendiente de repetición.

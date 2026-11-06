@@ -56,11 +56,15 @@ if not errorlevel 1 (echo Se acepto perdida de const desde matriz. & exit /b 1)
 findstr /i /c:"would discard pointee constness" "%DEST%\InvalidMatrixEscape.log" >nul
 if errorlevel 1 (echo El rechazo de matriz no identifica la perdida de const. & exit /b 1)
 echo Escritura y escape de matriz rechazados.
-for %%I in (InvalidMatrixAddress InvalidMatrixRowAddress InvalidMatrixRowArgument) do (
+for %%I in (InvalidMatrixAddress InvalidMatrixRowAddress) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\%%I.nsproj" -O0 --no-artifact-cache -o "%DEST%\%%I.exe" > "%DEST%\%%I.log" 2>&1
   if not errorlevel 1 (echo Se acepto perdida de const en %%I. & exit /b 1)
-  findstr /i /c:"error:" "%DEST%\%%I.log" >nul
-  if errorlevel 1 (echo Falta diagnostico de error en %%I. & exit /b 1)
+  findstr /i /c:"cannot take the address of an array element with a const pointee" "%DEST%\%%I.log" >nul
+  if errorlevel 1 (echo Falta diagnostico de direccion calificada en %%I. & exit /b 1)
 )
-echo Direcciones y argumento de fila rechazados; revisar diagnosticos.
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidMatrixRowArgument.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidMatrixRowArgument.exe" > "%DEST%\InvalidMatrixRowArgument.log" 2>&1
+if not errorlevel 1 (echo Se acepto la fila como argumento mutable. & exit /b 1)
+findstr /i /c:"no viable overload of namespace function 'c_mutate' accepts the argument types" "%DEST%\InvalidMatrixRowArgument.log" >nul
+if errorlevel 1 (echo El rechazo de fila no corresponde a la llamada. & exit /b 1)
+echo Direcciones y argumento de fila rechazados.
 exit /b 0
