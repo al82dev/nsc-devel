@@ -3308,3 +3308,7 @@ para probar lecturas y escrituras superpuestas en ambos sentidos y ejecutar el
 caso en O0–O3. Mantener los resultados en `A:/nsc-interop-build/tanda08-union`.
 No modificar producción sin identificar y registrar antes el alcance necesario.
 
+Extender el mismo fixture con parámetros y retornos C de unions de 4 y 12
+bytes, para contrastar la clasificación ABI directa e indirecta en Windows
+x64. Registrar el resultado sin atribuir compatibilidad general a la muestra.
+
