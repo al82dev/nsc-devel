@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Callback C con puntero a record en la firma
+
+T08-017: reproducir y abordar el consumo de un callback C cuya firma recibe
+un puntero a struct C, tanto retornado como almacenado en campo y global. La
+primera fase modifica únicamente los fixtures y su registro para identificar
+el punto de fallo; las salidas van a `A:/nsc-interop-build`. No habilitar paso
+de records por valor, calificadores anidados ni convenciones no comprobadas.
+Antes de modificar producción, registrar la causa y los archivos necesarios.
+
 ## Sombra local de valores C importados
 
 T08-018: ampliar el fixture existente `pruebas-tanda-08-meta-c` con un caso
