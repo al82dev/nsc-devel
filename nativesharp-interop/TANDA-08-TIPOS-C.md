@@ -1294,3 +1294,17 @@ una comprobación de IR y ejecución mixta para un campo alineado naturalmente.
 La prueba sigue pendiente. El soporte empaquetado requiere además transportar
 la alineación efectiva y resolver las direcciones escapadas y accesos anidados;
 no se ha habilitado ni se cierra T08-020.
+
+## Comprobaciones dirigidas de campos y volatile
+
+La construcción incremental de NSC sobre `99716724c` pasó, así como el
+proyecto layout: comparación de tamaño, alineación y offsets del fixture,
+acceso de campo y su IR. El proyecto record C inicialmente rechazó `??=`
+por la distinción entre dirección interna y dirección que puede escapar.
+`831f998d3` ajustó ese análisis; se reconstruyó incrementalmente NSC.
+El IR emitido tenía el orden correcto, pero el verificador no reconocía el
+punto antes del número de bloque. `db2a2a352` corrigió su patrón y el proyecto
+record C terminó con código 0, incluyendo IR y ejecución O0, O1, O2 y O3.
+El caso incluyó globales volatile float y double, coalescencia y las pruebas
+negativas existentes. Estas son comprobaciones dirigidas: no sustituyen la
+batería completa ni acreditan campos empaquetados o todos los calificadores.

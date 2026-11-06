@@ -260,6 +260,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - Preparado en `f0c570a7c` y `212bb5e48`: orden acquire/release para `??=`
     sobre puntero global C volatile con modo MS y alineación acreditados; prueba
     de ambas ramas e IR pendiente de ejecución agrupada.
+  - Validación dirigida posterior a `831f998d3` y `db2a2a352`: el caso record C
+    pasó IR y ejecución O0–O3 con globales flotantes y `??=`. La batería
+    completa y las demás formas de volatile siguen pendientes.
 - [ ] T08-016. Mapear arreglos de tamaño conocido.
 - [ ] T08-017. Definir la representación de punteros a función C.
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.
@@ -268,6 +271,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - Preparado en `ad9b0a694` y `03cd47d50`: alineación explícita en el IR de
     accesos directos a campos y prueba mixta de lectura y escrituras. Falta
     ejecutarla y transportar la alineación efectiva de campos empaquetados.
+  - El proyecto layout pasó con NSC construido desde `99716724c`: tamaños,
+    offsets y alineación del fixture, acceso de campo y comprobaciones de IR.
+    Los campos empaquetados siguen pendientes.
 
 ## 09. Llamadas, enlace y datos C
 
