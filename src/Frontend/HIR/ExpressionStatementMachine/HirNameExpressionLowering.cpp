@@ -1,6 +1,7 @@
 #include "../HirLoweringSupport.h"
 
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
+#include "nativesharp/Language/CallableSemantics.h"
 
 namespace nativesharp::frontend
 {
@@ -280,7 +281,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNamespaceStateNameBi
                  state.declaredTypeKey == "builtin:float") bits = 32;
         else if (state.declaredTypeKey == "builtin:long" || state.declaredTypeKey == "builtin:ulong" ||
                  state.declaredTypeKey == "builtin:double") bits = 64;
-        else if (state.declaredTypeKey.ends_with('*')) bits = 64;
+        else if (state.declaredTypeKey.ends_with('*') ||
+                 language::isFunctionTypeIdentity(state.declaredTypeKey)) bits = 64;
         if (bits != 0 && state.cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
             state.cppStorageSizeBits == std::optional<std::uint64_t>{bits} &&
             state.cppDeclarationAlignmentBits && *state.cppDeclarationAlignmentBits >= bits)
