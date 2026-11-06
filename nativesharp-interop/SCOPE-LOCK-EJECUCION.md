@@ -79,6 +79,15 @@ certifica dependencias transitivas ni habilita conversiones; la conciliación
 integral debe comprobar también records y enums dependientes. Conservar errores
 y estados insuficientes sin alterar salidas. Validación agrupada.
 
+## Cierre de contratos de records C
+
+Preparar comparación de records, campos y enums alcanzables entre catálogos C,
+con detección de ciclos, dependencias ausentes y diferencias de contrato.
+Presupuesto: `src/Interop/Internal/CppCRecordMetadataCodec.h/.cpp`,
+`tests/unit/CppClangSessionTests.cpp`, tracking y registros. No unir todavía
+identidades ni habilitar conversiones; comprobar el origen del record raíz y
+de cada record dependiente. Mantener errores y salidas transaccionales.
+
 ## Identidad de funciones C importadas
 
 T08-002/T08-003: conservar USR opcional en la proyección de función y
