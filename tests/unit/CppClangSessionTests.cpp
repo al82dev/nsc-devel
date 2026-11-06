@@ -5160,6 +5160,7 @@ int main(int argc, char** argv)
                              !automaticFields.setExperimentalCppInstanceFieldProvider({}, fieldsError),
                              "project compilation obtains instance field metadata from a physical C++ header");
                 bool fieldModePreserved = false;
+                bool fieldUsrPreserved = false;
                 if (fieldsReady && valueField && automaticFields.projectGraph())
                 {
                     auto fieldRecords = collectCppSemanticRecords(*automaticFields.projectGraph(), automaticFields.cppProjectSessions());
@@ -5172,11 +5173,15 @@ int main(int argc, char** argv)
                             {
                                 if (!found) { commonMode = entry.microsoftVolatileSemantics; found = true; }
                                 else if (commonMode != entry.microsoftVolatileSemantics) commonMode = std::nullopt;
+                                for (const auto& field : entry.declaration.fields)
+                                    if (field.name == "value" && field.clangUsr &&
+                                        field.clangUsr == valueField->cppClangUsr) fieldUsrPreserved = true;
                             }
                         fieldModePreserved = found && valueField->cppMicrosoftVolatileSemantics == commonMode;
                     }
                 }
                 ok &= expect(fieldModePreserved, "imported field preserves its record group's volatile mode");
+                ok &= expect(fieldUsrPreserved, "imported field symbol preserves its Clang USR");
                 nativesharp::frontend::ProjectCompilation guardedFields;
                 std::string fieldGuardError;
                 const bool fieldGuardConfigured = configure(guardedFields, fieldGuardError) &&
