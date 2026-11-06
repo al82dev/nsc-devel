@@ -79,6 +79,8 @@ findstr /r /c:"store volatile.*@volatile_array" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura LLVM volatile del arreglo. & exit /b 1)
 findstr /r /c:"store.*volatile i32 97" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile mediante puntero del arreglo. & exit /b 1)
+findstr /r /c:"store.*volatile i32 98" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura volatile mediante puntero de la matriz. & exit /b 1)
 findstr /r /c:"load volatile.*@volatile_matrix" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta lectura LLVM volatile de la matriz. & exit /b 1)
 findstr /r /c:"store volatile.*@volatile_matrix" "%DEST%\project.ll" >nul
@@ -261,7 +263,19 @@ copy /y "%~dp0VolatilePointerArrayDiscard.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-pointer-array-discard.exe" > "%DEST%\volatile-pointer-array-discard.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /i /c:"volatile" "%DEST%\volatile-pointer-array-discard.log" >nul
+findstr /c:"would discard pointer pointee volatile qualification" "%DEST%\volatile-pointer-array-discard.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0VolatilePointerArrayCall.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-pointer-array-call.exe" > "%DEST%\volatile-pointer-array-call.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"no viable overload of namespace function 'read_plain_int'" "%DEST%\volatile-pointer-array-call.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0ConstVolatilePointerArrayWrite.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-volatile-pointer-array-write.exe" > "%DEST%\const-volatile-pointer-array-write.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"left side of assignment is not assignable" "%DEST%\const-volatile-pointer-array-write.log" >nul
 if errorlevel 1 exit /b 1
 copy /y "%~dp0VolatilePointerArrayAddress.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1

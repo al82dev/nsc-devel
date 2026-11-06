@@ -1,0 +1,4 @@
+int Main()
+{
+    return read_plain_int(volatile_pointer_array[0]);
+}

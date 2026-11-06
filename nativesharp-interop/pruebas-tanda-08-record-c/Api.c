@@ -38,6 +38,10 @@ int check_volatile_integers(void)
 static volatile int pointee_storage = 7;
 static volatile int pointer_array_storage = 11;
 volatile int* volatile_pointer_array[2] = { &pointee_storage, &pointer_array_storage };
+volatile int* volatile_pointer_matrix[2][2] = {
+    { &pointee_storage, &pointer_array_storage }, { &pointer_array_storage, &pointee_storage }
+};
+const volatile int* const_volatile_pointer_array[2] = { &pointee_storage, &pointer_array_storage };
 int read_volatile_pointer_array(void) { return *volatile_pointer_array[0]; }
 volatile int* volatile_pointee = &pointee_storage;
 const volatile int* const_volatile_pointee = &pointee_storage;

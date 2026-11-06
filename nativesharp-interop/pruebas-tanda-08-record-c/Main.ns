@@ -89,6 +89,8 @@ int Main()
     volatile_pointer_array[0] = volatile_pointer_array[1];
     *volatile_pointer_array[0] = 97;
     if (*volatile_pointer_array[0] != 97 || read_volatile_pointer_array() != 97) return 47;
+    *volatile_pointer_matrix[1][0] = 98;
+    if (*const_volatile_pointer_array[1] != 98 || read_volatile_pointer_array() != 98) return 48;
     global_record.value = 10;
     volatile_record_target->value = 67;
     if (volatile_record_target->value != 67 || read_volatile_record_target() != 67) return 30;
