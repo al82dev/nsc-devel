@@ -8,7 +8,7 @@ loads = re.findall(
     ir,
 )
 fallbacks = re.findall(
-    r"^coalesce\.store\.fallback(?:\d+)?:[^\n]*\n(.*?)(?=^[\w.]+:|^\})",
+    r"^coalesce\.store\.fallback(?:\.\d+)?:[^\n]*\n(.*?)(?=^[\w.]+:|^\})",
     ir,
     re.M | re.S,
 )

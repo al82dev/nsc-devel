@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Verificador de bloques de coalescencia
+
+La prueba dirigida llegó al IR esperado, pero el verificador no acepta los
+nombres de bloque `coalesce.store.fallback.193` que NSC genera. Ajustar solo
+su patrón para el punto y número observados; conservar la exigencia de dos
+bloques con escritura release y dos lecturas acquire. Presupuesto:
+verificar_ir_coalescencia.py y registros Markdown; repetir el caso agrupado.
+
 ## Diagnóstico de coalescencia sobre global C volatile
 
 El caso mixto de `??=` sobre `volatile_record_pointer` falló antes del IR:
