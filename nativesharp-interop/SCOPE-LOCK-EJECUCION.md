@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Prueba de procedencia de volatile en globales
+
+Preparar comprobación de que los globales C y C++ conservan el valor de su
+propia sesión en el inventario. Archivos: CppClangSessionTests.cpp y
+documentación. La validación se agrupa con la tanda.
+
 ## Procedencia de volatile en inventario de globales
 
 Conservar en cada entrada del inventario de globales la opción efectiva de su

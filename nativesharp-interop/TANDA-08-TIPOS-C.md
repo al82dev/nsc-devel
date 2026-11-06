@@ -1000,6 +1000,11 @@ Cada entrada de global copia la opción efectiva desde su sesión de origen; el
 valor desconocido permanece distinto de false. Todavía no se propaga al símbolo
 semántico ni altera la selección o el IR. Falta comprobarlo en la batería.
 
+## Prueba de procedencia de volatile en globales
+
+Se preparó la comparación entre las entradas C y C++ y sus respectivas sesiones
+de origen, sin fijar el valor a partir del triple. Aún no se ha ejecutado.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

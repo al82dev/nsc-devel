@@ -1156,22 +1156,31 @@ int main(int argc, char** argv)
                         bool cGlobal = false, cppGlobal = false, internalRejected = false;
                         bool volatileProjected = false, constProjected = false, tlsRejected = false;
                         bool volatilePointerProjected = false;
+                        bool cVolatileOptionRetained = false, cppVolatileOptionRetained = false;
                         if (entries)
                             for (const auto& entry : *entries)
                             {
                                 const auto* symbol = std::get_if<CppSemanticGlobal>(&entry.projection);
                                 const auto* rejected = std::get_if<CppSemanticGlobalFailure>(&entry.projection);
                                 if (entry.declaration.name == "c_global")
+                                {
                                     cGlobal = symbol && entry.projectOrdinal == 1 && entry.referenceIndex == 0 &&
                                         symbol->externalSymbol == "c_global" && symbol->typeKey == "builtin:int" &&
                                         symbol->namespaceName.empty() && entry.targetTriple == "x86_64-pc-windows-msvc";
+                                    cVolatileOptionRetained = entry.microsoftVolatileSemantics.has_value() &&
+                                        entry.microsoftVolatileSemantics == groups[0].sessions[0]->microsoftVolatileSemantics();
+                                }
                                 if (entry.declaration.name == "c_volatile_pointer")
                                     volatilePointerProjected = symbol && symbol->pointerPointeeVolatile &&
                                         symbol->typeKey == "builtin:int*";
                                 if (entry.declaration.name == "shared")
+                                {
                                     cppGlobal = symbol && entry.projectOrdinal == 2 && entry.referenceIndex == 0 &&
                                         symbol->externalSymbol == "?shared@feature@@3HA" && symbol->namespaceName == "feature" &&
                                         symbol->typeKey == "builtin:int";
+                                    cppVolatileOptionRetained = entry.microsoftVolatileSemantics.has_value() &&
+                                        entry.microsoftVolatileSemantics == groups[1].sessions[0]->microsoftVolatileSemantics();
+                                }
                                 if (entry.declaration.name == "local" || entry.declaration.name == "internal_global")
                                     internalRejected |= rejected && !entry.declaration.externalLinkage;
                                 if (entry.declaration.name == "io") volatileProjected = symbol && symbol->isVolatile;
@@ -1182,6 +1191,8 @@ int main(int argc, char** argv)
                                      volatilePointerProjected &&
                                      volatileProjected && constProjected && tlsRejected,
                                      "global inventory preserves project, exact symbol, type and unsupported storage contracts");
+                        ok &= expect(cVolatileOptionRetained && cppVolatileOptionRetained,
+                                     "global inventory retains the effective volatile option of each originating session");
                         if (entries)
                         {
                             nativesharp::frontend::CppFunctionDemand globalDemand;
