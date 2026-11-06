@@ -196,6 +196,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - Preparados `b16bc21b2`, `3932eca4a`, `8f773abfb` y `1f869f545`: USR
     opcional de campo hasta metadato y símbolo, con controles de presencia y
     ausencia. Sin construir ni validar; selección y persistencia siguen abiertas.
+  - Actualización: la construcción incremental y la suite de sesión pasaron;
+    comprobaron el transporte del USR al símbolo y la selección ante USR de
+    campo iguales, distintos y ausentes. Persistencia y demás categorías siguen
+    pendientes; esta evidencia no cierra T08-002.
   - En `dfe590633` la sesión conserva el USR opcional de Clang para las
     declaraciones y miembros capturados; la batería agrupada pasó. Todavía falta
     integrar y verificar su uso en selección y persistencia antes de cerrar el

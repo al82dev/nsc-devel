@@ -1320,6 +1320,14 @@ los valores en ejecución y rechaza tomar la dirección. No se ha ejecutado.
 Los campos empaquetados C++ y los campos C de punteros, agregados y bitfields
 siguen pendientes, así como otras formas de acceso; no se cierra la tanda.
 
+## Validación dirigida de identidad de campo C
+
+Sobre `624fe3856`, la construcción incremental de `nsc_cpp_session_tests`
+terminó con código 0 y 23 advertencias de inicializadores; la suite también
+terminó con código 0. Comprobó transporte de USR presentes y ausentes hasta el
+metadato y símbolo, y selección de definiciones con campos de USR iguales,
+contradictorios o ausentes. No acredita persistencia ni todas las declaraciones.
+
 ## Persistencia de identidad de campos C: frontera observada
 
 `ClassMemberSnapshotCodec.cpp` no serializa `cppClangUsr` ni
