@@ -45,7 +45,6 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
         if (base && base->kind != CppTypeKind::Pointer &&
             (readonly || isVolatile || base->isConst || base->isVolatile))
         {
-            if (base->kind == CppTypeKind::Record) return std::nullopt;
             readonly |= base->isConst;
             isVolatile |= base->isVolatile;
             CppType unqualified = *base;

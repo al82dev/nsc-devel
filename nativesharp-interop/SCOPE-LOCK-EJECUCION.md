@@ -1707,6 +1707,13 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Validar lectura/escritura compartida con C, IR de cargas y escrituras volatile, dirección rechazada y regresiones de arreglo y puntero con una validación agrupada.
 - Resultado inicial: batería agrupada con código 0; IR confirmó cargas y escrituras volatile del struct y carga volatile del puntero con escritura ordinaria en el objeto apuntado. El diagnóstico de dirección atribuye erróneamente el caso a bit fields; precisarlo en `IdentifierAnalyzer.cpp` y exigir ambos tipos de instrucción del puntero en el script antes de repetir la validación.
 
+### Records C globales calificados: arreglos y anidamiento
+
+- Objetivo: importar arreglos fijos de structs C const y volatile y conservar el calificador a través de índices y campos anidados, sin propagarlo del almacenamiento de punteros a los objetos apuntados.
+- Evidencia: `mapGlobalType` rechaza explícitamente los records calificados en arreglos; el análisis de índices ya propaga readonly y volatile, y HIR transporta volatile por direcciones de índices y campos. Los casos combinados no están verificados.
+- Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, fixtures y script de `pruebas-tanda-08-record-c`, y registros Markdown. Si la batería revela un defecto, ampliar el presupuesto únicamente a las rutas semánticas o HIR identificadas. Mantener rechazados punteros a volatile y ABI de records por valor no verificado.
+- Preparar lectura de matriz const, escritura y lectura de matriz volatile, campos de structs anidados, comprobación C, IR y rechazos de escritura/dirección; verificar conjuntamente al finalizar el conjunto.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.
