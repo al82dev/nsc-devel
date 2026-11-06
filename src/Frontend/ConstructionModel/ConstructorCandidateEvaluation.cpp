@@ -156,6 +156,7 @@ void ProjectConstructionModel::evaluateConstructorArgument(
         conversionTarget,
         argumentTypes[argumentOrdinal].integerConstant);
     if (!conversion.exists()) candidate.viable = false;
+    if (argumentTypes[argumentOrdinal].pointerPointeeVolatile) candidate.viable = false;
     if (!packElement && argumentTypes[argumentOrdinal].pointerPointeeReadonly &&
         ProjectTypeConversion::isPointer(parameter.typeKey) && !parameter.pointerPointeeReadonly)
     {

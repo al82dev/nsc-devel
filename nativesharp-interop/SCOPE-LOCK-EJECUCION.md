@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Protección provisional de argumentos con apuntado volatile
+
+Preparar el rechazo de argumentos volatile en las rutas ordinarias de resolución
+de llamadas y constructores, hasta representar el calificador en cada
+parámetro y su persistencia. Archivos: CallAnalyzer.cpp,
+ConstructorCandidateEvaluation.cpp y documentación. Es una protección
+temporal, no el comportamiento final; quedan por auditar llamadas indirectas,
+variádicas y demás vías antes de habilitar el origen.
+
 ## Conversiones explícitas de punteros a volatile
 
 Impedir provisionalmente que una conversión produzca un puntero o entero y

@@ -24,6 +24,9 @@ Se preparó el rechazo de asignaciones que perderían el volatile inmediato;
 la ruta de entrada continúa cerrada.
 Las conversiones a puntero o entero también quedan rechazadas de forma
 provisional si perderían el calificador; aún no se ejecutó la validación.
+Las rutas ordinarias de resolución de llamadas y constructores preparan un
+rechazo temporal de argumentos con apuntado volatile. No es soporte final:
+faltan contratos por parámetro y auditoría de llamadas indirectas y variádicas.
 
 ## Parámetros C puntero a escalar volatile: implementación pendiente de validar
 
