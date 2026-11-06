@@ -5,14 +5,64 @@
 #include "nativesharp/Interop/CppBinaryDependencies.h"
 #include "nativesharp/Basic/ArtifactTransaction.h"
 #include "nativesharp/Basic/Sha256.h"
+#include <algorithm>
+#include <iterator>
 #ifdef NSC_ENABLE_CPP_INTEROP
 #include "nativesharp/Frontend/ProjectConstructionModel.h"
+#include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
+#include "nativesharp/Interop/CppSemanticInventory.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/LLVM/CppLifetimeObjectEmitter.h"
 #endif
 
 namespace nativesharp::driver
 {
+static bool appendCStaticInlineObjects(frontend::ProjectCompilation &compilation,
+                                       llvm_backend::ProjectOopObjectBundle &bundle,
+                                       llvm_backend::LlvmOptimizationLevel level, std::string &error)
+{
+#ifdef NSC_ENABLE_CPP_INTEROP
+    if (compilation.cppProjectSessions().empty()) { error.clear(); return true; }
+    if (!compilation.projectGraph() || !compilation.namespaceFunctionModel())
+    { error = "C inline emission requires completed project models"; return false; }
+    auto inventory = interop::collectCppSemanticFunctions(*compilation.projectGraph(), compilation.cppProjectSessions());
+    if (const auto* failure = std::get_if<interop::CppSemanticInventoryFailure>(&inventory))
+    { error = "C inline inventory failed: " + failure->message; return false; }
+    struct Group { const interop::CppInteropSession* session; std::vector<interop::CppCInlineIRExport> exports; };
+    std::vector<Group> groups;
+    for (const auto& entry : std::get<std::vector<interop::CppSemanticInventoryEntry>>(inventory))
+    {
+        if (!entry.declaration.isCStaticInlineDefinition || !entry.declaration.externalSymbol) continue;
+        bool selected = false;
+        for (const auto& function : compilation.namespaceFunctionModel()->functions())
+            if (function.projectOrdinal == entry.projectOrdinal && function.mangledName == *entry.declaration.externalSymbol)
+            { selected = true; break; }
+        if (!selected) continue;
+        const interop::CppInteropSession* session = nullptr;
+        for (const auto& project : compilation.cppProjectSessions())
+            if (project.projectFile == entry.projectFile && entry.referenceIndex < project.sessions.size())
+            { session = project.sessions[entry.referenceIndex].get(); break; }
+        if (!session) { error = "C inline function has no matching Clang session"; return false; }
+        auto found = std::find_if(groups.begin(), groups.end(),
+            [&](const Group& group) { return group.session == session; });
+        if (found == groups.end()) { groups.push_back({session, {}}); found = std::prev(groups.end()); }
+        found->exports.push_back({entry.declaration.name, *entry.declaration.externalSymbol});
+    }
+    if (groups.empty()) { error.clear(); return true; }
+    return bundle.appendGeneratedObjects(groups.size(),
+        [&](std::span<const std::filesystem::path> paths, std::string& emitError)
+        {
+            for (std::size_t i = 0; i < groups.size(); ++i)
+                if (!llvm_backend::emitCStaticInlineObject(*groups[i].session, groups[i].exports,
+                        level, paths[i], emitError)) return false;
+            return true;
+        }, error);
+#else
+    (void)compilation; (void)bundle; (void)level;
+    error.clear(); return true;
+#endif
+}
+
 bool appendCppImplicitLifetimeObjects(frontend::ProjectCompilation &compilation,
                                       const frontend::ProjectOopMirModel &mir,
                                       llvm_backend::ProjectOopObjectBundle &bundle,
@@ -111,6 +161,8 @@ std::unique_ptr<llvm_backend::ProjectOopObjectBundle> generateProjectObjects(
         return nullptr;
     if (!appendCppImplicitLifetimeObjects(compilation, *compilation.oopMirModel(),
                                           *objectBundle, optimizationLevel, error))
+        return nullptr;
+    if (!appendCStaticInlineObjects(compilation, *objectBundle, optimizationLevel, error))
         return nullptr;
     if (!compilation.completeCodeGeneration(error))
         return nullptr;
