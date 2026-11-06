@@ -14,6 +14,23 @@
 
 namespace nativesharp::llvm_backend
 {
+bool emitCStaticInlineObject(const interop::CppInteropSession& session,
+    const std::vector<interop::CppCInlineIRExport>& exports, LlvmOptimizationLevel level,
+    const std::filesystem::path& output, std::string& error)
+{
+    error.clear();
+    if (session.optionsSnapshot().targetTriple != "x86_64-pc-windows-msvc" || exports.empty() ||
+        output.empty() || !output.is_absolute())
+    { error = "C inline object requires a Windows x64 session, exports and absolute output path"; return false; }
+    const auto ir = session.emitCStaticInlineIR(exports);
+    if (!ir) { error = "cannot emit C static inline definitions through Clang"; return false; }
+    auto module = LlvmModule::parseText(*ir, error);
+    if (!module) return false;
+    auto target = LlvmTargetMachine::createWindowsX64(level, error);
+    if (!target) return false;
+    return target->emit(*module, output, LlvmCodeGenFileType::Object, error);
+}
+
 bool emitCppImplicitLifetimeObject(const interop::CppInteropSession& session,
     std::string_view qualifiedType, interop::CppImplicitLifetimeKind kind,
     LlvmOptimizationLevel level, const std::filesystem::path& output, std::string& error)
