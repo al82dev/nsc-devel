@@ -53,6 +53,9 @@ Ampliar el codec interno para transportar conjuntamente records y enums C;
 los accesos exclusivos de records deben rechazar enums en vez de descartarlos.
 Presupuesto: CppCRecordMetadataCodec.h/.cpp, LibraryMetadataVerification.cpp y
 controles de sesión. El formato 1.42 permanece deshabilitado.
+Conservar y verificar la identidad estructurada de cada record C (módulo,
+namespace, contenedores y nombre) para reconstruirla sin analizar cadenas.
+Presupuesto adicional: CppSemanticRecord.h/.cpp y controles de sesión.
 Preparar un proveedor opcional de catálogo para el productor de metadata, sin
 activarlo desde el driver. Presupuesto adicional: ProjectCompilation.h/.cpp,
 LibraryMetadataConstruction.cpp y controles de sesión. El productor sin
