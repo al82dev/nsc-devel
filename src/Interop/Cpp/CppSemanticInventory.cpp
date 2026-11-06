@@ -441,14 +441,31 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
         a = b;
         return true;
     };
+    // Forward declarations can precede a definition in another translation unit.
+    // They still carry identity and target information that must not be ignored.
+    std::map<std::string, std::pair<std::string, std::optional<std::string>>> observations;
     for (const auto& entry : inventory)
     {
         const auto& value = entry.declaration;
         if (entry.projectOrdinal != projectOrdinal || value.isCxx || value.name.empty()) continue;
         const compilation::TypeIdentity identity(std::string(moduleName), {}, {}, value.name);
         if (!identity.isValid() || !requested.contains(identity.key())) continue;
-        if (!value.complete || !value.underlyingType || !value.sizeBits || !value.alignmentBits ||
-            !*value.sizeBits || !*value.alignmentBits || entry.targetTriple.empty())
+        if (entry.targetTriple.empty())
+            return CppCEnumSnapshotFailure{"C enum observation has no target: " + identity.key()};
+        auto [it, inserted] = observations.try_emplace(identity.key(), entry.targetTriple, std::nullopt);
+        if ((!inserted && it->second.first != entry.targetTriple) ||
+            !reconcileUsr(it->second.second, value.clangUsr))
+            return CppCEnumSnapshotFailure{"conflicting C enum observations: " + identity.key()};
+    }
+    for (const auto& entry : inventory)
+    {
+        const auto& value = entry.declaration;
+        if (entry.projectOrdinal != projectOrdinal || value.isCxx || value.name.empty()) continue;
+        const compilation::TypeIdentity identity(std::string(moduleName), {}, {}, value.name);
+        if (!identity.isValid() || !requested.contains(identity.key())) continue;
+        if (!value.complete) continue;
+        if (!value.underlyingType || !value.sizeBits || !value.alignmentBits ||
+            !*value.sizeBits || !*value.alignmentBits)
             return CppCEnumSnapshotFailure{"incomplete C enum observation: " + identity.key()};
         const auto [it, inserted] = result.emplace(identity.key(), CppCEnumSnapshot{identity.key(), entry.targetTriple, value});
         if (inserted) continue;
@@ -469,7 +486,11 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
     if (result.size() != requested.size()) return CppCEnumSnapshotFailure{"required C enum is unavailable"};
     std::vector<CppCEnumSnapshot> catalog;
     catalog.reserve(result.size());
-    for (auto& [key, value] : result) { static_cast<void>(key); catalog.push_back(std::move(value)); }
+    for (auto& [key, value] : result)
+    {
+        value.declaration.clangUsr = observations.at(key).second;
+        catalog.push_back(std::move(value));
+    }
     return catalog;
 }
 
