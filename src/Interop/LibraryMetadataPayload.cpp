@@ -766,9 +766,15 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
             std::vector<CppCEnumSnapshot> enums;
             std::vector<std::uint8_t> withoutProvenance;
             std::string error;
-            if (decodeCTypeCatalogWithProvenance(abiCatalog, records, enums, error) &&
-                encodeCTypeCatalog(records, enums, withoutProvenance, error))
-                abiCatalog = std::move(withoutProvenance);
+            if (decodeCTypeCatalogWithProvenance(abiCatalog, records, enums, error))
+            {
+                const bool hasFloatingFormat = abiCatalog[0] == 2;
+                for (auto& record : records) record.sourceProvenance.reset();
+                const bool encoded = hasFloatingFormat ?
+                    encodeCTypeCatalogWithProvenance(records, enums, withoutProvenance, error) :
+                    encodeCTypeCatalog(records, enums, withoutProvenance, error);
+                if (encoded) abiCatalog = std::move(withoutProvenance);
+            }
         }
         ByteWriter catalogue;
         catalogue.text("NSMETA-C-RECORD-CATALOGUE-1");
