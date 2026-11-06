@@ -8267,7 +8267,8 @@ int main(int argc, char** argv)
     }
 
     const std::string usrSource =
-        "typedef int Count; enum Color { Red, Blue }; struct Point { int x; int y; }; "
+        "typedef int Count; enum Color { Red, Blue }; typedef enum Color ColorAlias; "
+        "struct Point { int x; int y; }; typedef struct Point PointAlias; "
         "extern int counter; int measure(struct Point*); enum Color paint(enum Color); int other(void);";
     auto usrFirst = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C, usrSource));
     auto usrSecond = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C, usrSource));
@@ -8307,6 +8308,23 @@ int main(int argc, char** argv)
                      paint->parameters.size() == 1 && paint->parameters[0].type.enumIdentity &&
                      paint->parameters[0].type.enumIdentity->clangUsr == enums->front().clangUsr,
                      "C function signatures preserve the USRs of referenced record and enum declarations");
+        bool recordAliasUsr = false, enumAliasUsr = false;
+        if (aliases)
+            for (const auto& alias : *aliases)
+            {
+                if (alias.name == "PointAlias")
+                {
+                    const auto mapped = nativesharp::frontend::cppAliasRecordType(alias.underlyingType);
+                    recordAliasUsr = mapped && record && record->clangUsr && mapped->clangUsr == record->clangUsr;
+                }
+                if (alias.name == "ColorAlias")
+                {
+                    const auto mapped = nativesharp::frontend::cppAliasEnumType(alias.underlyingType);
+                    enumAliasUsr = mapped && enums && !enums->empty() && enums->front().clangUsr &&
+                        mapped->clangUsr == enums->front().clangUsr;
+                }
+            }
+        ok &= expect(recordAliasUsr && enumAliasUsr, "C aliases retain USRs of their referenced record and enum");
         usrFirst->close();
         ok &= expect(measure && measure->clangUsr && record && record->clangUsr,
                      "copied USRs remain available after closing their session");
