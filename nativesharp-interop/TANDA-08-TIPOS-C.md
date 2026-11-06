@@ -1077,6 +1077,18 @@ El enlace dirigido del objetivo MIR falló con `undefined symbol` para
 definido en `nsc_precompiled`. Se añadió esta biblioteca solo a ese objetivo de
 prueba. Deben repetirse el enlace y la batería antes de darlo por corregido.
 
+## Validación agrupada con orden MS de global directo
+
+En `2939a7210`, `validar-tanda-08.cmd` terminó con código 0 después de
+construcción incremental ON/OFF. Pasaron sesión Clang, serialización de
+sintaxis, restauración MIR enfocada y los siete fixtures de la tanda; records C
+se ejecutó en O0, O1, O2 y O3. Se observaron advertencias de inicialización en
+la construcción de la suite. El IR O0 de `shared_volatile` contiene carga
+`atomic volatile ... acquire, align 4` y escritura `atomic volatile ...
+release, align 4`, tanto en asignación simple como compuesta. La operación
+compuesta no es un RMW indivisible. Este resultado no cubre campos, punteros,
+otros tamaños, TLS ni todo T08-015; la tanda sigue abierta.
+
 ## Alineación declarada de global C/C++
 
 El snapshot de globales prepara la captura de `ASTContext::getDeclAlign` en

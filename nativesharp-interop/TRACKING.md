@@ -220,9 +220,13 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     casos preparados de aliases a apuntado volatile escalar, struct y enum.
     No cubre todos los calificadores ni los niveles anidados; el ítem sigue
     abierto. [Evidencia](TANDA-08-TIPOS-C.md#validación-agrupada-tras-correcciones).
-  - Pendiente de diseño y validación: Clang puede emitir accesos `volatile`
-    atómicos acquire/release en Windows; el IR comprobado de NSC no acredita ese
-    orden. [Evidencia](TANDA-08-TIPOS-C.md#diferencia-de-orden-en-volatile-de-clang-para-windows).
+  - Hallazgo inicial: Clang puede emitir accesos `volatile` atómicos
+    acquire/release en Windows; la primera validación no acreditó ese orden.
+    [Evidencia](TANDA-08-TIPOS-C.md#diferencia-de-orden-en-volatile-de-clang-para-windows).
+  - Validado parcialmente en `2939a7210`: global directo int volatile de 32
+    bits bajo la opción MS y alineación comprobada, con acquire/release en IR
+    y ejecución O0–O3. El resto de formas sigue pendiente.
+    [Evidencia](TANDA-08-TIPOS-C.md#validación-agrupada-con-orden-ms-de-global-directo).
 - [ ] T08-016. Mapear arreglos de tamaño conocido.
 - [ ] T08-017. Definir la representación de punteros a función C.
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.
