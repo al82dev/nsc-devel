@@ -488,6 +488,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     condicionado, con construcción en curso. La metadata aún no persiste el
     dato. [Evidencia](registro-commits/prueba-long-double-c.md).
 - [ ] T08-008. Mapear el tipo `void` en parámetros y resultados donde corresponda.
+  - Preparada la proyección de globales y arreglos C `volatile void*`, con
+    controles de paso a función y rechazos de descarte y desreferencia. Aún
+    esperan validación agrupada. [Detalle](registro-commits/prueba-volatile-void-global.md).
   - La muestra C11 pasó retorno `void`, parámetro y retorno `void*` y prototipo
     de cero argumentos en O0–O3, con rechazo de argumento extra. No cubre
     todas las posiciones o combinaciones. [Evidencia](registro-commits/prueba-prototipos-c.md).
