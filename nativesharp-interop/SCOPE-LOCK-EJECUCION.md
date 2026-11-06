@@ -1,5 +1,16 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Diagnóstico de coalescencia sobre global C volatile
+
+El caso mixto de `??=` sobre `volatile_record_pointer` falló antes del IR:
+el análisis usa `addressable` tanto para impedir que una dirección volatile
+escape como para una dirección interna de coalescencia. Permitir únicamente
+un identificador modificable de almacenamiento volatile con tipo puntero y
+apuntado sin calificadores, manteniendo `addressable` falso y el rechazo de
+`&` y de propiedades. Presupuesto: AssignmentAnalyzer.cpp, fixture existente
+y registros Markdown. No modificar LLVM ni NSLink; repetir los casos afectados
+en grupo tras el build incremental.
+
 ## Alineación explícita en accesos directos a campos
 
 T08-010/T08-012/T08-020: MIR ya conserva la alineación del layout del campo,

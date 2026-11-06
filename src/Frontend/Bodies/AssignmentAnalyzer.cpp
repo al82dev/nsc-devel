@@ -226,7 +226,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNullCoal
         expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics,
         false, false, false, false);
         bool valid = target.valid;
-        if (valid && (!target.assignable || !target.addressable))
+        // An imported volatile global cannot expose its address as a source-level pointer,
+        // but coalescing keeps that address internal to the generated operation.
+        const bool internalVolatilePointer = expression->first() &&
+            expression->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+            target.volatileStorage && ProjectTypeConversion::isPointer(target.typeKey) &&
+            !target.pointerPointeeReadonly && !target.pointerPointeeVolatile;
+        if (valid && (!target.assignable || (!target.addressable && !internalVolatilePointer)))
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidAssignmentTarget,
