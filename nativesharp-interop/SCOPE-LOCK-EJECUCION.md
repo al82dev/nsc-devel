@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Caso de alias C de puntero a volatile
+
+Preparar el proyecto mixto existente para comprobar que un typedef C de puntero
+a volatile se conserva en parámetro, retorno y variable local de NativeSharp,
+y que las lecturas y escrituras alcanzan la misma memoria C. Archivos: Api.h,
+Main.ns de pruebas-tanda-08-record-c y documentación. El alias todavía no está
+habilitado y el caso se ejecutará con la validación agrupada de la tanda.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 Preparar la lectura del calificador desde el tipo declarado de un estado global

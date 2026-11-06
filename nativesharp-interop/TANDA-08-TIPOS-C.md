@@ -813,6 +813,13 @@ Se permite ese caso y se mantiene el rechazo cuando el destino carece de él.
 La prueba funcional y la activación del tipo por alias siguen pendientes y se
 comprobarán en la validación agrupada de la tanda 08.
 
+## Caso de alias C de puntero a volatile
+
+El proyecto de records declara `VolatileIntPtr` en C y lo usa en un parámetro,
+un retorno y un local NativeSharp; escribe a través del puntero y compara con
+la función C que lee esa memoria. Es una prueba preparada: la proyección del
+alias y la ejecución agrupada aún están pendientes.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

@@ -16,6 +16,7 @@ extern int shared_value;
 int read_shared_value(void);
 extern volatile int shared_volatile;
 extern volatile int* volatile_pointee;
+typedef volatile int* VolatileIntPtr;
 extern const volatile int* const_volatile_pointee;
 extern volatile int* const fixed_volatile_pointee;
 int read_volatile_pointee(void);

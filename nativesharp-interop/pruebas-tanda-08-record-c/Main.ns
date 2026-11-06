@@ -1,3 +1,8 @@
+VolatileIntPtr forward_volatile_alias(VolatileIntPtr value)
+{
+    return value;
+}
+
 int Main()
 {
     Pair* item = make_pair();
@@ -32,6 +37,9 @@ int Main()
     if (*returned_volatile != 65 || read_volatile_pointee() != 65) return 28;
     *fixed_volatile_pointee = 66;
     if (*fixed_volatile_pointee != 66 || read_volatile_pointee() != 66) return 29;
+    VolatileIntPtr typed_volatile = forward_volatile_alias(volatile_pointee);
+    *typed_volatile = 69;
+    if (*typed_volatile != 69 || read_volatile_pointee() != 69) return 33;
     shared_array[1] = 19;
     int* shared_element = &shared_array[1];
     if (*shared_element != 19) return 10;
