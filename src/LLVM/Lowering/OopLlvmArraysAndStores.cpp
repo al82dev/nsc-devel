@@ -170,6 +170,9 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         else
         {
             previous = LLVMBuildLoad2(builder_, targetType, address, "compound.load");
+            if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::FieldAddress &&
+                node->children[0]->alignment != 0)
+                LLVMSetAlignment(previous, static_cast<unsigned>(node->children[0]->alignment));
             if (node->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
             if (isClangMsVolatileScalarGlobal(node->children[0].get()))
             {
@@ -195,6 +198,9 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         else
         {
             LLVMValueRef store = LLVMBuildStore(builder_, updated, address);
+            if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::FieldAddress &&
+                node->children[0]->alignment != 0)
+                LLVMSetAlignment(store, static_cast<unsigned>(node->children[0]->alignment));
             if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
             if (isClangMsVolatileScalarGlobal(node->children[0].get()))
             {
@@ -395,6 +401,9 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             enterBlock(readyBlock);
         }
         LLVMValueRef store = LLVMBuildStore(builder_, value, address);
+        if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::FieldAddress &&
+            node->children[0]->alignment != 0)
+            LLVMSetAlignment(store, static_cast<unsigned>(node->children[0]->alignment));
         if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
         if (isClangMsVolatileScalarGlobal(node->children[0].get()))
         {

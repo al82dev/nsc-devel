@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Alineación explícita en accesos directos a campos
+
+T08-010/T08-012/T08-020: MIR ya conserva la alineación del layout del campo,
+pero las cargas y escrituras ordinarias directas no la indican a LLVM. Emitir
+esa alineación para FieldLoad y FieldAddress en lectura, escritura simple y
+compuesta, sin habilitar todavía campos C empaquetados. Preservar los demás
+destinos, bitfields y orden volatile. Presupuesto: OopLlvmExpressionMachine.cpp,
+OopLlvmArraysAndStores.cpp, fixture de layout C y registros Markdown. LLVM y
+NSLink protegidos; validación incremental agrupada al cierre de la tanda.
+
 ## Coalescencia sobre puntero global C volatile
 
 T08-015: `??=` admite almacenamiento puntero, pero `lowerNullCoalescingStore`
