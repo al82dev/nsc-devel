@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Prueba interna de move con apuntado volatile
+
+Extender el fixture inyectado para comprobar que move de un local conserva
+volatile hasta las cargas y escrituras. Archivos: CppClangSessionTests.cpp y
+documentación. No habilitar la importación real; ejecución en la validación
+agrupada.
+
 ## Propagación volatile en move
 
 Conservar el calificador inmediato al construir el resultado de move para

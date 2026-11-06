@@ -6478,7 +6478,7 @@ int main(int argc, char** argv)
             else ok &= expect(false, "Clang exposes pointer to readonly scalar");
             const auto* volatilePointee = globalByName(*globals, "tools::cpp_volatile_pointee");
             if (volatilePointee && volatilePointee->externalSymbol)
-            for (int scenario = 0; scenario < 4; ++scenario)
+            for (int scenario = 0; scenario < 5; ++scenario)
             {
                 nativesharp::frontend::NamespaceStateSymbol state;
                 state.projectOrdinal = 0;
@@ -6500,19 +6500,21 @@ int main(int argc, char** argv)
                         return "int Main() { int* p = tools.cpp_volatile_pointee; return 0; }\n";
                     if (scenario == 2)
                         return "int Main() { int value = 0; int* p = &value; p = tools.cpp_volatile_pointee; return 0; }\n";
+                    if (scenario == 4)
+                        return "int Main() { var p = tools.cpp_volatile_pointee; var q = move(p); *q = 42; return *q; }\n";
                     return "int* result() { return tools.cpp_volatile_pointee; } int Main() { return 0; }\n";
                 });
                 std::string error;
                 const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
                 const bool configured = check.setExperimentalCppImportedStates({state}, error);
-                const bool ready = configured && (scenario == 0
+                const bool ready = configured && (scenario == 0 || scenario == 4
                     ? check.compileProjectOopMir(path, error) : check.compileProjectMethodBodies(path, error));
                 bool expectedDiagnostic = false;
                 for (const auto& diagnostic : check.diagnostics().diagnostics())
                     expectedDiagnostic |= diagnostic.message().find("volatile qualification") != std::string::npos;
-                ok &= expect(configured && (scenario == 0 ? ready : !ready && expectedDiagnostic),
+                ok &= expect(configured && (scenario == 0 || scenario == 4 ? ready : !ready && expectedDiagnostic),
                              "volatile pointee global preserves access and rejects qualifier loss");
-                if (scenario == 0 && ready && check.oopMirModel() && check.nameLookup())
+                if ((scenario == 0 || scenario == 4) && ready && check.oopMirModel() && check.nameLookup())
                 {
                     nativesharp::llvm_backend::ProjectOopLlvmLowerer lowerer;
                     auto module = lowerer.lower(*check.nameLookup(), *check.oopMirModel());

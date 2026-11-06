@@ -48,6 +48,8 @@ locales, parámetros, campos, elementos e iteradores; aún no se ha validado.
 Una prueba interna preparada inyecta un global con símbolo de Clang para
 ejercitar el acceso, el IR y los rechazos de inicialización, asignación y
 retorno. No habilita la importación real y aún no se ha ejecutado.
+La prueba prepara también un local transferido mediante move y exige que su IR
+mantenga las cargas y escrituras volatile.
 
 ## Parámetros C puntero a escalar volatile: implementación pendiente de validar
 
