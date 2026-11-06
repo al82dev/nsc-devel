@@ -224,6 +224,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     dentro de record subalineado; `2f97e22b8` la corrige. Con `aa662dd8f`
     pasaron acceso y rechazo en layout O0–O3; `f02e37235` comprobó lectura y
     escritura con alineación 1 en el IR ya generado. No cierra T08-010.
+  - Preparado en `40a0062b8`, `84549e59f` y `35e9cf099`: proyección C de
+    arreglos fijos de records empaquetados y controles de acceso, dirección e
+    IR. No se han construido ni ejecutado estos cambios; el ítem sigue abierto.
 - [ ] T08-011. Importar la declaración y campos de una `union` C.
 - [ ] T08-012. Obtener de Clang tamaño, alineación y desplazamiento de cada campo.
 - [ ] T08-013. Representar tipos declarados pero incompletos sin inventar su tamaño.
