@@ -37,6 +37,8 @@ un parámetro volatile y el rechazo de otro sin ese calificador; sin ejecutar.
 Se añadió una barrera provisional en las rutas de llamadas indirectas y
 variádicas cuyos tipos no expresan el contrato. No equivale a soporte de
 callbacks o variádicos con volatile, que siguen pendientes.
+El fixture también prepara controles que mantienen diferidos los retornos y
+punteros anidados volatile; aún no fueron ejecutados.
 Se preparó asimismo el rechazo provisional al retornar ese puntero mediante
 un tipo que no representa volatile; no está ejecutado.
 Una prueba interna preparada inyecta un global con símbolo de Clang para

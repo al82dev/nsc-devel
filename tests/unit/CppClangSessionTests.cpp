@@ -2249,6 +2249,7 @@ int main(int argc, char** argv)
                                   "int c_add(int left, int right); int c_invoke(int (*cb)(int), int value);\n"
                                   "int ptr_read(int* p); void restrict_use(int *restrict p);\n"
                                   "int ptr_const(const int* p); int ptr_volatile(volatile int* p); int** ptr_nested(int** p);\n"
+                                  "volatile int* ptr_volatile_result(void); void ptr_volatile_nested(volatile int** p);\n"
                                   "void* ptr_void(void* p); int ptr_nested_const(const int** p);\n"
                                   "int bridge_probe(size_t n, ...);\n"
                                   "struct Pair { char a; int b; }; struct OuterPair { struct Pair nested; struct Pair array[2][3]; }; struct CDevice { volatile int counter; }; struct Incomplete;\n"
@@ -2537,6 +2538,13 @@ int main(int argc, char** argv)
         ok &= expect(pointerNestedConst &&
                      std::holds_alternative<CppSemanticFunctionFailure>(projectCppSemanticFunction(*pointerNestedConst, 0, "Semantic")),
                      "nested qualified pointees are not silently mapped to mutable pointers");
+        for (const auto* name : {"ptr_volatile_result", "ptr_volatile_nested"})
+        {
+            const auto* declaration = cFunctions ? functionByName(*cFunctions, name) : nullptr;
+            ok &= expect(declaration && std::holds_alternative<CppSemanticFunctionFailure>(
+                             projectCppSemanticFunction(*declaration, 0, "Semantic")),
+                         "volatile return and nested pointer remain deferred");
+        }
         if (pointerRead && volatileSymbol)
         {
             const auto projectedRead = projectCppSemanticFunction(*pointerRead, 0, "Semantic");

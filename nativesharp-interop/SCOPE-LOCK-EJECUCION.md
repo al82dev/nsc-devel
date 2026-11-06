@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Límites de parámetros y resultados volatile anidados
+
+Añadir controles al fixture de Clang para asegurar que el soporte preparado de
+parámetros inmediatos no habilita por accidente retornos volatile ni punteros
+anidados calificados. Archivos: CppClangSessionTests.cpp y documentación. Los
+rechazos son protecciones temporales, no el alcance final.
+
 ## Protección provisional de llamadas indirectas y variádicas
 
 Mientras las firmas estructurales no representen volatile, rechazar argumentos
