@@ -1,0 +1,5 @@
+namespace Published
+{
+    public struct Wrapper { public CRecord* value; }
+    public struct Bridge { public static CRecord* Get() { return null; } }
+}
