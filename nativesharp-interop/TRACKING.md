@@ -253,6 +253,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - Preparado `70b42a663`: transporte del modo al campo HIR y direcciones de
     arreglos fijos, sin propagación desde punteros cargados. No se ha construido
     ni validado; aún no aplica orden atómico y el defecto permanece abierto.
+  - Preparados `54def11ca`, `b271b6494` y `ff6a989`: identificación del enum
+    en MIR, comprobación de alineación y emisión acquire/release. Construcción
+    incremental en curso; falta ejecutar el control comparativo y la batería.
   - Preparados `f301a1a16` y `03830c483`: lectura, IR y rechazo de escritura
     para arreglos C de record y enum const volatile. Sin ejecutar.
   - Actualización: layout pasó en O0–O3 con lecturas, IR volatile alineado a 1
