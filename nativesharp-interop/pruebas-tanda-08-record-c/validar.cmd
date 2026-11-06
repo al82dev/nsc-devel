@@ -107,6 +107,24 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project
 if not errorlevel 1 exit /b 1
 findstr /c:"cannot take the address of readonly storage until qualified pointers are supported" "%DEST%\const-record-address.log" >nul
 if errorlevel 1 exit /b 1
+copy /y "%~dp0ConstRecordPointerWrite.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-record-pointer-write.exe" > "%DEST%\const-record-pointer-write.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"left side of assignment is not assignable" "%DEST%\const-record-pointer-write.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0ConstRecordPointerAddress.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-record-pointer-address.exe" > "%DEST%\const-record-pointer-address.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"cannot take the address of readonly storage until qualified pointers are supported" "%DEST%\const-record-pointer-address.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0ConstRecordPointerConversion.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-record-pointer-conversion.exe" > "%DEST%\const-record-pointer-conversion.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /i /c:"const" /c:"readonly" /c:"mutability" "%DEST%\const-record-pointer-conversion.log" >nul
+if errorlevel 1 exit /b 1
 copy /y "%~dp0VolatileRecordGlobal.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-record.exe" > "%DEST%\volatile-record.log" 2>&1

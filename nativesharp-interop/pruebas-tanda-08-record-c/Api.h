@@ -30,6 +30,8 @@ extern struct GlobalOnly global_record_matrix[2][2];
 union GlobalUnion { int value; unsigned char bytes[4]; };
 extern union GlobalUnion global_union;
 extern const struct GlobalOnly global_record_const;
+extern const struct GlobalOnly* readonly_record_pointer;
+int read_readonly_record_pointer(void);
 extern volatile struct GlobalOnly global_record_volatile;
 extern struct GlobalOnly* volatile volatile_record_pointer;
 extern const struct GlobalOnly readonly_record_matrix[2][2];

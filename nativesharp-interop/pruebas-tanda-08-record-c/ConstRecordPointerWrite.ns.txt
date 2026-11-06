@@ -1,0 +1,5 @@
+int Main()
+{
+    readonly_record_pointer->value = 42;
+    return 0;
+}

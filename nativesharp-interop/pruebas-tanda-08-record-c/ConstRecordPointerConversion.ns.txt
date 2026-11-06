@@ -1,0 +1,5 @@
+int Main()
+{
+    GlobalOnly* pointer = readonly_record_pointer;
+    return 0;
+}

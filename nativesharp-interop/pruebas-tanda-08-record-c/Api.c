@@ -29,6 +29,8 @@ struct GlobalOnly global_record_array[2] = { { 3 }, { 4 } };
 struct GlobalOnly global_record_matrix[2][2] = { { { 1 }, { 2 } }, { { 3 }, { 4 } } };
 union GlobalUnion global_union = { 0 };
 const struct GlobalOnly global_record_const = { 7 };
+const struct GlobalOnly* readonly_record_pointer = &global_record_const;
+int read_readonly_record_pointer(void) { return readonly_record_pointer->value; }
 volatile struct GlobalOnly global_record_volatile = { 8 };
 struct GlobalOnly* volatile volatile_record_pointer = &global_record_target;
 const struct GlobalOnly readonly_record_matrix[2][2] = { { { 11 }, { 19 } }, { { 23 }, { 31 } } };
