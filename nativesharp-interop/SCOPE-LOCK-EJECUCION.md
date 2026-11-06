@@ -15,6 +15,8 @@ T08-002/T08-010/T08-013: preparar un fixture de productor NativeSharp con
 tipo C en firma pública y consumidor mediante LibraryReference. Presupuesto:
 pruebas-tanda-08-meta-c/*, TRACKING.md y registros Markdown; ejecución posterior
 en A:/nsc-interop-build/tanda08-meta-c. LLVM y NSLink permanecen protegidos.
+Incluir una matriz de diagnóstico de llamadas C escalares y con retorno de
+puntero, en ámbito global y namespace, sin reconstruir el compilador.
 
 ## Comprobación incremental de cambios acumulados
 
