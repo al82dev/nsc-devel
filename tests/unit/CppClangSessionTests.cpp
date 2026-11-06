@@ -5146,6 +5146,24 @@ int main(int argc, char** argv)
                              valueField->declaredTypeKey == "builtin:int" &&
                              !automaticFields.setExperimentalCppInstanceFieldProvider({}, fieldsError),
                              "project compilation obtains instance field metadata from a physical C++ header");
+                bool fieldModePreserved = false;
+                if (fieldsReady && valueField && automaticFields.projectGraph())
+                {
+                    auto fieldRecords = collectCppSemanticRecords(*automaticFields.projectGraph(), automaticFields.cppProjectSessions());
+                    if (const auto* observed = std::get_if<std::vector<CppSemanticRecordEntry>>(&fieldRecords))
+                    {
+                        std::optional<bool> commonMode;
+                        bool found = false;
+                        for (const auto& entry : *observed)
+                            if (entry.identity && entry.identity->key() == "Semantic::Demo.Widget")
+                            {
+                                if (!found) { commonMode = entry.microsoftVolatileSemantics; found = true; }
+                                else if (commonMode != entry.microsoftVolatileSemantics) commonMode = std::nullopt;
+                            }
+                        fieldModePreserved = found && valueField->cppMicrosoftVolatileSemantics == commonMode;
+                    }
+                }
+                ok &= expect(fieldModePreserved, "imported field preserves its record group's volatile mode");
                 nativesharp::frontend::ProjectCompilation guardedFields;
                 std::string fieldGuardError;
                 const bool fieldGuardConfigured = configure(guardedFields, fieldGuardError) &&
