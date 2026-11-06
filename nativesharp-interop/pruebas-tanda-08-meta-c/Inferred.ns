@@ -1,0 +1,8 @@
+int Main()
+{
+    var small = get_c_record_value();
+    if (small.value != 17) return 1;
+    var big = echo_c_big(get_c_big());
+    if (big.first != 11 || big.second != 27 || big.third != 33) return 2;
+    return 0;
+}
