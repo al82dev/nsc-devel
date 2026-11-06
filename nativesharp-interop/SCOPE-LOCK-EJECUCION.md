@@ -1738,6 +1738,7 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Presupuesto: nuevo fixture `nativesharp-interop/pruebas-tanda-08-tls-c` y registro Markdown. Salidas solo en `A:/nsc-interop-build/tanda08-tls-c`. Usar Clang oficial y NSC/NSLink existentes; NSLink y el árbol LLVM son de solo lectura.
 - Una biblioteca C con `__declspec(thread)` ofrece una función que verifica valor inicial e independencia entre hilo principal y un hilo Win32. NativeSharp llama esa función sin importar todavía el global. Registrar por separado compilación, enlace y ejecución; un fallo no autoriza modificar NSLink. No incluir el fixture como gate de la batería hasta conocer el comportamiento.
 - Primera ejecución: Clang compiló, pero el enlace se detuvo en `__imp_GetExitCodeThread`, importación del instrumento que no está en el catálogo actual. Sustituirla por un resultado escrito por el hilo y leído tras `WaitForSingleObject`, sin alterar el objetivo de aislamiento; volver a medir.
+- Segunda ejecución: Clang compiló y NSLink falló con `NSL1020` para `_tls_index`. El objeto contiene `.tls$` y relocaciones AMD64 SECREL; la fuente consultada del enlazador reconoce SECREL, pero no se ha demostrado el directorio TLS ni su inicialización. No modificar NSLink; registrar el requisito y continuar los demás contratos mientras se investiga una solución dentro de NSC.
 
 ### Global enum const
 

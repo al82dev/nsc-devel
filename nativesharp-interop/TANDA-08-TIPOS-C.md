@@ -2,6 +2,20 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Requisito TLS de biblioteca C: 2026-11-06
+
+El fixture `pruebas-tanda-08-tls-c` compiló con Clang para Windows x64, pero
+no llegó a ejecutarse. El primer enlace falló por `__imp_GetExitCodeThread`,
+dependencia de la prueba; `fb3f5d604` la eliminó usando memoria compartida tras
+esperar al hilo. El segundo enlace falló en NSLink con `NSL1020` para
+`_tls_index`, referenciado por el objeto C.
+
+La inspección del objeto muestra sección `.tls$` y relocaciones AMD64 SECREL.
+La fuente consultada de NSLink reconoce SECREL, pero esta observación no prueba
+que el ejecutable final construya o inicialice el directorio TLS. No se modificó
+NSLink ni se habilitó la importación del global TLS. La independencia entre
+hilos permanece sin verificar; T08-004 y T08-015 siguen abiertos.
+
 ## Resultado C de puntero a const: 2026-11-06
 
 Con `a06de3940`, `b199dd0d7` y `fd32bd2fc`, la validación agrupada terminó con
