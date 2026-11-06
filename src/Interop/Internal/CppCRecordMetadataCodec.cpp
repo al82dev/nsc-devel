@@ -262,6 +262,36 @@ bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
     output = writer.takeBytes(); error.clear(); return true;
 }
 
+bool compareCRecordContracts(const CppCRecordSnapshot& left, const CppCRecordSnapshot& right,
+                             CRecordContractComparison& result, std::string& error)
+{
+    std::vector<std::uint8_t> leftBytes, rightBytes;
+    if (!encodeCRecordCatalog(std::span(&left, 1), leftBytes, error) ||
+        !encodeCRecordCatalog(std::span(&right, 1), rightBytes, error)) return false;
+    if (left.name != right.name || left.namespaceSegments != right.namespaceSegments ||
+        left.containingRecords != right.containingRecords || left.targetTriple != right.targetTriple ||
+        left.kind != right.kind || (left.clangUsr && right.clangUsr && left.clangUsr != right.clangUsr))
+    {
+        result = CRecordContractComparison::Different;
+        error.clear();
+        return true;
+    }
+    if (!left.complete || !right.complete || !left.clangUsr || left.clangUsr->empty() ||
+        !right.clangUsr || right.clangUsr->empty())
+    {
+        result = CRecordContractComparison::Insufficient;
+        error.clear();
+        return true;
+    }
+    auto normalized = right;
+    normalized.moduleName = left.moduleName;
+    normalized.identityKey = left.identityKey;
+    if (!encodeCRecordCatalog(std::span(&normalized, 1), rightBytes, error)) return false;
+    result = leftBytes == rightBytes ? CRecordContractComparison::Matching : CRecordContractComparison::Different;
+    error.clear();
+    return true;
+}
+
 bool decodeCRecordCatalog(std::span<const std::uint8_t> bytes,
                           std::vector<CppCRecordSnapshot>& output, std::string& error)
 {
