@@ -8,4 +8,5 @@ ejecución devolvió 3 para el caso sin signo; se separaron igualdad y orden par
 localizar la operación que falla. El IR mostró extensión con signo; Clang en
 este destino había elegido `int` para el enum sin base explícita. La prueba
 ahora especifica `unsigned int` y lo comprueba con `_Generic` en C. Esto usa
-una extensión de Clang en C11; falta repetir la batería.
+una extensión de Clang en C11. La batería de metadata C pasó de O0 a O3; falta
+ampliar las comprobaciones de regresión para enums nativos de NativeSharp.

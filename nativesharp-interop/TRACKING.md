@@ -435,6 +435,11 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-007. Mapear los tipos de punto flotante según el objetivo.
 - [ ] T08-008. Mapear el tipo `void` en parámetros y resultados donde corresponda.
 - [ ] T08-009. Mapear enumeraciones y sus valores representables.
+  - La matriz de metadata C pasó O0–O3 para comparaciones enum-entero,
+    incluyendo enum estrecho con signo y enum de 32 bits con base unsigned
+    explícita; también pasó `nsc.cpp-interop.session`. La promoción aplica las
+    reglas numéricas de NativeSharp. La cobertura de enums sigue incompleta.
+    [Evidencia](registro-commits/comparacion-enum-c-numerico.md).
   - Enum compartido y enumerador resueltos en O0–O3. La comparación directa
     entre enum C y enumerador entero falla en O0; requiere promoción numérica
     en análisis y generación. [Detalle](registro-commits/prueba-promocion-enum-c.md).
