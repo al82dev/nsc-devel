@@ -888,6 +888,12 @@ validación agrupada están pendientes; no se declara el soporte verificado.
 El fixture prepara un local con alias a struct volatile y exige que la escritura
 del campo sea visible para C y aparezca como volatile en LLVM. No ejecutado aún.
 
+## Prueba de alias a enum volatile
+
+El fixture prepara un local del alias a enum volatile, escribe y lee por él y
+contrasta el resultado con C. El script ya inspecciona accesos volatile de enum;
+no se ha ejecutado el caso nuevo.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

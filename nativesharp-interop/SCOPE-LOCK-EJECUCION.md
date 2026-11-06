@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Prueba de alias a enum volatile
+
+Preparar un alias C de puntero a enum volatile y usarlo para escribir y leer
+el enum compartido con C. Archivos: Api.h, Main.ns del fixture enum-funcion y
+documentación. La validación agrupada sigue pendiente.
+
 ## Prueba de alias a struct volatile
 
 Preparar un alias C de puntero a struct volatile y comprobar escritura de campo

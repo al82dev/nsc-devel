@@ -1,4 +1,5 @@
 enum Mood { Sad = -3, Happy = 7 };
+typedef volatile enum Mood* VolatileMoodPtr;
 int update_volatile_mood(volatile enum Mood* value);
 int read_const_volatile_mood(const volatile enum Mood* value);
 enum Mood current_mood(void);
