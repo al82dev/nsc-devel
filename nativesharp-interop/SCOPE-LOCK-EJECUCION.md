@@ -3316,6 +3316,9 @@ y su tránsito de vuelta a C. Ejecutar la matriz O0–O3 agrupada. No modificar
 producción sin delimitar primero el archivo y el defecto observados.
 Agregar un proyecto separado para leer e invocar un puntero a función desde un
 campo de struct C y desde un global C, sin alterar el caso ya validado.
+Extender ese proyecto para escribir callbacks en el campo y en el global y
+comprobar su invocación desde C; agregar controles de lectura y rechazo de
+escritura para un global y un campo con puntero a función const.
 Para el fallo observado, reutilizar el mapeo de firma de funciones existente
 en `include/nativesharp/Interop/CppSemanticFunction.h` y
 `src/Interop/Cpp/CppSemanticFunction.cpp`, y conectarlo a campos C en
