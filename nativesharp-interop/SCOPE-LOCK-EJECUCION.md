@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Prueba de tamaño y alineación en símbolo global
+
+Ampliar el caso del proveedor para exigir tamaño y alineación conocidos en el
+símbolo C++ importado. Archivos: CppClangSessionTests.cpp y documentación.
+Ejecutar con la validación agrupada de la tanda.
+
 ## Tamaño y alineación en símbolo global importado
 
 Transportar tamaño y alineación conocidos al símbolo externo seleccionado,

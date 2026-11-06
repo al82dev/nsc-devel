@@ -1079,6 +1079,11 @@ El proveedor prepara el traslado del tamaño y la alineación del candidato al
 símbolo externo. Los estados NativeSharp conservan ausencia y aún no se usa el
 dato para emitir instrucciones atómicas. Falta validación agrupada.
 
+## Prueba de tamaño y alineación en símbolo global
+
+El caso del proveedor prepara comprobación del tamaño de int y la presencia de
+alineación para el símbolo importado. Aún no se ha ejecutado.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.
