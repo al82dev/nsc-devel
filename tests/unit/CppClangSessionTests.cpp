@@ -3062,6 +3062,53 @@ int main(int argc, char** argv)
                     metadata_detail::encodeCRecordCatalog(decoded, reencoded, codecError);
                 ok &= expect(roundTrip && encoded == reencoded && decoded.size() == catalog->size(),
                              "C record catalog codec preserves its complete encoding");
+                auto nestedCatalog = *catalog;
+                const auto nestedRecord = std::find_if(nestedCatalog.begin(), nestedCatalog.end(),
+                    [](const auto& record) { return record.complete && !record.fields.empty(); });
+                if (nestedRecord != nestedCatalog.end())
+                {
+                    auto& type = nestedRecord->fields.front().type;
+                    type = CppType{};
+                    type.kind = CppTypeKind::Pointer;
+                    type.isConst = true;
+                    type.isRestrict = true;
+                    type.sizeBits = 8;
+                    auto functionType = std::make_shared<CppType>();
+                    functionType->kind = CppTypeKind::Function;
+                    auto signature = std::make_shared<CppFunctionType>();
+                    signature->returnType.kind = CppTypeKind::Record;
+                    signature->returnType.recordIdentity = CppRecordTypeIdentity{};
+                    signature->returnType.recordIdentity->name = "Nested";
+                    signature->returnType.recordIdentity->clangUsr = "record-usr";
+                    CppType parameter;
+                    parameter.kind = CppTypeKind::Enumeration;
+                    parameter.isVolatile = true;
+                    parameter.enumIdentity = CppEnumTypeIdentity{};
+                    parameter.enumIdentity->name = "Shade";
+                    parameter.enumIdentity->clangUsr = "enum-usr";
+                    signature->parameterTypes.push_back(std::move(parameter));
+                    signature->callingConvention = "cdecl";
+                    signature->hasPrototype = true;
+                    functionType->function = std::move(signature);
+                    type.element = std::move(functionType);
+                    std::vector<std::uint8_t> nestedBytes;
+                    std::vector<CppCRecordSnapshot> nestedDecoded;
+                    const bool nestedRoundTrip = metadata_detail::encodeCRecordCatalog(nestedCatalog, nestedBytes, codecError) &&
+                        metadata_detail::decodeCRecordCatalog(nestedBytes, nestedDecoded, codecError);
+                    const auto position = static_cast<std::size_t>(nestedRecord - nestedCatalog.begin());
+                    const CppType* recovered = nestedRoundTrip ? &nestedDecoded[position].fields.front().type : nullptr;
+                    const CppFunctionType* recoveredFunction = recovered && recovered->element ? recovered->element->function.get() : nullptr;
+                    ok &= expect(recovered && recovered->isConst && recovered->isRestrict && recoveredFunction &&
+                                 recoveredFunction->returnType.recordIdentity &&
+                                 recoveredFunction->returnType.recordIdentity->clangUsr == "record-usr" &&
+                                 recoveredFunction->parameterTypes.size() == 1 &&
+                                 recoveredFunction->parameterTypes[0].isVolatile &&
+                                 recoveredFunction->parameterTypes[0].enumIdentity &&
+                                 recoveredFunction->parameterTypes[0].enumIdentity->clangUsr == "enum-usr" &&
+                                 recoveredFunction->callingConvention == "cdecl" && recoveredFunction->hasPrototype,
+                                 "C record codec preserves nested function types, qualifiers and identities");
+                }
+                else ok &= expect(false, "C record codec nested-type test has a complete record");
                 if (!encoded.empty()) encoded.pop_back();
                 const auto priorSize = decoded.size();
                 ok &= expect(!metadata_detail::decodeCRecordCatalog(encoded, decoded, codecError) &&
