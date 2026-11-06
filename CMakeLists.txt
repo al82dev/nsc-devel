@@ -3964,7 +3964,7 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.namespace-function-mir COMMAND nsc_namespace_function_mir_tests)
 
     add_executable(nsc_namespace_function_llvm_tests tests/unit/NamespaceFunctionLlvmTests.cpp)
-    target_link_libraries(nsc_namespace_function_llvm_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
+    target_link_libraries(nsc_namespace_function_llvm_tests PRIVATE nsc_llvm nsc_frontend nsc_target nsc_precompiled)
     target_compile_features(nsc_namespace_function_llvm_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_namespace_function_llvm_tests)
     add_test(NAME nsc.namespace-function-llvm COMMAND nsc_namespace_function_llvm_tests)

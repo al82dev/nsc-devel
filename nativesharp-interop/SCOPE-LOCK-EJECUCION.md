@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Correcciones de la prueba de identidad
+
+La batería en cb60b585e falló al enlazar `nsc_namespace_function_llvm_tests`:
+`nsc_frontend` referencia `PrecompiledSemanticSnapshotCodec::decode`, definido
+en `nsc_precompiled`. Añadir ese enlace al objetivo. La compilación también
+advirtió una vida temporal al obtener el primer cuerpo mediante un span
+temporal: conservar el span en una variable local. Archivos: CMakeLists.txt,
+NamespaceFunctionLlvmTests.cpp y registros Markdown. Repetir la batería.
+
 ## Precisión de la comprobación IR de enteros volatile
 
 La prueba previa comprueba acquire/release pero acepta cualquier ancho y no
