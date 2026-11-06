@@ -7,4 +7,6 @@ acreditar el orden de memoria: debe inspeccionarse y añadirse una comprobación
 La primera ejecución rechazó tanto el campo como el global por tipo no
 proyectado. Clang emitió `load atomic volatile ptr` con acquire y alineación 8
 para las lecturas observadas. Se añadieron funciones C de escritura para
-contrastar también el orden de store; falta repetir la compilación del IR.
+contrastar también el orden de store. Tras las correcciones, la comparación
+automática comprobó acquire/release alineados y volatile ordinario empaquetado
+en ambos IR; el fixture ejecutó O0–O3. Otras formas siguen pendientes.
