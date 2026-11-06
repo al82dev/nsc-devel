@@ -1617,6 +1617,14 @@ int main(int argc, char** argv)
                                                 group.status = CppRecordGroupStatus::MultipleDefinitionsUnverified;
                                         rejectedUnverified = std::holds_alternative<CppSemanticFunctionFailure>(
                                             projectCppSemanticFunctionWithRecords(entry.declaration, entry.projectOrdinal, moduleName, unverified));
+                                        auto wrongUsr = grouped;
+                                        bool changedUsr = false;
+                                        for (auto& group : wrongUsr.groups)
+                                            if (group.projectOrdinal == entry.projectOrdinal && group.identity.name() == "OnlyForward" && group.clangUsr)
+                                            { group.clangUsr = "different-record-usr"; changedUsr = true; }
+                                        ok &= expect(changedUsr && std::holds_alternative<CppSemanticFunctionFailure>(
+                                            projectCppSemanticFunctionWithRecords(entry.declaration, entry.projectOrdinal, moduleName, wrongUsr)),
+                                            "function projection rejects a different record USR without a lookup");
                                         rejectedWrongOwner = std::holds_alternative<CppSemanticFunctionFailure>(
                                             projectCppSemanticFunctionWithRecords(entry.declaration, 2, moduleName, grouped));
                                     }
