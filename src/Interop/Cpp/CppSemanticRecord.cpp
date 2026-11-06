@@ -1611,6 +1611,7 @@ static bool collectVisibleCRecordReconciliations(
     { error = failure->message; return false; }
     const auto& enumEntries = std::get<std::vector<CppSemanticEnumEntry>>(enumInventory);
     std::vector<CppRecordObservation::Reconciliation> reconciliations;
+    std::map<std::pair<std::size_t, std::string>, std::set<std::string>> enumMatches;
     for (const auto& group : observation.groups.groups)
     {
         if (group.projectOrdinal >= lookup.modules().size() || !lookup.modules()[group.projectOrdinal] ||
@@ -1645,8 +1646,21 @@ static bool collectVisibleCRecordReconciliations(
                     matches.insert(candidate.identityKey);
             }
         if (matches.size() == 1)
-            reconciliations.push_back({group.projectOrdinal, group.identity.key(), *matches.begin()});
+        {
+            const auto& matchedRecord = *matches.begin();
+            reconciliations.push_back({group.projectOrdinal, group.identity.key(), matchedRecord});
+            const auto separator = matchedRecord.find("::");
+            const std::string prefix = group.identity.moduleName() + "::";
+            if (separator != std::string::npos)
+                for (const auto& enumIdentity : closure->enumIdentityKeys)
+                    if (enumIdentity.starts_with(prefix))
+                        enumMatches[{group.projectOrdinal, enumIdentity}].insert(
+                            matchedRecord.substr(0, separator) + enumIdentity.substr(prefix.size() - 2));
+        }
     }
+    for (const auto& [source, matches] : enumMatches)
+        if (matches.size() == 1 && source.second != *matches.begin())
+            reconciliations.push_back({source.first, source.second, *matches.begin()});
     output = std::move(reconciliations); error.clear(); return true;
 }
 
@@ -1754,6 +1768,11 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
     std::set<std::string> collidingEnumIdentities;
     for (auto& enumeration : enums)
     {
+        const auto reconciled = std::find_if(result.reconciliations.begin(), result.reconciliations.end(),
+            [&](const auto& item) { return item.projectOrdinal == enumeration.projectOrdinal &&
+                                          item.liveIdentityKey == enumeration.identity.key(); });
+        if (reconciled != result.reconciliations.end())
+            enumeration.reconciledIdentityKey = reconciled->precompiledIdentityKey;
         const auto ordinal = nativeLookup.typeOrdinalForIdentity(enumeration.identity.key());
         const auto* native = ordinal ? nativeLookup.typeForOrdinal(*ordinal) : nullptr;
         if (ordinal && nativeLookup.cppImportedType(*ordinal))
@@ -2032,6 +2051,14 @@ bool selectExperimentalCppRecordTypesForCompilation(
             { error = "C enum field conflicts with a selected record: " + candidate->identity.name(); return false; }
             addEnum(*candidate);
         }
+    }
+    for (auto& type : output)
+    {
+        const auto reconciled = std::find_if(observation.reconciliations.begin(), observation.reconciliations.end(),
+            [&](const auto& item) { return item.projectOrdinal == type.projectOrdinal &&
+                                          item.liveIdentityKey == type.identity.key(); });
+        if (reconciled != observation.reconciliations.end())
+            type.reconciledIdentityKey = reconciled->precompiledIdentityKey;
     }
     error.clear();
     return true;
