@@ -23,6 +23,8 @@ findstr /r /c:"load volatile.*@volatile_mood" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta lectura LLVM volatile del enum. & exit /b 1)
 findstr /r /c:"store volatile.*@volatile_mood" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura LLVM volatile del enum. & exit /b 1)
+findstr /r /c:"load volatile i32, ptr" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta lectura volatile de enum. & exit /b 1)
 findstr /r /c:"load volatile.*@volatile_states" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta lectura LLVM volatile del arreglo enum. & exit /b 1)
 findstr /r /c:"store volatile.*@volatile_states" "%DEST%\project.ll" >nul

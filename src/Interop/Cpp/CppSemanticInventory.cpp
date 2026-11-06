@@ -135,7 +135,8 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
              current->kind == CppTypeKind::SignedInteger ||
              current->kind == CppTypeKind::UnsignedInteger ||
              current->kind == CppTypeKind::Floating ||
-             (lookup && current->kind == CppTypeKind::Record));
+             (lookup && (current->kind == CppTypeKind::Record ||
+                         current->kind == CppTypeKind::Enumeration)));
         if ((current->isVolatile && !supportedVolatilePointee) || (current->isConst &&
             (depth != 0 || current->kind == CppTypeKind::Pointer))) return std::nullopt;
         ++depth;

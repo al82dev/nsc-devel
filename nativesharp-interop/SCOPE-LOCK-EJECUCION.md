@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Global C puntero a enum volatile
+
+Preparar la proyección de un global C que apunta directamente a un enum
+importado cuya representación coincide con Clang. Archivos:
+CppSemanticInventory.cpp, fixture pruebas-tanda-08-enum-funcion y documentos.
+No habilitar tipos anidados sin representación; probar lectura, escritura e IR
+en la validación agrupada.
+
 ## Struct volatile apuntado con campo puntero
 
 Preparar una prueba que distinga el acceso volatile al campo puntero del acceso
