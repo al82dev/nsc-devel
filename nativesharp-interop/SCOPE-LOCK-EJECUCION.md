@@ -8,6 +8,12 @@ con estado estático. Crear un fixture independiente en
 `nativesharp-interop/pruebas-tanda-08-inline-c` y conservar resultados en
 `A:/nsc-interop-build`. No modificar producción hasta reproducir el fallo y
 registrar los archivos y el diseño de integración; LLVM permanece de lectura.
+El fixture rechaza los identificadores `static inline`. Preparar emisión de
+IR con CodeGen oficial en una unidad por sesión, solicitando varias funciones
+juntas para compartir sus estáticos internos. Permitir `CppInteropSession.h`,
+`ClangSession.cpp`, `tests/unit/CppClangSessionTests.cpp` y registros. Esta
+etapa aislada no expone funciones ni las enlaza; quedan pendientes identidad
+única por proyecto, selección de demandas, objeto y enlace antes del fixture.
 
 ## Redeclaraciones C con prototipo más preciso
 
