@@ -1,0 +1,6 @@
+int Main()
+{
+    VolatileIntPtr value = volatile_pointee;
+    int* plain = value;
+    return 0;
+}

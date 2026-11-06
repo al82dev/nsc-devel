@@ -1,0 +1,9 @@
+int* lose_volatile(VolatileIntPtr value)
+{
+    return value;
+}
+
+int Main()
+{
+    return 0;
+}

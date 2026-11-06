@@ -828,6 +828,12 @@ copia sin volatile, conserva el original de Clang y registra el calificador en
 TypeSyntax. Modificadores externos y formas no representadas siguen rechazados.
 La prueba del proyecto mixto y las regresiones de la tanda están pendientes.
 
+## Comprobaciones del alias C a puntero volatile
+
+El script preparado exige una escritura LLVM volatile a través del alias y
+diagnósticos al intentar perder el calificador en un local o un retorno. Estos
+controles acompañan al caso positivo; ninguno se ha ejecutado todavía.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

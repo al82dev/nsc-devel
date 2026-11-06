@@ -37,6 +37,8 @@ findstr /r /c:"store volatile.*@shared_volatile" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura LLVM volatile del global. & exit /b 1)
 findstr /r /c:"store volatile i32 61, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile en el objeto apuntado. & exit /b 1)
+findstr /r /c:"store volatile i32 69, ptr" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura volatile mediante alias tipado. & exit /b 1)
 findstr /r /c:"store volatile i32 67, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile del campo apuntado. & exit /b 1)
 findstr /r /c:"store volatile i32 68, ptr" "%DEST%\project.ll" >nul
@@ -274,6 +276,18 @@ if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-record-pointee-address.exe" > "%DEST%\volatile-record-pointee-address.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /c:"cannot take the address of volatile storage" "%DEST%\volatile-record-pointee-address.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0VolatileAliasDiscard.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-alias-discard.exe" > "%DEST%\volatile-alias-discard.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"would discard pointer pointee volatile qualification" "%DEST%\volatile-alias-discard.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0VolatileAliasReturnDiscard.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-alias-return-discard.exe" > "%DEST%\volatile-alias-return-discard.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"return would discard pointer pointee volatile qualification" "%DEST%\volatile-alias-return-discard.log" >nul
 if errorlevel 1 exit /b 1
 echo Record C por puntero: resultado esperado cero.
 exit /b 0

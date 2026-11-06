@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Comprobaciones del alias C a puntero volatile
+
+Preparar comprobación de IR de la escritura por el alias y rechazos de pérdida
+del calificador en inicialización y retorno. Archivos: fixture
+pruebas-tanda-08-record-c, su script y documentación. La ejecución se agrupa
+con la validación de la tanda; no se afirma que las pruebas pasen todavía.
+
 ## Proyección de alias C a puntero escalar volatile
 
 Proyectar un alias de puntero de un nivel a escalar volatile como TypeSyntax,
