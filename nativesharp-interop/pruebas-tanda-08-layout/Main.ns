@@ -21,5 +21,11 @@ int Main()
     packed->value = 41;
     packed->value += 1;
     if (packed->value != 42 || layout_packed_value() != 42) return 13;
+    PackedPointer* pointer = layout_packed_pointer();
+    *pointer->value = 7;
+    if (layout_packed_pointer_value() != 7) return 14;
+    pointer->value = layout_packed_pointer_target();
+    *pointer->value = 8;
+    if (layout_packed_pointer_value() != 8) return 15;
     return 0;
 }

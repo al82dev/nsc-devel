@@ -1,0 +1,6 @@
+int Main()
+{
+    PackedPointer* packed = layout_packed_pointer();
+    int** unsafeAddress = &packed->value;
+    return **unsafeAddress;
+}

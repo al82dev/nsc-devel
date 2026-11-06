@@ -1,6 +1,12 @@
 #include "Api.h"
 static Pair sample_pair = { 1, 2 };
 static Packed sample_packed = { 1, 2 };
+static int packed_pointer_initial = 3;
+static int packed_pointer_target = 4;
+static PackedPointer sample_packed_pointer = { 1, &packed_pointer_initial };
+PackedPointer* layout_packed_pointer(void) { return &sample_packed_pointer; }
+int* layout_packed_pointer_target(void) { return &packed_pointer_target; }
+int layout_packed_pointer_value(void) { return *sample_packed_pointer.value; }
 Packed* layout_packed(void) { return &sample_packed; }
 int layout_packed_value(void) { return sample_packed.value; }
 int layout_packed_size(void) { return (int)sizeof(Packed); }

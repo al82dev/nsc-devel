@@ -10,6 +10,8 @@ patterns = (
     r"%field\.load(?:\d+)? = load i32, ptr %field\.addr(?:\d+)?, align 1",
     r"%compound\.load(?:\d+)? = load i32, ptr %field\.addr(?:\d+)?, align 1",
     r"store i32 [^\n]*ptr %field\.addr(?:\d+)?, align 1",
+    r"%field\.load(?:\d+)? = load ptr, ptr %field\.addr(?:\d+)?, align 1",
+    r"store ptr [^\n]*ptr %field\.addr(?:\d+)?, align 1",
 )
 if any(re.search(pattern, ir) is None for pattern in patterns):
     print("Falta alineacion de campo C en lectura o escritura simple/compuesta")

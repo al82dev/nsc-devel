@@ -3,7 +3,11 @@ typedef union Cell { int integer; double real; } Cell;
 typedef struct Container { char tag; Pair pairs[2][3]; Cell cell; } Container;
 #pragma pack(push, 1)
 typedef struct Packed { char tag; int value; } Packed;
+typedef struct PackedPointer { char tag; int* value; } PackedPointer;
 #pragma pack(pop)
+PackedPointer* layout_packed_pointer(void);
+int* layout_packed_pointer_target(void);
+int layout_packed_pointer_value(void);
 Packed* layout_packed(void);
 int layout_packed_value(void);
 int layout_packed_size(void);
