@@ -191,7 +191,13 @@ bool validateRecords(std::span<const CppCRecordSnapshot> records, std::string& e
     for (std::size_t i = 0; i < records.size(); ++i)
     {
         const auto& record = records[i];
+        std::vector<compilation::TypeNameSegment> containers;
+        containers.reserve(record.containingRecords.size());
+        for (const auto& name : record.containingRecords) containers.push_back({name, 0});
+        const compilation::TypeIdentity identity(record.moduleName, record.namespaceSegments,
+                                                  std::move(containers), record.name);
         if (record.identityKey.empty() || record.targetTriple.empty() ||
+            !identity.isValid() || identity.key() != record.identityKey ||
             (i && records[i - 1].identityKey >= record.identityKey))
         { error = "C record identities are empty, duplicated or not ordered"; return false; }
         if (!record.complete)
@@ -229,6 +235,8 @@ bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
         if (record.identityKey.empty() || record.targetTriple.empty() ||
             (record.kind != CppRecordKind::Struct && record.kind != CppRecordKind::Union) ||
             record.fields.size() > maxItems || !putText(writer, record.identityKey) ||
+            !putText(writer, record.moduleName) || !putStrings(writer, record.namespaceSegments) ||
+            !putStrings(writer, record.containingRecords) || !putText(writer, record.name) ||
             !putText(writer, record.targetTriple) || !putOptionalText(writer, record.clangUsr))
         { error = "invalid C record identity"; return false; }
         writer.u8(record.microsoftVolatileSemantics ? (*record.microsoftVolatileSemantics ? 2 : 1) : 0);
@@ -265,6 +273,8 @@ bool decodeCRecordCatalog(std::span<const std::uint8_t> bytes,
         std::uint8_t volatileMode = 0;
         std::uint32_t fields = 0;
         if (!reader.text(record.identityKey) || record.identityKey.empty() ||
+            !reader.text(record.moduleName) || !getStrings(reader, record.namespaceSegments) ||
+            !getStrings(reader, record.containingRecords) || !reader.text(record.name) ||
             !reader.text(record.targetTriple) || record.targetTriple.empty() ||
             !getOptionalText(reader, record.clangUsr) || !reader.u8(volatileMode) || volatileMode > 2 || !reader.u8(kind) ||
             (kind != static_cast<std::uint8_t>(CppRecordKind::Struct) && kind != static_cast<std::uint8_t>(CppRecordKind::Union)) ||
