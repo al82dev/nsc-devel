@@ -45,6 +45,10 @@ findstr /r /c:"store volatile.*@global_record_volatile" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura LLVM volatile del campo global. & exit /b 1)
 findstr /r /c:"store volatile i32 17," "%DEST%\project.ll" >nul
 if not errorlevel 1 (echo Se propago volatile del puntero a su apuntado. & exit /b 1)
+findstr /r /c:"load volatile ptr, ptr @volatile_record_pointer" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta lectura volatile del puntero. & exit /b 1)
+findstr /r /c:"store i32 17, ptr" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura ordinaria en el objeto apuntado. & exit /b 1)
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\program.exe"
 if errorlevel 1 exit /b 1
 "%DEST%\program.exe"
@@ -95,7 +99,7 @@ copy /y "%~dp0VolatileRecordGlobal.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-record.exe" > "%DEST%\volatile-record.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /c:"operand of & must name addressable storage" "%DEST%\volatile-record.log" >nul
+findstr /c:"cannot take the address of volatile storage until qualified pointers are supported" "%DEST%\volatile-record.log" >nul
 if errorlevel 1 exit /b 1
 echo Record C por puntero: resultado esperado cero.
 exit /b 0
