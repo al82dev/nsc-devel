@@ -2,8 +2,10 @@
 #include "ByteReader.h"
 #include "ByteWriter.h"
 
+#include <algorithm>
 #include <limits>
 #include <memory>
+#include <set>
 #include <utility>
 
 namespace nativesharp::interop::metadata_detail
@@ -292,5 +294,101 @@ bool decodeCRecordCatalog(std::span<const std::uint8_t> bytes,
     if (!reader.atEnd()) { error = "trailing C record data"; return false; }
     if (!validateRecords(records, error)) return false;
     output = std::move(records); error.clear(); return true;
+}
+
+bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
+                        std::span<const CppCEnumSnapshot> enums,
+                        std::vector<std::uint8_t>& output, std::string& error)
+{
+    std::vector<std::uint8_t> recordBytes;
+    if (!encodeCRecordCatalog(records, recordBytes, error)) return false;
+    if (enums.size() > maxItems) { error = "too many C enums"; return false; }
+    ByteWriter writer;
+    writer.u64(static_cast<std::uint64_t>(recordBytes.size()));
+    writer.raw(recordBytes);
+    writer.u32(static_cast<std::uint32_t>(enums.size()));
+    std::set<std::string_view> recordIdentities;
+    for (const auto& record : records) recordIdentities.insert(record.identityKey);
+    for (std::size_t i = 0; i < enums.size(); ++i)
+    {
+        const auto& item = enums[i]; const auto& value = item.declaration;
+        if (item.identityKey.empty() || item.targetTriple.empty() ||
+            (i && enums[i - 1].identityKey >= item.identityKey) || value.isCxx || value.scoped ||
+            !value.complete || value.name.empty() || !value.underlyingType || !value.sizeBits ||
+            !value.alignmentBits || !*value.sizeBits || !*value.alignmentBits ||
+            *value.sizeBits % 8 || *value.alignmentBits % 8 ||
+            *value.sizeBits % *value.alignmentBits || value.enumerators.size() > maxItems)
+        { error = "invalid C enum metadata"; return false; }
+        if (recordIdentities.contains(item.identityKey))
+        { error = "record and enum identities collide"; return false; }
+        if (!putText(writer, item.identityKey) || !putText(writer, item.targetTriple) ||
+            !putText(writer, value.name) || !putText(writer, value.qualifiedName) ||
+            !putOptionalText(writer, value.clangUsr) || !putType(writer, *value.underlyingType, 0))
+        { error = "invalid C enum identity or underlying type"; return false; }
+        writer.u64(*value.sizeBits); writer.u64(*value.alignmentBits);
+        writer.u32(static_cast<std::uint32_t>(value.enumerators.size()));
+        std::set<std::string> names;
+        for (const auto& member : value.enumerators)
+        {
+            if (member.name.empty() || member.decimalValue.empty() || !names.insert(member.name).second ||
+                !putText(writer, member.name) || !putText(writer, member.decimalValue))
+            { error = "invalid C enumerator"; return false; }
+            writer.u32(member.valueBits); writer.u8(member.valueIsUnsigned);
+            if (!putType(writer, member.valueType, 0) || !putOptionalText(writer, member.clangUsr))
+            { error = "invalid C enumerator type"; return false; }
+        }
+    }
+    output = writer.takeBytes(); error.clear(); return true;
+}
+
+bool decodeCTypeCatalog(std::span<const std::uint8_t> bytes,
+                        std::vector<CppCRecordSnapshot>& records,
+                        std::vector<CppCEnumSnapshot>& enums, std::string& error)
+{
+    ByteReader reader(bytes);
+    std::uint64_t recordSize = 0;
+    if (!reader.u64(recordSize) || recordSize > reader.remaining())
+    { error = "invalid C record catalogue size"; return false; }
+    std::vector<std::uint8_t> recordBytes(static_cast<std::size_t>(recordSize));
+    std::vector<CppCRecordSnapshot> decodedRecords;
+    if (!reader.raw(recordBytes) || !decodeCRecordCatalog(recordBytes, decodedRecords, error)) return false;
+    std::uint32_t count = 0;
+    if (!reader.u32(count) || count > maxItems || count > reader.remaining())
+    { error = "invalid C enum count"; return false; }
+    std::vector<CppCEnumSnapshot> decodedEnums;
+    decodedEnums.reserve(count);
+    for (std::uint32_t i = 0; i < count; ++i)
+    {
+        CppCEnumSnapshot item;
+        auto& value = item.declaration;
+        CppType underlying;
+        std::uint64_t size = 0, alignment = 0;
+        std::uint32_t members = 0;
+        if (!reader.text(item.identityKey) || !reader.text(item.targetTriple) ||
+            !reader.text(value.name) || !reader.text(value.qualifiedName) ||
+            !getOptionalText(reader, value.clangUsr) || !getType(reader, underlying, 0) ||
+            !reader.u64(size) || !reader.u64(alignment) || !reader.u32(members) ||
+            members > maxItems || members > reader.remaining())
+        { error = "invalid C enum metadata"; return false; }
+        value.isCxx = false; value.scoped = false; value.complete = true;
+        value.underlyingType = std::move(underlying); value.sizeBits = size; value.alignmentBits = alignment;
+        value.enumerators.reserve(members);
+        for (std::uint32_t j = 0; j < members; ++j)
+        {
+            CppEnumeratorDeclaration member;
+            if (!reader.text(member.name) || !reader.text(member.decimalValue) ||
+                !reader.u32(member.valueBits) || !getFlag(reader, member.valueIsUnsigned) ||
+                !getType(reader, member.valueType, 0) || !getOptionalText(reader, member.clangUsr))
+            { error = "invalid C enumerator metadata"; return false; }
+            value.enumerators.push_back(std::move(member));
+        }
+        decodedEnums.push_back(std::move(item));
+    }
+    if (!reader.atEnd()) { error = "trailing C type catalogue data"; return false; }
+    std::vector<std::uint8_t> canonical;
+    if (!encodeCTypeCatalog(decodedRecords, decodedEnums, canonical, error) || canonical.size() != bytes.size() ||
+        !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
+    { if (error.empty()) error = "noncanonical C type catalogue"; return false; }
+    records = std::move(decodedRecords); enums = std::move(decodedEnums); error.clear(); return true;
 }
 }

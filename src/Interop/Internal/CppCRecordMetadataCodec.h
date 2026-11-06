@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/Interop/CppSemanticRecord.h"
+#include "nativesharp/Interop/CppSemanticInventory.h"
 
 #include <cstdint>
 #include <span>
@@ -15,4 +16,10 @@ bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
                           std::vector<std::uint8_t>& output, std::string& error);
 bool decodeCRecordCatalog(std::span<const std::uint8_t> bytes,
                           std::vector<CppCRecordSnapshot>& output, std::string& error);
+bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
+                        std::span<const CppCEnumSnapshot> enums,
+                        std::vector<std::uint8_t>& output, std::string& error);
+bool decodeCTypeCatalog(std::span<const std::uint8_t> bytes,
+                        std::vector<CppCRecordSnapshot>& records,
+                        std::vector<CppCEnumSnapshot>& enums, std::string& error);
 }
