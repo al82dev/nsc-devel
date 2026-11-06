@@ -44,5 +44,7 @@ struct CppFunctionDeclaration
     std::optional<std::string> clangUsr;
     // A C declaration f() has no prototype; f(void) does.
     bool hasPrototype = true;
+    // Definition owned by this C translation unit; not an external ABI symbol.
+    bool isCStaticInlineDefinition = false;
 };
 }
