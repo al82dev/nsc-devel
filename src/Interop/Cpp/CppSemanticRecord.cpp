@@ -619,6 +619,73 @@ std::optional<std::size_t> selectCppRecordMemberDefinition(
     return first;
 }
 
+CppCRecordSnapshotResult captureCppCRecordSnapshot(
+    std::span<const CppSemanticRecordEntry> inventory, const CppRecordGroup& group)
+{
+    const auto fail = [](std::string message) -> CppCRecordSnapshotResult {
+        return CppCRecordSnapshotFailure{std::move(message)};
+    };
+    if (!group.identity.isValid() || group.inventoryIndices.empty() ||
+        (group.status != CppRecordGroupStatus::ForwardOnly &&
+         group.status != CppRecordGroupStatus::OneDefinition &&
+         group.status != CppRecordGroupStatus::MultipleDefinitionsPointerCompatible))
+        return fail("C record group is incomplete or not reconciled");
+    std::optional<std::string> target;
+    std::optional<std::string> knownUsr;
+    std::optional<CppRecordKind> kind;
+    std::size_t completeCount = 0;
+    for (const auto index : group.inventoryIndices)
+    {
+        if (index >= inventory.size()) return fail("C record observation is out of range");
+        const auto& entry = inventory[index];
+        if (!entry.identity || entry.projectOrdinal != group.projectOrdinal ||
+            entry.identity->key() != group.identity.key() || entry.declaration.isCxx ||
+            (entry.declaration.kind != CppRecordKind::Struct && entry.declaration.kind != CppRecordKind::Union) ||
+            entry.targetTriple.empty()) return fail("record is not a consistent C declaration");
+        if ((target && *target != entry.targetTriple) || (kind && *kind != entry.declaration.kind))
+            return fail("C record observations disagree on target or kind");
+        const auto& usr = entry.declaration.clangUsr;
+        if (usr && !usr->empty())
+        {
+            if (knownUsr && knownUsr != usr) return fail("C record observations disagree on identity");
+            knownUsr = usr;
+        }
+        if (entry.declaration.complete) ++completeCount;
+        target = entry.targetTriple;
+        kind = entry.declaration.kind;
+    }
+    if ((group.status == CppRecordGroupStatus::ForwardOnly && completeCount != 0) ||
+        (group.status == CppRecordGroupStatus::OneDefinition && completeCount != 1) ||
+        (group.status == CppRecordGroupStatus::MultipleDefinitionsPointerCompatible && completeCount < 2) ||
+        (knownUsr && group.clangUsr && !group.clangUsr->empty() && knownUsr != group.clangUsr))
+        return fail("C record group does not match its observations");
+    CppCRecordSnapshot snapshot;
+    snapshot.identityKey = group.identity.key();
+    snapshot.targetTriple = *target;
+    snapshot.clangUsr = knownUsr;
+    snapshot.kind = *kind;
+    if (group.status == CppRecordGroupStatus::ForwardOnly) return snapshot;
+    const auto selected = selectCppRecordMemberDefinition(inventory, group);
+    if (!selected) return fail("C record definition or member identity is not reconciled");
+    const auto& record = inventory[*selected].declaration;
+    if (!record.complete || !record.sizeBits || !record.alignmentBits || !*record.sizeBits || !*record.alignmentBits)
+        return fail("complete C record has no usable dimensions");
+    snapshot.complete = true;
+    snapshot.sizeBits = record.sizeBits;
+    snapshot.alignmentBits = record.alignmentBits;
+    snapshot.fields = record.fields;
+    for (std::size_t field = 0; field < snapshot.fields.size(); ++field)
+        if (!snapshot.fields[field].clangUsr || snapshot.fields[field].clangUsr->empty())
+            for (const auto index : group.inventoryIndices)
+            {
+                const auto& observed = inventory[index].declaration;
+                if (!observed.complete || field >= observed.fields.size()) continue;
+                const auto& usr = observed.fields[field].clangUsr;
+                if (usr && !usr->empty()) { snapshot.fields[field].clangUsr = usr; break; }
+            }
+    return snapshot;
+}
+
 CppRecordRefinementResult refineCppRecordGroupsForPointerTransport(
     std::span<const CppSemanticRecordEntry> inventory, const CppRecordGroups& groups,
     std::span<const CppProjectSessions> projects)

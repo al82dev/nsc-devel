@@ -128,6 +128,23 @@ CppRecordRefinementResult refineCppRecordGroupsForPointerTransport(
 std::optional<std::size_t> selectCppRecordMemberDefinition(
     std::span<const CppSemanticRecordEntry> inventory, const CppRecordGroup& group);
 
+// Owned C declaration data for a future metadata codec; it is not itself serialized.
+struct CppCRecordSnapshot
+{
+    std::string identityKey;
+    std::string targetTriple;
+    std::optional<std::string> clangUsr;
+    CppRecordKind kind = CppRecordKind::Struct;
+    bool complete = false;
+    std::optional<std::uint64_t> sizeBits;
+    std::optional<std::uint64_t> alignmentBits;
+    std::vector<CppRecordField> fields;
+};
+struct CppCRecordSnapshotFailure { std::string message; };
+using CppCRecordSnapshotResult = std::variant<CppCRecordSnapshot, CppCRecordSnapshotFailure>;
+CppCRecordSnapshotResult captureCppCRecordSnapshot(
+    std::span<const CppSemanticRecordEntry> inventory, const CppRecordGroup& group);
+
 enum class CppSignatureRecordStatus { Matched, Unprojectable, Missing };
 struct CppSignatureRecordDependency
 {
