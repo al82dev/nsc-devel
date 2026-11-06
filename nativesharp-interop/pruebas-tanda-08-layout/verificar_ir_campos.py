@@ -58,3 +58,12 @@ if not re.search(r"store i32 80, ptr %field\.addr\d*, align 1", record_array):
 if not re.search(r"load i32, ptr %field\.addr\d*, align 1", record_array):
     print("Falta lectura alineada a 1 del record en arreglo")
     sys.exit(1)
+
+record_matrix = ir.split("call ptr @layout_packed_record_matrix()", 1)[-1].split(
+    "call i32 @layout_packed_record_matrix_value()", 1)[0]
+if not re.search(r"store i32 90, ptr %field\.addr\d*, align 1", record_matrix):
+    print("Falta escritura alineada a 1 del record en matriz")
+    sys.exit(1)
+if not re.search(r"load i32, ptr %field\.addr\d*, align 1", record_matrix):
+    print("Falta lectura alineada a 1 del record en matriz")
+    sys.exit(1)
