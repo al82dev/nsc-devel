@@ -45,6 +45,8 @@ findstr /r /c:"store volatile i32 72, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile desde el global NativeSharp. & exit /b 1)
 findstr /r /c:"store volatile i32 73, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile desde el campo NativeSharp. & exit /b 1)
+findstr /r /c:"store volatile i32 74, ptr" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura volatile mediante alias de struct. & exit /b 1)
 findstr /r /c:"store volatile i32 67, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile del campo apuntado. & exit /b 1)
 findstr /r /c:"store volatile i32 68, ptr" "%DEST%\project.ll" >nul

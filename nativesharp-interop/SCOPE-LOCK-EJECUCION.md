@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Prueba de alias a struct volatile
+
+Preparar un alias C de puntero a struct volatile y comprobar escritura de campo
+observada por C y por IR. Archivos: fixture de records C, script y documentación.
+La prueba espera la validación agrupada.
+
 ## Aliases a records y enums volatile
 
 Preparar la proyección de aliases de un puntero a record o enum volatile ya

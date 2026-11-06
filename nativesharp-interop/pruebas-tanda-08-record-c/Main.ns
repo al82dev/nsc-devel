@@ -76,6 +76,9 @@ int Main()
     if (volatile_record_target->value != 67 || read_volatile_record_target() != 67) return 30;
     get_volatile_record_target()->value = 68;
     if (get_volatile_record_target()->value != 68 || read_volatile_record_target() != 68) return 32;
+    VolatileGlobalPtr typed_volatile_record = volatile_record_target;
+    typed_volatile_record->value = 74;
+    if (read_volatile_record_target() != 74) return 39;
     if (bump_volatile_record(&global_record) != 12 ||
         read_const_volatile_record(&global_record) != 12) return 25;
     global_record.value = 10;

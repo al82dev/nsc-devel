@@ -883,6 +883,11 @@ enum, y conserva volatile en TypeSyntax. Usa la comprobación de identidad ya
 existente y mantiene el rechazo de modificadores externos. La cobertura y la
 validación agrupada están pendientes; no se declara el soporte verificado.
 
+## Prueba de alias a struct volatile
+
+El fixture prepara un local con alias a struct volatile y exige que la escritura
+del campo sea visible para C y aparezca como volatile en LLVM. No ejecutado aún.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.
