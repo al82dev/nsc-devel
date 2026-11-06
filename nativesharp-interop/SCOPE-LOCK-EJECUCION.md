@@ -1,5 +1,17 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Índice de puntero obtenido de arreglo global C
+
+T08-015: completar la combinación `arreglo[i][j]` cuando el primer índice
+obtiene directamente un `volatile int*` de un arreglo global C y el segundo
+índice accede al entero. Conservar el modo MS solamente si la cadena HIR de
+índices llega al global C resuelto; no alterar el slot del puntero ni admitir
+orígenes locales, campos, parámetros o casts sin su propia procedencia.
+
+Presupuesto: `src/Frontend/HIR/ExpressionStatementMachine/HirCompletionAccessFrames.cpp`,
+el fixture `pruebas-tanda-08-record-c`, tracking y registros. Comprobar
+lectura, escritura e IR; la validación se agrupa con la tanda.
+
 ## Orden en el índice directo de global C volatile int*
 
 T08-015: complementar `*global` con `global[indice]` cuando el receptor es
