@@ -3312,3 +3312,8 @@ Extender el mismo fixture con parámetros y retornos C de unions de 4 y 12
 bytes, para contrastar la clasificación ABI directa e indirecta en Windows
 x64. Registrar el resultado sin atribuir compatibilidad general a la muestra.
 
+Ampliar `pruebas-tanda-08-meta-c` con un productor precompilado y un consumidor
+que comparten un encabezado con union C, por puntero y por valor. Permitir el
+script, los archivos de fixture y los registros; no modificar producción hasta
+identificar un defecto y registrar por separado los archivos necesarios.
+
