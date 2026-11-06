@@ -465,7 +465,11 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
                 prior.enumerators.size() == value.enumerators.size();
             for (std::size_t i = 0; same && i < value.enumerators.size(); ++i)
                 same = prior.enumerators[i].name == value.enumerators[i].name &&
-                    prior.enumerators[i].decimalValue == value.enumerators[i].decimalValue;
+                    prior.enumerators[i].decimalValue == value.enumerators[i].decimalValue &&
+                    prior.enumerators[i].valueType.kind == value.enumerators[i].valueType.kind &&
+                    prior.enumerators[i].valueType.canonicalSpelling == value.enumerators[i].valueType.canonicalSpelling &&
+                    prior.enumerators[i].valueType.sizeBits == value.enumerators[i].valueType.sizeBits &&
+                    prior.enumerators[i].valueType.alignmentBits == value.enumerators[i].valueType.alignmentBits;
             if (!same) conflicts.insert(key);
         }
     }
