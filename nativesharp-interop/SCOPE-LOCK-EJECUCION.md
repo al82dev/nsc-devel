@@ -121,6 +121,9 @@ fixture de metadata C. Preservar offsets de campos ya validados y probar ABI.
 Permitir variables locales por valor únicamente para struct/union C con layout
 completo instalado; mantener el rechazo previo para C++ e incompletos. Presupuesto:
 StatementAnalyzer.cpp, controles existentes y fixture de metadata C.
+En OopLlvmStatements.cpp usar la inicialización de valor ordinaria para locales
+struct/union C con layout validado; conservar construcción in situ para C++ y
+el rechazo de tipos incompletos. Verificarlo con el fixture directo e indirecto.
 Transportar los bytes verificados del catálogo desde la superficie de metadata
 hasta PrecompiledSyntaxModule; presupuesto adicional: PrecompiledSyntaxModule.h,
 PrecompiledProjectPreparation.cpp y controles existentes. No habilitar 1.42
