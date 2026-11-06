@@ -31,6 +31,8 @@ Presupuesto inicial: src/Interop/Internal/CppCRecordMetadataCodec.h/.cpp,
 CMakeLists.txt, controles de codec y registros Markdown. No cambiar todavía la
 versión NSMETA ni la publicación hasta integrar verificación, huella ABI,
 fusión y reconstrucción; la configuración sin Clang debe seguir disponible.
+Preservar también el modelo de volatile observado, sin inferirlo cuando las
+observaciones discrepen: CppSemanticRecord.h/.cpp y controles de sesión.
 
 ## Procedencia y destino de tipos importados
 
