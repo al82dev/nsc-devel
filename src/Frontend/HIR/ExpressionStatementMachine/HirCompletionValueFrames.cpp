@@ -159,6 +159,13 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledInstanceFieldFrame(
         field->volatileAccess = memberModel_ != nullptr &&
             *field->memberOrdinal < memberModel_->members().size() &&
             memberModel_->members()[*field->memberOrdinal].isVolatile;
+        // Propagate the qualification only from the receiver's storage address.
+        // A volatile pointer load does not qualify the pointed-to record.
+        if (lowered && lowered->volatileAccess &&
+            (lowered->kind == ProjectOopHirNodeKind::NamespaceStateAddress ||
+             lowered->kind == ProjectOopHirNodeKind::FieldAddress ||
+             lowered->kind == ProjectOopHirNodeKind::RawElementAddress))
+            field->volatileAccess = true;
         field->baseReceiver = binding.baseReceiver;
         field->children.push_back(std::move(lowered));
         lowered = std::move(field);
