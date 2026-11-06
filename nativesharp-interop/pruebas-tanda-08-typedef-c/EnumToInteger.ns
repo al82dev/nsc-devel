@@ -8,5 +8,8 @@ int Main()
     CUnsigned high = U_HIGH;
     long widened = high;
     if (widened != 4294967295L) return 3;
+    CColor signedColor = -1;
+    long signedWide = signedColor;
+    if (signedWide != -1) return 4;
     return 0;
 }

@@ -1,5 +1,6 @@
 #include "Api.h"
 _Static_assert((CUnsigned)-1 > 0, "CUnsigned must use an unsigned underlying type");
+_Static_assert((CColor)-1 < 0, "CColor must use a signed underlying type");
 CCountAlias c_double(CCountAlias value) { return value * 2; }
 int c_matrix_sum(int first, int second) { return first + second; }
 int c_matrix_ptr(const CMatrix* matrix) { return (*matrix)[0][1] + (*matrix)[1][2]; }
