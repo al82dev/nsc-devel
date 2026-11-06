@@ -37,6 +37,15 @@ Transportar el origen del buffer analizado al snapshot C de la definición,
 tracking y registros. No cambiar aún el codec 1.42 ni tratar datos transitorios
 como prueba de identidad. La serialización requiere compatibilidad explícita.
 
+## Codec preparado de procedencia del catálogo C
+
+Preparar un envoltorio versionado independiente del catálogo 1.42: conserva
+el catálogo anterior como bloque y añade procedencia por record, validando
+límites, orden, hash y canonicalidad. Presupuesto: `src/Interop/Internal/CppCRecordMetadataCodec.h/.cpp`,
+`tests/unit/CppClangSessionTests.cpp`, tracking y registros. No cambiar todavía
+la versión NSMETA ni usar la extensión en bibliotecas hasta completar lectura,
+escritura y compatibilidad de extremo a extremo. Validación agrupada.
+
 ## Identidad de funciones C importadas
 
 T08-002/T08-003: conservar USR opcional en la proyección de función y
