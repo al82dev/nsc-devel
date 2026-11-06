@@ -4193,3 +4193,12 @@ que comparten un encabezado con union C, por puntero y por valor. Permitir el
 script, los archivos de fixture y los registros; no modificar producción hasta
 identificar un defecto y registrar por separado los archivos necesarios.
 
+# Corrección focalizada: enum C reconciliado en campo precompilado (2026-11-06)
+
+- Entrada: consumidor que incluye `Api.h` y una biblioteca NativeSharp precompilada que publica el mismo enum C.
+- Fallo: `MoodData.value` usa `type:CEnumCallbackProducer::Mood` y el proyecto consumidor rechaza el campo por visibilidad.
+- Invariante: solo un enum C cuya identidad local se reconcilió con la identidad canónica puede cruzar esta frontera.
+- Símbolos candidatos: `ProjectNameLookup` para consultar reconciliación y validación de campos de `ProjectMemberModel`.
+- Preservar las demás comprobaciones, otros consumidores, fuentes LLVM y NSLink; sin cambios en C:.
+- Validación: fixtures de consumidor con y sin header, controles negativos de identidad y batería agrupada de la tanda.
+

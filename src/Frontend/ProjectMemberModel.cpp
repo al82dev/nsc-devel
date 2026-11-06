@@ -65,7 +65,8 @@ bool experimentalCppCallableType(std::string_view key, bool allowVoid)
         std::find(std::begin(types), std::end(types), key) != std::end(types);
 }
 
-bool cppCallableRecordIsVisible(std::string_view key, std::size_t projectOrdinal, const ProjectNameLookup& lookup)
+bool cppCallableRecordIsVisible(std::string_view key, std::size_t projectOrdinal, const ProjectNameLookup& lookup,
+    bool allowReconciledCEnum = false)
 {
     while (key.ends_with(']'))
     {
@@ -77,7 +78,9 @@ bool cppCallableRecordIsVisible(std::string_view key, std::size_t projectOrdinal
     if (!key.starts_with("type:")) return true;
     const auto ordinal = lookup.typeOrdinalForIdentity(key.substr(5));
     const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
-    return imported && imported->projectOrdinal == projectOrdinal;
+    return imported && (imported->projectOrdinal == projectOrdinal ||
+        (allowReconciledCEnum && imported->origin == CppImportedTypeOrigin::CEnum &&
+         lookup.isReconciledCppTypeVisibleToProject(*ordinal, projectOrdinal)));
 }
 }
 
@@ -422,7 +425,7 @@ bool ProjectMemberModel::build(
              *imported.bitWidth > width * 8 - *imported.bitOffset));
         if (!owner || owner->projectOrdinal != imported.projectOrdinal || !ownerLayout ||
             invalidBits || alignment == 0 || (alignment & (alignment - 1)) != 0 ||
-            !cppCallableRecordIsVisible(imported.typeKey, imported.projectOrdinal, nameLookup) ||
+            !cppCallableRecordIsVisible(imported.typeKey, imported.projectOrdinal, nameLookup, true) ||
             imported.byteOffset > ownerLayout->sizeBytes ||
             width > ownerLayout->sizeBytes - imported.byteOffset ||
             imported.byteOffset % alignment != 0 || ownerLayout->alignmentBytes % alignment != 0 ||
@@ -432,7 +435,7 @@ bool ProjectMemberModel::build(
                 owner->projectOrdinal != imported.projectOrdinal ? "owner project mismatch" :
                 !ownerLayout ? "owner layout missing" : invalidBits ? "invalid bitfield" :
                 alignment == 0 || (alignment & (alignment - 1)) != 0 ? "invalid alignment" :
-                !cppCallableRecordIsVisible(imported.typeKey, imported.projectOrdinal, nameLookup) ? "field type not visible" :
+                !cppCallableRecordIsVisible(imported.typeKey, imported.projectOrdinal, nameLookup, true) ? "field type not visible" :
                 imported.byteOffset > ownerLayout->sizeBytes ? "offset outside owner" :
                 width > ownerLayout->sizeBytes - imported.byteOffset ? "field exceeds owner" :
                 imported.byteOffset % alignment != 0 || ownerLayout->alignmentBytes % alignment != 0 ? "unaligned field" :

@@ -143,6 +143,7 @@ public:
     std::optional<std::size_t> typeOrdinalForIdentity(std::string_view identity) const;
     std::size_t canonicalCppTypeOrdinal(std::size_t ordinal) const noexcept;
     bool isReconciledCppTypeIdentity(std::string_view identity) const;
+    bool isReconciledCppTypeVisibleToProject(std::size_t canonicalOrdinal, std::size_t projectOrdinal) const noexcept;
     std::optional<std::size_t> cppImportedTypeIndex(std::size_t typeOrdinal) const noexcept;
     const CppImportedTypeDeclaration* cppImportedType(std::size_t typeOrdinal) const noexcept;
     std::span<const std::size_t> typeOrdinalsForName(std::string_view name) const;

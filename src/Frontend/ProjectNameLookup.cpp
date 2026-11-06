@@ -292,6 +292,18 @@ bool ProjectNameLookup::isReconciledCppTypeIdentity(std::string_view identity) c
     return ordinal && reconciledCppTypeOrdinals_.contains(*ordinal);
 }
 
+bool ProjectNameLookup::isReconciledCppTypeVisibleToProject(
+    std::size_t canonicalOrdinal, std::size_t projectOrdinal) const noexcept
+{
+    for (const auto& [localOrdinal, targetOrdinal] : reconciledCppTypeOrdinals_)
+    {
+        const auto* local = cppImportedType(localOrdinal);
+        if (targetOrdinal == canonicalOrdinal && local && local->projectOrdinal == projectOrdinal)
+            return true;
+    }
+    return false;
+}
+
 std::optional<std::size_t> ProjectNameLookup::cppImportedTypeIndex(std::size_t typeOrdinal) const noexcept
 {
     const auto found = cppImportedTypeIndices_.find(typeOrdinal);
