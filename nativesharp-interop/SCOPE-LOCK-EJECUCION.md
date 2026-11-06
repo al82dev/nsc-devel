@@ -39,6 +39,10 @@ en versiones anteriores a 1.42. Presupuesto adicional: LibraryMetadata.h,
 LibraryMetadataMerger.cpp, LibraryMetadataVerification.cpp,
 LibraryMetadataCodec.cpp y PrecompiledSurfaceReachability.cpp. No habilitar
 todavía 1.42 ni publicar el catálogo hasta completar su lectura y huella ABI.
+Preparar cierre transitivo de grupos record C solicitados mediante identidades
+de campos y tipos anidados; conservar las identidades enum requeridas como
+pendientes para su propio catálogo. Rechazar dependencias faltantes o ambiguas.
+Presupuesto adicional: CppSemanticRecord.h/.cpp y controles de sesión.
 
 ## Procedencia y destino de tipos importados
 
