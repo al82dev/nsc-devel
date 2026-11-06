@@ -666,6 +666,9 @@ CppCRecordSnapshotResult captureCppCRecordSnapshot(
     std::optional<std::string> target;
     std::optional<std::string> knownUsr;
     std::optional<CppRecordKind> kind;
+    std::optional<bool> volatileMode;
+    bool firstVolatileMode = true;
+    bool volatileModeAgrees = true;
     std::size_t completeCount = 0;
     for (const auto index : group.inventoryIndices)
     {
@@ -684,6 +687,8 @@ CppCRecordSnapshotResult captureCppCRecordSnapshot(
             knownUsr = usr;
         }
         if (entry.declaration.complete) ++completeCount;
+        if (firstVolatileMode) { volatileMode = entry.microsoftVolatileSemantics; firstVolatileMode = false; }
+        else if (volatileMode != entry.microsoftVolatileSemantics) volatileModeAgrees = false;
         target = entry.targetTriple;
         kind = entry.declaration.kind;
     }
@@ -696,6 +701,7 @@ CppCRecordSnapshotResult captureCppCRecordSnapshot(
     snapshot.identityKey = group.identity.key();
     snapshot.targetTriple = *target;
     snapshot.clangUsr = knownUsr;
+    snapshot.microsoftVolatileSemantics = volatileModeAgrees ? volatileMode : std::nullopt;
     snapshot.kind = *kind;
     if (group.status == CppRecordGroupStatus::ForwardOnly) return snapshot;
     const auto selected = selectCppRecordMemberDefinition(inventory, group);

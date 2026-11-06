@@ -134,6 +134,7 @@ struct CppCRecordSnapshot
     std::string identityKey;
     std::string targetTriple;
     std::optional<std::string> clangUsr;
+    std::optional<bool> microsoftVolatileSemantics;
     CppRecordKind kind = CppRecordKind::Struct;
     bool complete = false;
     std::optional<std::uint64_t> sizeBits;
