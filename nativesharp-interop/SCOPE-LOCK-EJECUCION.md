@@ -137,6 +137,16 @@ tracking y registros. Mantener la barrera para C++ y enums sin representación
 validada. La conciliación de enums y enumeradores entre módulos sigue aparte;
 agrupar su validación con el resto de correcciones de la tanda.
 
+## Enums C compartidos vinculados a records reconciliados
+
+Reconciliar enums alcanzados por un record ya comprobado y sus enumeradores,
+conservando tipo subyacente y valores. Presupuesto:
+`src/Interop/Cpp/CppSemanticRecord.cpp`, `src/Frontend/ProjectNameLookup.cpp`,
+`include/nativesharp/Interop/CppSemanticEnumType.h`, fixtures y controles de
+sesión, tracking y registros. No equiparar enums por nombre o USR aislados;
+el alcance de este paso depende del cierre del record validado. Enums no
+alcanzados por ese cierre conservan la resolución previa. Validación agrupada.
+
 ## Identidad de funciones C importadas
 
 T08-002/T08-003: conservar USR opcional en la proyección de función y
