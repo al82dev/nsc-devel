@@ -5,6 +5,12 @@
 Ampliar el fixture con punteros a arreglos fijos de struct y enum C. Probar
 identidad, lectura y mutación en C, ejecución O0–O3 y rechazo de const o tipos
 incompatibles. No cambiar producción hasta observar los fallos concretos.
+Ambas funciones con punteros a arreglos de struct y enum no se importan porque
+la proyección rechaza esos elementos. Permitir cambio localizado en
+`src/Interop/Cpp/CppSemanticFunction.cpp` para mapear su identidad solo con
+tipo importado y layout comprobados; preservar const y seguir rechazando
+volatile y elementos puntero. El enum tiene además un fallo independiente de
+conversión del enumerador; no usarlo para ocultar el resultado de la llamada.
 
 Agregar al fixture una función C que modifica una matriz por puntero y otra
 que devuelve puntero a matriz const. Verificar mutación real O0–O3; rechazar

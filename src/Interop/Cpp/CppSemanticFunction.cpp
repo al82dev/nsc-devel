@@ -62,12 +62,29 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
             element = element->element.get();
         }
         if (!element || element->isVolatile || element->kind == CppTypeKind::Pointer ||
-            element->kind == CppTypeKind::Record || element->kind == CppTypeKind::Enumeration ||
             element->kind == CppTypeKind::Void) return std::nullopt;
-        const auto scalar = mapCppScalarType(*element);
-        if (!scalar) return std::nullopt;
-        readonly |= scalar->isConst;
-        auto key = scalar->nativeSharpTypeKey;
+        readonly |= element->isConst;
+        CppType unqualified = *element;
+        unqualified.isConst = false;
+        std::optional<CppScalarTypeMapping> mapped;
+        if (element->kind == CppTypeKind::Record || element->kind == CppTypeKind::Enumeration)
+        {
+            if (!lookup || !owner || !element->sizeBits || !element->alignmentBits ||
+                *element->sizeBits % 8 || *element->alignmentBits % 8) return std::nullopt;
+            mapped = mapFunctionType(unqualified, false, records, moduleName, depth + 1, lookup, owner,
+                                     allowCRecordValue);
+            if (!mapped || !mapped->nativeSharpTypeKey.starts_with("type:")) return std::nullopt;
+            const auto ordinal = lookup->typeOrdinalForIdentity(mapped->nativeSharpTypeKey.substr(5));
+            const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+            if (!imported || !imported->objectLayout || !imported->deferredImportError.empty() ||
+                (imported->projectOrdinal != *owner &&
+                 !lookup->isReconciledCppTypeIdentity(mapped->nativeSharpTypeKey.substr(5))) ||
+                imported->objectLayout->sizeBytes != *element->sizeBits / 8 ||
+                imported->objectLayout->alignmentBytes != *element->alignmentBits / 8) return std::nullopt;
+        }
+        else mapped = mapCppScalarType(unqualified);
+        if (!mapped) return std::nullopt;
+        auto key = mapped->nativeSharpTypeKey;
         for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend(); ++dimension)
             key += "[" + std::to_string(*dimension) + "]";
         return CppScalarTypeMapping{std::move(key), type.canonicalSpelling, readonly, false};
