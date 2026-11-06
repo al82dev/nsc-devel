@@ -1,6 +1,14 @@
 typedef struct Pair { char a; int b; } Pair;
 typedef union Cell { int integer; double real; } Cell;
 typedef struct Container { char tag; Pair pairs[2][3]; Cell cell; } Container;
+#pragma pack(push, 1)
+typedef struct Packed { char tag; int value; } Packed;
+#pragma pack(pop)
+Packed* layout_packed(void);
+int layout_packed_value(void);
+int layout_packed_size(void);
+int layout_packed_alignment(void);
+int layout_packed_offset(void);
 int pair_size(void);
 int pair_alignment(void);
 int pair_b_offset(void);

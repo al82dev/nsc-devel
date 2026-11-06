@@ -1,0 +1,6 @@
+int Main()
+{
+    Packed* packed = layout_packed();
+    int* unsafeAddress = &packed->value;
+    return *unsafeAddress;
+}

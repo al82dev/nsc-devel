@@ -14,5 +14,12 @@ int Main()
     pair->b = 29;
     pair->b += 3;
     if (pair->b != 32 || layout_pair_value() != 32) return 11;
+    if (sizeof(Packed) != (nuint)layout_packed_size() ||
+        alignof(Packed) != (nuint)layout_packed_alignment() ||
+        offsetof(Packed, value) != (nuint)layout_packed_offset()) return 12;
+    Packed* packed = layout_packed();
+    packed->value = 41;
+    packed->value += 1;
+    if (packed->value != 42 || layout_packed_value() != 42) return 13;
     return 0;
 }
