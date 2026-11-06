@@ -7648,7 +7648,16 @@ int main(int argc, char** argv)
                              "C++ overload converts with namespace and Clang symbol");
                 if (symbol) projected.push_back(std::move(*symbol));
             }
-            for (const auto* name : {"tools::local", "tools::pointer", "tools::handle"})
+            const auto* constPointer = functionByName(*functions, "tools::pointer");
+            const auto constPointerProjection = constPointer
+                ? projectCppSemanticFunction(*constPointer, 0, "Semantic")
+                : CppSemanticFunctionResult{CppSemanticFunctionFailure{"missing const pointer"}};
+            const auto* constPointerSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&constPointerProjection);
+            ok &= expect(constPointerSymbol && constPointerSymbol->declaredTypeKey == "builtin:int*" &&
+                         constPointerSymbol->cppReturnType && constPointerSymbol->cppReturnType->element &&
+                         constPointerSymbol->cppReturnType->element->isConst,
+                         "const pointer return projects while retaining Clang pointee qualification");
+            for (const auto* name : {"tools::local", "tools::handle"})
             {
                 const auto* function = functionByName(*functions, name);
                 ok &= expect(function && std::holds_alternative<CppSemanticFunctionFailure>(

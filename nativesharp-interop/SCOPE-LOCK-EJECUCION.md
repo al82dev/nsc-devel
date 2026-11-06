@@ -1730,6 +1730,7 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Evidencia: `projectFunction` prohíbe el apuntado const en resultados; `NamespaceFunctionSymbol.cppReturnType` lo conserva, pero el adaptador de llamadas no lo transfiere a `declaredPointerPointeeReadonly`.
 - Presupuesto: `src/Interop/Cpp/CppSemanticFunction.cpp`, `src/Frontend/Bodies/MethodBodyBuildCoordinator.cpp`, fixtures y script de `pruebas-tanda-08-record-c`, y registros Markdown. No habilitar punteros a volatile ni niveles anidados no representados; preservar llamadas NativeSharp y barreras de ABI.
 - Verificar lectura de resultado escalar y struct, paso a función const y rechazos de escritura, conversión mutable y paso a función mutable. Ejecutar el conjunto agrupado y registrar causas exactas.
+- La primera batería terminó con código 1: los proyectos mixtos pasaron, pero la suite aún exigía rechazar `tools::pointer`, que retorna `const int*`. Añadir `tests/unit/CppClangSessionTests.cpp` al presupuesto para comprobar que el resultado conserva el tipo de Clang y mantener el rechazo de los casos interno e incompleto.
 
 ### Global enum const
 
