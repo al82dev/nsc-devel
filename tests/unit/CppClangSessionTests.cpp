@@ -2693,6 +2693,17 @@ int main(int argc, char** argv)
             const auto positive = projectCppEnumConstant(enumEntry, 1);
             const auto* negativeValue = std::get_if<CppSemanticEnumConstant>(&negative);
             const auto* positiveValue = std::get_if<CppSemanticEnumConstant>(&positive);
+            auto withUsr = enumEntry;
+            withUsr.declaration.enumerators[0].clangUsr = "test:enumerator";
+            const auto identified = projectCppEnumConstant(withUsr, 0);
+            const auto* identifiedValue = std::get_if<CppSemanticEnumConstant>(&identified);
+            auto withoutUsr = enumEntry;
+            withoutUsr.declaration.enumerators[0].clangUsr.reset();
+            const auto unidentified = projectCppEnumConstant(withoutUsr, 0);
+            const auto* unidentifiedValue = std::get_if<CppSemanticEnumConstant>(&unidentified);
+            ok &= expect(identifiedValue && identifiedValue->clangUsr == "test:enumerator" &&
+                         unidentifiedValue && !unidentifiedValue->clangUsr,
+                         "C enum projection preserves known and absent enumerator identities");
             auto overflow = enumEntry;
             overflow.declaration.enumerators[0].decimalValue = "2147483648";
             auto cppEnum = enumEntry;
