@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Preparación del contrato volatile de resultado
+
+Conservar en el adaptador y en resultados de llamadas la calificación
+inmediata observada por Clang; persistir el dato en el esquema de snapshot
+vigente. Archivos: ClassMemberSymbol.h, ClassMemberSnapshotCodec.cpp,
+MethodBodyBuildCoordinator.cpp, CallAnalyzer.cpp y documentación. La barrera
+de proyección de resultados volatile permanece activa; no se afirma soporte
+ni se cambia la sintaxis de NativeSharp.
+
 ## Prueba interna de move con apuntado volatile
 
 Extender el fixture inyectado para comprobar que move de un local conserva

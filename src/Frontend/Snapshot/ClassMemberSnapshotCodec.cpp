@@ -98,7 +98,8 @@ bool readMemberContracts(PrecompiledSnapshotReader& reader, ClassMemberSymbol& m
 void writeMemberFlags(PrecompiledSnapshotWriter& writer, const ClassMemberSymbol& member)
 {
     writeSnapshotFlags(writer, {member.isPrecompiled, member.isTransportedInlineBody,
-        member.declaredPointerPointeeReadonly, member.declaredPointerNullable, member.declaredPointerHasProvenance,
+        member.declaredPointerPointeeReadonly, member.declaredPointerPointeeVolatile,
+        member.declaredPointerNullable, member.declaredPointerHasProvenance,
         member.hasImplicitThis, member.declaringTypeIsStruct, member.isStatic, member.isNewSlot, member.isReadonly,
         member.isReferenceReturn, member.isVolatile, member.isConst, member.isBitField, member.isUnnamedBitField,
         member.isNoHeap, member.isUnsafe, member.isVirtual, member.isOverride, member.isAbstract, member.isSealed,
@@ -112,7 +113,7 @@ void writeMemberFlags(PrecompiledSnapshotWriter& writer, const ClassMemberSymbol
 void readMemberFlags(PrecompiledSnapshotReader& reader, ClassMemberSymbol& member)
 {
     readSnapshotFlags(reader, {&member.isPrecompiled, &member.isTransportedInlineBody,
-        &member.declaredPointerPointeeReadonly, &member.declaredPointerNullable,
+        &member.declaredPointerPointeeReadonly, &member.declaredPointerPointeeVolatile, &member.declaredPointerNullable,
         &member.declaredPointerHasProvenance, &member.hasImplicitThis, &member.declaringTypeIsStruct,
         &member.isStatic, &member.isNewSlot, &member.isReadonly, &member.isReferenceReturn, &member.isVolatile,
         &member.isConst, &member.isBitField, &member.isUnnamedBitField, &member.isNoHeap, &member.isUnsafe,

@@ -960,6 +960,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
     ExpressionResult result;
     result.typeKey = callable.declaredTypeKey;
     result.pointerPointeeReadonly = callable.declaredPointerPointeeReadonly;
+    result.pointerPointeeVolatile = callable.declaredPointerPointeeVolatile;
     result.pointerNullable = callable.declaredPointerNullable;
     result.pointerHasProvenance = callable.declaredPointerHasProvenance;
     result.pointerKnownAlignment = callable.declaredPointerKnownAlignment;
@@ -5353,6 +5354,7 @@ void ProjectMethodBodyModel::configureSelectedCallBinding(
     }
     call.resultTypeKey = selectedMember.declaredTypeKey;
     result.pointerPointeeReadonly = selectedMember.declaredPointerPointeeReadonly;
+    result.pointerPointeeVolatile = selectedMember.declaredPointerPointeeVolatile;
     result.pointerNullable = selectedMember.declaredPointerNullable;
     result.pointerHasProvenance = selectedMember.declaredPointerHasProvenance;
     result.pointerKnownAlignment = selectedMember.declaredPointerKnownAlignment;

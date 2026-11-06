@@ -63,6 +63,7 @@ struct ClassMemberSymbol final
     // NS304-T05-F08: async frame storage selected by [FrameStorage(...)] (default CallerStack).
     language::FrameStorage frameStorage = language::FrameStorage::CallerStack;
     bool declaredPointerPointeeReadonly = false;
+    bool declaredPointerPointeeVolatile = false;
     bool declaredPointerNullable = true;
     bool declaredPointerHasProvenance = true;
     std::size_t declaredPointerKnownAlignment = 1;

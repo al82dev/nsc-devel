@@ -39,6 +39,10 @@ variádicas cuyos tipos no expresan el contrato. No equivale a soporte de
 callbacks o variádicos con volatile, que siguen pendientes.
 El fixture también prepara controles que mantienen diferidos los retornos y
 punteros anidados volatile; aún no fueron ejecutados.
+Se preparó el transporte del calificador de resultado desde el tipo de Clang
+hasta el resultado de la llamada y su snapshot. La proyección real de
+resultados volatile permanece rechazada y requiere validación. El esquema se
+incrementó a v3 para diferenciar este formato del v2 preparado anteriormente.
 Se preparó asimismo el rechazo provisional al retornar ese puntero mediante
 un tipo que no representa volatile; no está ejecutado.
 Se preparó el transporte en identificadores de parámetros y el rechazo

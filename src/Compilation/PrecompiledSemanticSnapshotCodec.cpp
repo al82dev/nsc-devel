@@ -10,7 +10,7 @@ namespace nativesharp::compilation
 {
 namespace
 {
-constexpr std::string_view SnapshotSchema = "nsc-precompiled-semantic-snapshot-v2";
+constexpr std::string_view SnapshotSchema = "nsc-precompiled-semantic-snapshot-v3";
 
 using Reader = frontend::internal::CachePayloadReader;
 using Writer = frontend::internal::CachePayloadWriter;
