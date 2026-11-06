@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Arreglos volatile C de enums y records
+
+T08-015/T08-016: proyectar arreglos C de enums o records completos volatile,
+propagar también const y preservar accesos volatile y alineación en sus campos
+y elementos. No perder calificadores al tomar direcciones. Presupuesto:
+CppSemanticRecord.cpp, fixture layout, verificador de IR y registros Markdown;
+LLVM externo, NSLink y ruta C++ protegidos. Validación agrupada por tanda.
+
 ## Arreglos const C de enums y records
 
 T08-015/T08-016: proyectar arreglos C de enums o records completos const,
