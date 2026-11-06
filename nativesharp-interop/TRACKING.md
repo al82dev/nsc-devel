@@ -246,6 +246,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     modo efectivo de su sesión y existe un control de procedencia. Falta
     ejecutar la suite y transportar o conciliar el modo hasta los accesos;
     la generación de código todavía no cambia y el control anterior sigue fallando.
+  - Preparados `06e256fd9` y `a09ae6ff7`: conciliación del modo entre
+    observaciones y transporte al símbolo del campo, con prueba de procedencia.
+    Falta ejecutar la prueba y conectar HIR, MIR y generación; sigue fallando
+    el control de orden del enum alineado.
   - Preparados `f301a1a16` y `03830c483`: lectura, IR y rechazo de escritura
     para arreglos C de record y enum const volatile. Sin ejecutar.
   - Actualización: layout pasó en O0–O3 con lecturas, IR volatile alineado a 1
