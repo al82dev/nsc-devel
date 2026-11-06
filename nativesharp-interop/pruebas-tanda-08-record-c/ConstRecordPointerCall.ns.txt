@@ -1,0 +1,5 @@
+int Main()
+{
+    write_mutable_globalonly(readonly_record_pointer);
+    return 0;
+}

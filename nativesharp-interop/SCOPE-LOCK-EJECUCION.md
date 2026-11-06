@@ -1722,6 +1722,7 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Evidencia: `mapGlobalType` rechaza explícitamente el record const aun cuando `NamespaceStateSymbol.cppPointerPointeeReadonly` y el análisis de desreferenciación ya transportan readonly. La ruta no está verificada de extremo a extremo.
 - Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, fixtures y script de `pruebas-tanda-08-record-c`, y registros Markdown. Si las pruebas revelan errores de semántica o HIR, registrar antes los archivos concretos. No habilitar punteros a volatile ni niveles de indirección calificados no representados.
 - Preparar lectura y comprobación C, rechazo de escritura al campo y de conversión a puntero mutable, y un caso positivo del puntero mutable existente; validar el conjunto y las regresiones agrupadamente.
+- Ampliar el mismo fixture con el paso del puntero readonly a una función C `const struct*`, la asignación de un puntero mutable al global readonly y el rechazo de pasarlo a una función que requiere `struct*`. Comprobar la causa exacta del rechazo.
 
 ### Global enum const
 

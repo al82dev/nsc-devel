@@ -36,6 +36,9 @@ int Main()
     if (read_global_records() != 94) return 11;
     if (global_record_const.value != 7) return 13;
     if (readonly_record_pointer->value != 7 || read_readonly_record_pointer() != 7) return 19;
+    if (read_const_globalonly(readonly_record_pointer) != 7) return 20;
+    readonly_record_pointer = global_record_pointer;
+    if (read_const_globalonly(readonly_record_pointer) != 13) return 21;
     global_record_volatile.value = 41;
     if (global_record_volatile.value != 41 || read_volatile_record() != 41) return 14;
     volatile_record_pointer->value = 17;
