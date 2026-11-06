@@ -1299,6 +1299,12 @@ int main(int argc, char** argv)
                             ok &= expect(providedOk && provided.size() == 2 && foundShared && foundDeferred,
                                          "global provider deduplicates demands, keeps project visibility and defers unsupported storage");
                             const auto selected = selectCppSemanticGlobal(*entries, 2, "feature::shared");
+                            const auto providedShared = std::find_if(provided.begin(), provided.end(),
+                                [](const auto& state) { return state.name == "shared" && state.projectOrdinal == 2; });
+                            ok &= expect(selected.candidate && selected.candidate->clangUsr &&
+                                         providedShared != provided.end() &&
+                                         providedShared->cppClangUsr == selected.candidate->clangUsr,
+                                         "global symbol retains the selected Clang USR");
                             const auto internal = selectCppSemanticGlobal(*entries, 2, "feature::local");
                             const auto unsupported = selectCppSemanticGlobal(*entries, 2, "feature::tls");
                             const auto invisible = selectCppSemanticGlobal(*entries, 1, "feature::shared");
