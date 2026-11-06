@@ -612,6 +612,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - Preparado el acceso `global[indice]` para un global C `volatile int*` con
     controles de IR; falta validación agrupada y no cubre otros orígenes.
     [Detalle](registro-commits/control-indice-puntero-volatile-ms.md).
+  - Preparada la combinación `arreglo[i][j]` para un puntero obtenido
+    directamente de un arreglo global C. El control aún no se ejecuta.
+    [Detalle](registro-commits/control-indice-puntero-array-volatile.md).
   - Mapeada la pérdida de procedencia de modo MS al guardar el puntero en un
     local, y el requisito de manejar reasignaciones y ramas antes de emitir
     órdenes. [Detalle](registro-commits/procedencia-puntero-volatile-local.md).
