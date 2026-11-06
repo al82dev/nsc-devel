@@ -69,6 +69,11 @@ mensaje genérico de campo de bits, aunque el elemento no lo es. Permitir una
 comprobación localizada en `IndexAndRangeExpressions.cpp` y ajustar el script
 del fixture para exigir mensajes de error reales, sin aceptar coincidencias
 accidentales con el nombre de la ruta.
+Los controles posteriores de direcciones de matriz muestran el diagnóstico
+específico junto con el genérico de bitfield. En la misma comprobación de
+`IndexAndRangeExpressions.cpp`, marcar el resultado inválido tras emitir el
+error para que el operador `&` no agregue un diagnóstico engañoso. Exigir la
+ausencia del mensaje genérico en esos controles y validar junto con la tanda.
 
 ## Funciones C static inline de encabezados
 

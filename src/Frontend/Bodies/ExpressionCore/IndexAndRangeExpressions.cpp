@@ -854,6 +854,7 @@ void ProjectMethodBodyModel::analyzeRawIndex(
             diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
                 diagnostics::DiagnosticSeverity::Error, expression->range(),
                 "cannot take the address of an array element with a const pointee until nested pointer qualifiers are supported");
+            result.valid = false;
             return;
         }
         result.pointerPointeeReadonly = qualifiedPointerElement;

@@ -61,6 +61,8 @@ for %%I in (InvalidMatrixAddress InvalidMatrixRowAddress) do (
   if not errorlevel 1 (echo Se acepto perdida de const en %%I. & exit /b 1)
   findstr /i /c:"cannot take the address of an array element with a const pointee" "%DEST%\%%I.log" >nul
   if errorlevel 1 (echo Falta diagnostico de direccion calificada en %%I. & exit /b 1)
+  findstr /i /c:"bit fields have no address" "%DEST%\%%I.log" >nul
+  if not errorlevel 1 (echo Diagnostico erroneo de bitfield en %%I. & exit /b 1)
 )
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidMatrixRowArgument.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidMatrixRowArgument.exe" > "%DEST%\InvalidMatrixRowArgument.log" 2>&1
 if not errorlevel 1 (echo Se acepto la fila como argumento mutable. & exit /b 1)
