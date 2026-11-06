@@ -427,6 +427,10 @@ void ProjectOopHirModel::finishArrayRawIndex(
         address->volatileAccess = (frame.baseIsFixedArray && base && base->volatileAccess) ||
             (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray &&
              baseType && baseType->pointerPointeeVolatile);
+        if (frame.baseIsFixedArray && base &&
+            (base->kind == ProjectOopHirNodeKind::FieldAddress ||
+             base->kind == ProjectOopHirNodeKind::RawElementAddress))
+            address->cppMicrosoftVolatileSemantics = base->cppMicrosoftVolatileSemantics;
         applyRawIndexTrailingBounds(*address, frame);
         address->children.push_back(std::move(base));
         address->children.push_back(std::move(frame.operands[dimension]));

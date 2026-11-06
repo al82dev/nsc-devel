@@ -238,6 +238,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerFieldNameBinding(
     node->volatileAccess = memberModel_ != nullptr &&
         *node->memberOrdinal < memberModel_->members().size() &&
         memberModel_->members()[*node->memberOrdinal].isVolatile;
+    if (memberModel_ != nullptr && *node->memberOrdinal < memberModel_->members().size())
+        node->cppMicrosoftVolatileSemantics = memberModel_->members()[*node->memberOrdinal].cppMicrosoftVolatileSemantics;
     node->baseReceiver = binding.baseReceiver;
     node->children.push_back(std::move(receiver));
     return node;

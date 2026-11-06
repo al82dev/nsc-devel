@@ -159,6 +159,8 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledInstanceFieldFrame(
         field->volatileAccess = memberModel_ != nullptr &&
             *field->memberOrdinal < memberModel_->members().size() &&
             memberModel_->members()[*field->memberOrdinal].isVolatile;
+        if (memberModel_ != nullptr && *field->memberOrdinal < memberModel_->members().size())
+            field->cppMicrosoftVolatileSemantics = memberModel_->members()[*field->memberOrdinal].cppMicrosoftVolatileSemantics;
         // Propagate the qualification only from the receiver's storage address.
         // A volatile pointer load does not qualify the pointed-to record.
         if (lowered && lowered->volatileAccess &&
