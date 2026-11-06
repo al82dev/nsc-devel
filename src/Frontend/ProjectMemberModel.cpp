@@ -416,8 +416,12 @@ bool ProjectMemberModel::build(
             owner && owner->objectLayout ? &*owner->objectLayout : nullptr;
         const auto width = imported.byteSize ? imported.byteSize : experimentalCppFieldBytes(imported.typeKey);
         const auto alignment = imported.byteAlignment ? imported.byteAlignment : width;
+        const bool invalidBits = imported.bitOffset.has_value() != imported.bitWidth.has_value() ||
+            (imported.bitOffset && (width == 0 || width > 8 || (width & (width - 1)) != 0 ||
+             *imported.bitOffset >= width * 8 || !*imported.bitWidth ||
+             *imported.bitWidth > width * 8 - *imported.bitOffset));
         if (!owner || owner->projectOrdinal != imported.projectOrdinal || !ownerLayout ||
-            alignment == 0 || (alignment & (alignment - 1)) != 0 ||
+            invalidBits || alignment == 0 || (alignment & (alignment - 1)) != 0 ||
             !cppCallableRecordIsVisible(imported.typeKey, imported.projectOrdinal, nameLookup) ||
             imported.byteOffset > ownerLayout->sizeBytes ||
             width > ownerLayout->sizeBytes - imported.byteOffset ||
@@ -442,6 +446,10 @@ bool ProjectMemberModel::build(
         member.cppClangUsr = imported.clangUsr;
         member.explicitFieldOffset = imported.byteOffset;
         member.explicitFieldAlignment = alignment;
+        member.isBitField = imported.bitWidth.has_value();
+        member.explicitBitOffset = imported.bitOffset;
+        member.explicitBitWidth = imported.bitWidth;
+        if (member.isBitField) member.explicitBitStorageSize = width;
         const auto memberOrdinal = members_.size();
         members_.push_back(std::move(member));
         membersByType_[*ordinal].push_back(memberOrdinal);
