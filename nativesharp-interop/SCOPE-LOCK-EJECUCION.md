@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Identidad de funciones C importadas
+
+T08-002/T08-003: conservar USR opcional en la proyección de función y
+conciliarlo en declaraciones agrupadas del mismo nombre y símbolo; rechazar
+USR conocidos contradictorios sin confundir alias de nombres diferentes.
+Presupuesto: NamespaceFunctionSymbol.h, CppSemanticFunction.cpp,
+CppSemanticFunctionGroups.cpp, suite de sesión y registros Markdown.
+No modifica formato persistente, LLVM externo ni NSLink; validar por tanda.
+
 ## Identidad de global C en selección y símbolo
 
 T08-002/T08-004: conservar el USR opcional de declaraciones globales C
