@@ -433,6 +433,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - `fe2fddfca` añade argumentos y resultados `_Bool` en llamada C; pendiente
     de ejecución, no demuestra aún su ABI.
 - [ ] T08-007. Mapear los tipos de punto flotante según el objetivo.
+  - Preparada una extensión versionada del catálogo para conservar el formato
+    IEEE de `long double`, compararlo y reflejarlo en el fingerprint sin la
+    procedencia. La construcción y los controles están en curso; no se afirma
+    compatibilidad hasta ejecutarlos. [Detalle](registro-commits/catalogo-ieee64-versionado.md).
   - El caso directo de `long double` pasó O0 después de capturar el formato
     IEEE; el consumidor precompilado falló al reconstruir el campo y detuvo
     la matriz. [Evidencia](registro-commits/metadata-long-double-c.md).
