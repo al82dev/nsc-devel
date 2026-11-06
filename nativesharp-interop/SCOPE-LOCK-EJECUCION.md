@@ -3321,6 +3321,9 @@ en `include/nativesharp/Interop/CppSemanticFunction.h` y
 `src/Interop/Cpp/CppSemanticFunction.cpp`, y conectarlo a campos C en
 `CppSemanticRecord.cpp` y globales C en `CppSemanticInventory.cpp`. Conservar
 rechazo de volatile y firmas no representables; añadir registros Markdown.
+La primera construcción mostró que el layout de campo no reconoce el tipo
+estructural de función. Permitir `src/Frontend/ProjectObjectLayoutModel.cpp`
+para representar ese tipo como puntero nativo, más su registro y validación.
 
 Extender el mismo fixture con parámetros y retornos C de unions de 4 y 12
 bytes, para contrastar la clasificación ABI directa e indirecta en Windows
