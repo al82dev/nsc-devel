@@ -1,0 +1,1 @@
+int Main() { c_fixed_const[0] = null; return 0; }

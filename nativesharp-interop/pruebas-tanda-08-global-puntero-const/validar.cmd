@@ -13,6 +13,12 @@ for %%F in (Api.h Api.c Project.nsproj Main.ns Invalid.nsproj Invalid.ns Invalid
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
+for %%F in (InvalidFixedMatrix InvalidFixedRowArgument InvalidFixedConstSlot InvalidFixedConstValue InvalidFixedConstEscape) do (
+  copy /y "%~dp0%%F.ns" "%DEST%\%%F.ns" >nul
+  if errorlevel 1 exit /b 1
+  copy /y "%~dp0%%F.nsproj" "%DEST%\%%F.nsproj" >nul
+  if errorlevel 1 exit /b 1
+)
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Api.c" -o "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
 llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
@@ -83,4 +89,19 @@ if not errorlevel 1 (echo Se acepto el arreglo de slots constantes como argument
 findstr /i /c:"no viable overload of namespace function 'c_mutate' accepts the argument types" "%DEST%\InvalidFixedArgument.log" >nul
 if errorlevel 1 (echo El rechazo del argumento no identifica el contrato. & exit /b 1)
 echo Argumento mutable de slots constantes rechazado.
+for %%I in (InvalidFixedMatrix InvalidFixedConstSlot InvalidFixedConstValue) do (
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\%%I.nsproj" -O0 --no-artifact-cache -o "%DEST%\%%I.exe" > "%DEST%\%%I.log" 2>&1
+  if not errorlevel 1 (echo Se acepto escritura invalida en %%I. & exit /b 1)
+  findstr /i /c:"error: left side of assignment is not assignable" "%DEST%\%%I.log" >nul
+  if errorlevel 1 (echo El rechazo no corresponde a la escritura en %%I. & exit /b 1)
+)
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidFixedRowArgument.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidFixedRowArgument.exe" > "%DEST%\InvalidFixedRowArgument.log" 2>&1
+if not errorlevel 1 (echo Se acepto una fila de slots constantes como argumento mutable. & exit /b 1)
+findstr /i /c:"no viable overload of namespace function 'c_mutate' accepts the argument types" "%DEST%\InvalidFixedRowArgument.log" >nul
+if errorlevel 1 (echo El rechazo de fila no corresponde al argumento. & exit /b 1)
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidFixedConstEscape.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidFixedConstEscape.exe" > "%DEST%\InvalidFixedConstEscape.log" 2>&1
+if not errorlevel 1 (echo Se acepto perder const del dato. & exit /b 1)
+findstr /i /c:"would discard pointee constness" "%DEST%\InvalidFixedConstEscape.log" >nul
+if errorlevel 1 (echo El rechazo no identifica const del dato. & exit /b 1)
+echo Matriz fija y doble const comprobados.
 exit /b 0

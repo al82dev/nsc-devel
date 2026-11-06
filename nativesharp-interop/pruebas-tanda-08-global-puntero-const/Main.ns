@@ -9,5 +9,8 @@ int Main()
     if (*c_fixed_slots[0] != 55 || *c_fixed_slots[1] != 66) return 5;
     *c_fixed_slots[0] = 77;
     if (c_verify_fixed() != 1) return 6;
+    if (*c_fixed_matrix[1][0] != 66 || *c_fixed_const[0] != 11) return 7;
+    *c_fixed_matrix[1][0] = 88;
+    if (c_verify_fixed_matrix() != 1 || *c_fixed_const[1] != 22) return 8;
     return 0;
 }

@@ -1,0 +1,1 @@
+int Main() { int* value = c_fixed_const[0]; return 0; }

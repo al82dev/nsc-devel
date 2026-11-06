@@ -16,6 +16,10 @@ habilitar volatile ni calificadores anidados no representados. Comprobar las
 operaciones y escapes antes de declarar soportada esta forma.
 Agregar un control que intente pasar el arreglo de slots constantes a una
 función C que recibe `int**`; debe rechazarse, ya que podría reasignarlos.
+Ampliar el mismo fixture con `int * const[2][2]` y `const int * const[2]`;
+probar lectura, modificación permitida de datos de la matriz, y rechazo de
+escritura a slots, datos constantes, dirección y paso de filas a `int**`.
+No modificar producción hasta observar los fallos y delimitar el cambio.
 
 ## Pruebas independientes de metadata histórica C
 
