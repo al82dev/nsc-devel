@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Protección provisional de punteros volatile en inicializadores de arreglo
+
+Evitar que un inicializador de arreglo nativo almacene un puntero cuyo
+calificador volatile del apuntado no se representa en el elemento. Archivo
+ConstructionAndLifetimeExpressions.cpp y documentación. El soporte de
+elementos calificados permanece pendiente y dentro del alcance.
+
 ## Protección provisional de punteros volatile en tuplas
 
 Las identidades actuales de tupla conservan sólo claves de tipo y no los

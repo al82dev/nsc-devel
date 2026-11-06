@@ -51,6 +51,8 @@ Se preparó además la conservación del calificador en resultados de move para
 locales, parámetros, campos, elementos e iteradores; aún no se ha validado.
 Las tuplas aún no representan calificadores por elemento; se preparó una
 barrera provisional para evitar pérdida silenciosa, pendiente de validar.
+También se preparó la barrera equivalente para inicializadores de arreglos
+nativos; no cubre todavía todos los agregados ni sustituye su implementación.
 Una prueba interna preparada inyecta un global con símbolo de Clang para
 ejercitar el acceso, el IR y los rechazos de inicialización, asignación y
 retorno. No habilita la importación real y aún no se ha ejecutado.

@@ -654,6 +654,14 @@ void ProjectMethodBodyModel::analyzeNativeArrayAllocation(
             const ExpressionResult value = analyzeExpression(
                 initializer, methodMemberOrdinal, scopeOrdinal, diagnostics,
                 /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
+            if (value.pointerPointeeVolatile && ProjectTypeConversion::isPointer(element))
+            {
+                diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+                    diagnostics::DiagnosticSeverity::Error, initializer->range(),
+                    "array element cannot yet preserve pointer pointee volatile qualification");
+                elementsValid = false;
+                continue;
+            }
             if (!value.valid || !classifyImplicit(
                     value.typeKey, element, value.integerConstant).exists())
             {
