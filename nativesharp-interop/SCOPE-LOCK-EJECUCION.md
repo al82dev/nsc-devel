@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Struct volatile apuntado con campo puntero
+
+Preparar una prueba que distinga el acceso volatile al campo puntero del acceso
+ordinario al objeto que ese campo apunta, al llegar al struct por otro puntero.
+Archivos: fixture pruebas-tanda-08-record-c y documentación. Ejecutar con la
+validación agrupada y no afirmar cobertura total de agregados.
+
 ## Global C puntero a struct volatile
 
 Preparar la proyección de un global C que apunta directamente a un struct

@@ -68,6 +68,8 @@ escritura; estas comprobaciones esperan ejecución.
 Se conectó además el apuntado inmediato a struct C con layout importado y se
 prepararon accesos a campo y rechazo de dirección sin calificar. La copia y
 otras operaciones sobre el agregado completo no están verificadas.
+El fixture prepara también acceso a un campo puntero dentro de un struct
+volatile apuntado, para comprobar que el dato final no hereda volatile.
 Se añadió el caso opuesto: puntero const a dato volatile, con escritura
 permitida en el dato y rechazo de reasignación del puntero. Sin ejecutar.
 Se conectó además el resultado C de puntero a escalar volatile con el

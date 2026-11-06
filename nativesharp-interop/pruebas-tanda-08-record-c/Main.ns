@@ -69,6 +69,9 @@ int Main()
     volatile_nested_record.item.value = 50;
     *volatile_nested_record.target = 47;
     if (volatile_nested_record.item.value != 50 || read_volatile_nested_record() != 97) return 18;
+    volatile_nested_pointer->item.value = 70;
+    *volatile_nested_pointer->target = 47;
+    if (read_volatile_nested_record() != 117) return 31;
     write_mutable_globalonly(global_record_pointer);
     if (global_record_pointer->value != 42) return 22;
     return 0;
