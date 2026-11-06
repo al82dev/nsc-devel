@@ -1,0 +1,18 @@
+int Main()
+{
+    CCountAlias value = 7;
+    if (c_double(value) != 14) return 1;
+    CMatrix matrix;
+    matrix[0][1] = 4;
+    matrix[1][2] = 5;
+    if (c_matrix_sum(&matrix) != 9) return 2;
+    CPoint point;
+    point.x = 6;
+    point.y = 8;
+    if (c_point_sum(&point) != 14) return 3;
+    CColor color = c_color();
+    if (color != COLOR_BLUE) return 4;
+    COperation operation = c_operation();
+    if (operation(10) != 11) return 5;
+    return 0;
+}

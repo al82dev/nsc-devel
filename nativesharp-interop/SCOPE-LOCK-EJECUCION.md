@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Typedef C en proyectos reales
+
+Crear `nativesharp-interop/pruebas-tanda-08-typedef-c` para comprobar juntos
+typedefs C escalares, cadena de alias, arreglos de dimensiones fijas, enum,
+struct y callback en un proyecto NativeSharp enlazado con una biblioteca C.
+Probar O0–O3 y registrar las barreras sin modificar producción hasta
+identificar la causa. Salidas únicamente en `A:/nsc-interop-build/tanda08-typedef-c`.
+
 ## Arreglos globales C de punteros constantes
 
 Extender `pruebas-tanda-08-global-puntero-const` con un arreglo global C
