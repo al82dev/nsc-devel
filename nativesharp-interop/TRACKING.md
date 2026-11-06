@@ -190,6 +190,12 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Comprobación real con `20d0a28e0`: NSC construyó el productor con tipo C en
+    su API, el consumidor enlazó por LibraryReference y su ejecutable terminó
+    con código 0 en O0. La suite de sesión pasó después de corregir el fixture
+    1.41 en `96aaac9df`, incluidos los controles de lectura/escritura 1.42.
+    Persisten advertencias de compilación, la reconciliación entre sesión y
+    catálogo, más variantes y la batería completa de la tanda.
   - Cambio posterior a las notas históricas de abajo: `7c9668a9f`, `b2d88f6f7`
     y `2fbe2256f` habilitan NSMETA 1.42 y conectan el productor y consumidor de
     catálogos C. `4c399a685` incorpora el fixture real a la batería. Los cambios

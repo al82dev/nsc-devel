@@ -1607,3 +1607,15 @@ se reconstruyó el objetivo incrementalmente y la suite terminó con código 0.
 La compilación informó advertencias de inicializadores faltantes, incluidas 29
 en el archivo de la suite. No se ejecutó la batería completa de la tanda ni se
 habilitó la publicación de NSMETA 1.42; el objetivo sigue abierto.
+
+## Publicación y consumo real de tipo C
+
+Tras conectar NSMETA 1.42 en `20d0a28e0`, se construyó incrementalmente NSC y
+se ejecutó `pruebas-tanda-08-meta-c/validar.cmd`: el productor emitió una
+biblioteca con `CRecord*` en la API, el consumidor separado enlazó y ejecutó
+con código 0 en O0. La primera suite de sesión señaló dos expectativas antiguas
+de versión; `96aaac9df` fijó explícitamente 1.41 en el fixture. Tras reconstruir
+incrementalmente, la suite pasó con código 0, incluidos los controles del codec
+1.42 y la compatibilidad básica de 1.41. Se observaron advertencias de campos
+sin inicializador. Esta evidencia no cubre O1–O3, todas las formas de tipos ni
+la batería completa de la tanda.
