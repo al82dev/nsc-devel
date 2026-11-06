@@ -662,6 +662,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     pasó IR y ejecución O0–O3 con globales flotantes y `??=`. La batería
     completa y las demás formas de volatile siguen pendientes.
 - [ ] T08-016. Mapear arreglos de tamaño conocido.
+  - `int * const[2][2]` y `const int * const[2]` pasaron lectura y modificación
+    permitida en O0–O3; escritura y escapes indebidos se rechazaron. Persisten
+    otras formas y la validación completa. [Evidencia](registro-commits/prueba-matriz-puntero-fijo.md).
   - Un global C `int * const[2]` permitió modificar los datos apuntados en
     O0–O3; reasignación de slot, escape por dirección y argumento mutable se
     rechazaron. La suite de sesión pasó. Quedan otras formas de arreglos y
