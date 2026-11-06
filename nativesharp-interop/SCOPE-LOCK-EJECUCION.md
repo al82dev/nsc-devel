@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Comparación de volatile C alineado en agregados
+
+T08-015/T08-016: contrastar el orden y alineación que emiten Clang y NSC al
+acceder a un arreglo de records y enums volatile alineados naturalmente. Usar
+el fixture layout, su verificador de IR y registros Markdown; no inferir la
+semántica de un campo alineado a partir de un ejemplo empaquetado. NSLink y
+LLVM externo protegidos; validación agrupada.
+
 ## Arreglos volatile C de enums y records
 
 T08-015/T08-016: proyectar arreglos C de enums o records completos volatile,
