@@ -18,6 +18,8 @@ apuntado; no se ha activado ni comprobado la ruta.
 Se preparó además la conservación en locales inferidos y el rechazo de una
 inicialización explícita que descartaría el calificador; falta cubrir
 asignaciones y los demás recorridos antes de habilitar la importación.
+También se preparó la propagación en operaciones aritméticas de punteros,
+coalescencia y condicionales; permanece sin ejecutar.
 
 ## Parámetros C puntero a escalar volatile: implementación pendiente de validar
 

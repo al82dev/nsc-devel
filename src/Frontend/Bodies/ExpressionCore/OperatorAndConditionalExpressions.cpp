@@ -196,6 +196,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     break;
                 }
                 result.pointerPointeeReadonly = left.pointerPointeeReadonly || right.pointerPointeeReadonly;
+                result.pointerPointeeVolatile = left.pointerPointeeVolatile || right.pointerPointeeVolatile;
                 result.pointerNullable = right.typeKey == "builtin:null" || right.pointerNullable;
                 result.pointerHasProvenance = left.pointerHasProvenance && right.pointerHasProvenance;
                 result.pointerKnownAlignment = std::min(left.pointerKnownAlignment, right.pointerKnownAlignment);
@@ -547,6 +548,7 @@ void ProjectMethodBodyModel::adoptConditionalNullableBranch(
     result.typeKey = nonNull.typeKey;
     result.valid = true;
     result.pointerPointeeReadonly = nonNull.pointerPointeeReadonly;
+    result.pointerPointeeVolatile = nonNull.pointerPointeeVolatile;
     result.pointerNullable = true;
     result.pointerHasProvenance = nonNull.pointerHasProvenance;
     result.pointerKnownAlignment = nonNull.pointerKnownAlignment;
@@ -611,6 +613,8 @@ bool ProjectMethodBodyModel::resolveConditionalMatchingType(
     result.valid = true;
     result.pointerPointeeReadonly =
         whenTrue.pointerPointeeReadonly || whenFalse.pointerPointeeReadonly;
+    result.pointerPointeeVolatile =
+        whenTrue.pointerPointeeVolatile || whenFalse.pointerPointeeVolatile;
     result.pointerNullable = whenTrue.pointerNullable || whenFalse.pointerNullable;
     result.pointerHasProvenance =
         whenTrue.pointerHasProvenance && whenFalse.pointerHasProvenance;

@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Propagación del apuntado volatile en expresiones
+
+Conservar el calificador inmediato en aritmética de punteros, coalescencia y
+condicionales, combinando las ramas sin descartarlo. Archivos autorizados:
+OperatorExpressionAnalyzer.cpp, OperatorAndConditionalExpressions.cpp y
+documentación. La barrera de importación sigue activa; se probará en la
+validación agrupada una vez conectadas las rutas restantes.
+
 ## Calificador volatile inmediato en variables locales inferidas
 
 Preparar la conservación del dato en locales inferidos a partir de una
