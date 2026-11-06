@@ -1705,6 +1705,7 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Evidencia: el inventario rechaza el record volatile; el estado transporta `isVolatile`, pero el análisis de campos y `HirCompletionValueFrames.cpp` solo consideran el calificador declarado en el propio campo.
 - Presupuesto: `include/nativesharp/Frontend/Internal/MethodBody/ExpressionResult.h`, `src/Interop/Cpp/CppSemanticInventory.cpp`, `src/Frontend/Bodies/IdentifierAnalyzer.cpp`, `src/Frontend/Bodies/MemberAccessAnalyzer.cpp`, `src/Frontend/Bodies/ExpressionCore/IndexAndRangeExpressions.cpp`, `src/Frontend/HIR/ExpressionStatementMachine/HirCompletionValueFrames.cpp`, fixtures de `pruebas-tanda-08-record-c` y registros Markdown. No habilitar ABI por valor ni punteros a volatile; preservar las regresiones existentes.
 - Validar lectura/escritura compartida con C, IR de cargas y escrituras volatile, dirección rechazada y regresiones de arreglo y puntero con una validación agrupada.
+- Resultado inicial: batería agrupada con código 0; IR confirmó cargas y escrituras volatile del struct y carga volatile del puntero con escritura ordinaria en el objeto apuntado. El diagnóstico de dirección atribuye erróneamente el caso a bit fields; precisarlo en `IdentifierAnalyzer.cpp` y exigir ambos tipos de instrucción del puntero en el script antes de repetir la validación.
 
 ### Global enum const
 

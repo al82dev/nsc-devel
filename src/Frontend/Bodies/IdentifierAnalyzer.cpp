@@ -1217,8 +1217,10 @@ if (operation == TokenKind::Amp)
             diagnostics::DiagnosticId::InvalidAddressOf,
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
-            "bit fields have no address; operand of & must name addressable storage, "
-            "not a bit field or temporary value");
+            operand.volatileStorage
+                ? "cannot take the address of volatile storage until qualified pointers are supported"
+                : "bit fields have no address; operand of & must name addressable storage, "
+                  "not a bit field or temporary value");
         return result;
     }
     result.typeKey = operand.typeKey + '*';
