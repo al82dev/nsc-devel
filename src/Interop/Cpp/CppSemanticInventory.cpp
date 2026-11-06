@@ -140,7 +140,8 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
             return std::nullopt;
         current = current->element.get();
         const bool supportedVolatilePointee = cLanguage && depth == 0 &&
-            (current->kind == CppTypeKind::Boolean ||
+            (current->kind == CppTypeKind::Void ||
+             current->kind == CppTypeKind::Boolean ||
              current->kind == CppTypeKind::SignedInteger ||
              current->kind == CppTypeKind::UnsignedInteger ||
              current->kind == CppTypeKind::Floating ||
