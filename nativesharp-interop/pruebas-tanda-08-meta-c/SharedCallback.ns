@@ -5,5 +5,9 @@ int Main()
     CCallbackHolder* holder = Published.Bridge.GetHolder();
     CSharedCallback member = holder->run;
     if (member(40) != 42) return 2;
+    CVectorCallback vector = Published.Bridge.GetVectorCallback();
+    if (vector(40) != 42) return 3;
+    CVariadicCallback variadic = Published.Bridge.GetVariadicCallback();
+    if (variadic(40, 2) != 42) return 4;
     return 0;
 }

@@ -3,6 +3,8 @@ namespace Published
     public struct Bridge
     {
         public static CSharedCallback GetCallback() { return get_shared_callback(); }
+        public static CVectorCallback GetVectorCallback() { return get_vector_callback(); }
+        public static CVariadicCallback GetVariadicCallback() { return get_variadic_callback(); }
         public static CCallbackHolder* GetHolder() { return get_callback_holder(); }
     }
 }
