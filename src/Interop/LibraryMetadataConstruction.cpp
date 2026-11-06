@@ -3058,6 +3058,8 @@ bool buildMetadataModel(
         metadata, declaredTypeKeys, emittedSpecializedTypeKeys, externalTypeKeys);
     if (!appendBinaryDependencies(compilation, metadata, error)) return false;
     appendPlatformImports(compilation, metadata);
+    if (!compilation.collectCppMetadataCatalog(metadata, metadata.cppCRecordCatalog, error)) return false;
+    if (!metadata.cppCRecordCatalog.empty() && metadata.formatMinor < 42) metadata.formatMinor = 42;
     return true;
 }
 
