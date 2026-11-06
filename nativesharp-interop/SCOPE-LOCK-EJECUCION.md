@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## TLS de una DLL C
+
+El fixture TLS estático falla por `_tls_index` en NSLink. Sin modificarlo,
+preparar una variante en `pruebas-tanda-08-tls-c` donde Clang y lld construyan
+una DLL C con directorio TLS y NSC invoque su función de aislamiento entre
+hilos. Usar solo `A:/nsc-interop-build/tanda08-tls-dll` para salidas y las
+bibliotecas de `A:/vc2026-runtime` en lectura. Inspeccionar el directorio TLS
+y probar O0–O3. Esto prueba TLS dentro de la DLL, no importación directa de
+un global TLS ni TLS enlazado estáticamente por NSLink.
+
 ## Typedef C en proyectos reales
 
 La comparación mixta devolvió 7: HIR promueve `uint` e `int` a `long`, mientras

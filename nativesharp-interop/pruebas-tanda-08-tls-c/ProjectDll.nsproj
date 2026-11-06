@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CTlsDllPrerequisite</Name></PropertyGroup>
+  <ItemGroup><Compile Include="Main.ns" /><CppLibraryReference Header="ApiDll.h" Language="C" Standard="c11" Library="api.lib" Runtime="api.dll" /></ItemGroup>
+</Project>
