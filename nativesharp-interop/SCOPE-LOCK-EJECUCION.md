@@ -4202,3 +4202,12 @@ identificar un defecto y registrar por separado los archivos necesarios.
 - Preservar las demás comprobaciones, otros consumidores, fuentes LLVM y NSLink; sin cambios en C:.
 - Validación: fixtures de consumidor con y sin header, controles negativos de identidad y batería agrupada de la tanda.
 
+# TLS estático sin modificar NSLink — referencia LLD
+
+La prueba existente falla con `_tls_index` en NSLink. Sin modificarlo, se
+incorpora un ensayo reproducible que enlaza el objeto NativeSharp y la misma
+biblioteca C mediante LLD y comprueba el aislamiento por hilo. Presupuesto:
+`pruebas-tanda-08-tls-c/lld`, tracking y registro Markdown; salidas en
+`A:/nsc-interop-build`. El punto de entrada auxiliar es solo instrumento de
+prueba: no acredita todavía el arranque normal de NSC ni cierra la tanda.
+
