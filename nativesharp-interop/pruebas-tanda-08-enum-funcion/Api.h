@@ -14,6 +14,7 @@ extern const enum Mood readonly_mood;
 extern enum Mood* shared_mood_ptr;
 extern volatile enum Mood volatile_mood;
 extern volatile enum Mood* volatile_mood_ptr;
+volatile enum Mood* get_volatile_mood_ptr(void);
 int read_volatile_mood(void);
 enum HiddenState { HiddenReady = 7 };
 extern enum HiddenState hidden_global;

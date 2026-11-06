@@ -39,6 +39,8 @@ findstr /r /c:"store volatile i32 61, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile en el objeto apuntado. & exit /b 1)
 findstr /r /c:"store volatile i32 67, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile del campo apuntado. & exit /b 1)
+findstr /r /c:"store volatile i32 68, ptr" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura volatile del campo del resultado C. & exit /b 1)
 findstr /r /c:"store volatile i32 70, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile del campo anidado apuntado. & exit /b 1)
 findstr /r /c:"load volatile.*@volatile_array" "%DEST%\project.ll" >nul

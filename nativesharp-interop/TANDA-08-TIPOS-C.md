@@ -79,8 +79,9 @@ volatile apuntado, para comprobar que el dato final no hereda volatile.
 Se añadió el caso opuesto: puntero const a dato volatile, con escritura
 permitida en el dato y rechazo de reasignación del puntero. Sin ejecutar.
 Se conectó además el resultado C de puntero a escalar volatile con el
-metadato de Clang y se preparó su prueba mixta. Los resultados agregados y
-anidados siguen diferidos; ninguna de estas rutas se ha validado todavía.
+metadato de Clang y se preparó su prueba mixta. También se prepararon
+resultados C a struct y enum volatile con tipos importados; los resultados
+anidados siguen diferidos. Ninguna de estas rutas se ha validado todavía.
 La suite prepara controles separados para que firmas C++ con apuntado volatile
 no se proyecten antes de resolver sus contratos y sobrecargas.
 Se preparó asimismo el rechazo provisional al retornar ese puntero mediante

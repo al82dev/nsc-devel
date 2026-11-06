@@ -213,7 +213,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     iniciales de asignación y conversión. Se prepararon contratos de llamadas
     ordinarias, barreras provisionales para llamadas indirectas y variádicas y
     controles internos. Se conectaron globales C de puntero a escalar, struct
-    o enum volatile y resultados C a escalar; faltan cobertura completa de
+    o enum volatile y resultados C a los mismos tipos; faltan cobertura completa de
     propagación, auditoría de escapes y validación. Los demás agregados y
     niveles anidados permanecen pendientes.
 - [ ] T08-016. Mapear arreglos de tamaño conocido.

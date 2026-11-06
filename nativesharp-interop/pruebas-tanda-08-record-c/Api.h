@@ -33,6 +33,7 @@ int read_volatile_arrays(void);
 struct GlobalOnly { int value; };
 extern volatile struct GlobalOnly* volatile_record_target;
 int read_volatile_record_target(void);
+volatile struct GlobalOnly* get_volatile_record_target(void);
 int bump_volatile_record(volatile struct GlobalOnly* value);
 int read_const_volatile_record(const volatile struct GlobalOnly* value);
 extern struct GlobalOnly global_record;

@@ -35,6 +35,7 @@ struct GlobalOnly global_record = { 1 };
 static volatile struct GlobalOnly volatile_record_storage = { 9 };
 volatile struct GlobalOnly* volatile_record_target = &volatile_record_storage;
 int read_volatile_record_target(void) { return volatile_record_storage.value; }
+volatile struct GlobalOnly* get_volatile_record_target(void) { return &volatile_record_storage; }
 int bump_volatile_record(volatile struct GlobalOnly* value) { value->value += 2; return value->value; }
 int read_const_volatile_record(const volatile struct GlobalOnly* value) { return value->value; }
 static struct GlobalOnly global_record_target = { 2 };

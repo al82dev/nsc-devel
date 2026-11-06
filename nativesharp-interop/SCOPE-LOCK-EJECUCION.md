@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Resultados C puntero a struct o enum volatile
+
+Extender la proyección de resultados C de un nivel a struct o enum importado,
+con identidad y representación resueltas, preservando el tipo original.
+Archivos: CppSemanticFunction.cpp, fixtures pruebas-tanda-08-record-c y
+pruebas-tanda-08-enum-funcion, tracking y documentación. Preparar accesos a
+campo y elemento; no habilitar retornos anidados ni funciones C++.
+
 ## Llamada C con puntero a enum volatile importado
 
 Preparar el paso del global importado a parámetros C volatile y const volatile

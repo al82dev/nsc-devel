@@ -44,6 +44,8 @@ int Main()
     global_record.value = 10;
     volatile_record_target->value = 67;
     if (volatile_record_target->value != 67 || read_volatile_record_target() != 67) return 30;
+    get_volatile_record_target()->value = 68;
+    if (get_volatile_record_target()->value != 68 || read_volatile_record_target() != 68) return 32;
     if (bump_volatile_record(&global_record) != 12 ||
         read_const_volatile_record(&global_record) != 12) return 25;
     global_record.value = 10;
