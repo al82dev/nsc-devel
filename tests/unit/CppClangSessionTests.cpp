@@ -6442,6 +6442,49 @@ int main(int argc, char** argv)
                                 fieldDependency.cppProjectSessions(), modules, lookup, demands, values, dependencyError);
                             ok &= expect(collision && values.size() == 1 && !values[0].cppImportError.empty(),
                                          "combined value provider defers live and precompiled value collisions");
+                            module.ownerProjectFile = std::filesystem::absolute(path);
+                            module.moduleName = fieldDependency.projectGraph()->projects().front().moduleName();
+                            module.sourceText = "namespace Published { public struct Value {} }\n";
+                            { std::ofstream file(module.metadataPath); file << "synthetic metadata fixture"; }
+                            nativesharp::frontend::ProjectCompilation consumer;
+                            consumer.setSourceBufferProvider([](const std::filesystem::path& source)
+                                -> std::optional<std::string> {
+                                if (source.filename() == "Main.ns")
+                                    return "int Use(Box* value) { return value.color; } int Main() { return Dark; }\n";
+                                return std::nullopt;
+                            });
+                            const bool configured = consumer.setPrecompiledModules({module}, dependencyError) &&
+                                consumer.setExperimentalCppTypeSelector(selectCppTypesWithPrecompiledCatalogs, dependencyError) &&
+                                consumer.setExperimentalCppInstanceFieldProvider(
+                                    [&consumer](const auto& graph, auto projects, const auto& names, auto& out, auto& why) {
+                                        return provideCppFieldsWithPrecompiledCatalogs(graph, projects,
+                                            consumer.precompiledModules(), names, out, why);
+                                    }, dependencyError) &&
+                                consumer.setCppGlobalProvider(
+                                    [&consumer](const auto& graph, auto projects, auto wanted, auto& out, auto& why) {
+                                        const auto* names = consumer.nameLookup();
+                                        if (!names) { why = "consumer name lookup is unavailable"; return false; }
+                                        return provideCppValuesWithPrecompiledCatalogs(graph, projects,
+                                            consumer.precompiledModules(), *names, wanted, out, why);
+                                    }, dependencyError);
+                            const bool consumed = configured && consumer.compileProjectMembers(path, dependencyError);
+                            bool hasNativeType = false, hasCType = false;
+                            if (consumed && consumer.nameLookup())
+                                for (const auto& type : consumer.nameLookup()->namedTypes())
+                                {
+                                    hasNativeType |= type.identity.name() == "Value";
+                                    hasCType |= type.identity.name() == "Box";
+                                }
+                            const auto* memberModel = consumer.memberModel();
+                            const auto* namespaceModel = consumer.namespaceFunctionModel();
+                            bool hasEnumerator = false;
+                            if (namespaceModel)
+                                for (const auto& state : namespaceModel->states())
+                                    hasEnumerator |= state.name == "Dark" && state.isCppEnumConstant && state.integerValue == 1;
+                            if (!consumed) std::cerr << "precompiled C consumer: " << dependencyError << '\n';
+                            ok &= expect(consumed && hasNativeType && hasCType && memberModel &&
+                                         !memberModel->findMembers("color").empty() && hasEnumerator,
+                                         "consumer installs precompiled C types, fields and demanded enumerators alongside NativeSharp");
                         }
                         for (const auto& type : lookup.namedTypes())
                         {
