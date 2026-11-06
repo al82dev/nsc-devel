@@ -39,6 +39,9 @@ A:\nsc-interop-build\tanda1-ON\tests\nsc_namespace_function_llvm_tests.exe
 if errorlevel 1 set "TASK_FAILED=1"
 popd
 for %%T in (valores incompleto record-c union layout callback enum-funcion) do call :run_case %%T
+echo === Publicacion y consumo de tipo C por NSMETA ===
+call "%~dp0pruebas-tanda-08-meta-c\validar.cmd"
+if errorlevel 1 set "TASK_FAILED=1"
 if "%TASK_FAILED%"=="1" (
   echo La validacion de la tanda 08 contiene fallos; revisar la salida anterior.
   exit /b 1
