@@ -16,6 +16,9 @@ identidad, destino, completitud, dimensiones y tipos/campos observados por
 Clang; rechazar grupos incompatibles sin fingir persistencia. Presupuesto:
 CppSemanticRecord.h/.cpp, CppClangSessionTests.cpp, TRACKING.md y registros
 Markdown. No altera todavía el formato, LLVM ni NSLink; validación agrupada.
+Conservar también identidades USR conocidas de tipos anidados de cada campo,
+incluyendo elementos, tipos subyacentes y firmas de función, cuando la primera
+observación compatible no las tenga. No modificar los árboles originales.
 
 ## Procedencia y destino de tipos importados
 
