@@ -6395,6 +6395,21 @@ int main(int argc, char** argv)
                     ok &= expect(collide ? !ready && dependencyError.find("C field record dependency conflicts") != std::string::npos
                                          : ready && branch && leaf,
                                  "C record dependencies handle cycles and reject a conflicting native type");
+                    if (ready && !collide && recordDependencies.nameLookup())
+                    {
+                        LibraryMetadata api;
+                        LibraryMetadataNamespaceFunction function;
+                        for (const auto& type : recordDependencies.nameLookup()->namedTypes())
+                            if (type.identity.name() == "Branch")
+                                function.declaredTypeKey = "type:" + type.identity.key() + "*";
+                        api.namespaceFunctions.push_back(std::move(function));
+                        std::vector<std::uint8_t> catalogBytes;
+                        std::vector<CppCRecordSnapshot> catalogRecords;
+                        const bool supplied = provideCppCRecordMetadataCatalog(recordDependencies, api, catalogBytes, dependencyError) &&
+                            metadata_detail::decodeCRecordCatalog(catalogBytes, catalogRecords, dependencyError);
+                        ok &= expect(supplied && catalogRecords.size() == 2,
+                                     "C metadata provider selects public record and transitive field dependency");
+                    }
                 }
                 {
                     nativesharp::frontend::ProjectCompilation mismatchedDependency;
