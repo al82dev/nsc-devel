@@ -480,6 +480,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     arreglos fijos de records empaquetados y controles de acceso, dirección e
     IR. No se han construido ni ejecutado estos cambios; el ítem sigue abierto.
 - [ ] T08-011. Importar la declaración y campos de una `union` C.
+  - Las unions de ocho bytes con miembro double o struct anidado pasaron
+    O0–O3 para retorno y paso por valor y acceso anidado.
+    [Evidencia](registro-commits/prueba-union-c-compuesta.md).
   - Un productor precompilado y un consumidor con el mismo encabezado C
     conciliaron una union por puntero y por valor en O0–O3.
     [Evidencia](registro-commits/prueba-union-c-metadata.md).
