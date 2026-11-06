@@ -1315,6 +1315,18 @@ int main(int argc, char** argv)
                             const auto same = selectCppSemanticGlobal(repeated, 2, "feature::shared");
                             ok &= expect(same.candidate && same.declarationIndices.size() == 2 && same.conflict.empty(),
                                          "identical external global declarations retain both origins");
+                            repeated[selected.declarationIndices[0]].declaration.clangUsr = std::nullopt;
+                            repeated.back().declaration.clangUsr = "known-global-usr";
+                            const auto knownGlobalUsr = selectCppSemanticGlobal(repeated, 2, "feature::shared");
+                            repeated[selected.declarationIndices[0]].declaration.clangUsr = "different-global-usr";
+                            const auto conflictingGlobalUsr = selectCppSemanticGlobal(repeated, 2, "feature::shared");
+                            ok &= expect(knownGlobalUsr.candidate &&
+                                         knownGlobalUsr.candidate->clangUsr == std::optional<std::string>{"known-global-usr"} &&
+                                         !conflictingGlobalUsr.candidate && !conflictingGlobalUsr.conflict.empty(),
+                                         "global selection retains known USR and rejects contradictory same-name USRs");
+                            repeated[selected.declarationIndices[0]].declaration.clangUsr =
+                                (*entries)[selected.declarationIndices[0]].declaration.clangUsr;
+                            repeated.back().declaration.clangUsr = (*entries)[selected.declarationIndices[0]].declaration.clangUsr;
                             repeated[selected.declarationIndices[0]].microsoftVolatileSemantics = true;
                             repeated.back().microsoftVolatileSemantics = true;
                             const auto agreedVolatile = selectCppSemanticGlobal(repeated, 2, "feature::shared");
