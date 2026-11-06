@@ -17,6 +17,8 @@ CppClangSessionTests.cpp, TRACKING.md y registros Markdown. No cambia LLVM,
 NSLink ni formatos persistentes; validación agrupada por tanda.
 T08-009: al comparar definiciones enum, preservar también el tipo efectivo de
 cada enumerador, no solo su nombre y valor, dentro del mismo presupuesto.
+Conciliar también el triple de destino de las observaciones de una constante,
+para evitar unir declaraciones provenientes de ABI distintos.
 
 ## Identidad de alias C en resolución
 
