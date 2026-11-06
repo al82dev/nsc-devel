@@ -274,6 +274,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - El proyecto layout pasó con NSC construido desde `99716724c`: tamaños,
     offsets y alineación del fixture, acceso de campo y comprobaciones de IR.
     Los campos empaquetados siguen pendientes.
+  - Preparado en `6b065035e` y `9de1a7bd5`: transporte de alineación
+    importada en el modelo y casos internos de alineación. Aún sin ejecutar;
+    el proyector sigue rechazando campos empaquetados.
 
 ## 09. Llamadas, enlace y datos C
 

@@ -1308,3 +1308,12 @@ record C terminó con código 0, incluyendo IR y ejecución O0, O1, O2 y O3.
 El caso incluyó globales volatile float y double, coalescencia y las pruebas
 negativas existentes. Estas son comprobaciones dirigidas: no sustituyen la
 batería completa ni acreditan campos empaquetados o todos los calificadores.
+
+## Transporte de alineación importada preparado
+
+`6b065035e` conserva `byteAlignment` en el miembro importado y el modelo de
+layout comprueba y utiliza ese valor. `9de1a7bd5` prepara controles internos
+para rechazar una alineación que no es potencia de dos y conservar un campo
+sintético con offset 9 y alineación 1. No se han ejecutado esas pruebas; el
+proyector sigue rechazando fields empaquetados, y quedan por tratar direcciones
+escapadas, accesos anidados y otros consumidores antes de habilitarlos.
