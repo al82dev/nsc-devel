@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Coalescencia sobre puntero global C volatile
+
+T08-015: `??=` admite almacenamiento puntero, pero `lowerNullCoalescingStore`
+emite cargas y escrituras volatile sin consultar el orden MS ya acreditado para
+el global importado. Reutilizar la comprobación existente de tipo, opción y
+alineación y preservar el flujo condicional y las otras clases de destino.
+Presupuesto: OopLlvmConditionalsAndNullAware.cpp, fixture
+pruebas-tanda-08-record-c y registros Markdown. LLVM y NSLink protegidos;
+validación agrupada al cierre de la tanda.
+
 ## Globales C volatile de punto flotante
 
 T08-007/T08-015: Clang 23.1.0 en Windows x64 emite `load atomic volatile

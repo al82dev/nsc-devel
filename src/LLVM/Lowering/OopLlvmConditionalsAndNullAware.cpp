@@ -657,6 +657,11 @@ LLVMValueRef OopLlvmImplementation::lowerNullCoalescingStore(
         LLVMTypeRef pointerType = LLVMPointerTypeInContext(context_, 0);
         LLVMValueRef current = LLVMBuildLoad2(builder_, pointerType, address, "coalesce.current");
         if (node->children[0]->volatileAccess) LLVMSetVolatile(current, 1);
+        if (isClangMsVolatileScalarGlobal(node->children[0].get()))
+        {
+            LLVMSetOrdering(current, LLVMAtomicOrderingAcquire);
+            LLVMSetAlignment(current, static_cast<unsigned>(*node->children[0]->cppAtomicAlignmentBytes));
+        }
         LLVMValueRef hasValue = LLVMBuildICmp(
             builder_, LLVMIntNE, current, LLVMConstNull(pointerType), "coalesce.store.hasvalue");
         LLVMBasicBlockRef currentBlock = LLVMGetInsertBlock(builder_);
@@ -675,6 +680,11 @@ LLVMValueRef OopLlvmImplementation::lowerNullCoalescingStore(
         }
         LLVMValueRef store = LLVMBuildStore(builder_, fallback, address);
         if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+        if (isClangMsVolatileScalarGlobal(node->children[0].get()))
+        {
+            LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
+            LLVMSetAlignment(store, static_cast<unsigned>(*node->children[0]->cppAtomicAlignmentBytes));
+        }
         LLVMBasicBlockRef fallbackExit = LLVMGetInsertBlock(builder_);
         LLVMBuildBr(builder_, endBlock);
 
