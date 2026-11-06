@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Identidad de tipos referidos por declaraciones C
+
+T08-002: conservar en CppType el USR de la declaración canónica de cada record
+o enum descrito por Clang, también cuando aparece bajo punteros y funciones.
+Comparar en pruebas ese dato con el USR de su snapshot de declaración. No
+reemplazar aún las comprobaciones de layout ni declarar equivalencia ABI por
+coincidencia de USR. Archivos: CppType.h, ClangSession.cpp,
+CppClangSessionTests.cpp y registros Markdown. Validación agrupada por tanda;
+NSLink y fuentes LLVM permanecen protegidos.
+
 ## Identificadores de declaraciones de Clang
 
 T08-002: capturar opcionalmente el USR que proporciona Clang 23.1.0 para las

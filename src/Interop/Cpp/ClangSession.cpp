@@ -85,7 +85,8 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
         result.enumIdentity = CppEnumTypeIdentity{
             anonymousAlias ? anonymousAlias->getNameAsString() : declaration->getNameAsString(),
             anonymousAlias ? anonymousAlias->getQualifiedNameAsString() : declaration->getQualifiedNameAsString(),
-            (declaration->getName().empty() && !anonymousAlias) || declaration->isInAnonymousNamespace()};
+            (declaration->getName().empty() && !anonymousAlias) || declaration->isInAnonymousNamespace(),
+            declarationUsr(declaration)};
         if (depth < 64 && !declaration->getIntegerType().isNull())
             result.enumUnderlying = std::make_shared<CppType>(describeType(declaration->getIntegerType(), context, depth + 1));
     }
@@ -113,6 +114,7 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
         const auto* record = recordType->getDecl()->getCanonicalDecl();
         if (const auto* definition = record->getDefinition()) record = definition;
         CppRecordTypeIdentity identity;
+        identity.clangUsr = declarationUsr(record);
         identity.name = record->getNameAsString();
         if (identity.name.empty() && !context.getLangOpts().CPlusPlus)
             if (const auto* alias = record->getTypedefNameForAnonDecl())
