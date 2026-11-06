@@ -410,6 +410,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     aliases transitivos y aislamiento entre proyectos. No acredita persistencia
     ni la validación completa de la tanda.
 - [ ] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
+  - La sesión selecciona un prototipo C disponible entre redeclaraciones
+    compatibles. El fixture pasó llamadas válidas O0–O3 y rechazó aridad
+    incorrecta tanto si el prototipo aparece antes como después de `f()`.
+    [Evidencia](registro-commits/prueba-redeclaraciones-c.md).
   - Declaraciones C11 sin prototipo `f()` admiten argumentos con promociones
     en la muestra Windows x64; `f(void)` rechaza argumentos adicionales. El
     fixture pasó O0–O3 y la sesión Clang pasó. Faltan otras convenciones,
