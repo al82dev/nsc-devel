@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Sombra local de valores C importados
+
+T08-018: ampliar el fixture existente `pruebas-tanda-08-meta-c` con un caso
+que distinga una variable local NativeSharp de un global y un enumerador C
+homónimos. Comprobar tras salir del bloque que los nombres importados vuelven
+a resolverse y que la escritura local no modifica el global C. Permitir solo
+el fixture, su inclusión en `validar-sombras.cmd`, tracking y registro
+Markdown. Preparar la comprobación para la batería agrupada de la tanda; no
+modificar producción sin reproducir y delimitar un fallo.
+
 ## Comparación del modo volatile de la unidad consumidora
 
 T08-015: contrastar con Clang Windows x64 si el orden de una lectura y

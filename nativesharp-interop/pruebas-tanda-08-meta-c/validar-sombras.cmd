@@ -7,7 +7,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 if not exist "%ROOT%" mkdir "%ROOT%"
 if errorlevel 1 exit /b 1
-for %%S in (ShadowNamespace ShadowUsing ShadowMember NamespaceGlobalValue ShadowValueNamespace ShadowValueUsing) do (
+for %%S in (ShadowNamespace ShadowUsing ShadowMember NamespaceGlobalValue ShadowValueNamespace ShadowValueUsing ShadowValueLocal) do (
   set "DEST=%ROOT%\%%S"
   if not exist "!DEST!" mkdir "!DEST!"
   if errorlevel 1 exit /b 1

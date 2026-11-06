@@ -809,6 +809,7 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     vuelta a C compiló y ejecutó O0–O3. No cubre todas las firmas ni
     convenciones. [Evidencia](registro-commits/callback-c-retornado.md).
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.
+  - Preparado un caso real de sombra local de global y enumerador C, con comprobación de resolución después del bloque y del valor de C. Pendiente de ejecutar en la batería agrupada. [Detalle](registro-commits/sombra-local-valores-c.md).
 - [ ] T08-019. Presentar diagnósticos útiles al usar una declaración incompleta de forma inválida.
   - El local C incompleto por valor produce un diagnóstico específico; la
     prueba anterior de `sizeof` también pasó. Faltan otras operaciones y

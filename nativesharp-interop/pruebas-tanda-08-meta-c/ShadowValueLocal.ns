@@ -1,0 +1,12 @@
+int Main()
+{
+    {
+        int shared_c_number = 46;
+        int CGlobalChoice = 10;
+        shared_c_number += 1;
+        if (shared_c_number != 47 || CGlobalChoice != 10) return 1;
+        if (get_shared_c_number() != 17) return 2;
+    }
+    if (shared_c_number != 17 || CGlobalChoice != 21) return 3;
+    return 0;
+}
