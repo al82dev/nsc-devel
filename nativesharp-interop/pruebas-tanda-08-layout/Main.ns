@@ -66,5 +66,8 @@ int Main()
     recordArray->values[1].b = 80;
     recordArray->values[1].b += 2;
     if (recordArray->values[1].b != 82 || layout_packed_record_array_value() != 82) return 26;
+    PackedRecordMatrix* recordMatrix = layout_packed_record_matrix();
+    recordMatrix->values[1][1].b = 90;
+    if (recordMatrix->values[1][1].b != 90 || layout_packed_record_matrix_value() != 90) return 27;
     return 0;
 }

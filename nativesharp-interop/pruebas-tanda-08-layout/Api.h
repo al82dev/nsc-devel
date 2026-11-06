@@ -11,7 +11,10 @@ typedef struct PackedPointers { char tag; int* slots[2]; } PackedPointers;
 typedef struct PackedNested { char tag; Pair nested; } PackedNested;
 typedef struct PackedNestedArray { char tag; InnerArray nested; } PackedNestedArray;
 typedef struct PackedRecordArray { char tag; Pair values[2]; } PackedRecordArray;
+typedef struct PackedRecordMatrix { char tag; Pair values[2][2]; } PackedRecordMatrix;
 #pragma pack(pop)
+PackedRecordMatrix* layout_packed_record_matrix(void);
+int layout_packed_record_matrix_value(void);
 PackedRecordArray* layout_packed_record_array(void);
 int layout_packed_record_array_value(void);
 PackedNestedArray* layout_packed_nested_array(void);

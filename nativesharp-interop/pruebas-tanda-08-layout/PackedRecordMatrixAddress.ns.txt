@@ -1,0 +1,6 @@
+int Main()
+{
+    PackedRecordMatrix* packed = layout_packed_record_matrix();
+    int* unsafeAddress = &packed->values[1][1].b;
+    return *unsafeAddress;
+}
