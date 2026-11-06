@@ -288,6 +288,8 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - Validación dirigida en `a0dc6fc71`: arreglos C empaquetados `const`,
     `volatile` y `int*[2]` pasaron IR O0, ejecución O0–O3 y casos negativos.
     Quedan otras combinaciones y la batería completa de la tanda.
+  - Preparados `764d93ba0` y `aa48d2539`: matriz empaquetada C de records,
+    acceso mixto, dirección e IR. Pendiente de construcción y validación.
 - [ ] T08-017. Definir la representación de punteros a función C.
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.
 - [ ] T08-019. Presentar diagnósticos útiles al usar una declaración incompleta de forma inválida.
