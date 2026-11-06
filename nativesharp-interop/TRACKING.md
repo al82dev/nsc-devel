@@ -190,6 +190,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Preparados `847a71ccb` y `13a872950`: la búsqueda de alias concilia USR
+    conocidos, incluso con observaciones intermedias sin identidad, y añade
+    pruebas de coincidencia y contradicción. Aún no construidos ni ejecutados;
+    persisten las tareas de cobertura y persistencia de T08-002.
   - Preparados `9eaa91af1` y `f19f64f1d`: transporte y conciliación del USR
     de funciones agrupadas, con prueba de contradicción. Sin construir ni
     validar; persistencia y cobertura general siguen pendientes.
