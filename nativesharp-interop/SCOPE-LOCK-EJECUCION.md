@@ -69,6 +69,9 @@ en el consumidor hasta resolver visibilidad y colisiones.
 Preparar combinación transaccional de campos y constantes de catálogos
 precompilados, comprobando propietarios y duplicados; archivos
 CppSemanticRecord.h/.cpp y controles de sesión. No activar todavía el formato.
+Preparar un selector que combine tipos de sesiones Clang y de catálogos
+precompilados, rechazando identidades compartidas hasta demostrar su equivalencia
+de declaración completa. No conectarlo todavía al driver ni habilitar 1.42.
 Transportar los bytes verificados del catálogo desde la superficie de metadata
 hasta PrecompiledSyntaxModule; presupuesto adicional: PrecompiledSyntaxModule.h,
 PrecompiledProjectPreparation.cpp y controles existentes. No habilitar 1.42
