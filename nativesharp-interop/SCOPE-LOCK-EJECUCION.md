@@ -2,6 +2,11 @@
 
 ## Typedef C en proyectos reales
 
+Clang Windows confirma con `_Static_assert` que el enum previo sin tipo fijo
+es signed pese al literal unsigned. Fijar explícitamente `unsigned int` en el
+fixture (extensión admitida por Clang en C11) y conservar una comprobación C;
+no asumir el signo a partir del literal. Repetir la validación.
+
 Preparar pruebas de conversión desde enum C importado a entero y a otro enum
 C, incluida extensión de un valor sin signo y control de enum NativeSharp.
 Observar errores y delimitar la solución antes de modificar producción.
