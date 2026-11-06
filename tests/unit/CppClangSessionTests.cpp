@@ -1633,6 +1633,9 @@ int main(int argc, char** argv)
                                 enumTypes[0].identity.name() == "ChoiceType" && enumTypes[0].enumBase &&
                                 enumTypes[0].enumBase->token == nativesharp::lexer::TokenKind::KwInt &&
                                 enumTypes[0].objectLayout && enumTypes[0].objectLayout->sizeBytes == 4;
+                            ok &= expect(correctType && enumTypes[0].origin == nativesharp::frontend::CppImportedTypeOrigin::CEnum &&
+                                         enumTypes[0].targetTriple == "x86_64-pc-windows-msvc",
+                                         "C enum retains its origin and target");
                             const auto signatureInventory = collectCppSemanticFunctions(finalGraph, enumGroups);
                             const auto* functions = std::get_if<std::vector<CppSemanticInventoryEntry>>(&signatureInventory);
                             const auto dependencies = functions ? collectCppSignatureEnumDependencies(finalGraph, *functions, enumTypes)
@@ -2994,6 +2997,44 @@ int main(int argc, char** argv)
         ok &= expect(capturedAnonymousStruct && capturedAnonymousUnion && anonymousStructType && anonymousUnionType &&
                      anonymousStructType->name == "AnonStruct" && anonymousUnionType->name == "AnonUnion",
                      "C anonymous typedef records retain matching declaration and type identities");
+        if (cRecords)
+        {
+            using nativesharp::frontend::CppImportedTypeOrigin;
+            const auto checkOrigin = [&](std::string_view name, CppImportedTypeOrigin expected) {
+                const auto record = std::find_if(cRecords->begin(), cRecords->end(),
+                    [&](const auto& value) { return value.name == name; });
+                if (record == cRecords->end()) return false;
+                const auto identity = projectCppRecordIdentity(*record, "Semantic");
+                if (!identity) return false;
+                const std::vector<CppSemanticRecordEntry> entries{{{}, 0, 0, "x86_64-pc-windows-msvc", *record, identity}};
+                const auto result = prepareCppRecordObservation(entries, groupCppSemanticRecords(entries));
+                const auto* prepared = std::get_if<CppRecordObservationInputs>(&result);
+                return prepared && prepared->types.size() == 1 && prepared->types[0].origin == expected &&
+                    prepared->types[0].targetTriple == "x86_64-pc-windows-msvc";
+            };
+            ok &= expect(checkOrigin("Pair", CppImportedTypeOrigin::CStruct) &&
+                         checkOrigin("AnonUnion", CppImportedTypeOrigin::CUnion),
+                         "C struct and union retain their distinct origin and target");
+            const auto pair = std::find_if(cRecords->begin(), cRecords->end(),
+                [](const auto& value) { return value.name == "Pair"; });
+            if (pair != cRecords->end())
+            {
+                const auto identity = projectCppRecordIdentity(*pair, "Semantic");
+                if (identity)
+                {
+                    std::vector<CppSemanticRecordEntry> entries{{{}, 0, 0, "x86_64-pc-windows-msvc", *pair, identity}};
+                    entries.push_back(entries.front());
+                    entries.back().declaration.isCxx = true;
+                    entries.back().targetTriple = "different-target";
+                    const auto result = prepareCppRecordObservation(entries, groupCppSemanticRecords(entries));
+                    const auto* prepared = std::get_if<CppRecordObservationInputs>(&result);
+                    ok &= expect(prepared && prepared->types.size() == 1 &&
+                                 prepared->types[0].origin == CppImportedTypeOrigin::Unknown &&
+                                 !prepared->types[0].targetTriple,
+                                 "conflicting observations do not invent an origin or target");
+                }
+            }
+        }
         cGlobals = c->globalsSnapshot();
         const auto* global = cGlobals ? globalByName(*cGlobals, "c_global") : nullptr;
         const auto* local = cGlobals ? globalByName(*cGlobals, "c_local") : nullptr;
