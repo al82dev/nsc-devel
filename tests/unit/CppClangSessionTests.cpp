@@ -156,8 +156,9 @@ private:
 class AlteredEnumeratorUsrSession final : public CppInteropSession
 {
 public:
-    AlteredEnumeratorUsrSession(std::unique_ptr<CppInteropSession> inner, std::optional<std::string> usr)
-        : inner_(std::move(inner)), usr_(std::move(usr)) {}
+    AlteredEnumeratorUsrSession(std::unique_ptr<CppInteropSession> inner, std::optional<std::string> usr,
+                                bool alterValueType = false)
+        : inner_(std::move(inner)), usr_(std::move(usr)), alterValueType_(alterValueType) {}
     CppSessionState state() const noexcept override { return inner_->state(); }
     CppSessionOptions optionsSnapshot() const override { return inner_->optionsSnapshot(); }
     std::vector<CppSessionDiagnostic> diagnosticsSnapshot() const override { return inner_->diagnosticsSnapshot(); }
@@ -174,13 +175,18 @@ public:
         if (enums)
             for (auto& item : *enums)
                 for (auto& value : item.enumerators)
-                    if (value.name == "Choice") value.clangUsr = usr_;
+                    if (value.name == "Choice")
+                    {
+                        value.clangUsr = usr_;
+                        if (alterValueType_) value.valueType.canonicalSpelling = "different-enumerator-type";
+                    }
         return enums;
     }
     CppSessionCloseResult close() override { return inner_->close(); }
 private:
     std::unique_ptr<CppInteropSession> inner_;
     std::optional<std::string> usr_;
+    bool alterValueType_;
 };
 
 class AlteredFieldUsrSession final : public CppInteropSession
@@ -1536,6 +1542,28 @@ int main(int argc, char** argv)
                                 "matching enumerator USRs survive an unknown observation");
                             ok &= expect(checkEnumeratorUsr(true),
                                 "different enumerator USRs conflict across an unknown observation");
+                            {
+                                std::vector<CppProjectSessions> groups(1);
+                                groups[0].projectFile = otherProject->projectFile();
+                                auto original = open(factory, options(argv[1], argv[2], argv[3],
+                                    CppLanguageMode::C, "enum ChoiceType { Choice = -3 };\n"));
+                                auto changed = open(factory, options(argv[1], argv[2], argv[3],
+                                    CppLanguageMode::C, "enum ChoiceType { Choice = -3 };\n"));
+                                bool detectsTypeChange = false;
+                                if (original && changed)
+                                {
+                                    groups[0].sessions.push_back(std::make_unique<AlteredEnumeratorUsrSession>(
+                                        std::move(original), "test:choice"));
+                                    groups[0].sessions.push_back(std::make_unique<AlteredEnumeratorUsrSession>(
+                                        std::move(changed), "test:choice", true));
+                                    std::vector<nativesharp::frontend::CppImportedTypeDeclaration> types;
+                                    std::string error;
+                                    detectsTypeChange = provideCppEnumTypes(finalGraph, groups, types, error) &&
+                                        types.size() == 1 && !types[0].deferredImportError.empty();
+                                }
+                                ok &= expect(detectsTypeChange,
+                                    "enum definitions with equal values and different enumerator types conflict");
+                            }
                             std::vector<nativesharp::frontend::CppImportedTypeDeclaration> enumTypes;
                             const bool typeProvided = provideCppEnumTypes(finalGraph, enumGroups, enumTypes, enumError);
                             const bool correctType = typeProvided && enumTypes.size() == 1 &&
