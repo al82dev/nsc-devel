@@ -14,6 +14,8 @@ anidados y la resolución de sobrecargas C++ no se habilitan con este cambio.
 
 La misma proyección se preparó para un puntero de un nivel a un struct C
 reconocido por el inventario. La prueba de ejecución conjunta queda pendiente.
+Se preparó además el caso equivalente para enum C, también pendiente de
+construcción y ejecución.
 
 ## Optimización del proyecto mixto de records C: 2026-11-06
 

@@ -1,4 +1,6 @@
 #include "Api.h"
+int update_volatile_mood(volatile enum Mood* value) { *value = Happy; return *value; }
+int read_const_volatile_mood(const volatile enum Mood* value) { return *value; }
 enum Mood current_mood(void) { return Sad; }
 int read_mood(enum Mood value) { return (int)value; }
 enum Mood apply_mood(MoodCallback callback, enum Mood value) { return callback(value); }

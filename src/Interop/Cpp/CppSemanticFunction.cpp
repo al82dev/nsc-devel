@@ -149,7 +149,8 @@ CppSemanticFunctionResult projectFunction(
              mappedInput.element->kind == CppTypeKind::SignedInteger ||
              mappedInput.element->kind == CppTypeKind::UnsignedInteger ||
              mappedInput.element->kind == CppTypeKind::Floating ||
-             mappedInput.element->kind == CppTypeKind::Record))
+             mappedInput.element->kind == CppTypeKind::Record ||
+             mappedInput.element->kind == CppTypeKind::Enumeration))
         {
             auto element = std::make_shared<CppType>(*mappedInput.element);
             element->isVolatile = false;

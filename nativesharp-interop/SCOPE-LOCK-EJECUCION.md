@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Parámetros C puntero a enum volatile
+
+Extender la proyección de parámetros con enlace C a un enum importado y
+resuelto por el inventario. Archivos: CppSemanticFunction.cpp, fixture
+pruebas-tanda-08-enum-funcion y documentación de la tanda. Preservar el tipo
+original, const, los límites anteriores y todas las rutas protegidas.
+Verificar llamada y resultado con la batería agrupada incremental.
+
 ## Parámetros C puntero a struct volatile
 
 Extender la misma entrada de enlace C a un struct importado y reconocido por

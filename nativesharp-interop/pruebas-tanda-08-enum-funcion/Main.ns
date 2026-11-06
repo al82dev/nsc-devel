@@ -9,6 +9,9 @@ int Main()
     if (read_mood_data(data) != -6) return 3;
     shared_mood = current_mood();
     if (read_mood(shared_mood) != -3 || read_shared_mood() != -3) return 4;
+    if (update_volatile_mood(&shared_mood) != 7 ||
+        read_const_volatile_mood(&shared_mood) != 7) return 15;
+    shared_mood = current_mood();
     if ((int)hidden_global != 7 || read_hidden_raw() != 7) return 5;
     if ((int)readonly_mood != -3) return 6;
     if (read_mood(*shared_mood_ptr) != -3) return 7;
