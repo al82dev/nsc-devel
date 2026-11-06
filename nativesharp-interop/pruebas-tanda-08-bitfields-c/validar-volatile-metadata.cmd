@@ -24,6 +24,8 @@ for %%O in (0 1 2 3) do (
     if %%O==0 (
       nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\%%P.nsproj" > "%DEST%\%%P.ll"
       if errorlevel 1 exit /b 1
+      python "%~dp0verificar-ir-volatile-metadata.py" "%DEST%\%%P.ll"
+      if errorlevel 1 exit /b 1
     )
     nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\%%P.nsproj" -O%%O --no-artifact-cache -o "%DEST%\%%P-O%%O.exe"
     if errorlevel 1 exit /b 1
