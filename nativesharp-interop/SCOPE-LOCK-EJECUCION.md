@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Rechazo de pérdida volatile en alias a struct
+
+Preparar el caso negativo de pasar un alias a struct volatile a una función C
+que espera puntero ordinario. Archivos: fixture de records C, su script y
+documentación. El caso espera validación agrupada.
+
 ## Prueba de alias a enum volatile
 
 Preparar un alias C de puntero a enum volatile y usarlo para escribir y leer

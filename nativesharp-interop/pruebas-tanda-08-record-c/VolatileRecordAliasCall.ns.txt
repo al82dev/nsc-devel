@@ -1,0 +1,6 @@
+int Main()
+{
+    VolatileGlobalPtr value = volatile_record_target;
+    write_mutable_globalonly(value);
+    return 0;
+}

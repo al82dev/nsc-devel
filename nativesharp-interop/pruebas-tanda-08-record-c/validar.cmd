@@ -327,5 +327,11 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project
 if not errorlevel 1 exit /b 1
 findstr /c:"would discard pointer pointee volatile qualification" "%DEST%\volatile-alias-field-discard.log" >nul
 if errorlevel 1 exit /b 1
+copy /y "%~dp0VolatileRecordAliasCall.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-record-alias-call.exe" > "%DEST%\volatile-record-alias-call.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"no viable overload of namespace function 'write_mutable_globalonly'" "%DEST%\volatile-record-alias-call.log" >nul
+if errorlevel 1 exit /b 1
 echo Record C por puntero: resultado esperado cero.
 exit /b 0
