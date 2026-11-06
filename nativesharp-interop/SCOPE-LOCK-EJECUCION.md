@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Alias C a struct const volatile
+
+Preparar lectura de un campo mediante alias a struct const volatile y rechazo
+de escritura. Archivos: fixture de records C, su script y documentación. La
+ejecución se reserva para la siguiente validación agrupada de la tanda.
+
 ## Ubicación válida del global en el fixture
 
 La validación agrupada de 5e89bf69b alcanzó el proyecto de records y NSC rechazó

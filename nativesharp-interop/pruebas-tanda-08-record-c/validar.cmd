@@ -333,5 +333,11 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project
 if not errorlevel 1 exit /b 1
 findstr /c:"no viable overload of namespace function 'write_mutable_globalonly'" "%DEST%\volatile-record-alias-call.log" >nul
 if errorlevel 1 exit /b 1
+copy /y "%~dp0ConstVolatileRecordAliasWrite.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-volatile-record-alias-write.exe" > "%DEST%\const-volatile-record-alias-write.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"left side of assignment is not assignable" "%DEST%\const-volatile-record-alias-write.log" >nul
+if errorlevel 1 exit /b 1
 echo Record C por puntero: resultado esperado cero.
 exit /b 0

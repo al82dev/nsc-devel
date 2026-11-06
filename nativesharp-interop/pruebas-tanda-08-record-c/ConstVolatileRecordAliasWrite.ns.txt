@@ -1,0 +1,6 @@
+int Main()
+{
+    ConstVolatileGlobalPtr value = volatile_record_target;
+    value->value = 1;
+    return 0;
+}

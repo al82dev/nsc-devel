@@ -34,6 +34,7 @@ extern volatile int volatile_matrix[2][2];
 int read_volatile_arrays(void);
 struct GlobalOnly { int value; };
 typedef volatile struct GlobalOnly* VolatileGlobalPtr;
+typedef const volatile struct GlobalOnly* ConstVolatileGlobalPtr;
 extern volatile struct GlobalOnly* volatile_record_target;
 int read_volatile_record_target(void);
 volatile struct GlobalOnly* get_volatile_record_target(void);

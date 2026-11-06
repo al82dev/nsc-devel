@@ -888,6 +888,12 @@ validación agrupada están pendientes; no se declara el soporte verificado.
 El fixture prepara un local con alias a struct volatile y exige que la escritura
 del campo sea visible para C y aparezca como volatile en LLVM. No ejecutado aún.
 
+## Alias C a struct const volatile
+
+Se prepararon un caso de lectura de campo y otro que intenta escribir a través
+del alias combinado. Estos casos son posteriores a la batería que pasó en
+`0231c6ecb` y aún no se han ejecutado.
+
 ## Rechazo de pérdida volatile en alias a struct
 
 El fixture prepara el paso del alias a una función que espera un puntero a
