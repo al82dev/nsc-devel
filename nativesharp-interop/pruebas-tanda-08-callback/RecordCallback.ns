@@ -5,7 +5,9 @@ int Main()
     RecordCallback returned = get_record_callback();
     if (returned(&item) != 42) return 1;
     RecordCallbackHolder* holder = get_record_callback_holder();
-    if (holder->run(&item) != 42) return 2;
-    if (record_callback_global(&item) != 42) return 3;
+    RecordCallback member = holder->run;
+    if (member(&item) != 42) return 2;
+    RecordCallback global = record_callback_global;
+    if (global(&item) != 42) return 3;
     return 0;
 }
