@@ -704,6 +704,7 @@ add_library(nsc_precompiled STATIC
     src/Driver/PublicSurfaceEmitter.cpp
     src/Interop/Internal/ByteReader.cpp
     src/Interop/Internal/ByteWriter.cpp
+    src/Interop/Internal/CppCRecordMetadataCodec.cpp
     src/Interop/LibraryMetadata.cpp
     src/Interop/LibraryMetadataCodec.cpp
     src/Interop/LibraryMetadataConstruction.cpp
