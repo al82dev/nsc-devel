@@ -6430,6 +6430,14 @@ int main(int argc, char** argv)
                             wrongTarget.targetTriple = "different-target";
                             ok &= expect(!checkClosure(wrongTarget),
                                          "metadata closure rejects a catalogue from another target");
+                            auto externalCatalog = closureMetadata;
+                            externalCatalog.moduleName = "ExternalConsumer";
+                            ok &= expect(!checkClosure(externalCatalog),
+                                         "metadata closure rejects C types owned by another module without dependencies");
+                            externalCatalog.externalTypeKeys = {
+                                "type:" + records[0].identityKey, "type:" + enums[0].identityKey};
+                            ok &= expect(checkClosure(externalCatalog),
+                                         "metadata closure accepts C types of another module only when dependencies are recorded");
                             nativesharp::frontend::PrecompiledSyntaxModule module;
                             module.metadataPath = std::filesystem::path(argv[2]) / "shade.nsmeta";
                             module.cppCTypeCatalog = bytes;
