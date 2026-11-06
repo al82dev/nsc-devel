@@ -384,16 +384,19 @@ ProjectMethodBodyModel::analyzeExpressionKindCastExpression(
     result.storageOwnership = operand.storageOwnership;
     const bool targetPointeeReadonly =
         expression->typeSyntax() != nullptr && expression->typeSyntax()->isPointeeConst();
+    const bool targetPointeeVolatile =
+        expression->typeSyntax() != nullptr && expression->typeSyntax()->isPointeeVolatile();
     const language::PointerContract targetPointerContract =
         pointerContractFromSyntax(expression->typeSyntax());
     result.pointerPointeeReadonly = targetPointeeReadonly;
+    result.pointerPointeeVolatile = targetPointeeVolatile;
     result.pointerNullable = targetPointerContract.nullable;
     result.pointerHasProvenance = targetPointerContract.hasProvenance;
     result.pointerKnownAlignment = targetPointerContract.knownAlignment;
     result.pointerAddressSpace = targetPointerContract.addressSpace;
     result.onePastEndPointer = operand.onePastEndPointer;
     if (result.valid && operand.pointerPointeeVolatile &&
-        (ProjectTypeConversion::isPointer(result.typeKey) ||
+        ((ProjectTypeConversion::isPointer(result.typeKey) && !targetPointeeVolatile) ||
          isPointerSizedIntegralTypeKey(result.typeKey)))
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,

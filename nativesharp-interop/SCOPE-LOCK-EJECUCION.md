@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Conversión explícita con apuntado volatile declarado
+
+Conservar el calificador en el resultado cuando el tipo explícito lo declara;
+seguir rechazando su pérdida hacia punteros sin volatile o enteros del tamaño
+de una dirección. Archivos: ConversionExpressions.cpp y documentación. La
+activación de aliases y la validación agrupada de la tanda siguen pendientes.
+
 ## Retorno con apuntado volatile declarado
 
 Permitir que un retorno de puntero conserve volatile cuando la declaración del

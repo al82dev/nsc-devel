@@ -812,3 +812,10 @@ volatile, incluso si la declaración de destino conservaba el mismo calificador.
 Se permite ese caso y se mantiene el rechazo cuando el destino carece de él.
 La prueba funcional y la activación del tipo por alias siguen pendientes y se
 comprobarán en la validación agrupada de la tanda 08.
+
+## Conversión explícita con apuntado volatile declarado
+
+El análisis de cast descartaba el dato volatile del tipo de destino y
+rechazaba incluso conversiones que lo conservan. Se transfiere al resultado y
+se mantiene el rechazo cuando el destino no lo representa. La comprobación
+funcional corresponde a la validación agrupada, aún pendiente.
