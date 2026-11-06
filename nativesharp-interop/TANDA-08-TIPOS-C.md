@@ -1091,6 +1091,14 @@ de alineación únicamente si Clang declaró tamaño de 32 bits, alineación al 
 de 32 bits y MSVolatile activo. MIR conserva esa alineación ya existente en su
 formato, y se invalidan claves de caché. Aún no cambia la emisión ni se valida.
 
+## Orden MS para global volatile directo de 32 bits
+
+El backend prepara cargas acquire y escrituras release para los accesos directos
+que llevan el dato de sesión MS activo y la alineación comprobada, limitados a
+int/uint. En asignación compuesta se emiten carga y escritura separadas, sin
+afirmar atomicidad de toda la operación. Faltan comprobaciones de IR y ejecución;
+campos, punteros y demás tamaños siguen pendientes.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

@@ -31,6 +31,15 @@ namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
 
+inline bool isClangMsVolatileI32Global(const frontend::ProjectOopMirNode* node) noexcept
+{
+    return node && node->volatileAccess && node->cppMicrosoftVolatileSemantics.value_or(false) &&
+        node->alignment == 4 &&
+        (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") &&
+        (node->kind == frontend::ProjectOopMirNodeKind::NamespaceStateLoad ||
+         node->kind == frontend::ProjectOopMirNodeKind::NamespaceStateAddress);
+}
+
 std::optional<LLVMAtomicOrdering> orderedAtomicLoadOrdering(std::uint64_t encoded);
 
 std::optional<LLVMAtomicOrdering> orderedAtomicStoreOrdering(std::uint64_t encoded);

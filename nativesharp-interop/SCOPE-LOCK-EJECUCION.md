@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Orden MS para global volatile directo de 32 bits
+
+Emitir acquire en lectura y release en escritura, incluida asignación compuesta,
+solo para un global importado int/uint volatile con opción MS activa y prueba
+de alineación de cuatro bytes. Mantener los demás accesos sin cambios. Archivos:
+OopLlvmSupport.h, OopLlvmExpressionLeaves.cpp, OopLlvmArraysAndStores.cpp y
+documentación. Preparar comprobaciones de IR y ejecutar validación agrupada.
+
 ## Alineación probada de global volatile de 32 bits
 
 Preparar en HIR y MIR una alineación mínima de cuatro bytes solo para globales

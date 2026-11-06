@@ -231,6 +231,11 @@ LLVMValueRef OopLlvmImplementation::lowerLoadExpression(const frontend::ProjectO
                 if (address == nullptr || type == nullptr) return nullptr;
                 LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "static.field.load");
                 if (node->volatileAccess) LLVMSetVolatile(load, 1);
+                if (isClangMsVolatileI32Global(node))
+                {
+                    LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
+                    LLVMSetAlignment(load, 4);
+                }
                 return load;
             }
             case frontend::ProjectOopMirNodeKind::ArrayElementLoad:

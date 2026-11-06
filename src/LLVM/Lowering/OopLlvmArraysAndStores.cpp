@@ -171,6 +171,11 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         {
             previous = LLVMBuildLoad2(builder_, targetType, address, "compound.load");
             if (node->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
+            if (isClangMsVolatileI32Global(node->children[0].get()))
+            {
+                LLVMSetOrdering(previous, LLVMAtomicOrderingAcquire);
+                LLVMSetAlignment(previous, 4);
+            }
         }
         if (previous == nullptr) return nullptr;
 
@@ -191,6 +196,11 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         {
             LLVMValueRef store = LLVMBuildStore(builder_, updated, address);
             if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+            if (isClangMsVolatileI32Global(node->children[0].get()))
+            {
+                LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
+                LLVMSetAlignment(store, 4);
+            }
         }
         if (storedValue == nullptr) return nullptr;
         return node->booleanValue ? previous : storedValue;
@@ -386,6 +396,11 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         }
         LLVMValueRef store = LLVMBuildStore(builder_, value, address);
         if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+        if (isClangMsVolatileI32Global(node->children[0].get()))
+        {
+            LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
+            LLVMSetAlignment(store, 4);
+        }
         if (liveness.has_value()) setArrayElementAlive(*liveness, true);
         if (node->localOrdinal.has_value())
         {
