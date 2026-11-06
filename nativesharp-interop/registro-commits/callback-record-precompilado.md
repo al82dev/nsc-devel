@@ -16,4 +16,10 @@ O1–O3 y otras firmas permanecen pendientes; esta muestra no cierra T08-017.
 
 Se preparó un segundo consumidor que no incluye el header: infiere el puntero
 al record, el callback y el holder desde la API publicada por el productor.
-Su ejecución está pendiente; el consumidor con header permanece como control.
+El consumidor con header permanece como control.
+
+Con el build `3f82235fd35e7b9a`, el diagnóstico O0 compiló, enlazó y ejecutó
+los consumidores con y sin referencia explícita al header, con resultado 0.
+El archivo original seguía disponible en el directorio de trabajo; esta prueba
+no demuestra que el consumo funcione después de retirarlo. O1–O3 siguen
+pendientes de la matriz agrupada.
