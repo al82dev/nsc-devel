@@ -478,6 +478,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     arreglos fijos de records empaquetados y controles de acceso, dirección e
     IR. No se han construido ni ejecutado estos cambios; el ítem sigue abierto.
 - [ ] T08-011. Importar la declaración y campos de una `union` C.
+  - Lectura y escritura superpuestas entre C y NativeSharp y paso y retorno por
+    valor de unions de 4 y 12 bytes pasaron O0–O3 en Windows x64. Es evidencia
+    dirigida; faltan layouts y formas de uso. [Detalle](registro-commits/prueba-union-c-por-valor.md).
   - Un caso dirigido de miembro escrito desde NativeSharp y byte superpuesto
     leído desde C compiló, enlazó y ejecutó en O0. Faltan O1–O3 y otros
     contratos. [Evidencia](registro-commits/prueba-union-c-superpuesta.md).
