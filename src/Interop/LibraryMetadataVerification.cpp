@@ -1061,8 +1061,32 @@ bool verifyGenericAndExternalTypeCatalogues(
     if (!verifyGenericSpecializations(metadata, specializedTypeKeys, error)) return false;
     for (const LibraryMetadataType& type : metadata.types)
         declaredTypeKeys.insert("type:" + type.identityKey);
-    return collectVerifiedExternalTypes(
-        metadata, declaredTypeKeys, specializedTypeKeys, externalTypeKeys, error);
+    if (!collectVerifiedExternalTypes(
+            metadata, declaredTypeKeys, specializedTypeKeys, externalTypeKeys, error)) return false;
+    if (metadata.cppCRecordCatalog.empty()) return true;
+    // A catalogue may only add names after its encoding and target are verified.
+    if (!verifyBinaryClosureMetadata(metadata, error)) return false;
+    std::vector<CppCRecordSnapshot> records;
+    std::vector<CppCEnumSnapshot> enums;
+    if (!decodeCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error)) return false;
+    const auto includeCType = [&](const std::string& identity) {
+        const std::string key = "type:" + identity;
+        const auto module = metadataTypeModule(key);
+        if (!module || declaredTypeKeys.contains(key) || specializedTypeKeys.contains(key))
+        { error = "C catalogue type conflicts with a declared metadata type: " + key; return false; }
+        if (*module != metadata.moduleName)
+        {
+            if (!externalTypeKeys.contains(key))
+            { error = "C catalogue type has no external dependency: " + key; return false; }
+            return true;
+        }
+        if (externalTypeKeys.contains(key) || !declaredTypeKeys.insert(key).second)
+        { error = "duplicate C catalogue type: " + key; return false; }
+        return true;
+    };
+    for (const auto& record : records) if (!includeCType(record.identityKey)) return false;
+    for (const auto& enumeration : enums) if (!includeCType(enumeration.identityKey)) return false;
+    return true;
 }
 
 bool verifyMetadataTypeReference(
