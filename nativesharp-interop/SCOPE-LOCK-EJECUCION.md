@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Apuntado volatile en estados globales NativeSharp
+
+Preparar la lectura del calificador desde el tipo declarado de un estado global
+NativeSharp, conservando el dato de globales C y rechazando su dirección cuando
+el puntero anidado no puede representarlo. Archivos: IdentifierAnalyzer.cpp y
+documentación. Los aliases permanecen desactivados y falta validación agrupada.
+
 ## Conversión explícita con apuntado volatile declarado
 
 Conservar el calificador en el resultado cuando el tipo explícito lo declara;

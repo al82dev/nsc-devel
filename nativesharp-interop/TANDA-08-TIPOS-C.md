@@ -813,6 +813,13 @@ Se permite ese caso y se mantiene el rechazo cuando el destino carece de él.
 La prueba funcional y la activación del tipo por alias siguen pendientes y se
 comprobarán en la validación agrupada de la tanda 08.
 
+## Apuntado volatile en estados globales NativeSharp
+
+El análisis de globales consultaba únicamente el dato de declaraciones C.
+Ahora consulta también la sintaxis declarada en NativeSharp y evita formar una
+dirección que pierda el calificador en un nivel anidado. La comprobación de
+aliases y de los inicializadores globales sigue pendiente de la tanda agrupada.
+
 ## Conversión explícita con apuntado volatile declarado
 
 El análisis de cast descartaba el dato volatile del tipo de destino y

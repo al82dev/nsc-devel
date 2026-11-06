@@ -987,27 +987,30 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
             "cannot import C/C++ global '" + reference.writtenName + "': " + state.cppImportError);
         return result;
     }
-    if (state.isCppExternal && (state.isVolatile || state.isCppReadonly || state.cppPointerPointeeReadonly ||
-                                state.cppPointerPointeeVolatile) &&
+    const bool pointeeVolatile = state.cppPointerPointeeVolatile ||
+        (state.declaredTypeSyntax != nullptr && state.declaredTypeSyntax->isPointeeVolatile());
+    if (((state.isCppExternal && (state.isVolatile || state.isCppReadonly || state.cppPointerPointeeReadonly)) ||
+         pointeeVolatile) &&
         formingAddressOperand_ && expression == formingAddressTarget_)
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
             diagnostics::DiagnosticSeverity::Error,
             expression != nullptr ? expression->range() : SourceRange{},
-            "cannot take the address of a qualified C/C++ global until qualified pointers are supported");
+            state.isCppExternal
+                ? "cannot take the address of a qualified C/C++ global until qualified pointers are supported"
+                : "cannot take the address of this global until nested pointer qualifiers are supported");
         return result;
     }
     result.typeKey = state.declaredTypeKey;
     result.valid = true;
     result.assignable = !state.isConst && !state.isCppReadonly &&
         !(state.isCppExternal && ProjectMemberModel::fixedArrayElementTypeKey(state.declaredTypeKey).has_value());
-    result.addressable = !state.isCppEnumConstant && !(state.isCppExternal &&
-        (state.isVolatile || state.isCppReadonly || state.cppPointerPointeeReadonly ||
-         state.cppPointerPointeeVolatile));
+    result.addressable = !state.isCppEnumConstant && !pointeeVolatile && !(state.isCppExternal &&
+        (state.isVolatile || state.isCppReadonly || state.cppPointerPointeeReadonly));
     result.readonlyReceiver = state.isConst || state.isCppReadonly;
     result.volatileStorage = state.isCppExternal && state.isVolatile;
     result.pointerPointeeReadonly = state.cppPointerPointeeReadonly;
-    result.pointerPointeeVolatile = state.cppPointerPointeeVolatile;
+    result.pointerPointeeVolatile = pointeeVolatile;
     recordNameBinding(MethodNameBinding{
         MethodNameBindingKind::NamespaceState,
         expression,
