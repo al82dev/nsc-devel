@@ -320,6 +320,14 @@ bool provideExperimentalCppInstanceFields(
                     graph.projects()[group.projectOrdinal].moduleName(), entry.targetTriple, &lookup))
                 {
                     auto imported = toCppImportedInstanceField(*field);
+                    if (!imported.clangUsr || imported.clangUsr->empty())
+                        for (const auto observed : group.inventoryIndices)
+                        {
+                            const auto& declaration = entries[observed].declaration;
+                            if (!declaration.complete || fieldIndex >= declaration.fields.size()) continue;
+                            const auto& usr = declaration.fields[fieldIndex].clangUsr;
+                            if (usr && !usr->empty()) { imported.clangUsr = usr; break; }
+                        }
                     imported.microsoftVolatileSemantics = volatileMode;
                     result.push_back(std::move(imported));
                 }
