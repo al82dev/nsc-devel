@@ -509,6 +509,9 @@ int main(int argc, char** argv)
         directPointee.kind = ProjectOopMirNodeKind::AddressValue;
         ok &= expect(nativesharp::llvm_backend::clangMsVolatileDirectCIntPointee(&directPointee),
                      "a marked C volatile int pointer address uses the MS order");
+        directPointee.kind = ProjectOopMirNodeKind::RawElementAddress;
+        ok &= expect(nativesharp::llvm_backend::clangMsVolatileDirectCIntPointee(&directPointee),
+                     "a marked indexed C volatile int pointer address uses the MS order");
         directPointee.cppAtomicAlignmentBytes.reset();
         ok &= expect(!nativesharp::llvm_backend::clangMsVolatileDirectCIntPointee(&directPointee),
                      "an unmarked pointer address does not acquire the MS order");

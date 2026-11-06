@@ -77,6 +77,8 @@ int Main()
     holder.value = volatile_pointee;
     *holder.value = 73;
     if (read_volatile_pointee() != 73) return 38;
+    volatile_pointee[0] = 102;
+    if (volatile_pointee[0] != 102 || read_volatile_pointee() != 102) return 53;
     shared_array[1] = 19;
     int* shared_element = &shared_array[1];
     if (*shared_element != 19) return 10;

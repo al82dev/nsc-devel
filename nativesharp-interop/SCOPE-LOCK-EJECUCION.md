@@ -10,7 +10,7 @@ parámetros, campos o resultados de otras expresiones siguen pendientes.
 
 Presupuesto: `src/Frontend/HIR/ExpressionStatementMachine/HirCompletionAccessFrames.cpp`,
 `src/LLVM/Lowering/PackedArrayAlignment.h`, el fixture
-`pruebas-tanda-08-record-c`, tracking y registros. Conservar las rutas de
+`pruebas-tanda-08-record-c`, `tests/unit/CppClangSessionTests.cpp`, tracking y registros. Conservar las rutas de
 arreglos y campos existentes; validar la escritura y la lectura indexadas con
 IR y ejecución junto a los demás cambios de la tanda.
 
