@@ -58,6 +58,10 @@ namespace, contenedores y nombre) para reconstruirla sin analizar cadenas.
 Presupuesto adicional: CppSemanticRecord.h/.cpp y controles de sesión.
 Conservar además si el layout permite valores o solo acceso mediante puntero,
 para no elevar una evidencia de definiciones repetidas a compatibilidad por valor.
+Preparar la reconstrucción de declaraciones de tipos C y enum para un módulo y
+ordinal de proyecto explícitos, a partir del catálogo validado. Presupuesto:
+CppCRecordMetadataCodec.h/.cpp y controles de sesión. Campos y constantes se
+reconstruirán por separado; no conectar todavía al consumidor ni habilitar 1.42.
 Preparar un proveedor opcional de catálogo para el productor de metadata, sin
 activarlo desde el driver. Presupuesto adicional: ProjectCompilation.h/.cpp,
 LibraryMetadataConstruction.cpp y controles de sesión. El productor sin
