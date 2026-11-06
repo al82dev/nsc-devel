@@ -542,6 +542,7 @@ bool sameCapturedMembers(const CppRecordDeclaration& a, const CppRecordDeclarati
             a.bases[i].offsetBits != b.bases[i].offsetBits || !sameMemberType(a.bases[i].type, b.bases[i].type)) return false;
     for (std::size_t i = 0; i < a.fields.size(); ++i)
         if (a.fields[i].name != b.fields[i].name || a.fields[i].access != b.fields[i].access ||
+            (a.fields[i].clangUsr && b.fields[i].clangUsr && a.fields[i].clangUsr != b.fields[i].clangUsr) ||
             a.fields[i].offsetBits != b.fields[i].offsetBits || a.fields[i].bitWidth != b.fields[i].bitWidth ||
             !sameMemberType(a.fields[i].type, b.fields[i].type)) return false;
     for (std::size_t i = 0; i < a.staticFields.size(); ++i)
