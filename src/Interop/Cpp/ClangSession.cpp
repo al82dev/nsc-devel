@@ -960,11 +960,26 @@ public:
             ast_->getCodeGenOpts(), llvmContext);
         if (!generator) return std::nullopt;
         generator->Initialize(context);
+        // Register internal definitions so a selected inline body can refer to
+        // another static helper or file-scope static without exporting them.
+        for (const auto* declaration : context.getTranslationUnitDecl()->decls())
+        {
+            if (const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration))
+            {
+                if (!function->isExternallyVisible() && function->doesThisDeclarationHaveABody() &&
+                    !generator->HandleTopLevelDecl(clang::DeclGroupRef(const_cast<clang::FunctionDecl*>(function))))
+                    return std::nullopt;
+            }
+            else if (const auto* variable = llvm::dyn_cast<clang::VarDecl>(declaration))
+            {
+                if (variable->isFileVarDecl() && !variable->isExternallyVisible() &&
+                    !generator->HandleTopLevelDecl(clang::DeclGroupRef(const_cast<clang::VarDecl*>(variable))))
+                    return std::nullopt;
+            }
+        }
         std::vector<std::string> originalNames;
         for (const auto* function : selected)
         {
-            if (!generator->HandleTopLevelDecl(clang::DeclGroupRef(const_cast<clang::FunctionDecl*>(function))))
-                return std::nullopt;
             const clang::GlobalDecl declaration(function);
             originalNames.push_back(generator->GetMangledName(declaration).str());
             if (!generator->GetAddrOfGlobal(declaration, false)) return std::nullopt;
