@@ -271,11 +271,15 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNamespaceStateNameBi
     if (state.isCppExternal && state.isVolatile)
     {
         node->cppMicrosoftVolatileSemantics = state.cppMicrosoftVolatileSemantics;
-        if (state.cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
-            state.cppStorageSizeBits == std::optional<std::uint64_t>{32} &&
-            state.cppDeclarationAlignmentBits && *state.cppDeclarationAlignmentBits >= 32 &&
-            (state.declaredTypeKey == "builtin:int" || state.declaredTypeKey == "builtin:uint"))
-            node->cppAtomicAlignmentBytes = 4;
+        std::uint64_t bits = 0;
+        if (state.declaredTypeKey == "builtin:sbyte" || state.declaredTypeKey == "builtin:byte") bits = 8;
+        else if (state.declaredTypeKey == "builtin:short" || state.declaredTypeKey == "builtin:ushort") bits = 16;
+        else if (state.declaredTypeKey == "builtin:int" || state.declaredTypeKey == "builtin:uint") bits = 32;
+        else if (state.declaredTypeKey == "builtin:long" || state.declaredTypeKey == "builtin:ulong") bits = 64;
+        if (bits != 0 && state.cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
+            state.cppStorageSizeBits == std::optional<std::uint64_t>{bits} &&
+            state.cppDeclarationAlignmentBits && *state.cppDeclarationAlignmentBits >= bits)
+            node->cppAtomicAlignmentBytes = static_cast<std::size_t>(bits / 8);
     }
     node->memberOrdinal =
         (memberModel_ != nullptr ? memberModel_->members().size() : 0) + stateOrdinal;

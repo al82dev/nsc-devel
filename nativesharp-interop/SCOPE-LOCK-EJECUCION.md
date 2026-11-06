@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Globales volatile enteros de 8, 16 y 64 bits
+
+T08-015: extender la ruta de globales directos importados a enteros con y sin
+signo de 8, 16 y 64 bits cuando Clang confirme tamaño, alineación suficiente y
+semántica MS volatile. Preservar las demás formas y tipos. Presupuesto:
+HirNameExpressionLowering.cpp, OopLlvmSupport.h, OopLlvmExpressionLeaves.cpp,
+OopLlvmArraysAndStores.cpp, Api.h, Api.c, Main.ns y validar.cmd del fixture de
+records C y registros Markdown. Comprobar IR acquire/release y ejecución con C
+en la validación agrupada. NSLink y fuentes LLVM permanecen protegidos.
+
 ## Evidencia de alineación atómica en MIR
 
 Para T08-015, conservar en MIR la alineación atómica opcional ya calculada en
