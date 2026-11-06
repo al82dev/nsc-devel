@@ -98,6 +98,15 @@ dependencias ausentes y origen no comprobable no deben producir una equivalencia
 El mapa se prepara sin alterar aún la búsqueda ni permitir conversiones. Agrupar
 la validación con la conexión a resolución cuando esté implementada.
 
+## Transporte de identidades C reconciliadas
+
+Transportar el destino de cada reconciliación comprobada en la declaración C
+importada, tanto en observación como en el selector final. Presupuesto:
+`include/nativesharp/Frontend/ProjectNameLookup.h`,
+`src/Interop/Cpp/CppSemanticRecord.cpp`, controles de sesión, tracking y
+registros. Esta fase no cambia todavía búsqueda, conversiones ni semántica;
+validar destinos antes de usarlos en la siguiente fase.
+
 ## Identidad de funciones C importadas
 
 T08-002/T08-003: conservar USR opcional en la proyección de función y
