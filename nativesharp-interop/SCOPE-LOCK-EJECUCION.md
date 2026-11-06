@@ -1740,6 +1740,11 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Primera ejecución: Clang compiló, pero el enlace se detuvo en `__imp_GetExitCodeThread`, importación del instrumento que no está en el catálogo actual. Sustituirla por un resultado escrito por el hilo y leído tras `WaitForSingleObject`, sin alterar el objetivo de aislamiento; volver a medir.
 - Segunda ejecución: Clang compiló y NSLink falló con `NSL1020` para `_tls_index`. El objeto contiene `.tls$` y relocaciones AMD64 SECREL; la fuente consultada del enlazador reconoce SECREL, pero no se ha demostrado el directorio TLS ni su inicialización. No modificar NSLink; registrar el requisito y continuar los demás contratos mientras se investiga una solución dentro de NSC.
 
+### Optimización de proyecto mixto de records C
+
+- Objetivo: comprobar que las operaciones y calificadores ya probados en `pruebas-tanda-08-record-c` siguen funcionando al compilar NativeSharp con O2.
+- Presupuesto: `nativesharp-interop/pruebas-tanda-08-record-c/validar.cmd` y registro Markdown. Conservar inspección IR O0 y pruebas negativas; generar y ejecutar un segundo binario O2 contra la misma biblioteca C. No inferir cobertura de otras arquitecturas ni de todas las optimizaciones.
+
 ### Global enum const
 
 - Objetivo: comprobar lectura de un global C `const enum` y rechazo de su escritura desde NativeSharp.
