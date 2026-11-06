@@ -238,6 +238,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-013. Representar tipos declarados pero incompletos sin inventar su tamaño.
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
+  - Diferencia reproducida en `8c6ddf489`: al acceder por puntero a un enum
+    volatile alineado dentro de un arreglo C, Clang emite release/acquire y
+    NSC emite volatile ordinario. El nuevo control falla en NSC; falta corregir
+    el orden sin cambiar la semántica de los campos que Clang deja ordinarios.
   - Preparados `f301a1a16` y `03830c483`: lectura, IR y rechazo de escritura
     para arreglos C de record y enum const volatile. Sin ejecutar.
   - Actualización: layout pasó en O0–O3 con lecturas, IR volatile alineado a 1

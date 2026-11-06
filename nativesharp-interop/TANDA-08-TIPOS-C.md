@@ -1320,6 +1320,16 @@ los valores en ejecución y rechaza tomar la dirección. No se ha ejecutado.
 Los campos empaquetados C++ y los campos C de punteros, agregados y bitfields
 siguen pendientes, así como otras formas de acceso; no se cierra la tanda.
 
+## Diferencia de orden en enum volatile alineado dentro de agregado
+
+`a9abdcf63` permite comparar accesos C y NativeSharp mediante puntero al mismo
+tipo alineado. Clang 23.1.0 emitió `store atomic volatile` release y `load
+atomic volatile` acquire para el elemento enum, ambos con alineación 4. NSC
+emitió operaciones volatile ordinarias para ese elemento; el campo entero del
+record en el mismo ejemplo es volatile ordinario también en Clang. El control
+`8c6ddf489` falló en la escritura NSC. Es un defecto abierto de T08-015 y no
+invalida la evidencia acotada a campos empaquetados de alineación 1.
+
 ## Validación dirigida de arreglos C const volatile
 
 Con NSC construido incrementalmente en `6568a1890`, el fixture layout pasó en
