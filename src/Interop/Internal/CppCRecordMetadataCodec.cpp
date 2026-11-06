@@ -183,6 +183,34 @@ bool getType(ByteReader& reader, CppType& type, unsigned depth)
     }
     return true;
 }
+
+bool validateRecords(std::span<const CppCRecordSnapshot> records, std::string& error)
+{
+    for (std::size_t i = 0; i < records.size(); ++i)
+    {
+        const auto& record = records[i];
+        if (record.identityKey.empty() || record.targetTriple.empty() ||
+            (i && records[i - 1].identityKey >= record.identityKey))
+        { error = "C record identities are empty, duplicated or not ordered"; return false; }
+        if (!record.complete)
+        {
+            if (record.sizeBits || record.alignmentBits || !record.fields.empty())
+            { error = "incomplete C record has a layout"; return false; }
+            continue;
+        }
+        if (!record.sizeBits || !record.alignmentBits || !*record.sizeBits || !*record.alignmentBits ||
+            *record.sizeBits % 8 != 0 || *record.alignmentBits % 8 != 0 ||
+            *record.sizeBits % *record.alignmentBits != 0)
+        { error = "invalid complete C record dimensions"; return false; }
+        for (const auto& field : record.fields)
+        {
+            if (!field.offsetBits || *field.offsetBits > *record.sizeBits ||
+                (field.bitWidth && *field.bitWidth > *record.sizeBits - *field.offsetBits))
+            { error = "C record field is outside its layout"; return false; }
+        }
+    }
+    return true;
+}
 }
 
 bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
@@ -190,6 +218,7 @@ bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
 {
     ByteWriter writer;
     if (records.size() > maxItems) { error = "too many C records"; return false; }
+    if (!validateRecords(records, error)) return false;
     writer.u32(static_cast<std::uint32_t>(records.size()));
     for (const auto& record : records)
     {
@@ -256,6 +285,7 @@ bool decodeCRecordCatalog(std::span<const std::uint8_t> bytes,
         records.push_back(std::move(record));
     }
     if (!reader.atEnd()) { error = "trailing C record data"; return false; }
+    if (!validateRecords(records, error)) return false;
     output = std::move(records); error.clear(); return true;
 }
 }
