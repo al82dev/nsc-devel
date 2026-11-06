@@ -3183,6 +3183,31 @@ int main(int argc, char** argv)
                                  captureCppCRecordCatalog(catalogEntries, catalogGroups)),
                              "C record catalog rejects an invalid group without returning partial data");
             }
+            std::vector<CppSemanticRecordEntry> closureEntries;
+            for (const std::string_view name : {"Pair", "OuterPair"})
+            {
+                const auto found = std::find_if(cRecords->begin(), cRecords->end(),
+                    [&](const auto& value) { return value.name == name; });
+                if (found != cRecords->end())
+                    closureEntries.push_back({{}, 0, 0, "x86_64-pc-windows-msvc", *found,
+                                              projectCppRecordIdentity(*found, "Semantic")});
+            }
+            const auto closureGroups = groupCppSemanticRecords(closureEntries);
+            if (closureEntries.size() == 2 && closureEntries.back().identity)
+            {
+                const std::vector<std::string> seeds{closureEntries.back().identity->key()};
+                const auto closureResult = collectCppCRecordClosure(closureEntries, closureGroups.groups, 0, seeds);
+                const auto* closure = std::get_if<CppCRecordClosure>(&closureResult);
+                ok &= expect(closure && closure->records.size() == 2 && closure->enumIdentityKeys.empty(),
+                             "C record closure includes nested records in fields and arrays");
+                auto missingGroups = closureGroups.groups;
+                missingGroups.erase(std::remove_if(missingGroups.begin(), missingGroups.end(),
+                    [](const auto& group) { return group.identity.name() == "Pair"; }), missingGroups.end());
+                ok &= expect(std::holds_alternative<CppCRecordSnapshotFailure>(
+                                 collectCppCRecordClosure(closureEntries, missingGroups, 0, seeds)),
+                             "C record closure rejects a missing nested record");
+            }
+            else ok &= expect(false, "C record closure test has both required observations");
             const auto pair = std::find_if(cRecords->begin(), cRecords->end(),
                 [](const auto& value) { return value.name == "Pair"; });
             if (pair != cRecords->end())
