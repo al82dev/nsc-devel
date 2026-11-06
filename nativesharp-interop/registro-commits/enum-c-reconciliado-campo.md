@@ -10,3 +10,9 @@ demás clases de tipo y consumidores conservan su regla anterior.
 
 La corrección está pendiente de construcción incremental y de validación de
 los consumidores con y sin header y de la tanda completa.
+
+Con build `0a21c59ccb175f54`, el consumidor que antes fallaba compiló en
+O0. El validador del productor y consumidores terminó O0–O3 con referencia
+explícita al header y sin ella; la segunda variante ocultó temporalmente la
+copia del header en el directorio de salida, no el original del repositorio.
+La batería completa y los controles negativos siguen pendientes.
