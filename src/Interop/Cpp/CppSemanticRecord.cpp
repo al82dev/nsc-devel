@@ -725,6 +725,7 @@ CppCRecordSnapshotResult captureCppCRecordSnapshot(
     if (!record.complete || !record.sizeBits || !record.alignmentBits || !*record.sizeBits || !*record.alignmentBits)
         return fail("complete C record has no usable dimensions");
     snapshot.complete = true;
+    snapshot.valueLayoutUsable = group.status == CppRecordGroupStatus::OneDefinition;
     snapshot.sizeBits = record.sizeBits;
     snapshot.alignmentBits = record.alignmentBits;
     snapshot.fields = record.fields;

@@ -202,7 +202,7 @@ bool validateRecords(std::span<const CppCRecordSnapshot> records, std::string& e
         { error = "C record identities are empty, duplicated or not ordered"; return false; }
         if (!record.complete)
         {
-            if (record.sizeBits || record.alignmentBits || !record.fields.empty())
+            if (record.valueLayoutUsable || record.sizeBits || record.alignmentBits || !record.fields.empty())
             { error = "incomplete C record has a layout"; return false; }
             continue;
         }
@@ -240,7 +240,7 @@ bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
             !putText(writer, record.targetTriple) || !putOptionalText(writer, record.clangUsr))
         { error = "invalid C record identity"; return false; }
         writer.u8(record.microsoftVolatileSemantics ? (*record.microsoftVolatileSemantics ? 2 : 1) : 0);
-        writer.u8(static_cast<std::uint8_t>(record.kind)); writer.u8(record.complete);
+        writer.u8(static_cast<std::uint8_t>(record.kind)); writer.u8(record.complete); writer.u8(record.valueLayoutUsable);
         putOptionalNumber(writer, record.sizeBits); putOptionalNumber(writer, record.alignmentBits);
         writer.u32(static_cast<std::uint32_t>(record.fields.size()));
         for (const auto& field : record.fields)
@@ -278,7 +278,8 @@ bool decodeCRecordCatalog(std::span<const std::uint8_t> bytes,
             !reader.text(record.targetTriple) || record.targetTriple.empty() ||
             !getOptionalText(reader, record.clangUsr) || !reader.u8(volatileMode) || volatileMode > 2 || !reader.u8(kind) ||
             (kind != static_cast<std::uint8_t>(CppRecordKind::Struct) && kind != static_cast<std::uint8_t>(CppRecordKind::Union)) ||
-            !getFlag(reader, record.complete) || !getOptionalNumber(reader, record.sizeBits) ||
+            !getFlag(reader, record.complete) || !getFlag(reader, record.valueLayoutUsable) ||
+            !getOptionalNumber(reader, record.sizeBits) ||
             !getOptionalNumber(reader, record.alignmentBits) || !reader.u32(fields) ||
             fields > maxItems || fields > reader.remaining())
         { error = "invalid C record"; return false; }

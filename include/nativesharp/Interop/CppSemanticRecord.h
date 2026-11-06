@@ -142,6 +142,7 @@ struct CppCRecordSnapshot
     std::optional<bool> microsoftVolatileSemantics;
     CppRecordKind kind = CppRecordKind::Struct;
     bool complete = false;
+    bool valueLayoutUsable = false;
     std::optional<std::uint64_t> sizeBits;
     std::optional<std::uint64_t> alignmentBits;
     std::vector<CppRecordField> fields;
