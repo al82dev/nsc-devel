@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Ubicación válida del global en el fixture
+
+La validación agrupada de 5e89bf69b alcanzó el proyecto de records y NSC rechazó
+una variable declarada fuera de todo namespace. Mover solo el global del caso
+positivo y negativo a un namespace y actualizar sus referencias. Archivos:
+Main.ns, VolatileAliasGlobalAddress.ns.txt y documentación. Repetir la prueba.
+
 ## Verificador de IR C con volatile atómico
 
 La batería de la revisión 7c9a765b6 falló en bump_volatile: Clang emitió

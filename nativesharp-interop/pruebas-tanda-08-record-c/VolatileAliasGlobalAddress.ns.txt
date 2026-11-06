@@ -1,7 +1,7 @@
-VolatileIntPtr global_value;
+namespace AliasState { VolatileIntPtr global_value; }
 
 int Main()
 {
-    var address = &global_value;
+    var address = &AliasState.global_value;
     return 0;
 }

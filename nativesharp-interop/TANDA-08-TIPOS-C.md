@@ -926,6 +926,13 @@ comprobación para aceptar ambas sin eliminar la exigencia de volatile. Hay
 advertencias de inicialización en CppClangSessionTests; la salida de esa suite
 no mostró un resumen explícito. Repetir la batería y conservar la tanda abierta.
 
+## Segunda validación agrupada: global del fixture
+
+La batería en `5e89bf69b` volvió a terminar con código 1. El verificador del
+IR C ya pasó; al aislar el caso de records, NSC informó que una variable fuera
+de todo namespace no está soportada. Los casos positivo y negativo se mueven al
+namespace `AliasState`. Las pruebas aún deben repetirse antes de concluir nada.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.
