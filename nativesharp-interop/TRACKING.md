@@ -190,6 +190,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Preparados `b16bc21b2`, `3932eca4a`, `8f773abfb` y `1f869f545`: USR
+    opcional de campo hasta metadato y símbolo, con controles de presencia y
+    ausencia. Sin construir ni validar; selección y persistencia siguen abiertas.
   - En `dfe590633` la sesión conserva el USR opcional de Clang para las
     declaraciones y miembros capturados; la batería agrupada pasó. Todavía falta
     integrar y verificar su uso en selección y persistencia antes de cerrar el
