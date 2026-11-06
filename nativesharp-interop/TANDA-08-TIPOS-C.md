@@ -905,6 +905,16 @@ El fixture prepara una llamada a una función NativeSharp con puntero ordinario
 desde un alias a enum volatile y exige el diagnóstico correspondiente. Pendiente
 de ejecución conjunta.
 
+## Construcción incremental del conjunto acumulado
+
+En la revisión `2989bc364301e0d364030d1db1ac7fce3de72559` se ejecutó
+`call nativesharp-interop\construir-frontend-tanda1.cmd nsc ON`. Terminó con
+código 0 y enlazó `A:/nsc-interop-build/tanda1-ON/bin/nsc.exe`; la comprobación
+del runtime estático incluida en el build también pasó. El cambio de cabecera
+de tipos invalidó 328 acciones incrementales. Hubo una advertencia cuyo texto
+completo no quedó capturado; no se presenta como examinada. No se ejecutaron
+las pruebas funcionales ni se cierra ningún ítem con esta construcción.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.
