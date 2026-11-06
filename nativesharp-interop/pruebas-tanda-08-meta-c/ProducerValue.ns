@@ -5,6 +5,7 @@ namespace Published
     {
         public static CRecord* Get() { return get_c_record(); }
         public static CRecord GetValue() { return get_c_record_value(); }
+        public static CBig GetBig() { return echo_c_big(get_c_big()); }
         public static CGlobalKind GetKind() { return get_c_kind(); }
     }
 }

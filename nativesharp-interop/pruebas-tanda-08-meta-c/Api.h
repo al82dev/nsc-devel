@@ -1,7 +1,10 @@
 enum CGlobalKind { CGlobalChoice = 21 };
 typedef struct CRecord { int value; enum CGlobalKind kind; } CRecord;
+typedef struct CBig { int first; int second; int third; } CBig;
 CRecord* get_c_record(void);
 CRecord get_c_record_value(void);
+CBig get_c_big(void);
+CBig echo_c_big(CBig value);
 enum CGlobalKind get_c_kind(void);
 int get_c_number(void);
 extern int shared_c_number;

@@ -7,5 +7,7 @@ int Main()
     if (CGlobalChoice != 21) return 3;
     var copy = Published.Bridge.GetValue();
     if (copy.value != 17 || copy.kind != Published.Bridge.GetKind()) return 4;
+    var big = Published.Bridge.GetBig();
+    if (big.first != 11 || big.second != 27 || big.third != 33) return 5;
     return 0;
 }
