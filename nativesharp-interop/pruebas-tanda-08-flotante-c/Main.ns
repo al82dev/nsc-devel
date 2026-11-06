@@ -1,0 +1,10 @@
+int Main()
+{
+    CLongDouble result = add_long_double(1.25, 2.5);
+    if (result != 3.75) return 1;
+    CFloatRecord* record = get_float_record();
+    if (record->value != 1.25) return 2;
+    record->value = result;
+    if (check_float_record(record) != 1) return 3;
+    return 0;
+}
