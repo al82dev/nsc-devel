@@ -42,6 +42,12 @@ conciliar declaraciones incompletas con mismo tipo, USR, triple y procedencia
 directa verificada por archivo, huella y desplazamiento. Rechazar información
 ausente o discrepante; probar también headers modificados o distintos. No
 desplegar ni cambiar NSLink o LLVM.
+La primera construcción con procedencia pasó el conflicto de alias, pero el
+fixture se detuvo al proyectar `opaque_current` y `union_current`: el global
+opaco exige que el propietario importado sea el proyecto directo incluso si
+la identidad ya fue reconciliada. Permitir el ajuste localizado en
+`src/Interop/Cpp/CppSemanticInventory.cpp` para emplear la identidad canónica
+reconciliada, conservando controles de origen, USR y rechazo de conflictos.
 La prueba positiva reproduce el rechazo del global `Opaque*` en O0. Las
 firmas de funciones aceptan el puntero, pero `mapGlobalType` exige layout al
 recorrer su objeto apuntado. Permitir `src/Interop/Cpp/CppSemanticInventory.cpp`

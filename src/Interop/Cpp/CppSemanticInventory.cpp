@@ -154,13 +154,16 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
         const auto identity = projectCppRecordTypeIdentity(*current, moduleName);
         const auto ordinal = identity ? lookup->typeOrdinalForIdentity(identity->key()) : std::nullopt;
         const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
-        if (identity && imported && imported->isIncomplete && imported->projectOrdinal == projectOrdinal &&
+        const bool reconciled = identity && lookup->isReconciledCppTypeIdentity(identity->key());
+        if (identity && imported && imported->isIncomplete &&
+            (reconciled || imported->projectOrdinal == projectOrdinal) &&
             imported->deferredImportError.empty() &&
             (imported->origin == frontend::CppImportedTypeOrigin::CStruct ||
              imported->origin == frontend::CppImportedTypeOrigin::CUnion) &&
             !(current->recordIdentity && current->recordIdentity->clangUsr && imported->clangUsr &&
               current->recordIdentity->clangUsr != imported->clangUsr))
-            return CppScalarTypeMapping{"type:" + identity->key() + std::string(depth, '*'),
+            return CppScalarTypeMapping{"type:" + (reconciled ? imported->identity.key() : identity->key()) +
+                                            std::string(depth, '*'),
                                         type.canonicalSpelling, type.isConst, type.isVolatile};
     }
     const auto element = mapGlobalType(*current, projectOrdinal, moduleName, lookup, cLanguage);
