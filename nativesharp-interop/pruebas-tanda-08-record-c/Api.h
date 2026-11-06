@@ -18,6 +18,7 @@ extern volatile int shared_volatile;
 extern volatile int* volatile_pointee;
 extern const volatile int* const_volatile_pointee;
 int read_volatile_pointee(void);
+volatile int* get_volatile_pointee(void);
 int read_plain_int(int* value);
 int read_shared_volatile(void);
 extern int shared_array[3];

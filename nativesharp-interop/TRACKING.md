@@ -212,10 +212,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     expresiones y globales, locales inferidos, operadores, HIR y controles
     iniciales de asignación y conversión. Se prepararon contratos de llamadas
     ordinarias, barreras provisionales para llamadas indirectas y variádicas y
-    controles internos; faltan retornos calificados, cobertura completa de
-    propagación y validación. Se conectó el caso de global C puntero a escalar
-    volatile, pendiente de validación y de auditoría de escapes; las demás
-    proyecciones calificadas permanecen bloqueadas.
+    controles internos. Se conectaron globales y resultados C de puntero a
+    escalar volatile; faltan cobertura completa de propagación, auditoría de
+    escapes y validación. Las proyecciones de agregados y niveles anidados
+    permanecen pendientes.
 - [ ] T08-016. Mapear arreglos de tamaño conocido.
 - [ ] T08-017. Definir la representación de punteros a función C.
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.

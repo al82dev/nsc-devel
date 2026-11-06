@@ -24,6 +24,23 @@ namespace
 {
 using RecordIndex = std::unordered_map<std::string, CppRecordGroupStatus>;
 
+CppType invocationTypeForC(const CppType& type, bool allowAggregate)
+{
+    CppType mapped = type;
+    if (mapped.kind != CppTypeKind::Pointer || !mapped.element || !mapped.element->isVolatile)
+        return mapped;
+    const auto kind = mapped.element->kind;
+    const bool scalar = kind == CppTypeKind::Void || kind == CppTypeKind::Boolean ||
+        kind == CppTypeKind::SignedInteger || kind == CppTypeKind::UnsignedInteger ||
+        kind == CppTypeKind::Floating;
+    const bool aggregate = kind == CppTypeKind::Record || kind == CppTypeKind::Enumeration;
+    if (!scalar && !(allowAggregate && aggregate)) return mapped;
+    auto element = std::make_shared<CppType>(*mapped.element);
+    element->isVolatile = false;
+    mapped.element = std::move(element);
+    return mapped;
+}
+
 std::optional<CppScalarTypeMapping> mapFunctionType(
     const CppType& type, bool allowReadonlyPointee = false, const RecordIndex* records = nullptr,
     std::string_view moduleName = {}, std::size_t depth = 0,
@@ -102,7 +119,9 @@ CppSemanticFunctionResult projectFunction(
     if (function.variadic && (function.languageLinkage != CppLanguageLinkage::C ||
                               function.callingConvention != "cdecl"))
         return failure("variadic C++ or non-cdecl functions are not yet projected");
-    const auto resultType = mapFunctionType(function.returnType, true, records, moduleName, 0, lookup, projectOrdinal);
+    const CppType mappedReturn = function.languageLinkage == CppLanguageLinkage::C
+        ? invocationTypeForC(function.returnType, false) : function.returnType;
+    const auto resultType = mapFunctionType(mappedReturn, true, records, moduleName, 0, lookup, projectOrdinal);
     if (!resultType) return failure("C/C++ return type is not yet mapped");
 
     std::string cppNamespace;
@@ -139,24 +158,9 @@ CppSemanticFunctionResult projectFunction(
     for (std::size_t index = 0; index < function.parameters.size(); ++index)
     {
         const auto& input = function.parameters[index];
-        // A C callee performs accesses through its own volatile-qualified parameter.
-        // Keep the original Clang type below for identity and future consumers.
-        CppType mappedInput = input.type;
-        if (function.languageLinkage == CppLanguageLinkage::C &&
-            mappedInput.kind == CppTypeKind::Pointer && mappedInput.element &&
-            mappedInput.element->isVolatile &&
-            (mappedInput.element->kind == CppTypeKind::Void ||
-             mappedInput.element->kind == CppTypeKind::Boolean ||
-             mappedInput.element->kind == CppTypeKind::SignedInteger ||
-             mappedInput.element->kind == CppTypeKind::UnsignedInteger ||
-             mappedInput.element->kind == CppTypeKind::Floating ||
-             mappedInput.element->kind == CppTypeKind::Record ||
-             mappedInput.element->kind == CppTypeKind::Enumeration))
-        {
-            auto element = std::make_shared<CppType>(*mappedInput.element);
-            element->isVolatile = false;
-            mappedInput.element = std::move(element);
-        }
+        // Map only the carrier; the original Clang type retains its qualifiers below.
+        const CppType mappedInput = function.languageLinkage == CppLanguageLinkage::C
+            ? invocationTypeForC(input.type, true) : input.type;
         const auto parameterType = mapFunctionType(mappedInput, true, records, moduleName, 0, lookup, projectOrdinal);
         if (!parameterType || input.type.kind == CppTypeKind::Void)
             return failure("C/C++ parameter " + std::to_string(index) + " is not yet mapped");

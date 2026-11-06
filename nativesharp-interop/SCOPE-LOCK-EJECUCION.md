@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Resultado C puntero a escalar volatile
+
+Proyectar el resultado C de un nivel a escalar volatile preservando el tipo
+original de Clang y transportando el calificador por el adaptador y el
+resultado de llamada ya preparados. Archivos: CppSemanticFunction.cpp,
+CppClangSessionTests.cpp, fixture pruebas-tanda-08-record-c y documentación.
+No habilitar resultados C++ ni apuntados agregados o anidados. Probar
+lectura, escritura y rechazo de pérdida de calificador en la tanda agrupada.
+
 ## Global C puntero a escalar const volatile
 
 Preparar la prueba de lectura y de rechazo de escritura de un apuntado con

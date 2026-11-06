@@ -2538,12 +2538,21 @@ int main(int argc, char** argv)
         ok &= expect(pointerNestedConst &&
                      std::holds_alternative<CppSemanticFunctionFailure>(projectCppSemanticFunction(*pointerNestedConst, 0, "Semantic")),
                      "nested qualified pointees are not silently mapped to mutable pointers");
-        for (const auto* name : {"ptr_volatile_result", "ptr_volatile_nested"})
+        const auto* volatileResult = cFunctions ? functionByName(*cFunctions, "ptr_volatile_result") : nullptr;
+        const auto projectedVolatileResult = volatileResult
+            ? projectCppSemanticFunction(*volatileResult, 0, "Semantic")
+            : CppSemanticFunctionResult{CppSemanticFunctionFailure{"fixture unavailable"}};
+        const auto* resultSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projectedVolatileResult);
+        ok &= expect(resultSymbol && resultSymbol->declaredTypeKey == "builtin:int*" &&
+                     resultSymbol->cppReturnType && resultSymbol->cppReturnType->element &&
+                     resultSymbol->cppReturnType->element->isVolatile,
+                     "C volatile scalar pointer result retains the original Clang qualifier");
+        for (const auto* name : {"ptr_volatile_nested"})
         {
             const auto* declaration = cFunctions ? functionByName(*cFunctions, name) : nullptr;
             ok &= expect(declaration && std::holds_alternative<CppSemanticFunctionFailure>(
                              projectCppSemanticFunction(*declaration, 0, "Semantic")),
-                         "volatile return and nested pointer remain deferred");
+                         "nested volatile pointer remains deferred");
         }
         if (pointerRead && volatileSymbol)
         {

@@ -27,6 +27,9 @@ int Main()
     if (*volatile_pointee != 62 || read_volatile_pointee() != 62 ||
         bump_volatile(volatile_alias) != 64 || read_volatile_pointee() != 64) return 26;
     if (*const_volatile_pointee != 64) return 27;
+    var returned_volatile = get_volatile_pointee();
+    *returned_volatile = 65;
+    if (*returned_volatile != 65 || read_volatile_pointee() != 65) return 28;
     shared_array[1] = 19;
     int* shared_element = &shared_array[1];
     if (*shared_element != 19) return 10;
