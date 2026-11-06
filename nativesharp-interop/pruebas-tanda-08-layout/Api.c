@@ -1,4 +1,13 @@
 #include "Api.h"
+static CBoolFields sample_bool_fields = { 3, 0, { 1, 0 } };
+CBoolFields* layout_bool_fields(void) { return &sample_bool_fields; }
+int layout_bool_size(void) { return (int)sizeof(CBoolFields); }
+int layout_bool_alignment(void) { return (int)_Alignof(CBoolFields); }
+int layout_bool_flag_offset(void) { return (int)__builtin_offsetof(CBoolFields, flag); }
+int layout_bool_values_offset(void) { return (int)__builtin_offsetof(CBoolFields, values); }
+int layout_bool_check(void) {
+    return sample_bool_fields.flag && !sample_bool_fields.values[0] && sample_bool_fields.values[1];
+}
 static Pair sample_pair = { 1, 2 };
 static AlignedVolatileAggregates aligned_volatile_aggregates = { { { 2, 3 }, { 4, 5 } }, { PackedSad, PackedSad } };
 AlignedVolatileAggregates* layout_aligned_volatile_aggregates(void) { return &aligned_volatile_aggregates; }

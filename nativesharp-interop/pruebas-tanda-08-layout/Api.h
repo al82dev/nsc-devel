@@ -2,6 +2,13 @@ typedef struct Pair { char a; int b; } Pair;
 typedef union Cell { int integer; double real; } Cell;
 typedef struct Container { char tag; Pair pairs[2][3]; Cell cell; } Container;
 typedef struct InnerArray { int values[2]; } InnerArray;
+typedef struct CBoolFields { char tag; _Bool flag; _Bool values[2]; } CBoolFields;
+CBoolFields* layout_bool_fields(void);
+int layout_bool_size(void);
+int layout_bool_alignment(void);
+int layout_bool_flag_offset(void);
+int layout_bool_values_offset(void);
+int layout_bool_check(void);
 enum PackedMood { PackedSad = -3, PackedHappy = 7 };
 #pragma pack(push, 1)
 typedef struct Packed { char tag; int value; } Packed;

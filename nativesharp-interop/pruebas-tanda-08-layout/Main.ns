@@ -93,5 +93,15 @@ int Main()
     alignedVolatile->pairs[1].b = 51;
     alignedVolatile->moods[1] = layout_packed_enum_new();
     if (alignedVolatile->pairs[1].b != 51 || alignedVolatile->moods[1] != layout_packed_enum_new()) return 34;
+    if (sizeof(CBoolFields) != (nuint)layout_bool_size() ||
+        alignof(CBoolFields) != (nuint)layout_bool_alignment() ||
+        offsetof(CBoolFields, flag) != (nuint)layout_bool_flag_offset() ||
+        offsetof(CBoolFields, values) != (nuint)layout_bool_values_offset()) return 35;
+    CBoolFields* flags = layout_bool_fields();
+    if (flags->flag || !flags->values[0] || flags->values[1]) return 36;
+    flags->flag = true;
+    flags->values[0] = false;
+    flags->values[1] = true;
+    if (!flags->flag || flags->values[0] || !flags->values[1] || layout_bool_check() == 0) return 37;
     return 0;
 }
