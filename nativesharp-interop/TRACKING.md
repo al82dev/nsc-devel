@@ -190,6 +190,11 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Un consumidor con biblioteca NS precompilada y un encabezado C independiente
+    pasó de O0 a O3 tras instalar el catálogo en la observación preliminar. La
+    variante que importa el mismo encabezado terminó en O0 con conflicto de
+    alias `CRecord`; falta conciliar identidades y la batería sigue en error.
+    [Evidencia](registro-commits/observacion-c-encabezados-independientes.md).
   - Con `0e980fb65`, un proyecto que usa `var` para records C de 8 y 12 bytes
     sin nombrar los tipos compiló, enlazó y ejecutó de O0 a O3; la matriz de
     metadata existente también pasó. No acredita todas las formas de inferencia.
