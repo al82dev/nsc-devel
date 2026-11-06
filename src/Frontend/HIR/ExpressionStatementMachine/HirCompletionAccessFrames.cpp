@@ -430,13 +430,29 @@ void ProjectOopHirModel::finishArrayRawIndex(
         address->volatileAccess = (frame.baseIsFixedArray && base && base->volatileAccess) ||
             (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray &&
              baseType && baseType->pointerPointeeVolatile);
-        if (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray &&
-            elementType == "builtin:int" && address->volatileAccess && base &&
-            base->kind == ProjectOopHirNodeKind::NamespaceStateValue && base->namespaceStateOrdinal &&
-            namespaceFunctionModel_ && *base->namespaceStateOrdinal < namespaceFunctionModel_->states().size())
+        const ProjectOopHirNode* provenance = base.get();
+        bool indexedCGlobal = false;
+        if (provenance && provenance->kind == ProjectOopHirNodeKind::PointerLoad &&
+            provenance->typeKey == "builtin:int*" && provenance->children.size() == 1)
         {
-            const auto& state = namespaceFunctionModel_->states()[*base->namespaceStateOrdinal];
-            if (state.isCppExternal && state.cppCGlobal && state.declaredTypeKey == "builtin:int*" &&
+            provenance = provenance->children.front().get();
+            unsigned depth = 0;
+            while (provenance && provenance->kind == ProjectOopHirNodeKind::RawElementAddress &&
+                   provenance->children.size() == 2 && ++depth <= 64)
+                provenance = provenance->children.front().get();
+            indexedCGlobal = depth > 0 && depth <= 64 && provenance &&
+                provenance->kind == ProjectOopHirNodeKind::NamespaceStateAddress;
+        }
+        if (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray &&
+            elementType == "builtin:int" && address->volatileAccess && provenance &&
+            (provenance->kind == ProjectOopHirNodeKind::NamespaceStateValue || indexedCGlobal) &&
+            provenance->namespaceStateOrdinal && namespaceFunctionModel_ &&
+            *provenance->namespaceStateOrdinal < namespaceFunctionModel_->states().size())
+        {
+            const auto& state = namespaceFunctionModel_->states()[*provenance->namespaceStateOrdinal];
+            if (state.isCppExternal && state.cppCGlobal &&
+                (indexedCGlobal ? state.declaredTypeKey.starts_with("builtin:int*[")
+                                : state.declaredTypeKey == "builtin:int*") &&
                 state.cppPointerPointeeVolatile &&
                 state.cppMicrosoftVolatileSemantics == std::optional<bool>{true})
             {
