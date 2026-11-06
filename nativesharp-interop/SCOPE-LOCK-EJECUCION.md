@@ -3301,3 +3301,10 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Objetivo: comprobar lectura y desreferencia de un global C de tipo puntero a enum con el enum ya seleccionado por una función.
 - Presupuesto: `Api.h`, `Api.c` y `Main.ns` de `nativesharp-interop/pruebas-tanda-08-enum-funcion`, más registro Markdown. La selección de un enum referido únicamente a través de un puntero global es un caso diferente y sigue pendiente.
 - Validar junto con la tanda, sin tratar un único caso como cierre general de punteros o globales.
+# Ampliación dirigida de union C
+
+Ampliar el fixture `nativesharp-interop/pruebas-tanda-08-union` y su registro
+para probar lecturas y escrituras superpuestas en ambos sentidos y ejecutar el
+caso en O0–O3. Mantener los resultados en `A:/nsc-interop-build/tanda08-union`.
+No modificar producción sin identificar y registrar antes el alcance necesario.
+
