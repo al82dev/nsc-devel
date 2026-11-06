@@ -582,6 +582,39 @@ bool sameCapturedMembers(const CppRecordDeclaration& a, const CppRecordDeclarati
     }
     return true;
 }
+
+// Both trees were checked by sameCapturedMembers before this merge. Clone
+// shared children so reconciling identity never changes an input observation.
+void mergeMemberTypeIdentity(CppType& destination, const CppType& source)
+{
+    const auto mergeUsr = [](std::optional<std::string>& into, const std::optional<std::string>& from) {
+        if ((!into || into->empty()) && from && !from->empty()) into = from;
+    };
+    if (destination.recordIdentity && source.recordIdentity)
+        mergeUsr(destination.recordIdentity->clangUsr, source.recordIdentity->clangUsr);
+    if (destination.enumIdentity && source.enumIdentity)
+        mergeUsr(destination.enumIdentity->clangUsr, source.enumIdentity->clangUsr);
+    if (destination.element && source.element)
+    {
+        auto child = std::make_shared<CppType>(*destination.element);
+        mergeMemberTypeIdentity(*child, *source.element);
+        destination.element = std::move(child);
+    }
+    if (destination.enumUnderlying && source.enumUnderlying)
+    {
+        auto child = std::make_shared<CppType>(*destination.enumUnderlying);
+        mergeMemberTypeIdentity(*child, *source.enumUnderlying);
+        destination.enumUnderlying = std::move(child);
+    }
+    if (destination.function && source.function)
+    {
+        auto function = std::make_shared<CppFunctionType>(*destination.function);
+        mergeMemberTypeIdentity(function->returnType, source.function->returnType);
+        for (std::size_t i = 0; i < function->parameterTypes.size(); ++i)
+            mergeMemberTypeIdentity(function->parameterTypes[i], source.function->parameterTypes[i]);
+        destination.function = std::move(function);
+    }
+}
 }
 
 std::optional<std::size_t> selectCppRecordMemberDefinition(
@@ -675,14 +708,17 @@ CppCRecordSnapshotResult captureCppCRecordSnapshot(
     snapshot.alignmentBits = record.alignmentBits;
     snapshot.fields = record.fields;
     for (std::size_t field = 0; field < snapshot.fields.size(); ++field)
-        if (!snapshot.fields[field].clangUsr || snapshot.fields[field].clangUsr->empty())
-            for (const auto index : group.inventoryIndices)
+        for (const auto index : group.inventoryIndices)
+        {
+            const auto& observed = inventory[index].declaration;
+            if (!observed.complete || field >= observed.fields.size() || index == *selected) continue;
+            if (!snapshot.fields[field].clangUsr || snapshot.fields[field].clangUsr->empty())
             {
-                const auto& observed = inventory[index].declaration;
-                if (!observed.complete || field >= observed.fields.size()) continue;
                 const auto& usr = observed.fields[field].clangUsr;
-                if (usr && !usr->empty()) { snapshot.fields[field].clangUsr = usr; break; }
+                if (usr && !usr->empty()) snapshot.fields[field].clangUsr = usr;
             }
+            mergeMemberTypeIdentity(snapshot.fields[field].type, observed.fields[field].type);
+        }
     return snapshot;
 }
 
