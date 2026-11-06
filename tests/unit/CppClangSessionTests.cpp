@@ -3384,8 +3384,11 @@ int main(int argc, char** argv)
                                  "C record snapshot rejects conflicting observations");
                     std::vector<CppSemanticRecordEntry> nestedEntries{{{}, 0, 0, "x86_64-pc-windows-msvc", *pair, identity}};
                     nestedEntries.push_back(nestedEntries.front());
+                    const auto nestedHeader = std::filesystem::path(argv[2]) / "cpp-record-snapshot-fixture.h";
+                    { std::ofstream file(nestedHeader); file << "/* snapshot identity fixture */\n"; }
                     for (std::size_t i = 0; i < nestedEntries.size(); ++i)
                     {
+                        nestedEntries[i].declaration.location = CppSourcePoint{nestedHeader, 1, 1};
                         auto& field = nestedEntries[i].declaration.fields.front();
                         field.type = CppType{};
                         field.type.kind = CppTypeKind::Pointer;
@@ -3415,6 +3418,8 @@ int main(int argc, char** argv)
                         nestedEntries.front().microsoftVolatileSemantics = true;
                         nestedEntries.back().microsoftVolatileSemantics = false;
                         const auto nestedResult = captureCppCRecordSnapshot(nestedEntries, nestedGroups.groups.front());
+                        if (const auto* failure = std::get_if<CppCRecordSnapshotFailure>(&nestedResult))
+                            std::cerr << "nested C snapshot: " << failure->message << '\n';
                         const auto* nestedSnapshot = std::get_if<CppCRecordSnapshot>(&nestedResult);
                         const auto* function = nestedSnapshot && nestedSnapshot->fields.front().type.element ?
                             nestedSnapshot->fields.front().type.element->function.get() : nullptr;
