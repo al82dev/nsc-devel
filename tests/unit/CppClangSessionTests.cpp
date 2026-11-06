@@ -3212,9 +3212,30 @@ int main(int argc, char** argv)
                 LibraryMetadata catalogMetadata;
                 catalogMetadata.formatMinor = 42;
                 catalogMetadata.targetTriple = "x86_64-pc-windows-msvc";
+                catalogMetadata.moduleName = "Semantic";
+                catalogMetadata.producerVersion = "catalog-test";
                 const bool combinedEncoded = metadata_detail::encodeCTypeCatalog(*catalog, {}, catalogMetadata.cppCRecordCatalog, codecError);
                 ok &= expect(roundTrip && combinedEncoded && metadata_detail::verifyBinaryClosureMetadata(catalogMetadata, codecError),
                              "metadata validates a canonical C record catalogue for its target");
+                {
+                    LibraryMetadataCodec codec;
+                    const auto metadataFile = std::filesystem::path(argv[2]) / "cpp-catalog-42.nsmeta";
+                    LibraryMetadata reread;
+                    const bool roundtrip42 = combinedEncoded && codec.writeModel(catalogMetadata, metadataFile, codecError) &&
+                        codec.read(metadataFile, reread, codecError) && codec.verifyCurrentCompiler(reread, codecError);
+                    ok &= expect(roundtrip42 && reread.formatMinor == 42 &&
+                                 reread.cppCRecordCatalog == catalogMetadata.cppCRecordCatalog,
+                                 "public metadata codec writes and authenticates the 1.42 C catalogue");
+                    auto legacy = catalogMetadata;
+                    legacy.formatMinor = 41;
+                    ok &= expect(!codec.writeModel(legacy, metadataFile, codecError),
+                                 "public metadata codec rejects C catalogue in 1.41");
+                    legacy.cppCRecordCatalog.clear();
+                    const bool legacyRoundtrip = codec.writeModel(legacy, metadataFile, codecError) &&
+                        codec.read(metadataFile, reread, codecError) && codec.verifyCurrentCompiler(reread, codecError);
+                    ok &= expect(legacyRoundtrip && reread.formatMinor == 41 && reread.cppCRecordCatalog.empty(),
+                                 "public metadata codec retains 1.41 compatibility");
+                }
                 const auto payload = metadata_detail::encodePayload(catalogMetadata, 3, true);
                 LibraryMetadata decodedPayload;
                 decodedPayload.formatMinor = 42;
