@@ -21541,6 +21541,7 @@ void testDeepMirCacheRestore(TestContext& tests)
         node->typeKey = "type:Node" + std::to_string(depth);
         node->integerValue = depth;
         if (depth % 2U == 0U) node->localOrdinal = depth;
+        if (depth % 3U != 0U) node->cppMicrosoftVolatileSemantics = (depth % 3U == 1U);
         if (root != nullptr) node->children.push_back(std::move(root));
         else node->children.emplace_back();
         node->children.emplace_back();
@@ -21559,6 +21560,9 @@ void testDeepMirCacheRestore(TestContext& tests)
         exact = current != nullptr && current->kind == ProjectOopMirNodeKind::LocalDeclaration &&
             current->typeKey == "type:Node" + std::to_string(depth) &&
             current->integerValue == depth && current->localOrdinal.has_value() == (depth % 2U == 0U) &&
+            current->cppMicrosoftVolatileSemantics.has_value() == (depth % 3U != 0U) &&
+            (!current->cppMicrosoftVolatileSemantics.has_value() ||
+             *current->cppMicrosoftVolatileSemantics == (depth % 3U == 1U)) &&
             (!current->localOrdinal.has_value() || *current->localOrdinal == depth) &&
             current->children.size() == 2U && current->children[1] == nullptr;
         if (exact) current = current->children[0].get();

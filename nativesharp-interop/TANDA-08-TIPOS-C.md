@@ -1037,6 +1037,12 @@ versiones de identidad para evitar reutilización previa. Este dato aún no es
 una prueba de alineación o elegibilidad y no modifica el IR generado. Faltan
 propagación por campos y punteros, pruebas y validación agrupada.
 
+## Prueba de restauración MIR de opción volatile
+
+La prueba existente de restauración profunda prepara nodos con valores true,
+false y desconocido y los compara tras serializar y restaurar. El script de la
+tanda construirá el ejecutable y ejecutará su modalidad enfocada. No ejecutada.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

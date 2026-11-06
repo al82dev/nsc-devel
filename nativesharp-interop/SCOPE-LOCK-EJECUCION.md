@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Prueba de restauración MIR de opción volatile
+
+Ampliar la prueba existente de restauración MIR para alternar los tres estados
+de la opción y añadir su ejecución enfocada a la batería de la tanda. Archivos:
+ProjectOopLoweringTests.cpp, validar-tanda-08.cmd y documentación. La prueba
+utiliza el TEMP de A configurado por el script y aún no se ha ejecutado.
+
 ## Transporte inicial de opción volatile a HIR y MIR
 
 Transportar el valor de sesión, incluido desconocido, desde un global externo
