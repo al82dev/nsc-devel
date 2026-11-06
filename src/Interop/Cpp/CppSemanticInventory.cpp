@@ -351,6 +351,8 @@ static bool provideGlobalsWithLookup(
                     state.cppPointerPointeeReadonly = selected.candidate->pointerPointeeReadonly;
                     state.cppPointerPointeeVolatile = selected.candidate->pointerPointeeVolatile;
                     state.cppMicrosoftVolatileSemantics = selected.candidate->microsoftVolatileSemantics;
+                    state.cppStorageSizeBits = selected.candidate->storageSizeBits;
+                    state.cppDeclarationAlignmentBits = selected.candidate->declarationAlignmentBits;
                     state.cppDllImport = selected.candidate->dllImport;
                 }
                 else

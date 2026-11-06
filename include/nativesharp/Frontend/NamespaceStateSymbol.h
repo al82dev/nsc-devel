@@ -63,5 +63,7 @@ struct NamespaceStateSymbol final
     bool cppPointerPointeeVolatile = false;
     // Only populated for a C/C++ global; absence means the option is unknown.
     std::optional<bool> cppMicrosoftVolatileSemantics;
+    std::optional<std::uint64_t> cppStorageSizeBits;
+    std::optional<std::uint64_t> cppDeclarationAlignmentBits;
 };
 }

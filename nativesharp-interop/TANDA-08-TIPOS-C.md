@@ -1073,6 +1073,12 @@ para decidir acceso atómico y espera pruebas y validación agrupada.
 Se prepararon declaraciones con alineaciones distintas y desconocida, y se
 comprueba el tamaño del tipo. La prueba no se ha ejecutado todavía.
 
+## Tamaño y alineación en símbolo global importado
+
+El proveedor prepara el traslado del tamaño y la alineación del candidato al
+símbolo externo. Los estados NativeSharp conservan ausencia y aún no se usa el
+dato para emitir instrucciones atómicas. Falta validación agrupada.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

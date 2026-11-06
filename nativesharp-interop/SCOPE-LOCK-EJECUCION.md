@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Tamaño y alineación en símbolo global importado
+
+Transportar tamaño y alineación conocidos al símbolo externo seleccionado,
+manteniendo ausencia cuando Clang no aporta el dato. Archivos:
+NamespaceStateSymbol.h, CppSemanticInventory.cpp y documentación. No cambiar
+todavía el acceso ni la emisión. Preparar comprobación y validar por tanda.
+
 ## Prueba de tamaño y alineación de global seleccionado
 
 Preparar controles de tamaño, mínimo de alineaciones y alineación desconocida
