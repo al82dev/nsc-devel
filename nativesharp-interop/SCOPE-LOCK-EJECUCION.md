@@ -3318,6 +3318,11 @@ Ampliar además `pruebas-tanda-08-meta-c` con productor NativeSharp
 precompilado y consumidor que compartan un callback C y un struct que lo
 almacena. Probar retorno, campo y llamada en O0–O3; limitar edición al
 fixture, scripts y registros hasta observar cualquier defecto concreto.
+La prueba produjo metadata pero el consumidor omitió el método; la
+materialización de tipos no reconoce `fn:`. Permitir la reconstrucción de
+prototipos de puntero C en `src/Driver/PrecompiledSurface/MetadataSourceMapping.cpp`,
+conservando el rechazo de efectos y formas que no se puedan reconstruir y
+registrando las limitaciones y pruebas. No modificar el formato NSMETA.
 Agregar un proyecto separado para leer e invocar un puntero a función desde un
 campo de struct C y desde un global C, sin alterar el caso ya validado.
 Extender ese proyecto para escribir callbacks en el campo y en el global y
