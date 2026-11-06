@@ -6,7 +6,9 @@ con el objeto del mismo proyecto y la biblioteca C TLS. El ejecutable pasó la
 comprobación entre hilos. El enlace se hizo externamente y no demuestra que
 la ruta normal de NSC seleccione LLD o configure sus dependencias.
 
-Se prepara una matriz reproducible O0–O3 que conserva cada runtime y confirma
-el error `_tls_index` de NSLink antes de enlazar con LLD. El directorio de cada
-ejecución permanece en A:; la matriz completa aún no se ha ejecutado. No se
-modifican NSLink ni LLVM, y la tanda sigue abierta.
+La matriz `validar-runtime-real.cmd` pasó O0–O3 con NSC build
+`a02f3209efef196f`; conservó cada runtime y confirmó el error `_tls_index`
+de NSLink antes del enlace externo con LLD. Evidencia en
+`A:/nsc-interop-build/tanda08-tls-runtime-real-18480-12252`. Esto no prueba
+todavía selección ni enlace automáticos en NSC. No se modificaron NSLink ni
+LLVM, y la tanda sigue abierta.
