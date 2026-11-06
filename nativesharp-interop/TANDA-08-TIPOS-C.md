@@ -1328,6 +1328,12 @@ IR O0 con operaciones volatile alineadas a 1 y rechazo de direcciones sin
 calificador para los arreglos probados. Se observó la advertencia existente de
 inicializador en CppSemanticRecord.cpp. No cierra el ítem ni la tanda.
 
+## Validación dirigida de arreglos C const con alineación natural
+
+El fixture layout sobre `6568a1890` pasó O0–O3 con lecturas de arreglos const
+de record y enum alineados naturalmente y controles negativos de direcciones
+que pierden const. No demuestra otras formas ni cierra la tanda.
+
 ## Validación dirigida de arreglos C const de records y enums
 
 La construcción incremental de NSC terminó con código 0. En layout se

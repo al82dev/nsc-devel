@@ -252,6 +252,8 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     `a519938a0`. La validación completa de la tanda y el ítem siguen pendientes.
   - Preparados en `ed66fe2a1`: controles de lectura y direcciones const con
     alineación natural, pendientes de ejecución agrupada.
+  - Actualización: layout pasó O0–O3 con lectura de ambos arreglos alineados y
+    rechazo de direcciones que pierden const. No cierra T08-015.
   - Preparado, pendiente de validación agrupada: parámetros con enlace C de un
     nivel a void, escalares, structs y enums volatile. La función C realiza los
     accesos y se conserva el tipo de Clang; las pruebas incluyen const y
