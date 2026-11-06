@@ -1447,11 +1447,12 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
             const bool goldenCompatible = goldenRead && codec.verifyCurrentCompiler(golden, error);
             // Freeze 3.0 P8: Object ABI 3 (array liveness map, array-backed Span). Goldens with object ABI 1
             // (1.8-1.14) and 2 (1.15-1.39) are rejected and asked to be recompiled.
-            // The independently archived 1.44 fixture was emitted with Object ABI 3.
-            if (minor == 44)
+            // The independently archived 1.40-1.44 fixtures were emitted with Object ABI 3.
+            if (minor >= 40)
             {
                 tests.expect(goldenCompatible && golden.objectAbiVersion == 3,
-                             "archived NSMETA 1.44 with Object ABI 3 remains compatible (" + error + ")");
+                             "archived NSMETA 1." + std::to_string(minor) +
+                                 " with Object ABI 3 remains compatible (" + error + ")");
             }
             else if (minor >= 8)
             {

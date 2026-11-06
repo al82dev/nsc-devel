@@ -17,6 +17,11 @@ Permitir `tests/unit/LibraryMetadataVersionToleranceTests.cpp`: distinguir que
 el lector puede descodificar la referencia auténtica 1.37 de que el compilador
 pueda usarla; exigir el rechazo explícito por Object ABI 2 frente a 3. Mantener
 los controles de aceptación de formatos futuros cuyo contenido sea compatible.
+Se localizaron productores reales anteriores con metadata 1.40, 1.41, 1.42
+y 1.43 que el verificador acepta con Object ABI 3. Conservar sus bytes en
+`tests/fixtures/nsmeta/historical-1.40.nsmeta` a `historical-1.43.nsmeta`,
+registrar productor y SHA-256, y ajustar la prueba histórica para exigir su
+aceptación con ABI 3. No reescribir las referencias archivadas existentes.
 
 ## Punteros C a tipo incompleto entre módulos
 
