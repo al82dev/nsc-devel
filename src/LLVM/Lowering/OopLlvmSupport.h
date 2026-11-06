@@ -31,7 +31,7 @@ namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
 
-inline bool isClangMsVolatileIntegerGlobal(const frontend::ProjectOopMirNode* node) noexcept
+inline bool isClangMsVolatileScalarGlobal(const frontend::ProjectOopMirNode* node) noexcept
 {
     if (!node || !node->volatileAccess || !node->cppMicrosoftVolatileSemantics.value_or(false) ||
         !node->cppAtomicAlignmentBytes || node->alignment != *node->cppAtomicAlignmentBytes ||
@@ -41,7 +41,8 @@ inline bool isClangMsVolatileIntegerGlobal(const frontend::ProjectOopMirNode* no
     return (bytes == 1 && (node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte")) ||
         (bytes == 2 && (node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort")) ||
         (bytes == 4 && (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint")) ||
-        (bytes == 8 && (node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong"));
+        (bytes == 8 && (node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong" ||
+                        node->typeKey.ends_with('*')));
 }
 
 std::optional<LLVMAtomicOrdering> orderedAtomicLoadOrdering(std::uint64_t encoded);

@@ -171,7 +171,7 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         {
             previous = LLVMBuildLoad2(builder_, targetType, address, "compound.load");
             if (node->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
-            if (isClangMsVolatileIntegerGlobal(node->children[0].get()))
+            if (isClangMsVolatileScalarGlobal(node->children[0].get()))
             {
                 LLVMSetOrdering(previous, LLVMAtomicOrderingAcquire);
                 LLVMSetAlignment(previous, static_cast<unsigned>(*node->children[0]->cppAtomicAlignmentBytes));
@@ -196,7 +196,7 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         {
             LLVMValueRef store = LLVMBuildStore(builder_, updated, address);
             if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
-            if (isClangMsVolatileIntegerGlobal(node->children[0].get()))
+            if (isClangMsVolatileScalarGlobal(node->children[0].get()))
             {
                 LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
                 LLVMSetAlignment(store, static_cast<unsigned>(*node->children[0]->cppAtomicAlignmentBytes));
@@ -396,7 +396,7 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         }
         LLVMValueRef store = LLVMBuildStore(builder_, value, address);
         if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
-        if (isClangMsVolatileIntegerGlobal(node->children[0].get()))
+        if (isClangMsVolatileScalarGlobal(node->children[0].get()))
         {
             LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
             LLVMSetAlignment(store, static_cast<unsigned>(*node->children[0]->cppAtomicAlignmentBytes));
