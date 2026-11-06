@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## USR de tipos en aliases
+
+T08-002/T08-005: conservar el USR del record o enum subyacente en la
+representación de aliases y comprobarlo al resolver aliases simples, arreglos
+y firmas cuando ambos lados sean conocidos. Mantener comprobaciones de nombre,
+tipo y representación; la ausencia no crea una identidad ficticia. Archivos:
+CppAliasEnumType.h, CppAliasRecordType.h, QualifiedTypeNames.cpp,
+CppClangSessionTests.cpp y registros Markdown. Pruebas agrupadas con la tanda.
+
 ## Dependencias de record en firmas
 
 T08-002/T08-003: conservar el USR acordado en cada grupo de records y comprobar

@@ -14,6 +14,7 @@ struct CppAliasEnumType
     CppAliasBuiltinType base;
     std::size_t pointerDepth;
     bool pointeeConst;
+    std::optional<std::string> clangUsr = std::nullopt;
 };
 
 inline std::optional<CppAliasEnumType> cppAliasEnumType(const interop::CppType& type)
@@ -36,6 +37,6 @@ inline std::optional<CppAliasEnumType> cppAliasEnumType(const interop::CppType& 
     std::string name = current->enumIdentity->qualifiedName;
     std::size_t pos = 0;
     while ((pos = name.find("::", pos)) != std::string::npos) name.replace(pos, 2, ".");
-    return CppAliasEnumType{std::move(name), *base, pointers, current->isConst};
+    return CppAliasEnumType{std::move(name), *base, pointers, current->isConst, current->enumIdentity->clangUsr};
 }
 }

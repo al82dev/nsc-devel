@@ -15,6 +15,7 @@ struct CppAliasRecordType
     std::string canonicalName;
     std::size_t pointerDepth;
     bool pointeeConst;
+    std::optional<std::string> clangUsr = std::nullopt;
 };
 
 // This is a source name to resolve against the imported record index, not proof
@@ -57,6 +58,6 @@ inline std::optional<CppAliasRecordType> cppAliasRecordType(const interop::CppTy
     }
     if (!canonical.empty()) canonical.push_back(identity.containingRecords.empty() ? '.' : '+');
     canonical += identity.name;
-    return CppAliasRecordType{std::move(name), std::move(canonical), pointers, current->isConst};
+    return CppAliasRecordType{std::move(name), std::move(canonical), pointers, current->isConst, identity.clangUsr};
 }
 }
