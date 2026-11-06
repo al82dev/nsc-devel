@@ -13,7 +13,7 @@ for %%F in (Api.h Api.c Project.nsproj Main.ns Invalid.nsproj Invalid.ns Invalid
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
-for %%F in (InvalidFixedMatrix InvalidFixedRowArgument InvalidFixedConstSlot InvalidFixedConstValue InvalidFixedConstEscape) do (
+for %%F in (InvalidFixedMatrix InvalidFixedRowArgument InvalidFixedConstSlot InvalidFixedConstValue InvalidFixedConstEscape InvalidFixedMatrixAddress InvalidFixedConstAddress) do (
   copy /y "%~dp0%%F.ns" "%DEST%\%%F.ns" >nul
   if errorlevel 1 exit /b 1
   copy /y "%~dp0%%F.nsproj" "%DEST%\%%F.nsproj" >nul
@@ -104,4 +104,13 @@ if not errorlevel 1 (echo Se acepto perder const del dato. & exit /b 1)
 findstr /i /c:"would discard pointee constness" "%DEST%\InvalidFixedConstEscape.log" >nul
 if errorlevel 1 (echo El rechazo no identifica const del dato. & exit /b 1)
 echo Matriz fija y doble const comprobados.
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidFixedMatrixAddress.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidFixedMatrixAddress.exe" > "%DEST%\InvalidFixedMatrixAddress.log" 2>&1
+if not errorlevel 1 (echo Se acepto direccion mutable del slot de matriz. & exit /b 1)
+findstr /i /c:"would discard pointee constness" "%DEST%\InvalidFixedMatrixAddress.log" >nul
+if errorlevel 1 (echo El rechazo de direccion de matriz no corresponde a const. & exit /b 1)
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidFixedConstAddress.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidFixedConstAddress.exe" > "%DEST%\InvalidFixedConstAddress.log" 2>&1
+if not errorlevel 1 (echo Se acepto direccion mutable del slot de doble const. & exit /b 1)
+findstr /i /c:"cannot take the address of an array element with a const pointee" "%DEST%\InvalidFixedConstAddress.log" >nul
+if errorlevel 1 (echo El rechazo de direccion doble const no corresponde al calificador. & exit /b 1)
+echo Direcciones calificadas adicionales rechazadas.
 exit /b 0

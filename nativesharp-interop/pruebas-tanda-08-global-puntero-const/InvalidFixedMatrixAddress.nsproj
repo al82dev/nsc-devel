@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>CGlobalFixedMatrixAddressInvalid</Name></PropertyGroup><ItemGroup><Compile Include="InvalidFixedMatrixAddress.ns" /><CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" /></ItemGroup></Project>

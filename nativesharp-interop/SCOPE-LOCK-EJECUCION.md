@@ -20,6 +20,8 @@ Ampliar el mismo fixture con `int * const[2][2]` y `const int * const[2]`;
 probar lectura, modificación permitida de datos de la matriz, y rechazo de
 escritura a slots, datos constantes, dirección y paso de filas a `int**`.
 No modificar producción hasta observar los fallos y delimitar el cambio.
+Agregar controles de escape por dirección del elemento de matriz y del slot
+con doble const, con diagnósticos específicos y sin aceptar errores ajenos.
 
 ## Pruebas independientes de metadata histórica C
 
