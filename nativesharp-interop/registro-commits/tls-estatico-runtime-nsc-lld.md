@@ -7,6 +7,8 @@ el objeto NativeSharp y la biblioteca C TLS. Un adaptador C enlaza el nombre
 El programa pasó el control de aislamiento entre dos hilos. Se requirieron
 bibliotecas estáticas del runtime y bibliotecas de importación de Windows.
 
-Se prepara una matriz O0–O3 reproducible. Esta prueba todavía enlaza fuera del
+La matriz reproducible `validar-runtime.cmd` pasó O0–O3 con NSC build
+`a02f3209efef196f`; Clang emitió un aviso de normalización del triple objetivo.
+Esta prueba todavía enlaza fuera del
 flujo normal de NSC y no demuestra inicialización global C++ ni TLS directo de
 DLL. NSLink y LLVM permanecen sin modificar.
