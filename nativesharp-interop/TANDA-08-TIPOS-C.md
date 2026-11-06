@@ -2,6 +2,13 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Calificador volatile del objeto apuntado: base en preparación
+
+Se agrega al resultado semántico y al registro de expresiones un dato separado
+del volatile del almacenamiento del puntero. Por ahora se inicia en falso y
+ninguna declaración adicional queda habilitada; falta conectar productores,
+conversiones, consumidores, accesos y pruebas. El cambio aún no fue construido.
+
 ## Parámetros C puntero a escalar volatile: implementación pendiente de validar
 
 La proyección permite preparar una llamada a una función con enlace C cuyo

@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Calificador volatile del objeto inmediatamente apuntado: base semántica
+
+Preparar un indicador separado del volatile del almacenamiento del puntero,
+primero en ExpressionResult, MethodExpressionTypeBinding y su registrador.
+El indicador se inicia falso y no habilita todavía ninguna declaración C
+rechazada. No se cambia el parser ni se presume soporte para varios niveles.
+Archivos autorizados: esas dos cabeceras, MethodBodyBindingRecorder.cpp y la
+documentación de la tanda; LLVM y NSLink continúan protegidos. La propagación,
+los accesos y la validación agrupada son trabajo pendiente de esta tanda.
+
 ## Parámetro C puntero a void volatile
 
 Preparar una llamada a función con enlace C que recibe volatile void* y

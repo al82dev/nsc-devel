@@ -112,6 +112,7 @@ MethodExpressionTypeBinding ProjectMethodBodyModel::makeExpressionTypeBinding(
     }
     binding.integerConstant = result.integerConstant;
     binding.pointerPointeeReadonly = result.pointerPointeeReadonly;
+    binding.pointerPointeeVolatile = result.pointerPointeeVolatile;
     binding.ownership = result.ownership;
     binding.ownershipTransfer = result.ownershipTransfer;
     binding.ownershipFreshOwner = result.ownershipFreshOwner;

@@ -101,4 +101,6 @@ struct ExpressionResult final
     bool flowRuntimeCheckElided = false;
     // Qualification of this storage, not of any object reached through a pointer value.
     bool volatileStorage = false;
+    // The immediate pointee is volatile; independent of the pointer's storage.
+    bool pointerPointeeVolatile = false;
 };

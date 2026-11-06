@@ -50,5 +50,7 @@ struct MethodExpressionTypeBinding final
     std::optional<std::int64_t> flowIntegerMaximum;
     std::optional<std::size_t> flowActiveVariantCase;
     bool flowRuntimeCheckElided = false;
+    // Immediate pointee qualification, separate from the pointer storage.
+    bool pointerPointeeVolatile = false;
 };
 }
