@@ -115,7 +115,8 @@ inline constexpr std::uint16_t kMetadataFormatMajor = 1;
 // MINOR 38 (2026-10-04): extern-C parameters publish buffer-length and callback-lifetime
 // contracts; members publish the explicit unwind-boundary policy.
 // MINOR 42: imported C record and enum declarations required by a public API.
-inline constexpr std::uint16_t kMetadataFormatMinor = 42;
+// MINOR 43: optional source provenance for imported C record declarations.
+inline constexpr std::uint16_t kMetadataFormatMinor = 43;
 
 // NSMETA 1.39. These bits version producer language capabilities that affect private lowering
 // and debug behavior without changing the public NativeSharp ABI projection. Older files decode

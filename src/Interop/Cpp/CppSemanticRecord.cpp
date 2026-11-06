@@ -979,7 +979,9 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         };
         for (const auto& field : record.fields) if (!checkEnum(field.type, 0)) return false;
     }
-    return metadata_detail::encodeCTypeCatalog(records, enums, output, error);
+    return metadata.formatMinor >= 43 ?
+        metadata_detail::encodeCTypeCatalogWithProvenance(records, enums, output, error) :
+        metadata_detail::encodeCTypeCatalog(records, enums, output, error);
 }
 
 bool selectCppTypesWithPrecompiledCatalogs(const frontend::ProjectCompilation& compilation,
