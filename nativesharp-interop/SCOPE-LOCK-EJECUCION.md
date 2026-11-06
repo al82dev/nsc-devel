@@ -56,6 +56,8 @@ controles de sesión. El formato 1.42 permanece deshabilitado.
 Conservar y verificar la identidad estructurada de cada record C (módulo,
 namespace, contenedores y nombre) para reconstruirla sin analizar cadenas.
 Presupuesto adicional: CppSemanticRecord.h/.cpp y controles de sesión.
+Conservar además si el layout permite valores o solo acceso mediante puntero,
+para no elevar una evidencia de definiciones repetidas a compatibilidad por valor.
 Preparar un proveedor opcional de catálogo para el productor de metadata, sin
 activarlo desde el driver. Presupuesto adicional: ProjectCompilation.h/.cpp,
 LibraryMetadataConstruction.cpp y controles de sesión. El productor sin
