@@ -190,6 +190,11 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Declaraciones adelantadas de struct y union del mismo header se
+    reconciliaron entre productor precompilado y consumidor en O0–O3. Una
+    copia en otra ruta y el header modificado fueron rechazados. Catálogos
+    anteriores y la extensión de procedencia pasaron la suite de sesión.
+    Faltan otros casos de identidad. [Evidencia](registro-commits/prueba-opacos-header-compartido.md).
   - La reconciliación del mismo encabezado C en biblioteca precompilada y
     consumidor compiló, enlazó y ejecutó de O0 a O3. Un encabezado modificado
     se rechazó; la suite de sesión pasó. No acredita todas las identidades ni
@@ -548,9 +553,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     diagnóstico de tipo incompleto. No cubre todos los contratos de punteros.
     [Evidencia](registro-commits/prueba-punteros-opacos-c.md).
   - Un productor precompilado publicó punteros a struct y union opacos; su
-    consumidor sin header los usó en O0–O3. El consumidor con el mismo header
-    falló en O0 por conflicto de alias `Opaque`; la conciliación de tipos
-    adelantados sigue pendiente. [Evidencia](registro-commits/prueba-opacos-header-compartido.md).
+    consumidor con o sin el mismo header los usó en O0–O3; otros casos de
+    identidad y calificación siguen pendientes.
+    [Evidencia](registro-commits/prueba-opacos-header-compartido.md).
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
   - La matriz volatile de 8, 16, 32 y 64 bits pasó O0–O3 y su control IR:

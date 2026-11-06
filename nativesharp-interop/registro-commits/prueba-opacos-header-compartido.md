@@ -18,3 +18,11 @@ condiciones explican por qué el mecanismo existente no acredita equivalencia de
 ambas declaraciones adelantadas. Antes de habilitarla hay que comprobar que
 Clang aporta procedencia directa, conservar compatibilidad de versiones y
 probar encabezados distintos o modificados; igualdad de nombre o USR no basta.
+
+Con build `ab06802a4b42fffe`, el productor y los consumidores directo,
+precompilado sin header y precompilado con el mismo header pasaron O0–O3.
+Una copia en otra ruta y el archivo de salida modificado tras crear el
+productor se rechazaron. La regresión de metadata C pasó y
+`nsc.cpp-interop.session` pasó 1/1 tras corregir los controles históricos y
+añadir pruebas para catálogos 3/4. El alcance no incluye todas las formas de
+declaración, macros, calificadores o fuentes virtuales.
