@@ -12,4 +12,8 @@ Con NSC build `3f82235fd35e7b9a`, `--dump-project-oop-llvm` terminó con
 código 0. En el IR se observan la llamada a `apply_record_callback`, la
 escritura en `record_callback_global` y las llamadas a
 `run_record_callback_holder` y `run_record_callback_global`. Esta comprobación
-no ejecuta el programa; O0–O3 siguen pendientes del fixture agrupado.
+no ejecuta el programa.
+
+La validación agrupada posterior con el mismo build terminó con código 0 en
+O0–O3. C invocó el callback NativeSharp tanto como argumento como a través del
+campo y del global C. No se probaron capturas ni conservación posterior.

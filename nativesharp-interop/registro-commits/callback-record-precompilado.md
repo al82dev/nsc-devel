@@ -33,4 +33,11 @@ El diagnóstico O0 terminó con código 0 con la copia usada por el productor
 temporalmente ausente. Al terminar, `fc /b` confirmó que la copia restaurada
 coincide con el header del repositorio y no quedó el archivo oculto. La fuente
 del repositorio seguía presente; no se afirma aislamiento de todo el sistema
-de archivos. O1–O3 siguen pendientes de la matriz agrupada.
+de archivos. En ese momento O1–O3 seguían pendientes de la matriz agrupada.
+
+La matriz agrupada posterior con build `3f82235fd35e7b9a` terminó con código 0
+en O0–O3 para los consumidores con header y sin referencia al header. En cada
+nivel, la copia utilizada por el productor se ocultó durante la compilación
+del consumidor sin header y se restauró; al final `fc /b` confirmó que la
+copia restaurada coincide con la fuente del repositorio. La fuente original
+seguía disponible y no se probó aislamiento del resto del sistema.
