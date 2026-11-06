@@ -1,0 +1,11 @@
+namespace Published
+{
+    public struct Bridge
+    {
+        public static int Sum(int left, int right) { return header_add(left, right); }
+        public static int Compose(int value) { return header_composed(value); }
+        public static int Count() { return header_counter(); }
+        public static void Set(int value) { header_set(value); }
+        public static int Get() { return header_get(); }
+    }
+}

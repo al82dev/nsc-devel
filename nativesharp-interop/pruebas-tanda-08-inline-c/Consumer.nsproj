@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CInlineConsumer</Name></PropertyGroup>
+  <ItemGroup><Compile Include="Consumer.ns" /><LibraryReference Include="CInlineProducer.lib" /></ItemGroup>
+</Project>

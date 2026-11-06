@@ -1,0 +1,8 @@
+int Main()
+{
+    if (Published.Bridge.Sum(4, 5) != 9 || Published.Bridge.Compose(4) != 14) return 1;
+    if (Published.Bridge.Count() != 1 || Published.Bridge.Count() != 2) return 2;
+    Published.Bridge.Set(37);
+    if (Published.Bridge.Get() != 37) return 3;
+    return 0;
+}
