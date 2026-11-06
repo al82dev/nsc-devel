@@ -3071,6 +3071,37 @@ int main(int argc, char** argv)
                     ok &= expect(volatileField && volatileField->type.isVolatile &&
                                  toCppImportedInstanceField(*volatileField).isVolatile,
                                  "C volatile field retains its qualifier through semantic projection");
+                    nativesharp::frontend::ProjectCompilation wrongAliasCompilation;
+                    wrongAliasCompilation.setSourceBufferProvider([](const std::filesystem::path& path)
+                        -> std::optional<std::string> {
+                        if (path.filename() == "Main.ns") return "int Use(PairAlias* value) { return 0; }\n";
+                        return std::nullopt;
+                    });
+                    const bool wrongConfigured = wrongAliasCompilation.setExperimentalCppTypeProvider(
+                        [recordSnapshot](const auto& graph, auto, auto& output, auto& why) {
+                            if (!recordSnapshot || !recordSnapshot->clangUsr || graph.projects().empty())
+                            { why = "record USR fixture unavailable"; return false; }
+                            const auto identity = projectCppRecordIdentity(*recordSnapshot, graph.projects()[0].moduleName());
+                            if (!identity) return false;
+                            output.push_back({*identity, nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                                nativesharp::frontend::NamedTypeAccessibility::Public, 0, "probe.c"});
+                            output.back().clangUsr = recordSnapshot->clangUsr;
+                            return true;
+                        }, error) && wrongAliasCompilation.setCppTypeAliasProvider(
+                        [aliasesSnapshot](const auto& graph, auto, auto& output, auto& why) {
+                            if (!aliasesSnapshot || graph.projects().empty()) { why = "alias fixture unavailable"; return false; }
+                            for (auto alias : *aliasesSnapshot)
+                                if (alias.name == "PairAlias" && alias.underlyingType.recordIdentity)
+                                {
+                                    alias.underlyingType.recordIdentity->clangUsr = "different-record-usr";
+                                    output.push_back({0, graph.projects()[0].projectFile(), 0,
+                                                      "x86_64-pc-windows-msvc", std::move(alias)});
+                                }
+                            return true;
+                        }, error);
+                    const bool wrongBound = wrongConfigured && wrongAliasCompilation.compileProjectNames(semanticPath, error);
+                    ok &= expect(wrongConfigured && (!wrongBound || wrongAliasCompilation.diagnostics().hasErrors()),
+                                 "alias resolution rejects an imported record with a different known USR");
                 }
                 {
                     nativesharp::frontend::ProjectCompilation enumAliasCompilation;
