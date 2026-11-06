@@ -6532,6 +6532,13 @@ int main(int argc, char** argv)
                                 duplicates, *recordDependencies.projectGraph(), "x86_64-pc-windows-msvc", restored, dependencyError);
                             ok &= expect(restoredOk && restored.size() == 2,
                                          "precompiled C catalogues deduplicate identical declarations");
+                            std::vector<nativesharp::frontend::CppImportedInstanceField> restoredFields;
+                            std::vector<nativesharp::frontend::NamespaceStateSymbol> restoredConstants;
+                            const bool membersOk = reconstructPrecompiledCMembers(duplicates,
+                                *recordDependencies.projectGraph(), "x86_64-pc-windows-msvc",
+                                *recordDependencies.nameLookup(), restoredFields, restoredConstants, dependencyError);
+                            ok &= expect(membersOk && restoredFields.size() == 3 && restoredConstants.empty(),
+                                         "precompiled C catalogues deduplicate reconstructed fields");
                             auto conflictingRecords = catalogRecords;
                             conflictingRecords.front().clangUsr = "conflicting-usr";
                             auto conflict = module;
@@ -6543,6 +6550,12 @@ int main(int argc, char** argv)
                                              conflicting, *recordDependencies.projectGraph(), "x86_64-pc-windows-msvc", restored, dependencyError) &&
                                          restored.size() == priorCount,
                                          "precompiled C catalogues reject conflicting declarations without partial output");
+                            const auto priorFields = restoredFields.size();
+                            ok &= expect(encodedConflict && !reconstructPrecompiledCMembers(conflicting,
+                                             *recordDependencies.projectGraph(), "x86_64-pc-windows-msvc",
+                                             *recordDependencies.nameLookup(), restoredFields, restoredConstants, dependencyError) &&
+                                         restoredFields.size() == priorFields,
+                                         "conflicting precompiled C catalogues preserve previous members on failure");
                         }
                     }
                 }
