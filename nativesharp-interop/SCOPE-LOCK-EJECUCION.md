@@ -7,6 +7,8 @@ de instancia hasta el metadato importado, sin usar su ausencia como identidad
 inventada ni afirmar persistencia completa. Presupuesto: CppSemanticRecord.h,
 CppSemanticRecord.cpp, CppImportedInstanceField.h, suite de sesión y registros
 Markdown. LLVM externo y NSLink protegidos; validación agrupada por tanda.
+También se transporta el USR al ClassMemberSymbol mediante ProjectMemberModel;
+persistencia y selección por identidad permanecen pendientes.
 
 ## Orden de enum volatile C alineado en arreglo de campo
 
