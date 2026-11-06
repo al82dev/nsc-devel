@@ -1,5 +1,25 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Orden de acceso a arreglos globales C volatile _Bool
+
+T08-006/T08-015/T08-016: Clang Windows x64 emite acceso atómico volatile a
+`i8` para un elemento `_Bool`. NSC representa el valor bool como `i1` y su IR
+previo accede `i1`; por ello no se puede aplicar directamente orden atómico al
+valor sin adaptar el almacenamiento. Para lectura y asignación simple de
+elementos de arreglos globales C acreditados, usar acceso `i8` y convertir al
+valor `i1` o desde él, con acquire/release en modo MS. No alterar bool de NS,
+campos, punteros, C++ ni accesos cuyo origen o modo sea desconocido. Las
+operaciones compuestas de bool y demás combinaciones siguen pendientes.
+
+Presupuesto: `src/Frontend/HIR/ExpressionStatementMachine/HirNameExpressionLowering.cpp`,
+`src/LLVM/Lowering/PackedArrayAlignment.h`,
+`src/LLVM/Lowering/OopLlvmArraysAndStores.cpp`,
+`src/LLVM/Lowering/OopLlvmExpressionMachine.cpp`,
+`tests/unit/CppClangSessionTests.cpp`, el fixture
+`pruebas-tanda-08-record-c`, tracking y registros. Comprobar IR i8,
+valores verdaderos/falsos compartidos con C y casos negativos en la validación
+agrupada. NSLink, LLVM externo y la instalación C: permanecen protegidos.
+
 ## Orden de arreglos globales C volatile escalares
 
 Clang confirmó acquire/release para arreglos globales de enteros de 8, 16,
