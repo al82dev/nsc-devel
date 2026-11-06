@@ -88,5 +88,10 @@ int Main()
     PackedConstVolatileAggregates* constVolatileAggregates = layout_packed_const_volatile_aggregates();
     if (constVolatileAggregates->pairs[1].b != 5 ||
         constVolatileAggregates->moods[1] != layout_packed_enum_new()) return 32;
+    if (layout_aligned_volatile_update() != 48) return 33;
+    AlignedVolatileAggregates* alignedVolatile = layout_aligned_volatile_aggregates();
+    alignedVolatile->pairs[1].b = 51;
+    alignedVolatile->moods[1] = layout_packed_enum_new();
+    if (alignedVolatile->pairs[1].b != 51 || alignedVolatile->moods[1] != layout_packed_enum_new()) return 34;
     return 0;
 }

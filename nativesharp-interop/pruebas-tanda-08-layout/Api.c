@@ -1,5 +1,12 @@
 #include "Api.h"
 static Pair sample_pair = { 1, 2 };
+static AlignedVolatileAggregates aligned_volatile_aggregates = { { { 2, 3 }, { 4, 5 } }, { PackedSad, PackedSad } };
+AlignedVolatileAggregates* layout_aligned_volatile_aggregates(void) { return &aligned_volatile_aggregates; }
+int layout_aligned_volatile_update(void) {
+    aligned_volatile_aggregates.pairs[1].b = 41;
+    aligned_volatile_aggregates.moods[1] = PackedHappy;
+    return aligned_volatile_aggregates.pairs[1].b + aligned_volatile_aggregates.moods[1];
+}
 static PackedConstVolatileAggregates sample_packed_const_volatile_aggregates = { 1, { { 2, 3 }, { 4, 5 } }, { PackedSad, PackedHappy } };
 PackedConstVolatileAggregates* layout_packed_const_volatile_aggregates(void) { return &sample_packed_const_volatile_aggregates; }
 static PackedVolatileAggregates sample_packed_volatile_aggregates = { 1, { { 2, 3 }, { 4, 5 } }, { PackedSad, PackedSad } };
