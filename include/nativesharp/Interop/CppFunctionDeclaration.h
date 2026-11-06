@@ -42,5 +42,7 @@ struct CppFunctionDeclaration
     std::optional<CppSourcePoint> location;
     // Opaque Clang USR; absence means Clang could not produce one.
     std::optional<std::string> clangUsr;
+    // A C declaration f() has no prototype; f(void) does.
+    bool hasPrototype = true;
 };
 }

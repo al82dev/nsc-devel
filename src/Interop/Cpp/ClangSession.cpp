@@ -346,6 +346,7 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
         value.canonicalReturnTypeSpelling = function->getReturnType().getCanonicalType().getAsString();
         value.returnType = describeType(function->getReturnType(), astContext);
         value.variadic = function->isVariadic();
+        value.hasPrototype = function->getType()->getAs<clang::FunctionProtoType>() != nullptr;
         value.externalLinkage = function->isExternallyVisible();
         value.dllImport = function->hasAttr<clang::DLLImportAttr>();
         if (const auto* prototype = function->getType()->getAs<clang::FunctionProtoType>())
