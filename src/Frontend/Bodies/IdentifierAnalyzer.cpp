@@ -474,7 +474,7 @@ void ProjectMethodBodyModel::completeParameterIdentifier(
     // E11 captured parameters are shared cells too.  `in` remains read-only; value/ref/
     // out parameters preserve the same assignability inside a closure as in the method.
     result.assignable = parameter.passKind != ParameterPassKind::In;
-    result.addressable = true;
+    result.addressable = !result.pointerPointeeVolatile;
     result.readonlyReceiver = parameter.passKind == ParameterPassKind::In;
     recordNameBinding(MethodNameBinding{
         MethodNameBindingKind::Parameter,

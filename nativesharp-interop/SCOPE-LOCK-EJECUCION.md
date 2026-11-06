@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Dirección de parámetro con apuntado volatile
+
+Preparar la misma protección aplicada a locales para parámetros por valor con
+apuntado volatile: no formar un doble puntero que pierda el calificador.
+Archivo: IdentifierAnalyzer.cpp y documentación. La protección es provisional
+y no modifica la asignabilidad ni los parámetros ordinarios.
+
 ## Resultados C puntero a struct o enum volatile
 
 Extender la proyección de resultados C de un nivel a struct o enum importado,

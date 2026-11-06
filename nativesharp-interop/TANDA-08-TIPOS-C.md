@@ -63,6 +63,7 @@ También se prepararon casos negativos de escape por tupla y conversión
 explícita; esperan ejecución y no completan la auditoría de escapes.
 Se preparó una barrera específica al tomar la dirección de un local cuyo
 apuntado es volatile: un doble puntero todavía perdería el calificador interno.
+Se aplicó la misma protección al parámetro por valor que porta ese contrato.
 El mismo fixture incluye lectura del apuntado const volatile y rechazo de
 escritura; estas comprobaciones esperan ejecución.
 Se conectó además el apuntado inmediato a struct C con layout importado y se
