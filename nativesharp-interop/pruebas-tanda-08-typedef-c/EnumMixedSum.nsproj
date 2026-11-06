@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>CEnumMixedSum</Name></PropertyGroup><ItemGroup><Compile Include="EnumMixedSum.ns" /><CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" /></ItemGroup></Project>

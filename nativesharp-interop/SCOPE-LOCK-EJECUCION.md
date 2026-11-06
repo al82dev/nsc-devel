@@ -6,6 +6,9 @@ La comparación mixta devolvió 7: HIR promueve `uint` e `int` a `long`, mientra
 Clang C aplica unsigned. Separar ese caso en un proyecto independiente y dejar
 pendiente la decisión de semántica solicitada al usuario. No cambiar reglas
 numéricas ni hacer pasar la prueba alterando silenciosamente su expectativa.
+Separar la suma mixta en un segundo proyecto para obtener su resultado aun si
+la comparación se detiene primero. Mantener ambas expectativas C como evidencia,
+sin confundir la divergencia con un resultado certificado.
 
 Contrastar operaciones mixtas entre enum C unsigned e int signed mediante
 funciones de referencia compiladas por Clang; cubrir comparación y suma.

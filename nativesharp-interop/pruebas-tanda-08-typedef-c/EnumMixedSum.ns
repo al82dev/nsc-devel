@@ -1,0 +1,8 @@
+int Main()
+{
+    CUnsigned high = U_HIGH;
+    int signedTwo = 2;
+    long mixedSum = high + signedTwo;
+    if (mixedSum != c_unsigned_add_two()) return 8;
+    return 0;
+}
