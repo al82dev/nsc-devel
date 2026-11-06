@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppSemanticInventory.h"
+#include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/Interop/CppSemanticEnumType.h"
 #include "nativesharp/Frontend/CppAliasArrayType.h"
 #include "nativesharp/Frontend/CppImportedTypeAlias.h"
@@ -27,6 +28,8 @@ namespace
 std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size_t projectOrdinal,
     std::string_view moduleName, const frontend::ProjectNameLookup* lookup, bool cLanguage)
 {
+    if (cLanguage)
+        if (auto callback = projectCppStoredFunctionPointer(type)) return callback;
     if (type.kind == CppTypeKind::Array)
     {
         const CppType* base = &type;
