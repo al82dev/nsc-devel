@@ -9,3 +9,9 @@ parámetro `const CMatrix*` no se importó (`unknown identifier`). Se aisló
 esa firma pendiente y el caso principal pasa los elementos como escalares
 para poder evaluar los otros alias. El código de salida del lanzador fue cero
 pese al error, por lo que el resultado requiere el marcador final explícito.
+
+Después de separar la firma, el proyecto real compiló, enlazó y ejecutó en
+O0–O3 y emitió `MATRIZ TYPEDEF C COMPLETA`. Se usaron alias escalares
+encadenados, matriz local, enum, struct y callback en las operaciones del
+programa. El contrato de puntero a matriz conserva una prueba independiente
+y sigue sin pasar; este resultado no cierra los typedefs C en general.

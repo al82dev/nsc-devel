@@ -450,6 +450,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     desde namespaces como último recurso y controles de acceso y sombras;
     pendientes de construcción y ejecución agrupadas.
 - [ ] T08-005. Importar alias de tipos declarados con `typedef`.
+  - Un proyecto real pasó de O0 a O3 con alias escalares encadenados, matriz
+    local, enum, struct y callback. Una función `const CMatrix*` sigue sin
+    importarse y tiene prueba separada. [Evidencia](registro-commits/proyecto-typedef-c.md).
 - [ ] T08-006. Mapear los tipos enteros C con su tamaño y signo efectivos.
   - La prueba mixta `_Bool` de campo, arreglo y llamada pasó O0–O3. Es una
     muestra, no el cierre del ítem. [Evidencia](TANDA-08-TIPOS-C.md#validación-dirigida-agrupada-identidades-y-_bool).
