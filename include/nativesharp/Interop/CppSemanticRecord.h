@@ -133,6 +133,10 @@ std::optional<std::size_t> selectCppRecordMemberDefinition(
 struct CppCRecordSnapshot
 {
     std::string identityKey;
+    std::string moduleName;
+    std::vector<std::string> namespaceSegments;
+    std::vector<std::string> containingRecords;
+    std::string name;
     std::string targetTriple;
     std::optional<std::string> clangUsr;
     std::optional<bool> microsoftVolatileSemantics;

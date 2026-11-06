@@ -705,6 +705,15 @@ CppCRecordSnapshotResult captureCppCRecordSnapshot(
         return fail("C record group does not match its observations");
     CppCRecordSnapshot snapshot;
     snapshot.identityKey = group.identity.key();
+    if (group.identity.arity() != 0) return fail("C record identity has generic arity");
+    snapshot.moduleName = group.identity.moduleName();
+    snapshot.namespaceSegments = group.identity.namespaceSegments();
+    for (const auto& container : group.identity.containingTypes())
+    {
+        if (container.arity != 0) return fail("C record container has generic arity");
+        snapshot.containingRecords.push_back(container.name);
+    }
+    snapshot.name = group.identity.name();
     snapshot.targetTriple = *target;
     snapshot.clangUsr = knownUsr;
     snapshot.microsoftVolatileSemantics = volatileModeAgrees ? volatileMode : std::nullopt;
