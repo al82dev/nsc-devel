@@ -3130,6 +3130,41 @@ int main(int argc, char** argv)
                          "C record catalog is ordered deterministically");
             if (catalog)
             {
+                auto restoredCatalog = *catalog;
+                for (auto& record : restoredCatalog)
+                    if (record.complete) record.valueLayoutUsable = false;
+                std::vector<CppCEnumSnapshot> enumCatalog;
+                if (cEnums)
+                {
+                    const auto color = std::find_if(cEnums->begin(), cEnums->end(),
+                        [](const auto& item) { return item.name == "Color"; });
+                    if (color != cEnums->end())
+                    {
+                        const std::vector<CppSemanticEnumEntry> entries{{{}, 0, 0, "x86_64-pc-windows-msvc", *color}};
+                        const nativesharp::compilation::TypeIdentity identity("Semantic", {}, {}, "Color");
+                        const std::vector<std::string> wanted{identity.key()};
+                        auto captured = captureCppCEnumCatalog(entries, 0, "Semantic", wanted);
+                        if (auto* values = std::get_if<std::vector<CppCEnumSnapshot>>(&captured)) enumCatalog = std::move(*values);
+                    }
+                }
+                std::vector<nativesharp::frontend::CppImportedTypeDeclaration> restored;
+                std::string restoreError;
+                const bool reconstructed = metadata_detail::reconstructCImportedTypes(restoredCatalog, enumCatalog,
+                    7, "Semantic", "x86_64-pc-windows-msvc", "producer.nsmeta", restored, restoreError);
+                bool pointerLayout = false, incompleteType = false, enumBase = false;
+                for (const auto& type : restored)
+                {
+                    pointerLayout |= type.identity.name() == "Pair" && !type.objectLayout && type.memberAccessLayout.has_value();
+                    incompleteType |= type.identity.name() == "Incomplete" && type.isIncomplete && !type.objectLayout;
+                    enumBase |= type.identity.name() == "Color" && type.enumBase.has_value() && type.objectLayout.has_value();
+                }
+                ok &= expect(reconstructed && enumCatalog.size() == 1 && pointerLayout && incompleteType && enumBase,
+                             "C metadata reconstructs record layout, incomplete type and enum base");
+                const auto restoredCount = restored.size();
+                ok &= expect(!metadata_detail::reconstructCImportedTypes(restoredCatalog, enumCatalog,
+                                 7, "Semantic", "different-target", "producer.nsmeta", restored, restoreError) &&
+                             restored.size() == restoredCount,
+                             "C type reconstruction rejects another target without changing output");
                 std::vector<std::uint8_t> encoded, reencoded;
                 std::vector<CppCRecordSnapshot> decoded;
                 std::string codecError;
