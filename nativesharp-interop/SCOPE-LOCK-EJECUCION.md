@@ -9,6 +9,13 @@ Presupuesto: NamespaceFunctionSymbol.h, CppSemanticFunction.cpp,
 CppSemanticFunctionGroups.cpp, suite de sesión y registros Markdown.
 No modifica formato persistente, LLVM externo ni NSLink; validar por tanda.
 
+## Identidad de campo con observación inicial incompleta
+
+T08-002: conciliar USR de campo entre todas las definiciones completas, incluso
+cuando la primera no lo reporte. Presupuesto: CppSemanticRecord.cpp,
+CppClangSessionTests.cpp, TRACKING.md y registros Markdown. No cambia LLVM,
+NSLink ni persistencia; validación agrupada.
+
 ## Layout C de booleanos
 
 T08-006/T08-010/T08-016/T08-020: añadir al fixture de layout C campos y
