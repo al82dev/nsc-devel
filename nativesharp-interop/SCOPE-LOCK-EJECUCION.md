@@ -33,6 +33,12 @@ versión NSMETA ni la publicación hasta integrar verificación, huella ABI,
 fusión y reconstrucción; la configuración sin Clang debe seguir disponible.
 Preservar también el modelo de volatile observado, sin inferirlo cuando las
 observaciones discrepen: CppSemanticRecord.h/.cpp y controles de sesión.
+Preparar el almacenamiento del catálogo codificado en el modelo de metadata,
+su preservación en fusión y poda, y el rechazo explícito al intentar escribirlo
+en versiones anteriores a 1.42. Presupuesto adicional: LibraryMetadata.h,
+LibraryMetadataMerger.cpp, LibraryMetadataVerification.cpp,
+LibraryMetadataCodec.cpp y PrecompiledSurfaceReachability.cpp. No habilitar
+todavía 1.42 ni publicar el catálogo hasta completar su lectura y huella ABI.
 
 ## Procedencia y destino de tipos importados
 
