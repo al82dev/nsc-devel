@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CUnionBitFields</Name></PropertyGroup>
+  <ItemGroup><Compile Include="Union.ns" /><CppLibraryReference Header="UnionApi.h" Language="C" Standard="c11" Library="union-api.lib" /></ItemGroup>
+</Project>

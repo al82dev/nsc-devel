@@ -1,0 +1,11 @@
+int Main()
+{
+    var value = get_union_bits();
+    init_union_bits(value);
+    if (value->first != 5 || value->delta != -3 || value->bytes[0] != 29) return 1;
+    value->delta = -7;
+    value->first = 3;
+    if (value->delta != -5 || value->bytes[0] != 27) return 2;
+    if (check_union_bits(value) != 1) return 3;
+    return 0;
+}
