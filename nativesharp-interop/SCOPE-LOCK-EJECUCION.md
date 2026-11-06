@@ -42,6 +42,9 @@ todavía 1.42 ni publicar el catálogo hasta completar su lectura y huella ABI.
 Preparar en LibraryMetadataPayload.cpp el campo delimitado para 1.42 y su
 lectura acotada, además de incorporarlo a la proyección ABI cuando exista.
 Mantener 1.42 deshabilitado como versión pública hasta conectar reconstrucción.
+Preparar en CppSemanticRecord.h/.cpp la selección de referencias de la API y
+su cierre para el proveedor; no instalarlo aún. Reportar enums sin catálogo en
+vez de producir metadata incompleta; incluir controles de sesión.
 Preparar un proveedor opcional de catálogo para el productor de metadata, sin
 activarlo desde el driver. Presupuesto adicional: ProjectCompilation.h/.cpp,
 LibraryMetadataConstruction.cpp y controles de sesión. El productor sin
