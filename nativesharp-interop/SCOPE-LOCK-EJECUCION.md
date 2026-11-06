@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Prueba de orden MS en global directo
+
+Exigir IR acquire/release del global volatile de 32 bits y comprobar desde C la
+asignación simple y compuesta. Archivos: Main.ns, validar.cmd del fixture de
+records C y documentación. Ejecutar con la validación agrupada.
+
 ## Orden MS para global volatile directo de 32 bits
 
 Emitir acquire en lectura y release en escritura, incluida asignación compuesta,

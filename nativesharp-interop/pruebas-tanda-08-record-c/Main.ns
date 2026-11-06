@@ -35,6 +35,8 @@ int Main()
     if (shared_value != 42 || read_shared_value() != 42) return 5;
     shared_volatile = 42;
     if (shared_volatile != 42 || read_shared_volatile() != 42) return 6;
+    shared_volatile += 1;
+    if (shared_volatile != 43 || read_shared_volatile() != 43) return 41;
     *volatile_pointee = 61;
     var volatile_alias = volatile_pointee;
     volatile_alias[0] = *volatile_alias + 1;

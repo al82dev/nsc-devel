@@ -31,10 +31,10 @@ findstr /r /c:"load volatile.*%%field.addr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta lectura LLVM volatile del campo. & exit /b 1)
 findstr /r /c:"store volatile.*%%field.addr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura LLVM volatile del campo. & exit /b 1)
-findstr /r /c:"load volatile.*@shared_volatile" "%DEST%\project.ll" >nul
-if errorlevel 1 (echo Falta lectura LLVM volatile del global. & exit /b 1)
-findstr /r /c:"store volatile.*@shared_volatile" "%DEST%\project.ll" >nul
-if errorlevel 1 (echo Falta escritura LLVM volatile del global. & exit /b 1)
+findstr /r /c:"load atomic volatile i32, ptr @shared_volatile acquire, align 4" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta lectura volatile acquire del global. & exit /b 1)
+findstr /r /c:"store atomic volatile i32 .*@shared_volatile release, align 4" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura volatile release del global. & exit /b 1)
 findstr /r /c:"store volatile i32 61, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile en el objeto apuntado. & exit /b 1)
 findstr /r /c:"store volatile i32 69, ptr" "%DEST%\project.ll" >nul

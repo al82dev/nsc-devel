@@ -1099,6 +1099,12 @@ int/uint. En asignación compuesta se emiten carga y escritura separadas, sin
 afirmar atomicidad de toda la operación. Faltan comprobaciones de IR y ejecución;
 campos, punteros y demás tamaños siguen pendientes.
 
+## Prueba de orden MS en global directo
+
+El fixture prepara una asignación compuesta y compara el resultado con la
+lectura C. El script exige ahora load acquire y store release volátiles para
+ese global. La prueba se ejecutará en la siguiente validación agrupada.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.
