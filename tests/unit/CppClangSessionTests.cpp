@@ -157,10 +157,15 @@ class AlteredEnumeratorUsrSession final : public CppInteropSession
 {
 public:
     AlteredEnumeratorUsrSession(std::unique_ptr<CppInteropSession> inner, std::optional<std::string> usr,
-                                bool alterValueType = false)
-        : inner_(std::move(inner)), usr_(std::move(usr)), alterValueType_(alterValueType) {}
+                                bool alterValueType = false, bool alterTarget = false)
+        : inner_(std::move(inner)), usr_(std::move(usr)), alterValueType_(alterValueType), alterTarget_(alterTarget) {}
     CppSessionState state() const noexcept override { return inner_->state(); }
-    CppSessionOptions optionsSnapshot() const override { return inner_->optionsSnapshot(); }
+    CppSessionOptions optionsSnapshot() const override
+    {
+        auto result = inner_->optionsSnapshot();
+        if (alterTarget_) result.targetTriple = "different-target";
+        return result;
+    }
     std::vector<CppSessionDiagnostic> diagnosticsSnapshot() const override { return inner_->diagnosticsSnapshot(); }
     std::optional<std::size_t> topLevelDeclarationCount() const override { return inner_->topLevelDeclarationCount(); }
     std::optional<std::vector<CppFunctionDeclaration>> freeFunctionsSnapshot() const override { return inner_->freeFunctionsSnapshot(); }
@@ -187,6 +192,7 @@ private:
     std::unique_ptr<CppInteropSession> inner_;
     std::optional<std::string> usr_;
     bool alterValueType_;
+    bool alterTarget_;
 };
 
 class AlteredFieldUsrSession final : public CppInteropSession
@@ -1542,6 +1548,30 @@ int main(int argc, char** argv)
                                 "matching enumerator USRs survive an unknown observation");
                             ok &= expect(checkEnumeratorUsr(true),
                                 "different enumerator USRs conflict across an unknown observation");
+                            {
+                                std::vector<CppProjectSessions> groups(1);
+                                groups[0].projectFile = otherProject->projectFile();
+                                auto first = open(factory, options(argv[1], argv[2], argv[3],
+                                    CppLanguageMode::C, "enum ChoiceType { Choice = -3 };\n"));
+                                auto second = open(factory, options(argv[1], argv[2], argv[3],
+                                    CppLanguageMode::C, "enum ChoiceType { Choice = -3 };\n"));
+                                bool detectsTargetChange = false;
+                                if (first && second)
+                                {
+                                    groups[0].sessions.push_back(std::make_unique<AlteredEnumeratorUsrSession>(
+                                        std::move(first), "test:choice"));
+                                    groups[0].sessions.push_back(std::make_unique<AlteredEnumeratorUsrSession>(
+                                        std::move(second), "test:choice", false, true));
+                                    std::vector<nativesharp::frontend::NamespaceStateSymbol> projected;
+                                    std::string error;
+                                    detectsTargetChange = provideCppSemanticEnumConstants(finalGraph, groups,
+                                        std::span<const nativesharp::frontend::CppFunctionDemand>(&demand, 1),
+                                        projected, error) && projected.size() == 1 &&
+                                        !projected[0].cppImportError.empty();
+                                }
+                                ok &= expect(detectsTargetChange,
+                                    "C enumerator observations from different targets conflict");
+                            }
                             {
                                 std::vector<CppProjectSessions> groups(1);
                                 groups[0].projectFile = otherProject->projectFile();
