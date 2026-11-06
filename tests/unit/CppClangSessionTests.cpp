@@ -7276,6 +7276,11 @@ int main(int argc, char** argv)
                             validProjection = projectCppStoredFunctionPointer(source, owner, module, lookup).has_value();
                             missingContextRejected = !projectCppStoredFunctionPointer(source).has_value();
                             wrongOwnerRejected = !projectCppStoredFunctionPointer(source, owner + 1, module, lookup).has_value();
+                            const auto enumAlias = std::find_if(callbackAliases->begin(), callbackAliases->end(),
+                                [](const auto& value) { return value.name == "Visitor"; });
+                            ok &= expect(enumAlias != callbackAliases->end() &&
+                                !projectCppStoredFunctionPointer(enumAlias->underlyingType, owner, module, lookup),
+                                "record callback context does not enable enum callback signatures");
                             auto functionNode = std::make_shared<CppType>(*source.element);
                             auto signature = std::make_shared<CppFunctionType>(*functionNode->function);
                             if (signature->parameterTypes.size() == 1 && signature->parameterTypes[0].element)

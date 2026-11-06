@@ -37,6 +37,10 @@ Se prepararon además controles de sesión Clang para el mismo mapeador con
 lookup real: identidad válida, ausencia de contexto, propietario incorrecto y
 USR diferente. Son pruebas pendientes de construcción y ejecución.
 
+La introducción del lookup no habilita indirectamente callbacks con enums:
+esas firmas requieren su propio tratamiento y comprobación. Se mantiene el
+rechazo previo hasta cubrir ese contrato.
+
 Para aislar la proyección del almacenamiento de la resolución de una llamada
 escrita directamente sobre un campo o global, el fixture lee cada callback
 en una variable local antes de invocarlo. Es la forma ya utilizada por el
