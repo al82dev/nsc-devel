@@ -6,4 +6,6 @@ resultado y campo. También se genera IR de Clang. La matriz está pendiente;
 no se infiere compatibilidad en otros destinos o con otro formato flotante.
 La primera ejecución confirmó los asserts de Clang y mostró `double` en su IR,
 pero NSC rechazó el typedef en O0. Se preparó una captura explícita de
-semántica IEEE binary64 y su mapeo; la construcción incremental está en curso.
+semántica IEEE binary64 y su mapeo. La construcción terminó y el caso directo
+pasó O0; la matriz se detuvo después en el consumidor precompilado. O1–O3 no
+se ejecutaron y el dato de formato aún requiere persistencia.

@@ -433,6 +433,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
   - `fe2fddfca` añade argumentos y resultados `_Bool` en llamada C; pendiente
     de ejecución, no demuestra aún su ABI.
 - [ ] T08-007. Mapear los tipos de punto flotante según el objetivo.
+  - El caso directo de `long double` pasó O0 después de capturar el formato
+    IEEE; el consumidor precompilado falló al reconstruir el campo y detuvo
+    la matriz. [Evidencia](registro-commits/metadata-long-double-c.md).
   - Clang confirmó `long double` IEEE binary64 y ABI `double` en el fixture
     Windows x64; NSC rechazó el typedef. Se preparó captura explícita y mapeo
     condicionado, con construcción en curso. La metadata aún no persiste el
