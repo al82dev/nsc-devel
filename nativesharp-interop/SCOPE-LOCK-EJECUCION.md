@@ -9,6 +9,14 @@ Presupuesto: NamespaceFunctionSymbol.h, CppSemanticFunction.cpp,
 CppSemanticFunctionGroups.cpp, suite de sesión y registros Markdown.
 No modifica formato persistente, LLVM externo ni NSLink; validar por tanda.
 
+## Funciones C/C++ globales desde namespace NativeSharp
+
+T08-003: incluir el ámbito global en la demanda y usar sus funciones importadas
+como última opción si no hay candidatos léxicos ni importados por using. Mantener
+el comportamiento de funciones NativeSharp globales y las prioridades existentes.
+Presupuesto: ProjectNamespaceFunctionModel.cpp, pruebas-tanda-08-meta-c/*,
+CppClangSessionTests.cpp, TRACKING.md y registros Markdown; validación agrupada.
+
 ## Superficie pública de biblioteca con tipo C
 
 T08-002/T08-010/T08-013: preparar un fixture de productor NativeSharp con
