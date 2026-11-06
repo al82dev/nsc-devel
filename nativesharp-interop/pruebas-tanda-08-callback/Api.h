@@ -10,12 +10,18 @@ extern Callback const readonly_callback;
 int run_holder(CallbackHolder* holder, int value);
 int run_shared(int value);
 typedef struct VolatileCallbackHolder { Callback volatile run; } VolatileCallbackHolder;
+#pragma pack(push, 1)
+typedef struct PackedVolatileCallbackHolder { char prefix; Callback volatile run; } PackedVolatileCallbackHolder;
+#pragma pack(pop)
 extern Callback volatile volatile_callback;
 VolatileCallbackHolder* get_volatile_holder(void);
+PackedVolatileCallbackHolder* get_packed_volatile_holder(void);
 int run_volatile_holder(VolatileCallbackHolder* holder, int value);
 int run_volatile_global(int value);
 void set_volatile_holder(VolatileCallbackHolder* holder, Callback value);
 void set_volatile_global(Callback value);
+int run_packed_volatile(PackedVolatileCallbackHolder* holder, int value);
+void set_packed_volatile(PackedVolatileCallbackHolder* holder, Callback value);
 typedef float FloatValue;
 typedef double DoubleValue;
 FloatValue add_float(FloatValue a, FloatValue b);

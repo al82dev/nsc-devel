@@ -11,12 +11,16 @@ Callback const readonly_callback = add_three;
 int run_holder(CallbackHolder* item, int value) { return item->run(value); }
 int run_shared(int value) { return shared_callback(value); }
 static VolatileCallbackHolder volatile_holder = { add_three };
+static PackedVolatileCallbackHolder packed_volatile_holder = { 0, add_three };
 Callback volatile volatile_callback = add_three;
 VolatileCallbackHolder* get_volatile_holder(void) { return &volatile_holder; }
+PackedVolatileCallbackHolder* get_packed_volatile_holder(void) { return &packed_volatile_holder; }
 int run_volatile_holder(VolatileCallbackHolder* item, int value) { return item->run(value); }
 int run_volatile_global(int value) { return volatile_callback(value); }
 void set_volatile_holder(VolatileCallbackHolder* item, Callback value) { item->run = value; }
 void set_volatile_global(Callback value) { volatile_callback = value; }
+int run_packed_volatile(PackedVolatileCallbackHolder* item, int value) { return item->run(value); }
+void set_packed_volatile(PackedVolatileCallbackHolder* item, Callback value) { item->run = value; }
 FloatValue add_float(FloatValue a, FloatValue b) { return a + b; }
 DoubleValue add_double(DoubleValue a, DoubleValue b) { return a + b; }
 int mix_integers(SignedByte a, UnsignedShort b, UnsignedInt c) { return (int)a + (int)b + (int)c; }

@@ -8,5 +8,10 @@ int Main()
     holder->run = replacement;
     volatile_callback = replacement;
     if (run_volatile_holder(holder, 37) != 42 || run_volatile_global(37) != 42) return 2;
+    PackedVolatileCallbackHolder* packed = get_packed_volatile_holder();
+    Callback packedValue = packed->run;
+    if (packedValue(39) != 42) return 3;
+    packed->run = replacement;
+    if (run_packed_volatile(packed, 37) != 42) return 4;
     return 0;
 }
