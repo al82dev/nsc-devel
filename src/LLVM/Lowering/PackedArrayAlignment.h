@@ -37,4 +37,17 @@ inline std::optional<std::uint64_t> fieldArrayElementAlignment(
     if (!node || node->kind != frontend::ProjectOopMirNodeKind::RawElementAddress) return std::nullopt;
     return fieldOrArrayAddressAlignment(node);
 }
+
+inline std::optional<std::uint64_t> clangMsVolatileEnumElementAlignment(
+    const frontend::ProjectOopMirNode* node) noexcept
+{
+    if (!node || node->kind != frontend::ProjectOopMirNodeKind::RawElementAddress ||
+        !node->volatileAccess || !node->cppMicrosoftVolatileSemantics.value_or(false) ||
+        !node->cppAtomicAlignmentBytes) return std::nullopt;
+    const auto width = *node->cppAtomicAlignmentBytes;
+    if (width != 1 && width != 2 && width != 4 && width != 8) return std::nullopt;
+    const auto guaranteed = fieldArrayElementAlignment(node);
+    if (!guaranteed || *guaranteed < width || *guaranteed % width != 0) return std::nullopt;
+    return width;
+}
 }
