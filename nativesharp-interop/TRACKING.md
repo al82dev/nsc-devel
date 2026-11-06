@@ -190,6 +190,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Preparados `f0a1b43b3` y `3ff58dd98`: cierre transitivo de records C y
+    enumeración de dependencias enum. Control pendiente de ejecución; falta
+    conectar el cierre a la superficie pública y persistir enums y metadata.
   - Preparados `937da338d`, `424867364`, `fbfc505da` y `cbaf3ea05`:
     preservación en el modelo, fusión y poda; rechazo en versiones antiguas y
     verificación inicial del destino. Sin ejecutar; 1.42, lectura/escritura,
