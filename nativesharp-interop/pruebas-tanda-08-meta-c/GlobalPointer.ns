@@ -1,0 +1,1 @@
+public struct Bridge { public static int Get() { return get_c_record()->value; } }
