@@ -390,7 +390,19 @@ bool compareCRecordSourceEvidence(const CppCRecordSnapshot& left, const CppCReco
                                   CRecordContractComparison& result, std::string& error)
 {
     CRecordContractComparison contract{};
-    if (!compareCRecordContracts(left, right, contract, error)) return false;
+    if (!left.complete && !right.complete)
+    {
+        if (!left.clangUsr || left.clangUsr->empty() || !right.clangUsr || right.clangUsr->empty())
+        { result = CRecordContractComparison::Insufficient; error.clear(); return true; }
+        auto normalized = right;
+        normalized.moduleName = left.moduleName;
+        normalized.identityKey = left.identityKey;
+        std::vector<std::uint8_t> leftBytes, rightBytes;
+        if (!encodeCRecordCatalog(std::span(&left, 1), leftBytes, error) ||
+            !encodeCRecordCatalog(std::span(&normalized, 1), rightBytes, error)) return false;
+        contract = leftBytes == rightBytes ? CRecordContractComparison::Matching : CRecordContractComparison::Different;
+    }
+    else if (!compareCRecordContracts(left, right, contract, error)) return false;
     if (contract != CRecordContractComparison::Matching)
     { result = contract; return true; }
     if (!left.sourceProvenance || !right.sourceProvenance)
@@ -572,8 +584,10 @@ bool encodeCTypeCatalogWithProvenance(std::span<const CppCRecordSnapshot> record
     if (!collectCatalogueFloatFormats(records, enums, formats))
     { error = "invalid floating format in C catalogue"; return false; }
     const bool hasFloatFormats = std::any_of(formats.begin(), formats.end(), [](auto value) { return value != 0; });
+    const bool hasIncompleteProvenance = std::any_of(records.begin(), records.end(),
+        [](const auto& record) { return !record.complete && record.sourceProvenance.has_value(); });
     ByteWriter writer;
-    writer.u32(hasFloatFormats ? 2 : 1);
+    writer.u32(hasIncompleteProvenance ? (hasFloatFormats ? 4 : 3) : (hasFloatFormats ? 2 : 1));
     writer.u64(static_cast<std::uint64_t>(base.size()));
     writer.raw(base);
     writer.u32(static_cast<std::uint32_t>(records.size()));
@@ -590,7 +604,7 @@ bool encodeCTypeCatalogWithProvenance(std::span<const CppCRecordSnapshot> record
         }
         catch (const std::exception&) { error = "invalid C provenance path encoding"; return false; }
         const auto validHex = [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); };
-        if (!record.complete || path.empty() || source.bufferSha256.size() != 64 ||
+        if (path.empty() || source.bufferSha256.size() != 64 ||
             !std::all_of(source.bufferSha256.begin(), source.bufferSha256.end(), validHex) ||
             !putText(writer, path) || !putText(writer, source.bufferSha256))
         { error = "invalid C record source provenance"; return false; }
@@ -610,7 +624,7 @@ bool decodeCTypeCatalogWithProvenance(std::span<const std::uint8_t> bytes,
     ByteReader reader(bytes);
     std::uint32_t version = 0, count = 0;
     std::uint64_t baseSize = 0;
-    if (!reader.u32(version) || (version != 1 && version != 2) || !reader.u64(baseSize) || baseSize > reader.remaining())
+    if (!reader.u32(version) || (version < 1 || version > 4) || !reader.u64(baseSize) || baseSize > reader.remaining())
     { error = "invalid C provenance catalogue envelope"; return false; }
     std::vector<std::uint8_t> base(static_cast<std::size_t>(baseSize));
     std::vector<CppCRecordSnapshot> decodedRecords;
@@ -635,7 +649,7 @@ bool decodeCTypeCatalogWithProvenance(std::span<const std::uint8_t> bytes,
         }
         catch (const std::exception&) { error = "invalid C provenance path encoding"; return false; }
     }
-    if (version == 2)
+    if (version == 2 || version == 4)
     {
         std::uint32_t formatCount = 0;
         if (!reader.u32(formatCount) || formatCount > maxItems || formatCount > reader.remaining())
@@ -657,7 +671,7 @@ bool decodeCTypeCatalogWithProvenance(std::span<const std::uint8_t> bytes,
 bool isCTypeCatalogWithProvenance(std::span<const std::uint8_t> bytes) noexcept
 {
     // A legacy catalogue begins with a record-block length of at least four.
-    return bytes.size() >= 4 && (bytes[0] == 1 || bytes[0] == 2) &&
+    return bytes.size() >= 4 && (bytes[0] >= 1 && bytes[0] <= 4) &&
         bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0;
 }
 
