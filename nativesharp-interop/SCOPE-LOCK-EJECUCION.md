@@ -9,6 +9,13 @@ Presupuesto: NamespaceFunctionSymbol.h, CppSemanticFunction.cpp,
 CppSemanticFunctionGroups.cpp, suite de sesión y registros Markdown.
 No modifica formato persistente, LLVM externo ni NSLink; validar por tanda.
 
+## Superficie pública de biblioteca con tipo C
+
+T08-002/T08-010/T08-013: preparar un fixture de productor NativeSharp con
+tipo C en firma pública y consumidor mediante LibraryReference. Presupuesto:
+pruebas-tanda-08-meta-c/*, TRACKING.md y registros Markdown; ejecución posterior
+en A:/nsc-interop-build/tanda08-meta-c. LLVM y NSLink permanecen protegidos.
+
 ## Comprobación incremental de cambios acumulados
 
 T08-002/T08-006/T08-009: construir incrementalmente los objetivos NSC y suite
