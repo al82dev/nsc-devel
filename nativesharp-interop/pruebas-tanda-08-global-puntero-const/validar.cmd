@@ -9,7 +9,7 @@ set "TEMP=%DEST%"
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
 set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
-for %%F in (Api.h Api.c Project.nsproj Main.ns Invalid.nsproj Invalid.ns InvalidEscape.nsproj InvalidEscape.ns InvalidAddress.nsproj InvalidAddress.ns InvalidInferred.nsproj InvalidInferred.ns InvalidArgument.nsproj InvalidArgument.ns InvalidMatrix.nsproj InvalidMatrix.ns InvalidMatrixEscape.nsproj InvalidMatrixEscape.ns) do (
+for %%F in (Api.h Api.c Project.nsproj Main.ns Invalid.nsproj Invalid.ns InvalidEscape.nsproj InvalidEscape.ns InvalidAddress.nsproj InvalidAddress.ns InvalidInferred.nsproj InvalidInferred.ns InvalidArgument.nsproj InvalidArgument.ns InvalidMatrix.nsproj InvalidMatrix.ns InvalidMatrixEscape.nsproj InvalidMatrixEscape.ns InvalidMatrixAddress.nsproj InvalidMatrixAddress.ns InvalidMatrixRowAddress.nsproj InvalidMatrixRowAddress.ns InvalidMatrixRowArgument.nsproj InvalidMatrixRowArgument.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -56,4 +56,11 @@ if not errorlevel 1 (echo Se acepto perdida de const desde matriz. & exit /b 1)
 findstr /i /c:"would discard pointee constness" "%DEST%\InvalidMatrixEscape.log" >nul
 if errorlevel 1 (echo El rechazo de matriz no identifica la perdida de const. & exit /b 1)
 echo Escritura y escape de matriz rechazados.
+for %%I in (InvalidMatrixAddress InvalidMatrixRowAddress InvalidMatrixRowArgument) do (
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\%%I.nsproj" -O0 --no-artifact-cache -o "%DEST%\%%I.exe" > "%DEST%\%%I.log" 2>&1
+  if not errorlevel 1 (echo Se acepto perdida de const en %%I. & exit /b 1)
+  findstr /i /c:"error:" "%DEST%\%%I.log" >nul
+  if errorlevel 1 (echo Falta diagnostico de error en %%I. & exit /b 1)
+)
+echo Direcciones y argumento de fila rechazados; revisar diagnosticos.
 exit /b 0

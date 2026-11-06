@@ -13,3 +13,7 @@ no se acreditan todas las dimensiones ni rutas de escape.
 
 La repetición con el script que exige los diagnósticos específicos pasó con
 el mismo build; el resultado no cierra T08-016 ni la tanda.
+
+Se preparan tres controles adicionales: dirección de un slot, dirección de una
+fila y paso de una fila a `int**`. Están pendientes de ejecución e inspección
+de sus diagnósticos; un rechazo genérico no acredita por sí solo el contrato.

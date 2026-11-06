@@ -1,0 +1,5 @@
+int Main()
+{
+    var row = &c_matrix[1];
+    return 0;
+}

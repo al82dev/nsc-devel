@@ -31,6 +31,9 @@ Extender el fixture con una matriz C `const int *[2][2]`, lectura, reasignación
 y comprobación desde C; preparar rechazos de escritura y conversión a puntero
 mutable para un elemento. No modificar producción antes de reproducir el fallo
 y acotar la propagación del calificador entre dimensiones.
+Ampliar los controles de la matriz con direcciones de elemento y de fila,
+y con el paso de una fila a `int**`. Las pruebas deben conservar el contrato
+del dato apuntado; no modificar producción sin registrar una falla concreta.
 El fixture positivo confirmó `C/C++ global type is not yet mapped` para la
 matriz. Permitir `src/Interop/Cpp/CppSemanticInventory.cpp` y
 `src/Frontend/Bodies/ExpressionCore/IndexAndRangeExpressions.cpp` para

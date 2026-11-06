@@ -1,0 +1,5 @@
+int Main()
+{
+    var slot = &c_matrix[1][0];
+    return 0;
+}
