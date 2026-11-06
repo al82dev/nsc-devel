@@ -3316,6 +3316,11 @@ y su tránsito de vuelta a C. Ejecutar la matriz O0–O3 agrupada. No modificar
 producción sin delimitar primero el archivo y el defecto observados.
 Agregar un proyecto separado para leer e invocar un puntero a función desde un
 campo de struct C y desde un global C, sin alterar el caso ya validado.
+Para el fallo observado, reutilizar el mapeo de firma de funciones existente
+en `include/nativesharp/Interop/CppSemanticFunction.h` y
+`src/Interop/Cpp/CppSemanticFunction.cpp`, y conectarlo a campos C en
+`CppSemanticRecord.cpp` y globales C en `CppSemanticInventory.cpp`. Conservar
+rechazo de volatile y firmas no representables; añadir registros Markdown.
 
 Extender el mismo fixture con parámetros y retornos C de unions de 4 y 12
 bytes, para contrastar la clasificación ABI directa e indirecta en Windows
