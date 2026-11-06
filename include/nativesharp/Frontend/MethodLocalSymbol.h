@@ -103,6 +103,7 @@ struct MethodLocalSymbol final
     bool isVolatile = false;
     bool onePastEndPointer = false;
     bool pointerPointeeReadonly = false;
+    bool pointerPointeeVolatile = false;
     bool pointerNullable = true;
     bool pointerHasProvenance = true;
     std::size_t pointerKnownAlignment = 1;

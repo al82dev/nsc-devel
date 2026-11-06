@@ -4064,6 +4064,7 @@ void ProjectMethodBodyModel::analyzeVariableInitializer(
     std::optional<language::CallableTrait>& pendingCallableTrait,
     bool& pendingOnePastEndPointer,
     bool& pendingPointerPointeeReadonly,
+    bool& pendingPointerPointeeVolatile,
     bool& pendingPointerNullable,
     bool& pendingPointerHasProvenance,
     std::size_t& pendingPointerKnownAlignment,
@@ -4123,6 +4124,12 @@ void ProjectMethodBodyModel::analyzeVariableInitializer(
     pendingOnePastEndPointer = initializer.onePastEndPointer;
     pendingPointerPointeeReadonly = declaredPointerPointeeReadonly ||
         initializer.pointerPointeeReadonly;
+    pendingPointerPointeeVolatile = initializer.pointerPointeeVolatile;
+    if (!isVarInferred && initializer.pointerPointeeVolatile &&
+        ProjectTypeConversion::isPointer(typeKey))
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, variable->first()->range(),
+            "initialization would discard pointer pointee volatile qualification");
     if (!isVarInferred) return;
     pendingPointerNullable = initializer.pointerNullable;
     pendingPointerHasProvenance = initializer.pointerHasProvenance;
@@ -4204,6 +4211,7 @@ void ProjectMethodBodyModel::initializeVariableLocal(
     const ast::AstNode* variableLengthArrayCountSyntax,
     bool pendingOnePastEndPointer,
     bool pendingPointerPointeeReadonly,
+    bool pendingPointerPointeeVolatile,
     bool pendingPointerNullable,
     bool pendingPointerHasProvenance,
     std::size_t pendingPointerKnownAlignment,
@@ -4263,6 +4271,7 @@ void ProjectMethodBodyModel::initializeVariableLocal(
     local.isVolatile = isVolatile;
     local.onePastEndPointer = pendingOnePastEndPointer;
     local.pointerPointeeReadonly = pendingPointerPointeeReadonly;
+    local.pointerPointeeVolatile = pendingPointerPointeeVolatile;
     local.pointerNullable = pendingPointerNullable;
     local.pointerHasProvenance = pendingPointerHasProvenance;
     local.pointerKnownAlignment = pendingPointerKnownAlignment;
@@ -4517,6 +4526,7 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
         variable->typeSyntax()->isPointeeConst();
     const language::PointerContract declaredPointerContract = pointerContractFromSyntax(variable->typeSyntax());
     bool pendingPointerPointeeReadonly = declaredPointerPointeeReadonly;
+    bool pendingPointerPointeeVolatile = false;
     bool pendingPointerNullable = declaredPointerContract.nullable;
     bool pendingPointerHasProvenance = declaredPointerContract.hasProvenance;
     std::size_t pendingPointerKnownAlignment = declaredPointerContract.knownAlignment;
@@ -4525,7 +4535,7 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
         precomputedVarInitializer, pendingLocalBorrow, pendingReferenceEscapeOrigin,
         pendingReferencePlaceKey, pendingReferenceReborrowSourceLocalOrdinal,
         pendingObjectLifetimeOwnership, pendingStorageOwnership, pendingCallableTrait,
-        pendingOnePastEndPointer, pendingPointerPointeeReadonly, pendingPointerNullable,
+        pendingOnePastEndPointer, pendingPointerPointeeReadonly, pendingPointerPointeeVolatile, pendingPointerNullable,
         pendingPointerHasProvenance, pendingPointerKnownAlignment, pendingPointerAddressSpace,
         variable, typeKey, methodMemberOrdinal, scopeOrdinal, diagnostics,
         declaredPointerContract, declaredPointerPointeeReadonly, isVarInferred,
@@ -4541,7 +4551,7 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
         pendingStorageOwnership, pendingCallableTrait, variableLengthArrayExtentSyntaxes,
         variableLengthArrayExtentTypeKeys, variableLengthArrayElementTypeKey,
         variableLengthArrayCountSyntax, pendingOnePastEndPointer,
-        pendingPointerPointeeReadonly, pendingPointerNullable,
+        pendingPointerPointeeReadonly, pendingPointerPointeeVolatile, pendingPointerNullable,
         pendingPointerHasProvenance, pendingPointerKnownAlignment,
         pendingPointerAddressSpace, isStaticLocal, isReferenceLocal,
         isReadonlyReference, isVariableLengthArray, isVolatile, isRaii, isScope,

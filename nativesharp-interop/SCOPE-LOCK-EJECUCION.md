@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Calificador volatile inmediato en variables locales inferidas
+
+Preparar la conservación del dato en locales inferidos a partir de una
+expresión; rechazar inicialización explícita que lo descartaría mientras no
+exista sintaxis de puntero calificado. Archivos: MethodLocalSymbol.h,
+ProjectMethodBodyModel.h, StatementAnalyzer.cpp, IdentifierAnalyzer.cpp y
+documentación. La importación continúa bloqueada; asignaciones, conversiones,
+llamadas y validación quedan pendientes antes de habilitarla.
+
 ## Preparación HIR de accesos al objeto volatile apuntado
 
 Usar el dato semántico inmediato para marcar la carga por desreferencia y la
