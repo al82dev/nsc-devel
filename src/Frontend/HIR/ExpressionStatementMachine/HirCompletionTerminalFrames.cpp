@@ -434,6 +434,14 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
             load->children.push_back(std::move(lowered));
             lowered = std::move(load);
         }
+        else if (lowered && lowered->volatileAccess)
+        {
+            // The operand is a volatile pointer value. Its load remains volatile,
+            // but the storage it addresses is not qualified by that fact.
+            auto address = makeNode(ProjectOopHirNodeKind::AddressValue, frame.syntax, resultType);
+            address->children.push_back(std::move(lowered));
+            lowered = std::move(address);
+        }
 }
 
 LoopBlockAdvance ProjectOopHirModel::completeScheduledMoveProjectionFrame(

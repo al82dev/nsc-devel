@@ -1713,6 +1713,7 @@ La tarea termina únicamente cuando las 18 tandas y su cobertura acordada estén
 - Evidencia: `mapGlobalType` rechaza explícitamente los records calificados en arreglos; el análisis de índices ya propaga readonly y volatile, y HIR transporta volatile por direcciones de índices y campos. Los casos combinados no están verificados.
 - Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, fixtures y script de `pruebas-tanda-08-record-c`, y registros Markdown. Si la batería revela un defecto, ampliar el presupuesto únicamente a las rutas semánticas o HIR identificadas. Mantener rechazados punteros a volatile y ABI de records por valor no verificado.
 - Preparar lectura de matriz const, escritura y lectura de matriz volatile, campos de structs anidados, comprobación C, IR y rechazos de escritura/dirección; verificar conjuntamente al finalizar el conjunto.
+- Primera batería: código 1 porque `*volatile_nested_record.target = 47` produjo una carga volatile del puntero seguida incorrectamente de `store volatile` en el apuntado. En `finishStorageUnaryFrame` la desreferenciación usada como dirección devuelve el nodo de carga del puntero y su indicador se interpreta como calificador del destino. Añadir `src/Frontend/HIR/ExpressionStatementMachine/HirCompletionTerminalFrames.cpp` al presupuesto y separar ambos nodos sin eliminar la carga volatile; repetir la validación agrupada.
 
 ### Global enum const
 
