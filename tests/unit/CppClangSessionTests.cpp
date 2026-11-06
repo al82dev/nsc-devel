@@ -7574,7 +7574,7 @@ int main(int argc, char** argv)
                 ok &= expect(staticFieldOwnerConfigured && !wrongStaticFieldOwner.build(*methodCompilation.nameLookup(),
                              methodCompilation.units(), staticFieldDiagnostics, methodCompilation.genericModel()) &&
                              staticFieldDiagnostics.hasErrors(), "static C++ field rejects an incorrect owner");
-                for (int scenario : {0, 1, 2, 3})
+                for (int scenario : {0, 1, 2, 3, 4, 5})
                 {
                     nativesharp::frontend::ProjectMemberModel fieldModel;
                     auto probe = importedField;
@@ -7582,6 +7582,8 @@ int main(int argc, char** argv)
                     if (scenario == 1) probe.byteOffset = *record->sizeBits / 8;
                     if (scenario == 2) probe.name = imported.name;
                     if (scenario == 3) { probe.isConst = true; probe.isVolatile = true; }
+                    if (scenario == 4) probe.byteAlignment = 3;
+                    if (scenario == 5) { probe.byteOffset = 9; probe.byteAlignment = 1; }
                     const bool configuredFields = fieldModel.setExperimentalCppInstanceFields({probe}, error) &&
                         fieldModel.setExperimentalCppInstanceMethods({imported}, error);
                     nativesharp::diagnostics::DiagnosticEngine fieldDiagnostics;
@@ -7591,6 +7593,9 @@ int main(int argc, char** argv)
                     const auto* qualifiedField = qualifiedMatches.size() == 1 ? &fieldModel.members()[qualifiedMatches[0]] : nullptr;
                     ok &= expect(scenario == 3
                         ? fieldBuilt && qualifiedField && qualifiedField->isReadonly && qualifiedField->isVolatile
+                        : scenario == 5
+                        ? fieldBuilt && qualifiedField && qualifiedField->explicitFieldOffset == 9 &&
+                            qualifiedField->explicitFieldAlignment == 1
                         : !fieldBuilt && fieldDiagnostics.hasErrors(),
                         "field index validates ownership, bounds and names while retaining qualifiers");
                 }
