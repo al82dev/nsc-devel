@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Llamada C con puntero a enum volatile importado
+
+Preparar el paso del global importado a parámetros C volatile y const volatile
+sin perder identidad de enum. Archivos: fixture
+pruebas-tanda-08-enum-funcion y documentación. Comprobar en la validación
+agrupada; no extrapolar a callbacks ni tipos anidados.
+
 ## Global C puntero a enum volatile
 
 Preparar la proyección de un global C que apunta directamente a un enum
