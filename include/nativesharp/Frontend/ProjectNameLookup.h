@@ -109,6 +109,8 @@ struct CppImportedTypeDeclaration final
     // Unknown means the observations did not establish a single origin.
     CppImportedTypeOrigin origin = CppImportedTypeOrigin::Unknown;
     std::optional<std::string> targetTriple = std::nullopt;
+    // Producer identity matched by the C provenance and closure reconciliation.
+    std::optional<std::string> reconciledIdentityKey = std::nullopt;
 };
 
 class ProjectNameLookup final

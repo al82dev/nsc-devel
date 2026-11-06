@@ -1716,7 +1716,13 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
             result.collidingGroups.push_back(inputs.groupByImportedType[index]);
         else
         {
-            filteredTypes.push_back(imported);
+            auto projected = imported;
+            const auto reconciled = std::find_if(result.reconciliations.begin(), result.reconciliations.end(),
+                [&](const auto& item) { return item.projectOrdinal == imported.projectOrdinal &&
+                                              item.liveIdentityKey == imported.identity.key(); });
+            if (reconciled != result.reconciliations.end())
+                projected.reconciledIdentityKey = reconciled->precompiledIdentityKey;
+            filteredTypes.push_back(std::move(projected));
             filteredGroups.push_back(inputs.groupByImportedType[index]);
         }
     }
@@ -1914,6 +1920,14 @@ bool selectExperimentalCppRecordTypesForCompilation(
     }
     output = std::move(std::get<CppRecordObservationInputs>(selected).types);
     const auto& observation = std::get<CppRecordObservation>(observed);
+    for (auto& type : output)
+    {
+        const auto reconciled = std::find_if(observation.reconciliations.begin(), observation.reconciliations.end(),
+            [&](const auto& item) { return item.projectOrdinal == type.projectOrdinal &&
+                                          item.liveIdentityKey == type.identity.key(); });
+        if (reconciled != observation.reconciliations.end())
+            type.reconciledIdentityKey = reconciled->precompiledIdentityKey;
+    }
     std::vector<frontend::CppImportedTypeDeclaration> enumCandidates;
     const auto* graph = compilation.projectGraph();
     if (!graph) { error = "project graph is unavailable for C enum dependencies"; return false; }
