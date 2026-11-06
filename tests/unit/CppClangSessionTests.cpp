@@ -3036,6 +3036,32 @@ int main(int argc, char** argv)
                          checkSnapshot("AnonUnion", CppRecordKind::Union, true) &&
                          checkSnapshot("Incomplete", CppRecordKind::Struct, false),
                          "C record snapshots preserve complete struct and union or an incomplete declaration");
+            std::vector<CppSemanticRecordEntry> catalogEntries;
+            for (const std::string_view name : {"Pair", "Incomplete"})
+            {
+                const auto found = std::find_if(cRecords->begin(), cRecords->end(),
+                    [&](const auto& value) { return value.name == name; });
+                if (found != cRecords->end())
+                    catalogEntries.push_back({{}, 0, 0, "x86_64-pc-windows-msvc", *found,
+                                              projectCppRecordIdentity(*found, "Semantic")});
+            }
+            auto catalogGroups = groupCppSemanticRecords(catalogEntries).groups;
+            const auto catalogResult = captureCppCRecordCatalog(catalogEntries, catalogGroups);
+            const auto* catalog = std::get_if<std::vector<CppCRecordSnapshot>>(&catalogResult);
+            ok &= expect(catalogEntries.size() == 2 && catalog && catalog->size() == 2 &&
+                         (*catalog)[0].identityKey < (*catalog)[1].identityKey,
+                         "C record catalog is ordered deterministically");
+            if (!catalogGroups.empty())
+            {
+                catalogGroups.push_back(catalogGroups.front());
+                ok &= expect(std::holds_alternative<CppCRecordSnapshotFailure>(
+                                 captureCppCRecordCatalog(catalogEntries, catalogGroups)),
+                             "C record catalog rejects duplicate identities");
+                catalogGroups.back().inventoryIndices.front() = catalogEntries.size();
+                ok &= expect(std::holds_alternative<CppCRecordSnapshotFailure>(
+                                 captureCppCRecordCatalog(catalogEntries, catalogGroups)),
+                             "C record catalog rejects an invalid group without returning partial data");
+            }
             const auto pair = std::find_if(cRecords->begin(), cRecords->end(),
                 [](const auto& value) { return value.name == "Pair"; });
             if (pair != cRecords->end())
