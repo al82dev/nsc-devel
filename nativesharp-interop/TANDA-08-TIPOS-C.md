@@ -65,6 +65,9 @@ Se preparó una barrera específica al tomar la dirección de un local cuyo
 apuntado es volatile: un doble puntero todavía perdería el calificador interno.
 El mismo fixture incluye lectura del apuntado const volatile y rechazo de
 escritura; estas comprobaciones esperan ejecución.
+Se conectó además el apuntado inmediato a struct C con layout importado y se
+prepararon accesos a campo y rechazo de dirección sin calificar. La copia y
+otras operaciones sobre el agregado completo no están verificadas.
 Se añadió el caso opuesto: puntero const a dato volatile, con escritura
 permitida en el dato y rechazo de reasignación del puntero. Sin ejecutar.
 Se conectó además el resultado C de puntero a escalar volatile con el

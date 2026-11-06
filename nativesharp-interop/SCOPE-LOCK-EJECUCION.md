@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Global C puntero a struct volatile
+
+Preparar la proyección de un global C que apunta directamente a un struct
+importado con layout comprobado. Conservar volatile hasta el acceso de campo;
+no habilitar punteros anidados. Archivos: CppSemanticInventory.cpp, fixture
+pruebas-tanda-08-record-c y documentación. Preparar lectura, escritura y
+rechazo de tomar una dirección no calificada; la validación agrupada y el
+comportamiento de agregados completos siguen pendientes.
+
 ## HIR de campos alcanzados por puntero a struct volatile
 
 Propagar volatile al campo cuando el receptor es una dirección obtenida por

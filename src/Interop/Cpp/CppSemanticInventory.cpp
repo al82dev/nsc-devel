@@ -130,12 +130,13 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
         if (current->canonicalSpelling.empty() || current->sizeBits != 64 || !current->element)
             return std::nullopt;
         current = current->element.get();
-        const bool supportedVolatileScalar = cLanguage && depth == 0 &&
+        const bool supportedVolatilePointee = cLanguage && depth == 0 &&
             (current->kind == CppTypeKind::Boolean ||
              current->kind == CppTypeKind::SignedInteger ||
              current->kind == CppTypeKind::UnsignedInteger ||
-             current->kind == CppTypeKind::Floating);
-        if ((current->isVolatile && !supportedVolatileScalar) || (current->isConst &&
+             current->kind == CppTypeKind::Floating ||
+             (lookup && current->kind == CppTypeKind::Record));
+        if ((current->isVolatile && !supportedVolatilePointee) || (current->isConst &&
             (depth != 0 || current->kind == CppTypeKind::Pointer))) return std::nullopt;
         ++depth;
     }

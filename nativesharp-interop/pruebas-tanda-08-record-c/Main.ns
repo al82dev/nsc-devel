@@ -42,6 +42,8 @@ int Main()
     volatile_matrix[1][1] = 23;
     if (volatile_array[1] != 19 || volatile_matrix[1][1] != 23 || read_volatile_arrays() != 42) return 9;
     global_record.value = 10;
+    volatile_record_target->value = 67;
+    if (volatile_record_target->value != 67 || read_volatile_record_target() != 67) return 30;
     if (bump_volatile_record(&global_record) != 12 ||
         read_const_volatile_record(&global_record) != 12) return 25;
     global_record.value = 10;
