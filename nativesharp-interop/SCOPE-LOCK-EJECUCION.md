@@ -1,5 +1,17 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Actualizaciones volatile de campos C importados
+
+La matriz mostró que Clang lee la unidad una vez para el valor previo y otra
+antes del read-modify-write; NSC reutiliza la primera lectura. Preparar la
+segunda lectura solo para campos volatile importados cuya procedencia Clang
+esté presente, sin alterar campos nativos ni agregar atomics. Presupuesto:
+`src/LLVM/Lowering/OopLlvmArraysAndStores.cpp`, fixture de matriz y registros.
+Comparar accesos O0 e incrementar pruebas de prefijo, postfijo y asignación
+compuesta; validar también las regresiones nativas. Una alineación LLVM menor
+que la conocida por Clang es conservadora y se comprobará como tal, no se
+confundirá con un cambio en el número de accesos observables.
+
 ## Matriz de unidades y operaciones de campos C volatile
 
 Preparar un fixture independiente bajo `pruebas-tanda-08-bitfields-c` para
