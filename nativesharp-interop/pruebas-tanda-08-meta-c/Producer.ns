@@ -4,7 +4,6 @@ namespace Published
     public struct Bridge
     {
         public static CRecord* Get() { return get_c_record(); }
-        public static CRecord GetValue() { return get_c_record_value(); }
         public static CGlobalKind GetKind() { return get_c_kind(); }
     }
 }

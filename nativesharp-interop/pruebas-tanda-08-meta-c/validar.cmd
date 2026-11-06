@@ -9,15 +9,25 @@ for %%O in (0 1 2 3) do (
   call :run %%O
   if errorlevel 1 exit /b 1
 )
+for %%O in (0 1 2 3) do (
+  call :run %%O value
+  if errorlevel 1 exit /b 1
+)
 echo Public C type metadata consumer compiled and ran in O0 through O3.
 exit /b 0
 
 :run
-set "DEST=%TASK_META_ROOT%\O%~1"
+set "DEST=%TASK_META_ROOT%\O%~1-%~2"
 if not exist "%DEST%" mkdir "%DEST%"
 if errorlevel 1 exit /b 1
 for %%F in (Api.h Api.c Producer.nsproj Producer.ns Consumer.nsproj Consumer.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
+  if errorlevel 1 exit /b 1
+)
+if /I "%~2"=="value" (
+  copy /y "%~dp0ProducerValue.ns" "%DEST%\Producer.ns" >nul
+  if errorlevel 1 exit /b 1
+  copy /y "%~dp0ConsumerValue.ns" "%DEST%\Consumer.ns" >nul
   if errorlevel 1 exit /b 1
 )
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 -O%~1 "%DEST%\Api.c" -o "%DEST%\api.obj"
