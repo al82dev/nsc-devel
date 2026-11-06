@@ -8,3 +8,7 @@ la batería agrupada.
 
 La prueba del proveedor de globales comprueba por separado el origen C y el
 origen C++ para evitar activar la nueva ruta en declaraciones C++.
+
+Se prepararon controles directos del cálculo de alineación con dos dimensiones,
+alineación ausente, modo no MS, stride subalineado y raíz local. Las pruebas
+siguen sin ejecutarse; no se consideran evidencia de éxito todavía.

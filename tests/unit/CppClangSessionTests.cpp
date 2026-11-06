@@ -462,6 +462,42 @@ int main(int argc, char** argv)
         nested.children.front()->kind = ProjectOopMirNodeKind::FieldLoad;
         ok &= expect(nativesharp::llvm_backend::fieldOrArrayAddressAlignment(&nested) == 4,
                      "a loaded pointer does not inherit the alignment of its storage slot");
+        auto global = std::make_unique<ProjectOopMirNode>();
+        global->kind = ProjectOopMirNodeKind::NamespaceStateAddress;
+        global->typeKey = "builtin:int[3][2]";
+        global->volatileAccess = true;
+        global->cppMicrosoftVolatileSemantics = true;
+        global->cppAtomicAlignmentBytes = 4;
+        auto globalRow = std::make_unique<ProjectOopMirNode>();
+        globalRow->kind = ProjectOopMirNodeKind::RawElementAddress;
+        globalRow->immediate = 12;
+        globalRow->children.push_back(std::move(global));
+        globalRow->children.push_back(std::make_unique<ProjectOopMirNode>());
+        ProjectOopMirNode globalElement;
+        globalElement.kind = ProjectOopMirNodeKind::RawElementAddress;
+        globalElement.typeKey = "builtin:int";
+        globalElement.volatileAccess = true;
+        globalElement.immediate = 4;
+        globalElement.children.push_back(std::move(globalRow));
+        globalElement.children.push_back(std::make_unique<ProjectOopMirNode>());
+        auto* globalRoot = globalElement.children.front()->children.front().get();
+        ok &= expect(nativesharp::llvm_backend::clangMsVolatileGlobalIntArrayAlignment(&globalElement) == 4,
+                     "C volatile global array preserves alignment across both strides");
+        globalRoot->cppAtomicAlignmentBytes.reset();
+        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileGlobalIntArrayAlignment(&globalElement),
+                     "unknown global alignment does not acquire an atomic order");
+        globalRoot->cppAtomicAlignmentBytes = 4;
+        globalRoot->cppMicrosoftVolatileSemantics = false;
+        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileGlobalIntArrayAlignment(&globalElement),
+                     "a non-MS volatile mode does not acquire an MS atomic order");
+        globalRoot->cppMicrosoftVolatileSemantics = true;
+        globalElement.children.front()->immediate = 10;
+        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileGlobalIntArrayAlignment(&globalElement),
+                     "a subaligned stride cannot acquire an atomic order");
+        globalElement.children.front()->immediate = 12;
+        globalRoot->kind = ProjectOopMirNodeKind::LocalAddress;
+        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileGlobalIntArrayAlignment(&globalElement),
+                     "a local array is not mistaken for an imported C global");
     }
     {
         using namespace nativesharp;
