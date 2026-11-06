@@ -548,8 +548,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     diagnóstico de tipo incompleto. No cubre todos los contratos de punteros.
     [Evidencia](registro-commits/prueba-punteros-opacos-c.md).
   - Un productor precompilado publicó punteros a struct y union opacos; su
-    consumidor sin header los usó en O0–O3. La reconciliación con otro header
-    y otras combinaciones siguen pendientes. [Evidencia](registro-commits/prueba-metadata-opacos-c.md).
+    consumidor sin header los usó en O0–O3. El consumidor con el mismo header
+    falló en O0 por conflicto de alias `Opaque`; la conciliación de tipos
+    adelantados sigue pendiente. [Evidencia](registro-commits/prueba-opacos-header-compartido.md).
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
   - La matriz volatile de 8, 16, 32 y 64 bits pasó O0–O3 y su control IR:
