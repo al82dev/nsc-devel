@@ -141,6 +141,7 @@ public:
     std::span<const TypeNameBinding> bindings() const noexcept;
     const NamedTypeDeclaration* typeForOrdinal(std::size_t ordinal) const noexcept;
     std::optional<std::size_t> typeOrdinalForIdentity(std::string_view identity) const;
+    std::size_t canonicalCppTypeOrdinal(std::size_t ordinal) const noexcept;
     std::optional<std::size_t> cppImportedTypeIndex(std::size_t typeOrdinal) const noexcept;
     const CppImportedTypeDeclaration* cppImportedType(std::size_t typeOrdinal) const noexcept;
     std::span<const std::size_t> typeOrdinalsForName(std::string_view name) const;
@@ -623,6 +624,7 @@ private:
     std::vector<const ast::AstNode*> cppImportedSyntheticSyntax_;
     std::vector<CppImportedTypeAlias> cppImportedTypeAliases_;
     std::unordered_map<std::size_t, std::size_t> cppImportedTypeIndices_;
+    std::unordered_map<std::size_t, std::size_t> reconciledCppTypeOrdinals_;
     std::vector<PendingTypeDeclaration> pendingTypes_;
     std::vector<NamedTypeDeclaration> namedTypes_;
     std::vector<NamedTypeDeclarationPart> externalTraitImplParts_;

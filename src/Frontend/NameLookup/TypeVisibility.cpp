@@ -173,13 +173,13 @@ std::vector<std::size_t> ProjectNameLookup::findExactTypeCandidates(
     const auto current = typesByModule_[projectOrdinal].find(fullyQualifiedName);
     if (currentModuleFirst && current != typesByModule_[projectOrdinal].end())
     {
-        return {current->second};
+        return {canonicalCppTypeOrdinal(current->second)};
     }
 
     std::vector<std::size_t> candidates;
     if (current != typesByModule_[projectOrdinal].end())
     {
-        candidates.push_back(current->second);
+        candidates.push_back(canonicalCppTypeOrdinal(current->second));
     }
     for (const std::size_t visibleOrdinal : modules_[projectOrdinal]->visibleProjectOrdinals())
     {
@@ -187,7 +187,9 @@ std::vector<std::size_t> ProjectNameLookup::findExactTypeCandidates(
         if (iterator != typesByModule_[visibleOrdinal].end() &&
             typeIsVisibleTo(projectOrdinal, iterator->second))
         {
-            candidates.push_back(iterator->second);
+            const auto canonical = canonicalCppTypeOrdinal(iterator->second);
+            if (std::find(candidates.begin(), candidates.end(), canonical) == candidates.end())
+                candidates.push_back(canonical);
         }
     }
     return candidates;

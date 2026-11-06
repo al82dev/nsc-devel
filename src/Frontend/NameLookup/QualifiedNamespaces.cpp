@@ -170,9 +170,18 @@ std::vector<std::size_t> ProjectNameLookup::resolveTypeCandidates(
     const std::string& writtenName) const
 {
     const std::size_t moduleSeparator = writtenName.find("::");
+    const auto canonicalize = [&](std::vector<std::size_t> values) {
+        std::vector<std::size_t> result;
+        for (const auto value : values)
+        {
+            const auto canonical = canonicalCppTypeOrdinal(value);
+            if (std::find(result.begin(), result.end(), canonical) == result.end()) result.push_back(canonical);
+        }
+        return result;
+    };
     if (moduleSeparator != std::string::npos)
-        return resolveModuleQualifiedTypeCandidates(
-            projectOrdinal, writtenName, moduleSeparator);
+        return canonicalize(resolveModuleQualifiedTypeCandidates(
+            projectOrdinal, writtenName, moduleSeparator));
 
     const std::vector<std::string> nameSegments = splitQualifiedName(writtenName);
     if (nameSegments.empty() || projectOrdinal >= typesByModule_.size()) return {};
@@ -198,7 +207,7 @@ std::vector<std::size_t> ProjectNameLookup::resolveTypeCandidates(
         for (const std::string& candidate : rung.spellings)
             appendQualifiedTypeCandidate(
                 found, projectOrdinal, environment, candidate, rung.tier, simpleName);
-        if (!found.empty()) return found;
+        if (!found.empty()) return canonicalize(std::move(found));
     }
     return {};
 }

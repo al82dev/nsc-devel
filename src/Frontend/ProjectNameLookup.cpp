@@ -219,6 +219,18 @@ bool ProjectNameLookup::build(
     finalizePredeclarations(diagnostics);
     finalizeReexports(units, diagnostics);
     indexes_->rebuildTypes(namedTypes_);
+    for (const auto& imported : cppImportedTypes_)
+    {
+        if (!imported.reconciledIdentityKey) continue;
+        const auto live = indexes_->typeOrdinalForIdentity(imported.identity.key());
+        const auto canonical = indexes_->typeOrdinalForIdentity(*imported.reconciledIdentityKey);
+        const auto* target = canonical ? indexes_->typeForOrdinal(*canonical) : nullptr;
+        if (!live || !canonical || !target || imported.projectOrdinal >= modules_.size() ||
+            !modules_[imported.projectOrdinal] || !typeIsVisibleTo(imported.projectOrdinal, *canonical)) return false;
+        const auto visible = modules_[imported.projectOrdinal]->visibleProjectOrdinals();
+        if (std::find(visible.begin(), visible.end(), target->projectOrdinal) == visible.end() ||
+            !reconciledCppTypeOrdinals_.emplace(*live, *canonical).second) return false;
+    }
     finalizeNamespaceDeclarations();
     collectBindingIndexes(units, diagnostics, workers);
     built_ = true;
@@ -257,7 +269,14 @@ const NamedTypeDeclaration* ProjectNameLookup::typeForOrdinal(std::size_t ordina
 std::optional<std::size_t> ProjectNameLookup::typeOrdinalForIdentity(
     std::string_view identity) const
 {
-    return indexes_->typeOrdinalForIdentity(identity);
+    const auto ordinal = indexes_->typeOrdinalForIdentity(identity);
+    return ordinal ? std::optional<std::size_t>(canonicalCppTypeOrdinal(*ordinal)) : std::nullopt;
+}
+
+std::size_t ProjectNameLookup::canonicalCppTypeOrdinal(std::size_t ordinal) const noexcept
+{
+    const auto found = reconciledCppTypeOrdinals_.find(ordinal);
+    return found == reconciledCppTypeOrdinals_.end() ? ordinal : found->second;
 }
 
 std::optional<std::size_t> ProjectNameLookup::cppImportedTypeIndex(std::size_t typeOrdinal) const noexcept
