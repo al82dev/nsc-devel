@@ -3308,6 +3308,14 @@ para probar lecturas y escrituras superpuestas en ambos sentidos y ejecutar el
 caso en O0–O3. Mantener los resultados en `A:/nsc-interop-build/tanda08-union`.
 No modificar producción sin identificar y registrar antes el alcance necesario.
 
+# Campos de bits C en Windows x64
+
+Crear `nativesharp-interop/pruebas-tanda-08-bitfields-c` y su registro para
+contrastar con Clang lectura y escritura de campos de bits C con y sin signo,
+campos de anchura cero, almacenamiento compartido y `pack(1)`; salidas solo en
+`A:/nsc-interop-build/tanda08-bitfields-c`. No cambiar producción hasta
+localizar el contrato y registrar los archivos afectados.
+
 # Contrato de long double C en Windows x64
 
 Crear `nativesharp-interop/pruebas-tanda-08-flotante-c` y registrar evidencia
