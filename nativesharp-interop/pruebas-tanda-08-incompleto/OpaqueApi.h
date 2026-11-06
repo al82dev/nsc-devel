@@ -1,10 +1,12 @@
 typedef struct Opaque Opaque;
+struct Opaque;
 extern Opaque *opaque_current;
 extern Opaque **opaque_slot;
 Opaque *opaque_get(void);
 int opaque_read(Opaque *object);
 void opaque_set(Opaque *object, int value);
 typedef union OpaqueUnion OpaqueUnion;
+union OpaqueUnion;
 extern OpaqueUnion *union_current;
 OpaqueUnion *union_get(void);
 int union_read(OpaqueUnion *object);

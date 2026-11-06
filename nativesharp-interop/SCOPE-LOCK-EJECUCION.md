@@ -25,6 +25,12 @@ aceptación con ABI 3. No reescribir las referencias archivadas existentes.
 
 ## Punteros C a tipo incompleto entre módulos
 
+Ampliar el mismo header de prueba con redeclaraciones adelantadas adicionales
+de struct y union opacos, una forma válida de C. Comprobar que el productor y
+consumidor que incluyen ese mismo archivo reconcilien su identidad y que se
+mantengan los rechazos por otro origen y por modificación del header. No
+modificar producción antes de identificar el fallo concreto.
+
 Ampliar `nativesharp-interop/pruebas-tanda-08-incompleto` con una biblioteca C
 que define privadamente un struct opaco. Un proyecto NativeSharp consumirá
 punteros devueltos por C, los pasará a funciones C y accederá a un global de
