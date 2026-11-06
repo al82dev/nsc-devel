@@ -14,6 +14,14 @@ juntas para compartir sus estáticos internos. Permitir `CppInteropSession.h`,
 `ClangSession.cpp`, `tests/unit/CppClangSessionTests.cpp` y registros. Esta
 etapa aislada no expone funciones ni las enlaza; quedan pendientes identidad
 única por proyecto, selección de demandas, objeto y enlace antes del fixture.
+Permitir ahora `CppFunctionDeclaration.h`, `ClangSession.cpp`,
+`CppSemanticInventory.h/.cpp`, `CppSemanticFunction.cpp`,
+`CppLifetimeObjectEmitter.h/.cpp`, `DriverArtifactGeneration.cpp` y tests de
+sesión y fixture para integrar funciones C static inline seleccionadas. Crear
+símbolos estables separados por proyecto y referencia, emitir juntas por sesión
+para preservar estado interno y añadir los objetos al bundle del producto.
+Verificar funciones dependientes, estado estático, llamadas externas y O0–O3;
+probar también bibliotecas precompiladas y colisiones antes de ampliar el cierre.
 
 ## Redeclaraciones C con prototipo más preciso
 
