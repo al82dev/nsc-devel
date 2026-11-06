@@ -165,6 +165,8 @@ CppSemanticFunctionResult projectFunction(
         parameter.typeKey = parameterType->nativeSharpTypeKey;
         parameter.pointerPointeeReadonly = input.type.kind == CppTypeKind::Pointer &&
             input.type.element && input.type.element->isConst;
+        parameter.pointerPointeeVolatile = input.type.kind == CppTypeKind::Pointer &&
+            input.type.element && input.type.element->isVolatile;
         symbol.parameters.push_back(std::move(parameter));
         symbol.cppParameterTypes.push_back(input.type);
         if (index != 0) { symbol.signatureKey.push_back(','); symbol.cppCanonicalIdentity.push_back(','); }

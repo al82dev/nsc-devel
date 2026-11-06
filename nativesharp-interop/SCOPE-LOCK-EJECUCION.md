@@ -1,5 +1,16 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Contrato volatile de parámetros y snapshot
+
+Conservar en MethodParameterSymbol el volatile inmediato de parámetros C
+importados, junto con su serialización en snapshot. Versionar el esquema para
+evitar interpretar el formato anterior con offsets nuevos; la carga de
+snapshots incompatibles vuelve al análisis normal. Archivos:
+MethodParameterSymbol.h, CppSemanticFunction.cpp, SnapshotCodecSupport.cpp,
+PrecompiledSemanticSnapshotCodec.cpp, CppClangSessionTests.cpp y documentación.
+La aceptación de argumentos volatile se implementa después; la validación
+agrupada incluye restauración de snapshots.
+
 ## Prueba aislada del apuntado volatile en globales
 
 Inyectar exclusivamente en CppClangSessionTests un global con tipo y símbolo

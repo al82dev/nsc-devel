@@ -87,7 +87,7 @@ void writeSnapshotParameter(PrecompiledSnapshotWriter& writer, const MethodParam
     writer.text(parameter.typeKey);
     writeSnapshotFlags(writer, {parameter.pointerPointeeReadonly, parameter.pointerNullable,
         parameter.pointerHasProvenance, parameter.isParameterPack, parameter.ffiCallback,
-        parameter.ffiCallbackMayEscape});
+        parameter.ffiCallbackMayEscape, parameter.pointerPointeeVolatile});
     writer.u64(parameter.pointerKnownAlignment);
     writer.u32(parameter.pointerAddressSpace);
     writer.byte(static_cast<std::uint8_t>(parameter.ownership));
@@ -109,7 +109,7 @@ bool readSnapshotParameter(PrecompiledSnapshotReader& reader, MethodParameterSym
     parameter.typeKey = reader.text();
     readSnapshotFlags(reader, {&parameter.pointerPointeeReadonly, &parameter.pointerNullable,
         &parameter.pointerHasProvenance, &parameter.isParameterPack, &parameter.ffiCallback,
-        &parameter.ffiCallbackMayEscape});
+        &parameter.ffiCallbackMayEscape, &parameter.pointerPointeeVolatile});
     parameter.pointerKnownAlignment = static_cast<std::size_t>(reader.u64());
     parameter.pointerAddressSpace = reader.u32();
     parameter.ownership = static_cast<sema::OwnershipKind>(reader.byte());

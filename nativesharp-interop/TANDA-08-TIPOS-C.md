@@ -27,6 +27,9 @@ provisional si perderían el calificador; aún no se ejecutó la validación.
 Las rutas ordinarias de resolución de llamadas y constructores preparan un
 rechazo temporal de argumentos con apuntado volatile. No es soporte final:
 faltan contratos por parámetro y auditoría de llamadas indirectas y variádicas.
+Se preparó un dato de contrato volatile para parámetros y su serialización;
+el esquema de snapshot cambia a v2 para no leer con el formato anterior.
+La compatibilidad por reanálisis de snapshots anteriores debe verificarse.
 Se preparó asimismo el rechazo provisional al retornar ese puntero mediante
 un tipo que no representa volatile; no está ejecutado.
 Una prueba interna preparada inyecta un global con símbolo de Clang para

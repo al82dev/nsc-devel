@@ -2529,6 +2529,7 @@ int main(int argc, char** argv)
         const auto* volatileSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projectedVolatile);
         ok &= expect(volatileSymbol && volatileSymbol->parameters.size() == 1 &&
                      volatileSymbol->parameters[0].typeKey == "builtin:int*" &&
+                     volatileSymbol->parameters[0].pointerPointeeVolatile &&
                      volatileSymbol->cppParameterTypes.size() == 1 &&
                      volatileSymbol->cppParameterTypes[0].element &&
                      volatileSymbol->cppParameterTypes[0].element->isVolatile,
