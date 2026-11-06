@@ -1,4 +1,5 @@
 #include "../Internal/DriverInternal.h"
+#include "nativesharp/Language/CallableSemantics.h"
 #include "../../Interop/Internal/CppCRecordMetadataCodec.h"
 #include "../../Interop/Internal/LibraryMetadataCodecSupport.h"
 
@@ -145,7 +146,30 @@ bool sourceFutureTypeForMetadataKey(std::string_view typeKey, std::string &sourc
 
 bool sourceCoreTypeForMetadataKey(const std::string &typeKey, std::string &sourceType, std::string &error)
 {
-
+    if (typeKey.starts_with("fn:"))
+    {
+        const auto function = language::parseFunctionTypeIdentity(typeKey);
+        if (!function || function->carrier != language::FunctionCarrier::Pointer ||
+            function->callingConvention != language::CallingConvention::C || function->variadic ||
+            function->isUnsafe || function->isNoHeap || function->isAsync || function->nullable ||
+            !function->lifetime.empty() || !function->errorType.empty())
+        {
+            error = "metadata-backed source import cannot materialize this function type";
+            return false;
+        }
+        sourceType = "fn* C(";
+        for (std::size_t i = 0; i < function->parameters.size(); ++i)
+        {
+            std::string parameter;
+            if (!sourceTypeForMetadataKey(function->parameters[i], parameter, error)) return false;
+            if (i != 0) sourceType += ", ";
+            sourceType += parameter;
+        }
+        std::string result;
+        if (!sourceTypeForMetadataKey(function->result, result, error)) return false;
+        sourceType += ") -> " + result;
+        return true;
+    }
     if (typeKey.starts_with("builtin:"))
     {
         sourceType = typeKey.substr(8);
