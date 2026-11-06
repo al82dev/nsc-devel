@@ -321,16 +321,14 @@ void testExplicitRoundTrip(TestContext& tests, const std::filesystem::path& root
     tests.expect(error.empty() && std::filesystem::is_regular_file(metadataPath),
                  "explicit metadata generation creates parent directories and "
                  "keeps stderr empty");
-    const std::string metadataFormat =
-        std::to_string(nativesharp::interop::kMetadataFormatMajor) + "." +
-        std::to_string(nativesharp::interop::kMetadataFormatMinor);
-    tests.expect(output.find("format: NSMETA " + metadataFormat) != std::string::npos &&
-            output.find("abi-fingerprint:") != std::string::npos,
-        "explicit metadata emission reports format and ABI fingerprint");
-
     LibraryMetadataCodec codec;
     LibraryMetadata metadata;
     tests.expect(codec.read(metadataPath, metadata, error), "generated metadata round-trips through the Stage 48.2 reader");
+    const std::string metadataFormat = std::to_string(metadata.formatMajor) + "." +
+        std::to_string(metadata.formatMinor);
+    tests.expect(output.find("format: NSMETA " + metadataFormat) != std::string::npos &&
+            output.find("abi-fingerprint:") != std::string::npos,
+        "explicit metadata emission reports the serialized format and ABI fingerprint");
     tests.expect(error.empty() && codec.verifyCurrentCompiler(metadata, error),
         "round-tripped metadata is compatible with the current compiler/target");
     tests.expect(metadata.producerVersion == nativesharp::kCompilerVersion && metadata.moduleName == "MetaLib",
@@ -1448,8 +1446,14 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
             error.clear();
             const bool goldenCompatible = goldenRead && codec.verifyCurrentCompiler(golden, error);
             // Freeze 3.0 P8: Object ABI 3 (array liveness map, array-backed Span). Goldens with object ABI 1
-            // (1.8-1.14) and 2 (1.15 onwards) are rejected and asked to be recompiled.
-            if (minor >= 8)
+            // (1.8-1.14) and 2 (1.15-1.39) are rejected and asked to be recompiled.
+            // The independently archived 1.44 fixture was emitted with Object ABI 3.
+            if (minor == 44)
+            {
+                tests.expect(goldenCompatible && golden.objectAbiVersion == 3,
+                             "archived NSMETA 1.44 with Object ABI 3 remains compatible (" + error + ")");
+            }
+            else if (minor >= 8)
             {
                 std::string foundAbi = "found 2";
                 if (minor < 15) foundAbi = "found 1";
@@ -1488,15 +1492,25 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     tests.expect(codec.read(versionPath, ignored, error) && codec.verifyCurrentCompiler(ignored, error),
         "metadata with a different version label is accepted when its payload is compatible");
 
-    std::vector<std::uint8_t> futureMinor = readBytes(validPath);
-    futureMinor[10] = static_cast<std::uint8_t>(nativesharp::interop::kMetadataFormatMinor + 1U);
-    futureMinor[11] = 0;
-    const auto futureMinorPath = directory / "future-minor.nsmeta";
-    writeBytes(futureMinorPath, futureMinor);
+    LibraryMetadata currentFormat = metadata;
+    currentFormat.formatMinor = nativesharp::interop::kMetadataFormatMinor;
+    const auto currentFormatPath = directory / "current-format.nsmeta";
     error.clear();
-    tests.expect(codec.read(futureMinorPath, ignored, error) &&
-                     codec.verifyCurrentCompiler(ignored, error),
-                 "a future NSMETA label is accepted when the payload remains compatible");
+    const bool wroteCurrentFormat = codec.writeModel(currentFormat, currentFormatPath, error);
+    tests.expect(wroteCurrentFormat, "current-format payload for future-label test writes (" + error + ")");
+    std::vector<std::uint8_t> futureMinor = wroteCurrentFormat ? readBytes(currentFormatPath) : std::vector<std::uint8_t>{};
+    if (futureMinor.size() >= 12U)
+    {
+        futureMinor[10] = static_cast<std::uint8_t>(nativesharp::interop::kMetadataFormatMinor + 1U);
+        futureMinor[11] = 0;
+        const auto futureMinorPath = directory / "future-minor.nsmeta";
+        writeBytes(futureMinorPath, futureMinor);
+        error.clear();
+        tests.expect(codec.read(futureMinorPath, ignored, error) &&
+                         codec.verifyCurrentCompiler(ignored, error),
+                     "a future NSMETA label is accepted when the payload remains compatible (" + error + ")");
+    }
+    else tests.expect(false, "current-format payload contains a complete metadata header");
 
     std::vector<std::uint8_t> badMagic = readBytes(validPath);
     badMagic[0] = 'X';
@@ -1705,9 +1719,8 @@ void testIntegrityAndCompatibility(TestContext& tests, const std::filesystem::pa
     output.clear(); error.clear();
     tests.expect(verifyMetadata(validPath, output, error) == ExitCode::Success &&
             output.find("NativeSharp library metadata: valid") != std::string::npos &&
-                     output.find("format: NSMETA " +
-                                     std::to_string(nativesharp::interop::kMetadataFormatMajor) + "." +
-                                     std::to_string(nativesharp::interop::kMetadataFormatMinor)) !=
+                     output.find("format: NSMETA " + std::to_string(metadata.formatMajor) + "." +
+                                     std::to_string(metadata.formatMinor)) !=
                          std::string::npos &&
                      output.find("native-abi: 1.0") != std::string::npos &&
                      output.find("runtime-abi: 1.2") != std::string::npos &&

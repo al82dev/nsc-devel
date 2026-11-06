@@ -1,5 +1,19 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Pruebas independientes de metadata histórica C
+
+La ampliación a 1.45 descubrió que falta la referencia histórica 1.44. El
+archivo `A:/nsc-interop-build/tanda08-flotante-c/CLongDoubleProducer.nsmeta`
+fue generado antes de la ampliación y el compilador experimental lo verifica
+como NSMETA 1.44 con Object ABI 3. Incorporarlo sin modificar sus bytes como
+`tests/fixtures/nsmeta/historical-1.44.nsmeta`, anotando origen y huella.
+Permitir cambios localizados en `tests/unit/Stage48_2LibraryMetadataTests.cpp`:
+validar esa referencia con su Object ABI real; comparar el formato informado
+con el de los bytes emitidos; y probar la etiqueta futura sobre un modelo
+serializado con el formato actual, no sobre un payload 1.40 truncado para 1.46.
+Las referencias ausentes 1.40–1.43 siguen pendientes; no fabricar ni reescribir
+referencias históricas para hacer pasar la prueba.
+
 ## Punteros C a tipo incompleto entre módulos
 
 Ampliar `nativesharp-interop/pruebas-tanda-08-incompleto` con una biblioteca C
