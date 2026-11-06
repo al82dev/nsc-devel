@@ -224,6 +224,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneProjectionResult(
     result->setOpaqueResultTraitName(source->opaqueResultTraitName());
     result->setExplicitTraitImplementation(source->isExplicitTraitImplementation());
     result->setPointeeConst(source->isPointeeConst());
+    result->setPointeeVolatile(source->isPointeeVolatile());
     result->setPackExpansion(source->isPackExpansion());
     result->setRange(source->range());
     return result;
@@ -571,6 +572,7 @@ ast::TypeSyntax* ProjectGenericModel::clonePackType(
     selected->setOpaqueResultTraitName(source->opaqueResultTraitName());
     selected->setExplicitTraitImplementation(source->isExplicitTraitImplementation());
     selected->setPointeeConst(source->isPointeeConst());
+    selected->setPointeeVolatile(source->isPointeeVolatile());
     selected->setRange(source->range());
     return selected;
 }
@@ -596,6 +598,7 @@ void ProjectGenericModel::applyClonedTypeSurface(
     result->setOpaqueResultTraitName(source->opaqueResultTraitName());
     result->setExplicitTraitImplementation(source->isExplicitTraitImplementation());
     result->setPointeeConst(source->isPointeeConst());
+    result->setPointeeVolatile(source->isPointeeVolatile());
     result->setPackExpansion(source->isPackExpansion());
     // Stage 52 fix: only stamp the TEMPLATE's own range for the non-substituted branch (the
     // clone still represents source text written at that template position, e.g. `T[]`'s own

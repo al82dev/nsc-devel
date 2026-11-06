@@ -62,6 +62,8 @@ void TypeSyntax::setExplicitTraitImplementation(bool value) noexcept
 }
 bool TypeSyntax::isPointeeConst() const noexcept { return isPointeeConst_; }
 void TypeSyntax::setPointeeConst(bool value) noexcept { isPointeeConst_ = value; }
+bool TypeSyntax::isPointeeVolatile() const noexcept { return isPointeeVolatile_; }
+void TypeSyntax::setPointeeVolatile(bool value) noexcept { isPointeeVolatile_ = value; }
 
 void TypeSyntax::setBaseTokenKind(lexer::TokenKind kind) noexcept
 {

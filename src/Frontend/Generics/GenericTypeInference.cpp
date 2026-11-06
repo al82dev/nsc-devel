@@ -433,6 +433,7 @@ ast::TypeSyntax* ProjectGenericModel::cloneInferredTypeArgument(
     value->setOpaqueResult(actual->isOpaqueResult());
     value->setOpaqueResultTraitName(actual->opaqueResultTraitName());
     value->setPointeeConst(actual->isPointeeConst());
+    value->setPointeeVolatile(actual->isPointeeVolatile());
     if (actual->originProjectOrdinal().has_value())
         value->setOriginProjectOrdinal(*actual->originProjectOrdinal());
     if (actual->originNamespace().has_value())

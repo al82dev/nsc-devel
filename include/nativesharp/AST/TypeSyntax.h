@@ -79,6 +79,8 @@ public:
     // (`const T* p`). The bit is semantic-only: it does not alter the canonical Win64 ABI type.
     bool isPointeeConst() const noexcept;
     void setPointeeConst(bool value = true) noexcept;
+    bool isPointeeVolatile() const noexcept;
+    void setPointeeVolatile(bool value = true) noexcept;
 
     void addTypeArgument(TypeSyntax* typeArgument);
     const std::vector<TypeSyntax*>& typeArguments() const noexcept;
@@ -186,6 +188,7 @@ private:
     std::string opaqueResultTraitName_;
     bool isExplicitTraitImplementation_ = false;
     bool isPointeeConst_ = false;
+    bool isPointeeVolatile_ = false;
     std::vector<TypeSyntax*> typeArguments_;
     bool isTuple_ = false;
     std::vector<std::string> tupleElementNames_;

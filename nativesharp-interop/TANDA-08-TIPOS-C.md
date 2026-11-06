@@ -2,6 +2,12 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Base de sintaxis para typedefs con apuntado volatile
+
+Se preparó un dato de volatile inmediato en la sintaxis de tipos y se conserva
+en sus rutas de clonación. Ningún alias lo activa todavía: faltan caché,
+identidad, proyección y consumidores. El cambio no se ha construido ni validado.
+
 ## Calificador volatile del objeto apuntado: base en preparación
 
 Los párrafos siguientes registran la secuencia de cambios; las barreras que se

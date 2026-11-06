@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Base de sintaxis para typedefs con apuntado volatile
+
+Añadir el dato de volatile inmediato a TypeSyntax y conservarlo en las rutas
+que clonan ese objeto. Archivos: TypeSyntax.h/.cpp, Parser.cpp,
+ProjectOpaqueResultModel.cpp, TypeAliasExpander.cpp, GenericTypeInference.cpp,
+GenericCloner.cpp y documentación. El dato permanece falso hasta conectar
+aliases y caché; no se admite sintaxis nueva ni se declara el soporte cerrado.
+La serialización, identidad y consumidores se preparan antes de activarlo.
+
 ## Dirección de parámetro con apuntado volatile
 
 Preparar la misma protección aplicada a locales para parámetros por valor con
