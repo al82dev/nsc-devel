@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Inicializador de prueba de identidad referida
+
+La compilación de `92d212d3e` advirtió que el fixture sintético de
+CppRecordTypeIdentity omite el nuevo campo opcional clangUsr. Inicializarlo
+explícitamente como ausente en CppClangSessionTests.cpp; no cambiar semántica.
+Verificar con la próxima compilación agrupada.
+
 ## Símbolos contradictorios de una misma función Clang
 
 T08-002/T08-003: el agrupador usa símbolo de enlace y nombre; dos snapshots con

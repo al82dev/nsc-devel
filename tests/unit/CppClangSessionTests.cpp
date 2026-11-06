@@ -2392,7 +2392,7 @@ int main(int argc, char** argv)
             ? nativesharp::frontend::cppAliasRecordType(recordPointerAlias->underlyingType) : std::nullopt;
         CppType nestedRecordType;
         nestedRecordType.kind = CppTypeKind::Record;
-        nestedRecordType.recordIdentity = CppRecordTypeIdentity{"Inner", {"N"}, {"Outer"}, false, false};
+        nestedRecordType.recordIdentity = CppRecordTypeIdentity{"Inner", {"N"}, {"Outer"}, false, false, std::nullopt};
         const auto nestedRecord = nativesharp::frontend::cppAliasRecordType(nestedRecordType);
         ok &= expect(projectedRecord && projectedRecord->name == "Pair" && projectedRecord->pointerDepth == 0 &&
                      projectedRecordPointer && projectedRecordPointer->name == "Pair" &&
