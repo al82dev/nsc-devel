@@ -6523,6 +6523,26 @@ int main(int argc, char** argv)
                                 catalogRecords.front().moduleName, "x86_64-pc-windows-msvc", *recordDependencies.nameLookup(), fields, dependencyError);
                             ok &= expect(rebuilt && fields.size() == 3,
                                          "C metadata reconstructs scalar, array and pointer fields");
+                            nativesharp::frontend::PrecompiledSyntaxModule module;
+                            module.metadataPath = std::filesystem::path(argv[2]) / "first.nsmeta";
+                            module.cppCTypeCatalog = catalogBytes;
+                            const std::vector<nativesharp::frontend::PrecompiledSyntaxModule> duplicates{module, module};
+                            std::vector<nativesharp::frontend::CppImportedTypeDeclaration> restored;
+                            const bool restoredOk = metadata_detail::reconstructPrecompiledCImportedTypes(
+                                duplicates, *recordDependencies.projectGraph(), "x86_64-pc-windows-msvc", restored, dependencyError);
+                            ok &= expect(restoredOk && restored.size() == 2,
+                                         "precompiled C catalogues deduplicate identical declarations");
+                            auto conflictingRecords = catalogRecords;
+                            conflictingRecords.front().clangUsr = "conflicting-usr";
+                            auto conflict = module;
+                            const bool encodedConflict = metadata_detail::encodeCTypeCatalog(
+                                conflictingRecords, catalogEnums, conflict.cppCTypeCatalog, dependencyError);
+                            const std::vector<nativesharp::frontend::PrecompiledSyntaxModule> conflicting{module, conflict};
+                            const auto priorCount = restored.size();
+                            ok &= expect(encodedConflict && !metadata_detail::reconstructPrecompiledCImportedTypes(
+                                             conflicting, *recordDependencies.projectGraph(), "x86_64-pc-windows-msvc", restored, dependencyError) &&
+                                         restored.size() == priorCount,
+                                         "precompiled C catalogues reject conflicting declarations without partial output");
                         }
                     }
                 }
