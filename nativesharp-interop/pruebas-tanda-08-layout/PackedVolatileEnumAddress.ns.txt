@@ -1,0 +1,6 @@
+int Main()
+{
+    PackedVolatileAggregates* value = layout_packed_volatile_aggregates();
+    PackedMood* unsafeAddress = &value->moods[1];
+    return 0;
+}

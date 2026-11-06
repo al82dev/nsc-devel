@@ -1,0 +1,6 @@
+int Main()
+{
+    PackedVolatileAggregates* value = layout_packed_volatile_aggregates();
+    int* unsafeAddress = &value->pairs[1].b;
+    return 0;
+}

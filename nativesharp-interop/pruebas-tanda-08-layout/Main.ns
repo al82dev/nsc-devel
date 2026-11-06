@@ -79,5 +79,11 @@ int Main()
         constAggregates->moods[1] != layout_packed_enum_new()) return 29;
     ConstAggregates* alignedConst = layout_const_aggregates();
     if (alignedConst->pairs[1].b != 5 || alignedConst->moods[1] != layout_packed_enum_new()) return 30;
+    PackedVolatileAggregates* volatileAggregates = layout_packed_volatile_aggregates();
+    volatileAggregates->pairs[1].b = 91;
+    volatileAggregates->moods[1] = layout_packed_enum_new();
+    if (volatileAggregates->pairs[1].b != 91 ||
+        volatileAggregates->moods[1] != layout_packed_enum_new() ||
+        layout_packed_volatile_aggregates_sum() != 98) return 31;
     return 0;
 }
