@@ -5602,6 +5602,29 @@ int main(int argc, char** argv)
                                          : ready && branch && leaf,
                                  "C record dependencies handle cycles and reject a conflicting native type");
                 }
+                {
+                    nativesharp::frontend::ProjectCompilation mismatchedDependency;
+                    mismatchedDependency.setSourceBufferProvider([](const std::filesystem::path& source)
+                        -> std::optional<std::string> {
+                        if (source.filename() == "Main.ns") return "int Use(Branch* value) { return 0; } int Main() { return 0; }\n";
+                        return std::nullopt;
+                    });
+                    auto realSession = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C,
+                        "struct Leaf { int value; }; struct Branch { struct Leaf items[2]; struct Branch* next; };\n"));
+                    CppProjectSessions group;
+                    group.projectFile = std::filesystem::absolute(path);
+                    if (realSession) group.sessions.push_back(std::make_unique<AlteredFieldUsrSession>(std::move(realSession)));
+                    std::vector<CppProjectSessions> groups;
+                    groups.push_back(std::move(group));
+                    std::string error;
+                    const bool configured = !groups.front().sessions.empty() &&
+                        mismatchedDependency.setCppProjectSessions(std::move(groups), error) &&
+                        mismatchedDependency.setExperimentalCppTypeProvider(provideCppInteropTypes, error) &&
+                        mismatchedDependency.setExperimentalCppTypeSelector(selectExperimentalCppRecordTypesForCompilation, error);
+                    const bool ready = configured && mismatchedDependency.compileProjectNames(path, error);
+                    ok &= expect(configured && !ready && error.find("different Clang USR") != std::string::npos,
+                                 "C field dependency closure rejects a different known record USR");
+                }
                 for (bool useCollision : {false, true})
                 {
                     nativesharp::frontend::ProjectCompilation collisionCompilation;
