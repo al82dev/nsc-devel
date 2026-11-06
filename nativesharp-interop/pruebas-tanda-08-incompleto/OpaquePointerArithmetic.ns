@@ -1,6 +1,11 @@
 int Main()
 {
     Opaque** next = opaque_slot + 1;
+    next--;
+    next += 1;
+    next--;
+    Opaque** same = &next[0];
+    if (same != opaque_slot) return 2;
     if (next == null) return 1;
     return 0;
 }

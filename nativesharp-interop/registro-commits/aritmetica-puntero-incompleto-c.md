@@ -16,4 +16,10 @@ Se preparó un diagnóstico semántico para `+` y `-` cuando el elemento es un
 struct o union C importado incompleto. No afecta `Opaque** + 1`, cuyo elemento
 es un puntero con tamaño conocido. Se agregaron controles de ambos casos al
 fixture agrupado. Están pendientes la construcción y validación; `+=`,
-incremento e indexación utilizan otras rutas y no quedan cubiertos.
+incremento e indexación utilizan otras rutas.
+
+Después se prepararon comprobaciones separadas para `+=`, incremento e índice
+tras reproducir en cada caso un fallo de layout durante el descenso. El script
+exige los diagnósticos semánticos de las tres rutas y ejecuta el control
+`Opaque**` con aritmética, incremento e índice en O0–O3. Las correcciones y
+controles están preparados, todavía no construidos ni validados.

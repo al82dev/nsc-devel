@@ -47,6 +47,14 @@ findstr /c:"pointer arithmetic requires a complete C type" "%DEST%\arithmetic.lo
 if errorlevel 1 (echo Falta diagnostico de aritmetica sobre tipo incompleto. & exit /b 1)
 findstr /c:"OpaqueUnion" "%DEST%\arithmetic.log" >nul
 if errorlevel 1 (echo Falta diagnostico de aritmetica sobre union incompleta. & exit /b 1)
+for %%T in (OpaqueCompound OpaqueIncrement OpaqueIndex) do (
+  copy /y "%~dp0%%T.ns.txt" "%DEST%\OpaqueArithmetic.ns" >nul
+  if errorlevel 1 exit /b 1
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\OpaqueArithmetic.nsproj" > "%DEST%\%%T.log" 2>&1
+  if not errorlevel 1 (echo Operacion %%T sobre tipo incompleto aceptada. & exit /b 1)
+  findstr /c:"pointer arithmetic requires a complete C type" "%DEST%\%%T.log" >nul
+  if errorlevel 1 (echo Falta diagnostico semantico en %%T. & exit /b 1)
+)
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\OpaqueInvalid.nsproj" -O0 --no-artifact-cache -o "%DEST%\invalid.exe" > "%DEST%\invalid.log" 2>&1
 if not errorlevel 1 (echo Objeto incompleto por valor aceptado. & exit /b 1)
 findstr /i /c:"C object local 'value' cannot be created by value because its type is incomplete" "%DEST%\invalid.log" >nul
