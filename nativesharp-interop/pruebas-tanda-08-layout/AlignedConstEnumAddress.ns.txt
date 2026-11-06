@@ -1,0 +1,6 @@
+int Main()
+{
+    ConstAggregates* value = layout_const_aggregates();
+    PackedMood* unsafeAddress = &value->moods[1];
+    return 0;
+}
