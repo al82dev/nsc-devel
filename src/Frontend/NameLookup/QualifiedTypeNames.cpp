@@ -265,6 +265,16 @@ bool ProjectNameLookup::expandCppTypeAlias(
         {
             if (record && record->pointerDepth == 0 && !record->pointeeConst && nativeCandidates.size() == 1)
             {
+                const auto* canonical = typeForOrdinal(nativeCandidates.front());
+                if (canonical)
+                    for (const auto& imported : cppImportedTypes_)
+                        if (imported.projectOrdinal == selected->projectOrdinal && imported.reconciledIdentityKey &&
+                            *imported.reconciledIdentityKey == canonical->identity.key() &&
+                            imported.identity.fullyQualifiedName() == record->canonicalName &&
+                            compatibleUsr(record->clangUsr, imported.clangUsr)) return true;
+            }
+            if (record && record->pointerDepth == 0 && !record->pointeeConst && nativeCandidates.size() == 1)
+            {
                 // Imported ordinal indices are finalized after binding. Inspect the already
                 // aggregated declaration and its originating input instead of that later index.
                 const auto* declaration = typeForOrdinal(nativeCandidates.front());

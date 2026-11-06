@@ -1488,6 +1488,15 @@ static CppRecordBindingResult selectCppRecordBindingsWithCatalogs(
     }
     if (std::find(seen.begin(), seen.end(), false) != seen.end())
         return CppRecordBindingFailure{"imported type mapping was not installed"};
+    for (const auto groupIndex : groupByImportedType)
+    {
+        const auto canonical = lookup.typeOrdinalForIdentity(groups.groups[groupIndex].identity.key());
+        if (!canonical || *canonical >= groupByOrdinal.size())
+            return CppRecordBindingFailure{"canonical record group is not installed"};
+        if (groupByOrdinal[*canonical] && *groupByOrdinal[*canonical] != groupIndex)
+            return CppRecordBindingFailure{"canonical record maps to multiple live groups"};
+        groupByOrdinal[*canonical] = groupIndex;
+    }
     CppRecordBindingSelection result;
     auto append = [&](std::vector<std::size_t>& destination, std::size_t ordinal) {
         if (ordinal >= groupByOrdinal.size() || !groupByOrdinal[ordinal]) return;
