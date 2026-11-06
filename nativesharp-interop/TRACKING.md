@@ -208,6 +208,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     accesos y se conserva el tipo de Clang; las pruebas incluyen const y
     ejecución mixta. Siguen pendientes los punteros volatile que NativeSharp
     accede directamente y los demás contratos. [Detalle](TANDA-08-TIPOS-C.md).
+  - Preparación sin activar para acceso directo al objeto apuntado: modelos de
+    expresiones y globales, locales inferidos, operadores, HIR y controles
+    iniciales de asignación y conversión. Faltan llamadas, retornos, cobertura
+    completa de propagación y validación; la importación sigue bloqueada.
 - [ ] T08-016. Mapear arreglos de tamaño conocido.
 - [ ] T08-017. Definir la representación de punteros a función C.
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.
