@@ -1,5 +1,17 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Almacenamiento de puntero global importado volatile
+
+T08-015: para un global C/C++ importado cuyo propio puntero es volatile, de 64 bits
+y con modo MS y alineación acreditados por Clang, preservar acquire/release en
+su lectura y escritura directas. No transferir volatile al objeto apuntado ni
+alterar campos, punteros indirectos o destinos no acreditados. Archivos:
+HirNameExpressionLowering.cpp, OopLlvmSupport.h,
+OopLlvmExpressionLeaves.cpp, OopLlvmArraysAndStores.cpp, Api.c, Main.ns,
+validar.cmd y verificar_ir_c.py del fixture records C y registros Markdown.
+Verificar IR de C y NativeSharp y ejecución agrupada O0–O3. NSLink y LLVM son
+de solo lectura.
+
 ## Correcciones de la prueba de identidad
 
 La batería en cb60b585e falló al enlazar `nsc_namespace_function_llvm_tests`:
