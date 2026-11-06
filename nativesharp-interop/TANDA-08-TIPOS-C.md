@@ -1159,3 +1159,19 @@ El análisis de cast descartaba el dato volatile del tipo de destino y
 rechazaba incluso conversiones que lo conservan. Se transfiere al resultado y
 se mantiene el rechazo cuando el destino no lo representa. La comprobación
 funcional corresponde a la validación agrupada, aún pendiente.
+
+# Validación de globales volatile enteros
+
+La ejecución de `nativesharp-interop/validar-tanda-08.cmd` sobre la revisión
+`4d2176569` terminó con código 0. Construyó incrementalmente las configuraciones
+ON y OFF; la prueba enfocada de restauración MIR informó cuatro comprobaciones
+aprobadas. Los siete proyectos de la batería terminaron correctamente. El
+fixture de records comprobó los globales enteros de 8, 16 y 64 bits con y sin
+signo, la lectura acquire y escritura release en IR, y ejecución mixta con C
+en O0, O1, O2 y O3. La prueba también conservó el caso previo de 32 bits.
+
+La restauración MIR alterna ausencia de prueba de alineación y valores de 1,
+2, 4 y 8 bytes. La compilación produjo advertencias de inicializadores en
+CppSemanticRecord.cpp y CppClangSessionTests.cpp; no impidieron la batería.
+Este resultado no acredita volatile en campos, punteros, otros tipos, ni la
+totalidad del ítem T08-015. La tanda 08 sigue abierta.

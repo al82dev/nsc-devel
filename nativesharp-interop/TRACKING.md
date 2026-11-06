@@ -227,6 +227,11 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     bits bajo la opción MS y alineación comprobada, con acquire/release en IR
     y ejecución O0–O3. El resto de formas sigue pendiente.
     [Evidencia](TANDA-08-TIPOS-C.md#validación-agrupada-con-orden-ms-de-global-directo).
+  - Validación agrupada posterior a `4d2176569`: globales directos enteros de
+    8, 16 y 64 bits con y sin signo, además del caso previo de 32 bits; IR y
+    ejecución mixta O0–O3. La restauración MIR preservó las alineaciones
+    opcionales. Otros tipos y formas de acceso siguen pendientes.
+    [Evidencia](TANDA-08-TIPOS-C.md#validación-de-globales-volatile-enteros).
 - [ ] T08-016. Mapear arreglos de tamaño conocido.
 - [ ] T08-017. Definir la representación de punteros a función C.
 - [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.
