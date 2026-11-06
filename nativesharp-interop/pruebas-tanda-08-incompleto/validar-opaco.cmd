@@ -26,7 +26,7 @@ for %%O in (0 1 2 3) do (
 )
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\OpaqueInvalid.nsproj" -O0 --no-artifact-cache -o "%DEST%\invalid.exe" > "%DEST%\invalid.log" 2>&1
 if not errorlevel 1 (echo Objeto incompleto por valor aceptado. & exit /b 1)
-findstr /i /c:"error:" "%DEST%\invalid.log" >nul
+findstr /i /c:"C/C++ object local 'value' cannot be created by value until object lifetime is implemented" "%DEST%\invalid.log" >nul
 if errorlevel 1 (echo Falta diagnostico de objeto incompleto. & exit /b 1)
-echo Objeto incompleto por valor rechazado; revisar diagnostico.
+echo Objeto por valor rechazado por limitacion de lifetime.
 exit /b 0

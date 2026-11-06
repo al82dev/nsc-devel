@@ -539,6 +539,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     contratos. [Evidencia](registro-commits/prueba-union-c-superpuesta.md).
 - [ ] T08-012. Obtener de Clang tamaño, alineación y desplazamiento de cada campo.
 - [ ] T08-013. Representar tipos declarados pero incompletos sin inventar su tamaño.
+  - Un puntero a struct C incompleto se usó en retorno, parámetros y global
+    con biblioteca separada O0–O3. El local por valor se rechaza por la
+    limitación general de lifetime; falta diagnosticar específicamente el tipo
+    incompleto y cubrir otros usos. [Evidencia](registro-commits/prueba-punteros-opacos-c.md).
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
   - La matriz volatile de 8, 16, 32 y 64 bits pasó O0–O3 y su control IR:
