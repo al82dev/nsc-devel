@@ -601,6 +601,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
     el arreglo y la matriz de records empaquetados, con comprobación de IR O0
     y rechazo de direcciones subalineadas. T08-016 sigue abierto.
 - [ ] T08-017. Definir la representación de punteros a función C.
+  - Productor precompilado con retorno callback genera metadata, pero el
+    consumidor no encuentra el método en O0; queda por investigar su
+    materialización. [Evidencia](registro-commits/callback-c-metadata.md).
   - Escrituras a campo y global de callback e invocación desde C pasaron
     O0–O3; escrituras a sus variantes const se rechazaron en O0.
     [Detalle](registro-commits/callback-c-escritura-const.md).
