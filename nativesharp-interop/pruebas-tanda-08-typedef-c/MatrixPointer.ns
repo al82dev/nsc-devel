@@ -4,5 +4,7 @@ int Main()
     matrix[0][1] = 4;
     matrix[1][2] = 5;
     if (c_matrix_ptr(&matrix) != 9) return 1;
+    c_matrix_mutate(&matrix);
+    if (matrix[0][1] != 13 || c_matrix_ptr(&matrix) != 18) return 2;
     return 0;
 }

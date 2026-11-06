@@ -1,12 +1,15 @@
 typedef unsigned int CCount;
 typedef CCount CCountAlias;
 typedef int CMatrix[2][3];
+typedef int CWrongMatrix[3][2];
 typedef enum CColor { COLOR_RED = 1, COLOR_BLUE = 2 } CColor;
 typedef struct CPoint { int x; int y; } CPoint;
 typedef int (*COperation)(int);
 CCountAlias c_double(CCountAlias value);
 int c_matrix_sum(int first, int second);
 int c_matrix_ptr(const CMatrix* matrix);
+void c_matrix_mutate(CMatrix* matrix);
+const CMatrix* c_matrix_get(void);
 int c_point_sum(const CPoint* point);
 CColor c_color(void);
 COperation c_operation(void);

@@ -2,6 +2,10 @@
 
 ## Typedef C en proyectos reales
 
+Agregar al fixture una función C que modifica una matriz por puntero y otra
+que devuelve puntero a matriz const. Verificar mutación real O0–O3; rechazar
+pasar la matriz const o una matriz de dimensiones distintas al parámetro mutable.
+
 Crear `nativesharp-interop/pruebas-tanda-08-typedef-c` para comprobar juntos
 typedefs C escalares, cadena de alias, arreglos de dimensiones fijas, enum,
 struct y callback en un proyecto NativeSharp enlazado con una biblioteca C.

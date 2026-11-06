@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>CTypedefConstMatrixInvalid</Name></PropertyGroup><ItemGroup><Compile Include="InvalidConstMatrix.ns" /><CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" /></ItemGroup></Project>

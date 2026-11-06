@@ -1,0 +1,1 @@
+int Main() { CWrongMatrix wrong; c_matrix_mutate(&wrong); return 0; }

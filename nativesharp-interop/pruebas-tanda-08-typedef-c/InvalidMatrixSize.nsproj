@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>CTypedefMatrixSizeInvalid</Name></PropertyGroup><ItemGroup><Compile Include="InvalidMatrixSize.ns" /><CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" /></ItemGroup></Project>
