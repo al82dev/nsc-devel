@@ -3308,6 +3308,14 @@ para probar lecturas y escrituras superpuestas en ambos sentidos y ejecutar el
 caso en O0–O3. Mantener los resultados en `A:/nsc-interop-build/tanda08-union`.
 No modificar producción sin identificar y registrar antes el alcance necesario.
 
+# Contrato de long double C en Windows x64
+
+Crear `nativesharp-interop/pruebas-tanda-08-flotante-c` y registrar evidencia
+para comprobar el formato efectivo de `long double` en Clang 23 y su uso por
+argumento, resultado y campo desde NativeSharp, con O0–O3. Salidas en
+`A:/nsc-interop-build/tanda08-flotante-c`. No cambiar producción hasta
+comprobar representación y delimitar el alcance.
+
 # Punteros a función C devueltos al consumidor
 
 Ampliar `nativesharp-interop/pruebas-tanda-08-callback` y su documentación
