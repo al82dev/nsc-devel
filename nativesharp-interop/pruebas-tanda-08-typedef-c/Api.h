@@ -25,4 +25,6 @@ CColor c_color(void);
 CColor c_echo_color(CColor color);
 int c_unsigned_verify(CUnsigned value);
 unsigned int c_unsigned_plus_one(void);
+unsigned int c_unsigned_half(void);
+unsigned int c_unsigned_remainder(void);
 COperation c_operation(void);

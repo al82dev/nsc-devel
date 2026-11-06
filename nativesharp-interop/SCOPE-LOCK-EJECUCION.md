@@ -7,6 +7,9 @@ de enum NativeSharp también se rechaza. Permitir el ajuste localizado de
 `src/Frontend/Bodies/OperatorExpressionAnalyzer.cpp` para usar el tipo
 subyacente solo de enums C importados, preservando las reglas de enum NS.
 Comprobar lowering, signo y resultado frente a C.
+Ampliar el mismo fixture con división y residuo unsigned, comparados con las
+funciones equivalentes compiladas por Clang; no inferir esas operaciones de la
+sola suma.
 
 Preparar comprobación de operaciones aritméticas sobre enums C importados,
 comparando el resultado unsigned con una función C y manteniendo un control
