@@ -919,6 +919,30 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     return metadata_detail::encodeCTypeCatalog(records, {}, output, error);
 }
 
+bool selectCppTypesWithPrecompiledCatalogs(const frontend::ProjectCompilation& compilation,
+    std::vector<frontend::CppImportedTypeDeclaration>& output, std::string& error)
+{
+    const auto* graph = compilation.projectGraph();
+    if (!graph) { error = "C type selection requires a project graph"; return false; }
+    std::vector<frontend::CppImportedTypeDeclaration> selected = output;
+    if (!compilation.cppProjectSessions().empty() &&
+        !selectExperimentalCppRecordTypesForCompilation(compilation, selected, error)) return false;
+    std::vector<frontend::CppImportedTypeDeclaration> precompiled;
+    if (!metadata_detail::reconstructPrecompiledCImportedTypes(compilation.precompiledModules(), *graph,
+            "x86_64-pc-windows-msvc", precompiled, error)) return false;
+    std::set<std::string> identities;
+    for (const auto& type : selected)
+        if (!identities.insert(type.identity.key()).second)
+        { error = "duplicate selected C/C++ type: " + type.identity.key(); return false; }
+    for (auto& type : precompiled)
+    {
+        if (!identities.insert(type.identity.key()).second)
+        { error = "live and precompiled C/C++ type identity requires reconciliation: " + type.identity.key(); return false; }
+        selected.push_back(std::move(type));
+    }
+    output = std::move(selected); error.clear(); return true;
+}
+
 bool reconstructCImportedFields(std::span<const CppCRecordSnapshot> records,
     std::size_t projectOrdinal, std::string_view moduleName, std::string_view targetTriple,
     const frontend::ProjectNameLookup& lookup, std::vector<frontend::CppImportedInstanceField>& output,
