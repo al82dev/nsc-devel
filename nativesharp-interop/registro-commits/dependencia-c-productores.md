@@ -28,3 +28,7 @@ productores llamaron a la función externa, el consumidor la llamó directamente
 y los estados estáticos independientes conservaron los valores esperados.
 El enlace informó tres bibliotecas: los dos productores y una dependencia C.
 No se prueban todavía todos los órdenes ni grafos de bibliotecas.
+
+Se prepara un control adicional: el consumidor utiliza también las funciones
+inline con estado del mismo encabezado, y comprueba que su contador y variable
+estática son independientes de los dos productores. Pendiente de validación.

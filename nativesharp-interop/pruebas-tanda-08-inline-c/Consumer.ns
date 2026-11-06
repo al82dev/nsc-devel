@@ -9,5 +9,8 @@ int Main()
     PublishedSecond.Bridge.Set(42);
     if (PublishedSecond.Bridge.Get() != 42 || Published.Bridge.Get() != 37) return 6;
     if (PublishedSecond.Bridge.Compose(5) != 16 || external_double(10) != 20) return 7;
+    if (header_counter() != 1 || header_counter() != 2) return 8;
+    header_set(55);
+    if (header_get() != 55 || Published.Bridge.Get() != 37 || PublishedSecond.Bridge.Get() != 42) return 9;
     return 0;
 }
