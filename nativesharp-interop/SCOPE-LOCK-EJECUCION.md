@@ -10,6 +10,11 @@ se rechazó en el control. Permitir cambio localizado en
 `src/Frontend/ProjectConversionClassifier.cpp` para conversiones numéricas de
 enum C importado a entero o enum C, sin habilitar conversiones de enums NS.
 LLVM debe respetar ancho y signo del origen; comprobarlo en O0–O3.
+El programa compiló pero terminó con código 3 al ampliar `CUnsigned` a long.
+`findEnumUnderlyingInfo` usa el syntax del enum sintético y obtiene int en vez
+del tipo `enumBase` importado. Permitir cambio localizado en
+`src/LLVM/LlvmTypeLayout.cpp` para consultar el tipo informado por Clang en
+enums C, manteniendo la ruta existente para enums NS y probando signo y ancho.
 
 Preparar caso independiente de asignación e inicialización de enumeradores C
 a variables, elementos de arreglo y parámetros del enum importado. Comparar

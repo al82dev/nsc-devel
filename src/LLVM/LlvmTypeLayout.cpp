@@ -1,5 +1,7 @@
 #include "nativesharp/LLVM/LlvmTypeLayout.h"
 
+#include <string>
+
 namespace nativesharp::llvm_backend
 {
 const frontend::ProjectOopMirStructLayout* findStructLayout(
@@ -20,6 +22,12 @@ const frontend::builtins::IntegerTypeInfo* findEnumUnderlyingInfo(
     if (!typeKey.starts_with("type:")) return nullptr;
     const std::optional<std::size_t> ordinal =
         nameLookup.typeOrdinalForIdentity(typeKey.substr(5));
+    const auto* imported = ordinal ? nameLookup.cppImportedType(*ordinal) : nullptr;
+    if (imported && imported->origin == frontend::CppImportedTypeOrigin::CEnum)
+    {
+        if (!imported->enumBase || !imported->deferredImportError.empty()) return nullptr;
+        return frontend::builtins::findIntegerType("builtin:" + std::string(imported->enumBase->name));
+    }
     const frontend::NamedTypeDeclaration* type = ordinal.has_value()
         ? nameLookup.typeForOrdinal(*ordinal) : nullptr;
     if (type == nullptr || type->kind != frontend::NamedTypeDeclarationKind::Enum) return nullptr;
