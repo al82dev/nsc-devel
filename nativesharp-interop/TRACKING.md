@@ -213,6 +213,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-008. Mapear el tipo `void` en parámetros y resultados donde corresponda.
 - [ ] T08-009. Mapear enumeraciones y sus valores representables.
 - [ ] T08-010. Importar la declaración y campos de un `struct` C.
+  - Preparado en `ac71663a7` y `1454f719f`: propagación de alineación por
+    campos anidados y caso MIR que distingue valores puntero. Sin ejecutar;
+    los records anidados subalineados aún no se proyectan.
 - [ ] T08-011. Importar la declaración y campos de una `union` C.
 - [ ] T08-012. Obtener de Clang tamaño, alineación y desplazamiento de cada campo.
 - [ ] T08-013. Representar tipos declarados pero incompletos sin inventar su tamaño.

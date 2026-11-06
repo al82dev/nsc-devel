@@ -1320,6 +1320,14 @@ los valores en ejecución y rechaza tomar la dirección. No se ha ejecutado.
 Los campos empaquetados C++ y los campos C de punteros, agregados y bitfields
 siguen pendientes, así como otras formas de acceso; no se cierra la tanda.
 
+## Alineación de campos anidados preparada
+
+`ac71663a7` combina alineación y offsets a través de direcciones de campo y
+elementos de arreglo, deteniéndose al encontrar un valor cargado. La suite
+preparada en `1454f719f` distingue una dirección subalineada de un puntero
+cargado. Todavía no se ejecutó y el proyector no habilita records anidados
+subalineados; faltan las pruebas y la protección de direcciones.
+
 ## Validación dirigida de arreglos empaquetados calificados y de punteros
 
 En `a0dc6fc71`, la construcción incremental de NSC terminó con código 0 y
