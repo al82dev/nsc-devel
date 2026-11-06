@@ -71,6 +71,8 @@ struct CppSemanticRecordEntry
     std::string targetTriple;
     CppRecordDeclaration declaration;
     std::optional<compilation::TypeIdentity> identity;
+    // Effective option reported by the owning Clang session, if available.
+    std::optional<bool> microsoftVolatileSemantics;
 };
 
 struct CppSemanticRecordFailure

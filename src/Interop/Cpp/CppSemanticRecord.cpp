@@ -374,11 +374,12 @@ CppSemanticRecordsResult collectCppSemanticRecords(
             auto declarations = session->recordsSnapshot();
             if (!declarations) return CppSemanticRecordFailure{group.projectFile, index, "C/C++ session is not available"};
             const auto target = session->optionsSnapshot().targetTriple;
+            const auto microsoftVolatileSemantics = session->microsoftVolatileSemantics();
             for (auto& declaration : *declarations)
             {
                 auto identity = projectCppRecordIdentity(declaration, graph.projects()[*owner].moduleName());
                 result.push_back({group.projectFile, index, *owner, target,
-                                  std::move(declaration), std::move(identity)});
+                                  std::move(declaration), std::move(identity), microsoftVolatileSemantics});
             }
         }
     }
