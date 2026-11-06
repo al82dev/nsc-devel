@@ -2,6 +2,13 @@
 
 ## TLS de una DLL C
 
+Preparar un fixture separado `pruebas-tanda-08-tls-c/directo` con un global
+TLS exportado por DLL, lectura y escritura directa desde NS y control de
+aislamiento desde C. Generar además un consumidor C con Clang/lld y registrar
+sus relocaciones como referencia del ABI. Usar solo
+`A:/nsc-interop-build/tanda08-tls-directo`; no cambiar producción ni NSLink
+hasta observar y delimitar los resultados.
+
 El fixture TLS estático falla por `_tls_index` en NSLink. Sin modificarlo,
 preparar una variante en `pruebas-tanda-08-tls-c` donde Clang y lld construyan
 una DLL C con directorio TLS y NSC invoque su función de aislamiento entre

@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>CTlsDirect</Name></PropertyGroup><ItemGroup><Compile Include="Native.ns" /><CppLibraryReference Header="TlsApi.h" Language="C" Standard="c11" Library="api.lib" Runtime="api.dll" /></ItemGroup></Project>

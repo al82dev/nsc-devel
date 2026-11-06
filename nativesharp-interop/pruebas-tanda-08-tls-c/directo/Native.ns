@@ -1,0 +1,8 @@
+int Main()
+{
+    if (tls_exported != 3) return 1;
+    tls_exported = 41;
+    if (tls_read() != 41) return 2;
+    if (tls_other_thread() != 0 || tls_exported != 41) return 3;
+    return 0;
+}
