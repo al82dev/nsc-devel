@@ -1,6 +1,6 @@
 enum CGlobalKind { CGlobalChoice = 21 };
 enum __attribute__((packed)) CSignedSmall { CNegative = -1, CPositive = 2 };
-enum CWideUnsigned { CHigh = 2147483648u };
+enum CWideUnsigned : unsigned int { CHigh = 2147483648u };
 typedef struct CRecord { int value; enum CGlobalKind kind; } CRecord;
 typedef struct CBig { int first; int second; int third; } CBig;
 CRecord* get_c_record(void);

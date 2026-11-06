@@ -1,4 +1,5 @@
 #include "Api.h"
+_Static_assert(_Generic((enum CWideUnsigned)0, unsigned int: 1, default: 0), "enum must be unsigned");
 static CRecord record = { 17, CGlobalChoice };
 CRecord* get_c_record(void) { return &record; }
 CRecord get_c_record_value(void) { return record; }
