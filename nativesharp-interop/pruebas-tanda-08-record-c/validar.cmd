@@ -39,6 +39,8 @@ findstr /r /c:"store volatile i32 61, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile en el objeto apuntado. & exit /b 1)
 findstr /r /c:"store volatile i32 69, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile mediante alias tipado. & exit /b 1)
+findstr /r /c:"store volatile i32 71, ptr" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura volatile despues de la conversion al alias. & exit /b 1)
 findstr /r /c:"store volatile i32 67, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile del campo apuntado. & exit /b 1)
 findstr /r /c:"store volatile i32 68, ptr" "%DEST%\project.ll" >nul

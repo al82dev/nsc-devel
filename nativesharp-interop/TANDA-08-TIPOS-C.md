@@ -834,6 +834,12 @@ El script preparado exige una escritura LLVM volatile a través del alias y
 diagnósticos al intentar perder el calificador en un local o un retorno. Estos
 controles acompañan al caso positivo; ninguno se ha ejecutado todavía.
 
+## Conversión explícita al alias volatile
+
+El caso positivo preparado convierte un puntero al alias, escribe el valor 71
+y exige verlo desde C y en una escritura LLVM volatile. Queda por ejecutar en
+la validación agrupada, sin afirmar compatibilidad para conversiones anidadas.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

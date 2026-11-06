@@ -40,6 +40,9 @@ int Main()
     VolatileIntPtr typed_volatile = forward_volatile_alias(volatile_pointee);
     *typed_volatile = 69;
     if (*typed_volatile != 69 || read_volatile_pointee() != 69) return 33;
+    VolatileIntPtr cast_volatile = (VolatileIntPtr)volatile_pointee;
+    *cast_volatile = 71;
+    if (read_volatile_pointee() != 71) return 34;
     shared_array[1] = 19;
     int* shared_element = &shared_array[1];
     if (*shared_element != 19) return 10;

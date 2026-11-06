@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Conversión explícita al alias volatile
+
+Preparar un caso positivo que convierte al alias C, escribe por el resultado y
+comprueba tanto el valor observado desde C como la instrucción LLVM volatile.
+Archivos: Main.ns y validar.cmd del fixture de records C y documentación.
+La ejecución corresponde a la validación agrupada de la tanda 08.
+
 ## Comprobaciones del alias C a puntero volatile
 
 Preparar comprobación de IR de la escritura por el alias y rechazos de pérdida
