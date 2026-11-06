@@ -797,10 +797,11 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
              field.declaredTypeKey == "builtin:float") naturalScalarAlignment = 4;
     else if (field.declaredTypeKey == "builtin:long" || field.declaredTypeKey == "builtin:ulong" ||
              field.declaredTypeKey == "builtin:double") naturalScalarAlignment = 8;
-    const bool unalignedImportedScalar = field.isCppExternal && field.explicitFieldAlignment &&
+    else if (field.declaredTypeKey.ends_with('*')) naturalScalarAlignment = 8;
+    const bool unalignedImportedField = field.isCppExternal && field.explicitFieldAlignment &&
         naturalScalarAlignment != 0 && *field.explicitFieldAlignment < naturalScalarAlignment;
     result.addressable = !field.isBitField && !result.volatileStorage &&
-        !field.declaredPointerPointeeVolatile && !unalignedImportedScalar &&
+        !field.declaredPointerPointeeVolatile && !unalignedImportedField &&
         !(field.isCppExternal && (field.isReadonly || receiver.readonlyReceiver));
     result.readonlyReceiver = receiver.readonlyReceiver || field.isReadonly;
     result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;

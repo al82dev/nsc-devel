@@ -89,7 +89,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     if (effectiveAlignment < naturalAlignment &&
         (record.isCxx || (field.type.kind != CppTypeKind::Boolean &&
          field.type.kind != CppTypeKind::SignedInteger && field.type.kind != CppTypeKind::UnsignedInteger &&
-         field.type.kind != CppTypeKind::Floating))) return std::nullopt;
+         field.type.kind != CppTypeKind::Floating && field.type.kind != CppTypeKind::Pointer))) return std::nullopt;
     auto mapped = mapCppScalarType(field.type);
     if (!mapped && !record.isCxx && field.type.kind == CppTypeKind::Array)
         mapped = projectCArrayField(field.type, projectOrdinal, moduleName, lookup);

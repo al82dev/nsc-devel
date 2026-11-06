@@ -1,5 +1,16 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Campo puntero C empaquetado
+
+T08-010/T08-012/T08-014: permitir la proyección de un campo puntero C ya
+representable aunque su almacenamiento esté subalineado. La carga/escritura
+del puntero usa alineación del campo; el objeto apuntado conserva su propio
+contrato. Impedir exponer la dirección del campo puntero como `T**` mientras
+NSC no preserve alineación de esa dirección. No habilitar agregados, bitfields,
+punteros a volatile ni campos C++ empaquetados. Presupuesto:
+CppSemanticRecord.cpp, MemberAccessAnalyzer.cpp, fixture layout y registros
+Markdown. LLVM y NSLink protegidos; validación agrupada con la tanda.
+
 ## Campos escalares C empaquetados
 
 T08-010/T08-012/T08-020: habilitar acceso directo a campos escalares C cuya
