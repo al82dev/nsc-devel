@@ -1437,9 +1437,10 @@ bool provideExperimentalCppRecordCandidates(
     return true;
 }
 
-CppRecordBindingResult selectCppRecordBindings(
+static CppRecordBindingResult selectCppRecordBindingsWithCatalogs(
     const frontend::ProjectNameLookup& lookup, const CppRecordGroups& groups,
-    std::span<const std::size_t> groupByImportedType)
+    std::span<const std::size_t> groupByImportedType,
+    std::span<const frontend::CppImportedTypeDeclaration> catalogs)
 {
     std::vector<std::optional<std::size_t>> groupByOrdinal(lookup.namedTypes().size());
     std::vector<bool> seen(groupByImportedType.size());
@@ -1451,6 +1452,14 @@ CppRecordBindingResult selectCppRecordBindings(
         if (*imported >= groupByImportedType.size())
         {
             const auto* type = lookup.cppImportedType(ordinal);
+            const auto offset = *imported - groupByImportedType.size();
+            if (offset < catalogs.size())
+            {
+                if (!type || type->identity.key() != catalogs[offset].identity.key() ||
+                    type->projectOrdinal != catalogs[offset].projectOrdinal)
+                    return CppRecordBindingFailure{"invalid precompiled C type mapping"};
+                continue;
+            }
             if (type && type->kind == frontend::NamedTypeDeclarationKind::Enum) continue;
         }
         if (*imported >= groupByImportedType.size() || seen[*imported])
@@ -1485,6 +1494,13 @@ CppRecordBindingResult selectCppRecordBindings(
     unique(result.referencedGroups);
     unique(result.expressionCandidateGroups);
     return result;
+}
+
+CppRecordBindingResult selectCppRecordBindings(
+    const frontend::ProjectNameLookup& lookup, const CppRecordGroups& groups,
+    std::span<const std::size_t> groupByImportedType)
+{
+    return selectCppRecordBindingsWithCatalogs(lookup, groups, groupByImportedType, {});
 }
 
 CppRecordObservationResult selectExperimentalCppRecordTypes(const CppRecordObservation& observation)
@@ -1600,9 +1616,13 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
     if (!copySnapshots(nativeSnapshots))
         return CppRecordObservationFailure{"precompiled snapshot does not match observation syntax"};
     const auto& namespaces = std::get<std::vector<std::pair<std::size_t, std::string>>>(visible);
+    std::vector<frontend::CppImportedTypeDeclaration> precompiledTypes;
+    if (!metadata_detail::reconstructPrecompiledCImportedTypes(compilation.precompiledModules(), *graph,
+            "x86_64-pc-windows-msvc", precompiledTypes, error))
+        return CppRecordObservationFailure{std::move(error)};
     frontend::ProjectNameLookup nativeLookup;
     nativeLookup.setPrecompiledSnapshots(nativeSnapshots);
-    if (!nativeLookup.setImportedNamespaces(namespaces))
+    if (!nativeLookup.setImportedNamespaces(namespaces) || !nativeLookup.setCppImportedTypes(precompiledTypes))
         return CppRecordObservationFailure{"cannot configure native observation lookup"};
     nativeLookup.build(*graph, units, diagnostics);
     if (!nativeLookup.hasTypeIndex())
@@ -1614,6 +1634,8 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
         const auto& imported = inputs.types[index];
         const auto nativeOrdinal = nativeLookup.typeOrdinalForIdentity(imported.identity.key());
         const auto* native = nativeOrdinal ? nativeLookup.typeForOrdinal(*nativeOrdinal) : nullptr;
+        if (nativeOrdinal && nativeLookup.cppImportedType(*nativeOrdinal))
+            return CppRecordObservationFailure{"live and precompiled C/C++ type identity requires reconciliation: " + imported.identity.key()};
         if (native && native->projectOrdinal == imported.projectOrdinal)
             result.collidingGroups.push_back(inputs.groupByImportedType[index]);
         else
@@ -1637,11 +1659,14 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
     std::vector<frontend::CppImportedTypeDeclaration> enums;
     if (!provideCppEnumTypes(*graph, compilation.cppProjectSessions(), enums, error))
         return CppRecordObservationFailure{std::move(error)};
+    filteredTypes.insert(filteredTypes.end(), precompiledTypes.begin(), precompiledTypes.end());
     std::set<std::string> collidingEnumIdentities;
     for (auto& enumeration : enums)
     {
         const auto ordinal = nativeLookup.typeOrdinalForIdentity(enumeration.identity.key());
         const auto* native = ordinal ? nativeLookup.typeForOrdinal(*ordinal) : nullptr;
+        if (ordinal && nativeLookup.cppImportedType(*ordinal))
+            return CppRecordObservationFailure{"live and precompiled C/C++ type identity requires reconciliation: " + enumeration.identity.key()};
         const bool collidesWithRecord = std::any_of(filteredTypes.begin(), filteredTypes.end(),
             [&](const auto& record) { return record.identity.key() == enumeration.identity.key(); });
         if (native || collidesWithRecord) collidingEnumIdentities.insert(enumeration.identity.key());
@@ -1690,13 +1715,15 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
     };
     deduplicate(result.referencedCollidingGroups);
     deduplicate(result.expressionCollidingGroups);
-    auto selected = selectCppRecordBindings(lookup, result.groups, filteredGroups);
+    auto selected = selectCppRecordBindingsWithCatalogs(lookup, result.groups, filteredGroups, precompiledTypes);
     if (const auto* failure = std::get_if<CppRecordBindingFailure>(&selected))
         return CppRecordObservationFailure{failure->message};
     result.selection = std::move(std::get<CppRecordBindingSelection>(selected));
     std::set<std::string> enumIdentities;
     const auto addEnum = [&](std::size_t ordinal) {
         const auto* type = lookup.cppImportedType(ordinal);
+        const auto index = lookup.cppImportedTypeIndex(ordinal);
+        if (index && *index >= filteredGroups.size() && *index < filteredGroups.size() + precompiledTypes.size()) return;
         if (type && type->kind == frontend::NamedTypeDeclarationKind::Enum &&
             enumIdentities.insert(type->identity.key()).second)
             result.referencedEnumTypes.push_back(*type);
