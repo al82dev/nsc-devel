@@ -15,11 +15,15 @@ for %%F in (Project.nsproj Main.ns Api.h Api.c) do (
 )
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Api.c" -o "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
+clang.exe -S -emit-llvm --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Api.c" -o "%DEST%\api.ll"
+if errorlevel 1 exit /b 1
 llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\project.ll"
 if errorlevel 1 exit /b 1
 python "%~dp0verificar_ir_campos.py" "%DEST%\project.ll"
+if errorlevel 1 exit /b 1
+python "%~dp0verificar_volatile_alineado.py" "%DEST%\api.ll" "%DEST%\project.ll"
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\program.exe"
 if errorlevel 1 exit /b 1
