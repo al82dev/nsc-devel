@@ -2,5 +2,10 @@ int Main()
 {
     Value* item = get_value();
     item->integer = 42;
-    return first_byte(item) - 42;
+    if (first_byte(item) != 42) return 1;
+    set_integer(item, 258);
+    if (item->bytes[0] != 2 || item->bytes[1] != 1) return 2;
+    item->bytes[0] = 3;
+    if (get_integer(item) != 259) return 3;
+    return 0;
 }

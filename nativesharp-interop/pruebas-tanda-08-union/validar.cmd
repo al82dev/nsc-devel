@@ -17,9 +17,11 @@ clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Api.c" -o "%DEST%\
 if errorlevel 1 exit /b 1
 llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
-nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\program.exe"
-if errorlevel 1 exit /b 1
-"%DEST%\program.exe"
-if errorlevel 1 exit /b 1
-echo Union C compartida: resultado esperado cero.
+for %%O in (0 1 2 3) do (
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O%%O --no-artifact-cache -o "%DEST%\program-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  "%DEST%\program-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  echo Union C compartida O%%O: resultado esperado cero.
+)
 exit /b 0
