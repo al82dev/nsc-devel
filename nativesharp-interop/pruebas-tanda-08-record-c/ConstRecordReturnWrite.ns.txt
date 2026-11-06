@@ -1,0 +1,5 @@
+int Main()
+{
+    get_const_globalonly()->value = 42;
+    return 0;
+}

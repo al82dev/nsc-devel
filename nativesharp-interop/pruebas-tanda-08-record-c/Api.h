@@ -33,6 +33,8 @@ extern const struct GlobalOnly global_record_const;
 extern const struct GlobalOnly* readonly_record_pointer;
 int read_readonly_record_pointer(void);
 int read_const_globalonly(const struct GlobalOnly* value);
+const struct GlobalOnly* get_const_globalonly(void);
+const int* get_const_scalar(void);
 void write_mutable_globalonly(struct GlobalOnly* value);
 extern volatile struct GlobalOnly global_record_volatile;
 extern struct GlobalOnly* volatile volatile_record_pointer;

@@ -131,6 +131,30 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project
 if not errorlevel 1 exit /b 1
 findstr /c:"no viable overload of namespace function 'write_mutable_globalonly'" "%DEST%\const-record-pointer-call.log" >nul
 if errorlevel 1 exit /b 1
+copy /y "%~dp0ConstRecordReturnWrite.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-record-return-write.exe" > "%DEST%\const-record-return-write.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"left side of assignment is not assignable" "%DEST%\const-record-return-write.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0ConstRecordReturnConversion.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-record-return-conversion.exe" > "%DEST%\const-record-return-conversion.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"would discard pointee constness" "%DEST%\const-record-return-conversion.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0ConstRecordReturnCall.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-record-return-call.exe" > "%DEST%\const-record-return-call.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"no viable overload of namespace function 'write_mutable_globalonly'" "%DEST%\const-record-return-call.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0ConstScalarReturnWrite.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-scalar-return-write.exe" > "%DEST%\const-scalar-return-write.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"left side of assignment is not assignable" "%DEST%\const-scalar-return-write.log" >nul
+if errorlevel 1 exit /b 1
 copy /y "%~dp0VolatileRecordGlobal.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-record.exe" > "%DEST%\volatile-record.log" 2>&1

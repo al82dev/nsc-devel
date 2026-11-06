@@ -32,6 +32,9 @@ const struct GlobalOnly global_record_const = { 7 };
 const struct GlobalOnly* readonly_record_pointer = &global_record_const;
 int read_readonly_record_pointer(void) { return readonly_record_pointer->value; }
 int read_const_globalonly(const struct GlobalOnly* value) { return value->value; }
+const struct GlobalOnly* get_const_globalonly(void) { return &global_record_const; }
+static const int const_scalar_value = 27;
+const int* get_const_scalar(void) { return &const_scalar_value; }
 void write_mutable_globalonly(struct GlobalOnly* value) { value->value = 42; }
 volatile struct GlobalOnly global_record_volatile = { 8 };
 struct GlobalOnly* volatile volatile_record_pointer = &global_record_target;

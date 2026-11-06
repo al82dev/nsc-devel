@@ -1,0 +1,5 @@
+int Main()
+{
+    GlobalOnly* pointer = get_const_globalonly();
+    return 0;
+}
