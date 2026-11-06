@@ -1,4 +1,7 @@
 int external_double(int value);
+extern int external_unused;
+static int *unused_pointer = &external_unused;
+static int unused_helper(void) { return external_unused; }
 static int shared_state;
 static int hidden_add(int value) { return value + 3; }
 static inline int header_add(int left, int right) { return left + right; }
