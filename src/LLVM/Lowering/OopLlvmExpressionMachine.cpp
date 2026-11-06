@@ -1482,6 +1482,11 @@ bool OopLlvmImplementation::lowerExpressionFrame030PointerLoad(
     if (const auto alignment = fieldArrayElementAlignment(current->children.front().get()))
         LLVMSetAlignment(load, static_cast<unsigned>(*alignment));
     if (current->volatileAccess) LLVMSetVolatile(load, 1);
+    if (const auto alignment = clangMsVolatileEnumElementAlignment(current->children.front().get()))
+    {
+        LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
+        LLVMSetAlignment(load, static_cast<unsigned>(*alignment));
+    }
     values.push_back(load);
     return true;
 }

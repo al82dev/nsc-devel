@@ -178,6 +178,11 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 if (const auto alignment = fieldOrArrayAddressAlignment(node->children[0].get()))
                     LLVMSetAlignment(previous, static_cast<unsigned>(*alignment));
             if (node->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
+            if (const auto alignment = clangMsVolatileEnumElementAlignment(node->children[0].get()))
+            {
+                LLVMSetOrdering(previous, LLVMAtomicOrderingAcquire);
+                LLVMSetAlignment(previous, static_cast<unsigned>(*alignment));
+            }
             if (isClangMsVolatileScalarGlobal(node->children[0].get()))
             {
                 LLVMSetOrdering(previous, LLVMAtomicOrderingAcquire);
@@ -209,6 +214,11 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 if (const auto alignment = fieldOrArrayAddressAlignment(node->children[0].get()))
                     LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
             if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+            if (const auto alignment = clangMsVolatileEnumElementAlignment(node->children[0].get()))
+            {
+                LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
+                LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
+            }
             if (isClangMsVolatileScalarGlobal(node->children[0].get()))
             {
                 LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
@@ -415,6 +425,11 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             if (const auto alignment = fieldOrArrayAddressAlignment(node->children[0].get()))
                 LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
         if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+        if (const auto alignment = clangMsVolatileEnumElementAlignment(node->children[0].get()))
+        {
+            LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
+            LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
+        }
         if (isClangMsVolatileScalarGlobal(node->children[0].get()))
         {
             LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
