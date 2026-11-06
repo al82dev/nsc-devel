@@ -15,6 +15,17 @@ int read_device(struct Device* value) { return value->counter; }
 int shared_value = 7;
 int read_shared_value(void) { return shared_value; }
 volatile int shared_volatile = 7;
+volatile signed char volatile_i8 = 0;
+volatile unsigned char volatile_u8 = 0;
+volatile short volatile_i16 = 0;
+volatile unsigned short volatile_u16 = 0;
+volatile long long volatile_i64 = 0;
+volatile unsigned long long volatile_u64 = 0;
+int check_volatile_integers(void)
+{
+    return volatile_i8 == 12 && volatile_u8 == 13 && volatile_i16 == 1200 &&
+        volatile_u16 == 1300 && volatile_i64 == 120000 && volatile_u64 == 130000;
+}
 static volatile int pointee_storage = 7;
 volatile int* volatile_pointee = &pointee_storage;
 const volatile int* const_volatile_pointee = &pointee_storage;
