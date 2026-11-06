@@ -328,10 +328,16 @@ CppRecordGroups groupCppSemanticRecords(std::span<const CppSemanticRecordEntry> 
         const auto& firstEntry = inventory[group.inventoryIndices.front()];
         std::size_t definitions = 0;
         bool conflict = false;
+        std::optional<std::string> knownUsr;
         for (const auto index : group.inventoryIndices)
         {
             const auto& entry = inventory[index];
             conflict |= entry.targetTriple != firstEntry.targetTriple;
+            if (entry.declaration.clangUsr && !entry.declaration.clangUsr->empty())
+            {
+                if (knownUsr && knownUsr != entry.declaration.clangUsr) conflict = true;
+                else knownUsr = entry.declaration.clangUsr;
+            }
             if (!entry.declaration.complete) continue;
             ++definitions;
             if (!firstDefinition) { firstDefinition = &entry; continue; }
@@ -594,7 +600,9 @@ CppRecordObservationResult prepareCppRecordObservation(
         if (group.inventoryIndices.empty() || !group.identity.isValid())
             return CppRecordObservationFailure{"empty or invalid record group"};
         std::string sourcePath;
+        std::optional<std::string> knownUsr;
         std::optional<frontend::CppImportedObjectLayout> objectLayout;
+        bool usrConflict = false;
         bool deferred = !group.identity.containingTypes().empty();
         for (const auto entryIndex : group.inventoryIndices)
         {
@@ -607,6 +615,11 @@ CppRecordObservationResult prepareCppRecordObservation(
                 return CppRecordObservationFailure{"record inventory does not match group identity"};
             if (entry.declaration.location && sourcePath.empty())
                 sourcePath = entry.declaration.location->file.generic_string();
+            if (entry.declaration.clangUsr && !entry.declaration.clangUsr->empty())
+            {
+                if (knownUsr && knownUsr != entry.declaration.clangUsr) usrConflict = true;
+                else if (!knownUsr) knownUsr = entry.declaration.clangUsr;
+            }
             if (group.status == CppRecordGroupStatus::OneDefinition && entry.declaration.complete &&
                 entry.declaration.sizeBits && entry.declaration.alignmentBits)
             {
@@ -639,6 +652,7 @@ CppRecordObservationResult prepareCppRecordObservation(
                                 frontend::NamedTypeAccessibility::Public, group.projectOrdinal,
                                 std::move(sourcePath), objectLayout, memberAccessLayout});
         result.types.back().isIncomplete = group.status == CppRecordGroupStatus::ForwardOnly;
+        if (group.status != CppRecordGroupStatus::Conflict && !usrConflict) result.types.back().clangUsr = knownUsr;
         result.groupByImportedType.push_back(groupIndex);
     }
     return result;

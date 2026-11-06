@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Identidad de records agrupados
+
+T08-002/T08-010/T08-011: al agrupar records de un mismo nombre y proyecto,
+tratar USR conocidos distintos como conflicto y transportar un USR conocido al
+tipo importado cuando el grupo no esté en conflicto. Preservar los controles
+de layout, ODR y comparación estructural y el comportamiento cuando Clang no
+da USR. Archivos: CppSemanticRecord.cpp, CppClangSessionTests.cpp y registros
+Markdown. Pruebas y validación agrupadas con la tanda.
+
 ## Identidad de enum al resolver firmas C
 
 T08-002/T08-009: el proveedor y el vínculo de firmas C seleccionan enums por
