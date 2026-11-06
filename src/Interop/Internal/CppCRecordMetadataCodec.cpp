@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <exception>
+#include <functional>
 #include <iterator>
 #include <limits>
 #include <map>
@@ -554,6 +555,108 @@ bool decodeVersionedCTypeCatalog(std::span<const std::uint8_t> bytes,
     return isCTypeCatalogWithProvenance(bytes) ?
         decodeCTypeCatalogWithProvenance(bytes, records, enums, error) :
         decodeCTypeCatalog(bytes, records, enums, error);
+}
+
+bool compareCRecordClosureEvidence(std::span<const CppCRecordSnapshot> leftRecords,
+    std::span<const CppCEnumSnapshot> leftEnums, std::string_view leftRoot,
+    std::span<const CppCRecordSnapshot> rightRecords, std::span<const CppCEnumSnapshot> rightEnums,
+    std::string_view rightRoot, CRecordContractComparison& result, std::string& error)
+{
+    std::vector<std::uint8_t> checked;
+    if (!encodeCTypeCatalog(leftRecords, leftEnums, checked, error) ||
+        !encodeCTypeCatalog(rightRecords, rightEnums, checked, error)) return false;
+    const auto findRecord = [](auto records, std::string_view identity) -> const CppCRecordSnapshot* {
+        const auto found = std::find_if(records.begin(), records.end(),
+            [&](const auto& item) { return item.identityKey == identity; });
+        return found == records.end() ? nullptr : &*found;
+    };
+    const auto findEnum = [](auto enums, std::string_view identity) -> const CppCEnumSnapshot* {
+        const auto found = std::find_if(enums.begin(), enums.end(),
+            [&](const auto& item) { return item.identityKey == identity; });
+        return found == enums.end() ? nullptr : &*found;
+    };
+    const auto* left = findRecord(leftRecords, leftRoot);
+    const auto* right = findRecord(rightRecords, rightRoot);
+    if (!left || !right) { result = CRecordContractComparison::Insufficient; error.clear(); return true; }
+    std::vector<std::pair<const CppCRecordSnapshot*, const CppCRecordSnapshot*>> pending{{left, right}};
+    std::set<std::pair<std::string, std::string>> seenRecords, seenEnums;
+    CRecordContractComparison verdict = CRecordContractComparison::Matching;
+    while (!pending.empty() && verdict == CRecordContractComparison::Matching)
+    {
+        const auto [a, b] = pending.back(); pending.pop_back();
+        if (!seenRecords.emplace(a->identityKey, b->identityKey).second) continue;
+        if (!compareCRecordSourceEvidence(*a, *b, verdict, error)) return false;
+        if (verdict != CRecordContractComparison::Matching) break;
+        std::function<bool(const CppType&, unsigned)> visit = [&](const CppType& type, unsigned depth) {
+            if (verdict != CRecordContractComparison::Matching) return true;
+            if (depth > 64) { verdict = CRecordContractComparison::Insufficient; return true; }
+            if (type.kind == CppTypeKind::Record)
+            {
+                if (!type.recordIdentity || type.recordIdentity->anonymousContext ||
+                    type.recordIdentity->specializationContext || type.recordIdentity->name.empty())
+                { verdict = CRecordContractComparison::Insufficient; return true; }
+                std::vector<compilation::TypeNameSegment> containers;
+                for (const auto& name : type.recordIdentity->containingRecords) containers.push_back({name, 0});
+                const compilation::TypeIdentity leftIdentity(a->moduleName, type.recordIdentity->namespaceSegments,
+                    containers, type.recordIdentity->name);
+                const compilation::TypeIdentity rightIdentity(b->moduleName, type.recordIdentity->namespaceSegments,
+                    std::move(containers), type.recordIdentity->name);
+                const auto* leftDependency = findRecord(leftRecords, leftIdentity.key());
+                const auto* rightDependency = findRecord(rightRecords, rightIdentity.key());
+                if (!leftIdentity.isValid() || !rightIdentity.isValid() || !leftDependency || !rightDependency)
+                { verdict = CRecordContractComparison::Insufficient; return true; }
+                if (!type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty())
+                { verdict = CRecordContractComparison::Insufficient; return true; }
+                if (leftDependency->clangUsr != type.recordIdentity->clangUsr ||
+                    rightDependency->clangUsr != type.recordIdentity->clangUsr)
+                { verdict = CRecordContractComparison::Different; return true; }
+                pending.emplace_back(leftDependency, rightDependency);
+            }
+            if (type.kind == CppTypeKind::Enumeration)
+            {
+                if (!type.enumIdentity || type.enumIdentity->anonymousContext || type.enumIdentity->name.empty() ||
+                    type.enumIdentity->qualifiedName != type.enumIdentity->name)
+                { verdict = CRecordContractComparison::Insufficient; return true; }
+                const compilation::TypeIdentity leftIdentity(a->moduleName, {}, {}, type.enumIdentity->name);
+                const compilation::TypeIdentity rightIdentity(b->moduleName, {}, {}, type.enumIdentity->name);
+                const auto* leftEnum = findEnum(leftEnums, leftIdentity.key());
+                const auto* rightEnum = findEnum(rightEnums, rightIdentity.key());
+                if (!leftEnum || !rightEnum || !leftEnum->declaration.clangUsr ||
+                    !rightEnum->declaration.clangUsr || leftEnum->declaration.clangUsr->empty() ||
+                    rightEnum->declaration.clangUsr->empty())
+                { verdict = CRecordContractComparison::Insufficient; return true; }
+                if (!type.enumIdentity->clangUsr || type.enumIdentity->clangUsr->empty())
+                { verdict = CRecordContractComparison::Insufficient; return true; }
+                if (leftEnum->declaration.clangUsr != type.enumIdentity->clangUsr ||
+                    rightEnum->declaration.clangUsr != type.enumIdentity->clangUsr)
+                { verdict = CRecordContractComparison::Different; return true; }
+                if (seenEnums.emplace(leftIdentity.key(), rightIdentity.key()).second)
+                {
+                    auto normalized = *rightEnum;
+                    normalized.identityKey = leftEnum->identityKey;
+                    std::vector<std::uint8_t> leftBytes, rightBytes;
+                    if (!encodeCTypeCatalog({}, std::span(leftEnum, 1), leftBytes, error) ||
+                        !encodeCTypeCatalog({}, std::span(&normalized, 1), rightBytes, error)) return false;
+                    if (leftBytes != rightBytes) { verdict = CRecordContractComparison::Different; return true; }
+                }
+            }
+            if (type.element && !visit(*type.element, depth + 1)) return false;
+            if (type.enumUnderlying && !visit(*type.enumUnderlying, depth + 1)) return false;
+            if (type.function)
+            {
+                if (!visit(type.function->returnType, depth + 1)) return false;
+                for (const auto& parameter : type.function->parameterTypes)
+                    if (!visit(parameter, depth + 1)) return false;
+            }
+            return true;
+        };
+        for (const auto& field : a->fields)
+        {
+            if (!visit(field.type, 0)) return false;
+            if (verdict != CRecordContractComparison::Matching) break;
+        }
+    }
+    result = verdict; error.clear(); return true;
 }
 
 bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
