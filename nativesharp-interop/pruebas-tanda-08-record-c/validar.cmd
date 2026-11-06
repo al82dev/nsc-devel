@@ -83,6 +83,8 @@ findstr /r /c:"store atomic volatile i32 98, ptr .*release, align 4" "%DEST%\pro
 if errorlevel 1 (echo Falta escritura release mediante puntero de la matriz. & exit /b 1)
 findstr /r /c:"store atomic volatile i32 99, ptr .*release, align 4" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura release mediante puntero constante. & exit /b 1)
+findstr /r /c:"store atomic volatile i32 103, ptr .*release, align 4" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura release por indice de puntero del arreglo. & exit /b 1)
 findstr /r /c:"load atomic volatile i32, ptr %%pointer.load.*acquire, align 4" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta lectura acquire mediante puntero del arreglo. & exit /b 1)
 findstr /r /c:"load atomic volatile.*@volatile_pointer_array" "%DEST%\project.ll" >nul

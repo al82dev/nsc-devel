@@ -99,6 +99,8 @@ int Main()
     if (*fixed_volatile_pointer_array[0] != 99 || read_volatile_pointer_array() != 99) return 49;
     if (read_volatile_void(volatile_void_global) != 99 ||
         read_volatile_void(volatile_void_array[1]) != 99) return 51;
+    volatile_pointer_array[1][0] = 103;
+    if (volatile_pointer_array[1][0] != 103 || read_volatile_pointer_array() != 103) return 54;
     volatile_record_pointer_array[0]->value = 101;
     if (volatile_record_pointer_array[0]->value != 101 || read_volatile_record_target() != 101) return 50;
     global_record.value = 10;
