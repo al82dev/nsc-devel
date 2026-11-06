@@ -438,6 +438,7 @@ bool ProjectMemberModel::build(
         member.isReadonly = imported.isConst;
         member.isVolatile = imported.isVolatile;
         member.isCppExternal = true;
+        member.cppMicrosoftVolatileSemantics = imported.microsoftVolatileSemantics;
         member.explicitFieldOffset = imported.byteOffset;
         member.explicitFieldAlignment = alignment;
         const auto memberOrdinal = members_.size();

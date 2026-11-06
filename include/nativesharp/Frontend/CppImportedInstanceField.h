@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 
 namespace nativesharp::frontend
@@ -19,5 +20,6 @@ struct CppImportedInstanceField final
     bool pointeeReadonly = false;
     std::uint64_t byteSize = 0;
     std::uint64_t byteAlignment = 0;
+    std::optional<bool> microsoftVolatileSemantics;
 };
 }

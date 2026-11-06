@@ -41,6 +41,7 @@ struct ClassMemberSymbol final
     bool isPrecompiled = false;
     // Experimental C++ identity; never interpreted as an NSMETA-produced member.
     bool isCppExternal = false;
+    std::optional<bool> cppMicrosoftVolatileSemantics;
     bool cppDllImport = false;
     // For imported C++ constructors/destructors only; this is not an NS error type.
     bool cppLifetimeNonThrowing = false;

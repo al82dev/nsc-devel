@@ -307,6 +307,10 @@ bool provideExperimentalCppInstanceFields(
         const auto* owner = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
         if (!owner || owner->projectOrdinal != group.projectOrdinal ||
             (!owner->objectLayout && !owner->memberAccessLayout)) continue;
+        auto volatileMode = entries[*selected].microsoftVolatileSemantics;
+        for (const auto observed : group.inventoryIndices)
+            if (entries[observed].microsoftVolatileSemantics != volatileMode)
+                volatileMode = std::nullopt;
         for (const auto index : {*selected})
         {
             const auto& entry = entries[index];
@@ -314,7 +318,11 @@ bool provideExperimentalCppInstanceFields(
             for (std::size_t fieldIndex = 0; fieldIndex < entry.declaration.fields.size(); ++fieldIndex)
                 if (auto field = projectCppSemanticInstanceField(entry.declaration, fieldIndex, group.projectOrdinal,
                     graph.projects()[group.projectOrdinal].moduleName(), entry.targetTriple, &lookup))
-                    result.push_back(toCppImportedInstanceField(*field));
+                {
+                    auto imported = toCppImportedInstanceField(*field);
+                    imported.microsoftVolatileSemantics = volatileMode;
+                    result.push_back(std::move(imported));
+                }
         }
     }
     output = std::move(result);
