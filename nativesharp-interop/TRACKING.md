@@ -190,6 +190,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Preparados `96ac0e1f1`, `db982963e` y `7fc29af1d`: reconocimiento del
+    catálogo C validado al verificar referencias NSMETA, con controles de tipos
+    locales, colisiones, destino y dependencias externas. Sin construir ni
+    ejecutar; 1.42 y la conexión al productor permanecen deshabilitados.
   - Preparado `667ec969e`: control sintético que configura el selector y los
     proveedores combinados en un consumidor, con declaración NativeSharp, tipo,
     campo y enumerador C. No se ha construido ni ejecutado; no prueba NSMETA real
