@@ -2,6 +2,18 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Global C const struct: 2026-11-06
+
+Con `0c9a80722`, `66de02635` y `d74f40926`, la validación agrupada terminó con
+código 0. Pasaron la construcción incremental ON/OFF, la suite Clang, las
+pruebas de restauración y serialización y los siete proyectos preparados.
+NativeSharp leyó un campo de un global C `const struct`; se rechazaron la
+escritura y la obtención de su dirección como `int*`.
+
+La evidencia es Windows x64 O0 para el fixture señalado. El struct global
+`volatile`, los arreglos y punteros a records calificados y otros contratos
+siguen pendientes; T08-015 no está cerrado.
+
 ## Ampliación de globales C de record: 2026-11-06
 
 Con `25f0c00fe` y `e4efafa23`, la validación agrupada terminó con código 0:
