@@ -6400,6 +6400,49 @@ int main(int argc, char** argv)
                         ok &= expect(supplied && records.size() == 1 && enums.size() == 1 &&
                                      enums[0].declaration.name == "Shade",
                                      "C metadata provider includes enum dependency of record field");
+                        if (supplied)
+                        {
+                            nativesharp::frontend::PrecompiledSyntaxModule module;
+                            module.metadataPath = std::filesystem::path(argv[2]) / "shade.nsmeta";
+                            module.cppCTypeCatalog = bytes;
+                            const std::vector<nativesharp::frontend::PrecompiledSyntaxModule> modules{module};
+                            std::vector<nativesharp::frontend::CppImportedInstanceField> fields;
+                            const bool restored = provideCppFieldsWithPrecompiledCatalogs(*fieldDependency.projectGraph(),
+                                {}, modules, lookup, fields, dependencyError);
+                            ok &= expect(restored && fields.size() == 1 && fields[0].name == "color",
+                                         "combined field provider restores a precompiled C field");
+                            const auto priorFields = fields.size();
+                            ok &= expect(!provideCppFieldsWithPrecompiledCatalogs(*fieldDependency.projectGraph(),
+                                             fieldDependency.cppProjectSessions(), modules, lookup, fields, dependencyError) &&
+                                         fields.size() == priorFields,
+                                         "combined field provider rejects duplicate live fields transactionally");
+                            nativesharp::frontend::CppFunctionDemand demand;
+                            demand.lookupName = "Dark";
+                            demand.lookupNamespaces.push_back("");
+                            for (const auto& type : lookup.namedTypes())
+                                if (type.identity.name() == "Shade") demand.visibleProjects.push_back(type.projectOrdinal);
+                            std::vector<nativesharp::frontend::NamespaceStateSymbol> values;
+                            const std::vector<nativesharp::frontend::CppFunctionDemand> demands{demand};
+                            const bool found = provideCppValuesWithPrecompiledCatalogs(*fieldDependency.projectGraph(),
+                                {}, modules, lookup, demands, values, dependencyError);
+                            ok &= expect(found && values.size() == 1 && values[0].name == "Dark" && values[0].integerValue == 1,
+                                         "combined value provider returns demanded visible precompiled enumerator");
+                            demand.visibleProjects.clear();
+                            const std::vector<nativesharp::frontend::CppFunctionDemand> hidden{demand};
+                            ok &= expect(provideCppValuesWithPrecompiledCatalogs(*fieldDependency.projectGraph(),
+                                             {}, modules, lookup, hidden, values, dependencyError) && values.empty(),
+                                         "combined value provider hides enumerators outside visible projects");
+                            demand = demands[0];
+                            demand.lookupNamespaces = {"other"};
+                            const std::vector<nativesharp::frontend::CppFunctionDemand> wrongNamespace{demand};
+                            ok &= expect(provideCppValuesWithPrecompiledCatalogs(*fieldDependency.projectGraph(),
+                                             {}, modules, lookup, wrongNamespace, values, dependencyError) && values.empty(),
+                                         "combined value provider respects demanded namespaces");
+                            const bool collision = provideCppValuesWithPrecompiledCatalogs(*fieldDependency.projectGraph(),
+                                fieldDependency.cppProjectSessions(), modules, lookup, demands, values, dependencyError);
+                            ok &= expect(collision && values.size() == 1 && !values[0].cppImportError.empty(),
+                                         "combined value provider defers live and precompiled value collisions");
+                        }
                         for (const auto& type : lookup.namedTypes())
                         {
                             if (type.identity.name() != "Shade") continue;
