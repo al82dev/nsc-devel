@@ -8,6 +8,8 @@ no coincide o carece de dato. No cambia aún HIR, MIR ni código generado.
 Presupuesto: CppImportedInstanceField.h, ClassMemberSymbol.h,
 CppSemanticRecord.cpp, ProjectMemberModel.cpp y registros Markdown. LLVM
 externo y NSLink protegidos. Validación agrupada de la tanda.
+La suite CppClangSessionTests.cpp también puede comprobar la procedencia del
+modo en el símbolo de campo; no habilita generación de código por sí misma.
 
 ## Modo volatile Clang en inventario de records
 
