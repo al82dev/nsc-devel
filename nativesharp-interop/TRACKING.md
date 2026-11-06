@@ -190,9 +190,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
-  - `7b3b0f0c5` prepara un productor con struct C en superficie pública y un
-    consumidor por LibraryReference. No ejecutado; la lectura del campo se
-    compila pero no se invoca en tiempo de ejecución en este primer fixture.
+  - `7b3b0f0c5` y `2a7179d0d` preparan un productor con struct C en superficie
+    pública y un consumidor por LibraryReference que debe leer el campo en
+    ejecución. El fixture no se ha ejecutado.
   - Preparados `7052f2176` y `c5cc29c44`: comparación de USR de tipos
     record/enum anidados entre todas las definiciones y controles con una
     observación inicial sin USR. Pendientes de compilación y ejecución.
