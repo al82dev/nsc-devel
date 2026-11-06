@@ -498,6 +498,24 @@ int main(int argc, char** argv)
         globalRoot->kind = ProjectOopMirNodeKind::LocalAddress;
         ok &= expect(!nativesharp::llvm_backend::clangMsVolatileGlobalIntArrayAlignment(&globalElement),
                      "a local array is not mistaken for an imported C global");
+        ProjectOopMirNode directPointee;
+        directPointee.kind = ProjectOopMirNodeKind::PointerLoad;
+        directPointee.typeKey = "builtin:int";
+        directPointee.volatileAccess = true;
+        directPointee.cppMicrosoftVolatileSemantics = true;
+        directPointee.cppAtomicAlignmentBytes = 4;
+        ok &= expect(nativesharp::llvm_backend::clangMsVolatileDirectCIntPointee(&directPointee),
+                     "a marked C volatile int pointer load uses the MS order");
+        directPointee.kind = ProjectOopMirNodeKind::AddressValue;
+        ok &= expect(nativesharp::llvm_backend::clangMsVolatileDirectCIntPointee(&directPointee),
+                     "a marked C volatile int pointer address uses the MS order");
+        directPointee.cppAtomicAlignmentBytes.reset();
+        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileDirectCIntPointee(&directPointee),
+                     "an unmarked pointer address does not acquire the MS order");
+        directPointee.cppAtomicAlignmentBytes = 4;
+        directPointee.typeKey = "builtin:uint";
+        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileDirectCIntPointee(&directPointee),
+                     "another pointee type does not enter the int-specific path");
     }
     {
         using namespace nativesharp;

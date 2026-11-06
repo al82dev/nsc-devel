@@ -13,7 +13,8 @@ punteros ni a otros tipos. Esas rutas siguen pendientes por procedencia.
 Presupuesto: `src/Frontend/HIR/ExpressionStatementMachine/HirCompletionTerminalFrames.cpp`,
 `src/LLVM/Lowering/PackedArrayAlignment.h`,
 `src/LLVM/Lowering/OopLlvmArraysAndStores.cpp`,
-`src/LLVM/Lowering/OopLlvmExpressionMachine.cpp`, el fixture
+`src/LLVM/Lowering/OopLlvmExpressionMachine.cpp`,
+`tests/unit/CppClangSessionTests.cpp`, el fixture
 `pruebas-tanda-08-record-c`, tracking y registros. Los controles deberán
 comparar lectura y escritura de ese global; no se modifican NSLink ni LLVM.
 

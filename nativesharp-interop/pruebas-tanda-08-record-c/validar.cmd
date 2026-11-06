@@ -85,6 +85,10 @@ findstr /r /c:"store.*volatile i32 99" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile mediante puntero constante. & exit /b 1)
 findstr /r /c:"store.*volatile i32 101" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile mediante puntero de struct. & exit /b 1)
+findstr /r /c:"store atomic volatile i32 61, ptr .*release, align 4" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura release del global volatile int apuntado. & exit /b 1)
+findstr /r /c:"load atomic volatile i32, ptr %%static.field.load.*acquire, align 4" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta lectura acquire del global volatile int apuntado. & exit /b 1)
 findstr /r /c:"load atomic volatile.*@volatile_matrix.*acquire, align 4" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta lectura acquire volatile de la matriz. & exit /b 1)
 findstr /r /c:"store atomic volatile.*@volatile_matrix.*release, align 4" "%DEST%\project.ll" >nul
