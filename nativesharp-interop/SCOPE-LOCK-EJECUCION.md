@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Global C puntero a escalar volatile
+
+Preparar la importación de un global C cuyo apuntado inmediato es escalar
+volatile, usando la propagación y protecciones ya preparadas. Archivos:
+CppSemanticInventory.cpp, fixture pruebas-tanda-08-record-c y documentación.
+No habilitar C++, punteros anidados, structs ni enums con este cambio. El
+fixture debe ejercitar lectura, escritura, índice, local inferido y comprobar
+IR y pérdida de calificador; ninguna capacidad se considera verificada hasta
+la validación agrupada y la auditoría de escapes.
+
 ## Protección provisional de punteros volatile en inicializadores de arreglo
 
 Evitar que un inicializador de arreglo nativo almacene un puntero cuyo

@@ -43,6 +43,12 @@ Se preparó el transporte del calificador de resultado desde el tipo de Clang
 hasta el resultado de la llamada y su snapshot. La proyección real de
 resultados volatile permanece rechazada y requiere validación. El esquema se
 incrementó a v3 para diferenciar este formato del v2 preparado anteriormente.
+
+Se conectó la proyección de un global C de un nivel a escalar volatile y se
+preparó su caso de lectura y escritura. La compilación, ejecución y auditoría
+de escapes siguen pendientes; no equivale a soporte general de punteros
+calificados. Se prepararon comprobaciones de IR y rechazos de pérdida del
+calificador en inicialización y llamadas.
 Se preparó asimismo el rechazo provisional al retornar ese puntero mediante
 un tipo que no representa volatile; no está ejecutado.
 Se preparó el transporte en identificadores de parámetros y el rechazo

@@ -21,6 +21,11 @@ int Main()
     if (shared_value != 42 || read_shared_value() != 42) return 5;
     shared_volatile = 42;
     if (shared_volatile != 42 || read_shared_volatile() != 42) return 6;
+    *volatile_pointee = 61;
+    var volatile_alias = volatile_pointee;
+    volatile_alias[0] = *volatile_alias + 1;
+    if (*volatile_pointee != 62 || read_volatile_pointee() != 62 ||
+        bump_volatile(volatile_alias) != 64 || read_volatile_pointee() != 64) return 26;
     shared_array[1] = 19;
     int* shared_element = &shared_array[1];
     if (*shared_element != 19) return 10;

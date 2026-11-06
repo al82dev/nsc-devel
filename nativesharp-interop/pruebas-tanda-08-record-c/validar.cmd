@@ -35,6 +35,8 @@ findstr /r /c:"load volatile.*@shared_volatile" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta lectura LLVM volatile del global. & exit /b 1)
 findstr /r /c:"store volatile.*@shared_volatile" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura LLVM volatile del global. & exit /b 1)
+findstr /r /c:"store volatile i32 61, ptr" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura volatile en el objeto apuntado. & exit /b 1)
 findstr /r /c:"load volatile.*@volatile_array" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta lectura LLVM volatile del arreglo. & exit /b 1)
 findstr /r /c:"store volatile.*@volatile_array" "%DEST%\project.ll" >nul
@@ -212,6 +214,18 @@ if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-volatile-record-parameter.exe" > "%DEST%\const-volatile-record-parameter.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /c:"no viable overload of namespace function 'bump_volatile_record'" "%DEST%\const-volatile-record-parameter.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0VolatilePointeeDiscard.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-pointee-discard.exe" > "%DEST%\volatile-pointee-discard.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"would discard pointer pointee volatile qualification" "%DEST%\volatile-pointee-discard.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0VolatilePointeeCall.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-pointee-call.exe" > "%DEST%\volatile-pointee-call.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"no viable overload of namespace function 'read_plain_int'" "%DEST%\volatile-pointee-call.log" >nul
 if errorlevel 1 exit /b 1
 echo Record C por puntero: resultado esperado cero.
 exit /b 0

@@ -86,6 +86,9 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
         const CppType* element = &type;
         while (element && element->kind == CppTypeKind::Array) element = element->element.get();
         if (!element) return std::nullopt;
+        // The array representation does not yet retain qualifiers on each pointed-to type.
+        if (element->kind == CppTypeKind::Pointer && element->element && element->element->isVolatile)
+            return std::nullopt;
         auto mapped = mapGlobalType(*element, projectOrdinal, moduleName, lookup, cLanguage);
         if (!mapped || mapped->isConst || mapped->isVolatile) return std::nullopt;
         for (auto dimension = array->dimensions.rbegin(); dimension != array->dimensions.rend(); ++dimension)
@@ -127,7 +130,12 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
         if (current->canonicalSpelling.empty() || current->sizeBits != 64 || !current->element)
             return std::nullopt;
         current = current->element.get();
-        if (current->isVolatile || (current->isConst &&
+        const bool supportedVolatileScalar = cLanguage && depth == 0 &&
+            (current->kind == CppTypeKind::Boolean ||
+             current->kind == CppTypeKind::SignedInteger ||
+             current->kind == CppTypeKind::UnsignedInteger ||
+             current->kind == CppTypeKind::Floating);
+        if ((current->isVolatile && !supportedVolatileScalar) || (current->isConst &&
             (depth != 0 || current->kind == CppTypeKind::Pointer))) return std::nullopt;
         ++depth;
     }
