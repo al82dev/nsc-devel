@@ -15,6 +15,8 @@ Callback volatile volatile_callback = add_three;
 VolatileCallbackHolder* get_volatile_holder(void) { return &volatile_holder; }
 int run_volatile_holder(VolatileCallbackHolder* item, int value) { return item->run(value); }
 int run_volatile_global(int value) { return volatile_callback(value); }
+void set_volatile_holder(VolatileCallbackHolder* item, Callback value) { item->run = value; }
+void set_volatile_global(Callback value) { volatile_callback = value; }
 FloatValue add_float(FloatValue a, FloatValue b) { return a + b; }
 DoubleValue add_double(DoubleValue a, DoubleValue b) { return a + b; }
 int mix_integers(SignedByte a, UnsignedShort b, UnsignedInt c) { return (int)a + (int)b + (int)c; }

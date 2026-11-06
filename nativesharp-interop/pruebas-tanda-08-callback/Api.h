@@ -14,6 +14,8 @@ extern Callback volatile volatile_callback;
 VolatileCallbackHolder* get_volatile_holder(void);
 int run_volatile_holder(VolatileCallbackHolder* holder, int value);
 int run_volatile_global(int value);
+void set_volatile_holder(VolatileCallbackHolder* holder, Callback value);
+void set_volatile_global(Callback value);
 typedef float FloatValue;
 typedef double DoubleValue;
 FloatValue add_float(FloatValue a, FloatValue b);
