@@ -42,6 +42,11 @@ todavía 1.42 ni publicar el catálogo hasta completar su lectura y huella ABI.
 Preparar en LibraryMetadataPayload.cpp el campo delimitado para 1.42 y su
 lectura acotada, además de incorporarlo a la proyección ABI cuando exista.
 Mantener 1.42 deshabilitado como versión pública hasta conectar reconstrucción.
+Preparar un proveedor opcional de catálogo para el productor de metadata, sin
+activarlo desde el driver. Presupuesto adicional: ProjectCompilation.h/.cpp,
+LibraryMetadataConstruction.cpp y controles de sesión. El productor sin
+proveedor mantiene su comportamiento y una salida fallida no deja catálogo
+parcial; 1.42 continúa rechazado por el escritor público hasta su integración.
 Preparar cierre transitivo de grupos record C solicitados mediante identidades
 de campos y tipos anidados; conservar las identidades enum requeridas como
 pendientes para su propio catálogo. Rechazar dependencias faltantes o ambiguas.
