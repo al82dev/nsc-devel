@@ -3158,7 +3158,8 @@ int main(int argc, char** argv)
                     snapshot->moduleName != "Semantic" || snapshot->name != name ||
                     snapshot->valueLayoutUsable != complete ||
                     snapshot->complete != complete || snapshot->targetTriple != "x86_64-pc-windows-msvc") return false;
-                return complete ? snapshot->sizeBits == record->sizeBits &&
+                return complete ? snapshot->sourceProvenance == record->sourceProvenance &&
+                    snapshot->sizeBits == record->sizeBits &&
                     snapshot->alignmentBits == record->alignmentBits && snapshot->fields.size() == record->fields.size() :
                     !snapshot->sizeBits && !snapshot->alignmentBits && snapshot->fields.empty();
             };
@@ -3166,6 +3167,31 @@ int main(int argc, char** argv)
                          checkSnapshot("AnonUnion", CppRecordKind::Union, true) &&
                          checkSnapshot("Incomplete", CppRecordKind::Struct, false),
                          "C record snapshots preserve complete struct and union or an incomplete declaration");
+            if (sourcePair != cRecords->end() && sourcePair->sourceProvenance)
+            {
+                const auto identity = projectCppRecordIdentity(*sourcePair, "Semantic");
+                if (identity)
+                {
+                    std::vector<CppSemanticRecordEntry> entries{
+                        {{}, 0, 0, "x86_64-pc-windows-msvc", *sourcePair, identity},
+                        {{}, 1, 0, "x86_64-pc-windows-msvc", *sourcePair, identity}};
+                    for (auto& entry : entries)
+                        entry.declaration.location = CppSourcePoint{std::filesystem::path(argv[2]), 1, 1};
+                    auto groups = groupCppSemanticRecords(entries);
+                    groups.groups.front().status = CppRecordGroupStatus::MultipleDefinitionsPointerCompatible;
+                    auto same = captureCppCRecordSnapshot(entries, groups.groups.front());
+                    const auto* sameSnapshot = std::get_if<CppCRecordSnapshot>(&same);
+                    ok &= expect(sameSnapshot && sameSnapshot->sourceProvenance == sourcePair->sourceProvenance,
+                                 "C snapshot retains agreed buffer provenance");
+                    entries[1].declaration.sourceProvenance->bufferSha256 = std::string(64, '0');
+                    auto differing = captureCppCRecordSnapshot(entries, groups.groups.front());
+                    const auto* differingSnapshot = std::get_if<CppCRecordSnapshot>(&differing);
+                    ok &= expect(differingSnapshot && !differingSnapshot->sourceProvenance,
+                                 "C snapshot discards conflicting buffer provenance");
+                }
+                else ok &= expect(false, "C provenance test has a record identity");
+            }
+            else ok &= expect(false, "C provenance test has a direct record");
             std::vector<CppSemanticRecordEntry> catalogEntries;
             for (const std::string_view name : {"Pair", "Incomplete"})
             {
