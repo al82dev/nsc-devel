@@ -7,7 +7,7 @@ y con modo MS y alineación acreditados por Clang, preservar acquire/release en
 su lectura y escritura directas. No transferir volatile al objeto apuntado ni
 alterar campos, punteros indirectos o destinos no acreditados. Archivos:
 HirNameExpressionLowering.cpp, OopLlvmSupport.h,
-OopLlvmExpressionLeaves.cpp, OopLlvmArraysAndStores.cpp, Api.c, Main.ns,
+OopLlvmExpressionLeaves.cpp, OopLlvmArraysAndStores.cpp, Api.h, Api.c, Main.ns,
 validar.cmd y verificar_ir_c.py del fixture records C y registros Markdown.
 Verificar IR de C y NativeSharp y ejecución agrupada O0–O3. NSLink y LLVM son
 de solo lectura.

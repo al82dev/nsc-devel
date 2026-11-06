@@ -63,6 +63,7 @@ const int* get_const_scalar(void);
 void write_mutable_globalonly(struct GlobalOnly* value);
 extern volatile struct GlobalOnly global_record_volatile;
 extern struct GlobalOnly* volatile volatile_record_pointer;
+int check_volatile_record_pointer(void);
 extern const struct GlobalOnly readonly_record_matrix[2][2];
 extern volatile struct GlobalOnly volatile_record_matrix[2][2];
 int read_volatile_record_matrix(void);
