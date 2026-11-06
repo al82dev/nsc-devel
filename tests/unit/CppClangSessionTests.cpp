@@ -2795,6 +2795,7 @@ int main(int argc, char** argv)
                                   "void* ptr_void(void* p); int ptr_nested_const(const int** p);\n"
                                   "int bridge_probe(size_t n, ...);\n"
                                   "struct Pair { char a; int b; }; struct OuterPair { struct Pair nested; struct Pair array[2][3]; }; struct CDevice { volatile int counter; }; struct Incomplete;\n"
+                                  "#define DECLARE_MACRO_RECORD struct MacroRecord { int x; };\nDECLARE_MACRO_RECORD\n"
                                   "typedef unsigned int Count; typedef Count* CountPtr; "
                                   "typedef struct Pair Pair; typedef struct Pair PairAlias; typedef struct Pair PairMatrix[2][3]; typedef const struct Pair* PairPtr; typedef const int* ReadOnlyPtr;\n"
                                   "typedef struct { int value; } AnonStruct; typedef union { int integer; float real; } AnonUnion;\n"
@@ -3111,6 +3112,21 @@ int main(int argc, char** argv)
                      "C anonymous typedef records retain matching declaration and type identities");
         if (cRecords)
         {
+            const auto pair = std::find_if(cRecords->begin(), cRecords->end(),
+                [](const auto& value) { return value.name == "Pair"; });
+            const auto outer = std::find_if(cRecords->begin(), cRecords->end(),
+                [](const auto& value) { return value.name == "OuterPair"; });
+            const auto macro = std::find_if(cRecords->begin(), cRecords->end(),
+                [](const auto& value) { return value.name == "MacroRecord"; });
+            ok &= expect(pair != cRecords->end() && outer != cRecords->end() &&
+                         pair->sourceProvenance && outer->sourceProvenance &&
+                         pair->sourceProvenance->sourcePath.filename() == "probe.c" &&
+                         pair->sourceProvenance->bufferSha256.size() == 64 &&
+                         pair->sourceProvenance->bufferSha256 == outer->sourceProvenance->bufferSha256 &&
+                         pair->sourceProvenance->byteOffset != outer->sourceProvenance->byteOffset,
+                         "Clang record source provenance captures the analyzed buffer and declaration offsets");
+            ok &= expect(macro != cRecords->end() && !macro->sourceProvenance,
+                         "macro-generated record does not claim a direct source location");
             using nativesharp::frontend::CppImportedTypeOrigin;
             const auto checkOrigin = [&](std::string_view name, CppImportedTypeOrigin expected) {
                 const auto record = std::find_if(cRecords->begin(), cRecords->end(),
