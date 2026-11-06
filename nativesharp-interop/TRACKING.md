@@ -192,7 +192,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
   - Preparados `7a67b43f5` y `54012a7d3`: proyección y conciliación del USR de
     enumerador C y prueba de transporte presente/ausente. Aún sin construir ni
-    ejecutar; falta probar selección contradictoria y persistencia.
+    ejecutar; falta comprobar persistencia. `d28c6ff68` prepara la prueba de
+    selección contradictoria con una observación intermedia sin USR; pendiente
+    de construcción y ejecución agrupadas.
   - Preparados `847a71ccb` y `13a872950`: la búsqueda de alias concilia USR
     conocidos, incluso con observaciones intermedias sin identidad, y añade
     pruebas de coincidencia y contradicción. Aún no construidos ni ejecutados;
