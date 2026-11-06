@@ -2,6 +2,18 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Optimización del proyecto mixto de records C: 2026-11-06
+
+Con `bb85ea5e2` y `6cbe3f99a`, `call nativesharp-interop\validar-tanda-08.cmd`
+terminó con código 0: pasaron ON/OFF, suite Clang, restauración, serialización y
+los siete proyectos. El proyecto `record-c` compiló y ejecutó los mismos casos
+con NSC O0, O1, O2 y O3 contra la misma biblioteca C en Windows x64; las
+comprobaciones IR y negativas siguen ejecutándose en O0.
+
+Esto no demuestra todas las combinaciones de tipos, otras arquitecturas ni
+otras configuraciones del compilador C. Los ítems generales de la tanda 08
+permanecen abiertos.
+
 ## Requisito TLS de biblioteca C: 2026-11-06
 
 El fixture `pruebas-tanda-08-tls-c` compiló con Clang para Windows x64, pero
