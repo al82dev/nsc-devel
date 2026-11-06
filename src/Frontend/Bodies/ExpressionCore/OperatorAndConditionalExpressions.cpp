@@ -241,6 +241,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 const ExpressionResult value = analyzeExpression(
                     element, methodMemberOrdinal, scopeOrdinal, diagnostics);
                 valid = valid && value.valid;
+                if (value.pointerPointeeVolatile)
+                {
+                    diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+                        diagnostics::DiagnosticSeverity::Error, element->range(),
+                        "tuple element cannot yet preserve pointer pointee volatile qualification");
+                    valid = false;
+                }
                 elementTypeKeys.push_back(value.valid ? value.typeKey : std::string("<error>"));
                 MethodAggregateInitializerEntryBinding entry;
                 entry.syntax = element;

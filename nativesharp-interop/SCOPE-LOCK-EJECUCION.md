@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Protección provisional de punteros volatile en tuplas
+
+Las identidades actuales de tupla conservan sólo claves de tipo y no los
+calificadores de sus elementos. Rechazar provisionalmente un elemento que
+perdería volatile; archivo OperatorAndConditionalExpressions.cpp y
+documentación. La importación permanece bloqueada y el soporte de tuplas
+calificadas sigue dentro del objetivo.
+
 ## Preparación del contrato volatile de resultado
 
 Conservar en el adaptador y en resultados de llamadas la calificación
