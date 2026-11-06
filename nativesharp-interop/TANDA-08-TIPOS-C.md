@@ -1342,6 +1342,22 @@ terminó con código 0. Comprobó transporte de USR presentes y ausentes hasta e
 metadato y símbolo, y selección de definiciones con campos de USR iguales,
 contradictorios o ausentes. No acredita persistencia ni todas las declaraciones.
 
+## Tipo C en API de biblioteca: diagnóstico dirigido
+
+Con el NSC de hash `3cfae0e8fc412141` (construido desde los cambios hasta
+`b8bb920ef`), `pruebas-tanda-08-meta-c/validar.cmd` terminó con código 1 al
+analizar `get_c_record` dentro del método del productor: identificador
+desconocido. El consumidor no se construyó.
+
+La variante `validar-productor.cmd` de `5cecf5132` devuelve `null` y evita esa
+llamada. También terminó con código 1, pero alcanzó la verificación de
+metadatos: el campo `CPublishedProducer::Published.Wrapper.value` referencia
+`type:CPublishedProducer::CRecord` y el catálogo no declara ese tipo ni una
+especialización cerrada. La biblioteca y su reconstrucción no se acreditan.
+Esto confirma dos rutas separadas por investigar: resolución de la función y
+representación/publicación del tipo C en metadatos, sin afirmar todavía la
+causa exacta de la primera ni que baste serializar el USR para la segunda.
+
 ## Validación dirigida agrupada: identidades y `_Bool`
 
 Sobre el código hasta `b8bb920ef`, se construyeron incrementalmente `nsc` y

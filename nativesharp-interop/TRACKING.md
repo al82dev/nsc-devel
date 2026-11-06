@@ -190,6 +190,9 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Diagnóstico dirigido: el productor aislado llega a verificación de metadata,
+    que rechaza `CRecord` como tipo local no declarado. La variante con llamada
+    C falla antes por identificador desconocido. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
   - `7b3b0f0c5` y `2a7179d0d` preparan un productor con struct C en superficie
     pública y un consumidor por LibraryReference que debe leer el campo en
     ejecución. El fixture no se ha ejecutado.
