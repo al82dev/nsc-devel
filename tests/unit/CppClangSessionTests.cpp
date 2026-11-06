@@ -7221,14 +7221,16 @@ int main(int argc, char** argv)
                     callbackDependency.setSourceBufferProvider([](const std::filesystem::path& source)
                         -> std::optional<std::string> {
                         if (source.filename() == "Main.ns")
-                            return "int Use(Visitor cb) { return 0; } int Main() { return 0; }\n";
+                            return "int Use(Visitor cb, NodeVisitor other) { return 0; } int Main() { return 0; }\n";
                         return std::nullopt;
                     });
                     CppProjectSessions group;
                     group.projectFile = std::filesystem::absolute(path);
                     group.sessions.push_back(open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C,
                         "enum Tone { Low = 1 }; struct Node { int value; }; "
-                        "typedef enum Tone (*Visitor)(struct Node*);\n")));
+                        "typedef enum Tone (*Visitor)(struct Node*); typedef int (*NodeVisitor)(struct Node*);\n")));
+                    const auto callbackAliases = group.sessions.back()
+                        ? group.sessions.back()->typeAliasesSnapshot() : std::nullopt;
                     std::vector<CppProjectSessions> groups;
                     groups.push_back(std::move(group));
                     std::string dependencyError;
@@ -7249,6 +7251,50 @@ int main(int argc, char** argv)
                     if (!ready) std::cerr << "C callback typedef dependencies: " << dependencyError << '\n';
                     ok &= expect(ready && selectedTone && selectedNode,
                                  "callback typedef selects enum and record used only inside its signature");
+                    ok &= expect(ready && callbackAliases.has_value(),
+                                 "stored callback identity controls receive Clang aliases");
+                    if (ready && callbackDependency.nameLookup() && callbackAliases)
+                    {
+                        const auto alias = std::find_if(callbackAliases->begin(), callbackAliases->end(),
+                            [](const auto& value) { return value.name == "NodeVisitor"; });
+                        const auto* lookup = callbackDependency.nameLookup();
+                        const nativesharp::frontend::CppImportedTypeDeclaration* importedNode = nullptr;
+                        for (const auto& type : lookup->namedTypes())
+                            if (type.identity.name() == "Node")
+                            {
+                                const auto ordinal = lookup->typeOrdinalForIdentity(type.identity.key());
+                                if (ordinal) importedNode = lookup->cppImportedType(*ordinal);
+                            }
+                        bool validProjection = false, missingContextRejected = false;
+                        bool wrongOwnerRejected = false, wrongUsrRejected = false;
+                        if (alias != callbackAliases->end() && importedNode &&
+                            alias->underlyingType.element && alias->underlyingType.element->function)
+                        {
+                            const auto& source = alias->underlyingType;
+                            const auto owner = importedNode->projectOrdinal;
+                            const auto module = importedNode->identity.moduleName();
+                            validProjection = projectCppStoredFunctionPointer(source, owner, module, lookup).has_value();
+                            missingContextRejected = !projectCppStoredFunctionPointer(source).has_value();
+                            wrongOwnerRejected = !projectCppStoredFunctionPointer(source, owner + 1, module, lookup).has_value();
+                            auto functionNode = std::make_shared<CppType>(*source.element);
+                            auto signature = std::make_shared<CppFunctionType>(*functionNode->function);
+                            if (signature->parameterTypes.size() == 1 && signature->parameterTypes[0].element)
+                            {
+                                auto parameter = std::make_shared<CppType>(*signature->parameterTypes[0].element);
+                                if (parameter->recordIdentity && importedNode->clangUsr)
+                                {
+                                    parameter->recordIdentity->clangUsr = "wrong:record:usr";
+                                    signature->parameterTypes[0].element = std::move(parameter);
+                                    functionNode->function = std::move(signature);
+                                    CppType wrong = source;
+                                    wrong.element = std::move(functionNode);
+                                    wrongUsrRejected = !projectCppStoredFunctionPointer(wrong, owner, module, lookup).has_value();
+                                }
+                            }
+                        }
+                        ok &= expect(validProjection && missingContextRejected && wrongOwnerRejected && wrongUsrRejected,
+                                     "stored C callback resolves record pointer only with matching imported identity");
+                    }
                 }
                 {
                     nativesharp::frontend::ProjectCompilation arrayDependency;

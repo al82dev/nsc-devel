@@ -18,6 +18,7 @@ Permitir `include/nativesharp/Interop/CppSemanticFunction.h`,
 `src/Interop/Cpp/CppSemanticFunction.cpp`,
 `src/Interop/Cpp/CppSemanticInventory.cpp` y
 `src/Interop/Cpp/CppSemanticRecord.cpp`, más pruebas y bitácora de esta ruta.
+Para los controles de identidad, permitir `tests/unit/CppClangSessionTests.cpp`.
 Conservar las comprobaciones de origen C, proyecto o reconciliación, USR y
 conflictos; no autorizar records por valor ni alterar las otras rutas del
 mapeador. Verificar junto a los controles existentes en la batería agrupada.

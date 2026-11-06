@@ -32,3 +32,7 @@ La ruta es específica de callbacks almacenados; los parámetros o resultados
 record por valor y las formas sin información de identidad siguen rechazados.
 El fixture se incorporó a la matriz O0–O3. El cambio está preparado y aún no
 se ha construido ni validado; no cierra T08-017.
+
+Se prepararon además controles de sesión Clang para el mismo mapeador con
+lookup real: identidad válida, ausencia de contexto, propietario incorrecto y
+USR diferente. Son pruebas pendientes de construcción y ejecución.
