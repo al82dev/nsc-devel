@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Rutas de ejecutables de prueba con NSC_BUILD_TESTS
+
+Con `NSC_BUILD_TESTS=ON`, CMake genera las tres pruebas de sintaxis y MIR bajo
+`tests`, no `bin`. Ajustar el script para evitar ejecutar binarios anteriores.
+Archivos: validar-tanda-08.cmd y documentación. Repetir la batería agrupada.
+
 ## Código de error del build incremental
 
 La batería en d3dc414a8 continuó tras un enlace fallido con código -1 porque

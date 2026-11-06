@@ -1063,6 +1063,13 @@ el llamador continuó porque comprueba `errorlevel 1`. El helper ahora convierte
 cualquier resultado no cero a 1. La prueba de este control queda para la
 validación agrupada después de resolver el enlace.
 
+## Rutas de ejecutables de prueba con NSC_BUILD_TESTS
+
+Con la configuración ON, CMake enlaza los ejecutables de sintaxis y MIR bajo
+`tanda1-ON/tests`. La ejecución anterior apuntaba a `bin`, por lo que las dos
+pruebas de sintaxis mostradas podían ser antiguas y la MIR no se encontró. Se
+ajustaron las rutas; esa ejecución no acredita las tres pruebas y debe repetirse.
+
 ## Alineación declarada de global C/C++
 
 El snapshot de globales prepara la captura de `ASTContext::getDeclAlign` en

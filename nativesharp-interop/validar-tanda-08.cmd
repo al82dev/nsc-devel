@@ -22,13 +22,13 @@ echo === Pruebas de sesion Clang ===
 A:\nsc-interop-build\tanda1-ON\bin\nsc_cpp_session_tests.exe A:\al82dev-clang\lib\clang\23 A:\nsc-interop-build A:\al82dev-clang\bin\clang.exe
 if errorlevel 1 set "TASK_FAILED=1"
 echo === Restauracion de sintaxis y equivalencia de serializacion ===
-A:\nsc-interop-build\tanda1-ON\bin\nsc_precompiled_syntax_node_index_tests.exe
+A:\nsc-interop-build\tanda1-ON\tests\nsc_precompiled_syntax_node_index_tests.exe
 if errorlevel 1 set "TASK_FAILED=1"
-A:\nsc-interop-build\tanda1-ON\bin\nsc_syntax_tree_serialization_equivalence_tests.exe
+A:\nsc-interop-build\tanda1-ON\tests\nsc_syntax_tree_serialization_equivalence_tests.exe
 if errorlevel 1 set "TASK_FAILED=1"
 echo === Restauracion de MIR ===
 set "NSC_PROJECT_OOP_LOWERING_FOCUS=mir-cache-restore-depth"
-A:\nsc-interop-build\tanda1-ON\bin\nsc_project_oop_lowering_tests.exe
+A:\nsc-interop-build\tanda1-ON\tests\nsc_project_oop_lowering_tests.exe
 if errorlevel 1 set "TASK_FAILED=1"
 set "NSC_PROJECT_OOP_LOWERING_FOCUS="
 for %%T in (valores incompleto record-c union layout callback enum-funcion) do call :run_case %%T
