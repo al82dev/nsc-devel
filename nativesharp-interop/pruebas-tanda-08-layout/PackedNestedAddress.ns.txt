@@ -1,0 +1,6 @@
+int Main()
+{
+    PackedNested* packed = layout_packed_nested();
+    int* unsafeAddress = &packed->nested.b;
+    return *unsafeAddress;
+}

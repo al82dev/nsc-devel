@@ -1,5 +1,10 @@
 #include "Api.h"
 static Pair sample_pair = { 1, 2 };
+static PackedNested sample_packed_nested = { 1, { 2, 3 } };
+PackedNested* layout_packed_nested(void) { return &sample_packed_nested; }
+int layout_packed_nested_value(void) { return sample_packed_nested.nested.b; }
+int layout_packed_nested_size(void) { return (int)sizeof(PackedNested); }
+int layout_packed_nested_offset(void) { return (int)__builtin_offsetof(PackedNested, nested); }
 static Packed sample_packed = { 1, 2 };
 static PackedArray sample_packed_array = { 1, { { 1, 2, 3 }, { 4, 5, 6 } } };
 static PackedQualified sample_packed_qualified = { 1, { 2, 3 }, { 4, 5 } };

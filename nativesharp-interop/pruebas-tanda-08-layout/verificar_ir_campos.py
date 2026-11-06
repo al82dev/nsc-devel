@@ -28,3 +28,15 @@ patterns = (
 if any(re.search(pattern, ir) is None for pattern in patterns):
     print("Falta alineacion de campo C en lectura o escritura simple/compuesta")
     sys.exit(1)
+
+nested_addresses = re.findall(
+    r"(%field\.addr\d*) = getelementptr i8, ptr %field\.addr\d*, i64 4", ir
+)
+if not any(re.search(r"load i32, ptr " + re.escape(address) + r", align 1", ir)
+           for address in nested_addresses):
+    print("Falta lectura alineada a 1 del campo anidado")
+    sys.exit(1)
+if not any(re.search(r"store i32 [^\n]*ptr " + re.escape(address) + r", align 1", ir)
+           for address in nested_addresses):
+    print("Falta escritura alineada a 1 del campo anidado")
+    sys.exit(1)

@@ -52,5 +52,11 @@ int Main()
     pointers->slots[1] = layout_packed_pointer_target();
     *pointers->slots[1] = 56;
     if (layout_packed_pointers_value() != 56) return 22;
+    if (sizeof(PackedNested) != (nuint)layout_packed_nested_size() ||
+        offsetof(PackedNested, nested) != (nuint)layout_packed_nested_offset()) return 23;
+    PackedNested* nested = layout_packed_nested();
+    nested->nested.b = 61;
+    nested->nested.b += 1;
+    if (nested->nested.b != 62 || layout_packed_nested_value() != 62) return 24;
     return 0;
 }

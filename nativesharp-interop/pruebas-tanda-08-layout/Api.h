@@ -7,7 +7,12 @@ typedef struct PackedPointer { char tag; int* value; } PackedPointer;
 typedef struct PackedArray { char tag; int values[2][3]; } PackedArray;
 typedef struct PackedQualified { char tag; const int fixed[2]; volatile int status[2]; } PackedQualified;
 typedef struct PackedPointers { char tag; int* slots[2]; } PackedPointers;
+typedef struct PackedNested { char tag; Pair nested; } PackedNested;
 #pragma pack(pop)
+PackedNested* layout_packed_nested(void);
+int layout_packed_nested_value(void);
+int layout_packed_nested_size(void);
+int layout_packed_nested_offset(void);
 PackedPointers* layout_packed_pointers(void);
 int layout_packed_pointers_value(void);
 PackedQualified* layout_packed_qualified(void);
