@@ -35,11 +35,13 @@ findstr /r /c:"load atomic volatile i32, ptr @shared_volatile acquire, align 4" 
 if errorlevel 1 (echo Falta lectura volatile acquire del global. & exit /b 1)
 findstr /r /c:"store atomic volatile i32 .*@shared_volatile release, align 4" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile release del global. & exit /b 1)
-for %%G in (i8 u8 i16 u16 i64 u64) do (
-    findstr /r /c:"load atomic volatile i[0-9]*, ptr @volatile_%%G acquire, align" "%DEST%\project.ll" >nul
-    if errorlevel 1 (echo Falta lectura volatile acquire de %%G. & exit /b 1)
-    findstr /r /c:"store atomic volatile i[0-9]* .*@volatile_%%G release, align" "%DEST%\project.ll" >nul
-    if errorlevel 1 (echo Falta escritura volatile release de %%G. & exit /b 1)
+for %%P in (i8:8:1 u8:8:1 i16:16:2 u16:16:2 i64:64:8 u64:64:8) do (
+  for /f "tokens=1,2,3 delims=:" %%A in ("%%P") do (
+    findstr /c:"load atomic volatile i%%B, ptr @volatile_%%A acquire, align %%C" "%DEST%\project.ll" >nul
+    if errorlevel 1 (echo Falta lectura volatile acquire con ancho y alineacion de %%A. & exit /b 1)
+    findstr /r /c:"store atomic volatile i%%B .*@volatile_%%A release, align %%C" "%DEST%\project.ll" >nul
+    if errorlevel 1 (echo Falta escritura volatile release con ancho y alineacion de %%A. & exit /b 1)
+  )
 )
 findstr /r /c:"store volatile i32 61, ptr" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile en el objeto apuntado. & exit /b 1)

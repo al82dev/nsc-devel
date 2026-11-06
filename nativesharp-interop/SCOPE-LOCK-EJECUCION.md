@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Precisión de la comprobación IR de enteros volatile
+
+La prueba previa comprueba acquire/release pero acepta cualquier ancho y no
+exige el valor de alineación. Hacer que los seis globales comprueben su ancho y
+alineación concretos (8/1, 16/2, 64/8). Archivos: validar.cmd del fixture de
+records C y registro Markdown. Ejecutar con la siguiente batería agrupada.
+
 ## Identidad de caché de código para volatile importado
 
 T08-015: `writeNodeFlags` no incorpora la opción MS volatile ni la evidencia de
