@@ -34,5 +34,8 @@ struct GlobalOnly* volatile volatile_record_pointer = &global_record_target;
 const struct GlobalOnly readonly_record_matrix[2][2] = { { { 11 }, { 19 } }, { { 23 }, { 31 } } };
 volatile struct GlobalOnly volatile_record_matrix[2][2] = { { { 1 }, { 2 } }, { { 3 }, { 4 } } };
 int read_volatile_record_matrix(void) { return volatile_record_matrix[1][1].value; }
+static int nested_target = 0;
+volatile struct GlobalNested volatile_nested_record = { { 0 }, &nested_target };
+int read_volatile_nested_record(void) { return volatile_nested_record.item.value + *volatile_nested_record.target; }
 int read_volatile_record(void) { return global_record_volatile.value; }
 int read_global_records(void) { return global_record.value + global_record_pointer->value + global_record_array[1].value + global_record_matrix[1][1].value + global_union.value; }

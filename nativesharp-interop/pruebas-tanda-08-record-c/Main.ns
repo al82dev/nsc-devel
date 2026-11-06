@@ -42,5 +42,8 @@ int Main()
     if (readonly_record_matrix[1][1].value != 31) return 16;
     volatile_record_matrix[1][1].value = 43;
     if (volatile_record_matrix[1][1].value != 43 || read_volatile_record_matrix() != 43) return 17;
+    volatile_nested_record.item.value = 50;
+    *volatile_nested_record.target = 47;
+    if (volatile_nested_record.item.value != 50 || read_volatile_nested_record() != 97) return 18;
     return 0;
 }

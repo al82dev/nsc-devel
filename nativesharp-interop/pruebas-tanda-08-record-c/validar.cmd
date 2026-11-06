@@ -47,6 +47,12 @@ findstr /r /c:"load volatile.*@volatile_record_matrix" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta lectura volatile de matriz de structs. & exit /b 1)
 findstr /r /c:"store volatile i32 43,.*@volatile_record_matrix" "%DEST%\project.ll" >nul
 if errorlevel 1 (echo Falta escritura volatile de matriz de structs. & exit /b 1)
+findstr /r /c:"store volatile i32 50," "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura volatile de campo anidado. & exit /b 1)
+findstr /r /c:"store i32 47, ptr" "%DEST%\project.ll" >nul
+if errorlevel 1 (echo Falta escritura ordinaria por puntero de campo volatile. & exit /b 1)
+findstr /r /c:"store volatile i32 47," "%DEST%\project.ll" >nul
+if not errorlevel 1 (echo El campo puntero volatile califico incorrectamente el apuntado. & exit /b 1)
 findstr /r /c:"store volatile i32 17," "%DEST%\project.ll" >nul
 if not errorlevel 1 (echo Se propago volatile del puntero a su apuntado. & exit /b 1)
 findstr /r /c:"load volatile ptr, ptr @volatile_record_pointer" "%DEST%\project.ll" >nul
@@ -122,6 +128,12 @@ if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-record-matrix-address.exe" > "%DEST%\volatile-record-matrix-address.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /c:"cannot take the address of volatile storage until qualified pointers are supported" "%DEST%\volatile-record-matrix-address.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0VolatileNestedRecordAddress.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-nested-record-address.exe" > "%DEST%\volatile-nested-record-address.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"cannot take the address of volatile storage until qualified pointers are supported" "%DEST%\volatile-nested-record-address.log" >nul
 if errorlevel 1 exit /b 1
 echo Record C por puntero: resultado esperado cero.
 exit /b 0

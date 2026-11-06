@@ -35,5 +35,8 @@ extern struct GlobalOnly* volatile volatile_record_pointer;
 extern const struct GlobalOnly readonly_record_matrix[2][2];
 extern volatile struct GlobalOnly volatile_record_matrix[2][2];
 int read_volatile_record_matrix(void);
+struct GlobalNested { struct GlobalOnly item; int* target; };
+extern volatile struct GlobalNested volatile_nested_record;
+int read_volatile_nested_record(void);
 int read_volatile_record(void);
 int read_global_records(void);

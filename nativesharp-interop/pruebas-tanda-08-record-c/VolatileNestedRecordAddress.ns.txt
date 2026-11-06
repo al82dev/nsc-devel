@@ -1,0 +1,5 @@
+int Main()
+{
+    int* pointer = &volatile_nested_record.item.value;
+    return 0;
+}
