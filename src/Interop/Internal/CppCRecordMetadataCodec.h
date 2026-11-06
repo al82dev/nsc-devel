@@ -23,6 +23,9 @@ bool decodeCRecordCatalog(std::span<const std::uint8_t> bytes,
 enum class CRecordContractComparison { Different, Insufficient, Matching };
 bool compareCRecordContracts(const CppCRecordSnapshot& left, const CppCRecordSnapshot& right,
                              CRecordContractComparison& result, std::string& error);
+// Evidence concerns the root declaration only, not its transitive type closure.
+bool compareCRecordSourceEvidence(const CppCRecordSnapshot& left, const CppCRecordSnapshot& right,
+                                  CRecordContractComparison& result, std::string& error);
 bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
                         std::span<const CppCEnumSnapshot> enums,
                         std::vector<std::uint8_t>& output, std::string& error);

@@ -2,6 +2,7 @@
 #include "ByteReader.h"
 #include "ByteWriter.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
+#include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Frontend/CppAliasBuiltinType.h"
 #include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
 
@@ -289,6 +290,37 @@ bool compareCRecordContracts(const CppCRecordSnapshot& left, const CppCRecordSna
     normalized.identityKey = left.identityKey;
     if (!encodeCRecordCatalog(std::span(&normalized, 1), rightBytes, error)) return false;
     result = leftBytes == rightBytes ? CRecordContractComparison::Matching : CRecordContractComparison::Different;
+    error.clear();
+    return true;
+}
+
+bool compareCRecordSourceEvidence(const CppCRecordSnapshot& left, const CppCRecordSnapshot& right,
+                                  CRecordContractComparison& result, std::string& error)
+{
+    CRecordContractComparison contract{};
+    if (!compareCRecordContracts(left, right, contract, error)) return false;
+    if (contract != CRecordContractComparison::Matching)
+    { result = contract; return true; }
+    if (!left.sourceProvenance || !right.sourceProvenance)
+    { result = CRecordContractComparison::Insufficient; return true; }
+    const auto& first = *left.sourceProvenance;
+    const auto& second = *right.sourceProvenance;
+    if (first.bufferSha256 != second.bufferSha256 || first.byteOffset != second.byteOffset)
+    { result = CRecordContractComparison::Different; return true; }
+    std::error_code ec;
+    if (!first.sourcePath.is_absolute() || !second.sourcePath.is_absolute() ||
+        !std::filesystem::is_regular_file(first.sourcePath, ec) || ec)
+    { result = CRecordContractComparison::Insufficient; return true; }
+    const bool sameFile = std::filesystem::equivalent(first.sourcePath, second.sourcePath, ec);
+    if (ec) { result = CRecordContractComparison::Insufficient; return true; }
+    if (!sameFile) { result = CRecordContractComparison::Different; return true; }
+    basic::Sha256Digest digest;
+    std::uintmax_t size = 0;
+    std::string hashError;
+    if (!basic::sha256File(first.sourcePath, digest, size, hashError) || first.byteOffset >= size ||
+        basic::sha256Hex(digest) != first.bufferSha256)
+    { result = CRecordContractComparison::Insufficient; return true; }
+    result = CRecordContractComparison::Matching;
     error.clear();
     return true;
 }
