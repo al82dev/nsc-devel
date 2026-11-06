@@ -8,3 +8,5 @@ int refined();
 int refined(int value);
 int refined_zero();
 int refined_zero(void);
+int refined_reverse(int value);
+int refined_reverse();

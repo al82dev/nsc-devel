@@ -2795,6 +2795,7 @@ int main(int argc, char** argv)
                                   "volatile int* ptr_volatile_result(void); void ptr_volatile_nested(volatile int** p);\n"
                                   "void* ptr_void(void* p); int ptr_nested_const(const int** p);\n"
                                   "int c_no_prototype(); int c_void_prototype(void);\n"
+                                  "int c_refined(); int c_refined(int); int c_reverse(int); int c_reverse();\n"
                                   "int bridge_probe(size_t n, ...);\n"
                                   "struct Pair { char a; int b; }; struct OuterPair { struct Pair nested; struct Pair array[2][3]; }; struct CDevice { volatile int counter; }; struct Incomplete;\n"
                                   "#define DECLARE_MACRO_RECORD struct MacroRecord { int x; };\nDECLARE_MACRO_RECORD\n"
@@ -3842,6 +3843,16 @@ int main(int argc, char** argv)
                      voidPrototype && voidPrototype->hasPrototype && voidPrototypeSymbol && !voidPrototypeSymbol->isVariadic &&
                      noPrototypeSymbol->parameters.empty() && voidPrototypeSymbol->parameters.empty(),
                      "C no-prototype declaration differs from a void parameter prototype");
+        for (const char* name : {"c_refined", "c_reverse"})
+        {
+            const auto* declaration = cFunctions ? functionByName(*cFunctions, name) : nullptr;
+            const auto projection = declaration ? projectCppSemanticFunction(*declaration, 0, "Semantic")
+                : CppSemanticFunctionResult{CppSemanticFunctionFailure{"fixture unavailable"}};
+            const auto* symbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projection);
+            ok &= expect(declaration && declaration->hasPrototype && symbol && !symbol->isVariadic &&
+                         symbol->parameters.size() == 1 && symbol->parameters[0].typeKey == "builtin:int",
+                         "compatible C redeclarations retain a known prototype regardless of order");
+        }
         const auto* pointerNestedConst = cFunctions ? functionByName(*cFunctions, "ptr_nested_const") : nullptr;
         const auto projectedVolatile = pointerVolatile
             ? projectCppSemanticFunction(*pointerVolatile, 0, "Semantic")
