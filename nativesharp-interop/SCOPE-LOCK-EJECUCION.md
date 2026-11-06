@@ -10,6 +10,12 @@ ni se permita un objeto por valor. Mantener salidas en A:, usar Clang y NSC
 experimentales existentes y no modificar producción antes de reproducir y
 delimitar una falla. Validar la matriz O0–O3 agrupada; LLVM y NSLink son de
 solo lectura.
+La prueba positiva reproduce el rechazo del global `Opaque*` en O0. Las
+firmas de funciones aceptan el puntero, pero `mapGlobalType` exige layout al
+recorrer su objeto apuntado. Permitir `src/Interop/Cpp/CppSemanticInventory.cpp`
+para proyectar ese puntero C con identidad y procedencia comprobadas, sin
+permitir un objeto incompleto por valor ni fabricar tamaño. Conservar el resto
+de las restricciones y ejecutar el fixture agrupado y la regresión existente.
 
 ## Arreglos globales C de punteros a const
 
