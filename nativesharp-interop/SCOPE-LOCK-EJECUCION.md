@@ -1,5 +1,16 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Parámetros C puntero a escalar volatile
+
+Se proyectan parámetros de enlace C de un nivel a escalares volatile para
+llamadas desde NS; el calificador sigue en el tipo original de Clang y la
+función C ejecuta los accesos. Se preserva const del apuntado. Archivos:
+CppSemanticFunction.cpp, CppClangSessionTests.cpp, el fixture
+pruebas-tanda-08-record-c y esta documentación. No se habilitan retornos,
+globales, callbacks, punteros anidados ni sobrecargas C++ con este cambio.
+La ejecución mixta y el rechazo de pérdida de const se comprueban en la
+validación agrupada incremental; los ítems generales siguen abiertos.
+
 ## Tanda 08: declaraciones y tipos C
 
 Se trabaja exclusivamente en NSC: interfaces y extracción de Clang, inventario,

@@ -1,0 +1,5 @@
+int Main()
+{
+    int const* value = get_const_scalar();
+    return bump_volatile(value);
+}

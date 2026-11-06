@@ -2,6 +2,16 @@
 
 Estado: auditoría inicial; ningún ítem se cierra solo por observar datos en Clang.
 
+## Parámetros C puntero a escalar volatile: implementación pendiente de validar
+
+La proyección permite preparar una llamada a una función con enlace C cuyo
+parámetro es un puntero de un nivel a un escalar volatile. La función C realiza
+los accesos calificados; NSC conserva el tipo original de Clang y const del
+apuntado. El fixture prepara ejecución mixta y rechazo de pérdida de const.
+La construcción y validación agrupada están pendientes; no se afirma soporte
+hasta disponer de resultados. Los retornos, globales, callbacks, punteros
+anidados y la resolución de sobrecargas C++ no se habilitan con este cambio.
+
 ## Optimización del proyecto mixto de records C: 2026-11-06
 
 Con `bb85ea5e2` y `6cbe3f99a`, `call nativesharp-interop\validar-tanda-08.cmd`

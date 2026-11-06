@@ -197,5 +197,11 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project
 if not errorlevel 1 exit /b 1
 findstr /c:"cannot take the address of volatile storage until qualified pointers are supported" "%DEST%\volatile-nested-record-address.log" >nul
 if errorlevel 1 exit /b 1
+copy /y "%~dp0ConstVolatileParameter.ns.txt" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-volatile-parameter.exe" > "%DEST%\const-volatile-parameter.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"no viable overload of namespace function 'bump_volatile'" "%DEST%\const-volatile-parameter.log" >nul
+if errorlevel 1 exit /b 1
 echo Record C por puntero: resultado esperado cero.
 exit /b 0

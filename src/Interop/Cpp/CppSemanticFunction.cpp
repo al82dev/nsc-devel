@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <unordered_map>
 #include <map>
+#include <memory>
 #include <set>
 #include <tuple>
 #include <utility>
@@ -138,7 +139,22 @@ CppSemanticFunctionResult projectFunction(
     for (std::size_t index = 0; index < function.parameters.size(); ++index)
     {
         const auto& input = function.parameters[index];
-        const auto parameterType = mapFunctionType(input.type, true, records, moduleName, 0, lookup, projectOrdinal);
+        // A C callee performs accesses through its own volatile-qualified parameter.
+        // Keep the original Clang type below for identity and future consumers.
+        CppType mappedInput = input.type;
+        if (function.languageLinkage == CppLanguageLinkage::C &&
+            mappedInput.kind == CppTypeKind::Pointer && mappedInput.element &&
+            mappedInput.element->isVolatile &&
+            (mappedInput.element->kind == CppTypeKind::Boolean ||
+             mappedInput.element->kind == CppTypeKind::SignedInteger ||
+             mappedInput.element->kind == CppTypeKind::UnsignedInteger ||
+             mappedInput.element->kind == CppTypeKind::Floating))
+        {
+            auto element = std::make_shared<CppType>(*mappedInput.element);
+            element->isVolatile = false;
+            mappedInput.element = std::move(element);
+        }
+        const auto parameterType = mapFunctionType(mappedInput, true, records, moduleName, 0, lookup, projectOrdinal);
         if (!parameterType || input.type.kind == CppTypeKind::Void)
             return failure("C/C++ parameter " + std::to_string(index) + " is not yet mapped");
         frontend::MethodParameterSymbol parameter;

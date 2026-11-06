@@ -2523,10 +2523,19 @@ int main(int argc, char** argv)
         const auto* pointerNested = cFunctions ? functionByName(*cFunctions, "ptr_nested") : nullptr;
         const auto* pointerVoid = cFunctions ? functionByName(*cFunctions, "ptr_void") : nullptr;
         const auto* pointerNestedConst = cFunctions ? functionByName(*cFunctions, "ptr_nested_const") : nullptr;
-        ok &= expect(pointerVolatile && pointerNestedConst &&
-                     std::holds_alternative<CppSemanticFunctionFailure>(projectCppSemanticFunction(*pointerVolatile, 0, "Semantic")) &&
+        const auto projectedVolatile = pointerVolatile
+            ? projectCppSemanticFunction(*pointerVolatile, 0, "Semantic")
+            : CppSemanticFunctionResult{CppSemanticFunctionFailure{"fixture unavailable"}};
+        const auto* volatileSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projectedVolatile);
+        ok &= expect(volatileSymbol && volatileSymbol->parameters.size() == 1 &&
+                     volatileSymbol->parameters[0].typeKey == "builtin:int*" &&
+                     volatileSymbol->cppParameterTypes.size() == 1 &&
+                     volatileSymbol->cppParameterTypes[0].element &&
+                     volatileSymbol->cppParameterTypes[0].element->isVolatile,
+                     "C volatile scalar pointer input retains the original Clang qualifier");
+        ok &= expect(pointerNestedConst &&
                      std::holds_alternative<CppSemanticFunctionFailure>(projectCppSemanticFunction(*pointerNestedConst, 0, "Semantic")),
-                     "qualified pointees are not silently mapped to mutable pointers");
+                     "nested qualified pointees are not silently mapped to mutable pointers");
         if (pointerConst)
         {
             const auto projectedConst = projectCppSemanticFunction(*pointerConst, 0, "Semantic");

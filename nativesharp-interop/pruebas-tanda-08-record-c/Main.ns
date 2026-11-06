@@ -11,6 +11,8 @@ int Main()
     int source = 23;
     add_distinct(&destination, &source);
     if (destination != 42) return 3;
+    if (bump_volatile(&destination) != 44 || destination != 44 ||
+        read_const_volatile(&destination) != 44) return 24;
     Device* device = get_device();
     device->counter = 42;
     if (device->counter != 42 || read_device(device) != 42) return 4;
