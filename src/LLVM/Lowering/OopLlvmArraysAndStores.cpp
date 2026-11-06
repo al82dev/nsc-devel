@@ -457,7 +457,17 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             LLVMBuildBr(builder_, readyBlock);
             enterBlock(readyBlock);
         }
-        LLVMValueRef store = LLVMBuildStore(builder_, value, address);
+        const bool cVolatileBool = clangMsVolatileGlobalBoolArray(node->children[0].get());
+        LLVMValueRef storedValue = cVolatileBool
+            ? LLVMBuildZExt(builder_, value, LLVMInt8TypeInContext(context_), "c.bool.storage")
+            : value;
+        LLVMValueRef store = LLVMBuildStore(builder_, storedValue, address);
+        if (cVolatileBool)
+        {
+            LLVMSetVolatile(store, 1);
+            LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
+            LLVMSetAlignment(store, 1);
+        }
         if (const auto alignment = fieldArrayElementAlignment(node->children[0].get()))
             LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
         if (node->children[0]->kind == frontend::ProjectOopMirNodeKind::FieldAddress &&
