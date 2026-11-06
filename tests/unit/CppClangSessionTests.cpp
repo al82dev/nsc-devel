@@ -31,6 +31,7 @@
 #include "nativesharp/Interop/CppBinaryDependencies.h"
 #include "nativesharp/Interop/LibraryMetadataCodec.h"
 #include "nativesharp/Interop/LibraryMetadataMerger.h"
+#include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Interop/CppScalarTypeMapping.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/Interop/CppSemanticRecord.h"
@@ -3317,6 +3318,31 @@ int main(int argc, char** argv)
                     comparison = metadata_detail::CRecordContractComparison::Matching;
                     ok &= expect(!compare() && comparison == metadata_detail::CRecordContractComparison::Matching,
                                  "invalid C record comparison leaves its result unchanged");
+                    const auto actualFile = std::filesystem::absolute(std::filesystem::path(__FILE__));
+                    nativesharp::basic::Sha256Digest digest;
+                    std::uintmax_t fileSize = 0;
+                    std::string digestError;
+                    const bool hashed = nativesharp::basic::sha256File(actualFile, digest, fileSize, digestError);
+                    first.sourceProvenance = CppRecordDeclaration::SourceProvenance{
+                        actualFile, nativesharp::basic::sha256Hex(digest), 0};
+                    second = first;
+                    const auto sourceEvidence = [&] {
+                        return metadata_detail::compareCRecordSourceEvidence(first, second, comparison, codecError);
+                    };
+                    ok &= expect(hashed && fileSize && sourceEvidence() &&
+                                 comparison == metadata_detail::CRecordContractComparison::Matching,
+                                 "C root evidence matches an unchanged physical source and contract");
+                    second.sourceProvenance->byteOffset = 1;
+                    ok &= expect(sourceEvidence() && comparison == metadata_detail::CRecordContractComparison::Different,
+                                 "C root evidence distinguishes declaration offsets");
+                    second = first;
+                    first.sourceProvenance->bufferSha256 = std::string(64, '0');
+                    second.sourceProvenance->bufferSha256 = first.sourceProvenance->bufferSha256;
+                    ok &= expect(sourceEvidence() && comparison == metadata_detail::CRecordContractComparison::Insufficient,
+                                 "C root evidence refuses stale source contents");
+                    second.sourceProvenance.reset();
+                    ok &= expect(sourceEvidence() && comparison == metadata_detail::CRecordContractComparison::Insufficient,
+                                 "C root evidence refuses missing provenance");
                 }
                 else ok &= expect(false, "C record contract comparison has a complete test record");
                 LibraryMetadata catalogMetadata;
