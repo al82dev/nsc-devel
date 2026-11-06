@@ -287,6 +287,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNamespaceStateNameBi
             state.cppStorageSizeBits == std::optional<std::uint64_t>{bits} &&
             state.cppDeclarationAlignmentBits && *state.cppDeclarationAlignmentBits >= bits)
             node->cppAtomicAlignmentBytes = static_cast<std::size_t>(bits / 8);
+        // Preserve only the alignment proven for imported C arrays of int.
+        // The individual element's address is checked again against every stride.
+        if (state.cppCGlobal && state.declaredTypeKey.starts_with("builtin:int[") &&
+            state.cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
+            state.cppStorageSizeBits && *state.cppStorageSizeBits >= 32 &&
+            state.cppDeclarationAlignmentBits && *state.cppDeclarationAlignmentBits >= 32 &&
+            *state.cppDeclarationAlignmentBits % 32 == 0)
+            node->cppAtomicAlignmentBytes = 4;
     }
     node->memberOrdinal =
         (memberModel_ != nullptr ? memberModel_->members().size() : 0) + stateOrdinal;

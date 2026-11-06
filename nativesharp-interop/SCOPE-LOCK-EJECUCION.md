@@ -11,6 +11,8 @@ Conservar accesos ordinarios ante alineación insuficiente o modo desconocido;
 no modificar campos, punteros arbitrarios, otros tipos ni NSLink.
 
 Presupuesto: `src/Frontend/HIR/ExpressionStatementMachine/HirNameExpressionLowering.cpp`,
+`include/nativesharp/Frontend/NamespaceStateSymbol.h`,
+`src/Interop/Cpp/CppSemanticInventory.cpp`,
 `src/LLVM/Lowering/PackedArrayAlignment.h`,
 `src/LLVM/Lowering/OopLlvmArraysAndStores.cpp`,
 `src/LLVM/Lowering/OopLlvmExpressionMachine.cpp`, el fixture
