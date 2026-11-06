@@ -541,6 +541,30 @@ bool configurePrecompiledModules(
         error = "compilation input manifest requires a prepared project graph";
         return false;
     }
+    bool hasPrecompiledCCatalog = false;
+    for (const auto& module : compilation.precompiledModules())
+        hasPrecompiledCCatalog |= !module.cppCTypeCatalog.empty();
+    if (hasPrecompiledCCatalog)
+    {
+#if defined(NSC_ENABLE_CPP_INTEROP)
+        if (!compilation.setExperimentalCppTypeSelector(interop::selectCppTypesWithPrecompiledCatalogs, error) ||
+            !compilation.setExperimentalCppInstanceFieldProvider(
+                [&compilation](const auto& graph, auto projects, const auto& lookup, auto& fields, auto& why) {
+                    return interop::provideCppFieldsWithPrecompiledCatalogs(
+                        graph, projects, compilation.precompiledModules(), lookup, fields, why);
+                }, error) ||
+            !compilation.setCppGlobalProvider(
+                [&compilation](const auto& graph, auto projects, auto demands, auto& values, auto& why) {
+                    const auto* lookup = compilation.nameLookup();
+                    if (!lookup) { why = "C/C++ name lookup is unavailable"; return false; }
+                    return interop::provideCppValuesWithPrecompiledCatalogs(
+                        graph, projects, compilation.precompiledModules(), *lookup, demands, values, why);
+                }, error) || !compilation.enableCppImportedFieldLowering(error)) return false;
+#else
+        error = "precompiled C type catalogues require a compiler built with C/C++ interoperability";
+        return false;
+#endif
+    }
     compilation.setSourceBufferProvider(
         [&manifest](const std::filesystem::path& path)
         {
