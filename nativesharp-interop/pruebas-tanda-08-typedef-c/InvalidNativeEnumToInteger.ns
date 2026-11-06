@@ -1,0 +1,2 @@
+enum NativeMode { First = 1 }
+int Main() { NativeMode value = NativeMode.First; int number = value; return number; }

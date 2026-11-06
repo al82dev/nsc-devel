@@ -2,6 +2,10 @@
 
 ## Typedef C en proyectos reales
 
+Preparar pruebas de conversión desde enum C importado a entero y a otro enum
+C, incluida extensión de un valor sin signo y control de enum NativeSharp.
+Observar errores y delimitar la solución antes de modificar producción.
+
 Preparar caso independiente de asignación e inicialización de enumeradores C
 a variables, elementos de arreglo y parámetros del enum importado. Comparar
 también el tipo de un enumerador en contexto entero y preservar un control de

@@ -1,0 +1,12 @@
+int Main()
+{
+    CColor color = COLOR_BLUE;
+    int numeric = color;
+    if (numeric != 2) return 1;
+    CUnsigned other = color;
+    if (other != 2) return 2;
+    CUnsigned high = U_HIGH;
+    long widened = high;
+    if (widened != 4294967295L) return 3;
+    return 0;
+}

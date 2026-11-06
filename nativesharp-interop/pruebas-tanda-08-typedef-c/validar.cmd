@@ -13,6 +13,12 @@ for %%F in (Api.h Api.c Main.ns Project.nsproj MatrixPointer.ns MatrixPointer.ns
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
+for %%F in (EnumToInteger InvalidNativeEnumToInteger) do (
+  copy /y "%~dp0%%F.ns" "%DEST%\%%F.ns" >nul
+  if errorlevel 1 exit /b 1
+  copy /y "%~dp0%%F.nsproj" "%DEST%\%%F.nsproj" >nul
+  if errorlevel 1 exit /b 1
+)
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Api.c" -o "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
 llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
