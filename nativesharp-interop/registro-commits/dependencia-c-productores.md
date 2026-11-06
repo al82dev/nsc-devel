@@ -11,3 +11,11 @@ anterior o por el proyecto. Conserva el orden y las repeticiones dentro de cada
 lista individual y mantiene la verificación de identidad de las dependencias.
 NSLink no se modifica. Se restituye la dependencia en el segundo productor para
 ejercitar el caso original; queda pendiente la construcción y validación.
+
+## Resultado del 2026-11-06
+
+Con el build incremental `66725a00ab433111`, el caso original con ambos
+productores declarando `api.lib` compiló, enlazó y ejecutó en O0–O3; ambos
+estados estáticos continuaron independientes. La matriz de metadata C existente
+pasó y `nsc.cpp-interop.session` pasó 1/1. El resultado no demuestra todos los
+grafos, órdenes ni repeticiones de bibliotecas; no se modificó NSLink.

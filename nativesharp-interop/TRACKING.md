@@ -412,9 +412,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 - [ ] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
   - Funciones C `static inline` de un encabezado se llamaron desde NSC en
     O0–O3, directamente y mediante dos bibliotecas NativeSharp precompiladas;
-    en la muestra cada productor conservó su propio estado estático. Una
-    dependencia binaria compartida declarada por ambos provocó NSL1021 y queda
-    pendiente; ThinLTO y otras combinaciones también. La muestra no cierra el
+    en la muestra cada productor conservó su propio estado estático. La misma
+    dependencia binaria declarada por ambos provocó NSL1021; tras ajustar su
+    recopilación, el caso pasó en O0–O3. ThinLTO y otras combinaciones siguen
+    pendientes. La muestra no cierra el
     ítem. [Evidencia](registro-commits/prueba-inline-c.md).
   - La sesión selecciona un prototipo C disponible entre redeclaraciones
     compatibles. El fixture pasó llamadas válidas O0–O3 y rechazó aridad
