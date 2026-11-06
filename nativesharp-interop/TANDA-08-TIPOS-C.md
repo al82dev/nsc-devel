@@ -1330,6 +1330,13 @@ contradictorios o ausentes. No acredita persistencia ni todas las declaraciones.
 
 ## Persistencia de identidad de campos C: frontera observada
 
+El catálogo `LibraryMetadataCppBinaryDependency` y su codec conservan nombres,
+tamaños y hashes de biblioteca y runtime para enlace; no contienen headers,
+opciones de sesión ni USR de declaraciones. `LibraryReferenceValidation` y
+`PrecompiledModuleConfiguration` resuelven esos binarios. Ese catálogo por sí
+solo no permite reconstruir la identidad semántica importada. Falta trazar la
+publicación y recuperación completa antes de diseñar la persistencia.
+
 `ClassMemberSnapshotCodec.cpp` no serializa `cppClangUsr` ni
 `cppMicrosoftVolatileSemantics`. La captura de miembros usa nodos de la unidad
 NativeSharp (`MemberCollection.cpp` y `SnapshotMembers.cpp`); los campos C
