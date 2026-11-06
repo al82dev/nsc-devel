@@ -3067,6 +3067,33 @@ int main(int argc, char** argv)
                 ok &= expect(!metadata_detail::decodeCRecordCatalog(encoded, decoded, codecError) &&
                              decoded.size() == priorSize,
                              "C record catalog codec rejects truncation without changing output");
+                auto invalid = *catalog;
+                invalid.push_back(invalid.back());
+                std::vector<std::uint8_t> preserved{0x42};
+                ok &= expect(!metadata_detail::encodeCRecordCatalog(invalid, preserved, codecError) &&
+                             preserved == std::vector<std::uint8_t>{0x42},
+                             "C record codec rejects duplicate identities without changing output");
+                invalid = *catalog;
+                const auto incomplete = std::find_if(invalid.begin(), invalid.end(),
+                    [](const auto& record) { return !record.complete; });
+                if (incomplete != invalid.end())
+                {
+                    incomplete->sizeBits = 8;
+                    ok &= expect(!metadata_detail::encodeCRecordCatalog(invalid, preserved, codecError) &&
+                                 preserved == std::vector<std::uint8_t>{0x42},
+                                 "C record codec rejects layout on an incomplete record");
+                }
+                else ok &= expect(false, "C record codec test includes an incomplete record");
+                invalid = *catalog;
+                const auto complete = std::find_if(invalid.begin(), invalid.end(),
+                    [](const auto& record) { return record.complete && !record.fields.empty(); });
+                if (complete != invalid.end())
+                {
+                    complete->fields.front().offsetBits = *complete->sizeBits + 1;
+                    ok &= expect(!metadata_detail::encodeCRecordCatalog(invalid, preserved, codecError),
+                                 "C record codec rejects an out-of-bounds field");
+                }
+                else ok &= expect(false, "C record codec test includes a complete record with fields");
             }
             if (!catalogGroups.empty())
             {
