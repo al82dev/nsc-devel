@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Funciones C static inline de encabezados
+
+Investigar la importación y materialización de funciones C `static inline`
+desde encabezados, incluidas funciones que llaman a símbolos externos y
+con estado estático. Crear un fixture independiente en
+`nativesharp-interop/pruebas-tanda-08-inline-c` y conservar resultados en
+`A:/nsc-interop-build`. No modificar producción hasta reproducir el fallo y
+registrar los archivos y el diseño de integración; LLVM permanece de lectura.
+
 ## Redeclaraciones C con prototipo más preciso
 
 Ampliar `pruebas-tanda-08-prototipos-c` con declaraciones compatibles `f()`
