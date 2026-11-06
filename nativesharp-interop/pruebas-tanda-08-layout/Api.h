@@ -5,7 +5,10 @@ typedef struct Container { char tag; Pair pairs[2][3]; Cell cell; } Container;
 typedef struct Packed { char tag; int value; } Packed;
 typedef struct PackedPointer { char tag; int* value; } PackedPointer;
 typedef struct PackedArray { char tag; int values[2][3]; } PackedArray;
+typedef struct PackedQualified { char tag; const int fixed[2]; volatile int status[2]; } PackedQualified;
 #pragma pack(pop)
+PackedQualified* layout_packed_qualified(void);
+int layout_packed_qualified_status(void);
 PackedArray* layout_packed_array(void);
 int layout_packed_array_value(void);
 int layout_packed_array_size(void);

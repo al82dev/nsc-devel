@@ -1,0 +1,6 @@
+int Main()
+{
+    PackedQualified* packed = layout_packed_qualified();
+    int* unsafeAddress = &packed->status[0];
+    return *unsafeAddress;
+}

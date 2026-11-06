@@ -2,6 +2,9 @@
 static Pair sample_pair = { 1, 2 };
 static Packed sample_packed = { 1, 2 };
 static PackedArray sample_packed_array = { 1, { { 1, 2, 3 }, { 4, 5, 6 } } };
+static PackedQualified sample_packed_qualified = { 1, { 2, 3 }, { 4, 5 } };
+PackedQualified* layout_packed_qualified(void) { return &sample_packed_qualified; }
+int layout_packed_qualified_status(void) { return sample_packed_qualified.status[1]; }
 PackedArray* layout_packed_array(void) { return &sample_packed_array; }
 int layout_packed_array_value(void) { return sample_packed_array.values[1][2]; }
 int layout_packed_array_size(void) { return (int)sizeof(PackedArray); }

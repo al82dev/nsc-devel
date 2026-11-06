@@ -1,0 +1,6 @@
+int Main()
+{
+    PackedQualified* packed = layout_packed_qualified();
+    packed->fixed[0] = 7;
+    return 0;
+}
