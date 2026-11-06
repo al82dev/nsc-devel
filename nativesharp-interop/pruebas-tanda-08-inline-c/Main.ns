@@ -1,0 +1,6 @@
+int Main()
+{
+    if (header_add(4, 5) != 9 || header_composed(4) != 14) return 1;
+    if (header_counter() != 1 || header_counter() != 2) return 2;
+    return 0;
+}
