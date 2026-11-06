@@ -8166,6 +8166,19 @@ int main(int argc, char** argv)
                      "live Clang session exposes its effective MS volatile option");
     }
 
+    auto alignedSession = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C,
+        "__declspec(align(16)) extern volatile int aligned_global; extern int incomplete_global[];\n"));
+    ok &= expect(static_cast<bool>(alignedSession), "Clang opens aligned and incomplete global declarations");
+    if (alignedSession)
+    {
+        const auto globals = alignedSession->globalsSnapshot();
+        const auto* aligned = globals ? globalByName(*globals, "aligned_global") : nullptr;
+        const auto* incomplete = globals ? globalByName(*globals, "incomplete_global") : nullptr;
+        ok &= expect(aligned && aligned->declarationAlignmentBits == std::optional<std::uint64_t>{128} &&
+                     incomplete && !incomplete->declarationAlignmentBits.has_value(),
+                     "global snapshots preserve explicit declaration alignment and unknown incomplete alignment");
+    }
+
     auto firstOptions = options(argv[1], argv[2], argv[3], CppLanguageMode::C,
         "#if SESSION_PICK == 1\nint first_session(void);\n#else\nint second_session(void);\n#endif\n");
     auto secondOptions = firstOptions;

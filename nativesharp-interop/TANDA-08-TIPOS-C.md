@@ -1055,6 +1055,12 @@ bits para tipos completos; un tipo incompleto conserva ausencia. Este dato aún
 no prueba que una operación atómica sea elegible ni se usa para emitir IR.
 Faltan pruebas y validación agrupada.
 
+## Prueba de alineación de globales Clang
+
+Se preparó una sesión con un global de alineación explícita de 16 bytes y un
+arreglo incompleto; el snapshot debe conservar 128 bits y ausencia. Pendiente
+de ejecución agrupada.
+
 ## Apuntado volatile en estados globales NativeSharp
 
 El análisis de globales consultaba únicamente el dato de declaraciones C.

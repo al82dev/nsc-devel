@@ -1,5 +1,11 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Prueba de alineación de globales Clang
+
+Preparar un global con alineación explícita de 16 bytes y un arreglo incompleto,
+comprobando el valor y la ausencia respectivamente. Archivos:
+CppClangSessionTests.cpp y documentación. Ejecutar con la batería agrupada.
+
 ## Alineación declarada de global C/C++
 
 Capturar desde ASTContext la alineación efectiva de cada declaración global de
