@@ -144,6 +144,10 @@ struct CppCRecordSnapshotFailure { std::string message; };
 using CppCRecordSnapshotResult = std::variant<CppCRecordSnapshot, CppCRecordSnapshotFailure>;
 CppCRecordSnapshotResult captureCppCRecordSnapshot(
     std::span<const CppSemanticRecordEntry> inventory, const CppRecordGroup& group);
+// The caller selects C groups. Returns no partial catalog on failure.
+using CppCRecordCatalogResult = std::variant<std::vector<CppCRecordSnapshot>, CppCRecordSnapshotFailure>;
+CppCRecordCatalogResult captureCppCRecordCatalog(
+    std::span<const CppSemanticRecordEntry> inventory, std::span<const CppRecordGroup> groups);
 
 enum class CppSignatureRecordStatus { Matched, Unprojectable, Missing };
 struct CppSignatureRecordDependency

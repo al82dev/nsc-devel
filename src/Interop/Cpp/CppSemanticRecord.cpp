@@ -722,6 +722,26 @@ CppCRecordSnapshotResult captureCppCRecordSnapshot(
     return snapshot;
 }
 
+CppCRecordCatalogResult captureCppCRecordCatalog(
+    std::span<const CppSemanticRecordEntry> inventory, std::span<const CppRecordGroup> groups)
+{
+    std::vector<CppCRecordSnapshot> result;
+    result.reserve(groups.size());
+    for (const auto& group : groups)
+    {
+        auto captured = captureCppCRecordSnapshot(inventory, group);
+        if (const auto* failure = std::get_if<CppCRecordSnapshotFailure>(&captured)) return *failure;
+        result.push_back(std::move(std::get<CppCRecordSnapshot>(captured)));
+    }
+    std::sort(result.begin(), result.end(), [](const auto& left, const auto& right) {
+        return left.identityKey < right.identityKey;
+    });
+    for (std::size_t i = 1; i < result.size(); ++i)
+        if (result[i - 1].identityKey == result[i].identityKey)
+            return CppCRecordSnapshotFailure{"duplicate C record identity in catalog"};
+    return result;
+}
+
 CppRecordRefinementResult refineCppRecordGroupsForPointerTransport(
     std::span<const CppSemanticRecordEntry> inventory, const CppRecordGroups& groups,
     std::span<const CppProjectSessions> projects)
