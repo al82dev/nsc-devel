@@ -8217,6 +8217,26 @@ int main(int argc, char** argv)
                      "copied USRs remain available after closing their session");
     }
 
+    auto usrCpp = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::Cpp,
+        "namespace UsrNS { struct Thing { int x; static int data; void work(int); void work(double); }; }"));
+    ok &= expect(static_cast<bool>(usrCpp), "C++ session opens for declaration identity tests");
+    if (usrCpp)
+    {
+        const auto records = usrCpp->recordsSnapshot();
+        const auto namespaces = usrCpp->namespacesSnapshot();
+        const auto* record = records ? recordByName(*records, "UsrNS::Thing") : nullptr;
+        const auto ns = namespaces ? std::find_if(namespaces->begin(), namespaces->end(),
+            [](const auto& value) { return value.qualifiedName == "UsrNS"; }) :
+            std::vector<CppNamespaceDeclaration>::const_iterator{};
+        ok &= expect(record && record->clangUsr && record->fields.size() == 1 &&
+                     record->fields[0].clangUsr && record->staticFields.size() == 1 &&
+                     record->staticFields[0].clangUsr && record->methods.size() == 2 &&
+                     record->methods[0].clangUsr && record->methods[1].clangUsr &&
+                     record->methods[0].clangUsr != record->methods[1].clangUsr &&
+                     namespaces && ns != namespaces->end() && ns->clangUsr,
+                     "Clang USRs distinguish overloaded C++ methods and identify their members and namespace");
+    }
+
     auto alignedSession = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C,
         "__declspec(align(16)) extern volatile int aligned_global; extern int incomplete_global[];\n"));
     ok &= expect(static_cast<bool>(alignedSession), "Clang opens aligned and incomplete global declarations");
