@@ -193,6 +193,11 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 LLVMSetOrdering(previous, LLVMAtomicOrderingAcquire);
                 LLVMSetAlignment(previous, static_cast<unsigned>(*alignment));
             }
+            if (clangMsVolatileDirectCIntPointee(node->children[0].get()))
+            {
+                LLVMSetOrdering(previous, LLVMAtomicOrderingAcquire);
+                LLVMSetAlignment(previous, 4);
+            }
             if (isClangMsVolatileScalarGlobal(node->children[0].get()))
             {
                 LLVMSetOrdering(previous, LLVMAtomicOrderingAcquire);
@@ -248,6 +253,11 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
             {
                 LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
                 LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
+            }
+            if (clangMsVolatileDirectCIntPointee(node->children[0].get()))
+            {
+                LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
+                LLVMSetAlignment(store, 4);
             }
             if (isClangMsVolatileScalarGlobal(node->children[0].get()))
             {
@@ -469,6 +479,11 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         {
             LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
             LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
+        }
+        if (clangMsVolatileDirectCIntPointee(node->children[0].get()))
+        {
+            LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
+            LLVMSetAlignment(store, 4);
         }
         if (isClangMsVolatileScalarGlobal(node->children[0].get()))
         {

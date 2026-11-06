@@ -1497,6 +1497,11 @@ bool OopLlvmImplementation::lowerExpressionFrame030PointerLoad(
         LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
         LLVMSetAlignment(load, static_cast<unsigned>(*alignment));
     }
+    if (clangMsVolatileDirectCIntPointee(current))
+    {
+        LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
+        LLVMSetAlignment(load, 4);
+    }
     values.push_back(load);
     return true;
 }

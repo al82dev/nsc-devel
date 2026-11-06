@@ -73,6 +73,15 @@ inline std::optional<std::uint64_t> clangMsVolatileGlobalIntArrayAlignment(
     return 4;
 }
 
+inline bool clangMsVolatileDirectCIntPointee(const frontend::ProjectOopMirNode* node) noexcept
+{
+    return node && (node->kind == frontend::ProjectOopMirNodeKind::AddressValue ||
+                    node->kind == frontend::ProjectOopMirNodeKind::PointerLoad) &&
+        node->typeKey == "builtin:int" && node->volatileAccess &&
+        node->cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
+        node->cppAtomicAlignmentBytes == std::optional<std::uint64_t>{4};
+}
+
 inline std::optional<std::uint64_t> clangMsVolatileFunctionFieldAlignment(
     const frontend::ProjectOopMirNode* node) noexcept
 {
