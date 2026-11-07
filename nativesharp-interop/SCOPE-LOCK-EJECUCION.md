@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004: tipos adicionales de global C interna
+
+Reproducir y corregir el acceso a char, unsigned char, short, long, unsigned
+long, bool, enum, atomic int y arreglos fijos de distintas dimensiones con
+enlace interno. Verificar inicialización y estado con funciones inline en
+O0–O3 y ejecutar las regresiones de globales estáticas. NSLink, metadata,
+LLVM externo, fixtures existentes y C: permanecen protegidos.
+
 ## T08-004: global C static _Thread_local int
 
 Reproducir y corregir el acceso a una global C `static _Thread_local int`, con
