@@ -81,6 +81,20 @@ const std::vector<std::string> kHeaderIndependent = {
     "typedef-anonymous-record"};
 const std::vector<std::string> kHeaderDependent = {"inline-function", "static-global", "alias"};
 
+// EN: Homonymous headers: dirA/same.h and dirB/same.h have this identical text.
+// ES: Encabezados homónimos: dirA/same.h y dirB/same.h tienen este texto idéntico.
+const char* const kHomonymHeader =
+    "typedef int CSameInt;\n"
+    "static int c_same_static = 3;\n"
+    "static inline int c_same_inline(void) { return 1; }\n";
+
+// EN: dirC/same.h: same names and file name, different declarations.
+// ES: dirC/same.h: mismos nombres y nombre de archivo, declaraciones distintas.
+const char* const kHomonymOtherHeader =
+    "typedef long long CSameInt;\n"
+    "static int c_same_static = 4;\n"
+    "static inline int c_same_inline(void) { return 2; }\n";
+
 // EN: Reports a failed expectation on stderr. Returns the condition unchanged; no side effects
 //     besides the message. O(1).
 // ES: Informa una expectativa fallida por stderr. Devuelve la condición sin cambios; sin efectos
@@ -302,16 +316,17 @@ std::filesystem::path writeProject(const std::filesystem::path& directory, const
     return written ? project : std::filesystem::path();
 }
 
-// EN: Opens the a.h and b.h sessions as two references of one project.
-// ES: Abre las sesiones de a.h y b.h como dos referencias de un mismo proyecto.
+// EN: Opens the `first` and `second` header sessions as two references of one project.
+// ES: Abre las sesiones de los encabezados `first` y `second` como dos referencias de un proyecto.
 std::vector<CppProjectSessions> twoHeaderSessions(CppClangSessionFactory& factory, const std::string& resource,
                                                   const std::filesystem::path& directory, const std::string& driver,
-                                                  const std::filesystem::path& project)
+                                                  const std::filesystem::path& project, const std::string& first,
+                                                  const std::string& second)
 {
     CppProjectSessions group;
     group.projectFile = project;
-    group.sessions.push_back(openSession(factory, headerOptions(resource, directory, driver, "a.h")));
-    group.sessions.push_back(openSession(factory, headerOptions(resource, directory, driver, "b.h")));
+    group.sessions.push_back(openSession(factory, headerOptions(resource, directory, driver, first)));
+    group.sessions.push_back(openSession(factory, headerOptions(resource, directory, driver, second)));
     std::vector<CppProjectSessions> groups;
     groups.push_back(std::move(group));
     return groups;
@@ -398,7 +413,7 @@ bool checkTwoHeaderProject(CppClangSessionFactory& factory, const std::string& r
     nativesharp::frontend::ProjectCompilation compilation;
     std::string error;
     const bool loaded = compilation.setCppProjectSessions(
-                            twoHeaderSessions(factory, resource, directory, driver, project), error) &&
+                            twoHeaderSessions(factory, resource, directory, driver, project, "a.h", "b.h"), error) &&
         compilation.compileProjectNames(project, error);
     if (!loaded) std::cerr << "two-header project: " << error << '\n';
     if (!expect(loaded, "two-header project loads its names")) return false;
@@ -419,29 +434,28 @@ std::string diagnosticText(const nativesharp::frontend::ProjectCompilation& comp
     return text;
 }
 
-// EN: Binds the typedef name CIdInt declared by two sessions whose headers are `first` and
-//     `second` (identical text). Returns true when the project names compile without errors.
-// ES: Enlaza el typedef CIdInt declarado por dos sesiones cuyos encabezados son `first` y
-//     `second` (texto idéntico). Devuelve true si los nombres del proyecto compilan sin errores.
+// EN: Binds the typedef name `alias` declared by two sessions whose headers are `first` and
+//     `second`. `label` names the project folder. Returns true when the project names compile
+//     without errors; the diagnostics are printed as evidence.
+// ES: Enlaza el typedef `alias` declarado por dos sesiones cuyos encabezados son `first` y
+//     `second`. `label` nombra la carpeta del proyecto. Devuelve true si los nombres del proyecto
+//     compilan sin errores; los diagnósticos se imprimen como evidencia.
 bool bindTwoSessionAlias(CppClangSessionFactory& factory, const std::string& resource,
                          const std::filesystem::path& directory, const std::string& driver,
-                         const std::string& first, const std::string& second)
+                         const std::string& label, const std::string& first, const std::string& second,
+                         const std::string& alias)
 {
-    const auto project = writeProject(directory / ("alias-" + first + "-" + second), "CIdentityAlias",
-                                      "int Use(CIdInt value) { return value; } int Main() { return 0; }\n");
-    CppProjectSessions group;
-    group.projectFile = project;
-    group.sessions.push_back(openSession(factory, headerOptions(resource, directory, driver, first)));
-    group.sessions.push_back(openSession(factory, headerOptions(resource, directory, driver, second)));
-    std::vector<CppProjectSessions> groups;
-    groups.push_back(std::move(group));
+    const auto project = writeProject(directory / ("alias-" + label), "CIdentityAlias",
+                                      "int Use(" + alias + " value) { return 0; } int Main() { return 0; }\n");
     nativesharp::frontend::ProjectCompilation compilation;
     std::string error;
-    const bool configured = !project.empty() && compilation.setCppProjectSessions(std::move(groups), error) &&
+    const bool configured = !project.empty() &&
+        compilation.setCppProjectSessions(
+            twoHeaderSessions(factory, resource, directory, driver, project, first, second), error) &&
         compilation.setCppTypeAliasProvider(provideCppTypeAliases, error);
     const bool bound = configured && compilation.compileProjectNames(project, error) &&
         !compilation.diagnostics().hasErrors();
-    std::cout << "OBSERVATION typedef CIdInt from " << first << " and " << second << ": bound="
+    std::cout << "OBSERVATION typedef " << alias << " from " << first << " and " << second << ": bound="
               << (bound ? "yes" : "no") << " diagnostics=" << diagnosticText(compilation)
               << " error='" << error << "'\n";
     return bound;
@@ -456,8 +470,8 @@ bool bindTwoSessionAlias(CppClangSessionFactory& factory, const std::string& res
 bool checkTwoSessionAlias(CppClangSessionFactory& factory, const std::string& resource,
                           const std::filesystem::path& directory, const std::string& driver)
 {
-    const bool control = bindTwoSessionAlias(factory, resource, directory, driver, "a.h", "a.h");
-    bindTwoSessionAlias(factory, resource, directory, driver, "a.h", "b.h");
+    const bool control = bindTwoSessionAlias(factory, resource, directory, driver, "a-a", "a.h", "a.h", "CIdInt");
+    bindTwoSessionAlias(factory, resource, directory, driver, "a-b", "a.h", "b.h", "CIdInt");
     return expect(control, "one typedef observed by two sessions of the same header binds");
 }
 
@@ -504,8 +518,124 @@ void observeAnonymousEnumCollision(CppClangSessionFactory& factory, const std::s
               << " error='" << error << "'\n";
 }
 
-// EN: Entry of the probe mode. Writes a.h and b.h with identical text and runs probes 1-4.
-// ES: Entrada del modo de sondas. Escribe a.h y b.h con texto idéntico y ejecuta las sondas 1-4.
+// EN: Reads the USRs of the homonymous-header declarations (typedef, static inline function and
+//     static global) of one session into a table.
+// ES: Lee en una tabla los USR de las declaraciones del encabezado homónimo (typedef, función
+//     static inline y global static) de una sesión.
+UsrTable collectHomonymUsrs(const CppInteropSession& session)
+{
+    UsrTable table;
+    if (const auto aliases = session.typeAliasesSnapshot())
+    {
+        for (const auto& alias : *aliases)
+        {
+            if (alias.qualifiedName == "CSameInt") table["alias"] = alias.clangUsr;
+        }
+    }
+    if (const auto functions = session.freeFunctionsSnapshot())
+    {
+        for (const auto& function : *functions)
+        {
+            if (function.qualifiedName == "c_same_inline") table["inline-function"] = function.clangUsr;
+        }
+    }
+    if (const auto globals = session.globalsSnapshot())
+    {
+        for (const auto& global : *globals)
+        {
+            if (global.qualifiedName == "c_same_static") table["static-global"] = global.clangUsr;
+        }
+    }
+    return table;
+}
+
+// EN: Probe 5a. dirA/same.h, dirB/same.h (identical) and dirC/same.h (different) share the file
+//     name. Clang qualifies the USR of internal declarations with the file name only, so the
+//     three headers are expected to produce the same USR for each category.
+// ES: Sonda 5a. dirA/same.h, dirB/same.h (idénticos) y dirC/same.h (distinto) comparten el nombre
+//     de archivo. Clang califica el USR de las declaraciones internas solo con el nombre del
+//     archivo, por lo que se espera el mismo USR en los tres encabezados para cada categoría.
+bool checkHomonymUsrs(CppClangSessionFactory& factory, const std::string& resource,
+                      const std::filesystem::path& directory, const std::string& driver)
+{
+    auto first = openSession(factory, headerOptions(resource, directory, driver, "dirA/same.h"));
+    auto twin = openSession(factory, headerOptions(resource, directory, driver, "dirB/same.h"));
+    auto other = openSession(factory, headerOptions(resource, directory, driver, "dirC/same.h"));
+    if (!expect(first && twin && other, "homonymous header sessions open")) return false;
+    const auto firstTable = collectHomonymUsrs(*first);
+    const auto twinTable = collectHomonymUsrs(*twin);
+    const auto otherTable = collectHomonymUsrs(*other);
+    bool ok = true;
+    for (const auto& key : kHeaderDependent)
+    {
+        std::cout << "USR homonym " << key << " dirA=" << show(firstTable, key) << " dirB=" << show(twinTable, key)
+                  << " dirC=" << show(otherTable, key) << '\n';
+        const auto found = firstTable.find(key);
+        const bool present = found != firstTable.end() && found->second && !found->second->empty();
+        ok &= expect(present && twinTable.count(key) && otherTable.count(key) &&
+                     twinTable.at(key) == found->second && otherTable.at(key) == found->second,
+                     "homonymous headers in different directories give one USR for " + key);
+    }
+    first->close();
+    twin->close();
+    other->close();
+    return ok;
+}
+
+// EN: Probe 5b. Selection with homonymous headers in one project. A typedef of the same type in
+//     dirA and dirB binds; a typedef of another type in dirC is rejected by its type; the static
+//     inline functions of dirA and dirC share their USR but remain two distinct definitions.
+// ES: Sonda 5b. Selección con encabezados homónimos en un proyecto. Un typedef del mismo tipo en
+//     dirA y dirB enlaza; un typedef de otro tipo en dirC se rechaza por su tipo; las funciones
+//     static inline de dirA y dirC comparten USR pero siguen siendo dos definiciones distintas.
+bool checkHomonymProject(CppClangSessionFactory& factory, const std::string& resource,
+                         const std::filesystem::path& directory, const std::string& driver)
+{
+    bool ok = expect(bindTwoSessionAlias(factory, resource, directory, driver, "same-a-b", "dirA/same.h",
+                                         "dirB/same.h", "CSameInt"),
+                     "one typedef type from homonymous headers in two directories binds");
+    ok &= expect(!bindTwoSessionAlias(factory, resource, directory, driver, "same-a-c", "dirA/same.h",
+                                      "dirC/same.h", "CSameInt"),
+                 "typedefs of different types from homonymous headers do not bind");
+    const auto project = writeProject(directory / "homonym-functions", "CIdentityHomonym",
+                                      "int Main() { return 0; }\n");
+    nativesharp::frontend::ProjectCompilation compilation;
+    std::string error;
+    const bool loaded = !project.empty() &&
+        compilation.setCppProjectSessions(
+            twoHeaderSessions(factory, resource, directory, driver, project, "dirA/same.h", "dirC/same.h"), error) &&
+        compilation.compileProjectNames(project, error);
+    const auto* graph = compilation.projectGraph();
+    auto inventory = loaded && graph ? collectCppSemanticFunctions(*graph, compilation.cppProjectSessions())
+                                     : CppSemanticInventoryResult{CppSemanticInventoryFailure{{}, 0, error}};
+    const auto* entries = std::get_if<std::vector<CppSemanticInventoryEntry>>(&inventory);
+    auto selected = entries ? selectCppSemanticFunctions(*entries, 0, "c_same_inline")
+                            : CppSemanticFunctionGroupsResult{CppSemanticFunctionGroupFailure{0, 0, "no inventory"}};
+    const auto* groups = std::get_if<CppSemanticFunctionGroups>(&selected);
+    ok &= expect(groups && groups->groups.size() == 2,
+                 "static inline definitions of homonymous headers with one USR are not merged");
+    return ok;
+}
+
+// EN: Probe 5. Writes the homonymous headers and runs 5a and 5b.
+// ES: Sonda 5. Escribe los encabezados homónimos y ejecuta 5a y 5b.
+bool checkHomonymHeaders(CppClangSessionFactory& factory, const std::string& resource,
+                         const std::filesystem::path& directory, const std::string& driver)
+{
+    std::filesystem::create_directories(directory / "dirA");
+    std::filesystem::create_directories(directory / "dirB");
+    std::filesystem::create_directories(directory / "dirC");
+    const bool written = writeText(directory / "dirA" / "same.h", kHomonymHeader) &&
+        writeText(directory / "dirB" / "same.h", kHomonymHeader) &&
+        writeText(directory / "dirC" / "same.h", kHomonymOtherHeader);
+    if (!expect(written, "homonymous headers are written")) return false;
+    const bool usrs = checkHomonymUsrs(factory, resource, directory, driver);
+    const bool project = checkHomonymProject(factory, resource, directory, driver);
+    return usrs && project;
+}
+
+// EN: Entry of the probe mode. Writes a.h and b.h with identical text and runs probes 1-5.
+// ES: Entrada del modo de sondas. Escribe a.h y b.h con texto idéntico y ejecuta las sondas 1-5.
 int runProbes(const std::string& resource, const std::filesystem::path& work, const std::string& driver)
 {
     const auto directory = std::filesystem::absolute(work / "c-identity");
@@ -520,6 +650,7 @@ int runProbes(const std::string& resource, const std::filesystem::path& work, co
     ok &= checkTwoHeaderProject(factory, resource, directory, driver);
     ok &= checkTwoSessionAlias(factory, resource, directory, driver);
     observeAnonymousEnumCollision(factory, resource, directory, driver);
+    ok &= checkHomonymHeaders(factory, resource, directory, driver);
     std::cout << (ok ? "C declaration identity probes passed\n" : "C declaration identity probes failed\n");
     return ok ? 0 : 1;
 }

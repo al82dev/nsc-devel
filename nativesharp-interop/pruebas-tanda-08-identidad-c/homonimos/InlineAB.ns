@@ -1,0 +1,1 @@
+int Main() { return c_same_inline() - 1; }

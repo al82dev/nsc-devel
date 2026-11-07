@@ -1,0 +1,1 @@
+int Use(CSameInt value) { return value; } int Main() { CSameInt v = 3; return Use(v) - 3; }

@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>InlineA</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="InlineA.ns" />
+    <CppLibraryReference Header="dirA/same.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>
