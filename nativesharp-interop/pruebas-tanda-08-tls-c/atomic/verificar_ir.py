@@ -20,6 +20,7 @@ for symbol, required, volatile in (
         if result:
             addresses.add(result.group(1))
     seen = set()
+    compare_exchanges = 0
     for line in body.splitlines():
         for label, instruction in (('load', r'\bload atomic\b'), ('store', r'\bstore atomic\b'),
                                    ('rmw', r'\batomicrmw(?: volatile)? add\b'),
@@ -38,7 +39,11 @@ for symbol, required, volatile in (
             if any(re.search(r'\bptr\s+(?:align\s+\d+\s+)?' + re.escape(address) + r'(?:\s|,)', line)
                    for address in addresses):
                 seen.add(label)
+                if label == 'cmpxchg':
+                    compare_exchanges += 1
     missing = required - seen
     if missing:
         raise SystemExit('Faltan operaciones seq_cst sobre ' + symbol + ': ' + ', '.join(sorted(missing)))
+    if symbol == 'atomic_tls' and compare_exchanges < 4:
+        raise SystemExit('Faltan intercambios atomicos para multiplicacion y desplazamientos')
 print('IR atomico verificado para ' + mode)

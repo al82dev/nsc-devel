@@ -158,7 +158,9 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 target->typeKey != "builtin:int" ||
                 target->cppAtomicAlignmentBytes != std::optional<std::size_t>{4} || node->immediate != 0)
                 return failValue(error, "C atomic global compound operation is not yet supported");
-            if (node->operation == lexer::TokenKind::Star)
+            if (node->operation == lexer::TokenKind::Star ||
+                node->operation == lexer::TokenKind::LessLess ||
+                node->operation == lexer::TokenKind::GreaterGreater)
             {
                 LLVMTypeRef type = LLVMInt32TypeInContext(context_);
                 LLVMValueRef initial = LLVMBuildLoad2(builder_, type, address, "atomic.mul.initial");
@@ -172,7 +174,11 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 enterBlock(retry);
                 LLVMValueRef current = LLVMBuildPhi(builder_, type, "atomic.mul.current");
                 LLVMAddIncoming(current, &initial, &preheader, 1);
-                LLVMValueRef updated = LLVMBuildMul(builder_, current, value, "atomic.mul.updated");
+                LLVMValueRef updated = node->operation == lexer::TokenKind::Star
+                    ? LLVMBuildMul(builder_, current, value, "atomic.mul.updated")
+                    : node->operation == lexer::TokenKind::LessLess
+                        ? LLVMBuildShl(builder_, current, value, "atomic.shift.updated")
+                        : LLVMBuildAShr(builder_, current, value, "atomic.shift.updated");
                 LLVMValueRef pair = LLVMBuildAtomicCmpXchg(builder_, address, current, updated,
                     LLVMAtomicOrderingSequentiallyConsistent, LLVMAtomicOrderingSequentiallyConsistent, 0);
                 LLVMSetAlignment(pair, 4);
