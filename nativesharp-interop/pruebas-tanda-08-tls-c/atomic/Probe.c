@@ -15,6 +15,15 @@ void entry(void)
         if ((atomic_tls &= 15) != 9) result = 9;
         else if ((atomic_tls |= 32) != 41) result = 10;
         else if ((atomic_tls ^= 3) != 42 || atomic_tls_read() != 42) result = 11;
+        else if ((atomic_tls *= atomic_factor()) != 84 || atomic_tls_read() != 84 || atomic_factor_calls() != 1) result = 12;
+    }
+    if (result == 0) {
+        atomic_tls = 1;
+        if (atomic_start_mul_worker() != 0) result = 13;
+        else {
+            for (int i = 0; i < 10000; ++i) atomic_tls *= -1;
+            if (atomic_wait_worker() != 0 || atomic_tls != -1) result = 14;
+        }
     }
     if (result == 0) {
         atomic_tls = 0;

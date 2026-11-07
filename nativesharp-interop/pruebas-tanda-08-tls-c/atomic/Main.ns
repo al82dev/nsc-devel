@@ -10,10 +10,15 @@ int Main()
     if ((atomic_tls &= 15) != 9) return 9;
     if ((atomic_tls |= 32) != 41) return 10;
     if ((atomic_tls ^= 3) != 42 || atomic_tls_read() != 42) return 11;
+    if ((atomic_tls *= atomic_factor()) != 84 || atomic_tls_read() != 84 || atomic_factor_calls() != 1) return 12;
     atomic_tls = 0;
     if (atomic_start_worker() != 0) return 5;
     for (int i = 0; i < 10000; ++i) { atomic_tls += 1; }
     if (atomic_wait_worker() != 0 || atomic_tls != 20000) return 6;
+    atomic_tls = 1;
+    if (atomic_start_mul_worker() != 0) return 13;
+    for (int i = 0; i < 10000; ++i) { atomic_tls *= -1; }
+    if (atomic_wait_worker() != 0 || atomic_tls != -1) return 14;
     if (atomic_readonly != 7 || atomic_volatile != 9) return 7;
     atomic_volatile = 10;
     atomic_volatile += 1;

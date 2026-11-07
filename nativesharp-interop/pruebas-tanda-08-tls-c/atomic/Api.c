@@ -11,6 +11,9 @@ __declspec(dllimport) Handle __stdcall CreateThread(void*, unsigned long long, T
 __declspec(dllimport) Dword __stdcall WaitForSingleObject(Handle, Dword);
 __declspec(dllimport) int __stdcall CloseHandle(Handle);
 static Handle worker_handle;
+static _Thread_local int factor_calls;
+int atomic_factor(void) { ++factor_calls; return 2; }
+int atomic_factor_calls(void) { return factor_calls; }
 static Dword __stdcall worker(void* data)
 {
     _Atomic(int)* shared = (_Atomic(int)*)data;
@@ -20,6 +23,17 @@ static Dword __stdcall worker(void* data)
 int atomic_start_worker(void)
 {
     worker_handle = CreateThread(0, 0, worker, &atomic_tls, 0, 0);
+    return worker_handle ? 0 : 1;
+}
+static Dword __stdcall mul_worker(void* data)
+{
+    _Atomic(int)* shared = (_Atomic(int)*)data;
+    for (int i = 0; i < 10001; ++i) *shared *= -1;
+    return 0;
+}
+int atomic_start_mul_worker(void)
+{
+    worker_handle = CreateThread(0, 0, mul_worker, &atomic_tls, 0, 0);
     return worker_handle ? 0 : 1;
 }
 int atomic_wait_worker(void)

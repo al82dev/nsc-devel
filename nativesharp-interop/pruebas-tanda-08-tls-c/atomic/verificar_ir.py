@@ -10,7 +10,7 @@ if not match:
     raise SystemExit('No se encontro la funcion esperada en el IR')
 body = match.group(1)
 for symbol, required, volatile in (
-    ('atomic_tls', {'load', 'store', 'rmw', 'and', 'or', 'xor'}, False),
+    ('atomic_tls', {'load', 'store', 'rmw', 'and', 'or', 'xor', 'cmpxchg'}, False),
     ('atomic_readonly', {'load'}, False),
     ('atomic_volatile', {'load', 'store', 'rmw'}, True),
 ):
@@ -25,8 +25,11 @@ for symbol, required, volatile in (
                                    ('rmw', r'\batomicrmw(?: volatile)? add\b'),
                                    ('and', r'\batomicrmw(?: volatile)? and\b'),
                                    ('or', r'\batomicrmw(?: volatile)? or\b'),
-                                   ('xor', r'\batomicrmw(?: volatile)? xor\b')):
+                                   ('xor', r'\batomicrmw(?: volatile)? xor\b'),
+                                   ('cmpxchg', r'\bcmpxchg(?: volatile)?\b')):
             if not re.search(instruction, line) or not re.search(r'\bseq_cst\b.*\balign 4\b', line):
+                continue
+            if label == 'cmpxchg' and not re.search(r'\bseq_cst\s+seq_cst\b', line):
                 continue
             # Clang 23 emits atomicrmw without LLVM volatile for this C operator;
             # loads and stores still require the volatile marker.
