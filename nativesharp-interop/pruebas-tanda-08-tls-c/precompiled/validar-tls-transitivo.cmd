@@ -60,6 +60,10 @@ findstr /L /C:"\"linker\":\"LLD\"" "%DEST%\isolated-tls.log" >nul
 if errorlevel 1 (type "%DEST%\isolated-tls.log" & exit /b 1)
 "%DEST%\bin\Debug\IsolatedConsumer.exe"
 if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --library-reference-root "%DEST%" --emit-project-oop-exe "%DEST%\IsolatedConsumer.nsproj" -O0 --no-artifact-cache -o "%DEST%\isolated-direct.exe" > "%DEST%\isolated-direct-tls.log" 2>&1
+if errorlevel 1 (type "%DEST%\isolated-direct-tls.log" & exit /b 1)
+"%DEST%\isolated-direct.exe"
+if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\TransitiveConsumer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe"
   if errorlevel 1 exit /b 1
@@ -127,6 +131,14 @@ if errorlevel 1 (type "%DEST%\isolated-plain.log" & exit /b 1)
 findstr /L /C:"\"linker\":\"NSLink\"" "%DEST%\isolated-plain.log" >nul
 if errorlevel 1 (type "%DEST%\isolated-plain.log" & exit /b 1)
 "%DEST%\bin\Debug\PlainIsolatedConsumer.exe"
+if errorlevel 1 exit /b 1
+nsc.exe --verbose --cpp-clang-root=A:\al82dev-clang --library-reference-root "%DEST%" --emit-project-oop-exe "%DEST%\PlainIsolatedConsumer.nsproj" --incremental-link --no-artifact-cache -O0 -o "%DEST%\isolated-plain-direct.exe" > "%DEST%\isolated-plain-auto.log" 2>&1
+if errorlevel 1 (type "%DEST%\isolated-plain-auto.log" & exit /b 1)
+nsc.exe --verbose --cpp-clang-root=A:\al82dev-clang --library-reference-root "%DEST%" --emit-project-oop-exe "%DEST%\PlainIsolatedConsumer.nsproj" --nsc-linker-selection=NSLink --incremental-link --no-artifact-cache -O0 -o "%DEST%\isolated-plain-direct.exe" > "%DEST%\isolated-plain-explicit.log" 2>&1
+if errorlevel 1 (type "%DEST%\isolated-plain-explicit.log" & exit /b 1)
+findstr /L /C:"incremental-link: hit" "%DEST%\isolated-plain-explicit.log" >nul
+if errorlevel 1 (type "%DEST%\isolated-plain-explicit.log" & exit /b 1)
+"%DEST%\isolated-plain-direct.exe"
 if errorlevel 1 exit /b 1
 move /y "%DEST%\plain.lib" "%DEST%\plain.lib.hidden" >nul
 if errorlevel 1 exit /b 1
