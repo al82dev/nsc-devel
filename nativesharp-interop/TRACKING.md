@@ -475,6 +475,12 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     global y fallan dentro de namespace por nombre desconocido. Es necesario
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
 - [ ] T08-004. Importar declaraciones de variables globales C.
+  - Por autorización del usuario, el gate usa el control C PE y el acceso NSC
+    directo existentes, y variantes de escalares con importación y con carga
+    dinámica. Los cuatro controles originales siguen disponibles como
+    diagnósticos separados; la configuración sin importaciones y el acceso C
+    directo a TLS de otra DLL no quedan acreditados. Validación integral
+    pendiente. [Detalle](registro-commits/t08-controles-tls-ajuste-autorizado.md).
   - Punteros TLS atómicos a `short`, `long long` y `double` pasaron acceso y
     aritmética O0–O3; se verificaron desplazamientos y atomicidad en IR.
     [Evidencia](registro-commits/t08-tls-atomico-punteros-tamanos.md).

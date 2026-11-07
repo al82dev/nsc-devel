@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08: ajuste autorizado de controles TLS
+
+El usuario autorizó ajustar los controles TLS y conservar los originales como
+diagnósticos separados. Mantener las pruebas originales intactas en sus rutas;
+el gate utiliza controles C válidos y variantes de DLL con importaciones que
+inicializan el TLS en el entorno probado. Conservar el contraste de DLL sin
+importaciones como limitación, no presentarlo como soporte acreditado. Cambiar
+solo scripts del fixture directo, gate, tracking y registros. No modificar NSLink,
+LLVM ni C:. Ejecutar la validación completa de la tanda antes de avanzar.
+
 ## T08: aislar directorio de importación en DLL TLS
 
 Investigar el fallo reproducido de inicialización TLS en una DLL de prueba sin
