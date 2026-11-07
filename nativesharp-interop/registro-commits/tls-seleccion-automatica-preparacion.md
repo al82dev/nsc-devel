@@ -15,5 +15,6 @@ reemplaza el análisis de alcanzabilidad ni cierra la tanda. El driver consulta
 las referencias estáticas C/C++ y NativeSharp del grafo y selecciona LLD en
 ese caso positivo, únicamente para ejecutables o DLL sin opción, variable ni
 sidecar explícitos. Si la inspección falla o no encuentra el símbolo,
-conserva la selección anterior. La construcción y las pruebas están
-pendientes; no se afirma cobertura completa ni validación.
+conserva la selección anterior. La construcción incremental y la matriz
+descrita en `tls-seleccion-automatica-matriz.md` pasaron. No se afirma
+cobertura completa de TLS ni cierre de la tanda.

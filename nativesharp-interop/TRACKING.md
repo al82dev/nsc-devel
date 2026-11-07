@@ -467,8 +467,13 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     biblioteca estática y una DLL consumida desde NativeSharp; también pasó
     un acierto del enlace incremental. El proyecto TLS pasó O0–O3 sin esa
     variable; el cambio de NSLink a LLD invalidó la caché y la ausencia de LLD
-    produjo error sin sustituir el ejecutable previo. Detección automática de
-    TLS sigue pendiente. [Evidencia](registro-commits/lld-sin-entorno-prueba.md).
+    produjo error sin sustituir el ejecutable previo. La detección automática
+    completa de TLS sigue pendiente. [Evidencia](registro-commits/lld-sin-entorno-prueba.md).
+    Para `nsc build` sin selección explícita ni sidecar, un `_tls_index`
+    indefinido en una biblioteca estática selecciona LLD de forma conservadora.
+    Pasaron TLS interno O0–O3, un consumidor precompilado y controles de
+    precedencia; miembros no extraídos pueden producir selección adicional y
+    una lectura negativa no certifica ausencia de TLS. [Evidencia](registro-commits/tls-seleccion-automatica-matriz.md).
     La DLL no solicita un accessor inexistente para el global C importado.
     [Evidencia](registro-commits/tls-dll-exportacion-externa.md).
     Su productor y consumidor NativeSharp pasaron O0–O3 con LLD sin
