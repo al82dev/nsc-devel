@@ -1,0 +1,1 @@
+int Main() { int** pointer = &atomic_pointer; return 0; }

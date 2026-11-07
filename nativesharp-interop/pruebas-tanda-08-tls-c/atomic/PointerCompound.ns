@@ -1,0 +1,1 @@
+int Main() { atomic_pointer += 1; return 0; }

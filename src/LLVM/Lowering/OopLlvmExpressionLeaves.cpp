@@ -232,14 +232,15 @@ LLVMValueRef OopLlvmImplementation::lowerLoadExpression(const frontend::ProjectO
                 const bool atomicFloat = node->cppAtomicAccess &&
                     (node->typeKey == "builtin:float" || node->typeKey == "builtin:double");
                 const bool atomicBool = node->cppAtomicAccess && node->typeKey == "builtin:bool";
-                LLVMTypeRef loadType = atomicBool ? LLVMInt8TypeInContext(context_) : atomicFloat
+                const bool atomicPointer = node->cppAtomicAccess && node->typeKey == "builtin:int*";
+                LLVMTypeRef loadType = atomicPointer ? LLVMInt64TypeInContext(context_) : atomicBool ? LLVMInt8TypeInContext(context_) : atomicFloat
                     ? (node->typeKey == "builtin:float" ? LLVMInt32TypeInContext(context_) : LLVMInt64TypeInContext(context_))
                     : type;
                 LLVMValueRef load = LLVMBuildLoad2(builder_, loadType, address, "static.field.load");
                 if (node->volatileAccess) LLVMSetVolatile(load, 1);
                 if (node->cppAtomicAccess)
                 {
-                    const auto alignment = atomicBool ? 1U : node->typeKey == "builtin:float" ? 4U : node->typeKey == "builtin:double" ? 8U :
+                    const auto alignment = atomicPointer ? 8U : atomicBool ? 1U : node->typeKey == "builtin:float" ? 4U : node->typeKey == "builtin:double" ? 8U :
                         (node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte") ? 1U :
                         (node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort") ? 2U :
                         (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") ? 4U :
@@ -250,6 +251,8 @@ LLVMValueRef OopLlvmImplementation::lowerLoadExpression(const frontend::ProjectO
                     LLVMSetAlignment(load, alignment);
                     if (atomicBool)
                         return LLVMBuildICmp(builder_, LLVMIntNE, load, LLVMConstInt(loadType, 0, 0), "atomic.bool.value");
+                    if (atomicPointer)
+                        return LLVMBuildIntToPtr(builder_, load, type, "atomic.pointer.value");
                     return atomicFloat ? LLVMBuildBitCast(builder_, load, type, "atomic.float.value") : load;
                 }
                 if (isClangMsVolatileScalarGlobal(node))

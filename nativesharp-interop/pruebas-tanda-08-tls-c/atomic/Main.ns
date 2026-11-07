@@ -66,5 +66,13 @@ int Main()
     atomic_bool = true;
     atomic_bool_volatile = false;
     if (!atomic_bool || atomic_bool_volatile) return 45;
+    if (atomic_pointer != null) return 46;
+    atomic_pointer = atomic_pointer_expected();
+    if (atomic_pointer != atomic_pointer_expected() || *atomic_pointer != 73) return 47;
+    atomic_pointer = null;
+    if (atomic_pointer != null) return 48;
+    if (atomic_pointer_const != null || atomic_pointer_volatile != null) return 49;
+    atomic_pointer_volatile = atomic_pointer_expected();
+    if (atomic_pointer_volatile != atomic_pointer_expected()) return 50;
     return 0;
 }

@@ -237,7 +237,14 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         global.type.element->sizeBits == std::optional<std::uint64_t>{8} &&
         global.type.sizeBits == std::optional<std::uint64_t>{8} &&
         global.declarationAlignmentBits && *global.declarationAlignmentBits >= 8;
-    const bool supportedAtomicTls = atomicIntTls || atomicLongTls || atomicUIntTls || atomicULongTls || atomicNarrowTls || atomicFloatTls || atomicBoolTls;
+    const bool atomicPointerTls = cLanguage && global.threadLocal && kind == CppTypeKind::Atomic &&
+        global.type.element && global.type.element->kind == CppTypeKind::Pointer && global.type.element->element &&
+        global.type.element->element->kind == CppTypeKind::SignedInteger &&
+        !global.type.element->element->isConst && !global.type.element->element->isVolatile &&
+        global.type.element->element->unqualifiedCanonicalSpelling == "int" &&
+        global.type.sizeBits == std::optional<std::uint64_t>{64} && global.declarationAlignmentBits &&
+        *global.declarationAlignmentBits >= 64;
+    const bool supportedAtomicTls = atomicIntTls || atomicLongTls || atomicUIntTls || atomicULongTls || atomicNarrowTls || atomicFloatTls || atomicBoolTls || atomicPointerTls;
     const CppType* arrayElement = &global.type;
     std::size_t arrayDepth = 0;
     bool fixedArray = kind == CppTypeKind::Array;
@@ -264,7 +271,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         return failure("C/C++ global type is not yet mapped");
     if (supportedAtomicTls)
     {
-        const char* expected = atomicBoolTls ? "builtin:bool" :
+        const char* expected = atomicPointerTls ? "builtin:int*" : atomicBoolTls ? "builtin:bool" :
             atomicFloatTls ? (global.type.sizeBits == std::optional<std::uint64_t>{32} ? "builtin:float" : "builtin:double") :
             atomicIntTls ? "builtin:int" : atomicLongTls ? "builtin:long" :
             atomicUIntTls ? "builtin:uint" : atomicULongTls ? "builtin:ulong" :
@@ -290,7 +297,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         if (cppNamespace[i] == ':' && i + 1 < cppNamespace.size() && cppNamespace[i + 1] == ':')
         { nsNamespace.push_back('.'); ++i; }
         else nsNamespace.push_back(cppNamespace[i]);
-    const CppType* pointerStorage = &global.type;
+    const CppType* pointerStorage = atomicPointerTls ? global.type.element.get() : &global.type;
     while (cLanguage && pointerStorage->kind == CppTypeKind::Array && pointerStorage->element)
         pointerStorage = pointerStorage->element.get();
     CppSemanticGlobal projected{projectOrdinal, std::string(moduleName), std::move(nsNamespace),

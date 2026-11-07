@@ -103,5 +103,19 @@ void entry(void)
             if (!atomic_bool || atomic_bool_volatile) result = 45;
         }
     }
+    if (result == 0) {
+        if (atomic_pointer != 0) result = 46;
+        else {
+            atomic_pointer = atomic_pointer_expected();
+            if (atomic_pointer != atomic_pointer_expected() || *atomic_pointer != 73) result = 47;
+            atomic_pointer = 0;
+            if (atomic_pointer != 0) result = 48;
+            else if (atomic_pointer_const != 0 || atomic_pointer_volatile != 0) result = 49;
+            else {
+                atomic_pointer_volatile = atomic_pointer_expected();
+                if (atomic_pointer_volatile != atomic_pointer_expected()) result = 50;
+            }
+        }
+    }
     ExitProcess((unsigned int)result);
 }

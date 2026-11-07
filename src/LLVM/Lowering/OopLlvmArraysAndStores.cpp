@@ -684,6 +684,8 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             ? LLVMBuildZExt(builder_, value, LLVMInt8TypeInContext(context_), "c.bool.storage")
             : value;
         const auto& storageTypeKey = node->children[0]->typeKey;
+        if (node->children[0]->cppAtomicAccess && storageTypeKey == "builtin:int*")
+            storedValue = LLVMBuildPtrToInt(builder_, value, LLVMInt64TypeInContext(context_), "atomic.pointer.bits");
         if (node->children[0]->cppAtomicAccess && storageTypeKey == "builtin:bool")
             storedValue = LLVMBuildZExt(builder_, value, LLVMInt8TypeInContext(context_), "atomic.bool.bits");
         if (node->children[0]->cppAtomicAccess &&
@@ -695,7 +697,7 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         if (node->children[0]->cppAtomicAccess)
         {
             const auto& typeKey = node->children[0]->typeKey;
-            const auto alignment = typeKey == "builtin:bool" ? 1U : typeKey == "builtin:float" ? 4U : typeKey == "builtin:double" ? 8U :
+            const auto alignment = typeKey == "builtin:int*" ? 8U : typeKey == "builtin:bool" ? 1U : typeKey == "builtin:float" ? 4U : typeKey == "builtin:double" ? 8U :
                 (typeKey == "builtin:sbyte" || typeKey == "builtin:byte") ? 1U :
                 (typeKey == "builtin:short" || typeKey == "builtin:ushort") ? 2U :
                 (typeKey == "builtin:int" || typeKey == "builtin:uint") ? 4U :

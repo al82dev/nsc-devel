@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Api.c Probe.c Promotion.c Promotion.ns Narrow.ns NarrowCompound.ns LocalNarrow.ns FloatCompound.ns FloatConstWrite.ns BoolConstWrite.ns Main.ns Project.nsproj Escape.ns Unsupported.ns ReadonlyWrite.ns RefEscape.ns OutEscape.ns InEscape.ns ReferenceControl.ns ZeroDiv.ns ZeroRem.ns) do (
+for %%F in (Api.h Api.c Probe.c Promotion.c Promotion.ns Narrow.ns NarrowCompound.ns LocalNarrow.ns FloatCompound.ns FloatConstWrite.ns BoolConstWrite.ns PointerConstWrite.ns PointerQualified.ns PointerCompound.ns PointerEscape.ns Main.ns Project.nsproj Escape.ns Unsupported.ns ReadonlyWrite.ns RefEscape.ns OutEscape.ns InEscape.ns ReferenceControl.ns ZeroDiv.ns ZeroRem.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -103,6 +103,24 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\
 if not errorlevel 1 exit /b 1
 findstr /L /C:"atomic-qualified pointers" "%DEST%\escape.log" >nul
 if errorlevel 1 (type "%DEST%\escape.log" & exit /b 1)
+copy /y "%DEST%\PointerEscape.ns" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\pointer-escape.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /L /C:"atomic-qualified pointers" "%DEST%\pointer-escape.log" >nul
+if errorlevel 1 (type "%DEST%\pointer-escape.log" & exit /b 1)
+copy /y "%DEST%\PointerQualified.ns" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\pointer-qualified.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /L /C:"thread-local C/C++ global is not yet projected" "%DEST%\pointer-qualified.log" >nul
+if errorlevel 1 (type "%DEST%\pointer-qualified.log" & exit /b 1)
+copy /y "%DEST%\PointerCompound.ns" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\pointer-compound.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /L /C:"C atomic global compound operation is not yet supported" "%DEST%\pointer-compound.log" >nul
+if errorlevel 1 (type "%DEST%\pointer-compound.log" & exit /b 1)
 copy /y "%DEST%\ReferenceControl.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\reference-control.log" 2>&1
@@ -133,6 +151,12 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\
 if not errorlevel 1 exit /b 1
 findstr /L /C:"left side of assignment is not assignable" "%DEST%\bool-readonly.log" >nul
 if errorlevel 1 (type "%DEST%\bool-readonly.log" & exit /b 1)
+copy /y "%DEST%\PointerConstWrite.ns" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\pointer-readonly.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /L /C:"left side of assignment is not assignable" "%DEST%\pointer-readonly.log" >nul
+if errorlevel 1 (type "%DEST%\pointer-readonly.log" & exit /b 1)
 copy /y "%DEST%\Unsupported.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\unsupported.log" 2>&1
