@@ -14,6 +14,8 @@ for %%F in (Api.h Api.c Producer.ns Producer.nsproj Consumer.ns Consumer.nsproj)
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
+copy /y "%~dp0..\..\pruebas-tanda-08-tls-c\static-global\Crt.h" "%DEST%\Crt.h" >nul
+if errorlevel 1 exit /b 1
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Api.c" -o "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
 llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
