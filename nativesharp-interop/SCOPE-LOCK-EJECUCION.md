@@ -4386,6 +4386,15 @@ las fuentes de los casos y sus expectativas; no modificar el compilador sin
 reproducir una falla. Salidas en A:, NSLink, LLVM y C: protegidos. No cerrar
 T08-018 por esta muestra ni ejecutar el gate integral antes de completar tanda.
 
+# Diagnóstico del índice TLS de DLL
+
+Comprobar si el cargador asigna el índice TLS de las variantes de escalares
+ya existentes. Solo se añade un instrumento de diagnóstico y su registro;
+el valor centinela se aplica exclusivamente a una copia en
+`A:/nsc-interop-build/tls-abi`, nunca a los fixtures originales. No modificar
+NSLink, LLVM ni C:, ni convertir los controles fallidos en éxitos. Registrar
+las variantes y limitar la conclusión a los resultados observados.
+
 # Arreglo global C TLS
 
 Reproducir lectura, escritura y aislamiento por hilo de un `int[2]` TLS C
