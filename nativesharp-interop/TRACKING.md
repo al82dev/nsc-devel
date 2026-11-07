@@ -871,6 +871,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     [Evidencia](registro-commits/prueba-opacos-header-compartido.md).
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
+  - Preparada la admisión de seis operadores compuestos con `int` en el mismo
+    arreglo C `volatile _Bool`; pendientes HIR, LLVM y validación agrupada.
+    [Detalle](registro-commits/t08-bool-compuesto-int-analisis.md).
   - Preparada la admisión semántica de `&=`, `|=` y `^=` entre bool sobre
     arreglos globales C `volatile _Bool` en modo MS. Faltan el descenso y las
     pruebas agrupadas; no se considera soporte hasta ejecutarlas.

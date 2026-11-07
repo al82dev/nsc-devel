@@ -1,5 +1,16 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-015: `_Bool` C volatile compuesto con operando `int`
+
+Extender el caso probado de arreglo C global `volatile _Bool` en modo MS a
+`+=`, `-=`, `*=`, `&=`, `|=` y `^=` con operando `int`, usando promoción C a
+`int` y conversión del resultado a cero/no cero. Conservar byte acquire/release,
+evaluación única del destino y el rechazo del bool nativo. Presupuesto: el
+analizador, descenso HIR y LLVM de asignación compuesta, fixture record-c y su
+verificador, tracking y registros. Validación agrupada incremental O0–O3 e IR;
+no modificar NSLink, LLVM externo ni C:. División, desplazamientos y otras
+clases de operando siguen pendientes.
+
 ## T08-015: operaciones bit a bit compuestas en arreglo C volatile `_Bool`
 
 Corregir la reproducción `volatile_bool_array[0] |= true`: permitir `&=`,

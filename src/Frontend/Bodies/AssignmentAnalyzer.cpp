@@ -2078,8 +2078,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
     bool narrowCppAtomic = false;
     bool cVolatileBoolArrayBitwise = false;
     const auto* target = expression->first();
-    if (namespaceFunctionModel_ && left.typeKey == "builtin:bool" && right.typeKey == "builtin:bool" &&
-        (compoundBase == TokenKind::Amp || compoundBase == TokenKind::Pipe || compoundBase == TokenKind::Caret) &&
+    const bool boolBitwise = right.typeKey == "builtin:bool" &&
+        (compoundBase == TokenKind::Amp || compoundBase == TokenKind::Pipe || compoundBase == TokenKind::Caret);
+    const bool cBoolIntOperation = right.typeKey == "builtin:int" &&
+        (compoundBase == TokenKind::Amp || compoundBase == TokenKind::Pipe || compoundBase == TokenKind::Caret ||
+         compoundBase == TokenKind::Plus || compoundBase == TokenKind::Minus || compoundBase == TokenKind::Star);
+    if (namespaceFunctionModel_ && left.typeKey == "builtin:bool" && (boolBitwise || cBoolIntOperation) &&
         target && target->kind() == ast::AstNodeKind::IndexExpression && target->first())
     {
         const auto* binding = recordedNameBinding(target->first(), methodMemberOrdinal);
