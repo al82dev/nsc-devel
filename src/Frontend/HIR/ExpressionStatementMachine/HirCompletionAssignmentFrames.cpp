@@ -772,7 +772,7 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
             const bool narrowAtomic = frame.first->cppAtomicAccess &&
                 (frame.operandType->typeKey == "builtin:sbyte" || frame.operandType->typeKey == "builtin:byte" ||
                  frame.operandType->typeKey == "builtin:short" || frame.operandType->typeKey == "builtin:ushort") &&
-                lowered->typeKey == "builtin:int";
+                ProjectTypeConversion::isIntegral(lowered->typeKey) && lowered->typeKey != "builtin:bool";
             if (!shift && !conversion.exists() && !narrowAtomic)
             {
                 error = "compound assignment cannot convert its right-hand side from '" +

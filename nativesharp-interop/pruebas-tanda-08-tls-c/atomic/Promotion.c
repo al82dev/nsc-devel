@@ -16,6 +16,15 @@ void entry(void)
     if ((narrow_ushort /= 65536) != 0) result = 4;
     narrow_ushort = 60000;
     if ((narrow_ushort %= 65536) != 60000) result = 5;
+    narrow_short = 30000;
+    if ((narrow_short /= 65536LL) != 0) result = 12;
+    narrow_ushort = 60000;
+    if ((narrow_ushort %= 65536ULL) != 60000) result = 13;
+    narrow_short = -1;
+    if ((narrow_short /= 2U) != 32767) result = 14;
+    unsigned char divisor = 2;
+    narrow_short = 100;
+    if ((narrow_short /= divisor) != 50) result = 15;
     narrow_short = 13;
     if ((narrow_short += 1) != 14) result = 6;
     if ((narrow_short *= 2) != 28) result = 7;

@@ -10,5 +10,14 @@ int Main()
     if ((atomic_narrow_ushort /= 65536) != 0) return 4;
     atomic_narrow_ushort = 60000;
     if ((atomic_narrow_ushort %= 65536) != 60000) return 5;
+    atomic_unsupported_short = 30000;
+    if ((atomic_unsupported_short /= 65536L) != 0) return 6;
+    atomic_narrow_ushort = 60000;
+    if ((atomic_narrow_ushort %= 65536UL) != 60000) return 7;
+    atomic_unsupported_short = -1;
+    if ((atomic_unsupported_short /= 2U) != 32767) return 8;
+    byte divisor = 2;
+    atomic_unsupported_short = 100;
+    if ((atomic_unsupported_short /= divisor) != 50) return 9;
     return 0;
 }

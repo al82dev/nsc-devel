@@ -158,18 +158,24 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 (target->typeKey == "builtin:short" || target->typeKey == "builtin:ushort") ? 2U : 0U;
             if (narrowAlignment)
             {
+                const auto& operandType = node->children[1]->typeKey;
+                const bool shift = node->operation == lexer::TokenKind::LessLess || node->operation == lexer::TokenKind::GreaterGreater;
+                const bool validOperand = operandType == "builtin:sbyte" || operandType == "builtin:byte" ||
+                    operandType == "builtin:short" || operandType == "builtin:ushort" || operandType == "builtin:int" ||
+                    operandType == "builtin:uint" || operandType == "builtin:long" || operandType == "builtin:ulong";
                 if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
                     target->cppAtomicAlignmentBytes != std::optional<std::size_t>{narrowAlignment} ||
-                    node->immediate != 0 || node->children[1]->typeKey != "builtin:int")
-                    return failValue(error, "C narrow atomic compound operation requires an int operand");
+                    node->immediate != 0 || !validOperand)
+                    return failValue(error, "C narrow atomic compound operation requires an integer operand");
                 LLVMTypeRef storage = llvmType(target->typeKey, error);
                 if (storage == nullptr) return nullptr;
-                LLVMValueRef operand = value;
-                if (node->operation == lexer::TokenKind::LessLess || node->operation == lexer::TokenKind::GreaterGreater)
-                {
-                    operand = normalizeShiftCount(value, "builtin:int", "builtin:int", error);
-                    if (operand == nullptr) return nullptr;
-                }
+                const std::string calculationType = shift ? "builtin:int" :
+                    operandType == "builtin:ulong" ? "builtin:ulong" :
+                    operandType == "builtin:long" ? "builtin:long" :
+                    operandType == "builtin:uint" ? "builtin:uint" : "builtin:int";
+                LLVMValueRef operand = shift ? normalizeShiftCount(value, operandType, calculationType, error) :
+                    convert(value, operandType, calculationType, error);
+                if (operand == nullptr) return nullptr;
                 LLVMValueRef initial = LLVMBuildLoad2(builder_, storage, address, "atomic.narrow.initial");
                 LLVMSetOrdering(initial, LLVMAtomicOrderingSequentiallyConsistent);
                 LLVMSetAlignment(initial, narrowAlignment);
@@ -182,11 +188,13 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 LLVMValueRef current = LLVMBuildPhi(builder_, storage, "atomic.narrow.current");
                 LLVMAddIncoming(current, &initial, &preheader, 1);
                 LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
-                LLVMValueRef promoted = isSignedInteger(target->typeKey)
+                LLVMValueRef promoted = isSignedInteger(target->typeKey) && isSignedInteger(calculationType)
                     ? LLVMBuildSExt(builder_, current, i32, "atomic.narrow.promoted")
                     : LLVMBuildZExt(builder_, current, i32, "atomic.narrow.promoted");
+                promoted = convert(promoted, "builtin:int", calculationType, error);
+                if (promoted == nullptr) return nullptr;
                 LLVMValueRef computed = applyBinaryOperation(node->operation, promoted, operand,
-                    "builtin:int", error, false);
+                    calculationType, error, false);
                 if (computed == nullptr) return nullptr;
                 LLVMValueRef updated = LLVMBuildTrunc(builder_, computed, storage, "atomic.narrow.updated");
                 LLVMValueRef pair = LLVMBuildAtomicCmpXchg(builder_, address, current, updated,

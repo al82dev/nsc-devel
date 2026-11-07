@@ -2101,7 +2101,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
             const auto ordinal = binding->candidateMemberOrdinals.front();
             const auto states = namespaceFunctionModel_->states();
             narrowCppAtomic = ordinal < states.size() && states[ordinal].isCppExternal &&
-                states[ordinal].cppAtomicStorage && right.typeKey == "builtin:int";
+                states[ordinal].cppAtomicStorage && ProjectTypeConversion::isIntegral(right.typeKey) &&
+                right.typeKey != "builtin:bool";
         }
     }
     if (!shiftAssignment && !narrowing.exists() && !narrowCppAtomic)

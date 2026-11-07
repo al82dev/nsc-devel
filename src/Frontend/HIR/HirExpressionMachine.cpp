@@ -2366,7 +2366,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundAssignmentEx
         const bool narrowAtomic = address->cppAtomicAccess &&
             (targetType->typeKey == "builtin:sbyte" || targetType->typeKey == "builtin:byte" ||
              targetType->typeKey == "builtin:short" || targetType->typeKey == "builtin:ushort") &&
-            value->typeKey == "builtin:int";
+            ProjectTypeConversion::isIntegral(value->typeKey) && value->typeKey != "builtin:bool";
         if (!shift && !conversion.exists() && !narrowAtomic)
         {
             error = "compound assignment cannot convert its right-hand side from '" +
