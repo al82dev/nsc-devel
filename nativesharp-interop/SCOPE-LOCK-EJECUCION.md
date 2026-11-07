@@ -4395,6 +4395,18 @@ el valor centinela se aplica exclusivamente a una copia en
 NSLink, LLVM ni C:, ni convertir los controles fallidos en éxitos. Registrar
 las variantes y limitar la conclusión a los resultados observados.
 
+# DLL TLS con relleno cero
+
+Corregir el acceso directo NativeSharp a un global TLS de DLL cuyo
+desplazamiento cae en `SizeOfZeroFill`: el control C de la copia de prueba
+pasa y el consumidor NS O0 falla con el compilador anterior. La frontera es
+el cálculo de límites del helper `cppDllTlsAddressHelper` en
+`src/LLVM/Lowering/OopLlvmCalls.cpp`; conservar los demás accesos y rechazos.
+Se permite añadir un fixture aislado, registros y seguimiento; no alterar los
+fixtures existentes, NSLink, LLVM ni C:. Validar control C y NS O0–O3 con
+una copia PE cuya plantilla conserva los mismos datos y asigna su cola cero
+como `SizeOfZeroFill`, y conservar los gates de la tanda sin modificación.
+
 # Arreglo global C TLS
 
 Reproducir lectura, escritura y aislamiento por hilo de un `int[2]` TLS C
