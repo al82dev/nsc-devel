@@ -480,6 +480,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     corrigieron y verificaron. Otros scripts usan patrones similares y
     requieren revisión antes de confiar en la validación integral.
     [Evidencia](registro-commits/t08-validadores-fallo-validacion.md).
+    Se corrigieron nueve validadores adicionales de la matriz atómica:
+    pasaron sus rutas normales y se indujeron fallos de emisión y de rechazo
+    esperado en copias aisladas. La auditoría de los demás scripts continúa.
+    [Detalle](registro-commits/t08-validadores-matriz-atomica-validacion.md).
   - Globales `static` de encabezado: la ruta anterior excluía nombres sin enlace
     externo. El control C pasó y NSC reprodujo el rechazo.
     [Análisis](T08-004-GLOBAL-STATIC-INVESTIGACION.md).
