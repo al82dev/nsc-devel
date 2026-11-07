@@ -581,7 +581,7 @@ static bool provideGlobalsWithLookup(
                     if (tlsRuntime && *tlsRuntime != normalized) tlsOriginConflict = true;
                     else tlsRuntime = std::move(normalized);
                 };
-                if (selected.candidate && selected.candidate->threadLocal)
+                if (selected.candidate && selected.candidate->threadLocal && internalC.empty())
                 {
                     for (const auto index : selected.declarationIndices) inspectTlsOrigin(index);
                     for (const auto index : selected.aliasIndices) inspectTlsOrigin(index);
