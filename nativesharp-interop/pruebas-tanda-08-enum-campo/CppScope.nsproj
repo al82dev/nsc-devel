@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>H4CppScope</Name></PropertyGroup>
+  <ItemGroup><Compile Include="CppScope.ns" /><CppLibraryReference Header="CppScope.h" Language="C++" Standard="c++20" /></ItemGroup>
+</Project>
