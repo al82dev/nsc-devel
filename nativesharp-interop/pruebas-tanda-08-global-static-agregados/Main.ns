@@ -1,0 +1,9 @@
+int Main()
+{
+    if (check_initial() != 1 || record_value.value != 3 || items[0] != 5) return 1;
+    if (read_only != 7 || changing != 8) return 2;
+    record_value.value = 10;
+    items[0] = 11;
+    changing = 12;
+    return check_modified() == 1 ? 0 : 3;
+}

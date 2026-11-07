@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004: globales C estáticas agregadas y calificadas
+
+Reproducir y corregir el acceso a un record C, un arreglo de enteros y escalares
+const y volatile de enlace interno, conservando inicialización y estado con
+funciones inline. Verificar lectura, escritura permitida, rechazo const e IR
+volatile frente a Clang en O0–O3. Se protege NSLink, metadata, LLVM externo,
+los fixtures existentes y C:. No se acredita TLS ni otras formas agregadas.
+
 ## T08-004: matriz de globales C estáticas escalares y puntero
 
 Reproducir y corregir globales estáticas C no calificadas de enteros de varios
