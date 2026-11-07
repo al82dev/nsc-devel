@@ -474,6 +474,16 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     Pasaron TLS interno O0–O3, un consumidor precompilado y controles de
     precedencia; miembros no extraídos pueden producir selección adicional y
     una lectura negativa no certifica ausencia de TLS. [Evidencia](registro-commits/tls-seleccion-automatica-matriz.md).
+  - Actualización posterior: `nsc build` selecciona LLD para bitcode ThinLTO y
+    LTO completo, con TLS y sin TLS; la ausencia de `build.linker` en un
+    sidecar parcial permite esa selección, y las selecciones explícitas se
+    conservan. Las pruebas dirigidas ejecutaron los binarios en A:. Un sidecar
+    que contiene `linker: NSLink`, incluso si fue generado por defecto, cuenta
+    como selección explícita. La última batería completa terminó con cuatro
+    fallos de TLS de DLL y es anterior al ajuste del sidecar parcial; la tanda
+    permanece abierta. [Bitcode](registro-commits/t08-seleccion-bitcode-sin-tls.md),
+    [sidecar](registro-commits/t08-sidecar-linker-implicito.md),
+    [fallos](registro-commits/t08-validacion-20261106-bitcode.md).
     La DLL no solicita un accessor inexistente para el global C importado.
     [Evidencia](registro-commits/tls-dll-exportacion-externa.md).
     Su productor y consumidor NativeSharp pasaron O0–O3 con LLD sin
