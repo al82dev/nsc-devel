@@ -34,6 +34,8 @@ for %%L in (thin full) do (
   if not errorlevel 1 exit /b 1
   findstr /L /C:"lld-link: error" "%DEST%\no-crt-%%L.log" >nul
   if errorlevel 1 (type "%DEST%\no-crt-%%L.log" & exit /b 1)
+  findstr /L /C:"undefined symbol: _tls_index" "%DEST%\no-crt-%%L.log" >nul
+  if errorlevel 1 (type "%DEST%\no-crt-%%L.log" & exit /b 1)
   nsc.exe build "%DEST%\Project.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore -O0 --output-format=json > "%DEST%\crt-%%L.log" 2>&1
   if errorlevel 1 (type "%DEST%\crt-%%L.log" & exit /b 1)
   findstr /L /C:"\"linker\":\"LLD\"" "%DEST%\crt-%%L.log" >nul
