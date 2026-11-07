@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004/015: diagnóstico de global C atómico no TLS
+
+Comprobar un global C externo `_Atomic(int)` sin almacenamiento TLS con
+lectura y actualización compuesta desde NativeSharp y control C. Agregar el
+fixture y registros de evidencia en `nativesharp-interop`; generar artefactos
+solo en `A:/nsc-interop-build`. Mantener intactos NSLink, LLVM, layout y C:.
+No cambiar producción hasta demostrar la causa y el alcance concreto.
+
 ## T08-004/015: global C bool a través de DLL y productor precompilado
 
 Comprobar dos rutas del global C `volatile _Bool` en modo MS: una DLL

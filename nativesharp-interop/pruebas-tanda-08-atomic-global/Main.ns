@@ -1,0 +1,7 @@
+int Main()
+{
+    if (atomic_global != 3 || c_read_atomic_global() != 3) return 1;
+    atomic_global += 2;
+    if (atomic_global != 5 || c_read_atomic_global() != 5) return 2;
+    return 0;
+}
