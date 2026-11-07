@@ -1,0 +1,1 @@
+int Main() { return atomic_volatile %= atomic_zero(); }

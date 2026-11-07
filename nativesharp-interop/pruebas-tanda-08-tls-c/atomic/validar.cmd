@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Api.c Probe.c Main.ns Project.nsproj Escape.ns Unsupported.ns ReadonlyWrite.ns RefEscape.ns OutEscape.ns InEscape.ns ReferenceControl.ns) do (
+for %%F in (Api.h Api.c Probe.c Main.ns Project.nsproj Escape.ns Unsupported.ns ReadonlyWrite.ns RefEscape.ns OutEscape.ns InEscape.ns ReferenceControl.ns ZeroDiv.ns ZeroRem.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -43,6 +43,17 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 (type "%DEST%\native-O%%O.log" & exit /b 1)
   "%DEST%\native-O%%O.exe"
   if errorlevel 1 exit /b 1
+)
+for %%F in (ZeroDiv ZeroRem) do (
+  copy /y "%DEST%\%%F.ns" "%DEST%\Main.ns" >nul
+  if errorlevel 1 exit /b 1
+  for %%O in (0 1 2 3) do (
+    nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" --no-artifact-cache -O%%O -o "%DEST%\%%F-O%%O.exe" > "%DEST%\%%F-O%%O.log" 2>&1
+    if errorlevel 1 (type "%DEST%\%%F-O%%O.log" & exit /b 1)
+    "%DEST%\%%F-O%%O.exe" > "%DEST%\%%F-O%%O-run.log" 2>&1
+    if not errorlevel 129 exit /b 1
+    if errorlevel 130 exit /b 1
+  )
 )
 copy /y "%DEST%\Escape.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1

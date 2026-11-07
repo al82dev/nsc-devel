@@ -15,6 +15,7 @@ static Handle worker_handle;
 static _Thread_local int factor_calls;
 int atomic_factor(void) { ++factor_calls; return 2; }
 int atomic_factor_calls(void) { return factor_calls; }
+int atomic_zero(void) { return 0; }
 static Dword __stdcall worker(void* data)
 {
     _Atomic(int)* shared = (_Atomic(int)*)data;

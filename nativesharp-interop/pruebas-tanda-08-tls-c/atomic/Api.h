@@ -9,3 +9,4 @@ int atomic_start_mul_worker(void);
 int atomic_wait_worker(void);
 int atomic_factor(void);
 int atomic_factor_calls(void);
+int atomic_zero(void);

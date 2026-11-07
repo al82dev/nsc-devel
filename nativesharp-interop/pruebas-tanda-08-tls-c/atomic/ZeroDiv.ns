@@ -1,0 +1,1 @@
+int Main() { return atomic_tls /= atomic_zero(); }
