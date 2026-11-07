@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004: reproducción de global C estática y función inline
+
+Reproducir la lectura y escritura de una global C de enlace interno desde
+NativeSharp y una función static inline del mismo encabezado. Comprobar
+primero con Clang el comportamiento C y después documentar el resultado NSC.
+El control es nuevo y no modifica los existentes, NSLink, metadata, LLVM ni C:.
+
 ## T08-004/015: aislamiento de los cuatro punteros atómicos TLS
 
 Ampliar el control de los cuatro punteros enteros no calificados para comprobar

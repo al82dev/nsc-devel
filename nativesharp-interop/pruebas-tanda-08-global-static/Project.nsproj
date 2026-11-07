@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CStaticGlobal</Name></PropertyGroup>
+  <ItemGroup><Compile Include="Main.ns" /><CppLibraryReference Header="Api.h" Language="C" Standard="c11" /></ItemGroup>
+</Project>
