@@ -22,6 +22,11 @@ for filename in sys.argv[1:]:
 
 for filename in sys.argv[2:]:
     ir = pathlib.Path(filename).read_text(encoding="utf-8")
+    loads = set(re.findall(r"load atomic i64, ptr @(__nsc_c_inline_\w+) seq_cst, align 8", ir))
+    stores = set(re.findall(r"store atomic i64 [^\n]*, ptr @(__nsc_c_inline_\w+) seq_cst, align 8", ir))
+    updates = set(re.findall(r"atomicrmw add ptr @(__nsc_c_inline_\w+), i64 [^\n]* seq_cst, align 8", ir))
+    if len(loads) < 5 or len(loads & (stores | updates)) < 5:
+        raise SystemExit(f"{filename}: los cinco punteros no tienen lecturas y escrituras atomicas")
     for offset in (-4, -1, 1, 4):
         pattern = rf"\batomicrmw add\b[^\n]*, i64 {offset} seq_cst, align 8\b"
         if not re.search(pattern, ir):
