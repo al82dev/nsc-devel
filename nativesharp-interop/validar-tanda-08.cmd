@@ -47,6 +47,7 @@ for %%T in (
   pruebas-tanda-08-bitfields-c\validar-matriz-volatile.cmd
   pruebas-tanda-08-tls-c\validar-dll.cmd
   pruebas-tanda-08-tls-c\directo\validar.cmd
+  pruebas-tanda-08-tls-c\directo\validar-guardia-dll.cmd
   pruebas-tanda-08-tls-c\static-global\validar.cmd
   pruebas-tanda-08-tls-c\scalars\validar.cmd
   pruebas-tanda-08-tls-c\lld\validar-seleccion.cmd
