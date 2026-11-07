@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CAtomicGlobalMorePointer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="MorePointer.ns" />
+    <CppLibraryReference Header="MorePointer.h" Language="C" Standard="c11" Library="more-pointer.lib" />
+  </ItemGroup>
+</Project>

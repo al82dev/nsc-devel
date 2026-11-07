@@ -1,0 +1,11 @@
+int Main()
+{
+    if (more_float_ptr != null || more_long_ptr != null || more_ulong_ptr != null) return 1;
+    more_float_ptr = more_float_expected();
+    more_long_ptr = more_long_expected();
+    more_ulong_ptr = more_ulong_expected();
+    if (*(more_float_ptr += 1) != (float)2.5) return 2;
+    if (*(more_long_ptr += 1) != 12 || *(more_ulong_ptr += 1) != 22U) return 3;
+    if (more_pointer_check() != 1) return 4;
+    return 0;
+}

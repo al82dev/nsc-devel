@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004/015: punteros atómicos C a float y long de Windows
+
+Reproducir y corregir, si procede, la importación de globales C no TLS de
+`_Atomic(float*)`, `_Atomic(long*)` y `_Atomic(unsigned long*)` en Windows x64.
+Comprobar lectura, escritura y avance de puntero frente a biblioteca C en
+O0–O3, y verificar IR atómico. Fixtures y registros bajo `nativesharp-interop`,
+salidas en `A:/nsc-interop-build`. Preservar TLS, NSLink, LLVM, layout,
+metadata y C:. Otros apuntados y calificadores no se acreditan por esta muestra.
+
 ## T08-004/015: tipos C long atómicos en Windows x64
 
 Comprobar `_Atomic(long)` y `_Atomic(unsigned long)` de 32 bits, directos y con
