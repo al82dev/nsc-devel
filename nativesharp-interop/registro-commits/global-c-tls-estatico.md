@@ -10,3 +10,9 @@ El primer enlace del control C reportó `__std_terminate` y
 `__CxxFrameHandler4` desde `libcmt` para el inicializador TLS dinámico.
 Se añadieron explícitamente `libcpmt`, `libvcruntime` y `libucrt` al control y
 al proyecto; está pendiente repetirlo antes de atribuir el fallo a NSC.
+
+El control C pasó tras agregar esas bibliotecas. Con NSC build
+`2c5d0967206b6e62`, el consumidor NativeSharp falló en O0 con
+`thread-local C/C++ global is not yet projected` para lectura y escritura de
+`shared_tls`. Se preparó la propagación semántica y LLVM para el caso entero
+C de 32 bits; todavía debe validarse con una nueva construcción.
