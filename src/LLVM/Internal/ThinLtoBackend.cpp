@@ -24,6 +24,9 @@
 #include "llvm/LTO/LTO.h"
 #include "llvm/Object/Archive.h"
 #include "llvm/Object/Binary.h"
+#include "llvm/Object/COFF.h"
+#include "llvm/Object/COFFImportFile.h"
+#include "llvm/Object/IRObjectFile.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/CachePruning.h"
 #include "llvm/Support/Caching.h"
@@ -86,6 +89,13 @@ bool ThinLtoBackend::collectUndefinedSymbols(
     const std::filesystem::path&, std::vector<std::string>&, std::string& error)
 {
     error = "ThinLTO needs the STATIC LLVM host";
+    return false;
+}
+bool ThinLtoBackend::containsThreadLocalStorage(
+    const std::filesystem::path&, bool& found, std::string& error)
+{
+    found = false;
+    error = "TLS inspection needs the STATIC LLVM host";
     return false;
 }
 #else
@@ -215,6 +225,74 @@ bool ThinLtoBackend::collectUndefinedSymbols(
         return false;
     }
     return true;
+}
+
+bool ThinLtoBackend::containsThreadLocalStorage(
+    const std::filesystem::path& file, bool& found, std::string& error)
+{
+    found = false;
+    llvm::LLVMContext context;
+    auto binary = llvm::object::createBinary(file.string(), &context);
+    if (!binary)
+    {
+        error = "cannot read '" + file.string() + "': " + llvm::toString(binary.takeError());
+        return false;
+    }
+    const auto inspect = [&](const llvm::object::Binary& input) {
+        if (const auto* ir = llvm::dyn_cast<llvm::object::IRObjectFile>(&input))
+        {
+            for (const llvm::Module& module : ir->modules())
+                for (const llvm::GlobalVariable& global : module.globals())
+                    if (global.isThreadLocal()) found = true;
+            return true;
+        }
+        if (const auto* object = llvm::dyn_cast<llvm::object::COFFObjectFile>(&input))
+        {
+            std::vector<std::string> symbols;
+            if (!appendUndefinedSymbols(*object, symbols, error)) return false;
+            if (std::find(symbols.begin(), symbols.end(), "_tls_index") != symbols.end()) found = true;
+            for (const llvm::object::SectionRef& section : object->sections())
+            {
+                auto name = section.getName();
+                if (!name)
+                {
+                    error = llvm::toString(name.takeError());
+                    return false;
+                }
+                if (*name == ".tls" || name->starts_with(".tls$")) found = true;
+            }
+            return true;
+        }
+        if (llvm::isa<llvm::object::COFFImportFile>(&input)) return true;
+        error = "unsupported input format while inspecting TLS in '" + file.string() + "'";
+        return false;
+    };
+    if (const auto* archive = llvm::dyn_cast<llvm::object::Archive>(binary->getBinary()))
+    {
+        llvm::Error childError = llvm::Error::success();
+        for (const llvm::object::Archive::Child& child : archive->children(childError))
+        {
+            auto member = child.getAsBinary(&context);
+            if (!member)
+            {
+                error = "cannot read a member of '" + file.string() + "': " + llvm::toString(member.takeError());
+                llvm::consumeError(std::move(childError));
+                return false;
+            }
+            if (!inspect(**member))
+            {
+                llvm::consumeError(std::move(childError));
+                return false;
+            }
+        }
+        if (childError)
+        {
+            error = "cannot list members of '" + file.string() + "': " + llvm::toString(std::move(childError));
+            return false;
+        }
+        return true;
+    }
+    return inspect(*binary->getBinary());
 }
 
 std::string ThinLtoBackend::compatibilityIdentity(const LlvmTargetMachine& targetMachine, LlvmOptimizationLevel level)

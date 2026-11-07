@@ -1717,11 +1717,11 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const PreparedDriv
         std::set<fs::path> inspected;
         const auto requiresStaticTls = [&](const fs::path& path) {
             if (path.empty() || !inspected.insert(path).second) return false;
-            std::vector<std::string> symbols;
+            bool containsTls = false;
             std::string inspectionError;
-            if (!llvm_backend::ProjectOopObjectGenerator::collectUndefinedSymbols(path, symbols, inspectionError))
-                return false;
-            return std::find(symbols.begin(), symbols.end(), "_tls_index") != symbols.end();
+            if (!llvm_backend::ProjectOopObjectGenerator::containsThreadLocalStorage(path, containsTls, inspectionError))
+                return true; // Unknown is not proof that the input is free of TLS.
+            return containsTls;
         };
         bool found = false;
         for (const auto& item : projects)

@@ -122,6 +122,7 @@ public:
         const std::filesystem::path& file,
         std::vector<std::string>& symbols,
         std::string& error);
+    static bool containsThreadLocalStorage(const std::filesystem::path& file, bool& found, std::string& error);
 
     /// EN: Function definitions the backends imported from other units (available_externally).
     /// ES: Definiciones de funcion que los backends importaron de otras unidades.

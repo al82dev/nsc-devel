@@ -76,6 +76,9 @@ public:
         const std::filesystem::path& file,
         std::vector<std::string>& symbols,
         std::string& error);
+    // EN: Inspect COFF and LLVM bitcode for thread-local storage. False means inspection failed.
+    // ES: Inspecciona COFF y bitcode LLVM para detectar TLS. False indica un fallo de inspeccion.
+    static bool containsThreadLocalStorage(const std::filesystem::path& file, bool& found, std::string& error);
 
     // EN: Whether a generation with `mode` at `level` runs real ThinLTO backends: thin, -O1 to -O3
     //     and a host with llvm::lto.
