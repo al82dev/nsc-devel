@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Raíces de dependencias en selección anticipada
+
+Comprobar una biblioteca NS intermedia aislada cuyos módulos dependientes se
+resuelven mediante `LibraryReferenceRoot`. El control sin TLS debe conservar
+NSLink y el control con TLS elegir LLD en `nsc build` y emisión directa.
+Preparar fixtures bajo `pruebas-tanda-08-tls-c/precompiled`, salidas en A: y
+bitácora. Cambiar producción solo tras reproducir; no tocar NSLink, LLVM o C:.
+
 ## Selección de enlazador a través de varias bibliotecas precompiladas
 
 Reproducir una cadena consumidor → biblioteca NS intermedia → biblioteca NS
