@@ -7,6 +7,6 @@ int Main()
     if ((int)current != H4NamedA) return 2;
     a->level = H4High;
     a->other = H4Low;
-    n->kind = (H4Named)H4NamedB;
+    n->kind = h4_named_b();
     return h4_check() == 1 ? 0 : 3;
 }
