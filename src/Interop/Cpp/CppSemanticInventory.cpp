@@ -506,7 +506,12 @@ static bool provideGlobalsWithLookup(
                 graph.projects()[entry.projectOrdinal].moduleName(), lookup, entry.cLanguage);
     std::set<std::pair<std::size_t, std::string_view>> availableNames;
     for (const auto& entry : entries)
-        if (entry.declaration.externalLinkage)
+        if (entry.declaration.externalLinkage || (entry.cLanguage &&
+            entry.declaration.type.kind == CppTypeKind::SignedInteger &&
+            entry.declaration.type.unqualifiedCanonicalSpelling == "int" &&
+            entry.declaration.type.sizeBits == std::optional<std::uint64_t>{32} &&
+            !entry.declaration.threadLocal && !entry.declaration.type.isConst &&
+            !entry.declaration.type.isVolatile))
             availableNames.emplace(entry.projectOrdinal, entry.declaration.qualifiedName);
     std::set<std::tuple<std::size_t, std::string, std::string>> seen;
     std::vector<frontend::NamespaceStateSymbol> result;
@@ -521,7 +526,46 @@ static bool provideGlobalsWithLookup(
                 if (!qualified.empty()) qualified += "::";
                 qualified += demand.lookupName;
                 if (!availableNames.contains({owner, qualified})) continue;
-                const auto selected = selectCppSemanticGlobal(entries, owner, qualified);
+                auto selected = selectCppSemanticGlobal(entries, owner, qualified);
+                std::vector<std::size_t> internalC;
+                for (const auto index : selected.internalIndices)
+                {
+                    const auto& entry = entries[index];
+                    const auto& type = entry.declaration.type;
+                    if (entry.cLanguage && type.kind == CppTypeKind::SignedInteger &&
+                        type.unqualifiedCanonicalSpelling == "int" &&
+                        type.sizeBits == std::optional<std::uint64_t>{32} &&
+                        !entry.declaration.threadLocal && !type.isConst && !type.isVolatile)
+                        internalC.push_back(index);
+                }
+                if (!internalC.empty())
+                {
+                    if (internalC.size() != 1 || !selected.declarationIndices.empty())
+                    {
+                        selected.conflict = "ambiguous C internal global origins";
+                        selected.candidate.reset();
+                        if (selected.declarationIndices.empty()) selected.declarationIndices = internalC;
+                    }
+                    else
+                    {
+                        const auto index = internalC.front();
+                        const auto& entry = entries[index];
+                        auto declaration = entry.declaration;
+                        declaration.externalLinkage = true;
+                        declaration.externalSymbol = cppCInlineLinkSymbol(
+                            entry.projectFile, entry.referenceIndex, "global:" + declaration.name);
+                        auto projection = projectGlobalWithLookup(declaration, owner,
+                            graph.projects()[owner].moduleName(), lookup, true);
+                        selected.declarationIndices.push_back(index);
+                        if (auto* candidate = std::get_if<CppSemanticGlobal>(&projection))
+                        {
+                            candidate->clangUsr = declaration.clangUsr;
+                            candidate->microsoftVolatileSemantics = entry.microsoftVolatileSemantics;
+                            selected.candidate = std::move(*candidate);
+                        }
+                        else selected.conflict = std::get<CppSemanticGlobalFailure>(projection).message;
+                    }
+                }
                 if (selected.declarationIndices.empty()) continue;
                 frontend::NamespaceStateSymbol state;
                 state.projectOrdinal = owner;
