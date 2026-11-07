@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004/015: apuntados calificados de globales atómicos C
+
+Contrastar globales no TLS de punteros atómicos a `const` y `volatile` para
+unsigned int, short, long long y double con los controles TLS existentes.
+Preparar entradas derivadas en `A:/nsc-interop-build` sin alterar sus fuentes;
+comprobar lectura, escritura y rechazos en O0–O3. Solo el predicado de proyección
+se puede corregir si se reproduce el rechazo; preservar NSLink, LLVM, layout,
+metadata y C:. Ejecutar regresión TLS antes de acreditar los resultados.
+
 ## T08-004/015: global C atómico importado de DLL
 
 Comprobar un global `_Atomic(int)` exportado por DLL C y consumido directamente
