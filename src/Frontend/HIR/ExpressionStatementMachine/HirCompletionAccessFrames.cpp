@@ -445,7 +445,7 @@ void ProjectOopHirModel::finishArrayRawIndex(
         }
         if (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray &&
             (elementType == "builtin:int" || elementType == "builtin:uint" || elementType == "builtin:short" ||
-             elementType == "builtin:long" || elementType == "builtin:double") && address->volatileAccess && provenance &&
+             elementType == "builtin:long" || elementType == "builtin:double" || elementType == "builtin:float") && address->volatileAccess && provenance &&
             (provenance->kind == ProjectOopHirNodeKind::NamespaceStateValue || indexedCGlobal) &&
             provenance->namespaceStateOrdinal && namespaceFunctionModel_ &&
             *provenance->namespaceStateOrdinal < namespaceFunctionModel_->states().size())

@@ -386,7 +386,7 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
             provenance->kind == ProjectOopHirNodeKind::NamespaceStateAddress;
     }
     if ((resultType == "builtin:int" || resultType == "builtin:uint" || resultType == "builtin:short" ||
-         resultType == "builtin:long" || resultType == "builtin:double") && provenance &&
+         resultType == "builtin:long" || resultType == "builtin:double" || resultType == "builtin:float") && provenance &&
         (provenance->kind == ProjectOopHirNodeKind::NamespaceStateValue || indexedCGlobal) &&
         provenance->namespaceStateOrdinal && namespaceFunctionModel_ &&
         *provenance->namespaceStateOrdinal < namespaceFunctionModel_->states().size())
