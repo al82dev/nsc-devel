@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>DllTlsConsumer</Name></PropertyGroup>
+  <ItemGroup><Compile Include="DllConsumer.ns" /><LibraryReference Include="DllTlsProducer.lib" /></ItemGroup>
+</Project>

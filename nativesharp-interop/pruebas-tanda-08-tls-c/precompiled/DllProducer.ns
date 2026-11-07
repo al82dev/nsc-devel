@@ -1,0 +1,10 @@
+namespace PublishedDllTls
+{
+    public struct Bridge
+    {
+        public static int Read() { return tls_exported; }
+        public static void Write(int value) { tls_exported = value; }
+        public static int ReadC() { return tls_read(); }
+        public static int CheckWorker() { return tls_other_thread(); }
+    }
+}

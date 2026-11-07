@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>DllTlsProducer</Name><OutputType>Library</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="DllProducer.ns" />
+    <CppLibraryReference Header="TlsApi.h" Language="C" Standard="c11" Library="api.lib" Runtime="api.dll" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,9 @@
+int Main()
+{
+    if (PublishedDllTls.Bridge.Read() != 3) return 1;
+    PublishedDllTls.Bridge.Write(41);
+    if (PublishedDllTls.Bridge.ReadC() != 41) return 2;
+    if (PublishedDllTls.Bridge.CheckWorker() != 0) return 3;
+    if (PublishedDllTls.Bridge.Read() != 41) return 4;
+    return 0;
+}
