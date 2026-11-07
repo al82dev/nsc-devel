@@ -465,6 +465,9 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     esa selección aún no es automática. [Evidencia](registro-commits/tls-estatico-control-original.md).
     La declaración estándar C11 `_Thread_local` pasó el control C y acceso
     NativeSharp de dos hilos en O0–O3. [Evidencia](registro-commits/tls-estatico-c11.md).
+    Un productor NativeSharp precompilado y dos consumidores, con y sin
+    encabezado C, compartieron el TLS y comprobaron aislamiento en O0–O3.
+    [Evidencia](registro-commits/tls-precompilado-preparacion.md).
   - Clang rechaza `thread` con `dllimport`/`dllexport`; al exportar por el
     enlazador, el consumidor C pide `SECREL tls_exported` y la import library
     solo ofrece `__imp_tls_exported`. La declaración actual sin atributo

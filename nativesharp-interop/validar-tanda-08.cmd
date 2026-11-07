@@ -58,6 +58,7 @@ for %%T in (
   pruebas-tanda-08-tls-c\directo\validar-guardia-dll.cmd
   pruebas-tanda-08-tls-c\static-global\validar.cmd
   pruebas-tanda-08-tls-c\static-global\validar-c11.cmd
+  pruebas-tanda-08-tls-c\precompiled\validar.cmd
   pruebas-tanda-08-tls-c\pointer\validar.cmd
   pruebas-tanda-08-tls-c\array\validar.cmd
   pruebas-tanda-08-tls-c\scalars\validar.cmd
