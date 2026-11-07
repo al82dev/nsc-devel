@@ -301,9 +301,18 @@ findstr /c:"no viable overload of namespace function 'bump_volatile_record'" "%D
 if errorlevel 1 exit /b 1
 copy /y "%~dp0VolatileBoolArrayCompound.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
-nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\volatile-bool-compound.exe" > "%DEST%\volatile-bool-compound.log" 2>&1
-if not errorlevel 1 exit /b 1
-findstr /c:"compound assignment requires compatible numeric operands" "%DEST%\volatile-bool-compound.log" >nul
+for %%O in (0 1 2 3) do (
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O%%O --no-artifact-cache -o "%DEST%\volatile-bool-compound-O%%O.exe" > "%DEST%\volatile-bool-compound-O%%O.log" 2>&1
+  if errorlevel 1 (type "%DEST%\volatile-bool-compound-O%%O.log" & exit /b 1)
+  "%DEST%\volatile-bool-compound-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  echo C volatile bool compound bitwise O%%O correcto.
+)
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\volatile-bool-compound.ll" 2>&1
+if errorlevel 1 exit /b 1
+findstr /c:"c.bool.compound.load = load atomic volatile i8" "%DEST%\volatile-bool-compound.ll" >nul
+if errorlevel 1 exit /b 1
+findstr /c:"store atomic volatile i8" "%DEST%\volatile-bool-compound.ll" >nul
 if errorlevel 1 exit /b 1
 copy /y "%~dp0NativeBoolCompound.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1

@@ -1,5 +1,12 @@
 int Main()
 {
     volatile_bool_array[0] |= true;
+    if (!volatile_bool_array[0]) return 1;
+    volatile_bool_array[0] &= false;
+    if (volatile_bool_array[0]) return 2;
+    volatile_bool_array[0] ^= true;
+    if (!volatile_bool_array[0]) return 3;
+    volatile_bool_array[0] ^= true;
+    if (volatile_bool_array[0]) return 4;
     return 0;
 }

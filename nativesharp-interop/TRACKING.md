@@ -877,6 +877,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     [Detalle](registro-commits/t08-bool-compuesto-analisis.md).
     Preparado el descenso LLVM con acceso i8 acquire/release; la construcción y
     los controles positivos siguen pendientes. [Detalle](registro-commits/t08-bool-compuesto-llvm.md).
+    Preparado el fixture positivo O0–O3 para las tres operaciones; conserva el
+    control negativo del bool nativo y está pendiente de ejecución.
+    [Detalle](registro-commits/t08-bool-compuesto-fixture.md).
   - Clang confirmó para `volatile _Bool` compuesto la promoción a `int`,
     conversión del resultado a cero/no cero y carga acquire/escritura release
     de i8. NSC aún rechaza el caso; el bool nativo mantiene su propia regla.
