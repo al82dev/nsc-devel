@@ -463,14 +463,15 @@ las correcciones. [Resultado](registro-commits/t08-validacion-link-lib-auto.md),
     global y fallan dentro de namespace por nombre desconocido. Es necesario
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
 - [ ] T08-004. Importar declaraciones de variables globales C.
-  - Un global C `_Thread_local _Atomic(int)` pasa el control C, pero NSC lo
-    rechaza como no proyectado. Faltan lectura, escritura y actualización
-    atómicas; el control positivo se incorporó al gate y sigue fallando.
-    [Evidencia](registro-commits/t08-tls-atomico-resultado.md).
+  - Un global C `_Thread_local _Atomic(int)` pasó lectura, escritura, suma,
+    resta y pre/post incremento en O0–O3, con IR `seq_cst` y contención entre
+    hilos; también pasaron los casos `const` y `volatile` preparados. Faltan
+    otros tipos, operaciones, escapes y la validación integral de la tanda.
+    [Evidencia](registro-commits/t08-tls-atomico-int-resultado.md).
     [Trabajo pendiente](T08-TLS-ATOMICOS.md).
-  - Preparada la captura diferenciada de `_Atomic(T)` desde Clang y controles
-    para el tipo y el rechazo del codec anterior. La semántica no está
-    habilitada y el fixture positivo sigue pendiente.
+  - Captura diferenciada de `_Atomic(T)` desde Clang y controles para el tipo
+    y el rechazo del codec anterior; la proyección está limitada al global TLS
+    `int` anterior. El resto de la semántica sigue pendiente.
   - La construcción agrupada posterior y la suite de sesión de Clang pasaron;
     el control focalizado de caché MIR también pasó. La ejecución completa de
     `nsc_project_oop_lowering_tests` reportó 25 fallos de 652 comprobaciones;
