@@ -497,6 +497,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     Una matriz adicional pasó O0–O3 para escalares, enum, atomic int y arreglos
     de varias dimensiones; comprobó IR atómico y regresiones dirigidas.
     [Resultado](registro-commits/t08-global-static-tipos-validacion.md).
+    La selección ya detecta dos orígenes internos aunque uno tenga un tipo
+    aún no proyectado. [Resultado](registro-commits/t08-global-static-ambiguedad-mixta-validacion.md).
   - El global C `_Atomic(int)` sin TLS fue rechazado como tipo no mapeado.
     Una corrección limitada de su proyección pasó O0–O3, comprobación de IR
     atómico y regresión TLS. [Resultado](registro-commits/t08-atomic-global-int-validacion.md).
