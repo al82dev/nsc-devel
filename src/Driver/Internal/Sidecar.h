@@ -13,6 +13,7 @@ struct Sidecar final
     std::string project;
     std::string rootNamespace;
     BuildPreferences build;
+    bool linkerSpecified = false;
     std::vector<PackageRequest> packages;
     bool createInitialSource = false;
 };

@@ -4541,6 +4541,14 @@ las selecciones explícitas y las pruebas existentes. No modificar NSLink,
 LLVM externo ni C:. Construcción incremental y validación agrupada de T08;
 los cuatro fallos de DLL permanecen abiertos hasta su resolución real.
 
+La reproducción `bitcode-notls/NoTls.nspm.json` contiene configuración de
+optimización pero ninguna clave `build.linker`; el driver confunde la existencia
+del sidecar con una selección explícita y conserva NSLink, produciendo NSL1003.
+Permitir el detector solamente cuando falte esa clave, conservando toda elección
+real de `build.linker`, `--linker` y `NSC_LINKER`. Presupuesto adicional:
+`src/Driver/Internal/Sidecar.h`, `src/Driver/ProjectCommands.cpp`, prueba
+de selección y registro. No reescribir los sidecars existentes.
+
 # Identificación provisional de TLS de DLL
 
 El fixture directo demuestra que NSC proyecta una declaración TLS sin

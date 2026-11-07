@@ -152,6 +152,7 @@ bool loadSidecar(const fs::path& project, Sidecar& sidecar, std::string& error, 
     if (const Json* build = member(root, "build"))
     {
         if (build->object() == nullptr) { error = "sidecar build must be an object"; return false; }
+        sidecar.linkerSpecified = member(*build, "linker") != nullptr;
         sidecar.build.configuration = stringMember(*build, "configuration", "Debug");
         sidecar.build.optimization = stringMember(*build, "optimization", "O0");
         sidecar.build.debugInformation = stringMember(*build, "debug_information", "full");
@@ -1712,7 +1713,7 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const PreparedDriv
     compilation::LibraryMetadataRepository metadataRepository;
     const auto projects = manifest.projectGraph().projects();
     if (!options.linker.has_value() && !environmentValue("NSC_LINKER") &&
-        !fs::exists(sidecarPath(project)) && loaded->outputKind() != compilation::ProjectOutputKind::Library)
+        !sidecar.linkerSpecified && loaded->outputKind() != compilation::ProjectOutputKind::Library)
     {
         std::set<fs::path> inspected;
         const auto requiresLld = [&](const fs::path& path) {
