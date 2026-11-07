@@ -1,0 +1,9 @@
+int Main()
+{
+    if (tls_pointer != null) return 1;
+    tls_pointer = pointer_target();
+    if (tls_pointer[0] != 37) return 2;
+    tls_pointer[0] = 41;
+    if (pointer_check() != 0 || pointer_other_thread() != 0 || pointer_check() != 0) return 3;
+    return 0;
+}

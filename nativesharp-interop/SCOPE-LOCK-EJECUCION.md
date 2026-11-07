@@ -4312,6 +4312,16 @@ delimitar la proyección semántica y respetar la lógica ya existente de
 demostrados. No modificar NSLink, LLVM externo ni C:; no cerrar T08-004 por
 estas muestras.
 
+# Puntero global C TLS
+
+Comprobar un global C TLS `int*` mutable, con asignación, lectura y
+desreferencia cruzadas entre C y NativeSharp en biblioteca estática y DLL.
+Presupuesto inicial: fixture `pruebas-tanda-08-tls-c/pointer` y registro;
+tras reproducir, limitar el cambio al mapeo TLS y la representación LLVM que
+efectivamente fallen. Ejecutar controles C, O0–O3 y regresiones de escalares.
+No modificar NSLink, LLVM externo ni C:; punteros con calificadores y otros
+contratos permanecen pendientes hasta probarse.
+
 # Identificación provisional de TLS de DLL
 
 El fixture directo demuestra que NSC proyecta una declaración TLS sin
