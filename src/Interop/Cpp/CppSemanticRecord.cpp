@@ -2037,7 +2037,8 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
     const auto globalEnum = [](const CppType& root) -> const CppType* {
         const CppType* type = &root;
         std::size_t depth = 0;
-        while (type && (type->kind == CppTypeKind::Pointer || type->kind == CppTypeKind::Array) && depth++ < 64)
+        while (type && (type->kind == CppTypeKind::Pointer || type->kind == CppTypeKind::Array ||
+                        type->kind == CppTypeKind::Atomic) && depth++ < 64)
             type = type->element.get();
         return type && type->kind == CppTypeKind::Enumeration ? type : nullptr;
     };
