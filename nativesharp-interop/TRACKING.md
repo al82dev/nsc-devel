@@ -464,6 +464,12 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     enlazador, el consumidor C pide `SECREL tls_exported` y la import library
     solo ofrece `__imp_tls_exported`. NSC rechaza TLS directo por ahora.
     [Evidencia](registro-commits/tls-c-dll-directo.md).
+  - Un experimento C separado obtiene la DLL desde la dirección importada del
+    dato y usa su directorio PE TLS y los slots del hilo para leer y escribir
+    el valor en dos hilos. Depende de detalles internos de Windows x64; no es
+    todavía implementación NSC ni corrige la prueba original.
+    [Evidencia](registro-commits/tls-dll-directo-experimento-pe.md),
+    [dirección importada](registro-commits/tls-dll-pe-import-address.md).
   - Una DLL C con directorio TLS real aisló el estado de dos hilos al ser
     llamada desde NS O0–O3. El acceso directo al global y el TLS estático en
     NSLink siguen pendientes. [Evidencia](registro-commits/tls-c-dll.md).
