@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CAtomicGlobalMoreQualified</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="MoreQualified.ns" />
+    <CppLibraryReference Header="MoreQualified.h" Language="C" Standard="c11" Library="more-qualified.lib" />
+  </ItemGroup>
+</Project>

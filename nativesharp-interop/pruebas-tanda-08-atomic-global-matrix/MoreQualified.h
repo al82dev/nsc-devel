@@ -1,0 +1,10 @@
+extern _Atomic(const float*) more_float_const;
+extern _Atomic(volatile float*) more_float_volatile;
+extern _Atomic(const long*) more_long_const;
+extern _Atomic(volatile long*) more_long_volatile;
+extern _Atomic(const unsigned long*) more_ulong_const;
+extern _Atomic(volatile unsigned long*) more_ulong_volatile;
+float* qualified_float_expected(void);
+long* qualified_long_expected(void);
+unsigned long* qualified_ulong_expected(void);
+int qualified_pointer_check(void);

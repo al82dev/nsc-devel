@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004/015: punteros atómicos C adicionales con apuntado calificado
+
+Comprobar apuntados const y volatile de float, long y unsigned long C en
+globales atómicos no TLS de Windows x64. Reproducir el rechazo, ajustar solo
+las rutas causales y validar O0–O3, IR volatile y rechazos de pérdida de
+calificadores. Fixtures, tracking y registros en `nativesharp-interop`;
+salidas en `A:/nsc-interop-build`. Preservar TLS, NSLink, LLVM externo, layout,
+metadata y C:; no inferir soporte de otros apuntados.
+
 ## T08-004/015: punteros atómicos C a float y long de Windows
 
 Reproducir y corregir, si procede, la importación de globales C no TLS de

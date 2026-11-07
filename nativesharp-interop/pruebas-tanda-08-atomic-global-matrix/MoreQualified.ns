@@ -1,0 +1,16 @@
+int Main()
+{
+    more_float_const = qualified_float_expected();
+    more_float_volatile = qualified_float_expected();
+    more_long_const = qualified_long_expected();
+    more_long_volatile = qualified_long_expected();
+    more_ulong_const = qualified_ulong_expected();
+    more_ulong_volatile = qualified_ulong_expected();
+    if (*more_float_const != (float)1.25 || *more_long_const != 11 || *more_ulong_const != 21U) return 1;
+    more_float_volatile[1] = (float)3.5;
+    more_long_volatile[1] = 13;
+    more_ulong_volatile[1] = 23U;
+    if (more_float_volatile[1] != (float)3.5 || more_long_volatile[1] != 13 || more_ulong_volatile[1] != 23U) return 2;
+    if (qualified_pointer_check() != 1) return 3;
+    return 0;
+}
