@@ -2,6 +2,8 @@
 _Thread_local _Atomic(short) narrow_short;
 _Thread_local _Atomic(signed char) narrow_char;
 _Thread_local _Atomic(unsigned short) narrow_ushort;
+_Thread_local _Atomic(int) signed_int;
+_Thread_local _Atomic(long long) signed_wide;
 __declspec(dllimport) void __stdcall ExitProcess(unsigned int);
 void entry(void)
 {
@@ -25,6 +27,10 @@ void entry(void)
     unsigned char divisor = 2;
     narrow_short = 100;
     if ((narrow_short /= divisor) != 50) result = 15;
+    signed_int = -1;
+    if ((signed_int /= 2U) != 2147483647) result = 16;
+    signed_wide = -1LL;
+    if ((signed_wide /= 2U) != 0) result = 17;
     narrow_short = 13;
     if ((narrow_short += 1) != 14) result = 6;
     if ((narrow_short *= 2) != 28) result = 7;

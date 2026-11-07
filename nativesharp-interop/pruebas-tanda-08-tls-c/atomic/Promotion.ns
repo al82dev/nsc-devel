@@ -19,5 +19,9 @@ int Main()
     byte divisor = 2;
     atomic_unsupported_short = 100;
     if ((atomic_unsupported_short /= divisor) != 50) return 9;
+    atomic_tls = -1;
+    if ((atomic_tls /= 2U) != 2147483647) return 10;
+    atomic_wide = -1L;
+    if ((atomic_wide /= 2U) != 0) return 11;
     return 0;
 }

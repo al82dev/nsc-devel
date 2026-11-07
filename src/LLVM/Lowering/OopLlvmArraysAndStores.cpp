@@ -214,6 +214,51 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
             if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
                 !alignment || target->cppAtomicAlignmentBytes != std::optional<std::size_t>{alignment} || node->immediate != 0)
                 return failValue(error, "C atomic global compound operation is not yet supported");
+            const auto& rhsType = node->children[1]->typeKey;
+            const bool shiftOperation = node->operation == lexer::TokenKind::LessLess || node->operation == lexer::TokenKind::GreaterGreater;
+            const bool validRhs = rhsType == "builtin:sbyte" || rhsType == "builtin:byte" || rhsType == "builtin:short" ||
+                rhsType == "builtin:ushort" || rhsType == "builtin:int" || rhsType == "builtin:uint" ||
+                rhsType == "builtin:long" || rhsType == "builtin:ulong";
+            if (!validRhs) return failValue(error, "C atomic compound operation requires an integer operand");
+            const std::string calculationType = shiftOperation ? target->typeKey :
+                (target->typeKey == "builtin:ulong" || rhsType == "builtin:ulong") ? "builtin:ulong" :
+                (target->typeKey == "builtin:long" || rhsType == "builtin:long") ? "builtin:long" :
+                (target->typeKey == "builtin:uint" || rhsType == "builtin:uint") ? "builtin:uint" : "builtin:int";
+            if (calculationType != target->typeKey)
+            {
+                LLVMTypeRef storage = llvmType(target->typeKey, error);
+                if (storage == nullptr) return nullptr;
+                LLVMValueRef operand = convert(value, rhsType, calculationType, error);
+                if (operand == nullptr) return nullptr;
+                LLVMValueRef initial = LLVMBuildLoad2(builder_, storage, address, "atomic.mixed.initial");
+                LLVMSetOrdering(initial, LLVMAtomicOrderingSequentiallyConsistent);
+                LLVMSetAlignment(initial, alignment);
+                if (target->volatileAccess) LLVMSetVolatile(initial, 1);
+                LLVMBasicBlockRef preheader = LLVMGetInsertBlock(builder_);
+                LLVMBasicBlockRef retry = appendBlock("atomic.mixed.retry");
+                LLVMBasicBlockRef done = appendBlock("atomic.mixed.done");
+                LLVMBuildBr(builder_, retry);
+                enterBlock(retry);
+                LLVMValueRef current = LLVMBuildPhi(builder_, storage, "atomic.mixed.current");
+                LLVMAddIncoming(current, &initial, &preheader, 1);
+                LLVMValueRef promoted = convert(current, target->typeKey, calculationType, error);
+                if (promoted == nullptr) return nullptr;
+                LLVMValueRef computed = applyBinaryOperation(node->operation, promoted, operand, calculationType, error, false);
+                if (computed == nullptr) return nullptr;
+                LLVMValueRef updated = convert(computed, calculationType, target->typeKey, error);
+                if (updated == nullptr) return nullptr;
+                LLVMValueRef pair = LLVMBuildAtomicCmpXchg(builder_, address, current, updated,
+                    LLVMAtomicOrderingSequentiallyConsistent, LLVMAtomicOrderingSequentiallyConsistent, 0);
+                LLVMSetAlignment(pair, alignment);
+                if (target->volatileAccess) LLVMSetVolatile(pair, 1);
+                LLVMValueRef observed = LLVMBuildExtractValue(builder_, pair, 0, "atomic.mixed.observed");
+                LLVMValueRef success = LLVMBuildExtractValue(builder_, pair, 1, "atomic.mixed.success");
+                LLVMBasicBlockRef attempt = LLVMGetInsertBlock(builder_);
+                LLVMBuildCondBr(builder_, success, done, retry);
+                LLVMAddIncoming(current, &observed, &attempt, 1);
+                enterBlock(done);
+                return node->booleanValue ? current : updated;
+            }
             LLVMValueRef operandValue = (node->operation == lexer::TokenKind::LessLess || node->operation == lexer::TokenKind::GreaterGreater)
                 ? normalizeShiftCount(value, node->children[1]->typeKey, target->typeKey, error)
                 : convert(value, node->children[1]->typeKey, target->typeKey, error);

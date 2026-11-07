@@ -2091,8 +2091,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
     const ProjectImplicitConversion narrowing =
         classifyImplicit(right.typeKey, left.typeKey, right.integerConstant);
     bool narrowCppAtomic = false;
-    if (namespaceFunctionModel_ && (left.typeKey == "builtin:sbyte" || left.typeKey == "builtin:byte" ||
-        left.typeKey == "builtin:short" || left.typeKey == "builtin:ushort"))
+    if (namespaceFunctionModel_ && ProjectTypeConversion::isIntegral(left.typeKey) && left.typeKey != "builtin:bool")
     {
         const auto* binding = recordedNameBinding(expression->first(), methodMemberOrdinal);
         if (binding && binding->kind == MethodNameBindingKind::NamespaceState &&

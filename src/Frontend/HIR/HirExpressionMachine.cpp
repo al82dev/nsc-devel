@@ -2364,8 +2364,6 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundAssignmentEx
         const bool shift = compound->operation == lexer::TokenKind::LessLess ||
             compound->operation == lexer::TokenKind::GreaterGreater;
         const bool narrowAtomic = address->cppAtomicAccess &&
-            (targetType->typeKey == "builtin:sbyte" || targetType->typeKey == "builtin:byte" ||
-             targetType->typeKey == "builtin:short" || targetType->typeKey == "builtin:ushort") &&
             ProjectTypeConversion::isIntegral(value->typeKey) && value->typeKey != "builtin:bool";
         if (!shift && !conversion.exists() && !narrowAtomic)
         {
