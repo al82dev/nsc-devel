@@ -7,6 +7,8 @@ lista local excluye: puntero a char const, arreglo unsigned short, volatile
 unsigned int, TLS unsigned int y TLS atomic unsigned int. Corregir la selección
 reutilizando la validación de tipos existente, preservar el diagnóstico de
 orígenes ambiguos e intentar los controles C/NativeSharp O0–O3 con regresiones.
+Comprobar que una referencia asociada a DLL no convierte el TLS interno
+generado en una importación TLS de esa DLL.
 NSLink, metadata, LLVM externo, fixtures existentes y C: permanecen protegidos.
 
 ## T08-004: punteros internos C a record, enum y función

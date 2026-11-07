@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Control.c Main.ns Project.nsproj Negative.ns Negative.nsproj Unsupported.h Unsupported.ns Unsupported.nsproj) do (
+for %%F in (Api.h Control.c Main.ns Project.nsproj ProjectDll.nsproj Library.c Negative.ns Negative.nsproj Unsupported.h Unsupported.ns Unsupported.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -23,6 +23,10 @@ if errorlevel 1 exit /b 1
 "%DEST%\control.exe"
 if errorlevel 1 exit /b 1
 echo Control C de contratos internos correcto.
+clang.exe --target=x86_64-pc-windows-msvc -std=c11 -c "%DEST%\Library.c" -o "%DEST%\library.obj"
+if errorlevel 1 exit /b 1
+lld-link.exe /dll /noentry /nodefaultlib /out:"%DEST%\library.dll" /implib:"%DEST%\library.lib" "%DEST%\library.obj"
+if errorlevel 1 exit /b 1
 clang.exe --target=x86_64-pc-windows-msvc -std=c11 -S -emit-llvm -O0 "%DEST%\Control.c" -o "%DEST%\control.ll"
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\native.ll" 2> "%DEST%\native-ir.log"
@@ -45,11 +49,15 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 goto :failure
   "%DEST%\consumer-O%%O.exe"
   if errorlevel 1 exit /b 1
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\ProjectDll.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-dll-O%%O.exe" > "%DEST%\consumer-dll-O%%O.log" 2>&1
+  if errorlevel 1 goto :failure
+  "%DEST%\consumer-dll-O%%O.exe"
+  if errorlevel 1 exit /b 1
   echo Contratos de globales internas O%%O correctos.
 )
 exit /b 0
 :failure
-type "%DEST%\consumer-O*.log"
+type "%DEST%\consumer*O*.log"
 exit /b 1
 :unsupported_failure
 type "%DEST%\unsupported.log"
