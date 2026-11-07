@@ -1,0 +1,7 @@
+int Main()
+{
+    if (point_ptr->value != 3 || (int)*mood_ptr != 2 || callback_ptr(5) != 12) return 1;
+    point_ptr->value = 12;
+    *mood_ptr = high_mood();
+    return inspect() == 1 ? 0 : 2;
+}

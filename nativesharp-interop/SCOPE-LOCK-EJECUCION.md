@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004: punteros internos C a record, enum y función
+
+Reproducir y corregir globales internas C que almacenan punteros a record,
+enum y función, incluidos sus inicializadores y el estado compartido con
+funciones inline. Comparar referencia C y NativeSharp O0–O3 y ejecutar
+regresiones de globales y callbacks. Preservar NSLink, metadata, LLVM externo,
+fixtures existentes y C:. No acreditar otros tipos o TLS con esta prueba.
+
 ## T08-004: punteros anidados y arreglos C internos
 
 Reproducir puntero `int**`, arreglos de records y enums, arreglo const, arreglo
