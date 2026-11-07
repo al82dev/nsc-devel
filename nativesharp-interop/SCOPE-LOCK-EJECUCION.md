@@ -14,6 +14,8 @@ externo y C: sin modificar. Detalle en la auditoría.
 Tercer conjunto: matriz de typedef, enum dentro de un campo de record,
 plantillas públicas con C y global `static`. Solo pruebas, fixtures propios y
 propuestas; resolución de nombres, NSMETA y publicación de estados sin cambios.
+Cuarto conjunto: H7 y H8 reproducidos y parche de H7 entregado sin aplicar, medido
+solo con aplicación temporal revertida; codec, formato y resolución sin cambios.
 
 ## T08-004: selección por contrato de globales C internas
 

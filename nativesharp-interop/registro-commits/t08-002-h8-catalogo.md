@@ -9,7 +9,7 @@ regla propuesta (formato elegido por el minor declarado).
 
 El lector actual rechaza solo la variante 1.42 solo de enums, con `metadata
 before 1.43 cannot represent C source provenance`. La regla propuesta decodifica
-las catorce variantes. En `validar.cmd` se añade la sección `catalogo`. El enum
+las dieciséis variantes. En `validar.cmd` se añade la sección `catalogo`. El enum
 sintético de la sonda 7 pasa a una función común.
 
 `T08-002-H8-CATALOGO.md` documenta qué bytes mira cada lector, la propuesta y los

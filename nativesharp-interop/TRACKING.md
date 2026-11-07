@@ -205,6 +205,12 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - El cuarto conjunto del carril aportó reproducciones y propuestas para
+    constantes de enum en bibliotecas (H7), compatibilidad de catálogo (H8)
+    y formas adicionales de USR de typedef. El parche H7 está sin aplicar;
+    estos resultados requieren revisión y validación en la rama actual.
+    [Resultados](registro-commits/t08-002-resultados-identidad-c-4.md),
+    [H7](T08-002-H7-CONSTANTES.md), [H8](T08-002-H8-CATALOGO.md).
   - El tercer conjunto del carril aportó una matriz de typedef, casos de
     plantillas con dependencias C y diagnósticos H4–H8. Son resultados del
     carril y propuestas sujetos a revisión frente al estado actual de NSC.

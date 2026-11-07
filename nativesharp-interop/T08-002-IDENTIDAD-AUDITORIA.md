@@ -292,6 +292,13 @@ Evidencia: plantillas/ConsumerEnumConstantPlain y ConsumerAnonymousConstantPlain
   importadas como estados públicos.
 Estado: corrección de una condición propuesta en T08-002-PROPUESTA-METADATA-C.md;
   no aplicada (metadata, compartida con el carril de variables globales).
+Actualización (cuarto conjunto): reproducción autocontenida en constantes-enum
+  (enum con nombre y anónimo, método ordinario y plantilla). Parche
+  parches/t08-002-h7-excluir-constantes.patch medido con aplicación temporal: sin
+  estados publicados, los métodos ordinarios y la plantilla con el enum en la
+  superficie ejecutan; las plantillas con enum fuera de la superficie o anónimo
+  fallan en el consumidor (unknown identifier). Detalle:
+  T08-002-H7-CONSTANTES.md.
 ```
 
 ### H8. Catálogo heredado solo de enums confundido con la envoltura 4
@@ -304,6 +311,10 @@ Un catálogo 1.42 solo de enums empieza por 04 00 00 00 00 00 00 00;
 NO VERIFICADO: si existe algún NSMETA 1.42 real así.
 Estado: registrado; influye en la recomendación de versionado
   (T08-002-PROPUESTA-METADATA-C.md, opción B).
+Actualización (cuarto conjunto): reproducido en NSMETA real escrito con la vía de
+  versión anterior: el lector actual rechaza la 1.42 solo de enums con "metadata
+  before 1.43 cannot represent C source provenance" y lee las otras quince
+  variantes 1.42–1.45. Propuesta por minor declarado: T08-002-H8-CATALOGO.md.
 ```
 
 ## Pendientes de T08-002
@@ -320,6 +331,11 @@ Estado: registrado; influye en la recomendación de versionado
 6. Decidir la versión de NSMETA para H3 y H4 (recomendación: opción B, minor 46
    condicional, una sola subida) y asignar el número de minor con los demás
    carriles.
-7. Decidir H7 (una condición en la construcción de metadata) y H8 (decodificar
-   el catálogo según el minor).
+7. Decidir H7: integrar el parche A
+   (`parches/t08-002-h7-excluir-constantes.patch`) y decidir la siembra del
+   catálogo para plantillas con enum con nombre fuera de la superficie.
+   Decidir H8: decodificar el catálogo según el minor declarado
+   (T08-002-H8-CATALOGO.md).
+9. H1: decidir si la regla debe aceptar archivos con `@` en el nombre (hoy
+   falso negativo conservador).
 8. H5 corresponde al carril de layout de records.

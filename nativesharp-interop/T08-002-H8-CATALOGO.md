@@ -43,7 +43,7 @@ HECHO COMPROBADO (validador, sección `catalogo`):
 | `PCatOpaque` (struct incompleto) | 1.45 | 3 | no representable | no representable | no representable | lee |
 | `PCatFloatOpaque` | 1.45 | 4 | no representable | no representable | no representable | lee |
 
-La regla propuesta decodifica las catorce variantes, incluida la 1.42 solo de
+La regla propuesta decodifica las dieciséis variantes, incluida la 1.42 solo de
 enums.
 
 Otros hechos:
@@ -100,7 +100,7 @@ esté entre 1 y 4, tiene que ser exactamente 4: el bloque vacío.
 4. La proyección ABI usa la misma decisión.
 
    **Compatibilidad de la huella:** para todo archivo que hoy se lee, la decisión
-   por minor coincide con la detección actual (catorce variantes de la tabla). En
+   por minor coincide con la detección actual (dieciséis variantes de la tabla). En
    la 1.42 solo de enums, la proyección actual ya usa el bloque crudo, y el bloque
    heredado sin procedencia es justamente lo que una decodificación correcta
    reproduciría. Por tanto la huella no cambia. Esto es una inferencia: no se
@@ -115,7 +115,7 @@ envoltura futura. Solo tiene sentido si algún lector no puede conocer el minor.
 ## Controles de compatibilidad incluidos
 
 - El fixture mínimo 1.42 solo de enums, byte a byte frente al codificador.
-- Las catorce variantes reales de la tabla: el lector actual debe fallar
+- Las dieciséis variantes reales de la tabla: el lector actual debe fallar
   exactamente en la 1.42 solo de enums y leer las demás, y la regla propuesta
   debe decodificarlas todas.
 - Fuera de esta prueba siguen vigentes las pruebas de codec de
