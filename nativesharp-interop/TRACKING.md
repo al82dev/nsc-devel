@@ -516,6 +516,8 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     El selector directo también inspecciona bibliotecas proporcionadas con
     `--link-lib`: pasaron ejecutable y DLL O0–O3, consumidor NS O0, bitcode
     sin TLS y controles de selección. [Evidencia](registro-commits/t08-link-lib-auto-tls.md).
+    La batería confirmó el control nuevo y terminó con los cuatro fallos
+    originales de DLL C. [Resultado](registro-commits/t08-validacion-link-lib-auto.md).
     La batería posterior confirmó el control nuevo, pero volvió a fallar en los
     cuatro controles originales de DLL C. [Resultado](registro-commits/t08-validacion-dll-emision-auto.md).
     La batería posterior ejecutó correctamente ese control, pero terminó con
