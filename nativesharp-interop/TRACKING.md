@@ -486,6 +486,10 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     Un callback C almacenado en TLS se asignó e invocó desde NativeSharp y C,
     con aislamiento entre hilos, en estático y DLL O0–O3.
     [Evidencia](registro-commits/tls-callback-evidencia.md).
+    Los escalares TLS `volatile unsigned int`, `long long`, `double`, `_Bool`
+    y `const volatile int` pasaron en estático y DLL O0–O3; el IR estático y
+    el rechazo de escritura `const volatile` se verificaron.
+    [Evidencia](registro-commits/tls-escalares-volatile-evidencia.md).
     Arreglos TLS `int[2]`, `int[3]` e `int[2][3]` pasaron lectura, escritura
     y aislamiento con biblioteca estática y DLL en O0–O3; otros elementos y
     calificadores siguen pendientes. [Evidencia](registro-commits/tls-arreglo-evidencia.md).
