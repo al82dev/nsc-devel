@@ -46,4 +46,25 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 (echo Ejecucion de arreglo TLS DLL O%%O fallo. & exit /b 1)
   echo Arreglo TLS DLL O%%O correcto.
 )
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%ROOT%\static\Static.nsproj" > "%ROOT%\static\project.ll" 2> "%ROOT%\static\ir.log"
+if errorlevel 1 exit /b 1
+python "%~dp0verificar_ir.py" "%ROOT%\static\project.ll"
+if errorlevel 1 exit /b 1
+for %%M in (static dll) do (
+  copy /y "%~dp0ConstWrite.ns.txt" "%ROOT%\%%M\Main.ns" >nul
+  if errorlevel 1 exit /b 1
+)
+for %%P in (Static Dll) do (
+  if /i "%%P"=="Static" (set "NSC_TLS_ARRAY_DIR=%ROOT%\static") else (set "NSC_TLS_ARRAY_DIR=%ROOT%\dll")
+  call :check_const %%P
+  if errorlevel 1 exit /b 1
+)
+echo Escritura de arreglo TLS const rechazada en estatico y DLL.
+exit /b 0
+
+:check_const
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%NSC_TLS_ARRAY_DIR%\%~1.nsproj" > "%NSC_TLS_ARRAY_DIR%\const.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"left side of assignment is not assignable" "%NSC_TLS_ARRAY_DIR%\const.log" >nul
+if errorlevel 1 exit /b 1
 exit /b 0
