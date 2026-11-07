@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Api.c Probe.c Promotion.c Promotion.ns Narrow.ns NarrowCompound.ns LocalNarrow.ns FloatCompound.ns FloatConstWrite.ns BoolConstWrite.ns PointerConstWrite.ns PointerQualified.ns PointerPointeeConstWrite.ns PointerPointeeConstEscape.ns PointerPointeeVolatile.ns PointerPointeeVolatileEscape.ns PointerCompound.ns PointerEscape.ns UnsignedPointer.ns Main.ns Project.nsproj Escape.ns Unsupported.ns ReadonlyWrite.ns RefEscape.ns OutEscape.ns InEscape.ns ReferenceControl.ns ZeroDiv.ns ZeroRem.ns) do (
+for %%F in (Api.h Api.c Probe.c Promotion.c Promotion.ns Narrow.ns NarrowCompound.ns LocalNarrow.ns FloatCompound.ns FloatConstWrite.ns BoolConstWrite.ns PointerConstWrite.ns PointerQualified.ns PointerPointeeConstWrite.ns PointerPointeeConstEscape.ns PointerPointeeVolatile.ns PointerPointeeVolatileEscape.ns PointerCompound.ns PointerEscape.ns UnsignedPointer.ns UnsignedPointerQualified.ns UnsignedPointeeConstWrite.ns UnsignedPointeeConstEscape.ns UnsignedPointeeVolatileEscape.ns Main.ns Project.nsproj Escape.ns Unsupported.ns ReadonlyWrite.ns RefEscape.ns OutEscape.ns InEscape.ns ReferenceControl.ns ZeroDiv.ns ZeroRem.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -75,7 +75,7 @@ for %%O in (0 1 2 3) do (
   "%DEST%\narrow-O%%O.exe"
   if errorlevel 1 exit /b 1
 )
-for %%F in (NarrowCompound Promotion FloatCompound PointerCompound PointerQualified PointerPointeeVolatile UnsignedPointer) do (
+for %%F in (NarrowCompound Promotion FloatCompound PointerCompound PointerQualified PointerPointeeVolatile UnsignedPointer UnsignedPointerQualified) do (
   copy /y "%DEST%\%%F.ns" "%DEST%\Main.ns" >nul
   if errorlevel 1 exit /b 1
   for %%O in (0 1 2 3) do (
@@ -90,6 +90,12 @@ if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\unsigned-pointer.ll" 2> "%DEST%\unsigned-pointer-ir.log"
 if errorlevel 1 (type "%DEST%\unsigned-pointer-ir.log" & exit /b 1)
 python "%~dp0verificar_uint_pointer.py" "%DEST%\unsigned-pointer.ll"
+if errorlevel 1 exit /b 1
+copy /y "%DEST%\UnsignedPointerQualified.ns" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\unsigned-qualified.ll" 2> "%DEST%\unsigned-qualified-ir.log"
+if errorlevel 1 (type "%DEST%\unsigned-qualified-ir.log" & exit /b 1)
+python "%~dp0verificar_uint_calificado.py" "%DEST%\unsigned-qualified.ll"
 if errorlevel 1 exit /b 1
 copy /y "%DEST%\NarrowCompound.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
@@ -141,6 +147,18 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\
 if not errorlevel 1 exit /b 1
 findstr /L /C:"would discard pointer pointee volatile qualification" "%DEST%\pointer-pointee-volatile-escape.log" >nul
 if errorlevel 1 (type "%DEST%\pointer-pointee-volatile-escape.log" & exit /b 1)
+for %%F in (UnsignedPointeeConstWrite UnsignedPointeeConstEscape UnsignedPointeeVolatileEscape) do (
+  copy /y "%DEST%\%%F.ns" "%DEST%\Main.ns" >nul
+  if errorlevel 1 exit /b 1
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\%%F.log" 2>&1
+  if not errorlevel 1 (type "%DEST%\%%F.log" & exit /b 1)
+)
+findstr /L /C:"left side of assignment is not assignable" "%DEST%\UnsignedPointeeConstWrite.log" >nul
+if errorlevel 1 (type "%DEST%\UnsignedPointeeConstWrite.log" & exit /b 1)
+findstr /L /C:"would discard pointee constness" "%DEST%\UnsignedPointeeConstEscape.log" >nul
+if errorlevel 1 (type "%DEST%\UnsignedPointeeConstEscape.log" & exit /b 1)
+findstr /L /C:"would discard pointer pointee volatile qualification" "%DEST%\UnsignedPointeeVolatileEscape.log" >nul
+if errorlevel 1 (type "%DEST%\UnsignedPointeeVolatileEscape.log" & exit /b 1)
 copy /y "%DEST%\ReferenceControl.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\reference-control.log" 2>&1

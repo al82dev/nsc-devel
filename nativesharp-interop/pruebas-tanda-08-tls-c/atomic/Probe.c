@@ -142,5 +142,13 @@ void entry(void)
         else if (*(__c11_atomic_fetch_add(&atomic_unsigned_pointer, 1, __ATOMIC_SEQ_CST) + 1) != 75U) result = 63;
         else if (*(__c11_atomic_fetch_sub(&atomic_unsigned_pointer, 2, __ATOMIC_SEQ_CST) - 2) != 0xffffffffU) result = 64;
     }
+    if (result == 0) {
+        atomic_unsigned_const_pointee = atomic_unsigned_pointer_expected();
+        if (*atomic_unsigned_const_pointee != 0xffffffffU || atomic_unsigned_const_pointee[1] != 74U) result = 65;
+        atomic_unsigned_volatile_pointee = atomic_unsigned_pointer_expected();
+        *atomic_unsigned_volatile_pointee = 81U;
+        atomic_unsigned_volatile_pointee[1] = 82U;
+        if (*atomic_unsigned_volatile_pointee != 81U || atomic_unsigned_volatile_pointee[1] != 82U) result = 66;
+    }
     ExitProcess((unsigned int)result);
 }

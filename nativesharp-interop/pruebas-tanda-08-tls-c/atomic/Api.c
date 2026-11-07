@@ -21,6 +21,8 @@ _Thread_local const _Atomic(int*) atomic_pointer_const = 0;
 _Thread_local _Atomic(const int*) atomic_pointer_const_pointee = 0;
 _Thread_local _Atomic(volatile int*) atomic_pointer_volatile_pointee = 0;
 _Thread_local _Atomic(unsigned int*) atomic_unsigned_pointer = 0;
+_Thread_local _Atomic(const unsigned int*) atomic_unsigned_const_pointee = 0;
+_Thread_local _Atomic(volatile unsigned int*) atomic_unsigned_volatile_pointee = 0;
 _Thread_local _Atomic(struct AtomicUnsupported) atomic_unsupported_record;
 static _Thread_local int atomic_pointer_target[3] = {73, 74, 75};
 int* atomic_pointer_expected(void) { return atomic_pointer_target; }

@@ -385,15 +385,17 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
         indexedCGlobal = depth > 0 && depth <= 64 && provenance &&
             provenance->kind == ProjectOopHirNodeKind::NamespaceStateAddress;
     }
-    if (resultType == "builtin:int" && provenance &&
+    if ((resultType == "builtin:int" || resultType == "builtin:uint") && provenance &&
         (provenance->kind == ProjectOopHirNodeKind::NamespaceStateValue || indexedCGlobal) &&
         provenance->namespaceStateOrdinal && namespaceFunctionModel_ &&
         *provenance->namespaceStateOrdinal < namespaceFunctionModel_->states().size())
     {
         const auto& state = namespaceFunctionModel_->states()[*provenance->namespaceStateOrdinal];
         directCVolatileInt = state.isCppExternal && state.cppCGlobal &&
-            (indexedCGlobal ? state.declaredTypeKey.starts_with("builtin:int*[")
-                            : state.declaredTypeKey == "builtin:int*") && state.cppPointerPointeeVolatile &&
+            ((indexedCGlobal ? state.declaredTypeKey.starts_with("builtin:int*[")
+                             : state.declaredTypeKey == "builtin:int*") ||
+             (!indexedCGlobal && state.cppAtomicStorage && state.declaredTypeKey == "builtin:uint*")) &&
+            state.cppPointerPointeeVolatile &&
             state.cppMicrosoftVolatileSemantics == std::optional<bool>{true};
     }
         if (frame.syntax->tokenKind() == lexer::TokenKind::PlusPlus ||

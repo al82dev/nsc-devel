@@ -20,6 +20,8 @@ extern _Thread_local const _Atomic(int*) atomic_pointer_const;
 extern _Thread_local _Atomic(const int*) atomic_pointer_const_pointee;
 extern _Thread_local _Atomic(volatile int*) atomic_pointer_volatile_pointee;
 extern _Thread_local _Atomic(unsigned int*) atomic_unsigned_pointer;
+extern _Thread_local _Atomic(const unsigned int*) atomic_unsigned_const_pointee;
+extern _Thread_local _Atomic(volatile unsigned int*) atomic_unsigned_volatile_pointee;
 struct AtomicUnsupported { int first; int second; };
 extern _Thread_local _Atomic(struct AtomicUnsupported) atomic_unsupported_record;
 int* atomic_pointer_expected(void);

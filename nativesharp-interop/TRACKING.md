@@ -482,6 +482,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - `_Thread_local _Atomic(unsigned int*)` pasó acceso y aritmética O0–O3
     frente al control C de Clang, con operaciones atómicas comprobadas en IR.
     [Evidencia](registro-commits/t08-tls-atomico-puntero-uint.md).
+    Los apuntados `const` y `volatile` también pasaron controles directos e
+    indexados, rechazos de pérdida de calificador y orden acquire/release en IR.
+    [Evidencia](registro-commits/t08-tls-atomico-puntero-uint-calificado.md).
   - Una biblioteca NativeSharp precompilada accedió a TLS C atómico `int` y
     punteros atómicos a `const int` y `volatile int`; su consumidor independiente
     pasó O0–O3 con el header original oculto. [Evidencia](registro-commits/t08-tls-atomico-precompilado.md).

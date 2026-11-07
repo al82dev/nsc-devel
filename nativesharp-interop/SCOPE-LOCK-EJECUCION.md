@@ -1,5 +1,17 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08: calificadores del dato apuntado por TLS atómico uint
+
+Comprobar y corregir la proyección de `_Atomic(const unsigned int*)` y
+`_Atomic(volatile unsigned int*)` con almacenamiento TLS, conservando `const`
+y semántica volatile de Microsoft. Limitar los cambios a ese caso: inventario
+C, descenso HIR de desreferencia e índice, fixture TLS atómico, tracking y
+registros. Reproducir antes de modificar producción; comparar con Clang,
+verificar IR y rechazos O0–O3, sin alterar NSLink, LLVM externo ni C:.
+El IR reprodujo accesos `volatile` simples sin acquire/release; permitir
+`PackedArrayAlignment.h` para reconocer únicamente nodos `uint` marcados con
+el mismo contrato y alineación de cuatro bytes que ya usa `int`.
+
 ## T08: puntero TLS atómico a unsigned int
 
 Reproducir el rechazo de `_Thread_local _Atomic(unsigned int*)` y preparar

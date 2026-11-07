@@ -1,0 +1,12 @@
+int Main()
+{
+    atomic_unsigned_const_pointee = atomic_unsigned_pointer_expected();
+    if (*atomic_unsigned_const_pointee != 0xffffffffu) return 1;
+    if (atomic_unsigned_const_pointee[1] != 74u) return 2;
+    atomic_unsigned_volatile_pointee = atomic_unsigned_pointer_expected();
+    *atomic_unsigned_volatile_pointee = 81u;
+    if (*atomic_unsigned_volatile_pointee != 81u) return 3;
+    atomic_unsigned_volatile_pointee[1] = 82u;
+    if (atomic_unsigned_volatile_pointee[1] != 82u) return 4;
+    return 0;
+}

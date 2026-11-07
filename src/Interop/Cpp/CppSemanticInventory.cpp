@@ -243,8 +243,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
           global.type.element->element->unqualifiedCanonicalSpelling == "int") ||
          (global.type.element->element->kind == CppTypeKind::UnsignedInteger &&
           global.type.element->element->unqualifiedCanonicalSpelling == "unsigned int" &&
-          global.type.element->element->sizeBits == std::optional<std::uint64_t>{32} &&
-          !global.type.element->element->isConst && !global.type.element->element->isVolatile)) &&
+          global.type.element->element->sizeBits == std::optional<std::uint64_t>{32})) &&
         global.type.sizeBits == std::optional<std::uint64_t>{64} && global.declarationAlignmentBits &&
         *global.declarationAlignmentBits >= 64;
     const bool supportedAtomicTls = atomicIntTls || atomicLongTls || atomicUIntTls || atomicULongTls || atomicNarrowTls || atomicFloatTls || atomicBoolTls || atomicPointerTls;

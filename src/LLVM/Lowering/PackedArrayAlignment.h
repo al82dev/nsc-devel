@@ -88,7 +88,7 @@ inline bool clangMsVolatileDirectCIntPointee(const frontend::ProjectOopMirNode* 
     return node && (node->kind == frontend::ProjectOopMirNodeKind::AddressValue ||
                     node->kind == frontend::ProjectOopMirNodeKind::PointerLoad ||
                     node->kind == frontend::ProjectOopMirNodeKind::RawElementAddress) &&
-        node->typeKey == "builtin:int" && node->volatileAccess &&
+        (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") && node->volatileAccess &&
         node->cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
         node->cppAtomicAlignmentBytes == std::optional<std::uint64_t>{4};
 }
