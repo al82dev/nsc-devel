@@ -4,6 +4,10 @@ __declspec(thread) const int tls_const = 19;
 __declspec(thread) unsigned int tls_unsigned = 7;
 __declspec(thread) double tls_double = 1.5;
 __declspec(thread) _Bool tls_bool;
+#ifdef TLS_PROBE_IMPORT
+__declspec(dllimport) unsigned long __stdcall GetCurrentThreadId(void);
+__declspec(dllexport) unsigned long tls_test_thread_id(void) { return GetCurrentThreadId(); }
+#endif
 __declspec(dllexport) int tls_zero_read(void) { return tls_zero; }
 __declspec(dllexport) int tls_scalar_check(void)
 {

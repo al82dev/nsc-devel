@@ -14,3 +14,14 @@ referencia. Falta investigar carga e inicialización TLS de esa configuración
 antes de cambiar el compilador. Las salidas se conservan en
 `A:/nsc-interop-build/tanda08-tls-directo/scalars`. La prueba está incompleta
 y no se incorpora todavía como evidencia de éxito ni se modifica NSLink.
+
+## Contraste posterior
+
+`ScalarInspect.c` leyó índice TLS cero, dirección de slots no nula y bytes del
+hilo distintos de la plantilla, tanto para `tls_zero` como para el entero
+inicializado a cuatro. En una variante separada se añadió una función exportada
+que referencia `GetCurrentThreadId`, introduciendo una importación Win32 en la
+DLL: el control C pasó y NSC pasó los seis escalares O0–O3. Al repetir la DLL
+sin esa importación el control C volvió a fallar. La diferencia observada no
+identifica aún la causa y no autoriza sustituir la variante fallida. Los dos
+scripts se conservan y se ejecutarán en la validación agrupada.
