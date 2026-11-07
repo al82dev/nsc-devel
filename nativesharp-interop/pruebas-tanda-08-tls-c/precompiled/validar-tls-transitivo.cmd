@@ -18,7 +18,7 @@ for %%F in (Api.c Api.h Crt.h) do (
   copy /y "%~dp0..\static-global\%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
-for %%F in (PlainApi.h PlainApi.c PlainProducer.ns PlainProducer.nsproj PlainConsumer.ns PlainConsumer.nsproj) do (
+for %%F in (PlainApi.h PlainApi.c PlainApiTls.c PlainProducer.ns PlainProducer.nsproj PlainProducerTls.nsproj PlainConsumer.ns PlainConsumer.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -91,5 +91,23 @@ if errorlevel 1 exit /b 1
 if "%MISSING_RESULT%"=="0" exit /b 1
 findstr /L /C:"plain.lib" "%DEST%\missing.log" >nul
 if errorlevel 1 (type "%DEST%\missing.log" & exit /b 1)
+clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\PlainApiTls.c" -o "%DEST%\plain.obj"
+if errorlevel 1 exit /b 1
+llvm-lib.exe /nologo /out:"%DEST%\plain.lib" "%DEST%\plain.obj"
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\PlainProducerTls.nsproj" -O0 --no-artifact-cache -o "%DEST%\PlainProducer.lib"
+if errorlevel 1 exit /b 1
+for %%I in (1 2) do (
+  nsc.exe build "%DEST%\PlainConsumer.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore -O0 --output-format=json > "%DEST%\tls-cache-%%I.log" 2>&1
+  if errorlevel 1 (type "%DEST%\tls-cache-%%I.log" & exit /b 1)
+  findstr /L /C:"\"linker\":\"LLD\"" "%DEST%\tls-cache-%%I.log" >nul
+  if errorlevel 1 (type "%DEST%\tls-cache-%%I.log" & exit /b 1)
+  "%DEST%\bin\Debug\PlainConsumer.exe"
+  if errorlevel 1 exit /b 1
+  llvm-readobj.exe --coff-tls-directory "%DEST%\bin\Debug\PlainConsumer.exe" > "%DEST%\tls-cache-pe-%%I.log"
+  if errorlevel 1 exit /b 1
+  findstr /L /C:"AddressOfIndex:" "%DEST%\tls-cache-pe-%%I.log" >nul
+  if errorlevel 1 exit /b 1
+)
 echo TLS transitivo precompilado correcto.
 exit /b 0
