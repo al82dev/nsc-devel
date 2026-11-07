@@ -50,6 +50,8 @@ copy /y "%DEST%\ReadonlyWrite.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\readonly.log" 2>&1
 if not errorlevel 1 exit /b 1
+findstr /L /C:"left side of assignment is not assignable" "%DEST%\readonly.log" >nul
+if errorlevel 1 (type "%DEST%\readonly.log" & exit /b 1)
 copy /y "%DEST%\Unsupported.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\unsupported.log" 2>&1
