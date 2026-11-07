@@ -233,7 +233,9 @@ LLVMValueRef OopLlvmImplementation::lowerLoadExpression(const frontend::ProjectO
                 if (node->volatileAccess) LLVMSetVolatile(load, 1);
                 if (node->cppAtomicAccess)
                 {
-                    const auto alignment = (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") ? 4U :
+                    const auto alignment = (node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte") ? 1U :
+                        (node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort") ? 2U :
+                        (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") ? 4U :
                         (node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong") ? 8U : 0U;
                     if (!alignment || node->cppAtomicAlignmentBytes != std::optional<std::size_t>{alignment})
                         return failValue(error, "C atomic global load lacks supported type or alignment");

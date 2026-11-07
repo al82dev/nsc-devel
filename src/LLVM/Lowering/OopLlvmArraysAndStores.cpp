@@ -549,7 +549,9 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         if (node->children[0]->cppAtomicAccess)
         {
             const auto& typeKey = node->children[0]->typeKey;
-            const auto alignment = (typeKey == "builtin:int" || typeKey == "builtin:uint") ? 4U :
+            const auto alignment = (typeKey == "builtin:sbyte" || typeKey == "builtin:byte") ? 1U :
+                (typeKey == "builtin:short" || typeKey == "builtin:ushort") ? 2U :
+                (typeKey == "builtin:int" || typeKey == "builtin:uint") ? 4U :
                 (typeKey == "builtin:long" || typeKey == "builtin:ulong") ? 8U : 0U;
             if (!alignment || node->children[0]->cppAtomicAlignmentBytes != std::optional<std::size_t>{alignment})
                 return failValue(error, "C atomic global store lacks supported type or alignment");

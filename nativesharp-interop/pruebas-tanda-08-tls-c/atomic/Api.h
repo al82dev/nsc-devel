@@ -7,6 +7,7 @@ extern _Thread_local _Atomic(unsigned int) atomic_unsigned;
 extern _Thread_local _Atomic(short) atomic_unsupported_short;
 extern _Thread_local _Atomic(signed char) atomic_narrow_char;
 extern _Thread_local _Atomic(unsigned short) atomic_narrow_ushort;
+extern _Thread_local _Atomic(float) atomic_unsupported_float;
 int atomic_tls_read(void);
 int atomic_volatile_read(void);
 int atomic_start_worker(void);

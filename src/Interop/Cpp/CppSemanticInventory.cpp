@@ -216,7 +216,15 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         global.type.element->sizeBits == std::optional<std::uint64_t>{64} &&
         global.type.sizeBits == std::optional<std::uint64_t>{64} &&
         global.declarationAlignmentBits && *global.declarationAlignmentBits >= 64;
-    const bool supportedAtomicTls = atomicIntTls || atomicLongTls || atomicUIntTls || atomicULongTls;
+    const bool atomicNarrowTls = cLanguage && global.threadLocal && kind == CppTypeKind::Atomic &&
+        global.type.element &&
+        (global.type.element->kind == CppTypeKind::SignedInteger ||
+         global.type.element->kind == CppTypeKind::UnsignedInteger) &&
+        (global.type.element->sizeBits == std::optional<std::uint64_t>{8} ||
+         global.type.element->sizeBits == std::optional<std::uint64_t>{16}) &&
+        global.type.sizeBits == global.type.element->sizeBits && global.declarationAlignmentBits &&
+        *global.declarationAlignmentBits >= *global.type.sizeBits;
+    const bool supportedAtomicTls = atomicIntTls || atomicLongTls || atomicUIntTls || atomicULongTls || atomicNarrowTls;
     const CppType* arrayElement = &global.type;
     std::size_t arrayDepth = 0;
     bool fixedArray = kind == CppTypeKind::Array;
@@ -244,7 +252,10 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     if (supportedAtomicTls)
     {
         const char* expected = atomicIntTls ? "builtin:int" : atomicLongTls ? "builtin:long" :
-            atomicUIntTls ? "builtin:uint" : "builtin:ulong";
+            atomicUIntTls ? "builtin:uint" : atomicULongTls ? "builtin:ulong" :
+            global.type.element->sizeBits == std::optional<std::uint64_t>{8}
+                ? (global.type.element->kind == CppTypeKind::SignedInteger ? "builtin:sbyte" : "builtin:byte")
+                : (global.type.element->kind == CppTypeKind::SignedInteger ? "builtin:short" : "builtin:ushort");
         if (type->nativeSharpTypeKey != expected)
             return failure("C atomic integer mapping is inconsistent");
         type->canonicalCppType = global.type.canonicalSpelling;

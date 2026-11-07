@@ -1,0 +1,10 @@
+int Main()
+{
+    atomic_unsupported_short = 30000;
+    if (atomic_unsupported_short != 30000) return 1;
+    atomic_narrow_char = -100;
+    if (atomic_narrow_char != -100) return 2;
+    atomic_narrow_ushort = 60000;
+    if (atomic_narrow_ushort != 60000) return 3;
+    return 0;
+}

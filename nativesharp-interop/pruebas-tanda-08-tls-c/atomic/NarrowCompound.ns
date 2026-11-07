@@ -1,0 +1,1 @@
+int Main() { atomic_unsupported_short += 1; return 0; }
