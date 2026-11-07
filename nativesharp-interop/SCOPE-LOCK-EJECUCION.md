@@ -4371,6 +4371,15 @@ conservar el comportamiento de acceso y los controles negativos. Construir
 incrementalmente y validar el conjunto una vez implementado. Sin NSLink,
 LLVM externo ni despliegue en C:; otros tipos siguen abiertos.
 
+# Arreglos TLS C volatile adicionales
+
+Comprobar agrupados arreglos TLS `volatile` de `unsigned int`, `long long`,
+`double` y `_Bool` en el fixture estático y DLL; contrastar ejecución, IR e
+aislamiento. Reproducir antes de habilitar la ruta de proyección ya empleada
+por los escalares y arreglos C. Presupuesto: `pruebas-tanda-08-tls-c/array`,
+proyección causal, tracking y registros. Construcción incremental y pruebas
+agrupadas; no modificar NSLink, LLVM externo ni C:.
+
 # Escalares TLS C volatile
 
 Probar en grupo `volatile unsigned int`, `volatile long long`,

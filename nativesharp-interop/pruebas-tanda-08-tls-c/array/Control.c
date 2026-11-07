@@ -6,5 +6,7 @@ void mainCRTStartup(void)
     tls_array[0] = 31; tls_array[1] = 71;
     tls_three[2] = 33; tls_matrix[1][2] = 42;
     tls_unsigned_array[1] = 55; tls_double_array[0] = 3.5; tls_bool_array[0] = 1; tls_volatile_array[1] = 100;
+    if (tls_vu_array[0] != 5 || tls_vl_array[0] != 7 || tls_vd_array[0] != 1.5 || tls_vb_array[0]) ExitProcess(5);
+    tls_vu_array[0] = 15; tls_vl_array[0] = 17; tls_vd_array[0] = 3.5; tls_vb_array[0] = 1;
     ExitProcess(array_check() || array_other_thread() || array_check() ? 2 : 0);
 }
