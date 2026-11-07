@@ -25,6 +25,8 @@ atómico. Cambiar la clave de la caché si cambia su formato. Los accesos, escap
 y metadata siguen pendientes hasta implementar y validar el contrato completo.
 Permitir también `tests/unit/ProjectOopLoweringTests.cpp` para comprobar que la
 identidad HIR distingue el indicador y que la caché MIR lo restaura.
+Permitir `tests/unit/NamespaceFunctionLlvmTests.cpp` para contrastar también la
+identidad de caché de código con el indicador MIR atómico.
 
 Preparar en los descensos LLVM de NSC la lectura y escritura `seq_cst` y las
 actualizaciones suma/resta atómicas para el indicador MIR de global C int;
