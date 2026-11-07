@@ -880,6 +880,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     validación siguen pendientes. [Detalle](registro-commits/t08-bool-compuesto-int-llvm.md).
     Preparados controles para las seis operaciones y el IR de promoción;
     pendientes de ejecución. [Detalle](registro-commits/t08-bool-compuesto-int-fixture.md).
+    Validación posterior: construcción incremental y fixture record-c pasaron
+    O0–O3, con comprobaciones de once accesos y siete promociones en IR; el bool
+    nativo conserva su rechazo. [Resultado](registro-commits/t08-bool-compuesto-int-validacion.md).
   - Preparada la admisión semántica de `&=`, `|=` y `^=` entre bool sobre
     arreglos globales C `volatile _Bool` en modo MS. Faltan el descenso y las
     pruebas agrupadas; no se considera soporte hasta ejecutarlas.
