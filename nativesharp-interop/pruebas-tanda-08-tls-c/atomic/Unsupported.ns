@@ -1,1 +1,1 @@
-int Main() { return (int)atomic_wide; }
+int Main() { return (int)atomic_unsigned_wide; }

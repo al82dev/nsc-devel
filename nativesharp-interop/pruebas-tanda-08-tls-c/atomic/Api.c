@@ -3,6 +3,7 @@ _Thread_local _Atomic(int) atomic_tls = 3;
 _Thread_local const _Atomic(int) atomic_readonly = 7;
 _Thread_local volatile _Atomic(int) atomic_volatile = 9;
 _Thread_local _Atomic(long long) atomic_wide = 10;
+_Thread_local _Atomic(unsigned long long) atomic_unsigned_wide = 11;
 int atomic_tls_read(void) { return atomic_tls; }
 int atomic_volatile_read(void) { return atomic_volatile; }
 typedef unsigned long Dword;

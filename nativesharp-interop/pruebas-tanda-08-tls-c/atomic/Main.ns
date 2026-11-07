@@ -35,5 +35,10 @@ int Main()
     if ((atomic_volatile *= 2) != 22 || (atomic_volatile >>= 1) != 11) return 21;
     if ((atomic_volatile /= 2) != 5 || (atomic_volatile %= 3) != 2) return 22;
     if (atomic_volatile_read() != 2) return 23;
+    atomic_wide = 5000000000L;
+    if ((atomic_wide += 2) != 5000000002L) return 24;
+    if ((atomic_wide *= 2) != 10000000004L) return 25;
+    if ((atomic_wide >>= 1) != 5000000002L) return 26;
+    if ((atomic_wide /= 2) != 2500000001L || atomic_wide != 2500000001L) return 27;
     return 0;
 }

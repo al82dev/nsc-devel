@@ -60,5 +60,12 @@ void entry(void)
             else if (atomic_volatile_read() != 2) result = 23;
         }
     }
+    if (result == 0) {
+        atomic_wide = 5000000000LL;
+        if ((atomic_wide += 2) != 5000000002LL) result = 24;
+        else if ((atomic_wide *= 2) != 10000000004LL) result = 25;
+        else if ((atomic_wide >>= 1) != 5000000002LL) result = 26;
+        else if ((atomic_wide /= 2) != 2500000001LL || atomic_wide != 2500000001LL) result = 27;
+    }
     ExitProcess((unsigned int)result);
 }

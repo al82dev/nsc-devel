@@ -198,6 +198,13 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         global.type.element->sizeBits == std::optional<std::uint64_t>{32} &&
         global.type.sizeBits == std::optional<std::uint64_t>{32} &&
         global.declarationAlignmentBits && *global.declarationAlignmentBits >= 32;
+    const bool atomicLongTls = cLanguage && global.threadLocal && kind == CppTypeKind::Atomic &&
+        global.type.element && global.type.element->kind == CppTypeKind::SignedInteger &&
+        global.type.element->unqualifiedCanonicalSpelling == "long long" &&
+        global.type.element->sizeBits == std::optional<std::uint64_t>{64} &&
+        global.type.sizeBits == std::optional<std::uint64_t>{64} &&
+        global.declarationAlignmentBits && *global.declarationAlignmentBits >= 64;
+    const bool supportedAtomicTls = atomicIntTls || atomicLongTls;
     const CppType* arrayElement = &global.type;
     std::size_t arrayDepth = 0;
     bool fixedArray = kind == CppTypeKind::Array;
@@ -214,17 +221,18 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     const bool supportedArrayElement = scalarArrayElement || arrayElement->kind == CppTypeKind::Record ||
         arrayElement->kind == CppTypeKind::Enumeration || arrayElement->kind == CppTypeKind::Pointer;
     const bool supportedArrayTls = fixedArray && supportedArrayElement;
-    const bool supportedVolatileTls = !global.type.isVolatile || supportedArrayTls || supportedPointerTls || scalarTls || aggregateTls || atomicIntTls;
+    const bool supportedVolatileTls = !global.type.isVolatile || supportedArrayTls || supportedPointerTls || scalarTls || aggregateTls || supportedAtomicTls;
     if (global.threadLocal && (!cLanguage || global.dllImport ||
-        (!scalarTls && !aggregateTls && !supportedPointerTls && !supportedArrayTls && !atomicIntTls) || !supportedVolatileTls))
+        (!scalarTls && !aggregateTls && !supportedPointerTls && !supportedArrayTls && !supportedAtomicTls) || !supportedVolatileTls))
         return failure("thread-local C/C++ global is not yet projected");
-    auto type = mapGlobalType(atomicIntTls ? *global.type.element : global.type,
+    auto type = mapGlobalType(supportedAtomicTls ? *global.type.element : global.type,
                               projectOrdinal, moduleName, lookup, cLanguage);
     if (!type || global.type.kind == CppTypeKind::Void)
         return failure("C/C++ global type is not yet mapped");
-    if (atomicIntTls)
+    if (supportedAtomicTls)
     {
-        if (type->nativeSharpTypeKey != "builtin:int") return failure("C atomic int mapping is inconsistent");
+        if (type->nativeSharpTypeKey != (atomicIntTls ? "builtin:int" : "builtin:long"))
+            return failure("C atomic integer mapping is inconsistent");
         type->canonicalCppType = global.type.canonicalSpelling;
         type->isConst = global.type.isConst;
         type->isVolatile = global.type.isVolatile;
@@ -254,7 +262,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
                                  pointerStorage->element->isVolatile, std::nullopt, global.type.sizeBits,
                              global.declarationAlignmentBits};
     projected.threadLocal = global.threadLocal;
-    projected.atomicStorage = atomicIntTls;
+    projected.atomicStorage = supportedAtomicTls;
     return projected;
 }
 

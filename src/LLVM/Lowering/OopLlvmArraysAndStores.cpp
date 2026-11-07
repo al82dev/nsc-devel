@@ -154,20 +154,25 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         if (node->children[0]->cppAtomicAccess)
         {
             const auto* target = node->children[0].get();
+            const auto alignment = target->typeKey == "builtin:int" ? 4U : target->typeKey == "builtin:long" ? 8U : 0U;
             if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
-                target->typeKey != "builtin:int" ||
-                target->cppAtomicAlignmentBytes != std::optional<std::size_t>{4} || node->immediate != 0)
+                !alignment || target->cppAtomicAlignmentBytes != std::optional<std::size_t>{alignment} || node->immediate != 0)
                 return failValue(error, "C atomic global compound operation is not yet supported");
+            LLVMValueRef operandValue = (node->operation == lexer::TokenKind::LessLess || node->operation == lexer::TokenKind::GreaterGreater)
+                ? normalizeShiftCount(value, node->children[1]->typeKey, target->typeKey, error)
+                : convert(value, node->children[1]->typeKey, target->typeKey, error);
+            if (operandValue == nullptr) return nullptr;
             if (node->operation == lexer::TokenKind::Star ||
                 node->operation == lexer::TokenKind::LessLess ||
                 node->operation == lexer::TokenKind::GreaterGreater ||
                 node->operation == lexer::TokenKind::Slash ||
                 node->operation == lexer::TokenKind::Percent)
             {
-                LLVMTypeRef type = LLVMInt32TypeInContext(context_);
+                LLVMTypeRef type = llvmType(target->typeKey, error);
+                if (type == nullptr) return nullptr;
                 LLVMValueRef initial = LLVMBuildLoad2(builder_, type, address, "atomic.mul.initial");
                 LLVMSetOrdering(initial, LLVMAtomicOrderingSequentiallyConsistent);
-                LLVMSetAlignment(initial, 4);
+                LLVMSetAlignment(initial, alignment);
                 if (target->volatileAccess) LLVMSetVolatile(initial, 1);
                 LLVMBasicBlockRef preheader = LLVMGetInsertBlock(builder_);
                 LLVMBasicBlockRef retry = appendBlock("atomic.mul.retry");
@@ -180,19 +185,19 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 switch (node->operation)
                 {
                     case lexer::TokenKind::Star:
-                        updated = LLVMBuildMul(builder_, current, value, "atomic.mul.updated"); break;
+                        updated = LLVMBuildMul(builder_, current, operandValue, "atomic.mul.updated"); break;
                     case lexer::TokenKind::LessLess:
-                        updated = LLVMBuildShl(builder_, current, value, "atomic.shift.updated"); break;
+                        updated = LLVMBuildShl(builder_, current, operandValue, "atomic.shift.updated"); break;
                     case lexer::TokenKind::GreaterGreater:
-                        updated = LLVMBuildAShr(builder_, current, value, "atomic.shift.updated"); break;
+                        updated = LLVMBuildAShr(builder_, current, operandValue, "atomic.shift.updated"); break;
                     default:
-                        updated = applyIntegerDivision(node->operation, current, value, "builtin:int", error, false);
+                        updated = applyIntegerDivision(node->operation, current, operandValue, target->typeKey, error, false);
                         if (updated == nullptr) return nullptr;
                         break;
                 }
                 LLVMValueRef pair = LLVMBuildAtomicCmpXchg(builder_, address, current, updated,
                     LLVMAtomicOrderingSequentiallyConsistent, LLVMAtomicOrderingSequentiallyConsistent, 0);
-                LLVMSetAlignment(pair, 4);
+                LLVMSetAlignment(pair, alignment);
                 if (target->volatileAccess) LLVMSetVolatile(pair, 1);
                 LLVMValueRef observed = LLVMBuildExtractValue(builder_, pair, 0, "atomic.mul.observed");
                 LLVMValueRef success = LLVMBuildExtractValue(builder_, pair, 1, "atomic.mul.success");
@@ -213,10 +218,10 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 default: return failValue(error, "C atomic global compound operation is not yet supported");
             }
             LLVMValueRef operand = node->operation == lexer::TokenKind::Minus
-                ? LLVMBuildNeg(builder_, value, "atomic.subtract.operand") : value;
+                ? LLVMBuildNeg(builder_, operandValue, "atomic.subtract.operand") : operandValue;
             LLVMValueRef previous = LLVMBuildAtomicRMW(builder_, operation, address, operand,
                                                        LLVMAtomicOrderingSequentiallyConsistent, 0);
-            LLVMSetAlignment(previous, 4);
+            LLVMSetAlignment(previous, alignment);
             if (target->volatileAccess) LLVMSetVolatile(previous, 1);
             if (node->booleanValue) return previous;
             switch (operation)
@@ -540,11 +545,12 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         LLVMValueRef store = LLVMBuildStore(builder_, storedValue, address);
         if (node->children[0]->cppAtomicAccess)
         {
-            if (node->children[0]->typeKey != "builtin:int" ||
-                node->children[0]->cppAtomicAlignmentBytes != std::optional<std::size_t>{4})
+            const auto alignment = node->children[0]->typeKey == "builtin:int" ? 4U :
+                node->children[0]->typeKey == "builtin:long" ? 8U : 0U;
+            if (!alignment || node->children[0]->cppAtomicAlignmentBytes != std::optional<std::size_t>{alignment})
                 return failValue(error, "C atomic global store lacks supported type or alignment");
             LLVMSetOrdering(store, LLVMAtomicOrderingSequentiallyConsistent);
-            LLVMSetAlignment(store, 4);
+            LLVMSetAlignment(store, alignment);
             if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
             return value;
         }

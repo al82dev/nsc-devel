@@ -233,10 +233,11 @@ LLVMValueRef OopLlvmImplementation::lowerLoadExpression(const frontend::ProjectO
                 if (node->volatileAccess) LLVMSetVolatile(load, 1);
                 if (node->cppAtomicAccess)
                 {
-                    if (node->typeKey != "builtin:int" || node->cppAtomicAlignmentBytes != std::optional<std::size_t>{4})
+                    const auto alignment = node->typeKey == "builtin:int" ? 4U : node->typeKey == "builtin:long" ? 8U : 0U;
+                    if (!alignment || node->cppAtomicAlignmentBytes != std::optional<std::size_t>{alignment})
                         return failValue(error, "C atomic global load lacks supported type or alignment");
                     LLVMSetOrdering(load, LLVMAtomicOrderingSequentiallyConsistent);
-                    LLVMSetAlignment(load, 4);
+                    LLVMSetAlignment(load, alignment);
                     return load;
                 }
                 if (isClangMsVolatileScalarGlobal(node))
