@@ -508,6 +508,9 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     estáticas con TLS o bitcode cuando no hay elección explícita. Pasaron los
     controles dirigidos O0–O3, prioridades y caché; la DLL directa y la batería
     posterior permanecen pendientes. [Evidencia](registro-commits/t08-emision-directa-auto-linker.md).
+    La batería posterior ejecutó correctamente ese control, pero terminó con
+    los cuatro fallos conocidos de DLL. La tanda sigue abierta.
+    [Resultado](registro-commits/t08-validacion-emision-auto.md).
     La DLL no solicita un accessor inexistente para el global C importado.
     [Evidencia](registro-commits/tls-dll-exportacion-externa.md).
     Su productor y consumidor NativeSharp pasaron O0–O3 con LLD sin
