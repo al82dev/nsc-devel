@@ -874,6 +874,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Preparada referencia Clang de `_Bool` C compuesto con `uint`, `long` y
     `ulong`: i32 para el primero e i64 para los otros. Falta implementación y
     validación. [Detalle](registro-commits/t08-bool-compuesto-enteros-referencia.md).
+    Preparada la ruta semántica y LLVM; pendientes controles y ejecución.
+    [Detalle](registro-commits/t08-bool-compuesto-enteros-implementacion.md).
   - Clang confirmó división, residuo y desplazamientos compuestos de `_Bool` C
     volatile en ejemplos válidos; falta implementar y validar en NSC.
     [Referencia](registro-commits/t08-bool-compuesto-div-shift-referencia.md).

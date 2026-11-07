@@ -2080,11 +2080,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
     const auto* target = expression->first();
     const bool boolBitwise = right.typeKey == "builtin:bool" &&
         (compoundBase == TokenKind::Amp || compoundBase == TokenKind::Pipe || compoundBase == TokenKind::Caret);
-    const bool cBoolIntOperation = right.typeKey == "builtin:int" &&
+    const bool cBoolIntegerOperand = right.typeKey == "builtin:int" || right.typeKey == "builtin:uint" ||
+        right.typeKey == "builtin:long" || right.typeKey == "builtin:ulong";
+    const bool cBoolIntOperation = cBoolIntegerOperand &&
         (compoundBase == TokenKind::Amp || compoundBase == TokenKind::Pipe || compoundBase == TokenKind::Caret ||
          compoundBase == TokenKind::Plus || compoundBase == TokenKind::Minus || compoundBase == TokenKind::Star ||
          compoundBase == TokenKind::Slash || compoundBase == TokenKind::Percent ||
-         compoundBase == TokenKind::LessLess || compoundBase == TokenKind::GreaterGreater);
+         (right.typeKey == "builtin:int" &&
+          (compoundBase == TokenKind::LessLess || compoundBase == TokenKind::GreaterGreater)));
     if (namespaceFunctionModel_ && left.typeKey == "builtin:bool" && (boolBitwise || cBoolIntOperation) &&
         target && target->kind() == ast::AstNodeKind::IndexExpression && target->first())
     {

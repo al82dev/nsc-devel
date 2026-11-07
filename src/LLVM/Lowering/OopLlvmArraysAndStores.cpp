@@ -152,13 +152,16 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         std::string& error)
 {
         const bool boolOperand = node->children[1]->typeKey == "builtin:bool";
-        const bool intOperand = node->children[1]->typeKey == "builtin:int";
+        const auto& integerOperandType = node->children[1]->typeKey;
+        const bool intOperand = integerOperandType == "builtin:int" || integerOperandType == "builtin:uint" ||
+            integerOperandType == "builtin:long" || integerOperandType == "builtin:ulong";
         const bool boolBitwise = node->operation == lexer::TokenKind::Amp ||
             node->operation == lexer::TokenKind::Pipe || node->operation == lexer::TokenKind::Caret;
         const bool boolIntArithmetic = node->operation == lexer::TokenKind::Plus ||
             node->operation == lexer::TokenKind::Minus || node->operation == lexer::TokenKind::Star ||
             node->operation == lexer::TokenKind::Slash || node->operation == lexer::TokenKind::Percent ||
-            node->operation == lexer::TokenKind::LessLess || node->operation == lexer::TokenKind::GreaterGreater;
+            (integerOperandType == "builtin:int" &&
+             (node->operation == lexer::TokenKind::LessLess || node->operation == lexer::TokenKind::GreaterGreater));
         if (clangMsVolatileGlobalBoolArray(node->children[0].get()) &&
             ((boolOperand && boolBitwise) || (intOperand && (boolBitwise || boolIntArithmetic))))
         {
@@ -172,10 +175,11 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
             LLVMValueRef updated = nullptr;
             if (intOperand)
             {
-                LLVMTypeRef intType = LLVMInt32TypeInContext(context_);
+                LLVMTypeRef intType = llvmType(integerOperandType, error);
+                if (!intType) return nullptr;
                 LLVMValueRef promoted = LLVMBuildZExt(builder_, previous, intType, "c.bool.compound.promoted");
                 LLVMValueRef calculated = applyBinaryOperation(node->operation, promoted, value,
-                    "builtin:int", error, false);
+                    integerOperandType, error, false);
                 if (!calculated) return nullptr;
                 updated = LLVMBuildICmp(builder_, LLVMIntNE, calculated,
                     LLVMConstInt(intType, 0, 0), "c.bool.compound.normalized");
