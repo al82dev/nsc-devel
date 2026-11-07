@@ -66,6 +66,7 @@ public:
     void setExternalImports(std::vector<ExternalImportModule> externalImports);
     void setExtraLinkLibraries(std::vector<std::filesystem::path> extraLibraries);
     void setRuntimeLibrary(std::filesystem::path runtimeLibrary);
+    void setLinkerSelection(std::string selection);
     void setProgramObjectsVerified(bool verified) noexcept;
     // EN: DLL links pass /opt:ref (ThinLTO objects of a final link, optimization part 2 item 50).
     // ES: Los enlaces de DLL pasan /opt:ref (objetos ThinLTO de un enlace final, parte 2 punto 50).
@@ -77,6 +78,7 @@ private:
     std::vector<ExternalImportModule> externalImports_;
     std::vector<std::filesystem::path> extraLinkLibraries_;
     std::filesystem::path runtimeLibrary_;
+    std::string linkerSelection_;
     bool programObjectsVerified_ = false;
     bool removeUnreferencedSections_ = false;
     bool staticArchiveCacheAttempted_ = false;

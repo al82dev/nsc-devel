@@ -129,12 +129,13 @@ std::string cachedFileSetIdentity(
 ///     viejos.
 std::string staticArchiveIdentity(
     std::span<const std::filesystem::path> inputs,
+    std::string_view linkerSelection,
     std::string& error)
 {
     std::string identity = cachedFileSetIdentity("NativeSharp.StaticArchive.v2", inputs, error);
     if (identity.empty()) return {};
     std::string discoveryError;
-    const std::unique_ptr<LldLinker> linker = LldLinker::discover(discoveryError);
+    const std::unique_ptr<LldLinker> linker = LldLinker::discoverSelected(linkerSelection, discoveryError);
     const std::filesystem::path librarian =
         linker != nullptr ? linker->librarianExecutablePath() : std::filesystem::path();
     if (!appendLinkToolIdentity("librarian", librarian, identity, error)) return {};
@@ -230,9 +231,10 @@ bool createAndVerifyStaticLibrary(
     std::span<const std::filesystem::path> archiveInputs,
     const std::filesystem::path& outputPath,
     CoffArchiveInfo& archiveInfo,
+    std::string_view linkerSelection,
     std::string& error)
 {
-    std::unique_ptr<LldLinker> linker = LldLinker::discover(error);
+    std::unique_ptr<LldLinker> linker = LldLinker::discoverSelected(linkerSelection, error);
     if (linker == nullptr) return false;
     if (!linker->createStaticLibrary(archiveInputs, outputPath, error)) return false;
     CoffArchiveVerifier verifier;
@@ -292,7 +294,7 @@ bool WindowsLibraryBuilder::buildStatic(
     // same Foundation import library again from the metadata closure.
     std::vector<std::filesystem::path> archiveInputs = {programObject};
     if (runtimeModule != nullptr) archiveInputs.push_back(runtimeObject);
-    return createAndVerifyStaticLibrary(archiveInputs, outputPath, archiveInfo_, error);
+    return createAndVerifyStaticLibrary(archiveInputs, outputPath, archiveInfo_, linkerSelection_, error);
 }
 
 namespace
@@ -319,11 +321,12 @@ bool discoverDynamicLibraryImports(
     std::span<const std::filesystem::path> extraLinkLibraries,
     const std::filesystem::path& runtimeLibrary,
     bool independentRuntime,
+    std::string_view linkerSelection,
     std::unique_ptr<LldLinker>& linker,
     std::vector<std::filesystem::path>& importLibraries,
     std::string& error)
 {
-    linker = LldLinker::discover(error);
+    linker = LldLinker::discoverSelected(linkerSelection, error);
     if (linker == nullptr) return false;
     if (!createRuntimeImportLibraries(
             *linker, temporaryDirectory, programText,
@@ -460,7 +463,7 @@ bool WindowsLibraryBuilder::buildDynamic(
     std::unique_ptr<LldLinker> linker;
     if (!discoverDynamicLibraryImports(
             temporaryDirectory->path(), combinedProgramText, externalImports_,
-            extraLinkLibraries_, runtimeLibrary_, independentRuntime,
+            extraLinkLibraries_, runtimeLibrary_, independentRuntime, linkerSelection_,
             linker, importLibraries, error)) return false;
     std::vector<std::filesystem::path> objects;
     if (!assembleDynamicLibraryObjects(
@@ -507,10 +510,11 @@ bool restoreStaticArchive(
     CoffArchiveInfo& archiveInfo,
     bool& cacheAttempted,
     bool& reusedArchive,
+    std::string_view linkerSelection,
     std::string& error)
 {
     if (!cacheEnabled) return false;
-    std::string identity = staticArchiveIdentity(inputs, error);
+    std::string identity = staticArchiveIdentity(inputs, linkerSelection, error);
     if (identity.empty()) return false;
     const std::string key = cache->inputObjectKey(
         identity, "windows-x64-msvc-static-archive", codeGenerationPolicy,
@@ -538,10 +542,11 @@ bool storeStaticArchive(
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
     std::span<const std::filesystem::path> inputs,
     const std::filesystem::path& outputPath,
+    std::string_view linkerSelection,
     std::string& error)
 {
     if (!cacheEnabled) return true;
-    std::string identity = staticArchiveIdentity(inputs, error);
+    std::string identity = staticArchiveIdentity(inputs, linkerSelection, error);
     if (identity.empty()) return false;
     const std::string key = cache->inputObjectKey(
         identity, "windows-x64-msvc-static-archive", codeGenerationPolicy,
@@ -619,17 +624,18 @@ bool buildAndCacheStaticArchive(
     CoffArchiveInfo& archiveInfo,
     bool& cacheAttempted,
     bool& reusedArchive,
+    std::string_view linkerSelection,
     std::string& error)
 {
     if (restoreStaticArchive(
             cache, cacheEnabled, codeGenerationPolicy, optimizationLevel,
             archiveInputs, outputPath, archiveInfo,
-            cacheAttempted, reusedArchive, error)) return true;
+            cacheAttempted, reusedArchive, linkerSelection, error)) return true;
     if (!error.empty()) return false;
-    if (!createAndVerifyStaticLibrary(archiveInputs, outputPath, archiveInfo, error)) return false;
+    if (!createAndVerifyStaticLibrary(archiveInputs, outputPath, archiveInfo, linkerSelection, error)) return false;
     return storeStaticArchive(
         cache, cacheEnabled, codeGenerationPolicy,
-        optimizationLevel, archiveInputs, outputPath, error);
+        optimizationLevel, archiveInputs, outputPath, linkerSelection, error);
 }
 }
 
@@ -659,7 +665,7 @@ bool WindowsLibraryBuilder::buildStaticObjects(
         return buildAndCacheStaticArchive(
             cache, cacheEnabled, codeGenerationPolicy, optimizationLevel,
             programObjects, outputPath, archiveInfo_, staticArchiveCacheAttempted_,
-            reusedStaticArchive_, error);
+            reusedStaticArchive_, linkerSelection_, error);
     }
     std::unique_ptr<ScopedTemporaryDirectory> temporaryDirectory = createScopedTemporaryDirectory(error);
     if (temporaryDirectory == nullptr) return false;
@@ -672,7 +678,7 @@ bool WindowsLibraryBuilder::buildStaticObjects(
     return buildAndCacheStaticArchive(
         cache, cacheEnabled, codeGenerationPolicy, optimizationLevel,
         archiveInputs, outputPath, archiveInfo_, staticArchiveCacheAttempted_,
-        reusedStaticArchive_, error);
+        reusedStaticArchive_, linkerSelection_, error);
 }
 
 namespace
@@ -818,7 +824,7 @@ bool WindowsLibraryBuilder::buildDynamicObjects(
     // createRuntimeImportLibraries keeps its text parameter only for API compatibility.
     if (!discoverDynamicLibraryImports(
             temporaryDirectory->path(), {}, externalImports_, extraLinkLibraries_,
-            runtimeLibrary_, independentRuntime, linker, importLibraries, error)) return false;
+            runtimeLibrary_, independentRuntime, linkerSelection_, linker, importLibraries, error)) return false;
     linker->setRemoveUnreferencedSections(removeUnreferencedSections_);
     std::vector<std::filesystem::path> objects(programObjects.begin(), programObjects.end());
     if (runtimeModule != nullptr) objects.push_back(runtimeObject);
@@ -849,6 +855,11 @@ void WindowsLibraryBuilder::setExtraLinkLibraries(std::vector<std::filesystem::p
 void WindowsLibraryBuilder::setRuntimeLibrary(std::filesystem::path runtimeLibrary)
 {
     runtimeLibrary_ = std::move(runtimeLibrary);
+}
+
+void WindowsLibraryBuilder::setLinkerSelection(std::string selection)
+{
+    linkerSelection_ = std::move(selection);
 }
 
 void WindowsLibraryBuilder::setRemoveUnreferencedSections(bool remove) noexcept
