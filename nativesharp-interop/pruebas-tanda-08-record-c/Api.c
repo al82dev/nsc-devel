@@ -63,6 +63,9 @@ volatile int volatile_matrix[2][2] = { { 1, 2 }, { 3, 4 } };
 int read_volatile_arrays(void) { return volatile_array[1] + volatile_matrix[1][1]; }
 void write_volatile_arrays(int value) { volatile_array[1] = value; volatile_matrix[1][1] = value; }
 volatile _Bool volatile_bool_array[2];
+volatile _Bool volatile_bool_scalar;
+int read_volatile_bool_scalar(void) { return volatile_bool_scalar; }
+void set_volatile_bool_scalar(int value) { volatile_bool_scalar = value; }
 volatile signed char volatile_i8_array[2];
 volatile unsigned char volatile_u8_array[2];
 volatile short volatile_i16_array[2];

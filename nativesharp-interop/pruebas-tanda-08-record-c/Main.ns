@@ -37,6 +37,11 @@ int Main()
     if (shared_volatile != 42 || read_shared_volatile() != 42) return 6;
     shared_volatile += 1;
     if (shared_volatile != 43 || read_shared_volatile() != 43) return 41;
+    if (volatile_bool_scalar || read_volatile_bool_scalar() != 0) return 62;
+    volatile_bool_scalar = true;
+    if (!volatile_bool_scalar || read_volatile_bool_scalar() != 1) return 63;
+    set_volatile_bool_scalar(0);
+    if (volatile_bool_scalar || read_volatile_bool_scalar() != 0) return 64;
     volatile_i8 = (sbyte)12;
     volatile_u8 = (byte)13;
     volatile_i16 = (short)1200;
