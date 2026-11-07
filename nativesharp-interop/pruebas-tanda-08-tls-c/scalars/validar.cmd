@@ -41,4 +41,10 @@ if not errorlevel 1 exit /b 1
 findstr /c:"left side of assignment is not assignable" "%DEST%\const.log" >nul
 if errorlevel 1 exit /b 1
 echo Escritura de TLS const rechazada.
+> "%DEST%\Main.ns" echo int Main() { tls_const_volatile = 0; return 0; }
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\const-volatile.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"left side of assignment is not assignable" "%DEST%\const-volatile.log" >nul
+if errorlevel 1 exit /b 1
+echo Escritura de TLS const volatile rechazada.
 exit /b 0
