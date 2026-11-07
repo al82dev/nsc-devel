@@ -10,6 +10,15 @@ fixture en `pruebas-tanda-08-tls-c/precompiled`, salidas en A:, tracking y
 registros. No modificar producción antes de reproducir el fallo ni cambiar
 NSLink, LLVM, C: o los controles DLL existentes.
 
+La reproducción `cadena-estatica-reproduccion.log` falla con NSL1023 porque
+la selección no examina la metadata de la segunda biblioteca NS. Permitir
+ampliar `precompiledReferenceRequiresLld` en
+`src/Driver/LibraryReferenceValidation.cpp` para recorrer dependencias NS
+registradas, evitando ciclos; cuando no pueda resolver una dependencia junto
+a su metadata se elige LLD conservadoramente y la validación existente decide
+el diagnóstico. Conservar elecciones explícitas y el caso sin TLS; agregar
+controles al fixture y registros. Sin modificar NSLink, LLVM ni C:.
+
 ## TLS de DLL C y consumidor NativeSharp de tipo DLL
 
 Comprobar si una DLL NativeSharp puede consumir el productor precompilado que
