@@ -467,6 +467,7 @@ las correcciones. [Resultado](registro-commits/t08-validacion-link-lib-auto.md),
     rechaza como no proyectado. Faltan lectura, escritura y actualización
     atómicas; el control positivo se incorporó al gate y sigue fallando.
     [Evidencia](registro-commits/t08-tls-atomico-resultado.md).
+    [Trabajo pendiente](T08-TLS-ATOMICOS.md).
   - Un global C TLS estático `int` firmado de 32 bits se leyó y escribió desde
     NativeSharp y C con aislamiento de otro hilo en O0–O3. Se usaron LLD y CRT
     declarados explícitamente; el acceso directo desde DLL sigue pendiente.
