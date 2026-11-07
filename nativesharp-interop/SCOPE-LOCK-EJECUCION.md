@@ -4528,6 +4528,19 @@ después permitir que el mapeo de escalares y el tratamiento de acceso
 fixtures `scalars` y `directo`, seguimiento y registros. Producción solo en
 la ruta causal demostrada. Sin cambios a NSLink, LLVM externo ni C:.
 
+# Selección de enlazador para bitcode precompilado
+
+La reproducción `A:/nsc-interop-build/tls-abi/bitcode/probe-notls.cmd` muestra
+que `nsc build` elige NSLink para una biblioteca C ThinLTO sin TLS y NSLink la
+rechaza con NSL1003, máquina `0x4342`. La selección existente ya inspecciona
+esas entradas para TLS; reconocer bitcode como entrada que requiere LLD en el
+mismo punto. Presupuesto: `src/Driver/ProjectCommands.cpp`, los wrappers de
+inspección `ProjectOopObjectGenerator` y `ThinLtoBackend`, el validador de
+selección bitcode, seguimiento y registros. Conservar NSLink para COFF sin TLS,
+las selecciones explícitas y las pruebas existentes. No modificar NSLink,
+LLVM externo ni C:. Construcción incremental y validación agrupada de T08;
+los cuatro fallos de DLL permanecen abiertos hasta su resolución real.
+
 # Identificación provisional de TLS de DLL
 
 El fixture directo demuestra que NSC proyecta una declaración TLS sin

@@ -91,7 +91,7 @@ bool ThinLtoBackend::collectUndefinedSymbols(
     error = "ThinLTO needs the STATIC LLVM host";
     return false;
 }
-bool ThinLtoBackend::containsThreadLocalStorage(
+bool ThinLtoBackend::requiresLldForStaticInput(
     const std::filesystem::path&, bool& found, std::string& error)
 {
     found = false;
@@ -227,7 +227,7 @@ bool ThinLtoBackend::collectUndefinedSymbols(
     return true;
 }
 
-bool ThinLtoBackend::containsThreadLocalStorage(
+bool ThinLtoBackend::requiresLldForStaticInput(
     const std::filesystem::path& file, bool& found, std::string& error)
 {
     found = false;
@@ -239,11 +239,10 @@ bool ThinLtoBackend::containsThreadLocalStorage(
         return false;
     }
     const auto inspect = [&](const llvm::object::Binary& input) {
-        if (const auto* ir = llvm::dyn_cast<llvm::object::IRObjectFile>(&input))
+        if (llvm::isa<llvm::object::IRObjectFile>(&input))
         {
-            for (const llvm::Module& module : ir->modules())
-                for (const llvm::GlobalVariable& global : module.globals())
-                    if (global.isThreadLocal()) found = true;
+            // NSLink cannot consume LLVM bitcode, independently of TLS.
+            found = true;
             return true;
         }
         if (const auto* object = llvm::dyn_cast<llvm::object::COFFObjectFile>(&input))

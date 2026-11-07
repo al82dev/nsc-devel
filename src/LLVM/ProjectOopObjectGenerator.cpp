@@ -1145,10 +1145,10 @@ bool ProjectOopObjectGenerator::collectUndefinedSymbols(
     return ThinLtoBackend::collectUndefinedSymbols(file, symbols, error);
 }
 
-bool ProjectOopObjectGenerator::containsThreadLocalStorage(
+bool ProjectOopObjectGenerator::requiresLldForStaticInput(
     const std::filesystem::path& file, bool& found, std::string& error)
 {
-    return ThinLtoBackend::containsThreadLocalStorage(file, found, error);
+    return ThinLtoBackend::requiresLldForStaticInput(file, found, error);
 }
 
 bool ProjectOopObjectGenerator::thinLtoRuns(LinkTimeOptimizationMode mode, LlvmOptimizationLevel level) noexcept

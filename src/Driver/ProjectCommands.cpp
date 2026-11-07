@@ -1715,22 +1715,22 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const PreparedDriv
         !fs::exists(sidecarPath(project)) && loaded->outputKind() != compilation::ProjectOutputKind::Library)
     {
         std::set<fs::path> inspected;
-        const auto requiresStaticTls = [&](const fs::path& path) {
+        const auto requiresLld = [&](const fs::path& path) {
             if (path.empty() || !inspected.insert(path).second) return false;
-            bool containsTls = false;
+            bool required = false;
             std::string inspectionError;
-            if (!llvm_backend::ProjectOopObjectGenerator::containsThreadLocalStorage(path, containsTls, inspectionError))
-                return true; // Unknown is not proof that the input is free of TLS.
-            return containsTls;
+            if (!llvm_backend::ProjectOopObjectGenerator::requiresLldForStaticInput(path, required, inspectionError))
+                return true; // Unknown cannot be assumed to be compatible with NSLink.
+            return required;
         };
         bool found = false;
         for (const auto& item : projects)
         {
             for (const auto& reference : item.cppLibraryReferences())
-                if (reference.runtimePath.empty() && requiresStaticTls(reference.libraryPath)) { found = true; break; }
+                if (reference.runtimePath.empty() && requiresLld(reference.libraryPath)) { found = true; break; }
             if (!found)
                 for (const auto& reference : item.libraryReferences())
-                    if (reference.runtimePath.empty() && requiresStaticTls(reference.libraryPath)) { found = true; break; }
+                    if (reference.runtimePath.empty() && requiresLld(reference.libraryPath)) { found = true; break; }
             if (found) break;
         }
         if (found) linker = "LLD";
