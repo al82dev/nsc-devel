@@ -2,6 +2,7 @@ int Main()
 {
     if (text[0] != 111 || values[3] != 4 || ticks != 5U || local != 6U || atomic_local != 7U) return 1;
     if (box_ptr->value != 31 || *bool_ptr) return 3;
+    if ((int)*mode_ptr != 11 || opaque_ptr == null || const_box_ptr->value != 31) return 6;
     values[3] = 14;
     ticks = 15U;
     local = 16U;
@@ -13,6 +14,10 @@ int Main()
     if (box_ptr->value != 31 || *bool_ptr) return 5;
     box_ptr += 1;
     bool_ptr += 1;
+    mode_ptr += 1;
+    opaque_ptr = next_opaque();
+    const_box_ptr = next_const_box();
     if (box_ptr->value != 47 || !*bool_ptr) return 4;
+    if ((int)*mode_ptr != 29 || const_box_ptr->value != 47) return 7;
     return inspect() == 1 ? 0 : 2;
 }
