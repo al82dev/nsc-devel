@@ -1,0 +1,8 @@
+int Main()
+{
+    int* slot = tls_bridge();
+    if (slot == null || *slot != 3 || tls_read() != 3) return 1;
+    *slot = 41;
+    if (tls_read() != 41 || tls_other_thread() != 0 || *slot != 41) return 2;
+    return 0;
+}

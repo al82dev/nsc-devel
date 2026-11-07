@@ -1,0 +1,6 @@
+<Project><PropertyGroup><Name>CTlsBridge</Name></PropertyGroup><ItemGroup>
+  <Compile Include="Bridge.ns" />
+  <CppLibraryReference Header="BridgeApi.h" Language="C" Standard="c11" Library="bridge.lib" />
+  <CppLibraryReference Header="BridgeClient.h" Language="C" Standard="c11" Library="api.lib" Runtime="api.dll" />
+  <CppLibraryReference Header="BridgeApi.h" Language="C" Standard="c11" Library="A:/vc2026-runtime/windows-sdk/10.0.28000.0/lib/um/x64/kernel32.lib" />
+</ItemGroup></Project>
