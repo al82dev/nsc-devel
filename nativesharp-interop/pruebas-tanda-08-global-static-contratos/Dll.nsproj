@@ -1,4 +1,10 @@
 <Project>
   <PropertyGroup><Name>AtomicContractsDll</Name><OutputType>SharedLibrary</OutputType></PropertyGroup>
-  <ItemGroup><Compile Include="Dll.ns" /><LibraryReference Include="AtomicContractsProducer.lib" /></ItemGroup>
+  <ItemGroup>
+    <Compile Include="Dll.ns" /><LibraryReference Include="AtomicContractsProducer.lib" />
+    <CppLibraryReference Header="Crt.h" Language="C" Standard="c11" Library="A:/vc2026-runtime/lib/x64/release/libcmt.lib" />
+    <CppLibraryReference Header="Crt.h" Language="C" Standard="c11" Library="A:/vc2026-runtime/lib/x64/release/libcpmt.lib" />
+    <CppLibraryReference Header="Crt.h" Language="C" Standard="c11" Library="A:/vc2026-runtime/lib/x64/release/libvcruntime.lib" />
+    <CppLibraryReference Header="Crt.h" Language="C" Standard="c11" Library="A:/vc2026-runtime/windows-sdk/10.0.28000.0/lib/ucrt/x64/libucrt.lib" />
+  </ItemGroup>
 </Project>

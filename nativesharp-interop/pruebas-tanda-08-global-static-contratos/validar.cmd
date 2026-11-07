@@ -62,21 +62,21 @@ for %%O in (0 1 2 3) do (
   "%DEST%\consumer-dll-O%%O.exe"
   if errorlevel 1 exit /b 1
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\Producer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\AtomicContractsProducer.lib" > "%DEST%\producer-O%%O.log" 2>&1
-  if errorlevel 1 (type "%DEST%\producer-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   ren "%DEST%\Api.h" Api.hidden
   if errorlevel 1 exit /b 1
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Consumer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\precompiled-O%%O.exe" > "%DEST%\precompiled-O%%O.log" 2>&1
-  if errorlevel 1 (type "%DEST%\precompiled-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   "%DEST%\precompiled-O%%O.exe"
   if errorlevel 1 exit /b 1
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-dll "%DEST%\Dll.nsproj" -O%%O --no-artifact-cache -o "%DEST%\bin\Debug\AtomicContractsDll.dll" > "%DEST%\nsdll-O%%O.log" 2>&1
-  if errorlevel 1 (type "%DEST%\nsdll-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   llvm-readobj.exe --coff-tls-directory "%DEST%\bin\Debug\AtomicContractsDll.dll" > "%DEST%\nsdll-tls-O%%O.log" 2>&1
   if errorlevel 1 exit /b 1
   findstr /L /C:"AddressOfIndex:" "%DEST%\nsdll-tls-O%%O.log" >nul
-  if errorlevel 1 (type "%DEST%\nsdll-tls-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\DllConsumer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\nsdll-consumer-O%%O.exe" > "%DEST%\nsdll-consumer-O%%O.log" 2>&1
-  if errorlevel 1 (type "%DEST%\nsdll-consumer-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   "%DEST%\nsdll-consumer-O%%O.exe"
   if errorlevel 1 exit /b 1
   ren "%DEST%\Api.hidden" Api.h
@@ -85,7 +85,7 @@ for %%O in (0 1 2 3) do (
 )
 exit /b 0
 :failure
-type "%DEST%\consumer*O*.log"
+type "%DEST%\*O*.log"
 exit /b 1
 :unsupported_failure
 type "%DEST%\unsupported.log"
