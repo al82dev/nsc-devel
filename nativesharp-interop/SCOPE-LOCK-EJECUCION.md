@@ -1,5 +1,16 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-015: operaciones bit a bit compuestas en arreglo C volatile `_Bool`
+
+Corregir la reproducción `volatile_bool_array[0] |= true`: permitir `&=`,
+`|=` y `^=` con operando bool únicamente para elementos directos de arreglo
+C global `volatile _Bool` con modo MS, conservar el rechazo del bool nativo y
+emitir lectura i8 acquire y escritura i8 release sin convertir la operación en
+`atomicrmw`. Presupuesto: analizador de asignación, descenso HIR de asignación,
+descenso LLVM de escritura compuesta, fixture record-c, seguimiento y registro.
+La validación se agrupa después de completar la cadena; no habilitar aritmética
+ni otros orígenes sin pruebas. Sin NSLink, LLVM externo ni C:.
+
 ## T08-015: referencia C de operaciones compuestas `_Bool` volatile
 
 Establecer la semántica de referencia de Clang para operaciones compuestas

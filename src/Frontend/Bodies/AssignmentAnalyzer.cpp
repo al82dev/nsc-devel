@@ -2076,6 +2076,24 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
         ProjectTypeConversion::isIntegral(right.typeKey) &&
         left.typeKey != "builtin:bool" && right.typeKey != "builtin:bool";
     bool narrowCppAtomic = false;
+    bool cVolatileBoolArrayBitwise = false;
+    const auto* target = expression->first();
+    if (namespaceFunctionModel_ && left.typeKey == "builtin:bool" && right.typeKey == "builtin:bool" &&
+        (compoundBase == TokenKind::Amp || compoundBase == TokenKind::Pipe || compoundBase == TokenKind::Caret) &&
+        target && target->kind() == ast::AstNodeKind::IndexExpression && target->first())
+    {
+        const auto* binding = recordedNameBinding(target->first(), methodMemberOrdinal);
+        if (binding && binding->kind == MethodNameBindingKind::NamespaceState &&
+            binding->candidateMemberOrdinals.size() == 1)
+        {
+            const auto ordinal = binding->candidateMemberOrdinals.front();
+            const auto states = namespaceFunctionModel_->states();
+            cVolatileBoolArrayBitwise = ordinal < states.size() && states[ordinal].isCppExternal &&
+                states[ordinal].cppCGlobal && states[ordinal].isVolatile && !states[ordinal].cppAtomicStorage &&
+                states[ordinal].cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
+                states[ordinal].declaredTypeKey.starts_with("builtin:bool[");
+        }
+    }
     if (namespaceFunctionModel_ && ProjectTypeConversion::isIntegral(left.typeKey) && left.typeKey != "builtin:bool")
     {
         const auto* binding = recordedNameBinding(expression->first(), methodMemberOrdinal);
@@ -2093,7 +2111,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
         ? std::optional<std::string>(left.typeKey)
         : ProjectTypeConversion::commonNumericType(
               left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
-    if (!common.has_value() && !narrowCppAtomic)
+    if (!common.has_value() && !narrowCppAtomic && !cVolatileBoolArrayBitwise)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
@@ -2104,7 +2122,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
     }
     const ProjectImplicitConversion narrowing =
         classifyImplicit(right.typeKey, left.typeKey, right.integerConstant);
-    if (!shiftAssignment && !narrowing.exists() && !narrowCppAtomic)
+    if (!shiftAssignment && !narrowing.exists() && !narrowCppAtomic && !cVolatileBoolArrayBitwise)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidConversion,
