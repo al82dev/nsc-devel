@@ -4322,6 +4322,16 @@ efectivamente fallen. Ejecutar controles C, O0–O3 y regresiones de escalares.
 No modificar NSLink, LLVM externo ni C:; punteros con calificadores y otros
 contratos permanecen pendientes hasta probarse.
 
+# Punteros TLS C y calificadores
+
+Comprobar conjuntamente `double*`, `const int*`, `volatile int*`,
+`int* volatile` e `int* const` TLS C, además del `int*` ya probado, con
+biblioteca estática y DLL. Reproducir antes de modificar proyección; conservar
+la semántica de calificadores y los controles negativos. Presupuesto inicial:
+`pruebas-tanda-08-tls-c/pointer`, seguimiento y registros; producción solo
+en la ruta causal comprobada. Construcción incremental y pruebas agrupadas;
+NSLink, LLVM y C: permanecen protegidos.
+
 # Arreglo global C TLS
 
 Reproducir lectura, escritura y aislamiento por hilo de un `int[2]` TLS C

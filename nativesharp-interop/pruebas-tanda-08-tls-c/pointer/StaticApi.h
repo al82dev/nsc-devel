@@ -1,4 +1,11 @@
 extern __declspec(thread) int* tls_pointer;
+extern __declspec(thread) double* tls_double_pointer;
+extern __declspec(thread) const int* tls_readonly_pointer;
+extern __declspec(thread) volatile int* tls_volatile_pointer;
+extern __declspec(thread) int* volatile tls_volatile_slot;
+extern __declspec(thread) int* const tls_const_slot;
 int* pointer_target(void);
+double* pointer_double_target(void);
+void pointer_prepare(void);
 int pointer_check(void);
 int pointer_other_thread(void);

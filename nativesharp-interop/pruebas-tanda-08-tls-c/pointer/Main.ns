@@ -3,6 +3,12 @@ int Main()
     if (tls_pointer != null) return 1;
     tls_pointer = pointer_target();
     if (tls_pointer[0] != 37) return 2;
+    pointer_prepare();
+    tls_double_pointer = pointer_double_target();
+    if (tls_double_pointer[0] != 1.5 || tls_readonly_pointer[0] != 37 || tls_const_slot[0] != 37) return 4;
+    tls_double_pointer[0] = 2.5;
+    tls_volatile_slot = pointer_target();
+    tls_volatile_pointer[0] = 41;
     tls_pointer[0] = 41;
     if (pointer_check() != 0 || pointer_other_thread() != 0 || pointer_check() != 0) return 3;
     return 0;
