@@ -4,7 +4,11 @@ int Main()
     int signedNegative = -1;
     int signedTwo = 2;
     if ((high == signedNegative) != (c_unsigned_eq_negative() == 1)) return 7;
+    if ((signedNegative == high) != (c_unsigned_eq_negative() == 1)) return 9;
+    if (high < signedTwo || !(signedTwo < high)) return 11;
     long mixedSum = high + signedTwo;
     if (mixedSum != c_unsigned_add_two()) return 8;
+    long reversedSum = signedTwo + high;
+    if (reversedSum != c_unsigned_add_two()) return 10;
     return 0;
 }

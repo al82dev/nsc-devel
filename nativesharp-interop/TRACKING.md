@@ -199,6 +199,9 @@ Actualización 2026-11-07: se repitió el gate agrupado con los controles TLS
 atómicos precompilados. Terminó con código 1 y cuatro fallos visibles de TLS
 de DLL; una repetición dirigida también identificó el fallo silencioso de enum
 mixto. T08 sigue abierta. [Resultado](registro-commits/t08-validacion-integral-20261107.md).
+Posteriormente se corrigió el caso de enum C `unsigned int` con `int`, que
+pasó su control dirigido O0–O3; falta repetir el gate integral tras agrupar
+las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.

@@ -881,9 +881,11 @@ bool ProjectMethodBodyModel::analyzeArithmeticBinary(
     if (!isArithmetic(operation)) return false;
     const auto leftEnum = cppImportedCEnumUnderlying(nameLookup_, left.typeKey);
     const auto rightEnum = cppImportedCEnumUnderlying(nameLookup_, right.typeKey);
-    const std::optional<std::string> common = ProjectTypeConversion::commonNumericType(
-        leftEnum.value_or(left.typeKey), rightEnum.value_or(right.typeKey),
-        left.integerConstant, right.integerConstant);
+    const std::optional<std::string> common = cppCEnumMixedUintInt(leftEnum, left.typeKey, rightEnum, right.typeKey)
+        ? std::optional<std::string>{"builtin:uint"}
+        : ProjectTypeConversion::commonNumericType(
+            leftEnum.value_or(left.typeKey), rightEnum.value_or(right.typeKey),
+            left.integerConstant, right.integerConstant);
     if (!common.has_value())
     {
         diagnostics.report(

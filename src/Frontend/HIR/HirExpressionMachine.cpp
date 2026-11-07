@@ -537,6 +537,8 @@ std::optional<std::string> ProjectOopHirModel::numericBinaryOperandType(
     if (ProjectTypeConversion::isNumeric(resultType)) return resultType;
     const auto leftEnum = cppImportedCEnumUnderlying(nameLookup_, left.typeKey);
     const auto rightEnum = cppImportedCEnumUnderlying(nameLookup_, right.typeKey);
+    if (cppCEnumMixedUintInt(leftEnum, left.typeKey, rightEnum, right.typeKey))
+        return "builtin:uint";
     if (isComparison(expression->tokenKind()) && left.typeKey != right.typeKey && (leftEnum || rightEnum))
     {
         const auto* leftBinding = expressionType(expression->first());
@@ -568,14 +570,19 @@ void ProjectOopHirModel::convertNumericBinaryOperands(
     const MethodExpressionTypeBinding* rightType = expressionType(expression->second());
     const auto leftEnum = cppImportedCEnumUnderlying(nameLookup_, left->typeKey);
     const auto rightEnum = cppImportedCEnumUnderlying(nameLookup_, right->typeKey);
+    const bool mixedCEnum = cppCEnumMixedUintInt(leftEnum, left->typeKey, rightEnum, right->typeKey);
     const ProjectImplicitConversion leftConversion = leftEnum ?
         ProjectImplicitConversion{ProjectConversionKind::IntegralPromotion, 1, left->typeKey, numericOperandType, std::nullopt} :
+        mixedCEnum && left->typeKey == "builtin:int" ?
+        ProjectImplicitConversion{ProjectConversionKind::Numeric, 1, left->typeKey, numericOperandType, std::nullopt} :
         ProjectTypeConversion::classifyImplicit(
         left->typeKey,
         numericOperandType,
         leftType != nullptr ? leftType->integerConstant : std::nullopt);
     const ProjectImplicitConversion rightConversion = rightEnum ?
         ProjectImplicitConversion{ProjectConversionKind::IntegralPromotion, 1, right->typeKey, numericOperandType, std::nullopt} :
+        mixedCEnum && right->typeKey == "builtin:int" ?
+        ProjectImplicitConversion{ProjectConversionKind::Numeric, 1, right->typeKey, numericOperandType, std::nullopt} :
         ProjectTypeConversion::classifyImplicit(
         right->typeKey,
         numericOperandType,

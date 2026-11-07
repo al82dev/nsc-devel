@@ -1,5 +1,16 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08: enum C unsigned int combinado con int
+
+El gate reprodujo código 7 en `EnumMixed.ns`: el IR amplía el enum C de
+`unsigned int` sin signo a i64 y el `int` con signo a i64; Clang compara ambos
+como `unsigned int`. La suma del mismo caso usa también i64. Corregir la
+conversión de comparación y aritmética únicamente para esa combinación con
+enum C importado; mantener las reglas para tipos nativos y demás combinaciones.
+Presupuesto: helper `CppImportedEnumNumeric.h`, análisis de operador y HIR,
+fixture enum mixto, tracking y registros. Comprobar contra el control C en
+O0–O3 y preservar el resto de pruebas; sin NSLink, LLVM externo ni C:.
+
 ## T08: TLS C atómico en biblioteca precompilada
 
 Comprobar si una biblioteca NativeSharp compilada con una referencia a un

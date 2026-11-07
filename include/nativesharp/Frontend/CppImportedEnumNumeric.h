@@ -19,4 +19,13 @@ inline std::optional<std::string> cppImportedCEnumUnderlying(
         return std::nullopt;
     return "builtin:" + imported->enumBase->name;
 }
+
+inline bool cppCEnumMixedUintInt(const std::optional<std::string>& leftEnum,
+                                 std::string_view leftType,
+                                 const std::optional<std::string>& rightEnum,
+                                 std::string_view rightType)
+{
+    return (leftEnum == "builtin:uint" && rightType == "builtin:int") ||
+           (rightEnum == "builtin:uint" && leftType == "builtin:int");
+}
 }
