@@ -528,6 +528,8 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     la segunda informó un acierto de caché de objetos y conservó el directorio TLS.
     Un productor NativeSharp precompilado también accedió al TLS de una DLL C
     con importaciones reales; su consumidor sin header pasó O0–O3 y aislamiento.
+    La repetición ocultó la copia temporal del header durante cada compilación
+    del consumidor y la restauró después; también pasó O0–O3.
     [Evidencia](registro-commits/t08-tls-dll-precompilado-resultado.md).
     [Evidencia](registro-commits/t08-tls-transitivo-gate.md),
     [DLL](registro-commits/t08-tls-transitivo-dll-resultado.md).
