@@ -151,6 +151,22 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         LLVMValueRef value,
         std::string& error)
 {
+        if (node->children[0]->cppAtomicAccess)
+        {
+            const auto* target = node->children[0].get();
+            if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
+                target->typeKey != "builtin:int" ||
+                target->cppAtomicAlignmentBytes != std::optional<std::size_t>{4} || node->immediate != 0 ||
+                (node->operation != lexer::TokenKind::Plus && node->operation != lexer::TokenKind::Minus))
+                return failValue(error, "C atomic global compound operation is not yet supported");
+            LLVMValueRef operand = node->operation == lexer::TokenKind::Minus
+                ? LLVMBuildNeg(builder_, value, "atomic.subtract.operand") : value;
+            LLVMValueRef previous = LLVMBuildAtomicRMW(builder_, LLVMAtomicRMWBinOpAdd, address, operand,
+                                                       LLVMAtomicOrderingSequentiallyConsistent, 0);
+            LLVMSetAlignment(previous, 4);
+            if (target->volatileAccess) LLVMSetVolatile(previous, 1);
+            return node->booleanValue ? previous : LLVMBuildAdd(builder_, previous, operand, "atomic.updated");
+        }
         LLVMTypeRef targetType = llvmType(node->typeKey, error);
         if (targetType == nullptr) return nullptr;
         const bool bitField =
