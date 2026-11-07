@@ -1,0 +1,9 @@
+int Main()
+{
+    if (local_value != 7 || read_local() != 7) return 1;
+    local_value = 12;
+    if (read_local() != 12) return 2;
+    write_local(19);
+    if (local_value != 19 || run_worker() != 0) return 3;
+    return local_value == 19 && read_local() == 19 ? 0 : 4;
+}

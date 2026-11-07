@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004: global C static _Thread_local int
+
+Reproducir y corregir el acceso a una global C `static _Thread_local int`, con
+inicializador, funciones inline en la misma sesión y aislamiento de otro hilo.
+Validar referencia C y NSC O0–O3 y preservar NSLink, metadata, LLVM externo,
+fixtures existentes y C:. No acreditar otras formas de TLS por esta prueba.
+
 ## T08-004: globales C estáticas agregadas y calificadas
 
 Reproducir y corregir el acceso a un record C, un arreglo de enteros y escalares
