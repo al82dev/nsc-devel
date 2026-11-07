@@ -31,4 +31,14 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 exit /b 1
   echo Escalares TLS desde NativeSharp O%%O: correcto.
 )
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\project.ll" 2> "%DEST%\ir.log"
+if errorlevel 1 exit /b 1
+python "%~dp0verificar_ir.py" "%DEST%\project.ll"
+if errorlevel 1 exit /b 1
+> "%DEST%\Main.ns" echo int Main() { tls_const = 0; return 0; }
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\const.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"left side of assignment is not assignable" "%DEST%\const.log" >nul
+if errorlevel 1 exit /b 1
+echo Escritura de TLS const rechazada.
 exit /b 0

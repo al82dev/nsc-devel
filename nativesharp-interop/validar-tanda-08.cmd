@@ -48,6 +48,7 @@ for %%T in (
   pruebas-tanda-08-tls-c\validar-dll.cmd
   pruebas-tanda-08-tls-c\directo\validar.cmd
   pruebas-tanda-08-tls-c\static-global\validar.cmd
+  pruebas-tanda-08-tls-c\scalars\validar.cmd
   pruebas-tanda-08-tls-c\lld\validar-seleccion.cmd
   pruebas-tanda-08-tls-c\lld\validar-emision.cmd
   pruebas-tanda-08-tls-c\lld\validar-build.cmd
