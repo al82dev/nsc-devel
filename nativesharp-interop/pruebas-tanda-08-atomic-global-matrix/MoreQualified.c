@@ -13,7 +13,7 @@ long* qualified_long_expected(void) { return l; }
 unsigned long* qualified_ulong_expected(void) { return u; }
 int qualified_pointer_check(void)
 {
-    return more_float_const == f && more_float_volatile == f && f[1] == 3.5f &&
-        more_long_const == l && more_long_volatile == l && l[1] == 13 &&
-        more_ulong_const == u && more_ulong_volatile == u && u[1] == 23;
+    return more_float_const == f && more_float_volatile == f && f[0] == 1.75f && f[1] == 3.5f &&
+        more_long_const == l && more_long_volatile == l && l[0] == 14 && l[1] == 13 &&
+        more_ulong_const == u && more_ulong_volatile == u && u[0] == 24 && u[1] == 23;
 }
