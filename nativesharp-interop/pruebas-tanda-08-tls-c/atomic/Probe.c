@@ -19,5 +19,9 @@ void entry(void)
             if (atomic_wait_worker() != 0 || atomic_tls != 20000) result = 6;
         }
     }
+    if (result == 0) {
+        if (atomic_readonly != 7 || atomic_volatile != 9) result = 7;
+        else { atomic_volatile = 10; atomic_volatile += 1; if (atomic_volatile_read() != 11) result = 8; }
+    }
     ExitProcess((unsigned int)result);
 }

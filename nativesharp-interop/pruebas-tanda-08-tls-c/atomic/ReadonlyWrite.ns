@@ -1,0 +1,1 @@
+int Main() { atomic_readonly = 1; return 0; }

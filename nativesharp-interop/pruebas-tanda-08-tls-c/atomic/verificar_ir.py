@@ -9,21 +9,28 @@ match = re.search(r'^define\b[^\n]*@' + name + r'\([^\n]*\{\n(.*?)^\}', text, re
 if not match:
     raise SystemExit('No se encontro la funcion esperada en el IR')
 body = match.group(1)
-addresses = {'@atomic_tls'}
-for line in body.splitlines():
-    result = re.match(r'\s*(%[-\w.$]+)\s*=\s*call\b.*@llvm\.threadlocal\.address\.[^(]+\([^\n]*@atomic_tls\)', line)
-    if result:
-        addresses.add(result.group(1))
-seen = set()
-for line in body.splitlines():
-    for label, instruction in (('load', r'\bload atomic\b'), ('store', r'\bstore atomic\b'),
-                               ('rmw', r'\batomicrmw(?: volatile)? add\b')):
-        if not re.search(instruction, line) or not re.search(r'\bseq_cst\b.*\balign 4\b', line):
-            continue
-        if any(re.search(r'\bptr\s+(?:align\s+\d+\s+)?' + re.escape(address) + r'(?:\s|,)', line)
-               for address in addresses):
-            seen.add(label)
-missing = {'load', 'store', 'rmw'} - seen
-if missing:
-    raise SystemExit('Faltan operaciones seq_cst sobre atomic_tls: ' + ', '.join(sorted(missing)))
+for symbol, required, volatile in (
+    ('atomic_tls', {'load', 'store', 'rmw'}, False),
+    ('atomic_readonly', {'load'}, False),
+    ('atomic_volatile', {'load', 'store', 'rmw'}, True),
+):
+    addresses = {'@' + symbol}
+    for line in body.splitlines():
+        result = re.match(r'\s*(%[-\w.$]+)\s*=\s*call\b.*@llvm\.threadlocal\.address\.[^(]+\([^\n]*@' + symbol + r'\)', line)
+        if result:
+            addresses.add(result.group(1))
+    seen = set()
+    for line in body.splitlines():
+        for label, instruction in (('load', r'\bload atomic\b'), ('store', r'\bstore atomic\b'),
+                                   ('rmw', r'\batomicrmw(?: volatile)? add\b')):
+            if not re.search(instruction, line) or not re.search(r'\bseq_cst\b.*\balign 4\b', line):
+                continue
+            if volatile and not re.search(r'\bvolatile\b', line):
+                continue
+            if any(re.search(r'\bptr\s+(?:align\s+\d+\s+)?' + re.escape(address) + r'(?:\s|,)', line)
+                   for address in addresses):
+                seen.add(label)
+    missing = required - seen
+    if missing:
+        raise SystemExit('Faltan operaciones seq_cst sobre ' + symbol + ': ' + ', '.join(sorted(missing)))
 print('IR atomico verificado para ' + mode)
