@@ -519,7 +519,10 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     También se inspeccionan dependencias estáticas transitivas de bibliotecas
     NativeSharp precompiladas: la emisión directa pasó O0–O3 y `nsc build`
     seleccionó LLD y ejecutó el consumidor. El TLS de DLL sigue abierto.
-    [Evidencia](registro-commits/t08-tls-transitivo-gate.md).
+    La DLL NativeSharp con la misma dependencia transitiva pasó también O0–O3,
+    con directorio TLS y consumidor; `--linker NSLink` se respetó.
+    [Evidencia](registro-commits/t08-tls-transitivo-gate.md),
+    [DLL](registro-commits/t08-tls-transitivo-dll-resultado.md).
     La batería confirmó el control nuevo y terminó con los cuatro fallos
     originales de DLL C. [Resultado](registro-commits/t08-validacion-link-lib-auto.md).
     La batería posterior confirmó el control nuevo, pero volvió a fallar en los
