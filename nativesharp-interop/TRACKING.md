@@ -479,9 +479,12 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     externo. El control C pasó y NSC reprodujo el rechazo.
     [Análisis](T08-004-GLOBAL-STATIC-INVESTIGACION.md).
     Corrección dirigida: una global C `static int` comparte estado con funciones
-    inline de la misma sesión y también funciona sin ellas en O0–O3. Las otras
-    formas y la identidad entre sesiones siguen pendientes.
+    inline de la misma sesión y también funciona sin ellas en O0–O3. Dos
+    productores precompilados y el consumidor directo conservaron instancias
+    independientes en O0–O3; dos referencias con el mismo nombre se rechazaron
+    como ambiguas. Las otras formas siguen pendientes.
     [Resultado](registro-commits/t08-global-static-validacion.md).
+    [Identidad](registro-commits/t08-global-static-identidad-validacion.md).
   - El global C `_Atomic(int)` sin TLS fue rechazado como tipo no mapeado.
     Una corrección limitada de su proyección pasó O0–O3, comprobación de IR
     atómico y regresión TLS. [Resultado](registro-commits/t08-atomic-global-int-validacion.md).
