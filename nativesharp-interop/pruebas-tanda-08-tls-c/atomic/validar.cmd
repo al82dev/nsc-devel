@@ -34,6 +34,10 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Projec
 if errorlevel 1 (type "%DEST%\native-ir.log" & exit /b 1)
 python "%~dp0verificar_ir.py" "%DEST%\native.ll" native
 if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" --artifact-cache="%DEST%\cache" -O0 -o "%DEST%\cached.exe" > "%DEST%\cache.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /L /C:"C/C++ project references require --no-artifact-cache until transitive headers are tracked" "%DEST%\cache.log" >nul
+if errorlevel 1 (type "%DEST%\cache.log" & exit /b 1)
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" --no-artifact-cache -O%%O -o "%DEST%\native-O%%O.exe" > "%DEST%\native-O%%O.log" 2>&1
   if errorlevel 1 (type "%DEST%\native-O%%O.log" & exit /b 1)

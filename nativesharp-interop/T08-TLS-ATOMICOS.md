@@ -1,11 +1,12 @@
 # TLS C atómico: trabajo pendiente
 
-El control `pruebas-tanda-08-tls-c/atomic` muestra un global
-`_Thread_local _Atomic(int)` que Clang compila y NSC rechaza. La aceptación no
+El control `pruebas-tanda-08-tls-c/atomic` cubre un global
+`_Thread_local _Atomic(int)` que Clang compila y NSC rechazaba inicialmente.
+Actualmente NSC admite un primer subconjunto de operaciones. La aceptación no
 debe introducir accesos no atómicos ni tratar `+=` como carga más escritura:
 esa actualización debe ser una operación indivisible. El fixture comprueba el
-resultado, pero sus búsquedas actuales de IR son preliminares y no demuestran
-que cada instrucción atómica corresponda al global importado.
+resultado y el verificador de IR asocia las operaciones comprobadas al global
+importado. Esa comprobación todavía no demuestra todas las operaciones posibles.
 
 ## Cadena que necesita un contrato explícito
 
@@ -36,4 +37,14 @@ que cada instrucción atómica corresponda al global importado.
 El primer fixture cubre solo `int`, pero no es la definición final del alcance:
 faltan otros enteros, punteros, agregados y los órdenes explícitos de las API
 atómicas de C. No está decidido aún cómo representar esos contratos en la API
-NativeSharp. No se ha habilitado ninguna operación atómica C ni cerrado T08.
+NativeSharp. T08 permanece abierta.
+
+## Caché de artefactos y referencias C/C++
+
+`PrecompiledModuleConfiguration.cpp` rechaza la caché de artefactos si el
+grafo contiene `CppLibraryReference`, mientras no se rastreen encabezados
+transitivos. El control atómico comprueba el diagnóstico con una caché
+explícita; las ejecuciones O0–O3 usan `--no-artifact-cache`. No hay evidencia de
+reutilización de caché para ese proyecto. Una biblioteca NativeSharp precompilada
+que publique atómicos requiere verificación independiente de su metadata y de
+la caché del consumidor; no se infiere de esta prueba.
