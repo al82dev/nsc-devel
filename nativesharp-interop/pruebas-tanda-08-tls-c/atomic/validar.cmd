@@ -30,12 +30,14 @@ lld-link.exe /nologo /nodefaultlib /subsystem:console /entry:entry /out:"%DEST%\
 if errorlevel 1 exit /b 1
 "%DEST%\probe.exe"
 if errorlevel 1 exit /b 1
-clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Promotion.c" -o "%DEST%\promotion.obj"
-if errorlevel 1 exit /b 1
-lld-link.exe /nologo /nodefaultlib /subsystem:console /entry:entry /include:_tls_used /out:"%DEST%\promotion.exe" "%DEST%\promotion.obj" "A:\vc2026-runtime\lib\x64\release\libcmt.lib" "A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\um\x64\kernel32.lib"
-if errorlevel 1 exit /b 1
-"%DEST%\promotion.exe"
-if errorlevel 1 (echo Control C de promocion atomica fallo. & exit /b 1)
+for %%O in (0 1 2 3) do (
+  clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 -O%%O "%DEST%\Promotion.c" -o "%DEST%\promotion-O%%O.obj"
+  if errorlevel 1 exit /b 1
+  lld-link.exe /nologo /nodefaultlib /subsystem:console /entry:entry /include:_tls_used /out:"%DEST%\promotion-O%%O.exe" "%DEST%\promotion-O%%O.obj" "A:\vc2026-runtime\lib\x64\release\libcmt.lib" "A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\um\x64\kernel32.lib"
+  if errorlevel 1 exit /b 1
+  "%DEST%\promotion-O%%O.exe"
+  if errorlevel 1 (echo Control C de promocion atomica O%%O fallo. & exit /b 1)
+)
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\native.ll" 2> "%DEST%\native-ir.log"
 if errorlevel 1 (type "%DEST%\native-ir.log" & exit /b 1)
 python "%~dp0verificar_ir.py" "%DEST%\native.ll" native
