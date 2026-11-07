@@ -503,8 +503,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     Validación posterior: consumidor sin header pasó O0–O3 con acceso cruzado
     C/NativeSharp; el control aislado de identidad pasó. El caso DLL y la caché
     de artefactos activa siguen pendientes. [Resultado](registro-commits/t08-bool-scalar-precompilado-validacion.md).
-    Preparada la variante con DLL NativeSharp intermedia; sin ejecutar.
-    [Detalle](registro-commits/t08-bool-scalar-precompilado-dll-fixture.md).
+    La variante con DLL NativeSharp intermedia pasó O0–O3 con el header oculto.
+    [Resultado](registro-commits/t08-bool-scalar-precompilado-dll-validacion.md).
   - Por autorización del usuario, el gate usa el control C PE y el acceso NSC
     directo existentes, y variantes de escalares con importación y con carga
     dinámica. Los cuatro controles originales siguen disponibles como
