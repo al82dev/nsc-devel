@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>H4NamedConsumer</Name></PropertyGroup>
+  <ItemGroup><Compile Include="ConsumerNamed.ns" /><LibraryReference Include="H4NamedProducer.lib" /></ItemGroup>
+</Project>

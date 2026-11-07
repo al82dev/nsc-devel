@@ -1,0 +1,8 @@
+namespace H4NamedPublished
+{
+    public struct Bridge
+    {
+        public static int Read(H4NamedRecord* value) { return (int)value->kind; }
+        public static int Value() { var value = h4_get_named(); return (int)value->kind; }
+    }
+}

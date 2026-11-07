@@ -1,0 +1,7 @@
+namespace H4AnonymousPublished
+{
+    public struct Bridge
+    {
+        public static int Read(H4Anon* value) { return (int)value->level; }
+    }
+}

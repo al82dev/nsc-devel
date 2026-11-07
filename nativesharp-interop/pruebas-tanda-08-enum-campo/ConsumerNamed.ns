@@ -1,0 +1,1 @@
+int Main() { return H4NamedPublished.Bridge.Value() == -3 ? 0 : 1; }
