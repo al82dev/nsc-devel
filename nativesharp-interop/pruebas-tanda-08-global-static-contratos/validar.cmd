@@ -37,7 +37,7 @@ python "%~dp0verificar-ir.py" "%DEST%\control.ll" "%DEST%\native.ll" "%DEST%\nat
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Negative.nsproj" > "%DEST%\negative.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /c:"error:" "%DEST%\negative.log" >nul
+findstr /c:"error: left side of assignment is not assignable" "%DEST%\negative.log" >nul
 if errorlevel 1 exit /b 1
 findstr /c:"text[0] = 120" "%DEST%\negative.log" >nul
 if errorlevel 1 exit /b 1

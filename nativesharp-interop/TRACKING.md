@@ -511,6 +511,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     Punteros internos a record, enum y función pasaron O0–O3; el callback
     conserva una función interna como inicializador.
     [Resultado](registro-commits/t08-global-static-punteros-validacion.md).
+    La selección por contrato y el origen TLS interno se comprobaron con
+    referencia estática y DLL en O0–O3; se contrastó el IR con Clang y se
+    ejecutaron regresiones dirigidas. No se cierra el ítem ni la tanda.
+    [Resultado](registro-commits/t08-global-static-contratos-validacion.md).
   - El global C `_Atomic(int)` sin TLS fue rechazado como tipo no mapeado.
     Una corrección limitada de su proyección pasó O0–O3, comprobación de IR
     atómico y regresión TLS. [Resultado](registro-commits/t08-atomic-global-int-validacion.md).

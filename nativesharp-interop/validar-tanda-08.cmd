@@ -58,6 +58,7 @@ for %%T in (
   pruebas-tanda-08-global-static-qualified\validar.cmd
   pruebas-tanda-08-global-static-complejas\validar.cmd
   pruebas-tanda-08-global-static-punteros\validar.cmd
+  pruebas-tanda-08-global-static-contratos\validar.cmd
   pruebas-tanda-08-global-static-tipos\validar.cmd
   pruebas-tanda-08-global-static-ambiguedad\validar.cmd
   pruebas-tanda-08-callback\validar-record-precompilado.cmd
