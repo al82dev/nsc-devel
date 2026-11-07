@@ -489,6 +489,9 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     los valores explícitos se preservan. El proyecto TLS nuevo pasó la prueba
     dirigida. Los sidecars antiguos con `NSLink` no se migran automáticamente.
     [Evidencia](registro-commits/t08-sidecar-linker-serializacion.md).
+    La validación agrupada posterior ejecutó también la prueba de proyecto
+    nuevo y confirmó que pasa; el resultado global sigue fallando en cuatro
+    controles TLS de DLL. [Resultado](registro-commits/t08-validacion-proyecto-nuevo.md).
     La DLL no solicita un accessor inexistente para el global C importado.
     [Evidencia](registro-commits/tls-dll-exportacion-externa.md).
     Su productor y consumidor NativeSharp pasaron O0–O3 con LLD sin
