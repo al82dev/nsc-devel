@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Control.c Main.ns Project.nsproj ProjectDll.nsproj Library.c Negative.ns Negative.nsproj NegativeRecord.ns NegativeRecord.nsproj Unsupported.h Unsupported.ns Unsupported.nsproj) do (
+for %%F in (Api.h Control.c Main.ns Project.nsproj ProjectDll.nsproj Library.c Producer.ns Producer.nsproj Consumer.ns Consumer.nsproj Negative.ns Negative.nsproj NegativeRecord.ns NegativeRecord.nsproj Unsupported.h Unsupported.ns Unsupported.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -58,6 +58,16 @@ for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\ProjectDll.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-dll-O%%O.exe" > "%DEST%\consumer-dll-O%%O.log" 2>&1
   if errorlevel 1 goto :failure
   "%DEST%\consumer-dll-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\Producer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\AtomicContractsProducer.lib" > "%DEST%\producer-O%%O.log" 2>&1
+  if errorlevel 1 (type "%DEST%\producer-O%%O.log" & exit /b 1)
+  ren "%DEST%\Api.h" Api.hidden
+  if errorlevel 1 exit /b 1
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Consumer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\precompiled-O%%O.exe" > "%DEST%\precompiled-O%%O.log" 2>&1
+  if errorlevel 1 (type "%DEST%\precompiled-O%%O.log" & exit /b 1)
+  "%DEST%\precompiled-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  ren "%DEST%\Api.hidden" Api.h
   if errorlevel 1 exit /b 1
   echo Contratos de globales internas O%%O correctos.
 )
