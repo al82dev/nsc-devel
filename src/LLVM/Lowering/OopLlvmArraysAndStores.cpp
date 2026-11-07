@@ -462,6 +462,16 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             ? LLVMBuildZExt(builder_, value, LLVMInt8TypeInContext(context_), "c.bool.storage")
             : value;
         LLVMValueRef store = LLVMBuildStore(builder_, storedValue, address);
+        if (node->children[0]->cppAtomicAccess)
+        {
+            if (node->children[0]->typeKey != "builtin:int" ||
+                node->children[0]->cppAtomicAlignmentBytes != std::optional<std::size_t>{4})
+                return failValue(error, "C atomic global store lacks supported type or alignment");
+            LLVMSetOrdering(store, LLVMAtomicOrderingSequentiallyConsistent);
+            LLVMSetAlignment(store, 4);
+            if (node->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+            return value;
+        }
         if (cVolatileBool)
         {
             LLVMSetVolatile(store, 1);
