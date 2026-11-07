@@ -506,8 +506,11 @@ static bool provideGlobalsWithLookup(
                 graph.projects()[entry.projectOrdinal].moduleName(), lookup, entry.cLanguage);
     const auto supportedInternalC = [](const CppSemanticGlobalEntry& entry) {
         const auto& type = entry.declaration.type;
-        if (!entry.cLanguage || entry.declaration.threadLocal) return false;
+        if (!entry.cLanguage) return false;
         const auto& name = type.unqualifiedCanonicalSpelling;
+        if (entry.declaration.threadLocal)
+            return type.kind == CppTypeKind::SignedInteger && name == "int" &&
+                type.sizeBits == std::optional<std::uint64_t>{32} && !type.isConst && !type.isVolatile;
         if (type.kind == CppTypeKind::Record)
             return !type.isConst && !type.isVolatile && type.sizeBits && type.alignmentBits;
         if (type.kind == CppTypeKind::Array)
