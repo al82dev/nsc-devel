@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004/015: punteros atómicos TLS adicionales calificados
+
+Comprobar punteros TLS atómicos a const y volatile float, long y unsigned long
+C en Windows x64 mediante una variante aislada del fixture no TLS. Reproducir
+rechazos, corregir solo la proyección causal y validar ejecución O0–O3, IR y
+rechazos de pérdida de calificadores. Preservar NSLink, LLVM, layout, metadata
+y C:; no acreditar otros tipos ni aislamiento entre hilos por esta prueba.
+
 ## T08-004/015: aislamiento de punteros atómicos TLS adicionales
 
 Comprobar que los punteros TLS atómicos a float, long y unsigned long C tienen
