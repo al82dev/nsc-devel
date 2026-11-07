@@ -25,3 +25,8 @@ DLL: el control C pasó y NSC pasó los seis escalares O0–O3. Al repetir la DL
 sin esa importación el control C volvió a fallar. La diferencia observada no
 identifica aún la causa y no autoriza sustituir la variante fallida. Los dos
 scripts se conservan y se ejecutarán en la validación agrupada.
+
+Una tercera variante conserva la DLL sin importaciones y define un `DllMain`
+que devuelve éxito, usando `/entry:DllMain`. El control C sigue fallando. En
+este experimento, añadir solo el entry point no reproduce el efecto observado
+al añadir una importación. No se infiere una regla general del loader.

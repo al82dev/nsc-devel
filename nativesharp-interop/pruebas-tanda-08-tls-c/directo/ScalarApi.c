@@ -8,6 +8,13 @@ __declspec(thread) _Bool tls_bool;
 __declspec(dllimport) unsigned long __stdcall GetCurrentThreadId(void);
 __declspec(dllexport) unsigned long tls_test_thread_id(void) { return GetCurrentThreadId(); }
 #endif
+#ifdef TLS_PROBE_ENTRY
+int __stdcall DllMain(void* module, unsigned long reason, void* reserved)
+{
+    (void)module; (void)reason; (void)reserved;
+    return 1;
+}
+#endif
 __declspec(dllexport) int tls_zero_read(void) { return tls_zero; }
 __declspec(dllexport) int tls_scalar_check(void)
 {
