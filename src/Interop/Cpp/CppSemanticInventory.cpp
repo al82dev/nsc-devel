@@ -204,7 +204,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         arrayElement->kind == CppTypeKind::SignedInteger || arrayElement->kind == CppTypeKind::UnsignedInteger ||
         arrayElement->kind == CppTypeKind::Floating;
     const bool supportedArrayElement = scalarArrayElement || arrayElement->kind == CppTypeKind::Record ||
-        arrayElement->kind == CppTypeKind::Enumeration;
+        arrayElement->kind == CppTypeKind::Enumeration || arrayElement->kind == CppTypeKind::Pointer;
     const bool supportedArrayTls = fixedArray && supportedArrayElement;
     const bool supportedVolatileTls = !global.type.isVolatile || supportedArrayTls || supportedPointerTls || scalarTls || aggregateTls;
     if (global.threadLocal && (!cLanguage || global.dllImport ||
