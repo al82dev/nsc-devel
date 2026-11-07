@@ -397,7 +397,8 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
                              : state.declaredTypeKey == "builtin:int*") ||
              (!indexedCGlobal && state.cppAtomicStorage &&
               (state.declaredTypeKey == "builtin:uint*" || state.declaredTypeKey == "builtin:short*" ||
-               state.declaredTypeKey == "builtin:long*" || state.declaredTypeKey == "builtin:double*"))) &&
+               state.declaredTypeKey == "builtin:long*" || state.declaredTypeKey == "builtin:double*" ||
+               state.declaredTypeKey == "builtin:float*"))) &&
             state.cppPointerPointeeVolatile &&
             state.cppMicrosoftVolatileSemantics == std::optional<bool>{true};
     }
