@@ -420,6 +420,11 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
   - En `52d502125` pasó la suite dirigida con selección de globales por USR,
     aliases transitivos y aislamiento entre proyectos. No acredita persistencia
     ni la validación completa de la tanda.
+  - La suite de sesión comparó tres USR de campos obtenidos de Clang con los
+    reconstruidos desde el catálogo C codificado y decodificado; coincidieron.
+    Esto no verifica por sí solo la escritura y lectura de un NSMETA real ni
+    cubre funciones, globales o aliases; T08-002 sigue abierto.
+    [Evidencia](registro-commits/t08-catalogo-usr-campos-sesion.md).
 - [ ] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
   - Funciones C `static inline` de un encabezado se llamaron desde NSC en
     O0–O3, directamente y mediante dos bibliotecas NativeSharp precompiladas;
