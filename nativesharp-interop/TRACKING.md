@@ -494,6 +494,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     Una global C `static _Thread_local int` compartió estado con sus funciones
     inline y conservó aislamiento de otro hilo en O0–O3.
     [Resultado](registro-commits/t08-global-static-tls-validacion.md).
+    Una matriz de tipos TLS internos pasó en O0–O3 y verificó IR atómico;
+    no cubre aislamiento por hilo para cada tipo.
+    [Resultado](registro-commits/t08-global-static-tls-tipos-validacion.md).
     Una matriz adicional pasó O0–O3 para escalares, enum, atomic int y arreglos
     de varias dimensiones; comprobó IR atómico y regresiones dirigidas.
     [Resultado](registro-commits/t08-global-static-tipos-validacion.md).

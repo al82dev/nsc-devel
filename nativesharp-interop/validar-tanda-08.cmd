@@ -54,6 +54,7 @@ for %%T in (
   pruebas-tanda-08-global-static-matriz\validar.cmd
   pruebas-tanda-08-global-static-agregados\validar.cmd
   pruebas-tanda-08-global-static-tls\validar.cmd
+  pruebas-tanda-08-global-static-tls-tipos\validar.cmd
   pruebas-tanda-08-global-static-tipos\validar.cmd
   pruebas-tanda-08-global-static-ambiguedad\validar.cmd
   pruebas-tanda-08-callback\validar-record-precompilado.cmd
