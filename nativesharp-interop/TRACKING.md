@@ -520,6 +520,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     pasaron regresiones de punteros atómicos anteriores. No acredita otras
     formas ni operaciones compuestas para los nuevos apuntados.
     [Resultado](registro-commits/t08-atomic-punteros-generales-validacion.md).
+    La suma y resta compuestas de punteros atómicos a struct y bool también
+    pasaron O0–O3; el IR verifica los tamaños de elemento en ambas direcciones.
+    [Resultado](registro-commits/t08-atomic-punteros-generales-compuestos-validacion.md).
   - El global C `_Atomic(int)` sin TLS fue rechazado como tipo no mapeado.
     Una corrección limitada de su proyección pasó O0–O3, comprobación de IR
     atómico y regresión TLS. [Resultado](registro-commits/t08-atomic-global-int-validacion.md).
