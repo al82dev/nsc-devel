@@ -151,10 +151,14 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         LLVMValueRef value,
         std::string& error)
 {
+        const bool boolOperand = node->children[1]->typeKey == "builtin:bool";
+        const bool intOperand = node->children[1]->typeKey == "builtin:int";
+        const bool boolBitwise = node->operation == lexer::TokenKind::Amp ||
+            node->operation == lexer::TokenKind::Pipe || node->operation == lexer::TokenKind::Caret;
+        const bool boolIntArithmetic = node->operation == lexer::TokenKind::Plus ||
+            node->operation == lexer::TokenKind::Minus || node->operation == lexer::TokenKind::Star;
         if (clangMsVolatileGlobalBoolArray(node->children[0].get()) &&
-            node->children[1]->typeKey == "builtin:bool" &&
-            (node->operation == lexer::TokenKind::Amp || node->operation == lexer::TokenKind::Pipe ||
-             node->operation == lexer::TokenKind::Caret))
+            ((boolOperand && boolBitwise) || (intOperand && (boolBitwise || boolIntArithmetic))))
         {
             LLVMTypeRef byteType = LLVMInt8TypeInContext(context_);
             LLVMValueRef raw = LLVMBuildLoad2(builder_, byteType, address, "c.bool.compound.load");
@@ -163,11 +167,23 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
             LLVMSetAlignment(raw, 1);
             LLVMValueRef previous = LLVMBuildICmp(builder_, LLVMIntNE, raw,
                 LLVMConstInt(byteType, 0, 0), "c.bool.compound.previous");
-            LLVMValueRef updated = node->operation == lexer::TokenKind::Amp
-                ? LLVMBuildAnd(builder_, previous, value, "c.bool.compound.and")
-                : node->operation == lexer::TokenKind::Pipe
-                    ? LLVMBuildOr(builder_, previous, value, "c.bool.compound.or")
-                    : LLVMBuildXor(builder_, previous, value, "c.bool.compound.xor");
+            LLVMValueRef updated = nullptr;
+            if (intOperand)
+            {
+                LLVMTypeRef intType = LLVMInt32TypeInContext(context_);
+                LLVMValueRef promoted = LLVMBuildZExt(builder_, previous, intType, "c.bool.compound.promoted");
+                LLVMValueRef calculated = applyBinaryOperation(node->operation, promoted, value,
+                    "builtin:int", error, false);
+                if (!calculated) return nullptr;
+                updated = LLVMBuildICmp(builder_, LLVMIntNE, calculated,
+                    LLVMConstInt(intType, 0, 0), "c.bool.compound.normalized");
+            }
+            else
+                updated = node->operation == lexer::TokenKind::Amp
+                    ? LLVMBuildAnd(builder_, previous, value, "c.bool.compound.and")
+                    : node->operation == lexer::TokenKind::Pipe
+                        ? LLVMBuildOr(builder_, previous, value, "c.bool.compound.or")
+                        : LLVMBuildXor(builder_, previous, value, "c.bool.compound.xor");
             LLVMValueRef bits = LLVMBuildZExt(builder_, updated, byteType, "c.bool.compound.bits");
             LLVMValueRef store = LLVMBuildStore(builder_, bits, address);
             LLVMSetVolatile(store, 1);
