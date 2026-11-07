@@ -10,7 +10,7 @@ if not match:
     raise SystemExit('No se encontro la funcion esperada en el IR')
 body = match.group(1)
 for symbol, required, volatile in (
-    ('atomic_tls', {'load', 'store', 'rmw'}, False),
+    ('atomic_tls', {'load', 'store', 'rmw', 'and', 'or', 'xor'}, False),
     ('atomic_readonly', {'load'}, False),
     ('atomic_volatile', {'load', 'store', 'rmw'}, True),
 ):
@@ -22,12 +22,15 @@ for symbol, required, volatile in (
     seen = set()
     for line in body.splitlines():
         for label, instruction in (('load', r'\bload atomic\b'), ('store', r'\bstore atomic\b'),
-                                   ('rmw', r'\batomicrmw(?: volatile)? add\b')):
+                                   ('rmw', r'\batomicrmw(?: volatile)? add\b'),
+                                   ('and', r'\batomicrmw(?: volatile)? and\b'),
+                                   ('or', r'\batomicrmw(?: volatile)? or\b'),
+                                   ('xor', r'\batomicrmw(?: volatile)? xor\b')):
             if not re.search(instruction, line) or not re.search(r'\bseq_cst\b.*\balign 4\b', line):
                 continue
             # Clang 23 emits atomicrmw without LLVM volatile for this C operator;
             # loads and stores still require the volatile marker.
-            if volatile and label != 'rmw' and not re.search(r'\bvolatile\b', line):
+            if volatile and label in {'load', 'store'} and not re.search(r'\bvolatile\b', line):
                 continue
             if any(re.search(r'\bptr\s+(?:align\s+\d+\s+)?' + re.escape(address) + r'(?:\s|,)', line)
                    for address in addresses):

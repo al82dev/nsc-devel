@@ -7,6 +7,9 @@ int Main()
     if (atomic_tls++ != 42 || --atomic_tls != 42) return 3;
     atomic_tls -= 1;
     if (atomic_tls_read() != 41) return 4;
+    if ((atomic_tls &= 15) != 9) return 9;
+    if ((atomic_tls |= 32) != 41) return 10;
+    if ((atomic_tls ^= 3) != 42 || atomic_tls_read() != 42) return 11;
     atomic_tls = 0;
     if (atomic_start_worker() != 0) return 5;
     for (int i = 0; i < 10000; ++i) { atomic_tls += 1; }

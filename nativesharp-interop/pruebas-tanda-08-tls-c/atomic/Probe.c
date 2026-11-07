@@ -12,6 +12,11 @@ void entry(void)
         else { atomic_tls -= 1; if (atomic_tls_read() != 41) result = 4; }
     }
     if (result == 0) {
+        if ((atomic_tls &= 15) != 9) result = 9;
+        else if ((atomic_tls |= 32) != 41) result = 10;
+        else if ((atomic_tls ^= 3) != 42 || atomic_tls_read() != 42) result = 11;
+    }
+    if (result == 0) {
         atomic_tls = 0;
         if (atomic_start_worker() != 0) result = 5;
         else {

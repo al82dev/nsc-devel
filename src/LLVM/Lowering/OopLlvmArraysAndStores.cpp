@@ -156,16 +156,32 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
             const auto* target = node->children[0].get();
             if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
                 target->typeKey != "builtin:int" ||
-                target->cppAtomicAlignmentBytes != std::optional<std::size_t>{4} || node->immediate != 0 ||
-                (node->operation != lexer::TokenKind::Plus && node->operation != lexer::TokenKind::Minus))
+                target->cppAtomicAlignmentBytes != std::optional<std::size_t>{4} || node->immediate != 0)
                 return failValue(error, "C atomic global compound operation is not yet supported");
+            LLVMAtomicRMWBinOp operation;
+            switch (node->operation)
+            {
+                case lexer::TokenKind::Plus:
+                case lexer::TokenKind::Minus: operation = LLVMAtomicRMWBinOpAdd; break;
+                case lexer::TokenKind::Amp: operation = LLVMAtomicRMWBinOpAnd; break;
+                case lexer::TokenKind::Pipe: operation = LLVMAtomicRMWBinOpOr; break;
+                case lexer::TokenKind::Caret: operation = LLVMAtomicRMWBinOpXor; break;
+                default: return failValue(error, "C atomic global compound operation is not yet supported");
+            }
             LLVMValueRef operand = node->operation == lexer::TokenKind::Minus
                 ? LLVMBuildNeg(builder_, value, "atomic.subtract.operand") : value;
-            LLVMValueRef previous = LLVMBuildAtomicRMW(builder_, LLVMAtomicRMWBinOpAdd, address, operand,
+            LLVMValueRef previous = LLVMBuildAtomicRMW(builder_, operation, address, operand,
                                                        LLVMAtomicOrderingSequentiallyConsistent, 0);
             LLVMSetAlignment(previous, 4);
             if (target->volatileAccess) LLVMSetVolatile(previous, 1);
-            return node->booleanValue ? previous : LLVMBuildAdd(builder_, previous, operand, "atomic.updated");
+            if (node->booleanValue) return previous;
+            switch (operation)
+            {
+                case LLVMAtomicRMWBinOpAnd: return LLVMBuildAnd(builder_, previous, operand, "atomic.updated");
+                case LLVMAtomicRMWBinOpOr: return LLVMBuildOr(builder_, previous, operand, "atomic.updated");
+                case LLVMAtomicRMWBinOpXor: return LLVMBuildXor(builder_, previous, operand, "atomic.updated");
+                default: return LLVMBuildAdd(builder_, previous, operand, "atomic.updated");
+            }
         }
         LLVMTypeRef targetType = llvmType(node->typeKey, error);
         if (targetType == nullptr) return nullptr;
