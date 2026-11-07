@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>HRaw</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="HRaw.ns" />
+    <CppLibraryReference Header="Nested.h" Language="C" Standard="c11" Library="nested.lib" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,1 @@
+namespace PublishedNest { public class Bridge { public static int Level() { var v = get_nest_anon(); return (int)v->level; } } }

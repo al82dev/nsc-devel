@@ -1,0 +1,1 @@
+int Main() { var v = get_nest_anon(); if (v->level != CNestHigh) return 2; return 0; }

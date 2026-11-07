@@ -1,0 +1,1 @@
+int Main() { var v = get_nest_anon(); return v->raw == 43 ? 0 : 1; }

@@ -1,0 +1,1 @@
+int Main() { var v = PublishedNest.Bridge.Get(); if (v->raw != 43) return 1; if (v->level != CNestHigh) return 2; return 0; }

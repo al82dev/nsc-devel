@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CNamed</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="CNamed.ns" />
+    <LibraryReference Include="PNamed.lib" />
+  </ItemGroup>
+</Project>

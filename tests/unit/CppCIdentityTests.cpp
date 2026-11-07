@@ -647,8 +647,127 @@ bool checkHomonymHeaders(CppClangSessionFactory& factory, const std::string& res
     return usrs && project;
 }
 
-// EN: Entry of the probe mode. Writes a.h and b.h with identical text and runs probes 1-5.
-// ES: Entrada del modo de sondas. Escribe a.h y b.h con texto idéntico y ejecuta las sondas 1-5.
+// EN: Header of probe 6, the same declarations as the fixture enum-campo/Nested.h without the
+//     functions: an anonymous enum and a named enum, each declared inside the field that uses it.
+// ES: Encabezado de la sonda 6, las mismas declaraciones que el fixture enum-campo/Nested.h sin
+//     las funciones: un enum anónimo y un enum con nombre, cada uno declarado dentro del campo que
+//     lo usa.
+const char* const kNestedEnumHeader =
+    "typedef struct { int raw; enum { CNestLow = 1, CNestHigh = 2 } level; } CNestAnonField;\n"
+    "typedef struct { int raw; enum CNestNamed { CNestNamedA = 3, CNestNamedB = 4 } kind; }"
+    " CNestNamedField;\n";
+
+// EN: Identity of the enum type of one record field, as captured by the session.
+// ES: Identidad del tipo enum de un campo de record, tal como la captura la sesión.
+struct NestedFieldEnum
+{
+    std::optional<std::string> enumUsr;
+    std::optional<std::string> fieldUsr;
+    std::string name;
+    std::string qualifiedName;
+};
+
+// EN: Reads and prints the enum identity Clang gives to field `fieldName` of record `recordName`.
+//     Returns nothing when the field or its enum identity is missing.
+// ES: Lee e imprime la identidad de enum que Clang da al campo `fieldName` del record `recordName`.
+//     Devuelve nada si faltan el campo o su identidad de enum.
+std::optional<NestedFieldEnum> readNestedFieldEnum(const CppInteropSession& session, const std::string& recordName,
+                                                   const std::string& fieldName)
+{
+    const auto records = session.recordsSnapshot();
+    if (!records) return std::nullopt;
+    for (const auto& record : *records)
+    {
+        if (record.qualifiedName != recordName) continue;
+        for (const auto& field : record.fields)
+        {
+            if (field.name != fieldName || field.type.kind != CppTypeKind::Enumeration || !field.type.enumIdentity)
+                continue;
+            const auto& identity = *field.type.enumIdentity;
+            std::cout << "OBSERVATION nested enum " << recordName << '.' << fieldName << ": name='" << identity.name
+                      << "' qualified='" << identity.qualifiedName << "' anonymousContext="
+                      << (identity.anonymousContext ? "yes" : "no") << " usr=" << identity.clangUsr.value_or("<absent>")
+                      << " fieldUsr=" << field.clangUsr.value_or("<absent>") << " underlying="
+                      << (field.type.enumUnderlying ? field.type.enumUnderlying->canonicalSpelling : "<absent>")
+                      << '\n';
+            return NestedFieldEnum{identity.clangUsr, field.clangUsr, identity.name, identity.qualifiedName};
+        }
+    }
+    return std::nullopt;
+}
+
+// EN: True when the enum snapshot of `session` lists an enumerator named `enumerator`.
+// ES: True si el snapshot de enums de `session` contiene un enumerador llamado `enumerator`.
+bool listsEnumerator(const CppInteropSession& session, const std::string& enumerator)
+{
+    const auto enums = session.enumsSnapshot();
+    if (!enums) return false;
+    return std::any_of(enums->begin(), enums->end(), [&](const auto& enumeration) {
+        return std::any_of(enumeration.enumerators.begin(), enumeration.enumerators.end(),
+                           [&](const auto& item) { return item.name == enumerator; });
+    });
+}
+
+// EN: Probe 6. Enums declared inside a C record field (finding H4), read from nested.h twice and
+//     from nested-copy.h, which has the same text. Observed with Clang 23.1.0 and asserted here:
+//     - the named enum has the file-scope USR c:@E@<name> and a qualified name equal to its name;
+//     - the anonymous enum has the USR c:@SA@<record>@E@<file>@<offset>, which depends on the header
+//       file name, and a qualified name that embeds the absolute header path; only the field USR
+//       c:@SA@<record>@FI@<field> is independent of the header.
+//     Prints, without asserting, whether the enum snapshot lists the nested enumerators.
+// ES: Sonda 6. Enums declarados dentro de un campo de record C (hallazgo H4), leídos dos veces de
+//     nested.h y de nested-copy.h, con el mismo texto. Observado con Clang 23.1.0 y afirmado aquí:
+//     - el enum con nombre tiene el USR de archivo c:@E@<nombre> y nombre calificado igual al nombre;
+//     - el enum anónimo tiene el USR c:@SA@<record>@E@<archivo>@<desplazamiento>, que depende del
+//       nombre del encabezado, y un nombre calificado que contiene la ruta absoluta del encabezado;
+//       solo el USR del campo c:@SA@<record>@FI@<campo> es independiente del encabezado.
+//     Imprime, sin afirmarlo, si el snapshot de enums contiene los enumeradores anidados.
+bool checkNestedFieldEnums(CppClangSessionFactory& factory, const std::string& resource,
+                           const std::filesystem::path& directory, const std::string& driver)
+{
+    if (!expect(writeText(directory / "nested.h", kNestedEnumHeader) &&
+                writeText(directory / "nested-copy.h", kNestedEnumHeader), "nested enum headers are written"))
+        return false;
+    auto first = openSession(factory, headerOptions(resource, directory, driver, "nested.h"));
+    auto again = openSession(factory, headerOptions(resource, directory, driver, "nested.h"));
+    auto renamed = openSession(factory, headerOptions(resource, directory, driver, "nested-copy.h"));
+    if (!expect(first && again && renamed, "nested enum sessions open")) return false;
+    const auto anonymous = readNestedFieldEnum(*first, "CNestAnonField", "level");
+    const auto anonymousAgain = readNestedFieldEnum(*again, "CNestAnonField", "level");
+    const auto anonymousRenamed = readNestedFieldEnum(*renamed, "CNestAnonField", "level");
+    const auto named = readNestedFieldEnum(*first, "CNestNamedField", "kind");
+    const auto namedAgain = readNestedFieldEnum(*again, "CNestNamedField", "kind");
+    const auto namedRenamed = readNestedFieldEnum(*renamed, "CNestNamedField", "kind");
+    bool ok = expect(anonymous && anonymousAgain && anonymousRenamed && named && namedAgain && namedRenamed,
+                     "nested enum fields are captured");
+    if (!ok) return false;
+    ok &= expect(named->enumUsr == std::optional<std::string>("c:@E@CNestNamed") &&
+                 namedAgain->enumUsr == named->enumUsr && namedRenamed->enumUsr == named->enumUsr &&
+                 named->qualifiedName == "CNestNamed",
+                 "named nested enum has the header-independent USR c:@E@CNestNamed and file-scope name");
+    ok &= expect(anonymous->enumUsr && anonymous->enumUsr->starts_with("c:@SA@CNestAnonField@E@nested.h@") &&
+                 anonymousAgain->enumUsr == anonymous->enumUsr && anonymousRenamed->enumUsr &&
+                 anonymousRenamed->enumUsr->starts_with("c:@SA@CNestAnonField@E@nested-copy.h@"),
+                 "anonymous nested enum USR is stable per header and depends on the header file name");
+    ok &= expect(anonymous->name.empty() &&
+                 anonymous->qualifiedName.find(directory.filename().string()) != std::string::npos,
+                 "anonymous nested enum qualified name embeds the header path");
+    ok &= expect(anonymous->fieldUsr == std::optional<std::string>("c:@SA@CNestAnonField@FI@level") &&
+                 anonymousAgain->fieldUsr == anonymous->fieldUsr && anonymousRenamed->fieldUsr == anonymous->fieldUsr,
+                 "owning field USR of the anonymous enum is header-independent");
+    for (const auto* name : {"CNestLow", "CNestNamedA"})
+    {
+        std::cout << "OBSERVATION enum snapshot lists nested enumerator " << name << ": "
+                  << (listsEnumerator(*first, name) ? "yes" : "no") << '\n';
+    }
+    first->close();
+    again->close();
+    renamed->close();
+    return ok;
+}
+
+// EN: Entry of the probe mode. Writes a.h and b.h with identical text and runs probes 1-6.
+// ES: Entrada del modo de sondas. Escribe a.h y b.h con texto idéntico y ejecuta las sondas 1-6.
 int runProbes(const std::string& resource, const std::filesystem::path& work, const std::string& driver)
 {
     const auto directory = std::filesystem::absolute(work / "c-identity");
@@ -664,6 +783,7 @@ int runProbes(const std::string& resource, const std::filesystem::path& work, co
     ok &= checkTwoSessionAlias(factory, resource, directory, driver);
     observeAnonymousEnumCollision(factory, resource, directory, driver);
     ok &= checkHomonymHeaders(factory, resource, directory, driver);
+    ok &= checkNestedFieldEnums(factory, resource, directory, driver);
     std::cout << (ok ? "C declaration identity probes passed\n" : "C declaration identity probes failed\n");
     return ok ? 0 : 1;
 }

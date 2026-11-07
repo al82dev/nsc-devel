@@ -1,0 +1,1 @@
+int Main() { return PublishedNest.Bridge.Level() == 2 ? 0 : 1; }

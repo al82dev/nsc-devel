@@ -6,7 +6,8 @@ rem 2. Restauracion de USR desde el NSMETA real de cinco productores, O0 a O3, d
 rem    modulo precompilado armado por la prueba y por la ruta completa del driver (LibraryReference).
 rem 3. Encabezados homonimos compilados con nsc (typedef y static inline).
 rem 4. Matriz de typedef en dos encabezados (typedefs\casos.txt): sonda de reglas y compilacion con nsc.
-rem 5. Observacion: enum anonimo usado solo como tipo de campo publicado (no falla el validador).
+rem 5. Enum declarado dentro de un campo de record C, con encabezado y por biblioteca precompilada
+rem    (enum-campo\casos.txt).
 rem 6. Plantillas publicas que usan funciones, globales y alias C: el consumidor sin plantillas debe
 rem    ejecutar; los consumidores que instancian plantillas solo se observan (propuesta de metadata).
 rem Las tablas casos.txt fijan el resultado ACTUAL de cada caso; con NSC_T08_PROPUESTAS=1 el validador
@@ -30,6 +31,7 @@ set "ANON_FIXTURES=%~dp0anonimos"
 set "HOMONYM_FIXTURES=%~dp0homonimos"
 set "TEMPLATE_FIXTURES=%~dp0plantillas"
 set "TYPEDEF_FIXTURES=%~dp0typedefs"
+set "ENUM_FIELD_FIXTURES=%~dp0enum-campo"
 if not exist "%NSC_T08_OUT%\temp" mkdir "%NSC_T08_OUT%\temp"
 if errorlevel 1 exit /b 1
 set "TEMP=%NSC_T08_OUT%\temp"
@@ -53,7 +55,8 @@ call :homonyms
 if errorlevel 1 exit /b 1
 call :typedefs
 if errorlevel 1 exit /b 1
-call :observe_anonymous_field
+call :enum_field
+if errorlevel 1 exit /b 1
 call :templates
 if errorlevel 1 exit /b 1
 echo T08-002 C identity checks passed.
@@ -158,6 +161,31 @@ if errorlevel 1 exit /b 1
 call :case "%DEST%" %~1PQ - %~4 %~4
 exit /b %errorlevel%
 
+rem :enum_field enum dentro de un campo de record C publicado (enum-campo\casos.txt).
+:enum_field
+set "DEST=%NSC_T08_OUT%\enum-campo"
+call :prepare_cases "%ENUM_FIELD_FIXTURES%" Nested nested
+if errorlevel 1 exit /b 1
+call :cases
+exit /b %errorlevel%
+
+rem :prepare_cases <fixtures> <C base> <C library base> copia el fixture a DEST y construye la biblioteca C.
+:prepare_cases
+xcopy /e /i /y /q "%~1" "%DEST%" >nul
+if errorlevel 1 exit /b 1
+clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 -O0 "%DEST%\%~2.c" -o "%DEST%\%~3.obj"
+if errorlevel 1 exit /b 1
+llvm-lib.exe /nologo /out:"%DEST%\%~3.lib" "%DEST%\%~3.obj"
+exit /b %errorlevel%
+
+rem :cases compila cada fila de DEST\casos.txt (proyecto productor ACTUAL PROP).
+:cases
+for /f "usebackq eol=# tokens=1-4" %%A in ("%DEST%\casos.txt") do (
+  call :case "%DEST%" %%A %%B %%C %%D
+  if errorlevel 1 exit /b 1
+)
+exit /b 0
+
 rem :case <dir> <proyecto> <productor o -> <ACTUAL> <PROP>
 rem Construye el productor (una vez por ejecucion), luego el proyecto, y compara el resultado.
 :case
@@ -219,23 +247,10 @@ if "%~1"=="fails" set "CASE_TEXT=error"
 if "%~1"=="alias" set "CASE_TEXT=conflicting C/C++ type alias"
 if "%~1"=="record" set "CASE_TEXT=referenced C/C++ record has conflicting or unverified definitions"
 if "%~1"=="member" set "CASE_TEXT=has no compatible member named"
-exit /b 0
-
-rem :observe_anonymous_field publica un record cuyo campo es un enum anonimo; solo informa el resultado.
-:observe_anonymous_field
-set "DEST=%NSC_T08_OUT%\ProducerAnonLevel-O0"
-if not exist "%DEST%" mkdir "%DEST%"
-for %%F in (Anon.h Anon.c Producer.nsproj) do copy /y "%ANON_FIXTURES%\%%F" "%DEST%\%%F" >nul
-copy /y "%ANON_FIXTURES%\ProducerAnonLevel.ns" "%DEST%\Producer.ns" >nul
-clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 -O0 "%DEST%\Anon.c" -o "%DEST%\anon.obj"
-llvm-lib.exe /nologo /out:"%DEST%\anon.lib" "%DEST%\anon.obj"
-nsc.exe --cpp-clang-root=%NSC_T08_CLANG% --emit-project-oop-lib "%DEST%\Producer.nsproj" -O0 --no-artifact-cache -o "%DEST%\CAnonProducer.lib" > "%DEST%\producer.log" 2>&1
-if errorlevel 1 (
-  echo OBSERVATION anonymous enum field producer failed:
-  findstr /L /C:"error" "%DEST%\producer.log"
-) else (
-  echo OBSERVATION anonymous enum field producer succeeded.
-)
+if "%~1"=="ident" set "CASE_TEXT=unknown identifier"
+if "%~1"=="type" set "CASE_TEXT=unknown type name"
+if "%~1"=="field-identity" set "CASE_TEXT=C enum field dependency has no importable identity"
+if "%~1"=="enum-unavailable" set "CASE_TEXT=required C enum is unavailable"
 exit /b 0
 
 rem :templates productor con plantillas publicas que usan declaraciones C; ver la propuesta de metadata.

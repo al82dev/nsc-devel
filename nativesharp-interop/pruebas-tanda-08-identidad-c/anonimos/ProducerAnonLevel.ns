@@ -1,7 +1,0 @@
-namespace PublishedAnon
-{
-    public struct Bridge
-    {
-        public static CAnonLevelRecord* GetLevel() { return get_anon_level_record(); }
-    }
-}

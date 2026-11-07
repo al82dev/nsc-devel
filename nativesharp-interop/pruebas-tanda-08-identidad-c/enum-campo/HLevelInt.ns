@@ -1,0 +1,1 @@
+int Main() { var v = get_nest_anon(); int l = (int)v->level; if (l != 2) return 3; return 0; }

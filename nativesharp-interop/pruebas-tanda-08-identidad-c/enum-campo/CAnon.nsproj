@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CAnon</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="CAnon.ns" />
+    <LibraryReference Include="PAnon.lib" />
+  </ItemGroup>
+</Project>

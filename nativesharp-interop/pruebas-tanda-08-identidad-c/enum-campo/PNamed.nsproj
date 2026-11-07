@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>PNamed</Name><OutputType>Library</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="PNamed.ns" />
+    <CppLibraryReference Header="Nested.h" Language="C" Standard="c11" Library="nested.lib" />
+  </ItemGroup>
+</Project>

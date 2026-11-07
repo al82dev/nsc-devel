@@ -1,0 +1,1 @@
+int Main() { var v = get_nest_named(); if (v->kind != CNestNamedB) return 5; return 0; }

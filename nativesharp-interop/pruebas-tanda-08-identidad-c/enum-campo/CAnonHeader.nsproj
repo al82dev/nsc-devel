@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CAnonHeader</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="CAnonHeader.ns" />
+    <CppLibraryReference Header="Nested.h" Language="C" Standard="c11" />
+    <LibraryReference Include="PAnon.lib" />
+  </ItemGroup>
+</Project>

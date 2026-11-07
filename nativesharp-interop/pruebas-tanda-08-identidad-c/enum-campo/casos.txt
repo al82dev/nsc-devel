@@ -1,0 +1,17 @@
+# T08-002 enum declarado dentro del campo de un record C publicado (hallazgo H4).
+# Columnas: proyecto productor ACTUAL PROP
+#   productor  proyecto de biblioteca que se construye antes; - si el proyecto usa el encabezado.
+#   ACTUAL     resultado de hoy; PROP resultado esperado con la propuesta T08-002-PROPUESTA-ENUM-CAMPO.md.
+# Resultados: runs, member (has no compatible member named), ident (unknown identifier),
+#   type (unknown type name), field-identity (C enum field dependency has no importable identity),
+#   enum-unavailable (required C enum is unavailable).
+HRaw - runs runs
+HLevel - member runs
+HLevelInt - member runs
+HConst - ident runs
+HNamed - member runs
+HNamedType - type runs
+CAnon PAnon field-identity runs
+CAnonHeader PAnon field-identity runs
+CNamed PNamed enum-unavailable runs
+CInternal PInternal member runs

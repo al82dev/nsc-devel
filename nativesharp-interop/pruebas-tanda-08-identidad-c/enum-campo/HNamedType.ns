@@ -1,0 +1,1 @@
+int Main() { var v = get_nest_named(); CNestNamed k = v->kind; if ((int)k != 4) return 6; return 0; }

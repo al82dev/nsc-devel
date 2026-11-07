@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CInternal</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="CInternal.ns" />
+    <LibraryReference Include="PInternal.lib" />
+  </ItemGroup>
+</Project>

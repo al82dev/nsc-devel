@@ -1,0 +1,1 @@
+int Main() { int l = (int)CNestHigh; return l == 2 ? 0 : 4; }
