@@ -4592,6 +4592,16 @@ registros. Conservar selección explícita, NSLink para COFF sin TLS y caché
 correctamente diferenciada. La emisión directa DLL no se modifica por esta
 reproducción; no alterar NSLink, LLVM, C: ni los controles TLS DLL abiertos.
 
+Nueva reproducción de emisión directa DLL: sin selección explícita NSLink
+produjo una DLL sin directorio TLS; `Read()` devolvió un valor incorrecto y el
+control del segundo hilo falló. La misma DLL emitida con LLD tiene directorio
+TLS y pasó lectura, escritura y aislamiento. Se amplía esa corrección puntual
+a `--emit-project-oop-dll`: seleccionar antes de la identidad de caché con el
+selector existente y conservar la elección explícita. Presupuesto:
+`src/Driver/DriverArtifactGeneration.cpp`, prueba DLL directa, gate, tracking y
+registros. Esto reemplaza la exclusión anterior de esta ruta concreta; los
+cuatro controles de DLL C originales siguen abiertos y no se modifican.
+
 # Identificación provisional de TLS de DLL
 
 El fixture directo demuestra que NSC proyecta una declaración TLS sin

@@ -19,8 +19,8 @@
 
 namespace nativesharp::driver
 {
-// Direct executable emission has no project-command selection; inspect its static inputs before caching.
-static std::string selectDirectExecutableLinker(
+// Direct linked products have no project-command selection; inspect static inputs before caching.
+static std::string selectDirectLinkedProductLinker(
     const compilation::CompilationInputManifest& manifest, std::string_view requested)
 {
     if (!requested.empty() || environmentValue("NSC_LINKER")) return std::string(requested);
@@ -464,7 +464,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
     }
-    const std::string selectedLinker = selectDirectExecutableLinker(*manifest, linkerSelection);
+    const std::string selectedLinker = selectDirectLinkedProductLinker(*manifest, linkerSelection);
     addCompilationProductIdentity(
         *manifest, "executable", pathFromUtf8(outputPath));
     addCompilationCodegenIdentity(
@@ -1308,6 +1308,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
     }
+    const std::string selectedLinker = selectDirectLinkedProductLinker(*manifest, linkerSelection);
     addCompilationProductIdentity(
         *manifest, "dynamic-library", pathFromUtf8(outputPath));
     addCompilationCodegenIdentity(
@@ -1315,7 +1316,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         debugPrefixMaps, linkTimeOptimization);
     addCompilationLinkIdentity(
         *manifest, false, linker::WindowsExecutableSubsystem::Console,
-        extraLinkLibraries, linkerSelection);
+        extraLinkLibraries, selectedLinker);
     frontend::ProjectCompilation compilation;
     bool restored = false;
     if (!prepareDynamicLibraryProject(
@@ -1345,7 +1346,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     std::vector<std::filesystem::path> linkLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
     linker::WindowsLibraryBuilder builder;
-    builder.setLinkerSelection(std::string(linkerSelection));
+    builder.setLinkerSelection(selectedLinker);
     if (!prepareDynamicLibraryBuilder(compilation, extraLinkLibraries, linkLibraries, runtimeLibraries, builder, error))
         return ExitCode::CompilationError;
     std::optional<std::vector<std::string>> preservedSymbols =
