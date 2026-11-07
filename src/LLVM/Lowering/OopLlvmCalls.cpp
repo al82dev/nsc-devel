@@ -79,9 +79,13 @@ static LLVMValueRef cppDllTlsAddressHelper(LLVMContextRef context, LLVMModuleRef
     const auto start = LLVMBuildLoad2(b, ptr, directory, "tls.raw.start");
     const auto end = LLVMBuildLoad2(b, ptr, at(directory, 8, "tls.raw.end.ptr"), "tls.raw.end");
     const auto indexPtr = LLVMBuildLoad2(b, ptr, at(directory, 16, "tls.index.ptr"), "tls.index.address");
+    const auto zeroFill = LLVMBuildLoad2(b, i32, at(directory, 32, "tls.zero.fill.ptr"), "tls.zero.fill");
+    const auto endInteger = LLVMBuildPtrToInt(b, end, i64, "tls.raw.end.integer");
+    const auto storageEnd = LLVMBuildAdd(b, endInteger, LLVMBuildZExt(b, zeroFill, i64, "tls.zero.fill64"), "tls.storage.end");
+    const auto exportedInteger = LLVMBuildPtrToInt(b, exported, i64, "tls.export.integer");
     const auto indexValid = LLVMBuildICmp(b, LLVMIntNE, indexPtr, LLVMConstNull(ptr), "tls.index.valid");
     const auto aboveStart = LLVMBuildICmp(b, LLVMIntUGE, exported, start, "tls.above.start");
-    const auto belowEnd = LLVMBuildICmp(b, LLVMIntULT, exported, end, "tls.below.end");
+    const auto belowEnd = LLVMBuildICmp(b, LLVMIntULT, exportedInteger, storageEnd, "tls.below.end");
     const auto inRange = LLVMBuildAnd(b, aboveStart, belowEnd, "tls.in.range");
     LLVMBuildCondBr(b, LLVMBuildAnd(b, indexValid, inRange, "tls.valid"), slotsBlock, fail);
 
