@@ -13,19 +13,43 @@ bool filesHaveEqualContents(const std::filesystem::path &left, const std::filesy
 
 bool precompiledReferenceRequiresLld(const compilation::LibraryReference &reference)
 {
-    interop::LibraryMetadata metadata;
     interop::LibraryMetadataCodec codec;
     std::string error;
-    if (!codec.read(reference.metadataPath, metadata, error)) return true;
-    std::vector<interop::ResolvedCppBinaryDependency> dependencies;
-    if (!interop::resolveCppBinaryMetadataDependencies(
-            metadata.cppBinaryDependencies, reference.metadataPath.parent_path(), dependencies, error)) return true;
-    for (const auto &dependency : dependencies)
+    std::vector<compilation::LibraryReference> pending{reference};
+    std::unordered_set<std::string> visited;
+    while (!pending.empty())
     {
-        if (!dependency.runtimePath.empty()) continue;
-        bool required = false;
-        if (!llvm_backend::ProjectOopObjectGenerator::requiresLldForStaticInput(
-                dependency.libraryPath, required, error) || required) return true;
+        const auto current = std::move(pending.back());
+        pending.pop_back();
+        if (!visited.insert(foldedPathKey(current.metadataPath)).second) continue;
+        interop::LibraryMetadata metadata;
+        if (!codec.read(current.metadataPath, metadata, error)) return true;
+        std::vector<interop::ResolvedCppBinaryDependency> dependencies;
+        if (!interop::resolveCppBinaryMetadataDependencies(
+                metadata.cppBinaryDependencies, current.metadataPath.parent_path(), dependencies, error)) return true;
+        for (const auto &dependency : dependencies)
+        {
+            if (!dependency.runtimePath.empty()) continue;
+            bool required = false;
+            if (!llvm_backend::ProjectOopObjectGenerator::requiresLldForStaticInput(
+                    dependency.libraryPath, required, error) || required) return true;
+        }
+        for (const auto &dependency : metadata.binaryDependencies)
+        {
+            const std::filesystem::path libraryName(dependency.libraryFileName);
+            const std::filesystem::path metadataName(dependency.metadataFileName);
+            if (libraryName.empty() || libraryName.has_parent_path() || metadataName.empty() ||
+                metadataName.has_parent_path()) return true;
+            const auto directory = current.metadataPath.parent_path();
+            const auto library = directory / libraryName;
+            if (dependency.runtimeFileName.empty())
+            {
+                bool required = false;
+                if (!llvm_backend::ProjectOopObjectGenerator::requiresLldForStaticInput(
+                        library, required, error) || required) return true;
+            }
+            pending.push_back({library, directory / metadataName, {}, {}});
+        }
     }
     return false;
 }
