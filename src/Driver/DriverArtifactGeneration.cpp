@@ -21,7 +21,8 @@ namespace nativesharp::driver
 {
 // Direct linked products have no project-command selection; inspect static inputs before caching.
 static std::string selectDirectLinkedProductLinker(
-    const compilation::CompilationInputManifest& manifest, std::string_view requested)
+    const compilation::CompilationInputManifest& manifest, std::string_view requested,
+    const std::vector<std::filesystem::path>& extraLinkLibraries)
 {
     if (!requested.empty() || environmentValue("NSC_LINKER")) return std::string(requested);
     std::set<std::filesystem::path> inspected;
@@ -40,6 +41,8 @@ static std::string selectDirectLinkedProductLinker(
         for (const auto& reference : project.libraryReferences())
             if (reference.runtimePath.empty() && requiresLld(reference.libraryPath)) return "LLD";
     }
+    for (const auto& library : extraLinkLibraries)
+        if (requiresLld(library)) return "LLD";
     return {};
 }
 
@@ -464,7 +467,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
     }
-    const std::string selectedLinker = selectDirectLinkedProductLinker(*manifest, linkerSelection);
+    const std::string selectedLinker = selectDirectLinkedProductLinker(*manifest, linkerSelection, extraLinkLibraries);
     addCompilationProductIdentity(
         *manifest, "executable", pathFromUtf8(outputPath));
     addCompilationCodegenIdentity(
@@ -1308,7 +1311,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
     }
-    const std::string selectedLinker = selectDirectLinkedProductLinker(*manifest, linkerSelection);
+    const std::string selectedLinker = selectDirectLinkedProductLinker(*manifest, linkerSelection, extraLinkLibraries);
     addCompilationProductIdentity(
         *manifest, "dynamic-library", pathFromUtf8(outputPath));
     addCompilationCodegenIdentity(

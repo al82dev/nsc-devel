@@ -4602,6 +4602,15 @@ selector existente y conservar la elección explícita. Presupuesto:
 registros. Esto reemplaza la exclusión anterior de esta ruta concreta; los
 cuatro controles de DLL C originales siguen abiertos y no se modifican.
 
+Una biblioteca C TLS proporcionada exclusivamente mediante `--link-lib` no
+aparece en las referencias del grafo: la emisión directa del ejecutable
+reprodujo NSL1023 con NSLink, y la DLL se produjo sin directorio TLS; con LLD
+explícito la DLL sí contiene el directorio. Ampliar el selector directo existente
+para inspeccionar también esas bibliotecas antes de la caché y el enlace, en
+ejecutable y DLL. Presupuesto: `src/Driver/DriverArtifactGeneration.cpp`, fixture
+`pruebas-tanda-08-tls-c/lld/link-lib`, gate, tracking y registros. Mantener las
+selecciones explícitas y no modificar NSLink, LLVM, C: ni los controles DLL C.
+
 # Identificación provisional de TLS de DLL
 
 El fixture directo demuestra que NSC proyecta una declaración TLS sin
