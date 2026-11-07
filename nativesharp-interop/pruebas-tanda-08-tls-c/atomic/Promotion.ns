@@ -1,0 +1,14 @@
+int Main()
+{
+    atomic_unsupported_short = 30000;
+    if ((atomic_unsupported_short /= 65536) != 0) return 1;
+    atomic_unsupported_short = 30000;
+    if ((atomic_unsupported_short %= 65536) != 30000) return 2;
+    atomic_narrow_char = -100;
+    if ((atomic_narrow_char /= 256) != 0) return 3;
+    atomic_narrow_ushort = 60000;
+    if ((atomic_narrow_ushort /= 65536) != 0) return 4;
+    atomic_narrow_ushort = 60000;
+    if ((atomic_narrow_ushort %= 65536) != 60000) return 5;
+    return 0;
+}

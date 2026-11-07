@@ -6,6 +6,8 @@ _Thread_local _Atomic(long long) atomic_wide = 10;
 _Thread_local _Atomic(unsigned long long) atomic_unsigned_wide = 11;
 _Thread_local _Atomic(unsigned int) atomic_unsigned = 12;
 _Thread_local _Atomic(short) atomic_unsupported_short = 13;
+_Thread_local _Atomic(signed char) atomic_narrow_char = 0;
+_Thread_local _Atomic(unsigned short) atomic_narrow_ushort = 0;
 int atomic_tls_read(void) { return atomic_tls; }
 int atomic_volatile_read(void) { return atomic_volatile; }
 typedef unsigned long Dword;

@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Api.c Probe.c Main.ns Project.nsproj Escape.ns Unsupported.ns ReadonlyWrite.ns RefEscape.ns OutEscape.ns InEscape.ns ReferenceControl.ns ZeroDiv.ns ZeroRem.ns) do (
+for %%F in (Api.h Api.c Probe.c Promotion.c Promotion.ns Main.ns Project.nsproj Escape.ns Unsupported.ns ReadonlyWrite.ns RefEscape.ns OutEscape.ns InEscape.ns ReferenceControl.ns ZeroDiv.ns ZeroRem.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -30,6 +30,12 @@ lld-link.exe /nologo /nodefaultlib /subsystem:console /entry:entry /out:"%DEST%\
 if errorlevel 1 exit /b 1
 "%DEST%\probe.exe"
 if errorlevel 1 exit /b 1
+clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Promotion.c" -o "%DEST%\promotion.obj"
+if errorlevel 1 exit /b 1
+lld-link.exe /nologo /nodefaultlib /subsystem:console /entry:entry /include:_tls_used /out:"%DEST%\promotion.exe" "%DEST%\promotion.obj" "A:\vc2026-runtime\lib\x64\release\libcmt.lib" "A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\um\x64\kernel32.lib"
+if errorlevel 1 exit /b 1
+"%DEST%\promotion.exe"
+if errorlevel 1 (echo Control C de promocion atomica fallo. & exit /b 1)
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\native.ll" 2> "%DEST%\native-ir.log"
 if errorlevel 1 (type "%DEST%\native-ir.log" & exit /b 1)
 python "%~dp0verificar_ir.py" "%DEST%\native.ll" native
@@ -85,5 +91,11 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Projec
 if not errorlevel 1 exit /b 1
 findstr /L /C:"thread-local C/C++ global is not yet projected" "%DEST%\unsupported.log" >nul
 if errorlevel 1 (type "%DEST%\unsupported.log" & exit /b 1)
+copy /y "%DEST%\Promotion.ns" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\promotion-ns.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /L /C:"thread-local C/C++ global is not yet projected" "%DEST%\promotion-ns.log" >nul
+if errorlevel 1 (type "%DEST%\promotion-ns.log" & exit /b 1)
 echo TLS atomico C y NativeSharp correcto.
 exit /b 0
