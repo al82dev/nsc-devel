@@ -2042,7 +2042,7 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
         return type && type->kind == CppTypeKind::Enumeration ? type : nullptr;
     };
     const bool hasEnumGlobals = std::any_of(globals.begin(), globals.end(), [&](const auto& entry) {
-        return entry.declaration.externalLinkage && globalEnum(entry.declaration.type);
+        return (entry.declaration.externalLinkage || entry.cLanguage) && globalEnum(entry.declaration.type);
     });
     if (!enumDependencies.empty() || hasEnumGlobals)
     {
@@ -2084,7 +2084,7 @@ CppRecordObservationRunResult observeCppRecords(const frontend::ProjectCompilati
                     {
                         const auto& global = entry.declaration;
                         const auto* enumType = globalEnum(global.type);
-                        if (entry.projectOrdinal != owner || !global.externalLinkage ||
+                        if (entry.projectOrdinal != owner || (!global.externalLinkage && !entry.cLanguage) ||
                             global.qualifiedName != qualified || !enumType ||
                             !enumType->enumIdentity || enumType->enumIdentity->anonymousContext ||
                             enumType->enumIdentity->name.empty() ||
