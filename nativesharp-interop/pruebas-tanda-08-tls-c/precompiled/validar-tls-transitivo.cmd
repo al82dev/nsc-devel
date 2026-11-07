@@ -60,6 +60,16 @@ nsc.exe build "%DEST%\TransitiveConsumer.nsproj" --cpp-clang-root=A:\al82dev-cla
 if not errorlevel 1 exit /b 1
 findstr /L /C:"NSLink failed" "%DEST%\explicit.log" >nul
 if errorlevel 1 (type "%DEST%\explicit.log" & exit /b 1)
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\TransitiveConsumer.nsproj" --nsc-linker-selection=NSLink -O0 --no-artifact-cache -o "%DEST%\explicit.exe" > "%DEST%\direct-explicit.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /L /C:"NSLink failed" "%DEST%\direct-explicit.log" >nul
+if errorlevel 1 (type "%DEST%\direct-explicit.log" & exit /b 1)
+set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\TransitiveConsumer.nsproj" -O0 --no-artifact-cache -o "%DEST%\env.exe" > "%DEST%\env.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /L /C:"NSLink failed" "%DEST%\env.log" >nul
+if errorlevel 1 (type "%DEST%\env.log" & exit /b 1)
+set "NSC_LINKER="
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\PlainApi.c" -o "%DEST%\plain.obj"
 if errorlevel 1 exit /b 1
 llvm-lib.exe /nologo /out:"%DEST%\plain.lib" "%DEST%\plain.obj"
@@ -72,5 +82,14 @@ findstr /L /C:"\"linker\":\"NSLink\"" "%DEST%\plain-build.log" >nul
 if errorlevel 1 (type "%DEST%\plain-build.log" & exit /b 1)
 "%DEST%\bin\Debug\PlainConsumer.exe"
 if errorlevel 1 exit /b 1
+move /y "%DEST%\plain.lib" "%DEST%\plain.lib.hidden" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\PlainConsumer.nsproj" -O0 --no-artifact-cache -o "%DEST%\missing.exe" > "%DEST%\missing.log" 2>&1
+set "MISSING_RESULT=%ERRORLEVEL%"
+move /y "%DEST%\plain.lib.hidden" "%DEST%\plain.lib" >nul
+if errorlevel 1 exit /b 1
+if "%MISSING_RESULT%"=="0" exit /b 1
+findstr /L /C:"plain.lib" "%DEST%\missing.log" >nul
+if errorlevel 1 (type "%DEST%\missing.log" & exit /b 1)
 echo TLS transitivo precompilado correcto.
 exit /b 0
