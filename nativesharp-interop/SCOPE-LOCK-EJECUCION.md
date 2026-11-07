@@ -4332,6 +4332,15 @@ la semántica de calificadores y los controles negativos. Presupuesto inicial:
 en la ruta causal comprobada. Construcción incremental y pruebas agrupadas;
 NSLink, LLVM y C: permanecen protegidos.
 
+# Records y enums C TLS
+
+Ampliar el fixture TLS existente con globales C de struct y enum, punteros a
+ambos y un arreglo de struct, contrastando C y NativeSharp en dos hilos,
+estático y DLL. Reproducir antes de cambiar la proyección; preservar identidad,
+layout, visibilidad y calificadores comprobados por el mapeo C existente.
+Presupuesto inicial: fixture `pointer`, seguimiento y registros; producción
+solo en la ruta demostrada. NSLink, LLVM externo y C: permanecen protegidos.
+
 # Arreglo global C TLS
 
 Reproducir lectura, escritura y aislamiento por hilo de un `int[2]` TLS C

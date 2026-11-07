@@ -9,3 +9,9 @@ double* pointer_double_target(void);
 void pointer_prepare(void);
 int pointer_check(void);
 int pointer_other_thread(void);
+#include "Types.h"
+extern __declspec(thread) TlsRecord tls_record;
+extern __declspec(thread) TlsRecord* tls_record_pointer;
+extern __declspec(thread) TlsRecord tls_records[2];
+extern __declspec(thread) TlsMode tls_mode;
+extern __declspec(thread) TlsMode* tls_mode_pointer;
