@@ -94,7 +94,10 @@ exit /b 0
 :run_case
 echo === Caso %~1 ===
 call "%~dp0pruebas-tanda-08-%~1\validar.cmd"
-if errorlevel 1 set "TASK_FAILED=1"
+if errorlevel 1 (
+  echo FALLO: caso %~1
+  set "TASK_FAILED=1"
+)
 exit /b 0
 
 :run_script
@@ -105,5 +108,8 @@ if not exist "%~dp0%~1" (
   exit /b 0
 )
 call "%~dp0%~1"
-if errorlevel 1 set "TASK_FAILED=1"
+if errorlevel 1 (
+  echo FALLO: %~1
+  set "TASK_FAILED=1"
+)
 exit /b 0

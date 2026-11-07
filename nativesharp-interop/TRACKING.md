@@ -196,8 +196,9 @@ las correcciones. [Resultado](registro-commits/t08-validacion-link-lib-auto.md),
 [cobertura](registro-commits/cobertura-validador-tanda-08.md).
 
 Actualización 2026-11-07: se repitió el gate agrupado con los controles TLS
-atómicos precompilados. Terminó con código 1 y los mismos cuatro fallos de TLS
-de DLL; T08 sigue abierta. [Resultado](registro-commits/t08-validacion-integral-20261107.md).
+atómicos precompilados. Terminó con código 1 y cuatro fallos visibles de TLS
+de DLL; una repetición dirigida también identificó el fallo silencioso de enum
+mixto. T08 sigue abierta. [Resultado](registro-commits/t08-validacion-integral-20261107.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
