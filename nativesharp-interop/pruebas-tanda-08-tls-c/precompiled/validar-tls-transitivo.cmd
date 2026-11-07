@@ -6,6 +6,7 @@ mkdir "%DEST%"
 if errorlevel 1 exit /b 1
 set "PATH=A:\nsc-interop-build\tanda1-ON\bin;A:\al82dev-clang\bin;A:\nsc-interop-build\cpp-fixtures\command-cpp;%PATH%"
 set "NSC_LINKER="
+set "NS_LIB_ROOT="
 set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
@@ -140,6 +141,32 @@ findstr /L /C:"incremental-link: hit" "%DEST%\isolated-plain-explicit.log" >nul
 if errorlevel 1 (type "%DEST%\isolated-plain-explicit.log" & exit /b 1)
 "%DEST%\isolated-plain-direct.exe"
 if errorlevel 1 exit /b 1
+set "NS_LIB_ROOT=%DEST%"
+nsc.exe build "%DEST%\PlainIsolatedConsumer.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore -O0 --output-format=json > "%DEST%\fallback-plain-build.log" 2>&1
+if errorlevel 1 (type "%DEST%\fallback-plain-build.log" & exit /b 1)
+findstr /L /C:"\"linker\":\"NSLink\"" "%DEST%\fallback-plain-build.log" >nul
+if errorlevel 1 (type "%DEST%\fallback-plain-build.log" & exit /b 1)
+"%DEST%\bin\Debug\PlainIsolatedConsumer.exe"
+if errorlevel 1 exit /b 1
+nsc.exe build "%DEST%\IsolatedConsumer.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore -O0 --output-format=json > "%DEST%\fallback-tls-build.log" 2>&1
+if errorlevel 1 (type "%DEST%\fallback-tls-build.log" & exit /b 1)
+findstr /L /C:"\"linker\":\"LLD\"" "%DEST%\fallback-tls-build.log" >nul
+if errorlevel 1 (type "%DEST%\fallback-tls-build.log" & exit /b 1)
+"%DEST%\bin\Debug\IsolatedConsumer.exe"
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\IsolatedConsumer.nsproj" -O0 --no-artifact-cache -o "%DEST%\fallback-tls.exe" > "%DEST%\fallback-tls-direct.log" 2>&1
+if errorlevel 1 (type "%DEST%\fallback-tls-direct.log" & exit /b 1)
+"%DEST%\fallback-tls.exe"
+if errorlevel 1 exit /b 1
+nsc.exe --verbose --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\PlainIsolatedConsumer.nsproj" --incremental-link --no-artifact-cache -O0 -o "%DEST%\fallback-plain.exe" > "%DEST%\fallback-plain-auto.log" 2>&1
+if errorlevel 1 (type "%DEST%\fallback-plain-auto.log" & exit /b 1)
+nsc.exe --verbose --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\PlainIsolatedConsumer.nsproj" --nsc-linker-selection=NSLink --incremental-link --no-artifact-cache -O0 -o "%DEST%\fallback-plain.exe" > "%DEST%\fallback-plain-explicit.log" 2>&1
+if errorlevel 1 (type "%DEST%\fallback-plain-explicit.log" & exit /b 1)
+findstr /L /C:"incremental-link: hit" "%DEST%\fallback-plain-explicit.log" >nul
+if errorlevel 1 (type "%DEST%\fallback-plain-explicit.log" & exit /b 1)
+"%DEST%\fallback-plain.exe"
+if errorlevel 1 exit /b 1
+set "NS_LIB_ROOT="
 move /y "%DEST%\plain.lib" "%DEST%\plain.lib.hidden" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\PlainConsumer.nsproj" -O0 --no-artifact-cache -o "%DEST%\missing.exe" > "%DEST%\missing.log" 2>&1
