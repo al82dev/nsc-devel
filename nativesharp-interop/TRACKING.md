@@ -553,6 +553,9 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     cambia esa entrada para apuntar a un descriptor vacío devolvió 0. Es un
     diagnóstico del entorno, no una corrección ni autorización para modificar
     bibliotecas ajenas. [Evidencia](registro-commits/t08-tls-dll-directorio-importacion.md).
+    Un consumidor C con arranque estándar del CRT reprodujo el mismo contraste
+    (8 con la DLL original y 0 con la copia). El punto de entrada se contrastó
+    con el mapa del enlazador. [Evidencia](registro-commits/t08-tls-directorio-control-crt.md).
     Con el arranque normal del CRT estático, el control C y NativeSharp pasaron
     esos escalares O0–O3; las variantes de arranque mínimo fallidas se conservan.
     [Evidencia](registro-commits/tls-dll-escalar-crt.md).
