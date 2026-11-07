@@ -234,10 +234,11 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         if (node->children[0]->cppAtomicAccess)
         {
             const auto* target = node->children[0].get();
-            if (target->typeKey == "builtin:int*" || target->typeKey == "builtin:uint*" || target->typeKey == "builtin:short*" || target->typeKey == "builtin:long*" || target->typeKey == "builtin:double*" || target->typeKey == "builtin:float*")
+            if (target->typeKey == "builtin:int*" || target->typeKey == "builtin:uint*" || target->typeKey == "builtin:short*" || target->typeKey == "builtin:long*" || target->typeKey == "builtin:double*" || target->typeKey == "builtin:float*" || target->typeKey == "builtin:sbyte*" || target->typeKey == "builtin:byte*" || target->typeKey == "builtin:ushort*" || target->typeKey == "builtin:ulong*")
             {
-                const auto expectedStride = target->typeKey == "builtin:short*" ? 2U :
-                    (target->typeKey == "builtin:long*" || target->typeKey == "builtin:double*") ? 8U : 4U;
+                const auto expectedStride = (target->typeKey == "builtin:sbyte*" || target->typeKey == "builtin:byte*") ? 1U :
+                    (target->typeKey == "builtin:short*" || target->typeKey == "builtin:ushort*") ? 2U :
+                    (target->typeKey == "builtin:long*" || target->typeKey == "builtin:ulong*" || target->typeKey == "builtin:double*") ? 8U : 4U;
                 if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
                     target->cppAtomicAlignmentBytes != std::optional<std::size_t>{8} || node->immediate != expectedStride ||
                     (node->operation != lexer::TokenKind::Plus && node->operation != lexer::TokenKind::Minus))
@@ -792,7 +793,7 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             ? LLVMBuildZExt(builder_, value, LLVMInt8TypeInContext(context_), "c.bool.storage")
             : value;
         const auto& storageTypeKey = node->children[0]->typeKey;
-        if (node->children[0]->cppAtomicAccess && (storageTypeKey == "builtin:int*" || storageTypeKey == "builtin:uint*" || storageTypeKey == "builtin:short*" || storageTypeKey == "builtin:long*" || storageTypeKey == "builtin:double*" || storageTypeKey == "builtin:float*"))
+        if (node->children[0]->cppAtomicAccess && (storageTypeKey == "builtin:int*" || storageTypeKey == "builtin:uint*" || storageTypeKey == "builtin:short*" || storageTypeKey == "builtin:long*" || storageTypeKey == "builtin:double*" || storageTypeKey == "builtin:float*" || storageTypeKey == "builtin:sbyte*" || storageTypeKey == "builtin:byte*" || storageTypeKey == "builtin:ushort*" || storageTypeKey == "builtin:ulong*"))
             storedValue = LLVMBuildPtrToInt(builder_, value, LLVMInt64TypeInContext(context_), "atomic.pointer.bits");
         if (node->children[0]->cppAtomicAccess && storageTypeKey == "builtin:bool")
             storedValue = LLVMBuildZExt(builder_, value, LLVMInt8TypeInContext(context_), "atomic.bool.bits");
@@ -805,7 +806,7 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         if (node->children[0]->cppAtomicAccess)
         {
             const auto& typeKey = node->children[0]->typeKey;
-            const auto alignment = (typeKey == "builtin:int*" || typeKey == "builtin:uint*" || typeKey == "builtin:short*" || typeKey == "builtin:long*" || typeKey == "builtin:double*" || typeKey == "builtin:float*") ? 8U : typeKey == "builtin:bool" ? 1U : typeKey == "builtin:float" ? 4U : typeKey == "builtin:double" ? 8U :
+            const auto alignment = (typeKey == "builtin:int*" || typeKey == "builtin:uint*" || typeKey == "builtin:short*" || typeKey == "builtin:long*" || typeKey == "builtin:double*" || typeKey == "builtin:float*" || typeKey == "builtin:sbyte*" || typeKey == "builtin:byte*" || typeKey == "builtin:ushort*" || typeKey == "builtin:ulong*") ? 8U : typeKey == "builtin:bool" ? 1U : typeKey == "builtin:float" ? 4U : typeKey == "builtin:double" ? 8U :
                 (typeKey == "builtin:sbyte" || typeKey == "builtin:byte") ? 1U :
                 (typeKey == "builtin:short" || typeKey == "builtin:ushort") ? 2U :
                 (typeKey == "builtin:int" || typeKey == "builtin:uint") ? 4U :
