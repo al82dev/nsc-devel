@@ -169,6 +169,33 @@ Al implementarla, el cambio en las pruebas es mecánico: en `typedefs/casos.txt`
 la columna XY pasa a valer lo que hoy vale PROP, y `validar.cmd` con
 `NSC_T08_PROPUESTAS=1` ya exige ese resultado.
 
+## Evidencia nueva sobre la forma del USR (cuarto conjunto)
+
+HECHO COMPROBADO por `checkTypedefFileForms`, dentro del modo `--typedef-matrix`
+(Clang 23.1.0, afirmado):
+
+| Par de encabezados | USR del segundo | Regla actual | Regla propuesta |
+|---|---|---|---|
+| `plain.h` + `at@sign.h`, mismo `typedef int` | `c:at@sign.h@T@CTdForm` | rechaza | **rechaza** |
+| `plain.h` + `with space.h`, mismo `typedef int` | `c:with space.h@T@CTdForm` | rechaza | acepta |
+| `macro-x.h` + `macro-y.h`; el typedef lo declara una macro de `macros.h`, con `int` y `long long` | `c:macro-y.h@T@CTdMacro` (y `c:macro-x.h@T@CTdMacro`) | rechaza | rechaza (tipo canónico) |
+
+Efecto sobre la regla:
+
+1. Clang copia el nombre del archivo tal cual, sin escapar `@` ni espacios. La
+   restricción "el segmento de archivo no contiene `@`" deja fuera los
+   encabezados con `@` en el nombre: un typedef idéntico en `at@sign.h` sigue
+   rechazado. Es un falso negativo conservador, no una unión indebida.
+   - Si se quisiera aceptar, basta con comprobar el sufijo exacto `@T@<nombre>`.
+     Así se toma como archivo todo lo que hay entre `c:` y ese sufijo.
+   - La forma sigue siendo inequívoca para el mismo nombre de typedef, porque el
+     tipo canónico se sigue comparando.
+   - Decisión pendiente; no cambia los doce casos de la matriz.
+2. El segmento de archivo es el de la **expansión**, no el de la definición de la
+   macro. Un typedef generado por una macro común no comparte USR entre
+   encabezados distintos, y la regla lo trata igual que uno escrito a mano.
+3. La regla no se aplicó. La resolución compartida de nombres no se modificó.
+
 ## Pruebas al implementar
 
 Las pruebas 1 a 4 ya existen como matriz (`typedefs/casos.txt`); al implementar,

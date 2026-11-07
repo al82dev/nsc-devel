@@ -1296,6 +1296,60 @@ bool checkTypedefCase(CppClangSessionFactory& factory, const std::string& resour
     return ok;
 }
 
+// EN: Evidence for the typedef rule (H1) beyond the matrix: typedef USRs when the header file name
+//     contains '@' or a space, and when a macro defined in a shared header declares the typedef.
+//     Asserted as observed with Clang 23.1.0: the file segment is the expansion file, copied
+//     verbatim ('@' and spaces included); the proposed rule accepts the space but rejects the '@'
+//     file (conservative), and rejects the macro pair by its canonical type.
+// ES: Evidencia para la regla de typedef (H1) más allá de la matriz: USR de typedef cuando el
+//     nombre del encabezado contiene '@' o un espacio, y cuando una macro definida en un encabezado
+//     común declara el typedef. Afirmado tal como se observó con Clang 23.1.0: el segmento de
+//     archivo es el archivo de expansión, copiado literalmente ('@' y espacios incluidos); la regla
+//     propuesta acepta el espacio pero rechaza el archivo con '@' (conservador) y rechaza el par de
+//     macros por su tipo canónico.
+bool checkTypedefFileForms(CppClangSessionFactory& factory, const std::string& resource,
+                           const std::filesystem::path& directory, const std::string& driver)
+{
+    const auto forms = directory / "formas";
+    std::filesystem::create_directories(forms);
+    const bool written = writeText(forms / "plain.h", "typedef int CTdForm;\n") &&
+        writeText(forms / "at@sign.h", "typedef int CTdForm;\n") &&
+        writeText(forms / "with space.h", "typedef int CTdForm;\n") &&
+        writeText(forms / "macros.h", "#define CTD_TYPEDEF(name, type) typedef type name;\n") &&
+        writeText(forms / "macro-x.h", "#include \"macros.h\"\nCTD_TYPEDEF(CTdMacro, int)\n") &&
+        writeText(forms / "macro-y.h", "#include \"macros.h\"\nCTD_TYPEDEF(CTdMacro, long long)\n");
+    if (!expect(written, "typedef form headers are written")) return false;
+    struct Pair
+    {
+        std::string first;
+        std::string second;
+        std::string alias;
+        std::string secondUsr;
+        bool proposedAccepts;
+    };
+    const std::vector<Pair> pairs = {
+        {"formas/plain.h", "formas/at@sign.h", "CTdForm", "c:at@sign.h@T@CTdForm", false},
+        {"formas/plain.h", "formas/with space.h", "CTdForm", "c:with space.h@T@CTdForm", true},
+        {"formas/macro-x.h", "formas/macro-y.h", "CTdMacro", "c:macro-y.h@T@CTdMacro", false}};
+    bool ok = true;
+    for (const auto& pair : pairs)
+    {
+        const auto observed = observePair(factory, resource, directory, driver, pair.first, pair.second, pair.alias);
+        if (!expect(observed.has_value(), "typedef form sessions open: " + pair.second)) return false;
+        std::cout << "TYPEDEF FORM " << pair.first << " + " << pair.second << "\n  first  "
+                  << describe(observed->first) << "\n  second " << describe(observed->second) << "\n  current="
+                  << (currentAliasRule(observed->first, observed->second) ? "accept" : "reject") << " proposed="
+                  << (proposedAliasRule(observed->first, observed->second, pair.alias) ? "accept" : "reject") << '\n';
+        ok &= expect(observed->second.usr == std::optional<std::string>(pair.secondUsr),
+                     "typedef USR keeps the expansion file name verbatim: " + pair.secondUsr);
+        ok &= expect(!currentAliasRule(observed->first, observed->second),
+                     "current rule rejects " + pair.first + " + " + pair.second);
+        ok &= expect(proposedAliasRule(observed->first, observed->second, pair.alias) == pair.proposedAccepts,
+                     "proposed rule verdict for " + pair.first + " + " + pair.second);
+    }
+    return ok;
+}
+
 // EN: Entry of --typedef-matrix. `directory` is the copied typedefs fixture with casos.txt.
 // ES: Entrada de --typedef-matrix. `directory` es el fixture typedefs copiado con casos.txt.
 int runTypedefMatrix(const std::filesystem::path& directory, const std::string& resource, const std::string& driver)
@@ -1310,6 +1364,7 @@ int runTypedefMatrix(const std::filesystem::path& directory, const std::string& 
     bool ok = true;
     const auto absolute = std::filesystem::absolute(directory);
     for (const auto& row : cases) ok &= checkTypedefCase(factory, resource, absolute, driver, row);
+    ok &= checkTypedefFileForms(factory, resource, absolute, driver);
     std::cout << (ok ? "Typedef identity matrix passed\n" : "Typedef identity matrix failed\n");
     return ok ? 0 : 1;
 }
