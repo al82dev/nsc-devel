@@ -1,4 +1,5 @@
 #include "Api.h"
+int _fltused = 0;
 int main(void) {
     if (!check_initial()) return 1;
     small = -5; medium = 24; word = 35; wide = -46; uwide = 57;
