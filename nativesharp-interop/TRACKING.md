@@ -876,6 +876,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     validarlas. [Referencia](registro-commits/t08-bool-compuesto-promociones-referencia.md).
     Preparada la cadena de análisis, HIR y LLVM; faltan controles y ejecución.
     [Detalle](registro-commits/t08-bool-compuesto-promociones-implementacion.md).
+    Preparados controles de promociones y desplazamientos con contadores
+    anchos; pendientes de ejecución. [Detalle](registro-commits/t08-bool-compuesto-promociones-fixture.md).
   - Preparada referencia Clang de `_Bool` C compuesto con `uint`, `long` y
     `ulong`: i32 para el primero e i64 para los otros. Falta implementación y
     validación. [Detalle](registro-commits/t08-bool-compuesto-enteros-referencia.md).
