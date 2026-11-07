@@ -446,6 +446,10 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     global y fallan dentro de namespace por nombre desconocido. Es necesario
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
 - [ ] T08-004. Importar declaraciones de variables globales C.
+  - NSC emitió y ejecutó O0–O3 una biblioteca C con TLS estático usando LLD
+    seleccionado explícitamente y `libcmt.lib` declarada; se verificó el
+    directorio TLS del PE en O0. El enlace automático, `nsc build` y el TLS
+    directo siguen pendientes. [Evidencia](registro-commits/tls-emision-nsc-lld.md).
   - Clang rechaza `thread` con `dllimport`/`dllexport`; al exportar por el
     enlazador, el consumidor C pide `SECREL tls_exported` y la import library
     solo ofrece `__imp_tls_exported`. NSC rechaza TLS directo por ahora.
