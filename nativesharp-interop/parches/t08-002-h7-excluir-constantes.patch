@@ -1,0 +1,21 @@
+diff --git a/src/Interop/LibraryMetadataConstruction.cpp b/src/Interop/LibraryMetadataConstruction.cpp
+index 75a88ba4e..8ad12fdc5 100644
+--- a/src/Interop/LibraryMetadataConstruction.cpp
++++ b/src/Interop/LibraryMetadataConstruction.cpp
+@@ -2967,9 +2967,15 @@ void appendNamespaceStateMetadata(
+     for (const frontend::NamespaceStateSymbol& state :
+          compilation.namespaceFunctionModel()->states())
+     {
++        // EN: An imported C enumerator is a value folded into the compiled bodies, not NativeSharp
++        //     storage, and has no namespace; a consumer obtains it from the C catalogue of its enum
++        //     (T08-002 finding H7).
++        // ES: Un enumerador C importado es un valor plegado en los cuerpos compilados, no un
++        //     almacenamiento NativeSharp, y no tiene espacio de nombres; el consumidor lo obtiene del
++        //     catálogo C de su enum (hallazgo H7 de T08-002).
+         if (state.projectOrdinal != rootProjectOrdinal ||
+             state.accessibility != frontend::NamespaceFunctionAccessibility::Public ||
+-            state.isPrecompiled || state.isCppExternal)
++            state.isPrecompiled || state.isCppExternal || state.isCppEnumConstant)
+         {
+             continue;
+         }
