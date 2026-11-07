@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-set "SOURCE=%~dp0..\..\pruebas-tanda-08-tls-c\atomic"
+set "SOURCE=%~dp0..\pruebas-tanda-08-tls-c\atomic"
 python "%~dp0crear-api-no-tls.py" "%SOURCE%" "%DEST%"
 if errorlevel 1 exit /b 1
 for %%F in (Project.nsproj AdditionalQualifiedPointers.ns UnsignedPointerQualified.ns AdditionalConstWrite.ns AdditionalVolatileEscape.ns UnsignedPointeeConstWrite.ns UnsignedPointeeConstEscape.ns UnsignedPointeeVolatileEscape.ns) do (
