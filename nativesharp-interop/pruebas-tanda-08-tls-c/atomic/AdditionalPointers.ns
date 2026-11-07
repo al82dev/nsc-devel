@@ -1,0 +1,19 @@
+int Main()
+{
+    atomic_short_pointer = atomic_short_pointer_expected();
+    if (*atomic_short_pointer != 11) return 1;
+    if (*(atomic_short_pointer += 1) != 12) return 2;
+    if (*(++atomic_short_pointer) != 13) return 3;
+    if (*(atomic_short_pointer -= 2) != 11) return 4;
+    atomic_long_pointer = atomic_long_pointer_expected();
+    if (*atomic_long_pointer != 21) return 5;
+    if (*(atomic_long_pointer += 1) != 22) return 6;
+    if (*(++atomic_long_pointer) != 23) return 7;
+    if (*(atomic_long_pointer -= 2) != 21) return 8;
+    atomic_double_pointer = atomic_double_pointer_expected();
+    if (*atomic_double_pointer != 1.25) return 9;
+    if (*(atomic_double_pointer += 1) != 2.5) return 10;
+    if (*(++atomic_double_pointer) != 3.75) return 11;
+    if (*(atomic_double_pointer -= 2) != 1.25) return 12;
+    return 0;
+}

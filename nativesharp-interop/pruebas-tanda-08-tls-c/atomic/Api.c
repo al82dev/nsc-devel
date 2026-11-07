@@ -23,11 +23,20 @@ _Thread_local _Atomic(volatile int*) atomic_pointer_volatile_pointee = 0;
 _Thread_local _Atomic(unsigned int*) atomic_unsigned_pointer = 0;
 _Thread_local _Atomic(const unsigned int*) atomic_unsigned_const_pointee = 0;
 _Thread_local _Atomic(volatile unsigned int*) atomic_unsigned_volatile_pointee = 0;
+_Thread_local _Atomic(short*) atomic_short_pointer = 0;
+_Thread_local _Atomic(long long*) atomic_long_pointer = 0;
+_Thread_local _Atomic(double*) atomic_double_pointer = 0;
 _Thread_local _Atomic(struct AtomicUnsupported) atomic_unsupported_record;
 static _Thread_local int atomic_pointer_target[3] = {73, 74, 75};
 int* atomic_pointer_expected(void) { return atomic_pointer_target; }
 static _Thread_local unsigned int atomic_unsigned_pointer_target[3] = {0xffffffffU, 74U, 75U};
 unsigned int* atomic_unsigned_pointer_expected(void) { return atomic_unsigned_pointer_target; }
+static _Thread_local short atomic_short_pointer_target[3] = {11, 12, 13};
+static _Thread_local long long atomic_long_pointer_target[3] = {21, 22, 23};
+static _Thread_local double atomic_double_pointer_target[3] = {1.25, 2.5, 3.75};
+short* atomic_short_pointer_expected(void) { return atomic_short_pointer_target; }
+long long* atomic_long_pointer_expected(void) { return atomic_long_pointer_target; }
+double* atomic_double_pointer_expected(void) { return atomic_double_pointer_target; }
 int atomic_tls_read(void) { return atomic_tls; }
 int atomic_volatile_read(void) { return atomic_volatile; }
 typedef unsigned long Dword;

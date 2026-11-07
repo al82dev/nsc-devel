@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Api.c Probe.c Promotion.c Promotion.ns Narrow.ns NarrowCompound.ns LocalNarrow.ns FloatCompound.ns FloatConstWrite.ns BoolConstWrite.ns PointerConstWrite.ns PointerQualified.ns PointerPointeeConstWrite.ns PointerPointeeConstEscape.ns PointerPointeeVolatile.ns PointerPointeeVolatileEscape.ns PointerCompound.ns PointerEscape.ns UnsignedPointer.ns UnsignedPointerQualified.ns UnsignedPointeeConstWrite.ns UnsignedPointeeConstEscape.ns UnsignedPointeeVolatileEscape.ns Main.ns Project.nsproj Escape.ns Unsupported.ns ReadonlyWrite.ns RefEscape.ns OutEscape.ns InEscape.ns ReferenceControl.ns ZeroDiv.ns ZeroRem.ns) do (
+for %%F in (Api.h Api.c Probe.c Promotion.c Promotion.ns Narrow.ns NarrowCompound.ns LocalNarrow.ns FloatCompound.ns FloatConstWrite.ns BoolConstWrite.ns PointerConstWrite.ns PointerQualified.ns PointerPointeeConstWrite.ns PointerPointeeConstEscape.ns PointerPointeeVolatile.ns PointerPointeeVolatileEscape.ns PointerCompound.ns PointerEscape.ns UnsignedPointer.ns UnsignedPointerQualified.ns UnsignedPointeeConstWrite.ns UnsignedPointeeConstEscape.ns UnsignedPointeeVolatileEscape.ns AdditionalPointers.ns UnsupportedQualifiedPointer.ns Main.ns Project.nsproj Escape.ns Unsupported.ns ReadonlyWrite.ns RefEscape.ns OutEscape.ns InEscape.ns ReferenceControl.ns ZeroDiv.ns ZeroRem.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -75,7 +75,7 @@ for %%O in (0 1 2 3) do (
   "%DEST%\narrow-O%%O.exe"
   if errorlevel 1 exit /b 1
 )
-for %%F in (NarrowCompound Promotion FloatCompound PointerCompound PointerQualified PointerPointeeVolatile UnsignedPointer UnsignedPointerQualified) do (
+for %%F in (NarrowCompound Promotion FloatCompound PointerCompound PointerQualified PointerPointeeVolatile UnsignedPointer UnsignedPointerQualified AdditionalPointers) do (
   copy /y "%DEST%\%%F.ns" "%DEST%\Main.ns" >nul
   if errorlevel 1 exit /b 1
   for %%O in (0 1 2 3) do (
@@ -96,6 +96,12 @@ if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\unsigned-qualified.ll" 2> "%DEST%\unsigned-qualified-ir.log"
 if errorlevel 1 (type "%DEST%\unsigned-qualified-ir.log" & exit /b 1)
 python "%~dp0verificar_uint_calificado.py" "%DEST%\unsigned-qualified.ll"
+if errorlevel 1 exit /b 1
+copy /y "%DEST%\AdditionalPointers.ns" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\additional-pointers.ll" 2> "%DEST%\additional-pointers-ir.log"
+if errorlevel 1 (type "%DEST%\additional-pointers-ir.log" & exit /b 1)
+python "%~dp0verificar_punteros_adicionales.py" "%DEST%\additional-pointers.ll"
 if errorlevel 1 exit /b 1
 copy /y "%DEST%\NarrowCompound.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
@@ -201,5 +207,11 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Projec
 if not errorlevel 1 exit /b 1
 findstr /L /C:"thread-local C/C++ global is not yet projected" "%DEST%\unsupported.log" >nul
 if errorlevel 1 (type "%DEST%\unsupported.log" & exit /b 1)
+copy /y "%DEST%\UnsupportedQualifiedPointer.ns" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\unsupported-qualified-pointer.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /L /C:"thread-local C/C++ global is not yet projected" "%DEST%\unsupported-qualified-pointer.log" >nul
+if errorlevel 1 (type "%DEST%\unsupported-qualified-pointer.log" & exit /b 1)
 echo TLS atomico C y NativeSharp correcto.
 exit /b 0

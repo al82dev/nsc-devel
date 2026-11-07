@@ -1,5 +1,17 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08: punteros TLS atómicos de varios tamaños
+
+Reproducir y corregir acceso a `_Atomic(short*)`, `_Atomic(long long*)` y
+`_Atomic(double*)` en TLS C; comprobar lectura, escritura y aritmética con
+pasos de dos y ocho bytes frente a Clang. Permitir solo los tipos, tamaño y
+alineación medidos, sin habilitar apuntados calificados aún no verificados.
+Presupuesto: proyección `CppSemanticInventory.cpp`, descenso HIR de nombre,
+descenso LLVM de lectura y escritura atómicas, fixture y verificador TLS,
+seguimiento y registros. Construcción incremental y pruebas agrupadas; sin
+NSLink, fuente LLVM externa ni C:. Las cuatro pruebas DLL originales siguen
+intactas y abiertas.
+
 ## T08: calificadores del dato apuntado por TLS atómico uint
 
 Comprobar y corregir la proyección de `_Atomic(const unsigned int*)` y

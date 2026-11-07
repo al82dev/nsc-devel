@@ -150,5 +150,19 @@ void entry(void)
         atomic_unsigned_volatile_pointee[1] = 82U;
         if (*atomic_unsigned_volatile_pointee != 81U || atomic_unsigned_volatile_pointee[1] != 82U) result = 66;
     }
+    if (result == 0) {
+        atomic_short_pointer = atomic_short_pointer_expected();
+        if (*atomic_short_pointer != 11 || *(__c11_atomic_fetch_add(&atomic_short_pointer, 1, __ATOMIC_SEQ_CST) + 1) != 12 ||
+            *(__c11_atomic_fetch_add(&atomic_short_pointer, 1, __ATOMIC_SEQ_CST) + 1) != 13 ||
+            *(__c11_atomic_fetch_sub(&atomic_short_pointer, 2, __ATOMIC_SEQ_CST) - 2) != 11) result = 67;
+        atomic_long_pointer = atomic_long_pointer_expected();
+        if (*atomic_long_pointer != 21 || *(__c11_atomic_fetch_add(&atomic_long_pointer, 1, __ATOMIC_SEQ_CST) + 1) != 22 ||
+            *(__c11_atomic_fetch_add(&atomic_long_pointer, 1, __ATOMIC_SEQ_CST) + 1) != 23 ||
+            *(__c11_atomic_fetch_sub(&atomic_long_pointer, 2, __ATOMIC_SEQ_CST) - 2) != 21) result = 68;
+        atomic_double_pointer = atomic_double_pointer_expected();
+        if (*atomic_double_pointer != 1.25 || *(__c11_atomic_fetch_add(&atomic_double_pointer, 1, __ATOMIC_SEQ_CST) + 1) != 2.5 ||
+            *(__c11_atomic_fetch_add(&atomic_double_pointer, 1, __ATOMIC_SEQ_CST) + 1) != 3.75 ||
+            *(__c11_atomic_fetch_sub(&atomic_double_pointer, 2, __ATOMIC_SEQ_CST) - 2) != 1.25) result = 69;
+    }
     ExitProcess((unsigned int)result);
 }

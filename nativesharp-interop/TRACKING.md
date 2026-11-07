@@ -471,6 +471,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     global y fallan dentro de namespace por nombre desconocido. Es necesario
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
 - [ ] T08-004. Importar declaraciones de variables globales C.
+  - Punteros TLS atómicos a `short`, `long long` y `double` pasaron acceso y
+    aritmética O0–O3; se verificaron desplazamientos y atomicidad en IR.
+    [Evidencia](registro-commits/t08-tls-atomico-punteros-tamanos.md).
   - El mismo objeto C TLS se contrastó en DLL sin arranque y con arranque CRT:
     el instrumento C observó índice cero y datos distintos de la plantilla en
     la primera, e índice uno y datos coincidentes en la segunda. Esto delimita

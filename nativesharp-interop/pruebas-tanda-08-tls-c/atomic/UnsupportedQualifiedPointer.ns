@@ -1,0 +1,1 @@
+int Main() { if (atomic_short_volatile_pointee == null) return 1; return 0; }
