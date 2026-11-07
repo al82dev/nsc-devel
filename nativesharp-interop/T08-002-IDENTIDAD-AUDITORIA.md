@@ -123,20 +123,21 @@ La columna de evidencia remite al [registro de resultados](registro-commits/t08-
 | campos de struct y union | Probado | Probado | Probado O0–O3 (este carril) | PENDIENTE: validación integral |
 | enum C con etiqueta | Probado | Probado O0–O3 (este carril) | Probado O0–O3 (este carril) | PENDIENTE: validación integral |
 | enumerador | Probado | Probado O0–O3 (este carril) | Probado O0–O3 (este carril) | PENDIENTE: validación integral |
-| struct nombrado solo por typedef | Probado (sonda 1, `c:@SA@`) | NO VERIFICADO | NO VERIFICADO | PENDIENTE |
-| enum anónimo | Probado (sonda 1, `c:@Ea@`) | NO VERIFICADO | NO VERIFICADO | PENDIENTE |
-| función externa | Probado (sondas 1 y 2) | No forma parte del catálogo | No aplica al formato actual | PENDIENTE: decisión H3 |
-| función `static inline` | Probado (sonda 1) | No forma parte del catálogo | No aplica al formato actual | PENDIENTE: decisión H3 |
-| global externa | Probado (sondas 1 y 2) | No forma parte del catálogo | No aplica al formato actual | PENDIENTE: decisión H3 |
-| global `static` | Probado (sonda 1) | No forma parte del catálogo | No aplica al formato actual | PENDIENTE: decisión H3 |
-| alias `typedef` | Probado (sonda 1) | No forma parte del catálogo | No aplica al formato actual | PENDIENTE: H1 y H3 |
+| struct nombrado solo por typedef | Probado (sonda 1, `c:@SA@`) | Probado O0–O3 | Probado O0–O3, también por el driver | PENDIENTE: validación integral |
+| enum anónimo nombrado por typedef | Probado (`c:@EA@`) | Probado O0–O3 | Probado O0–O3, también por el driver | PENDIENTE: validación integral |
+| enum anónimo sin typedef | Probado (sonda 1, `c:@Ea@`) | No publicable: no tiene nombre de tipo para la superficie | No aplica | PENDIENTE: el consumidor lo obtiene de su sesión |
+| enum anónimo como tipo de campo publicado | NO VERIFICADO (USR) | El productor falla (H4) | No aplica | PENDIENTE: H4 |
+| función externa | Probado (sondas 1 y 2) | No forma parte del catálogo | Falla si la usa una plantilla pública | PENDIENTE: propuesta H3 |
+| función `static inline` | Probado (sondas 1, 2 y 5) | No forma parte del catálogo | Falla si la usa una plantilla pública | PENDIENTE: propuesta H3 |
+| global externa | Probado (sondas 1 y 2) | No forma parte del catálogo | Falla si la usa una plantilla pública | PENDIENTE: propuesta H3 |
+| global `static` | Probado (sondas 1 y 5); NSC no la importa | No forma parte del catálogo | No aplica | PENDIENTE (T08-004) |
+| alias `typedef` | Probado (sondas 1, 3 y 5) | No forma parte del catálogo | Falla si lo usa una plantilla pública | PENDIENTE: propuestas H1 y H3 |
 
-Limitación de la restauración probada: el NSMETA es el de un productor `nsc`
-real, pero la prueba envuelve su catálogo en un `PrecompiledSyntaxModule` igual
-que el driver tras cargarlo y configura los mismos proveedores; no recorre
-`preparePrecompiledProject` del driver. La ruta del driver con ese mismo
-productor se ejecuta en `pruebas-tanda-08-meta-c/validar.cmd`, que no observa
-los USR.
+La restauración se prueba de dos formas para cada productor: con el módulo
+precompilado armado por la prueba y por la ruta completa del driver
+(`LibraryReference` real y `driver::configurePrecompiledModules`). Esta última no
+ejecuta la generación de código ni el enlace del consumidor; esos pasos los
+cubre `pruebas-tanda-08-meta-c/validar.cmd`.
 
 ## Colisiones y declaraciones equivalentes
 
@@ -168,9 +169,13 @@ Consecuencias:
    forman dos grupos y la global `static` no produce candidato externo
    (sonda 2). Es coherente con entidades internas distintas. NO VERIFICADO: el
    diagnóstico al usar ese nombre desde NativeSharp.
-4. INFERENCIA: el USR dependiente del archivo usa solo el nombre base. Dos
-   encabezados `a.h` en directorios distintos darían el mismo USR para su
-   typedef, static o static inline. NO VERIFICADO con una prueba.
+4. HECHO COMPROBADO (sonda 5 y fixture `homonimos`): el USR dependiente del
+   archivo usa solo el nombre base. `dirA/same.h`, `dirB/same.h` y
+   `dirC/same.h` dan el mismo USR para su typedef, `static inline` y global
+   `static`, aunque `dirC` declare otros tipos y valores. NSC no une por ello
+   declaraciones distintas: el typedef de otro tipo se rechaza por su tipo
+   canónico y las funciones `static inline` siguen siendo dos definiciones
+   (llamada ambigua). El typedef del mismo tipo en `dirA` y `dirB` enlaza.
 
 ## Hallazgos
 
@@ -199,15 +204,21 @@ Posible solución (a decidir): (a) no usar el USR para decidir conflicto de
   de typedef calificados por archivo (c:<archivo>@T@<nombre>); conserva esa
   prueba, pero acopla NSC al formato de USR de Clang.
 Estado: NO IMPLEMENTAR hasta decisión y autorización de alcance transversal.
+Propuesta concreta y contraste con las pruebas: T08-002-PROPUESTA-TYPEDEF.md.
 ```
 
 ### H2. El USR no distingue encabezados homónimos
 
 ```text
 HALLAZGO NO AUTORIZADO
-Evidencia: forma observada c:a.h@... (solo el nombre base del archivo).
-Riesgo: declaraciones internas de dos a.h distintos tendrían igual USR.
-Estado: NO VERIFICADO con prueba; la procedencia solo existe para records.
+Evidencia: sonda 5 y fixture homonimos. Tres same.h de directorios distintos
+  dan el mismo USR interno (c:same.h@...).
+Riesgo: el USR no basta para distinguir declaraciones internas de encabezados
+  homónimos. Comprobado que NSC no las une: typedef de otro tipo rechazado,
+  static inline como dos definiciones (llamada ambigua). Un typedef del mismo
+  tipo se acepta, lo que es compatible en C.
+Estado: sin defecto demostrado; la procedencia de archivo solo existe para
+  records.
 ```
 
 ### H3. Funciones, globales y alias no viajan en el NSMETA
@@ -219,18 +230,28 @@ Evidencia: el catálogo C solo publica records y enums alcanzables desde la
 Pregunta: ¿T08-002 exige conservar en la biblioteca precompilada la identidad de
   funciones, globales y alias C, o basta la sesión propia del consumidor? Si lo
   exige, implica cambiar el formato NSMETA (protegido).
-Estado: decisión pendiente; no se modifica la metadata.
+Estado: decisión pendiente; no se modifica la metadata. Lo que necesita el
+  consumidor y la propuesta mínima: T08-002-PROPUESTA-METADATA-C.md.
+```
+
+### H4. Enum anónimo como tipo de campo de un record publicado
+
+```text
+HALLAZGO NO AUTORIZADO
+Evidencia: pruebas-tanda-08-identidad-c/anonimos/ProducerAnonLevel.ns publica
+  CAnonLevelRecord, cuyo campo level es un enum anónimo. El productor falla con
+  "metadata producer read-back verification failed: C enum field dependency has
+  no importable identity".
+Alcance: catálogo de tipos C (T08-009/T08-010), no solo identidad.
+Estado: NO IMPLEMENTAR; registrado.
 ```
 
 ## Pendientes de T08-002
 
 1. Validación integral de la tanda 08 con las pruebas nuevas (Codex).
-2. Decidir H1 y, si se autoriza, corregirlo con prueba propia.
-3. Decidir H3 (alcance de la persistencia de funciones, globales y alias).
-4. Restaurar desde NSMETA el USR de un struct nombrado solo por typedef y de un
-   enum anónimo publicados por un productor.
-5. Prueba de encabezados homónimos en directorios distintos (H2).
-6. Diagnóstico al usar desde NativeSharp un nombre `static inline` o `static`
-   presente en dos encabezados.
-7. Observar los USR restaurados en la ruta completa del driver
-   (`preparePrecompiledProject`), no solo con el módulo armado por la prueba.
+2. Decidir H1 (T08-002-PROPUESTA-TYPEDEF.md) y, si se autoriza, implementarlo
+   con sus pruebas.
+3. Decidir H3 (T08-002-PROPUESTA-METADATA-C.md) y, si se autoriza, implementarlo
+   con sus pruebas.
+4. Decidir H4 (enum anónimo como tipo de campo publicado).
+5. Importación de globales `static` de encabezados (T08-004); hoy no se importan.
