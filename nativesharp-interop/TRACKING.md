@@ -523,6 +523,9 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     con directorio TLS y consumidor; `--linker NSLink` se respetó.
     Pasaron además el productor precompilado sin TLS con selección NSLink, las
     selecciones directas y por entorno, y la dependencia ausente diagnosticada.
+    Al reconstruir el productor cambiando la dependencia de COFF sin TLS a
+    COFF con TLS, el mismo consumidor pasó a LLD y ejecutó dos construcciones;
+    la segunda informó un acierto de caché de objetos y conservó el directorio TLS.
     [Evidencia](registro-commits/t08-tls-transitivo-gate.md),
     [DLL](registro-commits/t08-tls-transitivo-dll-resultado.md).
     La batería confirmó el control nuevo y terminó con los cuatro fallos
