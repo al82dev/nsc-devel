@@ -478,6 +478,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Reproducido rechazo de `|=` en `_Bool` C escalar volatile; Clang acepta el
     contrato y emite accesos de byte ordenados. Corrección pendiente.
     [Evidencia](registro-commits/t08-bool-scalar-compuesto-reproduccion.md).
+    Preparada la ruta escalar en análisis, HIR y LLVM; pendientes controles y
+    validación. [Detalle](registro-commits/t08-bool-scalar-compuesto-implementacion.md).
   - Reproducida discrepancia para global escalar C `volatile _Bool`: NSC usa
     i1 volatile y Clang i8 acquire. Corrección pendiente.
     [Evidencia](registro-commits/t08-bool-scalar-reproduccion.md).

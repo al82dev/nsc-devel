@@ -2092,10 +2092,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
     const bool cBoolFloatOperation = (right.typeKey == "builtin:float" || right.typeKey == "builtin:double") &&
         (compoundBase == TokenKind::Plus || compoundBase == TokenKind::Minus ||
          compoundBase == TokenKind::Star || compoundBase == TokenKind::Slash);
+    const bool cBoolIndexedTarget = target && target->kind() == ast::AstNodeKind::IndexExpression && target->first();
+    const bool cBoolScalarTarget = target && target->kind() == ast::AstNodeKind::IdentifierExpression;
     if (namespaceFunctionModel_ && left.typeKey == "builtin:bool" && (boolBitwise || cBoolIntOperation || cBoolFloatOperation) &&
-        target && target->kind() == ast::AstNodeKind::IndexExpression && target->first())
+        (cBoolIndexedTarget || cBoolScalarTarget))
     {
-        const auto* binding = recordedNameBinding(target->first(), methodMemberOrdinal);
+        const auto* binding = recordedNameBinding(cBoolIndexedTarget ? target->first() : target, methodMemberOrdinal);
         if (binding && binding->kind == MethodNameBindingKind::NamespaceState &&
             binding->candidateMemberOrdinals.size() == 1)
         {
@@ -2104,7 +2106,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
             cVolatileBoolArrayBitwise = ordinal < states.size() && states[ordinal].isCppExternal &&
                 states[ordinal].cppCGlobal && states[ordinal].isVolatile && !states[ordinal].cppAtomicStorage &&
                 states[ordinal].cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
-                states[ordinal].declaredTypeKey.starts_with("builtin:bool[");
+                (cBoolIndexedTarget ? states[ordinal].declaredTypeKey.starts_with("builtin:bool[") :
+                                      states[ordinal].declaredTypeKey == "builtin:bool");
         }
     }
     if (namespaceFunctionModel_ && ProjectTypeConversion::isIntegral(left.typeKey) && left.typeKey != "builtin:bool")

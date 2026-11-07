@@ -167,7 +167,13 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         const bool boolFloatArithmetic = node->operation == lexer::TokenKind::Plus ||
             node->operation == lexer::TokenKind::Minus || node->operation == lexer::TokenKind::Star ||
             node->operation == lexer::TokenKind::Slash;
-        if (clangMsVolatileGlobalBoolArray(node->children[0].get()) &&
+        const auto* compoundBoolTarget = node->children[0].get();
+        const bool cVolatileBoolScalar = !compoundBoolTarget->cppAtomicAccess &&
+            compoundBoolTarget->kind == frontend::ProjectOopMirNodeKind::NamespaceStateAddress &&
+            compoundBoolTarget->typeKey == "builtin:bool" && compoundBoolTarget->volatileAccess &&
+            compoundBoolTarget->cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
+            compoundBoolTarget->cppAtomicAlignmentBytes == std::optional<std::size_t>{1};
+        if ((clangMsVolatileGlobalBoolArray(compoundBoolTarget) || cVolatileBoolScalar) &&
             ((boolOperand && boolBitwise) || (intOperand && (boolBitwise || boolIntArithmetic)) ||
              (floatOperand && boolFloatArithmetic)))
         {

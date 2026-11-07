@@ -785,11 +785,12 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
                  compound->operation == lexer::TokenKind::Star || compound->operation == lexer::TokenKind::Slash);
             const bool cBoolIntOperation = frame.first->typeKey == "builtin:bool" &&
                 frame.first->volatileAccess && (cBoolIntegerOperand || cBoolFloatOperand) &&
-                cBoolDepth == 1 && cBoolRoot &&
+                cBoolDepth <= 1 && cBoolRoot && !frame.first->cppAtomicAccess &&
                 cBoolRoot->kind == ProjectOopHirNodeKind::NamespaceStateAddress && cBoolRoot->volatileAccess &&
                 cBoolRoot->cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
                 cBoolRoot->cppAtomicAlignmentBytes == std::optional<std::size_t>{1} &&
-                cBoolRoot->typeKey.starts_with("builtin:bool[") &&
+                (cBoolDepth == 1 ? cBoolRoot->typeKey.starts_with("builtin:bool[") :
+                                   cBoolRoot->typeKey == "builtin:bool") &&
                 (compound->operation == lexer::TokenKind::Amp || compound->operation == lexer::TokenKind::Pipe ||
                  compound->operation == lexer::TokenKind::Caret || compound->operation == lexer::TokenKind::Plus ||
                  compound->operation == lexer::TokenKind::Minus || compound->operation == lexer::TokenKind::Star ||
