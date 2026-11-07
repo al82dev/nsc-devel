@@ -876,6 +876,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     validación. [Detalle](registro-commits/t08-bool-compuesto-enteros-referencia.md).
     Preparada la ruta semántica y LLVM; pendientes controles y ejecución.
     [Detalle](registro-commits/t08-bool-compuesto-enteros-implementacion.md).
+    Preparados controles para valores anchos, signo y órdenes de memoria; aún
+    sin ejecutar. [Detalle](registro-commits/t08-bool-compuesto-enteros-fixture.md).
   - Clang confirmó división, residuo y desplazamientos compuestos de `_Bool` C
     volatile en ejemplos válidos; falta implementar y validar en NSC.
     [Referencia](registro-commits/t08-bool-compuesto-div-shift-referencia.md).
