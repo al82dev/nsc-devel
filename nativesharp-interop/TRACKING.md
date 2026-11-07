@@ -531,6 +531,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     consumidor ejecutó O0–O3 con el encabezado C del productor oculto. El
     record también se seleccionó sin invocar funciones que lo retornan.
     [Resultado](registro-commits/t08-atomic-contratos-precompilado-validacion.md).
+    La misma biblioteca se enlazó en una DLL NativeSharp y su consumidor pasó
+    O0–O3 con el header oculto y un índice TLS no nulo. El validador detectó
+    un fallo inducido con salida distinta de cero.
+    [Resultado](registro-commits/t08-atomic-contratos-precompilado-dll-validacion.md).
   - El global C `_Atomic(int)` sin TLS fue rechazado como tipo no mapeado.
     Una corrección limitada de su proyección pasó O0–O3, comprobación de IR
     atómico y regresión TLS. [Resultado](registro-commits/t08-atomic-global-int-validacion.md).
