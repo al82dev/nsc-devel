@@ -91,7 +91,8 @@ public:
         std::string_view, CppImplicitLifetimeKind) const { return std::nullopt; }
     // Isolated C static-inline IR; the caller owns symbol uniqueness and linkage integration.
     virtual std::optional<std::string> emitCStaticInlineIR(
-        const std::vector<CppCInlineIRExport>&) const { return std::nullopt; }
+        const std::vector<CppCInlineIRExport>&,
+        const std::vector<CppCInlineIRExport>& = {}) const { return std::nullopt; }
     // Experimental structural comparison only; nullopt means no reliable comparison was possible.
     // A true result is not proof of full ODR or ABI equivalence.
     virtual std::optional<bool> structurallyEquivalentRecord(

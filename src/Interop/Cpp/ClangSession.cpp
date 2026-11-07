@@ -933,10 +933,11 @@ public:
         return ir;
     }
     std::optional<std::string> emitCStaticInlineIR(
-        const std::vector<CppCInlineIRExport>& requests) const override
+        const std::vector<CppCInlineIRExport>& requests,
+        const std::vector<CppCInlineIRExport>& globals) const override
     {
         std::lock_guard lock(mutex_);
-        if (!ast_ || requests.empty() || ast_->getASTContext().getLangOpts().CPlusPlus)
+        if (!ast_ || (requests.empty() && globals.empty()) || ast_->getASTContext().getLangOpts().CPlusPlus)
             return std::nullopt;
         auto& context = ast_->getASTContext();
         std::vector<const clang::FunctionDecl*> selected;
@@ -958,6 +959,26 @@ public:
             }
             if (!match) return std::nullopt;
             selected.push_back(match);
+        }
+        std::vector<const clang::VarDecl*> selectedGlobals;
+        for (const auto& request : globals)
+        {
+            if (request.name.empty() || request.symbol.empty() ||
+                !names.insert(request.name).second || !symbols.insert(request.symbol).second)
+                return std::nullopt;
+            const clang::VarDecl* match = nullptr;
+            for (const auto* declaration : context.getTranslationUnitDecl()->decls())
+            {
+                const auto* candidate = llvm::dyn_cast<clang::VarDecl>(declaration);
+                if (!candidate || candidate->getNameAsString() != request.name ||
+                    !candidate->isFileVarDecl() || candidate->isExternallyVisible()) continue;
+                const auto* definition = candidate->getDefinition();
+                if (!definition) definition = candidate->getActingDefinition();
+                if (!definition || (match && match != definition)) return std::nullopt;
+                match = definition;
+            }
+            if (!match) return std::nullopt;
+            selectedGlobals.push_back(match);
         }
         llvm::LLVMContext llvmContext;
         auto generator = clang::CreateLLVMCodeGen(ast_->getDiagnostics(), "nsc.c.inline",
@@ -992,6 +1013,13 @@ public:
             originalNames.push_back(generator->GetMangledName(declaration).str());
             if (!generator->GetAddrOfGlobal(declaration, false)) return std::nullopt;
         }
+        std::vector<std::string> originalGlobals;
+        for (const auto* variable : selectedGlobals)
+        {
+            const clang::GlobalDecl declaration(variable);
+            originalGlobals.push_back(generator->GetMangledName(declaration).str());
+            if (!generator->GetAddrOfGlobal(declaration, false)) return std::nullopt;
+        }
         generator->HandleTranslationUnit(context);
         auto module = generator->ReleaseModule();
         if (!module) return std::nullopt;
@@ -1002,6 +1030,14 @@ public:
                 return std::nullopt;
             function->setName(requests[i].symbol);
             function->setLinkage(llvm::GlobalValue::ExternalLinkage);
+        }
+        for (std::size_t i = 0; i < globals.size(); ++i)
+        {
+            auto* variable = module->getGlobalVariable(originalGlobals[i], true);
+            if (!variable || variable->isDeclaration() || module->getNamedValue(globals[i].symbol))
+                return std::nullopt;
+            variable->setName(globals[i].symbol);
+            variable->setLinkage(llvm::GlobalValue::ExternalLinkage);
         }
         if (llvm::verifyModule(*module, &llvm::errs())) return std::nullopt;
         std::string ir;

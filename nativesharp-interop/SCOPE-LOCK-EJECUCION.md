@@ -1,5 +1,17 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004: emisión de global C estática junto a inline
+
+Corregir el rechazo reproducido de `shared_state`: proyectar la instancia de
+la sesión C, generar su definición con las funciones inline de esa sesión y
+comprobar lectura y escritura cruzadas con el control C en O0–O3. Conservar la
+identidad por referencia y no incorporar variables no solicitadas al enlace.
+Archivos candidatos: interfaces de sesión y emisor, ClangSession, inventario
+semántico, generación de objetos del driver y fixture T08-004. NSLink, formato
+de metadata, LLVM/Clang externo, fixtures existentes y C: permanecen protegidos.
+No se declara cobertura de múltiples sesiones, librerías precompiladas ni TLS
+hasta comprobarlas; la tanda permanece abierta.
+
 ## T08-004: reproducción de global C estática y función inline
 
 Reproducir la lectura y escritura de una global C de enlace interno desde
