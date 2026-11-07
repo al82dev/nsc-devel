@@ -475,6 +475,11 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     global y fallan dentro de namespace por nombre desconocido. Es necesario
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
 - [ ] T08-004. Importar declaraciones de variables globales C.
+  - **Integridad de validadores:** se reprodujo un falso éxito en dos
+    validadores con errores inducidos dentro de sus bucles; ambos se
+    corrigieron y verificaron. Otros scripts usan patrones similares y
+    requieren revisión antes de confiar en la validación integral.
+    [Evidencia](registro-commits/t08-validadores-fallo-validacion.md).
   - Globales `static` de encabezado: la ruta anterior excluía nombres sin enlace
     externo. El control C pasó y NSC reprodujo el rechazo.
     [Análisis](T08-004-GLOBAL-STATIC-INVESTIGACION.md).
