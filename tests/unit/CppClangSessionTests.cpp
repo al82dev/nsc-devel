@@ -7409,6 +7409,19 @@ int main(int argc, char** argv)
                                      "C metadata provider selects public record and transitive field dependency");
                         if (supplied && !catalogRecords.empty())
                         {
+                            auto atomicRecords = catalogRecords;
+                            if (!atomicRecords.front().fields.empty())
+                            {
+                                auto& field = atomicRecords.front().fields.front();
+                                auto baseType = std::make_shared<CppType>(field.type);
+                                field.type.kind = CppTypeKind::Atomic;
+                                field.type.element = std::move(baseType);
+                                std::vector<std::uint8_t> sentinel{0x6a, 0x3b};
+                                const bool acceptedAtomic = metadata_detail::encodeCTypeCatalog(
+                                    atomicRecords, catalogEnums, sentinel, dependencyError);
+                                ok &= expect(!acceptedAtomic && sentinel == std::vector<std::uint8_t>({0x6a, 0x3b}),
+                                             "old C metadata codec rejects atomic fields without partial publication");
+                            }
                             const auto ordinal = recordDependencies.nameLookup()->typeOrdinalForIdentity(catalogRecords.front().identityKey);
                             const auto* imported = ordinal ? recordDependencies.nameLookup()->cppImportedType(*ordinal) : nullptr;
                             std::vector<nativesharp::frontend::CppImportedInstanceField> fields;
