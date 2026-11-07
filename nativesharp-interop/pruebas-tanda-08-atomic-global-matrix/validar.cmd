@@ -32,7 +32,7 @@ python "%~dp0verificar_compuesto.py" "%DEST%\compound-clang.ll"
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Compound.nsproj" > "%DEST%\compound-native.ll" 2> "%DEST%\compound-ir.log"
 if errorlevel 1 (type "%DEST%\compound-ir.log" & exit /b 1)
-python "%~dp0verificar_compuesto.py" "%DEST%\compound-native.ll"
+python "%~dp0verificar_compuesto.py" "%DEST%\compound-native.ll" native
 if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe" > "%DEST%\consumer-O%%O.log" 2>&1
