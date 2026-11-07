@@ -463,6 +463,11 @@ las correcciones. [Resultado](registro-commits/t08-validacion-link-lib-auto.md),
     global y fallan dentro de namespace por nombre desconocido. Es necesario
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
 - [ ] T08-004. Importar declaraciones de variables globales C.
+  - Se añadieron controles de punteros TLS atómicos a `const int` y a
+    `volatile int`: lectura y escritura aplicable, conservación del calificador
+    y comparación con C; NSC pasó O0–O3. La validación integral y las demás
+    variantes de TLS siguen pendientes. [Const](registro-commits/t08-tls-atomico-puntero-const-pointee.md),
+    [volatile](registro-commits/t08-tls-atomico-puntero-volatile-pointee.md).
   - El TLS C `_Atomic(int)` también pasó asignaciones bit a bit, multiplicación,
     desplazamientos, división y residuo en los controles preparados O0–O3;
     se comprobó `cmpxchg` y una prueba de concurrencia, además de divisor cero
