@@ -201,6 +201,12 @@ void collectEnums(const clang::DeclContext& context, clang::ASTContext& astConte
             collectEnums(*linkage, astContext, seen, result);
             continue;
         }
+        if (!astContext.getLangOpts().CPlusPlus)
+            if (const auto* record = llvm::dyn_cast<clang::RecordDecl>(declaration))
+            {
+                collectEnums(*record, astContext, seen, result);
+                continue;
+            }
         const auto* enumeration = llvm::dyn_cast<clang::EnumDecl>(declaration);
         if (!enumeration || enumeration->isImplicit() || enumeration->isDependentContext() ||
             !seen.insert(enumeration->getCanonicalDecl()).second)
