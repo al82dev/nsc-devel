@@ -4276,3 +4276,14 @@ seguimiento y registros. Preservar proyectos sin referencias C/C++, NSLink,
 LLVM y C:. Probar también modificación de un header transitivo; no afirmar
 soporte de caché C/C++ hasta rastrear todas sus dependencias.
 
+# Global C TLS estático consumido directamente
+
+Preparar una biblioteca C con global `__declspec(thread)` de enlace externo,
+un consumidor NativeSharp y un control C que lean y escriban el mismo global
+en el hilo principal y comprueben aislamiento de otro hilo. Enlazar con LLD y
+CRT estático declarados en A:. Presupuesto inicial: fixture nuevo bajo
+`pruebas-tanda-08-tls-c/static-global` y registro Markdown; después de
+reproducir, delimitar la propagación de TLS a través de inventario, estado de
+namespace, MIR y LLVM. Mantener rechazado TLS de DLL sin contrato válido,
+preservar NSLink, LLVM externo y C:. La prueba aislada no cierra T08-004.
+

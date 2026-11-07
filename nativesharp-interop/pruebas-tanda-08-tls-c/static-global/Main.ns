@@ -1,0 +1,9 @@
+int Main()
+{
+    if (shared_tls != 3) return 1;
+    shared_tls = 41;
+    if (tls_read() != 41) return 2;
+    if (tls_worker_check() != 0) return 3;
+    if (shared_tls != 41) return 4;
+    return 0;
+}

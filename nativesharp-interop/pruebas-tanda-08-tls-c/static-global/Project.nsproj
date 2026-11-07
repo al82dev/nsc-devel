@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CTlsStaticGlobal</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" />
+    <CppLibraryReference Header="Crt.h" Language="C" Standard="c11" Library="A:/vc2026-runtime/lib/x64/release/libcmt.lib" />
+  </ItemGroup>
+</Project>
