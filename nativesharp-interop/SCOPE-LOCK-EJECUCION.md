@@ -4488,6 +4488,16 @@ pruebas existentes, NSLink, LLVM y C:. Comprobar el DLL de la reproducción,
 la selección LLD y los demás controles agrupados. Registrar esta corrección
 por separado; no implica cierre de TLS ni de la tanda.
 
+# Diagnóstico del directorio de importación en DLL TLS
+
+Investigar por qué Windows no asigna el índice TLS a la DLL de escalares sin
+importaciones, aunque sí lo hace a la variante con importación real. Presupuesto:
+un instrumento nuevo en `pruebas-tanda-08-tls-c/directo`, su evidencia y el
+tracking; las copias PE se escriben exclusivamente en `A:/nsc-interop-build`.
+Comparar la misma DLL con índice centinela y con o sin directorio de importación
+vacío, sin alterar los fixtures originales, NSLink, LLVM ni C:. La observación
+no autoriza parchear bibliotecas de terceros ni declarar resuelta la tanda.
+
 # Arreglo global C TLS
 
 Reproducir lectura, escritura y aislamiento por hilo de un `int[2]` TLS C
