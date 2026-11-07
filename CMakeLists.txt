@@ -890,6 +890,12 @@ if(LLVM_FOUND)
             target_link_libraries(nsc_cpp_session_tests PRIVATE nsc_cpp_interop nsc_frontend nsc_precompiled)
             target_compile_features(nsc_cpp_session_tests PRIVATE cxx_std_20)
             nsc_enable_warnings(nsc_cpp_session_tests)
+            # T08-002: targeted identity checks of imported C declarations (new file, new target).
+            add_executable(nsc_cpp_c_identity_tests tests/unit/CppCIdentityTests.cpp)
+            target_include_directories(nsc_cpp_c_identity_tests SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
+            target_link_libraries(nsc_cpp_c_identity_tests PRIVATE nsc_cpp_interop nsc_frontend nsc_precompiled)
+            target_compile_features(nsc_cpp_c_identity_tests PRIVATE cxx_std_20)
+            nsc_enable_warnings(nsc_cpp_c_identity_tests)
             # The interop gate needs these two syntax-cache checks even when the
             # full NSC test suite is disabled. Avoid defining them twice when it is enabled.
             if(NOT NSC_BUILD_TESTS)
