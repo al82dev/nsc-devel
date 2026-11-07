@@ -50,6 +50,7 @@ for %%T in (
   pruebas-tanda-08-atomic-global-matrix\validar-widths-global.cmd
   pruebas-tanda-08-atomic-global-matrix\validar-widths-tls.cmd
   pruebas-tanda-08-atomic-global-matrix\validar-widths-hilos.cmd
+  pruebas-tanda-08-global-static\validar.cmd
   pruebas-tanda-08-callback\validar-record-precompilado.cmd
   pruebas-tanda-08-enum-funcion\validar-callback-precompilado.cmd
   pruebas-tanda-08-typedef-c\validar-puntero.cmd
