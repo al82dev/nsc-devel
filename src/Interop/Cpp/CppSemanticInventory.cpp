@@ -504,14 +504,28 @@ static bool provideGlobalsWithLookup(
         for (auto& entry : entries)
             entry.projection = projectGlobalWithLookup(entry.declaration, entry.projectOrdinal,
                 graph.projects()[entry.projectOrdinal].moduleName(), lookup, entry.cLanguage);
+    const auto supportedInternalC = [](const CppSemanticGlobalEntry& entry) {
+        const auto& type = entry.declaration.type;
+        if (!entry.cLanguage || entry.declaration.threadLocal || type.isConst || type.isVolatile) return false;
+        const auto& name = type.unqualifiedCanonicalSpelling;
+        if (type.kind == CppTypeKind::SignedInteger)
+            return (name == "int" && type.sizeBits == std::optional<std::uint64_t>{32}) ||
+                (name == "signed char" && type.sizeBits == std::optional<std::uint64_t>{8}) ||
+                (name == "long long" && type.sizeBits == std::optional<std::uint64_t>{64});
+        if (type.kind == CppTypeKind::UnsignedInteger)
+            return (name == "unsigned short" && type.sizeBits == std::optional<std::uint64_t>{16}) ||
+                (name == "unsigned int" && type.sizeBits == std::optional<std::uint64_t>{32}) ||
+                (name == "unsigned long long" && type.sizeBits == std::optional<std::uint64_t>{64});
+        if (type.kind == CppTypeKind::Floating)
+            return (name == "float" && type.sizeBits == std::optional<std::uint64_t>{32}) ||
+                (name == "double" && type.sizeBits == std::optional<std::uint64_t>{64});
+        return type.kind == CppTypeKind::Pointer && type.sizeBits == std::optional<std::uint64_t>{64} &&
+            type.element && type.element->kind == CppTypeKind::SignedInteger &&
+            type.element->unqualifiedCanonicalSpelling == "int" && !type.element->isConst && !type.element->isVolatile;
+    };
     std::set<std::pair<std::size_t, std::string_view>> availableNames;
     for (const auto& entry : entries)
-        if (entry.declaration.externalLinkage || (entry.cLanguage &&
-            entry.declaration.type.kind == CppTypeKind::SignedInteger &&
-            entry.declaration.type.unqualifiedCanonicalSpelling == "int" &&
-            entry.declaration.type.sizeBits == std::optional<std::uint64_t>{32} &&
-            !entry.declaration.threadLocal && !entry.declaration.type.isConst &&
-            !entry.declaration.type.isVolatile))
+        if (entry.declaration.externalLinkage || supportedInternalC(entry))
             availableNames.emplace(entry.projectOrdinal, entry.declaration.qualifiedName);
     std::set<std::tuple<std::size_t, std::string, std::string>> seen;
     std::vector<frontend::NamespaceStateSymbol> result;
@@ -531,11 +545,7 @@ static bool provideGlobalsWithLookup(
                 for (const auto index : selected.internalIndices)
                 {
                     const auto& entry = entries[index];
-                    const auto& type = entry.declaration.type;
-                    if (entry.cLanguage && type.kind == CppTypeKind::SignedInteger &&
-                        type.unqualifiedCanonicalSpelling == "int" &&
-                        type.sizeBits == std::optional<std::uint64_t>{32} &&
-                        !entry.declaration.threadLocal && !type.isConst && !type.isVolatile)
+                    if (supportedInternalC(entry))
                         internalC.push_back(index);
                 }
                 if (!internalC.empty())
