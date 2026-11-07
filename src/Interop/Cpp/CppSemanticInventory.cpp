@@ -506,8 +506,17 @@ static bool provideGlobalsWithLookup(
                 graph.projects()[entry.projectOrdinal].moduleName(), lookup, entry.cLanguage);
     const auto supportedInternalC = [](const CppSemanticGlobalEntry& entry) {
         const auto& type = entry.declaration.type;
-        if (!entry.cLanguage || entry.declaration.threadLocal || type.isConst || type.isVolatile) return false;
+        if (!entry.cLanguage || entry.declaration.threadLocal) return false;
         const auto& name = type.unqualifiedCanonicalSpelling;
+        if (type.kind == CppTypeKind::Record)
+            return !type.isConst && !type.isVolatile && type.sizeBits && type.alignmentBits;
+        if (type.kind == CppTypeKind::Array)
+            return !type.isConst && !type.isVolatile && type.arrayCount == std::optional<std::uint64_t>{2} &&
+                type.element && type.element->kind == CppTypeKind::SignedInteger &&
+                type.element->unqualifiedCanonicalSpelling == "int" && !type.element->isConst && !type.element->isVolatile;
+        if ((type.isConst || type.isVolatile) &&
+            !(type.kind == CppTypeKind::SignedInteger && name == "int" &&
+              type.sizeBits == std::optional<std::uint64_t>{32})) return false;
         if (type.kind == CppTypeKind::SignedInteger)
             return (name == "int" && type.sizeBits == std::optional<std::uint64_t>{32}) ||
                 (name == "signed char" && type.sizeBits == std::optional<std::uint64_t>{8}) ||
