@@ -9,6 +9,14 @@ tracking y bitácora. Verificar el orden de lectura y escritura y las operacione
 de actualización frente a Clang; no tratar `_Atomic` como un entero ordinario.
 No cambiar producción hasta delimitar el diseño completo; sin NSLink, LLVM ni C:.
 
+Para iniciar la cadena documentada en `T08-TLS-ATOMICOS.md`, permitir capturar
+`clang::AtomicType` como un tipo distinguible con su elemento, tamaño y
+alineación en `CppType.h` y `ClangSession.cpp`, y comprobarlo en
+`tests/unit/CppClangSessionTests.cpp`. Esta captura no habilita acceso ni
+serialización: el codec anterior debe seguir rechazando el nuevo tipo hasta
+versionar el formato y conectar semántica atómica completa. Registrar cambios;
+no tocar NSLink, LLVM fuente externo ni C:.
+
 ## Raíz de respaldo NS_LIB_ROOT
 
 Comprobar que las dependencias NS transitivas bajo la raíz de respaldo
