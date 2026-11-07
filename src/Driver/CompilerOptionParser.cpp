@@ -659,6 +659,20 @@ OptionResult handleLinkLibrary(OptionContext& context)
     return matched();
 }
 
+OptionResult handleLinkerSelection(OptionContext& context)
+{
+    constexpr std::string_view prefix = "--nsc-linker-selection=";
+    if (!context.argument.starts_with(prefix)) return noMatch();
+    const auto selection = context.argument.substr(prefix.size());
+    if ((selection != "NSLink" && selection != "LLD") || !context.invocation.linkerSelection.empty())
+    {
+        context.error << "nsc: error: invalid or duplicate internal linker selection\n";
+        return matched(ExitCode::CommandLineError);
+    }
+    context.invocation.linkerSelection = std::string(selection);
+    return matched();
+}
+
 OptionResult handleDebugPrefixMap(OptionContext& context)
 {
     constexpr std::string_view prefix = "-fdebug-prefix-map=";
@@ -781,6 +795,7 @@ constexpr OptionHandler kOptionHandlers[] = {
     handleOptimizationBudget,
     handleSubsystem,
     handleLinkLibrary,
+    handleLinkerSelection,
     handleDebugPrefixMap,
     handleOptimizationLevel,
     handleDebugInformation,

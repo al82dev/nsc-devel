@@ -52,6 +52,7 @@ struct CompilerInvocation final
         linker::WindowsExecutableSubsystem::Console;
     bool subsystemSeen = false;
     std::vector<std::filesystem::path> extraLinkLibraries;
+    std::string linkerSelection;
 
     llvm_backend::FloatingPointMode floatingPointMode =
         llvm_backend::FloatingPointMode::Precise;
