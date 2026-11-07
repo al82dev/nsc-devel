@@ -1,0 +1,5 @@
+<Project><PropertyGroup><Name>CTlsAmbiguous</Name></PropertyGroup><ItemGroup>
+  <Compile Include="Native.ns" />
+  <CppLibraryReference Header="TlsApi.h" Language="C" Standard="c11" Library="api.lib" Runtime="api.dll" />
+  <CppLibraryReference Header="TlsApi.h" Language="C" Standard="c11" Library="api.lib" />
+</ItemGroup></Project>
