@@ -2,7 +2,7 @@ int Main()
 {
     atomic_global = 0;
     if (start_atomic_worker() != 0) return 1;
-    for (int i = 0; i < 10000; ++i) atomic_global += 1;
+    for (int i = 0; i < 10000; ++i) { atomic_global += 1; }
     if (wait_atomic_worker() != 0) return 2;
     if (atomic_global != 20000 || c_read_atomic_global() != 20000) return 3;
     return 0;
