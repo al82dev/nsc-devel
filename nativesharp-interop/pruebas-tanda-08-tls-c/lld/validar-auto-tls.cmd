@@ -14,7 +14,7 @@ for %%F in (Api.c Api.h Main.ns Project.nsproj) do (
   copy /y "%~dp0..\%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
-for %%F in (Plain.ns Plain.nsproj) do (
+for %%F in (Plain.ns Plain.nsproj NoTls.c NoTls.h NoTls.ns NoTls.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -62,11 +62,29 @@ if errorlevel 1 (type "%DEST%\plain.log" & exit /b 1)
 "%DEST%\bin\Debug\LinkerCachePlain.exe"
 if errorlevel 1 exit /b 1
 echo Proyecto sin TLS conserva NSLink.
+clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\NoTls.c" -o "%DEST%\notls.obj"
+if errorlevel 1 exit /b 1
+llvm-lib.exe /nologo /out:"%DEST%\notls.lib" "%DEST%\notls.obj"
+if errorlevel 1 exit /b 1
+nsc.exe build "%DEST%\NoTls.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore -O0 --output-format=json > "%DEST%\notls.log" 2>&1
+if errorlevel 1 (type "%DEST%\notls.log" & exit /b 1)
+findstr /L /C:"\"linker\":\"NSLink\"" "%DEST%\notls.log" >nul
+if errorlevel 1 (type "%DEST%\notls.log" & exit /b 1)
+"%DEST%\bin\Debug\NoTlsStatic.exe"
+if errorlevel 1 exit /b 1
+echo Biblioteca C sin TLS conserva NSLink.
 nsc.exe build "%DEST%\Project.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore --linker NSLink -O0 > "%DEST%\explicit.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /L /C:"NSLink failed" "%DEST%\explicit.log" >nul
 if errorlevel 1 (type "%DEST%\explicit.log" & exit /b 1)
 echo Seleccion explicita de NSLink respetada.
+set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
+nsc.exe build "%DEST%\Project.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore -O0 > "%DEST%\env.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /L /C:"NSLink failed" "%DEST%\env.log" >nul
+if errorlevel 1 (type "%DEST%\env.log" & exit /b 1)
+set "NSC_LINKER="
+echo NSC_LINKER explicito respetado.
 > "%DEST%\Project.nspm.json" echo {"schemaVersion":1,"build":{"linker":"NSLink"},"packages":[]}
 nsc.exe build "%DEST%\Project.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore -O0 > "%DEST%\sidecar.log" 2>&1
 if not errorlevel 1 exit /b 1

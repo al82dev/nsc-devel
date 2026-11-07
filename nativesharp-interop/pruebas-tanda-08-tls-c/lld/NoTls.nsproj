@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>NoTlsStatic</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="NoTls.ns" />
+    <CppLibraryReference Header="NoTls.h" Language="C" Standard="c11" Library="notls.lib" />
+  </ItemGroup>
+</Project>
