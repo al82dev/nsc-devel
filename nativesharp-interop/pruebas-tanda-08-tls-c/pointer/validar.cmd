@@ -51,7 +51,7 @@ if errorlevel 1 exit /b 1
 python "%~dp0verificar_ir.py" "%ROOT%\static\project.ll"
 if errorlevel 1 exit /b 1
 for %%M in (static dll) do (
-  for %%N in (ConstSlot ConstPointee) do (
+  for %%N in (ConstSlot ConstPointee ConstRecord) do (
     copy /y "%~dp0%%N.ns.txt" "%ROOT%\%%M\Main.ns" >nul
     if errorlevel 1 exit /b 1
     call :check_const %%M %%N

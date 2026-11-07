@@ -1,0 +1,1 @@
+int Main() { tls_const_volatile_record.extra = 1; return 0; }
