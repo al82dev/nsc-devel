@@ -245,7 +245,8 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     const bool atomicPointerTls = cLanguage && kind == CppTypeKind::Atomic &&
         global.type.element && global.type.element->kind == CppTypeKind::Pointer && global.type.element->element &&
         (global.threadLocal || (global.type.element->element->kind == CppTypeKind::SignedInteger &&
-         global.type.element->element->unqualifiedCanonicalSpelling == "int")) &&
+         global.type.element->element->unqualifiedCanonicalSpelling == "int" &&
+         !global.type.element->element->isConst && !global.type.element->element->isVolatile)) &&
         ((global.type.element->element->kind == CppTypeKind::SignedInteger &&
           global.type.element->element->unqualifiedCanonicalSpelling == "int") ||
          (global.type.element->element->kind == CppTypeKind::UnsignedInteger &&
