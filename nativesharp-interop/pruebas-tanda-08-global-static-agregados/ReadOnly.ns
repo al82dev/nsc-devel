@@ -1,0 +1,1 @@
+int Main() { read_only = 12; return 0; }

@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CStaticConstReject</Name></PropertyGroup>
+  <ItemGroup><Compile Include="ReadOnly.ns" /><CppLibraryReference Header="Api.h" Language="C" Standard="c11" /></ItemGroup>
+</Project>
