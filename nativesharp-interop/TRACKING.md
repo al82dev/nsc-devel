@@ -488,6 +488,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     Una matriz de enteros, flotantes y puntero estáticos sin calificadores pasó
     O0–O3 con inicializadores y funciones inline; la regresión de identidad
     pasó. [Resultado](registro-commits/t08-global-static-matriz-validacion.md).
+    Un record, un arreglo de dos enteros y escalares const/volatile estáticos
+    pasaron el control mixto O0–O3; se rechazó escritura const y se comparó el
+    IR volatile con Clang. [Resultado](registro-commits/t08-global-static-agregados-validacion.md).
   - El global C `_Atomic(int)` sin TLS fue rechazado como tipo no mapeado.
     Una corrección limitada de su proyección pasó O0–O3, comprobación de IR
     atómico y regresión TLS. [Resultado](registro-commits/t08-atomic-global-int-validacion.md).
