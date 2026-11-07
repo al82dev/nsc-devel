@@ -428,6 +428,10 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     Además, un NSMETA producido por el fixture contiene los bytes del USR de
     `CRecord.value`; la búsqueda no demuestra que el consumidor restaure ese
     dato concreto. [Observación](registro-commits/t08-usr-campo-nsmeta-observado.md).
+    La suite después escribió y autenticó un NSMETA propio con el catálogo de
+    la sesión Clang y comprobó los mismos USR en los campos reconstruidos.
+    No demuestra todavía el ciclo completo entre productor y consumidor
+    independientes ni la identidad de otras declaraciones. [Prueba](registro-commits/t08-usr-campos-nsmeta-ruta.md).
 - [ ] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
   - Funciones C `static inline` de un encabezado se llamaron desde NSC en
     O0–O3, directamente y mediante dos bibliotecas NativeSharp precompiladas;
