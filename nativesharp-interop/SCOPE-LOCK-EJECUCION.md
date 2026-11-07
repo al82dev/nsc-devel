@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004: ambigüedad de globales internas con tipos distintos
+
+Comprobar y corregir el caso de dos referencias C con el mismo nombre de
+global interna cuando una forma todavía no se proyecta. Ninguna declaración
+debe elegirse ignorando la otra. Preservar NSLink, metadata, LLVM externo,
+fixtures existentes y C:. El control nuevo debe comprobar el diagnóstico.
+
 ## T08-004: tipos adicionales de global C interna
 
 Reproducir y corregir el acceso a char, unsigned char, short, long, unsigned
