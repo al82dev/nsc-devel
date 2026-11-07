@@ -4582,6 +4582,16 @@ explícitas existentes cuando se reescriba un sidecar. Comprobar proyecto nuevo
 con TLS, add/remove y preservación de selecciones explícitas. Presupuesto:
 `src/Driver/ProjectCommands.cpp`, validador de la tanda, registros y tracking.
 
+La emisión directa `--emit-project-oop-exe` de `Project.nsproj` con TLS y sin
+elección de enlazador fue reproducida en `probe_direct_linker.cmd`: eligió
+NSLink y falló con NSL1023. Aplicar el detector existente a las referencias
+estáticas del grafo antes de calcular la identidad de caché y antes del enlace,
+solo cuando la selección interna y `NSC_LINKER` estén ausentes. Presupuesto:
+`src/Driver/DriverArtifactGeneration.cpp`, validador directo, gate, tracking y
+registros. Conservar selección explícita, NSLink para COFF sin TLS y caché
+correctamente diferenciada. La emisión directa DLL no se modifica por esta
+reproducción; no alterar NSLink, LLVM, C: ni los controles TLS DLL abiertos.
+
 # Identificación provisional de TLS de DLL
 
 El fixture directo demuestra que NSC proyecta una declaración TLS sin

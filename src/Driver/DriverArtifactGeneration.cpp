@@ -1,4 +1,5 @@
 #include "Internal/DriverInternal.h"
+#include "Internal/ProjectCommandSupport.h"
 #include "ThinLtoLibraryLinking.h"
 
 #include "nativesharp/Linker/ExternalImportValidation.h"
@@ -7,6 +8,7 @@
 #include "nativesharp/Basic/Sha256.h"
 #include <algorithm>
 #include <iterator>
+#include <set>
 #ifdef NSC_ENABLE_CPP_INTEROP
 #include "nativesharp/Frontend/ProjectConstructionModel.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
@@ -17,6 +19,30 @@
 
 namespace nativesharp::driver
 {
+// Direct executable emission has no project-command selection; inspect its static inputs before caching.
+static std::string selectDirectExecutableLinker(
+    const compilation::CompilationInputManifest& manifest, std::string_view requested)
+{
+    if (!requested.empty() || environmentValue("NSC_LINKER")) return std::string(requested);
+    std::set<std::filesystem::path> inspected;
+    const auto requiresLld = [&](const std::filesystem::path& path) {
+        if (path.empty() || !inspected.insert(path).second) return false;
+        bool required = false;
+        std::string inspectionError;
+        if (!llvm_backend::ProjectOopObjectGenerator::requiresLldForStaticInput(path, required, inspectionError))
+            return true;
+        return required;
+    };
+    for (const auto& project : manifest.projectGraph().projects())
+    {
+        for (const auto& reference : project.cppLibraryReferences())
+            if (reference.runtimePath.empty() && requiresLld(reference.libraryPath)) return "LLD";
+        for (const auto& reference : project.libraryReferences())
+            if (reference.runtimePath.empty() && requiresLld(reference.libraryPath)) return "LLD";
+    }
+    return {};
+}
+
 static bool appendCStaticInlineObjects(frontend::ProjectCompilation &compilation,
                                        llvm_backend::ProjectOopObjectBundle &bundle,
                                        llvm_backend::LlvmOptimizationLevel level, std::string &error)
@@ -438,13 +464,14 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
         error << "nsc: error: " << loadError << '\n';
         return ExitCode::CompilationError;
     }
+    const std::string selectedLinker = selectDirectExecutableLinker(*manifest, linkerSelection);
     addCompilationProductIdentity(
         *manifest, "executable", pathFromUtf8(outputPath));
     addCompilationCodegenIdentity(
         *manifest, optimizationLevel, debugInformation,
         debugPrefixMaps, linkTimeOptimization);
     addCompilationLinkIdentity(
-        *manifest, incrementalLink, subsystem, extraLinkLibraries, linkerSelection);
+        *manifest, incrementalLink, subsystem, extraLinkLibraries, selectedLinker);
     frontend::ProjectCompilation compilation;
     const frontend::ProjectOopMirFunction *entryFunction = nullptr;
     bool restored = false;
@@ -471,7 +498,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
     std::vector<std::filesystem::path> linkLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
     linker::WindowsExecutableBuilder builder;
-    builder.setLinkerSelection(std::string(linkerSelection));
+    builder.setLinkerSelection(selectedLinker);
     std::vector<std::filesystem::path> packagedRuntimes;
     if (!prepareExecutableBuilder(compilation, extraLinkLibraries, debugInformation, incrementalLink, subsystem,
                                   linkLibraries, runtimeLibraries, builder, error))
