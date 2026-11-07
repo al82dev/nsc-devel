@@ -462,8 +462,11 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     automático y TLS directo siguen pendientes. [Evidencia](registro-commits/tls-build-nsc-lld.md).
   - Clang rechaza `thread` con `dllimport`/`dllexport`; al exportar por el
     enlazador, el consumidor C pide `SECREL tls_exported` y la import library
-    solo ofrece `__imp_tls_exported`. NSC rechaza TLS directo por ahora.
-    [Evidencia](registro-commits/tls-c-dll-directo.md).
+    solo ofrece `__imp_tls_exported`. La declaración actual sin atributo
+    `dllimport` ya no se rechaza: NSC la trata como TLS estático y el enlace
+    NSLink falla por `_tls_index`; aún no hay acceso directo correcto.
+    [Evidencia C](registro-commits/tls-c-dll-directo.md),
+    [observación NSC](registro-commits/tls-dll-observacion-nsc.md).
   - Un experimento C separado obtiene la DLL desde la dirección importada del
     dato y usa su directorio PE TLS y los slots del hilo para leer y escribir
     el valor en dos hilos. Depende de detalles internos de Windows x64; no es
