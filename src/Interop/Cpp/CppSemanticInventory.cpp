@@ -188,11 +188,14 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     const auto kind = global.type.kind;
     const bool scalarTls = kind == CppTypeKind::Boolean || kind == CppTypeKind::SignedInteger ||
         kind == CppTypeKind::UnsignedInteger || kind == CppTypeKind::Floating;
-    const bool scalarPointerTls = kind == CppTypeKind::Pointer && global.type.element &&
+    const bool aggregateTls = kind == CppTypeKind::Record || kind == CppTypeKind::Enumeration;
+    const bool supportedPointerTls = kind == CppTypeKind::Pointer && global.type.element &&
         (global.type.element->kind == CppTypeKind::Boolean ||
          global.type.element->kind == CppTypeKind::SignedInteger ||
          global.type.element->kind == CppTypeKind::UnsignedInteger ||
-         global.type.element->kind == CppTypeKind::Floating);
+         global.type.element->kind == CppTypeKind::Floating ||
+         global.type.element->kind == CppTypeKind::Record ||
+         global.type.element->kind == CppTypeKind::Enumeration);
     const CppType* arrayElement = &global.type;
     std::size_t arrayDepth = 0;
     bool fixedArray = kind == CppTypeKind::Array;
@@ -205,16 +208,17 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         arrayVolatile |= arrayElement->isVolatile;
         arrayElement = arrayElement->element.get();
     }
-    const bool scalarArrayElement = arrayElement->kind == CppTypeKind::Boolean ||
+    const bool supportedArrayElement = arrayElement->kind == CppTypeKind::Boolean ||
         arrayElement->kind == CppTypeKind::SignedInteger || arrayElement->kind == CppTypeKind::UnsignedInteger ||
-        arrayElement->kind == CppTypeKind::Floating;
+        arrayElement->kind == CppTypeKind::Floating || arrayElement->kind == CppTypeKind::Record ||
+        arrayElement->kind == CppTypeKind::Enumeration;
     const bool supportedVolatileArray = !(arrayVolatile || arrayElement->isVolatile) ||
         (arrayElement->kind == CppTypeKind::SignedInteger && arrayElement->sizeBits == 32);
-    const bool scalarArrayTls = fixedArray && scalarArrayElement && supportedVolatileArray;
-    const bool supportedVolatileTls = !global.type.isVolatile || scalarArrayTls || scalarPointerTls ||
+    const bool supportedArrayTls = fixedArray && supportedArrayElement && supportedVolatileArray;
+    const bool supportedVolatileTls = !global.type.isVolatile || supportedArrayTls || supportedPointerTls ||
         (kind == CppTypeKind::SignedInteger && global.type.sizeBits == 32);
     if (global.threadLocal && (!cLanguage || global.dllImport ||
-        (!scalarTls && !scalarPointerTls && !scalarArrayTls) || !supportedVolatileTls))
+        (!scalarTls && !aggregateTls && !supportedPointerTls && !supportedArrayTls) || !supportedVolatileTls))
         return failure("thread-local C/C++ global is not yet projected");
     const auto type = mapGlobalType(global.type, projectOrdinal, moduleName, lookup, cLanguage);
     if (!type || global.type.kind == CppTypeKind::Void)
