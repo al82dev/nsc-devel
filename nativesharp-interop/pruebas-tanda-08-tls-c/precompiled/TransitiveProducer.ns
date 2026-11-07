@@ -1,0 +1,7 @@
+namespace PublishedTls
+{
+    public struct Bridge
+    {
+        public static int CheckWorker() { return tls_worker_check(); }
+    }
+}

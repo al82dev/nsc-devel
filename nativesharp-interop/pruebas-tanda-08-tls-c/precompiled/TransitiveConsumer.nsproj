@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>TransitiveConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="TransitiveConsumer.ns" />
+    <LibraryReference Include="TlsProducer.lib" />
+  </ItemGroup>
+</Project>
