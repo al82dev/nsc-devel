@@ -1,0 +1,11 @@
+namespace PublishedBool
+{
+    public struct Bridge
+    {
+        public static bool Read() { return flag; }
+        public static void Write(bool value) { flag = value; }
+        public static void Flip() { flag ^= true; }
+        public static int CRead() { return c_read_flag(); }
+        public static void CWrite(int value) { c_write_flag(value); }
+    }
+}

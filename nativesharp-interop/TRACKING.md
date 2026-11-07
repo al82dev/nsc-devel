@@ -498,6 +498,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     [Resultado](registro-commits/t08-bool-scalar-validacion.md).
     Preparado control específico de identidad MIR para el indicador de byte;
     aún sin ejecutar. [Detalle](registro-commits/t08-bool-scalar-cache-fixture.md).
+    Preparado productor precompilado y consumidor sin header para el global C
+    bool volatile, pendiente de ejecución. [Detalle](registro-commits/t08-bool-scalar-precompilado-fixture.md).
   - Por autorización del usuario, el gate usa el control C PE y el acceso NSC
     directo existentes, y variantes de escalares con importación y con carga
     dinámica. Los cuatro controles originales siguen disponibles como

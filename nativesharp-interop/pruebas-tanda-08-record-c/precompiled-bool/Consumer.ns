@@ -1,0 +1,11 @@
+int Main()
+{
+    if (PublishedBool.Bridge.Read() || PublishedBool.Bridge.CRead() != 0) return 1;
+    PublishedBool.Bridge.Write(true);
+    if (!PublishedBool.Bridge.Read() || PublishedBool.Bridge.CRead() != 1) return 2;
+    PublishedBool.Bridge.Flip();
+    if (PublishedBool.Bridge.Read() || PublishedBool.Bridge.CRead() != 0) return 3;
+    PublishedBool.Bridge.CWrite(1);
+    if (!PublishedBool.Bridge.Read()) return 4;
+    return 0;
+}

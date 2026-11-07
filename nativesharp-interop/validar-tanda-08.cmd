@@ -32,6 +32,7 @@ for %%T in (valores incompleto record-c union layout callback enum-funcion) do c
 for %%T in (global-puntero-const flotante-c inline-c prototipos-c typedef-c bitfields-c tls-c) do call :run_case %%T
 for %%T in (
   pruebas-tanda-08-incompleto\validar-opaco.cmd
+  pruebas-tanda-08-record-c\precompiled-bool\validar.cmd
   pruebas-tanda-08-callback\validar-record-precompilado.cmd
   pruebas-tanda-08-enum-funcion\validar-callback-precompilado.cmd
   pruebas-tanda-08-typedef-c\validar-puntero.cmd
