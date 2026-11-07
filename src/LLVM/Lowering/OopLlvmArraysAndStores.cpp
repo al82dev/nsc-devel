@@ -151,6 +151,30 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         LLVMValueRef value,
         std::string& error)
 {
+        if (clangMsVolatileGlobalBoolArray(node->children[0].get()) &&
+            node->children[1]->typeKey == "builtin:bool" &&
+            (node->operation == lexer::TokenKind::Amp || node->operation == lexer::TokenKind::Pipe ||
+             node->operation == lexer::TokenKind::Caret))
+        {
+            LLVMTypeRef byteType = LLVMInt8TypeInContext(context_);
+            LLVMValueRef raw = LLVMBuildLoad2(builder_, byteType, address, "c.bool.compound.load");
+            LLVMSetVolatile(raw, 1);
+            LLVMSetOrdering(raw, LLVMAtomicOrderingAcquire);
+            LLVMSetAlignment(raw, 1);
+            LLVMValueRef previous = LLVMBuildICmp(builder_, LLVMIntNE, raw,
+                LLVMConstInt(byteType, 0, 0), "c.bool.compound.previous");
+            LLVMValueRef updated = node->operation == lexer::TokenKind::Amp
+                ? LLVMBuildAnd(builder_, previous, value, "c.bool.compound.and")
+                : node->operation == lexer::TokenKind::Pipe
+                    ? LLVMBuildOr(builder_, previous, value, "c.bool.compound.or")
+                    : LLVMBuildXor(builder_, previous, value, "c.bool.compound.xor");
+            LLVMValueRef bits = LLVMBuildZExt(builder_, updated, byteType, "c.bool.compound.bits");
+            LLVMValueRef store = LLVMBuildStore(builder_, bits, address);
+            LLVMSetVolatile(store, 1);
+            LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
+            LLVMSetAlignment(store, 1);
+            return node->booleanValue ? previous : updated;
+        }
         if (node->children[0]->cppAtomicAccess)
         {
             const auto* target = node->children[0].get();
