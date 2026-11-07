@@ -2082,7 +2082,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
         (compoundBase == TokenKind::Amp || compoundBase == TokenKind::Pipe || compoundBase == TokenKind::Caret);
     const bool cBoolIntOperation = right.typeKey == "builtin:int" &&
         (compoundBase == TokenKind::Amp || compoundBase == TokenKind::Pipe || compoundBase == TokenKind::Caret ||
-         compoundBase == TokenKind::Plus || compoundBase == TokenKind::Minus || compoundBase == TokenKind::Star);
+         compoundBase == TokenKind::Plus || compoundBase == TokenKind::Minus || compoundBase == TokenKind::Star ||
+         compoundBase == TokenKind::Slash || compoundBase == TokenKind::Percent ||
+         compoundBase == TokenKind::LessLess || compoundBase == TokenKind::GreaterGreater);
     if (namespaceFunctionModel_ && left.typeKey == "builtin:bool" && (boolBitwise || cBoolIntOperation) &&
         target && target->kind() == ast::AstNodeKind::IndexExpression && target->first())
     {

@@ -784,7 +784,9 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
                 cBoolRoot->typeKey.starts_with("builtin:bool[") &&
                 (compound->operation == lexer::TokenKind::Amp || compound->operation == lexer::TokenKind::Pipe ||
                  compound->operation == lexer::TokenKind::Caret || compound->operation == lexer::TokenKind::Plus ||
-                 compound->operation == lexer::TokenKind::Minus || compound->operation == lexer::TokenKind::Star);
+                 compound->operation == lexer::TokenKind::Minus || compound->operation == lexer::TokenKind::Star ||
+                 compound->operation == lexer::TokenKind::Slash || compound->operation == lexer::TokenKind::Percent ||
+                 compound->operation == lexer::TokenKind::LessLess || compound->operation == lexer::TokenKind::GreaterGreater);
             if (!shift && !conversion.exists() && !narrowAtomic && !cBoolIntOperation)
             {
                 error = "compound assignment cannot convert its right-hand side from '" +

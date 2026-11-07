@@ -874,6 +874,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Clang confirmó división, residuo y desplazamientos compuestos de `_Bool` C
     volatile en ejemplos válidos; falta implementar y validar en NSC.
     [Referencia](registro-commits/t08-bool-compuesto-div-shift-referencia.md).
+    Implementación preparada en análisis, HIR y LLVM; pendiente construir y
+    validar. [Detalle](registro-commits/t08-bool-compuesto-div-shift-implementacion.md).
   - Preparada la admisión de seis operadores compuestos con `int` en el mismo
     arreglo C `volatile _Bool`; pendientes HIR, LLVM y validación agrupada.
     [Detalle](registro-commits/t08-bool-compuesto-int-analisis.md).

@@ -156,7 +156,9 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         const bool boolBitwise = node->operation == lexer::TokenKind::Amp ||
             node->operation == lexer::TokenKind::Pipe || node->operation == lexer::TokenKind::Caret;
         const bool boolIntArithmetic = node->operation == lexer::TokenKind::Plus ||
-            node->operation == lexer::TokenKind::Minus || node->operation == lexer::TokenKind::Star;
+            node->operation == lexer::TokenKind::Minus || node->operation == lexer::TokenKind::Star ||
+            node->operation == lexer::TokenKind::Slash || node->operation == lexer::TokenKind::Percent ||
+            node->operation == lexer::TokenKind::LessLess || node->operation == lexer::TokenKind::GreaterGreater;
         if (clangMsVolatileGlobalBoolArray(node->children[0].get()) &&
             ((boolOperand && boolBitwise) || (intOperand && (boolBitwise || boolIntArithmetic))))
         {
