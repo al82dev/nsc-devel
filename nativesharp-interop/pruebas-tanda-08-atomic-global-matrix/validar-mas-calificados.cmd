@@ -10,13 +10,17 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (MoreQualified.h MoreQualified.c MoreQualified.ns MoreQualified.nsproj MoreConstWrite.ns MoreConstEscape.ns MoreVolatileEscape.ns) do (
+for %%F in (MoreQualified.h MoreQualified.c MoreQualified.ns MoreQualified.nsproj MoreQualifiedProbe.c MoreConstWrite.ns MoreConstEscape.ns MoreVolatileEscape.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\MoreQualified.c" -o "%DEST%\more-qualified.obj"
 if errorlevel 1 exit /b 1
 llvm-lib.exe /nologo /out:"%DEST%\more-qualified.lib" "%DEST%\more-qualified.obj"
+if errorlevel 1 exit /b 1
+clang.exe -S -emit-llvm --target=x86_64-pc-windows-msvc -std=c11 -O0 "%DEST%\MoreQualifiedProbe.c" -o "%DEST%\clang.ll"
+if errorlevel 1 exit /b 1
+python "%~dp0verificar_mas_calificados.py" "%DEST%\clang.ll" clang
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\MoreQualified.nsproj" > "%DEST%\native.ll" 2> "%DEST%\native-ir.log"
 if errorlevel 1 (type "%DEST%\native-ir.log" & exit /b 1)
