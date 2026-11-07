@@ -1,0 +1,1 @@
+int Main() { short* s = atomic_short_volatile_pointee; long* l = atomic_long_volatile_pointee; double* d = atomic_double_volatile_pointee; return 0; }

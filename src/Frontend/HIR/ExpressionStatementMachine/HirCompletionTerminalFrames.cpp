@@ -385,7 +385,8 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
         indexedCGlobal = depth > 0 && depth <= 64 && provenance &&
             provenance->kind == ProjectOopHirNodeKind::NamespaceStateAddress;
     }
-    if ((resultType == "builtin:int" || resultType == "builtin:uint") && provenance &&
+    if ((resultType == "builtin:int" || resultType == "builtin:uint" || resultType == "builtin:short" ||
+         resultType == "builtin:long" || resultType == "builtin:double") && provenance &&
         (provenance->kind == ProjectOopHirNodeKind::NamespaceStateValue || indexedCGlobal) &&
         provenance->namespaceStateOrdinal && namespaceFunctionModel_ &&
         *provenance->namespaceStateOrdinal < namespaceFunctionModel_->states().size())
@@ -394,7 +395,9 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
         directCVolatileInt = state.isCppExternal && state.cppCGlobal &&
             ((indexedCGlobal ? state.declaredTypeKey.starts_with("builtin:int*[")
                              : state.declaredTypeKey == "builtin:int*") ||
-             (!indexedCGlobal && state.cppAtomicStorage && state.declaredTypeKey == "builtin:uint*")) &&
+             (!indexedCGlobal && state.cppAtomicStorage &&
+              (state.declaredTypeKey == "builtin:uint*" || state.declaredTypeKey == "builtin:short*" ||
+               state.declaredTypeKey == "builtin:long*" || state.declaredTypeKey == "builtin:double*"))) &&
             state.cppPointerPointeeVolatile &&
             state.cppMicrosoftVolatileSemantics == std::optional<bool>{true};
     }
@@ -464,7 +467,8 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
             if (directCVolatileInt && load->volatileAccess)
             {
                 load->cppMicrosoftVolatileSemantics = true;
-                load->cppAtomicAlignmentBytes = 4;
+                load->cppAtomicAlignmentBytes = resultType == "builtin:short" ? 2 :
+                    (resultType == "builtin:long" || resultType == "builtin:double") ? 8 : 4;
             }
             load->children.push_back(std::move(lowered));
             lowered = std::move(load);
@@ -481,7 +485,8 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
                 if (directCVolatileInt && volatilePointee)
                 {
                     address->cppMicrosoftVolatileSemantics = true;
-                    address->cppAtomicAlignmentBytes = 4;
+                    address->cppAtomicAlignmentBytes = resultType == "builtin:short" ? 2 :
+                        (resultType == "builtin:long" || resultType == "builtin:double") ? 8 : 4;
                 }
                 address->children.push_back(std::move(lowered));
                 lowered = std::move(address);

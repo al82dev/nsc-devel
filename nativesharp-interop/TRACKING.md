@@ -474,6 +474,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Punteros TLS atómicos a `short`, `long long` y `double` pasaron acceso y
     aritmética O0–O3; se verificaron desplazamientos y atomicidad en IR.
     [Evidencia](registro-commits/t08-tls-atomico-punteros-tamanos.md).
+    También pasaron sus apuntados `const` y `volatile`, con orden y alineación
+    contrastados con Clang y rechazo de pérdida de calificadores.
+    [Evidencia](registro-commits/t08-tls-atomico-punteros-tamanos-calificados.md).
   - El mismo objeto C TLS se contrastó en DLL sin arranque y con arranque CRT:
     el instrumento C observó índice cero y datos distintos de la plantilla en
     la primera, e índice uno y datos coincidentes en la segunda. Esto delimita

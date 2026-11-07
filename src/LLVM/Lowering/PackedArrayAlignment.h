@@ -83,14 +83,17 @@ inline std::optional<std::uint64_t> clangMsVolatileGlobalScalarArrayAlignment(
     return width;
 }
 
-inline bool clangMsVolatileDirectCIntPointee(const frontend::ProjectOopMirNode* node) noexcept
+inline std::optional<std::uint64_t> clangMsVolatileDirectCPointeeAlignment(const frontend::ProjectOopMirNode* node) noexcept
 {
-    return node && (node->kind == frontend::ProjectOopMirNodeKind::AddressValue ||
+    if (!node || !(node->kind == frontend::ProjectOopMirNodeKind::AddressValue ||
                     node->kind == frontend::ProjectOopMirNodeKind::PointerLoad ||
-                    node->kind == frontend::ProjectOopMirNodeKind::RawElementAddress) &&
-        (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") && node->volatileAccess &&
-        node->cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
-        node->cppAtomicAlignmentBytes == std::optional<std::uint64_t>{4};
+                    node->kind == frontend::ProjectOopMirNodeKind::RawElementAddress) || !node->volatileAccess ||
+        node->cppMicrosoftVolatileSemantics != std::optional<bool>{true}) return std::nullopt;
+    const auto width = node->typeKey == "builtin:short" ? 2U :
+        (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") ? 4U :
+        (node->typeKey == "builtin:long" || node->typeKey == "builtin:double") ? 8U : 0U;
+    if (!width || node->cppAtomicAlignmentBytes != std::optional<std::uint64_t>{width}) return std::nullopt;
+    return width;
 }
 
 // A C _Bool occupies one byte even though the NS expression value is i1.

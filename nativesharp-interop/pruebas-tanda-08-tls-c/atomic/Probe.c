@@ -164,5 +164,20 @@ void entry(void)
             *(__c11_atomic_fetch_add(&atomic_double_pointer, 1, __ATOMIC_SEQ_CST) + 1) != 3.75 ||
             *(__c11_atomic_fetch_sub(&atomic_double_pointer, 2, __ATOMIC_SEQ_CST) - 2) != 1.25) result = 69;
     }
+    if (result == 0) {
+        atomic_short_const_pointee = atomic_short_pointer_expected();
+        atomic_long_const_pointee = atomic_long_pointer_expected();
+        atomic_double_const_pointee = atomic_double_pointer_expected();
+        if (*atomic_short_const_pointee != 11 || atomic_long_const_pointee[1] != 22 || *atomic_double_const_pointee != 1.25) result = 70;
+        atomic_short_volatile_pointee = atomic_short_pointer_expected();
+        atomic_long_volatile_pointee = atomic_long_pointer_expected();
+        atomic_double_volatile_pointee = atomic_double_pointer_expected();
+        *atomic_short_volatile_pointee = 31; atomic_short_volatile_pointee[1] = 32;
+        *atomic_long_volatile_pointee = 41; atomic_long_volatile_pointee[1] = 42;
+        *atomic_double_volatile_pointee = 4.5; atomic_double_volatile_pointee[1] = 5.5;
+        if (*atomic_short_volatile_pointee != 31 || atomic_short_volatile_pointee[1] != 32 ||
+            *atomic_long_volatile_pointee != 41 || atomic_long_volatile_pointee[1] != 42 ||
+            *atomic_double_volatile_pointee != 4.5 || atomic_double_volatile_pointee[1] != 5.5) result = 71;
+    }
     ExitProcess((unsigned int)result);
 }

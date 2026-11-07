@@ -1,5 +1,17 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08: punteros TLS atómicos adicionales calificados
+
+Reproducir y corregir los apuntados `const` y `volatile` de los punteros TLS
+atómicos a `short`, `long long` y `double` ya admitidos. Clang genera accesos
+volatile acquire/release de 2 u 8 bytes, medidos en
+`A:/nsc-interop-build/t08-uint-pointer-repro/msvolatile.ll`. Presupuesto:
+inventario C, descenso HIR de desreferencia e índice, clasificación y descenso
+LLVM de accesos volatile, fixture TLS y verificador IR, seguimiento y registros.
+Reproducir antes de modificar producción; validar Clang y NSC O0–O3, rechazos
+de pérdida de calificadores y órdenes. Sin NSLink, LLVM externo ni C:; los
+controles DLL originales siguen intactos y abiertos.
+
 ## T08: punteros TLS atómicos de varios tamaños
 
 Reproducir y corregir acceso a `_Atomic(short*)`, `_Atomic(long long*)` y

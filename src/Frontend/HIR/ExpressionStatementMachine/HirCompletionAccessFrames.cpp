@@ -444,7 +444,8 @@ void ProjectOopHirModel::finishArrayRawIndex(
                 provenance->kind == ProjectOopHirNodeKind::NamespaceStateAddress;
         }
         if (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray &&
-            (elementType == "builtin:int" || elementType == "builtin:uint") && address->volatileAccess && provenance &&
+            (elementType == "builtin:int" || elementType == "builtin:uint" || elementType == "builtin:short" ||
+             elementType == "builtin:long" || elementType == "builtin:double") && address->volatileAccess && provenance &&
             (provenance->kind == ProjectOopHirNodeKind::NamespaceStateValue || indexedCGlobal) &&
             provenance->namespaceStateOrdinal && namespaceFunctionModel_ &&
             *provenance->namespaceStateOrdinal < namespaceFunctionModel_->states().size())
@@ -453,12 +454,15 @@ void ProjectOopHirModel::finishArrayRawIndex(
             if (state.isCppExternal && state.cppCGlobal &&
                 ((indexedCGlobal ? state.declaredTypeKey.starts_with("builtin:int*[")
                                  : state.declaredTypeKey == "builtin:int*") ||
-                 (!indexedCGlobal && state.cppAtomicStorage && state.declaredTypeKey == "builtin:uint*")) &&
+                 (!indexedCGlobal && state.cppAtomicStorage &&
+                  (state.declaredTypeKey == "builtin:uint*" || state.declaredTypeKey == "builtin:short*" ||
+                   state.declaredTypeKey == "builtin:long*" || state.declaredTypeKey == "builtin:double*"))) &&
                 state.cppPointerPointeeVolatile &&
                 state.cppMicrosoftVolatileSemantics == std::optional<bool>{true})
             {
                 address->cppMicrosoftVolatileSemantics = true;
-                address->cppAtomicAlignmentBytes = 4;
+                address->cppAtomicAlignmentBytes = elementType == "builtin:short" ? 2 :
+                    (elementType == "builtin:long" || elementType == "builtin:double") ? 8 : 4;
             }
         }
         if (frame.baseIsFixedArray && base &&

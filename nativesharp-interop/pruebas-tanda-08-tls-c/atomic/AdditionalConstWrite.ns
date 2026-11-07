@@ -1,0 +1,1 @@
+int Main() { *atomic_short_const_pointee = 1; *atomic_long_const_pointee = 1; *atomic_double_const_pointee = 1.0; return 0; }
