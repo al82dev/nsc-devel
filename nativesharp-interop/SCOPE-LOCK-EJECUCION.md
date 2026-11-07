@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004/015: punteros atómicos C a enteros adicionales
+
+Comprobar punteros atómicos no calificados a signed char, unsigned char,
+unsigned short y unsigned long long C como globales ordinarios y TLS en
+Windows x64. Reproducir rechazos y corregir solo las rutas causales; validar
+IR, avance por elemento, observación C y O0–O3, con regresión de atómicos.
+Fixtures y registros en `nativesharp-interop`, salidas en
+`A:/nsc-interop-build`. Preservar NSLink, LLVM externo, layout, metadata y C:.
+No acreditar apuntados calificados, otros tipos o aislamiento entre hilos.
+
 ## T08-004/015: escalares TLS atómicos long C de Windows
 
 Comprobar `_Thread_local _Atomic(long)` y `_Atomic(unsigned long)` de 32 bits,

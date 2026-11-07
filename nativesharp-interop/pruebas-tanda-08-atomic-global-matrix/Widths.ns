@@ -1,0 +1,12 @@
+int Main()
+{
+    if (width_i8 != null || width_u8 != null || width_u16 != null || width_u64 != null) return 1;
+    width_i8 = width_i8_expected();
+    width_u8 = width_u8_expected();
+    width_u16 = width_u16_expected();
+    width_u64 = width_u64_expected();
+    if (*(width_i8 += 1) != -11 || *(width_u8 += 1) != 21) return 2;
+    if (*(width_u16 += 1) != 31 || *(width_u64 += 1) != 41UL) return 3;
+    if (widths_check() != 1) return 4;
+    return 0;
+}
