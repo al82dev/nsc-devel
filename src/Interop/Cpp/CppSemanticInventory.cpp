@@ -224,7 +224,15 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
          global.type.element->sizeBits == std::optional<std::uint64_t>{16}) &&
         global.type.sizeBits == global.type.element->sizeBits && global.declarationAlignmentBits &&
         *global.declarationAlignmentBits >= *global.type.sizeBits;
-    const bool supportedAtomicTls = atomicIntTls || atomicLongTls || atomicUIntTls || atomicULongTls || atomicNarrowTls;
+    const bool atomicFloatTls = cLanguage && global.threadLocal && kind == CppTypeKind::Atomic &&
+        global.type.element && global.type.element->kind == CppTypeKind::Floating &&
+        ((global.type.element->unqualifiedCanonicalSpelling == "float" &&
+          global.type.element->sizeBits == std::optional<std::uint64_t>{32}) ||
+         (global.type.element->unqualifiedCanonicalSpelling == "double" &&
+          global.type.element->sizeBits == std::optional<std::uint64_t>{64})) &&
+        global.type.sizeBits == global.type.element->sizeBits && global.declarationAlignmentBits &&
+        *global.declarationAlignmentBits >= *global.type.sizeBits;
+    const bool supportedAtomicTls = atomicIntTls || atomicLongTls || atomicUIntTls || atomicULongTls || atomicNarrowTls || atomicFloatTls;
     const CppType* arrayElement = &global.type;
     std::size_t arrayDepth = 0;
     bool fixedArray = kind == CppTypeKind::Array;
@@ -251,7 +259,8 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         return failure("C/C++ global type is not yet mapped");
     if (supportedAtomicTls)
     {
-        const char* expected = atomicIntTls ? "builtin:int" : atomicLongTls ? "builtin:long" :
+        const char* expected = atomicFloatTls ? (global.type.sizeBits == std::optional<std::uint64_t>{32} ? "builtin:float" : "builtin:double") :
+            atomicIntTls ? "builtin:int" : atomicLongTls ? "builtin:long" :
             atomicUIntTls ? "builtin:uint" : atomicULongTls ? "builtin:ulong" :
             global.type.element->sizeBits == std::optional<std::uint64_t>{8}
                 ? (global.type.element->kind == CppTypeKind::SignedInteger ? "builtin:sbyte" : "builtin:byte")

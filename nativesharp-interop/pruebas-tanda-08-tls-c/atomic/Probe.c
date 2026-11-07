@@ -81,5 +81,13 @@ void entry(void)
         else if ((atomic_unsigned_wide += 4ULL) != ((1ULL << 62) + 4ULL)) result = 32;
         else if ((atomic_unsigned_wide /= 2ULL) != ((1ULL << 61) + 2ULL)) result = 33;
     }
+    if (result == 0) {
+        if (atomic_float != 1.25f || atomic_double != 2.5 || atomic_float_const != 3.5f) result = 36;
+        else {
+            atomic_float = -7.5f;
+            atomic_double = -12.25;
+            if (atomic_float != -7.5f || atomic_double != -12.25) result = 37;
+        }
+    }
     ExitProcess((unsigned int)result);
 }

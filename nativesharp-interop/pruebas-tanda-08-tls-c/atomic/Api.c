@@ -9,7 +9,10 @@ _Thread_local _Atomic(short) atomic_unsupported_short = 13;
 _Thread_local _Atomic(signed char) atomic_narrow_char = 0;
 _Thread_local _Atomic(unsigned short) atomic_narrow_ushort = 0;
 _Thread_local volatile _Atomic(short) atomic_narrow_volatile = 0;
-_Thread_local _Atomic(float) atomic_unsupported_float = 0;
+_Thread_local _Atomic(float) atomic_float = 1.25f;
+_Thread_local volatile _Atomic(double) atomic_double = 2.5;
+_Thread_local const _Atomic(float) atomic_float_const = 3.5f;
+_Thread_local _Atomic(_Bool) atomic_unsupported_bool = 0;
 int atomic_tls_read(void) { return atomic_tls; }
 int atomic_volatile_read(void) { return atomic_volatile; }
 typedef unsigned long Dword;

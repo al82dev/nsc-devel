@@ -229,11 +229,17 @@ LLVMValueRef OopLlvmImplementation::lowerLoadExpression(const frontend::ProjectO
                 LLVMValueRef address = staticFieldAddress(node, error);
                 LLVMTypeRef type = llvmType(node->typeKey, error);
                 if (address == nullptr || type == nullptr) return nullptr;
-                LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "static.field.load");
+                const bool atomicFloat = node->cppAtomicAccess &&
+                    (node->typeKey == "builtin:float" || node->typeKey == "builtin:double");
+                LLVMTypeRef loadType = atomicFloat
+                    ? (node->typeKey == "builtin:float" ? LLVMInt32TypeInContext(context_) : LLVMInt64TypeInContext(context_))
+                    : type;
+                LLVMValueRef load = LLVMBuildLoad2(builder_, loadType, address, "static.field.load");
                 if (node->volatileAccess) LLVMSetVolatile(load, 1);
                 if (node->cppAtomicAccess)
                 {
-                    const auto alignment = (node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte") ? 1U :
+                    const auto alignment = node->typeKey == "builtin:float" ? 4U : node->typeKey == "builtin:double" ? 8U :
+                        (node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte") ? 1U :
                         (node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort") ? 2U :
                         (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") ? 4U :
                         (node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong") ? 8U : 0U;
@@ -241,7 +247,7 @@ LLVMValueRef OopLlvmImplementation::lowerLoadExpression(const frontend::ProjectO
                         return failValue(error, "C atomic global load lacks supported type or alignment");
                     LLVMSetOrdering(load, LLVMAtomicOrderingSequentiallyConsistent);
                     LLVMSetAlignment(load, alignment);
-                    return load;
+                    return atomicFloat ? LLVMBuildBitCast(builder_, load, type, "atomic.float.value") : load;
                 }
                 if (isClangMsVolatileScalarGlobal(node))
                 {

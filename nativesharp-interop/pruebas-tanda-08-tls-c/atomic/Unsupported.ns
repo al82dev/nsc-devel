@@ -1,1 +1,1 @@
-int Main() { return (int)atomic_unsupported_float; }
+int Main() { if (atomic_unsupported_bool) return 1; return 0; }

@@ -646,11 +646,18 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         LLVMValueRef storedValue = cVolatileBool
             ? LLVMBuildZExt(builder_, value, LLVMInt8TypeInContext(context_), "c.bool.storage")
             : value;
+        const auto& storageTypeKey = node->children[0]->typeKey;
+        if (node->children[0]->cppAtomicAccess &&
+            (storageTypeKey == "builtin:float" || storageTypeKey == "builtin:double"))
+            storedValue = LLVMBuildBitCast(builder_, value,
+                storageTypeKey == "builtin:float" ? LLVMInt32TypeInContext(context_) : LLVMInt64TypeInContext(context_),
+                "atomic.float.bits");
         LLVMValueRef store = LLVMBuildStore(builder_, storedValue, address);
         if (node->children[0]->cppAtomicAccess)
         {
             const auto& typeKey = node->children[0]->typeKey;
-            const auto alignment = (typeKey == "builtin:sbyte" || typeKey == "builtin:byte") ? 1U :
+            const auto alignment = typeKey == "builtin:float" ? 4U : typeKey == "builtin:double" ? 8U :
+                (typeKey == "builtin:sbyte" || typeKey == "builtin:byte") ? 1U :
                 (typeKey == "builtin:short" || typeKey == "builtin:ushort") ? 2U :
                 (typeKey == "builtin:int" || typeKey == "builtin:uint") ? 4U :
                 (typeKey == "builtin:long" || typeKey == "builtin:ulong") ? 8U : 0U;

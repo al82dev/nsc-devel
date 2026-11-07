@@ -52,5 +52,9 @@ int Main()
     if ((atomic_unsigned_wide >>= 1) != (1UL << 62)) return 31;
     if ((atomic_unsigned_wide += 4UL) != ((1UL << 62) + 4UL)) return 32;
     if ((atomic_unsigned_wide /= 2UL) != ((1UL << 61) + 2UL)) return 33;
+    if (atomic_float != (float)1.25 || atomic_double != 2.5 || atomic_float_const != (float)3.5) return 36;
+    atomic_float = (float)-7.5;
+    atomic_double = -12.25;
+    if (atomic_float != (float)-7.5 || atomic_double != -12.25) return 37;
     return 0;
 }
