@@ -195,7 +195,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     const bool atomicIntTls = cLanguage && kind == CppTypeKind::Atomic &&
         global.type.element && global.type.element->kind == CppTypeKind::SignedInteger &&
         (global.type.element->unqualifiedCanonicalSpelling == "int" ||
-         (!global.threadLocal && global.type.element->unqualifiedCanonicalSpelling == "long")) &&
+         global.type.element->unqualifiedCanonicalSpelling == "long") &&
         global.type.element->sizeBits == std::optional<std::uint64_t>{32} &&
         global.type.sizeBits == std::optional<std::uint64_t>{32} &&
         global.declarationAlignmentBits && *global.declarationAlignmentBits >= 32;
@@ -208,7 +208,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     const bool atomicUIntTls = cLanguage && kind == CppTypeKind::Atomic &&
         global.type.element && global.type.element->kind == CppTypeKind::UnsignedInteger &&
         (global.type.element->unqualifiedCanonicalSpelling == "unsigned int" ||
-         (!global.threadLocal && global.type.element->unqualifiedCanonicalSpelling == "unsigned long")) &&
+         global.type.element->unqualifiedCanonicalSpelling == "unsigned long") &&
         global.type.element->sizeBits == std::optional<std::uint64_t>{32} &&
         global.type.sizeBits == std::optional<std::uint64_t>{32} &&
         global.declarationAlignmentBits && *global.declarationAlignmentBits >= 32;
