@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004/015: concurrencia de global atómico C no TLS
+
+Comprobar que C y NativeSharp actualizan el mismo `_Atomic(int)` global desde
+dos hilos sin perder incrementos, O0–O3, con C como productor del hilo y sin
+modificar NSLink. Fixture y registros bajo `nativesharp-interop`, artefactos
+en `A:/nsc-interop-build`. LLVM, layout, metadata y C: permanecen protegidos.
+
 ## T08-004/015: operaciones compuestas en atómicos globales C
 
 Comprobar de forma agrupada las operaciones compuestas de enteros, flotantes y

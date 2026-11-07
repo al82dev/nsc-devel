@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CAtomicGlobalThread</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Thread.ns" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" />
+    <CppLibraryReference Header="Thread.h" Language="C" Standard="c11" Library="api.lib" />
+  </ItemGroup>
+</Project>
