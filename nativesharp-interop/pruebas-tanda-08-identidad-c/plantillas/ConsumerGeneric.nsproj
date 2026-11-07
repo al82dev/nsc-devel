@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CGenConsumerGeneric</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ConsumerGeneric.ns" />
+    <LibraryReference Include="CGenProducer.lib" />
+  </ItemGroup>
+</Project>

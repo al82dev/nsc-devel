@@ -1,0 +1,7 @@
+int Main()
+{
+    if (PublishedGen.Bridge.Number() != 37) return 1;
+    if (PublishedGen.Bridge.Counter() != 5) return 2;
+    if (PublishedGen.Bridge.Count() != 3) return 3;
+    return 0;
+}

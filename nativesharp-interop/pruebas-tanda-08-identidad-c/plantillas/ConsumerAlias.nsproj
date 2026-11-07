@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CGenConsumerAlias</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ConsumerAlias.ns" />
+    <LibraryReference Include="CGenProducer.lib" />
+  </ItemGroup>
+</Project>

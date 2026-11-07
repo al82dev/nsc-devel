@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CGenConsumerGenericHeader</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ConsumerGenericHeader.ns" />
+    <CppLibraryReference Header="Gen.h" Language="C" Standard="c11" />
+    <LibraryReference Include="CGenProducer.lib" />
+  </ItemGroup>
+</Project>

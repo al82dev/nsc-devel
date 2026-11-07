@@ -1,0 +1,5 @@
+int Main()
+{
+    if (PublishedGen.Bridge.AliasOf<int>(1) != 2) return 3;
+    return 0;
+}

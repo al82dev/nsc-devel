@@ -6,6 +6,8 @@ rem 2. Restauracion de USR desde el NSMETA real de cinco productores, O0 a O3, d
 rem    modulo precompilado armado por la prueba y por la ruta completa del driver (LibraryReference).
 rem 3. Encabezados homonimos compilados con nsc (typedef y static inline).
 rem 4. Observacion: enum anonimo usado solo como tipo de campo publicado (no falla el validador).
+rem 5. Plantillas publicas que usan funciones, globales y alias C: el consumidor sin plantillas debe
+rem    ejecutar; los consumidores que instancian plantillas solo se observan (propuesta de metadata).
 rem Variables opcionales (valor por omision entre parentesis):
 rem   NSC_T08_BUILD  carpeta de build de NSC          (A:\nsc-interop-build\tanda1-ON)
 rem   NSC_T08_OUT    carpeta de salida y temporales   (A:\nsc-interop-build\tanda08-identidad-c)
@@ -22,6 +24,7 @@ set "NSC_WINDOWS_RUNTIME_LIBRARY=%NSC_T08_BUILD%\generated\NativeSharp.Runtime.W
 set "META_FIXTURES=%~dp0..\pruebas-tanda-08-meta-c"
 set "ANON_FIXTURES=%~dp0anonimos"
 set "HOMONYM_FIXTURES=%~dp0homonimos"
+set "TEMPLATE_FIXTURES=%~dp0plantillas"
 if not exist "%NSC_T08_OUT%\temp" mkdir "%NSC_T08_OUT%\temp"
 if errorlevel 1 exit /b 1
 set "TEMP=%NSC_T08_OUT%\temp"
@@ -44,6 +47,8 @@ for %%V in (ProducerAnonRecord ProducerAnonKind) do (
 call :homonyms
 if errorlevel 1 exit /b 1
 call :observe_anonymous_field
+call :templates
+if errorlevel 1 exit /b 1
 echo T08-002 C identity checks passed.
 exit /b 0
 
@@ -136,5 +141,47 @@ if errorlevel 1 (
   findstr /L /C:"error" "%DEST%\producer.log"
 ) else (
   echo OBSERVATION anonymous enum field producer succeeded.
+)
+exit /b 0
+
+rem :templates productor con plantillas publicas que usan declaraciones C; ver la propuesta de metadata.
+:templates
+set "DEST=%NSC_T08_OUT%\plantillas"
+if not exist "%DEST%" mkdir "%DEST%"
+for %%F in (Gen.h Gen.c) do (
+  copy /y "%TEMPLATE_FIXTURES%\%%F" "%DEST%\%%F" >nul
+  if errorlevel 1 exit /b 1
+)
+for %%P in (Producer ConsumerPlain ConsumerGeneric ConsumerGenericHeader ConsumerAlias) do (
+  copy /y "%TEMPLATE_FIXTURES%\%%P.nsproj" "%DEST%\%%P.nsproj" >nul
+  if errorlevel 1 exit /b 1
+  copy /y "%TEMPLATE_FIXTURES%\%%P.ns" "%DEST%\%%P.ns" >nul
+  if errorlevel 1 exit /b 1
+)
+clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 -O0 "%DEST%\Gen.c" -o "%DEST%\gen.obj"
+if errorlevel 1 exit /b 1
+llvm-lib.exe /nologo /out:"%DEST%\gen.lib" "%DEST%\gen.obj"
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=%NSC_T08_CLANG% --emit-project-oop-lib "%DEST%\Producer.nsproj" -O0 --no-artifact-cache -o "%DEST%\CGenProducer.lib" > "%DEST%\producer.log" 2>&1
+if errorlevel 1 (
+  type "%DEST%\producer.log"
+  exit /b 1
+)
+nsc.exe --cpp-clang-root=%NSC_T08_CLANG% --emit-project-oop-exe "%DEST%\ConsumerPlain.nsproj" -O0 --no-artifact-cache -o "%DEST%\ConsumerPlain.exe" > "%DEST%\ConsumerPlain.log" 2>&1
+if errorlevel 1 (
+  type "%DEST%\ConsumerPlain.log"
+  exit /b 1
+)
+"%DEST%\ConsumerPlain.exe"
+if errorlevel 1 exit /b 1
+echo Template producer: consumer of non-template C uses compiled and ran.
+for %%C in (ConsumerGeneric ConsumerGenericHeader ConsumerAlias) do (
+  nsc.exe --cpp-clang-root=%NSC_T08_CLANG% --emit-project-oop-exe "%DEST%\%%C.nsproj" -O0 --no-artifact-cache -o "%DEST%\%%C.exe" > "%DEST%\%%C.log" 2>&1
+  if errorlevel 1 (
+    echo OBSERVATION %%C failed:
+    findstr /L /C:"error" "%DEST%\%%C.log"
+  ) else (
+    echo OBSERVATION %%C compiled.
+  )
 )
 exit /b 0

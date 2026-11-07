@@ -1,0 +1,6 @@
+int Main()
+{
+    if (PublishedGen.Bridge.Echo<int>(9) != 9) return 1;
+    if (PublishedGen.Bridge.CounterOf<int>(1) != 5) return 2;
+    return 0;
+}

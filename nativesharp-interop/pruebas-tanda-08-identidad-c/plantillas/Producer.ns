@@ -1,0 +1,12 @@
+namespace PublishedGen
+{
+    public class Bridge
+    {
+        public static int Number() { return gen_c_number(); }
+        public static int Counter() { return gen_c_counter; }
+        public static T Echo<T>(T value) { gen_c_number(); return value; }
+        public static int CounterOf<T>(T value) { return gen_c_counter; }
+        public static GenCount Count() { return 3; }
+        public static int AliasOf<T>(T value) { GenCount count = 2; return count; }
+    }
+}
