@@ -476,7 +476,10 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     [Evidencia](registro-commits/tls-dll-nativesharp-dos-hilos.md).
     Un `int*` TLS mutable pasó asignación, desreferencia y aislamiento entre
     hilos con biblioteca estática y DLL en O0–O3; arreglos y punteros con
-    calificadores siguen pendientes. [Evidencia](registro-commits/tls-puntero-evidencia.md).
+    calificadores y tipos adicionales se evalúan por separado. [Evidencia](registro-commits/tls-puntero-evidencia.md).
+    `double*`, `const int*`, `volatile int*`, `int* volatile` e `int* const`
+    TLS pasaron O0–O3 en estático y DLL, con controles de calificadores.
+    [Evidencia](registro-commits/tls-punteros-calificadores-evidencia.md).
     Arreglos TLS `int[2]`, `int[3]` e `int[2][3]` pasaron lectura, escritura
     y aislamiento con biblioteca estática y DLL en O0–O3; otros elementos y
     calificadores siguen pendientes. [Evidencia](registro-commits/tls-arreglo-evidencia.md).
