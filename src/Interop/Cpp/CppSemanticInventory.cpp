@@ -255,6 +255,17 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
            (global.type.element->element->kind == CppTypeKind::Floating &&
             global.type.element->element->unqualifiedCanonicalSpelling == "double" &&
             global.type.element->element->sizeBits == std::optional<std::uint64_t>{64}) ||
+         (!global.type.element->element->isConst && !global.type.element->element->isVolatile &&
+          ((global.type.element->element->kind == CppTypeKind::SignedInteger &&
+            global.type.element->element->unqualifiedCanonicalSpelling == "signed char" &&
+            global.type.element->element->sizeBits == std::optional<std::uint64_t>{8}) ||
+           (global.type.element->element->kind == CppTypeKind::UnsignedInteger &&
+            ((global.type.element->element->unqualifiedCanonicalSpelling == "unsigned char" &&
+              global.type.element->element->sizeBits == std::optional<std::uint64_t>{8}) ||
+             (global.type.element->element->unqualifiedCanonicalSpelling == "unsigned short" &&
+              global.type.element->element->sizeBits == std::optional<std::uint64_t>{16}) ||
+             (global.type.element->element->unqualifiedCanonicalSpelling == "unsigned long long" &&
+              global.type.element->element->sizeBits == std::optional<std::uint64_t>{64}))))) ||
          (global.type.element->element->sizeBits == std::optional<std::uint64_t>{32} &&
           ((global.type.element->element->kind == CppTypeKind::Floating &&
             global.type.element->element->unqualifiedCanonicalSpelling == "float") ||
@@ -292,7 +303,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     if (supportedAtomicTls)
     {
         const auto pointerElement = atomicPointerTls ? global.type.element->element->unqualifiedCanonicalSpelling : "";
-        const char* expected = atomicPointerTls ? (pointerElement == "unsigned int" || pointerElement == "unsigned long" ? "builtin:uint*" : pointerElement == "short" ? "builtin:short*" : pointerElement == "long long" ? "builtin:long*" : pointerElement == "double" ? "builtin:double*" : pointerElement == "float" ? "builtin:float*" : "builtin:int*") : atomicBoolTls ? "builtin:bool" :
+        const char* expected = atomicPointerTls ? (pointerElement == "signed char" ? "builtin:sbyte*" : pointerElement == "unsigned char" ? "builtin:byte*" : pointerElement == "unsigned short" ? "builtin:ushort*" : pointerElement == "unsigned long long" ? "builtin:ulong*" : pointerElement == "unsigned int" || pointerElement == "unsigned long" ? "builtin:uint*" : pointerElement == "short" ? "builtin:short*" : pointerElement == "long long" ? "builtin:long*" : pointerElement == "double" ? "builtin:double*" : pointerElement == "float" ? "builtin:float*" : "builtin:int*") : atomicBoolTls ? "builtin:bool" :
             atomicFloatTls ? (global.type.sizeBits == std::optional<std::uint64_t>{32} ? "builtin:float" : "builtin:double") :
             atomicIntTls ? "builtin:int" : atomicLongTls ? "builtin:long" :
             atomicUIntTls ? "builtin:uint" : atomicULongTls ? "builtin:ulong" :
