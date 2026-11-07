@@ -509,8 +509,31 @@ static bool provideGlobalsWithLookup(
         if (!entry.cLanguage) return false;
         const auto& name = type.unqualifiedCanonicalSpelling;
         if (entry.declaration.threadLocal)
-            return type.kind == CppTypeKind::SignedInteger && name == "int" &&
-                type.sizeBits == std::optional<std::uint64_t>{32} && !type.isConst && !type.isVolatile;
+        {
+            if (type.isConst || type.isVolatile) return false;
+            if (type.kind == CppTypeKind::SignedInteger)
+                return (name == "int" && type.sizeBits == std::optional<std::uint64_t>{32}) ||
+                    (name == "short" && type.sizeBits == std::optional<std::uint64_t>{16});
+            if (type.kind == CppTypeKind::UnsignedInteger)
+                return (name == "unsigned char" && type.sizeBits == std::optional<std::uint64_t>{8}) ||
+                    (name == "unsigned long long" && type.sizeBits == std::optional<std::uint64_t>{64});
+            if (type.kind == CppTypeKind::Floating)
+                return (name == "float" && type.sizeBits == std::optional<std::uint64_t>{32}) ||
+                    (name == "double" && type.sizeBits == std::optional<std::uint64_t>{64});
+            if (type.kind == CppTypeKind::Boolean || type.kind == CppTypeKind::Enumeration) return true;
+            if (type.kind == CppTypeKind::Atomic)
+                return type.element && type.element->kind == CppTypeKind::SignedInteger &&
+                    type.element->unqualifiedCanonicalSpelling == "int" &&
+                    type.element->sizeBits == std::optional<std::uint64_t>{32};
+            if (type.kind == CppTypeKind::Array)
+                return type.arrayCount == std::optional<std::uint64_t>{3} && type.element &&
+                    type.element->kind == CppTypeKind::SignedInteger &&
+                    type.element->unqualifiedCanonicalSpelling == "int";
+            return type.kind == CppTypeKind::Pointer && type.element &&
+                type.element->kind == CppTypeKind::SignedInteger &&
+                type.element->unqualifiedCanonicalSpelling == "int" &&
+                !type.element->isConst && !type.element->isVolatile;
+        }
         if (type.kind == CppTypeKind::Boolean || type.kind == CppTypeKind::Enumeration ||
             type.kind == CppTypeKind::Atomic)
             return !type.isConst && !type.isVolatile;
