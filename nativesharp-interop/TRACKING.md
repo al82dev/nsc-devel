@@ -463,6 +463,15 @@ las correcciones. [Resultado](registro-commits/t08-validacion-link-lib-auto.md),
     global y fallan dentro de namespace por nombre desconocido. Es necesario
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
 - [ ] T08-004. Importar declaraciones de variables globales C.
+  - El TLS C `_Atomic(int)` también pasó asignaciones bit a bit, multiplicación,
+    desplazamientos, división y residuo en los controles preparados O0–O3;
+    se comprobó `cmpxchg` y una prueba de concurrencia, además de divisor cero
+    con y sin `volatile`. El alcance sigue limitado y no cierra el ítem.
+    [Operaciones](registro-commits/t08-tls-atomico-bitwise.md),
+    [multiplicación](registro-commits/t08-tls-atomico-multiplicacion.md),
+    [desplazamientos](registro-commits/t08-tls-atomico-desplazamientos.md),
+    [división](registro-commits/t08-tls-atomico-division-validacion.md),
+    [divisor cero](registro-commits/t08-tls-atomico-divisor-cero.md).
   - Un global C `_Thread_local _Atomic(int)` pasó lectura, escritura, suma,
     resta y pre/post incremento en O0–O3, con IR `seq_cst` y contención entre
     hilos; también pasaron los casos `const` y `volatile` preparados. Faltan
