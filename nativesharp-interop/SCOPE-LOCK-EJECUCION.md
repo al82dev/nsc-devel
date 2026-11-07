@@ -1,5 +1,16 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Proyección inicial de TLS C atómico int
+
+Permitir la proyección únicamente de `_Thread_local _Atomic(int)` con tamaño y
+alineación comprobados; preservar `const` y `volatile` del almacenamiento y
+rechazar direcciones y pasos `ref/out/in` hasta soportar punteros atómicos.
+Los descensos preparados deben emitir `seq_cst` y actualizaciones indivisibles;
+operaciones todavía no implementadas deben fallar explícitamente. Presupuesto:
+`CppSemanticInventory.cpp`, `IdentifierAnalyzer.cpp`, fixture atómico y sus
+validadores, tracking y registros. Esto es un avance parcial, no cierra el
+soporte de atómicos ni la tanda. Sin NSLink, LLVM externo ni C:.
+
 ## Global C TLS de tipo atómico
 
 La reproducción en `A:/nsc-interop-build/atomic-probe` rechaza un global C
