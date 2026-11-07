@@ -582,8 +582,11 @@ static bool provideGlobalsWithLookup(
         const CppType* pointee = type.element.get();
         if (pointee->kind == CppTypeKind::Pointer && !pointee->isConst && !pointee->isVolatile)
             pointee = pointee->element.get();
-        return pointee && pointee->kind == CppTypeKind::SignedInteger &&
-            pointee->unqualifiedCanonicalSpelling == "int";
+        return pointee && ((pointee->kind == CppTypeKind::SignedInteger &&
+            pointee->unqualifiedCanonicalSpelling == "int") ||
+            (!pointee->isConst && !pointee->isVolatile &&
+             (pointee->kind == CppTypeKind::Record || pointee->kind == CppTypeKind::Enumeration ||
+              pointee->kind == CppTypeKind::Function)));
     };
     std::set<std::pair<std::size_t, std::string_view>> availableNames;
     for (const auto& entry : entries)
