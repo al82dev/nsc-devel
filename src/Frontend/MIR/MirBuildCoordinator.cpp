@@ -670,6 +670,7 @@ void ProjectOopMirModel::buildNamespaceStateFields(
         staticField.isImported = state.isPrecompiled;
         staticField.isCppExternal = state.isCppExternal;
         staticField.cppDllImport = state.cppDllImport;
+        staticField.cppThreadLocal = state.cppThreadLocal;
         staticField.storageSymbol = state.storageName;
         staticField.accessorName = "__nsc_get_" + state.storageName;
         staticField.namespaceStateOrdinal = stateOrdinal;

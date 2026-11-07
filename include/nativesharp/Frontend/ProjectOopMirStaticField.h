@@ -55,5 +55,6 @@ struct ProjectOopMirStaticField final
     std::optional<std::size_t> namespaceStateOrdinal = std::nullopt;
     SourceRange sourceRange;
     std::string debugDisplayName;
+    bool cppThreadLocal = false;
 };
 }
