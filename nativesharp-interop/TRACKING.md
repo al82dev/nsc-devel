@@ -537,6 +537,9 @@ las correcciones. [Resultado](registro-commits/t08-validacion-link-lib-auto.md),
     La misma selección pasó cuando las dependencias de la biblioteca intermedia
     se resuelven desde `LibraryReferenceRoot`, en `nsc build` y emisión directa.
     [Evidencia](registro-commits/t08-tls-raiz-biblioteca-resultado.md).
+    `NS_LIB_ROOT` se propaga a la clausura de `nsc build`; pasaron controles de
+    respaldo, selección con y sin TLS y prioridad de raíz explícita.
+    [Evidencia](registro-commits/t08-tls-raiz-respaldo-resultado.md).
     Un productor NativeSharp precompilado también accedió al TLS de una DLL C
     con importaciones reales; su consumidor sin header pasó O0–O3 y aislamiento.
     La repetición ocultó la copia temporal del header durante cada compilación
