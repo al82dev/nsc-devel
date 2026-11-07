@@ -195,19 +195,25 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     const CppType* arrayElement = &global.type;
     std::size_t arrayDepth = 0;
     bool fixedArray = kind == CppTypeKind::Array;
+    bool arrayVolatile = false;
     while (fixedArray && arrayElement->kind == CppTypeKind::Array)
     {
         if (!arrayElement->arrayCount || *arrayElement->arrayCount == 0 || !arrayElement->element ||
-            arrayElement->isConst || arrayElement->isVolatile || ++arrayDepth > 64)
+            ++arrayDepth > 64)
         { fixedArray = false; break; }
+        arrayVolatile |= arrayElement->isVolatile;
         arrayElement = arrayElement->element.get();
     }
-    const bool intArrayTls = fixedArray && arrayElement->kind == CppTypeKind::SignedInteger &&
-        arrayElement->sizeBits == 32 && !arrayElement->isConst && !arrayElement->isVolatile;
-    const bool supportedVolatileTls = !global.type.isVolatile ||
+    const bool scalarArrayElement = arrayElement->kind == CppTypeKind::Boolean ||
+        arrayElement->kind == CppTypeKind::SignedInteger || arrayElement->kind == CppTypeKind::UnsignedInteger ||
+        arrayElement->kind == CppTypeKind::Floating;
+    const bool supportedVolatileArray = !(arrayVolatile || arrayElement->isVolatile) ||
+        (arrayElement->kind == CppTypeKind::SignedInteger && arrayElement->sizeBits == 32);
+    const bool scalarArrayTls = fixedArray && scalarArrayElement && supportedVolatileArray;
+    const bool supportedVolatileTls = !global.type.isVolatile || scalarArrayTls ||
         (kind == CppTypeKind::SignedInteger && global.type.sizeBits == 32);
     if (global.threadLocal && (!cLanguage || global.dllImport ||
-        (!scalarTls && !intPointerTls && !intArrayTls) || !supportedVolatileTls))
+        (!scalarTls && !intPointerTls && !scalarArrayTls) || !supportedVolatileTls))
         return failure("thread-local C/C++ global is not yet projected");
     const auto type = mapGlobalType(global.type, projectOrdinal, moduleName, lookup, cLanguage);
     if (!type || global.type.kind == CppTypeKind::Void)
