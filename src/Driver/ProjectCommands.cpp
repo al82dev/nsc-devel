@@ -1340,7 +1340,8 @@ bool resolveBuildSettings(
     debug = options.debug.value_or(sidecar.build.debugInformation == "none" ? "-g0" :
         sidecar.build.debugInformation == "line-tables-only" ? "-gline-tables-only" : "-g");
     bool lldConfigured = false;
-    if (const auto configured = environmentValue("NSC_LINKER"))
+    const auto configuredLinker = environmentValue("NSC_LINKER");
+    if (const auto& configured = configuredLinker)
     {
         std::string name = fs::path(*configured).filename().string();
         std::transform(name.begin(), name.end(), name.begin(),
@@ -1353,7 +1354,7 @@ bool resolveBuildSettings(
         message = "linker must be NSLink or LLD";
         return false;
     }
-    if ((linker == "LLD") != lldConfigured)
+    if (configuredLinker && (linker == "LLD") != lldConfigured)
     {
         message = "project linker selection conflicts with NSC_LINKER; configure lld-link explicitly for LLD";
         return false;
@@ -1610,6 +1611,7 @@ ExitCode executeConfiguredBuild(
             ExitCode::InternalError);
 
     std::vector<std::string> owned{action, generated.string(), "-" + optimization, debug};
+    owned.push_back("--nsc-linker-selection=" + linker);
     if (linkTimeOptimization != "none") owned.push_back("-flto=" + linkTimeOptimization);
     appendNestedCompilerOptions(options, libraryReferenceRoot, compilerJobs, owned);
     const auto projects = manifest.projectGraph().projects();
