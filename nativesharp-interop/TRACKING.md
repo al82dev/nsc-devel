@@ -515,6 +515,11 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     referencia estática y DLL en O0–O3; se contrastó el IR con Clang y se
     ejecutaron regresiones dirigidas. No se cierra el ítem ni la tanda.
     [Resultado](registro-commits/t08-global-static-contratos-validacion.md).
+    Lecturas y escrituras de punteros atómicos internos a struct C y a _Bool
+    pasaron O0–O3 y controles IR, con referencias estática y DLL; también
+    pasaron regresiones de punteros atómicos anteriores. No acredita otras
+    formas ni operaciones compuestas para los nuevos apuntados.
+    [Resultado](registro-commits/t08-atomic-punteros-generales-validacion.md).
   - El global C `_Atomic(int)` sin TLS fue rechazado como tipo no mapeado.
     Una corrección limitada de su proyección pasó O0–O3, comprobación de IR
     atómico y regresión TLS. [Resultado](registro-commits/t08-atomic-global-int-validacion.md).
