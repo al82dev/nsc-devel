@@ -15,5 +15,7 @@ La construcción incremental posterior terminó con código 0. La primera
 versión del fixture pasó el ejecutable TLS y la biblioteca estática con NSC
 build `f4df02e72f872c83`; también pasaron los controles anteriores de
 selección y la matriz TLS con LLD O0–O3. Se amplió el fixture para comprobar
-una DLL y un segundo enlace incremental; esas dos partes aún están pendientes
-de ejecución.
+una DLL y un segundo enlace incremental. La versión ampliada pasó con NSC
+build `b910fa13ea6d5855`, incluido el consumidor NativeSharp de la DLL y un
+acierto del enlace incremental. Sigue pendiente contrastar cambio de
+enlazador y herramienta ausente.
