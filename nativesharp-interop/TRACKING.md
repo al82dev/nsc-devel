@@ -496,6 +496,9 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     El mismo conjunto pasó con arreglos TLS de `unsigned int`, `double`,
     `_Bool`, `const int` y `volatile int`; se comprobó el rechazo de escritura
     `const` y el IR `volatile`. [Evidencia](registro-commits/tls-arreglo-escalares-evidencia.md).
+    Arreglos TLS `volatile` de `unsigned int`, `long long`, `double` y `_Bool`
+    pasaron en estático y DLL O0–O3, con comprobación del IR por tipo.
+    [Evidencia](registro-commits/tls-arreglos-volatile-evidencia.md).
     Una DLL de escalares sin importaciones falla ya en el control C de TLS;
     una variante con importación Win32 pasó en NSC O0–O3. Ambas permanecen en
     el gate mientras se investiga la diferencia. [Evidencia](registro-commits/tls-dll-escalares-cero-investigacion.md).
