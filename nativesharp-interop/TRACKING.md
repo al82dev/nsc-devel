@@ -878,6 +878,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     construcción y validación pendientes. [Detalle](registro-commits/t08-bool-compuesto-flotante-implementacion.md).
     Preparados controles de flotantes, cero y NaN; pendientes de ejecución.
     [Detalle](registro-commits/t08-bool-compuesto-flotante-fixture.md).
+    Validación posterior: construcción incremental y fixture record-c pasaron
+    O0–O3, incluyendo NaN y `fcmp une`. [Resultado](registro-commits/t08-bool-compuesto-flotante-validacion.md).
   - Clang confirmó promociones de bool e enteros de 8/16 bits y el ancho del
     valor desplazado frente a un contador ancho; falta implementarlas y
     validarlas. [Referencia](registro-commits/t08-bool-compuesto-promociones-referencia.md).
