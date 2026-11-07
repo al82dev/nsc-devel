@@ -310,9 +310,7 @@ for %%O in (0 1 2 3) do (
 )
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\volatile-bool-compound.ll" 2>&1
 if errorlevel 1 exit /b 1
-findstr /c:"c.bool.compound.load = load atomic volatile i8" "%DEST%\volatile-bool-compound.ll" >nul
-if errorlevel 1 exit /b 1
-findstr /c:"store atomic volatile i8" "%DEST%\volatile-bool-compound.ll" >nul
+python "%~dp0verificar_bool_compuesto_ir.py" "%DEST%\volatile-bool-compound.ll"
 if errorlevel 1 exit /b 1
 copy /y "%~dp0NativeBoolCompound.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1

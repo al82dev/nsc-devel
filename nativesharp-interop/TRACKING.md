@@ -880,6 +880,11 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     Preparado el fixture positivo O0–O3 para las tres operaciones; conserva el
     control negativo del bool nativo y está pendiente de ejecución.
     [Detalle](registro-commits/t08-bool-compuesto-fixture.md).
+    Actualización: construcción incremental y fixture record-c pasaron, con
+    O0–O3 para las tres operaciones y rechazo de bool nativo. IR O0 verificó
+    cuatro lecturas acquire y escrituras release de byte con alineación 1.
+    La validación completa posterior y demás operaciones siguen pendientes.
+    [Resultado](registro-commits/t08-bool-compuesto-validacion.md).
   - Clang confirmó para `volatile _Bool` compuesto la promoción a `int`,
     conversión del resultado a cero/no cero y carga acquire/escritura release
     de i8. NSC aún rechaza el caso; el bool nativo mantiene su propia regla.
