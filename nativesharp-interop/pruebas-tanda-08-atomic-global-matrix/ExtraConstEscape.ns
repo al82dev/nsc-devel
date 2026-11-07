@@ -1,0 +1,1 @@
+int Main() { int* value = extra_const_ptr; return 0; }
