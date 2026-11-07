@@ -1,0 +1,14 @@
+int Main()
+{
+    if ((value_u32 += 39U) != 42U) return 1;
+    if ((value_i64 += 39L) != 43L || (value_u64 += 39UL) != 44UL) return 2;
+    if ((value_i8 -= 39) != -45 || (value_u16 += 39) != 46) return 3;
+    if ((value_f32 += (float)2.25) != (float)3.5) return 4;
+    if ((value_f64 += 2.0) != 4.5) return 5;
+    value_bool = true;
+    value_pointer = expected_pointer();
+    if (*(value_pointer += 1) != 74) return 6;
+    if (*(value_pointer -= 1) != 73) return 7;
+    if (verify_values() != 1) return 8;
+    return 0;
+}

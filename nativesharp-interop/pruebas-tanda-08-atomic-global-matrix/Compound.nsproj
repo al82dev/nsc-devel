@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CAtomicGlobalCompound</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Compound.ns" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" />
+  </ItemGroup>
+</Project>

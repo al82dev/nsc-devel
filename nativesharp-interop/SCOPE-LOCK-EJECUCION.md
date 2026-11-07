@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004/015: operaciones compuestas en atómicos globales C
+
+Comprobar de forma agrupada las operaciones compuestas de enteros, flotantes y
+punteros atómicos C globales no TLS ya importados, contrastando IR con Clang y
+valores con una función C en O0–O3. Se permiten archivos de la matriz existente,
+tracking, gate y registros; compilación incremental en `A:/nsc-interop-build`.
+No modificar producción hasta demostrar una causa concreta. NSLink, LLVM,
+layout, metadata y C: permanecen protegidos.
+
 ## T08-004/015: matriz de globales C atómicos no TLS
 
 Comprobar si los tipos escalares y punteros C atómicos ya admitidos en TLS se
