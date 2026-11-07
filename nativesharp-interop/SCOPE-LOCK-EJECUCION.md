@@ -4312,3 +4312,14 @@ delimitar la proyección semántica y respetar la lógica ya existente de
 demostrados. No modificar NSLink, LLVM externo ni C:; no cerrar T08-004 por
 estas muestras.
 
+# Identificación provisional de TLS de DLL
+
+El fixture directo demuestra que NSC proyecta una declaración TLS sin
+`dllimport` como TLS estático incluso cuando su referencia indica `Runtime`.
+Hasta implementar el acceso por hilo a la DLL, conservar esa distinción y
+rechazar explícitamente el global TLS vinculado a una referencia con runtime.
+Presupuesto: `src/Interop/Cpp/CppSemanticInventory.cpp`, prueba de observación
+en `pruebas-tanda-08-tls-c/directo`, seguimiento y registro Markdown. No
+rechazar TLS estático ni modificar NSLink, LLVM o C:. La barrera no constituye
+soporte TLS de DLL ni cierra la tanda.
+

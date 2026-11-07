@@ -408,7 +408,21 @@ static bool provideGlobalsWithLookup(
                 state.name = demand.lookupName;
                 state.isCppExternal = true;
                 state.accessibility = frontend::NamespaceFunctionAccessibility::Public;
-                if (selected.candidate)
+                const auto references = graph.projects()[owner].cppLibraryReferences();
+                const auto fromRuntimeLibrary = [&](std::size_t index) {
+                    const auto referenceIndex = entries[index].referenceIndex;
+                    return referenceIndex >= references.size() ||
+                        !references[referenceIndex].runtimePath.empty();
+                };
+                const bool dllTls = selected.candidate && selected.candidate->threadLocal &&
+                    (std::any_of(selected.declarationIndices.begin(), selected.declarationIndices.end(), fromRuntimeLibrary) ||
+                     std::any_of(selected.aliasIndices.begin(), selected.aliasIndices.end(), fromRuntimeLibrary));
+                if (dllTls)
+                {
+                    state.declaredTypeKey = "builtin:int"; // Body analysis reports the unsupported import.
+                    state.cppImportError = "thread-local C/C++ global from a runtime library is not yet supported";
+                }
+                else if (selected.candidate)
                 {
                     state.declaredTypeKey = selected.candidate->typeKey;
                     state.storageName = selected.candidate->externalSymbol;
