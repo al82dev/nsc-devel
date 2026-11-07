@@ -10356,6 +10356,27 @@ int main(int argc, char** argv)
                      "Clang USRs distinguish overloaded C++ methods and identify their members and namespace");
     }
 
+    auto atomicSession = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C,
+        "extern _Thread_local _Atomic(int) atomic_tls; extern _Atomic(int)* atomic_ptr; "
+        "extern volatile _Atomic(int) volatile_atomic;"));
+    ok &= expect(static_cast<bool>(atomicSession), "C session opens atomic declarations");
+    if (atomicSession)
+    {
+        const auto globals = atomicSession->globalsSnapshot();
+        const auto* atomicTls = globals ? globalByName(*globals, "atomic_tls") : nullptr;
+        const auto* atomicPtr = globals ? globalByName(*globals, "atomic_ptr") : nullptr;
+        const auto* volatileAtomic = globals ? globalByName(*globals, "volatile_atomic") : nullptr;
+        ok &= expect(atomicTls && atomicTls->threadLocal && atomicTls->type.kind == CppTypeKind::Atomic &&
+                     atomicTls->type.element && atomicTls->type.element->kind == CppTypeKind::SignedInteger &&
+                     atomicTls->type.sizeBits == std::optional<std::uint64_t>{32} &&
+                     atomicTls->type.alignmentBits == std::optional<std::uint64_t>{32} &&
+                     atomicPtr && atomicPtr->type.kind == CppTypeKind::Pointer && atomicPtr->type.element &&
+                     atomicPtr->type.element->kind == CppTypeKind::Atomic &&
+                     volatileAtomic && volatileAtomic->type.kind == CppTypeKind::Atomic &&
+                     volatileAtomic->type.isVolatile,
+                     "Clang snapshots distinguish atomic storage, pointer to atomic, and volatile atomic");
+    }
+
     auto alignedSession = open(factory, options(argv[1], argv[2], argv[3], CppLanguageMode::C,
         "__declspec(align(16)) extern volatile int aligned_global; extern int incomplete_global[];\n"));
     ok &= expect(static_cast<bool>(alignedSession), "Clang opens aligned and incomplete global declarations");
