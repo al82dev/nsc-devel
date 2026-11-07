@@ -135,5 +135,12 @@ void entry(void)
         *atomic_pointer_volatile_pointee = 81;
         if (*atomic_pointer_volatile_pointee != 81) result = 60;
     }
+    if (result == 0) {
+        atomic_unsigned_pointer = atomic_unsigned_pointer_expected();
+        if (*atomic_unsigned_pointer != 0xffffffffU) result = 61;
+        else if (*(__c11_atomic_fetch_add(&atomic_unsigned_pointer, 1, __ATOMIC_SEQ_CST) + 1) != 74U) result = 62;
+        else if (*(__c11_atomic_fetch_add(&atomic_unsigned_pointer, 1, __ATOMIC_SEQ_CST) + 1) != 75U) result = 63;
+        else if (*(__c11_atomic_fetch_sub(&atomic_unsigned_pointer, 2, __ATOMIC_SEQ_CST) - 2) != 0xffffffffU) result = 64;
+    }
     ExitProcess((unsigned int)result);
 }

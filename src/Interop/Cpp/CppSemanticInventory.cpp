@@ -239,8 +239,12 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         global.declarationAlignmentBits && *global.declarationAlignmentBits >= 8;
     const bool atomicPointerTls = cLanguage && global.threadLocal && kind == CppTypeKind::Atomic &&
         global.type.element && global.type.element->kind == CppTypeKind::Pointer && global.type.element->element &&
-        global.type.element->element->kind == CppTypeKind::SignedInteger &&
-        global.type.element->element->unqualifiedCanonicalSpelling == "int" &&
+        ((global.type.element->element->kind == CppTypeKind::SignedInteger &&
+          global.type.element->element->unqualifiedCanonicalSpelling == "int") ||
+         (global.type.element->element->kind == CppTypeKind::UnsignedInteger &&
+          global.type.element->element->unqualifiedCanonicalSpelling == "unsigned int" &&
+          global.type.element->element->sizeBits == std::optional<std::uint64_t>{32} &&
+          !global.type.element->element->isConst && !global.type.element->element->isVolatile)) &&
         global.type.sizeBits == std::optional<std::uint64_t>{64} && global.declarationAlignmentBits &&
         *global.declarationAlignmentBits >= 64;
     const bool supportedAtomicTls = atomicIntTls || atomicLongTls || atomicUIntTls || atomicULongTls || atomicNarrowTls || atomicFloatTls || atomicBoolTls || atomicPointerTls;
@@ -270,7 +274,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         return failure("C/C++ global type is not yet mapped");
     if (supportedAtomicTls)
     {
-        const char* expected = atomicPointerTls ? "builtin:int*" : atomicBoolTls ? "builtin:bool" :
+        const char* expected = atomicPointerTls ? (global.type.element->element->kind == CppTypeKind::UnsignedInteger ? "builtin:uint*" : "builtin:int*") : atomicBoolTls ? "builtin:bool" :
             atomicFloatTls ? (global.type.sizeBits == std::optional<std::uint64_t>{32} ? "builtin:float" : "builtin:double") :
             atomicIntTls ? "builtin:int" : atomicLongTls ? "builtin:long" :
             atomicUIntTls ? "builtin:uint" : atomicULongTls ? "builtin:ulong" :

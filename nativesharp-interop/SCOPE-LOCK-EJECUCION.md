@@ -1,5 +1,16 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08: puntero TLS atómico a unsigned int
+
+Reproducir el rechazo de `_Thread_local _Atomic(unsigned int*)` y preparar
+comparación con Clang para lectura, escritura y aritmética en el fixture TLS
+atómico. Ajustar solo la cadena de proyección y descenso necesaria para ese
+puntero de 64 bits a `unsigned int` de 32 bits y conservar el rechazo de tipos
+no comprobados. Presupuesto: `CppSemanticInventory.cpp`,
+`HirNameExpressionLowering.cpp`, `OopLlvmExpressionLeaves.cpp`,
+`OopLlvmArraysAndStores.cpp`, fixture TLS atómico, tracking y registros.
+Sin NSLink, LLVM externo ni C:; pruebas agrupadas con construcción incremental.
+
 ## T08: enum C unsigned int combinado con int
 
 El gate reprodujo código 7 en `EnumMixed.ns`: el IR amplía el enum C de

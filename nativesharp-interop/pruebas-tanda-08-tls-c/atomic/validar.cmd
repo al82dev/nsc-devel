@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Api.c Probe.c Promotion.c Promotion.ns Narrow.ns NarrowCompound.ns LocalNarrow.ns FloatCompound.ns FloatConstWrite.ns BoolConstWrite.ns PointerConstWrite.ns PointerQualified.ns PointerPointeeConstWrite.ns PointerPointeeConstEscape.ns PointerPointeeVolatile.ns PointerPointeeVolatileEscape.ns PointerCompound.ns PointerEscape.ns Main.ns Project.nsproj Escape.ns Unsupported.ns ReadonlyWrite.ns RefEscape.ns OutEscape.ns InEscape.ns ReferenceControl.ns ZeroDiv.ns ZeroRem.ns) do (
+for %%F in (Api.h Api.c Probe.c Promotion.c Promotion.ns Narrow.ns NarrowCompound.ns LocalNarrow.ns FloatCompound.ns FloatConstWrite.ns BoolConstWrite.ns PointerConstWrite.ns PointerQualified.ns PointerPointeeConstWrite.ns PointerPointeeConstEscape.ns PointerPointeeVolatile.ns PointerPointeeVolatileEscape.ns PointerCompound.ns PointerEscape.ns UnsignedPointer.ns Main.ns Project.nsproj Escape.ns Unsupported.ns ReadonlyWrite.ns RefEscape.ns OutEscape.ns InEscape.ns ReferenceControl.ns ZeroDiv.ns ZeroRem.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -75,7 +75,7 @@ for %%O in (0 1 2 3) do (
   "%DEST%\narrow-O%%O.exe"
   if errorlevel 1 exit /b 1
 )
-for %%F in (NarrowCompound Promotion FloatCompound PointerCompound PointerQualified PointerPointeeVolatile) do (
+for %%F in (NarrowCompound Promotion FloatCompound PointerCompound PointerQualified PointerPointeeVolatile UnsignedPointer) do (
   copy /y "%DEST%\%%F.ns" "%DEST%\Main.ns" >nul
   if errorlevel 1 exit /b 1
   for %%O in (0 1 2 3) do (
@@ -85,6 +85,12 @@ for %%F in (NarrowCompound Promotion FloatCompound PointerCompound PointerQualif
     if errorlevel 1 exit /b 1
   )
 )
+copy /y "%DEST%\UnsignedPointer.ns" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\unsigned-pointer.ll" 2> "%DEST%\unsigned-pointer-ir.log"
+if errorlevel 1 (type "%DEST%\unsigned-pointer-ir.log" & exit /b 1)
+python "%~dp0verificar_uint_pointer.py" "%DEST%\unsigned-pointer.ll"
+if errorlevel 1 exit /b 1
 copy /y "%DEST%\NarrowCompound.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\narrow-compound.ll" 2> "%DEST%\narrow-compound-ir.log"

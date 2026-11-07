@@ -1,0 +1,5 @@
+# T08: puntero TLS atómico a unsigned int
+
+La reproducción `A:/nsc-interop-build/t08-uint-pointer-repro` mostraba que NSC rechazaba `_Thread_local _Atomic(unsigned int*)` antes de analizar sus usos. Se amplía la proyección solo para un puntero de 64 bits a `unsigned int` de 32 bits sin calificadores en el objeto apuntado, con alineación suficiente. Las rutas HIR y LLVM ya existentes para el puntero a `int` también reconocen `uint*`, preservan lectura y escritura secuencialmente consistentes y hacen la aritmética mediante actualizaciones atómicas con paso de cuatro bytes. Los demás tipos y calificadores no comprobados conservan su rechazo.
+
+El fixture y el control C de Clang 23.1.0 pasaron lectura, escritura, suma, resta e incremento sobre un arreglo en O0–O3 con el compilador de desarrollo en A:. El IR verificado incluye `load` y `store` atómicos de 64 bits y `atomicrmw` con desplazamientos de 4 y -8. La verificación del IR se incorporó al fixture. No se modificó NSLink; esto no cierra los fallos TLS de DLL ni la tanda 8.

@@ -1,0 +1,11 @@
+int Main()
+{
+    atomic_unsigned_pointer = atomic_unsigned_pointer_expected();
+    if (*atomic_unsigned_pointer != 0xffffffffu) return 1;
+    if (*(atomic_unsigned_pointer += 1) != 74u) return 2;
+    if (*(++atomic_unsigned_pointer) != 75u) return 3;
+    if (*(atomic_unsigned_pointer -= 2) != 0xffffffffu) return 4;
+    atomic_unsigned_pointer = null;
+    if (atomic_unsigned_pointer != null) return 5;
+    return 0;
+}
