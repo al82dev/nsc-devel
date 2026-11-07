@@ -463,6 +463,8 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     El fixture original `pruebas-tanda-08-tls-c/validar.cmd` también pasó
     O0–O3 con NSC `b151b46f0be04227` y LLD seleccionado mediante `NSC_LINKER`;
     esa selección aún no es automática. [Evidencia](registro-commits/tls-estatico-control-original.md).
+    La declaración estándar C11 `_Thread_local` pasó el control C y acceso
+    NativeSharp de dos hilos en O0–O3. [Evidencia](registro-commits/tls-estatico-c11.md).
   - Clang rechaza `thread` con `dllimport`/`dllexport`; al exportar por el
     enlazador, el consumidor C pide `SECREL tls_exported` y la import library
     solo ofrece `__imp_tls_exported`. La declaración actual sin atributo

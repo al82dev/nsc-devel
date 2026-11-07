@@ -4407,6 +4407,15 @@ fixtures existentes, NSLink, LLVM ni C:. Validar control C y NS O0–O3 con
 una copia PE cuya plantilla conserva los mismos datos y asigna su cola cero
 como `SizeOfZeroFill`, y conservar los gates de la tanda sin modificación.
 
+# Contraste de almacenamiento TLS estándar C11
+
+Agregar un contraste reproducible del fixture de TLS estático usando
+`_Thread_local` en la declaración y definición C11. Mantener el control C,
+el aislamiento de dos hilos y O0–O3; generar la variante solo bajo
+`A:/nsc-interop-build/tls-abi/c11-fixture`. No modificar los archivos fuente
+originales, NSLink, LLVM ni C:. Conservar todas las pruebas previas y no
+considerar esta evidencia como cierre de T08-004 ni de la tanda.
+
 # Arreglo global C TLS
 
 Reproducir lectura, escritura y aislamiento por hilo de un `int[2]` TLS C
