@@ -1,5 +1,17 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-002: identidad de declaraciones C y su conservación precompilada
+
+Auditar cómo se obtiene, transporta, persiste y restaura el USR de Clang de
+funciones, globales, alias, enums, struct y union C, y probarlo con sesiones
+reales y con el NSMETA de un productor real consumido sin encabezado propio.
+Presupuesto: `tests/unit/CppCIdentityTests.cpp` y su objetivo nuevo en
+`CMakeLists.txt`, `pruebas-tanda-08-identidad-c/validar.cmd`,
+`T08-002-IDENTIDAD-AUDITORIA.md`, tracking y registros. Producción, formato
+NSMETA, fixtures y pruebas existentes protegidos; hallazgos sin implementar
+hasta decisión. Build aislado en `A:/nsc-devel/build-claude-t08`; NSLink, LLVM
+externo y C: sin modificar. Detalle en la auditoría.
+
 ## T08-004: selección por contrato de globales C internas
 
 Reproducir tipos internos ya representables por el importador externo y que la
