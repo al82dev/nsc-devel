@@ -53,6 +53,7 @@ for %%T in (
   pruebas-tanda-08-tls-c\directo\validar-nsc-escalares-con-import.cmd
   pruebas-tanda-08-tls-c\directo\validar-nsc-escalares-con-entry.cmd
   pruebas-tanda-08-tls-c\directo\validar-escalar-crt.cmd
+  pruebas-tanda-08-tls-c\directo\validar-relleno-cero.cmd
   pruebas-tanda-08-tls-c\directo\validar-escalar-carga-dinamica.cmd
   pruebas-tanda-08-tls-c\directo\validar-guardia-dll.cmd
   pruebas-tanda-08-tls-c\static-global\validar.cmd

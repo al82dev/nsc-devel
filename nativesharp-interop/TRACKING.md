@@ -513,6 +513,9 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     Con el arranque normal del CRT estático, el control C y NativeSharp pasaron
     esos escalares O0–O3; las variantes de arranque mínimo fallidas se conservan.
     [Evidencia](registro-commits/tls-dll-escalar-crt.md).
+    Se corrigió además el límite del acceso NSC para incluir `SizeOfZeroFill`;
+    el control C y NS O0–O3 pasaron con una DLL de contraste con relleno cero.
+    [Evidencia](registro-commits/tls-dll-relleno-cero-correccion.md).
   - Un experimento C separado obtiene la DLL desde la dirección importada del
     dato y usa su directorio PE TLS y los slots del hilo para leer y escribir
     el valor en dos hilos. Depende de detalles internos de Windows x64; no es
