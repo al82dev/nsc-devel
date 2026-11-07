@@ -9,11 +9,13 @@ if not exist "%DEST%" mkdir "%DEST%"
 if errorlevel 1 exit /b 1
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Api.c Producer.ns Producer.nsproj Consumer.ns Consumer.nsproj) do (
+for %%F in (Api.h Api.c Producer.ns Producer.nsproj Consumer.ns Consumer.nsproj Dll.ns Dll.nsproj DllConsumer.ns DllConsumer.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
 copy /y "%~dp0..\..\pruebas-tanda-08-tls-c\static-global\Crt.h" "%DEST%\Crt.h" >nul
+if errorlevel 1 exit /b 1
+if not exist "%DEST%\bin\Debug" mkdir "%DEST%\bin\Debug"
 if errorlevel 1 exit /b 1
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Api.c" -o "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
@@ -28,7 +30,7 @@ if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   call :run_one %%O
   if errorlevel 1 exit /b 1
-  echo Global C bool precompilado sin header O%%O correcto.
+  echo Global C bool precompilado y DLL sin header O%%O correctos.
 )
 exit /b 0
 
@@ -40,9 +42,20 @@ move /y "%DEST%\Api.h" "%DEST%\Api.h.hidden" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Consumer.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\consumer-O%~1.exe" > "%DEST%\consumer-O%~1.log" 2>&1
 set "TASK_HEADERLESS_RESULT=%ERRORLEVEL%"
+if "%TASK_HEADERLESS_RESULT%"=="0" call :run_dll %~1
+if errorlevel 1 set "TASK_HEADERLESS_RESULT=1"
 move /y "%DEST%\Api.h.hidden" "%DEST%\Api.h" >nul
 if errorlevel 1 exit /b 1
 if not "%TASK_HEADERLESS_RESULT%"=="0" (type "%DEST%\consumer-O%~1.log" & exit /b 1)
 "%DEST%\consumer-O%~1.exe"
+if errorlevel 1 exit /b 1
+exit /b 0
+
+:run_dll
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-dll "%DEST%\Dll.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\bin\Debug\BoolDll.dll" > "%DEST%\dll-O%~1.log" 2>&1
+if errorlevel 1 (type "%DEST%\dll-O%~1.log" & exit /b 1)
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\DllConsumer.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\dll-consumer-O%~1.exe" > "%DEST%\dll-consumer-O%~1.log" 2>&1
+if errorlevel 1 (type "%DEST%\dll-consumer-O%~1.log" & exit /b 1)
+"%DEST%\dll-consumer-O%~1.exe"
 if errorlevel 1 exit /b 1
 exit /b 0

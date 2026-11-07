@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004/015: global C bool a través de DLL y productor precompilado
+
+Comprobar dos rutas del global C `volatile _Bool` en modo MS: una DLL
+NativeSharp intermedia que consume el productor estático precompilado con el
+header oculto, y una DLL C consumida directamente desde NativeSharp. Presupuesto:
+fixtures bajo record-c, gate, tracking y registros; salidas en
+`A:/nsc-interop-build`. O0–O3 y control C donde corresponda. Producción solo
+si hay defecto reproducido; no modificar NSLink, LLVM externo ni C:.
+
 ## T08-004/015: global C bool precompilado e identidad de caché
 
 Comprobar productor NativeSharp precompilado que accede y modifica un global

@@ -1,0 +1,11 @@
+int Main()
+{
+    if (PublishedBoolDll.Bridge.Read() || PublishedBoolDll.Bridge.CRead() != 0) return 1;
+    PublishedBoolDll.Bridge.Write(true);
+    if (!PublishedBoolDll.Bridge.Read() || PublishedBoolDll.Bridge.CRead() != 1) return 2;
+    PublishedBoolDll.Bridge.Flip();
+    if (PublishedBoolDll.Bridge.Read() || PublishedBoolDll.Bridge.CRead() != 0) return 3;
+    PublishedBoolDll.Bridge.CWrite(1);
+    if (!PublishedBoolDll.Bridge.Read()) return 4;
+    return 0;
+}

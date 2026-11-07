@@ -1,0 +1,11 @@
+namespace PublishedBoolDll
+{
+    public struct Bridge
+    {
+        public static bool Read() { return PublishedBool.Bridge.Read(); }
+        public static void Write(bool value) { PublishedBool.Bridge.Write(value); }
+        public static void Flip() { PublishedBool.Bridge.Flip(); }
+        public static int CRead() { return PublishedBool.Bridge.CRead(); }
+        public static void CWrite(int value) { PublishedBool.Bridge.CWrite(value); }
+    }
+}

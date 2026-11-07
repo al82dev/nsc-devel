@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>BoolDllConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="DllConsumer.ns" />
+    <LibraryReference Include="bin/Debug/BoolDll.lib" Runtime="bin/Debug/BoolDll.dll" />
+  </ItemGroup>
+</Project>
