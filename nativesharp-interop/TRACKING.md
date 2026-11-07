@@ -466,6 +466,8 @@ las correcciones. [Resultado](registro-commits/t08-validacion-link-lib-auto.md),
   - Una biblioteca NativeSharp precompilada accedió a TLS C atómico `int` y
     punteros atómicos a `const int` y `volatile int`; su consumidor independiente
     pasó O0–O3 con el header original oculto. [Evidencia](registro-commits/t08-tls-atomico-precompilado.md).
+    También pasó la cadena con DLL NativeSharp intermedia y directorio TLS PE,
+    con dependencias CRT declaradas. [Evidencia](registro-commits/t08-tls-atomico-precompilado-dll.md).
   - Se añadieron controles de punteros TLS atómicos a `const int` y a
     `volatile int`: lectura y escritura aplicable, conservación del calificador
     y comparación con C; NSC pasó O0–O3. La validación integral y las demás

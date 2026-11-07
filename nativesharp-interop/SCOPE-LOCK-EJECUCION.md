@@ -9,6 +9,8 @@ validación bajo `pruebas-tanda-08-tls-c/atomic/precompiled`, con salidas en
 `A:/nsc-interop-build`; registrar resultados. No cambiar producción salvo
 reproducción y delimitación causal. Sin cambios en las pruebas DLL originales,
 NSLink, LLVM externo ni C:. O0–O3; no implica cierre de T08.
+Extender el fixture con una DLL NativeSharp intermedia que enlaza el productor
+estático precompilado y un ejecutable independiente, con el header C oculto.
 
 ## Proyección inicial de TLS C atómico int
 

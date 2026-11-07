@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>AtomicTlsDllConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="DllConsumer.ns" />
+    <LibraryReference Include="bin/Debug/AtomicTlsDll.lib" Runtime="bin/Debug/AtomicTlsDll.dll" />
+  </ItemGroup>
+</Project>

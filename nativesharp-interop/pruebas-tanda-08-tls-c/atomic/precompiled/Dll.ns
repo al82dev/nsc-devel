@@ -1,0 +1,10 @@
+namespace PublishedAtomicTlsDll
+{
+    public struct Bridge
+    {
+        public static int Read() { return PublishedAtomicTls.Bridge.Read(); }
+        public static int Add() { return PublishedAtomicTls.Bridge.Add(); }
+        public static int ReadConstPointee() { return PublishedAtomicTls.Bridge.ReadConstPointee(); }
+        public static int WriteVolatilePointee() { return PublishedAtomicTls.Bridge.WriteVolatilePointee(); }
+    }
+}

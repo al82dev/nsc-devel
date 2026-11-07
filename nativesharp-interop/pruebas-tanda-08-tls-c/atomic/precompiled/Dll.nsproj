@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>AtomicTlsDll</Name><OutputType>SharedLibrary</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Dll.ns" />
+    <LibraryReference Include="AtomicTlsProducer.lib" />
+  </ItemGroup>
+</Project>
