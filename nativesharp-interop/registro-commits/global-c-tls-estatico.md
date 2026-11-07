@@ -16,3 +16,9 @@ El control C pasó tras agregar esas bibliotecas. Con NSC build
 `thread-local C/C++ global is not yet projected` para lectura y escritura de
 `shared_tls`. Se preparó la propagación semántica y LLVM para el caso entero
 C de 32 bits; todavía debe validarse con una nueva construcción.
+
+Con NSC build `1f3bce0dac388677`, el control C y el consumidor NativeSharp
+pasaron O0–O3: verificaron valor inicial, escritura y lectura cruzadas y
+aislamiento de otro hilo. LLVM emitió `external thread_local global i32` y
+el global TLS `volatile`, fuera de este alcance, fue rechazado. LLD y el CRT
+estático se declararon explícitamente; no se probó TLS directo de DLL.

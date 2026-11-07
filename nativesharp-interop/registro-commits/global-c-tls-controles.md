@@ -10,3 +10,6 @@ La primera ejecución se detuvo porque `--no-artifact-cache` no se admite en
 los comandos de inspección y comprobación. Se retiró esa opción únicamente de
 esos comandos; la emisión de proyecto continúa usando la ruta sin caché para
 referencias C/C++. Se deben repetir los controles.
+
+Los controles se repitieron correctamente con build `1f3bce0dac388677` en
+O0–O3, incluido el rechazo de `volatile`.
