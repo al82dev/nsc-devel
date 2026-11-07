@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## TLS de DLL C y consumidor NativeSharp de tipo DLL
+
+Comprobar si una DLL NativeSharp puede consumir el productor precompilado que
+accede a TLS de una DLL C y si un ejecutable NativeSharp puede utilizarla sin
+header C, incluyendo aislamiento entre hilos. Usar el fixture precompilado de
+TLS, salidas en A:, tracking y registros. No cambiar producción hasta reproducir
+un fallo ni alterar los cuatro controles originales; NSLink, LLVM y C: intactos.
+
 ## TLS de DLL C a través de biblioteca NativeSharp precompilada
 
 Comprobar si un productor NativeSharp estático puede acceder directamente a un
