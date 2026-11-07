@@ -14,13 +14,13 @@ for %%F in (Plain.ns Plain.nsproj) do (
   if errorlevel 1 exit /b 1
 )
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
-nsc.exe --emit-project-oop-exe "%DEST%\Plain.nsproj" --nsc-linker-selection=NSLink --incremental-link --no-artifact-cache -O0 -o "%DEST%\plain.exe" > "%DEST%\nslink.log" 2>&1
+nsc.exe --verbose --emit-project-oop-exe "%DEST%\Plain.nsproj" --nsc-linker-selection=NSLink --incremental-link --no-artifact-cache -O0 -o "%DEST%\plain.exe" > "%DEST%\nslink.log" 2>&1
 if errorlevel 1 (type "%DEST%\nslink.log" & exit /b 1)
 "%DEST%\plain.exe"
 if errorlevel 1 exit /b 1
 set "NSC_LINKER="
 for %%I in (1 2) do (
-  nsc.exe --emit-project-oop-exe "%DEST%\Plain.nsproj" --nsc-linker-selection=LLD --incremental-link --no-artifact-cache -O0 -o "%DEST%\plain.exe" > "%DEST%\lld-%%I.log" 2>&1
+  nsc.exe --verbose --emit-project-oop-exe "%DEST%\Plain.nsproj" --nsc-linker-selection=LLD --incremental-link --no-artifact-cache -O0 -o "%DEST%\plain.exe" > "%DEST%\lld-%%I.log" 2>&1
   if errorlevel 1 (type "%DEST%\lld-%%I.log" & exit /b 1)
 )
 findstr /L /C:"incremental-link: miss" "%DEST%\lld-1.log" >nul
