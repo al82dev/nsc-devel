@@ -25,16 +25,19 @@ if errorlevel 1 exit /b 1
 findstr /r /c:"atomicrmw add.*@atomic_global.*seq_cst" "%DEST%\clang.ll" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\native.ll" 2> "%DEST%\native-ir.log"
-if errorlevel 1 (type "%DEST%\native-ir.log" & exit /b 1)
+if errorlevel 1 goto :failure
 findstr /r /c:"load atomic i32.*@atomic_global.*seq_cst" "%DEST%\native.ll" >nul
 if errorlevel 1 exit /b 1
 findstr /r /c:"atomicrmw add.*@atomic_global.*seq_cst" "%DEST%\native.ll" >nul
 if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe" > "%DEST%\consumer-O%%O.log" 2>&1
-  if errorlevel 1 (type "%DEST%\consumer-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   "%DEST%\consumer-O%%O.exe"
   if errorlevel 1 exit /b 1
   echo Global C atomico int O%%O correcto.
 )
 exit /b 0
+:failure
+type "%DEST%\*.log"
+exit /b 1

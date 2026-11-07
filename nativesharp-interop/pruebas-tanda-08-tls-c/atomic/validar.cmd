@@ -39,16 +39,16 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 (echo Control C de promocion atomica O%%O fallo. & exit /b 1)
 )
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\native.ll" 2> "%DEST%\native-ir.log"
-if errorlevel 1 (type "%DEST%\native-ir.log" & exit /b 1)
+if errorlevel 1 goto :failure
 python "%~dp0verificar_ir.py" "%DEST%\native.ll" native
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" --artifact-cache="%DEST%\cache" -O0 -o "%DEST%\cached.exe" > "%DEST%\cache.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /L /C:"C/C++ project references require --no-artifact-cache until transitive headers are tracked" "%DEST%\cache.log" >nul
-if errorlevel 1 (type "%DEST%\cache.log" & exit /b 1)
+if errorlevel 1 goto :failure
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" --no-artifact-cache -O%%O -o "%DEST%\native-O%%O.exe" > "%DEST%\native-O%%O.log" 2>&1
-  if errorlevel 1 (type "%DEST%\native-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   "%DEST%\native-O%%O.exe"
   if errorlevel 1 exit /b 1
 )
@@ -57,7 +57,7 @@ for %%F in (ZeroDiv ZeroRem) do (
   if errorlevel 1 exit /b 1
   for %%O in (0 1 2 3) do (
     nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" --no-artifact-cache -O%%O -o "%DEST%\%%F-O%%O.exe" > "%DEST%\%%F-O%%O.log" 2>&1
-    if errorlevel 1 (type "%DEST%\%%F-O%%O.log" & exit /b 1)
+    if errorlevel 1 goto :failure
     "%DEST%\%%F-O%%O.exe" > "%DEST%\%%F-O%%O-run.log" 2>&1
     if not errorlevel 129 exit /b 1
     if errorlevel 130 exit /b 1
@@ -66,12 +66,12 @@ for %%F in (ZeroDiv ZeroRem) do (
 copy /y "%DEST%\Narrow.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\narrow.ll" 2> "%DEST%\narrow-ir.log"
-if errorlevel 1 (type "%DEST%\narrow-ir.log" & exit /b 1)
+if errorlevel 1 goto :failure
 python "%~dp0verificar_narrow.py" "%DEST%\narrow.ll"
 if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" --no-artifact-cache -O%%O -o "%DEST%\narrow-O%%O.exe" > "%DEST%\narrow-O%%O.log" 2>&1
-  if errorlevel 1 (type "%DEST%\narrow-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   "%DEST%\narrow-O%%O.exe"
   if errorlevel 1 exit /b 1
 )
@@ -80,7 +80,7 @@ for %%F in (NarrowCompound Promotion FloatCompound PointerCompound PointerQualif
   if errorlevel 1 exit /b 1
   for %%O in (0 1 2 3) do (
     nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" --no-artifact-cache -O%%O -o "%DEST%\%%F-O%%O.exe" > "%DEST%\%%F-O%%O.log" 2>&1
-    if errorlevel 1 (type "%DEST%\%%F-O%%O.log" & exit /b 1)
+    if errorlevel 1 goto :failure
     "%DEST%\%%F-O%%O.exe"
     if errorlevel 1 exit /b 1
   )
@@ -88,31 +88,31 @@ for %%F in (NarrowCompound Promotion FloatCompound PointerCompound PointerQualif
 copy /y "%DEST%\UnsignedPointer.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\unsigned-pointer.ll" 2> "%DEST%\unsigned-pointer-ir.log"
-if errorlevel 1 (type "%DEST%\unsigned-pointer-ir.log" & exit /b 1)
+if errorlevel 1 goto :failure
 python "%~dp0verificar_uint_pointer.py" "%DEST%\unsigned-pointer.ll"
 if errorlevel 1 exit /b 1
 copy /y "%DEST%\UnsignedPointerQualified.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\unsigned-qualified.ll" 2> "%DEST%\unsigned-qualified-ir.log"
-if errorlevel 1 (type "%DEST%\unsigned-qualified-ir.log" & exit /b 1)
+if errorlevel 1 goto :failure
 python "%~dp0verificar_uint_calificado.py" "%DEST%\unsigned-qualified.ll"
 if errorlevel 1 exit /b 1
 copy /y "%DEST%\AdditionalPointers.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\additional-pointers.ll" 2> "%DEST%\additional-pointers-ir.log"
-if errorlevel 1 (type "%DEST%\additional-pointers-ir.log" & exit /b 1)
+if errorlevel 1 goto :failure
 python "%~dp0verificar_punteros_adicionales.py" "%DEST%\additional-pointers.ll"
 if errorlevel 1 exit /b 1
 copy /y "%DEST%\AdditionalQualifiedPointers.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\additional-qualified.ll" 2> "%DEST%\additional-qualified-ir.log"
-if errorlevel 1 (type "%DEST%\additional-qualified-ir.log" & exit /b 1)
+if errorlevel 1 goto :failure
 python "%~dp0verificar_calificados_adicionales.py" "%DEST%\additional-qualified.ll"
 if errorlevel 1 exit /b 1
 copy /y "%DEST%\NarrowCompound.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\narrow-compound.ll" 2> "%DEST%\narrow-compound-ir.log"
-if errorlevel 1 (type "%DEST%\narrow-compound-ir.log" & exit /b 1)
+if errorlevel 1 goto :failure
 python "%~dp0verificar_incremento.py" "%DEST%\narrow-compound.ll"
 if errorlevel 1 exit /b 1
 copy /y "%DEST%\LocalNarrow.ns" "%DEST%\Main.ns" >nul
@@ -120,35 +120,35 @@ if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\local-narrow.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /L /C:"compound assignment cannot implicitly convert" "%DEST%\local-narrow.log" >nul
-if errorlevel 1 (type "%DEST%\local-narrow.log" & exit /b 1)
+if errorlevel 1 goto :failure
 copy /y "%DEST%\Escape.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\escape.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /L /C:"atomic-qualified pointers" "%DEST%\escape.log" >nul
-if errorlevel 1 (type "%DEST%\escape.log" & exit /b 1)
+if errorlevel 1 goto :failure
 copy /y "%DEST%\PointerEscape.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\pointer-escape.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /L /C:"atomic-qualified pointers" "%DEST%\pointer-escape.log" >nul
-if errorlevel 1 (type "%DEST%\pointer-escape.log" & exit /b 1)
+if errorlevel 1 goto :failure
 copy /y "%DEST%\PointerPointeeConstWrite.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\pointer-pointee-const-write.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /L /C:"left side of assignment is not assignable" "%DEST%\pointer-pointee-const-write.log" >nul
-if errorlevel 1 (type "%DEST%\pointer-pointee-const-write.log" & exit /b 1)
+if errorlevel 1 goto :failure
 copy /y "%DEST%\PointerPointeeConstEscape.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\pointer-pointee-const-escape.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /L /C:"would discard pointee constness" "%DEST%\pointer-pointee-const-escape.log" >nul
-if errorlevel 1 (type "%DEST%\pointer-pointee-const-escape.log" & exit /b 1)
+if errorlevel 1 goto :failure
 copy /y "%DEST%\PointerPointeeVolatile.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\pointer-pointee-volatile.ll" 2> "%DEST%\pointer-pointee-volatile-ir.log"
-if errorlevel 1 (type "%DEST%\pointer-pointee-volatile-ir.log" & exit /b 1)
+if errorlevel 1 goto :failure
 findstr /C:"store atomic volatile i32" "%DEST%\pointer-pointee-volatile.ll" >nul
 if errorlevel 1 exit /b 1
 findstr /C:"load atomic volatile i32" "%DEST%\pointer-pointee-volatile.ll" >nul
@@ -158,78 +158,81 @@ if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\pointer-pointee-volatile-escape.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /L /C:"would discard pointer pointee volatile qualification" "%DEST%\pointer-pointee-volatile-escape.log" >nul
-if errorlevel 1 (type "%DEST%\pointer-pointee-volatile-escape.log" & exit /b 1)
+if errorlevel 1 goto :failure
 for %%F in (UnsignedPointeeConstWrite UnsignedPointeeConstEscape UnsignedPointeeVolatileEscape) do (
   copy /y "%DEST%\%%F.ns" "%DEST%\Main.ns" >nul
   if errorlevel 1 exit /b 1
   nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\%%F.log" 2>&1
-  if not errorlevel 1 (type "%DEST%\%%F.log" & exit /b 1)
+  if not errorlevel 1 goto :failure
 )
 findstr /L /C:"left side of assignment is not assignable" "%DEST%\UnsignedPointeeConstWrite.log" >nul
-if errorlevel 1 (type "%DEST%\UnsignedPointeeConstWrite.log" & exit /b 1)
+if errorlevel 1 goto :failure
 findstr /L /C:"would discard pointee constness" "%DEST%\UnsignedPointeeConstEscape.log" >nul
-if errorlevel 1 (type "%DEST%\UnsignedPointeeConstEscape.log" & exit /b 1)
+if errorlevel 1 goto :failure
 findstr /L /C:"would discard pointer pointee volatile qualification" "%DEST%\UnsignedPointeeVolatileEscape.log" >nul
-if errorlevel 1 (type "%DEST%\UnsignedPointeeVolatileEscape.log" & exit /b 1)
+if errorlevel 1 goto :failure
 for %%F in (AdditionalConstWrite AdditionalVolatileEscape) do (
   copy /y "%DEST%\%%F.ns" "%DEST%\Main.ns" >nul
   if errorlevel 1 exit /b 1
   nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\%%F.log" 2>&1
-  if not errorlevel 1 (type "%DEST%\%%F.log" & exit /b 1)
+  if not errorlevel 1 goto :failure
 )
 findstr /L /C:"left side of assignment is not assignable" "%DEST%\AdditionalConstWrite.log" >nul
-if errorlevel 1 (type "%DEST%\AdditionalConstWrite.log" & exit /b 1)
+if errorlevel 1 goto :failure
 findstr /L /C:"would discard pointer pointee volatile qualification" "%DEST%\AdditionalVolatileEscape.log" >nul
-if errorlevel 1 (type "%DEST%\AdditionalVolatileEscape.log" & exit /b 1)
+if errorlevel 1 goto :failure
 python "%~dp0verificar_rechazos_adicionales.py" "%DEST%\AdditionalConstWrite.log" "%DEST%\AdditionalVolatileEscape.log"
 if errorlevel 1 exit /b 1
 copy /y "%DEST%\ReferenceControl.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\reference-control.log" 2>&1
-if errorlevel 1 (type "%DEST%\reference-control.log" & exit /b 1)
+if errorlevel 1 goto :failure
 for %%F in (RefEscape OutEscape InEscape) do (
   copy /y "%DEST%\%%F.ns" "%DEST%\Main.ns" >nul
   if errorlevel 1 exit /b 1
   nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\%%F.log" 2>&1
-  if not errorlevel 1 (type "%DEST%\%%F.log" & exit /b 1)
+  if not errorlevel 1 goto :failure
   findstr /L /C:"atomic-qualified pointers" "%DEST%\%%F.log" >nul
-  if errorlevel 1 (type "%DEST%\%%F.log" & exit /b 1)
+  if errorlevel 1 goto :failure
 )
 copy /y "%DEST%\ReadonlyWrite.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\readonly.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /L /C:"left side of assignment is not assignable" "%DEST%\readonly.log" >nul
-if errorlevel 1 (type "%DEST%\readonly.log" & exit /b 1)
+if errorlevel 1 goto :failure
 copy /y "%DEST%\FloatConstWrite.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\float-readonly.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /L /C:"left side of assignment is not assignable" "%DEST%\float-readonly.log" >nul
-if errorlevel 1 (type "%DEST%\float-readonly.log" & exit /b 1)
+if errorlevel 1 goto :failure
 copy /y "%DEST%\BoolConstWrite.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\bool-readonly.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /L /C:"left side of assignment is not assignable" "%DEST%\bool-readonly.log" >nul
-if errorlevel 1 (type "%DEST%\bool-readonly.log" & exit /b 1)
+if errorlevel 1 goto :failure
 copy /y "%DEST%\PointerConstWrite.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\pointer-readonly.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /L /C:"left side of assignment is not assignable" "%DEST%\pointer-readonly.log" >nul
-if errorlevel 1 (type "%DEST%\pointer-readonly.log" & exit /b 1)
+if errorlevel 1 goto :failure
 copy /y "%DEST%\Unsupported.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\unsupported.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /L /C:"thread-local C/C++ global is not yet projected" "%DEST%\unsupported.log" >nul
-if errorlevel 1 (type "%DEST%\unsupported.log" & exit /b 1)
+if errorlevel 1 goto :failure
 copy /y "%DEST%\UnsupportedQualifiedPointer.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\unsupported-qualified-pointer.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /L /C:"thread-local C/C++ global is not yet projected" "%DEST%\unsupported-qualified-pointer.log" >nul
-if errorlevel 1 (type "%DEST%\unsupported-qualified-pointer.log" & exit /b 1)
+if errorlevel 1 goto :failure
 echo TLS atomico C y NativeSharp correcto.
 exit /b 0
+:failure
+type "%DEST%\*.log"
+exit /b 1

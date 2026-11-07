@@ -29,7 +29,7 @@ exit /b 0
 
 :run_one
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\Producer.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\AtomicGlobalProducer.lib" > "%DEST%\producer-O%~1.log" 2>&1
-if errorlevel 1 (type "%DEST%\producer-O%~1.log" & exit /b 1)
+if errorlevel 1 goto :failure
 move /y "%DEST%\Api.h" "%DEST%\Api.h.hidden" >nul
 if errorlevel 1 exit /b 1
 call :consumer %~1
@@ -41,13 +41,16 @@ exit /b 0
 
 :consumer
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Consumer.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\consumer-O%~1.exe" > "%DEST%\consumer-O%~1.log" 2>&1
-if errorlevel 1 (type "%DEST%\consumer-O%~1.log" & exit /b 1)
+if errorlevel 1 goto :failure
 "%DEST%\consumer-O%~1.exe"
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-dll "%DEST%\Dll.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\bin\Debug\AtomicGlobalDll.dll" > "%DEST%\dll-O%~1.log" 2>&1
-if errorlevel 1 (type "%DEST%\dll-O%~1.log" & exit /b 1)
+if errorlevel 1 goto :failure
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\DllConsumer.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\dll-consumer-O%~1.exe" > "%DEST%\dll-consumer-O%~1.log" 2>&1
-if errorlevel 1 (type "%DEST%\dll-consumer-O%~1.log" & exit /b 1)
+if errorlevel 1 goto :failure
 "%DEST%\dll-consumer-O%~1.exe"
 if errorlevel 1 exit /b 1
 exit /b 0
+:failure
+type "%DEST%\*.log"
+exit /b 1

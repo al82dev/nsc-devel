@@ -22,9 +22,12 @@ llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj" "%DEST%\thread.obj"
 if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Thread.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe" > "%DEST%\consumer-O%%O.log" 2>&1
-  if errorlevel 1 (type "%DEST%\consumer-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   "%DEST%\consumer-O%%O.exe"
   if errorlevel 1 exit /b 1
   echo Global atomico compartido entre hilos O%%O correcto.
 )
 exit /b 0
+:failure
+type "%DEST%\*.log"
+exit /b 1
