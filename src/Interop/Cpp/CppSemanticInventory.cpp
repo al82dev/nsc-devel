@@ -553,7 +553,12 @@ static bool provideGlobalsWithLookup(
         }
         if ((type.isConst || type.isVolatile) &&
             !(type.kind == CppTypeKind::SignedInteger && name == "int" &&
-              type.sizeBits == std::optional<std::uint64_t>{32})) return false;
+              type.sizeBits == std::optional<std::uint64_t>{32}) &&
+            !(type.kind == CppTypeKind::UnsignedInteger && name == "unsigned int" &&
+              type.sizeBits == std::optional<std::uint64_t>{32} && type.isConst && !type.isVolatile) &&
+            !(type.kind == CppTypeKind::SignedInteger && name == "short" &&
+              type.sizeBits == std::optional<std::uint64_t>{16} && type.isVolatile && !type.isConst) &&
+            !(type.kind == CppTypeKind::Pointer && type.isConst && !type.isVolatile)) return false;
         if (type.kind == CppTypeKind::SignedInteger)
             return (name == "int" && type.sizeBits == std::optional<std::uint64_t>{32}) ||
                 (name == "char" && type.sizeBits == std::optional<std::uint64_t>{8}) ||
@@ -572,7 +577,7 @@ static bool provideGlobalsWithLookup(
                 (name == "double" && type.sizeBits == std::optional<std::uint64_t>{64});
         return type.kind == CppTypeKind::Pointer && type.sizeBits == std::optional<std::uint64_t>{64} &&
             type.element && type.element->kind == CppTypeKind::SignedInteger &&
-            type.element->unqualifiedCanonicalSpelling == "int" && !type.element->isConst && !type.element->isVolatile;
+            type.element->unqualifiedCanonicalSpelling == "int";
     };
     std::set<std::pair<std::size_t, std::string_view>> availableNames;
     for (const auto& entry : entries)
