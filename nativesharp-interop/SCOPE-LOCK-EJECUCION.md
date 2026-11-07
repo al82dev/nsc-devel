@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004: punteros anidados y arreglos C internos
+
+Reproducir puntero `int**`, arreglos de records y enums, arreglo const, arreglo
+volatile y union de enlace interno; corregir sus rutas demostradas y comparar
+los datos con Clang y funciones inline O0–O3. Mantener NSLink, metadata, LLVM
+externo, fixtures existentes y C: protegidos. No acreditar otras formas ni TLS.
+
 ## T08-004: globales internas C con calificadores y punteros
 
 Reproducir acceso a globales internas `const unsigned int`, `volatile short`,
