@@ -1,0 +1,1 @@
+int Read(CTdG* value) { return (int)value->a; } int Main() { return 0; }

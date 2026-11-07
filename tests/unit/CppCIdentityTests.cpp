@@ -15,6 +15,10 @@
 //     encabezados en un proyecto. El segundo modo restaura un catálogo C desde el NSMETA de un
 //     productor real mediante los mismos proveedores del frontend que usa un consumidor y compara
 //     cada USR restaurado con Clang.
+// EN: The third mode reads typedefs/casos.txt and compares, per case, the current alias rule and the
+//     proposed one (T08-002-PROPUESTA-TYPEDEF.md) with the outcomes nsc gives for the same headers.
+// ES: El tercer modo lee typedefs/casos.txt y compara, por caso, la regla actual de alias y la
+//     propuesta (T08-002-PROPUESTA-TYPEDEF.md) con los resultados que da nsc con esos encabezados.
 //
 // Usage / Uso:
 //   nsc_cpp_c_identity_tests <clang-resource-dir> <work-dir> <clang-driver>
@@ -22,6 +26,7 @@
 //                            <clang-driver> <work-dir>
 //   nsc_cpp_c_identity_tests --verify-driver-restored-c-usr <producer.lib> <header> <clang-resource-dir>
 //                            <clang-driver>
+//   nsc_cpp_c_identity_tests --typedef-matrix <typedefs-dir> <clang-resource-dir> <clang-driver>
 
 #include "nativesharp/Interop/CppClangSessionFactory.h"
 #include "nativesharp/Interop/CppProjectSessions.h"
@@ -30,6 +35,8 @@
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Interop/LibraryMetadataCodec.h"
+#include "nativesharp/Frontend/CppAliasEnumType.h"
+#include "nativesharp/Frontend/CppAliasRecordType.h"
 #include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
@@ -47,6 +54,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -924,6 +932,195 @@ int verifyDriverRestoredUsrs(char** argv)
                      : "Driver consumer USR restoration failed\n");
     return ok ? 0 : 1;
 }
+// EN: One row of typedefs/casos.txt. Outcomes are runs, alias, record or member; see validar.cmd.
+// ES: Una fila de typedefs/casos.txt. Los resultados son runs, alias, record o member; ver validar.cmd.
+struct TypedefCase
+{
+    std::string name;
+    std::string alias;
+    std::string kind;
+    std::string single;
+    std::string distinctFiles;
+    std::string homonymFiles;
+    std::string proposal;
+};
+
+// EN: Reads the case table, ignoring blank lines and lines that start with '#'. Returns an empty
+//     vector when the file is missing or a row does not have seven columns.
+// ES: Lee la tabla de casos e ignora líneas vacías y las que empiezan por '#'. Devuelve un vector
+//     vacío si falta el archivo o una fila no tiene siete columnas.
+std::vector<TypedefCase> readTypedefCases(const std::filesystem::path& file)
+{
+    std::ifstream input(file);
+    std::vector<TypedefCase> result;
+    std::string line;
+    while (std::getline(input, line))
+    {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty() || line.front() == '#') continue;
+        std::istringstream row(line);
+        TypedefCase item;
+        std::string extra;
+        if (!(row >> item.name >> item.alias >> item.kind >> item.single >> item.distinctFiles >> item.homonymFiles >>
+              item.proposal) || (row >> extra)) return {};
+        result.push_back(std::move(item));
+    }
+    return result;
+}
+
+// EN: What one session says about typedef `alias`: its USR, canonical type and the USR of the
+//     record or enum it names, read with the same helpers the name resolution uses.
+// ES: Lo que una sesión dice del typedef `alias`: su USR, el tipo canónico y el USR del record o
+//     enum al que remite, leídos con las mismas funciones que usa la resolución de nombres.
+struct AliasObservation
+{
+    bool found = false;
+    std::optional<std::string> usr;
+    std::string canonical;
+    std::optional<std::string> recordUsr;
+    std::optional<std::string> enumUsr;
+};
+
+// EN: Reads the first typedef named `alias` from `session`; `found` stays false when absent.
+// ES: Lee el primer typedef llamado `alias` de `session`; `found` queda false si no existe.
+AliasObservation observeAlias(const CppInteropSession& session, const std::string& alias)
+{
+    AliasObservation result;
+    const auto aliases = session.typeAliasesSnapshot();
+    if (!aliases) return result;
+    for (const auto& item : *aliases)
+    {
+        if (item.qualifiedName != alias) continue;
+        result.found = true;
+        result.usr = item.clangUsr;
+        result.canonical = item.underlyingType.canonicalSpelling;
+        if (const auto record = nativesharp::frontend::cppAliasRecordType(item.underlyingType))
+            result.recordUsr = record->clangUsr;
+        if (const auto enumeration = nativesharp::frontend::cppAliasEnumType(item.underlyingType))
+            result.enumUsr = enumeration->clangUsr;
+        break;
+    }
+    return result;
+}
+
+// EN: Replica of the current rule of QualifiedTypeNames.cpp for two observations of one name in
+//     one project and target: equal canonical type and, when both USRs are known, equal USRs.
+// ES: Réplica de la regla actual de QualifiedTypeNames.cpp para dos observaciones de un nombre en
+//     un proyecto y destino: mismo tipo canónico y, si ambos USR se conocen, USR iguales.
+bool currentAliasRule(const AliasObservation& left, const AliasObservation& right)
+{
+    const bool known = left.usr && !left.usr->empty() && right.usr && !right.usr->empty();
+    return left.canonical == right.canonical && (!known || *left.usr == *right.usr);
+}
+
+// EN: True when `usr` has the file-scope typedef form c:<file>@T@<name>, with a non-empty file
+//     segment free of '@'. Test replica of the rule in T08-002-PROPUESTA-TYPEDEF.md.
+// ES: True si `usr` tiene la forma de typedef de ámbito de archivo c:<archivo>@T@<nombre>, con un
+//     segmento de archivo no vacío y sin '@'. Réplica de prueba de T08-002-PROPUESTA-TYPEDEF.md.
+bool fileScopeTypedefUsr(std::string_view usr, std::string_view name)
+{
+    const std::string tail = "@T@" + std::string(name);
+    if (!usr.starts_with("c:") || usr.size() <= 2 + tail.size() || !usr.ends_with(tail)) return false;
+    const auto file = usr.substr(2, usr.size() - 2 - tail.size());
+    return !file.empty() && file.find('@') == std::string_view::npos;
+}
+
+// EN: Proposed rule: equal canonical type, typedef identity equal or differing only in the file
+//     segment, and compatible (absent or equal) USRs of the record or enum named by the alias.
+// ES: Regla propuesta: mismo tipo canónico, identidad de typedef igual o distinta solo en el
+//     segmento de archivo, y USR compatibles (ausentes o iguales) del record o enum referido.
+bool proposedAliasRule(const AliasObservation& left, const AliasObservation& right, const std::string& name)
+{
+    const auto compatible = [](const auto& a, const auto& b) { return !a || !b || a == b; };
+    const bool known = left.usr && !left.usr->empty() && right.usr && !right.usr->empty();
+    const bool sameIdentity = !known || *left.usr == *right.usr ||
+        (fileScopeTypedefUsr(*left.usr, name) && fileScopeTypedefUsr(*right.usr, name));
+    return left.canonical == right.canonical && sameIdentity && compatible(left.recordUsr, right.recordUsr) &&
+        compatible(left.enumUsr, right.enumUsr);
+}
+
+// EN: Opens the two headers of one pair and returns both observations of `alias`.
+// ES: Abre los dos encabezados de un par y devuelve ambas observaciones de `alias`.
+std::optional<std::pair<AliasObservation, AliasObservation>> observePair(
+    CppClangSessionFactory& factory, const std::string& resource, const std::filesystem::path& directory,
+    const std::string& driver, const std::string& first, const std::string& second, const std::string& alias)
+{
+    auto left = openSession(factory, headerOptions(resource, directory, driver, first));
+    auto right = openSession(factory, headerOptions(resource, directory, driver, second));
+    if (!left || !right) return std::nullopt;
+    auto result = std::pair{observeAlias(*left, alias), observeAlias(*right, alias)};
+    left->close();
+    right->close();
+    return result;
+}
+
+// EN: One evidence line for an observation.
+// ES: Una línea de evidencia para una observación.
+std::string describe(const AliasObservation& value)
+{
+    if (!value.found) return "<no alias>";
+    return value.usr.value_or("<no usr>") + " '" + value.canonical + "' record=" +
+        value.recordUsr.value_or("-") + " enum=" + value.enumUsr.value_or("-");
+}
+
+// EN: Checks one row. Rows whose alias column is '-' or starts with '-' have no typedef of that
+//     name under test (the record carries the name); they are only printed. For the others, the
+//     replicated current rule must match the observed outcomes of XY and PQ, and the proposed rule
+//     must accept exactly when the PROP outcome is not an alias conflict.
+// ES: Comprueba una fila. Las filas cuyo alias es '-' o empieza por '-' no prueban un typedef de
+//     ese nombre (el record lleva el nombre); solo se imprimen. En las demás, la regla actual
+//     replicada debe coincidir con los resultados observados de XY y PQ, y la regla propuesta debe
+//     aceptar exactamente cuando el resultado PROP no es un conflicto de alias.
+bool checkTypedefCase(CppClangSessionFactory& factory, const std::string& resource,
+                      const std::filesystem::path& directory, const std::string& driver, const TypedefCase& row)
+{
+    const bool observeOnly = row.alias.front() == '-';
+    const std::string alias = observeOnly ? row.alias.substr(1) : row.alias;
+    if (alias.empty())
+    {
+        std::cout << "TYPEDEF " << row.name << " (" << row.kind << "): no typedef under test\n";
+        return true;
+    }
+    const auto xy = observePair(factory, resource, directory, driver, row.name + "/x.h", row.name + "/y.h", alias);
+    const auto pq = observePair(factory, resource, directory, driver, row.name + "/p/t.h", row.name + "/q/t.h", alias);
+    if (!expect(xy && pq, "typedef case " + row.name + " sessions open")) return false;
+    const bool currentXy = currentAliasRule(xy->first, xy->second);
+    const bool currentPq = currentAliasRule(pq->first, pq->second);
+    const bool proposedXy = proposedAliasRule(xy->first, xy->second, alias);
+    const bool proposedPq = proposedAliasRule(pq->first, pq->second, alias);
+    std::cout << "TYPEDEF " << row.name << " (" << row.kind << ") " << alias << "\n  x.h   " << describe(xy->first)
+              << "\n  y.h   " << describe(xy->second) << "\n  p/t.h " << describe(pq->first) << "\n  q/t.h "
+              << describe(pq->second) << "\n  current XY=" << (currentXy ? "accept" : "reject")
+              << " PQ=" << (currentPq ? "accept" : "reject") << "; proposed XY=" << (proposedXy ? "accept" : "reject")
+              << " PQ=" << (proposedPq ? "accept" : "reject") << '\n';
+    if (observeOnly) return true;
+    bool ok = expect(xy->first.found && xy->second.found && pq->first.found && pq->second.found,
+                     row.name + ": every header declares the typedef");
+    ok &= expect(currentXy == (row.distinctFiles != "alias"), row.name + ": current rule matches XY outcome");
+    ok &= expect(currentPq == (row.homonymFiles != "alias"), row.name + ": current rule matches PQ outcome");
+    ok &= expect(proposedXy == (row.proposal != "alias"), row.name + ": proposed rule matches PROP outcome");
+    ok &= expect(proposedPq == currentPq, row.name + ": proposed rule leaves homonymous headers unchanged");
+    return ok;
+}
+
+// EN: Entry of --typedef-matrix. `directory` is the copied typedefs fixture with casos.txt.
+// ES: Entrada de --typedef-matrix. `directory` es el fixture typedefs copiado con casos.txt.
+int runTypedefMatrix(const std::filesystem::path& directory, const std::string& resource, const std::string& driver)
+{
+    const auto cases = readTypedefCases(directory / "casos.txt");
+    if (cases.empty())
+    {
+        std::cerr << "cannot read " << (directory / "casos.txt").string() << '\n';
+        return 2;
+    }
+    CppClangSessionFactory factory;
+    bool ok = true;
+    const auto absolute = std::filesystem::absolute(directory);
+    for (const auto& row : cases) ok &= checkTypedefCase(factory, resource, absolute, driver, row);
+    std::cout << (ok ? "Typedef identity matrix passed\n" : "Typedef identity matrix failed\n");
+    return ok ? 0 : 1;
+}
+
 }
 
 int main(int argc, char** argv)
@@ -933,13 +1130,19 @@ int main(int argc, char** argv)
     {
         return verifyDriverRestoredUsrs(argv);
     }
+    if (argc == 5 && std::string_view(argv[1]) == "--typedef-matrix")
+    {
+        return runTypedefMatrix(argv[2], argv[3], argv[4]);
+    }
     if (argc != 4)
     {
         std::cerr << "usage: nsc_cpp_c_identity_tests <clang-resource-dir> <work-dir> <clang-driver>\n"
                      "       nsc_cpp_c_identity_tests --verify-restored-c-usr <nsmeta> <header> "
                      "<clang-resource-dir> <clang-driver> <work-dir>\n"
                      "       nsc_cpp_c_identity_tests --verify-driver-restored-c-usr <producer.lib> <header> "
-                     "<clang-resource-dir> <clang-driver>\n";
+                     "<clang-resource-dir> <clang-driver>\n"
+                     "       nsc_cpp_c_identity_tests --typedef-matrix <typedefs-dir> <clang-resource-dir> "
+                     "<clang-driver>\n";
         return 2;
     }
     return runProbes(argv[1], argv[2], argv[3]);

@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>T11SameTagFieldsX1</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="T11SameTagFields.ns" />
+    <CppLibraryReference Header="T11SameTagFields/x.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>

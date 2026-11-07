@@ -1,0 +1,1 @@
+int Main() { CTdWide v = 3; return (int)v - 3; }

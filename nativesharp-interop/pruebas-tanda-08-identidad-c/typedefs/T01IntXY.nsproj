@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>T01IntXY</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="T01Int.ns" />
+    <CppLibraryReference Header="T01Int/x.h" Language="C" Standard="c11" />
+    <CppLibraryReference Header="T01Int/y.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>

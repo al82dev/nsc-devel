@@ -1,0 +1,1 @@
+int Use(CTdAnon* value) { return 0; } int Main() { return 0; }

@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>T12OtherTagFieldsPQ</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="T12OtherTagFields.ns" />
+    <CppLibraryReference Header="T12OtherTagFields/p/t.h" Language="C" Standard="c11" />
+    <CppLibraryReference Header="T12OtherTagFields/q/t.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>

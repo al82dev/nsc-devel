@@ -97,7 +97,82 @@ Riesgo: la regla depende de la forma textual del USR de Clang 23.1.0. Las sondas
 directorios distintos); un cambio de Clang las haría fallar antes de afectar a la
 resolución.
 
+## Matriz de typedef y revisión contra los contratos (tercer conjunto)
+
+HECHO COMPROBADO con `nsc_cpp_c_identity_tests --typedef-matrix` y el fixture
+`pruebas-tanda-08-identidad-c/typedefs` (tabla `casos.txt`), compilador de este
+carril y Clang 23.1.0. Cada caso tiene tres proyectos: X1 (solo `x.h`, control de
+la fuente), XY (`x.h` + `y.h`, nombres de archivo distintos) y PQ (`p/t.h` +
+`q/t.h`, mismo nombre de archivo en directorios distintos). La sonda lee de cada
+sesión el USR del typedef, su tipo canónico y el USR del record o enum al que
+remite, y aplica una réplica de la regla actual y una de la regla propuesta. El
+validador compila los 36 proyectos y exige el resultado de la tabla.
+
+| Caso | Clase | XY hoy | PQ hoy | Regla propuesta en XY |
+|---|---|---|---|---|
+| T01 `typedef int` en ambos | compatible | alias | ejecuta | acepta → ejecuta |
+| T02 `int` frente a `long long` | distinto | alias | alias | rechaza (tipo canónico) |
+| T03 `unsigned int` frente a `unsigned` | compatible | alias | ejecuta | acepta |
+| T04 cadena `typedef CTdBase` frente a `typedef int` | compatible | alias | ejecuta | acepta |
+| T05 `typedef struct CTdS` con la misma definición | compatible | alias | ejecuta | acepta |
+| T06 `typedef struct CTdO` con definiciones distintas | distinto | alias | record | acepta el alias; rechaza el record |
+| T07 `typedef struct { ... } CTdAnon` | compatible | ejecuta | ejecuta | sin cambio |
+| T08 `typedef enum CTdE` | compatible | alias | ejecuta | acepta |
+| T09 mismo alias, etiquetas `CTdP` y `CTdQ` | distinto | alias | alias | rechaza (tipo canónico) |
+| T10 puntero a función `int (*)(int)` | compatible | alias | ejecuta | acepta |
+| T11 `struct CTdF` idéntico sin typedef | compatible | member | member | fuera de la regla |
+| T12 `struct CTdG` distinto sin typedef | distinto | record | record | fuera de la regla |
+
+`alias` = `conflicting C/C++ type alias`; `record` = `referenced C/C++ record has
+conflicting or unverified definitions`; `member` = `has no compatible member named`.
+
+Hechos de la matriz:
+
+1. HECHO COMPROBADO: en PQ los dos USR del typedef son iguales (`c:t.h@T@...`); en
+   XY difieren solo en el segmento de archivo (`c:x.h@T@...` frente a
+   `c:y.h@T@...`). Con la regla propuesta XY se comporta exactamente como PQ en los
+   diez casos con typedef: la sonda lo afirma por caso.
+2. HECHO COMPROBADO: la regla propuesta solo cambia los casos compatibles (T01,
+   T03, T04, T05, T08, T10). Los distintos siguen rechazados: T02 y T09 por el tipo
+   canónico, que la propuesta no toca; T06 por el agrupador de records. PQ es la
+   evidencia de T06: con USR de alias iguales, el uso de `CTdOtherAlias*` ya
+   informa `referenced C/C++ record has conflicting or unverified definitions`. La
+   propuesta no necesita decidir la identidad del record.
+3. HECHO COMPROBADO: el typedef de un struct anónimo (T07) tiene USR sin archivo,
+   `c:@T@CTdAnon`, y el record `c:@SA@CTdAnon`. No le afecta H1.
+4. HECHO COMPROBADO (H5, fuera de esta propuesta): un mismo `struct` definido con el
+   mismo texto en dos archivos distintos (T11) se enlaza como tipo, pero sus campos
+   no son accesibles. `selectCppRecordMemberDefinition`
+   (`CppSemanticRecord.cpp:728-760`) exige que todas las definiciones tengan el mismo
+   archivo, línea y columna. Es un contrato del carril de layout de records, no de
+   la identidad de typedef; no se modifica.
+
+Revisión contra los contratos existentes, ahora con datos de Clang y no solo por
+lectura:
+
+| Contrato | Resultado |
+|---|---|
+| Tipo canónico distinto es conflicto (`QualifiedTypeNames.cpp:224-229`) | se conserva (T02, T09) |
+| USR conocidos distintos de otra forma son ambigüedad (`CppClangSessionTests.cpp:6944`, `test:count` / `test:other-count`) | se conserva: la forma `c:<archivo>@T@` no se reconoce en esos USR |
+| USR iguales se aceptan (`CppClangSessionTests.cpp:6943`) | se conserva |
+| USR del record referido distinto rechaza el alias (`CppClangSessionTests.cpp:4543`) | se conserva: la regla exige USR compatibles del record y del enum |
+| Definiciones distintas de un record se rechazan al usar el tipo | se conserva (T06 PQ, T12) |
+| Homónimos `dirA`/`dirB`/`dirC` (`homonimos/AliasAB`, `AliasAC`) | sin cambio |
+| Alias frente a tipo NativeSharp (`QualifiedTypeNames.cpp:304`) | ruta distinta, sin cambio |
+
+Conclusión: la regla propuesta distingue en los doce casos los typedef
+compatibles de los realmente distintos sin tocar el tipo canónico ni la
+identidad de records. Sigue sin implementarse: cambia la resolución compartida
+de nombres y necesita autorización.
+
+Al implementarla, el cambio en las pruebas es mecánico: en `typedefs/casos.txt`
+la columna XY pasa a valer lo que hoy vale PROP, y `validar.cmd` con
+`NSC_T08_PROPUESTAS=1` ya exige ese resultado.
+
 ## Pruebas al implementar
+
+Las pruebas 1 a 4 ya existen como matriz (`typedefs/casos.txt`); al implementar,
+se ejecuta `validar.cmd` con `NSC_T08_PROPUESTAS=1` y se actualiza la columna XY.
 
 1. Sonda 3: `a.h` + `b.h` con el mismo typedef enlaza (aserción nueva).
 2. `a.h` + `b.h` con tipos distintos: sigue `conflicting C/C++ type alias`.

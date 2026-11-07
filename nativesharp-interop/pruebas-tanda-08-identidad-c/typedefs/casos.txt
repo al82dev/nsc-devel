@@ -1,0 +1,23 @@
+# T08-002 matriz de typedef C en dos encabezados de un mismo proyecto.
+# Columnas: caso alias clase X1 XY PQ PROP
+#   alias  typedef bajo prueba; '-' sin typedef (el nombre lo lleva el record); '-Nombre' solo se observa.
+#   clase  compatible (C11 6.2.7: mismo tipo) o distinto.
+#   X1     solo x.h (control de la fuente).
+#   XY     x.h + y.h (nombres de archivo distintos).
+#   PQ     p/t.h + q/t.h (mismo nombre de archivo en directorios distintos).
+#   PROP   resultado esperado de XY con la regla propuesta (T08-002-PROPUESTA-TYPEDEF.md).
+# Resultados: runs (compila y ejecuta), alias (conflicting C/C++ type alias),
+#   record (referenced C/C++ record has conflicting or unverified definitions),
+#   member (has no compatible member named).
+T01Int CTdInt compatible runs alias runs runs
+T02IntLong CTdWide distinto runs alias alias alias
+T03Spelling CTdUnsigned compatible runs alias runs runs
+T04Chain CTdChain compatible runs alias runs runs
+T05Struct CTdStructAlias compatible runs alias runs runs
+T06StructDiffers CTdOtherAlias distinto runs alias record record
+T07AnonStruct -CTdAnon compatible runs runs runs runs
+T08Enum CTdEnumAlias compatible runs alias runs runs
+T09OtherTag CTdTag distinto runs alias alias alias
+T10FunctionPointer CTdFn compatible runs alias runs runs
+T11SameTagFields - compatible runs member member member
+T12OtherTagFields - distinto runs record record record

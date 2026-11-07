@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>T02IntLongX1</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="T02IntLong.ns" />
+    <CppLibraryReference Header="T02IntLong/x.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>

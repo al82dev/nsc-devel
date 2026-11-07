@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>T03SpellingPQ</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="T03Spelling.ns" />
+    <CppLibraryReference Header="T03Spelling/p/t.h" Language="C" Standard="c11" />
+    <CppLibraryReference Header="T03Spelling/q/t.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>

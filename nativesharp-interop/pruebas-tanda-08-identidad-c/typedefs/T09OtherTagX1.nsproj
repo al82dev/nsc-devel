@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>T09OtherTagX1</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="T09OtherTag.ns" />
+    <CppLibraryReference Header="T09OtherTag/x.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,1 @@
+int Main() { CTdEnumAlias v = CTdEB; return (int)v - 2; }

@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>T05StructPQ</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="T05Struct.ns" />
+    <CppLibraryReference Header="T05Struct/p/t.h" Language="C" Standard="c11" />
+    <CppLibraryReference Header="T05Struct/q/t.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>

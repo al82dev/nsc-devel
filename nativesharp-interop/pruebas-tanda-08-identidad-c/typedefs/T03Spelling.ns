@@ -1,0 +1,1 @@
+int Main() { CTdUnsigned v = 3; return (int)v - 3; }

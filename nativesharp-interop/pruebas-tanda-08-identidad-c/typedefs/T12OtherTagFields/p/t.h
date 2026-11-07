@@ -1,0 +1,1 @@
+struct CTdG { int a; };

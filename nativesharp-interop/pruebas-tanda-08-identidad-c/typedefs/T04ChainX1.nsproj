@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>T04ChainX1</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="T04Chain.ns" />
+    <CppLibraryReference Header="T04Chain/x.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>

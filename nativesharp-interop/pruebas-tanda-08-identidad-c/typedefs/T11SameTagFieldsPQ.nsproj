@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>T11SameTagFieldsPQ</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="T11SameTagFields.ns" />
+    <CppLibraryReference Header="T11SameTagFields/p/t.h" Language="C" Standard="c11" />
+    <CppLibraryReference Header="T11SameTagFields/q/t.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>

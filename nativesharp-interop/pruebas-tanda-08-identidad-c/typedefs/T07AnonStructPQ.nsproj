@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>T07AnonStructPQ</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="T07AnonStruct.ns" />
+    <CppLibraryReference Header="T07AnonStruct/p/t.h" Language="C" Standard="c11" />
+    <CppLibraryReference Header="T07AnonStruct/q/t.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>T10FunctionPointerX1</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="T10FunctionPointer.ns" />
+    <CppLibraryReference Header="T10FunctionPointer/x.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>

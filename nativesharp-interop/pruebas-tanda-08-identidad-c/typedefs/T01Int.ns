@@ -1,0 +1,1 @@
+int Use(CTdInt value) { return value; } int Main() { CTdInt v = 3; return Use(v) - 3; }
