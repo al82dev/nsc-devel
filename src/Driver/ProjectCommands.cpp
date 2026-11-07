@@ -1704,6 +1704,12 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const PreparedDriv
     TemporaryFile removeGenerated(generated);
     compilation::ProjectLoadOptions projectLoadOptions;
     projectLoadOptions.libraryReferenceRoot = libraryReferenceRoot;
+    if (!libraryReferenceRoot)
+        if (const auto environmentRoot = environmentValue("NS_LIB_ROOT"); environmentRoot && !environmentRoot->empty())
+        {
+            const fs::path fallback(*environmentRoot);
+            if (fallback.is_absolute()) projectLoadOptions.libraryReferenceFallbackRoot = fallback.lexically_normal();
+        }
     std::optional<compilation::Project> loaded;
     std::optional<compilation::ProjectGraph> graph;
     const ExitCode closure = loadBuildClosure(options, generated,
