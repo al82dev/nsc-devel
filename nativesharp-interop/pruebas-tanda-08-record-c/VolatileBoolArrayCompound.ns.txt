@@ -119,5 +119,26 @@ int Main()
     if (!volatile_bool_array[0]) return 51;
     volatile_bool_array[0] >>= shiftUnsigned64;
     if (volatile_bool_array[0]) return 52;
+    float halfFloat = (float)0.5;
+    float zeroFloat = (float)0.0;
+    double halfDouble = 0.5;
+    volatile_bool_array[0] += halfFloat;
+    if (!volatile_bool_array[0]) return 53;
+    volatile_bool_array[0] -= (float)1.0;
+    if (volatile_bool_array[0]) return 54;
+    volatile_bool_array[0] += halfFloat;
+    if (!volatile_bool_array[0]) return 55;
+    volatile_bool_array[0] *= zeroFloat;
+    if (volatile_bool_array[0]) return 56;
+    volatile_bool_array[0] /= zeroFloat;
+    if (!volatile_bool_array[0]) return 57;
+    volatile_bool_array[0] *= 0.0;
+    if (volatile_bool_array[0]) return 58;
+    volatile_bool_array[0] += halfDouble;
+    if (!volatile_bool_array[0]) return 59;
+    volatile_bool_array[0] /= 2.0;
+    if (!volatile_bool_array[0]) return 60;
+    volatile_bool_array[0] -= 1.0;
+    if (volatile_bool_array[0]) return 61;
     return 0;
 }

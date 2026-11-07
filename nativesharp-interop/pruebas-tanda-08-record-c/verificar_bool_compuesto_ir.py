@@ -4,8 +4,8 @@ import sys
 lines = pathlib.Path(sys.argv[1]).read_text(encoding='utf-8').splitlines()
 loads = [line for line in lines if 'c.bool.compound.load' in line and ' = load ' in line]
 stores = [line for line in lines if 'store atomic volatile i8 %c.bool.compound.bits' in line]
-if len(loads) != 59 or len(stores) != 59:
-    raise SystemExit(f'expected 59 C bool compound loads and stores, got {len(loads)} and {len(stores)}')
+if len(loads) != 68 or len(stores) != 68:
+    raise SystemExit(f'expected 68 C bool compound loads and stores, got {len(loads)} and {len(stores)}')
 if any('load atomic volatile i8' not in line or ' acquire, align 1' not in line for line in loads):
     raise SystemExit('C bool compound load is missing volatile acquire or byte alignment')
 if any(' release, align 1' not in line for line in stores):
@@ -20,4 +20,8 @@ if len(promotions32) != 30 or len(normalizations) != 30 or len(promotions64) != 
 for instruction in (' sdiv i32 ', ' srem i32 ', ' udiv i32 ', ' urem i32 ', ' sdiv i64 ', ' srem i64 ', ' udiv i64 ', ' urem i64 ', ' shl i32 ', ' ashr i32 '):
     if not any(instruction in line for line in lines):
         raise SystemExit(f'missing C bool compound instruction: {instruction.strip()}')
-print('C volatile bool compound IR: 59 byte loads/stores and i32/i64 calculations.')
+fp_promotions = [line for line in lines if 'c.bool.compound.fp.promoted' in line and ' = uitofp i1 ' in line]
+fp_normalizations = [line for line in lines if 'c.bool.compound.fp.normalized' in line and ' = fcmp une ' in line]
+if len(fp_promotions) != 9 or len(fp_normalizations) != 9:
+    raise SystemExit(f'expected nine floating promotions and unordered nonzero comparisons, got {len(fp_promotions)} and {len(fp_normalizations)}')
+print('C volatile bool compound IR: 68 byte accesses and integer/floating calculations.')
