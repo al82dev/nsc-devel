@@ -505,8 +505,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     de artefactos activa siguen pendientes. [Resultado](registro-commits/t08-bool-scalar-precompilado-validacion.md).
     La variante con DLL NativeSharp intermedia pasó O0–O3 con el header oculto.
     [Resultado](registro-commits/t08-bool-scalar-precompilado-dll-validacion.md).
-    Preparado un control independiente de global C bool exportado por DLL;
-    pendiente de ejecución. [Detalle](registro-commits/t08-bool-escalar-dll-c-fixture.md).
+    El control independiente de global C bool exportado por DLL pasó O0–O3;
+    incorporado a la validación agrupada. [Resultado](registro-commits/t08-bool-escalar-dll-c-validacion.md).
   - Por autorización del usuario, el gate usa el control C PE y el acceso NSC
     directo existentes, y variantes de escalares con importación y con carga
     dinámica. Los cuatro controles originales siguen disponibles como
