@@ -1,0 +1,11 @@
+int Main()
+{
+    if (flag || c_read_flag() != 0) return 1;
+    flag = true;
+    if (!flag || c_read_flag() != 1) return 2;
+    flag ^= true;
+    if (flag || c_read_flag() != 0) return 3;
+    c_write_flag(1);
+    if (!flag) return 4;
+    return 0;
+}
