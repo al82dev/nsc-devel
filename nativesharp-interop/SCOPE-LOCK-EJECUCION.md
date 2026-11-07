@@ -4371,6 +4371,16 @@ conservar el comportamiento de acceso y los controles negativos. Construir
 incrementalmente y validar el conjunto una vez implementado. Sin NSLink,
 LLVM externo ni despliegue en C:; otros tipos siguen abiertos.
 
+# Escalares TLS C volatile
+
+Probar en grupo `volatile unsigned int`, `volatile long long`,
+`volatile double`, `volatile _Bool` y `const volatile int` TLS C, junto con
+los escalares existentes, en estático y DLL con CRT. Reproducir primero;
+después permitir que el mapeo de escalares y el tratamiento de acceso
+`volatile` existentes validen las formas soportadas. Presupuesto inicial:
+fixtures `scalars` y `directo`, seguimiento y registros. Producción solo en
+la ruta causal demostrada. Sin cambios a NSLink, LLVM externo ni C:.
+
 # Identificación provisional de TLS de DLL
 
 El fixture directo demuestra que NSC proyecta una declaración TLS sin

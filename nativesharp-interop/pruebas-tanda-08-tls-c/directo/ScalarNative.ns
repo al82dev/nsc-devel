@@ -7,11 +7,16 @@ int Main()
     if (tls_unsigned != 7) return 4;
     if (tls_double != 1.5) return 5;
     if (tls_bool) return 6;
+    if (tls_volatile_unsigned != 5 || tls_volatile_long != 6 || tls_volatile_double != 1.5 || tls_volatile_bool || tls_const_volatile != 23) return 9;
     tls_zero = 31;
     tls_volatile = 14;
     tls_unsigned = 17;
     tls_double = 2.5;
     tls_bool = true;
+    tls_volatile_unsigned = 15;
+    tls_volatile_long = 16;
+    tls_volatile_double = 2.5;
+    tls_volatile_bool = true;
     if (tls_scalar_check() != 0) return 7;
     return 0;
 }
