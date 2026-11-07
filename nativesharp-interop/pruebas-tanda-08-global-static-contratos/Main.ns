@@ -1,0 +1,9 @@
+int Main()
+{
+    if (text[0] != 111 || values[3] != 4 || ticks != 5U || local != 6U || atomic_local != 7U) return 1;
+    values[3] = 14;
+    ticks = 15U;
+    local = 16U;
+    atomic_local = 17U;
+    return inspect() == 1 ? 0 : 2;
+}

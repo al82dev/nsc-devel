@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004: selección por contrato de globales C internas
+
+Reproducir tipos internos ya representables por el importador externo y que la
+lista local excluye: puntero a char const, arreglo unsigned short, volatile
+unsigned int, TLS unsigned int y TLS atomic unsigned int. Corregir la selección
+reutilizando la validación de tipos existente, preservar el diagnóstico de
+orígenes ambiguos e intentar los controles C/NativeSharp O0–O3 con regresiones.
+NSLink, metadata, LLVM externo, fixtures existentes y C: permanecen protegidos.
+
 ## T08-004: punteros internos C a record, enum y función
 
 Reproducir y corregir globales internas C que almacenan punteros a record,
