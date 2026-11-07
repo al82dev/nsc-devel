@@ -20,6 +20,13 @@ for filename in sys.argv[1:]:
             raise SystemExit(f"{filename}: faltan dos operaciones {operation} atomicas de punteros")
     print(f"Orden volatile y atomico verificado: {filename}")
 
+for filename in sys.argv[2:]:
+    ir = pathlib.Path(filename).read_text(encoding="utf-8")
+    for offset in (-4, -1, 1, 4):
+        pattern = rf"\batomicrmw add\b[^\n]*, i64 {offset} seq_cst, align 8\b"
+        if not re.search(pattern, ir):
+            raise SystemExit(f"{filename}: falta actualización atómica con desplazamiento {offset}")
+
 dll_ir = pathlib.Path(sys.argv[3]).read_text(encoding="utf-8")
 tls_globals = re.findall(r"^@[^\n]*__nsc_c_inline_[^\n]*$", dll_ir, re.MULTILINE)
 if sum("thread_local" in line for line in tls_globals) < 2:
