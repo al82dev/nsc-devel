@@ -573,7 +573,7 @@ static bool provideGlobalsWithLookup(
                 for (const auto index : selected.internalIndices)
                 {
                     const auto& entry = entries[index];
-                    if (supportedInternalC(entry))
+                    if (entry.cLanguage)
                         internalC.push_back(index);
                 }
                 if (!internalC.empty())
