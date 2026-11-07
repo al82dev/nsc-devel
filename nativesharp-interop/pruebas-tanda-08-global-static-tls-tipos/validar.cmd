@@ -23,6 +23,10 @@ if errorlevel 1 exit /b 1
 "%DEST%\control.exe"
 if errorlevel 1 exit /b 1
 echo Control C de tipos TLS internos correcto.
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\native.ll" 2> "%DEST%\native-ir.log"
+if errorlevel 1 exit /b 1
+python "%~dp0verificar-ir.py" "%DEST%\native.ll"
+if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe" > "%DEST%\consumer-O%%O.log" 2>&1
   if errorlevel 1 goto :failure
