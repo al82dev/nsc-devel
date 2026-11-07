@@ -513,6 +513,8 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     Python y NativeSharp. Las opciones explícitas se respetan; falta comprobar
     la caché de bundle de DLL y los cuatro fallos C originales siguen abiertos.
     [Evidencia](registro-commits/t08-emision-dll-auto-tls.md).
+    La batería posterior confirmó el control nuevo, pero volvió a fallar en los
+    cuatro controles originales de DLL C. [Resultado](registro-commits/t08-validacion-dll-emision-auto.md).
     La batería posterior ejecutó correctamente ese control, pero terminó con
     los cuatro fallos conocidos de DLL. La tanda sigue abierta.
     [Resultado](registro-commits/t08-validacion-emision-auto.md).
