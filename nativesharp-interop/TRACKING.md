@@ -205,6 +205,12 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - El tercer conjunto del carril aportó una matriz de typedef, casos de
+    plantillas con dependencias C y diagnósticos H4–H8. Son resultados del
+    carril y propuestas sujetos a revisión frente al estado actual de NSC.
+    [Resultados](registro-commits/t08-002-resultados-identidad-c-3.md),
+    [enum de campo](T08-002-PROPUESTA-ENUM-CAMPO.md),
+    [global static](T08-002-GLOBAL-STATIC.md).
   - El segundo conjunto del carril reportó colisiones de USR de declaraciones
     internas en encabezados homónimos y restauración de cinco productores por
     la ruta del driver O0–O3. Dejó propuestas para typedef equivalentes y

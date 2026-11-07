@@ -126,12 +126,14 @@ La columna de evidencia remite al [registro de resultados](registro-commits/t08-
 | struct nombrado solo por typedef | Probado (sonda 1, `c:@SA@`) | Probado O0–O3 | Probado O0–O3, también por el driver | PENDIENTE: validación integral |
 | enum anónimo nombrado por typedef | Probado (`c:@EA@`) | Probado O0–O3 | Probado O0–O3, también por el driver | PENDIENTE: validación integral |
 | enum anónimo sin typedef | Probado (sonda 1, `c:@Ea@`) | No publicable: no tiene nombre de tipo para la superficie | No aplica | PENDIENTE: el consumidor lo obtiene de su sesión |
-| enum anónimo como tipo de campo publicado | NO VERIFICADO (USR) | El productor falla (H4) | No aplica | PENDIENTE: H4 |
+| enum anónimo como tipo de campo publicado | Probado (sonda 6): USR `c:@SA@R@E@<archivo>@<desplazamiento>`, depende del encabezado; nombre calificado con ruta absoluta. Campo omitido y enumeradores ausentes también con encabezado | El productor falla (H4) | No aplica | PENDIENTE: T08-002-PROPUESTA-ENUM-CAMPO.md |
+| enum con nombre declarado dentro de un struct C | Probado (sonda 6): `c:@E@<nombre>`, no depende del encabezado; NSC no lo captura | El productor falla: `required C enum is unavailable` | No aplica | PENDIENTE: T08-002-PROPUESTA-ENUM-CAMPO.md (parte A) |
 | función externa | Probado (sondas 1 y 2) | No forma parte del catálogo | Falla si la usa una plantilla pública | PENDIENTE: propuesta H3 |
-| función `static inline` | Probado (sondas 1, 2 y 5) | No forma parte del catálogo | Falla si la usa una plantilla pública | PENDIENTE: propuesta H3 |
+| función `static inline` | Probado (sondas 1, 2 y 5) | No forma parte del catálogo | Cuerpo compilado: ejecuta; plantilla pública: falla | PENDIENTE: diagnóstico del productor (H3) |
 | global externa | Probado (sondas 1 y 2) | No forma parte del catálogo | Falla si la usa una plantilla pública | PENDIENTE: propuesta H3 |
-| global `static` | Probado (sondas 1 y 5); NSC no la importa | No forma parte del catálogo | No aplica | PENDIENTE (T08-004) |
-| alias `typedef` | Probado (sondas 1, 3 y 5) | No forma parte del catálogo | Falla si lo usa una plantilla pública | PENDIENTE: propuestas H1 y H3 |
+| global `static` | Probado (sondas 1 y 5); NSC no la importa | No forma parte del catálogo | No aplica | PENDIENTE (T08-004): T08-002-GLOBAL-STATIC.md |
+| constante de enum C usada en un cuerpo de biblioteca | Probado | El productor falla (H7), también sin plantillas | No aplica | PENDIENTE: corrección H7 |
+| alias `typedef` | Probado (sondas 1, 3 y 5; matriz de 12 casos) | No forma parte del catálogo | Falla si lo usa una plantilla pública | PENDIENTE: propuestas H1 y H3 |
 
 La restauración se prueba de dos formas para cada productor: con el módulo
 precompilado armado por la prueba y por la ruta completa del driver
@@ -246,6 +248,64 @@ Alcance: catálogo de tipos C (T08-009/T08-010), no solo identidad.
 Estado: NO IMPLEMENTAR; registrado.
 ```
 
+### H4 (actualización). Reproducción de extremo a extremo
+
+El fallo no es solo del productor. Con el encabezado directo, el campo de tipo
+enum anónimo se omite en silencio (`has no compatible member named 'level'`) y
+los enumeradores declarados dentro del struct no existen (`unknown identifier`).
+Lo mismo ocurre con un enum con nombre declarado dentro del struct (`unknown
+type name`). Causas, casos (`enum-campo/casos.txt`) y propuesta en tres partes:
+[T08-002-PROPUESTA-ENUM-CAMPO.md](T08-002-PROPUESTA-ENUM-CAMPO.md).
+
+### H5. Struct idéntico en dos archivos: campos inaccesibles
+
+```text
+HALLAZGO NO AUTORIZADO (carril de layout de records)
+Evidencia: typedefs/T11SameTagFields. El mismo "struct CTdF { int a; }" en x.h y
+  y.h, o en p/t.h y q/t.h, se enlaza como tipo pero value->a da "has no
+  compatible member named 'a'". selectCppRecordMemberDefinition
+  (CppSemanticRecord.cpp:728-760) exige la misma ubicación de archivo, línea y
+  columna para todas las definiciones.
+Estado: registrado; no se modifica (contrato de layout de records).
+```
+
+### H6. Identidad de un enum anónimo dentro de un record
+
+```text
+HECHO COMPROBADO (sonda 6)
+El USR es c:@SA@CNestAnonField@E@nested.h@26: depende del nombre del encabezado
+  y del desplazamiento. El nombre calificado contiene la ruta absoluta del
+  encabezado. Solo el USR del campo (c:@SA@CNestAnonField@FI@level) es estable.
+Consecuencia: ni el USR ni el nombre calificado de ese enum pueden ser identidad
+  ni escribirse en NSMETA. Lo incorpora la propuesta del enum de campo.
+```
+
+### H7. Constantes de enum C en cuerpos de biblioteca
+
+```text
+HALLAZGO NO AUTORIZADO
+Evidencia: plantillas/ConsumerEnumConstantPlain y ConsumerAnonymousConstantPlain.
+  Un método no genérico que usa una constante de enum C impide construir la
+  biblioteca: "metadata contains an incomplete or duplicate namespace state
+  '.GenModeB'". appendNamespaceStateMetadata
+  (LibraryMetadataConstruction.cpp:2961-2976) publica las constantes de enum C
+  importadas como estados públicos.
+Estado: corrección de una condición propuesta en T08-002-PROPUESTA-METADATA-C.md;
+  no aplicada (metadata, compartida con el carril de variables globales).
+```
+
+### H8. Catálogo heredado solo de enums confundido con la envoltura 4
+
+```text
+HECHO COMPROBADO (sonda 7)
+Un catálogo 1.42 solo de enums empieza por 04 00 00 00 00 00 00 00;
+  isCTypeCatalogWithProvenance lo clasifica como envoltura 4 y la decodificación
+  falla con "invalid C record catalogue size".
+NO VERIFICADO: si existe algún NSMETA 1.42 real así.
+Estado: registrado; influye en la recomendación de versionado
+  (T08-002-PROPUESTA-METADATA-C.md, opción B).
+```
+
 ## Pendientes de T08-002
 
 1. Validación integral de la tanda 08 con las pruebas nuevas (Codex).
@@ -253,5 +313,13 @@ Estado: NO IMPLEMENTAR; registrado.
    con sus pruebas.
 3. Decidir H3 (T08-002-PROPUESTA-METADATA-C.md) y, si se autoriza, implementarlo
    con sus pruebas.
-4. Decidir H4 (enum anónimo como tipo de campo publicado).
+4. Decidir H4 (T08-002-PROPUESTA-ENUM-CAMPO.md): las partes A y B no cambian la
+   metadata; la parte C sí.
 5. Importación de globales `static` de encabezados (T08-004); hoy no se importan.
+   Ver T08-002-GLOBAL-STATIC.md.
+6. Decidir la versión de NSMETA para H3 y H4 (recomendación: opción B, minor 46
+   condicional, una sola subida) y asignar el número de minor con los demás
+   carriles.
+7. Decidir H7 (una condición en la construcción de metadata) y H8 (decodificar
+   el catálogo según el minor).
+8. H5 corresponde al carril de layout de records.

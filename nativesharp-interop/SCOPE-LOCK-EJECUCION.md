@@ -11,6 +11,9 @@ Presupuesto: `tests/unit/CppCIdentityTests.cpp` y su objetivo nuevo en
 NSMETA, fixtures y pruebas existentes protegidos; hallazgos sin implementar
 hasta decisión. Build aislado en `A:/nsc-devel/build-claude-t08`; NSLink, LLVM
 externo y C: sin modificar. Detalle en la auditoría.
+Tercer conjunto: matriz de typedef, enum dentro de un campo de record,
+plantillas públicas con C y global `static`. Solo pruebas, fixtures propios y
+propuestas; resolución de nombres, NSMETA y publicación de estados sin cambios.
 
 ## T08-004: selección por contrato de globales C internas
 
