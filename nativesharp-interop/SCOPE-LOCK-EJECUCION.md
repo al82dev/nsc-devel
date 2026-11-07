@@ -4341,6 +4341,15 @@ layout, visibilidad y calificadores comprobados por el mapeo C existente.
 Presupuesto inicial: fixture `pointer`, seguimiento y registros; producción
 solo en la ruta demostrada. NSLink, LLVM externo y C: permanecen protegidos.
 
+# Callback global C TLS
+
+Ampliar el fixture TLS con un puntero a función C global por hilo: lectura,
+asignación, invocación y aislamiento desde C y NativeSharp, en biblioteca
+estática y DLL. Reproducir antes de cambiar proyección y reutilizar la
+representación de callbacks C existente. Presupuesto inicial: fixture
+`pointer`, seguimiento y registros; producción solo en la ruta demostrada.
+NSLink, LLVM externo y C: permanecen protegidos.
+
 # Arreglo global C TLS
 
 Reproducir lectura, escritura y aislamiento por hilo de un `int[2]` TLS C

@@ -15,3 +15,5 @@ extern __declspec(thread) TlsRecord* tls_record_pointer;
 extern __declspec(thread) TlsRecord tls_records[2];
 extern __declspec(thread) TlsMode tls_mode;
 extern __declspec(thread) TlsMode* tls_mode_pointer;
+extern __declspec(thread) TlsCallback tls_callback;
+TlsCallback pointer_callback(void);

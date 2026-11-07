@@ -9,6 +9,8 @@ int Main()
     tls_record_pointer->extra = 32;
     tls_records[1].value = 71;
     *tls_mode_pointer = TLS_SET;
+    tls_callback = pointer_callback();
+    if (tls_callback(38) != 42) return 6;
     tls_double_pointer = pointer_double_target();
     if (tls_double_pointer[0] != 1.5 || tls_readonly_pointer[0] != 37 || tls_const_slot[0] != 37) return 4;
     tls_double_pointer[0] = 2.5;
