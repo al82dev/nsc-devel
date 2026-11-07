@@ -468,6 +468,9 @@ las correcciones. [Resultado](registro-commits/t08-validacion-link-lib-auto.md),
     atómicas; el control positivo se incorporó al gate y sigue fallando.
     [Evidencia](registro-commits/t08-tls-atomico-resultado.md).
     [Trabajo pendiente](T08-TLS-ATOMICOS.md).
+  - Preparada la captura diferenciada de `_Atomic(T)` desde Clang y controles
+    para el tipo y el rechazo del codec anterior. Aún no se construyó ni se
+    habilitó la semántica; el fixture positivo sigue pendiente.
   - Un global C TLS estático `int` firmado de 32 bits se leyó y escribió desde
     NativeSharp y C con aislamiento de otro hilo en O0–O3. Se usaron LLD y CRT
     declarados explícitamente; el acceso directo desde DLL sigue pendiente.
