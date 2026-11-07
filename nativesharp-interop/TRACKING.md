@@ -878,6 +878,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     validar. [Detalle](registro-commits/t08-bool-compuesto-div-shift-implementacion.md).
     Preparados controles positivos y de IR; pendientes de ejecución.
     [Detalle](registro-commits/t08-bool-compuesto-div-shift-fixture.md).
+    Validación posterior: construcción incremental y fixture record-c pasaron
+    O0–O3, con operaciones i32 y accesos de byte comprobados en IR.
+    [Resultado](registro-commits/t08-bool-compuesto-div-shift-validacion.md).
   - Preparada la admisión de seis operadores compuestos con `int` en el mismo
     arreglo C `volatile _Bool`; pendientes HIR, LLVM y validación agrupada.
     [Detalle](registro-commits/t08-bool-compuesto-int-analisis.md).
