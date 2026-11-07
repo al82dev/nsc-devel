@@ -13,3 +13,6 @@ rastrean headers transitivos. No se considera aprobada la prueba; la salida
 del script terminó sin sus mensajes de éxito aunque la invocación externa
 reportó código cero. Se investigará la ruta existente sin caché sin retirar
 la protección de caché con dependencias incompletas.
+
+Tras habilitar la ruta sin caché, la matriz pasó O0–O3 con build
+`2c5d0967206b6e62` y reportó LLD en JSON. No cierra la tanda 08.
