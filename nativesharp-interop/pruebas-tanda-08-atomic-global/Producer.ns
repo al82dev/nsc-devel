@@ -1,0 +1,9 @@
+namespace PublishedAtomicGlobal
+{
+    public struct Bridge
+    {
+        public static int Read() { return atomic_global; }
+        public static int Add() { return atomic_global += 2; }
+        public static int CRead() { return c_read_atomic_global(); }
+    }
+}

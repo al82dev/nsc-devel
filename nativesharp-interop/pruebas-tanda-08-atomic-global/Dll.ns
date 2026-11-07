@@ -1,0 +1,9 @@
+namespace PublishedAtomicGlobalDll
+{
+    public struct Bridge
+    {
+        public static int Read() { return PublishedAtomicGlobal.Bridge.Read(); }
+        public static int Add() { return PublishedAtomicGlobal.Bridge.Add(); }
+        public static int CRead() { return PublishedAtomicGlobal.Bridge.CRead(); }
+    }
+}

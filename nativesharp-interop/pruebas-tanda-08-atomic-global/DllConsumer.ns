@@ -1,0 +1,7 @@
+int Main()
+{
+    if (PublishedAtomicGlobalDll.Bridge.Read() != 3) return 1;
+    if (PublishedAtomicGlobalDll.Bridge.Add() != 5) return 2;
+    if (PublishedAtomicGlobalDll.Bridge.CRead() != 5) return 3;
+    return 0;
+}

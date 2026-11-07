@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>AtomicGlobalConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+    <LibraryReference Include="AtomicGlobalProducer.lib" />
+  </ItemGroup>
+</Project>

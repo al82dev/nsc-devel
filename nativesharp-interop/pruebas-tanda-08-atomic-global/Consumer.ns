@@ -1,0 +1,7 @@
+int Main()
+{
+    if (PublishedAtomicGlobal.Bridge.Read() != 3) return 1;
+    if (PublishedAtomicGlobal.Bridge.Add() != 5) return 2;
+    if (PublishedAtomicGlobal.Bridge.CRead() != 5) return 3;
+    return 0;
+}

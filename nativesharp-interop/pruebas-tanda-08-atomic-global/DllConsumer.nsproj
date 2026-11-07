@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>AtomicGlobalDllConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="DllConsumer.ns" />
+    <LibraryReference Include="bin/Debug/AtomicGlobalDll.lib" Runtime="bin/Debug/AtomicGlobalDll.dll" />
+  </ItemGroup>
+</Project>
