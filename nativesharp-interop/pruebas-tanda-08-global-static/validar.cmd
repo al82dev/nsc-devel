@@ -23,19 +23,19 @@ if errorlevel 1 exit /b 1
 echo Control C ejecutado correctamente.
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe" > "%DEST%\consumer-O%%O.log" 2>&1
-  if errorlevel 1 (type "%DEST%\consumer-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   "%DEST%\consumer-O%%O.exe"
   if errorlevel 1 exit /b 1
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Solo.nsproj" -O%%O --no-artifact-cache -o "%DEST%\solo-O%%O.exe" > "%DEST%\solo-O%%O.log" 2>&1
-  if errorlevel 1 (type "%DEST%\solo-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   "%DEST%\solo-O%%O.exe"
   if errorlevel 1 exit /b 1
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\Producer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\StaticProducer.lib" > "%DEST%\producer-O%%O.log" 2>&1
-  if errorlevel 1 (type "%DEST%\producer-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\ProducerSecond.nsproj" -O%%O --no-artifact-cache -o "%DEST%\StaticProducerSecond.lib" > "%DEST%\producer-second-O%%O.log" 2>&1
-  if errorlevel 1 (type "%DEST%\producer-second-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Consumer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\precompiled-O%%O.exe" > "%DEST%\precompiled-O%%O.log" 2>&1
-  if errorlevel 1 (type "%DEST%\precompiled-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   "%DEST%\precompiled-O%%O.exe"
   if errorlevel 1 exit /b 1
   echo Global estatica con y sin funciones inline O%%O correcta.
@@ -43,5 +43,9 @@ for %%O in (0 1 2 3) do (
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Ambiguous.nsproj" -O0 --no-artifact-cache -o "%DEST%\ambiguous.exe" > "%DEST%\ambiguous.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /c:"ambiguous C internal global origins" "%DEST%\ambiguous.log" >nul
-if errorlevel 1 (type "%DEST%\ambiguous.log" & exit /b 1)
+if errorlevel 1 goto :failure
 echo Globales internas ambiguas rechazadas correctamente.
+exit /b 0
+:failure
+type "%DEST%\*.log"
+exit /b 1

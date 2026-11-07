@@ -44,7 +44,7 @@ if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\NegativeRecord.nsproj" > "%DEST%\negative-record.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /c:"error: left side of assignment is not assignable" "%DEST%\negative-record.log" >nul
-if errorlevel 1 (type "%DEST%\negative-record.log" & exit /b 1)
+if errorlevel 1 goto :negative_record_failure
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Unsupported.nsproj" > "%DEST%\unsupported.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /c:"C/C++ global type is not yet mapped" "%DEST%\unsupported.log" >nul
@@ -91,4 +91,7 @@ type "%DEST%\*O*.log"
 exit /b 1
 :unsupported_failure
 type "%DEST%\unsupported.log"
+exit /b 1
+:negative_record_failure
+type "%DEST%\negative-record.log"
 exit /b 1
