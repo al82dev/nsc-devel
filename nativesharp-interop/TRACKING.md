@@ -471,6 +471,9 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     [observación NSC](registro-commits/tls-dll-observacion-nsc.md),
     [barrera previa](registro-commits/tls-dll-guardia-evidencia.md),
     [acceso generado](registro-commits/tls-dll-acceso-generado-evidencia.md).
+    Un callback NativeSharp leyó y escribió el mismo TLS en un segundo hilo;
+    el valor del hilo principal permaneció independiente en O0–O3.
+    [Evidencia](registro-commits/tls-dll-nativesharp-dos-hilos.md).
   - Un experimento C separado obtiene la DLL desde la dirección importada del
     dato y usa su directorio PE TLS y los slots del hilo para leer y escribir
     el valor en dos hilos. Depende de detalles internos de Windows x64; no es
