@@ -871,6 +871,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     [Evidencia](registro-commits/prueba-opacos-header-compartido.md).
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
+  - Clang confirmó para `volatile _Bool` compuesto la promoción a `int`,
+    conversión del resultado a cero/no cero y carga acquire/escritura release
+    de i8. NSC aún rechaza el caso; el bool nativo mantiene su propia regla.
+    [Referencia](registro-commits/t08-bool-compuesto-referencia.md).
   - Clang confirmó que el orden del acceso por `volatile int*` cambia con el modo de la unidad consumidora; queda pendiente definir cómo lo selecciona NSC sin inferirlo de la procedencia del puntero. [Comparación](registro-commits/procedencia-puntero-volatile-local.md#comparación-del-modo-de-la-unidad-consumidora).
   - Validación agrupada posterior: compilación incremental, sesión 1/1 y fixture mixto O0–O3 con comprobaciones de IR y diagnósticos negativos; el caso booleano compuesto permanece rechazado. [Resultado y límites](registro-commits/validacion-agrupada-volatile-escalares-bool.md).
   - Clang confirmó acquire/release en arreglos globales C de enteros de

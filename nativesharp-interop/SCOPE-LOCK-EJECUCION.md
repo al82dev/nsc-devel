@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-015: referencia C de operaciones compuestas `_Bool` volatile
+
+Establecer la semántica de referencia de Clang para operaciones compuestas
+sobre elementos de un arreglo C `volatile _Bool`, cuyo caso NSC sigue siendo
+rechazado. Presupuesto: archivo C de referencia en el fixture record-c,
+tracking y registro. Emitir IR en `A:/nsc-interop-build`; no modificar el
+compilador ni los controles existentes durante esta observación. La futura
+corrección debe preservar el rechazo del bool nativo y no modificar NSLink,
+LLVM externo ni C:.
+
 ## T08-017: resultado de callback global con record inferido
 
 Conciliar el resultado O0–O3 del fixture existente con el tracking y su
