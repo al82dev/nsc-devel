@@ -506,6 +506,7 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     directo de lectura y escritura al TLS de la DLL en O0–O3; conserva una
     barrera para orígenes ambiguos. Faltan otros casos y validación integral.
     [Evidencia C](registro-commits/tls-c-dll-directo.md),
+    [condición en Clang 23](registro-commits/t08-clang-tls-dll-c-oraculo.md),
     [observación NSC](registro-commits/tls-dll-observacion-nsc.md),
     [barrera previa](registro-commits/tls-dll-guardia-evidencia.md),
     [acceso generado](registro-commits/tls-dll-acceso-generado-evidencia.md).
