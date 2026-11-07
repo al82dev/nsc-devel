@@ -4450,6 +4450,15 @@ no modificar NSLink, LLVM ni C:. Cambios de producción únicamente tras
 reproducir un defecto concreto y delimitar su causa. Esta matriz no cierra
 por sí sola la tanda ni sustituye el validador completo.
 
+# Caché al cambiar el enlazador
+
+Comprobar que un ejecutable NativeSharp sin dependencias C se vuelve a enlazar
+al cambiar de NSLink a LLD y que un enlace LLD repetido reutiliza la caché.
+Comprobar también el diagnóstico al seleccionar LLD cuando no está disponible.
+La prueba usa procesos y PATH locales, salidas nuevas en A:, y no modifica
+NSLink, LLVM, C: ni los fixtures anteriores. Registrar resultados sin
+considerar cerrada la tanda.
+
 # Exportaciones de DLL con global C TLS importado
 
 La prueba `lld/validar-sin-entorno.cmd` llegó a enlazar una DLL NativeSharp

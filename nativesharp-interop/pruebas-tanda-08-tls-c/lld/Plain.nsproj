@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>LinkerCachePlain</Name></PropertyGroup>
+  <ItemGroup><Compile Include="Plain.ns" /></ItemGroup>
+</Project>
