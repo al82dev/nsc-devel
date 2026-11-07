@@ -501,7 +501,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     Punteros atómicos globales a float, long y unsigned long C pasaron O0–O3,
     IR y regresión TLS. [Resultado](registro-commits/t08-atomic-global-mas-punteros-validacion.md).
     Sus variantes TLS sin apuntado calificado pasaron O0–O3 e IR; un segundo
-    hilo comprobó aislamiento. Faltan variantes calificadas. [Resultado](registro-commits/t08-atomic-tls-mas-punteros-hilos-validacion.md).
+    hilo comprobó aislamiento. Las variantes calificadas pasaron O0–O3, IR y
+    rechazos dirigidos. [Resultado](registro-commits/t08-atomic-tls-calificados-validacion.md).
     Sus apuntados const y volatile pasaron O0–O3, controles de IR y rechazos
     dirigidos. [Resultado](registro-commits/t08-atomic-global-mas-calificados-validacion.md).
   - Reproducido rechazo de `|=` en `_Bool` C escalar volatile; Clang acepta el
