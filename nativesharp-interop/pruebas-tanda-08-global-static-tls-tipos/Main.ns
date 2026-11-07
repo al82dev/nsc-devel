@@ -1,0 +1,18 @@
+int Main()
+{
+    if (byte_value != 11 || short_value != -12 || large_value != 13UL) return 1;
+    if (float_value != (float)1.5 || double_value != 2.5 || !truth || (int)tone != 2) return 2;
+    if (atomic_value != 15 || values[2] != 18 || pointer_value != null) return 3;
+    byte_value = 21;
+    short_value = -22;
+    large_value = 23UL;
+    float_value = (float)3.5;
+    double_value = 4.5;
+    truth = false;
+    tone = high_tone();
+    atomic_value = 25;
+    values[2] = 26;
+    pointer_value = target_address();
+    *pointer_value = 27;
+    return inspect() == 1 ? 0 : 4;
+}

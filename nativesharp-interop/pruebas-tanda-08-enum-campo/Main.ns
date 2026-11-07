@@ -1,0 +1,12 @@
+int Main()
+{
+    H4Anon* a = h4_get_anon();
+    H4NamedRecord* n = h4_get_named();
+    if (a->raw != 7 || (int)a->level != H4Low || (int)a->other != H4High) return 1;
+    H4Named current = n->kind;
+    if ((int)current != H4NamedA) return 2;
+    a->level = H4High;
+    a->other = H4Low;
+    n->kind = (H4Named)H4NamedB;
+    return h4_check() == 1 ? 0 : 3;
+}

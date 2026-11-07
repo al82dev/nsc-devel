@@ -1,5 +1,24 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004: matriz de tipos C internos TLS
+
+Reproducir y corregir globales `static _Thread_local` de escalares, enum,
+atómico, arreglo fijo y puntero a int en las formas del control. Comprobar
+referencia C, acceso directo y funciones inline O0–O3; ejecutar regresiones
+de TLS y globales internas. Preservar NSLink, metadata, LLVM externo y C:.
+No acreditar aislamiento entre hilos de cada tipo sin un control específico.
+
+## T08-002 H4: enums dentro de records C, partes A y B
+
+Capturar enums declarados dentro de records C y proyectar campos escalares de
+enum anónimo como su entero compatible, conservando dimensiones, calificadores
+y comportamiento C. Validar consumo directo y enumeradores O0–O3, casos con
+dos campos del mismo enum y el rechazo de publicación anónima sin metadata.
+Modificar únicamente captura, proyección de campo, pruebas y documentación NSC.
+No cambiar formato de metadata, su codec, NSLink, LLVM/Clang externo ni C:.
+No integrar ramas de Claude ni tocar sus copias. Los casos precompilados que
+requieran información nueva de metadata permanecen pendientes.
+
 ## T08-004: ambigüedad de globales internas con tipos distintos
 
 Comprobar y corregir el caso de dos referencias C con el mismo nombre de
