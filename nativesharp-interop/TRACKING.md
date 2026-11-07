@@ -531,6 +531,9 @@ las correcciones. [Resultado](registro-commits/t08-validacion-link-lib-auto.md),
     Al reconstruir el productor cambiando la dependencia de COFF sin TLS a
     COFF con TLS, el mismo consumidor pasó a LLD y ejecutó dos construcciones;
     la segunda informó un acierto de caché de objetos y conservó el directorio TLS.
+    Una cadena de dos bibliotecas NS precompiladas también detectó el TLS en
+    su dependencia C: pasaron emisión directa y `nsc build`; una cadena sin
+    TLS conservó NSLink. [Evidencia](registro-commits/t08-tls-cadena-estatica-resultado.md).
     Un productor NativeSharp precompilado también accedió al TLS de una DLL C
     con importaciones reales; su consumidor sin header pasó O0–O3 y aislamiento.
     La repetición ocultó la copia temporal del header durante cada compilación
