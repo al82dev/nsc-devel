@@ -878,6 +878,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     [Detalle](registro-commits/t08-bool-compuesto-promociones-implementacion.md).
     Preparados controles de promociones y desplazamientos con contadores
     anchos; pendientes de ejecución. [Detalle](registro-commits/t08-bool-compuesto-promociones-fixture.md).
+    Validación posterior: construcción incremental y fixture record-c pasaron
+    O0–O3 con los operandos pequeños y contadores anchos preparados.
+    [Resultado](registro-commits/t08-bool-compuesto-promociones-validacion.md).
   - Preparada referencia Clang de `_Bool` C compuesto con `uint`, `long` y
     `ulong`: i32 para el primero e i64 para los otros. Falta implementación y
     validación. [Detalle](registro-commits/t08-bool-compuesto-enteros-referencia.md).
