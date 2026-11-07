@@ -159,6 +159,7 @@ struct CppSemanticGlobal
     std::optional<std::uint64_t> storageSizeBits;
     std::optional<std::uint64_t> declarationAlignmentBits;
     std::optional<std::string> clangUsr;
+    bool threadLocal = false;
 };
 struct CppSemanticGlobalFailure { std::string message; };
 using CppSemanticGlobalResult = std::variant<CppSemanticGlobal, CppSemanticGlobalFailure>;

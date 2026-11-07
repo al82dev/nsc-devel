@@ -4287,3 +4287,17 @@ reproducir, delimitar la propagación de TLS a través de inventario, estado de
 namespace, MIR y LLVM. Mantener rechazado TLS de DLL sin contrato válido,
 preservar NSLink, LLVM externo y C:. La prueba aislada no cierra T08-004.
 
+# Proyección focalizada del global C TLS entero de 32 bits
+
+El control C pasó; NSC build `2c5d0967206b6e62` rechaza `shared_tls` con
+`thread-local C/C++ global is not yet projected`. Se transportará el indicador
+TLS para globales C externos `int` de 32 bits, mutables y sin `dllimport`,
+desde el inventario a namespace, MIR y la declaración LLVM externa. Los demás
+tipos y contratos TLS no demostrados permanecen rechazados. Presupuesto:
+`CppSemanticInventory.h/.cpp`, `NamespaceStateSymbol.h`,
+`ProjectOopMirStaticField.h`, `MirBuildCoordinator.cpp`,
+`OopLlvmStaticState.cpp`, fixture `static-global` y registros. Caché de
+artefactos C/C++ desactivada; no alterar LLVM externo, NSLink ni C:.
+Validar control C, lectura y escritura cruzadas, dos hilos y O0–O3; no declarar
+TLS directo de DLL ni cerrar la tanda por esta muestra.
+

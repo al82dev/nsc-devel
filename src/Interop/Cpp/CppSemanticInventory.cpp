@@ -185,7 +185,10 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     if (moduleName.empty() || global.name.empty() || global.qualifiedName.empty() ||
         !global.externalLinkage || !global.externalSymbol || global.externalSymbol->empty())
         return failure("global requires an external symbol and a project owner");
-    if (global.threadLocal) return failure("thread-local C/C++ global is not yet projected");
+    if (global.threadLocal && (!cLanguage || global.dllImport ||
+        global.type.kind != CppTypeKind::SignedInteger || global.type.sizeBits != 32 ||
+        global.type.isConst || global.type.isVolatile))
+        return failure("thread-local C/C++ global is not yet projected");
     const auto type = mapGlobalType(global.type, projectOrdinal, moduleName, lookup, cLanguage);
     if (!type || global.type.kind == CppTypeKind::Void)
         return failure("C/C++ global type is not yet mapped");
@@ -205,7 +208,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     const CppType* pointerStorage = &global.type;
     while (cLanguage && pointerStorage->kind == CppTypeKind::Array && pointerStorage->element)
         pointerStorage = pointerStorage->element.get();
-    return CppSemanticGlobal{projectOrdinal, std::string(moduleName), std::move(nsNamespace),
+    CppSemanticGlobal projected{projectOrdinal, std::string(moduleName), std::move(nsNamespace),
                              global.name, type->nativeSharpTypeKey, type->canonicalCppType,
                              *global.externalSymbol, type->isVolatile, type->isConst,
                              pointerStorage->kind == CppTypeKind::Pointer && pointerStorage->element &&
@@ -213,6 +216,8 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
                              pointerStorage->kind == CppTypeKind::Pointer && pointerStorage->element &&
                                  pointerStorage->element->isVolatile, std::nullopt, global.type.sizeBits,
                              global.declarationAlignmentBits};
+    projected.threadLocal = global.threadLocal;
+    return projected;
 }
 
 CppSemanticGlobalResult projectCppSemanticGlobal(
@@ -413,6 +418,7 @@ static bool provideGlobalsWithLookup(
                     state.cppDeclarationAlignmentBits = selected.candidate->declarationAlignmentBits;
                     state.cppClangUsr = selected.candidate->clangUsr;
                     state.cppDllImport = selected.candidate->dllImport;
+                    state.cppThreadLocal = selected.candidate->threadLocal;
                     const auto fromC = [&](std::size_t index) { return entries[index].cLanguage; };
                     state.cppCGlobal = !selected.declarationIndices.empty() &&
                         std::all_of(selected.declarationIndices.begin(), selected.declarationIndices.end(), fromC) &&
