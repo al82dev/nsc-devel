@@ -776,10 +776,12 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
             while (cBoolRoot && cBoolRoot->kind == ProjectOopHirNodeKind::RawElementAddress &&
                    cBoolRoot->children.size() == 2 && ++cBoolDepth <= 64)
                 cBoolRoot = cBoolRoot->children.front().get();
-            const bool cBoolIntegerOperand = lowered->typeKey == "builtin:int" || lowered->typeKey == "builtin:uint" ||
-                lowered->typeKey == "builtin:long" || lowered->typeKey == "builtin:ulong";
+            const bool cBoolIntegerOperand = lowered->typeKey == "builtin:bool" || lowered->typeKey == "builtin:sbyte" ||
+                lowered->typeKey == "builtin:byte" || lowered->typeKey == "builtin:short" || lowered->typeKey == "builtin:ushort" ||
+                lowered->typeKey == "builtin:int" || lowered->typeKey == "builtin:uint" || lowered->typeKey == "builtin:long" ||
+                lowered->typeKey == "builtin:ulong";
             const bool cBoolIntOperation = frame.first->typeKey == "builtin:bool" &&
-                frame.first->volatileAccess && cBoolIntegerOperand && (!shift || lowered->typeKey == "builtin:int") &&
+                frame.first->volatileAccess && cBoolIntegerOperand &&
                 cBoolDepth == 1 && cBoolRoot &&
                 cBoolRoot->kind == ProjectOopHirNodeKind::NamespaceStateAddress && cBoolRoot->volatileAccess &&
                 cBoolRoot->cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&

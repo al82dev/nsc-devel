@@ -153,15 +153,16 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
 {
         const bool boolOperand = node->children[1]->typeKey == "builtin:bool";
         const auto& integerOperandType = node->children[1]->typeKey;
-        const bool intOperand = integerOperandType == "builtin:int" || integerOperandType == "builtin:uint" ||
+        const bool intOperand = boolOperand || integerOperandType == "builtin:sbyte" || integerOperandType == "builtin:byte" ||
+            integerOperandType == "builtin:short" || integerOperandType == "builtin:ushort" ||
+            integerOperandType == "builtin:int" || integerOperandType == "builtin:uint" ||
             integerOperandType == "builtin:long" || integerOperandType == "builtin:ulong";
         const bool boolBitwise = node->operation == lexer::TokenKind::Amp ||
             node->operation == lexer::TokenKind::Pipe || node->operation == lexer::TokenKind::Caret;
         const bool boolIntArithmetic = node->operation == lexer::TokenKind::Plus ||
             node->operation == lexer::TokenKind::Minus || node->operation == lexer::TokenKind::Star ||
             node->operation == lexer::TokenKind::Slash || node->operation == lexer::TokenKind::Percent ||
-            (integerOperandType == "builtin:int" &&
-             (node->operation == lexer::TokenKind::LessLess || node->operation == lexer::TokenKind::GreaterGreater));
+            node->operation == lexer::TokenKind::LessLess || node->operation == lexer::TokenKind::GreaterGreater;
         if (clangMsVolatileGlobalBoolArray(node->children[0].get()) &&
             ((boolOperand && boolBitwise) || (intOperand && (boolBitwise || boolIntArithmetic))))
         {
@@ -173,13 +174,24 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
             LLVMValueRef previous = LLVMBuildICmp(builder_, LLVMIntNE, raw,
                 LLVMConstInt(byteType, 0, 0), "c.bool.compound.previous");
             LLVMValueRef updated = nullptr;
-            if (intOperand)
+            if (!boolOperand || !boolBitwise)
             {
-                LLVMTypeRef intType = llvmType(integerOperandType, error);
+                const bool shift = node->operation == lexer::TokenKind::LessLess ||
+                    node->operation == lexer::TokenKind::GreaterGreater;
+                const std::string calculationType = shift ? "builtin:int" :
+                    integerOperandType == "builtin:ulong" ? "builtin:ulong" :
+                    integerOperandType == "builtin:long" ? "builtin:long" :
+                    integerOperandType == "builtin:uint" ? "builtin:uint" : "builtin:int";
+                LLVMTypeRef intType = llvmType(calculationType, error);
                 if (!intType) return nullptr;
                 LLVMValueRef promoted = LLVMBuildZExt(builder_, previous, intType, "c.bool.compound.promoted");
-                LLVMValueRef calculated = applyBinaryOperation(node->operation, promoted, value,
-                    integerOperandType, error, false);
+                LLVMValueRef operand = boolOperand
+                    ? LLVMBuildZExt(builder_, value, intType, "c.bool.compound.rhs")
+                    : shift ? normalizeShiftCount(value, integerOperandType, calculationType, error)
+                            : convert(value, integerOperandType, calculationType, error);
+                if (!operand) return nullptr;
+                LLVMValueRef calculated = applyBinaryOperation(node->operation, promoted, operand,
+                    calculationType, error, false);
                 if (!calculated) return nullptr;
                 updated = LLVMBuildICmp(builder_, LLVMIntNE, calculated,
                     LLVMConstInt(intType, 0, 0), "c.bool.compound.normalized");

@@ -874,6 +874,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Clang confirmó promociones de bool e enteros de 8/16 bits y el ancho del
     valor desplazado frente a un contador ancho; falta implementarlas y
     validarlas. [Referencia](registro-commits/t08-bool-compuesto-promociones-referencia.md).
+    Preparada la cadena de análisis, HIR y LLVM; faltan controles y ejecución.
+    [Detalle](registro-commits/t08-bool-compuesto-promociones-implementacion.md).
   - Preparada referencia Clang de `_Bool` C compuesto con `uint`, `long` y
     `ulong`: i32 para el primero e i64 para los otros. Falta implementación y
     validación. [Detalle](registro-commits/t08-bool-compuesto-enteros-referencia.md).
