@@ -1,1 +1,6 @@
-int Main() { return H4NamedPublished.Bridge.Value() == -3 ? 0 : 1; }
+int Main()
+{
+    var value = H4NamedPublished.Bridge.Get();
+    if ((int)value->kind != -3 || H4NamedPublished.Bridge.Read(value) != -3) return 1;
+    return H4NamedPublished.Bridge.Value() == -3 ? 0 : 2;
+}
