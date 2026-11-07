@@ -1,0 +1,6 @@
+int Main()
+{
+    var record = Published.NamesBridge.Record();
+    NRecord copy = *record;
+    return copy.value == 2 ? 0 : 1;
+}

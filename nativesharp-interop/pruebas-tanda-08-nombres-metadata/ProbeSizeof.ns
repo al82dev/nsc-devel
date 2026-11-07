@@ -1,0 +1,4 @@
+int Main()
+{
+    return sizeof(NRecord) == (nuint)Published.NamesBridge.Layout(1) ? 0 : 1;
+}

@@ -1,0 +1,14 @@
+int Main()
+{
+    NRecord* record = Published.NamesBridge.Record();
+    if (sizeof(NRecord) != (nuint)Published.NamesBridge.Layout(1)) return 1;
+    if (alignof(NRecord) != (nuint)Published.NamesBridge.Layout(2)) return 2;
+    if (sizeof(NAlias) != (nuint)Published.NamesBridge.Layout(3)) return 3;
+    if (sizeof(NMood) != (nuint)Published.NamesBridge.Layout(4)) return 4;
+    NRecord* cast = (NRecord*)Published.NamesBridge.Raw();
+    cast->value = 5;
+    if (Published.NamesBridge.Check(5) == 0) return 5;
+    NRecord copy = *record;
+    if (copy.value != 5) return 6;
+    return 0;
+}

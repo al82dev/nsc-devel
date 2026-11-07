@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CNamesMetadata</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+    <LibraryReference Include="CNamesProducer.lib" />
+  </ItemGroup>
+</Project>

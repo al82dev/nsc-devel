@@ -1,0 +1,5 @@
+int Main()
+{
+    var raw = Published.NamesBridge.Raw();
+    return ((NRecord*)raw)->value == 2 ? 0 : 1;
+}

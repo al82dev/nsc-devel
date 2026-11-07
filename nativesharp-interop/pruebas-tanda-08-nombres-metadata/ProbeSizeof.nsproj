@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CNamesProbeSizeof</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ProbeSizeof.ns" />
+    <LibraryReference Include="CNamesProducer.lib" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CNamesProbeDecl</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ProbeDecl.ns" />
+    <LibraryReference Include="CNamesProducer.lib" />
+  </ItemGroup>
+</Project>

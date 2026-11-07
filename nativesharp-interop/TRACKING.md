@@ -1464,6 +1464,14 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Validación dirigida en `e6f4cb130`: fixture layout pasó O0–O3 con el campo
     puntero `pack(1)` y campos `short`, `int` y `double` en `pack(2)`; IR O0
     y diagnósticos de dirección incluidos. La batería completa sigue pendiente.
+  - `pruebas-tanda-08-layout-clang` (rama `interop-t08-claude-layout`) comparó 55 valores de layout,
+    31 escrituras byte a byte, 31 lecturas cruzadas y la alineación IR contra Clang: O0–O3 directo, con
+    encabezado y sólo metadata pasaron sin diferencias. En el consumidor sólo-metadata `sizeof(TipoC)` no
+    se acepta y se midió con `sizeof(*p)`. Batería completa pendiente.
+    [Evidencia](registro-commits/t08-layout-comparacion-clang.md).
+  - Nombres C sólo por metadata: el parser no los recibe (`ProjectCompilation::parseSyntaxUnits`); fallan
+    declaración con puntero, `sizeof(T)` y cast, y funciona `T x = ...`. Diseño y prueba de aceptación
+    preparados, sin implementar. [Diseño](registro-commits/t08-nombres-metadata-diseno.md).
 
 ## 09. Llamadas, enlace y datos C
 

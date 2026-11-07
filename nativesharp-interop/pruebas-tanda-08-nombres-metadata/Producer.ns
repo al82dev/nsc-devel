@@ -1,0 +1,10 @@
+namespace Published
+{
+    public struct NamesBridge
+    {
+        public static NRecord* Record() { return names_record(); }
+        public static void* Raw() { return names_raw(); }
+        public static int Check(int value) { return names_check(value); }
+        public static long Layout(int id) { return names_layout(id); }
+    }
+}

@@ -1,0 +1,5 @@
+int Main()
+{
+    NRecord* record = Published.NamesBridge.Record();
+    return record->value == 2 ? 0 : 1;
+}

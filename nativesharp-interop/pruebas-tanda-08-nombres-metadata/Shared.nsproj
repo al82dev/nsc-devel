@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CNamesShared</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" />
+    <LibraryReference Include="CNamesProducer.lib" />
+  </ItemGroup>
+</Project>
