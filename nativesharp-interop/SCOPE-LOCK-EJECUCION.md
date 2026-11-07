@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-015: división, residuo y desplazamientos de `_Bool` C volatile
+
+Extender el arreglo C global `volatile _Bool` en modo MS a `/=`, `%=`, `<<=`
+y `>>=` con operando `int`, según la referencia C para operandos válidos.
+Preservar promoción a i32, conversión cero/no cero y accesos acquire/release,
+y la regla del bool nativo. Presupuesto: referencia C, analizador, HIR, LLVM,
+fixture y verificador record-c, tracking y registros. Construcción incremental
+y validación agrupada; sin NSLink, LLVM externo ni C:. Casos indefinidos C no
+se presentan como comportamiento C garantizado.
+
 ## T08-015: `_Bool` C volatile compuesto con operando `int`
 
 Extender el caso probado de arreglo C global `volatile _Bool` en modo MS a
