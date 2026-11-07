@@ -185,9 +185,12 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     if (moduleName.empty() || global.name.empty() || global.qualifiedName.empty() ||
         !global.externalLinkage || !global.externalSymbol || global.externalSymbol->empty())
         return failure("global requires an external symbol and a project owner");
-    if (global.threadLocal && (!cLanguage || global.dllImport ||
-        global.type.kind != CppTypeKind::SignedInteger || global.type.sizeBits != 32 ||
-        global.type.isConst || global.type.isVolatile))
+    const auto kind = global.type.kind;
+    const bool scalarTls = kind == CppTypeKind::Boolean || kind == CppTypeKind::SignedInteger ||
+        kind == CppTypeKind::UnsignedInteger || kind == CppTypeKind::Floating;
+    const bool supportedVolatileTls = !global.type.isVolatile ||
+        (kind == CppTypeKind::SignedInteger && global.type.sizeBits == 32);
+    if (global.threadLocal && (!cLanguage || global.dllImport || !scalarTls || !supportedVolatileTls))
         return failure("thread-local C/C++ global is not yet projected");
     const auto type = mapGlobalType(global.type, projectOrdinal, moduleName, lookup, cLanguage);
     if (!type || global.type.kind == CppTypeKind::Void)
