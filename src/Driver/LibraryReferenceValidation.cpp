@@ -11,7 +11,8 @@ using target::BuiltinLayoutKind;
 
 bool filesHaveEqualContents(const std::filesystem::path &left, const std::filesystem::path &right);
 
-bool precompiledReferenceRequiresLld(const compilation::LibraryReference &reference)
+bool precompiledReferenceRequiresLld(const compilation::LibraryReference &reference,
+                                     const compilation::ProjectLoadOptions &options)
 {
     interop::LibraryMetadataCodec codec;
     std::string error;
@@ -38,17 +39,35 @@ bool precompiledReferenceRequiresLld(const compilation::LibraryReference &refere
         {
             const std::filesystem::path libraryName(dependency.libraryFileName);
             const std::filesystem::path metadataName(dependency.metadataFileName);
+            const std::filesystem::path runtimeName(dependency.runtimeFileName);
             if (libraryName.empty() || libraryName.has_parent_path() || metadataName.empty() ||
-                metadataName.has_parent_path()) return true;
-            const auto directory = current.metadataPath.parent_path();
-            const auto library = directory / libraryName;
+                metadataName.has_parent_path() || runtimeName.has_parent_path()) return true;
+            std::vector<std::filesystem::path> roots{current.metadataPath.parent_path()};
+            if (options.libraryReferenceRoot) roots.push_back(*options.libraryReferenceRoot);
+            if (options.libraryReferenceFallbackRoot) roots.push_back(*options.libraryReferenceFallbackRoot);
+            std::optional<compilation::LibraryReference> resolved;
+            for (const auto &directory : roots)
+            {
+                compilation::LibraryReference candidate{directory / libraryName, directory / metadataName,
+                    runtimeName.empty() ? std::filesystem::path{} : directory / runtimeName, {}};
+                std::error_code fileError;
+                if (!std::filesystem::is_regular_file(candidate.libraryPath, fileError)) continue;
+                fileError.clear();
+                if (!std::filesystem::is_regular_file(candidate.metadataPath, fileError)) continue;
+                fileError.clear();
+                if (!candidate.runtimePath.empty() &&
+                    !std::filesystem::is_regular_file(candidate.runtimePath, fileError)) continue;
+                resolved = std::move(candidate);
+                break;
+            }
+            if (!resolved) return true;
             if (dependency.runtimeFileName.empty())
             {
                 bool required = false;
                 if (!llvm_backend::ProjectOopObjectGenerator::requiresLldForStaticInput(
-                        library, required, error) || required) return true;
+                        resolved->libraryPath, required, error) || required) return true;
             }
-            pending.push_back({library, directory / metadataName, {}, {}});
+            pending.push_back(std::move(*resolved));
         }
     }
     return false;

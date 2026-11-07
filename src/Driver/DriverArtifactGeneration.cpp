@@ -40,7 +40,7 @@ static std::string selectDirectLinkedProductLinker(
             if (reference.runtimePath.empty() && requiresLld(reference.libraryPath)) return "LLD";
         for (const auto& reference : project.libraryReferences())
             if ((reference.runtimePath.empty() && requiresLld(reference.libraryPath)) ||
-                precompiledReferenceRequiresLld(reference)) return "LLD";
+                precompiledReferenceRequiresLld(reference, manifest.loadOptions())) return "LLD";
     }
     for (const auto& library : extraLinkLibraries)
         if (requiresLld(library)) return "LLD";
