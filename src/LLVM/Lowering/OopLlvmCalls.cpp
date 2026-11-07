@@ -94,7 +94,7 @@ static LLVMValueRef cppDllTlsAddressHelper(LLVMContextRef context, LLVMModuleRef
 
     LLVMPositionBuilderAtEnd(b, elementBlock);
     const auto index = LLVMBuildLoad2(b, i32, indexPtr, "tls.index");
-    const auto index64 = LLVMBuildZExt(b, index, i64, "tls.index64");
+    auto index64 = LLVMBuildZExt(b, index, i64, "tls.index64");
     const auto slotAddr = LLVMBuildGEP2(b, ptr, slots, &index64, 1, "slot.address");
     const auto slot = LLVMBuildLoad2(b, ptr, slotAddr, "slot");
     LLVMBuildCondBr(b, LLVMBuildICmp(b, LLVMIntNE, slot, LLVMConstNull(ptr), "slot.valid"), done, fail);
