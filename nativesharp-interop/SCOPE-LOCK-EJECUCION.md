@@ -4263,3 +4263,16 @@ ayuda si corresponde, seguimiento y registros. No modificar NSLink, LLVM ni C:.
 Validar ejecución TLS y resultado de proyecto; no implica selección automática
 de LLD, CRT automático ni cobertura de TLS directo de DLL.
 
+# `nsc build` con referencias C/C++ sin caché de artefactos
+
+La matriz TLS de proyecto se detuvo en la barrera de `calculateIdentity` para
+headers transitivos C/C++. Investigar la ruta ya existente con caché desactivada:
+si el grafo contiene referencias C/C++, omitir solo la identidad del bundle en
+el comando externo y desactivar explícitamente la caché en la compilación
+anidada; conservar la barrera de `calculateIdentity` y rechazar un informe de
+dependencias que no pueda ser completo. Presupuesto inicial:
+`src/Driver/ProjectCommands.cpp`, fixtures de `pruebas-tanda-08-tls-c/lld`,
+seguimiento y registros. Preservar proyectos sin referencias C/C++, NSLink,
+LLVM y C:. Probar también modificación de un header transitivo; no afirmar
+soporte de caché C/C++ hasta rastrear todas sus dependencias.
+

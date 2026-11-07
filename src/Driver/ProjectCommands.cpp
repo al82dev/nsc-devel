@@ -1612,6 +1612,11 @@ ExitCode executeConfiguredBuild(
     std::vector<std::string> owned{action, generated.string(), "-" + optimization, debug};
     if (linkTimeOptimization != "none") owned.push_back("-flto=" + linkTimeOptimization);
     appendNestedCompilerOptions(options, libraryReferenceRoot, compilerJobs, owned);
+    const auto projects = manifest.projectGraph().projects();
+    if (std::any_of(projects.begin(), projects.end(), [](const auto& project) {
+            return !project.cppLibraryReferences().empty();
+        }))
+        owned.push_back("--no-artifact-cache");
     owned.push_back("-o");
     owned.push_back(artifact.string());
     std::vector<std::string_view> views;
@@ -1702,7 +1707,15 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const PreparedDriv
         std::move(*graph), std::move(projectLoadOptions));
     addVerifiedRestoreDigests(manifest, plan);
     compilation::LibraryMetadataRepository metadataRepository;
-    if (!manifest.calculateIdentity(metadataRepository, message))
+    const auto projects = manifest.projectGraph().projects();
+    const bool hasCppReferences = std::any_of(projects.begin(), projects.end(), [](const auto& item) {
+        return !item.cppLibraryReferences().empty();
+    });
+    if (hasCppReferences && options.dependencyReport)
+        return result.failure(error,
+            "dependency report for C/C++ references requires transitive header tracking",
+            ExitCode::CompilationError);
+    if (!hasCppReferences && !manifest.calculateIdentity(metadataRepository, message))
         return result.failure(error, message, ExitCode::CompilationError);
     // The provenance hashes every project input again; only --dependency-report prints it or puts
     // it in the JSON result, so it is computed only then.
