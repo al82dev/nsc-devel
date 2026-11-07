@@ -511,22 +511,38 @@ static bool provideGlobalsWithLookup(
         if (entry.declaration.threadLocal)
             return type.kind == CppTypeKind::SignedInteger && name == "int" &&
                 type.sizeBits == std::optional<std::uint64_t>{32} && !type.isConst && !type.isVolatile;
+        if (type.kind == CppTypeKind::Boolean || type.kind == CppTypeKind::Enumeration ||
+            type.kind == CppTypeKind::Atomic)
+            return !type.isConst && !type.isVolatile;
         if (type.kind == CppTypeKind::Record)
             return !type.isConst && !type.isVolatile && type.sizeBits && type.alignmentBits;
         if (type.kind == CppTypeKind::Array)
-            return !type.isConst && !type.isVolatile && type.arrayCount == std::optional<std::uint64_t>{2} &&
-                type.element && type.element->kind == CppTypeKind::SignedInteger &&
-                type.element->unqualifiedCanonicalSpelling == "int" && !type.element->isConst && !type.element->isVolatile;
+        {
+            const CppType* element = &type;
+            while (element && element->kind == CppTypeKind::Array)
+            {
+                if (element->isConst || element->isVolatile || !element->arrayCount || *element->arrayCount == 0)
+                    return false;
+                element = element->element.get();
+            }
+            return element && element->kind == CppTypeKind::SignedInteger &&
+                element->unqualifiedCanonicalSpelling == "int" && !element->isConst && !element->isVolatile;
+        }
         if ((type.isConst || type.isVolatile) &&
             !(type.kind == CppTypeKind::SignedInteger && name == "int" &&
               type.sizeBits == std::optional<std::uint64_t>{32})) return false;
         if (type.kind == CppTypeKind::SignedInteger)
             return (name == "int" && type.sizeBits == std::optional<std::uint64_t>{32}) ||
+                (name == "char" && type.sizeBits == std::optional<std::uint64_t>{8}) ||
                 (name == "signed char" && type.sizeBits == std::optional<std::uint64_t>{8}) ||
+                (name == "short" && type.sizeBits == std::optional<std::uint64_t>{16}) ||
+                (name == "long" && type.sizeBits == std::optional<std::uint64_t>{32}) ||
                 (name == "long long" && type.sizeBits == std::optional<std::uint64_t>{64});
         if (type.kind == CppTypeKind::UnsignedInteger)
             return (name == "unsigned short" && type.sizeBits == std::optional<std::uint64_t>{16}) ||
+                (name == "unsigned char" && type.sizeBits == std::optional<std::uint64_t>{8}) ||
                 (name == "unsigned int" && type.sizeBits == std::optional<std::uint64_t>{32}) ||
+                (name == "unsigned long" && type.sizeBits == std::optional<std::uint64_t>{32}) ||
                 (name == "unsigned long long" && type.sizeBits == std::optional<std::uint64_t>{64});
         if (type.kind == CppTypeKind::Floating)
             return (name == "float" && type.sizeBits == std::optional<std::uint64_t>{32}) ||
