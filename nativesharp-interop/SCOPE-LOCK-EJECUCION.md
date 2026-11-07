@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Global C TLS de tipo atómico
+
+La reproducción en `A:/nsc-interop-build/atomic-probe` rechaza un global C
+`_Thread_local _Atomic(int)` como no proyectado. Preparar un control C válido
+y un fixture NativeSharp positivo en `pruebas-tanda-08-tls-c/atomic`, junto con
+tracking y bitácora. Verificar el orden de lectura y escritura y las operaciones
+de actualización frente a Clang; no tratar `_Atomic` como un entero ordinario.
+No cambiar producción hasta delimitar el diseño completo; sin NSLink, LLVM ni C:.
+
 ## Raíz de respaldo NS_LIB_ROOT
 
 Comprobar que las dependencias NS transitivas bajo la raíz de respaldo
