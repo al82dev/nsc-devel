@@ -469,8 +469,13 @@ las correcciones. [Resultado](registro-commits/t08-validacion-link-lib-auto.md),
     [Evidencia](registro-commits/t08-tls-atomico-resultado.md).
     [Trabajo pendiente](T08-TLS-ATOMICOS.md).
   - Preparada la captura diferenciada de `_Atomic(T)` desde Clang y controles
-    para el tipo y el rechazo del codec anterior. Aún no se construyó ni se
-    habilitó la semántica; el fixture positivo sigue pendiente.
+    para el tipo y el rechazo del codec anterior. La semántica no está
+    habilitada y el fixture positivo sigue pendiente.
+  - La construcción agrupada posterior y la suite de sesión de Clang pasaron;
+    el control focalizado de caché MIR también pasó. La ejecución completa de
+    `nsc_project_oop_lowering_tests` reportó 25 fallos de 652 comprobaciones;
+    están pendientes de diagnóstico y no se atribuyen aún a estos cambios.
+    [Resultado](registro-commits/t08-tls-atomico-construccion-agrupada.md).
   - Un global C TLS estático `int` firmado de 32 bits se leyó y escribió desde
     NativeSharp y C con aislamiento de otro hilo en O0–O3. Se usaron LLD y CRT
     declarados explícitamente; el acceso directo desde DLL sigue pendiente.
