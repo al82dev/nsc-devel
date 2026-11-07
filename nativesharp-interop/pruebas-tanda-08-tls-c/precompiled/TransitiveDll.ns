@@ -1,0 +1,7 @@
+namespace PublishedWrapper
+{
+    public struct Bridge
+    {
+        public static int CheckWorker() { return PublishedTls.Bridge.CheckWorker(); }
+    }
+}

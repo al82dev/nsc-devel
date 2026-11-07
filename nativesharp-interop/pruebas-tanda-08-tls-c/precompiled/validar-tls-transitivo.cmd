@@ -10,8 +10,14 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (TransitiveProducer.ns TransitiveProducer.nsproj TransitiveConsumer.ns TransitiveConsumer.nsproj) do copy /y "%~dp0%%F" "%DEST%\%%F" >nul
-for %%F in (Api.c Api.h Crt.h) do copy /y "%~dp0..\static-global\%%F" "%DEST%\%%F" >nul
+for %%F in (TransitiveProducer.ns TransitiveProducer.nsproj TransitiveConsumer.ns TransitiveConsumer.nsproj TransitiveDll.ns TransitiveDll.nsproj TransitiveDllConsumer.ns TransitiveDllConsumer.nsproj) do (
+  copy /y "%~dp0%%F" "%DEST%\%%F" >nul
+  if errorlevel 1 exit /b 1
+)
+for %%F in (Api.c Api.h Crt.h) do (
+  copy /y "%~dp0..\static-global\%%F" "%DEST%\%%F" >nul
+  if errorlevel 1 exit /b 1
+)
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Api.c" -o "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
 llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
@@ -34,5 +40,21 @@ findstr /L /C:"\"linker\":\"LLD\"" "%DEST%\build.log" >nul
 if errorlevel 1 (type "%DEST%\build.log" & exit /b 1)
 "%DEST%\bin\Debug\TransitiveConsumer.exe"
 if errorlevel 1 exit /b 1
+for %%O in (0 1 2 3) do (
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-dll "%DEST%\TransitiveDll.nsproj" -O%%O --no-artifact-cache -o "%DEST%\bin\Debug\TransitiveDll.dll"
+  if errorlevel 1 exit /b 1
+  llvm-readobj.exe --coff-tls-directory "%DEST%\bin\Debug\TransitiveDll.dll" > "%DEST%\dll-pe-O%%O.log"
+  if errorlevel 1 exit /b 1
+  findstr /L /C:"AddressOfIndex:" "%DEST%\dll-pe-O%%O.log" >nul
+  if errorlevel 1 exit /b 1
+  nsc.exe --emit-project-oop-exe "%DEST%\TransitiveDllConsumer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\dll-consumer-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  "%DEST%\dll-consumer-O%%O.exe"
+  if errorlevel 1 exit /b 1
+)
+nsc.exe build "%DEST%\TransitiveConsumer.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore --linker NSLink -O0 > "%DEST%\explicit.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /L /C:"NSLink failed" "%DEST%\explicit.log" >nul
+if errorlevel 1 (type "%DEST%\explicit.log" & exit /b 1)
 echo TLS transitivo precompilado correcto.
 exit /b 0

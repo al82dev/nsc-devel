@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>TransitiveDll</Name><OutputType>SharedLibrary</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="TransitiveDll.ns" />
+    <LibraryReference Include="TlsProducer.lib" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>TransitiveDllConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="TransitiveDllConsumer.ns" />
+    <LibraryReference Include="bin/Debug/TransitiveDll.lib" Runtime="bin/Debug/TransitiveDll.dll" />
+  </ItemGroup>
+</Project>
