@@ -104,11 +104,11 @@ void addCompilationCodegenIdentity(
 void addCompilationLinkIdentity(
     compilation::CompilationInputManifest &manifest, bool incrementalLink,
     linker::WindowsExecutableSubsystem subsystem,
-    std::span<const std::filesystem::path> extraLinkLibraries);
+    std::span<const std::filesystem::path> extraLinkLibraries, std::string_view linkerSelection);
 // Adds NSLink, the librarian, the Windows runtime library and the canonical import libraries
 // that the product's link step reads to the bundle identity. addCompilationLinkIdentity calls it
 // for executables and DLLs; static libraries call it directly.
-void addCompilationLinkToolIdentity(compilation::CompilationInputManifest &manifest);
+void addCompilationLinkToolIdentity(compilation::CompilationInputManifest &manifest, std::string_view linkerSelection);
 // `materializeDemandedSurface` is true for code generation: each precompiled module outside the
 // standard library then materializes only the declarations its sources can reach. Analysis dumps
 // and checks pass false and keep the complete surfaces.

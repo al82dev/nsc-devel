@@ -71,6 +71,7 @@ private:
         bool incrementalLink,
         linker::WindowsExecutableSubsystem subsystem,
         const std::vector<std::filesystem::path>& extraLinkLibraries,
+        std::string_view linkerSelection,
         std::ostream& output,
         std::ostream& error);
     static ExitCode runProjectOopStaticLibraryGeneration(
@@ -80,6 +81,7 @@ private:
         llvm_backend::DebugInformationKind debugInformation,
         const std::vector<llvm_backend::DebugPrefixMap>& debugPrefixMaps,
         llvm_backend::LinkTimeOptimizationMode linkTimeOptimization,
+        std::string_view linkerSelection,
         std::ostream& output,
         std::ostream& error);
     static ExitCode runProjectOopDynamicLibraryGeneration(
@@ -90,6 +92,7 @@ private:
         const std::vector<llvm_backend::DebugPrefixMap>& debugPrefixMaps,
         llvm_backend::LinkTimeOptimizationMode linkTimeOptimization,
         const std::vector<std::filesystem::path>& extraLinkLibraries,
+        std::string_view linkerSelection,
         std::ostream& output,
         std::ostream& error);
     static ExitCode runProjectHostHeaderGeneration(

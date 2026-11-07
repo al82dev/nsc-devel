@@ -208,11 +208,11 @@ void addLinkToolInput(
 ///     bibliotecario para bibliotecas estaticas y DLLs, la biblioteca de runtime de Windows
 ///     configurada y las import libraries canonicas de Windows para ejecutables y DLLs.
 ///     Precondicion: addCompilationProductIdentity ya fijo el tipo de producto del bundle.
-void addCompilationLinkToolIdentity(compilation::CompilationInputManifest& manifest)
+void addCompilationLinkToolIdentity(compilation::CompilationInputManifest& manifest, std::string_view linkerSelection)
 {
     const std::string product(manifest.bundleProductKind());
     std::string linkerError;
-    const std::unique_ptr<linker::LldLinker> linkTool = linker::LldLinker::discover(linkerError);
+    const std::unique_ptr<linker::LldLinker> linkTool = linker::LldLinker::discoverSelected(linkerSelection, linkerError);
     addLinkToolInput(
         manifest, "linker",
         linkTool != nullptr ? linkTool->executablePath() : std::filesystem::path());
@@ -242,7 +242,8 @@ void addCompilationLinkIdentity(
     compilation::CompilationInputManifest& manifest,
     bool incrementalLink,
     linker::WindowsExecutableSubsystem subsystem,
-    std::span<const std::filesystem::path> extraLinkLibraries)
+    std::span<const std::filesystem::path> extraLinkLibraries,
+    std::string_view linkerSelection)
 {
     manifest.addIdentityField(
         "incremental-link", incrementalLink ? "true" : "false");
@@ -267,7 +268,7 @@ void addCompilationLinkIdentity(
     //     las identidades por defecto no cambian.
     if (activeExecutionScope != nullptr && activeExecutionScope->validateSystemImports)
         manifest.addIdentityField("validate-system-imports", "true");
-    addCompilationLinkToolIdentity(manifest);
+    addCompilationLinkToolIdentity(manifest, linkerSelection);
 }
 
 namespace

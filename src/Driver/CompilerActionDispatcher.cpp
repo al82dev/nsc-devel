@@ -715,17 +715,17 @@ CompilerActionDispatcher::Result CompilerActionDispatcher::dispatchEmission() co
             arguments_[1], arguments_[3], invocation_.optimizationLevel,
             invocation_.debugInformation, invocation_.debugPrefixMaps,
             invocation_.linkTimeOptimization, invocation_.incrementalLink,
-            invocation_.subsystem, invocation_.extraLinkLibraries, output_, error_);
+            invocation_.subsystem, invocation_.extraLinkLibraries, invocation_.linkerSelection, output_, error_);
     if (action == "--emit-project-oop-lib")
         return Driver::runProjectOopStaticLibraryGeneration(
             arguments_[1], arguments_[3], invocation_.optimizationLevel,
             invocation_.debugInformation, invocation_.debugPrefixMaps,
-            invocation_.linkTimeOptimization, output_, error_);
+            invocation_.linkTimeOptimization, invocation_.linkerSelection, output_, error_);
     if (action == "--emit-project-oop-dll")
         return Driver::runProjectOopDynamicLibraryGeneration(
             arguments_[1], arguments_[3], invocation_.optimizationLevel,
             invocation_.debugInformation, invocation_.debugPrefixMaps,
-            invocation_.linkTimeOptimization, invocation_.extraLinkLibraries,
+            invocation_.linkTimeOptimization, invocation_.extraLinkLibraries, invocation_.linkerSelection,
             output_, error_);
     if (action == "--emit-project-host-header")
         return Driver::runProjectHostHeaderGeneration(

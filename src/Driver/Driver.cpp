@@ -411,7 +411,7 @@ ExitCode Driver::runExecutableGeneration(std::string_view inputPath,
     const std::string projectText = project->string();
     return runProjectOopExecutableGeneration(
         projectText, outputPath, optimizationLevel, llvm_backend::DebugInformationKind::None, {},
-        llvm_backend::LinkTimeOptimizationMode::None, false, subsystem, {}, output, error);
+        llvm_backend::LinkTimeOptimizationMode::None, false, subsystem, {}, {}, output, error);
 }
 
 void Driver::printVersion(std::ostream &output)

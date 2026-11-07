@@ -427,6 +427,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
                                                    llvm_backend::LinkTimeOptimizationMode linkTimeOptimization,
                                                    bool incrementalLink, linker::WindowsExecutableSubsystem subsystem,
                                                    const std::vector<std::filesystem::path> &extraLinkLibraries,
+                                                   std::string_view linkerSelection,
                                                    std::ostream &output, std::ostream &error)
 {
     std::string loadError;
@@ -443,7 +444,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
         *manifest, optimizationLevel, debugInformation,
         debugPrefixMaps, linkTimeOptimization);
     addCompilationLinkIdentity(
-        *manifest, incrementalLink, subsystem, extraLinkLibraries);
+        *manifest, incrementalLink, subsystem, extraLinkLibraries, linkerSelection);
     frontend::ProjectCompilation compilation;
     const frontend::ProjectOopMirFunction *entryFunction = nullptr;
     bool restored = false;
@@ -470,6 +471,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
     std::vector<std::filesystem::path> linkLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
     linker::WindowsExecutableBuilder builder;
+    builder.setLinkerSelection(std::string(linkerSelection));
     std::vector<std::filesystem::path> packagedRuntimes;
     if (!prepareExecutableBuilder(compilation, extraLinkLibraries, debugInformation, incrementalLink, subsystem,
                                   linkLibraries, runtimeLibraries, builder, error))
@@ -804,6 +806,7 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
                                                       llvm_backend::DebugInformationKind debugInformation,
                                                       const std::vector<llvm_backend::DebugPrefixMap> &debugPrefixMaps,
                                                       llvm_backend::LinkTimeOptimizationMode linkTimeOptimization,
+                                                      std::string_view linkerSelection,
                                                       std::ostream &output, std::ostream &error)
 {
     std::string loadError;
@@ -819,7 +822,7 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     addCompilationCodegenIdentity(
         *manifest, optimizationLevel, debugInformation,
         debugPrefixMaps, linkTimeOptimization);
-    addCompilationLinkToolIdentity(*manifest);
+    addCompilationLinkToolIdentity(*manifest, linkerSelection);
     frontend::ProjectCompilation compilation;
     std::vector<std::filesystem::path> referencedLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
@@ -852,6 +855,7 @@ ExitCode Driver::runProjectOopStaticLibraryGeneration(std::string_view inputPath
     }
 
     linker::WindowsLibraryBuilder builder;
+    builder.setLinkerSelection(std::string(linkerSelection));
     StaticLibraryPublication publication;
     if (!publishStaticLibraryArtifact(outputPath, compilation, *objectBundle, referencedLibraries, inheritedImports,
                                       optimizationLevel, builder, publication, error))
@@ -1266,6 +1270,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
                                                        const std::vector<llvm_backend::DebugPrefixMap> &debugPrefixMaps,
                                                        llvm_backend::LinkTimeOptimizationMode linkTimeOptimization,
                                                        const std::vector<std::filesystem::path> &extraLinkLibraries,
+                                                       std::string_view linkerSelection,
                                                        std::ostream &output, std::ostream &error)
 {
     std::string loadError;
@@ -1283,7 +1288,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
         debugPrefixMaps, linkTimeOptimization);
     addCompilationLinkIdentity(
         *manifest, false, linker::WindowsExecutableSubsystem::Console,
-        extraLinkLibraries);
+        extraLinkLibraries, linkerSelection);
     frontend::ProjectCompilation compilation;
     bool restored = false;
     if (!prepareDynamicLibraryProject(
@@ -1313,6 +1318,7 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     std::vector<std::filesystem::path> linkLibraries;
     std::vector<std::filesystem::path> runtimeLibraries;
     linker::WindowsLibraryBuilder builder;
+    builder.setLinkerSelection(std::string(linkerSelection));
     if (!prepareDynamicLibraryBuilder(compilation, extraLinkLibraries, linkLibraries, runtimeLibraries, builder, error))
         return ExitCode::CompilationError;
     std::optional<std::vector<std::string>> preservedSymbols =
