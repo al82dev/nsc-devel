@@ -232,7 +232,12 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
           global.type.element->sizeBits == std::optional<std::uint64_t>{64})) &&
         global.type.sizeBits == global.type.element->sizeBits && global.declarationAlignmentBits &&
         *global.declarationAlignmentBits >= *global.type.sizeBits;
-    const bool supportedAtomicTls = atomicIntTls || atomicLongTls || atomicUIntTls || atomicULongTls || atomicNarrowTls || atomicFloatTls;
+    const bool atomicBoolTls = cLanguage && global.threadLocal && kind == CppTypeKind::Atomic &&
+        global.type.element && global.type.element->kind == CppTypeKind::Boolean &&
+        global.type.element->sizeBits == std::optional<std::uint64_t>{8} &&
+        global.type.sizeBits == std::optional<std::uint64_t>{8} &&
+        global.declarationAlignmentBits && *global.declarationAlignmentBits >= 8;
+    const bool supportedAtomicTls = atomicIntTls || atomicLongTls || atomicUIntTls || atomicULongTls || atomicNarrowTls || atomicFloatTls || atomicBoolTls;
     const CppType* arrayElement = &global.type;
     std::size_t arrayDepth = 0;
     bool fixedArray = kind == CppTypeKind::Array;
@@ -259,7 +264,8 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         return failure("C/C++ global type is not yet mapped");
     if (supportedAtomicTls)
     {
-        const char* expected = atomicFloatTls ? (global.type.sizeBits == std::optional<std::uint64_t>{32} ? "builtin:float" : "builtin:double") :
+        const char* expected = atomicBoolTls ? "builtin:bool" :
+            atomicFloatTls ? (global.type.sizeBits == std::optional<std::uint64_t>{32} ? "builtin:float" : "builtin:double") :
             atomicIntTls ? "builtin:int" : atomicLongTls ? "builtin:long" :
             atomicUIntTls ? "builtin:uint" : atomicULongTls ? "builtin:ulong" :
             global.type.element->sizeBits == std::optional<std::uint64_t>{8}

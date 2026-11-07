@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Api.c Probe.c Promotion.c Promotion.ns Narrow.ns NarrowCompound.ns LocalNarrow.ns FloatCompound.ns FloatConstWrite.ns Main.ns Project.nsproj Escape.ns Unsupported.ns ReadonlyWrite.ns RefEscape.ns OutEscape.ns InEscape.ns ReferenceControl.ns ZeroDiv.ns ZeroRem.ns) do (
+for %%F in (Api.h Api.c Probe.c Promotion.c Promotion.ns Narrow.ns NarrowCompound.ns LocalNarrow.ns FloatCompound.ns FloatConstWrite.ns BoolConstWrite.ns Main.ns Project.nsproj Escape.ns Unsupported.ns ReadonlyWrite.ns RefEscape.ns OutEscape.ns InEscape.ns ReferenceControl.ns ZeroDiv.ns ZeroRem.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -127,6 +127,12 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\
 if not errorlevel 1 exit /b 1
 findstr /L /C:"left side of assignment is not assignable" "%DEST%\float-readonly.log" >nul
 if errorlevel 1 (type "%DEST%\float-readonly.log" & exit /b 1)
+copy /y "%DEST%\BoolConstWrite.ns" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\bool-readonly.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /L /C:"left side of assignment is not assignable" "%DEST%\bool-readonly.log" >nul
+if errorlevel 1 (type "%DEST%\bool-readonly.log" & exit /b 1)
 copy /y "%DEST%\Unsupported.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\unsupported.log" 2>&1

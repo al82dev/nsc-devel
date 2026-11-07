@@ -62,5 +62,9 @@ int Main()
     if ((atomic_float -= (float)1.0) != (float)-4.0) return 41;
     if ((atomic_double += 0.25) != -12.0 || (atomic_double *= 2.0) != -24.0) return 42;
     if ((atomic_double /= 4.0) != -6.0 || (atomic_double -= 1.0) != -7.0) return 43;
+    if (atomic_bool || !atomic_bool_volatile || !atomic_bool_const) return 44;
+    atomic_bool = true;
+    atomic_bool_volatile = false;
+    if (!atomic_bool || atomic_bool_volatile) return 45;
     return 0;
 }

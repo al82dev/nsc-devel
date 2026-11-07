@@ -1,0 +1,1 @@
+int Main() { atomic_bool_const = false; return 0; }

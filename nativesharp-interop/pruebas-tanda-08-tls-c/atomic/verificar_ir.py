@@ -19,6 +19,9 @@ for symbol, required, volatile in (
     ('atomic_float', {'load', 'store'}, False),
     ('atomic_double', {'load', 'store'}, True),
     ('atomic_float_const', {'load'}, False),
+    ('atomic_bool', {'load', 'store'}, False),
+    ('atomic_bool_volatile', {'load', 'store'}, True),
+    ('atomic_bool_const', {'load'}, False),
 ):
     if mode == 'native' and symbol in {'atomic_float', 'atomic_double'}:
         required.add('cmpxchg')
@@ -36,7 +39,7 @@ for symbol, required, volatile in (
                                    ('or', r'\batomicrmw(?: volatile)? or\b'),
                                    ('xor', r'\batomicrmw(?: volatile)? xor\b'),
                                    ('cmpxchg', r'\bcmpxchg(?: volatile)?\b')):
-            align = 8 if symbol in {'atomic_wide', 'atomic_unsigned_wide', 'atomic_double'} else 4
+            align = 1 if symbol in {'atomic_bool', 'atomic_bool_volatile', 'atomic_bool_const'} else 8 if symbol in {'atomic_wide', 'atomic_unsigned_wide', 'atomic_double'} else 4
             if not re.search(instruction, line) or not re.search(r'\bseq_cst\b.*\balign ' + str(align) + r'\b', line):
                 continue
             if label == 'cmpxchg' and not re.search(r'\bseq_cst\s+seq_cst\b', line):

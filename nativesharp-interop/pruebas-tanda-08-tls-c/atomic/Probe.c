@@ -95,5 +95,13 @@ void entry(void)
             else if ((atomic_double /= 4.0) != -6.0 || (atomic_double -= 1.0) != -7.0) result = 43;
         }
     }
+    if (result == 0) {
+        if (atomic_bool || !atomic_bool_volatile || !atomic_bool_const) result = 44;
+        else {
+            atomic_bool = 1;
+            atomic_bool_volatile = 0;
+            if (!atomic_bool || atomic_bool_volatile) result = 45;
+        }
+    }
     ExitProcess((unsigned int)result);
 }
