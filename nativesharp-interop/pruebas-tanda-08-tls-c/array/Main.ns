@@ -1,0 +1,8 @@
+int Main()
+{
+    if (tls_array[0] != 3 || tls_array[1] != 7) return 1;
+    tls_array[0] = 31;
+    tls_array[1] = 71;
+    if (array_check() != 0 || array_other_thread() != 0 || array_check() != 0) return 2;
+    return 0;
+}

@@ -4322,6 +4322,14 @@ efectivamente fallen. Ejecutar controles C, O0–O3 y regresiones de escalares.
 No modificar NSLink, LLVM externo ni C:; punteros con calificadores y otros
 contratos permanecen pendientes hasta probarse.
 
+# Arreglo global C TLS
+
+Reproducir lectura, escritura y aislamiento por hilo de un `int[2]` TLS C
+desde NativeSharp y desde C, con biblioteca estática y DLL. Presupuesto
+inicial: `pruebas-tanda-08-tls-c/array` y registro; cambiar producción solo
+tras identificar el fallo. Salidas en A:, sin modificar NSLink, LLVM ni C:.
+No afirmar soporte de arreglos o tipos no ejercitados ni cierre de tanda.
+
 # Identificación provisional de TLS de DLL
 
 El fixture directo demuestra que NSC proyecta una declaración TLS sin
