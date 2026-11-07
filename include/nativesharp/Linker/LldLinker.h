@@ -17,6 +17,7 @@ public:
     LldLinker& operator=(const LldLinker&) = delete;
 
     static std::unique_ptr<LldLinker> discover(std::string& error);
+    static std::unique_ptr<LldLinker> discoverSelected(std::string_view selection, std::string& error);
 
     const std::filesystem::path& executablePath() const noexcept;
     std::filesystem::path librarianExecutablePath() const;

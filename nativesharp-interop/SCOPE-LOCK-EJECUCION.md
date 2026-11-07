@@ -4424,6 +4424,21 @@ después de escribir. Preservar los controles previos, aislamiento por hilo y
 O0–O3; modificar solo el generador del fixture y su evidencia. No modificar
 el fixture fuente, NSLink, LLVM ni C:.
 
+# Selección explícita de LLD sin variable de entorno
+
+Objetivo: permitir que `nsc build --linker LLD` seleccione la herramienta sin
+`NSC_LINKER`, para los enlaces C/TLS de esta tanda. Conservar el predeterminado
+NSLink, los conflictos cuando `NSC_LINKER` se fija explícitamente, los demás
+comandos y las identidades de caché. La revisión de referencia y el fallo
+reproducido se registran en `tls-seleccion-lld-ruta.md` y
+`tls-estatico-control-original.md`; el rango comienza en el HEAD anterior a
+este bloque. Se permiten los archivos de NSC de la cadena documentada,
+pruebas de selección y registros. NSLink, LLVM, C:, pruebas existentes y
+comportamientos ajenos permanecen protegidos; no cambiar el entorno global ni
+la selección automática de TLS en esta etapa. Cierre: selección, emisión y
+caché comparten la herramienta, pasan las pruebas agrupadas y se documenta
+su resultado. No equivale al cierre de la tanda 8.
+
 # TLS C a través de biblioteca NativeSharp precompilada
 
 Comprobar el acceso al mismo global TLS C desde una biblioteca NativeSharp

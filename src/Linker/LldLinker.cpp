@@ -540,6 +540,52 @@ std::unique_ptr<LldLinker> LldLinker::discover(std::string& error)
     return std::unique_ptr<LldLinker>(new LldLinker(executable));
 }
 
+std::unique_ptr<LldLinker> LldLinker::discoverSelected(std::string_view selection, std::string& error)
+{
+    error.clear();
+    if (selection.empty()) return discover(error);
+    if (selection != "NSLink" && selection != "LLD")
+    {
+        error = "linker must be NSLink or LLD";
+        return nullptr;
+    }
+    const std::string configured = getEnvironmentVariable("NSC_LINKER");
+    if (!configured.empty())
+    {
+        const auto path = resolveConfiguredNsLink(configured, error);
+        if (path.empty()) return nullptr;
+        if ((selection == "LLD") != isLldLinkExecutable(path))
+        {
+            error = "project linker selection conflicts with NSC_LINKER";
+            return nullptr;
+        }
+        if (containsQuote(path))
+        {
+            error = "linker executable path contains an unsupported quote character";
+            return nullptr;
+        }
+        return std::unique_ptr<LldLinker>(new LldLinker(path));
+    }
+    if (selection == "NSLink") return discover(error);
+    const auto compiler = currentExecutablePath();
+    if (!compiler.empty())
+    {
+        const auto sibling = compiler.parent_path() / "lld-link.exe";
+        std::error_code filesystemError;
+        if (std::filesystem::is_regular_file(sibling, filesystemError) && !filesystemError &&
+            !containsQuote(sibling))
+            return std::unique_ptr<LldLinker>(new LldLinker(sibling));
+    }
+    const auto path = resolveConfiguredNsLink("lld-link", error);
+    if (path.empty()) return nullptr;
+    if (containsQuote(path))
+    {
+        error = "linker executable path contains an unsupported quote character";
+        return nullptr;
+    }
+    return std::unique_ptr<LldLinker>(new LldLinker(path));
+}
+
 const std::filesystem::path& LldLinker::executablePath() const noexcept
 {
     return executablePath_;
