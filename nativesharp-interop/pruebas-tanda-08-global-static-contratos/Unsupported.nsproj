@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CStaticContractsUnsupported</Name></PropertyGroup>
+  <ItemGroup><Compile Include="Unsupported.ns" /><CppLibraryReference Header="Unsupported.h" Language="C" Standard="c11" /></ItemGroup>
+</Project>
