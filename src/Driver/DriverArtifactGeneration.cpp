@@ -58,7 +58,11 @@ static bool appendCStaticInlineObjects(frontend::ProjectCompilation &compilation
     auto inventory = interop::collectCppSemanticFunctions(*compilation.projectGraph(), compilation.cppProjectSessions());
     if (const auto* failure = std::get_if<interop::CppSemanticInventoryFailure>(&inventory))
     { error = "C inline inventory failed: " + failure->message; return false; }
-    struct Group { const interop::CppInteropSession* session; std::vector<interop::CppCInlineIRExport> exports; };
+    struct Group {
+        const interop::CppInteropSession* session;
+        std::vector<interop::CppCInlineIRExport> exports;
+        std::vector<interop::CppCInlineIRExport> globals;
+    };
     std::vector<Group> groups;
     for (const auto& entry : std::get<std::vector<interop::CppSemanticInventoryEntry>>(inventory))
     {
@@ -75,15 +79,37 @@ static bool appendCStaticInlineObjects(frontend::ProjectCompilation &compilation
         if (!session) { error = "C inline function has no matching Clang session"; return false; }
         auto found = std::find_if(groups.begin(), groups.end(),
             [&](const Group& group) { return group.session == session; });
-        if (found == groups.end()) { groups.push_back({session, {}}); found = std::prev(groups.end()); }
+        if (found == groups.end()) { groups.push_back({session, {}, {}}); found = std::prev(groups.end()); }
         found->exports.push_back({entry.declaration.name, *entry.declaration.externalSymbol});
+    }
+    auto globalInventory = interop::collectCppSemanticGlobals(*compilation.projectGraph(), compilation.cppProjectSessions());
+    if (const auto* failure = std::get_if<interop::CppSemanticInventoryFailure>(&globalInventory))
+    { error = "C internal global inventory failed: " + failure->message; return false; }
+    for (const auto& entry : std::get<std::vector<interop::CppSemanticGlobalEntry>>(globalInventory))
+    {
+        if (!entry.cLanguage || entry.declaration.externalLinkage) continue;
+        const auto symbol = interop::cppCInlineLinkSymbol(entry.projectFile, entry.referenceIndex,
+                                                        "global:" + entry.declaration.name);
+        const auto states = compilation.namespaceFunctionModel()->states();
+        if (std::none_of(states.begin(), states.end(), [&](const auto& state) {
+            return state.projectOrdinal == entry.projectOrdinal && state.isCppExternal && state.storageName == symbol;
+        })) continue;
+        const interop::CppInteropSession* session = nullptr;
+        for (const auto& project : compilation.cppProjectSessions())
+            if (project.projectFile == entry.projectFile && entry.referenceIndex < project.sessions.size())
+            { session = project.sessions[entry.referenceIndex].get(); break; }
+        if (!session) { error = "C internal global has no matching Clang session"; return false; }
+        auto found = std::find_if(groups.begin(), groups.end(),
+            [&](const Group& group) { return group.session == session; });
+        if (found == groups.end()) { groups.push_back({session, {}, {}}); found = std::prev(groups.end()); }
+        found->globals.push_back({entry.declaration.name, symbol});
     }
     if (groups.empty()) { error.clear(); return true; }
     return bundle.appendGeneratedObjects(groups.size(),
         [&](std::span<const std::filesystem::path> paths, std::string& emitError)
         {
             for (std::size_t i = 0; i < groups.size(); ++i)
-                if (!llvm_backend::emitCStaticInlineObject(*groups[i].session, groups[i].exports,
+                if (!llvm_backend::emitCStaticInlineObject(*groups[i].session, groups[i].exports, groups[i].globals,
                         level, paths[i], emitError)) return false;
             return true;
         }, error);

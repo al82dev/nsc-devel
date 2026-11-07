@@ -15,14 +15,15 @@
 namespace nativesharp::llvm_backend
 {
 bool emitCStaticInlineObject(const interop::CppInteropSession& session,
-    const std::vector<interop::CppCInlineIRExport>& exports, LlvmOptimizationLevel level,
+    const std::vector<interop::CppCInlineIRExport>& exports,
+    const std::vector<interop::CppCInlineIRExport>& globals, LlvmOptimizationLevel level,
     const std::filesystem::path& output, std::string& error)
 {
     error.clear();
-    if (session.optionsSnapshot().targetTriple != "x86_64-pc-windows-msvc" || exports.empty() ||
+    if (session.optionsSnapshot().targetTriple != "x86_64-pc-windows-msvc" || (exports.empty() && globals.empty()) ||
         output.empty() || !output.is_absolute())
     { error = "C inline object requires a Windows x64 session, exports and absolute output path"; return false; }
-    const auto ir = session.emitCStaticInlineIR(exports);
+    const auto ir = session.emitCStaticInlineIR(exports, globals);
     if (!ir) { error = "cannot emit C static inline definitions through Clang"; return false; }
     auto module = LlvmModule::parseText(*ir, error);
     if (!module) return false;

@@ -13,7 +13,8 @@ namespace nativesharp::interop { struct CppImplicitLifetimeEmissionRequest; stru
 namespace nativesharp::llvm_backend
 {
 bool emitCStaticInlineObject(const interop::CppInteropSession& session,
-    const std::vector<interop::CppCInlineIRExport>& exports, LlvmOptimizationLevel level,
+    const std::vector<interop::CppCInlineIRExport>& exports,
+    const std::vector<interop::CppCInlineIRExport>& globals, LlvmOptimizationLevel level,
     const std::filesystem::path& output, std::string& error);
 // Experimental: produces one object, but does not schedule it in the project link.
 bool emitCppImplicitLifetimeObject(const interop::CppInteropSession& session,
