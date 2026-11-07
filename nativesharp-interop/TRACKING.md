@@ -475,6 +475,9 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     todavía implementación NSC ni corrige la prueba original.
     [Evidencia](registro-commits/tls-dll-directo-experimento-pe.md),
     [dirección importada](registro-commits/tls-dll-pe-import-address.md).
+  - NativeSharp también leyó y escribió ese TLS mediante un adaptador C de
+    prueba en O0–O3, con NSLink sin cambios. Todavía debe generarse el acceso
+    desde NSC, sin la llamada manual. [Evidencia](registro-commits/tls-dll-bridge-native.md).
   - Una DLL C con directorio TLS real aisló el estado de dos hilos al ser
     llamada desde NS O0–O3. El acceso directo al global y el TLS estático en
     NSLink siguen pendientes. [Evidencia](registro-commits/tls-c-dll.md).
