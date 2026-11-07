@@ -8,6 +8,13 @@ con TLS, tanto en `nsc build` como en emisión directa. Preparar controles en el
 fixture transitivo, con salidas en A:, tracking y bitácora. No modificar
 producción antes de reproducir; no modificar NSLink, LLVM ni C:.
 
+La reproducción `respaldo-reproduccion.log` mostró que `nsc build` no propaga
+`NS_LIB_ROOT` a la preparación de la clausura y falla al buscar `PlainProducer`.
+Permitir corregir la configuración local de `ProjectLoadOptions` en
+`src/Driver/ProjectCommands.cpp`, usando la misma prioridad y validación de
+ruta absoluta que la emisión directa. No modificar el comportamiento de una
+raíz explícita ni NSLink, LLVM o C:.
+
 ## Raíces de dependencias en selección anticipada
 
 Comprobar una biblioteca NS intermedia aislada cuyos módulos dependientes se
