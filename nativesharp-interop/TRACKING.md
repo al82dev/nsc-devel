@@ -527,6 +527,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     el enum se selecciona también cuando aparece dentro de Atomic. El IR
     comprueba cada variable y se rechaza una escritura al struct const.
     [Resultado](registro-commits/t08-atomic-punteros-tipos-calificados-validacion.md).
+    Una biblioteca NativeSharp precompilada usó esas globales internas; su
+    consumidor ejecutó O0–O3 con el encabezado C del productor oculto. El
+    record también se seleccionó sin invocar funciones que lo retornan.
+    [Resultado](registro-commits/t08-atomic-contratos-precompilado-validacion.md).
   - El global C `_Atomic(int)` sin TLS fue rechazado como tipo no mapeado.
     Una corrección limitada de su proyección pasó O0–O3, comprobación de IR
     atómico y regresión TLS. [Resultado](registro-commits/t08-atomic-global-int-validacion.md).
