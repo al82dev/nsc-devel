@@ -35,7 +35,6 @@ void appendBoolVector(std::string& out, const std::vector<bool>& values)
 {
     CachePayloadWriter::u64(out, values.size());
     for (const bool value : values) CachePayloadWriter::byte(out, value ? 1U : 0U);
-    CachePayloadWriter::byte(out, node.cppAtomicAccess ? 1U : 0U);
 }
 
 void appendSyntaxIdentity(std::string& out, const ast::AstNode* syntax)
@@ -127,7 +126,7 @@ void appendNodeFlags(std::string& out, const ProjectOopHirNode& node)
         node.referenceResult, node.governingReference, node.nullConditionalCall,
         node.returnsAssignedValue, node.mustTailCall, node.automaticDestruction,
         node.variableLengthArray, node.placementConstructed, node.stackPromotedObject,
-        node.volatileAccess, node.baseReceiver, node.interfaceDispatch,
+        node.volatileAccess, node.cppAtomicAccess, node.baseReceiver, node.interfaceDispatch,
         node.targetIsInterface, node.dynamicDestruction, node.valueTypeNoOpDeletion,
         node.catchAll, node.catchHasFilter, node.catchExhaustive,
         node.interfaceCleanupDispatch};
