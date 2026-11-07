@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-015: referencia flotante de `_Bool` C compuesto
+
+Determinar con Clang la conversión y el resultado de asignaciones compuestas
+con operandos `float` y `double` sobre el arreglo C global `volatile _Bool` en
+modo MS. Presupuesto: referencia C, tracking y registro; IR en
+`A:/nsc-interop-build`. No modificar todavía el compilador ni los controles,
+NSLink, LLVM externo o C:. No extrapolar soporte de NSC a partir de la referencia.
+
 ## T08-015: promociones enteras restantes de `_Bool` C compuesto
 
 Ampliar el arreglo global C `volatile _Bool` en modo MS a operandos bool,

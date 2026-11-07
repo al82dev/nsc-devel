@@ -16,3 +16,5 @@ int add_uchar(unsigned char rhs) { return (values[0] += rhs); }
 int add_short(short rhs) { return (values[0] += rhs); }
 int add_ushort(unsigned short rhs) { return (values[0] += rhs); }
 int shift_ulong(unsigned long long rhs) { return (values[0] <<= rhs); }
+int add_float(float rhs) { return (values[0] += rhs); }
+int divide_double(double rhs) { return (values[0] /= rhs); }
