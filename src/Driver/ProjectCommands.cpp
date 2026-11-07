@@ -28,6 +28,7 @@
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
 #include "nativesharp/Compilation/ProjectLoader.h"
 #include "nativesharp/LLVM/ThinLtoLibrarySidecarCodec.h"
+#include "nativesharp/LLVM/ProjectOopObjectGenerator.h"
 
 #include <algorithm>
 #include <array>
@@ -1710,6 +1711,30 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const PreparedDriv
     addVerifiedRestoreDigests(manifest, plan);
     compilation::LibraryMetadataRepository metadataRepository;
     const auto projects = manifest.projectGraph().projects();
+    if (!options.linker.has_value() && !environmentValue("NSC_LINKER") &&
+        !fs::exists(sidecarPath(project)) && loaded->outputKind() != compilation::ProjectOutputKind::Library)
+    {
+        std::set<fs::path> inspected;
+        const auto requiresStaticTls = [&](const fs::path& path) {
+            if (path.empty() || !inspected.insert(path).second) return false;
+            std::vector<std::string> symbols;
+            std::string inspectionError;
+            if (!llvm_backend::ProjectOopObjectGenerator::collectUndefinedSymbols(path, symbols, inspectionError))
+                return false;
+            return std::find(symbols.begin(), symbols.end(), "_tls_index") != symbols.end();
+        };
+        bool found = false;
+        for (const auto& item : projects)
+        {
+            for (const auto& reference : item.cppLibraryReferences())
+                if (reference.runtimePath.empty() && requiresStaticTls(reference.libraryPath)) { found = true; break; }
+            if (!found)
+                for (const auto& reference : item.libraryReferences())
+                    if (reference.runtimePath.empty() && requiresStaticTls(reference.libraryPath)) { found = true; break; }
+            if (found) break;
+        }
+        if (found) linker = "LLD";
+    }
     const bool hasCppReferences = std::any_of(projects.begin(), projects.end(), [](const auto& item) {
         return !item.cppLibraryReferences().empty();
     });

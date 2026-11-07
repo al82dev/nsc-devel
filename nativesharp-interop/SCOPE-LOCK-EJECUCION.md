@@ -4450,6 +4450,23 @@ no modificar NSLink, LLVM ni C:. Cambios de producción únicamente tras
 reproducir un defecto concreto y delimitar su causa. Esta matriz no cierra
 por sí sola la tanda ni sustituye el validador completo.
 
+# Selección conservadora de LLD para TLS estático
+
+El proyecto `CTlsPrerequisite` falla con NSLink cuando no se selecciona un
+enlazador; su biblioteca C contiene TLS interno y referencia `_tls_index`,
+aunque el header solo declara una función. Para `nsc build` sin selección de
+línea de comandos, `NSC_LINKER` ni sidecar de proyecto, inspeccionar las
+bibliotecas estáticas del grafo con el lector COFF existente y seleccionar
+LLD si alguno de sus objetos requiere `_tls_index`. Una detección positiva
+es conservadora: puede incluir miembros no extraídos del archivo. No asumir
+que una inspección negativa demuestre ausencia de TLS para todos los formatos.
+Conservar elecciones explícitas, DLL de importación, NSLink predeterminado
+para proyectos sin ese indicio, identidades de caché y diagnósticos. Cambios
+limitados al driver de NSC, fixture nuevo y registros; NSLink, LLVM externo,
+C: y fixtures previos protegidos. Validar selección, ejecución O0–O3,
+selección explícita y proyecto sin TLS; no presentar esta regla parcial como
+cobertura completa de TLS ni como cierre de la tanda.
+
 # Caché al cambiar el enlazador
 
 Comprobar que un ejecutable NativeSharp sin dependencias C se vuelve a enlazar
