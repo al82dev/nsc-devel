@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-015: operandos flotantes en `_Bool` C volatile compuesto
+
+Implementar `+=`, `-=`, `*=` y `/=` con `float` y `double` en el arreglo C
+global `volatile _Bool` en modo MS ya observado. Convertir bool al ancho del
+operando, operar y comparar con cero incluyendo NaN; conservar accesos de
+byte acquire/release y rechazo del bool nativo. Presupuesto: análisis, HIR,
+LLVM, fixture record-c, verificador y referencia C, tracking y registros.
+Validación agrupada incremental O0–O3; sin NSLink, LLVM externo ni C:.
+
 ## T08-015: referencia flotante de `_Bool` C compuesto
 
 Determinar con Clang la conversión y el resultado de asignaciones compuestas

@@ -157,14 +157,19 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
             integerOperandType == "builtin:short" || integerOperandType == "builtin:ushort" ||
             integerOperandType == "builtin:int" || integerOperandType == "builtin:uint" ||
             integerOperandType == "builtin:long" || integerOperandType == "builtin:ulong";
+        const bool floatOperand = integerOperandType == "builtin:float" || integerOperandType == "builtin:double";
         const bool boolBitwise = node->operation == lexer::TokenKind::Amp ||
             node->operation == lexer::TokenKind::Pipe || node->operation == lexer::TokenKind::Caret;
         const bool boolIntArithmetic = node->operation == lexer::TokenKind::Plus ||
             node->operation == lexer::TokenKind::Minus || node->operation == lexer::TokenKind::Star ||
             node->operation == lexer::TokenKind::Slash || node->operation == lexer::TokenKind::Percent ||
             node->operation == lexer::TokenKind::LessLess || node->operation == lexer::TokenKind::GreaterGreater;
+        const bool boolFloatArithmetic = node->operation == lexer::TokenKind::Plus ||
+            node->operation == lexer::TokenKind::Minus || node->operation == lexer::TokenKind::Star ||
+            node->operation == lexer::TokenKind::Slash;
         if (clangMsVolatileGlobalBoolArray(node->children[0].get()) &&
-            ((boolOperand && boolBitwise) || (intOperand && (boolBitwise || boolIntArithmetic))))
+            ((boolOperand && boolBitwise) || (intOperand && (boolBitwise || boolIntArithmetic)) ||
+             (floatOperand && boolFloatArithmetic)))
         {
             LLVMTypeRef byteType = LLVMInt8TypeInContext(context_);
             LLVMValueRef raw = LLVMBuildLoad2(builder_, byteType, address, "c.bool.compound.load");
@@ -174,7 +179,18 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
             LLVMValueRef previous = LLVMBuildICmp(builder_, LLVMIntNE, raw,
                 LLVMConstInt(byteType, 0, 0), "c.bool.compound.previous");
             LLVMValueRef updated = nullptr;
-            if (!boolOperand || !boolBitwise)
+            if (floatOperand)
+            {
+                LLVMTypeRef floatingType = llvmType(integerOperandType, error);
+                if (!floatingType) return nullptr;
+                LLVMValueRef promoted = LLVMBuildUIToFP(builder_, previous, floatingType, "c.bool.compound.fp.promoted");
+                LLVMValueRef calculated = applyBinaryOperation(node->operation, promoted, value,
+                    integerOperandType, error, false);
+                if (!calculated) return nullptr;
+                updated = LLVMBuildFCmp(builder_, LLVMRealUNE, calculated,
+                    LLVMConstReal(floatingType, 0.0), "c.bool.compound.fp.normalized");
+            }
+            else if (!boolOperand || !boolBitwise)
             {
                 const bool shift = node->operation == lexer::TokenKind::LessLess ||
                     node->operation == lexer::TokenKind::GreaterGreater;

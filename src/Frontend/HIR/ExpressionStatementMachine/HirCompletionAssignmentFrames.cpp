@@ -780,8 +780,11 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
                 lowered->typeKey == "builtin:byte" || lowered->typeKey == "builtin:short" || lowered->typeKey == "builtin:ushort" ||
                 lowered->typeKey == "builtin:int" || lowered->typeKey == "builtin:uint" || lowered->typeKey == "builtin:long" ||
                 lowered->typeKey == "builtin:ulong";
+            const bool cBoolFloatOperand = (lowered->typeKey == "builtin:float" || lowered->typeKey == "builtin:double") &&
+                (compound->operation == lexer::TokenKind::Plus || compound->operation == lexer::TokenKind::Minus ||
+                 compound->operation == lexer::TokenKind::Star || compound->operation == lexer::TokenKind::Slash);
             const bool cBoolIntOperation = frame.first->typeKey == "builtin:bool" &&
-                frame.first->volatileAccess && cBoolIntegerOperand &&
+                frame.first->volatileAccess && (cBoolIntegerOperand || cBoolFloatOperand) &&
                 cBoolDepth == 1 && cBoolRoot &&
                 cBoolRoot->kind == ProjectOopHirNodeKind::NamespaceStateAddress && cBoolRoot->volatileAccess &&
                 cBoolRoot->cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&

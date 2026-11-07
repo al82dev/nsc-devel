@@ -874,6 +874,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Clang confirmó conversiones flotantes y `fcmp une` en dos asignaciones
     compuestas `_Bool` C volatile; falta implementar y comprobar NSC.
     [Referencia](registro-commits/t08-bool-compuesto-flotante-referencia.md).
+    Preparada la implementación para cuatro operadores y ambos anchos;
+    construcción y validación pendientes. [Detalle](registro-commits/t08-bool-compuesto-flotante-implementacion.md).
   - Clang confirmó promociones de bool e enteros de 8/16 bits y el ancho del
     valor desplazado frente a un contador ancho; falta implementarlas y
     validarlas. [Referencia](registro-commits/t08-bool-compuesto-promociones-referencia.md).

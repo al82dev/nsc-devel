@@ -2089,7 +2089,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
          compoundBase == TokenKind::Plus || compoundBase == TokenKind::Minus || compoundBase == TokenKind::Star ||
          compoundBase == TokenKind::Slash || compoundBase == TokenKind::Percent ||
          compoundBase == TokenKind::LessLess || compoundBase == TokenKind::GreaterGreater);
-    if (namespaceFunctionModel_ && left.typeKey == "builtin:bool" && (boolBitwise || cBoolIntOperation) &&
+    const bool cBoolFloatOperation = (right.typeKey == "builtin:float" || right.typeKey == "builtin:double") &&
+        (compoundBase == TokenKind::Plus || compoundBase == TokenKind::Minus ||
+         compoundBase == TokenKind::Star || compoundBase == TokenKind::Slash);
+    if (namespaceFunctionModel_ && left.typeKey == "builtin:bool" && (boolBitwise || cBoolIntOperation || cBoolFloatOperation) &&
         target && target->kind() == ast::AstNodeKind::IndexExpression && target->first())
     {
         const auto* binding = recordedNameBinding(target->first(), methodMemberOrdinal);
