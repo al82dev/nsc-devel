@@ -216,8 +216,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     const bool supportedVolatileArray = !(arrayVolatile || arrayElement->isVolatile) ||
         (arrayElement->kind == CppTypeKind::SignedInteger && arrayElement->sizeBits == 32);
     const bool supportedArrayTls = fixedArray && supportedArrayElement && supportedVolatileArray;
-    const bool supportedVolatileTls = !global.type.isVolatile || supportedArrayTls || supportedPointerTls ||
-        (kind == CppTypeKind::SignedInteger && global.type.sizeBits == 32);
+    const bool supportedVolatileTls = !global.type.isVolatile || supportedArrayTls || supportedPointerTls || scalarTls;
     if (global.threadLocal && (!cLanguage || global.dllImport ||
         (!scalarTls && !aggregateTls && !supportedPointerTls && !supportedArrayTls) || !supportedVolatileTls))
         return failure("thread-local C/C++ global is not yet projected");
