@@ -471,6 +471,11 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     global y fallan dentro de namespace por nombre desconocido. Es necesario
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
 - [ ] T08-004. Importar declaraciones de variables globales C.
+  - El mismo objeto C TLS se contrastó en DLL sin arranque y con arranque CRT:
+    el instrumento C observó índice cero y datos distintos de la plantilla en
+    la primera, e índice uno y datos coincidentes en la segunda. Esto delimita
+    el fallo observado, sin resolver los controles originales.
+    [Evidencia](registro-commits/t08-tls-dll-contraste-indice-crt.md).
   - `_Thread_local _Atomic(unsigned int*)` pasó acceso y aritmética O0–O3
     frente al control C de Clang, con operaciones atómicas comprobadas en IR.
     [Evidencia](registro-commits/t08-tls-atomico-puntero-uint.md).
