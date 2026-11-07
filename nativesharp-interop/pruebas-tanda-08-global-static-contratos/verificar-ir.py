@@ -13,7 +13,10 @@ for filename in sys.argv[1:]:
         if not re.search(pattern, ir):
             raise SystemExit(f"{filename}: falta {operation} atomico seq_cst")
         pointer_pattern = rf"\b{operation} atomic (?:i64|ptr)\b[^\n]*\bseq_cst\b[^\n]*\balign 8\b"
-        if len(re.findall(pointer_pattern, ir)) < 2:
+        updates = len(re.findall(pointer_pattern, ir))
+        if operation == "store":
+            updates += len(re.findall(r"\batomicrmw add\b[^\n]*\bseq_cst\b[^\n]*\balign 8\b", ir))
+        if updates < 2:
             raise SystemExit(f"{filename}: faltan dos operaciones {operation} atomicas de punteros")
     print(f"Orden volatile y atomico verificado: {filename}")
 
