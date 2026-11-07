@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>PlainIsolatedConsumer</Name></PropertyGroup>
+  <ItemGroup><Compile Include="PlainIntermediateConsumer.ns" /><LibraryReference Include="isolated/PlainIntermediate.lib" /></ItemGroup>
+</Project>

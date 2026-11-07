@@ -18,7 +18,7 @@ for %%F in (Api.c Api.h Crt.h) do (
   copy /y "%~dp0..\static-global\%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
-for %%F in (Intermediate.ns Intermediate.nsproj IntermediateConsumer.ns IntermediateConsumer.nsproj) do (
+for %%F in (Intermediate.ns Intermediate.nsproj IntermediateConsumer.ns IntermediateConsumer.nsproj IsolatedConsumer.nsproj PlainIsolatedConsumer.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -47,6 +47,18 @@ if errorlevel 1 (type "%DEST%\intermediate-build.log" & exit /b 1)
 findstr /L /C:"\"linker\":\"LLD\"" "%DEST%\intermediate-build.log" >nul
 if errorlevel 1 (type "%DEST%\intermediate-build.log" & exit /b 1)
 "%DEST%\bin\Debug\IntermediateConsumer.exe"
+if errorlevel 1 exit /b 1
+mkdir "%DEST%\isolated"
+if errorlevel 1 exit /b 1
+for %%F in (Intermediate.lib Intermediate.nsmeta) do (
+  copy /y "%DEST%\%%F" "%DEST%\isolated\%%F" >nul
+  if errorlevel 1 exit /b 1
+)
+nsc.exe build "%DEST%\IsolatedConsumer.nsproj" --cpp-clang-root=A:\al82dev-clang --library-reference-root "%DEST%" --no-restore -O0 --output-format=json > "%DEST%\isolated-tls.log" 2>&1
+if errorlevel 1 (type "%DEST%\isolated-tls.log" & exit /b 1)
+findstr /L /C:"\"linker\":\"LLD\"" "%DEST%\isolated-tls.log" >nul
+if errorlevel 1 (type "%DEST%\isolated-tls.log" & exit /b 1)
+"%DEST%\bin\Debug\IsolatedConsumer.exe"
 if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\TransitiveConsumer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe"
@@ -105,6 +117,16 @@ if errorlevel 1 (type "%DEST%\plain-intermediate-build.log" & exit /b 1)
 findstr /L /C:"\"linker\":\"NSLink\"" "%DEST%\plain-intermediate-build.log" >nul
 if errorlevel 1 (type "%DEST%\plain-intermediate-build.log" & exit /b 1)
 "%DEST%\bin\Debug\PlainIntermediateConsumer.exe"
+if errorlevel 1 exit /b 1
+for %%F in (PlainIntermediate.lib PlainIntermediate.nsmeta) do (
+  copy /y "%DEST%\%%F" "%DEST%\isolated\%%F" >nul
+  if errorlevel 1 exit /b 1
+)
+nsc.exe build "%DEST%\PlainIsolatedConsumer.nsproj" --cpp-clang-root=A:\al82dev-clang --library-reference-root "%DEST%" --no-restore -O0 --output-format=json > "%DEST%\isolated-plain.log" 2>&1
+if errorlevel 1 (type "%DEST%\isolated-plain.log" & exit /b 1)
+findstr /L /C:"\"linker\":\"NSLink\"" "%DEST%\isolated-plain.log" >nul
+if errorlevel 1 (type "%DEST%\isolated-plain.log" & exit /b 1)
+"%DEST%\bin\Debug\PlainIsolatedConsumer.exe"
 if errorlevel 1 exit /b 1
 move /y "%DEST%\plain.lib" "%DEST%\plain.lib.hidden" >nul
 if errorlevel 1 exit /b 1
