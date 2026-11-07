@@ -1,0 +1,6 @@
+int Main()
+{
+    if (shared_state != 7) return 1;
+    shared_state = 29;
+    return shared_state == 29 ? 0 : 2;
+}

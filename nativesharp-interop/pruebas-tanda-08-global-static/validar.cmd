@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Control.c Main.ns Project.nsproj) do (
+for %%F in (Api.h Control.c Main.ns Project.nsproj Solo.ns Solo.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -21,8 +21,14 @@ if errorlevel 1 exit /b 1
 "%DEST%\control.exe"
 if errorlevel 1 exit /b 1
 echo Control C ejecutado correctamente.
-nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\consumer.exe"
-if errorlevel 1 exit /b 1
-"%DEST%\consumer.exe"
-if errorlevel 1 exit /b 1
-echo Global estatica y funciones inline comparten estado.
+for %%O in (0 1 2 3) do (
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe" > "%DEST%\consumer-O%%O.log" 2>&1
+  if errorlevel 1 (type "%DEST%\consumer-O%%O.log" & exit /b 1)
+  "%DEST%\consumer-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Solo.nsproj" -O%%O --no-artifact-cache -o "%DEST%\solo-O%%O.exe" > "%DEST%\solo-O%%O.log" 2>&1
+  if errorlevel 1 (type "%DEST%\solo-O%%O.log" & exit /b 1)
+  "%DEST%\solo-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  echo Global estatica con y sin funciones inline O%%O correcta.
+)

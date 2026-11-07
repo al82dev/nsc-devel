@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CStaticGlobalOnly</Name></PropertyGroup>
+  <ItemGroup><Compile Include="Solo.ns" /><CppLibraryReference Header="Api.h" Language="C" Standard="c11" /></ItemGroup>
+</Project>
