@@ -463,6 +463,10 @@ las correcciones. [Resultado](registro-commits/t08-validacion-link-lib-auto.md),
     global y fallan dentro de namespace por nombre desconocido. Es necesario
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
 - [ ] T08-004. Importar declaraciones de variables globales C.
+  - Un global C `_Thread_local _Atomic(int)` pasa el control C, pero NSC lo
+    rechaza como no proyectado. Faltan lectura, escritura y actualización
+    atómicas; el control positivo se incorporó al gate y sigue fallando.
+    [Evidencia](registro-commits/t08-tls-atomico-resultado.md).
   - Un global C TLS estático `int` firmado de 32 bits se leyó y escribió desde
     NativeSharp y C con aislamiento de otro hilo en O0–O3. Se usaron LLD y CRT
     declarados explícitamente; el acceso directo desde DLL sigue pendiente.
