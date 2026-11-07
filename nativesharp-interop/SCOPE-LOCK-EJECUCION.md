@@ -4296,7 +4296,7 @@ desde el inventario a namespace, MIR y la declaración LLVM externa. Los demás
 tipos y contratos TLS no demostrados permanecen rechazados. Presupuesto:
 `CppSemanticInventory.h/.cpp`, `NamespaceStateSymbol.h`,
 `ProjectOopMirStaticField.h`, `MirBuildCoordinator.cpp`,
-`OopLlvmStaticState.cpp`, fixture `static-global` y registros. Caché de
+`OopLlvmStaticState.cpp`, `src/LLVM/LlvmCApi.h`, fixture `static-global` y registros. Caché de
 artefactos C/C++ desactivada; no alterar LLVM externo, NSLink ni C:.
 Validar control C, lectura y escritura cruzadas, dos hilos y O0–O3; no declarar
 TLS directo de DLL ni cerrar la tanda por esta muestra.

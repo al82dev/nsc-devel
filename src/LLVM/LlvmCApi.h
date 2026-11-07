@@ -658,6 +658,7 @@ void LLVMSetLinkage(LLVMValueRef global, LLVMLinkage linkage);
 // llvm-c/Core.h LLVMDLLStorageClass, LLVM 23.
 enum LLVMDLLStorageClass { LLVMDefaultStorageClass = 0, LLVMDLLImportStorageClass = 1, LLVMDLLExportStorageClass = 2 };
 void LLVMSetDLLStorageClass(LLVMValueRef global, LLVMDLLStorageClass storageClass);
+void LLVMSetThreadLocal(LLVMValueRef global, LLVMBool isThreadLocal);
 LLVMValueRef LLVMGetParam(LLVMValueRef function, unsigned index);
 void LLVMSetValueName2(LLVMValueRef value, const char* name, std::size_t nameLength);
 const char* LLVMGetValueName2(LLVMValueRef value, std::size_t* nameLength);
