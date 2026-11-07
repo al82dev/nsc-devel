@@ -4499,6 +4499,9 @@ vacío, sin alterar los fixtures originales, NSLink, LLVM ni C:. La observación
 no autoriza parchear bibliotecas de terceros ni declarar resuelta la tanda.
 Contrastar además el mismo ejecutable NativeSharp O0 con ambas copias, sin
 modificar la DLL utilizada por los validadores originales.
+Contrastar también un consumidor C con `mainCRTStartup` del CRT estático y
+`LoadLibraryA`, registrar el mapa y cabeceras PE, y conservar los resultados en
+el mismo directorio de experimentos. El código del control pertenece a NSC.
 
 # Arreglo global C TLS
 
