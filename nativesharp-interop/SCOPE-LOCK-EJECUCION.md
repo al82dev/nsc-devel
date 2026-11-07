@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004/015: global C atómico importado de DLL
+
+Comprobar un global `_Atomic(int)` exportado por DLL C y consumido directamente
+desde NativeSharp, con control C, IR y ejecución O0–O3. Fixtures y registros
+en `nativesharp-interop`; artefactos solo en `A:/nsc-interop-build`. No cambiar
+NSLink, LLVM, layout, metadata ni C:. No inferir soporte de TLS importado ni
+de otros tipos a partir de esta muestra.
+
 ## T08-004/015: global C atómico en biblioteca precompilada y DLL
 
 Comprobar que un productor NativeSharp precompilado conserva sus operaciones
