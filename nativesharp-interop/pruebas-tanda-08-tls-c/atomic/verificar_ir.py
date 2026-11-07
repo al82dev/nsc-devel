@@ -46,4 +46,13 @@ for symbol, required, volatile in (
         raise SystemExit('Faltan operaciones seq_cst sobre ' + symbol + ': ' + ', '.join(sorted(missing)))
     if symbol == 'atomic_tls' and compare_exchanges < 4:
         raise SystemExit('Faltan intercambios atomicos para multiplicacion y desplazamientos')
+    if symbol == 'atomic_volatile' and compare_exchanges < 4:
+        raise SystemExit('Faltan intercambios atomicos para el objeto volatile')
+    if symbol == 'atomic_volatile' and mode == 'native':
+        volatile_cas = [line for line in body.splitlines()
+                        if re.search(r'\bcmpxchg volatile\b', line)
+                        and any(re.search(r'\bptr\s+' + re.escape(address) + r'(?:\s|,)', line)
+                                for address in addresses)]
+        if len(volatile_cas) < 4:
+            raise SystemExit('Falta volatile en los intercambios atomicos')
 print('IR atomico verificado para ' + mode)

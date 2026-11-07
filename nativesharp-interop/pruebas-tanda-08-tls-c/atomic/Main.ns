@@ -24,9 +24,16 @@ int Main()
     if (atomic_start_mul_worker() != 0) return 13;
     for (int i = 0; i < 10000; ++i) { atomic_tls *= -1; }
     if (atomic_wait_worker() != 0 || atomic_tls != -1) return 14;
+    atomic_tls = 1;
+    if (atomic_start_mul_worker() != 0) return 19;
+    for (int i = 0; i < 10000; ++i) { atomic_tls /= 1; }
+    if (atomic_wait_worker() != 0 || atomic_tls != -1) return 20;
     if (atomic_readonly != 7 || atomic_volatile != 9) return 7;
     atomic_volatile = 10;
     atomic_volatile += 1;
     if (atomic_volatile_read() != 11) return 8;
+    if ((atomic_volatile *= 2) != 22 || (atomic_volatile >>= 1) != 11) return 21;
+    if ((atomic_volatile /= 2) != 5 || (atomic_volatile %= 3) != 2) return 22;
+    if (atomic_volatile_read() != 2) return 23;
     return 0;
 }

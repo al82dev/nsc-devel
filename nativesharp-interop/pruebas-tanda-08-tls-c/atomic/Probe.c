@@ -43,8 +43,22 @@ void entry(void)
         }
     }
     if (result == 0) {
+        atomic_tls = 1;
+        if (atomic_start_mul_worker() != 0) result = 19;
+        else {
+            for (int i = 0; i < 10000; ++i) atomic_tls /= 1;
+            if (atomic_wait_worker() != 0 || atomic_tls != -1) result = 20;
+        }
+    }
+    if (result == 0) {
         if (atomic_readonly != 7 || atomic_volatile != 9) result = 7;
-        else { atomic_volatile = 10; atomic_volatile += 1; if (atomic_volatile_read() != 11) result = 8; }
+        else {
+            atomic_volatile = 10; atomic_volatile += 1;
+            if (atomic_volatile_read() != 11) result = 8;
+            else if ((atomic_volatile *= 2) != 22 || (atomic_volatile >>= 1) != 11) result = 21;
+            else if ((atomic_volatile /= 2) != 5 || (atomic_volatile %= 3) != 2) result = 22;
+            else if (atomic_volatile_read() != 2) result = 23;
+        }
     }
     ExitProcess((unsigned int)result);
 }
