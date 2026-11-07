@@ -4301,3 +4301,14 @@ artefactos C/C++ desactivada; no alterar LLVM externo, NSLink ni C:.
 Validar control C, lectura y escritura cruzadas, dos hilos y O0–O3; no declarar
 TLS directo de DLL ni cerrar la tanda por esta muestra.
 
+# Globales C TLS escalares y calificadores
+
+Comprobar como conjunto globales C TLS estáticos `unsigned int`, `short`,
+`double`, `_Bool`, `const int` y `volatile int`: lectura/escritura cruzadas,
+inicialización y aislamiento entre hilos de O0 a O3. Presupuesto inicial:
+fixture `pruebas-tanda-08-tls-c/scalars` y registro Markdown. Tras reproducir,
+delimitar la proyección semántica y respetar la lógica ya existente de
+`const` y `volatile`; mantener rechazados punteros, arreglos y TLS de DLL no
+demostrados. No modificar NSLink, LLVM externo ni C:; no cerrar T08-004 por
+estas muestras.
+

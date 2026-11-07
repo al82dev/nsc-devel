@@ -1,0 +1,11 @@
+int Main()
+{
+    if (tls_unsigned != 7 || tls_short != 2 || tls_double != 1.5 || tls_bool || tls_const != 19 || tls_volatile != 4) return 1;
+    tls_unsigned = 17;
+    tls_short = 12;
+    tls_double = 2.5;
+    tls_bool = true;
+    tls_volatile = 14;
+    if (scalar_check() != 0 || scalar_thread_check() != 0 || scalar_check() != 0) return 2;
+    return 0;
+}
