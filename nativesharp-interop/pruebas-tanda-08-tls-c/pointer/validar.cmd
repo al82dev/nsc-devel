@@ -46,4 +46,25 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 (echo Ejecucion de puntero TLS DLL O%%O fallo. & exit /b 1)
   echo Puntero TLS DLL O%%O correcto.
 )
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%ROOT%\static\Static.nsproj" > "%ROOT%\static\project.ll" 2> "%ROOT%\static\ir.log"
+if errorlevel 1 exit /b 1
+python "%~dp0verificar_ir.py" "%ROOT%\static\project.ll"
+if errorlevel 1 exit /b 1
+for %%M in (static dll) do (
+  for %%N in (ConstSlot ConstPointee) do (
+    copy /y "%~dp0%%N.ns.txt" "%ROOT%\%%M\Main.ns" >nul
+    if errorlevel 1 exit /b 1
+    call :check_const %%M %%N
+    if errorlevel 1 exit /b 1
+  )
+)
+echo Escrituras const en puntero TLS rechazadas en estatico y DLL.
+exit /b 0
+
+:check_const
+if /i "%~1"=="static" (set "NSC_TLS_POINTER_PROJECT=Static") else (set "NSC_TLS_POINTER_PROJECT=Dll")
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%ROOT%\%~1\%NSC_TLS_POINTER_PROJECT%.nsproj" > "%ROOT%\%~1\%~2.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"left side of assignment is not assignable" "%ROOT%\%~1\%~2.log" >nul
+if errorlevel 1 exit /b 1
 exit /b 0

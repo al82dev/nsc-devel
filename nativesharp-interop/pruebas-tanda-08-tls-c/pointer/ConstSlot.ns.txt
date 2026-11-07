@@ -1,0 +1,1 @@
+int Main() { tls_const_slot = pointer_target(); return 0; }
