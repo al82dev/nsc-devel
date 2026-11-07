@@ -1,0 +1,7 @@
+int Main()
+{
+    atomic_pointer_volatile_pointee = atomic_pointer_expected();
+    *atomic_pointer_volatile_pointee = 81;
+    if (*atomic_pointer_volatile_pointee != 81) return 1;
+    return 0;
+}
