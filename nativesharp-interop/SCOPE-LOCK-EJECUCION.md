@@ -4329,6 +4329,10 @@ desde NativeSharp y desde C, con biblioteca estática y DLL. Presupuesto
 inicial: `pruebas-tanda-08-tls-c/array` y registro; cambiar producción solo
 tras identificar el fallo. Salidas en A:, sin modificar NSLink, LLVM ni C:.
 No afirmar soporte de arreglos o tipos no ejercitados ni cierre de tanda.
+El control C ampliado pasó con `int[3]` e `int[2][3]`; NSC los rechazó en
+la proyección TLS. Ampliar el mismo fixture y esa proyección para dimensiones
+fijas positivas de `int` de 32 bits, dentro del límite existente de 64 niveles.
+Los demás tipos y calificadores siguen pendientes de sus propios controles.
 
 # Identificación provisional de TLS de DLL
 

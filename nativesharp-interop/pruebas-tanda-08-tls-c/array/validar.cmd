@@ -36,7 +36,7 @@ set "TMP=%ROOT%\dll"
 set "TEMP=%TMP%"
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 -DBUILD_DLL "%ROOT%\dll\Api.c" -o "%ROOT%\dll\api.obj" > "%ROOT%\dll\compile.log" 2>&1
 if errorlevel 1 exit /b 1
-lld-link.exe /nologo /dll /nodefaultlib /entry:_DllMainCRTStartup /include:_tls_used /export:tls_array,DATA /out:"%ROOT%\dll\api.dll" /implib:"%ROOT%\dll\api.lib" "%ROOT%\dll\api.obj" "A:\vc2026-runtime\lib\x64\release\libcmt.lib" "A:\vc2026-runtime\lib\x64\release\libcpmt.lib" "A:\vc2026-runtime\lib\x64\release\libvcruntime.lib" "A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\ucrt\x64\libucrt.lib" "A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\um\x64\kernel32.lib" > "%ROOT%\dll\link.log" 2>&1
+lld-link.exe /nologo /dll /nodefaultlib /entry:_DllMainCRTStartup /include:_tls_used /export:tls_array,DATA /export:tls_three,DATA /export:tls_matrix,DATA /out:"%ROOT%\dll\api.dll" /implib:"%ROOT%\dll\api.lib" "%ROOT%\dll\api.obj" "A:\vc2026-runtime\lib\x64\release\libcmt.lib" "A:\vc2026-runtime\lib\x64\release\libcpmt.lib" "A:\vc2026-runtime\lib\x64\release\libvcruntime.lib" "A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\ucrt\x64\libucrt.lib" "A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\um\x64\kernel32.lib" > "%ROOT%\dll\link.log" 2>&1
 if errorlevel 1 exit /b 1
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
 for %%O in (0 1 2 3) do (
