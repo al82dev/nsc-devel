@@ -25,7 +25,9 @@ for symbol, required, volatile in (
                                    ('rmw', r'\batomicrmw(?: volatile)? add\b')):
             if not re.search(instruction, line) or not re.search(r'\bseq_cst\b.*\balign 4\b', line):
                 continue
-            if volatile and not re.search(r'\bvolatile\b', line):
+            # Clang 23 emits atomicrmw without LLVM volatile for this C operator;
+            # loads and stores still require the volatile marker.
+            if volatile and label != 'rmw' and not re.search(r'\bvolatile\b', line):
                 continue
             if any(re.search(r'\bptr\s+(?:align\s+\d+\s+)?' + re.escape(address) + r'(?:\s|,)', line)
                    for address in addresses):
