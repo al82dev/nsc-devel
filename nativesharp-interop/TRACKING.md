@@ -507,8 +507,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     [Resultado](registro-commits/t08-bool-scalar-precompilado-dll-validacion.md).
     El control independiente de global C bool exportado por DLL pasó O0–O3;
     incorporado a la validación agrupada. [Resultado](registro-commits/t08-bool-escalar-dll-c-validacion.md).
-    Preparado control de caché de artefactos para productor y consumidor bool;
-    pendiente de ejecución. [Detalle](registro-commits/t08-bool-escalar-cache-fixture.md).
+    El productor con referencia C rechaza la caché por encabezados transitivos;
+    preparado un control separado del consumidor precompilado, pendiente de ejecución.
+    [Detalle](registro-commits/t08-bool-cache-restriccion.md).
   - Por autorización del usuario, el gate usa el control C PE y el acceso NSC
     directo existentes, y variantes de escalares con importación y con carga
     dinámica. Los cuatro controles originales siguen disponibles como
