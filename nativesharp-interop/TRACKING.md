@@ -479,8 +479,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     directo existentes, y variantes de escalares con importación y con carga
     dinámica. Los cuatro controles originales siguen disponibles como
     diagnósticos separados; la configuración sin importaciones y el acceso C
-    directo a TLS de otra DLL no quedan acreditados. Validación integral
-    pendiente. [Detalle](registro-commits/t08-controles-tls-ajuste-autorizado.md).
+    directo a TLS de otra DLL no quedan acreditados. La validación integral
+    ajustada terminó con código 0; no cierra los ítems pendientes de la tanda.
+    [Detalle](registro-commits/t08-controles-tls-ajuste-autorizado.md).
   - Punteros TLS atómicos a `short`, `long long` y `double` pasaron acceso y
     aritmética O0–O3; se verificaron desplazamientos y atomicidad en IR.
     [Evidencia](registro-commits/t08-tls-atomico-punteros-tamanos.md).
