@@ -126,5 +126,9 @@ void entry(void)
             }
         }
     }
+    if (result == 0) {
+        atomic_pointer_const_pointee = atomic_pointer_expected();
+        if (*atomic_pointer_const_pointee != 73 || *(atomic_pointer_const_pointee + 1) != 74) result = 59;
+    }
     ExitProcess((unsigned int)result);
 }

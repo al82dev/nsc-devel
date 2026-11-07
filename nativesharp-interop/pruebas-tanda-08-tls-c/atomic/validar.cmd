@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Api.c Probe.c Promotion.c Promotion.ns Narrow.ns NarrowCompound.ns LocalNarrow.ns FloatCompound.ns FloatConstWrite.ns BoolConstWrite.ns PointerConstWrite.ns PointerQualified.ns PointerCompound.ns PointerEscape.ns Main.ns Project.nsproj Escape.ns Unsupported.ns ReadonlyWrite.ns RefEscape.ns OutEscape.ns InEscape.ns ReferenceControl.ns ZeroDiv.ns ZeroRem.ns) do (
+for %%F in (Api.h Api.c Probe.c Promotion.c Promotion.ns Narrow.ns NarrowCompound.ns LocalNarrow.ns FloatCompound.ns FloatConstWrite.ns BoolConstWrite.ns PointerConstWrite.ns PointerQualified.ns PointerPointeeConstWrite.ns PointerPointeeConstEscape.ns PointerCompound.ns PointerEscape.ns Main.ns Project.nsproj Escape.ns Unsupported.ns ReadonlyWrite.ns RefEscape.ns OutEscape.ns InEscape.ns ReferenceControl.ns ZeroDiv.ns ZeroRem.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -75,7 +75,7 @@ for %%O in (0 1 2 3) do (
   "%DEST%\narrow-O%%O.exe"
   if errorlevel 1 exit /b 1
 )
-for %%F in (NarrowCompound Promotion FloatCompound PointerCompound) do (
+for %%F in (NarrowCompound Promotion FloatCompound PointerCompound PointerQualified) do (
   copy /y "%DEST%\%%F.ns" "%DEST%\Main.ns" >nul
   if errorlevel 1 exit /b 1
   for %%O in (0 1 2 3) do (
@@ -109,12 +109,18 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\
 if not errorlevel 1 exit /b 1
 findstr /L /C:"atomic-qualified pointers" "%DEST%\pointer-escape.log" >nul
 if errorlevel 1 (type "%DEST%\pointer-escape.log" & exit /b 1)
-copy /y "%DEST%\PointerQualified.ns" "%DEST%\Main.ns" >nul
+copy /y "%DEST%\PointerPointeeConstWrite.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
-nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\pointer-qualified.log" 2>&1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\pointer-pointee-const-write.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /L /C:"thread-local C/C++ global is not yet projected" "%DEST%\pointer-qualified.log" >nul
-if errorlevel 1 (type "%DEST%\pointer-qualified.log" & exit /b 1)
+findstr /L /C:"left side of assignment is not assignable" "%DEST%\pointer-pointee-const-write.log" >nul
+if errorlevel 1 (type "%DEST%\pointer-pointee-const-write.log" & exit /b 1)
+copy /y "%DEST%\PointerPointeeConstEscape.ns" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\pointer-pointee-const-escape.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /L /C:"would discard pointee constness" "%DEST%\pointer-pointee-const-escape.log" >nul
+if errorlevel 1 (type "%DEST%\pointer-pointee-const-escape.log" & exit /b 1)
 copy /y "%DEST%\ReferenceControl.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\reference-control.log" 2>&1
