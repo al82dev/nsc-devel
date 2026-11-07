@@ -205,6 +205,12 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - El carril de identidad reportó USR estables entre sesiones y restauración
+    de records, unions, campos, enums y enumeradores desde tres productores en
+    O0–O3. Funciones, globales y alias no viajan en ese catálogo; el caso de
+    typedef idéntico en encabezados distintos queda pendiente. Evidencia del
+    carril aún por validar en esta rama. [Auditoría](T08-002-IDENTIDAD-AUDITORIA.md),
+    [resultados](registro-commits/t08-002-resultados-identidad-c.md).
   - H4 partes A y B: enums declarados dentro de records C se capturan y los
     campos escalares de enum anónimo se proyectan como el entero subyacente.
     El consumo directo y el enum nombrado precompilado pasaron O0–O3. La
