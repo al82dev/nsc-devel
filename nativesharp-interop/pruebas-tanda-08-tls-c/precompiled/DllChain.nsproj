@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>DllChain</Name><OutputType>SharedLibrary</OutputType></PropertyGroup>
+  <ItemGroup><Compile Include="DllChain.ns" /><LibraryReference Include="DllTlsProducer.lib" /></ItemGroup>
+</Project>

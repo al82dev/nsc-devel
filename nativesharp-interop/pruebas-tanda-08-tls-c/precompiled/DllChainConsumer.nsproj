@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>DllChainConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="DllChainConsumer.ns" />
+    <LibraryReference Include="bin/Debug/DllChain.lib" Runtime="bin/Debug/DllChain.dll" />
+  </ItemGroup>
+</Project>

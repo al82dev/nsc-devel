@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (DllProducer.ns DllProducer.nsproj DllConsumer.ns DllConsumer.nsproj) do (
+for %%F in (DllProducer.ns DllProducer.nsproj DllConsumer.ns DllConsumer.nsproj DllChain.ns DllChain.nsproj DllChainConsumer.ns DllChainConsumer.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -22,6 +22,8 @@ clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\TlsApi.c" -o "%DES
 if errorlevel 1 exit /b 1
 lld-link.exe /nologo /dll /noentry /nodefaultlib /include:_tls_used /export:tls_exported,DATA /out:"%DEST%\api.dll" /implib:"%DEST%\api.lib" "%DEST%\api.obj" "A:\vc2026-runtime\lib\x64\release\libcmt.lib" "A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\um\x64\kernel32.lib"
 if errorlevel 1 exit /b 1
+mkdir "%DEST%\bin\Debug"
+if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\DllProducer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\DllTlsProducer.lib" > "%DEST%\producer-O%%O.log" 2>&1
   if errorlevel 1 (type "%DEST%\producer-O%%O.log" & exit /b 1)
@@ -29,8 +31,26 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 exit /b 1
   "%DEST%\consumer-O%%O.exe"
   if errorlevel 1 exit /b 1
+  call :chain_without_header %%O
+  if errorlevel 1 exit /b 1
+  "%DEST%\chain-consumer-O%%O.exe"
+  if errorlevel 1 exit /b 1
 )
 echo TLS de DLL C con productor precompilado correcto.
+exit /b 0
+
+:chain_without_header
+move /y "%DEST%\TlsApi.h" "%DEST%\TlsApi.h.hidden" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-dll "%DEST%\DllChain.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\bin\Debug\DllChain.dll" > "%DEST%\chain-O%~1.log" 2>&1
+set "CHAIN_RESULT=%ERRORLEVEL%"
+if not "%CHAIN_RESULT%"=="0" goto chain_restore
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\DllChainConsumer.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\chain-consumer-O%~1.exe" > "%DEST%\chain-consumer-O%~1.log" 2>&1
+set "CHAIN_RESULT=%ERRORLEVEL%"
+:chain_restore
+move /y "%DEST%\TlsApi.h.hidden" "%DEST%\TlsApi.h" >nul
+if errorlevel 1 exit /b 1
+if not "%CHAIN_RESULT%"=="0" (type "%DEST%\chain-O%~1.log" & type "%DEST%\chain-consumer-O%~1.log" & exit /b 1)
 exit /b 0
 
 :consumer_without_header
