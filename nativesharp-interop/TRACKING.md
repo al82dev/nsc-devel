@@ -504,6 +504,10 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     La validación agrupada posterior ejecutó también la prueba de proyecto
     nuevo y confirmó que pasa; el resultado global sigue fallando en cuatro
     controles TLS de DLL. [Resultado](registro-commits/t08-validacion-proyecto-nuevo.md).
+    La emisión directa de ejecutables también selecciona LLD para referencias
+    estáticas con TLS o bitcode cuando no hay elección explícita. Pasaron los
+    controles dirigidos O0–O3, prioridades y caché; la DLL directa y la batería
+    posterior permanecen pendientes. [Evidencia](registro-commits/t08-emision-directa-auto-linker.md).
     La DLL no solicita un accessor inexistente para el global C importado.
     [Evidencia](registro-commits/tls-dll-exportacion-externa.md).
     Su productor y consumidor NativeSharp pasaron O0–O3 con LLD sin
