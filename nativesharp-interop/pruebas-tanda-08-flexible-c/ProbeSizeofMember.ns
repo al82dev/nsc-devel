@@ -1,0 +1,6 @@
+int Main()
+{
+    FlexInts* value = flex_ints();
+    nuint size = sizeof(value->data);
+    return (int)size;
+}

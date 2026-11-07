@@ -1,0 +1,5 @@
+ints flex_get_ints flex_set_ints Ints 0
+doubles flex_get_doubles flex_set_doubles Doubles 0
+records flex_get_records flex_set_records Records 0
+enums flex_get_enums flex_set_enums Enums 0
+bools flex_get_bools flex_set_bools Bools 1

@@ -1,0 +1,6 @@
+int Main()
+{
+    FlexInts* value = flex_ints();
+    int* first = value->data;
+    return *first;
+}

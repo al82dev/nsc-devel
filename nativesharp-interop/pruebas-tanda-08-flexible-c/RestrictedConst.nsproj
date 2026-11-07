@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CFlexRestrictedConst</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="RestrictedConst.ns" />
+    <CppLibraryReference Header="Restricted.h" Language="C" Standard="c11" Library="restricted.lib" />
+  </ItemGroup>
+</Project>

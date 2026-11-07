@@ -1,0 +1,114 @@
+diff --git a/src/Frontend/ProjectMemberModel.cpp b/src/Frontend/ProjectMemberModel.cpp
+index f2ba06960..4394fd588 100644
+--- a/src/Frontend/ProjectMemberModel.cpp
++++ b/src/Frontend/ProjectMemberModel.cpp
+@@ -213,9 +213,15 @@ bool ProjectMemberModel::setExperimentalCppInstanceFields(
+     std::set<std::pair<std::string, std::string>> identities;
+     for (const auto& field : fields)
+     {
++        // Un miembro de arreglo flexible C (`T[*]`) no tiene almacenamiento propio: tamano cero y la
++        // alineacion de su elemento. A C flexible array member (`T[*]`) has zero storage and its
++        // element's alignment; every other field keeps the previous size/alignment pairing rule.
++        const bool flexible = flexibleArrayElementTypeKey(field.typeKey).has_value();
+         if (field.ownerIdentityKey.empty() || field.name.empty() ||
+-            (!experimentalCppFieldBytes(field.typeKey) && (!field.byteSize || !field.byteAlignment)) ||
+-            ((field.byteSize == 0) != (field.byteAlignment == 0)) ||
++            (flexible && (field.byteSize != 0 || field.byteAlignment == 0 || field.bitWidth ||
++                          field.pointeeReadonly || field.isConst || field.isVolatile)) ||
++            (!flexible && !experimentalCppFieldBytes(field.typeKey) && (!field.byteSize || !field.byteAlignment)) ||
++            (!flexible && (field.byteSize == 0) != (field.byteAlignment == 0)) ||
+             (field.pointeeReadonly && !field.typeKey.ends_with('*')))
+         { error = "invalid experimental C++ instance field"; return false; }
+         if (!identities.emplace(field.ownerIdentityKey, field.name).second)
+diff --git a/src/Frontend/ProjectObjectLayoutModel.cpp b/src/Frontend/ProjectObjectLayoutModel.cpp
+index e347f6811..8bf7f9f80 100644
+--- a/src/Frontend/ProjectObjectLayoutModel.cpp
++++ b/src/Frontend/ProjectObjectLayoutModel.cpp
+@@ -138,7 +138,13 @@ bool ProjectObjectLayoutModel::build(
+             const auto* owner = nameLookup.cppImportedType(member.declaringTypeOrdinal);
+             const auto* ownerLayout = owner && owner->memberAccessLayout ? &*owner->memberAccessLayout :
+                 owner && owner->objectLayout ? &*owner->objectLayout : nullptr;
+-            const auto physical = valueLayoutForTypeKey(nameLookup, member.declaredTypeKey);
++            auto physical = valueLayoutForTypeKey(nameLookup, member.declaredTypeKey);
++            // Miembro de arreglo flexible C importado: cero bytes en su offset de Clang, alineacion del
++            // elemento. Imported C flexible array member: zero bytes at its Clang offset, element alignment.
++            if (!physical)
++                if (const auto element = ProjectMemberModel::flexibleArrayElementTypeKey(member.declaredTypeKey))
++                    if (const auto elementLayout = valueLayoutForTypeKey(nameLookup, *element))
++                        physical = std::pair<std::uint64_t, std::uint64_t>{0, elementLayout->second};
+             const auto alignment = member.explicitFieldAlignment.value_or(physical ? physical->second : 0);
+             const auto storageSize = member.explicitBitStorageSize.value_or(physical ? physical->first : 0);
+             const bool invalidBits = member.isBitField &&
+diff --git a/src/Interop/Cpp/CppSemanticRecord.cpp b/src/Interop/Cpp/CppSemanticRecord.cpp
+index f9ec8eccc..79e2dc618 100644
+--- a/src/Interop/Cpp/CppSemanticRecord.cpp
++++ b/src/Interop/Cpp/CppSemanticRecord.cpp
+@@ -113,6 +113,59 @@ std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type, std:
+         key += "[" + std::to_string(*dimension) + "]";
+     return CppScalarTypeMapping{std::move(key), type.canonicalSpelling, aggregateReadonly, aggregateVolatile};
+ }
++
++// Proyecta el miembro de arreglo flexible final de un struct C (`T data[]`) como `T[*]`.
++// Projects the trailing flexible array member of a C struct (`T data[]`) as `T[*]`.
++//
++// Params: record and field index as captured by Clang; owner identity key, project ordinal, module and
++// name lookup as used by projectCppSemanticInstanceField. Returns the field with zero storage at its
++// Clang offset and the element's natural alignment, or nullopt when the member is not representable.
++// Restrictions (each one leaves the member unprojected, as before this change): C++ records, unions,
++// a member that is not the last field, qualified array or element, multidimensional or incomplete
++// elements, elements other than scalar/enum/complete imported record, and a member whose offset does
++// not keep the element's natural alignment (packed records). No allocation besides the result; O(1)
++// except the enum/record lookups. Indexing has C semantics: no bounds check is added.
++std::optional<CppSemanticInstanceField> projectCFlexibleArrayField(const CppRecordDeclaration& record,
++    std::size_t fieldIndex, const std::string& ownerIdentityKey, std::size_t projectOrdinal,
++    std::string_view moduleName, const frontend::ProjectNameLookup* lookup)
++{
++    const auto& field = record.fields[fieldIndex];
++    const CppType* element = field.type.element.get();
++    if (record.isCxx || record.kind != CppRecordKind::Struct || fieldIndex + 1 != record.fields.size() ||
++        field.name.empty() || field.access != CppAccess::Public || field.bitWidth || !field.offsetBits ||
++        *field.offsetBits % 8 != 0 || *field.offsetBits > *record.sizeBits || field.type.isConst ||
++        field.type.isVolatile || !element || element->kind == CppTypeKind::Array || element->isConst ||
++        element->isVolatile || !element->sizeBits || !element->alignmentBits || *element->sizeBits == 0 ||
++        *element->sizeBits % 8 != 0 || *element->alignmentBits == 0 || *element->alignmentBits % 8 != 0)
++        return std::nullopt;
++    const auto naturalAlignment = *element->alignmentBits / 8;
++    const auto recordAlignment = *record.alignmentBits / 8;
++    if ((naturalAlignment & (naturalAlignment - 1)) != 0 || recordAlignment == 0 ||
++        std::gcd(recordAlignment, *field.offsetBits / 8) % naturalAlignment != 0) return std::nullopt;
++    std::optional<CppScalarTypeMapping> mapped;
++    if (element->kind == CppTypeKind::Boolean || element->kind == CppTypeKind::SignedInteger ||
++        element->kind == CppTypeKind::UnsignedInteger || element->kind == CppTypeKind::Floating)
++        mapped = mapCppScalarType(*element);
++    else if (element->kind == CppTypeKind::Enumeration)
++        mapped = projectCppSemanticEnumType(*element, projectOrdinal, moduleName, lookup);
++    else if (element->kind == CppTypeKind::Record && lookup)
++    {
++        const auto target = projectCppRecordTypeIdentity(*element, moduleName);
++        const auto ordinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
++        const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
++        if (target && imported && imported->projectOrdinal == projectOrdinal && imported->objectLayout &&
++            !imported->isIncomplete &&
++            (!element->recordIdentity || !element->recordIdentity->clangUsr || !imported->clangUsr ||
++             element->recordIdentity->clangUsr == imported->clangUsr) &&
++            *element->sizeBits / 8 == imported->objectLayout->sizeBytes &&
++            naturalAlignment == imported->objectLayout->alignmentBytes)
++            mapped = CppScalarTypeMapping{"type:" + target->key(), element->canonicalSpelling, false, false};
++    }
++    if (!mapped) return std::nullopt;
++    return CppSemanticInstanceField{projectOrdinal, ownerIdentityKey, field.name,
++        CppScalarTypeMapping{mapped->nativeSharpTypeKey + "[*]", field.type.canonicalSpelling, false, false},
++        *field.offsetBits / 8, false, 0, naturalAlignment, field.clangUsr};
++}
+ }
+ 
+ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
+@@ -218,6 +271,8 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
+         return CppSemanticInstanceField{projectOrdinal, identity->key(), field.name, *mapped,
+             byteOffset, false, bytes, alignment, field.clangUsr, bitOffset, *field.bitWidth};
+     }
++    if (identity && field.type.kind == CppTypeKind::Array && field.type.isIncompleteArray)
++        return projectCFlexibleArrayField(record, fieldIndex, identity->key(), projectOrdinal, moduleName, lookup);
+     if (!identity || field.name.empty() || field.access != CppAccess::Public || field.bitWidth ||
+         !field.offsetBits || *field.offsetBits % 8 != 0 || !field.type.sizeBits || !field.type.alignmentBits ||
+         *field.type.alignmentBits == 0 || *field.type.alignmentBits % 8 != 0 ||

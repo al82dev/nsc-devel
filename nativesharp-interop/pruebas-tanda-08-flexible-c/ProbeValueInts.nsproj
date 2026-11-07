@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CFlexProbeValueInts</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ProbeValueInts.ns" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" />
+  </ItemGroup>
+</Project>

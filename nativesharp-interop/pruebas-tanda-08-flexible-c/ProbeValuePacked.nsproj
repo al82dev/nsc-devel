@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CFlexProbeValuePacked</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ProbeValuePacked.ns" />
+    <CppLibraryReference Header="Restricted.h" Language="C" Standard="c11" Library="restricted.lib" />
+  </ItemGroup>
+</Project>

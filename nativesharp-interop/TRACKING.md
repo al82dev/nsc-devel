@@ -1060,6 +1060,17 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Preparado en `40a0062b8`, `84549e59f` y `35e9cf099`: proyección C de
     arreglos fijos de records empaquetados y controles de acceso, dirección e
     IR. No se han construido ni ejecutado estos cambios; el ítem sigue abierto.
+  - `pruebas-tanda-08-layout-clang` (rama `interop-t08-claude-layout`) comparó con Clang structs naturales,
+    `pack(1/2/4)`, anidados en dos niveles, arreglos de records en `pack(2)`, `_Alignas` y typedefs alineados:
+    pasaron O0–O3 directo y precompilado, con y sin encabezado. Los miembros anónimos C11 y el acceso a un
+    miembro de arreglo flexible no se proyectan. La línea base del validador de layout con build propio pasó
+    O0–O3, lo que supera la nota anterior sobre `40a0062b8`, `84549e59f` y `35e9cf099`. No cierra el ítem.
+    [Comparación](registro-commits/t08-layout-comparacion-clang.md) y
+    [formas pendientes](registro-commits/t08-layout-formas-pendientes.md).
+  - Miembro de arreglo flexible: implementación como `T[*]` preparada y probada (directo y precompilado
+    O0–O3, IR igual a Clang salvo `_Bool`), pero no aplicada porque `CppClangSessionTests.cpp` afirma el
+     contrato anterior; pendiente de revisión e integración en esta rama. Parche y pruebas:
+    [diseño](registro-commits/t08-flexible-c-diseno.md).
 - [ ] T08-011. Importar la declaración y campos de una `union` C.
   - Campos de bits con y sin signo superpuestos a entero y bytes pasaron
     lectura y escritura cruzada con C en O0–O3. Es una muestra dirigida;

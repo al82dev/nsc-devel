@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CFlexibleMetadata</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+    <Compile Include="Access.ns" />
+    <LibraryReference Include="CFlexibleProducer.lib" />
+  </ItemGroup>
+</Project>

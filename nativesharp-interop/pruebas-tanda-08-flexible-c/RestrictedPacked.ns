@@ -1,0 +1,5 @@
+int Main()
+{
+    FlexPacked* value = flex_packed();
+    return value->data[0];
+}

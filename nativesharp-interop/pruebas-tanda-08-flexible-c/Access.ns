@@ -1,0 +1,13 @@
+public struct FlexAccess
+{
+    public static int GetInts(FlexInts* p, int index) { return p->data[index]; }
+    public static void SetInts(FlexInts* p, int index, int value) { p->data[index] = value; }
+    public static double GetDoubles(FlexDoubles* p, int index) { return p->values[index]; }
+    public static void SetDoubles(FlexDoubles* p, int index, double value) { p->values[index] = value; }
+    public static int GetRecords(FlexRecords* p, int index) { return p->items[index].b; }
+    public static void SetRecords(FlexRecords* p, int index, int value) { p->items[index].b = value; }
+    public static FlexMood GetEnums(FlexEnums* p, int index) { return p->moods[index]; }
+    public static void SetEnums(FlexEnums* p, int index, FlexMood value) { p->moods[index] = value; }
+    public static bool GetBools(FlexBools* p, int index) { return p->flags[index]; }
+    public static void SetBools(FlexBools* p, int index, bool value) { p->flags[index] = value; }
+}

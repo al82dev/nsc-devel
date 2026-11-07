@@ -1,0 +1,24 @@
+namespace Published
+{
+    public struct FlexBridge
+    {
+        public static long Layout(int id) { return flex_layout(id); }
+        public static FlexInts* Ints() { return flex_ints(); }
+        public static FlexDoubles* Doubles() { return flex_doubles(); }
+        public static FlexRecords* Records() { return flex_records(); }
+        public static FlexEnums* Enums() { return flex_enums(); }
+        public static FlexBools* Bools() { return flex_bools(); }
+        public static int IntsCheck(int index, int value) { return flex_ints_check(index, value); }
+        public static int DoublesCheck(int index, double value) { return flex_doubles_check(index, value); }
+        public static int RecordsCheck(int index, int value) { return flex_records_check(index, value); }
+        public static int EnumsCheck(int index, FlexMood value) { return flex_enums_check(index, value); }
+        public static int BoolsCheck(int index, bool value) { return flex_bools_check(index, value); }
+        public static void IntsStore(int index, int value) { flex_ints_store(index, value); }
+        public static void DoublesStore(int index, double value) { flex_doubles_store(index, value); }
+        public static void RecordsStore(int index, int value) { flex_records_store(index, value); }
+        public static void EnumsStore(int index, FlexMood value) { flex_enums_store(index, value); }
+        public static void BoolsStore(int index, bool value) { flex_bools_store(index, value); }
+        public static FlexMood Happy() { return flex_happy(); }
+        public static FlexMood Sad() { return flex_sad(); }
+    }
+}

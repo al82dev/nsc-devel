@@ -1,0 +1,5 @@
+int Main()
+{
+    FlexPacked copy = flex_packed_value();
+    return copy.tag == (sbyte)7 ? 0 : 1;
+}
