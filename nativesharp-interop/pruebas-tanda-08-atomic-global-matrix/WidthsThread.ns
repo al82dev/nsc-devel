@@ -1,0 +1,13 @@
+int Main()
+{
+    width_i8 = width_i8_expected();
+    width_u8 = width_u8_expected();
+    width_u16 = width_u16_expected();
+    width_u64 = width_u64_expected();
+    if (widths_start_worker() != 0 || widths_wait_worker() != 0) return 1;
+    if (width_i8 != width_i8_expected() || *width_i8 != -10) return 2;
+    if (width_u8 != width_u8_expected() || *width_u8 != 20) return 3;
+    if (width_u16 != width_u16_expected() || *width_u16 != 30) return 4;
+    if (width_u64 != width_u64_expected() || *width_u64 != 40UL) return 5;
+    return 0;
+}

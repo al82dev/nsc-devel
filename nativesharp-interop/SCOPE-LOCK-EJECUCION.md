@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004/015: aislamiento de los cuatro punteros atómicos TLS
+
+Ampliar el control de los cuatro punteros enteros no calificados para comprobar
+que un segundo hilo C tiene almacenamiento TLS propio y no altera el del hilo
+NativeSharp. Es una prueba dirigida en O0–O3. Se conservan NSLink, metadata,
+LLVM/Clang externo y C:. No acredita apuntados calificados ni otros tipos.
+
 ## T08-004/015: punteros atómicos C a enteros adicionales
 
 Comprobar punteros atómicos no calificados a signed char, unsigned char,
