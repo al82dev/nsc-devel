@@ -30,3 +30,19 @@ Una tercera variante conserva la DLL sin importaciones y define un `DllMain`
 que devuelve éxito, usando `/entry:DllMain`. El control C sigue fallando. En
 este experimento, añadir solo el entry point no reproduce el efecto observado
 al añadir una importación. No se infiere una regla general del loader.
+
+## Reproducción posterior: comportamiento intermitente
+
+Al ejecutar `validar-nsc-escalares.cmd` nuevamente, el control C terminó con
+código 0, pero `scalar-O0.exe` terminó con código 8: la primera comprobación
+del programa NS indica que la función C `tls_zero_read()` no devuelve cero.
+Ocho ejecuciones posteriores del mismo `scalar-O0.exe` devolvieron 8 y ocho
+del mismo `control.exe` devolvieron 1. Por tanto, una ejecución exitosa del
+control no demuestra estabilidad ni permite atribuir el fallo a NSC.
+
+En la DLL producida por esa ejecución, `llvm-readobj --coff-tls-directory`
+identificó un directorio TLS presente e import table RVA cero. El instrumento
+`inspect.exe` observó el índice TLS 0 y datos del hilo distintos a la plantilla.
+Estas observaciones no prueban todavía por qué el índice o los datos son
+incorrectos. La causa raíz y la validación íntegra de la tanda siguen abiertas;
+no se cambió NSLink ni se alteró el fixture para ocultar el fallo.
