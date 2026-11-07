@@ -1,0 +1,1 @@
+int Main() { atomic_tls *= 2; return 0; }

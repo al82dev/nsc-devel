@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Api.c Probe.c Main.ns Project.nsproj) do (
+for %%F in (Api.h Api.c Probe.c Main.ns Project.nsproj Escape.ns Unsupported.ns) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -40,5 +40,17 @@ for %%O in (0 1 2 3) do (
   "%DEST%\native-O%%O.exe"
   if errorlevel 1 exit /b 1
 )
+copy /y "%DEST%\Escape.ns" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\escape.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /L /C:"atomic-qualified pointers" "%DEST%\escape.log" >nul
+if errorlevel 1 (type "%DEST%\escape.log" & exit /b 1)
+copy /y "%DEST%\Unsupported.ns" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\unsupported.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /L /C:"C atomic global compound operation is not yet supported" "%DEST%\unsupported.log" >nul
+if errorlevel 1 (type "%DEST%\unsupported.log" & exit /b 1)
 echo TLS atomico C y NativeSharp correcto.
 exit /b 0

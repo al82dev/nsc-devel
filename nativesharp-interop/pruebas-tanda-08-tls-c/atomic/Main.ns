@@ -4,5 +4,8 @@ int Main()
     atomic_tls = 41;
     atomic_tls += 1;
     if (atomic_tls_read() != 42) return 2;
+    if (atomic_tls++ != 42 || --atomic_tls != 42) return 3;
+    atomic_tls -= 1;
+    if (atomic_tls_read() != 41) return 4;
     return 0;
 }
