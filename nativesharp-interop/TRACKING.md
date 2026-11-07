@@ -508,6 +508,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     Puntero doble, union y arreglos internos de record, enum, const y volatile
     pasaron O0–O3 con comprobación del rechazo const e IR volatile.
     [Resultado](registro-commits/t08-global-static-complejas-validacion.md).
+    Punteros internos a record, enum y función pasaron O0–O3; el callback
+    conserva una función interna como inicializador.
+    [Resultado](registro-commits/t08-global-static-punteros-validacion.md).
   - El global C `_Atomic(int)` sin TLS fue rechazado como tipo no mapeado.
     Una corrección limitada de su proyección pasó O0–O3, comprobación de IR
     atómico y regresión TLS. [Resultado](registro-commits/t08-atomic-global-int-validacion.md).
