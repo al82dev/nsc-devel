@@ -23,6 +23,8 @@ identidades/cachés. Permitir sus headers y fuentes de frontend y LLVM de NSC,
 sin habilitar aún la proyección ni emitir operaciones ordinarias para el tipo
 atómico. Cambiar la clave de la caché si cambia su formato. Los accesos, escapes
 y metadata siguen pendientes hasta implementar y validar el contrato completo.
+Permitir también `tests/unit/ProjectOopLoweringTests.cpp` para comprobar que la
+identidad HIR distingue el indicador y que la caché MIR lo restaura.
 
 ## Raíz de respaldo NS_LIB_ROOT
 
