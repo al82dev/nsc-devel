@@ -1,0 +1,7 @@
+namespace PublishedCatalogue
+{
+    public class Bridge
+    {
+        public static CCatFloat* SameFloat(CCatFloat* value) { return value; }
+    }
+}

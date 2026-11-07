@@ -1,0 +1,7 @@
+namespace PublishedCatalogue
+{
+    public class Bridge
+    {
+        public static int Read(CCatPlain* value) { return value->value; }
+    }
+}

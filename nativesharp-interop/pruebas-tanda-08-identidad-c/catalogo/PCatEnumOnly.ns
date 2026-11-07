@@ -1,0 +1,7 @@
+namespace PublishedCatalogue
+{
+    public class Bridge
+    {
+        public static CCatKind Echo(CCatKind kind) { return kind; }
+    }
+}

@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>PCatFloatOpaque</Name><OutputType>Library</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="PCatFloatOpaque.ns" />
+    <CppLibraryReference Header="Cat.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>

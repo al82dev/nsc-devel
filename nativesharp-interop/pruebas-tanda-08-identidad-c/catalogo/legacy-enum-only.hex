@@ -1,0 +1,20 @@
+# T08-002 H8: catalogo C heredado (NSMETA 1.42) que solo contiene el enum sintetico CEnvOnly
+# (CEnvOne = 1, int) del modulo CIdentityEnvelope. Los ocho primeros bytes son el tamano u64 del
+# bloque de records vacio (4); el lector actual los toma por la envoltura 4.
+# Generado por encodeCTypeCatalog; nsc_cpp_c_identity_tests --catalogue-version-controls comprueba
+# que el codificador sigue produciendo exactamente estos bytes.
+04 00 00 00 00 00 00 00 00 00 00 00 01 00 00 00
+1b 00 00 00 43 49 64 65 6e 74 69 74 79 45 6e 76
+65 6c 6f 70 65 3a 3a 43 45 6e 76 4f 6e 6c 79 16
+00 00 00 78 38 36 5f 36 34 2d 70 63 2d 77 69 6e
+64 6f 77 73 2d 6d 73 76 63 08 00 00 00 43 45 6e
+76 4f 6e 6c 79 08 00 00 00 43 45 6e 76 4f 6e 6c
+79 00 02 03 00 00 00 69 6e 74 03 00 00 00 69 6e
+74 03 00 00 00 69 6e 74 00 00 00 01 20 00 00 00
+00 00 00 00 01 20 00 00 00 00 00 00 00 00 00 00
+00 00 00 00 20 00 00 00 00 00 00 00 20 00 00 00
+00 00 00 00 01 00 00 00 07 00 00 00 43 45 6e 76
+4f 6e 65 01 00 00 00 31 20 00 00 00 00 02 03 00
+00 00 69 6e 74 03 00 00 00 69 6e 74 03 00 00 00
+69 6e 74 00 00 00 01 20 00 00 00 00 00 00 00 01
+20 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00

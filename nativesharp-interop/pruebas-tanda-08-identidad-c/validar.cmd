@@ -11,8 +11,10 @@ rem    (enum-campo\casos.txt).
 rem 6. Plantillas publicas que usan declaraciones C, por biblioteca precompilada (plantillas\casos.txt).
 rem 7. Constantes de enum C usadas por bibliotecas (constantes-enum\casos.txt) e inspeccion del NSMETA
 rem    publicado (constantes-enum\inspeccion.txt), hallazgo H7.
-rem Uso: validar.cmd [seccion]. Sin argumento ejecuta todo; "constantes" ejecuta solo esa seccion (con
-rem la preparacion comun).
+rem 8. Catalogo C reescrito en NSMETA 1.42-1.45 a partir de productores reales y fixture minimo 1.42
+rem    (catalogo\legacy-enum-only.hex), hallazgo H8.
+rem Uso: validar.cmd [seccion]. Sin argumento ejecuta todo; "constantes" o "catalogo" ejecutan solo esa
+rem seccion (con la preparacion comun).
 rem Las tablas casos.txt fijan el resultado ACTUAL de cada caso; con NSC_T08_PROPUESTAS=1 el validador
 rem exige en su lugar el resultado PROP que debe dar la propuesta correspondiente una vez implementada.
 rem Variables opcionales (valor por omision entre parentesis):
@@ -36,11 +38,13 @@ set "TEMPLATE_FIXTURES=%~dp0plantillas"
 set "TYPEDEF_FIXTURES=%~dp0typedefs"
 set "ENUM_FIELD_FIXTURES=%~dp0enum-campo"
 set "ENUM_CONSTANT_FIXTURES=%~dp0constantes-enum"
+set "CATALOGUE_FIXTURES=%~dp0catalogo"
 if not exist "%NSC_T08_OUT%\temp" mkdir "%NSC_T08_OUT%\temp"
 if errorlevel 1 exit /b 1
 set "TEMP=%NSC_T08_OUT%\temp"
 set "TMP=%TEMP%"
 if /i "%~1"=="constantes" goto only_enum_constants
+if /i "%~1"=="catalogo" goto only_catalogue_versions
 echo === Sondas de identidad de declaraciones C ===
 nsc_cpp_c_identity_tests.exe "%NSC_T08_CLANG%\lib\clang\23" "%NSC_T08_OUT%" "%NSC_T08_CLANG%\bin\clang.exe"
 if errorlevel 1 exit /b 1
@@ -66,6 +70,8 @@ call :templates
 if errorlevel 1 exit /b 1
 call :enum_constants
 if errorlevel 1 exit /b 1
+call :catalogue_versions
+if errorlevel 1 exit /b 1
 echo T08-002 C identity checks passed.
 exit /b 0
 
@@ -73,6 +79,12 @@ exit /b 0
 call :enum_constants
 if errorlevel 1 exit /b 1
 echo T08-002 C enum constant checks passed.
+exit /b 0
+
+:only_catalogue_versions
+call :catalogue_versions
+if errorlevel 1 exit /b 1
+echo T08-002 C catalogue version checks passed.
 exit /b 0
 
 rem :restore <fixtures> <C base name> <C library base> <producer library> <producer source> <O level>
@@ -212,6 +224,29 @@ if not defined CASE_BUILT_%~1 (
 )
 nsc_cpp_c_identity_tests.exe --inspect-c-constants "%DEST%\%~1.nsmeta" %~2 %~3
 exit /b %errorlevel%
+
+rem :catalogue_versions construye productores reales y reescribe su catalogo en NSMETA 1.42-1.45.
+:catalogue_versions
+set "DEST=%NSC_T08_OUT%\catalogo"
+xcopy /e /i /y /q "%CATALOGUE_FIXTURES%" "%DEST%" >nul
+if errorlevel 1 exit /b 1
+set "CATALOGUE_INPUTS="
+for %%P in (PCatEnumOnly PCatRecord PCatRecordEnum PCatFloat PCatOpaque PCatFloatOpaque) do (
+  call :catalogue_producer %%P
+  if errorlevel 1 exit /b 1
+)
+nsc_cpp_c_identity_tests.exe --catalogue-version-controls "%DEST%" %CATALOGUE_INPUTS%
+exit /b %errorlevel%
+
+rem :catalogue_producer <productor> construye la biblioteca y anade su NSMETA a CATALOGUE_INPUTS.
+:catalogue_producer
+nsc.exe --cpp-clang-root=%NSC_T08_CLANG% --emit-project-oop-lib "%DEST%\%~1.nsproj" -O0 --no-artifact-cache -o "%DEST%\%~1.lib" > "%DEST%\%~1.log" 2>&1
+if errorlevel 1 (
+  type "%DEST%\%~1.log"
+  exit /b 1
+)
+set "CATALOGUE_INPUTS=%CATALOGUE_INPUTS% "%DEST%\%~1.nsmeta""
+exit /b 0
 
 rem :prepare_cases <fixtures> <C base> <C library base> copia el fixture a DEST y construye la biblioteca C.
 :prepare_cases

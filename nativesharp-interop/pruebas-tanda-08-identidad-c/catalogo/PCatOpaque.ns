@@ -1,0 +1,7 @@
+namespace PublishedCatalogue
+{
+    public class Bridge
+    {
+        public static CCatOpaque* Same(CCatOpaque* value) { return value; }
+    }
+}

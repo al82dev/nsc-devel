@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>PCatEnumOnly</Name><OutputType>Library</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="PCatEnumOnly.ns" />
+    <CppLibraryReference Header="Cat.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>

@@ -28,6 +28,7 @@
 //                            <clang-driver>
 //   nsc_cpp_c_identity_tests --typedef-matrix <typedefs-dir> <clang-resource-dir> <clang-driver>
 //   nsc_cpp_c_identity_tests --inspect-c-constants <producer.nsmeta> <forbidden-state> <required-enumerator>
+//   nsc_cpp_c_identity_tests --catalogue-version-controls <fixtures-dir> <producer.nsmeta>...
 
 #include "nativesharp/Interop/CppClangSessionFactory.h"
 #include "nativesharp/Interop/CppProjectSessions.h"
@@ -50,6 +51,7 @@
 #include "../../src/Driver/Internal/DriverInternal.h"
 
 #include <algorithm>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -768,14 +770,11 @@ bool checkNestedFieldEnums(CppClangSessionFactory& factory, const std::string& r
     return ok;
 }
 
-// EN: Probe 7 (observation). Shows how the reader tells the legacy C type catalogue from the
-//     versioned envelope. A legacy catalogue with no records starts with the 64-bit record block
-//     size 4, the same first four bytes as envelope 4. Prints the bytes and the decoder result.
-// ES: Sonda 7 (observación). Muestra cómo distingue el lector el catálogo C heredado de la
-//     envoltura versionada. Un catálogo heredado sin records empieza con el tamaño de 64 bits 4 del
-//     bloque de records, los mismos cuatro primeros bytes que la envoltura 4. Imprime los bytes y el
-//     resultado del decodificador.
-void observeCatalogueEnvelope()
+// EN: The synthetic C enum of probe 7 and of the minimal H8 fixture: module CIdentityEnvelope,
+//     enum CEnvOnly with the single enumerator CEnvOne = 1 of type int.
+// ES: El enum C sintético de la sonda 7 y del fixture mínimo de H8: módulo CIdentityEnvelope, enum
+//     CEnvOnly con el único enumerador CEnvOne = 1 de tipo int.
+CppCEnumSnapshot syntheticEnumSnapshot()
 {
     CppType integer;
     integer.kind = CppTypeKind::SignedInteger;
@@ -797,7 +796,19 @@ void observeCatalogueEnvelope()
     value.valueBits = 32;
     value.valueType = integer;
     only.declaration.enumerators.push_back(value);
-    const std::vector<CppCEnumSnapshot> enums{only};
+    return only;
+}
+
+// EN: Probe 7 (observation). Shows how the reader tells the legacy C type catalogue from the
+//     versioned envelope. A legacy catalogue with no records starts with the 64-bit record block
+//     size 4, the same first four bytes as envelope 4. Prints the bytes and the decoder result.
+// ES: Sonda 7 (observación). Muestra cómo distingue el lector el catálogo C heredado de la
+//     envoltura versionada. Un catálogo heredado sin records empieza con el tamaño de 64 bits 4 del
+//     bloque de records, los mismos cuatro primeros bytes que la envoltura 4. Imprime los bytes y el
+//     resultado del decodificador.
+void observeCatalogueEnvelope()
+{
+    const std::vector<CppCEnumSnapshot> enums{syntheticEnumSnapshot()};
     std::vector<std::uint8_t> legacy;
     std::vector<std::uint8_t> versioned;
     std::string error;
@@ -1357,6 +1368,247 @@ int inspectCConstants(char** argv)
     return ok ? 0 : 1;
 }
 
+// EN: Layout of the C type catalogue that the proposal of finding H8 derives from the declared
+//     NSMETA minor instead of the first bytes: none before 1.42, legacy in 1.42, versioned envelope
+//     in 1.43-1.45. Test replica of T08-002-H8-CATALOGO.md; the codec is unchanged.
+// ES: Disposición del catálogo C que la propuesta del hallazgo H8 deduce del minor de NSMETA
+//     declarado en lugar de los primeros bytes: ninguna antes de 1.42, heredada en 1.42 y envoltura
+//     versionada en 1.43-1.45. Réplica de prueba de T08-002-H8-CATALOGO.md; el codec no cambia.
+enum class CatalogueLayout
+{
+    None,
+    Legacy,
+    Envelope,
+    Unknown
+};
+
+CatalogueLayout proposedCatalogueLayout(std::uint16_t minor)
+{
+    if (minor < 42) return CatalogueLayout::None;
+    if (minor == 42) return CatalogueLayout::Legacy;
+    if (minor <= 45) return CatalogueLayout::Envelope;
+    return CatalogueLayout::Unknown;
+}
+
+// EN: Envelope versions each minor can represent, as gated today by the writer and by
+//     LibraryMetadataVerification.cpp: 1.43 only version 1, 1.44 up to 2, 1.45 versions 1-4.
+// ES: Versiones de envoltura que puede representar cada minor, como hoy las limitan el escritor y
+//     LibraryMetadataVerification.cpp: 1.43 solo la versión 1, 1.44 hasta la 2, 1.45 de la 1 a la 4.
+bool envelopeVersionAllowed(std::uint16_t minor, std::uint32_t version)
+{
+    if (minor == 43) return version == 1;
+    if (minor == 44) return version >= 1 && version <= 2;
+    if (minor == 45) return version >= 1 && version <= 4;
+    return false;
+}
+
+// EN: Reads the little-endian u32 at the start of `bytes`; 0 when there are fewer than four bytes.
+// ES: Lee el u32 little-endian al inicio de `bytes`; 0 si hay menos de cuatro bytes.
+std::uint32_t leadingWord(std::span<const std::uint8_t> bytes)
+{
+    if (bytes.size() < 4) return 0;
+    return static_cast<std::uint32_t>(bytes[0]) | (static_cast<std::uint32_t>(bytes[1]) << 8) |
+        (static_cast<std::uint32_t>(bytes[2]) << 16) | (static_cast<std::uint32_t>(bytes[3]) << 24);
+}
+
+// EN: Proposed decoding: the declared minor selects the decoder, and an envelope version the minor
+//     cannot represent is rejected. Leaves the outputs unchanged on failure, like the codec.
+// ES: Decodificación propuesta: el minor declarado elige el decodificador y se rechaza una versión
+//     de envoltura que el minor no puede representar. Deja las salidas sin cambios si falla, como
+//     el codec.
+bool proposedCatalogueDecode(std::uint16_t minor, std::span<const std::uint8_t> bytes,
+                             std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums,
+                             std::string& error)
+{
+    const auto layout = proposedCatalogueLayout(minor);
+    if (layout == CatalogueLayout::Legacy) return metadata_detail::decodeCTypeCatalog(bytes, records, enums, error);
+    if (layout != CatalogueLayout::Envelope)
+    {
+        error = "no C catalogue layout for NSMETA 1." + std::to_string(minor);
+        return false;
+    }
+    if (!envelopeVersionAllowed(minor, leadingWord(bytes)))
+    {
+        error = "envelope version " + std::to_string(leadingWord(bytes)) + " is not valid in NSMETA 1." +
+            std::to_string(minor);
+        return false;
+    }
+    return metadata_detail::decodeCTypeCatalogWithProvenance(bytes, records, enums, error);
+}
+
+// EN: Lower-case hexadecimal text of `bytes`, one space between bytes.
+// ES: Texto hexadecimal en minúsculas de `bytes`, con un espacio entre bytes.
+std::string hexText(std::span<const std::uint8_t> bytes)
+{
+    static const char* const digits = "0123456789abcdef";
+    std::string text;
+    for (std::size_t i = 0; i < bytes.size(); ++i)
+    {
+        if (i != 0) text += ' ';
+        text += digits[bytes[i] >> 4];
+        text += digits[bytes[i] & 15];
+    }
+    return text;
+}
+
+// EN: Parses the hexadecimal fixture text; whitespace separates bytes and '#' starts a comment
+//     line. Returns nothing on a malformed token.
+// ES: Interpreta el texto hexadecimal del fixture; los espacios separan bytes y '#' inicia una
+//     línea de comentario. Devuelve nada ante un elemento mal formado.
+std::optional<std::vector<std::uint8_t>> readHexFixture(const std::filesystem::path& path)
+{
+    std::ifstream input(path);
+    if (!input) return std::nullopt;
+    std::vector<std::uint8_t> bytes;
+    std::string line;
+    while (std::getline(input, line))
+    {
+        if (!line.empty() && line.front() == '#') continue;
+        std::istringstream tokens(line);
+        std::string token;
+        while (tokens >> token)
+        {
+            if (token.size() != 2 || !std::isxdigit(static_cast<unsigned char>(token[0])) ||
+                !std::isxdigit(static_cast<unsigned char>(token[1]))) return std::nullopt;
+            bytes.push_back(static_cast<std::uint8_t>(std::stoul(token, nullptr, 16)));
+        }
+    }
+    return bytes;
+}
+
+// EN: Checks the committed minimal fixture: the legacy (NSMETA 1.42) catalogue that holds only the
+//     synthetic enum of probe 7. The encoder must still produce exactly these bytes; the current
+//     reader classifies them as envelope 4 and fails; the proposed rule decodes them as 1.42.
+// ES: Comprueba el fixture mínimo versionado: el catálogo heredado (NSMETA 1.42) que solo contiene
+//     el enum sintético de la sonda 7. El codificador debe seguir produciendo exactamente esos
+//     bytes; el lector actual los clasifica como envoltura 4 y falla; la regla propuesta los
+//     decodifica como 1.42.
+bool checkLegacyEnumOnlyFixture(const std::filesystem::path& directory)
+{
+    const std::vector<CppCEnumSnapshot> enums{syntheticEnumSnapshot()};
+    std::vector<std::uint8_t> encoded;
+    std::string error;
+    if (!expect(metadata_detail::encodeCTypeCatalog({}, enums, encoded, error), "synthetic legacy catalogue encodes"))
+        return false;
+    const auto fixture = readHexFixture(directory / "legacy-enum-only.hex");
+    if (!fixture || *fixture != encoded)
+    {
+        std::cerr << "legacy-enum-only.hex differs from the encoder; encoder bytes:\n" << hexText(encoded) << '\n';
+        return false;
+    }
+    std::vector<CppCRecordSnapshot> records;
+    std::vector<CppCEnumSnapshot> decoded;
+    std::string current;
+    const bool sniffed = metadata_detail::isCTypeCatalogWithProvenance(*fixture);
+    const bool currentDecodes = metadata_detail::decodeVersionedCTypeCatalog(*fixture, records, decoded, current);
+    std::string proposed;
+    std::vector<CppCEnumSnapshot> proposedEnums;
+    const bool proposedDecodes = proposedCatalogueDecode(42, *fixture, records, proposedEnums, proposed);
+    const auto head = std::span(*fixture).first(std::min<std::size_t>(8, fixture->size()));
+    std::cout << "FIXTURE legacy-enum-only.hex bytes=" << fixture->size() << " first=" << hexText(head)
+              << " current: envelope=" << (sniffed ? "yes" : "no") << " decoded="
+              << (currentDecodes ? "yes" : "no") << " '" << current << "'; proposed 1.42: decoded="
+              << (proposedDecodes ? "yes" : "no") << " enums=" << proposedEnums.size() << '\n';
+    bool ok = expect(sniffed && !currentDecodes, "current reader takes the 1.42 enum-only catalogue for envelope 4");
+    ok &= expect(proposedDecodes && proposedEnums.size() == 1, "proposed rule decodes it with the declared 1.42");
+    return ok;
+}
+
+// EN: Writes `metadata` down-level as NSMETA 1.<minor> with `catalogue`, reads it back with the
+//     current reader and compares the current and proposed catalogue decoding. Prints one row.
+//     `expectCurrent` is the outcome the current reader must give. Returns false on a mismatch.
+// ES: Escribe `metadata` en versión anterior como NSMETA 1.<minor> con `catalogue`, lo vuelve a
+//     leer con el lector actual y compara la decodificación actual y la propuesta del catálogo.
+//     Imprime una fila. `expectCurrent` es el resultado que debe dar el lector actual. Devuelve
+//     false si no coincide.
+bool checkCatalogueVariant(const LibraryMetadata& metadata, const std::string& stem, std::uint16_t minor,
+                           const std::vector<std::uint8_t>& catalogue, const std::filesystem::path& directory,
+                           bool expectCurrent)
+{
+    LibraryMetadataCodec codec;
+    LibraryMetadata model = metadata;
+    model.formatMinor = minor;
+    model.cppCRecordCatalog = catalogue;
+    const auto path = directory / (stem + "-1." + std::to_string(minor) + ".nsmeta");
+    std::string writeError;
+    if (!codec.writeModel(model, path, writeError))
+    {
+        std::cout << "VARIANT " << stem << " 1." << minor << ": writer refused: " << writeError << '\n';
+        return expect(false, stem + " 1." + std::to_string(minor) + " can be written down-level");
+    }
+    LibraryMetadata decoded;
+    std::string readError;
+    const bool current = codec.read(path, decoded, readError) && codec.verifyCurrentCompiler(decoded, readError);
+    std::vector<CppCRecordSnapshot> records;
+    std::vector<CppCEnumSnapshot> enums;
+    std::string proposedError;
+    const bool proposed = proposedCatalogueDecode(minor, catalogue, records, enums, proposedError);
+    const auto head = std::span(catalogue).first(std::min<std::size_t>(8, catalogue.size()));
+    std::cout << "VARIANT " << stem << " 1." << minor << ": first=" << hexText(head)
+              << " sniffed-envelope=" << (metadata_detail::isCTypeCatalogWithProvenance(catalogue) ? "yes" : "no")
+              << " current=" << (current ? "reads" : "fails '" + readError + "'") << " proposed="
+              << (proposed ? "decodes" : "fails '" + proposedError + "'") << " records=" << records.size()
+              << " enums=" << enums.size() << '\n';
+    bool ok = expect(current == expectCurrent, stem + " 1." + std::to_string(minor) + ": current reader outcome");
+    ok &= expect(proposed, stem + " 1." + std::to_string(minor) + ": proposed rule decodes the catalogue");
+    return ok;
+}
+
+// EN: Compatibility controls for one real producer NSMETA. The current writer uses the lowest minor
+//     that represents the envelope (1.43 for version 1, 1.44 for 2, 1.45 for 3 and 4). Rewrites the
+//     catalogue for every minor that can represent it: 1.42 (legacy) only for envelope version 1,
+//     1.43 only for version 1, 1.44 up to version 2 and 1.45 for every version. The current reader
+//     must fail exactly for the 1.42 catalogue without records (H8).
+// ES: Controles de compatibilidad para el NSMETA real de un productor. El escritor actual usa el
+//     minor más bajo que representa la envoltura (1.43 para la versión 1, 1.44 para la 2, 1.45 para
+//     la 3 y la 4). Reescribe el catálogo en cada minor que pueda representarlo: 1.42 (heredado)
+//     solo para la envoltura versión 1, 1.43 solo para la versión 1, 1.44 hasta la versión 2 y 1.45
+//     para todas. El lector actual debe fallar exactamente con el catálogo 1.42 sin records (H8).
+bool checkCatalogueVersions(const std::filesystem::path& nsmeta, const std::filesystem::path& directory)
+{
+    LibraryMetadata metadata;
+    std::vector<CppCRecordSnapshot> records;
+    std::vector<CppCEnumSnapshot> enums;
+    if (!readProducerCatalogue(nsmeta, metadata, records, enums)) return false;
+    const auto stem = nsmeta.stem().string();
+    const auto version = leadingWord(metadata.cppCRecordCatalog);
+    std::cout << "PRODUCER " << stem << ": NSMETA 1." << metadata.formatMinor << " envelope=" << version
+              << " records=" << records.size() << " enums=" << enums.size() << '\n';
+    const std::uint16_t written = version == 1 ? 43 : version == 2 ? 44 : 45;
+    bool ok = expect(metadata.formatMinor == written && metadata_detail::isCTypeCatalogWithProvenance(
+                         metadata.cppCRecordCatalog), stem + " uses the lowest minor that represents its envelope");
+    std::string error;
+    if (version == 1)
+    {
+        std::vector<std::uint8_t> legacy;
+        ok &= expect(metadata_detail::encodeCTypeCatalog(records, enums, legacy, error), stem + " legacy encoding");
+        ok &= checkCatalogueVariant(metadata, stem, 42, legacy, directory, !records.empty());
+    }
+    for (const std::uint16_t minor : {std::uint16_t{43}, std::uint16_t{44}, std::uint16_t{45}})
+    {
+        if (!envelopeVersionAllowed(minor, version)) continue;
+        ok &= checkCatalogueVariant(metadata, stem, minor, metadata.cppCRecordCatalog, directory, true);
+    }
+    return ok;
+}
+
+// EN: Mode --catalogue-version-controls <fixtures-dir> <producer.nsmeta>... (finding H8). Checks
+//     the minimal 1.42 fixture and the down-level variants of each real producer, written beneath
+//     <fixtures-dir>/variantes.
+// ES: Modo --catalogue-version-controls <dir-fixtures> <productor.nsmeta>... (hallazgo H8).
+//     Comprueba el fixture mínimo 1.42 y las variantes en versión anterior de cada productor real,
+//     escritas bajo <dir-fixtures>/variantes.
+int runCatalogueVersionControls(int argc, char** argv)
+{
+    const auto directory = std::filesystem::absolute(argv[2]);
+    const auto variants = directory / "variantes";
+    std::filesystem::create_directories(variants);
+    bool ok = checkLegacyEnumOnlyFixture(directory);
+    for (int i = 3; i < argc; ++i) ok &= checkCatalogueVersions(argv[i], variants);
+    std::cout << (ok ? "C catalogue version controls passed\n" : "C catalogue version controls failed\n");
+    return ok ? 0 : 1;
+}
+
 }
 
 int main(int argc, char** argv)
@@ -1371,6 +1623,10 @@ int main(int argc, char** argv)
         return runTypedefMatrix(argv[2], argv[3], argv[4]);
     }
     if (argc == 5 && std::string_view(argv[1]) == "--inspect-c-constants") return inspectCConstants(argv);
+    if (argc >= 3 && std::string_view(argv[1]) == "--catalogue-version-controls")
+    {
+        return runCatalogueVersionControls(argc, argv);
+    }
     if (argc != 4)
     {
         std::cerr << "usage: nsc_cpp_c_identity_tests <clang-resource-dir> <work-dir> <clang-driver>\n"
@@ -1381,7 +1637,9 @@ int main(int argc, char** argv)
                      "       nsc_cpp_c_identity_tests --typedef-matrix <typedefs-dir> <clang-resource-dir> "
                      "<clang-driver>\n"
                      "       nsc_cpp_c_identity_tests --inspect-c-constants <producer.nsmeta> <forbidden-state> "
-                     "<required-enumerator>\n";
+                     "<required-enumerator>\n"
+                     "       nsc_cpp_c_identity_tests --catalogue-version-controls <fixtures-dir> "
+                     "<producer.nsmeta>...\n";
         return 2;
     }
     return runProbes(argv[1], argv[2], argv[3]);
