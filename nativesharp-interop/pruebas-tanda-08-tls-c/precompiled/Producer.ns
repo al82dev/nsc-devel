@@ -1,0 +1,9 @@
+namespace PublishedTls
+{
+    public struct Bridge
+    {
+        public static int Read() { return shared_tls; }
+        public static void Write(int value) { shared_tls = value; }
+        public static int CheckWorker() { return tls_worker_check(); }
+    }
+}

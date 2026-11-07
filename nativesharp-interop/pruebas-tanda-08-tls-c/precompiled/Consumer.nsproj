@@ -1,0 +1,12 @@
+<Project>
+  <PropertyGroup><Name>TlsConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" />
+    <CppLibraryReference Header="Crt.h" Language="C" Standard="c11" Library="A:/vc2026-runtime/lib/x64/release/libcmt.lib" />
+    <CppLibraryReference Header="Crt.h" Language="C" Standard="c11" Library="A:/vc2026-runtime/lib/x64/release/libcpmt.lib" />
+    <CppLibraryReference Header="Crt.h" Language="C" Standard="c11" Library="A:/vc2026-runtime/lib/x64/release/libvcruntime.lib" />
+    <CppLibraryReference Header="Crt.h" Language="C" Standard="c11" Library="A:/vc2026-runtime/windows-sdk/10.0.28000.0/lib/ucrt/x64/libucrt.lib" />
+    <LibraryReference Include="TlsProducer.lib" />
+  </ItemGroup>
+</Project>

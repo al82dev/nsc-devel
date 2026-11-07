@@ -4416,6 +4416,17 @@ el aislamiento de dos hilos y O0–O3; generar la variante solo bajo
 originales, NSLink, LLVM ni C:. Conservar todas las pruebas previas y no
 considerar esta evidencia como cierre de T08-004 ni de la tanda.
 
+# TLS C a través de biblioteca NativeSharp precompilada
+
+Comprobar el acceso al mismo global TLS C desde una biblioteca NativeSharp
+precompilada y sus consumidores, con y sin encabezado C en el consumidor,
+aislamiento entre hilos y O0–O3. Presupuesto: fixture independiente en
+`pruebas-tanda-08-tls-c/precompiled`, registro y tracking. Salidas solo en
+`A:/nsc-interop-build/tls-abi/precompiled`. Conservar fixtures originales y
+no modificar NSLink, LLVM ni C:. Cambios de producción únicamente tras
+reproducir un defecto concreto y delimitar su causa. Esta matriz no cierra
+por sí sola la tanda ni sustituye el validador completo.
+
 # Arreglo global C TLS
 
 Reproducir lectura, escritura y aislamiento por hilo de un `int[2]` TLS C

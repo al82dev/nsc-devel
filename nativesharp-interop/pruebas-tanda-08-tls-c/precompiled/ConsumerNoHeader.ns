@@ -1,0 +1,9 @@
+int Main()
+{
+    if (PublishedTls.Bridge.Read() != 3) return 1;
+    PublishedTls.Bridge.Write(41);
+    if (PublishedTls.Bridge.Read() != 41) return 2;
+    if (PublishedTls.Bridge.CheckWorker() != 0) return 3;
+    if (PublishedTls.Bridge.Read() != 41) return 4;
+    return 0;
+}
