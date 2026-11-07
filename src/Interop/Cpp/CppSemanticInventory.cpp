@@ -192,7 +192,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         kind == CppTypeKind::UnsignedInteger || kind == CppTypeKind::Floating;
     const bool aggregateTls = kind == CppTypeKind::Record || kind == CppTypeKind::Enumeration;
     const bool supportedPointerTls = kind == CppTypeKind::Pointer && global.type.element;
-    const bool atomicIntTls = cLanguage && global.threadLocal && kind == CppTypeKind::Atomic &&
+    const bool atomicIntTls = cLanguage && kind == CppTypeKind::Atomic &&
         global.type.element && global.type.element->kind == CppTypeKind::SignedInteger &&
         global.type.element->unqualifiedCanonicalSpelling == "int" &&
         global.type.element->sizeBits == std::optional<std::uint64_t>{32} &&

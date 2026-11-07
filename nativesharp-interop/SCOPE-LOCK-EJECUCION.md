@@ -6,7 +6,12 @@ Comprobar un global C externo `_Atomic(int)` sin almacenamiento TLS con
 lectura y actualización compuesta desde NativeSharp y control C. Agregar el
 fixture y registros de evidencia en `nativesharp-interop`; generar artefactos
 solo en `A:/nsc-interop-build`. Mantener intactos NSLink, LLVM, layout y C:.
-No cambiar producción hasta demostrar la causa y el alcance concreto.
+La reproducción observó `C/C++ global type is not yet mapped` en el global
+`_Atomic(int)` no TLS. En `projectGlobalWithLookup`, la condición de
+`atomicIntTls` exige `global.threadLocal`; se permite retirar solo esa condición
+para este tipo de 32 bits alineado y comprobar lectura y actualización atómica.
+Se conservan las reglas de los demás tipos y del TLS existente. El cambio y el
+fixture deben validar IR y comportamiento antes de considerarse acreditados.
 
 ## T08-004/015: global C bool a través de DLL y productor precompilado
 
