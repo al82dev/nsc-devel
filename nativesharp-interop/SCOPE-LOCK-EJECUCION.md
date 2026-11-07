@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Selección de enlazador a través de varias bibliotecas precompiladas
+
+Reproducir una cadena consumidor → biblioteca NS intermedia → biblioteca NS
+productora → dependencia C TLS. La metadata también registra dependencias
+binarias NS transitivas; la selección anticipada inspecciona hasta ahora solo
+las dependencias C directas de cada referencia del grafo inicial. Preparar
+fixture en `pruebas-tanda-08-tls-c/precompiled`, salidas en A:, tracking y
+registros. No modificar producción antes de reproducir el fallo ni cambiar
+NSLink, LLVM, C: o los controles DLL existentes.
+
 ## TLS de DLL C y consumidor NativeSharp de tipo DLL
 
 Comprobar si una DLL NativeSharp puede consumir el productor precompilado que
