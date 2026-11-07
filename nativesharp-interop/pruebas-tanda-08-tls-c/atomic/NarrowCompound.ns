@@ -14,5 +14,9 @@ int Main()
     atomic_narrow_volatile = 0;
     if (atomic_narrow_volatile++ != 0 || ++atomic_narrow_volatile != 2) return 10;
     if (atomic_narrow_volatile-- != 2 || --atomic_narrow_volatile != 0) return 11;
+    atomic_unsupported_short = 0;
+    if (atomic_start_narrow_worker() != 0) return 12;
+    for (int i = 0; i < 10000; ++i) { atomic_unsupported_short += 1; }
+    if (atomic_wait_worker() != 0 || atomic_unsupported_short != 20000) return 13;
     return 0;
 }

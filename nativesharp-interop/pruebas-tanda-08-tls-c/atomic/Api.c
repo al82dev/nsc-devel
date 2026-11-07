@@ -45,6 +45,17 @@ int atomic_start_mul_worker(void)
     worker_handle = CreateThread(0, 0, mul_worker, &atomic_tls, 0, 0);
     return worker_handle ? 0 : 1;
 }
+static Dword __stdcall narrow_worker(void* data)
+{
+    _Atomic(short)* shared = (_Atomic(short)*)data;
+    for (int i = 0; i < 10000; ++i) *shared += 1;
+    return 0;
+}
+int atomic_start_narrow_worker(void)
+{
+    worker_handle = CreateThread(0, 0, narrow_worker, &atomic_unsupported_short, 0, 0);
+    return worker_handle ? 0 : 1;
+}
 int atomic_wait_worker(void)
 {
     if (!worker_handle) return 1;
