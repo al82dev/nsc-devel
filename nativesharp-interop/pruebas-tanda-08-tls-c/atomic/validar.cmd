@@ -83,6 +83,12 @@ for %%F in (NarrowCompound Promotion) do (
     if errorlevel 1 exit /b 1
   )
 )
+copy /y "%DEST%\NarrowCompound.ns" "%DEST%\Main.ns" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\narrow-compound.ll" 2> "%DEST%\narrow-compound-ir.log"
+if errorlevel 1 (type "%DEST%\narrow-compound-ir.log" & exit /b 1)
+python "%~dp0verificar_incremento.py" "%DEST%\narrow-compound.ll"
+if errorlevel 1 exit /b 1
 copy /y "%DEST%\LocalNarrow.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\local-narrow.log" 2>&1

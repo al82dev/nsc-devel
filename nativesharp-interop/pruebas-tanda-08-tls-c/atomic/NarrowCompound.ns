@@ -7,5 +7,12 @@ int Main()
     if ((atomic_unsupported_short >>= 2) != 14) return 4;
     if ((atomic_unsupported_short ^= 3) != 13) return 5;
     if ((atomic_unsupported_short %= 5) != 3) return 6;
+    atomic_unsupported_short = -1;
+    if (atomic_unsupported_short++ != -1 || atomic_unsupported_short != 0) return 7;
+    if (++atomic_unsupported_short != 1 || atomic_unsupported_short-- != 1) return 8;
+    if (--atomic_unsupported_short != -1) return 9;
+    atomic_narrow_volatile = 0;
+    if (atomic_narrow_volatile++ != 0 || ++atomic_narrow_volatile != 2) return 10;
+    if (atomic_narrow_volatile-- != 2 || --atomic_narrow_volatile != 0) return 11;
     return 0;
 }

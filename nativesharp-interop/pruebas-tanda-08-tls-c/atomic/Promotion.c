@@ -5,6 +5,7 @@ _Thread_local _Atomic(unsigned short) narrow_ushort;
 _Thread_local _Atomic(int) signed_int;
 _Thread_local _Atomic(long long) signed_wide;
 _Thread_local _Atomic(unsigned int) unsigned_int;
+_Thread_local volatile _Atomic(short) narrow_volatile;
 __declspec(dllimport) void __stdcall ExitProcess(unsigned int);
 void entry(void)
 {
@@ -49,5 +50,12 @@ void entry(void)
     if ((narrow_short >>= 2) != 14) result = 9;
     if ((narrow_short ^= 3) != 13) result = 10;
     if ((narrow_short %= 5) != 3) result = 11;
+    narrow_short = -1;
+    if (narrow_short++ != -1 || narrow_short != 0) result = 23;
+    if (++narrow_short != 1 || narrow_short-- != 1) result = 24;
+    if (--narrow_short != -1) result = 25;
+    narrow_volatile = 0;
+    if (narrow_volatile++ != 0 || ++narrow_volatile != 2) result = 26;
+    if (narrow_volatile-- != 2 || --narrow_volatile != 0) result = 27;
     ExitProcess((unsigned int)result);
 }
