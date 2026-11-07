@@ -1,0 +1,1 @@
+int Main() { return PublishedPlain.Bridge.Read() == 42 ? 0 : 1; }

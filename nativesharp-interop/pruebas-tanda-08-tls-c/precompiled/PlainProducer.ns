@@ -1,0 +1,4 @@
+namespace PublishedPlain
+{
+    public struct Bridge { public static int Read() { return plain_c(); } }
+}

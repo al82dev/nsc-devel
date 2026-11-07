@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>PlainProducer</Name><OutputType>Library</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="PlainProducer.ns" />
+    <CppLibraryReference Header="PlainApi.h" Language="C" Standard="c11" Library="plain.lib" />
+  </ItemGroup>
+</Project>
