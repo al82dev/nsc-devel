@@ -22,5 +22,15 @@ int Main()
     if (volatile_bool_array[0]) return 10;
     volatile_bool_array[0] ^= 2;
     if (!volatile_bool_array[0]) return 11;
+    volatile_bool_array[0] /= 2;
+    if (volatile_bool_array[0]) return 12;
+    volatile_bool_array[0] |= true;
+    if (!volatile_bool_array[0]) return 13;
+    volatile_bool_array[0] %= 2;
+    if (!volatile_bool_array[0]) return 14;
+    volatile_bool_array[0] <<= 1;
+    if (!volatile_bool_array[0]) return 15;
+    volatile_bool_array[0] >>= 1;
+    if (volatile_bool_array[0]) return 16;
     return 0;
 }
