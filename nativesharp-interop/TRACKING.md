@@ -535,6 +535,9 @@ las correcciones. [Resultado](registro-commits/t08-validacion-link-lib-auto.md),
     con importaciones reales; su consumidor sin header pasó O0–O3 y aislamiento.
     La repetición ocultó la copia temporal del header durante cada compilación
     del consumidor y la restauró después; también pasó O0–O3.
+    La cadena DLL C → biblioteca NS precompilada → DLL NS → ejecutable NS
+    también pasó O0–O3 sin header durante la compilación de los consumidores.
+    [Evidencia](registro-commits/t08-tls-dll-cadena-resultado.md).
     [Evidencia](registro-commits/t08-tls-dll-precompilado-resultado.md).
     [Evidencia](registro-commits/t08-tls-transitivo-gate.md),
     [DLL](registro-commits/t08-tls-transitivo-dll-resultado.md).
