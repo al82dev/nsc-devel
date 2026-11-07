@@ -89,9 +89,20 @@ inline std::optional<std::uint64_t> clangMsVolatileDirectCPointeeAlignment(const
                     node->kind == frontend::ProjectOopMirNodeKind::PointerLoad ||
                     node->kind == frontend::ProjectOopMirNodeKind::RawElementAddress) || !node->volatileAccess ||
         node->cppMicrosoftVolatileSemantics != std::optional<bool>{true}) return std::nullopt;
-    const auto width = node->typeKey == "builtin:short" ? 2U :
+    auto width = node->typeKey == "builtin:short" ? 2U :
         (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") ? 4U :
         (node->typeKey == "builtin:long" || node->typeKey == "builtin:double") ? 8U : 0U;
+    if (node->typeKey == "builtin:float")
+    {
+        const auto* base = node;
+        for (unsigned depth = 0; depth < 3 && base; ++depth)
+        {
+            if (base->kind == frontend::ProjectOopMirNodeKind::NamespaceStateLoad &&
+                base->cppAtomicAccess && base->typeKey == "builtin:float*")
+            { width = 4; break; }
+            base = base->children.empty() ? nullptr : base->children.front().get();
+        }
+    }
     if (!width || node->cppAtomicAlignmentBytes != std::optional<std::uint64_t>{width}) return std::nullopt;
     return width;
 }
