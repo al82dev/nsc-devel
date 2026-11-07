@@ -4244,3 +4244,12 @@ Main y comprobar aislamiento por hilo en O0–O3. Presupuesto:
 en A:; NSLink, LLVM y la instalación en C: permanecen protegidos. Esta prueba
 no cambia el enlace predeterminado ni cierra por sí sola la tanda 08.
 
+# TLS estático: emisión NativeSharp con LLD explícito
+
+Preparar un proyecto y una prueba que usan el flujo normal de emisión de
+ejecutable de NSC con `NSC_LINKER` configurado a `lld-link`; el proyecto
+declara la biblioteca C y el CRT estático necesario. Presupuesto:
+`pruebas-tanda-08-tls-c/lld`, evidencia Markdown y seguimiento. Salidas en A:;
+NSLink, LLVM y C: protegidos. No se sustituye el gate original de TLS ni se
+afirma detección automática o soporte del comando de proyecto `build`.
+
