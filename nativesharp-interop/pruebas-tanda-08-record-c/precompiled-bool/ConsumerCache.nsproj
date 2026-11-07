@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>BoolConsumerCache</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+    <LibraryReference Include="BoolProducer.lib" />
+  </ItemGroup>
+</Project>

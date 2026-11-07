@@ -10,12 +10,10 @@ if not exist "%DEST%" mkdir "%DEST%"
 if errorlevel 1 exit /b 1
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Api.c Producer.ns Producer.nsproj Consumer.ns Consumer.nsproj) do (
+for %%F in (Api.h Api.c Producer.ns Producer.nsproj Consumer.ns ConsumerCache.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
-copy /y "%~dp0..\..\pruebas-tanda-08-tls-c\static-global\Crt.h" "%DEST%\Crt.h" >nul
-if errorlevel 1 exit /b 1
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Api.c" -o "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
 llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
@@ -45,9 +43,9 @@ if not "%TASK_RESULT%"=="0" exit /b 1
 exit /b 0
 
 :run_consumer
-nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Consumer.nsproj" -O%~1 --time --artifact-cache="%CACHE%" -o "%DEST%\consumer-O%~1.exe" > "%DEST%\consumer-first-O%~1.log" 2>&1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\ConsumerCache.nsproj" -O%~1 --time --artifact-cache="%CACHE%" -o "%DEST%\consumer-O%~1.exe" > "%DEST%\consumer-first-O%~1.log" 2>&1
 if errorlevel 1 (type "%DEST%\consumer-first-O%~1.log" & exit /b 1)
-nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Consumer.nsproj" -O%~1 --time --artifact-cache="%CACHE%" -o "%DEST%\consumer-O%~1.exe" > "%DEST%\consumer-hit-O%~1.log" 2>&1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\ConsumerCache.nsproj" -O%~1 --time --artifact-cache="%CACHE%" -o "%DEST%\consumer-O%~1.exe" > "%DEST%\consumer-hit-O%~1.log" 2>&1
 if errorlevel 1 (type "%DEST%\consumer-hit-O%~1.log" & exit /b 1)
 findstr /l /c:"compilation-bundle-cache: hit" "%DEST%\consumer-hit-O%~1.log" >nul
 if errorlevel 1 (type "%DEST%\consumer-hit-O%~1.log" & exit /b 1)
