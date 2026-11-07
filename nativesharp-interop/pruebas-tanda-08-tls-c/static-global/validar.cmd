@@ -24,7 +24,7 @@ if errorlevel 1 exit /b 1
 "%DEST%\probe.exe"
 if errorlevel 1 exit /b 1
 echo Control C global TLS estatico: correcto.
-nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" --no-artifact-cache > "%DEST%\project.ll" 2> "%DEST%\ir.log"
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\project.ll" 2> "%DEST%\ir.log"
 if errorlevel 1 exit /b 1
 findstr /L /C:"@shared_tls = external thread_local global i32" "%DEST%\project.ll" >nul
 if errorlevel 1 exit /b 1
@@ -37,7 +37,7 @@ for %%O in (0 1 2 3) do (
 )
 >> "%DEST%\Api.h" echo extern __declspec(thread) volatile int volatile_tls;
 > "%DEST%\Main.ns" echo int Main() { return volatile_tls; }
-nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" --no-artifact-cache > "%DEST%\unsupported.log" 2>&1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\unsupported.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /L /C:"thread-local C/C++ global is not yet projected" "%DEST%\unsupported.log" >nul
 if errorlevel 1 exit /b 1
