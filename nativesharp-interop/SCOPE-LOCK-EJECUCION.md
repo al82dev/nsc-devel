@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004/015: aislamiento de punteros atómicos TLS adicionales
+
+Comprobar que los punteros TLS atómicos a float, long y unsigned long C tienen
+instancias independientes en un segundo hilo C y el hilo NativeSharp, en
+O0–O3. Fixtures y registros en `nativesharp-interop`, artefactos en
+`A:/nsc-interop-build`. No modificar NSLink, LLVM externo, layout, metadata ni
+C:. El control no acredita otras variantes o escapes.
+
 ## T08-004/015: punteros atómicos TLS a float y long C
 
 Comprobar `_Thread_local _Atomic(float*)`, `_Atomic(long*)` y
