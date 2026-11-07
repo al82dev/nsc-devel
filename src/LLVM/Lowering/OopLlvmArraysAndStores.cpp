@@ -154,7 +154,8 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         if (node->children[0]->cppAtomicAccess)
         {
             const auto* target = node->children[0].get();
-            const auto alignment = target->typeKey == "builtin:int" ? 4U : target->typeKey == "builtin:long" ? 8U : 0U;
+            const auto alignment = (target->typeKey == "builtin:int" || target->typeKey == "builtin:uint") ? 4U :
+                (target->typeKey == "builtin:long" || target->typeKey == "builtin:ulong") ? 8U : 0U;
             if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
                 !alignment || target->cppAtomicAlignmentBytes != std::optional<std::size_t>{alignment} || node->immediate != 0)
                 return failValue(error, "C atomic global compound operation is not yet supported");
@@ -189,7 +190,9 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                     case lexer::TokenKind::LessLess:
                         updated = LLVMBuildShl(builder_, current, operandValue, "atomic.shift.updated"); break;
                     case lexer::TokenKind::GreaterGreater:
-                        updated = LLVMBuildAShr(builder_, current, operandValue, "atomic.shift.updated"); break;
+                        updated = isSignedInteger(target->typeKey)
+                            ? LLVMBuildAShr(builder_, current, operandValue, "atomic.shift.updated")
+                            : LLVMBuildLShr(builder_, current, operandValue, "atomic.shift.updated"); break;
                     default:
                         updated = applyIntegerDivision(node->operation, current, operandValue, target->typeKey, error, false);
                         if (updated == nullptr) return nullptr;
@@ -545,8 +548,9 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         LLVMValueRef store = LLVMBuildStore(builder_, storedValue, address);
         if (node->children[0]->cppAtomicAccess)
         {
-            const auto alignment = node->children[0]->typeKey == "builtin:int" ? 4U :
-                node->children[0]->typeKey == "builtin:long" ? 8U : 0U;
+            const auto& typeKey = node->children[0]->typeKey;
+            const auto alignment = (typeKey == "builtin:int" || typeKey == "builtin:uint") ? 4U :
+                (typeKey == "builtin:long" || typeKey == "builtin:ulong") ? 8U : 0U;
             if (!alignment || node->children[0]->cppAtomicAlignmentBytes != std::optional<std::size_t>{alignment})
                 return failValue(error, "C atomic global store lacks supported type or alignment");
             LLVMSetOrdering(store, LLVMAtomicOrderingSequentiallyConsistent);

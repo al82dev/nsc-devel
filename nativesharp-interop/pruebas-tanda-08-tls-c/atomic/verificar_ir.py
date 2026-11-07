@@ -14,6 +14,8 @@ for symbol, required, volatile in (
     ('atomic_readonly', {'load'}, False),
     ('atomic_volatile', {'load', 'store', 'rmw'}, True),
     ('atomic_wide', {'load', 'store', 'rmw', 'cmpxchg'}, False),
+    ('atomic_unsigned', {'store', 'rmw', 'cmpxchg'}, False),
+    ('atomic_unsigned_wide', {'store', 'rmw', 'cmpxchg'}, False),
 ):
     addresses = {'@' + symbol}
     for line in body.splitlines():
@@ -29,7 +31,7 @@ for symbol, required, volatile in (
                                    ('or', r'\batomicrmw(?: volatile)? or\b'),
                                    ('xor', r'\batomicrmw(?: volatile)? xor\b'),
                                    ('cmpxchg', r'\bcmpxchg(?: volatile)?\b')):
-            align = 8 if symbol == 'atomic_wide' else 4
+            align = 8 if symbol in {'atomic_wide', 'atomic_unsigned_wide'} else 4
             if not re.search(instruction, line) or not re.search(r'\bseq_cst\b.*\balign ' + str(align) + r'\b', line):
                 continue
             if label == 'cmpxchg' and not re.search(r'\bseq_cst\s+seq_cst\b', line):

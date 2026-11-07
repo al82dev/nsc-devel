@@ -40,5 +40,17 @@ int Main()
     if ((atomic_wide *= 2) != 10000000004L) return 25;
     if ((atomic_wide >>= 1) != 5000000002L) return 26;
     if ((atomic_wide /= 2) != 2500000001L || atomic_wide != 2500000001L) return 27;
+    atomic_unsigned = 1U << 31;
+    if ((atomic_unsigned /= 2U) != (1U << 30)) return 34;
+    atomic_unsigned = 1U << 31;
+    if ((atomic_unsigned >>= 1) != (1U << 30)) return 28;
+    if ((atomic_unsigned += 4U) != ((1U << 30) + 4U)) return 29;
+    if ((atomic_unsigned /= 2U) != ((1U << 29) + 2U)) return 30;
+    atomic_unsigned_wide = 1UL << 63;
+    if ((atomic_unsigned_wide /= 2UL) != (1UL << 62)) return 35;
+    atomic_unsigned_wide = 1UL << 63;
+    if ((atomic_unsigned_wide >>= 1) != (1UL << 62)) return 31;
+    if ((atomic_unsigned_wide += 4UL) != ((1UL << 62) + 4UL)) return 32;
+    if ((atomic_unsigned_wide /= 2UL) != ((1UL << 61) + 2UL)) return 33;
     return 0;
 }

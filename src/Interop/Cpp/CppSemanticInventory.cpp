@@ -204,7 +204,19 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         global.type.element->sizeBits == std::optional<std::uint64_t>{64} &&
         global.type.sizeBits == std::optional<std::uint64_t>{64} &&
         global.declarationAlignmentBits && *global.declarationAlignmentBits >= 64;
-    const bool supportedAtomicTls = atomicIntTls || atomicLongTls;
+    const bool atomicUIntTls = cLanguage && global.threadLocal && kind == CppTypeKind::Atomic &&
+        global.type.element && global.type.element->kind == CppTypeKind::UnsignedInteger &&
+        global.type.element->unqualifiedCanonicalSpelling == "unsigned int" &&
+        global.type.element->sizeBits == std::optional<std::uint64_t>{32} &&
+        global.type.sizeBits == std::optional<std::uint64_t>{32} &&
+        global.declarationAlignmentBits && *global.declarationAlignmentBits >= 32;
+    const bool atomicULongTls = cLanguage && global.threadLocal && kind == CppTypeKind::Atomic &&
+        global.type.element && global.type.element->kind == CppTypeKind::UnsignedInteger &&
+        global.type.element->unqualifiedCanonicalSpelling == "unsigned long long" &&
+        global.type.element->sizeBits == std::optional<std::uint64_t>{64} &&
+        global.type.sizeBits == std::optional<std::uint64_t>{64} &&
+        global.declarationAlignmentBits && *global.declarationAlignmentBits >= 64;
+    const bool supportedAtomicTls = atomicIntTls || atomicLongTls || atomicUIntTls || atomicULongTls;
     const CppType* arrayElement = &global.type;
     std::size_t arrayDepth = 0;
     bool fixedArray = kind == CppTypeKind::Array;
@@ -231,7 +243,9 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         return failure("C/C++ global type is not yet mapped");
     if (supportedAtomicTls)
     {
-        if (type->nativeSharpTypeKey != (atomicIntTls ? "builtin:int" : "builtin:long"))
+        const char* expected = atomicIntTls ? "builtin:int" : atomicLongTls ? "builtin:long" :
+            atomicUIntTls ? "builtin:uint" : "builtin:ulong";
+        if (type->nativeSharpTypeKey != expected)
             return failure("C atomic integer mapping is inconsistent");
         type->canonicalCppType = global.type.canonicalSpelling;
         type->isConst = global.type.isConst;

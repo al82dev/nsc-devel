@@ -67,5 +67,19 @@ void entry(void)
         else if ((atomic_wide >>= 1) != 5000000002LL) result = 26;
         else if ((atomic_wide /= 2) != 2500000001LL || atomic_wide != 2500000001LL) result = 27;
     }
+    if (result == 0) {
+        atomic_unsigned = 1U << 31;
+        if ((atomic_unsigned /= 2U) != (1U << 30)) result = 34;
+        atomic_unsigned = 1U << 31;
+        if ((atomic_unsigned >>= 1) != (1U << 30)) result = 28;
+        else if ((atomic_unsigned += 4U) != ((1U << 30) + 4U)) result = 29;
+        else if ((atomic_unsigned /= 2U) != ((1U << 29) + 2U)) result = 30;
+        atomic_unsigned_wide = 1ULL << 63;
+        if ((atomic_unsigned_wide /= 2ULL) != (1ULL << 62)) result = 35;
+        atomic_unsigned_wide = 1ULL << 63;
+        if ((atomic_unsigned_wide >>= 1) != (1ULL << 62)) result = 31;
+        else if ((atomic_unsigned_wide += 4ULL) != ((1ULL << 62) + 4ULL)) result = 32;
+        else if ((atomic_unsigned_wide /= 2ULL) != ((1ULL << 61) + 2ULL)) result = 33;
+    }
     ExitProcess((unsigned int)result);
 }
