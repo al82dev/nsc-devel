@@ -11,6 +11,8 @@ en modo MS: byte, normalización bool y órdenes acquire/release. Conservar
 MIR y su construcción, marcador HIR de global, descenso LLVM de declaración,
 lectura y escritura, fixture record-c, tracking y registros. Validación
 agrupada O0–O3, IR y controles existentes; sin NSLink, LLVM externo ni C:.
+Como el nuevo indicador cambia la declaración LLVM, incluirlo en la identidad
+de caché MIR mediante `src/LLVM/ProjectOopMirCacheIdentity.cpp`.
 
 ## T08-015: operandos flotantes en `_Bool` C volatile compuesto
 

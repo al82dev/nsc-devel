@@ -671,6 +671,11 @@ void ProjectOopMirModel::buildNamespaceStateFields(
         staticField.isCppExternal = state.isCppExternal;
         staticField.cppDllImport = state.cppDllImport;
         staticField.cppThreadLocal = state.cppThreadLocal;
+        staticField.cppCVolatileBoolStorage = state.isCppExternal && state.cppCGlobal && state.isVolatile &&
+            !state.cppAtomicStorage && state.declaredTypeKey == "builtin:bool" &&
+            state.cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
+            state.cppStorageSizeBits == std::optional<std::uint64_t>{8} &&
+            state.cppDeclarationAlignmentBits && *state.cppDeclarationAlignmentBits >= 8;
         staticField.storageSymbol = state.storageName;
         staticField.accessorName = "__nsc_get_" + state.storageName;
         staticField.namespaceStateOrdinal = stateOrdinal;

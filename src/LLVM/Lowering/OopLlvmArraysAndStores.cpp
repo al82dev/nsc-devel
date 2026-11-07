@@ -776,7 +776,12 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             LLVMBuildBr(builder_, readyBlock);
             enterBlock(readyBlock);
         }
-        const bool cVolatileBool = clangMsVolatileGlobalBoolArray(node->children[0].get());
+        const auto* boolTarget = node->children[0].get();
+        const bool cVolatileBool = clangMsVolatileGlobalBoolArray(boolTarget) ||
+            (!boolTarget->cppAtomicAccess && boolTarget->kind == frontend::ProjectOopMirNodeKind::NamespaceStateAddress &&
+             boolTarget->typeKey == "builtin:bool" && boolTarget->volatileAccess &&
+             boolTarget->cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
+             boolTarget->cppAtomicAlignmentBytes == std::optional<std::size_t>{1});
         LLVMValueRef storedValue = cVolatileBool
             ? LLVMBuildZExt(builder_, value, LLVMInt8TypeInContext(context_), "c.bool.storage")
             : value;

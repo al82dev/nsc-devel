@@ -309,7 +309,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNamespaceStateNameBi
     {
         node->cppMicrosoftVolatileSemantics = state.cppMicrosoftVolatileSemantics;
         std::uint64_t bits = 0;
-        if (state.declaredTypeKey == "builtin:sbyte" || state.declaredTypeKey == "builtin:byte") bits = 8;
+        if ((state.cppCGlobal && !state.cppAtomicStorage && state.declaredTypeKey == "builtin:bool") ||
+            state.declaredTypeKey == "builtin:sbyte" || state.declaredTypeKey == "builtin:byte") bits = 8;
         else if (state.declaredTypeKey == "builtin:short" || state.declaredTypeKey == "builtin:ushort") bits = 16;
         else if (state.declaredTypeKey == "builtin:int" || state.declaredTypeKey == "builtin:uint" ||
                  state.declaredTypeKey == "builtin:float") bits = 32;

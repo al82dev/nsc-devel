@@ -61,6 +61,8 @@ bool OopLlvmImplementation::declareStaticFields(std::string& error, bool defineS
                     type = LLVMArrayType2(LLVMInt8TypeInContext(context_),
                                           count * imported->objectLayout->sizeBytes);
             }
+            if (type == nullptr && field.cppCVolatileBoolStorage)
+                type = LLVMInt8TypeInContext(context_);
             if (type == nullptr) type = llvmType(field.typeKey, error);
             if (type == nullptr || type == LLVMVoidTypeInContext(context_))
             {

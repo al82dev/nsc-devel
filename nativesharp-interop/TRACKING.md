@@ -478,6 +478,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Reproducida discrepancia para global escalar C `volatile _Bool`: NSC usa
     i1 volatile y Clang i8 acquire. Corrección pendiente.
     [Evidencia](registro-commits/t08-bool-scalar-reproduccion.md).
+    Preparada la declaración i8 y los accesos acquire/release; pendientes
+    construcción y validación. [Detalle](registro-commits/t08-bool-scalar-implementacion.md).
   - Por autorización del usuario, el gate usa el control C PE y el acceso NSC
     directo existentes, y variantes de escalares con importación y con carga
     dinámica. Los cuatro controles originales siguen disponibles como

@@ -327,6 +327,7 @@ void writeStaticFields(IdentityWriter& output, const frontend::ProjectOopMirMode
         output.scalar(field.isVolatile); output.scalar(field.isConst); output.scalar(field.isImported);
         output.scalar(field.isCppExternal);
         output.scalar(field.cppDllImport);
+        output.scalar(field.cppCVolatileBoolStorage);
         output.text(field.genericSpecializationKey); output.text(field.storageSymbol);
         output.text(field.accessorName); output.scalar(field.hasConstantInitializer);
         output.scalar(field.constantIntegerValue);
