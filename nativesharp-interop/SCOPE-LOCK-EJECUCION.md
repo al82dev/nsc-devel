@@ -4564,6 +4564,13 @@ real de `build.linker`, `--linker` y `NSC_LINKER`. Presupuesto adicional:
 `src/Driver/Internal/Sidecar.h`, `src/Driver/ProjectCommands.cpp`, prueba
 de selección y registro. No reescribir los sidecars existentes.
 
+`nsc new` y `nsc add package` escriben `linker: NSLink` incluso cuando no fue
+seleccionado, lo que desactiva la detección automática. En `renderSidecar`,
+omitir la clave solo cuando `linkerSpecified` sea falso y conservar las claves
+explícitas existentes cuando se reescriba un sidecar. Comprobar proyecto nuevo
+con TLS, add/remove y preservación de selecciones explícitas. Presupuesto:
+`src/Driver/ProjectCommands.cpp`, validador de la tanda, registros y tracking.
+
 # Identificación provisional de TLS de DLL
 
 El fixture directo demuestra que NSC proyecta una declaración TLS sin

@@ -195,8 +195,9 @@ std::string renderSidecar(const Sidecar& sidecar)
     // La llave solo se escribe cuando no es el valor por omision; los sidecars existentes no cambian.
     if (sidecar.build.linkTimeOptimization != "none")
         stream << "    \"link_time_optimization\": \"" << jsonEscape(sidecar.build.linkTimeOptimization) << "\",\n";
+    if (sidecar.linkerSpecified)
+        stream << "    \"linker\": \"" << jsonEscape(sidecar.build.linker) << "\",\n";
     stream
-           << "    \"linker\": \"" << jsonEscape(sidecar.build.linker) << "\",\n"
            << "    \"optimization\": \"" << jsonEscape(sidecar.build.optimization) << "\",\n"
            << "    \"restore_before_build\": " << (sidecar.build.restoreBeforeBuild ? "true" : "false") << ",\n"
            << "    \"target\": \"" << jsonEscape(sidecar.build.target) << "\"\n"
