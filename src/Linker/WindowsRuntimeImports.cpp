@@ -173,6 +173,7 @@ auto kernel32FoundationSymbols()
         "WriteFile",
         "TlsAlloc",
         "TlsGetValue",
+        "GetModuleHandleExA",
         "TlsSetValue",
         "RaiseException",
         // Stage 53.1 "Time" -- NativeClock's three raw wrappers (see

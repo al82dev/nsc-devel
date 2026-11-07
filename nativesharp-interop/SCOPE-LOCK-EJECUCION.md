@@ -4323,3 +4323,18 @@ en `pruebas-tanda-08-tls-c/directo`, seguimiento y registro Markdown. No
 rechazar TLS estático ni modificar NSLink, LLVM o C:. La barrera no constituye
 soporte TLS de DLL ni cierra la tanda.
 
+# Acceso directo a TLS de DLL en Windows x64
+
+El fixture `directo` reprodujo la proyección incorrecta como TLS del ejecutable;
+el instrumento `validar-bridge.cmd` demostró lectura y escritura por hilo en
+O0–O3 desde NS mediante la dirección importada y el directorio TLS de la DLL.
+Para eliminar la llamada manual, preservar el origen de la referencia en
+`CppSemanticInventory.cpp`, declarar el dato importado como dato PE y resolver
+su dirección por hilo en `OopLlvmStaticState.cpp` y `OopLlvmCalls.cpp`.
+Incorporar la importación Win32 necesaria en `WindowsRuntimeImports.cpp` y
+probar el caso original, sin eliminar el control C ni cambiar NSLink, LLVM o C:.
+El acceso se limita inicialmente a Windows x64 y a los escalares C ya admitidos;
+referencias ambiguas y contratos no comprobados deben seguir rechazados. Los
+resultados y límites se registran en tracking y Markdown. No cerrar la tanda
+hasta superar su batería integral, incluidas regresiones y caso directo.
+

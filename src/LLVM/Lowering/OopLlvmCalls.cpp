@@ -8,6 +8,107 @@ namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
 
+// Resolve an exported PE TLS template address to this thread's storage.
+// The loader keeps the DLL loaded via its import; no reference count is changed.
+static LLVMValueRef cppDllTlsAddressHelper(LLVMContextRef context, LLVMModuleRef module)
+{
+    constexpr const char* name = "__nsc_cpp_dll_tls_address";
+    if (auto existing = LLVMGetNamedFunction(module, name)) return existing;
+    const auto ptr = LLVMPointerTypeInContext(context, 0);
+    const auto i8 = LLVMInt8TypeInContext(context);
+    const auto i16 = LLVMInt16TypeInContext(context);
+    const auto i32 = LLVMInt32TypeInContext(context);
+    const auto i64 = LLVMInt64TypeInContext(context);
+    LLVMTypeRef args[] = {ptr};
+    const auto helperType = LLVMFunctionType(ptr, args, 1, 0);
+    const auto helper = LLVMAddFunction(module, name, helperType);
+    LLVMSetLinkage(helper, LLVMInternalLinkage);
+    LLVMTypeRef moduleArgs[] = {i32, ptr, ptr};
+    const auto moduleType = LLVMFunctionType(i32, moduleArgs, 3, 0);
+    auto getModule = LLVMGetNamedFunction(module, "GetModuleHandleExA");
+    if (!getModule) getModule = LLVMAddFunction(module, "GetModuleHandleExA", moduleType);
+    LLVMSetDLLStorageClass(getModule, LLVMDLLImportStorageClass);
+
+    const auto entry = LLVMAppendBasicBlockInContext(context, helper, "entry");
+    const auto dos = LLVMAppendBasicBlockInContext(context, helper, "dos");
+    const auto pe = LLVMAppendBasicBlockInContext(context, helper, "pe");
+    const auto optional = LLVMAppendBasicBlockInContext(context, helper, "optional");
+    const auto tls = LLVMAppendBasicBlockInContext(context, helper, "tls");
+    const auto bounds = LLVMAppendBasicBlockInContext(context, helper, "bounds");
+    const auto slotsBlock = LLVMAppendBasicBlockInContext(context, helper, "slots");
+    const auto elementBlock = LLVMAppendBasicBlockInContext(context, helper, "element");
+    const auto done = LLVMAppendBasicBlockInContext(context, helper, "done");
+    const auto fail = LLVMAppendBasicBlockInContext(context, helper, "fail");
+    const auto b = LLVMCreateBuilderInContext(context);
+    const auto constant = [&](LLVMTypeRef type, unsigned long long n) { return LLVMConstInt(type, n, 0); };
+    const auto offset = [&](LLVMValueRef base, LLVMValueRef index, const char* label) {
+        return LLVMBuildGEP2(b, i8, base, &index, 1, label);
+    };
+    const auto at = [&](LLVMValueRef base, unsigned long long n, const char* label) {
+        return offset(base, constant(i64, n), label);
+    };
+    const auto exported = LLVMGetParam(helper, 0);
+    LLVMPositionBuilderAtEnd(b, entry);
+    const auto moduleSlot = LLVMBuildAlloca(b, ptr, "module.slot");
+    LLVMBuildStore(b, LLVMConstNull(ptr), moduleSlot);
+    LLVMValueRef callArgs[] = {constant(i32, 6), exported, moduleSlot};
+    const auto moduleResult = LLVMBuildCall2(b, moduleType, getModule, callArgs, 3, "module.result");
+    LLVMBuildCondBr(b, LLVMBuildICmp(b, LLVMIntNE, moduleResult, constant(i32, 0), "module.ok"), dos, fail);
+
+    LLVMPositionBuilderAtEnd(b, dos);
+    const auto image = LLVMBuildLoad2(b, ptr, moduleSlot, "image");
+    const auto mz = LLVMBuildLoad2(b, i16, image, "mz");
+    LLVMBuildCondBr(b, LLVMBuildICmp(b, LLVMIntEQ, mz, constant(i16, 0x5a4d), "mz.ok"), pe, fail);
+
+    LLVMPositionBuilderAtEnd(b, pe);
+    const auto ntOffset = LLVMBuildLoad2(b, i32, at(image, 60, "nt.offset.ptr"), "nt.offset");
+    const auto nt = offset(image, LLVMBuildZExt(b, ntOffset, i64, "nt.offset64"), "nt");
+    const auto peMagic = LLVMBuildLoad2(b, i32, nt, "pe.magic");
+    LLVMBuildCondBr(b, LLVMBuildICmp(b, LLVMIntEQ, peMagic, constant(i32, 0x4550), "pe.ok"), optional, fail);
+
+    LLVMPositionBuilderAtEnd(b, optional);
+    const auto magic = LLVMBuildLoad2(b, i16, at(nt, 24, "optional.magic.ptr"), "optional.magic");
+    LLVMBuildCondBr(b, LLVMBuildICmp(b, LLVMIntEQ, magic, constant(i16, 0x20b), "optional.ok"), tls, fail);
+
+    LLVMPositionBuilderAtEnd(b, tls);
+    const auto tlsRva = LLVMBuildLoad2(b, i32, at(nt, 208, "tls.rva.ptr"), "tls.rva");
+    LLVMBuildCondBr(b, LLVMBuildICmp(b, LLVMIntNE, tlsRva, constant(i32, 0), "tls.present"), bounds, fail);
+
+    LLVMPositionBuilderAtEnd(b, bounds);
+    const auto directory = offset(image, LLVMBuildZExt(b, tlsRva, i64, "tls.rva64"), "tls.directory");
+    const auto start = LLVMBuildLoad2(b, ptr, directory, "tls.raw.start");
+    const auto end = LLVMBuildLoad2(b, ptr, at(directory, 8, "tls.raw.end.ptr"), "tls.raw.end");
+    const auto indexPtr = LLVMBuildLoad2(b, ptr, at(directory, 16, "tls.index.ptr"), "tls.index.address");
+    const auto indexValid = LLVMBuildICmp(b, LLVMIntNE, indexPtr, LLVMConstNull(ptr), "tls.index.valid");
+    const auto aboveStart = LLVMBuildICmp(b, LLVMIntUGE, exported, start, "tls.above.start");
+    const auto belowEnd = LLVMBuildICmp(b, LLVMIntULT, exported, end, "tls.below.end");
+    const auto inRange = LLVMBuildAnd(b, aboveStart, belowEnd, "tls.in.range");
+    LLVMBuildCondBr(b, LLVMBuildAnd(b, indexValid, inRange, "tls.valid"), slotsBlock, fail);
+
+    LLVMPositionBuilderAtEnd(b, slotsBlock);
+    const auto gsPtr = LLVMBuildIntToPtr(b, constant(i64, 0x58), LLVMPointerTypeInContext(context, 256), "teb.tls.ptr");
+    const auto slotsInteger = LLVMBuildLoad2(b, i64, gsPtr, "teb.tls");
+    LLVMSetVolatile(slotsInteger, 1);
+    const auto slots = LLVMBuildIntToPtr(b, slotsInteger, ptr, "slots.ptr");
+    LLVMBuildCondBr(b, LLVMBuildICmp(b, LLVMIntNE, slots, LLVMConstNull(ptr), "slots.valid"), elementBlock, fail);
+
+    LLVMPositionBuilderAtEnd(b, elementBlock);
+    const auto index = LLVMBuildLoad2(b, i32, indexPtr, "tls.index");
+    const auto index64 = LLVMBuildZExt(b, index, i64, "tls.index64");
+    const auto slotAddr = LLVMBuildGEP2(b, ptr, slots, &index64, 1, "slot.address");
+    const auto slot = LLVMBuildLoad2(b, ptr, slotAddr, "slot");
+    LLVMBuildCondBr(b, LLVMBuildICmp(b, LLVMIntNE, slot, LLVMConstNull(ptr), "slot.valid"), done, fail);
+
+    LLVMPositionBuilderAtEnd(b, done);
+    const auto displacement = LLVMBuildSub(b, LLVMBuildPtrToInt(b, exported, i64, "export.integer"),
+                                            LLVMBuildPtrToInt(b, start, i64, "start.integer"), "tls.offset");
+    LLVMBuildRet(b, offset(slot, displacement, "tls.address"));
+    LLVMPositionBuilderAtEnd(b, fail);
+    LLVMBuildRet(b, LLVMConstNull(ptr));
+    LLVMDisposeBuilder(b);
+    return helper;
+}
+
 bool OopLlvmImplementation::callArgumentOrder(
         const frontend::ProjectOopMirNode* node,
         std::size_t sourceCount,
@@ -344,6 +445,16 @@ LLVMValueRef OopLlvmImplementation::staticFieldAddress(const frontend::ProjectOo
         }
         if (globalFound == staticFieldGlobals_.end())
             return failValue(error, "Stage 37 static field has no declared LLVM global");
+        if (field.isCppExternal && field.cppThreadLocal && field.cppDllImport)
+        {
+            const auto ptr = LLVMPointerTypeInContext(context_, 0);
+            LLVMTypeRef arguments[] = {ptr};
+            const auto type = LLVMFunctionType(ptr, arguments, 1, 0);
+            const auto helper = cppDllTlsAddressHelper(context_, module_);
+            LLVMValueRef values[] = {globalFound->second};
+            const auto address = LLVMBuildCall2(builder_, type, helper, values, 1, "cpp.dll.tls.address");
+            return checkedReceiver(address, error);
+        }
         if (!field.isConst && !field.isCppExternal && !ensureTypeInitialized(field.declaringTypeOrdinal, error))
         {
             return nullptr;

@@ -409,18 +409,37 @@ static bool provideGlobalsWithLookup(
                 state.isCppExternal = true;
                 state.accessibility = frontend::NamespaceFunctionAccessibility::Public;
                 const auto references = graph.projects()[owner].cppLibraryReferences();
-                const auto fromRuntimeLibrary = [&](std::size_t index) {
+                std::optional<std::filesystem::path> tlsRuntime;
+                bool tlsStatic = false;
+                bool tlsOriginConflict = false;
+                const auto inspectTlsOrigin = [&](std::size_t index) {
                     const auto referenceIndex = entries[index].referenceIndex;
-                    return referenceIndex >= references.size() ||
-                        !references[referenceIndex].runtimePath.empty();
+                    if (referenceIndex >= references.size()) { tlsOriginConflict = true; return; }
+                    const auto& path = references[referenceIndex].runtimePath;
+                    if (path.empty()) { tlsStatic = true; return; }
+                    auto normalized = path.lexically_normal();
+                    if (tlsRuntime && *tlsRuntime != normalized) tlsOriginConflict = true;
+                    else tlsRuntime = std::move(normalized);
                 };
-                const bool dllTls = selected.candidate && selected.candidate->threadLocal &&
-                    (std::any_of(selected.declarationIndices.begin(), selected.declarationIndices.end(), fromRuntimeLibrary) ||
-                     std::any_of(selected.aliasIndices.begin(), selected.aliasIndices.end(), fromRuntimeLibrary));
-                if (dllTls)
+                if (selected.candidate && selected.candidate->threadLocal)
+                {
+                    for (const auto index : selected.declarationIndices) inspectTlsOrigin(index);
+                    for (const auto index : selected.aliasIndices) inspectTlsOrigin(index);
+                    if (tlsRuntime)
+                    {
+                        const auto supportedTarget = [&](std::size_t index) {
+                            const auto& triple = entries[index].targetTriple;
+                            return triple.starts_with("x86_64-") && triple.find("windows-msvc") != std::string::npos;
+                        };
+                        if (!std::all_of(selected.declarationIndices.begin(), selected.declarationIndices.end(), supportedTarget) ||
+                            !std::all_of(selected.aliasIndices.begin(), selected.aliasIndices.end(), supportedTarget))
+                            tlsOriginConflict = true;
+                    }
+                }
+                if (tlsOriginConflict || (tlsRuntime && tlsStatic))
                 {
                     state.declaredTypeKey = "builtin:int"; // Body analysis reports the unsupported import.
-                    state.cppImportError = "thread-local C/C++ global from a runtime library is not yet supported";
+                    state.cppImportError = "thread-local C/C++ global has ambiguous library origins";
                 }
                 else if (selected.candidate)
                 {
@@ -434,7 +453,7 @@ static bool provideGlobalsWithLookup(
                     state.cppStorageSizeBits = selected.candidate->storageSizeBits;
                     state.cppDeclarationAlignmentBits = selected.candidate->declarationAlignmentBits;
                     state.cppClangUsr = selected.candidate->clangUsr;
-                    state.cppDllImport = selected.candidate->dllImport;
+                    state.cppDllImport = selected.candidate->dllImport || tlsRuntime.has_value();
                     state.cppThreadLocal = selected.candidate->threadLocal;
                     const auto fromC = [&](std::size_t index) { return entries[index].cLanguage; };
                     state.cppCGlobal = !selected.declarationIndices.empty() &&

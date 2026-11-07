@@ -88,7 +88,7 @@ bool OopLlvmImplementation::declareStaticFields(std::string& error, bool defineS
                 return fail(error, "Stage 37 failed to declare static field global " + field.storageSymbol);
             staticFieldGlobals_[field.memberOrdinal] = global;
             if (field.cppDllImport) LLVMSetDLLStorageClass(global, LLVMDLLImportStorageClass);
-            if (field.isCppExternal && field.cppThreadLocal) LLVMSetThreadLocal(global, 1);
+            if (field.isCppExternal && field.cppThreadLocal && !field.cppDllImport) LLVMSetThreadLocal(global, 1);
             if (!defineStorage || field.isCppExternal)
             {
                 LLVMSetLinkage(global, LLVMExternalLinkage);
