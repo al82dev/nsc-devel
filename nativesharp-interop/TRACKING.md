@@ -477,6 +477,9 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     Un `int*` TLS mutable pasó asignación, desreferencia y aislamiento entre
     hilos con biblioteca estática y DLL en O0–O3; arreglos y punteros con
     calificadores siguen pendientes. [Evidencia](registro-commits/tls-puntero-evidencia.md).
+    Arreglos TLS `int[2]`, `int[3]` e `int[2][3]` pasaron lectura, escritura
+    y aislamiento con biblioteca estática y DLL en O0–O3; otros elementos y
+    calificadores siguen pendientes. [Evidencia](registro-commits/tls-arreglo-evidencia.md).
     Una DLL de escalares sin importaciones falla ya en el control C de TLS;
     una variante con importación Win32 pasó en NSC O0–O3. Ambas permanecen en
     el gate mientras se investiga la diferencia. [Evidencia](registro-commits/tls-dll-escalares-cero-investigacion.md).
