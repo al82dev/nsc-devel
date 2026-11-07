@@ -482,6 +482,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - La matriz de enteros, flotantes, bool y puntero atómicos no TLS pasó
     lecturas y escrituras O0–O3; se comprobó IR y regresión TLS. Faltan otras
     variantes y operaciones. [Resultado](registro-commits/t08-atomic-global-matriz-validacion.md).
+    Las operaciones compuestas de la misma matriz pasaron O0–O3 con IR
+    atómico y observación C. [Resultado](registro-commits/t08-atomic-global-compuestos-validacion.md).
   - Enteros estrechos y punteros atómicos globales adicionales pasaron O0–O3,
     IR y rechazos de pérdida de calificadores; la regresión TLS pasó.
     [Resultado](registro-commits/t08-atomic-global-extra-validacion.md).
