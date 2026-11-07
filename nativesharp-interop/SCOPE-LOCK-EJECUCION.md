@@ -4377,6 +4377,15 @@ comprobados por el mapeo C existente. Presupuesto inicial: fixture `pointer`,
 seguimiento y registros; producción solo en la ruta demostrada. Sin cambiar
 NSLink, LLVM externo ni C:; construcción y pruebas agrupadas.
 
+# Resolución de sombras C en todas las optimizaciones
+
+Ampliar el fixture existente de T08-018 para ejecutar sus siete casos de
+sombras de funciones, namespaces, miembros y valores en O0–O3. Presupuesto:
+`pruebas-tanda-08-meta-c/validar-sombras.cmd`, tracking y registro. Preservar
+las fuentes de los casos y sus expectativas; no modificar el compilador sin
+reproducir una falla. Salidas en A:, NSLink, LLVM y C: protegidos. No cerrar
+T08-018 por esta muestra ni ejecutar el gate integral antes de completar tanda.
+
 # Arreglo global C TLS
 
 Reproducir lectura, escritura y aislamiento por hilo de un `int[2]` TLS C

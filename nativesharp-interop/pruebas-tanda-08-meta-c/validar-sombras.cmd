@@ -21,10 +21,13 @@ for %%S in (ShadowNamespace ShadowUsing ShadowMember NamespaceGlobalValue Shadow
   if errorlevel 1 exit /b 1
   llvm-lib.exe /nologo /out:"!DEST!\api.lib" "!DEST!\api.obj"
   if errorlevel 1 exit /b 1
-  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "!DEST!\Shadow.nsproj" -O0 --no-artifact-cache -o "!DEST!\program.exe"
-  if errorlevel 1 exit /b 1
-  "!DEST!\program.exe"
-  if errorlevel 1 exit /b 1
+  for %%O in (0 1 2 3) do (
+    nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "!DEST!\Shadow.nsproj" -O%%O --no-artifact-cache -o "!DEST!\program-O%%O.exe"
+    if errorlevel 1 exit /b 1
+    "!DEST!\program-O%%O.exe"
+    if errorlevel 1 exit /b 1
+    echo Sombra %%S O%%O correcta.
+  )
 )
 echo Sombras de funciones C: correctas.
 exit /b 0
