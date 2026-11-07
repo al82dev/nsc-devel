@@ -1,3 +1,29 @@
 #include "Api.h"
 _Thread_local _Atomic(int) atomic_tls = 3;
 int atomic_tls_read(void) { return atomic_tls; }
+typedef unsigned long Dword;
+typedef void* Handle;
+typedef Dword (__stdcall *ThreadRoutine)(void*);
+__declspec(dllimport) Handle __stdcall CreateThread(void*, unsigned long long, ThreadRoutine, void*, Dword, Dword*);
+__declspec(dllimport) Dword __stdcall WaitForSingleObject(Handle, Dword);
+__declspec(dllimport) int __stdcall CloseHandle(Handle);
+static Handle worker_handle;
+static Dword __stdcall worker(void* data)
+{
+    _Atomic(int)* shared = (_Atomic(int)*)data;
+    for (int i = 0; i < 10000; ++i) *shared += 1;
+    return 0;
+}
+int atomic_start_worker(void)
+{
+    worker_handle = CreateThread(0, 0, worker, &atomic_tls, 0, 0);
+    return worker_handle ? 0 : 1;
+}
+int atomic_wait_worker(void)
+{
+    if (!worker_handle) return 1;
+    Dword result = WaitForSingleObject(worker_handle, 0xffffffffUL);
+    CloseHandle(worker_handle);
+    worker_handle = 0;
+    return result == 0 ? 0 : 2;
+}
