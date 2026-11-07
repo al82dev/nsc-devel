@@ -12,7 +12,9 @@ struct CppFunctionType;
 enum class CppTypeKind
 {
     Void, Boolean, SignedInteger, UnsignedInteger, Floating,
-    Pointer, LValueReference, RValueReference, Array, Enumeration, Record, Function, Unsupported
+    Pointer, LValueReference, RValueReference, Array, Enumeration, Record, Function, Unsupported,
+    // Captured for analysis only; older metadata codecs deliberately reject this kind.
+    Atomic
 };
 
 struct CppRecordTypeIdentity

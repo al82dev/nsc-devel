@@ -76,7 +76,12 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
     result.isRestrict = canonical.isRestrictQualified();
     const clang::Type* raw = canonical.getTypePtr();
     clang::QualType element;
-    if (raw->isVoidType()) result.kind = CppTypeKind::Void;
+    if (const auto* atomic = llvm::dyn_cast<clang::AtomicType>(raw))
+    {
+        result.kind = CppTypeKind::Atomic;
+        element = atomic->getValueType();
+    }
+    else if (raw->isVoidType()) result.kind = CppTypeKind::Void;
     else if (raw->isBooleanType()) result.kind = CppTypeKind::Boolean;
     else if (const auto* enumType = raw->getAs<clang::EnumType>())
     {
