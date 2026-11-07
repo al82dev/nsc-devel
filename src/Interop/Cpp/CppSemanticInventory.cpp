@@ -193,13 +193,11 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     const CppType* arrayElement = &global.type;
     std::size_t arrayDepth = 0;
     bool fixedArray = kind == CppTypeKind::Array;
-    bool arrayVolatile = false;
     while (fixedArray && arrayElement->kind == CppTypeKind::Array)
     {
         if (!arrayElement->arrayCount || *arrayElement->arrayCount == 0 || !arrayElement->element ||
             ++arrayDepth > 64)
         { fixedArray = false; break; }
-        arrayVolatile |= arrayElement->isVolatile;
         arrayElement = arrayElement->element.get();
     }
     const bool scalarArrayElement = arrayElement->kind == CppTypeKind::Boolean ||
@@ -207,9 +205,8 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         arrayElement->kind == CppTypeKind::Floating;
     const bool supportedArrayElement = scalarArrayElement || arrayElement->kind == CppTypeKind::Record ||
         arrayElement->kind == CppTypeKind::Enumeration;
-    const bool supportedVolatileArray = !(arrayVolatile || arrayElement->isVolatile) || scalarArrayElement;
-    const bool supportedArrayTls = fixedArray && supportedArrayElement && supportedVolatileArray;
-    const bool supportedVolatileTls = !global.type.isVolatile || supportedArrayTls || supportedPointerTls || scalarTls;
+    const bool supportedArrayTls = fixedArray && supportedArrayElement;
+    const bool supportedVolatileTls = !global.type.isVolatile || supportedArrayTls || supportedPointerTls || scalarTls || aggregateTls;
     if (global.threadLocal && (!cLanguage || global.dllImport ||
         (!scalarTls && !aggregateTls && !supportedPointerTls && !supportedArrayTls) || !supportedVolatileTls))
         return failure("thread-local C/C++ global is not yet projected");
