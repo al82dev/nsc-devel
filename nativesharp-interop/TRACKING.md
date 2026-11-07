@@ -475,6 +475,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     global y fallan dentro de namespace por nombre desconocido. Es necesario
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
 - [ ] T08-004. Importar declaraciones de variables globales C.
+  - El global C `_Atomic(int)` sin TLS fue rechazado como tipo no mapeado.
+    Preparada una corrección limitada de su proyección; faltan construcción,
+    verificación de IR y ejecución agrupadas. [Detalle](registro-commits/t08-atomic-global-int-proyeccion.md).
   - Reproducido rechazo de `|=` en `_Bool` C escalar volatile; Clang acepta el
     contrato y emite accesos de byte ordenados. Corrección pendiente.
     [Evidencia](registro-commits/t08-bool-scalar-compuesto-reproduccion.md).
