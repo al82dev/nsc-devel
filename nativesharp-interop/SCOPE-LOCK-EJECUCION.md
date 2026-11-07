@@ -1,5 +1,17 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004/015: global C escalar `volatile _Bool`
+
+El fixture `A:/nsc-interop-build/t08-bool-scalar-repro` reproduce que NSC
+declara `@flag` como i1 y genera accesos `volatile i1`, mientras Clang 23 en
+Windows x64 emite almacenamiento i8 y lectura `atomic volatile acquire`.
+Corregir declaración, lectura y escritura de global C escalar `volatile _Bool`
+en modo MS: byte, normalización bool y órdenes acquire/release. Conservar
+`_Atomic`, TLS, bool nativo, C++ y arreglos. Presupuesto: descriptor estático
+MIR y su construcción, marcador HIR de global, descenso LLVM de declaración,
+lectura y escritura, fixture record-c, tracking y registros. Validación
+agrupada O0–O3, IR y controles existentes; sin NSLink, LLVM externo ni C:.
+
 ## T08-015: operandos flotantes en `_Bool` C volatile compuesto
 
 Implementar `+=`, `-=`, `*=` y `/=` con `float` y `double` en el arreglo C
