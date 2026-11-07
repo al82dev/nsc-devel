@@ -75,6 +75,8 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 exit /b 1
   findstr /L /C:"AddressOfIndex:" "%DEST%\nsdll-tls-O%%O.log" >nul
   if errorlevel 1 goto :failure
+  findstr /L /C:"AddressOfIndex: 0x0" "%DEST%\nsdll-tls-O%%O.log" >nul
+  if not errorlevel 1 goto :failure
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\DllConsumer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\nsdll-consumer-O%%O.exe" > "%DEST%\nsdll-consumer-O%%O.log" 2>&1
   if errorlevel 1 goto :failure
   "%DEST%\nsdll-consumer-O%%O.exe"
