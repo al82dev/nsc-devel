@@ -492,6 +492,11 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     Un segundo contraste conservó `/noentry` y el mismo objeto C: forzar una
     importación produjo índice uno y datos coincidentes con la plantilla.
     [Evidencia](registro-commits/t08-tls-dll-contraste-importacion.md).
+    Un contraste adicional aisló la presencia del directorio de importación:
+    una tabla vacía bastó para observar índice asignado y lectura cero en cinco
+    procesos; sin directorio, los cinco conservaron el centinela. Esto no
+    corrige las DLL ni autoriza sustituir sus controles.
+    [Evidencia](registro-commits/t08-tls-directorio-importacion-vacio.md).
   - `_Thread_local _Atomic(unsigned int*)` pasó acceso y aritmética O0–O3
     frente al control C de Clang, con operaciones atómicas comprobadas en IR.
     [Evidencia](registro-commits/t08-tls-atomico-puntero-uint.md).

@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08: aislar directorio de importación en DLL TLS
+
+Investigar el fallo reproducido de inicialización TLS en una DLL de prueba sin
+importaciones, comparando imágenes derivadas del mismo objeto y sin tocar las
+pruebas originales. Presupuesto: instrumento separado en `directo`, tracking y
+registro; artefactos experimentales en `A:/nsc-interop-build`. No modificar el
+compilador, NSLink, LLVM ni C:. No sustituir las pruebas fallidas ni cerrar T08.
+
 ## T08: USR en NSMETA real de productor independiente
 
 Comparar los USR del registro `CRecord` y todos sus campos obtenidos de una
