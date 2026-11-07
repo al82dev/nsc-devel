@@ -480,6 +480,9 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     `double*`, `const int*`, `volatile int*`, `int* volatile` e `int* const`
     TLS pasaron O0–O3 en estático y DLL, con controles de calificadores.
     [Evidencia](registro-commits/tls-punteros-calificadores-evidencia.md).
+    Un struct TLS, su puntero y arreglo, un enum TLS y su puntero pasaron en
+    biblioteca estática y DLL O0–O3, con aislamiento de otro hilo.
+    [Evidencia](registro-commits/tls-records-enums-evidencia.md).
     Arreglos TLS `int[2]`, `int[3]` e `int[2][3]` pasaron lectura, escritura
     y aislamiento con biblioteca estática y DLL en O0–O3; otros elementos y
     calificadores siguen pendientes. [Evidencia](registro-commits/tls-arreglo-evidencia.md).
