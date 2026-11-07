@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## TLS de DLL C a través de biblioteca NativeSharp precompilada
+
+Comprobar si un productor NativeSharp estático puede acceder directamente a un
+global TLS de una DLL C con importaciones reales, y un consumidor sin header
+puede llamar sus métodos y mantener aislamiento entre hilos. Preparar fixture
+en `pruebas-tanda-08-tls-c/precompiled`, tracking y bitácora, con salidas en A:.
+No modificar producción hasta reproducir una causa; no alterar los controles
+originales de DLL ni modificar NSLink, LLVM o C:.
+
 ## Caché y TLS transitivo precompilado
 
 Comprobar en un directorio temporal de A: que el mismo consumidor cambia de
