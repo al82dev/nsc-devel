@@ -502,6 +502,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     [Resultado](registro-commits/t08-global-static-tipos-validacion.md).
     La selección ya detecta dos orígenes internos aunque uno tenga un tipo
     aún no proyectado. [Resultado](registro-commits/t08-global-static-ambiguedad-mixta-validacion.md).
+    Const unsigned int, volatile short y punteros internos a const, const y a
+    volatile int pasaron O0–O3, controles negativos e IR frente a Clang.
+    [Resultado](registro-commits/t08-global-static-qualified-validacion.md).
   - El global C `_Atomic(int)` sin TLS fue rechazado como tipo no mapeado.
     Una corrección limitada de su proyección pasó O0–O3, comprobación de IR
     atómico y regresión TLS. [Resultado](registro-commits/t08-atomic-global-int-validacion.md).
