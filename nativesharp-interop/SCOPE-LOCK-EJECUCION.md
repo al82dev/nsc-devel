@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004: globales internas C con calificadores y punteros
+
+Reproducir acceso a globales internas `const unsigned int`, `volatile short`,
+puntero a const, puntero const y puntero a volatile int; preservar los rechazos
+de escritura const y comparar el IR volatile con Clang en O0–O3. Validar las
+regresiones de globales internas. No modificar NSLink, metadata, LLVM externo,
+fixtures existentes ni C:; no acreditar otras variantes o TLS con este control.
+
 ## T08-004: matriz de tipos C internos TLS
 
 Reproducir y corregir globales `static _Thread_local` de escalares, enum,
