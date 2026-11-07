@@ -1,5 +1,10 @@
 extern __declspec(thread) int tls_array[2];
 extern __declspec(thread) int tls_three[3];
 extern __declspec(thread) int tls_matrix[2][3];
+extern __declspec(thread) unsigned int tls_unsigned_array[2];
+extern __declspec(thread) double tls_double_array[2];
+extern __declspec(thread) _Bool tls_bool_array[2];
+extern __declspec(thread) const int tls_const_array[2];
+extern __declspec(thread) volatile int tls_volatile_array[2];
 int array_check(void);
 int array_other_thread(void);

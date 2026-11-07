@@ -4334,6 +4334,15 @@ la proyección TLS. Ampliar el mismo fixture y esa proyección para dimensiones
 fijas positivas de `int` de 32 bits, dentro del límite existente de 64 niveles.
 Los demás tipos y calificadores siguen pendientes de sus propios controles.
 
+# Ampliación agrupada de arreglos TLS C
+
+Probar arreglos fijos TLS de enteros sin signo, flotantes, booleanos, `const`
+y `volatile` junto con los arreglos ya verificados en estático y DLL. Primero
+observar el resultado real; después limitar cambios al mapeo TLS demostrado,
+conservar el comportamiento de acceso y los controles negativos. Construir
+incrementalmente y validar el conjunto una vez implementado. Sin NSLink,
+LLVM externo ni despliegue en C:; otros tipos siguen abiertos.
+
 # Identificación provisional de TLS de DLL
 
 El fixture directo demuestra que NSC proyecta una declaración TLS sin
