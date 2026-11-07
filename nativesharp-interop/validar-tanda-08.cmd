@@ -70,6 +70,7 @@ for %%T in (
   pruebas-tanda-08-tls-c\lld\validar-sidecar-nuevo.cmd
   pruebas-tanda-08-tls-c\lld\validar-emision.cmd
   pruebas-tanda-08-tls-c\lld\validar-emision-auto.cmd
+  pruebas-tanda-08-tls-c\lld\validar-dll-emision-auto.cmd
   pruebas-tanda-08-tls-c\lld\validar-build.cmd
   pruebas-tanda-08-tls-c\lld\validar-transitivo.cmd
   pruebas-tanda-08-meta-c\validar-productor.cmd
