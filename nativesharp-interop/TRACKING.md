@@ -465,8 +465,10 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     esa selección aún no es automática. [Evidencia](registro-commits/tls-estatico-control-original.md).
     `nsc build --linker LLD` sin `NSC_LINKER` pasó en un proyecto TLS, una
     biblioteca estática y una DLL consumida desde NativeSharp; también pasó
-    un acierto del enlace incremental. Detección automática de TLS y otros
-    controles de caché siguen pendientes. [Evidencia](registro-commits/lld-sin-entorno-prueba.md).
+    un acierto del enlace incremental. El proyecto TLS pasó O0–O3 sin esa
+    variable; el cambio de NSLink a LLD invalidó la caché y la ausencia de LLD
+    produjo error sin sustituir el ejecutable previo. Detección automática de
+    TLS sigue pendiente. [Evidencia](registro-commits/lld-sin-entorno-prueba.md).
     La DLL no solicita un accessor inexistente para el global C importado.
     [Evidencia](registro-commits/tls-dll-exportacion-externa.md).
     La declaración estándar C11 `_Thread_local` pasó el control C y acceso

@@ -26,13 +26,15 @@ clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Api.c" -o "%DEST%\
 if errorlevel 1 exit /b 1
 llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
-nsc.exe build "%DEST%\Project.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore --linker LLD -O0 --output-format=json > "%DEST%\build.log" 2>&1
-if errorlevel 1 (type "%DEST%\build.log" & exit /b 1)
-findstr /L /C:"\"linker\":\"LLD\"" "%DEST%\build.log" >nul
-if errorlevel 1 (type "%DEST%\build.log" & exit /b 1)
-"%DEST%\bin\Debug\CTlsStaticGlobal.exe"
-if errorlevel 1 exit /b 1
-echo Build TLS con LLD sin NSC_LINKER correcto.
+for %%O in (0 1 2 3) do (
+  nsc.exe build "%DEST%\Project.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore --linker LLD -O%%O --output-format=json > "%DEST%\build-O%%O.log" 2>&1
+  if errorlevel 1 (type "%DEST%\build-O%%O.log" & exit /b 1)
+  findstr /L /C:"\"linker\":\"LLD\"" "%DEST%\build-O%%O.log" >nul
+  if errorlevel 1 (type "%DEST%\build-O%%O.log" & exit /b 1)
+  "%DEST%\bin\Debug\CTlsStaticGlobal.exe"
+  if errorlevel 1 exit /b 1
+  echo Build TLS O%%O con LLD sin NSC_LINKER correcto.
+)
 nsc.exe build "%DEST%\Producer.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore --linker LLD -O0 > "%DEST%\library.log" 2>&1
 if errorlevel 1 (type "%DEST%\library.log" & exit /b 1)
 if not exist "%DEST%\bin\Debug\TlsProducer.lib" exit /b 1
