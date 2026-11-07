@@ -66,6 +66,7 @@ for %%T in (
   pruebas-tanda-08-tls-c\lld\validar-sin-entorno.cmd
   pruebas-tanda-08-tls-c\lld\validar-cambio-enlazador.cmd
   pruebas-tanda-08-tls-c\lld\validar-auto-tls.cmd
+  pruebas-tanda-08-tls-c\lld\validar-auto-bitcode.cmd
   pruebas-tanda-08-tls-c\lld\validar-emision.cmd
   pruebas-tanda-08-tls-c\lld\validar-build.cmd
   pruebas-tanda-08-tls-c\lld\validar-transitivo.cmd
