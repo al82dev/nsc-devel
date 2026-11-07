@@ -4492,11 +4492,13 @@ por separado; no implica cierre de TLS ni de la tanda.
 
 Investigar por qué Windows no asigna el índice TLS a la DLL de escalares sin
 importaciones, aunque sí lo hace a la variante con importación real. Presupuesto:
-un instrumento nuevo en `pruebas-tanda-08-tls-c/directo`, su evidencia y el
+instrumentos nuevos en `pruebas-tanda-08-tls-c/directo`, su evidencia y el
 tracking; las copias PE se escriben exclusivamente en `A:/nsc-interop-build`.
 Comparar la misma DLL con índice centinela y con o sin directorio de importación
 vacío, sin alterar los fixtures originales, NSLink, LLVM ni C:. La observación
 no autoriza parchear bibliotecas de terceros ni declarar resuelta la tanda.
+Contrastar además el mismo ejecutable NativeSharp O0 con ambas copias, sin
+modificar la DLL utilizada por los validadores originales.
 
 # Arreglo global C TLS
 

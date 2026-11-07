@@ -28,23 +28,41 @@ if u32(original, directory + 8) != 0:
     raise ValueError('Expected the DLL fixture without imports')
 tls = offset(u32(original, directory + 9 * 8))
 index_rva = u64(original, tls + 16) - image_base
-padding_rva = 0x2300
-padding_offset = offset(padding_rva)
-if original[padding_offset:padding_offset + 20] != bytes(20):
-    raise ValueError('Expected a zero-filled import-descriptor area')
+for i in range(u16(original, pe + 6)):
+    section = sections + 40 * i
+    if original[section:section + 8].split(b'\0')[0] == b'.rdata':
+        virtual_size = u32(original, section + 8)
+        section_rva = u32(original, section + 12)
+        raw_size = u32(original, section + 16)
+        raw = u32(original, section + 20)
+        break
+else:
+    raise ValueError('Missing .rdata')
+padding = (virtual_size + 15) & ~15
+if padding + 20 > raw_size or original[raw + padding:raw + padding + 20] != bytes(20):
+    raise ValueError('Expected a zero-filled import-descriptor area in .rdata padding')
+padding_rva = section_rva + padding
+inside = next((i for i in range(virtual_size - 19)
+               if original[raw + i:raw + i + 20] == bytes(20)), None)
+if inside is None:
+    raise ValueError('Expected zero-filled bytes inside .rdata')
+inside_rva = section_rva + inside
 indices = {}
-for variant in ('absent', 'empty'):
+for variant in ('absent', 'empty', 'empty_inside', 'empty_inside_nosentinel'):
     data = bytearray(original)
-    struct.pack_into('<I', data, offset(index_rva), 0xffffffff)
+    if variant != 'empty_inside_nosentinel':
+        struct.pack_into('<I', data, offset(index_rva), 0xffffffff)
     if variant == 'empty':
         struct.pack_into('<II', data, directory + 8, padding_rva, 20)
+    elif variant in ('empty_inside', 'empty_inside_nosentinel'):
+        struct.pack_into('<II', data, directory + 8, inside_rva, 20)
     target = out / ('tls_import_' + variant + '.dll')
     target.write_bytes(data)
     module = ctypes.WinDLL(str(target))
     index = ctypes.c_uint32.from_address(module._handle + index_rva).value
     indices[variant] = index
     print(f'{variant}: module={module._handle:#x}, index={index:#x}', flush=True)
-    if variant == 'empty' and index != 0xffffffff:
+    if variant != 'absent' and index != 0xffffffff:
         read = module.tls_zero_read
         read.restype = ctypes.c_int
         values = [read()]
@@ -53,6 +71,6 @@ for variant in ('absent', 'empty'):
         worker.join()
         if values != [0, 0]:
             raise SystemExit(f'Lectura TLS inesperada: {values!r}')
-        print('empty: lectura TLS cero en ambos hilos', flush=True)
-if indices['absent'] != 0xffffffff or indices['empty'] == 0xffffffff:
+        print(f'{variant}: lectura TLS cero en ambos hilos', flush=True)
+if indices['absent'] != 0xffffffff or any(indices[v] == 0xffffffff for v in ('empty', 'empty_inside')):
     raise SystemExit('El resultado difiere de la reproduccion observada')
