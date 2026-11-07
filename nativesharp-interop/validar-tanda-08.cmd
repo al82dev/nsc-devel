@@ -41,6 +41,7 @@ for %%T in (
   pruebas-tanda-08-atomic-global-dll\validar.cmd
   pruebas-tanda-08-atomic-global-matrix\validar.cmd
   pruebas-tanda-08-atomic-global-matrix\validar-extra.cmd
+  pruebas-tanda-08-atomic-global-matrix\validar-calificados.cmd
   pruebas-tanda-08-callback\validar-record-precompilado.cmd
   pruebas-tanda-08-enum-funcion\validar-callback-precompilado.cmd
   pruebas-tanda-08-typedef-c\validar-puntero.cmd

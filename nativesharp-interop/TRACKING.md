@@ -493,8 +493,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Enteros estrechos y punteros atómicos globales adicionales pasaron O0–O3,
     IR y rechazos de pérdida de calificadores; la regresión TLS pasó.
     [Resultado](registro-commits/t08-atomic-global-extra-validacion.md).
-    Preparada la proyección de los demás apuntados calificados reconocidos en
-    TLS; faltan construcción y validación. [Detalle](registro-commits/t08-atomic-global-calificados-proyeccion.md).
+    Los apuntados calificados adicionales reconocidos en TLS pasaron O0–O3,
+    IR y rechazos dirigidos también como globales no TLS; regresión TLS pasó.
+    [Resultado](registro-commits/t08-atomic-global-calificados-validacion.md).
   - Reproducido rechazo de `|=` en `_Bool` C escalar volatile; Clang acepta el
     contrato y emite accesos de byte ordenados. Corrección pendiente.
     [Evidencia](registro-commits/t08-bool-scalar-compuesto-reproduccion.md).
