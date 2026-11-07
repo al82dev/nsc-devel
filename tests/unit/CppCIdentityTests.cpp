@@ -27,6 +27,7 @@
 //   nsc_cpp_c_identity_tests --verify-driver-restored-c-usr <producer.lib> <header> <clang-resource-dir>
 //                            <clang-driver>
 //   nsc_cpp_c_identity_tests --typedef-matrix <typedefs-dir> <clang-resource-dir> <clang-driver>
+//   nsc_cpp_c_identity_tests --inspect-c-constants <producer.nsmeta> <forbidden-state> <required-enumerator>
 
 #include "nativesharp/Interop/CppClangSessionFactory.h"
 #include "nativesharp/Interop/CppProjectSessions.h"
@@ -1302,6 +1303,60 @@ int runTypedefMatrix(const std::filesystem::path& directory, const std::string& 
     return ok ? 0 : 1;
 }
 
+// EN: Mode --inspect-c-constants <nsmeta> <forbidden-state> <required-enumerator>. Reads a real
+//     producer NSMETA and checks how C enum constants were published (finding H7): no namespace
+//     state without a namespace, no state named `forbidden` ('-' skips the name check) and, unless
+//     `required` is '-', a C catalogue enumerator with that name. Prints the published states and
+//     the catalogue enums as evidence. Returns 0 when every check passes.
+// ES: Modo --inspect-c-constants <nsmeta> <estado-prohibido> <enumerador-requerido>. Lee el NSMETA
+//     real de un productor y comprueba cómo se publicaron las constantes de enum C (hallazgo H7):
+//     ningún estado de espacio de nombres sin espacio de nombres, ningún estado llamado
+//     `forbidden` ('-' omite la comprobación del nombre) y, salvo que `required` sea '-', un
+//     enumerador del catálogo C con ese nombre. Imprime los estados publicados y los enums del
+//     catálogo como evidencia. Devuelve 0 si pasan todas las comprobaciones.
+int inspectCConstants(char** argv)
+{
+    const std::string forbidden = argv[3];
+    const std::string required = argv[4];
+    LibraryMetadataCodec codec;
+    LibraryMetadata metadata;
+    std::string error;
+    const bool read = codec.read(argv[2], metadata, error) && codec.verifyCurrentCompiler(metadata, error);
+    if (!expect(read, "producer NSMETA reads and verifies: " + error)) return 1;
+    std::vector<CppCRecordSnapshot> records;
+    std::vector<CppCEnumSnapshot> enums;
+    if (!metadata.cppCRecordCatalog.empty())
+    {
+        const bool decoded =
+            metadata_detail::decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error);
+        if (!expect(decoded, "producer C catalogue decodes: " + error)) return 1;
+    }
+    bool ok = true;
+    for (const auto& state : metadata.namespaceStates)
+    {
+        std::cout << "PUBLISHED state '" << state.namespaceName << '.' << state.name << "' type="
+                  << state.declaredTypeKey << '\n';
+        ok &= expect(!state.namespaceName.empty(), "no namespace state without a namespace: " + state.name);
+        ok &= expect(forbidden == "-" || state.name != forbidden,
+                     "C enum constant is not published as a namespace state: " + state.name);
+    }
+    bool found = required == "-";
+    for (const auto& enumeration : enums)
+    {
+        std::string names;
+        for (const auto& item : enumeration.declaration.enumerators)
+        {
+            names += ' ' + item.name + '=' + item.decimalValue;
+            if (item.name == required) found = true;
+        }
+        std::cout << "CATALOGUE enum " << enumeration.identityKey << ':' << names << '\n';
+    }
+    ok &= expect(found, "C catalogue keeps the enumerator " + required);
+    std::cout << "PUBLISHED " << argv[2] << ": states=" << metadata.namespaceStates.size()
+              << " catalogue-records=" << records.size() << " catalogue-enums=" << enums.size() << '\n';
+    return ok ? 0 : 1;
+}
+
 }
 
 int main(int argc, char** argv)
@@ -1315,6 +1370,7 @@ int main(int argc, char** argv)
     {
         return runTypedefMatrix(argv[2], argv[3], argv[4]);
     }
+    if (argc == 5 && std::string_view(argv[1]) == "--inspect-c-constants") return inspectCConstants(argv);
     if (argc != 4)
     {
         std::cerr << "usage: nsc_cpp_c_identity_tests <clang-resource-dir> <work-dir> <clang-driver>\n"
@@ -1323,7 +1379,9 @@ int main(int argc, char** argv)
                      "       nsc_cpp_c_identity_tests --verify-driver-restored-c-usr <producer.lib> <header> "
                      "<clang-resource-dir> <clang-driver>\n"
                      "       nsc_cpp_c_identity_tests --typedef-matrix <typedefs-dir> <clang-resource-dir> "
-                     "<clang-driver>\n";
+                     "<clang-driver>\n"
+                     "       nsc_cpp_c_identity_tests --inspect-c-constants <producer.nsmeta> <forbidden-state> "
+                     "<required-enumerator>\n";
         return 2;
     }
     return runProbes(argv[1], argv[2], argv[3]);

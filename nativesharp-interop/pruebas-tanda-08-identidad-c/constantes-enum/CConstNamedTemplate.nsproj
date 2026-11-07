@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CConstNamedTemplate</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="CConstNamedTemplate.ns" />
+    <LibraryReference Include="PConstNamedTemplate.lib" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>PConstAnonPlain</Name><OutputType>Library</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="PConstAnonPlain.ns" />
+    <CppLibraryReference Header="Const.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>

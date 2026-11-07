@@ -1,0 +1,5 @@
+int Main()
+{
+    if ((int)PublishedConst.Bridge.Current() != 11) return 1;
+    return 0;
+}

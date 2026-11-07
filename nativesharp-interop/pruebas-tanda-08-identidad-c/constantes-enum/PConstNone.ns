@@ -1,0 +1,7 @@
+namespace PublishedConst
+{
+    public class Bridge
+    {
+        public static int Seven() { return 7; }
+    }
+}

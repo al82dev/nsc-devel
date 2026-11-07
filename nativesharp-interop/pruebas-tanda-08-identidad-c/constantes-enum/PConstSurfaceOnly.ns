@@ -1,0 +1,7 @@
+namespace PublishedConst
+{
+    public class Bridge
+    {
+        public static CConstMode Echo(CConstMode mode) { return mode; }
+    }
+}

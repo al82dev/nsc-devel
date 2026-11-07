@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CConstNamedSurfaceValue</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="CConstNamedSurfaceValue.ns" />
+    <LibraryReference Include="PConstNamedSurface.lib" />
+  </ItemGroup>
+</Project>

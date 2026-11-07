@@ -1,0 +1,12 @@
+# T08-002 inspeccion del NSMETA de cada productor que se construyo en esta ejecucion.
+# Columnas: productor estado-prohibido enumerador-requerido
+#   estado-prohibido     ningun estado publicado puede llamarse asi (- sin comprobacion de nombre);
+#                        ademas nunca puede publicarse un estado sin espacio de nombres.
+#   enumerador-requerido el catalogo C debe contener este enumerador (- sin requisito).
+PConstNone - -
+PConstSurfaceOnly - CConstModeB
+PConstNamedPlain CConstModeB -
+PConstNamedTemplate CConstModeB -
+PConstNamedSurface CConstModeB CConstModeB
+PConstAnonPlain CConstLoose -
+PConstAnonTemplate CConstLoose -

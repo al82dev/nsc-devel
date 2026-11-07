@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CConstNamedPlain</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="CConstNamedPlain.ns" />
+    <LibraryReference Include="PConstNamedPlain.lib" />
+  </ItemGroup>
+</Project>

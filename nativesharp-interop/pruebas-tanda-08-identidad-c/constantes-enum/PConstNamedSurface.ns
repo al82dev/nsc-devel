@@ -1,0 +1,8 @@
+namespace PublishedConst
+{
+    public class Bridge
+    {
+        public static CConstMode Current() { return CConstModeB; }
+        public static int ModeOf<T>(T value) { return (int)CConstModeB; }
+    }
+}

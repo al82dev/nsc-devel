@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CConstNone</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="CConstNone.ns" />
+    <LibraryReference Include="PConstNone.lib" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CConstAnonPlain</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="CConstAnonPlain.ns" />
+    <LibraryReference Include="PConstAnonPlain.lib" />
+  </ItemGroup>
+</Project>

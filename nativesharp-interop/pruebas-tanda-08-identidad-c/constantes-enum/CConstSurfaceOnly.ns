@@ -1,0 +1,5 @@
+int Main()
+{
+    if (PublishedConst.Bridge.Echo(CConstModeB) != CConstModeB) return 1;
+    return 0;
+}

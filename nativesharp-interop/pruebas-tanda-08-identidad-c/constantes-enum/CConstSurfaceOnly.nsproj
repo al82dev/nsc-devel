@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CConstSurfaceOnly</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="CConstSurfaceOnly.ns" />
+    <LibraryReference Include="PConstSurfaceOnly.lib" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CConstAnonTemplate</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="CConstAnonTemplate.ns" />
+    <LibraryReference Include="PConstAnonTemplate.lib" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,15 @@
+# T08-002 constantes de enum C usadas por bibliotecas (hallazgo H7).
+# Columnas: consumidor productor ACTUAL PROP
+#   ACTUAL  resultado de hoy.
+#   PROP    resultado con el parche t08-002-h7-excluir-constantes.patch aplicado
+#           (medido en este carril con el parche aplicado temporalmente; ver T08-002-H7-CONSTANTES.md).
+# Resultados: runs, ident (unknown identifier), state (metadata contains an incomplete or duplicate
+#   namespace state).
+CConstNone PConstNone runs runs
+CConstSurfaceOnly PConstSurfaceOnly runs runs
+CConstNamedPlain PConstNamedPlain state runs
+CConstNamedTemplate PConstNamedTemplate state ident
+CConstNamedSurfaceValue PConstNamedSurface state runs
+CConstNamedSurfaceTemplate PConstNamedSurface state runs
+CConstAnonPlain PConstAnonPlain state runs
+CConstAnonTemplate PConstAnonTemplate state ident

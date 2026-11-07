@@ -1,0 +1,5 @@
+int Main()
+{
+    if (PublishedConst.Bridge.ModeOf<int>(1) != 11) return 1;
+    return 0;
+}

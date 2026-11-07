@@ -9,6 +9,10 @@ rem 4. Matriz de typedef en dos encabezados (typedefs\casos.txt): sonda de regla
 rem 5. Enum declarado dentro de un campo de record C, con encabezado y por biblioteca precompilada
 rem    (enum-campo\casos.txt).
 rem 6. Plantillas publicas que usan declaraciones C, por biblioteca precompilada (plantillas\casos.txt).
+rem 7. Constantes de enum C usadas por bibliotecas (constantes-enum\casos.txt) e inspeccion del NSMETA
+rem    publicado (constantes-enum\inspeccion.txt), hallazgo H7.
+rem Uso: validar.cmd [seccion]. Sin argumento ejecuta todo; "constantes" ejecuta solo esa seccion (con
+rem la preparacion comun).
 rem Las tablas casos.txt fijan el resultado ACTUAL de cada caso; con NSC_T08_PROPUESTAS=1 el validador
 rem exige en su lugar el resultado PROP que debe dar la propuesta correspondiente una vez implementada.
 rem Variables opcionales (valor por omision entre parentesis):
@@ -31,10 +35,12 @@ set "HOMONYM_FIXTURES=%~dp0homonimos"
 set "TEMPLATE_FIXTURES=%~dp0plantillas"
 set "TYPEDEF_FIXTURES=%~dp0typedefs"
 set "ENUM_FIELD_FIXTURES=%~dp0enum-campo"
+set "ENUM_CONSTANT_FIXTURES=%~dp0constantes-enum"
 if not exist "%NSC_T08_OUT%\temp" mkdir "%NSC_T08_OUT%\temp"
 if errorlevel 1 exit /b 1
 set "TEMP=%NSC_T08_OUT%\temp"
 set "TMP=%TEMP%"
+if /i "%~1"=="constantes" goto only_enum_constants
 echo === Sondas de identidad de declaraciones C ===
 nsc_cpp_c_identity_tests.exe "%NSC_T08_CLANG%\lib\clang\23" "%NSC_T08_OUT%" "%NSC_T08_CLANG%\bin\clang.exe"
 if errorlevel 1 exit /b 1
@@ -58,7 +64,15 @@ call :enum_field
 if errorlevel 1 exit /b 1
 call :templates
 if errorlevel 1 exit /b 1
+call :enum_constants
+if errorlevel 1 exit /b 1
 echo T08-002 C identity checks passed.
+exit /b 0
+
+:only_enum_constants
+call :enum_constants
+if errorlevel 1 exit /b 1
+echo T08-002 C enum constant checks passed.
 exit /b 0
 
 rem :restore <fixtures> <C base name> <C library base> <producer library> <producer source> <O level>
@@ -174,6 +188,29 @@ set "DEST=%NSC_T08_OUT%\plantillas"
 call :prepare_cases "%TEMPLATE_FIXTURES%" Gen gen
 if errorlevel 1 exit /b 1
 call :cases
+exit /b %errorlevel%
+
+rem :enum_constants constantes de enum C en bibliotecas (constantes-enum\casos.txt) e inspeccion del NSMETA
+rem de cada productor construido en esta ejecucion (constantes-enum\inspeccion.txt).
+:enum_constants
+set "DEST=%NSC_T08_OUT%\constantes-enum"
+xcopy /e /i /y /q "%ENUM_CONSTANT_FIXTURES%" "%DEST%" >nul
+if errorlevel 1 exit /b 1
+call :cases
+if errorlevel 1 exit /b 1
+for /f "usebackq eol=# tokens=1-3" %%A in ("%DEST%\inspeccion.txt") do (
+  call :inspect_constants %%A %%B %%C
+  if errorlevel 1 exit /b 1
+)
+exit /b 0
+
+rem :inspect_constants <productor> <estado-prohibido> <enumerador-requerido>
+:inspect_constants
+if not defined CASE_BUILT_%~1 (
+  echo Inspection %~1 skipped: the producer did not build in this run.
+  exit /b 0
+)
+nsc_cpp_c_identity_tests.exe --inspect-c-constants "%DEST%\%~1.nsmeta" %~2 %~3
 exit /b %errorlevel%
 
 rem :prepare_cases <fixtures> <C base> <C library base> copia el fixture a DEST y construye la biblioteca C.

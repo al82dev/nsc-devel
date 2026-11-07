@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>PConstNamedSurface</Name><OutputType>Library</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="PConstNamedSurface.ns" />
+    <CppLibraryReference Header="Const.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>
