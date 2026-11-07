@@ -1059,7 +1059,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 - [ ] T08-017. Definir la representación de punteros a función C.
   - Productor y consumidores precompilados para callback almacenado con enum pasaron O0–O3 con y sin referencia explícita al header; se ocultó solo la copia de salida. [Evidencia](registro-commits/enum-c-reconciliado-campo.md).
   - El callback almacenado que recibe y devuelve enum C pasó el fixture de campo/global O0–O3 y la suite de sesión. [Evidencia](registro-commits/callback-enum-precompilado.md).
-  - Un callback global con record usado solo en su firma se importó y permitió resolver un campo mediante `var`; llegó a IR, con ejecución O0–O3 pendiente. [Detalle](registro-commits/callback-global-record-inferido.md).
+  - Un callback global con record usado solo en su firma se importó y permitió
+    resolver un campo mediante `var`; ejecutó O0–O3 en el gate ajustado con los
+    cuatro marcadores de éxito. [Detalle](registro-commits/callback-global-record-inferido.md).
   - Un callback C cuyo resultado es un puntero a record pasó O0–O3 en retorno de función, campo y global. [Detalle](registro-commits/callback-retorno-puntero-record.md).
   - Un callback NativeSharp sin capturas que recibe un puntero a record C se pasó y almacenó para llamadas C y pasó O0–O3. [Detalle](registro-commits/callback-record-nativesharp-a-c.md).
   - Un consumidor precompilado sin referencia explícita al header usó el callback con record en O0–O3 con la copia usada por el productor temporalmente ausente. [Detalle](registro-commits/callback-record-precompilado.md).

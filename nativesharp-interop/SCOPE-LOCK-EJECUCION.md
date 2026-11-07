@@ -1,5 +1,12 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-017: resultado de callback global con record inferido
+
+Conciliar el resultado O0–O3 del fixture existente con el tracking y su
+registro a partir del log íntegro del gate ajustado. Presupuesto: esos dos
+documentos y este alcance; sin cambios al compilador, pruebas, NSLink, LLVM ni
+C:. No cerrar el ítem general ni la tanda basándose en este caso aislado.
+
 ## T08: ajuste autorizado de controles TLS
 
 El usuario autorizó ajustar los controles TLS y conservar los originales como
