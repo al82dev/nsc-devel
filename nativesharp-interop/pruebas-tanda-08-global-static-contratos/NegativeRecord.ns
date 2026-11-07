@@ -1,0 +1,1 @@
+int Main() { const_box_ptr->value = 90; return 0; }
