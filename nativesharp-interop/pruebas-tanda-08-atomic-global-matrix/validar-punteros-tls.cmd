@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-python "%~dp0crear-api-punteros-tls.py" "%~dp0" "%DEST%"
+python "%~dp0crear-api-punteros-tls.py" "%~dp0." "%DEST%"
 if errorlevel 1 exit /b 1
 for %%F in (MorePointer.ns MorePointerTls.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
