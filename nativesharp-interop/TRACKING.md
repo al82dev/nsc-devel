@@ -485,6 +485,9 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     Un struct TLS, su puntero y arreglo, un enum TLS y su puntero pasaron en
     biblioteca estática y DLL O0–O3, con aislamiento de otro hilo.
     [Evidencia](registro-commits/tls-records-enums-evidencia.md).
+    Struct, arreglo de struct y enum TLS `volatile`, además de struct
+    `const volatile`, pasaron O0–O3 en estático y DLL; se comprobó el IR y el
+    rechazo de escritura `const`. [Evidencia](registro-commits/tls-record-enum-volatile-evidencia.md).
     Un callback C almacenado en TLS se asignó e invocó desde NativeSharp y C,
     con aislamiento entre hilos, en estático y DLL O0–O3.
     [Evidencia](registro-commits/tls-callback-evidencia.md).
