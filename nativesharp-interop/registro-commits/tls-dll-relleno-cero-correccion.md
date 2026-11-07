@@ -13,3 +13,8 @@ con la DLL original y NS O0–O3 con relleno cero. Pasaron también
 sus matrices de optimización. La prueba nueva se incorporó al validador de la
 tanda, sin retirar los controles existentes. No se ha cerrado la tanda 8.
 No cambia NSLink ni altera los fixtures previamente fallidos.
+
+La construcción incremental de `nsc` y `nsc_cpp_session_tests` terminó con
+código 0; la suite `nsc_cpp_session_tests.exe` con el Clang de A: terminó
+también con código 0. La compilación de esa suite emitió advertencias de
+inicializadores incompletos, sin errores de construcción.
