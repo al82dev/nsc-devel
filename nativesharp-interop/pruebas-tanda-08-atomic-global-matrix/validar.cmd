@@ -23,7 +23,7 @@ if errorlevel 1 exit /b 1
 python "%~dp0verificar_ir.py" "%DEST%\clang.ll"
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\native.ll" 2> "%DEST%\native-ir.log"
-if errorlevel 1 (type "%DEST%\native-ir.log" & exit /b 1)
+if errorlevel 1 goto :failure
 python "%~dp0verificar_ir.py" "%DEST%\native.ll"
 if errorlevel 1 exit /b 1
 clang.exe -S -emit-llvm --target=x86_64-pc-windows-msvc -std=c11 -O0 "%DEST%\CompoundProbe.c" -o "%DEST%\compound-clang.ll"
@@ -31,18 +31,21 @@ if errorlevel 1 exit /b 1
 python "%~dp0verificar_compuesto.py" "%DEST%\compound-clang.ll"
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Compound.nsproj" > "%DEST%\compound-native.ll" 2> "%DEST%\compound-ir.log"
-if errorlevel 1 (type "%DEST%\compound-ir.log" & exit /b 1)
+if errorlevel 1 goto :failure
 python "%~dp0verificar_compuesto.py" "%DEST%\compound-native.ll" native
 if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe" > "%DEST%\consumer-O%%O.log" 2>&1
-  if errorlevel 1 (type "%DEST%\consumer-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   "%DEST%\consumer-O%%O.exe"
   if errorlevel 1 exit /b 1
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Compound.nsproj" -O%%O --no-artifact-cache -o "%DEST%\compound-O%%O.exe" > "%DEST%\compound-O%%O.log" 2>&1
-  if errorlevel 1 (type "%DEST%\compound-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   "%DEST%\compound-O%%O.exe"
   if errorlevel 1 exit /b 1
   echo Matriz de globales atomicos O%%O correcta.
 )
 exit /b 0
+:failure
+type "%DEST%\*.log"
+exit /b 1

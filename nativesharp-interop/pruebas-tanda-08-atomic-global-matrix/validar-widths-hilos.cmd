@@ -26,9 +26,12 @@ llvm-lib.exe /nologo /out:"%DEST%\widths.lib" "%DEST%\widths.obj" "%DEST%\widths
 if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\WidthsThread.nsproj" -O%%O --no-artifact-cache -o "%DEST%\thread-O%%O.exe" > "%DEST%\thread-O%%O.log" 2>&1
-  if errorlevel 1 (type "%DEST%\thread-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   "%DEST%\thread-O%%O.exe"
   if errorlevel 1 exit /b 1
   echo Aislamiento TLS punteros atomicos anchos O%%O correcto.
 )
 exit /b 0
+:failure
+type "%DEST%\*.log"
+exit /b 1

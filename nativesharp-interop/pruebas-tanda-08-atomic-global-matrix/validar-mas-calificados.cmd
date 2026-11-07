@@ -23,12 +23,12 @@ if errorlevel 1 exit /b 1
 python "%~dp0verificar_mas_calificados.py" "%DEST%\clang.ll" clang
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\MoreQualified.nsproj" > "%DEST%\native.ll" 2> "%DEST%\native-ir.log"
-if errorlevel 1 (type "%DEST%\native-ir.log" & exit /b 1)
+if errorlevel 1 goto :failure
 python "%~dp0verificar_mas_calificados.py" "%DEST%\native.ll"
 if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\MoreQualified.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe" > "%DEST%\consumer-O%%O.log" 2>&1
-  if errorlevel 1 (type "%DEST%\consumer-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   "%DEST%\consumer-O%%O.exe"
   if errorlevel 1 exit /b 1
   echo Apuntados atomicos calificados adicionales O%%O correctos.
@@ -37,8 +37,11 @@ for %%F in (MoreConstWrite MoreConstEscape MoreVolatileEscape) do (
   copy /y "%DEST%\%%F.ns" "%DEST%\MoreQualified.ns" >nul
   if errorlevel 1 exit /b 1
   nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\MoreQualified.nsproj" > "%DEST%\%%F.log" 2>&1
-  if not errorlevel 1 (type "%DEST%\%%F.log" & exit /b 1)
+  if not errorlevel 1 goto :failure
 )
 python "%~dp0verificar_mas_rechazos.py" "%DEST%\MoreConstWrite.log" "%DEST%\MoreConstEscape.log" "%DEST%\MoreVolatileEscape.log"
 if errorlevel 1 exit /b 1
 exit /b 0
+:failure
+type "%DEST%\*.log"
+exit /b 1

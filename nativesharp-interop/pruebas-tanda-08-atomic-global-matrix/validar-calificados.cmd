@@ -27,14 +27,14 @@ for %%F in (AdditionalQualifiedPointers UnsignedPointerQualified) do (
   copy /y "%DEST%\%%F.ns" "%DEST%\Main.ns" >nul
   if errorlevel 1 exit /b 1
   nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\%%F.ll" 2> "%DEST%\%%F-ir.log"
-  if errorlevel 1 (type "%DEST%\%%F-ir.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   if "%%F"=="AdditionalQualifiedPointers" python "%SOURCE%\verificar_calificados_adicionales.py" "%DEST%\%%F.ll"
   if errorlevel 1 exit /b 1
   if "%%F"=="UnsignedPointerQualified" python "%SOURCE%\verificar_uint_calificado.py" "%DEST%\%%F.ll"
   if errorlevel 1 exit /b 1
   for %%O in (0 1 2 3) do (
     nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O%%O --no-artifact-cache -o "%DEST%\%%F-O%%O.exe" > "%DEST%\%%F-O%%O.log" 2>&1
-    if errorlevel 1 (type "%DEST%\%%F-O%%O.log" & exit /b 1)
+    if errorlevel 1 goto :failure
     "%DEST%\%%F-O%%O.exe"
     if errorlevel 1 exit /b 1
     echo Punteros atomicos globales %%F O%%O correctos.
@@ -44,7 +44,7 @@ for %%F in (AdditionalConstWrite AdditionalVolatileEscape UnsignedPointeeConstWr
   copy /y "%DEST%\%%F.ns" "%DEST%\Main.ns" >nul
   if errorlevel 1 exit /b 1
   nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\%%F.log" 2>&1
-  if not errorlevel 1 (type "%DEST%\%%F.log" & exit /b 1)
+  if not errorlevel 1 goto :failure
 )
 python "%SOURCE%\verificar_rechazos_adicionales.py" "%DEST%\AdditionalConstWrite.log" "%DEST%\AdditionalVolatileEscape.log"
 if errorlevel 1 exit /b 1
@@ -56,3 +56,6 @@ findstr /L /C:"would discard pointer pointee volatile qualification" "%DEST%\Uns
 if errorlevel 1 exit /b 1
 echo Calificadores de punteros atomicos globales verificados.
 exit /b 0
+:failure
+type "%DEST%\*.log"
+exit /b 1
