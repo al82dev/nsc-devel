@@ -771,7 +771,21 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
                 compound->operation == lexer::TokenKind::GreaterGreater;
             const bool narrowAtomic = frame.first->cppAtomicAccess &&
                 ProjectTypeConversion::isIntegral(lowered->typeKey) && lowered->typeKey != "builtin:bool";
-            if (!shift && !conversion.exists() && !narrowAtomic)
+            const auto* cBoolRoot = frame.first.get();
+            unsigned cBoolDepth = 0;
+            while (cBoolRoot && cBoolRoot->kind == ProjectOopHirNodeKind::RawElementAddress &&
+                   cBoolRoot->children.size() == 2 && ++cBoolDepth <= 64)
+                cBoolRoot = cBoolRoot->children.front().get();
+            const bool cBoolIntOperation = frame.first->typeKey == "builtin:bool" &&
+                frame.first->volatileAccess && lowered->typeKey == "builtin:int" && cBoolDepth == 1 && cBoolRoot &&
+                cBoolRoot->kind == ProjectOopHirNodeKind::NamespaceStateAddress && cBoolRoot->volatileAccess &&
+                cBoolRoot->cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
+                cBoolRoot->cppAtomicAlignmentBytes == std::optional<std::size_t>{1} &&
+                cBoolRoot->typeKey.starts_with("builtin:bool[") &&
+                (compound->operation == lexer::TokenKind::Amp || compound->operation == lexer::TokenKind::Pipe ||
+                 compound->operation == lexer::TokenKind::Caret || compound->operation == lexer::TokenKind::Plus ||
+                 compound->operation == lexer::TokenKind::Minus || compound->operation == lexer::TokenKind::Star);
+            if (!shift && !conversion.exists() && !narrowAtomic && !cBoolIntOperation)
             {
                 error = "compound assignment cannot convert its right-hand side from '" +
                     lowered->typeKey + "' to '" + frame.operandType->typeKey + "'";
@@ -779,7 +793,7 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
                 frames.clear();
                 break;
             }
-            if (!shift && !narrowAtomic && conversion.kind != ProjectConversionKind::Identity)
+            if (!shift && !narrowAtomic && !cBoolIntOperation && conversion.kind != ProjectConversionKind::Identity)
                 lowered = wrapImplicitConversion(std::move(lowered), conversion, frame.syntax->second());
         }
         compound->children.push_back(std::move(frame.first));
