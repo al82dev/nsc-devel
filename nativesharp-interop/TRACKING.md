@@ -478,6 +478,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - El global C `_Atomic(int)` sin TLS fue rechazado como tipo no mapeado.
     Una corrección limitada de su proyección pasó O0–O3, comprobación de IR
     atómico y regresión TLS. [Resultado](registro-commits/t08-atomic-global-int-validacion.md).
+    Un hilo C y el hilo NativeSharp incrementaron el mismo global con el
+    resultado esperado O0–O3. [Detalle](registro-commits/t08-atomic-global-hilos-validacion.md).
     Otros tipos atómicos no TLS y la validación integral siguen pendientes.
   - La matriz de enteros, flotantes, bool y puntero atómicos no TLS pasó
     lecturas y escrituras O0–O3; se comprobó IR y regresión TLS. Faltan otras
