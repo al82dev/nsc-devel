@@ -4332,6 +4332,15 @@ la semántica de calificadores y los controles negativos. Presupuesto inicial:
 en la ruta causal comprobada. Construcción incremental y pruebas agrupadas;
 NSLink, LLVM y C: permanecen protegidos.
 
+# Punteros TLS C anidados y void
+
+Comprobar conjuntamente `int**` y `void*` globales TLS C, con asignación,
+desreferencia, conversiones válidas y aislamiento por hilo en biblioteca
+estática y DLL. Reproducir antes de modificar producción; mantener las
+restricciones de calificadores y tipos del mapeo existente. Presupuesto:
+fixture `pointer`, proyección causal, controles negativos, tracking y registros.
+Sin cambios a NSLink, LLVM externo ni C:; validación incremental agrupada.
+
 # Records y enums C TLS
 
 Ampliar el fixture TLS existente con globales C de struct y enum, punteros a

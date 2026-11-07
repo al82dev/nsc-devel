@@ -4,6 +4,7 @@ int Main()
     tls_pointer = pointer_target();
     if (tls_pointer[0] != 37) return 2;
     pointer_prepare();
+    if (tls_nested_pointer[0][0] != 37 || ((int*)tls_void_pointer)[0] != 37) return 7;
     if (tls_record.value != 3 || tls_record.extra != 4 || tls_records[1].value != 7 || (int)tls_mode != 3) return 5;
     tls_record.value = 31;
     tls_record_pointer->extra = 32;

@@ -1,4 +1,6 @@
 extern __declspec(thread) int* tls_pointer;
+extern __declspec(thread) int** tls_nested_pointer;
+extern __declspec(thread) void* tls_void_pointer;
 extern __declspec(thread) double* tls_double_pointer;
 extern __declspec(thread) const int* tls_readonly_pointer;
 extern __declspec(thread) volatile int* tls_volatile_pointer;

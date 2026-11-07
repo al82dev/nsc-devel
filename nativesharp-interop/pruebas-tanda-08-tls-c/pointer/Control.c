@@ -6,6 +6,7 @@ void mainCRTStartup(void)
     tls_pointer = pointer_target();
     if (*tls_pointer != 37) ExitProcess(2);
     pointer_prepare();
+    if (**tls_nested_pointer != 37 || *(int*)tls_void_pointer != 37) ExitProcess(7);
     if (tls_record.value != 3 || tls_record.extra != 4 || tls_records[1].value != 7 || tls_mode != TLS_START) ExitProcess(5);
     tls_record.value = 31; tls_record_pointer->extra = 32; tls_records[1].value = 71; *tls_mode_pointer = TLS_SET;
     tls_callback = pointer_callback();
