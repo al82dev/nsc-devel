@@ -4368,6 +4368,15 @@ representación de callbacks C existente. Presupuesto inicial: fixture
 `pointer`, seguimiento y registros; producción solo en la ruta demostrada.
 NSLink, LLVM externo y C: permanecen protegidos.
 
+# Arreglos TLS C de punteros y callbacks
+
+Comprobar en grupo arreglos TLS `int*[2]` y de callbacks `int(int)` con
+lectura, escritura, invocación y aislamiento en estático y DLL. Reproducir
+antes de modificar producción; preservar firma, identidad y calificadores
+comprobados por el mapeo C existente. Presupuesto inicial: fixture `pointer`,
+seguimiento y registros; producción solo en la ruta demostrada. Sin cambiar
+NSLink, LLVM externo ni C:; construcción y pruebas agrupadas.
+
 # Arreglo global C TLS
 
 Reproducir lectura, escritura y aislamiento por hilo de un `int[2]` TLS C

@@ -16,6 +16,10 @@ int Main()
     tls_volatile_mode = TLS_SET;
     tls_callback = pointer_callback();
     if (tls_callback(38) != 42) return 6;
+    tls_pointer_array[1] = pointer_target();
+    tls_callback_array[1] = pointer_callback();
+    TlsCallback stored_callback = tls_callback_array[1];
+    if (tls_pointer_array[1][0] != 37 || stored_callback(38) != 42) return 9;
     tls_double_pointer = pointer_double_target();
     if (tls_double_pointer[0] != 1.5 || tls_readonly_pointer[0] != 37 || tls_const_slot[0] != 37) return 4;
     tls_double_pointer[0] = 2.5;

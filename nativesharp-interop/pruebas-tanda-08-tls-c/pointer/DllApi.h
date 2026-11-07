@@ -22,4 +22,6 @@ extern __declspec(thread) const volatile TlsRecord tls_const_volatile_record;
 extern __declspec(thread) volatile TlsRecord tls_volatile_records[2];
 extern __declspec(thread) volatile TlsMode tls_volatile_mode;
 extern __declspec(thread) TlsCallback tls_callback;
+extern __declspec(thread) int* tls_pointer_array[2];
+extern __declspec(thread) TlsCallback tls_callback_array[2];
 __declspec(dllimport) TlsCallback pointer_callback(void);

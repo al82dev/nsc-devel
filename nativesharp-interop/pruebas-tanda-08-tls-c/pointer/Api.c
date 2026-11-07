@@ -31,17 +31,20 @@ __declspec(thread) const volatile TlsRecord tls_const_volatile_record = {12, 13}
 __declspec(thread) volatile TlsRecord tls_volatile_records[2] = {{14, 15}, {16, 17}};
 __declspec(thread) volatile TlsMode tls_volatile_mode = TLS_START;
 __declspec(thread) TlsCallback tls_callback;
+__declspec(thread) int* tls_pointer_array[2];
+__declspec(thread) TlsCallback tls_callback_array[2];
 static int add_four(int value) { return value + 4; }
 API TlsCallback pointer_callback(void) { return add_four; }
 API int* pointer_target(void) { return &first; }
 API double* pointer_double_target(void) { return &wide; }
 API void pointer_prepare(void) { tls_readonly_pointer = &first; tls_volatile_pointer = &first; tls_record_pointer = &tls_record; tls_mode_pointer = &tls_mode; tls_nested_pointer = &tls_pointer; tls_void_pointer = &first; }
-API int pointer_check(void) { return tls_pointer == &first && tls_nested_pointer == &tls_pointer && **tls_nested_pointer == 41 && tls_void_pointer == &first && first == 41 && tls_double_pointer == &wide && wide == 2.5 && tls_readonly_pointer == &first && tls_volatile_pointer == &first && tls_volatile_slot == &first && tls_const_slot == &first && tls_record.value == 31 && tls_record.extra == 32 && tls_record_pointer == &tls_record && tls_records[1].value == 71 && tls_mode == TLS_SET && tls_mode_pointer == &tls_mode && tls_callback && tls_callback(38) == 42 && tls_volatile_record.value == 40 && tls_const_volatile_record.extra == 13 && tls_volatile_records[1].value == 46 && tls_volatile_mode == TLS_SET ? 0 : 1; }
+API int pointer_check(void) { return tls_pointer == &first && tls_nested_pointer == &tls_pointer && **tls_nested_pointer == 41 && tls_void_pointer == &first && first == 41 && tls_double_pointer == &wide && wide == 2.5 && tls_readonly_pointer == &first && tls_volatile_pointer == &first && tls_volatile_slot == &first && tls_const_slot == &first && tls_record.value == 31 && tls_record.extra == 32 && tls_record_pointer == &tls_record && tls_records[1].value == 71 && tls_mode == TLS_SET && tls_mode_pointer == &tls_mode && tls_callback && tls_callback(38) == 42 && tls_pointer_array[1] == &first && tls_callback_array[1] && tls_callback_array[1](38) == 42 && tls_volatile_record.value == 40 && tls_const_volatile_record.extra == 13 && tls_volatile_records[1].value == 46 && tls_volatile_mode == TLS_SET ? 0 : 1; }
 static Dword __stdcall worker(void* context)
 {
     int* result = (int*)context;
     if (tls_pointer != 0 || tls_nested_pointer != 0 || tls_void_pointer != 0 || tls_double_pointer != 0 || tls_readonly_pointer != 0 || tls_volatile_pointer != 0 || tls_volatile_slot != 0 || tls_const_slot != &first || tls_record.value != 3 || tls_record.extra != 4 || tls_record_pointer != 0 || tls_records[1].value != 7 || tls_mode != TLS_START || tls_mode_pointer != 0 || tls_callback != 0) { *result = 1; return 0; }
     if (tls_volatile_record.value != 10 || tls_const_volatile_record.extra != 13 || tls_volatile_records[1].value != 16 || tls_volatile_mode != TLS_START) { *result = 3; return 0; }
+    if (tls_pointer_array[1] || tls_callback_array[1]) { *result = 4; return 0; }
     tls_pointer = &second;
     *result = *tls_pointer == 98 ? 0 : 2;
     return 0;
