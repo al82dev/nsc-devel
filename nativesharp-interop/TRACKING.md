@@ -484,6 +484,11 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     permanece abierta. [Bitcode](registro-commits/t08-seleccion-bitcode-sin-tls.md),
     [sidecar](registro-commits/t08-sidecar-linker-implicito.md),
     [fallos](registro-commits/t08-validacion-20261106-bitcode.md).
+    Después se corrigió la serialización: los proyectos nuevos y los sidecars
+    sin elección conservan la selección automática al agregar o quitar paquetes;
+    los valores explícitos se preservan. El proyecto TLS nuevo pasó la prueba
+    dirigida. Los sidecars antiguos con `NSLink` no se migran automáticamente.
+    [Evidencia](registro-commits/t08-sidecar-linker-serializacion.md).
     La DLL no solicita un accessor inexistente para el global C importado.
     [Evidencia](registro-commits/tls-dll-exportacion-externa.md).
     Su productor y consumidor NativeSharp pasaron O0–O3 con LLD sin
