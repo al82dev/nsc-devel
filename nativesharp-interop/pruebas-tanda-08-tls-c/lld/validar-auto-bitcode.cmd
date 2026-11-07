@@ -63,4 +63,19 @@ for %%L in (thin full) do (
   if errorlevel 1 exit /b 1
   echo Bitcode %%L sin TLS enlazado y ejecutado correctamente.
 )
+> "%DEST%\NoTls.nspm.json" echo {"schemaVersion":1,"build":{"optimization":"O0"},"packages":[]}
+nsc.exe build "%DEST%\NoTls.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore -O0 --output-format=json > "%DEST%\no-tls-sidecar.log" 2>&1
+if errorlevel 1 (type "%DEST%\no-tls-sidecar.log" & exit /b 1)
+findstr /L /C:"\"linker\":\"LLD\"" "%DEST%\no-tls-sidecar.log" >nul
+if errorlevel 1 (type "%DEST%\no-tls-sidecar.log" & exit /b 1)
+"%DEST%\bin\Debug\NoTlsStatic.exe"
+if errorlevel 1 exit /b 1
+> "%DEST%\Project.nspm.json" echo {"schemaVersion":1,"build":{"optimization":"O0"},"packages":[]}
+nsc.exe build "%DEST%\Project.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore -O0 --output-format=json > "%DEST%\tls-sidecar.log" 2>&1
+if errorlevel 1 (type "%DEST%\tls-sidecar.log" & exit /b 1)
+findstr /L /C:"\"linker\":\"LLD\"" "%DEST%\tls-sidecar.log" >nul
+if errorlevel 1 (type "%DEST%\tls-sidecar.log" & exit /b 1)
+"%DEST%\bin\Debug\CTlsPrerequisite.exe"
+if errorlevel 1 exit /b 1
+echo Sidecar parcial sin linker conserva seleccion automatica.
 exit /b 0

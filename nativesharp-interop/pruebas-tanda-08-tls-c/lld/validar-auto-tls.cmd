@@ -73,6 +73,14 @@ if errorlevel 1 (type "%DEST%\notls.log" & exit /b 1)
 "%DEST%\bin\Debug\NoTlsStatic.exe"
 if errorlevel 1 exit /b 1
 echo Biblioteca C sin TLS conserva NSLink.
+> "%DEST%\Project.nspm.json" echo {"schemaVersion":1,"build":{"optimization":"O0"},"packages":[]}
+nsc.exe build "%DEST%\Project.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore -O0 --output-format=json > "%DEST%\partial.log" 2>&1
+if errorlevel 1 (type "%DEST%\partial.log" & exit /b 1)
+findstr /L /C:"\"linker\":\"LLD\"" "%DEST%\partial.log" >nul
+if errorlevel 1 (type "%DEST%\partial.log" & exit /b 1)
+"%DEST%\bin\Debug\CTlsPrerequisite.exe"
+if errorlevel 1 exit /b 1
+echo TLS COFF con sidecar parcial selecciona LLD.
 nsc.exe build "%DEST%\Project.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore --linker NSLink -O0 > "%DEST%\explicit.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /L /C:"NSLink failed" "%DEST%\explicit.log" >nul
