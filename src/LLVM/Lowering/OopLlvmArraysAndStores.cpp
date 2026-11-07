@@ -234,13 +234,10 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         if (node->children[0]->cppAtomicAccess)
         {
             const auto* target = node->children[0].get();
-            if (target->typeKey == "builtin:int*" || target->typeKey == "builtin:uint*" || target->typeKey == "builtin:short*" || target->typeKey == "builtin:long*" || target->typeKey == "builtin:double*" || target->typeKey == "builtin:float*" || target->typeKey == "builtin:sbyte*" || target->typeKey == "builtin:byte*" || target->typeKey == "builtin:ushort*" || target->typeKey == "builtin:ulong*")
+            if (target->typeKey.ends_with("*"))
             {
-                const auto expectedStride = (target->typeKey == "builtin:sbyte*" || target->typeKey == "builtin:byte*") ? 1U :
-                    (target->typeKey == "builtin:short*" || target->typeKey == "builtin:ushort*") ? 2U :
-                    (target->typeKey == "builtin:long*" || target->typeKey == "builtin:ulong*" || target->typeKey == "builtin:double*") ? 8U : 4U;
                 if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
-                    target->cppAtomicAlignmentBytes != std::optional<std::size_t>{8} || node->immediate != expectedStride ||
+                    target->cppAtomicAlignmentBytes != std::optional<std::size_t>{8} || node->immediate == 0 ||
                     (node->operation != lexer::TokenKind::Plus && node->operation != lexer::TokenKind::Minus))
                     return failValue(error, "C atomic pointer compound operation is not yet supported");
                 LLVMValueRef index = normalizeNativeIndexFromValue(node->children[1].get(), value, error);
