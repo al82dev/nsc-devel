@@ -1,0 +1,2 @@
+void Take(ref int value) { value = 5; }
+int Main() { Take(ref atomic_tls); return 0; }

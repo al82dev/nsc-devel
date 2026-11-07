@@ -1,0 +1,2 @@
+void Take(in int value) { }
+int Main() { Take(in atomic_tls); return 0; }

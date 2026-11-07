@@ -1,0 +1,4 @@
+void Read(in int value) { }
+void Change(ref int value) { value = 4; }
+void Write(out int value) { value = 5; }
+int Main() { int value = 0; Read(in value); Change(ref value); Write(out value); return value - 5; }
