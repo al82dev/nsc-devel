@@ -1,0 +1,14 @@
+int Main()
+{
+    if (check_initial() != 1 || small != -4 || medium != 23 || word != 34U) return 1;
+    if (wide != -45 || uwide != 56UL || fraction != (float)1.5 || real != 2.5 || *pointer != 8) return 2;
+    small = -5;
+    medium = 24;
+    word = 35U;
+    wide = -46;
+    uwide = 57UL;
+    fraction = (float)3.5;
+    real = 4.5;
+    *pointer = 9;
+    return check_modified() == 1 ? 0 : 3;
+}

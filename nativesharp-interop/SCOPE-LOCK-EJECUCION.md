@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004: matriz de globales C estáticas escalares y puntero
+
+Reproducir y corregir globales estáticas C no calificadas de enteros de varios
+anchos, flotantes y puntero a int, incluidos sus inicializadores y el estado
+compartido con funciones inline. Validar C y NativeSharp O0–O3, más la regresión
+de identidad estática. Mantener NSLink, metadata, LLVM externo y C: protegidos.
+No acreditar calificadores, TLS ni tipos agregados por esta matriz.
+
 ## T08-004: identidad de global estática entre proyectos
 
 Comprobar en O0–O3 la independencia de dos productores precompilados y un
