@@ -544,12 +544,14 @@ static bool provideGlobalsWithLookup(
             const CppType* element = &type;
             while (element && element->kind == CppTypeKind::Array)
             {
-                if (element->isConst || element->isVolatile || !element->arrayCount || *element->arrayCount == 0)
+                if (!element->arrayCount || *element->arrayCount == 0)
                     return false;
                 element = element->element.get();
             }
-            return element && element->kind == CppTypeKind::SignedInteger &&
-                element->unqualifiedCanonicalSpelling == "int" && !element->isConst && !element->isVolatile;
+            return element && ((element->kind == CppTypeKind::SignedInteger &&
+                element->unqualifiedCanonicalSpelling == "int") ||
+                (element->kind == CppTypeKind::Record && !element->isConst && !element->isVolatile) ||
+                (element->kind == CppTypeKind::Enumeration && !element->isConst && !element->isVolatile));
         }
         if ((type.isConst || type.isVolatile) &&
             !(type.kind == CppTypeKind::SignedInteger && name == "int" &&
@@ -575,9 +577,13 @@ static bool provideGlobalsWithLookup(
         if (type.kind == CppTypeKind::Floating)
             return (name == "float" && type.sizeBits == std::optional<std::uint64_t>{32}) ||
                 (name == "double" && type.sizeBits == std::optional<std::uint64_t>{64});
-        return type.kind == CppTypeKind::Pointer && type.sizeBits == std::optional<std::uint64_t>{64} &&
-            type.element && type.element->kind == CppTypeKind::SignedInteger &&
-            type.element->unqualifiedCanonicalSpelling == "int";
+        if (type.kind != CppTypeKind::Pointer || type.sizeBits != std::optional<std::uint64_t>{64} || !type.element)
+            return false;
+        const CppType* pointee = type.element.get();
+        if (pointee->kind == CppTypeKind::Pointer && !pointee->isConst && !pointee->isVolatile)
+            pointee = pointee->element.get();
+        return pointee && pointee->kind == CppTypeKind::SignedInteger &&
+            pointee->unqualifiedCanonicalSpelling == "int";
     };
     std::set<std::pair<std::size_t, std::string_view>> availableNames;
     for (const auto& entry : entries)
