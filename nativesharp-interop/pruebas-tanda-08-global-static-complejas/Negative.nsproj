@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CStaticComplexNegative</Name></PropertyGroup>
+  <ItemGroup><Compile Include="Negative.ns" /><CppLibraryReference Header="Api.h" Language="C" Standard="c11" /></ItemGroup>
+</Project>

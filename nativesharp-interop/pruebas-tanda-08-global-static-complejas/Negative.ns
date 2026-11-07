@@ -1,0 +1,1 @@
+int Main() { readonly_values[0] = 30; return 0; }
