@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004/015: matriz de globales C atómicos no TLS
+
+Comprobar si los tipos escalares y punteros C atómicos ya admitidos en TLS se
+proyectan también como globales externos no TLS. El control independiente usa
+una biblioteca C, una función de comprobación y un consumidor NativeSharp;
+artefactos en `A:/nsc-interop-build`. La corrección, si se demuestra, se limita
+al importador y a los tipos y alineaciones comprobados; regresión TLS y lectura
+del IR son obligatorias. Sin modificar NSLink, LLVM, layout o C:.
+
 ## T08-004/015: diagnóstico de global C atómico no TLS
 
 Comprobar un global C externo `_Atomic(int)` sin almacenamiento TLS con

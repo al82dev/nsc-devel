@@ -1,0 +1,17 @@
+int Main()
+{
+    if (value_u32 != 3U || value_i64 != 4L || value_u64 != 5UL) return 1;
+    if (value_i8 != -6 || value_u16 != 7 || value_f32 != (float)1.25) return 2;
+    if (value_f64 != 2.5 || value_bool || value_pointer != null) return 3;
+    value_u32 = 42U;
+    value_i64 = 43L;
+    value_u64 = 44UL;
+    value_i8 = -45;
+    value_u16 = 46;
+    value_f32 = (float)3.5;
+    value_f64 = 4.5;
+    value_bool = true;
+    value_pointer = expected_pointer();
+    if (verify_values() != 1) return 4;
+    return 0;
+}

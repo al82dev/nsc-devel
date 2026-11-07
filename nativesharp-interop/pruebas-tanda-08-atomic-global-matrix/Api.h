@@ -1,0 +1,11 @@
+extern _Atomic(unsigned int) value_u32;
+extern _Atomic(long long) value_i64;
+extern _Atomic(unsigned long long) value_u64;
+extern _Atomic(signed char) value_i8;
+extern _Atomic(unsigned short) value_u16;
+extern _Atomic(float) value_f32;
+extern _Atomic(double) value_f64;
+extern _Atomic(_Bool) value_bool;
+extern _Atomic(int*) value_pointer;
+int* expected_pointer(void);
+int verify_values(void);
