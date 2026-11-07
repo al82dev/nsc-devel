@@ -198,33 +198,38 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         global.type.element->sizeBits == std::optional<std::uint64_t>{32} &&
         global.type.sizeBits == std::optional<std::uint64_t>{32} &&
         global.declarationAlignmentBits && *global.declarationAlignmentBits >= 32;
-    const bool atomicLongTls = cLanguage && global.threadLocal && kind == CppTypeKind::Atomic &&
+    const bool atomicLongTls = cLanguage && kind == CppTypeKind::Atomic &&
         global.type.element && global.type.element->kind == CppTypeKind::SignedInteger &&
         global.type.element->unqualifiedCanonicalSpelling == "long long" &&
         global.type.element->sizeBits == std::optional<std::uint64_t>{64} &&
         global.type.sizeBits == std::optional<std::uint64_t>{64} &&
         global.declarationAlignmentBits && *global.declarationAlignmentBits >= 64;
-    const bool atomicUIntTls = cLanguage && global.threadLocal && kind == CppTypeKind::Atomic &&
+    const bool atomicUIntTls = cLanguage && kind == CppTypeKind::Atomic &&
         global.type.element && global.type.element->kind == CppTypeKind::UnsignedInteger &&
         global.type.element->unqualifiedCanonicalSpelling == "unsigned int" &&
         global.type.element->sizeBits == std::optional<std::uint64_t>{32} &&
         global.type.sizeBits == std::optional<std::uint64_t>{32} &&
         global.declarationAlignmentBits && *global.declarationAlignmentBits >= 32;
-    const bool atomicULongTls = cLanguage && global.threadLocal && kind == CppTypeKind::Atomic &&
+    const bool atomicULongTls = cLanguage && kind == CppTypeKind::Atomic &&
         global.type.element && global.type.element->kind == CppTypeKind::UnsignedInteger &&
         global.type.element->unqualifiedCanonicalSpelling == "unsigned long long" &&
         global.type.element->sizeBits == std::optional<std::uint64_t>{64} &&
         global.type.sizeBits == std::optional<std::uint64_t>{64} &&
         global.declarationAlignmentBits && *global.declarationAlignmentBits >= 64;
-    const bool atomicNarrowTls = cLanguage && global.threadLocal && kind == CppTypeKind::Atomic &&
+    const bool atomicNarrowTls = cLanguage && kind == CppTypeKind::Atomic &&
         global.type.element &&
         (global.type.element->kind == CppTypeKind::SignedInteger ||
          global.type.element->kind == CppTypeKind::UnsignedInteger) &&
+        (global.threadLocal ||
+         (global.type.element->kind == CppTypeKind::SignedInteger &&
+          global.type.element->sizeBits == std::optional<std::uint64_t>{8}) ||
+         (global.type.element->kind == CppTypeKind::UnsignedInteger &&
+          global.type.element->sizeBits == std::optional<std::uint64_t>{16})) &&
         (global.type.element->sizeBits == std::optional<std::uint64_t>{8} ||
          global.type.element->sizeBits == std::optional<std::uint64_t>{16}) &&
         global.type.sizeBits == global.type.element->sizeBits && global.declarationAlignmentBits &&
         *global.declarationAlignmentBits >= *global.type.sizeBits;
-    const bool atomicFloatTls = cLanguage && global.threadLocal && kind == CppTypeKind::Atomic &&
+    const bool atomicFloatTls = cLanguage && kind == CppTypeKind::Atomic &&
         global.type.element && global.type.element->kind == CppTypeKind::Floating &&
         ((global.type.element->unqualifiedCanonicalSpelling == "float" &&
           global.type.element->sizeBits == std::optional<std::uint64_t>{32}) ||
@@ -232,13 +237,15 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
           global.type.element->sizeBits == std::optional<std::uint64_t>{64})) &&
         global.type.sizeBits == global.type.element->sizeBits && global.declarationAlignmentBits &&
         *global.declarationAlignmentBits >= *global.type.sizeBits;
-    const bool atomicBoolTls = cLanguage && global.threadLocal && kind == CppTypeKind::Atomic &&
+    const bool atomicBoolTls = cLanguage && kind == CppTypeKind::Atomic &&
         global.type.element && global.type.element->kind == CppTypeKind::Boolean &&
         global.type.element->sizeBits == std::optional<std::uint64_t>{8} &&
         global.type.sizeBits == std::optional<std::uint64_t>{8} &&
         global.declarationAlignmentBits && *global.declarationAlignmentBits >= 8;
-    const bool atomicPointerTls = cLanguage && global.threadLocal && kind == CppTypeKind::Atomic &&
+    const bool atomicPointerTls = cLanguage && kind == CppTypeKind::Atomic &&
         global.type.element && global.type.element->kind == CppTypeKind::Pointer && global.type.element->element &&
+        (global.threadLocal || (global.type.element->element->kind == CppTypeKind::SignedInteger &&
+         global.type.element->element->unqualifiedCanonicalSpelling == "int")) &&
         ((global.type.element->element->kind == CppTypeKind::SignedInteger &&
           global.type.element->element->unqualifiedCanonicalSpelling == "int") ||
          (global.type.element->element->kind == CppTypeKind::UnsignedInteger &&
