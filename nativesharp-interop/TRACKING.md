@@ -492,6 +492,7 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     atómico y observación C. [Resultado](registro-commits/t08-atomic-global-compuestos-validacion.md).
     `long` y `unsigned long` C de 32 bits pasaron en globales no TLS O0–O3,
     con lectura, escritura y operaciones compuestas. [Resultado](registro-commits/t08-atomic-global-clong-validacion.md).
+    Sus variantes TLS pasaron O0–O3 y controles de IR. [Resultado](registro-commits/t08-atomic-long-tls-validacion.md).
   - Enteros estrechos y punteros atómicos globales adicionales pasaron O0–O3,
     IR y rechazos de pérdida de calificadores; la regresión TLS pasó.
     [Resultado](registro-commits/t08-atomic-global-extra-validacion.md).
