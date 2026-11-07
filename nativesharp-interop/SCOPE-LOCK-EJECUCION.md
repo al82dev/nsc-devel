@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004/015: operaciones compuestas de `_Bool` C global escalar
+
+El fixture `A:/nsc-interop-build/t08-bool-scalar-repro` reproduce el rechazo
+de `flag |= true` sobre un global C `volatile _Bool`; Clang acepta el mismo
+contrato y emite lectura y escritura de byte acquire/release. Extender al
+global escalar C en modo MS la ruta compuesta ya validada para arreglo C,
+conservar `_Atomic`, bool nativo y C++. Presupuesto: analizador, HIR, LLVM,
+fixture record-c, referencia C, tracking y registros. Validación agrupada
+O0–O3 e IR; sin NSLink, LLVM externo ni C:.
+
 ## T08-004/015: global C escalar `volatile _Bool`
 
 El fixture `A:/nsc-interop-build/t08-bool-scalar-repro` reproduce que NSC

@@ -1,4 +1,6 @@
 volatile _Bool values[2];
+volatile _Bool scalar_flag;
+int compound_scalar(unsigned int rhs) { return (scalar_flag ^= rhs); }
 int add_one(void) { return (values[0] += 1); }
 int subtract_one(void) { return (values[0] -= 1); }
 int xor_two(void) { return (values[0] ^= 2); }

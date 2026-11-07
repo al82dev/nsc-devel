@@ -475,6 +475,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     global y fallan dentro de namespace por nombre desconocido. Es necesario
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
 - [ ] T08-004. Importar declaraciones de variables globales C.
+  - Reproducido rechazo de `|=` en `_Bool` C escalar volatile; Clang acepta el
+    contrato y emite accesos de byte ordenados. Corrección pendiente.
+    [Evidencia](registro-commits/t08-bool-scalar-compuesto-reproduccion.md).
   - Reproducida discrepancia para global escalar C `volatile _Bool`: NSC usa
     i1 volatile y Clang i8 acquire. Corrección pendiente.
     [Evidencia](registro-commits/t08-bool-scalar-reproduccion.md).
