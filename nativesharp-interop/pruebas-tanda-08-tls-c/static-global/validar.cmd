@@ -35,8 +35,8 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 exit /b 1
   echo Global TLS estatico desde NativeSharp O%%O: correcto.
 )
->> "%DEST%\Api.h" echo extern __declspec(thread) volatile int volatile_tls;
-> "%DEST%\Main.ns" echo int Main() { return volatile_tls; }
+>> "%DEST%\Api.h" echo extern __declspec(thread) int* pointer_tls;
+> "%DEST%\Main.ns" echo int Main() { return pointer_tls[0]; }
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\unsupported.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /L /C:"thread-local C/C++ global is not yet projected" "%DEST%\unsupported.log" >nul
