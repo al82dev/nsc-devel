@@ -236,10 +236,7 @@ LLVMValueRef OopLlvmImplementation::lowerLoadExpression(const frontend::ProjectO
                     node->typeKey == "builtin:bool" && node->volatileAccess &&
                     node->cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
                     node->cppAtomicAlignmentBytes == std::optional<std::size_t>{1};
-                const bool atomicPointer = node->cppAtomicAccess && (node->typeKey == "builtin:int*" || node->typeKey == "builtin:uint*" ||
-                    node->typeKey == "builtin:short*" || node->typeKey == "builtin:long*" || node->typeKey == "builtin:double*" || node->typeKey == "builtin:float*" ||
-                    node->typeKey == "builtin:sbyte*" || node->typeKey == "builtin:byte*" ||
-                    node->typeKey == "builtin:ushort*" || node->typeKey == "builtin:ulong*");
+                const bool atomicPointer = node->cppAtomicAccess && node->typeKey.ends_with("*");
                 LLVMTypeRef loadType = atomicPointer ? LLVMInt64TypeInContext(context_) : (atomicBool || cVolatileBool) ? LLVMInt8TypeInContext(context_) : atomicFloat
                     ? (node->typeKey == "builtin:float" ? LLVMInt32TypeInContext(context_) : LLVMInt64TypeInContext(context_))
                     : type;
