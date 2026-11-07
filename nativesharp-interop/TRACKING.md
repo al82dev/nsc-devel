@@ -1071,6 +1071,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     O0–O3, IR igual a Clang salvo `_Bool`), pero no aplicada porque `CppClangSessionTests.cpp` afirma el
      contrato anterior; pendiente de revisión e integración en esta rama. Parche y pruebas:
     [diseño](registro-commits/t08-flexible-c-diseno.md).
+  - Miembros anónimos C11: diseño con carriers y aliases del punto 326 y catálogo C versión 5; no
+    implementado porque requiere NSMETA. [Diseño](registro-commits/t08-anonimos-c-diseno.md).
 - [ ] T08-011. Importar la declaración y campos de una `union` C.
   - Campos de bits con y sin signo superpuestos a entero y bytes pasaron
     lectura y escritura cruzada con C en O0–O3. Es una muestra dirigida;
@@ -1089,6 +1091,13 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Un caso dirigido de miembro escrito desde NativeSharp y byte superpuesto
     leído desde C compiló, enlazó y ejecutó en O0. Faltan O1–O3 y otros
     contratos. [Evidencia](registro-commits/prueba-union-c-superpuesta.md).
+  - `pruebas-tanda-08-layout-clang` pasó O0–O3 directo y precompilado con union natural, union `pack(1)`,
+    union dentro de struct empaquetado, struct dentro de union y bitfields en union. Las unions anónimas
+    C11 dentro de un struct no se proyectan. No cierra el ítem.
+    [Comparación](registro-commits/t08-layout-comparacion-clang.md) y
+    [formas pendientes](registro-commits/t08-layout-formas-pendientes.md).
+  - Unions anónimas dentro de structs: cubiertas por el mismo diseño, no implementado.
+    [Diseño](registro-commits/t08-anonimos-c-diseno.md).
 - [ ] T08-012. Obtener de Clang tamaño, alineación y desplazamiento de cada campo.
 - [ ] T08-013. Representar tipos declarados pero incompletos sin inventar su tamaño.
   - Un puntero a struct C incompleto se usó en retorno, parámetros y global
