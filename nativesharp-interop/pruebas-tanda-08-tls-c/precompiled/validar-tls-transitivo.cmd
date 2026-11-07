@@ -22,7 +22,7 @@ for %%F in (Intermediate.ns Intermediate.nsproj IntermediateConsumer.ns Intermed
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
-for %%F in (PlainApi.h PlainApi.c PlainApiTls.c PlainProducer.ns PlainProducer.nsproj PlainProducerTls.nsproj PlainConsumer.ns PlainConsumer.nsproj) do (
+for %%F in (PlainApi.h PlainApi.c PlainApiTls.c PlainProducer.ns PlainProducer.nsproj PlainProducerTls.nsproj PlainConsumer.ns PlainConsumer.nsproj PlainIntermediate.ns PlainIntermediate.nsproj PlainIntermediateConsumer.ns PlainIntermediateConsumer.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -41,6 +41,12 @@ if errorlevel 1 (type "%DEST%\intermediate.log" & exit /b 1)
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\IntermediateConsumer.nsproj" -O0 --no-artifact-cache -o "%DEST%\intermediate-consumer.exe" > "%DEST%\intermediate-consumer.log" 2>&1
 if errorlevel 1 (type "%DEST%\intermediate-consumer.log" & exit /b 1)
 "%DEST%\intermediate-consumer.exe"
+if errorlevel 1 exit /b 1
+nsc.exe build "%DEST%\IntermediateConsumer.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore -O0 --output-format=json > "%DEST%\intermediate-build.log" 2>&1
+if errorlevel 1 (type "%DEST%\intermediate-build.log" & exit /b 1)
+findstr /L /C:"\"linker\":\"LLD\"" "%DEST%\intermediate-build.log" >nul
+if errorlevel 1 (type "%DEST%\intermediate-build.log" & exit /b 1)
+"%DEST%\bin\Debug\IntermediateConsumer.exe"
 if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\TransitiveConsumer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe"
@@ -91,6 +97,14 @@ if errorlevel 1 (type "%DEST%\plain-build.log" & exit /b 1)
 findstr /L /C:"\"linker\":\"NSLink\"" "%DEST%\plain-build.log" >nul
 if errorlevel 1 (type "%DEST%\plain-build.log" & exit /b 1)
 "%DEST%\bin\Debug\PlainConsumer.exe"
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\PlainIntermediate.nsproj" -O0 --no-artifact-cache -o "%DEST%\PlainIntermediate.lib" > "%DEST%\plain-intermediate.log" 2>&1
+if errorlevel 1 (type "%DEST%\plain-intermediate.log" & exit /b 1)
+nsc.exe build "%DEST%\PlainIntermediateConsumer.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore -O0 --output-format=json > "%DEST%\plain-intermediate-build.log" 2>&1
+if errorlevel 1 (type "%DEST%\plain-intermediate-build.log" & exit /b 1)
+findstr /L /C:"\"linker\":\"NSLink\"" "%DEST%\plain-intermediate-build.log" >nul
+if errorlevel 1 (type "%DEST%\plain-intermediate-build.log" & exit /b 1)
+"%DEST%\bin\Debug\PlainIntermediateConsumer.exe"
 if errorlevel 1 exit /b 1
 move /y "%DEST%\plain.lib" "%DEST%\plain.lib.hidden" >nul
 if errorlevel 1 exit /b 1

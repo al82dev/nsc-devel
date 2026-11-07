@@ -1,0 +1,4 @@
+namespace PublishedPlainIntermediate
+{
+    public struct Bridge { public static int Read() { return PublishedPlain.Bridge.Read(); } }
+}

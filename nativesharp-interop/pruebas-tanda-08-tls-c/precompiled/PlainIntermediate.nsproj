@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>PlainIntermediate</Name><OutputType>Library</OutputType></PropertyGroup>
+  <ItemGroup><Compile Include="PlainIntermediate.ns" /><LibraryReference Include="PlainProducer.lib" /></ItemGroup>
+</Project>
