@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>Intermediate</Name><OutputType>Library</OutputType></PropertyGroup>
+  <ItemGroup><Compile Include="Intermediate.ns" /><LibraryReference Include="TlsProducer.lib" /></ItemGroup>
+</Project>
