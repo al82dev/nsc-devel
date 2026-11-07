@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>LinkLibTls</Name></PropertyGroup>
+  <ItemGroup><Compile Include="Main.ns" /></ItemGroup>
+</Project>

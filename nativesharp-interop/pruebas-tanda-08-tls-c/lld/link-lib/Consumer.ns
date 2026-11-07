@@ -1,0 +1,1 @@
+int Main() { return LinkLib.Bridge.Check(); }

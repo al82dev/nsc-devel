@@ -1,0 +1,11 @@
+public class CApi
+{
+    extern C { public int verify_tls_isolation(); }
+}
+namespace LinkLib
+{
+    public struct Bridge
+    {
+        public static int Check() { return CApi.verify_tls_isolation(); }
+    }
+}

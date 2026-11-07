@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>LinkLibTls</Name><OutputType>SharedLibrary</OutputType></PropertyGroup>
+  <ItemGroup><Compile Include="Dll.ns" /></ItemGroup>
+</Project>

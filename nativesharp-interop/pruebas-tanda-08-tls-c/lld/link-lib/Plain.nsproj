@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>LinkLibPlain</Name></PropertyGroup>
+  <ItemGroup><Compile Include="Plain.ns" /></ItemGroup>
+</Project>

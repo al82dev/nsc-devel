@@ -1,0 +1,5 @@
+public class CApi
+{
+    extern C { public int plain_c(); }
+}
+int Main() { return CApi.plain_c(); }

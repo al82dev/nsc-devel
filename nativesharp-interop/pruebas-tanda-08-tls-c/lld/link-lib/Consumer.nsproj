@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>LinkLibConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+    <LibraryReference Include="producer-0.lib" Runtime="producer-0.dll" />
+  </ItemGroup>
+</Project>

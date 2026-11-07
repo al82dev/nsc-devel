@@ -1,0 +1,5 @@
+public class CApi
+{
+    extern C { public int verify_tls_isolation(); }
+}
+int Main() { return CApi.verify_tls_isolation(); }
