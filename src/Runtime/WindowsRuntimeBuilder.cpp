@@ -6865,6 +6865,7 @@ void declareRuntimeExceptionState(RuntimeModuleState& state)
         state.module, "RaiseException", state.raiseExceptionType);
     LLVMValueRef fltused = LLVMAddGlobal(state.module, state.i32Type, "_fltused");
     LLVMSetInitializer(fltused, LLVMConstInt(state.i32Type, 0, 0));
+    LLVMSetLinkage(fltused, LLVMWeakODRLinkage);
     state.exceptionTlsIndex = LLVMAddGlobal(
         state.module, state.i32Type, "__nativesharp_exception_tls_index");
     LLVMSetInitializer(
