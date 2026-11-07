@@ -10,3 +10,10 @@ variable explícita sigue en `validar-seleccion.cmd` sin alteraciones.
 Este fixture está preparado, pero todavía no se ha construido el compilador
 con la propagación nueva ni se ha ejecutado. Faltan validación de DLL y
 enlace incremental. No se modifica NSLink ni se escribe en C:.
+
+La construcción incremental posterior terminó con código 0. La primera
+versión del fixture pasó el ejecutable TLS y la biblioteca estática con NSC
+build `f4df02e72f872c83`; también pasaron los controles anteriores de
+selección y la matriz TLS con LLD O0–O3. Se amplió el fixture para comprobar
+una DLL y un segundo enlace incremental; esas dos partes aún están pendientes
+de ejecución.

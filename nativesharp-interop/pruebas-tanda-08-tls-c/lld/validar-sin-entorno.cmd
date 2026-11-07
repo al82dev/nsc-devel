@@ -17,6 +17,8 @@ for %%F in (Producer.ns Producer.nsproj) do (
   copy /y "%~dp0..\precompiled\%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
+copy /y "%~dp0SharedProducer.nsproj" "%DEST%\SharedProducer.nsproj" >nul
+if errorlevel 1 exit /b 1
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Api.c" -o "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
 llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
@@ -32,4 +34,17 @@ nsc.exe build "%DEST%\Producer.nsproj" --cpp-clang-root=A:\al82dev-clang --no-re
 if errorlevel 1 (type "%DEST%\library.log" & exit /b 1)
 if not exist "%DEST%\bin\Debug\TlsProducer.lib" exit /b 1
 echo Biblioteca estatica con LLD sin NSC_LINKER correcta.
+nsc.exe build "%DEST%\SharedProducer.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore --linker LLD -O0 > "%DEST%\dll.log" 2>&1
+if errorlevel 1 (type "%DEST%\dll.log" & exit /b 1)
+if not exist "%DEST%\bin\Debug\TlsSharedProducer.dll" exit /b 1
+echo DLL con LLD sin NSC_LINKER correcta.
+for %%I in (1 2) do (
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" --nsc-linker-selection=LLD --incremental-link --no-artifact-cache -O0 -o "%DEST%\incremental.exe" > "%DEST%\incremental-%%I.log" 2>&1
+  if errorlevel 1 (type "%DEST%\incremental-%%I.log" & exit /b 1)
+)
+findstr /L /C:"incremental-link: hit" "%DEST%\incremental-2.log" >nul
+if errorlevel 1 (type "%DEST%\incremental-2.log" & exit /b 1)
+"%DEST%\incremental.exe"
+if errorlevel 1 exit /b 1
+echo Enlace incremental con LLD sin NSC_LINKER correcto.
 exit /b 0
