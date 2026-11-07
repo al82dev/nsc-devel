@@ -220,11 +220,6 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         global.type.element &&
         (global.type.element->kind == CppTypeKind::SignedInteger ||
          global.type.element->kind == CppTypeKind::UnsignedInteger) &&
-        (global.threadLocal ||
-         (global.type.element->kind == CppTypeKind::SignedInteger &&
-          global.type.element->sizeBits == std::optional<std::uint64_t>{8}) ||
-         (global.type.element->kind == CppTypeKind::UnsignedInteger &&
-          global.type.element->sizeBits == std::optional<std::uint64_t>{16})) &&
         (global.type.element->sizeBits == std::optional<std::uint64_t>{8} ||
          global.type.element->sizeBits == std::optional<std::uint64_t>{16}) &&
         global.type.sizeBits == global.type.element->sizeBits && global.declarationAlignmentBits &&
@@ -244,9 +239,10 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         global.declarationAlignmentBits && *global.declarationAlignmentBits >= 8;
     const bool atomicPointerTls = cLanguage && kind == CppTypeKind::Atomic &&
         global.type.element && global.type.element->kind == CppTypeKind::Pointer && global.type.element->element &&
-        (global.threadLocal || (global.type.element->element->kind == CppTypeKind::SignedInteger &&
-         global.type.element->element->unqualifiedCanonicalSpelling == "int" &&
-         !global.type.element->element->isConst && !global.type.element->element->isVolatile)) &&
+        (global.threadLocal || (!global.type.element->element->isConst &&
+         !global.type.element->element->isVolatile) ||
+         (global.type.element->element->kind == CppTypeKind::SignedInteger &&
+          global.type.element->element->unqualifiedCanonicalSpelling == "int")) &&
         ((global.type.element->element->kind == CppTypeKind::SignedInteger &&
           global.type.element->element->unqualifiedCanonicalSpelling == "int") ||
          (global.type.element->element->kind == CppTypeKind::UnsignedInteger &&
