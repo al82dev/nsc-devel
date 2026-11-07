@@ -4416,6 +4416,14 @@ el aislamiento de dos hilos y O0–O3; generar la variante solo bajo
 originales, NSLink, LLVM ni C:. Conservar todas las pruebas previas y no
 considerar esta evidencia como cierre de T08-004 ni de la tanda.
 
+# Dirección de global TLS C11
+
+Extender el contraste C11 aislado para comparar `&shared_tls` en NativeSharp
+con la dirección obtenida por una función C y comprobar su desreferencia
+después de escribir. Preservar los controles previos, aislamiento por hilo y
+O0–O3; modificar solo el generador del fixture y su evidencia. No modificar
+el fixture fuente, NSLink, LLVM ni C:.
+
 # TLS C a través de biblioteca NativeSharp precompilada
 
 Comprobar el acceso al mismo global TLS C desde una biblioteca NativeSharp
