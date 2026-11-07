@@ -79,8 +79,10 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
             }
             const bool volatilePointee = cLanguage && element && element->kind == CppTypeKind::Pointer &&
                 element->element && element->element->isVolatile;
+            const bool callbackElement = cLanguage && element &&
+                projectCppStoredFunctionPointer(*element, projectOrdinal, moduleName, lookup).has_value();
             if (!element || (element->kind != CppTypeKind::Enumeration &&
-                             element->kind != CppTypeKind::Record && !volatilePointee) ||
+                             element->kind != CppTypeKind::Record && !volatilePointee && !callbackElement) ||
                 element->isConst || element->isVolatile)
                 return std::nullopt;
             auto mapped = mapGlobalType(*element, projectOrdinal, moduleName, lookup, cLanguage);
