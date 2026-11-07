@@ -532,21 +532,32 @@ int main(int argc, char** argv)
         directPointee.volatileAccess = true;
         directPointee.cppMicrosoftVolatileSemantics = true;
         directPointee.cppAtomicAlignmentBytes = 4;
-        ok &= expect(nativesharp::llvm_backend::clangMsVolatileDirectCIntPointee(&directPointee),
+        ok &= expect(nativesharp::llvm_backend::clangMsVolatileDirectCPointeeAlignment(&directPointee) == 4,
                      "a marked C volatile int pointer load uses the MS order");
         directPointee.kind = ProjectOopMirNodeKind::AddressValue;
-        ok &= expect(nativesharp::llvm_backend::clangMsVolatileDirectCIntPointee(&directPointee),
+        ok &= expect(nativesharp::llvm_backend::clangMsVolatileDirectCPointeeAlignment(&directPointee) == 4,
                      "a marked C volatile int pointer address uses the MS order");
         directPointee.kind = ProjectOopMirNodeKind::RawElementAddress;
-        ok &= expect(nativesharp::llvm_backend::clangMsVolatileDirectCIntPointee(&directPointee),
+        ok &= expect(nativesharp::llvm_backend::clangMsVolatileDirectCPointeeAlignment(&directPointee) == 4,
                      "a marked indexed C volatile int pointer address uses the MS order");
         directPointee.cppAtomicAlignmentBytes.reset();
-        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileDirectCIntPointee(&directPointee),
+        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileDirectCPointeeAlignment(&directPointee),
                      "an unmarked pointer address does not acquire the MS order");
         directPointee.cppAtomicAlignmentBytes = 4;
         directPointee.typeKey = "builtin:uint";
-        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileDirectCIntPointee(&directPointee),
-                     "another pointee type does not enter the int-specific path");
+        ok &= expect(nativesharp::llvm_backend::clangMsVolatileDirectCPointeeAlignment(&directPointee) == 4,
+                     "a marked unsigned int pointee uses the four-byte MS path");
+        directPointee.typeKey = "builtin:short";
+        directPointee.cppAtomicAlignmentBytes = 2;
+        ok &= expect(nativesharp::llvm_backend::clangMsVolatileDirectCPointeeAlignment(&directPointee) == 2,
+                     "a marked short pointee uses the two-byte MS path");
+        directPointee.typeKey = "builtin:double";
+        directPointee.cppAtomicAlignmentBytes = 8;
+        ok &= expect(nativesharp::llvm_backend::clangMsVolatileDirectCPointeeAlignment(&directPointee) == 8,
+                     "a marked double pointee uses the eight-byte MS path");
+        directPointee.cppAtomicAlignmentBytes = 4;
+        ok &= expect(!nativesharp::llvm_backend::clangMsVolatileDirectCPointeeAlignment(&directPointee),
+                     "an incorrectly aligned pointee does not enter the MS path");
     }
     {
         using namespace nativesharp;
