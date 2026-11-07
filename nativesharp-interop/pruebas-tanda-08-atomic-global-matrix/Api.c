@@ -1,5 +1,7 @@
 #include "Api.h"
 _Atomic(unsigned int) value_u32 = 3;
+_Atomic(long) value_clong = -4;
+_Atomic(unsigned long) value_culong = 5;
 _Atomic(long long) value_i64 = 4;
 _Atomic(unsigned long long) value_u64 = 5;
 _Atomic(signed char) value_i8 = -6;
@@ -12,7 +14,8 @@ static int items[2] = {73, 74};
 int* expected_pointer(void) { return items; }
 int verify_values(void)
 {
-    return value_u32 == 42 && value_i64 == 43 && value_u64 == 44 &&
+    return value_u32 == 42 && value_clong == -40 && value_culong == 41 &&
+        value_i64 == 43 && value_u64 == 44 &&
         value_i8 == -45 && value_u16 == 46 && value_f32 == 3.5f &&
         value_f64 == 4.5 && value_bool && value_pointer == items &&
         *value_pointer == 73;

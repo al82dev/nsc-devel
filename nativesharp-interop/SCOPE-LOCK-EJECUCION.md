@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004/015: tipos C long atómicos en Windows x64
+
+Comprobar `_Atomic(long)` y `_Atomic(unsigned long)` de 32 bits, directos y con
+operaciones compuestas, frente a Clang y control C. Los fixtures de la matriz,
+su tracking y registros pueden modificarse; artefactos en `A:/nsc-interop-build`.
+Solo se permite ajustar el importador para esos tipos si se reproduce el
+rechazo; conservar NSLink, LLVM, layout, metadata, otros objetivos y C:.
+
 ## T08-004/015: apuntados calificados de globales atómicos C
 
 Contrastar globales no TLS de punteros atómicos a `const` y `volatile` para

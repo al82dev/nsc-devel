@@ -1,6 +1,7 @@
 int Main()
 {
     if ((value_u32 += 39U) != 42U) return 1;
+    if ((value_clong -= 36) != -40 || (value_culong += 36U) != 41U) return 9;
     if ((value_i64 += 39L) != 43L || (value_u64 += 39UL) != 44UL) return 2;
     if ((value_i8 -= 39) != -45 || (value_u16 += 39) != 46) return 3;
     if ((value_f32 += (float)2.25) != (float)3.5) return 4;

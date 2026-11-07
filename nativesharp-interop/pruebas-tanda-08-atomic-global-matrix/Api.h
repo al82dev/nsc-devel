@@ -1,4 +1,6 @@
 extern _Atomic(unsigned int) value_u32;
+extern _Atomic(long) value_clong;
+extern _Atomic(unsigned long) value_culong;
 extern _Atomic(long long) value_i64;
 extern _Atomic(unsigned long long) value_u64;
 extern _Atomic(signed char) value_i8;
