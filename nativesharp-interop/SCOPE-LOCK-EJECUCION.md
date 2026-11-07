@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08: TLS C atómico en biblioteca precompilada
+
+Comprobar si una biblioteca NativeSharp compilada con una referencia a un
+global C TLS atómico preserva sus operaciones y dependencias al utilizarse
+desde un ejecutable independiente sin el header original. Preparar fixtures y
+validación bajo `pruebas-tanda-08-tls-c/atomic/precompiled`, con salidas en
+`A:/nsc-interop-build`; registrar resultados. No cambiar producción salvo
+reproducción y delimitación causal. Sin cambios en las pruebas DLL originales,
+NSLink, LLVM externo ni C:. O0–O3; no implica cierre de T08.
+
 ## Proyección inicial de TLS C atómico int
 
 Permitir la proyección únicamente de `_Thread_local _Atomic(int)` con tamaño y

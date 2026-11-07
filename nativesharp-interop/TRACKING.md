@@ -463,6 +463,9 @@ las correcciones. [Resultado](registro-commits/t08-validacion-link-lib-auto.md),
     global y fallan dentro de namespace por nombre desconocido. Es necesario
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
 - [ ] T08-004. Importar declaraciones de variables globales C.
+  - Una biblioteca NativeSharp precompilada accedió a TLS C atómico `int` y
+    punteros atómicos a `const int` y `volatile int`; su consumidor independiente
+    pasó O0–O3 con el header original oculto. [Evidencia](registro-commits/t08-tls-atomico-precompilado.md).
   - Se añadieron controles de punteros TLS atómicos a `const int` y a
     `volatile int`: lectura y escritura aplicable, conservación del calificador
     y comparación con C; NSC pasó O0–O3. La validación integral y las demás

@@ -1,0 +1,9 @@
+int Main()
+{
+    if (PublishedAtomicTls.Bridge.Read() != 3) return 1;
+    if (PublishedAtomicTls.Bridge.Add() != 5) return 2;
+    if (PublishedAtomicTls.Bridge.Read() != 5) return 3;
+    if (PublishedAtomicTls.Bridge.ReadConstPointee() != 74) return 4;
+    if (PublishedAtomicTls.Bridge.WriteVolatilePointee() != 81) return 5;
+    return 0;
+}
