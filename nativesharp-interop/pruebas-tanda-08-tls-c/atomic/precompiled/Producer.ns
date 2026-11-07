@@ -4,6 +4,7 @@ namespace PublishedAtomicTls
     {
         public static int Read() { return atomic_tls; }
         public static int Add() { return atomic_tls += 2; }
+        public static int CheckIsolation() { return atomic_tls_isolation_check(); }
         public static int ReadConstPointee()
         {
             atomic_pointer_const_pointee = atomic_pointer_expected();

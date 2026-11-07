@@ -3,6 +3,8 @@ int Main()
     if (PublishedAtomicTlsDll.Bridge.Read() != 3) return 1;
     if (PublishedAtomicTlsDll.Bridge.Add() != 5) return 2;
     if (PublishedAtomicTlsDll.Bridge.Read() != 5) return 3;
+    if (PublishedAtomicTlsDll.Bridge.CheckIsolation() != 0) return 6;
+    if (PublishedAtomicTlsDll.Bridge.Read() != 5) return 7;
     if (PublishedAtomicTlsDll.Bridge.ReadConstPointee() != 74) return 4;
     if (PublishedAtomicTlsDll.Bridge.WriteVolatilePointee() != 81) return 5;
     return 0;

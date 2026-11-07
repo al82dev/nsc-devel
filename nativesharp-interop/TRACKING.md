@@ -468,6 +468,9 @@ las correcciones. [Resultado](registro-commits/t08-validacion-link-lib-auto.md),
     pasó O0–O3 con el header original oculto. [Evidencia](registro-commits/t08-tls-atomico-precompilado.md).
     También pasó la cadena con DLL NativeSharp intermedia y directorio TLS PE,
     con dependencias CRT declaradas. [Evidencia](registro-commits/t08-tls-atomico-precompilado-dll.md).
+    Un segundo hilo creado por C observó su valor inicial independiente y lo
+    cambió sin alterar el valor visto por el hilo NativeSharp, en ambas rutas
+    y O0–O3. [Evidencia](registro-commits/t08-tls-atomico-precompilado-hilos.md).
   - Se añadieron controles de punteros TLS atómicos a `const int` y a
     `volatile int`: lectura y escritura aplicable, conservación del calificador
     y comparación con C; NSC pasó O0–O3. La validación integral y las demás

@@ -23,6 +23,7 @@ struct AtomicUnsupported { int first; int second; };
 extern _Thread_local _Atomic(struct AtomicUnsupported) atomic_unsupported_record;
 int* atomic_pointer_expected(void);
 int atomic_tls_read(void);
+int atomic_tls_isolation_check(void);
 int atomic_volatile_read(void);
 int atomic_start_worker(void);
 int atomic_start_mul_worker(void);
