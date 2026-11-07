@@ -1,0 +1,8 @@
+int Main()
+{
+    if (atomic_tls != 3) return 1;
+    atomic_tls = 41;
+    atomic_tls += 1;
+    if (atomic_tls_read() != 42) return 2;
+    return 0;
+}
