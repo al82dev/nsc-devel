@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004/015: global C bool precompilado e identidad de caché
+
+Comprobar productor NativeSharp precompilado que accede y modifica un global
+C `volatile _Bool`, con consumidor independiente sin el header original y
+O0–O3. Comprobar de forma aislada que el indicador de declaración i8 cambia la
+identidad MIR. Presupuesto: fixture nuevo bajo record-c, gate de tanda 8,
+`tests/unit/NamespaceFunctionLlvmTests.cpp`, tracking y registros. Conservar
+pruebas existentes, no cambiar producción salvo defecto reproducido, no tocar
+NSLink, LLVM externo ni C:. Validar en grupo con construcción incremental.
+
 ## T08-004/015: operaciones compuestas de `_Bool` C global escalar
 
 El fixture `A:/nsc-interop-build/t08-bool-scalar-repro` reproduce el rechazo

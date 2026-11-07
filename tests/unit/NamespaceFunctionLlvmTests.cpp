@@ -34,7 +34,7 @@ int main()
     writeFile(root / "Llvm.nsproj",
         R"(<Project><PropertyGroup><Name>Llvm</Name></PropertyGroup><ItemGroup><Compile Include="**/*.ns" /></ItemGroup></Project>)");
     writeFile(root / "Functions.ns",
-        "namespace Math { int Add(int left, int right) { return left + right; } } "
+        "namespace Math { bool CacheFlag = false; int Add(int left, int right) { return left + right; } } "
         "namespace App { int Run() { return Math.Add(20, 22); } }");
 
     ProjectCompilation compilation;
@@ -107,6 +107,22 @@ int main()
         const ProjectOopMirCacheIdentityIndex identityIndex(mir);
         tests.expect(!identity.empty() && identity == identityIndex.identity(ordinals, ordinals),
             "cache identity index preserves namespace function and call ordinals");
+
+        const auto staticFields = mir.staticFields();
+        tests.expect(!staticFields.empty(), "cache identity fixture has namespace state");
+        if (!staticFields.empty())
+        {
+            auto& field = const_cast<ProjectOopMirStaticField&>(staticFields.front());
+            const bool saved = field.cppCVolatileBoolStorage;
+            field.cppCVolatileBoolStorage = false;
+            const auto ordinary = projectOopMirCacheIdentity(mir, ordinals, ordinals);
+            field.cppCVolatileBoolStorage = true;
+            const auto cByte = projectOopMirCacheIdentity(mir, ordinals, ordinals);
+            const ProjectOopMirCacheIdentityIndex cByteIndex(mir);
+            tests.expect(ordinary != cByte && cByte == cByteIndex.identity(ordinals, ordinals),
+                "cache identity distinguishes C volatile bool byte storage");
+            field.cppCVolatileBoolStorage = saved;
+        }
 
         const auto functions = mir.functions();
         ProjectOopMirNode* node = functions.empty() ? nullptr : functions.front().body.get();
