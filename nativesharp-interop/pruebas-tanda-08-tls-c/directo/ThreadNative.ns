@@ -1,0 +1,14 @@
+int ThreadAccess(int value)
+{
+    if (value != 0) tls_exported = value;
+    return tls_exported;
+}
+int Main()
+{
+    if (tls_exported != 3) return 1;
+    tls_exported = 41;
+    TlsThreadCallback callback = (int value) => ThreadAccess(value);
+    if (tls_call_native_thread(callback) != 0) return 2;
+    if (tls_exported != 41 || tls_read() != 41) return 3;
+    return 0;
+}

@@ -1,0 +1,5 @@
+<Project><PropertyGroup><Name>CTlsNativeThread</Name></PropertyGroup><ItemGroup>
+  <Compile Include="ThreadNative.ns" />
+  <CppLibraryReference Header="TlsApi.h" Language="C" Standard="c11" Library="api.lib" Runtime="api.dll" />
+  <CppLibraryReference Header="ThreadApi.h" Language="C" Standard="c11" Library="api.lib" Runtime="api.dll" />
+</ItemGroup></Project>
