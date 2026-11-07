@@ -4350,6 +4350,15 @@ layout, visibilidad y calificadores comprobados por el mapeo C existente.
 Presupuesto inicial: fixture `pointer`, seguimiento y registros; producción
 solo en la ruta demostrada. NSLink, LLVM externo y C: permanecen protegidos.
 
+# Records y enums TLS C volatile
+
+Probar struct, arreglo de struct y enum TLS `volatile`, más struct
+`const volatile`, conjuntamente en estático y DLL. Contrastar C, accesos
+NativeSharp, aislamiento entre hilos, IR y rechazo de escritura `const`.
+Reproducir antes de modificar el mapeo; conservar las reglas existentes de
+layout e identidad C. Presupuesto: fixture `pointer`, proyección causal,
+controles negativos, tracking y registros. NSLink, LLVM y C: protegidos.
+
 # Callback global C TLS
 
 Ampliar el fixture TLS con un puntero a función C global por hilo: lectura,
