@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CTlsTransitive</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Transitive.ns" />
+    <CppLibraryReference Header="ProbeApi.h" Language="C" Standard="c11" Library="api.lib" />
+    <CppLibraryReference Header="Crt.h" Language="C" Standard="c11" Library="A:/vc2026-runtime/lib/x64/release/libcmt.lib" />
+  </ItemGroup>
+</Project>
