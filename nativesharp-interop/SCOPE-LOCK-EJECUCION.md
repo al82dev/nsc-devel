@@ -1554,6 +1554,13 @@ NSLink y fuentes LLVM permanecen protegidos.
 
 ## Identificadores de declaraciones de Clang
 
+T08-002: contrastar los USR de campos de records C obtenidos desde una sesión
+Clang activa con los campos reconstruidos del catálogo precompilado ya
+codificado y decodificado. Presupuesto: `tests/unit/CppClangSessionTests.cpp`,
+tracking y registro. No modificar el formato de metadata, NSLink, LLVM ni C:;
+la comprobación no acredita por sí sola persistencia en un archivo NSMETA ni
+cierra la identidad de todas las declaraciones.
+
 T08-002: capturar opcionalmente el USR que proporciona Clang 23.1.0 para las
 declaraciones de funciones, globales, enums, enumeradores, aliases, records,
 campos, métodos, campos estáticos y namespaces. Un USR no demuestra ABI ni

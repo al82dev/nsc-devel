@@ -7432,6 +7432,22 @@ int main(int argc, char** argv)
                                 *recordDependencies.nameLookup(), restoredFields, restoredConstants, dependencyError);
                             ok &= expect(membersOk && restoredFields.size() == 3 && restoredConstants.empty(),
                                          "precompiled C catalogues deduplicate reconstructed fields");
+                            std::vector<nativesharp::frontend::CppImportedInstanceField> liveFields;
+                            const bool liveFieldsOk = provideExperimentalCppInstanceFields(
+                                *recordDependencies.projectGraph(), recordDependencies.cppProjectSessions(),
+                                *recordDependencies.nameLookup(), liveFields, dependencyError);
+                            const bool fieldUsrsMatch = liveFieldsOk && membersOk && liveFields.size() == 3 &&
+                                restoredFields.size() == liveFields.size() &&
+                                std::all_of(liveFields.begin(), liveFields.end(), [&](const auto& live) {
+                                    const auto restoredField = std::find_if(restoredFields.begin(), restoredFields.end(),
+                                        [&](const auto& field) {
+                                            return field.ownerIdentityKey == live.ownerIdentityKey && field.name == live.name;
+                                        });
+                                    return live.clangUsr && !live.clangUsr->empty() &&
+                                        restoredField != restoredFields.end() && restoredField->clangUsr == live.clangUsr;
+                                });
+                            ok &= expect(fieldUsrsMatch,
+                                         "precompiled C fields preserve real Clang USRs from live projection");
                             auto conflictingRecords = catalogRecords;
                             conflictingRecords.front().clangUsr = "conflicting-usr";
                             auto conflict = module;
