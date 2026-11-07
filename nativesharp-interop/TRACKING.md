@@ -508,8 +508,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     dirigidos. [Resultado](registro-commits/t08-atomic-global-mas-calificados-validacion.md).
     Punteros atómicos a `signed char`, `unsigned char`, `unsigned short` y
     `unsigned long long` pasaron controles globales y TLS en O0–O3 e IR; pasó
-    la regresión TLS atómica. No se acreditaron apuntados calificados ni
-    aislamiento entre hilos. [Resultado](registro-commits/t08-atomic-pointer-widths-validacion.md).
+    la regresión TLS atómica. No se acreditaron apuntados calificados.
+    [Resultado](registro-commits/t08-atomic-pointer-widths-validacion.md).
+    Un segundo hilo C comprobó aislamiento de los cuatro punteros TLS en O0–O3.
+    [Resultado](registro-commits/t08-atomic-pointer-widths-hilos-validacion.md).
   - Reproducido rechazo de `|=` en `_Bool` C escalar volatile; Clang acepta el
     contrato y emite accesos de byte ordenados. Corrección pendiente.
     [Evidencia](registro-commits/t08-bool-scalar-compuesto-reproduccion.md).
