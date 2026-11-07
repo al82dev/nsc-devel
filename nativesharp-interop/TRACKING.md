@@ -543,6 +543,11 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     Una DLL de escalares sin importaciones falla ya en el control C de TLS;
     una variante con importación Win32 pasó en NSC O0–O3. Ambas permanecen en
     el gate mientras se investiga la diferencia. [Evidencia](registro-commits/tls-dll-escalares-cero-investigacion.md).
+    Una comparación posterior aisló la entrada PE del directorio de importación:
+    con la DLL original el consumidor NS O0 devolvió 8; una copia que solo
+    cambia esa entrada para apuntar a un descriptor vacío devolvió 0. Es un
+    diagnóstico del entorno, no una corrección ni autorización para modificar
+    bibliotecas ajenas. [Evidencia](registro-commits/t08-tls-dll-directorio-importacion.md).
     Con el arranque normal del CRT estático, el control C y NativeSharp pasaron
     esos escalares O0–O3; las variantes de arranque mínimo fallidas se conservan.
     [Evidencia](registro-commits/tls-dll-escalar-crt.md).
