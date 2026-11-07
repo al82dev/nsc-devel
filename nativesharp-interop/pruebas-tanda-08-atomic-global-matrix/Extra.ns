@@ -1,0 +1,18 @@
+int Main()
+{
+    if (extra_u8 != 2 || extra_i16 != -3) return 1;
+    if (extra_u32_ptr != null || extra_i16_ptr != null || extra_i64_ptr != null) return 2;
+    if (extra_f64_ptr != null || extra_const_ptr != null || extra_volatile_ptr != null) return 3;
+    extra_u8 = 42;
+    extra_i16 = -43;
+    extra_u32_ptr = expected_u32();
+    extra_i16_ptr = expected_i16();
+    extra_i64_ptr = expected_i64();
+    extra_f64_ptr = expected_f64();
+    extra_const_ptr = expected_int();
+    extra_volatile_ptr = expected_int();
+    if (*extra_const_ptr != 77) return 4;
+    *extra_volatile_ptr = 78;
+    if (verify_extra() != 1) return 5;
+    return 0;
+}

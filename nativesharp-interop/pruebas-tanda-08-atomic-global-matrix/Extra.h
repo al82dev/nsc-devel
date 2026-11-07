@@ -1,0 +1,14 @@
+extern _Atomic(unsigned char) extra_u8;
+extern _Atomic(short) extra_i16;
+extern _Atomic(unsigned int*) extra_u32_ptr;
+extern _Atomic(short*) extra_i16_ptr;
+extern _Atomic(long long*) extra_i64_ptr;
+extern _Atomic(double*) extra_f64_ptr;
+extern _Atomic(const int*) extra_const_ptr;
+extern _Atomic(volatile int*) extra_volatile_ptr;
+unsigned int* expected_u32(void);
+short* expected_i16(void);
+long long* expected_i64(void);
+double* expected_f64(void);
+int* expected_int(void);
+int verify_extra(void);

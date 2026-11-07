@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CAtomicGlobalExtra</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Extra.ns" />
+    <CppLibraryReference Header="Extra.h" Language="C" Standard="c11" Library="extra.lib" />
+  </ItemGroup>
+</Project>
