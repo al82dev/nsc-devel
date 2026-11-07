@@ -5,6 +5,8 @@ int Main()
     if (PublishedAtomicTls.Bridge.Read() != 5) return 3;
     if (PublishedAtomicTls.Bridge.CheckIsolation() != 0) return 6;
     if (PublishedAtomicTls.Bridge.Read() != 5) return 7;
+    if (PublishedAtomicTls.Bridge.CheckNativeIsolation() != 0) return 8;
+    if (PublishedAtomicTls.Bridge.Read() != 5) return 9;
     if (PublishedAtomicTls.Bridge.ReadConstPointee() != 74) return 4;
     if (PublishedAtomicTls.Bridge.WriteVolatilePointee() != 81) return 5;
     return 0;

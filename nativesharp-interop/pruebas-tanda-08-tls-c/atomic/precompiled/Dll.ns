@@ -5,6 +5,7 @@ namespace PublishedAtomicTlsDll
         public static int Read() { return PublishedAtomicTls.Bridge.Read(); }
         public static int Add() { return PublishedAtomicTls.Bridge.Add(); }
         public static int CheckIsolation() { return PublishedAtomicTls.Bridge.CheckIsolation(); }
+        public static int CheckNativeIsolation() { return PublishedAtomicTls.Bridge.CheckNativeIsolation(); }
         public static int ReadConstPointee() { return PublishedAtomicTls.Bridge.ReadConstPointee(); }
         public static int WriteVolatilePointee() { return PublishedAtomicTls.Bridge.WriteVolatilePointee(); }
     }

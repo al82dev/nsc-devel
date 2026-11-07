@@ -5,6 +5,16 @@ namespace PublishedAtomicTls
         public static int Read() { return atomic_tls; }
         public static int Add() { return atomic_tls += 2; }
         public static int CheckIsolation() { return atomic_tls_isolation_check(); }
+        public static int ThreadAccess(int value)
+        {
+            if (value != 0) atomic_tls = value;
+            return atomic_tls;
+        }
+        public static int CheckNativeIsolation()
+        {
+            AtomicThreadCallback callback = (int value) => ThreadAccess(value);
+            return atomic_tls_native_thread(callback);
+        }
         public static int ReadConstPointee()
         {
             atomic_pointer_const_pointee = atomic_pointer_expected();

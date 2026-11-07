@@ -14,6 +14,8 @@ estático precompilado y un ejecutable independiente, con el header C oculto.
 Comprobar en ambas rutas el aislamiento del TLS atómico de `int` entre el hilo
 consumidor y un hilo creado por la biblioteca C; permitir el fixture atómico
 compartido y conservar las demás pruebas sin cambios.
+Añadir control donde ese segundo hilo llama de vuelta a NativeSharp y comprueba
+que el acceso atómico usa su propia instancia TLS, sin tocar NSLink ni C:.
 
 ## Proyección inicial de TLS C atómico int
 

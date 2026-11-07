@@ -49,6 +49,24 @@ int atomic_tls_isolation_check(void)
     CloseHandle(thread);
     return wait == 0 && result == 0 ? 0 : 2;
 }
+typedef struct AtomicThreadContext { AtomicThreadCallback callback; int result; } AtomicThreadContext;
+static Dword __stdcall native_isolation_worker(void* data)
+{
+    AtomicThreadContext* context = (AtomicThreadContext*)data;
+    if (context->callback(0) != 3 || atomic_tls != 3) { context->result = 1; return 0; }
+    if (context->callback(71) != 71 || atomic_tls != 71) { context->result = 2; return 0; }
+    context->result = 0;
+    return 0;
+}
+int atomic_tls_native_thread(AtomicThreadCallback callback)
+{
+    AtomicThreadContext context = {callback, 99};
+    Handle thread = CreateThread(0, 0, native_isolation_worker, &context, 0, 0);
+    if (!thread) return 3;
+    Dword wait = WaitForSingleObject(thread, 0xffffffffUL);
+    CloseHandle(thread);
+    return wait == 0 ? context.result : 4;
+}
 static _Thread_local int factor_calls;
 int atomic_factor(void) { ++factor_calls; return 2; }
 int atomic_factor_calls(void) { return factor_calls; }
