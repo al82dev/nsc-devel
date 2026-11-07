@@ -26,6 +26,14 @@ y metadata siguen pendientes hasta implementar y validar el contrato completo.
 Permitir también `tests/unit/ProjectOopLoweringTests.cpp` para comprobar que la
 identidad HIR distingue el indicador y que la caché MIR lo restaura.
 
+Preparar en los descensos LLVM de NSC la lectura y escritura `seq_cst` y las
+actualizaciones suma/resta atómicas para el indicador MIR de global C int;
+otras operaciones deben fallar si el indicador aparece, sin bajar a carga más
+escritura. No habilitar aún la proyección: faltan barreras de escape, operaciones
+adicionales, metadata y pruebas. Permitir `OopLlvmExpressionLeaves.cpp` y
+`OopLlvmArraysAndStores.cpp`, además de pruebas y registros. Sin NSLink, LLVM
+externo ni C:.
+
 ## Raíz de respaldo NS_LIB_ROOT
 
 Comprobar que las dependencias NS transitivas bajo la raíz de respaldo
