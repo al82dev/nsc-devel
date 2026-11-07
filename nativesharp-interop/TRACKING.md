@@ -476,7 +476,7 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
 - [ ] T08-004. Importar declaraciones de variables globales C.
   - Globales `static` de encabezado: la ruta actual excluye nombres sin enlace
-    externo. Claude informó un rechazo; queda por reproducir y resolver con la
+    externo. El control C pasó y NSC reprodujo el rechazo; queda por resolver con la
     identidad por unidad de traducción. [Análisis](T08-004-GLOBAL-STATIC-INVESTIGACION.md).
   - El global C `_Atomic(int)` sin TLS fue rechazado como tipo no mapeado.
     Una corrección limitada de su proyección pasó O0–O3, comprobación de IR

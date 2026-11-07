@@ -4,7 +4,15 @@
 
 Claude de identidad informó que una global `static` de encabezado no se importa
 en NSC, ni siquiera con un solo encabezado. Ese resultado se comunicó desde la
-rama `interop-t08-claude-identidad`; aquí no se ha repetido ni integrado.
+rama `interop-t08-claude-identidad`, que aún no se ha integrado.
+
+## Reproducción en esta rama
+
+El control `pruebas-tanda-08-global-static/validar.cmd` compiló, enlazó y
+ejecutó el programa C que alterna acceso directo y funciones inline sobre la
+misma variable. NSC rechazó las tres referencias a `shared_state` con
+`unknown identifier` antes de producir el ejecutable. El control de NativeSharp
+queda pendiente de pasar; no se ha integrado al gate general.
 
 ## Rutas observadas en la rama principal
 
