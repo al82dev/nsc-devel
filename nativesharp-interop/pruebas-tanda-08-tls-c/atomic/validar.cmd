@@ -22,13 +22,7 @@ llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
 clang.exe -S -emit-llvm --target=x86_64-pc-windows-msvc -std=c11 -O0 "%DEST%\Probe.c" -o "%DEST%\probe.ll"
 if errorlevel 1 exit /b 1
-findstr /L /C:"load atomic" "%DEST%\probe.ll" >nul
-if errorlevel 1 exit /b 1
-findstr /L /C:"store atomic" "%DEST%\probe.ll" >nul
-if errorlevel 1 exit /b 1
-findstr /L /C:"atomicrmw" "%DEST%\probe.ll" >nul
-if errorlevel 1 exit /b 1
-findstr /L /C:"seq_cst" "%DEST%\probe.ll" >nul
+python "%~dp0verificar_ir.py" "%DEST%\probe.ll" clang
 if errorlevel 1 exit /b 1
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Probe.c" -o "%DEST%\probe.obj"
 if errorlevel 1 exit /b 1
@@ -38,13 +32,7 @@ if errorlevel 1 exit /b 1
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\native.ll" 2> "%DEST%\native-ir.log"
 if errorlevel 1 (type "%DEST%\native-ir.log" & exit /b 1)
-findstr /L /C:"load atomic" "%DEST%\native.ll" >nul
-if errorlevel 1 exit /b 1
-findstr /L /C:"store atomic" "%DEST%\native.ll" >nul
-if errorlevel 1 exit /b 1
-findstr /L /C:"atomicrmw" "%DEST%\native.ll" >nul
-if errorlevel 1 exit /b 1
-findstr /L /C:"seq_cst" "%DEST%\native.ll" >nul
+python "%~dp0verificar_ir.py" "%DEST%\native.ll" native
 if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" --no-artifact-cache -O%%O -o "%DEST%\native-O%%O.exe" > "%DEST%\native-O%%O.log" 2>&1
