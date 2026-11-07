@@ -1,0 +1,7 @@
+int Main()
+{
+    if (tls_clong != -4 || tls_culong != 5U) return 1;
+    if ((tls_clong -= 36) != -40 || (tls_culong += 36U) != 41U) return 2;
+    if (verify_long_tls() != 1) return 3;
+    return 0;
+}
