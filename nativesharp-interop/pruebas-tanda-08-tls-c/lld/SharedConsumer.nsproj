@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>TlsSharedConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ConsumerNoHeader.ns" />
+    <LibraryReference Include="bin/Debug/TlsSharedProducer.lib" Runtime="bin/Debug/TlsSharedProducer.dll" />
+  </ItemGroup>
+</Project>

@@ -14,11 +14,13 @@ for %%F in (Api.c Api.h Crt.h Main.ns Project.nsproj) do (
   copy /y "%~dp0..\static-global\%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
-for %%F in (Producer.ns Producer.nsproj) do (
+for %%F in (Producer.ns Producer.nsproj ConsumerNoHeader.ns) do (
   copy /y "%~dp0..\precompiled\%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
 copy /y "%~dp0SharedProducer.nsproj" "%DEST%\SharedProducer.nsproj" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0SharedConsumer.nsproj" "%DEST%\SharedConsumer.nsproj" >nul
 if errorlevel 1 exit /b 1
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Api.c" -o "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
@@ -42,6 +44,12 @@ llvm-readobj.exe --coff-exports "%DEST%\bin\Debug\TlsSharedProducer.dll" > "%DES
 if errorlevel 1 exit /b 1
 findstr /L /C:"__nsc_get_shared_tls" "%DEST%\dll-exports.log" >nul
 if not errorlevel 1 exit /b 1
+findstr /L /C:"PublishedTls$2EBridge__Read" "%DEST%\dll-exports.log" >nul
+if errorlevel 1 exit /b 1
+nsc.exe build "%DEST%\SharedConsumer.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore --linker LLD -O0 > "%DEST%\dll-consumer.log" 2>&1
+if errorlevel 1 (type "%DEST%\dll-consumer.log" & exit /b 1)
+"%DEST%\bin\Debug\TlsSharedConsumer.exe"
+if errorlevel 1 exit /b 1
 echo DLL con LLD sin NSC_LINKER correcta.
 for %%I in (1 2) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" --nsc-linker-selection=LLD --incremental-link --no-artifact-cache -O0 -o "%DEST%\incremental.exe" > "%DEST%\incremental-%%I.log" 2>&1
