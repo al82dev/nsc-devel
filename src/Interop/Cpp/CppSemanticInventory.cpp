@@ -209,12 +209,12 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         arrayVolatile |= arrayElement->isVolatile;
         arrayElement = arrayElement->element.get();
     }
-    const bool supportedArrayElement = arrayElement->kind == CppTypeKind::Boolean ||
+    const bool scalarArrayElement = arrayElement->kind == CppTypeKind::Boolean ||
         arrayElement->kind == CppTypeKind::SignedInteger || arrayElement->kind == CppTypeKind::UnsignedInteger ||
-        arrayElement->kind == CppTypeKind::Floating || arrayElement->kind == CppTypeKind::Record ||
+        arrayElement->kind == CppTypeKind::Floating;
+    const bool supportedArrayElement = scalarArrayElement || arrayElement->kind == CppTypeKind::Record ||
         arrayElement->kind == CppTypeKind::Enumeration;
-    const bool supportedVolatileArray = !(arrayVolatile || arrayElement->isVolatile) ||
-        (arrayElement->kind == CppTypeKind::SignedInteger && arrayElement->sizeBits == 32);
+    const bool supportedVolatileArray = !(arrayVolatile || arrayElement->isVolatile) || scalarArrayElement;
     const bool supportedArrayTls = fixedArray && supportedArrayElement && supportedVolatileArray;
     const bool supportedVolatileTls = !global.type.isVolatile || supportedArrayTls || supportedPointerTls || scalarTls;
     if (global.threadLocal && (!cLanguage || global.dllImport ||
