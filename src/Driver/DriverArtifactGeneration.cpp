@@ -1028,7 +1028,7 @@ void collectDynamicStateExports(const frontend::ProjectCompilation &compilation,
     {
         if (state.projectOrdinal == rootProjectOrdinal &&
             state.accessibility == frontend::NamespaceFunctionAccessibility::Public && !state.isConst &&
-            !state.isPrecompiled)
+            !state.isPrecompiled && !state.isCppExternal)
             exportSymbols.push_back("__nsc_get_" + state.storageName);
     }
 }

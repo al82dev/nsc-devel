@@ -4450,6 +4450,18 @@ no modificar NSLink, LLVM ni C:. Cambios de producción únicamente tras
 reproducir un defecto concreto y delimitar su causa. Esta matriz no cierra
 por sí sola la tanda ni sustituye el validador completo.
 
+# Exportaciones de DLL con global C TLS importado
+
+La prueba `lld/validar-sin-entorno.cmd` llegó a enlazar una DLL NativeSharp
+que consume `shared_tls`, pero el enlace falló porque el generador solicitó
+`__nsc_get_shared_tls`, accesor que no existe para un global C importado.
+El cambio permitido es la condición de `collectDynamicStateExports` en
+`src/Driver/DriverArtifactGeneration.cpp`, para omitir estados C/C++ externos
+al formar exportaciones NativeSharp. Preservar exportaciones NativeSharp,
+pruebas existentes, NSLink, LLVM y C:. Comprobar el DLL de la reproducción,
+la selección LLD y los demás controles agrupados. Registrar esta corrección
+por separado; no implica cierre de TLS ni de la tanda.
+
 # Arreglo global C TLS
 
 Reproducir lectura, escritura y aislamiento por hilo de un `int[2]` TLS C
