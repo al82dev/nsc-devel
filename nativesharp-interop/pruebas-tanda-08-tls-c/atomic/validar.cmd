@@ -75,7 +75,7 @@ for %%O in (0 1 2 3) do (
   "%DEST%\narrow-O%%O.exe"
   if errorlevel 1 exit /b 1
 )
-for %%F in (NarrowCompound Promotion FloatCompound) do (
+for %%F in (NarrowCompound Promotion FloatCompound PointerCompound) do (
   copy /y "%DEST%\%%F.ns" "%DEST%\Main.ns" >nul
   if errorlevel 1 exit /b 1
   for %%O in (0 1 2 3) do (
@@ -115,12 +115,6 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\
 if not errorlevel 1 exit /b 1
 findstr /L /C:"thread-local C/C++ global is not yet projected" "%DEST%\pointer-qualified.log" >nul
 if errorlevel 1 (type "%DEST%\pointer-qualified.log" & exit /b 1)
-copy /y "%DEST%\PointerCompound.ns" "%DEST%\Main.ns" >nul
-if errorlevel 1 exit /b 1
-nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\pointer-compound.log" 2>&1
-if not errorlevel 1 exit /b 1
-findstr /L /C:"C atomic global compound operation is not yet supported" "%DEST%\pointer-compound.log" >nul
-if errorlevel 1 (type "%DEST%\pointer-compound.log" & exit /b 1)
 copy /y "%DEST%\ReferenceControl.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\reference-control.log" 2>&1

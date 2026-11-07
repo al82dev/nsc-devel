@@ -154,6 +154,27 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         if (node->children[0]->cppAtomicAccess)
         {
             const auto* target = node->children[0].get();
+            if (target->typeKey == "builtin:int*")
+            {
+                if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
+                    target->cppAtomicAlignmentBytes != std::optional<std::size_t>{8} || node->immediate != 4 ||
+                    (node->operation != lexer::TokenKind::Plus && node->operation != lexer::TokenKind::Minus))
+                    return failValue(error, "C atomic pointer compound operation is not yet supported");
+                LLVMValueRef index = normalizeNativeIndexFromValue(node->children[1].get(), value, error);
+                LLVMTypeRef pointerType = llvmType(target->typeKey, error);
+                if (index == nullptr || pointerType == nullptr) return nullptr;
+                LLVMValueRef stride = LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0);
+                LLVMValueRef offset = LLVMBuildMul(builder_, index, stride, "atomic.pointer.offset");
+                if (node->operation == lexer::TokenKind::Minus)
+                    offset = LLVMBuildNeg(builder_, offset, "atomic.pointer.negative.offset");
+                LLVMValueRef previous = LLVMBuildAtomicRMW(builder_, LLVMAtomicRMWBinOpAdd, address, offset,
+                    LLVMAtomicOrderingSequentiallyConsistent, 0);
+                LLVMSetAlignment(previous, 8);
+                if (target->volatileAccess) LLVMSetVolatile(previous, 1);
+                LLVMValueRef result = node->booleanValue ? previous :
+                    LLVMBuildAdd(builder_, previous, offset, "atomic.pointer.updated");
+                return LLVMBuildIntToPtr(builder_, result, pointerType, "atomic.pointer.result");
+            }
             if (target->typeKey == "builtin:float" || target->typeKey == "builtin:double")
             {
                 const unsigned alignment = target->typeKey == "builtin:float" ? 4U : 8U;

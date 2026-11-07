@@ -108,12 +108,21 @@ void entry(void)
         else {
             atomic_pointer = atomic_pointer_expected();
             if (atomic_pointer != atomic_pointer_expected() || *atomic_pointer != 73) result = 47;
+            else if (*(__c11_atomic_fetch_add(&atomic_pointer, 1, __ATOMIC_SEQ_CST) + 1) != 74) result = 51;
+            else if (*(__c11_atomic_fetch_add(&atomic_pointer, 1, __ATOMIC_SEQ_CST) + 1) != 75) result = 52;
+            else if (*(__c11_atomic_fetch_sub(&atomic_pointer, 2, __ATOMIC_SEQ_CST) - 2) != 73) result = 53;
+            else if (*(__c11_atomic_fetch_add(&atomic_pointer, 1, __ATOMIC_SEQ_CST) + 1) != 74) result = 57;
+            else if (*(__c11_atomic_fetch_add(&atomic_pointer, -1, __ATOMIC_SEQ_CST) - 1) != 73) result = 58;
             atomic_pointer = 0;
             if (atomic_pointer != 0) result = 48;
             else if (atomic_pointer_const != 0 || atomic_pointer_volatile != 0) result = 49;
             else {
                 atomic_pointer_volatile = atomic_pointer_expected();
                 if (atomic_pointer_volatile != atomic_pointer_expected()) result = 50;
+                else if (__c11_atomic_fetch_add(&atomic_pointer_volatile, 1, __ATOMIC_SEQ_CST) != atomic_pointer_expected()) result = 54;
+                else if (*(__c11_atomic_fetch_add(&atomic_pointer_volatile, 1, __ATOMIC_SEQ_CST) + 1) != 75) result = 55;
+                else if (*__c11_atomic_fetch_sub(&atomic_pointer_volatile, 1, __ATOMIC_SEQ_CST) != 75 ||
+                         *(__c11_atomic_fetch_sub(&atomic_pointer_volatile, 1, __ATOMIC_SEQ_CST) - 1) != 73) result = 56;
             }
         }
     }

@@ -14,3 +14,7 @@ por símbolo, orden y alineación. También se verifican los rechazos pendientes
 Registros: `A:/nsc-interop-build/tanda08-atomic-pointer-guard-build.log` y
 `A:/nsc-interop-build/tanda08-atomic-pointer-qualified.log`. No se ha cerrado
 T08 ni validado toda la familia de punteros.
+
+Actualización posterior: la aritmética del caso `int*` se implementó y se
+documenta en `t08-tls-atomico-puntero-aritmetica.md`; las demás limitaciones
+de esta entrada permanecen pendientes.

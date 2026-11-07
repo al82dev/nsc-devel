@@ -20,8 +20,8 @@ _Thread_local volatile _Atomic(int*) atomic_pointer_volatile = 0;
 _Thread_local const _Atomic(int*) atomic_pointer_const = 0;
 _Thread_local _Atomic(const int*) atomic_pointer_const_pointee = 0;
 _Thread_local _Atomic(struct AtomicUnsupported) atomic_unsupported_record;
-static _Thread_local int atomic_pointer_target = 73;
-int* atomic_pointer_expected(void) { return &atomic_pointer_target; }
+static _Thread_local int atomic_pointer_target[3] = {73, 74, 75};
+int* atomic_pointer_expected(void) { return atomic_pointer_target; }
 int atomic_tls_read(void) { return atomic_tls; }
 int atomic_volatile_read(void) { return atomic_volatile; }
 typedef unsigned long Dword;

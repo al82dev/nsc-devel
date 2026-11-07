@@ -22,8 +22,8 @@ for symbol, required, volatile in (
     ('atomic_bool', {'load', 'store'}, False),
     ('atomic_bool_volatile', {'load', 'store'}, True),
     ('atomic_bool_const', {'load'}, False),
-    ('atomic_pointer', {'load', 'store'}, False),
-    ('atomic_pointer_volatile', {'load', 'store'}, True),
+    ('atomic_pointer', {'load', 'store', 'rmw'}, False),
+    ('atomic_pointer_volatile', {'load', 'store', 'rmw'}, True),
     ('atomic_pointer_const', {'load'}, False),
 ):
     if mode == 'native' and symbol in {'atomic_float', 'atomic_double'}:
@@ -78,4 +78,12 @@ for symbol, required, volatile in (
                                 for address in addresses)]
         if len(volatile_cas) < 4:
             raise SystemExit('Falta volatile en las operaciones atomicas double')
+    if symbol == 'atomic_pointer_volatile' and mode == 'native':
+        updates = [line for line in body.splitlines()
+                   if re.search(r'\batomicrmw volatile add\b', line)
+                   and re.search(r'\bseq_cst\b.*\balign 8\b', line)
+                   and any(re.search(r'\bptr\s+' + re.escape(address) + r'(?:\s|,)', line)
+                           for address in addresses)]
+        if len(updates) < 4:
+            raise SystemExit('Falta volatile en la aritmetica atomica de puntero')
 print('IR atomico verificado para ' + mode)

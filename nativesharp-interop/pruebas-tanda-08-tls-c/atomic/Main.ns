@@ -69,10 +69,16 @@ int Main()
     if (atomic_pointer != null) return 46;
     atomic_pointer = atomic_pointer_expected();
     if (atomic_pointer != atomic_pointer_expected() || *atomic_pointer != 73) return 47;
+    if (*(atomic_pointer += 1) != 74) return 51;
+    if (*(atomic_pointer += 1) != 75) return 52;
+    if (*(atomic_pointer -= 2) != 73) return 53;
     atomic_pointer = null;
     if (atomic_pointer != null) return 48;
     if (atomic_pointer_const != null || atomic_pointer_volatile != null) return 49;
     atomic_pointer_volatile = atomic_pointer_expected();
     if (atomic_pointer_volatile != atomic_pointer_expected()) return 50;
+    if (atomic_pointer_volatile++ != atomic_pointer_expected()) return 54;
+    if (*(++atomic_pointer_volatile) != 75) return 55;
+    if (*(atomic_pointer_volatile--) != 75 || *(--atomic_pointer_volatile) != 73) return 56;
     return 0;
 }
