@@ -29,7 +29,7 @@ python "%~dp0verificar-ir.py" "%DEST%\control.ll" "%DEST%\native.ll"
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\ReadOnly.nsproj" -O0 --no-artifact-cache -o "%DEST%\readonly.exe" > "%DEST%\readonly.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /i /c:"readonly" /c:"const" "%DEST%\readonly.log" >nul
+findstr /c:"error: left side of assignment is not assignable" "%DEST%\readonly.log" >nul
 if errorlevel 1 exit /b 1
 echo Escritura de global const rechazada.
 for %%O in (0 1 2 3) do (
