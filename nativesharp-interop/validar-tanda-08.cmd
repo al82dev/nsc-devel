@@ -36,6 +36,7 @@ for %%T in (
   pruebas-tanda-08-record-c\precompiled-bool\validar-cache.cmd
   pruebas-tanda-08-record-c\dll-bool\validar.cmd
   pruebas-tanda-08-atomic-global\validar.cmd
+  pruebas-tanda-08-atomic-global-matrix\validar.cmd
   pruebas-tanda-08-callback\validar-record-precompilado.cmd
   pruebas-tanda-08-enum-funcion\validar-callback-precompilado.cmd
   pruebas-tanda-08-typedef-c\validar-puntero.cmd

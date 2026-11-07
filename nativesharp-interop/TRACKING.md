@@ -479,9 +479,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     Una corrección limitada de su proyección pasó O0–O3, comprobación de IR
     atómico y regresión TLS. [Resultado](registro-commits/t08-atomic-global-int-validacion.md).
     Otros tipos atómicos no TLS y la validación integral siguen pendientes.
-  - La matriz de enteros, flotantes, bool y puntero atómicos no TLS mostró
-    rechazo de importación. Se preparó su proyección; falta construcción y
-    validación. [Detalle](registro-commits/t08-atomic-global-matriz-proyeccion.md).
+  - La matriz de enteros, flotantes, bool y puntero atómicos no TLS pasó
+    lecturas y escrituras O0–O3; se comprobó IR y regresión TLS. Faltan otras
+    variantes y operaciones. [Resultado](registro-commits/t08-atomic-global-matriz-validacion.md).
   - Reproducido rechazo de `|=` en `_Bool` C escalar volatile; Clang acepta el
     contrato y emite accesos de byte ordenados. Corrección pendiente.
     [Evidencia](registro-commits/t08-bool-scalar-compuesto-reproduccion.md).
