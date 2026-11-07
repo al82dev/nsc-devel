@@ -471,6 +471,8 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     TLS sigue pendiente. [Evidencia](registro-commits/lld-sin-entorno-prueba.md).
     La DLL no solicita un accessor inexistente para el global C importado.
     [Evidencia](registro-commits/tls-dll-exportacion-externa.md).
+    Su productor y consumidor NativeSharp pasaron O0–O3 con LLD sin
+    `NSC_LINKER`. [Evidencia](registro-commits/tls-dll-consumidor-optimizaciones.md).
     La declaración estándar C11 `_Thread_local` pasó el control C y acceso
     NativeSharp de dos hilos en O0–O3. [Evidencia](registro-commits/tls-estatico-c11.md).
     Un productor NativeSharp precompilado y dos consumidores, con y sin
