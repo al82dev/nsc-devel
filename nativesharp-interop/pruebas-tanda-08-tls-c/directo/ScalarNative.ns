@@ -1,0 +1,17 @@
+int Main()
+{
+    if (tls_zero_read() != 0) return 8;
+    if (tls_zero != tls_zero_read()) return 1;
+    if (tls_volatile != 4) return 2;
+    if (tls_const != 19) return 3;
+    if (tls_unsigned != 7) return 4;
+    if (tls_double != 1.5) return 5;
+    if (tls_bool) return 6;
+    tls_zero = 31;
+    tls_volatile = 14;
+    tls_unsigned = 17;
+    tls_double = 2.5;
+    tls_bool = true;
+    if (tls_scalar_check() != 0) return 7;
+    return 0;
+}
