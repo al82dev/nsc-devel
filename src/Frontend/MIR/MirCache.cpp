@@ -172,7 +172,7 @@ std::string preLowerMirCacheKey(
     std::size_t functionOrdinal)
 {
     std::string material;
-    internal::CachePayloadWriter::string(material, "nsc-mir-prelower-key-v5");
+    internal::CachePayloadWriter::string(material, "nsc-mir-prelower-key-v6");
     internal::CachePayloadWriter::string(material, compilationIdentity);
     internal::CachePayloadWriter::u64(material, functionOrdinal);
     internal::CachePayloadWriter::string(material, serializeHirCacheIdentity(function));
@@ -371,6 +371,7 @@ void appendMirNodeFields(
     appendMirNodeCoreFields(out, node, syntaxIndices);
     appendMirNodeShapeFields(out, node);
     appendMirNodeFlags(out, node);
+    internal::CachePayloadWriter::byte(out, node.cppAtomicAccess ? 1U : 0U);
     appendMirNodeOptionals(out, node);
     appendMirNodeVectors(out, node);
 }
@@ -661,6 +662,9 @@ bool readMirNodeFields(
     std::uint32_t flags = 0;
     if (!reader.u32(flags)) return false;
     applyMirNodeFlags(flags, node);
+    std::uint8_t atomicAccess = 0;
+    if (!reader.byte(atomicAccess) || atomicAccess > 1) return false;
+    node.cppAtomicAccess = atomicAccess != 0;
     if (!readMirNodeOptionals(reader, node)) return false;
     return readMirNodeVectors(reader, node);
 }

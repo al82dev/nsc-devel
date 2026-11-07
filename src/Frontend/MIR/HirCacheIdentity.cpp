@@ -35,6 +35,7 @@ void appendBoolVector(std::string& out, const std::vector<bool>& values)
 {
     CachePayloadWriter::u64(out, values.size());
     for (const bool value : values) CachePayloadWriter::byte(out, value ? 1U : 0U);
+    CachePayloadWriter::byte(out, node.cppAtomicAccess ? 1U : 0U);
 }
 
 void appendSyntaxIdentity(std::string& out, const ast::AstNode* syntax)

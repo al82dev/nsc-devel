@@ -98,6 +98,7 @@ void writeNodeFlags(IdentityWriter& output, const frontend::ProjectOopMirNode& n
     output.scalar(node.placementConstructed);
     output.scalar(node.stackPromotedObject);
     output.scalar(node.volatileAccess);
+    output.scalar(node.cppAtomicAccess);
     output.optional(node.cppMicrosoftVolatileSemantics);
     output.optional(node.cppAtomicAlignmentBytes);
     output.scalar(node.allocationFailureReturnsNull);

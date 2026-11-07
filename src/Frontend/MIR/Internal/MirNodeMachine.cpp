@@ -143,6 +143,7 @@ void ProjectOopMirModel::MirNodeMachine::copyAttributes(
     result->placementConstructed = node->placementConstructed;
     result->stackPromotedObject = node->stackPromotedObject;
     result->volatileAccess = node->volatileAccess;
+    result->cppAtomicAccess = node->cppAtomicAccess;
     result->cppMicrosoftVolatileSemantics = node->cppMicrosoftVolatileSemantics;
     result->cppAtomicAlignmentBytes = node->cppAtomicAlignmentBytes;
     if (node->cppAtomicAlignmentBytes) result->alignment = *node->cppAtomicAlignmentBytes;
