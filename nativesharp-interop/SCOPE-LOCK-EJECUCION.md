@@ -8,6 +8,13 @@ NSLink y el control con TLS elegir LLD en `nsc build` y emisión directa.
 Preparar fixtures bajo `pruebas-tanda-08-tls-c/precompiled`, salidas en A: y
 bitácora. Cambiar producción solo tras reproducir; no tocar NSLink, LLVM o C:.
 
+La reproducción `raiz-reproduccion.log` mostró que la cadena sin TLS se enlaza
+correctamente pero selecciona LLD porque la inspección anticipada no busca en
+`LibraryReferenceRoot`. Permitir ajustar `precompiledReferenceRequiresLld`, su
+declaración y sus dos llamadores para usar la prioridad de raíces de la
+preparación de bibliotecas. Mantener la selección conservadora cuando ninguna
+raíz permita resolver; la validación normal conserva los diagnósticos y ABI.
+
 ## Selección de enlazador a través de varias bibliotecas precompiladas
 
 Reproducir una cadena consumidor → biblioteca NS intermedia → biblioteca NS
