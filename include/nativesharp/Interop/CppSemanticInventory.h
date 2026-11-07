@@ -160,6 +160,8 @@ struct CppSemanticGlobal
     std::optional<std::uint64_t> declarationAlignmentBits;
     std::optional<std::string> clangUsr;
     bool threadLocal = false;
+    // Distinct from volatile; set only when the imported storage is C atomic.
+    bool atomicStorage = false;
 };
 struct CppSemanticGlobalFailure { std::string message; };
 using CppSemanticGlobalResult = std::variant<CppSemanticGlobal, CppSemanticGlobalFailure>;

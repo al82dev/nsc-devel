@@ -71,5 +71,6 @@ struct NamespaceStateSymbol final
     // Counterpart established through a reconciled enum, not by the value name alone.
     std::optional<std::string> cppReconciledStateKey;
     bool cppThreadLocal = false;
+    bool cppAtomicStorage = false;
 };
 }

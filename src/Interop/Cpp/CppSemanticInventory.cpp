@@ -475,6 +475,7 @@ static bool provideGlobalsWithLookup(
                     state.cppClangUsr = selected.candidate->clangUsr;
                     state.cppDllImport = selected.candidate->dllImport || tlsRuntime.has_value();
                     state.cppThreadLocal = selected.candidate->threadLocal;
+                    state.cppAtomicStorage = selected.candidate->atomicStorage;
                     const auto fromC = [&](std::size_t index) { return entries[index].cLanguage; };
                     state.cppCGlobal = !selected.declarationIndices.empty() &&
                         std::all_of(selected.declarationIndices.begin(), selected.declarationIndices.end(), fromC) &&

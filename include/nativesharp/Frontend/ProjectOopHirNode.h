@@ -159,6 +159,8 @@ struct ProjectOopHirNode final
     // Item 308. Set on field value/address nodes and propagated to the store that consumes an
     // address. It means LLVM volatile memory access, never atomic synchronization.
     bool volatileAccess = false;
+    // C atomic storage is distinct from an LLVM volatile access.
+    bool cppAtomicAccess = false;
     // Effective Clang option for an imported global access; not an atomicity proof.
     std::optional<bool> cppMicrosoftVolatileSemantics;
     // Proven minimum alignment for a direct imported volatile scalar access.

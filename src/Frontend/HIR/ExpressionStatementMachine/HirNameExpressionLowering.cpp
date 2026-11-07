@@ -271,6 +271,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNamespaceStateNameBi
         binding.typeKey);
     node->namespaceStateOrdinal = stateOrdinal;
     node->volatileAccess = state.isVolatile;
+    node->cppAtomicAccess = state.isCppExternal && state.cppAtomicStorage;
     if (state.isCppExternal && state.isVolatile)
     {
         node->cppMicrosoftVolatileSemantics = state.cppMicrosoftVolatileSemantics;
