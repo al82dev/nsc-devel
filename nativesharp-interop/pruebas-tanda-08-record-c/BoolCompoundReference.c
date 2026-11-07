@@ -7,3 +7,6 @@ int divide_two(void) { return (values[0] /= 2); }
 int remainder_two(void) { return (values[0] %= 2); }
 int shift_left_one(void) { return (values[0] <<= 1); }
 int shift_right_one(void) { return (values[0] >>= 1); }
+int xor_uint(unsigned int rhs) { return (values[0] ^= rhs); }
+int xor_long(long long rhs) { return (values[0] ^= rhs); }
+int xor_ulong(unsigned long long rhs) { return (values[0] ^= rhs); }

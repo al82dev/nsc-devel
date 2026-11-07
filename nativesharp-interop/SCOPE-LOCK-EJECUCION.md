@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-015: operandos enteros anchos en `_Bool` C volatile compuesto
+
+Ampliar las operaciones aritméticas y bit a bit compuestas del arreglo C
+global `volatile _Bool` en modo MS a operandos `uint`, `long` y `ulong`, con
+el ancho y signo de la conversión usual C observada en Windows x64. Preservar
+el byte acquire/release y el comportamiento del bool nativo. Presupuesto:
+referencia C, analizador, HIR, LLVM, fixture y verificador record-c, tracking
+y registros. Excluir desplazamientos con estos tipos hasta analizarlos por
+separado; validar en conjunto O0–O3. Sin NSLink, LLVM externo ni C:.
+
 ## T08-015: división, residuo y desplazamientos de `_Bool` C volatile
 
 Extender el arreglo C global `volatile _Bool` en modo MS a `/=`, `%=`, `<<=`
