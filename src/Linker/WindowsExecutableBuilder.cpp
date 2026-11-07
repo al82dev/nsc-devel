@@ -129,10 +129,10 @@ bool appendFileIdentity(
 ///     Las herramientas no disponibles se registran asi, de modo que el estado nunca coincide y
 ///     el enlace reporta el error real. Devuelve false con `error` solo si falla un hash.
 ///     Motivo: la llave v2 no las cubria, y otro NSLink reutilizaba el ejecutable viejo.
-bool appendIncrementalLinkTools(std::string& material, std::string& error)
+bool appendIncrementalLinkTools(std::string_view selection, std::string& material, std::string& error)
 {
     std::string discoveryError;
-    const std::unique_ptr<LldLinker> linker = LldLinker::discover(discoveryError);
+    const std::unique_ptr<LldLinker> linker = LldLinker::discoverSelected(selection, discoveryError);
     const std::filesystem::path linkerPath =
         linker != nullptr ? linker->executablePath() : std::filesystem::path();
     if (!appendLinkToolIdentity("linker", linkerPath, material, error)) return false;
@@ -162,6 +162,7 @@ std::string incrementalLinkKey(
     WindowsExecutableSubsystem subsystem,
     std::string_view mainSymbol,
     bool removeUnreferencedSections,
+    std::string_view linkerSelection,
     std::string& error)
 {
     // v4: NSLink receives stable input and PDB spellings, so a v3 product embeds temporary paths.
@@ -177,7 +178,7 @@ std::string incrementalLinkKey(
     material.push_back('\n');
     material.append(runtimeKey);
     material.push_back('\n');
-    if (!appendIncrementalLinkTools(material, error)) return {};
+    if (!appendIncrementalLinkTools(linkerSelection, material, error)) return {};
     for (const auto& module : externalImports)
     {
         material += module.dllName + "\n";
@@ -415,12 +416,13 @@ bool discoverExecutableImports(
     std::span<const std::filesystem::path> extraLinkLibraries,
     const std::filesystem::path& runtimeLibrary,
     bool independentRuntime,
+    std::string_view linkerSelection,
     std::unique_ptr<LldLinker>& linker,
     std::vector<std::filesystem::path>& importLibraries,
     std::string& error)
 {
     std::string linkerError;
-    linker = LldLinker::discover(linkerError);
+    linker = LldLinker::discoverSelected(linkerSelection, linkerError);
     if (linker == nullptr)
     {
         error = linkerError;
@@ -623,7 +625,7 @@ bool WindowsExecutableBuilder::build(
     std::vector<std::filesystem::path> importLibraries;
     if (!discoverExecutableImports(
             temporaryDirectory->path(), {}, externalImports_, extraLinkLibraries_,
-            runtimeLibrary_, independentRuntime, linker, importLibraries, error)) return false;
+            runtimeLibrary_, independentRuntime, linkerSelection_, linker, importLibraries, error)) return false;
     const std::array<std::filesystem::path, 2> objectFiles = {programObject, runtimeObject};
     const std::filesystem::path pdbPath = executablePdbPath(outputPath, debugInformation_);
     return linkAndVerifyExecutable(
@@ -675,6 +677,7 @@ bool prepareIncrementalExecutable(
     WindowsExecutableSubsystem subsystem,
     std::string_view mainSymbol,
     bool removeUnreferencedSections,
+    std::string_view linkerSelection,
     const std::filesystem::path& outputPath,
     bool incrementalLink,
     std::string& incrementalKey,
@@ -691,7 +694,7 @@ bool prepareIncrementalExecutable(
     incrementalKey = incrementalLinkKey(
         programObjects, programLlvmText, runtimeKey, runtimeAwareLibraries,
         externalImports, optimizationLevel, debugInformation, subsystem, mainSymbol,
-        removeUnreferencedSections, error);
+        removeUnreferencedSections, linkerSelection, error);
     if (incrementalKey.empty()) return false;
     std::filesystem::path pdbPath = outputPath;
     pdbPath.replace_extension(".pdb");
@@ -729,7 +732,7 @@ bool WindowsExecutableBuilder::buildObjects(
     if (!prepareIncrementalExecutable(
             programObjects, programLlvmText, runtimeKey, extraLinkLibraries_, runtimeLibrary_,
             externalImports_, optimizationLevel, debugInformation_, subsystem_, mainSymbol,
-            removeUnreferencedSections_, outputPath, incrementalLink_, incrementalKey, statePath, info_,
+            removeUnreferencedSections_, linkerSelection_, outputPath, incrementalLink_, incrementalKey, statePath, info_,
             reusedIncrementalLink_, error)) return false;
     if (reusedIncrementalLink_) return true;
     const bool independentRuntime = executableUsesIndependentRuntime(runtimeLibrary_);
@@ -745,7 +748,7 @@ bool WindowsExecutableBuilder::buildObjects(
     // optimized modules here only adds latency and peak memory.
     if (!discoverExecutableImports(
             temporaryDirectory->path(), {}, externalImports_, extraLinkLibraries_,
-            runtimeLibrary_, independentRuntime, linker, importLibraries, error)) return false;
+            runtimeLibrary_, independentRuntime, linkerSelection_, linker, importLibraries, error)) return false;
     linker->setRemoveUnreferencedSections(removeUnreferencedSections_);
     std::vector<std::filesystem::path> objectFiles(programObjects.begin(), programObjects.end());
     objectFiles.push_back(runtimeObject);
@@ -770,6 +773,11 @@ void WindowsExecutableBuilder::setExtraLinkLibraries(std::vector<std::filesystem
 void WindowsExecutableBuilder::setRuntimeLibrary(std::filesystem::path runtimeLibrary)
 {
     runtimeLibrary_ = std::move(runtimeLibrary);
+}
+
+void WindowsExecutableBuilder::setLinkerSelection(std::string selection)
+{
+    linkerSelection_ = std::move(selection);
 }
 
 void WindowsExecutableBuilder::setDebugInformation(
