@@ -490,8 +490,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     variantes y operaciones. [Resultado](registro-commits/t08-atomic-global-matriz-validacion.md).
     Las operaciones compuestas de la misma matriz pasaron O0–O3 con IR
     atómico y observación C. [Resultado](registro-commits/t08-atomic-global-compuestos-validacion.md).
-    Preparada la proyección de `long` y `unsigned long` C de 32 bits tras
-    reproducir su rechazo; faltan construcción y validación. [Detalle](registro-commits/t08-atomic-global-clong-proyeccion.md).
+    `long` y `unsigned long` C de 32 bits pasaron en globales no TLS O0–O3,
+    con lectura, escritura y operaciones compuestas. [Resultado](registro-commits/t08-atomic-global-clong-validacion.md).
   - Enteros estrechos y punteros atómicos globales adicionales pasaron O0–O3,
     IR y rechazos de pérdida de calificadores; la regresión TLS pasó.
     [Resultado](registro-commits/t08-atomic-global-extra-validacion.md).
