@@ -12,6 +12,8 @@ if len(sys.argv) < 3 or sys.argv[2] != "clang":
                 raise SystemExit(f"Falta {operation} seq_cst de {name}")
 for operation, ordering in (("load", "acquire"), ("store", "release")):
     for kind, count in (("float", 1), ("i32", 2)):
+        if len(sys.argv) < 3 or sys.argv[2] != "clang":
+            count *= 2
         pattern = rf"\b{operation} atomic volatile {kind}\b[^\n]*\b{ordering}, align 4"
         if len(re.findall(pattern, text)) < count:
             raise SystemExit(f"Faltan accesos {operation} volatile {kind} {ordering}")
