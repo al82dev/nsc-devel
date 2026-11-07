@@ -188,10 +188,11 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     const auto kind = global.type.kind;
     const bool scalarTls = kind == CppTypeKind::Boolean || kind == CppTypeKind::SignedInteger ||
         kind == CppTypeKind::UnsignedInteger || kind == CppTypeKind::Floating;
-    const bool intPointerTls = kind == CppTypeKind::Pointer && global.type.element &&
-        global.type.element->kind == CppTypeKind::SignedInteger && global.type.element->sizeBits == 32 &&
-        !global.type.isConst && !global.type.isVolatile && !global.type.element->isConst &&
-        !global.type.element->isVolatile;
+    const bool scalarPointerTls = kind == CppTypeKind::Pointer && global.type.element &&
+        (global.type.element->kind == CppTypeKind::Boolean ||
+         global.type.element->kind == CppTypeKind::SignedInteger ||
+         global.type.element->kind == CppTypeKind::UnsignedInteger ||
+         global.type.element->kind == CppTypeKind::Floating);
     const CppType* arrayElement = &global.type;
     std::size_t arrayDepth = 0;
     bool fixedArray = kind == CppTypeKind::Array;
@@ -210,10 +211,10 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     const bool supportedVolatileArray = !(arrayVolatile || arrayElement->isVolatile) ||
         (arrayElement->kind == CppTypeKind::SignedInteger && arrayElement->sizeBits == 32);
     const bool scalarArrayTls = fixedArray && scalarArrayElement && supportedVolatileArray;
-    const bool supportedVolatileTls = !global.type.isVolatile || scalarArrayTls ||
+    const bool supportedVolatileTls = !global.type.isVolatile || scalarArrayTls || scalarPointerTls ||
         (kind == CppTypeKind::SignedInteger && global.type.sizeBits == 32);
     if (global.threadLocal && (!cLanguage || global.dllImport ||
-        (!scalarTls && !intPointerTls && !scalarArrayTls) || !supportedVolatileTls))
+        (!scalarTls && !scalarPointerTls && !scalarArrayTls) || !supportedVolatileTls))
         return failure("thread-local C/C++ global is not yet projected");
     const auto type = mapGlobalType(global.type, projectOrdinal, moduleName, lookup, cLanguage);
     if (!type || global.type.kind == CppTypeKind::Void)
