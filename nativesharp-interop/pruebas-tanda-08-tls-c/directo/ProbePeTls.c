@@ -7,17 +7,23 @@ typedef unsigned char Byte;
 typedef void *Handle;
 typedef U32 (__stdcall *ThreadRoutine)(void *);
 __declspec(dllimport) Handle __stdcall GetModuleHandleA(const char *);
+__declspec(dllimport) int __stdcall GetModuleHandleExA(U32, const char *, Handle *);
 __declspec(dllimport) void * __stdcall GetProcAddress(Handle, const char *);
 __declspec(dllimport) Handle __stdcall CreateThread(void *, U64, ThreadRoutine, void *, U32, U32 *);
 __declspec(dllimport) U32 __stdcall WaitForSingleObject(Handle, U32);
 __declspec(dllimport) int __stdcall CloseHandle(Handle);
 __declspec(dllimport) void __stdcall ExitProcess(U32);
 __declspec(dllimport) int tls_read(void);
+/* Se declara como dato importado para observar la direccion PE, no para acceder
+   directamente al valor de hilo mediante esta declaracion. */
+__declspec(dllimport) int tls_exported;
 unsigned long long __readgsqword(unsigned long);
 
 static int *resolve(void)
 {
     Byte *module = (Byte *)GetModuleHandleA("api.dll");
+    Handle by_address = 0;
+    if (!GetModuleHandleExA(6, (const char *)&tls_exported, &by_address) || by_address != module) return 0;
     if (!module || *(U16 *)module != 0x5a4d) return 0;
     Byte *nt = module + *(U32 *)(module + 0x3c);
     if (*(U32 *)nt != 0x4550 || *(U16 *)(nt + 24) != 0x20b) return 0;
@@ -28,6 +34,7 @@ static int *resolve(void)
     Byte *raw_end = *(Byte **)(directory + 8);
     U32 *index = *(U32 **)(directory + 16);
     Byte *exported = (Byte *)GetProcAddress(module, "tls_exported");
+    if (exported != (Byte *)&tls_exported) return 0;
     if (!index || !exported || exported < raw_start || exported + sizeof(int) > raw_end) return 0;
     Byte **slots = (Byte **)__readgsqword(0x58);
     if (!slots || !slots[*index]) return 0;
