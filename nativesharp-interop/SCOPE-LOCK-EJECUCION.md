@@ -1560,6 +1560,10 @@ codificado y decodificado. Presupuesto: `tests/unit/CppClangSessionTests.cpp`,
 tracking y registro. No modificar el formato de metadata, NSLink, LLVM ni C:;
 la comprobación no acredita por sí sola persistencia en un archivo NSMETA ni
 cierra la identidad de todas las declaraciones.
+Ampliar la misma prueba para escribir y leer un NSMETA autenticado con el
+catálogo generado por la sesión, reconstruir sus campos y comparar sus USR con
+los campos de Clang activos. No cambiar el codec ni extender la conclusión a
+funciones, globales, aliases o flujos no ejercitados.
 
 T08-002: capturar opcionalmente el USR que proporciona Clang 23.1.0 para las
 declaraciones de funciones, globales, enums, enumeradores, aliases, records,

@@ -7448,6 +7448,37 @@ int main(int argc, char** argv)
                                 });
                             ok &= expect(fieldUsrsMatch,
                                          "precompiled C fields preserve real Clang USRs from live projection");
+                            LibraryMetadata diskModel;
+                            diskModel.moduleName = catalogRecords.front().moduleName;
+                            diskModel.targetTriple = "x86_64-pc-windows-msvc";
+                            diskModel.producerVersion = "c-field-usr-test";
+                            diskModel.cppCRecordCatalog = catalogBytes;
+                            LibraryMetadataCodec diskCodec;
+                            LibraryMetadata diskRead;
+                            const auto diskPath = std::filesystem::path(argv[2]) / "cpp-field-usr-roundtrip.nsmeta";
+                            const bool diskOk = diskCodec.writeModel(diskModel, diskPath, dependencyError) &&
+                                diskCodec.read(diskPath, diskRead, dependencyError) &&
+                                diskCodec.verifyCurrentCompiler(diskRead, dependencyError);
+                            auto diskModule = module;
+                            diskModule.metadataPath = diskPath;
+                            diskModule.cppCTypeCatalog = diskRead.cppCRecordCatalog;
+                            const std::vector<nativesharp::frontend::PrecompiledSyntaxModule> diskModules{diskModule};
+                            std::vector<nativesharp::frontend::CppImportedInstanceField> diskFields;
+                            std::vector<nativesharp::frontend::NamespaceStateSymbol> diskConstants;
+                            const bool diskFieldsOk = diskOk && reconstructPrecompiledCMembers(diskModules,
+                                *recordDependencies.projectGraph(), "x86_64-pc-windows-msvc",
+                                *recordDependencies.nameLookup(), diskFields, diskConstants, dependencyError);
+                            const bool diskUsrsMatch = liveFieldsOk && diskFieldsOk && diskFields.size() == liveFields.size() &&
+                                std::all_of(liveFields.begin(), liveFields.end(), [&](const auto& live) {
+                                    const auto field = std::find_if(diskFields.begin(), diskFields.end(), [&](const auto& item) {
+                                        return item.ownerIdentityKey == live.ownerIdentityKey && item.name == live.name;
+                                    });
+                                    return live.clangUsr && !live.clangUsr->empty() && field != diskFields.end() &&
+                                        field->clangUsr == live.clangUsr;
+                                });
+                            if (!diskUsrsMatch) std::cerr << "C field USR NSMETA roundtrip: " << dependencyError << '\n';
+                            ok &= expect(diskUsrsMatch && diskConstants.empty(),
+                                         "authenticated NSMETA restores real Clang field USRs");
                             auto conflictingRecords = catalogRecords;
                             conflictingRecords.front().clangUsr = "conflicting-usr";
                             auto conflict = module;
