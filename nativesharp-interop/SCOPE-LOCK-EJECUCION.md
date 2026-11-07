@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Raíz de respaldo NS_LIB_ROOT
+
+Comprobar que las dependencias NS transitivas bajo la raíz de respaldo
+`NS_LIB_ROOT` se resuelven y que la selección conserva NSLink sin TLS y usa LLD
+con TLS, tanto en `nsc build` como en emisión directa. Preparar controles en el
+fixture transitivo, con salidas en A:, tracking y bitácora. No modificar
+producción antes de reproducir; no modificar NSLink, LLVM ni C:.
+
 ## Raíces de dependencias en selección anticipada
 
 Comprobar una biblioteca NS intermedia aislada cuyos módulos dependientes se
