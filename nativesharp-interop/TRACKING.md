@@ -425,6 +425,9 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     Esto no verifica por sí solo la escritura y lectura de un NSMETA real ni
     cubre funciones, globales o aliases; T08-002 sigue abierto.
     [Evidencia](registro-commits/t08-catalogo-usr-campos-sesion.md).
+    Además, un NSMETA producido por el fixture contiene los bytes del USR de
+    `CRecord.value`; la búsqueda no demuestra que el consumidor restaure ese
+    dato concreto. [Observación](registro-commits/t08-usr-campo-nsmeta-observado.md).
 - [ ] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
   - Funciones C `static inline` de un encabezado se llamaron desde NSC en
     O0–O3, directamente y mediante dos bibliotecas NativeSharp precompiladas;
