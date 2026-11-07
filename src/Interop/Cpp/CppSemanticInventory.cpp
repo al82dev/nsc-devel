@@ -192,9 +192,14 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         global.type.element->kind == CppTypeKind::SignedInteger && global.type.element->sizeBits == 32 &&
         !global.type.isConst && !global.type.isVolatile && !global.type.element->isConst &&
         !global.type.element->isVolatile;
+    const bool intArrayTls = kind == CppTypeKind::Array && global.type.arrayCount == 2 &&
+        global.type.element && global.type.element->kind == CppTypeKind::SignedInteger &&
+        global.type.element->sizeBits == 32 && !global.type.isConst && !global.type.isVolatile &&
+        !global.type.element->isConst && !global.type.element->isVolatile;
     const bool supportedVolatileTls = !global.type.isVolatile ||
         (kind == CppTypeKind::SignedInteger && global.type.sizeBits == 32);
-    if (global.threadLocal && (!cLanguage || global.dllImport || (!scalarTls && !intPointerTls) || !supportedVolatileTls))
+    if (global.threadLocal && (!cLanguage || global.dllImport ||
+        (!scalarTls && !intPointerTls && !intArrayTls) || !supportedVolatileTls))
         return failure("thread-local C/C++ global is not yet projected");
     const auto type = mapGlobalType(global.type, projectOrdinal, moduleName, lookup, cLanguage);
     if (!type || global.type.kind == CppTypeKind::Void)
