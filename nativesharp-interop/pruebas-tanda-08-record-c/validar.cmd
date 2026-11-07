@@ -318,6 +318,23 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Projec
 if errorlevel 1 exit /b 1
 python "%~dp0verificar_bool_compuesto_ir.py" "%DEST%\volatile-bool-compound.ll"
 if errorlevel 1 exit /b 1
+python "%~dp0preparar_bool_scalar_compuesto.py" "%~dp0VolatileBoolArrayCompound.ns.txt" "%DEST%\Main.ns"
+if errorlevel 1 exit /b 1
+for %%O in (0 1 2 3) do (
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O%%O --no-artifact-cache -o "%DEST%\volatile-bool-scalar-compound-O%%O.exe" > "%DEST%\volatile-bool-scalar-compound-O%%O.log" 2>&1
+  if errorlevel 1 (type "%DEST%\volatile-bool-scalar-compound-O%%O.log" & exit /b 1)
+  "%DEST%\volatile-bool-scalar-compound-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  echo C volatile bool scalar compound O%%O correcto.
+)
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\volatile-bool-scalar-compound.ll" 2>&1
+if errorlevel 1 exit /b 1
+python "%~dp0verificar_bool_compuesto_ir.py" "%DEST%\volatile-bool-scalar-compound.ll"
+if errorlevel 1 exit /b 1
+findstr /r /c:"load atomic volatile i8.*@volatile_bool_scalar.*acquire, align 1" "%DEST%\volatile-bool-scalar-compound.ll" >nul
+if errorlevel 1 exit /b 1
+findstr /r /c:"store atomic volatile i8.*@volatile_bool_scalar.*release, align 1" "%DEST%\volatile-bool-scalar-compound.ll" >nul
+if errorlevel 1 exit /b 1
 copy /y "%~dp0NativeBoolCompound.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\native-bool-compound.exe" > "%DEST%\native-bool-compound.log" 2>&1

@@ -480,6 +480,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     [Evidencia](registro-commits/t08-bool-scalar-compuesto-reproduccion.md).
     Preparada la ruta escalar en análisis, HIR y LLVM; pendientes controles y
     validación. [Detalle](registro-commits/t08-bool-scalar-compuesto-implementacion.md).
+    Preparada la matriz escalar O0–O3 y su verificación IR, sin ejecutar.
+    [Detalle](registro-commits/t08-bool-scalar-compuesto-fixture.md).
   - Reproducida discrepancia para global escalar C `volatile _Bool`: NSC usa
     i1 volatile y Clang i8 acquire. Corrección pendiente.
     [Evidencia](registro-commits/t08-bool-scalar-reproduccion.md).
