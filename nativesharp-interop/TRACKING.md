@@ -491,6 +491,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     Un record, un arreglo de dos enteros y escalares const/volatile estáticos
     pasaron el control mixto O0–O3; se rechazó escritura const y se comparó el
     IR volatile con Clang. [Resultado](registro-commits/t08-global-static-agregados-validacion.md).
+    Una global C `static _Thread_local int` compartió estado con sus funciones
+    inline y conservó aislamiento de otro hilo en O0–O3.
+    [Resultado](registro-commits/t08-global-static-tls-validacion.md).
   - El global C `_Atomic(int)` sin TLS fue rechazado como tipo no mapeado.
     Una corrección limitada de su proyección pasó O0–O3, comprobación de IR
     atómico y regresión TLS. [Resultado](registro-commits/t08-atomic-global-int-validacion.md).
