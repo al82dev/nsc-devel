@@ -1,0 +1,1 @@
+int Main() { short value = 30000; value /= 65536; return 0; }

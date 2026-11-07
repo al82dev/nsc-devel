@@ -154,6 +154,53 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         if (node->children[0]->cppAtomicAccess)
         {
             const auto* target = node->children[0].get();
+            const auto narrowAlignment = (target->typeKey == "builtin:sbyte" || target->typeKey == "builtin:byte") ? 1U :
+                (target->typeKey == "builtin:short" || target->typeKey == "builtin:ushort") ? 2U : 0U;
+            if (narrowAlignment)
+            {
+                if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
+                    target->cppAtomicAlignmentBytes != std::optional<std::size_t>{narrowAlignment} ||
+                    node->immediate != 0 || node->children[1]->typeKey != "builtin:int")
+                    return failValue(error, "C narrow atomic compound operation requires an int operand");
+                LLVMTypeRef storage = llvmType(target->typeKey, error);
+                if (storage == nullptr) return nullptr;
+                LLVMValueRef operand = value;
+                if (node->operation == lexer::TokenKind::LessLess || node->operation == lexer::TokenKind::GreaterGreater)
+                {
+                    operand = normalizeShiftCount(value, "builtin:int", "builtin:int", error);
+                    if (operand == nullptr) return nullptr;
+                }
+                LLVMValueRef initial = LLVMBuildLoad2(builder_, storage, address, "atomic.narrow.initial");
+                LLVMSetOrdering(initial, LLVMAtomicOrderingSequentiallyConsistent);
+                LLVMSetAlignment(initial, narrowAlignment);
+                if (target->volatileAccess) LLVMSetVolatile(initial, 1);
+                LLVMBasicBlockRef preheader = LLVMGetInsertBlock(builder_);
+                LLVMBasicBlockRef retry = appendBlock("atomic.narrow.retry");
+                LLVMBasicBlockRef done = appendBlock("atomic.narrow.done");
+                LLVMBuildBr(builder_, retry);
+                enterBlock(retry);
+                LLVMValueRef current = LLVMBuildPhi(builder_, storage, "atomic.narrow.current");
+                LLVMAddIncoming(current, &initial, &preheader, 1);
+                LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
+                LLVMValueRef promoted = isSignedInteger(target->typeKey)
+                    ? LLVMBuildSExt(builder_, current, i32, "atomic.narrow.promoted")
+                    : LLVMBuildZExt(builder_, current, i32, "atomic.narrow.promoted");
+                LLVMValueRef computed = applyBinaryOperation(node->operation, promoted, operand,
+                    "builtin:int", error, false);
+                if (computed == nullptr) return nullptr;
+                LLVMValueRef updated = LLVMBuildTrunc(builder_, computed, storage, "atomic.narrow.updated");
+                LLVMValueRef pair = LLVMBuildAtomicCmpXchg(builder_, address, current, updated,
+                    LLVMAtomicOrderingSequentiallyConsistent, LLVMAtomicOrderingSequentiallyConsistent, 0);
+                LLVMSetAlignment(pair, narrowAlignment);
+                if (target->volatileAccess) LLVMSetVolatile(pair, 1);
+                LLVMValueRef observed = LLVMBuildExtractValue(builder_, pair, 0, "atomic.narrow.observed");
+                LLVMValueRef success = LLVMBuildExtractValue(builder_, pair, 1, "atomic.narrow.success");
+                LLVMBasicBlockRef attempt = LLVMGetInsertBlock(builder_);
+                LLVMBuildCondBr(builder_, success, done, retry);
+                LLVMAddIncoming(current, &observed, &attempt, 1);
+                enterBlock(done);
+                return node->booleanValue ? current : updated;
+            }
             const auto alignment = (target->typeKey == "builtin:int" || target->typeKey == "builtin:uint") ? 4U :
                 (target->typeKey == "builtin:long" || target->typeKey == "builtin:ulong") ? 8U : 0U;
             if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||

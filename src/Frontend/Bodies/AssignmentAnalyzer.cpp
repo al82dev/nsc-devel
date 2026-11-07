@@ -2063,6 +2063,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
     const ast::AstNode* expression,
     ExpressionResult left,
     const ExpressionResult& right,
+    std::size_t methodMemberOrdinal,
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
@@ -2089,7 +2090,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
     }
     const ProjectImplicitConversion narrowing =
         classifyImplicit(right.typeKey, left.typeKey, right.integerConstant);
-    if (!shiftAssignment && !narrowing.exists())
+    bool narrowCppAtomic = false;
+    if (namespaceFunctionModel_ && (left.typeKey == "builtin:sbyte" || left.typeKey == "builtin:byte" ||
+        left.typeKey == "builtin:short" || left.typeKey == "builtin:ushort"))
+    {
+        const auto* binding = recordedNameBinding(expression->first(), methodMemberOrdinal);
+        if (binding && binding->kind == MethodNameBindingKind::NamespaceState &&
+            binding->candidateMemberOrdinals.size() == 1)
+        {
+            const auto ordinal = binding->candidateMemberOrdinals.front();
+            const auto states = namespaceFunctionModel_->states();
+            narrowCppAtomic = ordinal < states.size() && states[ordinal].isCppExternal &&
+                states[ordinal].cppAtomicStorage && right.typeKey == "builtin:int";
+        }
+    }
+    if (!shiftAssignment && !narrowing.exists() && !narrowCppAtomic)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidConversion,
@@ -2303,7 +2318,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishAssignmen
         return finishPointerCompoundAssignment(
             expression, left, right, scopeOrdinal, diagnostics);
     return finishNumericCompoundAssignment(
-        expression, left, right, scopeOrdinal, diagnostics);
+        expression, left, right, methodMemberOrdinal, scopeOrdinal, diagnostics);
 }
 
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeAssignment(

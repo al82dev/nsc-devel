@@ -769,7 +769,11 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
                 rhsType != nullptr ? rhsType->integerConstant : std::nullopt);
             const bool shift = compound->operation == lexer::TokenKind::LessLess ||
                 compound->operation == lexer::TokenKind::GreaterGreater;
-            if (!shift && !conversion.exists())
+            const bool narrowAtomic = frame.first->cppAtomicAccess &&
+                (frame.operandType->typeKey == "builtin:sbyte" || frame.operandType->typeKey == "builtin:byte" ||
+                 frame.operandType->typeKey == "builtin:short" || frame.operandType->typeKey == "builtin:ushort") &&
+                lowered->typeKey == "builtin:int";
+            if (!shift && !conversion.exists() && !narrowAtomic)
             {
                 error = "compound assignment cannot convert its right-hand side from '" +
                     lowered->typeKey + "' to '" + frame.operandType->typeKey + "'";
@@ -777,7 +781,7 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledCompoundAssignmentFrame(
                 frames.clear();
                 break;
             }
-            if (!shift && conversion.kind != ProjectConversionKind::Identity)
+            if (!shift && !narrowAtomic && conversion.kind != ProjectConversionKind::Identity)
                 lowered = wrapImplicitConversion(std::move(lowered), conversion, frame.syntax->second());
         }
         compound->children.push_back(std::move(frame.first));

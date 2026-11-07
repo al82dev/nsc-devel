@@ -2363,13 +2363,17 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerCompoundAssignmentEx
             rhsType != nullptr ? rhsType->integerConstant : std::nullopt);
         const bool shift = compound->operation == lexer::TokenKind::LessLess ||
             compound->operation == lexer::TokenKind::GreaterGreater;
-        if (!shift && !conversion.exists())
+        const bool narrowAtomic = address->cppAtomicAccess &&
+            (targetType->typeKey == "builtin:sbyte" || targetType->typeKey == "builtin:byte" ||
+             targetType->typeKey == "builtin:short" || targetType->typeKey == "builtin:ushort") &&
+            value->typeKey == "builtin:int";
+        if (!shift && !conversion.exists() && !narrowAtomic)
         {
             error = "compound assignment cannot convert its right-hand side from '" +
                 value->typeKey + "' to '" + targetType->typeKey + "'";
             return nullptr;
         }
-        if (!shift && conversion.kind != ProjectConversionKind::Identity)
+        if (!shift && !narrowAtomic && conversion.kind != ProjectConversionKind::Identity)
         {
             value = wrapImplicitConversion(
                 std::move(value), conversion, expression->second());

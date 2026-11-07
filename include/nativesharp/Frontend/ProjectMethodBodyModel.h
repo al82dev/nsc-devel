@@ -4468,6 +4468,7 @@ private:
         const ast::AstNode* expression,
         ExpressionResult left,
         const ExpressionResult& right,
+        std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
     bool prepareAssignmentTarget(

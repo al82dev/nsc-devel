@@ -16,5 +16,12 @@ void entry(void)
     if ((narrow_ushort /= 65536) != 0) result = 4;
     narrow_ushort = 60000;
     if ((narrow_ushort %= 65536) != 60000) result = 5;
+    narrow_short = 13;
+    if ((narrow_short += 1) != 14) result = 6;
+    if ((narrow_short *= 2) != 28) result = 7;
+    if ((narrow_short <<= 1) != 56) result = 8;
+    if ((narrow_short >>= 2) != 14) result = 9;
+    if ((narrow_short ^= 3) != 13) result = 10;
+    if ((narrow_short %= 5) != 3) result = 11;
     ExitProcess((unsigned int)result);
 }
