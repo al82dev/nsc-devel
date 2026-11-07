@@ -188,7 +188,12 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 ## 08. Declaraciones, nombres y tipos C
 
-El validador integral se amplió para incluir los scripts de la tanda inventariados; el gate aún no se ha ejecutado. Las limitaciones de enum mixto y TLS siguen abiertas. [Detalle](registro-commits/cobertura-validador-tanda-08.md).
+El validador integral incluye los scripts de la tanda inventariados. La última
+ejecución integral registrada terminó con cuatro fallos en controles TLS de DLL
+C; desde entonces se añadieron controles dirigidos sin repetir el gate. La tanda
+sigue abierta y la siguiente ejecución integral queda pendiente tras agrupar
+las correcciones. [Resultado](registro-commits/t08-validacion-link-lib-auto.md),
+[cobertura](registro-commits/cobertura-validador-tanda-08.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
