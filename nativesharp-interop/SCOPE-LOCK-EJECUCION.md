@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-004: identidad de global estática entre proyectos
+
+Comprobar en O0–O3 la independencia de dos productores precompilados y un
+consumidor directo que usan el mismo encabezado C; cada uno comparte su propia
+variable con sus funciones inline. Comprobar también el rechazo de referencias
+C diferentes que contienen globales internas con el mismo nombre. Fixtures y
+registros en NSC; preservar NSLink, metadata, LLVM/Clang externo y C:.
+
 ## T08-004: emisión de global C estática junto a inline
 
 Corregir el rechazo reproducido de `shared_state`: proyectar la instancia de

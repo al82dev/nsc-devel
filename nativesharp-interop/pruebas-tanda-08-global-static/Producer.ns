@@ -1,0 +1,9 @@
+namespace First
+{
+    public struct Bridge
+    {
+        public static int Read() { return shared_state; }
+        public static void Write(int value) { shared_state = value; }
+        public static int ReadInline() { return header_get(); }
+    }
+}

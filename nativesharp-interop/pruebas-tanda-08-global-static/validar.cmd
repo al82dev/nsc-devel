@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Control.c Main.ns Project.nsproj Solo.ns Solo.nsproj) do (
+for %%F in (Api.h Other.h Control.c Main.ns Project.nsproj Solo.ns Solo.nsproj Producer.ns Producer.nsproj ProducerSecond.ns ProducerSecond.nsproj Consumer.ns Consumer.nsproj Ambiguous.ns Ambiguous.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -30,5 +30,18 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 (type "%DEST%\solo-O%%O.log" & exit /b 1)
   "%DEST%\solo-O%%O.exe"
   if errorlevel 1 exit /b 1
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\Producer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\StaticProducer.lib" > "%DEST%\producer-O%%O.log" 2>&1
+  if errorlevel 1 (type "%DEST%\producer-O%%O.log" & exit /b 1)
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\ProducerSecond.nsproj" -O%%O --no-artifact-cache -o "%DEST%\StaticProducerSecond.lib" > "%DEST%\producer-second-O%%O.log" 2>&1
+  if errorlevel 1 (type "%DEST%\producer-second-O%%O.log" & exit /b 1)
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Consumer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\precompiled-O%%O.exe" > "%DEST%\precompiled-O%%O.log" 2>&1
+  if errorlevel 1 (type "%DEST%\precompiled-O%%O.log" & exit /b 1)
+  "%DEST%\precompiled-O%%O.exe"
+  if errorlevel 1 exit /b 1
   echo Global estatica con y sin funciones inline O%%O correcta.
 )
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Ambiguous.nsproj" -O0 --no-artifact-cache -o "%DEST%\ambiguous.exe" > "%DEST%\ambiguous.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"ambiguous C internal global origins" "%DEST%\ambiguous.log" >nul
+if errorlevel 1 (type "%DEST%\ambiguous.log" & exit /b 1)
+echo Globales internas ambiguas rechazadas correctamente.

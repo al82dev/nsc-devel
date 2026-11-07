@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>StaticProducer</Name><OutputType>Library</OutputType></PropertyGroup>
+  <ItemGroup><Compile Include="Producer.ns" /><CppLibraryReference Header="Api.h" Language="C" Standard="c11" /></ItemGroup>
+</Project>

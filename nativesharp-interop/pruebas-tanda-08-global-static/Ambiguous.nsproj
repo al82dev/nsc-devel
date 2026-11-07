@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CStaticAmbiguous</Name></PropertyGroup>
+  <ItemGroup><Compile Include="Ambiguous.ns" /><CppLibraryReference Header="Api.h" Language="C" Standard="c11" /><CppLibraryReference Header="Other.h" Language="C" Standard="c11" /></ItemGroup>
+</Project>

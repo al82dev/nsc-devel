@@ -1,0 +1,9 @@
+int Main()
+{
+    if (First.Bridge.Read() != 7 || Second.Bridge.Read() != 7 || shared_state != 7) return 1;
+    First.Bridge.Write(10);
+    Second.Bridge.Write(20);
+    shared_state = 30;
+    if (First.Bridge.ReadInline() != 10 || Second.Bridge.Read() != 20 || header_get() != 30) return 2;
+    return 0;
+}
