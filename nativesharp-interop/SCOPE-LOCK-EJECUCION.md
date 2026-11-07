@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## Caché y TLS transitivo precompilado
+
+Comprobar en un directorio temporal de A: que el mismo consumidor cambia de
+NSLink a LLD al reconstruir su productor precompilado y sustituir una
+dependencia C sin TLS por una con TLS; repetir con caché y verificar ejecución.
+Presupuesto: fixtures de `pruebas-tanda-08-tls-c/precompiled`, su validador,
+tracking y bitácora. Sin cambiar producción hasta reproducir un fallo; no
+modificar NSLink, LLVM ni C: y conservar los controles TLS de DLL existentes.
+
 ## TLS transitivo desde una biblioteca precompilada
 
 La reproducción en `A:/nsc-interop-build/tls-abi/transitive-probe` enlaza una
