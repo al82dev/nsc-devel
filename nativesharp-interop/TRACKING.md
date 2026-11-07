@@ -521,6 +521,8 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     seleccionó LLD y ejecutó el consumidor. El TLS de DLL sigue abierto.
     La DLL NativeSharp con la misma dependencia transitiva pasó también O0–O3,
     con directorio TLS y consumidor; `--linker NSLink` se respetó.
+    Pasaron además el productor precompilado sin TLS con selección NSLink, las
+    selecciones directas y por entorno, y la dependencia ausente diagnosticada.
     [Evidencia](registro-commits/t08-tls-transitivo-gate.md),
     [DLL](registro-commits/t08-tls-transitivo-dll-resultado.md).
     La batería confirmó el control nuevo y terminó con los cuatro fallos
