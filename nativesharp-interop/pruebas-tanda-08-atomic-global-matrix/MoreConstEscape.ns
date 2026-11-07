@@ -1,0 +1,7 @@
+int Main()
+{
+    float* f = more_float_const;
+    int* l = more_long_const;
+    uint* u = more_ulong_const;
+    return 0;
+}
