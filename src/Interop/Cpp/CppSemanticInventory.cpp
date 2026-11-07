@@ -189,14 +189,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
     const bool scalarTls = kind == CppTypeKind::Boolean || kind == CppTypeKind::SignedInteger ||
         kind == CppTypeKind::UnsignedInteger || kind == CppTypeKind::Floating;
     const bool aggregateTls = kind == CppTypeKind::Record || kind == CppTypeKind::Enumeration;
-    const bool supportedPointerTls = kind == CppTypeKind::Pointer && global.type.element &&
-        (global.type.element->kind == CppTypeKind::Boolean ||
-         global.type.element->kind == CppTypeKind::SignedInteger ||
-         global.type.element->kind == CppTypeKind::UnsignedInteger ||
-         global.type.element->kind == CppTypeKind::Floating ||
-         global.type.element->kind == CppTypeKind::Record ||
-         global.type.element->kind == CppTypeKind::Enumeration ||
-         global.type.element->kind == CppTypeKind::Function);
+    const bool supportedPointerTls = kind == CppTypeKind::Pointer && global.type.element;
     const CppType* arrayElement = &global.type;
     std::size_t arrayDepth = 0;
     bool fixedArray = kind == CppTypeKind::Array;
