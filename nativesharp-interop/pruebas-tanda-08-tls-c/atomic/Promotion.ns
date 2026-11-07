@@ -21,6 +21,16 @@ int Main()
     if ((atomic_unsupported_short /= divisor) != 50) return 9;
     atomic_tls = -1;
     if ((atomic_tls /= 2U) != 2147483647) return 10;
+    atomic_tls = -1;
+    if ((atomic_tls /= 2UL) != 2147483647) return 12;
+    atomic_tls = -1;
+    if ((atomic_tls /= 2L) != 2147483647) return 13;
+    atomic_unsigned = 1U << 31;
+    if ((atomic_unsigned /= 2L) != (1U << 30)) return 14;
+    atomic_narrow_char = -100;
+    if ((atomic_narrow_char /= 2) != 78) return 15;
+    atomic_unsupported_short = -1;
+    if ((atomic_unsupported_short /= 2) != 32767) return 16;
     atomic_wide = -1L;
     if ((atomic_wide /= 2U) != 0) return 11;
     return 0;

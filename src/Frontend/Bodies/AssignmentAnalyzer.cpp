@@ -2075,21 +2075,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
         ProjectTypeConversion::isIntegral(left.typeKey) &&
         ProjectTypeConversion::isIntegral(right.typeKey) &&
         left.typeKey != "builtin:bool" && right.typeKey != "builtin:bool";
-    const std::optional<std::string> common = sameEnumBitwise || shiftAssignment
-        ? std::optional<std::string>(left.typeKey)
-        : ProjectTypeConversion::commonNumericType(
-              left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
-    if (!common.has_value())
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::InvalidOperand,
-            diagnostics::DiagnosticSeverity::Error,
-            expression->range(),
-            "compound assignment requires compatible numeric operands in Stage 34");
-        return {};
-    }
-    const ProjectImplicitConversion narrowing =
-        classifyImplicit(right.typeKey, left.typeKey, right.integerConstant);
     bool narrowCppAtomic = false;
     if (namespaceFunctionModel_ && ProjectTypeConversion::isIntegral(left.typeKey) && left.typeKey != "builtin:bool")
     {
@@ -2104,6 +2089,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
                 right.typeKey != "builtin:bool";
         }
     }
+    const std::optional<std::string> common = sameEnumBitwise || shiftAssignment
+        ? std::optional<std::string>(left.typeKey)
+        : ProjectTypeConversion::commonNumericType(
+              left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
+    if (!common.has_value() && !narrowCppAtomic)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "compound assignment requires compatible numeric operands in Stage 34");
+        return {};
+    }
+    const ProjectImplicitConversion narrowing =
+        classifyImplicit(right.typeKey, left.typeKey, right.integerConstant);
     if (!shiftAssignment && !narrowing.exists() && !narrowCppAtomic)
     {
         diagnostics.report(

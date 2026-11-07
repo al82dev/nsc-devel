@@ -188,9 +188,7 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 LLVMValueRef current = LLVMBuildPhi(builder_, storage, "atomic.narrow.current");
                 LLVMAddIncoming(current, &initial, &preheader, 1);
                 LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
-                LLVMValueRef promoted = isSignedInteger(target->typeKey) && isSignedInteger(calculationType)
-                    ? LLVMBuildSExt(builder_, current, i32, "atomic.narrow.promoted")
-                    : LLVMBuildZExt(builder_, current, i32, "atomic.narrow.promoted");
+                LLVMValueRef promoted = LLVMBuildZExt(builder_, current, i32, "atomic.narrow.promoted");
                 promoted = convert(promoted, "builtin:int", calculationType, error);
                 if (promoted == nullptr) return nullptr;
                 LLVMValueRef computed = applyBinaryOperation(node->operation, promoted, operand,
@@ -241,7 +239,10 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 enterBlock(retry);
                 LLVMValueRef current = LLVMBuildPhi(builder_, storage, "atomic.mixed.current");
                 LLVMAddIncoming(current, &initial, &preheader, 1);
-                LLVMValueRef promoted = convert(current, target->typeKey, calculationType, error);
+                LLVMValueRef promoted = target->typeKey == "builtin:int" &&
+                    (calculationType == "builtin:long" || calculationType == "builtin:ulong")
+                    ? LLVMBuildZExt(builder_, current, LLVMInt64TypeInContext(context_), "atomic.mixed.promoted")
+                    : convert(current, target->typeKey, calculationType, error);
                 if (promoted == nullptr) return nullptr;
                 LLVMValueRef computed = applyBinaryOperation(node->operation, promoted, operand, calculationType, error, false);
                 if (computed == nullptr) return nullptr;
