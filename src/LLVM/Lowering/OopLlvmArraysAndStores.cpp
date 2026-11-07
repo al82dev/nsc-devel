@@ -154,6 +154,43 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         if (node->children[0]->cppAtomicAccess)
         {
             const auto* target = node->children[0].get();
+            if (target->typeKey == "builtin:float" || target->typeKey == "builtin:double")
+            {
+                const unsigned alignment = target->typeKey == "builtin:float" ? 4U : 8U;
+                if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
+                    target->cppAtomicAlignmentBytes != std::optional<std::size_t>{alignment} || node->immediate != 0)
+                    return failValue(error, "C atomic floating compound operation lacks supported alignment");
+                LLVMValueRef operand = convert(value, node->children[1]->typeKey, target->typeKey, error);
+                LLVMTypeRef floatingType = llvmType(target->typeKey, error);
+                if (operand == nullptr || floatingType == nullptr) return nullptr;
+                LLVMTypeRef storage = alignment == 4 ? LLVMInt32TypeInContext(context_) : LLVMInt64TypeInContext(context_);
+                LLVMValueRef initial = LLVMBuildLoad2(builder_, storage, address, "atomic.fp.initial");
+                LLVMSetOrdering(initial, LLVMAtomicOrderingSequentiallyConsistent);
+                LLVMSetAlignment(initial, alignment);
+                if (target->volatileAccess) LLVMSetVolatile(initial, 1);
+                LLVMBasicBlockRef preheader = LLVMGetInsertBlock(builder_);
+                LLVMBasicBlockRef retry = appendBlock("atomic.fp.retry");
+                LLVMBasicBlockRef done = appendBlock("atomic.fp.done");
+                LLVMBuildBr(builder_, retry);
+                enterBlock(retry);
+                LLVMValueRef current = LLVMBuildPhi(builder_, storage, "atomic.fp.current");
+                LLVMAddIncoming(current, &initial, &preheader, 1);
+                LLVMValueRef previous = LLVMBuildBitCast(builder_, current, floatingType, "atomic.fp.previous");
+                LLVMValueRef updated = applyBinaryOperation(node->operation, previous, operand, target->typeKey, error, false);
+                if (updated == nullptr) return nullptr;
+                LLVMValueRef updatedBits = LLVMBuildBitCast(builder_, updated, storage, "atomic.fp.bits");
+                LLVMValueRef pair = LLVMBuildAtomicCmpXchg(builder_, address, current, updatedBits,
+                    LLVMAtomicOrderingSequentiallyConsistent, LLVMAtomicOrderingSequentiallyConsistent, 0);
+                LLVMSetAlignment(pair, alignment);
+                if (target->volatileAccess) LLVMSetVolatile(pair, 1);
+                LLVMValueRef observed = LLVMBuildExtractValue(builder_, pair, 0, "atomic.fp.observed");
+                LLVMValueRef success = LLVMBuildExtractValue(builder_, pair, 1, "atomic.fp.success");
+                LLVMBasicBlockRef attempt = LLVMGetInsertBlock(builder_);
+                LLVMBuildCondBr(builder_, success, done, retry);
+                LLVMAddIncoming(current, &observed, &attempt, 1);
+                enterBlock(done);
+                return node->booleanValue ? previous : updated;
+            }
             const auto narrowAlignment = (target->typeKey == "builtin:sbyte" || target->typeKey == "builtin:byte") ? 1U :
                 (target->typeKey == "builtin:short" || target->typeKey == "builtin:ushort") ? 2U : 0U;
             if (narrowAlignment)

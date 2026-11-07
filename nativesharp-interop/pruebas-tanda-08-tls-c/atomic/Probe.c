@@ -87,6 +87,12 @@ void entry(void)
             atomic_float = -7.5f;
             atomic_double = -12.25;
             if (atomic_float != -7.5f || atomic_double != -12.25) result = 37;
+            else if ((atomic_float += 1.5f) != -6.0f) result = 38;
+            else if ((atomic_float *= 2.0f) != -12.0f) result = 39;
+            else if ((atomic_float /= 4.0f) != -3.0f) result = 40;
+            else if ((atomic_float -= 1.0f) != -4.0f) result = 41;
+            else if ((atomic_double += 0.25) != -12.0 || (atomic_double *= 2.0) != -24.0) result = 42;
+            else if ((atomic_double /= 4.0) != -6.0 || (atomic_double -= 1.0) != -7.0) result = 43;
         }
     }
     ExitProcess((unsigned int)result);

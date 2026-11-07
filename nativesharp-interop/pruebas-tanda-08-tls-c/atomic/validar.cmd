@@ -75,7 +75,7 @@ for %%O in (0 1 2 3) do (
   "%DEST%\narrow-O%%O.exe"
   if errorlevel 1 exit /b 1
 )
-for %%F in (NarrowCompound Promotion) do (
+for %%F in (NarrowCompound Promotion FloatCompound) do (
   copy /y "%DEST%\%%F.ns" "%DEST%\Main.ns" >nul
   if errorlevel 1 exit /b 1
   for %%O in (0 1 2 3) do (
@@ -127,12 +127,6 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\
 if not errorlevel 1 exit /b 1
 findstr /L /C:"left side of assignment is not assignable" "%DEST%\float-readonly.log" >nul
 if errorlevel 1 (type "%DEST%\float-readonly.log" & exit /b 1)
-copy /y "%DEST%\FloatCompound.ns" "%DEST%\Main.ns" >nul
-if errorlevel 1 exit /b 1
-nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\float-compound.log" 2>&1
-if not errorlevel 1 exit /b 1
-findstr /L /C:"C atomic global compound operation is not yet supported" "%DEST%\float-compound.log" >nul
-if errorlevel 1 (type "%DEST%\float-compound.log" & exit /b 1)
 copy /y "%DEST%\Unsupported.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\unsupported.log" 2>&1

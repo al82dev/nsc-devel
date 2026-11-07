@@ -20,6 +20,8 @@ for symbol, required, volatile in (
     ('atomic_double', {'load', 'store'}, True),
     ('atomic_float_const', {'load'}, False),
 ):
+    if mode == 'native' and symbol in {'atomic_float', 'atomic_double'}:
+        required.add('cmpxchg')
     addresses = {'@' + symbol}
     for line in body.splitlines():
         result = re.match(r'\s*(%[-\w.$]+)\s*=\s*call\b.*@llvm\.threadlocal\.address\.[^(]+\([^\n]*@' + symbol + r'\)', line)
@@ -62,4 +64,12 @@ for symbol, required, volatile in (
                                 for address in addresses)]
         if len(volatile_cas) < 4:
             raise SystemExit('Falta volatile en los intercambios atomicos')
+    if symbol == 'atomic_double' and mode == 'native':
+        volatile_cas = [line for line in body.splitlines()
+                        if re.search(r'\bcmpxchg volatile\b', line)
+                        and re.search(r'\bseq_cst\s+seq_cst\b.*\balign 8\b', line)
+                        and any(re.search(r'\bptr\s+' + re.escape(address) + r'(?:\s|,)', line)
+                                for address in addresses)]
+        if len(volatile_cas) < 4:
+            raise SystemExit('Falta volatile en las operaciones atomicas double')
 print('IR atomico verificado para ' + mode)
