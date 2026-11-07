@@ -160,7 +160,9 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 return failValue(error, "C atomic global compound operation is not yet supported");
             if (node->operation == lexer::TokenKind::Star ||
                 node->operation == lexer::TokenKind::LessLess ||
-                node->operation == lexer::TokenKind::GreaterGreater)
+                node->operation == lexer::TokenKind::GreaterGreater ||
+                node->operation == lexer::TokenKind::Slash ||
+                node->operation == lexer::TokenKind::Percent)
             {
                 LLVMTypeRef type = LLVMInt32TypeInContext(context_);
                 LLVMValueRef initial = LLVMBuildLoad2(builder_, type, address, "atomic.mul.initial");
@@ -174,19 +176,29 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 enterBlock(retry);
                 LLVMValueRef current = LLVMBuildPhi(builder_, type, "atomic.mul.current");
                 LLVMAddIncoming(current, &initial, &preheader, 1);
-                LLVMValueRef updated = node->operation == lexer::TokenKind::Star
-                    ? LLVMBuildMul(builder_, current, value, "atomic.mul.updated")
-                    : node->operation == lexer::TokenKind::LessLess
-                        ? LLVMBuildShl(builder_, current, value, "atomic.shift.updated")
-                        : LLVMBuildAShr(builder_, current, value, "atomic.shift.updated");
+                LLVMValueRef updated = nullptr;
+                switch (node->operation)
+                {
+                    case lexer::TokenKind::Star:
+                        updated = LLVMBuildMul(builder_, current, value, "atomic.mul.updated"); break;
+                    case lexer::TokenKind::LessLess:
+                        updated = LLVMBuildShl(builder_, current, value, "atomic.shift.updated"); break;
+                    case lexer::TokenKind::GreaterGreater:
+                        updated = LLVMBuildAShr(builder_, current, value, "atomic.shift.updated"); break;
+                    default:
+                        updated = applyIntegerDivision(node->operation, current, value, "builtin:int", error, false);
+                        if (updated == nullptr) return nullptr;
+                        break;
+                }
                 LLVMValueRef pair = LLVMBuildAtomicCmpXchg(builder_, address, current, updated,
                     LLVMAtomicOrderingSequentiallyConsistent, LLVMAtomicOrderingSequentiallyConsistent, 0);
                 LLVMSetAlignment(pair, 4);
                 if (target->volatileAccess) LLVMSetVolatile(pair, 1);
                 LLVMValueRef observed = LLVMBuildExtractValue(builder_, pair, 0, "atomic.mul.observed");
                 LLVMValueRef success = LLVMBuildExtractValue(builder_, pair, 1, "atomic.mul.success");
+                LLVMBasicBlockRef attempt = LLVMGetInsertBlock(builder_);
                 LLVMBuildCondBr(builder_, success, done, retry);
-                LLVMAddIncoming(current, &observed, &retry, 1);
+                LLVMAddIncoming(current, &observed, &attempt, 1);
                 enterBlock(done);
                 return node->booleanValue ? current : updated;
             }

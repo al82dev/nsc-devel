@@ -22,6 +22,8 @@ void entry(void)
         else {
             atomic_tls = -84;
             if ((atomic_tls >>= 1) != -42 || atomic_tls_read() != -42) result = 16;
+            else if ((atomic_tls /= 4) != -10 || atomic_tls_read() != -10) result = 17;
+            else if ((atomic_tls %= 3) != -1 || atomic_tls_read() != -1) result = 18;
         }
     }
     if (result == 0) {

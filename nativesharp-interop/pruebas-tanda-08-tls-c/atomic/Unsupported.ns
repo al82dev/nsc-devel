@@ -1,1 +1,1 @@
-int Main() { atomic_tls /= 2; return 0; }
+int Main() { return (int)atomic_wide; }

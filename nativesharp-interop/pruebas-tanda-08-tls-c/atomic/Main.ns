@@ -14,6 +14,8 @@ int Main()
     if ((atomic_tls <<= 1) != 168 || (atomic_tls >>= 2) != 42) return 15;
     atomic_tls = -84;
     if ((atomic_tls >>= 1) != -42 || atomic_tls_read() != -42) return 16;
+    if ((atomic_tls /= 4) != -10 || atomic_tls_read() != -10) return 17;
+    if ((atomic_tls %= 3) != -1 || atomic_tls_read() != -1) return 18;
     atomic_tls = 0;
     if (atomic_start_worker() != 0) return 5;
     for (int i = 0; i < 10000; ++i) { atomic_tls += 1; }

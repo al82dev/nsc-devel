@@ -72,7 +72,7 @@ copy /y "%DEST%\Unsupported.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\unsupported.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /L /C:"C atomic global compound operation is not yet supported" "%DEST%\unsupported.log" >nul
+findstr /L /C:"thread-local C/C++ global is not yet projected" "%DEST%\unsupported.log" >nul
 if errorlevel 1 (type "%DEST%\unsupported.log" & exit /b 1)
 echo TLS atomico C y NativeSharp correcto.
 exit /b 0
