@@ -1,0 +1,7 @@
+namespace AtomicContractsDll
+{
+    public struct Bridge
+    {
+        public static int Run() { return AtomicContracts.Bridge.Run(); }
+    }
+}

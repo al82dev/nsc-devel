@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Control.c Main.ns Project.nsproj ProjectDll.nsproj Library.c Producer.ns Producer.nsproj Consumer.ns Consumer.nsproj Negative.ns Negative.nsproj NegativeRecord.ns NegativeRecord.nsproj Unsupported.h Unsupported.ns Unsupported.nsproj) do (
+for %%F in (Api.h Control.c Main.ns Project.nsproj ProjectDll.nsproj Library.c Producer.ns Producer.nsproj Consumer.ns Consumer.nsproj Dll.ns Dll.nsproj DllConsumer.ns DllConsumer.nsproj Negative.ns Negative.nsproj NegativeRecord.ns NegativeRecord.nsproj Unsupported.h Unsupported.ns Unsupported.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -50,6 +50,8 @@ if not errorlevel 1 exit /b 1
 findstr /c:"C/C++ global type is not yet mapped" "%DEST%\unsupported.log" >nul
 if errorlevel 1 goto :unsupported_failure
 echo Const y tipo no representable rechazados correctamente.
+mkdir "%DEST%\bin\Debug"
+if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe" > "%DEST%\consumer-O%%O.log" 2>&1
   if errorlevel 1 goto :failure
@@ -66,6 +68,16 @@ for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Consumer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\precompiled-O%%O.exe" > "%DEST%\precompiled-O%%O.log" 2>&1
   if errorlevel 1 (type "%DEST%\precompiled-O%%O.log" & exit /b 1)
   "%DEST%\precompiled-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-dll "%DEST%\Dll.nsproj" -O%%O --no-artifact-cache -o "%DEST%\bin\Debug\AtomicContractsDll.dll" > "%DEST%\nsdll-O%%O.log" 2>&1
+  if errorlevel 1 (type "%DEST%\nsdll-O%%O.log" & exit /b 1)
+  llvm-readobj.exe --coff-tls-directory "%DEST%\bin\Debug\AtomicContractsDll.dll" > "%DEST%\nsdll-tls-O%%O.log" 2>&1
+  if errorlevel 1 exit /b 1
+  findstr /L /C:"AddressOfIndex:" "%DEST%\nsdll-tls-O%%O.log" >nul
+  if errorlevel 1 (type "%DEST%\nsdll-tls-O%%O.log" & exit /b 1)
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\DllConsumer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\nsdll-consumer-O%%O.exe" > "%DEST%\nsdll-consumer-O%%O.log" 2>&1
+  if errorlevel 1 (type "%DEST%\nsdll-consumer-O%%O.log" & exit /b 1)
+  "%DEST%\nsdll-consumer-O%%O.exe"
   if errorlevel 1 exit /b 1
   ren "%DEST%\Api.hidden" Api.h
   if errorlevel 1 exit /b 1

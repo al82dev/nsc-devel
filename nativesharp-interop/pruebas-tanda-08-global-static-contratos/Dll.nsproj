@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>AtomicContractsDll</Name><OutputType>SharedLibrary</OutputType></PropertyGroup>
+  <ItemGroup><Compile Include="Dll.ns" /><LibraryReference Include="AtomicContractsProducer.lib" /></ItemGroup>
+</Project>
