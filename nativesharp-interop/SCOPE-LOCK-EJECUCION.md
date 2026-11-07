@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08: USR en NSMETA real de productor independiente
+
+Comparar los USR del registro `CRecord` y todos sus campos obtenidos de una
+sesión Clang real con el catálogo decodificado y autenticado del NSMETA que
+produce `nsc` en el fixture de productor/consumidor independiente. Usar un
+modo específico del ejecutable de prueba de sesión, sin cambiar el formato ni
+el compilador de producción. Presupuesto: `CppClangSessionTests.cpp`, fixture
+`pruebas-tanda-08-meta-c/validar.cmd`, tracking y registros. Mantener todas las
+pruebas, trabajar en A: y no modificar NSLink, LLVM externo ni C:.
+
 ## T08: punteros TLS atómicos adicionales calificados
 
 Reproducir y corregir los apuntados `const` y `volatile` de los punteros TLS

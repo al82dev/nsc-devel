@@ -90,6 +90,10 @@ if /I "%~2"=="inferred" (
 )
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\Producer.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\CPublishedProducer.lib"
 if errorlevel 1 exit /b 1
+if "%~2"=="" (
+  A:\nsc-interop-build\tanda1-ON\bin\nsc_cpp_session_tests.exe --verify-published-c-usr "%DEST%\CPublishedProducer.nsmeta" "%DEST%\Api.h" A:\al82dev-clang\lib\clang\23 A:\al82dev-clang\bin\clang.exe
+  if errorlevel 1 exit /b 1
+)
 if /I "%~2"=="sharedcallback" (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\SharedCallback.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\SharedCallback.exe"
   if errorlevel 1 exit /b 1

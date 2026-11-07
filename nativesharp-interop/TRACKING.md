@@ -205,6 +205,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Un productor NSC real conservó en su NSMETA los USR de Clang del registro
+    C y todos sus campos; la comparación con Clang y el consumidor separado
+    pasaron O0–O3. Esto no demuestra que el consumidor restaure cada USR ni
+    cubre las demás categorías. [Evidencia](registro-commits/t08-usr-productor-consumidor-real.md).
   - Redeclaraciones adelantadas adicionales de struct y union opacos en el
     mismo header pasaron O0–O3 con el consumidor directo y precompilado; se
     mantuvieron los rechazos de origen distinto y header modificado. No cubre

@@ -393,6 +393,42 @@ std::unique_ptr<CppInteropSession> open(CppClangSessionFactory& factory, CppSess
 
 int main(int argc, char** argv)
 {
+    if (argc == 6 && std::string_view(argv[1]) == "--verify-published-c-usr")
+    {
+        LibraryMetadataCodec codec;
+        LibraryMetadata metadata;
+        std::string error;
+        if (!codec.read(argv[2], metadata, error) || !codec.verifyCurrentCompiler(metadata, error))
+        { std::cerr << "NSMETA verification failed: " << error << '\n'; return 1; }
+        std::vector<CppCRecordSnapshot> records;
+        std::vector<CppCEnumSnapshot> enums;
+        if (!metadata_detail::decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error))
+        { std::cerr << "C catalogue decode failed: " << error << '\n'; return 1; }
+        const auto header = std::filesystem::absolute(argv[3]);
+        const auto workingDirectory = header.parent_path().string();
+        CppClangSessionFactory factory;
+        auto session = open(factory, options(argv[4], workingDirectory.c_str(), argv[5], CppLanguageMode::C,
+                                             "#include \"Api.h\"\n"));
+        const auto declarations = session ? session->recordsSnapshot() : std::nullopt;
+        const auto* live = declarations ? recordByName(*declarations, "CRecord") : nullptr;
+        const auto stored = std::find_if(records.begin(), records.end(), [](const auto& record) {
+            return record.name == "CRecord";
+        });
+        if (!live || stored == records.end() || !live->clangUsr || live->clangUsr->empty() ||
+            live->clangUsr != stored->clangUsr || live->fields.size() != stored->fields.size())
+        { std::cerr << "Real producer record USR or field count differs from Clang\n"; return 1; }
+        for (const auto& field : live->fields)
+        {
+            const auto saved = std::find_if(stored->fields.begin(), stored->fields.end(), [&](const auto& item) {
+                return item.name == field.name;
+            });
+            if (!field.clangUsr || field.clangUsr->empty() || saved == stored->fields.end() ||
+                field.clangUsr != saved->clangUsr)
+            { std::cerr << "Real producer field USR differs from Clang: " << field.name << '\n'; return 1; }
+        }
+        std::cout << "Real producer NSMETA preserves Clang record and field USRs\n";
+        return 0;
+    }
     if (argc != 4 && argc != 5) return 2;
     if (!std::filesystem::is_regular_file(std::filesystem::path(argv[2]) /
                                           "cpp-fixtures" / "project" / "CppProbe.nsproj"))
