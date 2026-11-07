@@ -23,9 +23,12 @@ if errorlevel 1 exit /b 1
 echo Control C de matriz estatica correcto.
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe" > "%DEST%\consumer-O%%O.log" 2>&1
-  if errorlevel 1 (type "%DEST%\consumer-O%%O.log" & exit /b 1)
+  if errorlevel 1 goto :failure
   "%DEST%\consumer-O%%O.exe"
   if errorlevel 1 exit /b 1
   echo Matriz de globales estaticas O%%O correcta.
 )
 exit /b 0
+:failure
+type "%DEST%\consumer-O*.log"
+exit /b 1
