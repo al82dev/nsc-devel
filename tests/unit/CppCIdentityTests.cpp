@@ -20,6 +20,8 @@
 //   nsc_cpp_c_identity_tests <clang-resource-dir> <work-dir> <clang-driver>
 //   nsc_cpp_c_identity_tests --verify-restored-c-usr <producer.nsmeta> <header> <clang-resource-dir>
 //                            <clang-driver> <work-dir>
+//   nsc_cpp_c_identity_tests --verify-driver-restored-c-usr <producer.lib> <header> <clang-resource-dir>
+//                            <clang-driver>
 
 #include "nativesharp/Interop/CppClangSessionFactory.h"
 #include "nativesharp/Interop/CppProjectSessions.h"
@@ -33,7 +35,10 @@
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Compilation/CompilationInputManifest.h"
+#include "nativesharp/Compilation/ProjectGraphLoader.h"
 #include "../../src/Interop/Internal/CppCRecordMetadataCodec.h"
+#include "../../src/Driver/Internal/DriverInternal.h"
 
 #include <algorithm>
 #include <filesystem>
@@ -735,6 +740,20 @@ bool checkRestoredRecords(const nativesharp::frontend::ProjectCompilation& consu
     return ok;
 }
 
+// EN: True when both enums declare the same enumerator names in the same order. Used to find the
+//     live declaration of an enum whose name may be empty (anonymous enum named by a typedef).
+// ES: True si ambos enums declaran los mismos nombres de enumeradores en el mismo orden. Sirve para
+//     hallar la declaración viva de un enum cuyo nombre puede estar vacío (enum anónimo con typedef).
+bool sameEnumerators(const CppEnumDeclaration& left, const CppEnumDeclaration& right)
+{
+    if (left.enumerators.size() != right.enumerators.size() || left.enumerators.empty()) return false;
+    for (std::size_t index = 0; index < left.enumerators.size(); ++index)
+    {
+        if (left.enumerators[index].name != right.enumerators[index].name) return false;
+    }
+    return true;
+}
+
 // EN: Compares restored enum type and enumerator USRs with the live Clang enums of the header.
 // ES: Compara los USR restaurados de tipos enum y enumeradores con los enums vivos de Clang.
 bool checkRestoredEnums(const nativesharp::frontend::ProjectCompilation& consumer,
@@ -747,7 +766,9 @@ bool checkRestoredEnums(const nativesharp::frontend::ProjectCompilation& consume
     for (const auto& enumeration : stored)
     {
         const auto& name = enumeration.declaration.name;
-        const auto clang = std::find_if(live.begin(), live.end(), [&](const auto& item) { return item.name == name; });
+        const auto clang = std::find_if(live.begin(), live.end(), [&](const auto& item) {
+            return sameEnumerators(item, enumeration.declaration);
+        });
         const auto ordinal = lookup->typeOrdinalForIdentity(enumeration.identityKey);
         const auto* restored = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
         const bool known = clang != live.end() && clang->clangUsr && !clang->clangUsr->empty();
@@ -828,16 +849,97 @@ int verifyRestoredUsrs(char** argv)
                      : "Consumer USR restoration failed\n");
     return ok ? 0 : 1;
 }
+// EN: Writes a consumer project beneath `directory` that references `library` through a real
+//     LibraryReference and compiles Main.ns. Returns the absolute project path or an empty path.
+// ES: Escribe bajo `directory` un proyecto consumidor que referencia `library` mediante un
+//     LibraryReference real y compila Main.ns. Devuelve la ruta absoluta del proyecto o una vacía.
+std::filesystem::path writeDriverConsumer(const std::filesystem::path& directory,
+                                          const std::filesystem::path& library, const std::string& mainSource)
+{
+    std::filesystem::create_directories(directory);
+    const auto project = std::filesystem::absolute(directory / "CIdentityDriverConsumer.nsproj");
+    const std::string text =
+        "<Project>\n"
+        "  <PropertyGroup><Name>CIdentityDriverConsumer</Name></PropertyGroup>\n"
+        "  <ItemGroup>\n"
+        "    <Compile Include=\"Main.ns\" />\n"
+        "    <LibraryReference Include=\"" + library.string() + "\" />\n"
+        "  </ItemGroup>\n"
+        "</Project>\n";
+    const bool written = writeText(project, text) && writeText(directory / "Main.ns", mainSource);
+    return written ? project : std::filesystem::path();
+}
+
+// EN: Loads the consumer project graph and lets the driver prepare the precompiled modules
+//     (configurePrecompiledModules: library loading, catalogue transport and provider
+//     installation), then compiles the members.
+// ES: Carga el grafo del proyecto consumidor y deja que el driver prepare los módulos precompilados
+//     (configurePrecompiledModules: carga de bibliotecas, transporte del catálogo e instalación de
+//     proveedores) y después compila los miembros.
+bool compileThroughDriver(nativesharp::frontend::ProjectCompilation& consumer,
+                          const std::filesystem::path& project, std::string& error)
+{
+    nativesharp::compilation::ProjectLoadOptions loadOptions;
+    nativesharp::compilation::ProjectGraphLoader loader(1, {}, loadOptions);
+    auto graph = loader.load(project, error);
+    if (!graph) return false;
+    nativesharp::compilation::CompilationInputManifest manifest(std::move(*graph), loadOptions);
+    if (!nativesharp::driver::configurePrecompiledModules(manifest, consumer, error, false)) return false;
+    return consumer.compileProjectMembers(project, error);
+}
+
+// EN: Driver restoration mode. The producer library and NSMETA are real and the consumer reaches
+//     them only through its LibraryReference; it has no C header of its own.
+// ES: Modo de restauración por el driver. La biblioteca y el NSMETA del productor son reales y el
+//     consumidor solo los alcanza por su LibraryReference; no tiene encabezado C propio.
+int verifyDriverRestoredUsrs(char** argv)
+{
+    const auto library = std::filesystem::absolute(argv[2]);
+    auto metadataPath = library;
+    metadataPath.replace_extension(".nsmeta");
+    LibraryMetadata metadata;
+    std::vector<CppCRecordSnapshot> records;
+    std::vector<CppCEnumSnapshot> enums;
+    if (!readProducerCatalogue(metadataPath, metadata, records, enums)) return 1;
+    if (!expect(!records.empty() || !enums.empty(), "producer catalogue contains C records or enums")) return 1;
+    const auto header = std::filesystem::absolute(argv[3]);
+    CppClangSessionFactory factory;
+    auto session = openSession(factory, headerOptions(argv[4], header.parent_path(), argv[5],
+                                                      header.filename().string()));
+    const auto liveRecords = session ? session->recordsSnapshot() : std::nullopt;
+    const auto liveEnums = session ? session->enumsSnapshot() : std::nullopt;
+    if (!expect(liveRecords && liveEnums, "live Clang session exposes the producer header")) return 1;
+    session->close();
+    const auto project = writeDriverConsumer(library.parent_path() / "c-identity-driver-consumer", library,
+                                             consumerSource(enums));
+    if (!expect(!project.empty(), "driver consumer project is written")) return 1;
+    nativesharp::frontend::ProjectCompilation consumer;
+    std::string error;
+    const bool compiled = compileThroughDriver(consumer, project, error);
+    if (!compiled) std::cerr << "driver consumer: " << error << " " << diagnosticText(consumer) << '\n';
+    bool ok = expect(compiled, "driver consumer compiles members from the precompiled library");
+    ok &= compiled && checkRestoredRecords(consumer, records, *liveRecords);
+    ok &= compiled && checkRestoredEnums(consumer, enums, *liveEnums);
+    std::cout << (ok ? "Driver consumer restores Clang USRs from the real producer library\n"
+                     : "Driver consumer USR restoration failed\n");
+    return ok ? 0 : 1;
+}
 }
 
 int main(int argc, char** argv)
 {
     if (argc == 7 && std::string_view(argv[1]) == "--verify-restored-c-usr") return verifyRestoredUsrs(argv);
+    if (argc == 6 && std::string_view(argv[1]) == "--verify-driver-restored-c-usr")
+    {
+        return verifyDriverRestoredUsrs(argv);
+    }
     if (argc != 4)
     {
         std::cerr << "usage: nsc_cpp_c_identity_tests <clang-resource-dir> <work-dir> <clang-driver>\n"
                      "       nsc_cpp_c_identity_tests --verify-restored-c-usr <nsmeta> <header> "
-                     "<clang-resource-dir> <clang-driver> <work-dir>\n";
+                     "<clang-resource-dir> <clang-driver> <work-dir>\n"
+                     "       nsc_cpp_c_identity_tests --verify-driver-restored-c-usr <producer.lib> <header> "
+                     "<clang-resource-dir> <clang-driver>\n";
         return 2;
     }
     return runProbes(argv[1], argv[2], argv[3]);

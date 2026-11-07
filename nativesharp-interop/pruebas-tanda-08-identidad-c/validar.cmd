@@ -1,8 +1,11 @@
 @echo off
 rem T08-002: identidad de declaraciones C importadas.
-rem 1. Sondas de USR con sesiones Clang reales (presencia, estabilidad y dependencia del encabezado).
-rem 2. Restauracion de USR en el consumidor desde el NSMETA real de tres productores, O0 a O3.
-rem 3. Encabezados homonimos en directorios distintos compilados con nsc (typedef y static inline).
+rem 1. Sondas de USR con sesiones Clang reales (presencia, estabilidad, dependencia del encabezado y
+rem    encabezados homonimos en directorios distintos).
+rem 2. Restauracion de USR desde el NSMETA real de cinco productores, O0 a O3, de dos formas: con el
+rem    modulo precompilado armado por la prueba y por la ruta completa del driver (LibraryReference).
+rem 3. Encabezados homonimos compilados con nsc (typedef y static inline).
+rem 4. Observacion: enum anonimo usado solo como tipo de campo publicado (no falla el validador).
 rem Variables opcionales (valor por omision entre parentesis):
 rem   NSC_T08_BUILD  carpeta de build de NSC          (A:\nsc-interop-build\tanda1-ON)
 rem   NSC_T08_OUT    carpeta de salida y temporales   (A:\nsc-interop-build\tanda08-identidad-c)
@@ -16,7 +19,8 @@ if "%NSC_LINKER%"=="" set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-
 set "PATH=%NSC_T08_CLANG%\bin;%NSC_T08_BUILD%\bin;%PATH%"
 set "NSC_LLVM_LIB=%NSC_T08_CLANG%\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=%NSC_T08_BUILD%\generated\NativeSharp.Runtime.Win32.lib"
-set "FIXTURES=%~dp0..\pruebas-tanda-08-meta-c"
+set "META_FIXTURES=%~dp0..\pruebas-tanda-08-meta-c"
+set "ANON_FIXTURES=%~dp0anonimos"
 set "HOMONYM_FIXTURES=%~dp0homonimos"
 if not exist "%NSC_T08_OUT%\temp" mkdir "%NSC_T08_OUT%\temp"
 if errorlevel 1 exit /b 1
@@ -27,34 +31,47 @@ nsc_cpp_c_identity_tests.exe "%NSC_T08_CLANG%\lib\clang\23" "%NSC_T08_OUT%" "%NS
 if errorlevel 1 exit /b 1
 for %%V in (Producer ProducerValue ProducerUnion) do (
   for %%O in (0 1 2 3) do (
-    call :restore %%O %%V
+    call :restore "%META_FIXTURES%" Api api CPublishedProducer %%V %%O
+    if errorlevel 1 exit /b 1
+  )
+)
+for %%V in (ProducerAnonRecord ProducerAnonKind) do (
+  for %%O in (0 1 2 3) do (
+    call :restore "%ANON_FIXTURES%" Anon anon CAnonProducer %%V %%O
     if errorlevel 1 exit /b 1
   )
 )
 call :homonyms
 if errorlevel 1 exit /b 1
+call :observe_anonymous_field
 echo T08-002 C identity checks passed.
 exit /b 0
 
+rem :restore <fixtures> <C base name> <C library base> <producer library> <producer source> <O level>
 :restore
-set "DEST=%NSC_T08_OUT%\%~2-O%~1"
+set "DEST=%NSC_T08_OUT%\%~5-O%~6"
 if not exist "%DEST%" mkdir "%DEST%"
 if errorlevel 1 exit /b 1
-for %%F in (Api.h Api.c Producer.nsproj) do (
-  copy /y "%FIXTURES%\%%F" "%DEST%\%%F" >nul
+for %%F in (%~2.h %~2.c Producer.nsproj) do (
+  copy /y "%~1\%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
-copy /y "%FIXTURES%\%~2.ns" "%DEST%\Producer.ns" >nul
+copy /y "%~1\%~5.ns" "%DEST%\Producer.ns" >nul
 if errorlevel 1 exit /b 1
-clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 -O%~1 "%DEST%\Api.c" -o "%DEST%\api.obj"
+clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 -O%~6 "%DEST%\%~2.c" -o "%DEST%\%~3.obj"
 if errorlevel 1 exit /b 1
-llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
+llvm-lib.exe /nologo /out:"%DEST%\%~3.lib" "%DEST%\%~3.obj"
 if errorlevel 1 exit /b 1
-nsc.exe --cpp-clang-root=%NSC_T08_CLANG% --emit-project-oop-lib "%DEST%\Producer.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\CPublishedProducer.lib"
+nsc.exe --cpp-clang-root=%NSC_T08_CLANG% --emit-project-oop-lib "%DEST%\Producer.nsproj" -O%~6 --no-artifact-cache -o "%DEST%\%~4.lib" > "%DEST%\producer.log" 2>&1
+if errorlevel 1 (
+  type "%DEST%\producer.log"
+  exit /b 1
+)
+nsc_cpp_c_identity_tests.exe --verify-restored-c-usr "%DEST%\%~4.nsmeta" "%DEST%\%~2.h" "%NSC_T08_CLANG%\lib\clang\23" "%NSC_T08_CLANG%\bin\clang.exe" "%DEST%"
 if errorlevel 1 exit /b 1
-nsc_cpp_c_identity_tests.exe --verify-restored-c-usr "%DEST%\CPublishedProducer.nsmeta" "%DEST%\Api.h" "%NSC_T08_CLANG%\lib\clang\23" "%NSC_T08_CLANG%\bin\clang.exe" "%DEST%"
+nsc_cpp_c_identity_tests.exe --verify-driver-restored-c-usr "%DEST%\%~4.lib" "%DEST%\%~2.h" "%NSC_T08_CLANG%\lib\clang\23" "%NSC_T08_CLANG%\bin\clang.exe"
 if errorlevel 1 exit /b 1
-echo Restored C USRs passed %~2 O%~1.
+echo Restored C USRs passed %~5 O%~6.
 exit /b 0
 
 rem :homonyms compila con nsc los proyectos con encabezados same.h de directorios distintos.
@@ -103,4 +120,21 @@ if errorlevel 1 (
   exit /b 1
 )
 echo Homonymous headers %~1 rejected: %~2
+exit /b 0
+
+rem :observe_anonymous_field publica un record cuyo campo es un enum anonimo; solo informa el resultado.
+:observe_anonymous_field
+set "DEST=%NSC_T08_OUT%\ProducerAnonLevel-O0"
+if not exist "%DEST%" mkdir "%DEST%"
+for %%F in (Anon.h Anon.c Producer.nsproj) do copy /y "%ANON_FIXTURES%\%%F" "%DEST%\%%F" >nul
+copy /y "%ANON_FIXTURES%\ProducerAnonLevel.ns" "%DEST%\Producer.ns" >nul
+clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 -O0 "%DEST%\Anon.c" -o "%DEST%\anon.obj"
+llvm-lib.exe /nologo /out:"%DEST%\anon.lib" "%DEST%\anon.obj"
+nsc.exe --cpp-clang-root=%NSC_T08_CLANG% --emit-project-oop-lib "%DEST%\Producer.nsproj" -O0 --no-artifact-cache -o "%DEST%\CAnonProducer.lib" > "%DEST%\producer.log" 2>&1
+if errorlevel 1 (
+  echo OBSERVATION anonymous enum field producer failed:
+  findstr /L /C:"error" "%DEST%\producer.log"
+) else (
+  echo OBSERVATION anonymous enum field producer succeeded.
+)
 exit /b 0

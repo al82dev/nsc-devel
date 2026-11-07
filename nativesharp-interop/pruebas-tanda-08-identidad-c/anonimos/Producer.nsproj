@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CAnonProducer</Name><OutputType>Library</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Producer.ns" />
+    <CppLibraryReference Header="Anon.h" Language="C" Standard="c11" Library="anon.lib" />
+  </ItemGroup>
+</Project>

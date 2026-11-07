@@ -1,0 +1,7 @@
+namespace PublishedAnon
+{
+    public struct Bridge
+    {
+        public static CAnonKind GetKind() { return get_anon_kind(); }
+    }
+}
