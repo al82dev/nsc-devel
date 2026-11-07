@@ -508,6 +508,11 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     estáticas con TLS o bitcode cuando no hay elección explícita. Pasaron los
     controles dirigidos O0–O3, prioridades y caché; la DLL directa y la batería
     posterior permanecen pendientes. [Evidencia](registro-commits/t08-emision-directa-auto-linker.md).
+    La emisión directa de DLL se corrigió después: la selección automática
+    conserva el directorio TLS y el productor pasó O0–O3 con consumidores
+    Python y NativeSharp. Las opciones explícitas se respetan; falta comprobar
+    la caché de bundle de DLL y los cuatro fallos C originales siguen abiertos.
+    [Evidencia](registro-commits/t08-emision-dll-auto-tls.md).
     La batería posterior ejecutó correctamente ese control, pero terminó con
     los cuatro fallos conocidos de DLL. La tanda sigue abierta.
     [Resultado](registro-commits/t08-validacion-emision-auto.md).
