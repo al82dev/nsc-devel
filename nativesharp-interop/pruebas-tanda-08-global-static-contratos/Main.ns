@@ -7,7 +7,7 @@ int Main()
     ticks = 15U;
     local = 16U;
     atomic_local = 17U;
-    box_ptr = next_box();
+    box_ptr += 1;
     bool_ptr = next_bool();
     box_ptr -= 1;
     bool_ptr -= 1;
@@ -16,7 +16,7 @@ int Main()
     bool_ptr += 1;
     mode_ptr += 1;
     opaque_ptr = next_opaque();
-    const_box_ptr = next_const_box();
+    const_box_ptr += 1;
     if (box_ptr->value != 47 || !*bool_ptr) return 4;
     if ((int)*mode_ptr != 29 || const_box_ptr->value != 47) return 7;
     return inspect() == 1 ? 0 : 2;
