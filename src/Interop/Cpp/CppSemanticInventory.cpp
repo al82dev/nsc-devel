@@ -255,9 +255,7 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
            (global.type.element->element->kind == CppTypeKind::Floating &&
             global.type.element->element->unqualifiedCanonicalSpelling == "double" &&
             global.type.element->element->sizeBits == std::optional<std::uint64_t>{64}) ||
-         ((!global.threadLocal || (!global.type.element->element->isConst &&
-                                   !global.type.element->element->isVolatile)) &&
-          global.type.element->element->sizeBits == std::optional<std::uint64_t>{32} &&
+         (global.type.element->element->sizeBits == std::optional<std::uint64_t>{32} &&
           ((global.type.element->element->kind == CppTypeKind::Floating &&
             global.type.element->element->unqualifiedCanonicalSpelling == "float") ||
            (global.type.element->element->kind == CppTypeKind::SignedInteger &&
