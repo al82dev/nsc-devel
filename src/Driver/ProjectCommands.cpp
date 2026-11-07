@@ -1339,22 +1339,24 @@ bool resolveBuildSettings(
     }
     debug = options.debug.value_or(sidecar.build.debugInformation == "none" ? "-g0" :
         sidecar.build.debugInformation == "line-tables-only" ? "-gline-tables-only" : "-g");
-    linker = options.linker.value_or(sidecar.build.linker);
-    if (linker != "NSLink")
-    {
-        message = "linker must be NSLink";
-        return false;
-    }
+    bool lldConfigured = false;
     if (const auto configured = environmentValue("NSC_LINKER"))
     {
         std::string name = fs::path(*configured).filename().string();
         std::transform(name.begin(), name.end(), name.begin(),
             [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        if (name == "lld-link" || name == "lld-link.exe")
-        {
-            message = "project build does not yet support the lld-link selection; use an explicit emit command";
-            return false;
-        }
+        lldConfigured = name == "lld-link" || name == "lld-link.exe";
+    }
+    linker = options.linker.value_or(lldConfigured ? std::string("LLD") : sidecar.build.linker);
+    if (linker != "NSLink" && linker != "LLD")
+    {
+        message = "linker must be NSLink or LLD";
+        return false;
+    }
+    if ((linker == "LLD") != lldConfigured)
+    {
+        message = "project linker selection conflicts with NSC_LINKER; configure lld-link explicitly for LLD";
+        return false;
     }
     linkTimeOptimization = options.linkTimeOptimization.value_or(sidecar.build.linkTimeOptimization);
     if (linkTimeOptimization != "none" && linkTimeOptimization != "full" && linkTimeOptimization != "thin")

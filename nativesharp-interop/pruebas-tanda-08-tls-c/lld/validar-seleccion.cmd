@@ -24,14 +24,18 @@ nsc.exe --print-linker > "%DEST%\lld.log" 2>&1
 if errorlevel 1 exit /b 1
 findstr /L /C:"lld-link.exe" "%DEST%\lld.log" >nul
 if errorlevel 1 exit /b 1
-nsc.exe build "%DEST%\Project.nsproj" --no-restore > "%DEST%\build.log" 2>&1
+nsc.exe build "%DEST%\Project.nsproj" --linker NSLink --no-restore > "%DEST%\build.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /L /C:"project build does not yet support the lld-link selection" "%DEST%\build.log" >nul
+findstr /L /C:"project linker selection conflicts with NSC_LINKER" "%DEST%\build.log" >nul
 if errorlevel 1 exit /b 1
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
 nsc.exe --print-linker > "%DEST%\nslink.log" 2>&1
 if errorlevel 1 exit /b 1
 findstr /L /C:"nslink.exe" "%DEST%\nslink.log" >nul
+if errorlevel 1 exit /b 1
+nsc.exe build "%DEST%\Project.nsproj" --linker LLD --no-restore > "%DEST%\build-reverse.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /L /C:"project linker selection conflicts with NSC_LINKER" "%DEST%\build-reverse.log" >nul
 if errorlevel 1 exit /b 1
 set "NSC_LINKER=other-linker.exe"
 nsc.exe --print-linker > "%DEST%\invalid.log" 2>&1

@@ -4253,3 +4253,13 @@ declara la biblioteca C y el CRT estático necesario. Presupuesto:
 NSLink, LLVM y C: protegidos. No se sustituye el gate original de TLS ni se
 afirma detección automática o soporte del comando de proyecto `build`.
 
+# TLS estático: comando de proyecto con LLD explícito
+
+Permitir `nsc build` cuando `NSC_LINKER` selecciona `lld-link` y registrar
+`LLD` como enlazador efectivo en su resultado. Rechazar un `--linker` explícito
+incompatible y conservar el comportamiento predeterminado de NSLink. Presupuesto:
+`src/Driver/ProjectCommands.cpp`, pruebas de `pruebas-tanda-08-tls-c/lld`,
+ayuda si corresponde, seguimiento y registros. No modificar NSLink, LLVM ni C:.
+Validar ejecución TLS y resultado de proyecto; no implica selección automática
+de LLD, CRT automático ni cobertura de TLS directo de DLL.
+
