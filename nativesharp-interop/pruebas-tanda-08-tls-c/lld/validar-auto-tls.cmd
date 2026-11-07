@@ -48,7 +48,7 @@ llvm-lib.exe /nologo /out:"%DEST%\precompiled\api.lib" "%DEST%\precompiled\api.o
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\precompiled\Producer.nsproj" --nsc-linker-selection=LLD --no-artifact-cache -O0 -o "%DEST%\precompiled\TlsProducer.lib" > "%DEST%\producer.log" 2>&1
 if errorlevel 1 (type "%DEST%\producer.log" & exit /b 1)
-nsc.exe build "%DEST%\precompiled\ConsumerNoHeader.nsproj" --no-restore -O0 --output-format=json > "%DEST%\precompiled.log" 2>&1
+nsc.exe build "%DEST%\precompiled\ConsumerNoHeader.nsproj" --cpp-clang-root=A:\al82dev-clang --no-restore -O0 --output-format=json > "%DEST%\precompiled.log" 2>&1
 if errorlevel 1 (type "%DEST%\precompiled.log" & exit /b 1)
 findstr /L /C:"\"linker\":\"LLD\"" "%DEST%\precompiled.log" >nul
 if errorlevel 1 (type "%DEST%\precompiled.log" & exit /b 1)
