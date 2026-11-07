@@ -260,6 +260,19 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         mapped = projectCArrayField(field.type, projectOrdinal, moduleName, lookup);
     if (!mapped && !record.isCxx)
         mapped = projectCppSemanticEnumType(field.type, projectOrdinal, moduleName, lookup);
+    if (!mapped && !record.isCxx && field.type.kind == CppTypeKind::Enumeration &&
+        field.type.enumIdentity && field.type.enumIdentity->anonymousContext &&
+        field.type.enumIdentity->name.empty() && field.type.enumUnderlying &&
+        field.type.sizeBits && field.type.alignmentBits &&
+        field.type.sizeBits == field.type.enumUnderlying->sizeBits &&
+        field.type.alignmentBits == field.type.enumUnderlying->alignmentBits)
+    {
+        CppType underlying = *field.type.enumUnderlying;
+        underlying.isConst = field.type.isConst;
+        underlying.isVolatile = field.type.isVolatile;
+        mapped = mapCppScalarType(underlying);
+        if (mapped) mapped->canonicalCppType = field.type.canonicalSpelling;
+    }
     if (!mapped && !record.isCxx && lookup && field.type.kind == CppTypeKind::Record && !field.type.isVolatile)
     {
         const auto target = projectCppRecordTypeIdentity(field.type, moduleName);
