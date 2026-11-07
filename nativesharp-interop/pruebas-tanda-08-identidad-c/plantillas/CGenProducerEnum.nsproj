@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CGenProducerEnum</Name><OutputType>Library</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ProducerEnum.ns" />
+    <CppLibraryReference Header="Gen.h" Language="C" Standard="c11" Library="gen.lib" />
+  </ItemGroup>
+</Project>

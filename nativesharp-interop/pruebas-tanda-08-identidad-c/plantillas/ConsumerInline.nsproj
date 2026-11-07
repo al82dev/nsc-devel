@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CGenConsumerInline</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ConsumerInline.ns" />
+    <LibraryReference Include="CGenProducerInline.lib" />
+  </ItemGroup>
+</Project>

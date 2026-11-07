@@ -1,0 +1,7 @@
+namespace PublishedGenLoose
+{
+    public class Bridge
+    {
+        public static int LooseOf<T>(T value) { return GenLoose; }
+    }
+}

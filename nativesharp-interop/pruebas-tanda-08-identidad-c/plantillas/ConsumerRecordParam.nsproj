@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CGenConsumerRecordParam</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ConsumerRecordParam.ns" />
+    <LibraryReference Include="CGenProducer.lib" />
+  </ItemGroup>
+</Project>

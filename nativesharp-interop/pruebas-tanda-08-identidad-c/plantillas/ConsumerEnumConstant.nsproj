@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CGenConsumerEnumConstant</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ConsumerEnumConstant.ns" />
+    <LibraryReference Include="CGenProducerEnum.lib" />
+  </ItemGroup>
+</Project>

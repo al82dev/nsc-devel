@@ -8,8 +8,7 @@ rem 3. Encabezados homonimos compilados con nsc (typedef y static inline).
 rem 4. Matriz de typedef en dos encabezados (typedefs\casos.txt): sonda de reglas y compilacion con nsc.
 rem 5. Enum declarado dentro de un campo de record C, con encabezado y por biblioteca precompilada
 rem    (enum-campo\casos.txt).
-rem 6. Plantillas publicas que usan funciones, globales y alias C: el consumidor sin plantillas debe
-rem    ejecutar; los consumidores que instancian plantillas solo se observan (propuesta de metadata).
+rem 6. Plantillas publicas que usan declaraciones C, por biblioteca precompilada (plantillas\casos.txt).
 rem Las tablas casos.txt fijan el resultado ACTUAL de cada caso; con NSC_T08_PROPUESTAS=1 el validador
 rem exige en su lugar el resultado PROP que debe dar la propuesta correspondiente una vez implementada.
 rem Variables opcionales (valor por omision entre parentesis):
@@ -169,6 +168,14 @@ if errorlevel 1 exit /b 1
 call :cases
 exit /b %errorlevel%
 
+rem :templates plantillas publicas que usan declaraciones C (plantillas\casos.txt).
+:templates
+set "DEST=%NSC_T08_OUT%\plantillas"
+call :prepare_cases "%TEMPLATE_FIXTURES%" Gen gen
+if errorlevel 1 exit /b 1
+call :cases
+exit /b %errorlevel%
+
 rem :prepare_cases <fixtures> <C base> <C library base> copia el fixture a DEST y construye la biblioteca C.
 :prepare_cases
 xcopy /e /i /y /q "%~1" "%DEST%" >nul
@@ -251,46 +258,5 @@ if "%~1"=="ident" set "CASE_TEXT=unknown identifier"
 if "%~1"=="type" set "CASE_TEXT=unknown type name"
 if "%~1"=="field-identity" set "CASE_TEXT=C enum field dependency has no importable identity"
 if "%~1"=="enum-unavailable" set "CASE_TEXT=required C enum is unavailable"
-exit /b 0
-
-rem :templates productor con plantillas publicas que usan declaraciones C; ver la propuesta de metadata.
-:templates
-set "DEST=%NSC_T08_OUT%\plantillas"
-if not exist "%DEST%" mkdir "%DEST%"
-for %%F in (Gen.h Gen.c) do (
-  copy /y "%TEMPLATE_FIXTURES%\%%F" "%DEST%\%%F" >nul
-  if errorlevel 1 exit /b 1
-)
-for %%P in (Producer ConsumerPlain ConsumerGeneric ConsumerGenericHeader ConsumerAlias) do (
-  copy /y "%TEMPLATE_FIXTURES%\%%P.nsproj" "%DEST%\%%P.nsproj" >nul
-  if errorlevel 1 exit /b 1
-  copy /y "%TEMPLATE_FIXTURES%\%%P.ns" "%DEST%\%%P.ns" >nul
-  if errorlevel 1 exit /b 1
-)
-clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 -O0 "%DEST%\Gen.c" -o "%DEST%\gen.obj"
-if errorlevel 1 exit /b 1
-llvm-lib.exe /nologo /out:"%DEST%\gen.lib" "%DEST%\gen.obj"
-if errorlevel 1 exit /b 1
-nsc.exe --cpp-clang-root=%NSC_T08_CLANG% --emit-project-oop-lib "%DEST%\Producer.nsproj" -O0 --no-artifact-cache -o "%DEST%\CGenProducer.lib" > "%DEST%\producer.log" 2>&1
-if errorlevel 1 (
-  type "%DEST%\producer.log"
-  exit /b 1
-)
-nsc.exe --cpp-clang-root=%NSC_T08_CLANG% --emit-project-oop-exe "%DEST%\ConsumerPlain.nsproj" -O0 --no-artifact-cache -o "%DEST%\ConsumerPlain.exe" > "%DEST%\ConsumerPlain.log" 2>&1
-if errorlevel 1 (
-  type "%DEST%\ConsumerPlain.log"
-  exit /b 1
-)
-"%DEST%\ConsumerPlain.exe"
-if errorlevel 1 exit /b 1
-echo Template producer: consumer of non-template C uses compiled and ran.
-for %%C in (ConsumerGeneric ConsumerGenericHeader ConsumerAlias) do (
-  nsc.exe --cpp-clang-root=%NSC_T08_CLANG% --emit-project-oop-exe "%DEST%\%%C.nsproj" -O0 --no-artifact-cache -o "%DEST%\%%C.exe" > "%DEST%\%%C.log" 2>&1
-  if errorlevel 1 (
-    echo OBSERVATION %%C failed:
-    findstr /L /C:"error" "%DEST%\%%C.log"
-  ) else (
-    echo OBSERVATION %%C compiled.
-  )
-)
+if "%~1"=="state" set "CASE_TEXT=metadata contains an incomplete or duplicate namespace state"
 exit /b 0

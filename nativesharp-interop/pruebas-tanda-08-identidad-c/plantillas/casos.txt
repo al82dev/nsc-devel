@@ -1,0 +1,20 @@
+# T08-002 plantillas publicas y cuerpos de biblioteca que usan declaraciones C (hallazgos H3 y H7).
+# Columnas: consumidor productor ACTUAL PROP
+#   productor  proyecto de biblioteca que se construye antes (una vez por ejecucion).
+#   ACTUAL     resultado de hoy; PROP resultado esperado con T08-002-PROPUESTA-METADATA-C.md y la
+#              correccion de H7 (constantes de enum C fuera de los estados publicados).
+# Resultados: runs, ident (unknown identifier), type (unknown type name),
+#   state (metadata contains an incomplete or duplicate namespace state), fails (cualquier error).
+ConsumerPlain CGenProducer runs runs
+ConsumerRecordParam CGenProducer runs runs
+ConsumerInlinePlain CGenProducer runs runs
+ConsumerGeneric CGenProducer ident runs
+ConsumerGenericHeader CGenProducer ident runs
+ConsumerAlias CGenProducer type runs
+ConsumerRecordLocal CGenProducer ident runs
+ConsumerGlobalWrite CGenProducer ident runs
+ConsumerInline CGenProducerInline ident fails
+ConsumerEnumConstantPlain CGenProducerEnumPlain state runs
+ConsumerEnumConstant CGenProducerEnum state runs
+ConsumerAnonymousConstantPlain CGenProducerLoosePlain state runs
+ConsumerAnonymousConstant CGenProducerLoose state runs

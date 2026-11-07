@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CGenConsumerRecordLocal</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ConsumerRecordLocal.ns" />
+    <LibraryReference Include="CGenProducer.lib" />
+  </ItemGroup>
+</Project>

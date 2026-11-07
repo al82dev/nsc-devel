@@ -1,0 +1,7 @@
+namespace PublishedGenInline
+{
+    public class Bridge
+    {
+        public static int TwiceOf<T>(T value) { return gen_c_twice(4); }
+    }
+}

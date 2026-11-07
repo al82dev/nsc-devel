@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CGenProducerInline</Name><OutputType>Library</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ProducerInline.ns" />
+    <CppLibraryReference Header="Gen.h" Language="C" Standard="c11" Library="gen.lib" />
+  </ItemGroup>
+</Project>

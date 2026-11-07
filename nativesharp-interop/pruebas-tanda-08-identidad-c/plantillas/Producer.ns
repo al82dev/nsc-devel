@@ -8,5 +8,10 @@ namespace PublishedGen
         public static int CounterOf<T>(T value) { return gen_c_counter; }
         public static GenCount Count() { return 3; }
         public static int AliasOf<T>(T value) { GenCount count = 2; return count; }
+        public static GenRecord* Record() { return gen_c_record(); }
+        public static int RecordOf<T>(T value) { var record = gen_c_record(); return record->value; }
+        public static int FieldOf<T>(GenRecord* record, T value) { return record->value; }
+        public static int SetCounterOf<T>(T value) { gen_c_counter = 7; return gen_c_counter; }
+        public static int Twice() { return gen_c_twice(4); }
     }
 }

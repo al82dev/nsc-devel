@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CGenConsumerGlobalWrite</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ConsumerGlobalWrite.ns" />
+    <LibraryReference Include="CGenProducer.lib" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,5 @@
+int Main()
+{
+    if (PublishedGen.Bridge.FieldOf<int>(PublishedGen.Bridge.Record(), 1) != 21) return 1;
+    return 0;
+}

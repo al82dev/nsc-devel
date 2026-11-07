@@ -1,0 +1,7 @@
+namespace PublishedGenEnum
+{
+    public class Bridge
+    {
+        public static int ModeOf<T>(T value) { return (int)GenModeB; }
+    }
+}

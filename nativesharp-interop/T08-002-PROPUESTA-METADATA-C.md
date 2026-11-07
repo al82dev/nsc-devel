@@ -1,119 +1,210 @@
-# T08-002: funciones, globales y alias C en bibliotecas precompiladas (hallazgo H3)
+# T08-002: declaraciones C usadas por plantillas públicas y por cuerpos de biblioteca (H3, H7, H8)
 
-Estado: **PROPUESTA NO IMPLEMENTADA**. No modifica NSMETA; cualquier cambio de
+Estado: **PROPUESTA NO IMPLEMENTADA**. NSMETA no se modifica; cualquier cambio de
 formato requiere autorización.
 
-## Qué necesita el consumidor precompilado
+Corrección respecto a la versión anterior de este documento: proponía la
+"versión de envoltura 4" del catálogo C. Ese valor ya existe.
+`encodeCTypeCatalogWithProvenance` (`CppCRecordMetadataCodec.cpp:578-590`) usa
+1 = procedencia, 2 = procedencia + formato flotante, 3 = procedencia incompleta
+y 4 = procedencia incompleta + formato flotante.
 
-HECHO COMPROBADO con el fixture `pruebas-tanda-08-identidad-c/plantillas`
-(productor `CGenProducer` con `Gen.h`, O0, compilador de este carril):
+## Casos con biblioteca precompilada
 
-| Uso de C en la biblioteca | Consumidor | Resultado |
-|---|---|---|
-| Método no genérico que llama a `gen_c_number()` o lee `gen_c_counter` | sin encabezado | compila y ejecuta |
-| Método no genérico que devuelve `GenCount` (`typedef int`) | sin encabezado | compila y ejecuta; la firma publica el tipo canónico |
-| Plantilla pública que llama a `gen_c_number()` o lee `gen_c_counter` | sin encabezado | `unknown identifier 'gen_c_number'` / `'gen_c_counter'` en `CGenProducer.nsmeta.public-templates.ns` |
-| La misma plantilla | con el mismo `Gen.h` propio | mismo error |
-| Plantilla pública que declara un local `GenCount` | sin encabezado | `unknown type name 'GenCount' in module 'CGenProducer'` |
+HECHO COMPROBADO con `pruebas-tanda-08-identidad-c/plantillas` (tabla
+`casos.txt`), O0, compilador de este carril y Clang 23.1.0. El consumidor no
+tiene encabezado salvo en `ConsumerGenericHeader`.
 
-Conclusiones:
+| Consumidor | Qué usa la biblioteca | ACTUAL | PROP |
+|---|---|---|---|
+| `ConsumerPlain` | métodos no genéricos con función, global y typedef C | ejecuta | ejecuta |
+| `ConsumerRecordParam` | plantilla con parámetro `GenRecord*` (record en la superficie) que lee un campo | ejecuta | ejecuta |
+| `ConsumerInlinePlain` | método no genérico que llama a `static inline` | ejecuta | ejecuta |
+| `ConsumerGeneric` | plantilla que llama a `gen_c_number()` y lee `gen_c_counter` | `unknown identifier` | ejecuta |
+| `ConsumerGenericHeader` | la misma, con el `Gen.h` propio del consumidor | `unknown identifier` | ejecuta |
+| `ConsumerAlias` | plantilla con un local `GenCount` | `unknown type name 'GenCount' in module 'CGenProducer'` | ejecuta |
+| `ConsumerRecordLocal` | plantilla que llama a `gen_c_record()` y lee `->value`; el record no está en la superficie | `unknown identifier 'gen_c_record'` | ejecuta |
+| `ConsumerGlobalWrite` | plantilla que escribe `gen_c_counter` | `unknown identifier` | ejecuta |
+| `ConsumerInline` | plantilla que llama a `static inline gen_c_twice` | `unknown identifier 'gen_c_twice'` | falla en el productor con diagnóstico propio |
+| `ConsumerEnumConstantPlain` | método **no genérico** que usa `GenModeB` | productor: `metadata contains an incomplete or duplicate namespace state '.GenModeB'` | ejecuta |
+| `ConsumerEnumConstant` | plantilla que usa `GenModeB` | mismo error del productor | ejecuta |
+| `ConsumerAnonymousConstantPlain` | método **no genérico** que usa `GenLoose` (enum anónimo) | productor: `... namespace state '.GenLoose'` | ejecuta |
+| `ConsumerAnonymousConstant` | plantilla que usa `GenLoose` | mismo error del productor | ejecuta |
 
-1. HECHO COMPROBADO: un cuerpo ya compilado en la biblioteca no necesita metadata
-   de funciones, globales ni alias C; el consumidor enlaza la biblioteca.
-2. HECHO COMPROBADO: los records y enums de la superficie viajan en el catálogo
-   C y el consumidor restaura su identidad por la ruta del driver (resultados de
-   T08-002).
-3. HECHO COMPROBADO: el cuerpo de una plantilla pública viaja como fuente y el
-   consumidor lo analiza en el ámbito del módulo productor. Ahí no existen las
-   declaraciones C del productor; las sesiones propias del consumidor
-   pertenecen a su proyecto y no son visibles para ese módulo.
-4. Por tanto, el consumidor necesita, por módulo productor, exactamente las
-   funciones, globales y alias C que usan los cuerpos de plantillas publicados,
-   con identidad suficiente para no confundirlos con otras declaraciones.
-5. Relacionado (H4): un record publicado cuyo campo es un enum anónimo hace
-   fallar al productor con `C enum field dependency has no importable identity`.
-   Es un hueco del catálogo de tipos, no de esta propuesta.
+## Qué necesita exactamente el consumidor
 
-## Propuesta mínima de metadata
+HECHO COMPROBADO:
 
-Una sección opcional nueva dentro del catálogo C ya versionado
-(`cppCRecordCatalog`, envoltura de `encodeCTypeCatalogWithProvenance`), con
-versión de envoltura 4. Si ninguna plantilla pública usa declaraciones C, la
-sección no existe y los bytes del catálogo no cambian (invariante de ausencia).
+- El cuerpo de una plantilla pública viaja como fuente y el consumidor lo vuelve
+  a analizar en el ámbito del módulo productor. En ese ámbito no hay sesiones
+  Clang; las del consumidor pertenecen a su propio proyecto
+  (`ConsumerGenericHeader` falla igual).
+- Un record que la plantilla recibe como parámetro está en la superficie, viaja
+  en el catálogo C y basta (`ConsumerRecordParam`).
 
-Entrada de función:
+HECHO COMPROBADO por lectura del código: cada símbolo que el productor obtiene de
+C es una función pura de un snapshot de declaración Clang, del ordinal y nombre
+del proyecto propietario y de la búsqueda de tipos.
 
-| Campo | Fuente actual |
+- Funciones: `projectFunction` (`CppSemanticFunction.cpp:225-310`).
+- Globales: `projectGlobalWithLookup` (`CppSemanticInventory.cpp:180` y
+  siguientes).
+- Alias: `provideCppTypeAliases`.
+- Constantes de enum: `projectCppEnumConstant`.
+
+La información exacta que necesita el consumidor son esos **snapshots de
+declaración**, no los símbolos NativeSharp ya proyectados. Con ellos vuelve a
+ejecutar la misma proyección con el ordinal y el nombre del módulo productor. Así
+obtiene el mismo `signatureKey`, el mismo `callableIdentityKey`
+(`cpp:<módulo>::<símbolo>|<firma>`) y el mismo símbolo de enlace.
+
+| Uso en la plantilla | Datos necesarios (campos que lee la proyección) |
 |---|---|
-| nombre y nombre calificado de búsqueda | `CppFunctionDeclaration` |
-| USR de Clang (opcional) | `clangUsr` |
-| símbolo externo | `externalSymbol` |
-| tipo de retorno y parámetros como claves NSC | proyección existente (`CppSemanticFunction`) |
-| convención de llamada, variádica, con prototipo, `dllimport`, no lanza | `CppFunctionDeclaration` |
-| triple de destino | entrada de inventario |
+| Llamada a función C | `CppFunctionDeclaration`: `name`, `qualifiedName`, `externalLinkage`, `externalSymbol`, `callingConvention`, `languageLinkage`, `variadic`, `hasPrototype`, `dllImport`, `returnType` y `parameters[].{name,type}` como `CppType`, `clangUsr`; de la entrada: triple de destino |
+| Lectura o escritura de global C | `CppGlobalDeclaration`: `name`, `qualifiedName`, `type`, `externalLinkage`, `threadLocal`, `dllImport`, `externalSymbol`, `declarationAlignmentBits`, `clangUsr`; de la entrada: lenguaje C, semántica volatile de MS y almacenamiento atómico (`CppSemanticInventory.cpp:555-565`) |
+| Typedef C | `CppTypeAliasDeclaration`: `name`, `qualifiedName`, `underlyingType`, `insideAnonymousNamespace`, `clangUsr`; triple de destino |
+| Record o enum de esas firmas o de un local | entrada existente del catálogo: semilla adicional del cierre `provideCppCRecordMetadataCatalog` (`ConsumerRecordLocal`) |
+| Constante de enum con nombre | entrada de enum existente en el catálogo; el consumidor la restaura con `reconstructCEnumConstants` |
+| Constante de enum anónimo de archivo | entrada nueva de "enum anónimo"; clave: USR del primer enumerador `c:@Ea@<primero>@<primero>`, que no depende del encabezado (sonda 1) |
+| Función `static inline` | no se transporta: su definición se compila en la biblioteca con el símbolo interno `cppCInlineLinkSymbol(proyecto, referencia, nombre)`. Propuesta mínima: diagnóstico del productor |
 
-Entrada de global:
+`location` solo alimenta `sourcePath` y diagnósticos. No se publica como ruta
+absoluta; si se conserva, es relativa al proyecto productor.
 
-| Campo | Fuente actual |
-|---|---|
-| nombre, USR, símbolo externo, clave de tipo | `CppSemanticGlobal` |
-| const, volatile, atómico, TLS, `dllimport` | `CppSemanticGlobal` |
-| tamaño y alineación, semántica volatile de MS | `CppSemanticGlobal` |
+Todos los `CppType` de esas entradas ya los serializa el codec del catálogo, con
+profundidad acotada.
 
-Entrada de alias: nombre, nombre calificado, USR y tipo subyacente (`CppType`,
-que el codec ya serializa con su profundidad acotada).
+Selección en el productor: solo las declaraciones C que demandan los cuerpos de
+plantillas publicados, mediante la captura de demanda existente
+(`CppFunctionDemand`) sobre la fuente de plantillas antes de escribir la
+metadata. Si no hay ninguna, la sección no existe.
 
-Los records y enums que aparezcan en esas firmas se añaden a las semillas del
-cierre existente (`provideCppCRecordMetadataCatalog`).
+Conciliación en el consumidor que también tiene el encabezado: se usan el USR,
+el símbolo externo y la firma, con las reglas actuales de agrupación de funciones
+y globales. Una discrepancia es un error y nunca se une por nombre solo.
 
-Selección en el productor: solo las declaraciones C demandadas por los cuerpos
-de plantillas publicados, con la captura de demanda existente
-(`CppFunctionDemand`) aplicada a la fuente de plantillas antes de escribir la
-metadata. Una función `static inline` o cualquier declaración interna usada por
-una plantilla se rechaza con un diagnóstico propio: necesitaría transportar su
-definición, fuera de esta propuesta mínima.
+## H7: constantes de enum C en cualquier cuerpo de biblioteca
 
-Restauración en el consumidor: reconstruir `NamespaceFunctionSymbol`,
-`NamespaceStateSymbol` y `CppImportedTypeAlias` con el ordinal del proyecto
-productor e instalarlos con los proveedores que el driver ya configura para
-catálogos precompilados (`PrecompiledModuleConfiguration.cpp:545-563`). Si el
-consumidor tiene una sesión propia con una declaración del mismo USR, se comparan
-símbolo, firma y enlace con las reglas actuales de agrupación de funciones y
-globales; una discrepancia es un error, y nunca se une por nombre solo.
+HECHO COMPROBADO: un método **no genérico** de biblioteca que usa una constante de
+enum C, con nombre o anónimo, impide construir la biblioteca:
+`metadata producer read-back verification failed: metadata contains an
+incomplete or duplicate namespace state '.GenModeB'`. No depende de plantillas
+ni de este carril.
 
-Dependencia binaria: la biblioteca C ya se registra como dependencia binaria de la
-biblioteca NativeSharp (`LibraryMetadataCppBinaryDependency`). NO VERIFICADO que
-se propague cuando el símbolo solo lo usa una plantilla instanciada en el
-consumidor.
+Causa (por lectura del código):
 
-Versión: el catálogo se distingue por su byte de envoltura y por la verificación
-estructural. Que además haya que elevar el minor de NSMETA, como se hizo en
-1.43–1.45, es una decisión pendiente.
+- El proveedor crea la constante como estado público con espacio de nombres
+  vacío (`CppSemanticInventory.cpp:900-920`).
+- `appendNamespaceStateMetadata` (`LibraryMetadataConstruction.cpp:2961-2976`)
+  excluye `isCppExternal`, pero no `isCppEnumConstant`.
+- La verificación de lectura (`LibraryMetadataVerification.cpp:1371-1384`)
+  rechaza el espacio de nombres vacío.
 
-## Pruebas propuestas
+Corrección propuesta, sin cambio de formato: excluir también
+`state.isCppEnumConstant` en esa condición. El valor ya está plegado en el cuerpo
+compilado. Un consumidor que necesite la constante la obtiene del catálogo
+(enum en la superficie) o, para plantillas, de esta propuesta. No se aplicó:
+toca la publicación de estados de espacio de nombres, que también usa el carril
+de variables globales, y se pidió evidencia antes de cualquier cambio de
+metadata.
 
-1. Plantilla pública que llama a una función C, lee una global C y usa un
-   typedef C; consumidor sin encabezado; O0–O3; ejecución con resultado
-   comprobado.
-2. El mismo consumidor con el mismo encabezado propio: compila y concilia por USR,
-   símbolo y firma.
-3. Consumidor con un encabezado propio cuya función del mismo USR tiene otra firma:
+## H8: el catálogo heredado y la envoltura se distinguen por los primeros bytes
+
+HECHO COMPROBADO por la sonda 7. Un catálogo heredado (NSMETA 1.42) que solo
+contiene enums empieza por el tamaño u64 del bloque de records vacío:
+`04 00 00 00 00 00 00 00`. `isCTypeCatalogWithProvenance`
+(`CppCRecordMetadataCodec.cpp:671-676`) solo mira los cuatro primeros bytes y lo
+clasifica como envoltura 4. `decodeVersionedCTypeCatalog` falla entonces con
+`invalid C record catalogue size`.
+
+NO VERIFICADO: si algún productor 1.42 real llegó a escribir un catálogo solo de
+enums. Basta con que exista uno para que el lector actual lo rechace.
+
+La misma detección se repite en la proyección ABI
+(`LibraryMetadataPayload.cpp:760-775`, que además fija `abiCatalog[0] == 2 || == 4`)
+y en `reconstructPrecompiledCImportedTypes` (`CppSemanticRecord.cpp:1242`).
+
+Consecuencia para el versionado: los números de envoltura no pueden crecer de
+forma segura. Un tamaño heredado pequeño (bytes 1–3 nulos) puede coincidir con
+cualquier versión nueva de 5 a 255. El discriminante fiable es el minor de NSMETA:
+el escritor ya usa la envoltura en todo archivo 1.43 o posterior.
+
+## Opciones de versionado
+
+| Opción | Escritura | Lector actual (1.45) con un archivo nuevo | Coste y riesgos |
+|---|---|---|---|
+| A. Solo envoltura del catálogo (5 o más), sin subir el minor | catálogo con versión 5+ | decodifica la carga y falla al verificar el catálogo: `invalid C record catalogue: invalid C provenance catalogue envelope` | pocos archivos, pero agrava H8 (detección por bytes) y rompe el precedente 1.43–1.45. Las versiones 1–4 combinan dos indicadores; un tercero duplica las combinaciones. Hay que tocar también la proyección ABI. |
+| B. Envoltura nueva dentro del catálogo + minor 46 solo si la sección existe | minor 46 únicamente con la sección, como hoy 43–45 (`LibraryMetadataConstruction.cpp:3061-3068`) | igual que A: falla al verificar el catálogo. NO VERIFICADO si algún punto anterior rechaza el minor 46: `verifyMetadataEnvelope` omite la comprobación de versión si el lector decodificó la carga (`LibraryMetadataVerification.cpp:59-68`) | mismo número de archivos que A más la constante del minor. El decodificador puede elegir el formato por el minor y no por bytes. Mantiene la puerta "metadata before 1.46 cannot represent …". |
+| C. Sección nueva de primer nivel en `LibraryMetadata` + minor 46 | campo nuevo tras el catálogo | `metadata payload has trailing bytes` (`LibraryMetadataPayload.cpp:2023-2027`) | separa tipos y declaraciones invocables, pero toca `LibraryMetadata.h`, carga, codec descendente, fusión (`LibraryMetadataMerger.cpp:483-522`), poda de superficie (`PrecompiledSurfaceReachability.cpp:443`), verificación, construcción y proyección ABI |
+| D. Archivo adicional junto a la `.lib` | fuera de NSMETA | lo ignora | queda fuera del hash, de la huella ABI y de la verificación; puede desincronizarse de la biblioteca. Descartada. |
+
+### Recomendación: B
+
+1. Una disposición nueva del catálogo, elegida por `formatMinor >= 46`, con una
+   máscara u32 de características explícita en lugar de más números de
+   combinación:
+   - bit 0: formato flotante;
+   - bit 1: procedencia incompleta;
+   - bit 2: declaraciones C de plantillas (esta propuesta);
+   - bit 3: enum anónimo de campo (T08-002-PROPUESTA-ENUM-CAMPO.md).
+2. `decodeVersionedCTypeCatalog` recibe el minor del archivo. Para minor 46 o
+   posterior no adivina por los bytes. Para minor 43–45 mantiene la envoltura
+   1–4. Para minor 42 lee el formato heredado. Esto corrige H8 para los archivos
+   que declaran su minor.
+3. El minor sube a 46 solo cuando el catálogo usa una característica de 1.46. Si
+   no, los bytes del NSMETA no cambian (invariante de ausencia).
+4. Una sola subida de versión cubre esta propuesta y la parte C del enum de
+   campo.
+
+Consecuencias:
+
+- Bibliotecas sin las características nuevas: NSMETA idéntico al actual. Se
+  comprueba con los fixtures existentes.
+- Lectores anteriores: rechazan el archivo nuevo (falla cerrada). El mensaje
+  exacto está NO VERIFICADO.
+- `kMetadataFormatMinor` (`LibraryMetadata.h:120`) es común a todos los carriles.
+  Si el trabajo de TLS, globales o layout de records también necesita un minor,
+  hay que asignar los números en orden al integrar. No se tocó.
+- El catálogo entra en la proyección ABI (`LibraryMetadataPayload.cpp:760-775`).
+  Las entradas nuevas cambian lo que compila el consumidor y deben entrar también
+  en la huella ABI, sin la procedencia, como hoy los records.
+- `PrecompiledSyntaxModule` necesita el minor del archivo para decodificar el
+  catálogo (`CppSemanticRecord.cpp:1242`, `PrecompiledModuleConfiguration.cpp:547`).
+- Riesgo de ABI para la llamada desde el consumidor: el símbolo externo de la
+  función C debe resolverse con la biblioteca C del productor. Ya se registra
+  como dependencia binaria (`LibraryMetadataCppBinaryDependency`). NO VERIFICADO
+  que el enlazado la propague cuando solo la usa una plantilla instanciada en el
+  consumidor; `ConsumerGeneric` en modo PROP lo comprobará.
+
+## Pruebas
+
+Preparadas y ejecutadas con su resultado ACTUAL: las trece filas de
+`plantillas/casos.txt`. `validar.cmd` con `NSC_T08_PROPUESTAS=1` exige PROP.
+Para añadir al implementar:
+
+1. O0–O3 de `ConsumerGeneric`, `ConsumerAlias`, `ConsumerRecordLocal` y
+   `ConsumerGlobalWrite`.
+2. Encabezado propio del consumidor con una función del mismo USR y otra firma:
    error de conflicto.
-4. Plantilla que usa una función `static inline`: diagnóstico del productor.
-5. No uso: biblioteca sin plantillas con C; los bytes del catálogo son idénticos
-   a los actuales.
-6. Compatibilidad: los NSMETA existentes sin la sección se consumen igual
-   (fixtures actuales sin modificar).
-7. Codec: ida y vuelta, truncamiento, duplicados y profundidad de tipos.
-8. Identidad restaurada: USR, símbolo y firma de cada entrada comparados con
-   Clang, por la ruta del driver.
+3. Ausencia: una biblioteca sin plantillas con C produce NSMETA byte a byte igual
+   al actual.
+4. Compatibilidad: los NSMETA de los fixtures existentes (1.42–1.45) se leen
+   igual, incluido un catálogo heredado solo de enums (H8).
+5. Codec: ida y vuelta, truncamiento, duplicados, máscara con bits
+   desconocidos y profundidad de tipos.
+6. Identidad restaurada por la ruta del driver: USR, símbolo y firma de cada
+   entrada comparados con Clang (`--verify-driver-restored-c-usr` extendido).
 
 ## Archivos que cambiarían
 
-`src/Interop/Internal/CppCRecordMetadataCodec.h/.cpp` (sección y envoltura 4),
-`src/Interop/Cpp/CppSemanticRecord.cpp` (selección en el productor),
-reconstrucción en `CppSemanticInventory.cpp` y `CppSemanticFunction.cpp`,
-`src/Driver/PrecompiledModuleConfiguration.cpp` (proveedores),
-`src/Interop/LibraryMetadataVerification.cpp`, posiblemente
-`include/nativesharp/Interop/LibraryMetadata.h`, pruebas y fixtures nuevos.
-Todos tocan metadata o productores compartidos.
+| Archivo | Cambio | Compartido con |
+|---|---|---|
+| `src/Interop/Internal/CppCRecordMetadataCodec.h/.cpp` | disposición 1.46, máscara, decodificación por minor | **metadata**, layout de records |
+| `src/Interop/Cpp/CppSemanticRecord.cpp` | selección en el productor, semillas, restauración | **layout de records** |
+| `src/Interop/Cpp/CppSemanticInventory.cpp`, `CppSemanticFunction.cpp` | reproyección desde snapshots restaurados | **variables globales** (proyección de globales) |
+| `src/Driver/PrecompiledModuleConfiguration.cpp` | proveedores de funciones, globales y alias precompilados | driver |
+| `src/Interop/LibraryMetadataConstruction.cpp` | minor 46 condicional; exclusión de H7 | **metadata**, variables globales |
+| `src/Interop/LibraryMetadataVerification.cpp` | puerta de 1.46 | **metadata** |
+| `src/Interop/LibraryMetadataPayload.cpp` | proyección ABI sin detección por bytes | **metadata** |
+| `include/nativesharp/Interop/LibraryMetadata.h`, `include/nativesharp/Frontend/PrecompiledSyntaxModule.h` | constante del minor; minor del módulo | todos |
+| `tests/unit/CppCIdentityTests.cpp`, `pruebas-tanda-08-identidad-c/plantillas` | pruebas | este carril |

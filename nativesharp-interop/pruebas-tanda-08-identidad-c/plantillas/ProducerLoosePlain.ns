@@ -1,0 +1,7 @@
+namespace PublishedGenLoosePlain
+{
+    public class Bridge
+    {
+        public static int Loose() { return GenLoose; }
+    }
+}

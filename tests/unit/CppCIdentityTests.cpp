@@ -44,6 +44,7 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Compilation/CompilationInputManifest.h"
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
+#include "nativesharp/Compilation/TypeIdentity.h"
 #include "../../src/Interop/Internal/CppCRecordMetadataCodec.h"
 #include "../../src/Driver/Internal/DriverInternal.h"
 
@@ -766,8 +767,67 @@ bool checkNestedFieldEnums(CppClangSessionFactory& factory, const std::string& r
     return ok;
 }
 
-// EN: Entry of the probe mode. Writes a.h and b.h with identical text and runs probes 1-6.
-// ES: Entrada del modo de sondas. Escribe a.h y b.h con texto idéntico y ejecuta las sondas 1-6.
+// EN: Probe 7 (observation). Shows how the reader tells the legacy C type catalogue from the
+//     versioned envelope. A legacy catalogue with no records starts with the 64-bit record block
+//     size 4, the same first four bytes as envelope 4. Prints the bytes and the decoder result.
+// ES: Sonda 7 (observación). Muestra cómo distingue el lector el catálogo C heredado de la
+//     envoltura versionada. Un catálogo heredado sin records empieza con el tamaño de 64 bits 4 del
+//     bloque de records, los mismos cuatro primeros bytes que la envoltura 4. Imprime los bytes y el
+//     resultado del decodificador.
+void observeCatalogueEnvelope()
+{
+    CppType integer;
+    integer.kind = CppTypeKind::SignedInteger;
+    integer.spelling = integer.canonicalSpelling = integer.unqualifiedCanonicalSpelling = "int";
+    integer.sizeBits = 32;
+    integer.alignmentBits = 32;
+    CppCEnumSnapshot only;
+    only.identityKey = nativesharp::compilation::TypeIdentity("CIdentityEnvelope", {}, {}, "CEnvOnly").key();
+    only.targetTriple = "x86_64-pc-windows-msvc";
+    only.declaration.name = only.declaration.qualifiedName = "CEnvOnly";
+    only.declaration.isCxx = false;
+    only.declaration.complete = true;
+    only.declaration.underlyingType = integer;
+    only.declaration.sizeBits = 32;
+    only.declaration.alignmentBits = 32;
+    CppEnumeratorDeclaration value;
+    value.name = "CEnvOne";
+    value.decimalValue = "1";
+    value.valueBits = 32;
+    value.valueType = integer;
+    only.declaration.enumerators.push_back(value);
+    const std::vector<CppCEnumSnapshot> enums{only};
+    std::vector<std::uint8_t> legacy;
+    std::vector<std::uint8_t> versioned;
+    std::string error;
+    using namespace nativesharp::interop::metadata_detail;
+    const bool encoded = encodeCTypeCatalog({}, enums, legacy, error);
+    const bool envelope = encodeCTypeCatalogWithProvenance({}, enums, versioned, error);
+    const auto prefix = [](const std::vector<std::uint8_t>& bytes) {
+        static const char* const digits = "0123456789abcdef";
+        std::string text;
+        for (std::size_t i = 0; i < bytes.size() && i < 12; ++i)
+        {
+            text += digits[bytes[i] >> 4];
+            text += digits[bytes[i] & 15];
+            text += ' ';
+        }
+        return text;
+    };
+    std::vector<CppCRecordSnapshot> records;
+    std::vector<CppCEnumSnapshot> decoded;
+    std::string detail;
+    const bool roundTrip = encoded && decodeVersionedCTypeCatalog(legacy, records, decoded, detail);
+    std::cout << "OBSERVATION legacy enum-only C catalogue encoded=" << (encoded ? "yes" : "no")
+              << " first bytes=" << prefix(legacy) << "classified-as-envelope="
+              << (encoded && isCTypeCatalogWithProvenance(legacy) ? "yes" : "no") << " decoded="
+              << (roundTrip ? "yes" : "no") << " detail='" << detail << "'\n";
+    std::cout << "OBSERVATION versioned enum-only C catalogue encoded=" << (envelope ? "yes" : "no")
+              << " first bytes=" << prefix(versioned) << '\n';
+}
+
+// EN: Entry of the probe mode. Writes a.h and b.h with identical text and runs probes 1-7.
+// ES: Entrada del modo de sondas. Escribe a.h y b.h con texto idéntico y ejecuta las sondas 1-7.
 int runProbes(const std::string& resource, const std::filesystem::path& work, const std::string& driver)
 {
     const auto directory = std::filesystem::absolute(work / "c-identity");
@@ -784,6 +844,7 @@ int runProbes(const std::string& resource, const std::filesystem::path& work, co
     observeAnonymousEnumCollision(factory, resource, directory, driver);
     ok &= checkHomonymHeaders(factory, resource, directory, driver);
     ok &= checkNestedFieldEnums(factory, resource, directory, driver);
+    observeCatalogueEnvelope();
     std::cout << (ok ? "C declaration identity probes passed\n" : "C declaration identity probes failed\n");
     return ok ? 0 : 1;
 }

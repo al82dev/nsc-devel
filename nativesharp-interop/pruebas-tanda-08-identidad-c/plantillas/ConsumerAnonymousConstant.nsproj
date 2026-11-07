@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CGenConsumerAnonymousConstant</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ConsumerAnonymousConstant.ns" />
+    <LibraryReference Include="CGenProducerLoose.lib" />
+  </ItemGroup>
+</Project>
