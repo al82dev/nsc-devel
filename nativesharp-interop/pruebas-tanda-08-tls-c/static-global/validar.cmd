@@ -35,7 +35,7 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 exit /b 1
   echo Global TLS estatico desde NativeSharp O%%O: correcto.
 )
->> "%DEST%\Api.h" echo extern __declspec(thread) int array_tls[2];
+>> "%DEST%\Api.h" echo extern __declspec(thread) int array_tls[3];
 > "%DEST%\Main.ns" echo int Main() { return array_tls[0]; }
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Project.nsproj" > "%DEST%\unsupported.log" 2>&1
 if not errorlevel 1 exit /b 1
