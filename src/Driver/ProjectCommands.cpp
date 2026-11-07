@@ -56,6 +56,7 @@
 
 namespace nativesharp::driver
 {
+bool precompiledReferenceRequiresLld(const compilation::LibraryReference &reference);
 namespace
 {
 namespace fs = std::filesystem;
@@ -1732,7 +1733,8 @@ ExitCode executeBuild(const BuildOptions& options, bool json, const PreparedDriv
                 if (reference.runtimePath.empty() && requiresLld(reference.libraryPath)) { found = true; break; }
             if (!found)
                 for (const auto& reference : item.libraryReferences())
-                    if (reference.runtimePath.empty() && requiresLld(reference.libraryPath)) { found = true; break; }
+                    if ((reference.runtimePath.empty() && requiresLld(reference.libraryPath)) ||
+                        precompiledReferenceRequiresLld(reference)) { found = true; break; }
             if (found) break;
         }
         if (found) linker = "LLD";

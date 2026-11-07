@@ -11,6 +11,25 @@ using target::BuiltinLayoutKind;
 
 bool filesHaveEqualContents(const std::filesystem::path &left, const std::filesystem::path &right);
 
+bool precompiledReferenceRequiresLld(const compilation::LibraryReference &reference)
+{
+    interop::LibraryMetadata metadata;
+    interop::LibraryMetadataCodec codec;
+    std::string error;
+    if (!codec.read(reference.metadataPath, metadata, error)) return true;
+    std::vector<interop::ResolvedCppBinaryDependency> dependencies;
+    if (!interop::resolveCppBinaryMetadataDependencies(
+            metadata.cppBinaryDependencies, reference.metadataPath.parent_path(), dependencies, error)) return true;
+    for (const auto &dependency : dependencies)
+    {
+        if (!dependency.runtimePath.empty()) continue;
+        bool required = false;
+        if (!llvm_backend::ProjectOopObjectGenerator::requiresLldForStaticInput(
+                dependency.libraryPath, required, error) || required) return true;
+    }
+    return false;
+}
+
 bool validateCppImportRuntimes(
     std::span<const std::pair<std::filesystem::path, std::filesystem::path>> references, std::string &error)
 {

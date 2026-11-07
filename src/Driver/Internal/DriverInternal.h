@@ -144,6 +144,8 @@ bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compil
                                       std::vector<std::filesystem::path> &libraries,
                                       std::vector<std::filesystem::path> &runtimeLibraries, std::string &error,
                                       std::vector<linker::ExternalImportModule> *inheritedImports = nullptr);
+// Conservative early inspection; normal metadata validation still runs during linking.
+bool precompiledReferenceRequiresLld(const compilation::LibraryReference &reference);
 bool verifyLinkedRuntimeLibraries(std::span<const std::filesystem::path> runtimeLibraries,
                                   const linker::PeExecutableInfo &image, std::string &error);
 std::filesystem::path pathFromUtf8(std::string_view value);
