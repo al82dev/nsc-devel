@@ -31,7 +31,9 @@ clang.exe --target=x86_64-pc-windows-msvc -std=c11 -S -emit-llvm -O0 "%DEST%\Con
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\native.ll" 2> "%DEST%\native-ir.log"
 if errorlevel 1 exit /b 1
-python "%~dp0verificar-ir.py" "%DEST%\control.ll" "%DEST%\native.ll"
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\ProjectDll.nsproj" > "%DEST%\native-dll.ll" 2> "%DEST%\native-dll-ir.log"
+if errorlevel 1 exit /b 1
+python "%~dp0verificar-ir.py" "%DEST%\control.ll" "%DEST%\native.ll" "%DEST%\native-dll.ll"
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Negative.nsproj" > "%DEST%\negative.log" 2>&1
 if not errorlevel 1 exit /b 1
