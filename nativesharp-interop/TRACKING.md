@@ -448,8 +448,13 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
 - [ ] T08-004. Importar declaraciones de variables globales C.
   - Un global C TLS estático `int` firmado de 32 bits se leyó y escribió desde
     NativeSharp y C con aislamiento de otro hilo en O0–O3. Se usaron LLD y CRT
-    declarados explícitamente; otros tipos, `volatile` y DLL siguen pendientes.
+    declarados explícitamente; el acceso directo desde DLL sigue pendiente.
     [Evidencia](registro-commits/global-c-tls-estatico.md).
+  - Un control C y NS ejercitaron `unsigned int`, `short`, `double`, `_Bool`,
+    `const int` y `volatile int` TLS estáticos con dos hilos en O0–O3. Se
+    verificaron `volatile` en IR y el rechazo de escritura `const`. La colisión
+    `_fltused` con el CRT se corrigió con enlace débil en el runtime; una
+    regresión con NSLink pasó. [Evidencia](registro-commits/tanda08-tls-escalares-evidencia.md).
   - NSC emitió y ejecutó O0–O3 una biblioteca C con TLS estático usando LLD
     seleccionado explícitamente y `libcmt.lib` declarada; se verificó el
     directorio TLS del PE en O0. `nsc build` con LLD explícito y CRT declarado
