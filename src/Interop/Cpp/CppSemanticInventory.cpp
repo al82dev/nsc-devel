@@ -192,10 +192,18 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         global.type.element->kind == CppTypeKind::SignedInteger && global.type.element->sizeBits == 32 &&
         !global.type.isConst && !global.type.isVolatile && !global.type.element->isConst &&
         !global.type.element->isVolatile;
-    const bool intArrayTls = kind == CppTypeKind::Array && global.type.arrayCount == 2 &&
-        global.type.element && global.type.element->kind == CppTypeKind::SignedInteger &&
-        global.type.element->sizeBits == 32 && !global.type.isConst && !global.type.isVolatile &&
-        !global.type.element->isConst && !global.type.element->isVolatile;
+    const CppType* arrayElement = &global.type;
+    std::size_t arrayDepth = 0;
+    bool fixedArray = kind == CppTypeKind::Array;
+    while (fixedArray && arrayElement->kind == CppTypeKind::Array)
+    {
+        if (!arrayElement->arrayCount || *arrayElement->arrayCount == 0 || !arrayElement->element ||
+            arrayElement->isConst || arrayElement->isVolatile || ++arrayDepth > 64)
+        { fixedArray = false; break; }
+        arrayElement = arrayElement->element.get();
+    }
+    const bool intArrayTls = fixedArray && arrayElement->kind == CppTypeKind::SignedInteger &&
+        arrayElement->sizeBits == 32 && !arrayElement->isConst && !arrayElement->isVolatile;
     const bool supportedVolatileTls = !global.type.isVolatile ||
         (kind == CppTypeKind::SignedInteger && global.type.sizeBits == 32);
     if (global.threadLocal && (!cLanguage || global.dllImport ||
