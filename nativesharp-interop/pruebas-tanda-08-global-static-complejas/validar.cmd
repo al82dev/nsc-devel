@@ -29,7 +29,7 @@ python "%~dp0..\pruebas-tanda-08-global-static-agregados\verificar-ir.py" "%DEST
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Negative.nsproj" > "%DEST%\negative.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /c:"error:" "%DEST%\negative.log" >nul
+findstr /c:"error: left side of assignment is not assignable" "%DEST%\negative.log" >nul
 if errorlevel 1 exit /b 1
 findstr /c:"readonly_values[0] = 30" "%DEST%\negative.log" >nul
 if errorlevel 1 exit /b 1
