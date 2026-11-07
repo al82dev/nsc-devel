@@ -460,6 +460,9 @@ El validador integral se amplió para incluir los scripts de la tanda inventaria
     directorio TLS del PE en O0. `nsc build` con LLD explícito y CRT declarado
     pasó O0–O3 sin caché; se comprobó un cambio de header transitivo. El enlace
     automático y TLS directo siguen pendientes. [Evidencia](registro-commits/tls-build-nsc-lld.md).
+    El fixture original `pruebas-tanda-08-tls-c/validar.cmd` también pasó
+    O0–O3 con NSC `b151b46f0be04227` y LLD seleccionado mediante `NSC_LINKER`;
+    esa selección aún no es automática. [Evidencia](registro-commits/tls-estatico-control-original.md).
   - Clang rechaza `thread` con `dllimport`/`dllexport`; al exportar por el
     enlazador, el consumidor C pide `SECREL tls_exported` y la import library
     solo ofrece `__imp_tls_exported`. La declaración actual sin atributo
