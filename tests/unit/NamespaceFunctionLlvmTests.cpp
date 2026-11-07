@@ -126,9 +126,13 @@ int main()
             const auto alignedOne = projectOopMirCacheIdentity(mir, ordinals, ordinals);
             node->cppAtomicAlignmentBytes = 4;
             const auto alignedFour = projectOopMirCacheIdentity(mir, ordinals, ordinals);
+            const auto savedAtomic = node->cppAtomicAccess;
+            node->cppAtomicAccess = !savedAtomic;
+            const auto changedAtomic = projectOopMirCacheIdentity(mir, ordinals, ordinals);
             tests.expect(unknown != disabled && unknown != enabled && disabled != enabled &&
-                    enabled != alignedOne && alignedOne != alignedFour,
-                "code cache identity distinguishes volatile mode and proven alignment");
+                    enabled != alignedOne && alignedOne != alignedFour && alignedFour != changedAtomic,
+                "code cache identity distinguishes volatile mode, proven alignment and C atomic access");
+            node->cppAtomicAccess = savedAtomic;
             node->cppMicrosoftVolatileSemantics = savedMode;
             node->cppAtomicAlignmentBytes = savedAlignment;
         }
