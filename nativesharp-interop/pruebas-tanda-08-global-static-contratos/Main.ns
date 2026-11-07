@@ -5,5 +5,7 @@ int Main()
     ticks = 15U;
     local = 16U;
     atomic_local = 17U;
+    box_ptr = next_box();
+    bool_ptr = next_bool();
     return inspect() == 1 ? 0 : 2;
 }
