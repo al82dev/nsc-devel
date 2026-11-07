@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-015: promociones enteras restantes de `_Bool` C compuesto
+
+Ampliar el arreglo global C `volatile _Bool` en modo MS a operandos bool,
+`sbyte`, `byte`, `short` y `ushort`, y a desplazamientos con los enteros ya
+soportados, respetando las promociones C y el ancho i32 del valor desplazado.
+Preservar los accesos de byte y la regla del bool nativo. Presupuesto: referencia
+C, analizador, HIR, LLVM, fixture y verificador record-c, tracking y registros.
+Validación agrupada incremental O0–O3; sin NSLink, LLVM externo ni C:.
+
 ## T08-015: operandos enteros anchos en `_Bool` C volatile compuesto
 
 Ampliar las operaciones aritméticas y bit a bit compuestas del arreglo C
