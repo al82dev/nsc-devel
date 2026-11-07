@@ -195,7 +195,8 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
          global.type.element->kind == CppTypeKind::UnsignedInteger ||
          global.type.element->kind == CppTypeKind::Floating ||
          global.type.element->kind == CppTypeKind::Record ||
-         global.type.element->kind == CppTypeKind::Enumeration);
+         global.type.element->kind == CppTypeKind::Enumeration ||
+         global.type.element->kind == CppTypeKind::Function);
     const CppType* arrayElement = &global.type;
     std::size_t arrayDepth = 0;
     bool fixedArray = kind == CppTypeKind::Array;
