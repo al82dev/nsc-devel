@@ -41,5 +41,5 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\
 if not errorlevel 1 exit /b 1
 findstr /L /C:"thread-local C/C++ global is not yet projected" "%DEST%\unsupported.log" >nul
 if errorlevel 1 exit /b 1
-echo Global TLS volatile no representado: rechazado.
+echo Global TLS puntero no representado: rechazado.
 exit /b 0
