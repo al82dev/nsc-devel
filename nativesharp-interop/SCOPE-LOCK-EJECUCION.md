@@ -1,5 +1,19 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## TLS transitivo desde una biblioteca precompilada
+
+La reproducción en `A:/nsc-interop-build/tls-abi/transitive-probe` enlaza una
+biblioteca NativeSharp cuyo objeto solo referencia `tls_worker_check`, pero
+cuya metadata publica una biblioteca C con TLS y el CRT. El consumidor sin
+selección explícita utiliza NSLink y falla NSL1023; inspeccionar solo el archivo
+NativeSharp no detecta sus dependencias. Permitir la inspección anticipada de
+dependencias estáticas registradas en metadata en la selección automática de
+`nsc build` y emisión directa, antes de identificar la caché. Presupuesto:
+`src/Driver/LibraryReferenceValidation.cpp`, `src/Driver/Internal/DriverInternal.h`,
+`src/Driver/DriverArtifactGeneration.cpp`, `src/Driver/ProjectCommands.cpp`,
+fixtures y validadores de TLS, tracking y bitácora. Conservar selecciones
+explícitas y validación normal de metadata; no modificar NSLink, LLVM ni C:.
+
 ## Callback almacenado con enum en metadata precompilada
 
 T08-017: preparar un productor NativeSharp que publique un callback y un
