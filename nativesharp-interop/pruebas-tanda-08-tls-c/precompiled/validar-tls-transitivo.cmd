@@ -166,6 +166,13 @@ findstr /L /C:"incremental-link: hit" "%DEST%\fallback-plain-explicit.log" >nul
 if errorlevel 1 (type "%DEST%\fallback-plain-explicit.log" & exit /b 1)
 "%DEST%\fallback-plain.exe"
 if errorlevel 1 exit /b 1
+set "NS_LIB_ROOT=%DEST%\missing-root"
+nsc.exe build "%DEST%\PlainIsolatedConsumer.nsproj" --cpp-clang-root=A:\al82dev-clang --library-reference-root "%DEST%" --no-restore -O0 --output-format=json > "%DEST%\explicit-root-priority.log" 2>&1
+if errorlevel 1 (type "%DEST%\explicit-root-priority.log" & exit /b 1)
+findstr /L /C:"\"linker\":\"NSLink\"" "%DEST%\explicit-root-priority.log" >nul
+if errorlevel 1 (type "%DEST%\explicit-root-priority.log" & exit /b 1)
+"%DEST%\bin\Debug\PlainIsolatedConsumer.exe"
+if errorlevel 1 exit /b 1
 set "NS_LIB_ROOT="
 move /y "%DEST%\plain.lib" "%DEST%\plain.lib.hidden" >nul
 if errorlevel 1 exit /b 1
