@@ -6,8 +6,8 @@ int Main()
     ticks = 15U;
     local = 16U;
     atomic_local = 17U;
-    box_ptr = next_box();
-    bool_ptr = next_bool();
+    box_ptr += 1;
+    bool_ptr += 1;
     if (box_ptr->value != 47 || !*bool_ptr) return 4;
     return inspect() == 1 ? 0 : 2;
 }
