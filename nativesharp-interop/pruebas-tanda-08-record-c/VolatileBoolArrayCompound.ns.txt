@@ -8,5 +8,19 @@ int Main()
     if (!volatile_bool_array[0]) return 3;
     volatile_bool_array[0] ^= true;
     if (volatile_bool_array[0]) return 4;
+    volatile_bool_array[0] += 2;
+    if (!volatile_bool_array[0]) return 5;
+    volatile_bool_array[0] -= 1;
+    if (volatile_bool_array[0]) return 6;
+    volatile_bool_array[0] -= 1;
+    if (!volatile_bool_array[0]) return 7;
+    volatile_bool_array[0] *= 0;
+    if (volatile_bool_array[0]) return 8;
+    volatile_bool_array[0] |= 2;
+    if (!volatile_bool_array[0]) return 9;
+    volatile_bool_array[0] &= 2;
+    if (volatile_bool_array[0]) return 10;
+    volatile_bool_array[0] ^= 2;
+    if (!volatile_bool_array[0]) return 11;
     return 0;
 }

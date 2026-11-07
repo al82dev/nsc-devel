@@ -878,6 +878,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     [Detalle](registro-commits/t08-bool-compuesto-int-hir.md).
     LLVM prepara la operación en i32 y normalización posterior; construcción y
     validación siguen pendientes. [Detalle](registro-commits/t08-bool-compuesto-int-llvm.md).
+    Preparados controles para las seis operaciones y el IR de promoción;
+    pendientes de ejecución. [Detalle](registro-commits/t08-bool-compuesto-int-fixture.md).
   - Preparada la admisión semántica de `&=`, `|=` y `^=` entre bool sobre
     arreglos globales C `volatile _Bool` en modo MS. Faltan el descenso y las
     pruebas agrupadas; no se considera soporte hasta ejecutarlas.
