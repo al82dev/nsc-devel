@@ -205,6 +205,13 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Actualización H3: el catálogo 1.46 publica dependencias candidatas de alias,
+    funciones externas y `static inline`, y globales externas e internas usadas
+    por plantillas. Los controles específicos de esas cinco categorías pasaron
+    en O0–O3. El validador de identidad pasó con sus expectativas actualizadas;
+    conserva como rechazo conocido el record C local de la plantilla. Esas
+    pruebas no cubren todas las declaraciones ni cierran T08-002. Los apuntes
+    H3 anteriores de este bloque describen estados históricos. [Evidencia](registro-commits/t08-h3-identidad-expectativas.md).
   - Un alias de enum C conciliado entre encabezado y biblioteca precompilada ya
     no se rechaza como tipo nativo distinto. El parser recibe los nombres del
     catálogo precompilado antes del análisis; se comprobó su visibilidad con
