@@ -113,6 +113,28 @@ int main()
     std::filesystem::create_directories(root);
 
     std::string diagnostic;
+    tests.expect(compileAndRun(root / "ref_local", "ExtensionRefLocal", R"NS(
+namespace App
+{
+    public struct Number { public int Value; }
+    extension ref Number { public void Add(int amount) { this.Value += amount; } }
+    extension Number { public int Read() { return this.Value; } }
+    public class Program
+    {
+        public static int Main()
+        {
+            Number value;
+            value.Value = 40;
+            value.Add(2);
+            return value.Read();
+        }
+    }
+}
+)NS", 42, diagnostic),
+        "a ref extension mutates its local receiver and a value extension observes it (" +
+            diagnostic + ")");
+
+    diagnostic.clear();
     tests.expect(compileAndRun(root / "lookup", "ExtensionLookup", R"NS(
 namespace Model
 {

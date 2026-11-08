@@ -582,9 +582,10 @@ bool ProjectOopHirModel::configureScheduledCallChildContext(
     {
         // The core-operand frame selected value versus address context above.
     }
-    else if (currentKind == IterativeExpressionKind::OrdinaryCall)
+    else if (currentKind == IterativeExpressionKind::OrdinaryCall ||
+             currentKind == IterativeExpressionKind::NamespaceCall)
     {
-        // The ordinary-call frame selected receiver addressability versus argument value.
+        // The call frame selected receiver addressability versus argument value.
     }
     else
     {
