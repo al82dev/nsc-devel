@@ -1088,6 +1088,14 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Un struct C con union y struct anónimos pasó el caso de escritura cruzada con C
     en consumo directo, Shared y solo metadata, O0–O3. Quedan otras formas y la
     validación completa. [Evidencia](registro-commits/t08-anonimos-c-validacion-precompilado.md).
+  - Pasaron anónimos de dos niveles, `pack(1)` y campos de bits en los tres modos,
+    O0–O3; un proyecto con dos sesiones del mismo encabezado también pasó. Un
+    control rechazó declaraciones incompatibles observadas desde el mismo archivo.
+    Son casos dirigidos: siguen pendientes otras combinaciones y el gate completo.
+    [Niveles](registro-commits/t08-anonimos-c-validacion-niveles.md) ·
+    [bits](registro-commits/t08-anonimos-c-bitfields-validacion.md) ·
+    [sesiones](registro-commits/t08-anonimos-c-sesiones-validacion.md) ·
+    [conflicto](registro-commits/t08-anonimos-c-conflicto-validado.md).
   - Arreglos flexibles C de `int const` y `int volatile`: lectura, escritura
     permitida y controles negativos de const validados en consumo directo y
     precompilado O0–O3; IR volatile contrastado con Clang. Quedan pendientes
