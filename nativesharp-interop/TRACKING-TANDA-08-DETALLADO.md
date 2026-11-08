@@ -133,6 +133,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 
 - [x] T08-003-01: Probar muestras de llamadas escalares y con punteros. [Detalle](TANDA-08-TIPOS-C.md).
 - [x] T08-003-02: Probar funciones `static inline` y el camino ThinLTO indicado en el tracking principal.
+  - La prueba de sesión distingue la incorporación de objetos C++ sin internalización y su rechazo con internalización. [Evidencia](registro-commits/t08-control-thinlto-internalizacion.md).
 - [x] T08-003-03: Probar las muestras de declaraciones sin prototipo y promociones C11 registradas en el tracking principal.
 - **T08-003-04 — Declaraciones y redeclaraciones:**
 - [ ] T08-003-04a: Verificar selección de prototipo compatible entre declaración adelantada y definición.

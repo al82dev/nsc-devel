@@ -26,6 +26,7 @@ también sigue pendiente de diagnóstico.
 Tras reconstruir incrementalmente el compilador y el ejecutable de pruebas
 con el código restaurado, la prueba de sesión volvió a mostrar los cinco fallos
 originales. La validación completa de la tanda no se considera aprobada.
+El control ThinLTO se corrigió después: [resultado](t08-control-thinlto-internalizacion.md).
 Esta huella es una pieza de la identidad, no una clave de caché completa:
 faltan combinar opciones, contenido, toolchain y demás dependencias, además de
 validar su seguridad de extremo a extremo. La restricción de caché para

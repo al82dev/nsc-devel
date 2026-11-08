@@ -6245,14 +6245,27 @@ int main(int argc, char** argv)
                         nativesharp::llvm_backend::DebugInformationKind::None, level, 1, {},
                         nativesharp::llvm_backend::LinkTimeOptimizationMode::Thin, observedError) : nullptr;
                     const auto before = thinBundle ? thinBundle->objectFiles().size() : 0;
-                    const bool rejected = thinBundle && before != 0 &&
-                        !nativesharp::driver::appendCppImplicitLifetimeObjects(observedProject, *observedMir,
-                            *thinBundle, level, observedError) &&
-                        observedError.find("generated native objects are not yet supported in ThinLTO bundles") != std::string::npos &&
-                        thinBundle->objectFiles().size() == before;
-                    if (!rejected) std::cerr << "ThinLTO C++ lifetime gate: " << observedError << '\n';
-                    ok &= expect(rejected, "ThinLTO bundle rejects C++ lifetime objects without publishing them");
+                    const bool appended = thinBundle && before != 0 && !thinBundle->thinLtoInternalized() &&
+                        nativesharp::driver::appendCppImplicitLifetimeObjects(observedProject, *observedMir,
+                            *thinBundle, level, observedError) && thinBundle->hasGeneratedNativeObjects() &&
+                        thinBundle->objectFiles().size() == before + observedPlan.size();
+                    if (!appended) std::cerr << "ThinLTO C++ lifetime append: " << observedError << '\n';
+                    ok &= expect(appended, "non-internalized ThinLTO bundle accepts C++ lifetime objects");
                 }
+                observedGenerator.setThinLtoPreservedSymbols(std::vector<std::string>{});
+                auto internalized = observedPlanned ? observedGenerator.generate(*observedProject.nameLookup(),
+                    *observedProject.memberModel(), *observedMir, observedProject.sourceManager(),
+                    nativesharp::llvm_backend::DebugInformationKind::None,
+                    nativesharp::llvm_backend::LlvmOptimizationLevel::O2, 1, {},
+                    nativesharp::llvm_backend::LinkTimeOptimizationMode::Thin, observedError) : nullptr;
+                const auto internalizedCount = internalized ? internalized->objectFiles().size() : 0;
+                const bool rejectedInternalized = internalized && internalized->thinLtoInternalized() &&
+                    !nativesharp::driver::appendCppImplicitLifetimeObjects(observedProject, *observedMir,
+                        *internalized, nativesharp::llvm_backend::LlvmOptimizationLevel::O2, observedError) &&
+                    observedError.find("generated native objects require ThinLTO without internalization") != std::string::npos &&
+                    internalized->objectFiles().size() == internalizedCount;
+                ok &= expect(rejectedInternalized, "internalized ThinLTO rejects C++ lifetime objects atomically");
+                observedGenerator.setThinLtoPreservedSymbols(std::nullopt);
                 if (argc > 4 && std::string_view(argv[4]) == "bundle-link")
                 {
                 nativesharp::frontend::ProjectCompilation linkProject;
