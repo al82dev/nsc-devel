@@ -4,6 +4,7 @@ int Main()
     VOdd* p = v_odd();
     p->inner.flag = true;
     p->inner.i = 99;
-    if (acc_get_innerflag_c(p) == 0 || acc_get_inneri_c(p) != 99) return 1;
+    if (!p->inner.flag || p->inner.i != 99) return 2;
+    if (!acc_get_innerflag_c(p) || acc_get_inneri_c(p) != 99) return 1;
     return 0;
 }

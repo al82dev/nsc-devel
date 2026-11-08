@@ -334,7 +334,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         mapped = mapCppScalarType(underlying);
         if (mapped) mapped->canonicalCppType = field.type.canonicalSpelling;
     }
-    if (!mapped && !record.isCxx && lookup && field.type.kind == CppTypeKind::Record && !field.type.isVolatile)
+    if (!mapped && !record.isCxx && lookup && field.type.kind == CppTypeKind::Record)
     {
         const auto target = projectCppRecordTypeIdentity(field.type, moduleName);
         const auto ordinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
@@ -347,7 +347,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
             *field.type.alignmentBits % 8 == 0 &&
             *field.type.alignmentBits / 8 == imported->objectLayout->alignmentBytes)
             mapped = CppScalarTypeMapping{"type:" + target->key(), field.type.canonicalSpelling,
-                                          field.type.isConst, false};
+                                          field.type.isConst, field.type.isVolatile};
     }
     bool pointeeReadonly = false;
     if (field.type.kind == CppTypeKind::Pointer && field.type.sizeBits == 64 &&

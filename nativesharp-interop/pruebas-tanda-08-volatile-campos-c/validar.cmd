@@ -65,11 +65,18 @@ for %%O in (1 2 3) do (
 )
 echo Campos volatiles C en ejecucion O0-O3: resultado esperado cero.
 call :probe ProbeEnum
+if errorlevel 1 exit /b 1
 call :probe ProbeRecord
+if errorlevel 1 exit /b 1
+python "%~dp0verificar_record_volatile.py" "%DEST%\probe-ref.ll" "%DEST%\ProbeRecord.ll"
+if errorlevel 1 exit /b 1
 call :probe ProbeInherited
+if errorlevel 1 exit /b 1
 %EMIT_LIB% "%DEST%\ProbeOddProducer.nsproj" -O0 --no-artifact-cache -o "%DEST%\CVolatileOddProducer.lib" > "%DEST%\ProbeOddProducer.log" 2>&1
 echo RESULTADO ProbeOddProducer: biblioteca, codigo %ERRORLEVEL%
+if errorlevel 1 exit /b 1
 call :probe ProbeOddConsumer
+if errorlevel 1 exit /b 1
 set "IRFAIL=0"
 nsc.exe %CLANG_ROOT% --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\project.ll"
 if errorlevel 1 exit /b 1
@@ -95,9 +102,10 @@ exit /b 0
 %EMIT_EXE% "%DEST%\%1.nsproj" -O0 --no-artifact-cache -o "%DEST%\%1.exe" > "%DEST%\%1.log" 2>&1
 if errorlevel 1 (
   echo RESULTADO %1: compilacion rechazada, ver %DEST%\%1.log
-  exit /b 0
+  exit /b 1
 )
 "%DEST%\%1.exe"
+if errorlevel 1 exit /b 1
 echo RESULTADO %1: compila, codigo de salida %ERRORLEVEL%
 nsc.exe %CLANG_ROOT% --dump-project-oop-llvm "%DEST%\%1.nsproj" > "%DEST%\%1.ll"
-exit /b 0
+exit /b %ERRORLEVEL%
