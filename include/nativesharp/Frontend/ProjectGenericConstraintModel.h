@@ -232,12 +232,14 @@ private:
         const NamedTypeDeclaration& argument,
         std::size_t argumentOrdinal,
         bool sendMarker,
+        const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel);
     static bool satisfiesTypeConstraint(
         const NamedTypeDeclaration& argument,
         std::size_t argumentOrdinal,
         const NamedTypeDeclaration& constraint,
         std::size_t constraintOrdinal,
+        const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
         const ProjectInheritanceModel& inheritanceModel,
         const ProjectInterfaceModel& interfaceModel);

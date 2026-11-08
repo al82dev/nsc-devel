@@ -854,60 +854,76 @@ bool ProjectGenericConstraintModel::satisfiesThreadSafetyConstraint(
     const NamedTypeDeclaration& argument,
     std::size_t argumentOrdinal,
     bool sendMarker,
+    const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel)
 {
     // NS304-T07-F07: Send/Sync derivan estructuralmente — un tipo es Send/Sync
     // cuando sus campos lo son y no contiene raw pointers. No se exige `: Send`.
-    language::ThreadSafetyTypeFacts facts;
-    facts.typeName = argument.identity.name();
-    std::vector<std::size_t> fallbackMemberOrdinals;
-    std::span<const std::size_t> memberOrdinals =
-        memberModel.membersDeclaredByType(argumentOrdinal);
-    if (!memberModel.hasMembersDeclaredByTypeIndex())
+    std::vector<std::size_t> pending{argumentOrdinal};
+    std::unordered_set<std::size_t> visited;
+    while (!pending.empty())
     {
-        for (std::size_t ordinal = 0; ordinal < memberModel.members().size(); ++ordinal)
+        const std::size_t currentOrdinal = pending.back();
+        pending.pop_back();
+        if (!visited.insert(currentOrdinal).second) continue;
+        const NamedTypeDeclaration* current = currentOrdinal == argumentOrdinal
+            ? &argument : nameLookup.typeForOrdinal(currentOrdinal);
+        if (current == nullptr) return false;
+        language::ThreadSafetyTypeFacts facts;
+        facts.typeName = current->identity.name();
+        std::vector<std::size_t> fallbackMemberOrdinals;
+        std::span<const std::size_t> memberOrdinals =
+            memberModel.membersDeclaredByType(currentOrdinal);
+        if (!memberModel.hasMembersDeclaredByTypeIndex())
         {
-            if (memberModel.members()[ordinal].declaringTypeOrdinal == argumentOrdinal)
-                fallbackMemberOrdinals.push_back(ordinal);
+            for (std::size_t ordinal = 0; ordinal < memberModel.members().size(); ++ordinal)
+            {
+                if (memberModel.members()[ordinal].declaringTypeOrdinal == currentOrdinal)
+                    fallbackMemberOrdinals.push_back(ordinal);
+            }
+            memberOrdinals = fallbackMemberOrdinals;
         }
-        memberOrdinals = fallbackMemberOrdinals;
+        for (const std::size_t memberOrdinal : memberOrdinals)
+        {
+            if (memberOrdinal >= memberModel.members().size()) continue;
+            const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
+            if (member.kind != ClassMemberKind::Field) continue;
+            language::ThreadSafetyMemberFacts memberFacts;
+            memberFacts.name = member.name;
+            if (member.declaredTypeKey.starts_with("refmut:"))
+            {
+                // NS304-T07-F07: un `ref mut T` es mutable -> Send del referido, no Sync.
+                memberFacts.kind = language::ThreadSafetyMemberKind::MutableReference;
+                memberFacts.send = true;
+                memberFacts.sync = false;
+            }
+            else if (member.declaredTypeKey.starts_with("ref:"))
+            {
+                memberFacts.kind = language::ThreadSafetyMemberKind::SharedReference;
+                memberFacts.send = true;
+                memberFacts.sync = true;
+            }
+            else if (member.declaredTypeKey.ends_with("*"))
+            {
+                memberFacts.kind = language::ThreadSafetyMemberKind::RawPointer;
+                memberFacts.send = false;
+                memberFacts.sync = false;
+            }
+            else
+            {
+                memberFacts.kind = language::ThreadSafetyMemberKind::Value;
+                memberFacts.send = true;
+                memberFacts.sync = true;
+                std::size_t nestedOrdinal = 0;
+                if (declarationForTypeKey(nameLookup, member.declaredTypeKey, nestedOrdinal) != nullptr)
+                    pending.push_back(nestedOrdinal);
+            }
+            facts.members.push_back(std::move(memberFacts));
+        }
+        const language::ThreadSafetyDecision decision = language::evaluateThreadSafety(facts);
+        if (!(sendMarker ? decision.send : decision.sync)) return false;
     }
-    for (const std::size_t memberOrdinal : memberOrdinals)
-    {
-        if (memberOrdinal >= memberModel.members().size()) continue;
-        const ClassMemberSymbol& member = memberModel.members()[memberOrdinal];
-        if (member.kind != ClassMemberKind::Field) continue;
-        language::ThreadSafetyMemberFacts memberFacts;
-        memberFacts.name = member.name;
-        if (member.declaredTypeKey.starts_with("refmut:"))
-        {
-            // NS304-T07-F07: un `ref mut T` es mutable -> Send del referido, no Sync.
-            memberFacts.kind = language::ThreadSafetyMemberKind::MutableReference;
-            memberFacts.send = true;
-            memberFacts.sync = false;
-        }
-        else if (member.declaredTypeKey.starts_with("ref:"))
-        {
-            memberFacts.kind = language::ThreadSafetyMemberKind::SharedReference;
-            memberFacts.send = true;
-            memberFacts.sync = true;
-        }
-        else if (member.declaredTypeKey.ends_with("*"))
-        {
-            memberFacts.kind = language::ThreadSafetyMemberKind::RawPointer;
-            memberFacts.send = false;
-            memberFacts.sync = false;
-        }
-        else
-        {
-            memberFacts.kind = language::ThreadSafetyMemberKind::Value;
-            memberFacts.send = true;
-            memberFacts.sync = true;
-        }
-        facts.members.push_back(std::move(memberFacts));
-    }
-    const language::ThreadSafetyDecision decision = language::evaluateThreadSafety(facts);
-    return sendMarker ? decision.send : decision.sync;
+    return true;
 }
 
 bool ProjectGenericConstraintModel::satisfiesTypeConstraint(
@@ -915,6 +931,7 @@ bool ProjectGenericConstraintModel::satisfiesTypeConstraint(
     std::size_t argumentOrdinal,
     const NamedTypeDeclaration& constraint,
     std::size_t constraintOrdinal,
+    const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
     const ProjectInheritanceModel& inheritanceModel,
     const ProjectInterfaceModel& interfaceModel)
@@ -925,7 +942,7 @@ bool ProjectGenericConstraintModel::satisfiesTypeConstraint(
         (argument.kind == NamedTypeDeclarationKind::Class ||
          argument.kind == NamedTypeDeclarationKind::Struct))
         return satisfiesThreadSafetyConstraint(
-            argument, argumentOrdinal, sendMarker, memberModel);
+            argument, argumentOrdinal, sendMarker, nameLookup, memberModel);
     if (constraint.kind == NamedTypeDeclarationKind::Interface)
     {
         // Dos caminos, y hacen falta los dos: una CLASE la implementa, y una INTERFAZ
@@ -993,7 +1010,7 @@ void ProjectGenericConstraintModel::appendTypeConstraintViolation(
         return;
     }
     if (satisfiesTypeConstraint(
-            *argument, argumentOrdinal, *constraint, constraintOrdinal, memberModel,
+            *argument, argumentOrdinal, *constraint, constraintOrdinal, nameLookup, memberModel,
             inheritanceModel, interfaceModel))
         return;
     pending.push_back(PendingDiagnostic{

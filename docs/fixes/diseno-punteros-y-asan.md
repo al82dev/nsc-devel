@@ -201,6 +201,23 @@ rechazar métodos de vista que devuelvan referencias de vida independiente.
 accesos válidos en O0/O2 y los destinos de escape sin ejecutar accesos inválidos;
 la selección dirigida de cinco pruebas pasó (`shared-view-class-tests.log`).
 La regla aún no demuestra el contrato completo de los punteros compartidos.
+La comprobación de `where T : Send` tiene otra limitación relevante para
+`Rc`: en la base `Inner` con un campo `int*` se rechaza, pero `Outer` con un
+campo `Inner` se acepta (`shared-send-structural-probe/results.json`). La ruta
+`ProjectGenericConstraintModel::satisfiesThreadSafetyConstraint` ahora recorre
+campos de tipos nombrados anidados y detecta ciclos; en la comparación rechaza
+ambos. La regresión dirigida verifica Send y Sync con uno a tres niveles y
+controles válidos (`nested-thread-safety-tests.log`). Esta prueba solo cubre
+restricciones genéricas de esos tipos, no todos los genéricos, arreglos ni
+las rutas de traslado entre hilos; el executor tiene otra comprobación. No
+constituye por sí sola una garantía suficiente para publicar `Rc`.
+La primera ejecución de esta regresión utilizó por error `C:/Windows/Temp`;
+`TemporaryDirectory` eliminó su carpeta al terminar. Se repitió con TEMP, TMP,
+APPDATA y LOCALAPPDATA en A; el registro corresponde a la segunda ejecución.
+Una ejecución posterior de las dos regresiones falló al enlazar la prueba de
+vista porque el lanzador no había configurado el runtime aislado; tras añadir
+`NSC_WINDOWS_RUNTIME_LIBRARY` y `NSC_LINKER`, ambas pasaron. El fallo fue de
+configuración de la prueba y no demuestra un fallo del código de préstamo.
 `nsc.sdk.shared-control-storage` añade una regresión dirigida que sitúa los
 contadores locales o atómicos junto al payload en la misma reserva; comprueba
 la destrucción y la expiración y, para la variante atómica, 200 000 ciclos de
