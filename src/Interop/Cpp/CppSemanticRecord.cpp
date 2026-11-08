@@ -1082,6 +1082,29 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     }
     std::map<std::size_t, std::set<std::string>> seeds;
     std::map<std::size_t, std::set<std::string>> enumSeeds;
+    if (!metadata.genericTemplates.empty())
+    {
+        std::set<std::string> published;
+        for (const auto& item : metadata.genericTemplates) published.insert(item.canonicalKey);
+        auto inventory = collectCppSemanticEnums(*graph, compilation.cppProjectSessions());
+        if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&inventory))
+        { error = failure->message; return false; }
+        for (const auto& item : compilation.cppTemplateDemands())
+        {
+            const auto& demand = item.demand;
+            if (!published.contains(item.templateKey) ||
+                std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), "") == demand.lookupNamespaces.end()) continue;
+            for (const auto& entry : std::get<std::vector<CppSemanticEnumEntry>>(inventory))
+            {
+                if (entry.declaration.isCxx || entry.declaration.name.empty() || entry.projectOrdinal >= graph->projects().size() ||
+                    std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), entry.projectOrdinal) == demand.visibleProjects.end()) continue;
+                if (std::none_of(entry.declaration.enumerators.begin(), entry.declaration.enumerators.end(),
+                    [&](const auto& value) { return value.name == demand.lookupName; })) continue;
+                compilation::TypeIdentity identity(graph->projects()[entry.projectOrdinal].moduleName(), {}, {}, entry.declaration.name);
+                if (identity.isValid()) enumSeeds[entry.projectOrdinal].insert(identity.key());
+            }
+        }
+    }
     std::function<bool(const std::string&, unsigned)> visit = [&](const std::string& key, unsigned depth) {
         if (depth > 64) { error = "metadata function type exceeds depth limit"; return false; }
         if (key.starts_with("fn:"))
