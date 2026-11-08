@@ -295,7 +295,12 @@ bool LlvmTargetMachine::emitImpl(
         }
     }
 
-    std::string mutablePath = outputPath.string();
+    // EN: LLVM reads this path as UTF-8. The narrow `path::string()` used before threw for a temporary
+    //     directory the active code page cannot spell (a user profile with a CJK name, T08-002).
+    // ES: LLVM lee esta ruta como UTF-8. `path::string()`, usado antes, lanzaba con un directorio
+    //     temporal que la pagina de codigos activa no puede escribir (un perfil con nombre CJK, T08-002).
+    const std::u8string encodedPath = outputPath.u8string();
+    std::string mutablePath(reinterpret_cast<const char*>(encodedPath.data()), encodedPath.size());
     const llvm_api::LLVMCodeGenFileType llvmFileType =
         fileType == LlvmCodeGenFileType::Object
             ? llvm_api::LLVMObjectFile

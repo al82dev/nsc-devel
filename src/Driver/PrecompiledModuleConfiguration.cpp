@@ -80,8 +80,11 @@ void addCompilationProductIdentity(
     manifest.setBundleProductKind(std::string(productKind));
     if (!outputPath.empty())
     {
-        manifest.addIdentityField(
-            "output-name", outputPath.filename().generic_string());
+        // EN: T08-002: UTF-8, like every other path in the manifest. The narrow conversion used before
+        //     threw for names the active code page cannot represent (a combining accent).
+        // ES: T08-002: UTF-8, como las demás rutas del manifiesto. La conversión estrecha anterior
+        //     lanzaba una excepción con nombres que la página de códigos activa no representa.
+        manifest.addIdentityField("output-name", pathToUtf8(outputPath.filename()));
         manifest.setBundleOutputPath(outputPath);
         if (productKind == "static-library" || productKind == "dynamic-library")
         {
@@ -131,10 +134,10 @@ void addCompilationCodegenIdentity(
         const std::string prefix = "debug-prefix-" + std::to_string(index);
         manifest.addIdentityField(
             prefix + "-source",
-            debugPrefixMaps[index].sourcePrefix.generic_string());
+            pathToUtf8(debugPrefixMaps[index].sourcePrefix));
         manifest.addIdentityField(
             prefix + "-replacement",
-            debugPrefixMaps[index].replacementPrefix.generic_string());
+            pathToUtf8(debugPrefixMaps[index].replacementPrefix));
     }
     // A static library with real ThinLTO publishes its sidecar, so restoring the bundle requires it
     // (optimization part 2, item 48). Una biblioteca estatica con ThinLTO real publica su sidecar, asi
@@ -150,7 +153,7 @@ void addCompilationCodegenIdentity(
     if (debugInformation != llvm_backend::DebugInformationKind::None)
     {
         manifest.addIdentityField(
-            "debug-source-root", manifest.rootDirectory().generic_string());
+            "debug-source-root", pathToUtf8(manifest.rootDirectory()));
         if ((manifest.bundleProductKind() == "executable" ||
              manifest.bundleProductKind() == "dynamic-library") &&
             !manifest.requiredBundleOutputNames().empty())
@@ -196,7 +199,8 @@ void addLinkToolInput(
         manifest.addIdentityField("link-tool-" + role, "unavailable");
         return;
     }
-    manifest.addIdentityField("link-tool-" + role, path.filename().generic_string());
+    // EN: UTF-8 for the same reason as "output-name" (T08-002). ES: UTF-8 por la misma razon que "output-name".
+    manifest.addIdentityField("link-tool-" + role, pathToUtf8(path.filename()));
     manifest.addInputFile(path);
 }
 }
@@ -262,7 +266,7 @@ void addCompilationLinkIdentity(
         manifest.addInputFile(extraLinkLibraries[index]);
         manifest.addIdentityField(
             "extra-link-library-" + std::to_string(index),
-            extraLinkLibraries[index].filename().generic_string());
+            pathToUtf8(extraLinkLibraries[index].filename()));
     }
     // EN: Freeze 3.0 DEC-13: a bundle built without the host-DLL check must not satisfy a build that
     //     asks for it. The field exists only when requested, so default identities do not change.
@@ -483,7 +487,7 @@ bool configurePrecompiledModules(
             *activeExecutionScope->cppSessionFactory, cancellation);
         if (auto* failure = std::get_if<interop::CppGraphSessionFailure>(&opened))
         {
-            error = "C/C++ session failed for project '" + failure->projectFile.generic_string() +
+            error = "C/C++ session failed for project '" + pathToUtf8(failure->projectFile) +
                     "', reference " + std::to_string(failure->projectFailure.referenceIndex) +
                     ": " + failure->projectFailure.failure.message;
             frontend::appendCppDiagnostics(
@@ -536,7 +540,7 @@ bool configurePrecompiledModules(
                     if (const auto* failure = std::get_if<interop::CppNamespaceInventoryFailure>(&inventory))
                     {
                         providerError = "C/C++ namespace collection failed for project '" +
-                            failure->projectFile.generic_string() + "', reference " +
+                            pathToUtf8(failure->projectFile) + "', reference " +
                             std::to_string(failure->referenceIndex) + ": " + failure->message;
                         return false;
                     }
@@ -545,7 +549,7 @@ bool configurePrecompiledModules(
                     if (const auto* failure = std::get_if<interop::CppNamespaceInventoryFailure>(&names))
                     {
                         providerError = "C/C++ namespace conversion failed for project '" +
-                            failure->projectFile.generic_string() + "', reference " +
+                            pathToUtf8(failure->projectFile) + "', reference " +
                             std::to_string(failure->referenceIndex) + ": " + failure->message;
                         return false;
                     }

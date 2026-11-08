@@ -118,6 +118,31 @@ std::string utf8Path(const std::filesystem::path& path)
     return std::string(reinterpret_cast<const char*>(value.data()), value.size());
 }
 
+/// EN: True when `path` has a character outside ASCII. NSLink reads its command line and some response-file
+///     paths through the ANSI code page, which turns such characters into '?' or into bytes it rejects.
+/// ES: Verdadero cuando `path` tiene un caracter fuera de ASCII. NSLink lee su linea de comandos y algunas
+///     rutas del archivo de respuesta con la pagina de codigos ANSI, que los vuelve '?' o bytes que rechaza.
+bool hasNonAsciiSpelling(const std::filesystem::path& path)
+{
+    const std::u8string encoded = path.generic_u8string();
+    return std::any_of(encoded.begin(), encoded.end(),
+        [](char8_t character) { return static_cast<unsigned char>(character) >= 0x80; });
+}
+
+/// EN: File name NSLink can open for `path`: its own name when ASCII, otherwise `__nsc_output` plus the
+///     extension (T08-002-09m7c0g2b).
+/// ES: Nombre de archivo que NSLink puede abrir para `path`: el suyo si es ASCII; si no, `__nsc_output` con la
+///     extension (T08-002-09m7c0g2b).
+std::filesystem::path asciiProductName(const std::filesystem::path& path)
+{
+    const std::filesystem::path name = path.filename();
+    if (!hasNonAsciiSpelling(name)) return name;
+    const std::filesystem::path extension = name.extension();
+    std::filesystem::path ascii("__nsc_output");
+    if (!hasNonAsciiSpelling(extension)) ascii += extension;
+    return ascii;
+}
+
 std::string responsePathArgument(std::string_view prefix, const std::filesystem::path& path)
 {
     return std::string(prefix) + "\"" + utf8Path(path) + "\"";
@@ -185,7 +210,7 @@ std::vector<std::filesystem::path> pathCandidates(std::string_view fileName)
 
 std::string executableName(std::filesystem::path executable)
 {
-    std::string name = executable.filename().string();
+    std::string name = utf8Path(executable.filename());
     std::ranges::transform(name, name.begin(), [](const unsigned char character) {
         return static_cast<char>(std::tolower(character));
     });
@@ -440,9 +465,17 @@ bool startLinkerProcess(
     startupInfo.hStdInput = inputHandle;
     startupInfo.hStdOutput = logHandle;
     startupInfo.hStdError = logHandle;
+    // EN: A response file inside the working directory is named relative to it, so a link directory whose
+    //     name the ANSI code page cannot spell does not reach NSLink's command line (T08-002).
+    // ES: Un archivo de respuesta dentro del directorio de trabajo se nombra relativo a el, asi un directorio
+    //     de enlace cuyo nombre no cabe en la pagina ANSI no llega a la linea de comandos de NSLink (T08-002).
+    const std::filesystem::path responseArgument =
+        !workingDirectory.empty() && responsePath.parent_path() == workingDirectory
+            ? responsePath.filename()
+            : responsePath;
     std::wstring commandLine = L"\"" + executable.wstring() + L"\"";
     if (libraryMode) commandLine += L" /lib";
-    commandLine += L" @\"" + responsePath.wstring() + L"\"";
+    commandLine += L" @\"" + responseArgument.wstring() + L"\"";
     std::vector<wchar_t> mutableCommandLine(commandLine.begin(), commandLine.end());
     mutableCommandLine.push_back(L'\0');
     const BOOL created = CreateProcessW(
@@ -936,7 +969,11 @@ bool prepareStableLinkInputs(
     std::vector<std::string> usedNames;
     for (std::size_t ordinal = 0; ordinal < objectFiles.size(); ++ordinal)
     {
-        const std::filesystem::path baseName = objectFiles[ordinal].filename();
+        // EN: NSLink opens these names through the ANSI code page, so a non-ASCII one becomes
+        //     `__nsc_output.obj`; the ordinal prefix below keeps several of them apart (T08-002).
+        // ES: NSLink abre estos nombres con la pagina ANSI, asi que uno no ASCII queda como
+        //     `__nsc_output.obj`; el prefijo ordinal de abajo distingue a varios (T08-002).
+        const std::filesystem::path baseName = asciiProductName(objectFiles[ordinal]);
         std::filesystem::path name = baseName;
         for (std::size_t attempt = 0;
             std::find(usedNames.begin(), usedNames.end(), foldedLinkInputName(name)) != usedNames.end();
@@ -979,10 +1016,7 @@ bool stageUnicodeLinkLibraries(const std::filesystem::path& directory,
     for (std::size_t index = 0; index < libraries.size(); ++index)
     {
 #ifdef _WIN32
-        const auto encoded = libraries[index].generic_u8string();
-        const bool nonAscii = std::any_of(encoded.begin(), encoded.end(),
-            [](char8_t c) { return static_cast<unsigned char>(c) >= 0x80; });
-        if (nonAscii && !directory.empty())
+        if (hasNonAsciiSpelling(libraries[index]) && !directory.empty())
         {
             const auto name = std::filesystem::path("__nsc_archive_" + std::to_string(index) + ".lib");
             const auto target = directory / name;
@@ -1010,6 +1044,19 @@ bool stageUnicodeLinkLibraries(const std::filesystem::path& directory,
     return true;
 }
 
+/// EN: Moves the response file into the private link directory under an ASCII name when its own path has a
+///     character outside ASCII (a non-ASCII output name or temporary directory). `startLinkerProcess` then
+///     passes it relative to that directory. Before, NSLink received '?' or ANSI bytes and either could not
+///     open the file or stopped with status 0xC0000409 (T08-002-09m7c0g2b).
+/// ES: Mueve el archivo de respuesta al directorio de enlace privado con un nombre ASCII cuando su propia ruta
+///     tiene un caracter fuera de ASCII (nombre de salida o directorio temporal no ASCII). `startLinkerProcess`
+///     lo pasa entonces relativo a ese directorio. Antes NSLink recibia '?' o bytes ANSI y no podia abrir el
+///     archivo o se detenia con estado 0xC0000409 (T08-002-09m7c0g2b).
+void placeResponseFile(const std::filesystem::path& directory, std::filesystem::path& responsePath)
+{
+    if (!directory.empty() && hasNonAsciiSpelling(responsePath)) responsePath = directory / "__nsc_link.rsp";
+}
+
 /// EN: Returns how `/pdb:` names the PDB: its file name inside the link directory on Windows,
 ///     the full path where the portable launcher cannot choose a working directory.
 /// ES: Devuelve como nombra `/pdb:` al PDB: su nombre de archivo dentro del directorio de enlace en
@@ -1021,6 +1068,102 @@ std::filesystem::path linkerPdbSpelling(const std::filesystem::path& pdbPath)
 #else
     return pdbPath;
 #endif
+}
+
+/// EN: How NSLink names the products of one link. `relocated` is set when some product path has a character
+///     outside ASCII: NSLink opens the paths of its response file through the ANSI code page, so it wrote the
+///     product under a mangled name (or stopped) and NSC then found nothing (T08-002-09m7c0g2b). A relocated
+///     link writes ASCII names relative to the private link directory and `publishRelocatedProducts` moves
+///     them to the requested paths. `pdbAltPath` is empty for `%_PDB%`; otherwise it is the UTF-8 file name of
+///     the published PDB, so the RSDS record of the PE names the PDB the debugger will find next to it.
+/// ES: Como nombra NSLink los productos de un enlace. `relocated` se activa cuando la ruta de algun producto
+///     tiene un caracter fuera de ASCII: NSLink abre las rutas de su archivo de respuesta con la pagina ANSI,
+///     asi que escribia el producto con un nombre alterado (o se detenia) y NSC no encontraba nada
+///     (T08-002-09m7c0g2b). Un enlace reubicado escribe nombres ASCII relativos al directorio de enlace
+///     privado y `publishRelocatedProducts` los mueve a las rutas pedidas. `pdbAltPath` queda vacio para
+///     `%_PDB%`; si no, es el nombre UTF-8 del PDB publicado, para que el registro RSDS del PE nombre el PDB
+///     que el depurador encontrara junto a el.
+struct LinkerProductSpelling
+{
+    std::filesystem::path output;
+    std::filesystem::path importLibrary;
+    std::filesystem::path pdb;
+    std::string pdbAltPath;
+    bool relocated = false;
+};
+
+LinkerProductSpelling linkerProductSpelling(
+    const std::filesystem::path& directory,
+    const std::filesystem::path& outputPath,
+    const std::filesystem::path& importLibraryPath,
+    const std::filesystem::path& pdbPath)
+{
+    LinkerProductSpelling spelling{outputPath, importLibraryPath, linkerPdbSpelling(pdbPath), {}, false};
+    if (directory.empty() ||
+        !(hasNonAsciiSpelling(outputPath) || hasNonAsciiSpelling(importLibraryPath) ||
+          hasNonAsciiSpelling(pdbPath))) return spelling;
+    spelling.relocated = true;
+    spelling.output = asciiProductName(outputPath);
+    if (!importLibraryPath.empty()) spelling.importLibrary = asciiProductName(importLibraryPath);
+    if (!pdbPath.empty())
+    {
+        spelling.pdb = asciiProductName(pdbPath);
+        if (spelling.pdb != pdbPath.filename()) spelling.pdbAltPath = utf8Path(pdbPath.filename());
+    }
+    return spelling;
+}
+
+/// EN: Appends the debug-information switches for `spelling`; nothing when the link has no PDB.
+/// ES: Agrega los switches de informacion de depuracion de `spelling`; nada si el enlace no tiene PDB.
+void appendPdbArguments(std::vector<std::string>& arguments, const LinkerProductSpelling& spelling)
+{
+    if (spelling.pdb.empty()) return;
+    arguments.push_back("/debug:full");
+    // NSLink runs inside the private link directory and records this spelling in the PDB.
+    // NSLink corre dentro del directorio de enlace privado y guarda esta escritura en el PDB.
+    arguments.push_back(responsePathArgument("/pdb:", spelling.pdb));
+    arguments.push_back(spelling.pdbAltPath.empty() ? std::string("/pdbaltpath:%_PDB%")
+                                                    : "/pdbaltpath:\"" + spelling.pdbAltPath + "\"");
+}
+
+bool publishRelocatedProduct(
+    const std::filesystem::path& written, const std::filesystem::path& target, std::string& error)
+{
+    std::error_code filesystemError;
+    std::filesystem::rename(written, target, filesystemError);
+    if (filesystemError)
+    {
+        filesystemError.clear();
+        std::filesystem::copy_file(written, target, std::filesystem::copy_options::overwrite_existing,
+            filesystemError);
+    }
+    if (!filesystemError) return true;
+    error = "could not publish the linked product '" + utf8Path(target) + "': " + filesystemError.message();
+    return false;
+}
+
+/// EN: Moves the products of a relocated link from the link directory to the requested paths. Returns
+///     `linked`, or false with `error`; a product the linker did not write stays missing so the usual
+///     product verification reports it. The PDB is published by `finishStableLinkInputs`.
+/// ES: Mueve los productos de un enlace reubicado del directorio de enlace a las rutas pedidas. Retorna
+///     `linked`, o false con `error`; un producto que el enlazador no escribio sigue ausente para que la
+///     verificacion habitual lo reporte. El PDB lo publica `finishStableLinkInputs`.
+bool publishRelocatedProducts(
+    const std::filesystem::path& directory,
+    const LinkerProductSpelling& spelling,
+    const std::filesystem::path& outputPath,
+    const std::filesystem::path& importLibraryPath,
+    bool linked,
+    std::string& error)
+{
+    if (!linked || !spelling.relocated) return linked;
+    const std::filesystem::path writtenOutput = directory / spelling.output;
+    if (std::filesystem::is_regular_file(writtenOutput) && !publishRelocatedProduct(writtenOutput, outputPath, error))
+        return false;
+    if (importLibraryPath.empty()) return true;
+    const std::filesystem::path writtenLibrary = directory / spelling.importLibrary;
+    return !std::filesystem::is_regular_file(writtenLibrary) ||
+        publishRelocatedProduct(writtenLibrary, importLibraryPath, error);
 }
 
 /// EN: Publishes the PDB that NSLink wrote inside the link directory and removes the directory.
@@ -1039,6 +1182,7 @@ std::filesystem::path linkerPdbSpelling(const std::filesystem::path& pdbPath)
 ///     simple relativo al directorio de enlace en lugar de la ruta de staging transaccional.
 bool finishStableLinkInputs(
     const std::filesystem::path& directory,
+    const std::filesystem::path& linkerPdb,
     const std::filesystem::path& pdbPath,
     bool linked,
     std::string& error)
@@ -1047,7 +1191,7 @@ bool finishStableLinkInputs(
     std::error_code filesystemError;
     if (linked && !pdbPath.empty())
     {
-        const std::filesystem::path written = directory / pdbPath.filename();
+        const std::filesystem::path written = directory / linkerPdb;
         std::filesystem::rename(written, pdbPath, filesystemError);
         if (filesystemError)
         {
@@ -1146,27 +1290,18 @@ std::vector<std::string> dynamicLibraryArguments(
     std::span<const std::filesystem::path> objectFiles,
     std::span<const std::filesystem::path> importLibraries,
     std::span<const std::string> exportSymbols,
-    const std::filesystem::path& outputPath,
-    const std::filesystem::path& importLibraryPath,
-    const std::filesystem::path& pdbPath,
+    const LinkerProductSpelling& spelling,
     bool removeUnreferencedSections)
 {
     std::vector<std::string> arguments = {
         "/dll", "/noentry", "/nodefaultlib", "/machine:x64", "/dynamicbase", "/nxcompat",
-        "/highentropyva", responsePathArgument("/out:", outputPath)};
+        "/highentropyva", responsePathArgument("/out:", spelling.output)};
     if (removeUnreferencedSections) arguments.push_back("/opt:ref");
     // NSLink ya fija TimeDateStamp=0 y deliberadamente rechaza switches desconocidos. /Brepro
     // sólo pertenece a lld-link; allí elimina el reloj de pared sin reescribir el PE después.
-    if (!pdbPath.empty())
-    {
-        arguments.push_back("/debug:full");
-        // NSLink runs inside the private link directory and records this spelling in the PDB.
-        // NSLink corre dentro del directorio de enlace privado y guarda esta escritura en el PDB.
-        arguments.push_back(responsePathArgument("/pdb:", linkerPdbSpelling(pdbPath)));
-        arguments.push_back("/pdbaltpath:%_PDB%");
-    }
+    appendPdbArguments(arguments, spelling);
     if (!exportSymbols.empty())
-        arguments.push_back(responsePathArgument("/implib:", importLibraryPath));
+        arguments.push_back(responsePathArgument("/implib:", spelling.importLibrary));
     for (const std::string& symbol : exportSymbols)
         arguments.push_back("/export:" + symbol);
     for (const std::filesystem::path& path : objectFiles)
@@ -1245,6 +1380,19 @@ bool LldLinker::linkDynamicLibrary(
     if (!validateDynamicLibraryRequest(
             objectFiles, importLibraries, exportSymbols,
             outputPath, importLibraryPath, pdbPath, error)) return false;
+    // EN: NSLink opens the paths of its response file through the ANSI code page, and a DLL keeps the name
+    //     it was linked under (export directory, import library): it cannot be linked under an ASCII name and
+    //     renamed, as an executable is. lld-link reads UTF-8 and needs none of this (T08-002-09m7c0g2b).
+    // ES: NSLink abre las rutas de su archivo de respuesta con la pagina ANSI, y una DLL conserva el nombre con
+    //     que se enlazo (exportaciones, biblioteca de importacion): no se puede enlazar con un nombre ASCII y
+    //     renombrar, como un ejecutable. lld-link lee UTF-8 y no necesita nada de esto (T08-002-09m7c0g2b).
+    const bool nsLink = isNsLinkExecutable(executablePath_);
+    if (nsLink && hasNonAsciiSpelling(outputPath.filename()))
+    {
+        error = "NSLink cannot link a DLL whose file name has characters outside ASCII ('" +
+            utf8Path(outputPath.filename()) + "'); use an ASCII name or link with lld-link";
+        return false;
+    }
     std::filesystem::path responsePath = outputPath;
     std::filesystem::path logPath = outputPath;
     responsePath += ".dll.rsp";
@@ -1253,18 +1401,22 @@ bool LldLinker::linkDynamicLibrary(
     std::vector<std::filesystem::path> stableObjects;
     if (!prepareStableLinkInputs(outputPath, objectFiles, linkDirectory, stableObjects, error))
         return false;
+    const std::filesystem::path nsLinkDirectory = nsLink ? linkDirectory : std::filesystem::path();
+    placeResponseFile(nsLinkDirectory, responsePath);
     std::vector<std::filesystem::path> stableLibraries;
     if (!stageUnicodeLinkLibraries(linkDirectory, importLibraries, stableLibraries, error))
-        return finishStableLinkInputs(linkDirectory, {}, false, error);
+        return finishStableLinkInputs(linkDirectory, {}, {}, false, error);
+    const LinkerProductSpelling spelling =
+        linkerProductSpelling(nsLinkDirectory, outputPath, importLibraryPath, pdbPath);
     const std::vector<std::string> arguments = dynamicLibraryArguments(
-        stableObjects, stableLibraries, exportSymbols, outputPath, importLibraryPath, pdbPath,
-        removeUnreferencedSections_);
+        stableObjects, stableLibraries, exportSymbols, spelling, removeUnreferencedSections_);
     std::error_code cleanupError;
     if (!writeResponseFile(responsePath, arguments, error))
-        return finishStableLinkInputs(linkDirectory, {}, false, error);
+        return finishStableLinkInputs(linkDirectory, {}, {}, false, error);
     removeDynamicLibraryOutputs(outputPath, importLibraryPath, pdbPath, cleanupError);
     bool success = runResponseFile(responsePath, logPath, error, false, linkDirectory);
-    success = finishStableLinkInputs(linkDirectory, pdbPath, success, error);
+    success = publishRelocatedProducts(linkDirectory, spelling, outputPath, importLibraryPath, success, error);
+    success = finishStableLinkInputs(linkDirectory, spelling.pdb, pdbPath, success, error);
     cleanupLinkerTemporaries(responsePath, logPath, cleanupError);
     if (!success)
     {
@@ -1299,9 +1451,8 @@ bool validateExecutableRequest(
 std::vector<std::string> executableArguments(
     std::span<const std::filesystem::path> objectFiles,
     std::span<const std::filesystem::path> importLibraries,
-    const std::filesystem::path& outputPath,
+    const LinkerProductSpelling& spelling,
     WindowsExecutableSubsystem subsystem,
-    const std::filesystem::path& pdbPath,
     bool removeUnreferencedSections)
 {
     std::vector<std::string> arguments = {
@@ -1314,16 +1465,9 @@ std::vector<std::string> executableArguments(
         "/dynamicbase",
         "/nxcompat",
         "/highentropyva",
-        responsePathArgument("/out:", outputPath)};
+        responsePathArgument("/out:", spelling.output)};
     if (removeUnreferencedSections) arguments.push_back("/opt:ref");
-    if (!pdbPath.empty())
-    {
-        arguments.push_back("/debug:full");
-        // NSLink runs inside the private link directory and records this spelling in the PDB.
-        // NSLink corre dentro del directorio de enlace privado y guarda esta escritura en el PDB.
-        arguments.push_back(responsePathArgument("/pdb:", linkerPdbSpelling(pdbPath)));
-        arguments.push_back("/pdbaltpath:%_PDB%");
-    }
+    appendPdbArguments(arguments, spelling);
     for (const std::filesystem::path& path : objectFiles)
         arguments.push_back(responseFileArgument(path));
     for (const std::filesystem::path& path : importLibraries)
@@ -1390,17 +1534,24 @@ bool LldLinker::linkExecutable(
     std::vector<std::filesystem::path> stableObjects;
     if (!prepareStableLinkInputs(outputPath, objectFiles, linkDirectory, stableObjects, error))
         return false;
+    // EN: Only NSLink needs ASCII spellings; lld-link reads UTF-8 (T08-002-09m7c0g2b).
+    // ES: Solo NSLink necesita nombres ASCII; lld-link lee UTF-8 (T08-002-09m7c0g2b).
+    const std::filesystem::path nsLinkDirectory =
+        isNsLinkExecutable(executablePath_) ? linkDirectory : std::filesystem::path();
+    placeResponseFile(nsLinkDirectory, responsePath);
     std::vector<std::filesystem::path> stableLibraries;
     if (!stageUnicodeLinkLibraries(linkDirectory, importLibraries, stableLibraries, error))
-        return finishStableLinkInputs(linkDirectory, {}, false, error);
+        return finishStableLinkInputs(linkDirectory, {}, {}, false, error);
+    const LinkerProductSpelling spelling = linkerProductSpelling(nsLinkDirectory, outputPath, {}, pdbPath);
     const std::vector<std::string> arguments = executableArguments(
-        stableObjects, stableLibraries, outputPath, subsystem, pdbPath, removeUnreferencedSections_);
+        stableObjects, stableLibraries, spelling, subsystem, removeUnreferencedSections_);
     std::error_code cleanupError;
     if (!writeResponseFile(responsePath, arguments, error))
-        return finishStableLinkInputs(linkDirectory, {}, false, error);
+        return finishStableLinkInputs(linkDirectory, {}, {}, false, error);
     removeExecutableOutputs(outputPath, pdbPath, cleanupError);
     bool success = runResponseFile(responsePath, logPath, error, false, linkDirectory);
-    success = finishStableLinkInputs(linkDirectory, pdbPath, success, error);
+    success = publishRelocatedProducts(linkDirectory, spelling, outputPath, {}, success, error);
+    success = finishStableLinkInputs(linkDirectory, spelling.pdb, pdbPath, success, error);
     cleanupLinkerTemporaries(responsePath, logPath, cleanupError);
     if (!success)
     {

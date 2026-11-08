@@ -27,6 +27,22 @@ namespace nativesharp::llvm_backend
 {
 namespace
 {
+// EN: UTF-8 text of a cache path and the path of its entry lock. The narrow `path::string()` used before
+//     threw for cache directories the active code page cannot spell (T08-002-09m7c0g2b).
+// ES: Texto UTF-8 de una ruta del cache y la ruta de su candado. `path::string()`, usado antes, lanzaba con
+//     directorios de cache que la pagina de codigos activa no puede escribir (T08-002-09m7c0g2b).
+std::string cachePathText(const std::filesystem::path& path)
+{
+    const std::u8string encoded = path.u8string();
+    return std::string(reinterpret_cast<const char*>(encoded.data()), encoded.size());
+}
+
+std::filesystem::path entryLockPath(std::filesystem::path path)
+{
+    path += ".lock";
+    return path;
+}
+
 thread_local const CompilationArtifactCache* activeCache = nullptr;
 std::atomic<unsigned long long> temporaryOrdinal = 0;
 frontend::internal::CacheEntryStore objectEntryStore(
@@ -155,14 +171,14 @@ bool publishObjectEntry(
 {
     std::error_code filesystemError;
     CacheEntryLock entryLock;
-    if (!entryLock.acquire(cachedObject.string() + ".lock", error)) return false;
+    if (!entryLock.acquire(entryLockPath(cachedObject), error)) return false;
     const std::filesystem::path temporaryObject =
         objectEntryStore.temporarySibling(cachedObject);
     std::filesystem::copy_file(cacheFilesystemPath(source), cacheFilesystemPath(temporaryObject),
         std::filesystem::copy_options::overwrite_existing, filesystemError);
     if (filesystemError)
     {
-        error = "cannot stage cached object '" + cachedObject.string() + "': " +
+        error = "cannot stage cached object '" + cachePathText(cachedObject) + "': " +
             filesystemError.message();
         return false;
     }
@@ -171,7 +187,7 @@ bool publishObjectEntry(
     {
         std::error_code ignored;
         std::filesystem::remove(cacheFilesystemPath(temporaryObject), ignored);
-        error = "cannot invalidate artifact-cache metadata '" + cachedMetadata.string() +
+        error = "cannot invalidate artifact-cache metadata '" + cachePathText(cachedMetadata) +
             "': " + filesystemError.message();
         return false;
     }
@@ -192,14 +208,14 @@ bool publishCodePartitionEntry(
 {
     std::error_code filesystemError;
     CacheEntryLock entryLock;
-    if (!entryLock.acquire(payloadFile.string() + ".lock", error)) return false;
+    if (!entryLock.acquire(entryLockPath(payloadFile), error)) return false;
     const std::filesystem::path temporary =
         codePartitionEntryStore.temporarySibling(payloadFile);
     {
         std::ofstream stream(cacheFilesystemPath(temporary), std::ios::binary | std::ios::trunc);
         if (!stream)
         {
-            error = "cannot open code-partition payload temporary '" + temporary.string() + "'";
+            error = "cannot open code-partition payload temporary '" + cachePathText(temporary) + "'";
             return false;
         }
         stream.write(payload.data(), static_cast<std::streamsize>(payload.size()));
@@ -207,7 +223,7 @@ bool publishCodePartitionEntry(
         {
             std::error_code ignored;
             std::filesystem::remove(cacheFilesystemPath(temporary), ignored);
-            error = "cannot write code-partition payload '" + temporary.string() + "'";
+            error = "cannot write code-partition payload '" + cachePathText(temporary) + "'";
             return false;
         }
     }
@@ -216,7 +232,7 @@ bool publishCodePartitionEntry(
     {
         std::error_code ignored;
         std::filesystem::remove(cacheFilesystemPath(temporary), ignored);
-        error = "cannot invalidate code-partition metadata '" + metadataFile.string() +
+        error = "cannot invalidate code-partition metadata '" + cachePathText(metadataFile) +
             "': " + filesystemError.message();
         return false;
     }
@@ -314,7 +330,7 @@ bool restoreObjectEntry(
 {
     std::error_code filesystemError;
     CacheEntryLock entryLock;
-    if (!entryLock.acquire(cachedObject.string() + ".lock", error)) return false;
+    if (!entryLock.acquire(entryLockPath(cachedObject), error)) return false;
     if (!cacheEntryFilesAvailable(cachedObject, cachedMetadata, reason)) return true;
 
     frontend::internal::CacheMetadata metadata;
@@ -343,8 +359,8 @@ bool restoreObjectEntry(
         filesystemError);
     if (filesystemError)
     {
-        error = "cannot restore cached object '" + cachedObject.string() + "' to '" +
-            destination.string() + "': " + filesystemError.message();
+        error = "cannot restore cached object '" + cachePathText(cachedObject) + "' to '" +
+            cachePathText(destination) + "': " + filesystemError.message();
         return false;
     }
     hit = true;
@@ -367,7 +383,7 @@ bool restoreCodePartitionEntry(
 {
     std::error_code filesystemError;
     CacheEntryLock entryLock;
-    if (!entryLock.acquire(payloadFile.string() + ".lock", error)) return false;
+    if (!entryLock.acquire(entryLockPath(payloadFile), error)) return false;
     frontend::internal::CacheMetadata metadata;
     if (!codePartitionEntryStore.readMetadata(metadataFile, metadata) || metadata.key != key)
     {
@@ -441,7 +457,7 @@ bool collectPrunableEntries(
         const bool regular = entry.is_regular_file(filesystemError);
         if (filesystemError) { filesystemError.clear(); continue; }
         if (!regular || entry.path().extension() != ".meta") continue;
-        const std::string key = entry.path().stem().string();
+        const std::string key = cachePathText(entry.path().stem());
         if (!frontend::internal::CacheEntryStore::validKey(key)) continue;
         std::filesystem::path payload = entry.path();
         payload.replace_extension(payloadExtension);
@@ -615,7 +631,7 @@ bool CompilationArtifactCache::storeObject(
     std::filesystem::create_directories(directory, filesystemError);
     if (filesystemError)
     {
-        error = "cannot create artifact-cache directory '" + directory.string() +
+        error = "cannot create artifact-cache directory '" + cachePathText(directory) +
             "': " + filesystemError.message();
         return false;
     }
@@ -678,7 +694,7 @@ bool CompilationArtifactCache::storeCodePartitionPlan(
     if (filesystemError)
     {
         error = "cannot create code-partition cache directory '" +
-            payloadFile.parent_path().string() + "': " + filesystemError.message();
+            cachePathText(payloadFile.parent_path()) + "': " + filesystemError.message();
         return false;
     }
     if (!publishCodePartitionEntry(payloadFile, metadataFile, key, payload, error)) return false;
@@ -724,7 +740,7 @@ bool CompilationArtifactCache::prune(
         const CachePruneEntry& entry = entries[position];
         if (totalBytes <= maximumBytes) break;
         CacheEntryLock entryLock;
-        if (!entryLock.acquire(entry.payload.string() + ".lock", error)) return false;
+        if (!entryLock.acquire(entryLockPath(entry.payload), error)) return false;
         filesystemError.clear();
         const std::uintmax_t currentSize = std::filesystem::file_size(entry.payload, filesystemError);
         if (filesystemError)
@@ -739,14 +755,14 @@ bool CompilationArtifactCache::prune(
         std::filesystem::remove(entry.metadata, filesystemError);
         if (filesystemError)
         {
-            error = "cannot evict artifact-cache metadata '" + entry.metadata.string() +
+            error = "cannot evict artifact-cache metadata '" + cachePathText(entry.metadata) +
                 "': " + filesystemError.message();
             return false;
         }
         std::filesystem::remove(entry.payload, filesystemError);
         if (filesystemError)
         {
-            error = "cannot evict artifact-cache payload '" + entry.payload.string() +
+            error = "cannot evict artifact-cache payload '" + cachePathText(entry.payload) +
                 "': " + filesystemError.message();
             return false;
         }

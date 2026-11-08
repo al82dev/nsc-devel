@@ -48,6 +48,20 @@
 
 namespace nativesharp::llvm_backend
 {
+#if !defined(NSC_THINLTO_UNAVAILABLE)
+namespace
+{
+// EN: LLVM reads paths as UTF-8; the narrow `path::string()` threw for directories the active code page
+//     cannot spell (T08-002-09m7c0g2b). ES: LLVM lee las rutas como UTF-8; `path::string()` lanzaba con
+//     directorios que la pagina de codigos activa no puede escribir (T08-002-09m7c0g2b).
+std::string thinLtoPathUtf8(const std::filesystem::path& path)
+{
+    const std::u8string encoded = path.u8string();
+    return std::string(reinterpret_cast<const char*>(encoded.data()), encoded.size());
+}
+}
+#endif
+
 #if defined(NSC_THINLTO_UNAVAILABLE)
 ThinLtoBackend::ThinLtoBackend(std::size_t moduleCount)
     : bitcode_(moduleCount),
@@ -213,10 +227,10 @@ bool ThinLtoBackend::collectUndefinedSymbols(
     std::string& error)
 {
     llvm::Expected<llvm::object::OwningBinary<llvm::object::Binary>> binary =
-        llvm::object::createBinary(file.string());
+        llvm::object::createBinary(thinLtoPathUtf8(file));
     if (!binary)
     {
-        error = "cannot read '" + file.string() + "': " + llvm::toString(binary.takeError());
+        error = "cannot read '" + thinLtoPathUtf8(file) + "': " + llvm::toString(binary.takeError());
         return false;
     }
     llvm::object::Binary* contents = binary->getBinary();
@@ -232,7 +246,7 @@ bool ThinLtoBackend::collectUndefinedSymbols(
         llvm::Expected<std::unique_ptr<llvm::object::Binary>> member = child.getAsBinary();
         if (!member)
         {
-            error = "cannot read a member of '" + file.string() + "': " + llvm::toString(member.takeError());
+            error = "cannot read a member of '" + thinLtoPathUtf8(file) + "': " + llvm::toString(member.takeError());
             llvm::consumeError(std::move(childError));
             return false;
         }
@@ -245,7 +259,7 @@ bool ThinLtoBackend::collectUndefinedSymbols(
     }
     if (childError)
     {
-        error = "cannot list the members of '" + file.string() + "': " + llvm::toString(std::move(childError));
+        error = "cannot list the members of '" + thinLtoPathUtf8(file) + "': " + llvm::toString(std::move(childError));
         return false;
     }
     return true;
@@ -256,10 +270,10 @@ bool ThinLtoBackend::requiresLldForStaticInput(
 {
     found = false;
     llvm::LLVMContext context;
-    auto binary = llvm::object::createBinary(file.string(), &context);
+    auto binary = llvm::object::createBinary(thinLtoPathUtf8(file), &context);
     if (!binary)
     {
-        error = "cannot read '" + file.string() + "': " + llvm::toString(binary.takeError());
+        error = "cannot read '" + thinLtoPathUtf8(file) + "': " + llvm::toString(binary.takeError());
         return false;
     }
     const auto inspect = [&](const llvm::object::Binary& input) {
@@ -287,7 +301,7 @@ bool ThinLtoBackend::requiresLldForStaticInput(
             return true;
         }
         if (llvm::isa<llvm::object::COFFImportFile>(&input)) return true;
-        error = "unsupported input format while inspecting TLS in '" + file.string() + "'";
+        error = "unsupported input format while inspecting TLS in '" + thinLtoPathUtf8(file) + "'";
         return false;
     };
     if (const auto* archive = llvm::dyn_cast<llvm::object::Archive>(binary->getBinary()))
@@ -298,7 +312,8 @@ bool ThinLtoBackend::requiresLldForStaticInput(
             auto member = child.getAsBinary(&context);
             if (!member)
             {
-                error = "cannot read a member of '" + file.string() + "': " + llvm::toString(member.takeError());
+                error = "cannot read a member of '" + thinLtoPathUtf8(file) + "': " +
+                    llvm::toString(member.takeError());
                 llvm::consumeError(std::move(childError));
                 return false;
             }
@@ -310,7 +325,7 @@ bool ThinLtoBackend::requiresLldForStaticInput(
         }
         if (childError)
         {
-            error = "cannot list members of '" + file.string() + "': " + llvm::toString(std::move(childError));
+            error = "cannot list members of '" + thinLtoPathUtf8(file) + "': " + llvm::toString(std::move(childError));
             return false;
         }
         return true;
@@ -501,7 +516,7 @@ bool ThinLtoBackend::run(
             return llvm::createStringError("ThinLTO produced an unexpected task " + std::to_string(task));
         std::error_code openError;
         auto output = std::make_unique<llvm::raw_fd_ostream>(
-            objectFiles[ordinal].string(), openError, llvm::sys::fs::OF_None);
+            thinLtoPathUtf8(objectFiles[ordinal]), openError, llvm::sys::fs::OF_None);
         if (openError) return llvm::errorCodeToError(openError);
         return std::make_unique<llvm::CachedFileStream>(std::move(output));
     };
@@ -539,7 +554,7 @@ bool ThinLtoBackend::run(
                 misses.emplace_back(ordinal, key.str());
                 return addStream;
             },
-            cacheDirectory.string());
+            thinLtoPathUtf8(cacheDirectory));
     }
     if (llvm::Error failed = lto.run(addStream, backendCache))
     {
@@ -575,7 +590,7 @@ bool ThinLtoBackend::run(
         policy.MaxSizeBytes = 1024ULL * 1024ULL * 1024ULL;
         // Pruning is housekeeping: a failure keeps the cache and never fails the build.
         // La poda es mantenimiento: si falla se conserva el cache y el build no falla.
-        llvm::Expected<bool> pruned = llvm::pruneCache(cacheDirectory.string(), policy);
+        llvm::Expected<bool> pruned = llvm::pruneCache(thinLtoPathUtf8(cacheDirectory), policy);
         if (!pruned) llvm::consumeError(pruned.takeError());
     }
     if (!diagnostics_.empty())

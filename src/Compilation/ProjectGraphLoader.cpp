@@ -44,6 +44,16 @@ std::string pathKey(const std::filesystem::path& path)
     return key;
 }
 
+// EN: T08-002: UTF-8 spelling of a file stem, comparable with module names (which are UTF-8). The
+//     narrow `path::string()` used before threw for names the active code page cannot represent.
+// ES: T08-002: escritura UTF-8 del nombre base de un archivo, comparable con los nombres de módulo
+//     (UTF-8). `path::string()`, usado antes, lanzaba con nombres que la página de códigos no representa.
+std::string stemUtf8(const std::filesystem::path& path)
+{
+    const auto encoded = path.stem().u8string();
+    return std::string(reinterpret_cast<const char*>(encoded.data()), encoded.size());
+}
+
 std::filesystem::path canonicalPath(const std::filesystem::path& path)
 {
     std::error_code errorCode;
@@ -240,8 +250,8 @@ void preferExactSourceModuleArtifacts(
             referencedKeys.insert(pathKey(canonicalPath(path)));
         for (const LibraryReference& reference : project.libraryReferences())
         {
-            const std::string libraryStem = reference.libraryPath.stem().string();
-            const std::string metadataStem = reference.metadataPath.stem().string();
+            const std::string libraryStem = stemUtf8(reference.libraryPath);
+            const std::string metadataStem = stemUtf8(reference.metadataPath);
             const auto source = libraryStem == metadataStem
                 ? moduleOwners.find(
                     language::canonicalWindowsModuleIdentity({}, libraryStem))

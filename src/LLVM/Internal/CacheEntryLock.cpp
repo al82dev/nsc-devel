@@ -17,6 +17,17 @@ CacheEntryLock::~CacheEntryLock()
 #endif
 }
 
+namespace
+{
+// EN: UTF-8 text for diagnostics; `path::string()` threw for names outside the active code page (T08-002).
+// ES: Texto UTF-8 para diagnosticos; `path::string()` lanzaba con nombres fuera de la pagina activa (T08-002).
+[[maybe_unused]] std::string lockPathText(const std::filesystem::path& path)
+{
+    const std::u8string encoded = path.u8string();
+    return std::string(reinterpret_cast<const char*>(encoded.data()), encoded.size());
+}
+}
+
 bool CacheEntryLock::acquire(const std::filesystem::path& path, std::string& error)
 {
 #if defined(_WIN32)
@@ -31,13 +42,13 @@ bool CacheEntryLock::acquire(const std::filesystem::path& path, std::string& err
         const unsigned long failure = ::GetLastError();
         if (failure != ERROR_SHARING_VIOLATION && failure != ERROR_LOCK_VIOLATION)
         {
-            error = "cannot lock artifact-cache entry '" + path.string() +
+            error = "cannot lock artifact-cache entry '" + lockPathText(path) +
                 "' (Win32 error " + std::to_string(failure) + ")";
             return false;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-    error = "timed out waiting for artifact-cache entry '" + path.string() + "'";
+    error = "timed out waiting for artifact-cache entry '" + lockPathText(path) + "'";
     return false;
 #else
     lock_ = std::unique_lock(globalMutex_);
