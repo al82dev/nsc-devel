@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>InitializerProducer</Name><OutputType>Library</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="InitializerProducer.ns" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>

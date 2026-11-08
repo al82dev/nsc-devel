@@ -1,0 +1,11 @@
+namespace PublishedInitializer
+{
+    public class Bridge
+    {
+        public static int Call<T>(T value)
+        {
+            var (shadow_function, other) = (shadow_function(), 2);
+            return shadow_function + other;
+        }
+    }
+}

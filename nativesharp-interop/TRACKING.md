@@ -207,7 +207,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
   - Una variable de `catch` que oculta una global C dejó de publicarla en la
     prueba de biblioteca precompilada O0–O3. El filtro de `catch` está previsto
-    en la corrección, pero aún carece de prueba específica. [Resultado](registro-commits/t08-h3-catch-resultado.md).
+    en la corrección; su compilación se verificó, no su ejecución al lanzar.
+    [Resultado](registro-commits/t08-h3-catch-resultado.md).
+    Un inicializador de desestructuración conserva la función C homónima en
+    O0–O3. [Límites de ámbito](registro-commits/t08-h3-limites-ambito-control.md).
   - La desestructuración simple y anidada, incluido el descarte `_`, no captura
     las declaraciones C homónimas en los casos comprobados. La biblioteca y el
     consumidor pasaron O0–O3; otras formas de ámbito y la tanda siguen abiertas.

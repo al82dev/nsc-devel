@@ -9,7 +9,7 @@ if not exist "%DEST%" mkdir "%DEST%"
 if errorlevel 1 exit /b 2
 set "TEMP=%DEST%"
 set "TMP=%DEST%"
-for %%F in (Api.h Producer.ns Producer.nsproj Consumer.ns Consumer.nsproj) do (
+for %%F in (Api.h Producer.ns Producer.nsproj Consumer.ns Consumer.nsproj InitializerProducer.ns InitializerProducer.nsproj InitializerConsumer.ns InitializerConsumer.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 2
 )
@@ -44,6 +44,19 @@ for %%O in (0 1 2 3) do (
   findstr /l /c:"__nsc_c_inline_" "%DEST%\symbols-O%%O.log" >nul
   if not errorlevel 1 (
     echo O%%O: funcion inline C sombreada emitida indebidamente.
+    set "RESULT=1"
+  )
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\InitializerProducer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\InitializerProducer.lib" > "%DEST%\initializer-producer-O%%O.log" 2>&1
+  if errorlevel 1 exit /b 2
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InitializerConsumer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\initializer-consumer-O%%O.exe" > "%DEST%\initializer-consumer-O%%O.log" 2>&1
+  if errorlevel 1 exit /b 2
+  "%DEST%\initializer-consumer-O%%O.exe"
+  if errorlevel 1 exit /b 2
+  llvm-nm.exe "%DEST%\InitializerProducer.lib" > "%DEST%\initializer-symbols-O%%O.log"
+  if errorlevel 1 exit /b 2
+  findstr /l /c:"__nsc_c_inline_" "%DEST%\initializer-symbols-O%%O.log" >nul
+  if errorlevel 1 (
+    echo O%%O: falta funcion C usada en inicializador de desestructuracion.
     set "RESULT=1"
   )
 )
