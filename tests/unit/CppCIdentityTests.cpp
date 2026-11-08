@@ -1934,6 +1934,7 @@ int verifyRestoredUsrs(char** argv)
     module.moduleName = metadata.moduleName;
     module.sourceText = "namespace CIdentityRestoredSurface { public struct Marker {} }\n";
     module.cppCTypeCatalog = metadata.cppCRecordCatalog;
+    module.cppCTypeCatalogFormatMinor = metadata.formatMinor;
     nativesharp::frontend::ProjectCompilation consumer;
     std::string error;
     const bool compiled = compileConsumer(consumer, std::move(module), project, error);
