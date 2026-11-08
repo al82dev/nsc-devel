@@ -9,7 +9,7 @@ if not exist "%DEST%" mkdir "%DEST%"
 if errorlevel 1 exit /b 1
 set "TEMP=%DEST%"
 set "TMP=%DEST%"
-for %%F in (Api.h Api.c ApiConflict.h ApiConflictEnum.h ProducerReferenced.ns ProducerReferenced.nsproj ConsumerReferenced.ns ConsumerReferenced.nsproj ConsumerEnumConflict.ns ConflictEnum.nsproj SharedReferenced.nsproj ConflictReferenced.nsproj) do (
+for %%F in (Api.h Api.c ApiConflict.h ApiConflictEnum.h ApiChangedEnum.h ProducerReferenced.ns ProducerReferenced.nsproj ConsumerReferenced.ns ConsumerReferenced.nsproj ConsumerEnumConflict.ns ConflictEnum.nsproj SharedReferenced.nsproj ConflictReferenced.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -32,6 +32,15 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 exit /b 1
   if not "!RESULT!"=="0" exit /b !RESULT!
 )
+copy /y "%DEST%\ApiChangedEnum.h" "%DEST%\Api.h" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\SharedReferenced.nsproj" -O0 --no-artifact-cache -o "%DEST%\ChangedEnum.exe" > "%DEST%\ChangedEnum.log" 2>&1
+set "RESULT=!ERRORLEVEL!"
+copy /y "%~dp0Api.h" "%DEST%\Api.h" >nul
+if errorlevel 1 exit /b 1
+if "!RESULT!"=="0" exit /b 1
+findstr /c:"NMood" "%DEST%\ChangedEnum.log" >nul
+if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\ConflictReferenced.nsproj" -O0 --no-artifact-cache -o "%DEST%\Conflict.exe" > "%DEST%\Conflict.log" 2>&1
 if not errorlevel 1 exit /b 1
 findstr /c:"conflicting C/C++ type alias" "%DEST%\Conflict.log" >nul
