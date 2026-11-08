@@ -263,6 +263,22 @@ std::optional<bool> parseExecutionProperty(
     ProjectDescriptor& descriptor,
     std::string& error)
 {
+    if (property.name == "CppConsumerVolatileMode")
+    {
+        if (descriptor.cppConsumerVolatileMode.has_value())
+        {
+            error = "project property 'CppConsumerVolatileMode' is declared more than once";
+            return false;
+        }
+        if (value == "Microsoft") descriptor.cppConsumerVolatileMode = CppConsumerVolatileMode::Microsoft;
+        else if (value == "ISO") descriptor.cppConsumerVolatileMode = CppConsumerVolatileMode::Iso;
+        else
+        {
+            error = "CppConsumerVolatileMode must be 'Microsoft' or 'ISO'";
+            return false;
+        }
+        return true;
+    }
     if (property.name == "OptimizationLevel")
     {
         if (descriptor.buildSettings.optimizationLevel.has_value())
@@ -1427,7 +1443,8 @@ std::optional<Project> ProjectLoader::load(
         descriptor.panicHandler.value_or(std::string{}),
         descriptor.packageName.value_or(moduleName),
         std::move(descriptor.friendModules),
-        std::move(*cppLibraryReferences));
+        std::move(*cppLibraryReferences),
+        descriptor.cppConsumerVolatileMode);
 }
 
 ProjectLoaderStatistics ProjectLoader::statistics() const

@@ -1676,6 +1676,16 @@ bool ProjectCompilation::compileProjectOopHir(
     }
     if (cancellationRequested(loadError, "oop-hir")) return false;
 
+    for (const auto& project : projectGraph_->projects())
+    {
+        if (project.cppConsumerVolatileMode().has_value())
+        {
+            loadError = "CppConsumerVolatileMode is not yet supported by code generation: " +
+                project.projectFile().string();
+            return false;
+        }
+    }
+
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "oop-hir");
     oopHirModel_ = std::make_unique<ProjectOopHirModel>(lifetime_->indexes());
     if (oopHirModel_->build(

@@ -5,6 +5,7 @@
 #include "SourceIncludeRule.h"
 
 #include "nativesharp/Compilation/GlobPattern.h"
+#include "nativesharp/Compilation/CppConsumerVolatileMode.h"
 #include "nativesharp/Compilation/ProjectBuildSettings.h"
 #include "nativesharp/Compilation/ProjectOutputKind.h"
 #include "nativesharp/Language/ErrorSemantics.h"
@@ -22,6 +23,7 @@ struct ProjectDescriptor final
     std::optional<ProjectOutputKind> outputKind;
     std::optional<language::PanicProfile> panicProfile;
     std::optional<std::string> panicHandler;
+    std::optional<CppConsumerVolatileMode> cppConsumerVolatileMode;
     ProjectBuildSettings buildSettings;
     std::vector<SourceIncludeRule> includes;
     std::vector<GlobPattern> removes;
