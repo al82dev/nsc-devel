@@ -1,0 +1,8 @@
+int Main()
+{
+    NAlias* record = Published.NamesBridge.Alias();
+    if (sizeof(NAlias) != sizeof(*record)) return 1;
+    if (sizeof(NMood) != (nuint)4) return 2;
+    if (record->value != 2) return 3;
+    return 0;
+}

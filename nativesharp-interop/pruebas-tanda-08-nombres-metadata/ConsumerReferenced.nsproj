@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CNamesReferencedConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ConsumerReferenced.ns" />
+    <LibraryReference Include="CNamesReferenced.lib" />
+  </ItemGroup>
+</Project>
