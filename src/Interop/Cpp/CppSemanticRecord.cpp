@@ -1129,7 +1129,8 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                     });
                     const auto digest = declaration == entry.declaration.enumerators.end() ? std::string{} : cEnumeratorSourceDigest(declaration->location);
                     auto reference = "cpp-reference:" + std::to_string(entry.referenceIndex);
-                    if (!digest.empty()) reference += "#sha256:" + digest;
+                    if (!digest.empty() && declaration->location)
+                        reference += "#sha256:" + digest + "#path:" + declaration->location->file.generic_string();
                     dependencies.enumerators.push_back({selected->moduleName, std::move(reference),
                         selected->name, *selected->cppClangUsr, selected->declaredTypeKey, selected->integerValue});
                     continue;
@@ -1506,7 +1507,7 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
         if (!names.emplace(Key{live[i].projectOrdinal, live[i].namespaceName, live[i].name}, i).second)
         { error = "duplicate live C/C++ value: " + live[i].name; return false; }
     std::map<std::string, std::size_t> owners;
-    std::map<std::tuple<std::size_t, std::string, std::string>, std::string> enumeratorDigests;
+    std::map<std::tuple<std::size_t, std::string, std::string>, std::pair<std::string, std::string>> enumeratorSources;
     std::set<std::string> ambiguous;
     for (std::size_t i = 0; i < graph.projects().size(); ++i)
         if (!owners.emplace(graph.projects()[i].moduleName(), i).second)
@@ -1577,8 +1578,11 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             if (owner == owners.end() || ambiguous.contains(enumerator.moduleName))
             { error = "precompiled C enumerator owner is missing or ambiguous: " + enumerator.moduleName; return false; }
             const auto marker = enumerator.referenceIdentity.rfind("#sha256:");
-            if (marker != std::string::npos && enumerator.referenceIdentity.size() == marker + 8 + 64)
-                enumeratorDigests[{owner->second, enumerator.name, enumerator.clangUsr}] = enumerator.referenceIdentity.substr(marker + 8);
+            const auto pathMarker = marker == std::string::npos ? std::string::npos : marker + 8 + 64;
+            if (pathMarker != std::string::npos && pathMarker + 6 < enumerator.referenceIdentity.size() &&
+                enumerator.referenceIdentity.compare(pathMarker, 6, "#path:") == 0)
+                enumeratorSources[{owner->second, enumerator.name, enumerator.clangUsr}] = {
+                    enumerator.referenceIdentity.substr(marker + 8, 64), enumerator.referenceIdentity.substr(pathMarker + 6)};
             frontend::NamespaceStateSymbol state;
             state.projectOrdinal = owner->second;
             state.moduleName = enumerator.moduleName;
@@ -1646,8 +1650,11 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
                         for (std::size_t target = liveCount; target < live.size(); ++target)
                         {
                             const auto& other = live[target];
-                            const auto source = enumeratorDigests.find({other.projectOrdinal, other.name, *item.cppClangUsr});
-                            if (source != enumeratorDigests.end() && source->second == digest && other.isCppEnumConstant &&
+                            const auto source = enumeratorSources.find({other.projectOrdinal, other.name, *item.cppClangUsr});
+                            std::error_code sourceError;
+                            const bool sameFile = source != enumeratorSources.end() && value.location &&
+                                std::filesystem::equivalent(value.location->file, source->second.second, sourceError) && !sourceError;
+                            if (sameFile && source->second.first == digest && other.isCppEnumConstant &&
                                 other.cppClangUsr == item.cppClangUsr && other.name == item.name &&
                                 other.declaredTypeKey == item.declaredTypeKey && other.integerValue == item.integerValue &&
                                 other.cppImportError.empty() && item.cppImportError.empty()) candidates.insert(other.identityKey);
