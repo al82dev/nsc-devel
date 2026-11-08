@@ -5281,6 +5281,15 @@ void ProjectMethodBodyModel::configureSelectedCallBinding(
     result.assignable = selectedMember.isReferenceReturn && !readonlyReference;
     result.addressable = selectedMember.isReferenceReturn;
     result.readonlyReceiver = result.readonlyReceiver || readonlyReference;
+    // A class reference read through a borrowed view must keep the view's lifetime.
+    const auto resultClass = referenceTypeOrdinalForTypeKey(selectedMember.declaredTypeKey);
+    if (!selectedMember.isStatic && typeKeyIsViewLike(call.receiverTypeKey) &&
+        resultClass.has_value() && inheritanceModel_ != nullptr && inheritanceModel_->isClass(*resultClass))
+    {
+        result.ownership = sema::OwnershipKind::Borrowed;
+        result.objectLifetimeOwnership = sema::OwnershipKind::Borrowed;
+        result.storageOwnership = sema::OwnershipKind::Borrowed;
+    }
     result.ownershipTransfer = selectedMember.declaredOwnership == sema::OwnershipKind::Owned;
     // An owned return crosses the call boundary without a named owner. It is therefore a
     // fresh owner in the caller, just like `new T(...)`, and may participate in the

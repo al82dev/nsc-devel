@@ -4009,6 +4009,43 @@ void ProjectMethodBodyModel::analyzeBorrowedVariableInitializer(
             "a borrowed local cannot also be declared raii");
         return;
     }
+    // A class extracted from a checked local view retains the view and owner region.
+    if (initializer.valid && initializer.ownership == sema::OwnershipKind::Borrowed &&
+        variable->first()->kind() == ast::AstNodeKind::CallExpression)
+    {
+        const MethodCallBinding* call = callBinding(variable->first(), methodMemberOrdinal);
+        if (call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
+            !call->staticCall && call->receiverSyntax != nullptr &&
+            call->receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression &&
+            typeKeyIsViewLike(call->receiverTypeKey))
+        {
+            const auto view = lookupScopeName(scopeOrdinal, call->receiverSyntax->text());
+            if (view.has_value() && view->kind == ScopeNameKind::Local &&
+                view->semanticOrdinal < locals_.size())
+            {
+                const auto& viewLocal = locals_[view->semanticOrdinal];
+                const auto owner = lookupScopeName(scopeOrdinal, viewLocal.viewRootLocalName);
+                if (!viewLocal.viewRootLocalName.empty() && owner.has_value() &&
+                    owner->kind == ScopeNameKind::Local && owner->semanticOrdinal < locals_.size() &&
+                    scopeContains(locals_[owner->semanticOrdinal].scopeOrdinal, viewLocal.scopeOrdinal) &&
+                    scopeContains(viewLocal.scopeOrdinal, scopeOrdinal))
+                {
+                    MethodLocalBorrowBinding borrow;
+                    borrow.syntax = variable;
+                    borrow.methodMemberOrdinal = methodMemberOrdinal;
+                    borrow.creationScopeOrdinal = scopeOrdinal;
+                    borrow.typeKey = typeKey;
+                    borrow.sourceKind = MethodLocalBorrowSourceKind::OwnerLocal;
+                    borrow.sourceLocalOrdinal = view->semanticOrdinal;
+                    borrow.sourceOwnerLocalOrdinal = owner->semanticOrdinal;
+                    borrow.possibleSourceOwnerLocalOrdinals.push_back(owner->semanticOrdinal);
+                    borrow.maximumValidScopeOrdinal = viewLocal.scopeOrdinal;
+                    pendingLocalBorrow = std::move(borrow);
+                    return;
+                }
+            }
+        }
+    }
     if (variable->first()->kind() != ast::AstNodeKind::IdentifierExpression)
     {
         diagnostics.report(
@@ -6020,6 +6057,18 @@ bool ProjectMethodBodyModel::analyzeBorrowedReturn(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     if (method.declaredOwnership != sema::OwnershipKind::Borrowed) return false;
+    // Until the returned view's provenance can be expressed across the call boundary,
+    // do not permit a class extracted from it to escape as a borrowed return.
+    const MethodCallBinding* extracted = callBinding(statement->first(), methodMemberOrdinal);
+    if (value.ownership == sema::OwnershipKind::Borrowed && extracted != nullptr &&
+        extracted->resolution == MethodCallResolutionKind::Resolved && !extracted->staticCall &&
+        typeKeyIsViewLike(extracted->receiverTypeKey))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidReturn,
+            diagnostics::DiagnosticSeverity::Error, statement->first()->range(),
+            "borrowed class extracted from a view cannot be returned without proven lifetime provenance");
+        return true;
+    }
     if (!validateBorrowedReturnValue(
             statement, method, value, returnTypeOwnable, diagnostics)) return true;
     const bool nullBorrow =

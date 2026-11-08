@@ -5437,6 +5437,9 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.compiler.shared-value-view-lifetime
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_value_view_lifetime.py"
                 "${NSC_TEST_COMPILER}")
+    add_test(NAME nsc.compiler.borrowed-view-class-result
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/borrowed_view_class_result.py"
+                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/view_receiver_lifetime/Main.ns")
     add_test(NAME nsc.sdk.sort-with-alias
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/sort_with_alias.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj")

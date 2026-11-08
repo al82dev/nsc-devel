@@ -83,8 +83,8 @@ después (`smart-pointer-view-probe/escape-check.log`); esa comprobación no
 demuestra un préstamo seguro del payload compartido.
 El compilador ahora rechaza esa asignación y otras formas de escape de la vista
 ligada al receptor; véase `view-receiver-lifetime.md`. La referencia extraída
-con `view.Get()` todavía puede sobrevivir al propietario, de modo que esto no
-resuelve por completo el préstamo del payload.
+con `view.Get()` también podía sobrevivir al propietario en el prototipo;
+la regla posterior y sus límites se describen más abajo.
 El prototipo recibe además un objeto ya asignado y crea el bloque de control
 por separado; no acredita la fábrica de una sola asignación del manifiesto y
 solo ensaya payloads de clase.
@@ -185,7 +185,22 @@ El lenguaje también admite `ref readonly T`: un prototipo posterior leyó una
 clase y una estructura en O0/O2 y rechazó sustituir la ranura
 (`shared-unified-owner-readonly-probe/results.json`,
 `shared-unified-owner-readonly-mutation-probe/results.json`). No se han
-acreditado todavía todas sus garantías de préstamo o concurrencia.
+acreditado todavía todas sus garantías de préstamo o concurrencia. En concreto,
+una referencia de clase puede copiarse desde ese `ref readonly` y conservarse
+después de destruir el owner: el análisis acepta el caso
+(`shared-readonly-escape-probe/results.json`). No se ejecutó el acceso colgante.
+Por decisión posterior del usuario, el resultado de clase de un método de una
+vista prestada se trata conservadoramente como préstamo de la vista, tanto si
+se devuelve por valor como por `ref readonly`. Un alias local `borrowed` se
+admite si la vista es una variable local con propietario local comprobable; se
+rechazan escapes a locales sin calificador, campos, parámetros que pueden
+retener y retornos. El retorno directamente declarado `borrowed` también se
+rechaza hasta demostrar su procedencia entre llamadas. Esta regla puede
+rechazar métodos de vista que devuelvan referencias de vida independiente.
+`nsc.compiler.borrowed-view-class-result` comprueba ambos retornos, alias y
+accesos válidos en O0/O2 y los destinos de escape sin ejecutar accesos inválidos;
+la selección dirigida de cinco pruebas pasó (`shared-view-class-tests.log`).
+La regla aún no demuestra el contrato completo de los punteros compartidos.
 `nsc.sdk.shared-control-storage` añade una regresión dirigida que sitúa los
 contadores locales o atómicos junto al payload en la misma reserva; comprueba
 la destrucción y la expiración y, para la variante atómica, 200 000 ciclos de
