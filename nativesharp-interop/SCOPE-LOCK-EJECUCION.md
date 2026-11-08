@@ -5415,6 +5415,10 @@ la comparación aún no cambian en esta etapa; validación agrupada posterior.
 Al agrupar observaciones enum, conservar procedencia solo si todas coinciden;
 añadir `CppSemanticInventory.cpp` al presupuesto sin alterar la selección de
 tipos ni la semántica de conciliación actual.
+Preparar un envoltorio de catálogo versión 7 para procedencia de enums,
+reutilizando versiones anteriores como base y comprobando codificación
+canónica. Presupuesto adicional: codec C interno y sus pruebas. No conectar
+publicación ni despacho de versiones hasta completar el conjunto.
 
 Enmienda: la primera implementación causó conflicto entre proyectos al
 coexistir el header y la metadata. Se permite modificar

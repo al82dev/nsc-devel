@@ -945,6 +945,92 @@ bool decodeCTypeCatalogWithAnonymousCarriers(std::span<const std::uint8_t> bytes
     return true;
 }
 
+bool encodeCTypeCatalogWithEnumProvenance(std::span<const CppCRecordSnapshot> records,
+    std::span<const CppCEnumSnapshot> enums, const CDependencyCatalog& dependencies,
+    std::vector<std::uint8_t>& output, std::string& error)
+{
+    if (enums.size() > maxItems || std::none_of(enums.begin(), enums.end(),
+            [](const auto& value) { return value.declaration.sourceProvenance.has_value(); }))
+    { error = "empty or oversized C enum provenance"; return false; }
+    const bool carriers = std::any_of(records.begin(), records.end(), [](const auto& record) {
+        return std::any_of(record.fields.begin(), record.fields.end(), [](const auto& field) { return field.isAnonymousCarrier; });
+    });
+    const bool deps = !dependencies.functions.empty() || !dependencies.globals.empty() ||
+        !dependencies.aliases.empty() || !dependencies.enumerators.empty();
+    std::vector<std::uint8_t> base;
+    if (carriers ? !encodeCTypeCatalogWithAnonymousCarriers(records, enums, dependencies, base, error) :
+        deps ? !encodeCTypeCatalogWithDependencies(records, enums, dependencies, base, error) :
+               !encodeCTypeCatalogWithProvenance(records, enums, base, error)) return false;
+    ByteWriter writer;
+    writer.u32(7);
+    writer.u64(static_cast<std::uint64_t>(base.size()));
+    writer.raw(base);
+    writer.u32(static_cast<std::uint32_t>(enums.size()));
+    for (const auto& item : enums)
+    {
+        const auto& provenance = item.declaration.sourceProvenance;
+        writer.u8(provenance.has_value());
+        if (!provenance) continue;
+        std::string path;
+        try
+        {
+            const auto utf8 = provenance->sourcePath.generic_u8string();
+            path.assign(reinterpret_cast<const char*>(utf8.data()), utf8.size());
+        }
+        catch (const std::exception&) { error = "invalid C enum provenance path encoding"; return false; }
+        const auto validHex = [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); };
+        if (path.empty() || provenance->bufferSha256.size() != 64 ||
+            !std::all_of(provenance->bufferSha256.begin(), provenance->bufferSha256.end(), validHex) ||
+            !putText(writer, path) || !putText(writer, provenance->bufferSha256))
+        { error = "invalid C enum source provenance"; return false; }
+        writer.u32(provenance->byteOffset);
+    }
+    output = writer.takeBytes(); error.clear(); return true;
+}
+
+bool decodeCTypeCatalogWithEnumProvenance(std::span<const std::uint8_t> bytes,
+    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums,
+    CDependencyCatalog& dependencies, std::string& error)
+{
+    ByteReader reader(bytes);
+    std::uint32_t version = 0, count = 0;
+    std::uint64_t size = 0;
+    if (!reader.u32(version) || version != 7 || !reader.u64(size) || size > reader.remaining())
+    { error = "invalid C enum provenance envelope"; return false; }
+    std::vector<std::uint8_t> base(static_cast<std::size_t>(size));
+    std::vector<CppCRecordSnapshot> decodedRecords;
+    std::vector<CppCEnumSnapshot> decodedEnums;
+    CDependencyCatalog decodedDependencies;
+    if (!reader.raw(base) || !decodeCTypeCatalogAndDependencies(base, 48, decodedRecords, decodedEnums,
+                                                                decodedDependencies, error)) return false;
+    if (!reader.u32(count) || count != decodedEnums.size())
+    { error = "C enum provenance count mismatch"; return false; }
+    for (auto& item : decodedEnums)
+    {
+        bool present = false;
+        if (!getFlag(reader, present)) { error = "invalid C enum provenance flag"; return false; }
+        if (!present) continue;
+        std::string path, digest;
+        std::uint32_t offset = 0;
+        if (!reader.text(path) || !reader.text(digest) || !reader.u32(offset))
+        { error = "truncated C enum provenance"; return false; }
+        try
+        {
+            const std::u8string utf8(reinterpret_cast<const char8_t*>(path.data()), path.size());
+            item.declaration.sourceProvenance = CppEnumDeclaration::SourceProvenance{
+                std::filesystem::path(utf8), std::move(digest), offset};
+        }
+        catch (const std::exception&) { error = "invalid C enum provenance path encoding"; return false; }
+    }
+    std::vector<std::uint8_t> canonical;
+    if (!reader.atEnd() || !encodeCTypeCatalogWithEnumProvenance(decodedRecords, decodedEnums,
+            decodedDependencies, canonical, error) || canonical.size() != bytes.size() ||
+        !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
+    { error = "noncanonical C enum provenance envelope"; return false; }
+    records = std::move(decodedRecords); enums = std::move(decodedEnums);
+    dependencies = std::move(decodedDependencies); error.clear(); return true;
+}
+
 bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
                           std::vector<std::uint8_t>& output, std::string& error)
 {

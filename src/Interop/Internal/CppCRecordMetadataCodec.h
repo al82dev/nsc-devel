@@ -84,6 +84,13 @@ struct CDependencyCatalog
     std::vector<CDependencyAliasSnapshot> aliases;
     std::vector<Enumerator> enumerators;
 };
+// Prepared version 7 envelope; publication and version dispatch remain separate.
+bool encodeCTypeCatalogWithEnumProvenance(std::span<const CppCRecordSnapshot> records,
+    std::span<const CppCEnumSnapshot> enums, const CDependencyCatalog& dependencies,
+    std::vector<std::uint8_t>& output, std::string& error);
+bool decodeCTypeCatalogWithEnumProvenance(std::span<const std::uint8_t> bytes,
+    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums,
+    CDependencyCatalog& dependencies, std::string& error);
 // Version 6 envelope: base catalogue plus explicit anonymous C carrier indices.
 // These helpers are not connected to NSMETA publication or dispatch yet.
 bool encodeCTypeCatalogWithAnonymousCarriers(std::span<const CppCRecordSnapshot> records,
