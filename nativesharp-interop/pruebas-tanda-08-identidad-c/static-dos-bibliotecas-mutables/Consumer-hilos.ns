@@ -1,0 +1,14 @@
+int CheckWorker(int unused)
+{
+    if (InlineA.Bridge.Read<int>(0) != 11 || InlineB.Bridge.Read<int>(0) != 29) return 1;
+    if (InlineA.Bridge.Add<int>(0, 7) != 18 || InlineB.Bridge.Add<int>(0, 9) != 38) return 2;
+    return 0;
+}
+int Main()
+{
+    if (InlineA.Bridge.Add<int>(0, 3) != 14 || InlineB.Bridge.Add<int>(0, 5) != 34) return 1;
+    TlsThreadCallback callback = (int value) => CheckWorker(value);
+    if (run_tls_thread(callback) != 0) return 2;
+    if (InlineA.Bridge.Read<int>(0) != 14 || InlineB.Bridge.Read<int>(0) != 34) return 3;
+    return 0;
+}
