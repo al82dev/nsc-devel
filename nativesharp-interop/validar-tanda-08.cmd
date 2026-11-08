@@ -5,7 +5,7 @@ set "TMP=A:\nsc-interop-build\temp"
 set "TEMP=%TMP%"
 cmake -S "%~dp0.." -B A:/nsc-interop-build/tanda1-ON -DNSC_BUILD_TESTS=ON
 if errorlevel 1 exit /b 1
-call "%~dp0construir-frontend-tanda1.cmd" "nsc nsc_cpp_session_tests nsc_precompiled_syntax_node_index_tests nsc_syntax_tree_serialization_equivalence_tests nsc_project_oop_lowering_tests nsc_namespace_function_llvm_tests" ON
+call "%~dp0construir-frontend-tanda1.cmd" "nsc nsc_cpp_session_tests nsc_cpp_c_identity_tests nsc_precompiled_syntax_node_index_tests nsc_syntax_tree_serialization_equivalence_tests nsc_project_oop_lowering_tests nsc_namespace_function_llvm_tests" ON
 if errorlevel 1 exit /b 1
 call "%~dp0construir-frontend-tanda1.cmd" nsc_frontend OFF
 if errorlevel 1 exit /b 1
@@ -32,6 +32,7 @@ for %%T in (valores incompleto record-c union layout callback enum-funcion) do c
 for %%T in (global-puntero-const flotante-c inline-c prototipos-c typedef-c bitfields-c tls-c) do call :run_case %%T
 for %%T in (
   pruebas-tanda-08-incompleto\validar-opaco.cmd
+  pruebas-tanda-08-identidad-c\validar.cmd
   pruebas-tanda-08-record-c\precompiled-bool\validar.cmd
   pruebas-tanda-08-record-c\precompiled-bool\validar-cache.cmd
   pruebas-tanda-08-record-c\dll-bool\validar.cmd
