@@ -1,0 +1,9 @@
+// Probe (records only): library whose C header has fields that NSC does not import.
+namespace OddPublished
+{
+    public struct OddBridge
+    {
+        public static VOdd* Odd() { return v_odd(); }
+        public static int After(VOdd* p) { return v_odd_after(p); }
+    }
+}

@@ -1,0 +1,39 @@
+// Each Get/Set pair is compared with acc_get_<key>/acc_set_<key> compiled by Clang.
+public struct VolatileAccess
+{
+    public static bool GetFlag(VFields* p) { return p->flag; }
+    public static void SetFlag(VFields* p, bool value) { p->flag = value; }
+    public static sbyte GetC(VFields* p) { return p->c; }
+    public static void SetC(VFields* p, sbyte value) { p->c = value; }
+    public static short GetS(VFields* p) { return p->s; }
+    public static void SetS(VFields* p, short value) { p->s = value; }
+    public static int GetI(VFields* p) { return p->i; }
+    public static void SetI(VFields* p, int value) { p->i = value; }
+    public static long GetLl(VFields* p) { return p->ll; }
+    public static void SetLl(VFields* p, long value) { p->ll = value; }
+    public static float GetF(VFields* p) { return p->f; }
+    public static void SetF(VFields* p, float value) { p->f = value; }
+    public static double GetD(VFields* p) { return p->d; }
+    public static void SetD(VFields* p, double value) { p->d = value; }
+    public static int* GetPtr(VFields* p) { return p->ptr; }
+    public static void SetPtr(VFields* p, int* value) { p->ptr = value; }
+    public static bool GetFlags1(VFields* p) { return p->flags[1]; }
+    public static void SetFlags1(VFields* p, bool value) { p->flags[1] = value; }
+    public static int GetInts1(VFields* p) { return p->ints[1]; }
+    public static void SetInts1(VFields* p, int value) { p->ints[1] = value; }
+    public static int GetPI(VPacked* p) { return p->i; }
+    public static void SetPI(VPacked* p, int value) { p->i = value; }
+    public static bool GetPFlag(VPacked* p) { return p->flag; }
+    public static void SetPFlag(VPacked* p, bool value) { p->flag = value; }
+    public static double GetPD(VPacked* p) { return p->d; }
+    public static void SetPD(VPacked* p, double value) { p->d = value; }
+    public static short GetPS(VPacked* p) { return p->s; }
+    public static void SetPS(VPacked* p, short value) { p->s = value; }
+    public static bool GetUFlag(VUnion* p) { return p->flag; }
+    public static void SetUFlag(VUnion* p, bool value) { p->flag = value; }
+    // Compound assignment and increment: Get/Set carry the same body (compared with acc_add_i and acc_inc_s).
+    public static void GetAdd(VFields* p, int value) { p->i += value; }
+    public static void SetAdd(VFields* p, int value) { p->i += value; }
+    public static void GetInc(VFields* p) { p->s++; }
+    public static void SetInc(VFields* p) { p->s++; }
+}

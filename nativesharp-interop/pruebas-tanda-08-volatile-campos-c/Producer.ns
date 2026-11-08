@@ -1,0 +1,43 @@
+namespace Published
+{
+    public struct VBridge
+    {
+        public static VFields* Fields() { return v_fields(); }
+        public static VPacked* Packed() { return v_packed(); }
+        public static VUnion* Union() { return v_union(); }
+        public static int* Target() { return v_target(); }
+        public static long Layout(int id) { return v_layout(id); }
+        public static void Reset() { v_reset(); }
+        public static int Intact() { return v_neighbors_intact(); }
+        public static bool CGetFlag(VFields* p) { return acc_get_flag(p); }
+        public static void CSetFlag(VFields* p, bool value) { acc_set_flag(p, value); }
+        public static sbyte CGetC(VFields* p) { return acc_get_c(p); }
+        public static void CSetC(VFields* p, sbyte value) { acc_set_c(p, value); }
+        public static short CGetS(VFields* p) { return acc_get_s(p); }
+        public static void CSetS(VFields* p, short value) { acc_set_s(p, value); }
+        public static int CGetI(VFields* p) { return acc_get_i(p); }
+        public static void CSetI(VFields* p, int value) { acc_set_i(p, value); }
+        public static long CGetLl(VFields* p) { return acc_get_ll(p); }
+        public static void CSetLl(VFields* p, long value) { acc_set_ll(p, value); }
+        public static float CGetF(VFields* p) { return acc_get_f(p); }
+        public static void CSetF(VFields* p, float value) { acc_set_f(p, value); }
+        public static double CGetD(VFields* p) { return acc_get_d(p); }
+        public static void CSetD(VFields* p, double value) { acc_set_d(p, value); }
+        public static int* CGetPtr(VFields* p) { return acc_get_ptr(p); }
+        public static void CSetPtr(VFields* p, int* value) { acc_set_ptr(p, value); }
+        public static bool CGetFlags1(VFields* p) { return acc_get_flags1(p); }
+        public static void CSetFlags1(VFields* p, bool value) { acc_set_flags1(p, value); }
+        public static int CGetInts1(VFields* p) { return acc_get_ints1(p); }
+        public static void CSetInts1(VFields* p, int value) { acc_set_ints1(p, value); }
+        public static int CGetPI(VPacked* p) { return acc_get_pi(p); }
+        public static void CSetPI(VPacked* p, int value) { acc_set_pi(p, value); }
+        public static bool CGetPFlag(VPacked* p) { return acc_get_pflag(p); }
+        public static void CSetPFlag(VPacked* p, bool value) { acc_set_pflag(p, value); }
+        public static double CGetPD(VPacked* p) { return acc_get_pd(p); }
+        public static void CSetPD(VPacked* p, double value) { acc_set_pd(p, value); }
+        public static short CGetPS(VPacked* p) { return acc_get_ps(p); }
+        public static void CSetPS(VPacked* p, short value) { acc_set_ps(p, value); }
+        public static bool CGetUFlag(VUnion* p) { return acc_get_uflag(p); }
+        public static void CSetUFlag(VUnion* p, bool value) { acc_set_uflag(p, value); }
+    }
+}

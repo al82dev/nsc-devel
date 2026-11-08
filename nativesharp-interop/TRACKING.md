@@ -952,6 +952,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     tamaño, alineación, offsets, lectura y escritura. No ejecutado todavía.
   - `fe2fddfca` añade argumentos y resultados `_Bool` en llamada C; pendiente
     de ejecución, no demuestra aún su ABI.
+  - Control de campos volátiles C contra Clang (orden MS): la ejecución pasa O0–O3 en
+    directo, `Shared` y `Metadata`, pero 28 de 34 accesos no llevan `acquire`/`release`
+    (todos los escalares volátiles alineados, no sólo `_Bool`). Sigue abierto.
+    [Control](registro-commits/t08-volatile-campos-c-control.md).
 - [ ] T08-007. Mapear los tipos de punto flotante según el objetivo.
   - `long double` IEEE binary64 pasó en uso directo y biblioteca precompilada
     O0–O3. La suite pasó controles de catálogo, versión y fingerprint. Otras

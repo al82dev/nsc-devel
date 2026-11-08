@@ -1,0 +1,8 @@
+// Probe (records only): metadata-only consumer of ProbeOddProducer; uses only the imported field 'after'.
+int Main()
+{
+    var p = OddPublished.OddBridge.Odd();
+    p->after = 7;
+    if (OddPublished.OddBridge.After(p) != 7) return 1;
+    return 0;
+}

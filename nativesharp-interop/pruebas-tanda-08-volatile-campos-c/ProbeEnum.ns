@@ -1,0 +1,8 @@
+// Probe (records only): a volatile enum field of a C record. Today the field is not imported.
+int Main()
+{
+    VOdd* p = v_odd();
+    p->mood = v_mood_b();
+    if (v_mood_value(acc_get_mood_c(p)) != 2) return 1;
+    return 0;
+}

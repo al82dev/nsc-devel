@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CVolatileProbeInherited</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ProbeInherited.ns" />
+    <CppLibraryReference Header="ProbeApi.h" Language="C" Standard="c11" Library="probe.lib" />
+  </ItemGroup>
+</Project>

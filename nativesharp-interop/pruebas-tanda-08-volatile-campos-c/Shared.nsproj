@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup><Name>CVolatileShared</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+    <Compile Include="Access.ns" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" />
+    <LibraryReference Include="CVolatileProducer.lib" />
+  </ItemGroup>
+</Project>

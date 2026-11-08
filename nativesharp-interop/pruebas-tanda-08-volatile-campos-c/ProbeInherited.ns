@@ -1,0 +1,9 @@
+// Probe (records only): field of a volatile C global whose record fields are not volatile themselves.
+int Main()
+{
+    v_plain_global.i = 5;
+    if (acc_get_plain_i() != 5) return 1;
+    acc_set_plain_i(6);
+    if (v_plain_global.i != 6) return 2;
+    return 0;
+}

@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CVolatileMetadata</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+    <Compile Include="Access.ns" />
+    <LibraryReference Include="CVolatileProducer.lib" />
+  </ItemGroup>
+</Project>

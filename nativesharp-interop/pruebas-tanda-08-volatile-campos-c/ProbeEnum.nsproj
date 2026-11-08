@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CVolatileProbeEnum</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ProbeEnum.ns" />
+    <CppLibraryReference Header="ProbeApi.h" Language="C" Standard="c11" Library="probe.lib" />
+  </ItemGroup>
+</Project>

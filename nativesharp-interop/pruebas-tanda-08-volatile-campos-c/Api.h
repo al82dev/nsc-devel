@@ -1,0 +1,58 @@
+typedef struct VFields
+{
+    char tag;
+    volatile _Bool flag;
+    volatile signed char c;
+    volatile short s;
+    volatile int i;
+    volatile long long ll;
+    volatile float f;
+    volatile double d;
+    int* volatile ptr;
+    volatile _Bool flags[2];
+    volatile int ints[2];
+    int after;
+} VFields;
+#pragma pack(push, 1)
+typedef struct VPacked { char tag; volatile int i; volatile _Bool flag; volatile double d; volatile short s; } VPacked;
+#pragma pack(pop)
+typedef union VUnion { volatile _Bool flag; volatile int i; } VUnion;
+VFields* v_fields(void);
+VPacked* v_packed(void);
+VUnion* v_union(void);
+int* v_target(void);
+long long v_layout(int id);
+void v_reset(void);
+int v_neighbors_intact(void);
+_Bool acc_get_flag(VFields* p);
+void acc_set_flag(VFields* p, _Bool value);
+signed char acc_get_c(VFields* p);
+void acc_set_c(VFields* p, signed char value);
+short acc_get_s(VFields* p);
+void acc_set_s(VFields* p, short value);
+int acc_get_i(VFields* p);
+void acc_set_i(VFields* p, int value);
+long long acc_get_ll(VFields* p);
+void acc_set_ll(VFields* p, long long value);
+float acc_get_f(VFields* p);
+void acc_set_f(VFields* p, float value);
+double acc_get_d(VFields* p);
+void acc_set_d(VFields* p, double value);
+int* acc_get_ptr(VFields* p);
+void acc_set_ptr(VFields* p, int* value);
+_Bool acc_get_flags1(VFields* p);
+void acc_set_flags1(VFields* p, _Bool value);
+int acc_get_ints1(VFields* p);
+void acc_set_ints1(VFields* p, int value);
+int acc_get_pi(VPacked* p);
+void acc_set_pi(VPacked* p, int value);
+_Bool acc_get_pflag(VPacked* p);
+void acc_set_pflag(VPacked* p, _Bool value);
+double acc_get_pd(VPacked* p);
+void acc_set_pd(VPacked* p, double value);
+short acc_get_ps(VPacked* p);
+void acc_set_ps(VPacked* p, short value);
+_Bool acc_get_uflag(VUnion* p);
+void acc_set_uflag(VUnion* p, _Bool value);
+void acc_add_i(VFields* p, int value);
+void acc_inc_s(VFields* p);

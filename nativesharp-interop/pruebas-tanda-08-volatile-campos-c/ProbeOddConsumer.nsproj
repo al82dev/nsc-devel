@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CVolatileOddConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ProbeOddConsumer.ns" />
+    <LibraryReference Include="CVolatileOddProducer.lib" />
+  </ItemGroup>
+</Project>

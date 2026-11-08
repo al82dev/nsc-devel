@@ -1,0 +1,17 @@
+flag acc_get_flag acc_set_flag Flag 0
+c acc_get_c acc_set_c C 0
+s acc_get_s acc_set_s S 0
+i acc_get_i acc_set_i I 0
+ll acc_get_ll acc_set_ll Ll 0
+f acc_get_f acc_set_f F 0
+d acc_get_d acc_set_d D 0
+ptr acc_get_ptr acc_set_ptr Ptr 0
+flags1 acc_get_flags1 acc_set_flags1 Flags1 0
+ints1 acc_get_ints1 acc_set_ints1 Ints1 0
+pi acc_get_pi acc_set_pi PI 0
+pflag acc_get_pflag acc_set_pflag PFlag 0
+pd acc_get_pd acc_set_pd PD 0
+ps acc_get_ps acc_set_ps PS 0
+uflag acc_get_uflag acc_set_uflag UFlag 0
+add acc_add_i acc_add_i Add 0
+inc acc_inc_s acc_inc_s Inc 0
