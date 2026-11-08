@@ -1,0 +1,7 @@
+# Tanda 8: DLL homónima ya cargada en el proceso
+
+El control carga primero `foreign/api2.dll`, cuya TLS vale 99, y después usa desde NativeSharp la TLS de la `api2.dll` declarada, cuyo valor inicial es 7. Antes del cambio el consumidor salía con código 3 al seleccionar la DLL ajena por su nombre base. El comportamiento coincide con la documentación de [GetModuleHandleEx](https://learn.microsoft.com/en-us/windows/desktop/api/libloaderapi/nf-libloaderapi-getmodulehandleexa), que indica que el nombre base puede ser ambiguo.
+
+La función generada obtiene el módulo que contiene su propio código, forma la ruta absoluta de la DLL junto a ese módulo con APIs Unicode y la busca o carga por ruta. Conserva el módulo fijado antes de resolver la exportación. El runtime generado incluye las importaciones de Windows correspondientes; no se modifica NSLink ni el formato de metadata.
+
+`tls-dll-preexistente/validar-optimizaciones.cmd` pasó en O0–O3, tanto en una salida aislada con espacios como al ejecutar desde `A:\`. También pasaron los controles dirigidos de dos hilos, dependencia transitiva, una DLL compartida, empaquetado aislado y restauración desde caché. El control C de dos DLL homónimas carga ambas por rutas absolutas incluso desde otro directorio; NSC todavía diagnostica esa configuración como pendiente de soporte y empaquetado. La prueba de rutas con caracteres fuera de la página de códigos y la validación completa de la tanda permanecen pendientes.

@@ -27,6 +27,10 @@ lld-link.exe /nologo /entry:mainCRTStartup /subsystem:console /nodefaultlib /out
 if errorlevel 1 (type mismonombre-control.log & popd & exit /b 1)
 ControlMismoNombre.exe
 if errorlevel 1 (echo ERROR: control C de DLL de igual nombre fallo. & popd & exit /b 1)
+pushd A:\ || (popd & exit /b 1)
+"%DEST%\ControlMismoNombre.exe"
+if errorlevel 1 (echo ERROR: control C desde otro directorio fallo. & popd & popd & exit /b 1)
+popd
 echo Control C de DLL de igual nombre: correcto.
 del TlsApi.h
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe ConsumerMismoNombre.nsproj -O0 --no-artifact-cache -o ConsumerSame.exe > mismonombre-consumer.log 2>&1
