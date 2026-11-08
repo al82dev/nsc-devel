@@ -1,0 +1,1 @@
+namespace TlsLib2 { public class Bridge { public static int Access<T>(T unused, int value) { if (value != 0) tls_exported = value; return tls_exported; } } }
