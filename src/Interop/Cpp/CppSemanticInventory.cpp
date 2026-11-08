@@ -1348,7 +1348,7 @@ bool provideCppTypeAliasesWithPrecompiledCatalogs(const compilation::ProjectGrap
     {
         const auto& alias = result[i];
         const auto& type = alias.declaration.underlyingType;
-        if (type.kind == CppTypeKind::Record ||
+        if (type.kind == CppTypeKind::Record || type.kind == CppTypeKind::Enumeration ||
             (type.kind == CppTypeKind::Pointer && type.element &&
              (type.element->kind == CppTypeKind::Function || type.element->kind == CppTypeKind::Record)))
             functionAliases[{alias.declaration.qualifiedName, alias.targetTriple}].push_back(i);
@@ -1362,7 +1362,7 @@ bool provideCppTypeAliasesWithPrecompiledCatalogs(const compilation::ProjectGrap
             if (a.projectOrdinal == b.projectOrdinal || a.targetTriple != b.targetTriple ||
                 a.declaration.qualifiedName != b.declaration.qualifiedName ||
                 a.declaration.underlyingType.canonicalSpelling != b.declaration.underlyingType.canonicalSpelling) continue;
-            bool comparedRecord = false;
+            bool comparedNominal = false;
             const auto sameType = [&](const auto& self, const CppType& left, const CppType& right,
                                       unsigned depth) -> bool {
                 if (depth > 64 || left.kind != right.kind || left.isConst != right.isConst ||
@@ -1386,9 +1386,32 @@ bool provideCppTypeAliasesWithPrecompiledCatalogs(const compilation::ProjectGrap
                     if (!metadata_detail::compareCRecordClosureEvidence(catalogRecords, catalogEnums, l->identityKey,
                             catalogRecords, catalogEnums, r->identityKey, verdict, comparisonError, true) ||
                         verdict != metadata_detail::CRecordContractComparison::Matching) return false;
-                    comparedRecord = true;
+                    comparedNominal = true;
                 }
-                else if (left.kind == CppTypeKind::Enumeration || left.kind == CppTypeKind::Unsupported)
+                else if (left.kind == CppTypeKind::Enumeration)
+                {
+                    if (!left.enumIdentity || !right.enumIdentity || !left.enumIdentity->clangUsr ||
+                        left.enumIdentity->clangUsr != right.enumIdentity->clangUsr ||
+                        left.enumIdentity->name.empty() || right.enumIdentity->name != left.enumIdentity->name)
+                        return false;
+                    const auto find = [&](std::size_t project) {
+                        const compilation::TypeIdentity identity(graph.projects()[project].moduleName(), {}, {},
+                                                                 left.enumIdentity->name);
+                        return std::find_if(catalogEnums.begin(), catalogEnums.end(), [&](const auto& enumeration) {
+                            return identity.isValid() && enumeration.identityKey == identity.key() &&
+                                enumeration.declaration.clangUsr == left.enumIdentity->clangUsr;
+                        });
+                    };
+                    const auto l = find(a.projectOrdinal);
+                    const auto r = find(b.projectOrdinal);
+                    if (l == catalogEnums.end() || r == catalogEnums.end()) return false;
+                    metadata_detail::CRecordContractComparison verdict{};
+                    std::string comparisonError;
+                    if (!metadata_detail::compareCEnumSourceEvidence(*l, *r, verdict, comparisonError, true, true) ||
+                        verdict != metadata_detail::CRecordContractComparison::Matching) return false;
+                    comparedNominal = true;
+                }
+                else if (left.kind == CppTypeKind::Unsupported)
                     return false;
                 if (bool(left.element) != bool(right.element) || bool(left.function) != bool(right.function)) return false;
                 if (left.element && !self(self, *left.element, *right.element, depth + 1)) return false;
@@ -1404,7 +1427,7 @@ bool provideCppTypeAliasesWithPrecompiledCatalogs(const compilation::ProjectGrap
                 }
                 return true;
             };
-            if (sameType(sameType, a.declaration.underlyingType, b.declaration.underlyingType, 0) && comparedRecord)
+            if (sameType(sameType, a.declaration.underlyingType, b.declaration.underlyingType, 0) && comparedNominal)
             {
                 a.equivalentRecordFunctionAliases.emplace_back(b.projectOrdinal, b.referenceIndex);
                 b.equivalentRecordFunctionAliases.emplace_back(a.projectOrdinal, a.referenceIndex);

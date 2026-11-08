@@ -1350,6 +1350,14 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     if (const auto* failure = std::get_if<CppRecordStructuralComparisonFailure>(&refined))
     { error = failure->message; return false; }
     const auto& groups = std::get<CppRecordGroups>(refined).groups;
+    std::vector<CppSemanticEnumEntry> aliasEnums;
+    if (!dependencies.aliases.empty())
+    {
+        auto observed = collectCppSemanticEnums(*graph, compilation.cppProjectSessions());
+        if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&observed))
+        { error = failure->message; return false; }
+        aliasEnums = std::move(std::get<std::vector<CppSemanticEnumEntry>>(observed));
+    }
     // A public generic body may mention only a typedef whose function signature
     // contains a record. The callable metadata above does not see that type:
     // seed its C record closure from the captured alias before publication.
@@ -1368,6 +1376,18 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                     if (entry.projectOrdinal == project && !entry.declaration.isCxx && entry.identity &&
                         entry.declaration.clangUsr == type.recordIdentity->clangUsr)
                         seeds[project].insert(entry.identity->key());
+            }
+            if (type.kind == CppTypeKind::Enumeration && type.enumIdentity &&
+                type.enumIdentity->clangUsr && !type.enumIdentity->clangUsr->empty())
+            {
+                for (const auto& entry : aliasEnums)
+                    if (entry.projectOrdinal == project && !entry.declaration.isCxx &&
+                        !entry.declaration.name.empty() &&
+                        entry.declaration.clangUsr == type.enumIdentity->clangUsr)
+                    {
+                        compilation::TypeIdentity identity(owner->moduleName(), {}, {}, entry.declaration.name);
+                        if (identity.isValid()) enumSeeds[project].insert(identity.key());
+                    }
             }
             if (type.element && !self(self, *type.element, depth + 1)) return false;
             if (type.function)

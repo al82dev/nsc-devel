@@ -1114,7 +1114,8 @@ bool compareCRecordContracts(const CppCRecordSnapshot& left, const CppCRecordSna
 
 bool compareCEnumSourceEvidence(const CppCEnumSnapshot& left, const CppCEnumSnapshot& right,
                                 CRecordContractComparison& result, std::string& error,
-                                bool allowEquivalentDistinctSources)
+                                bool allowEquivalentDistinctSources,
+                                bool allowBothSourcesMissing)
 {
     const auto& a = left.declaration;
     const auto& b = right.declaration;
@@ -1148,7 +1149,8 @@ bool compareCEnumSourceEvidence(const CppCEnumSnapshot& left, const CppCEnumSnap
                 source.byteOffset < size && basic::sha256Hex(digest) == source.bufferSha256 ? 1 : -1;
         };
         const auto leftState = state(first), rightState = state(second);
-        if ((leftState == 0 && rightState == 1) || (leftState == 1 && rightState == 0))
+        if ((leftState == 0 && rightState == 1) || (leftState == 1 && rightState == 0) ||
+            (allowBothSourcesMissing && leftState == 0 && rightState == 0))
         { result = CRecordContractComparison::Matching; error.clear(); return true; }
     }
     if (!allowEquivalentDistinctSources &&

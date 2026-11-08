@@ -132,7 +132,8 @@ bool compareCRecordSourceEvidence(const CppCRecordSnapshot& left, const CppCReco
                                   CRecordContractComparison& result, std::string& error);
 bool compareCEnumSourceEvidence(const CppCEnumSnapshot& left, const CppCEnumSnapshot& right,
                                 CRecordContractComparison& result, std::string& error,
-                                bool allowEquivalentDistinctSources = false);
+                                bool allowEquivalentDistinctSources = false,
+                                bool allowBothSourcesMissing = false);
 bool compareCRecordClosureEvidence(std::span<const CppCRecordSnapshot> leftRecords,
     std::span<const CppCEnumSnapshot> leftEnums, std::string_view leftRoot,
     std::span<const CppCRecordSnapshot> rightRecords, std::span<const CppCEnumSnapshot> rightEnums,

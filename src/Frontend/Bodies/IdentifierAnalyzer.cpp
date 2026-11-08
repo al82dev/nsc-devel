@@ -993,6 +993,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
                 return states[ordinal].projectOrdinal != reference.projectOrdinal;
             });
     }
+    // Each transported template retains the C enum constants of its producer.
+    // A consumer without such an owner must still diagnose ambiguous constants.
+    if (candidates.size() > 1 &&
+        std::all_of(candidates.begin(), candidates.end(), [&](const auto ordinal) {
+            return ordinal < states.size() && states[ordinal].isCppEnumConstant;
+        }) &&
+        std::any_of(candidates.begin(), candidates.end(), [&](const auto ordinal) {
+            return states[ordinal].projectOrdinal == reference.projectOrdinal;
+        }))
+        std::erase_if(candidates, [&](const auto ordinal) {
+            return states[ordinal].projectOrdinal != reference.projectOrdinal;
+        });
     if (candidates.size() > 1 && candidates.front() < states.size())
     {
         const auto& first = states[candidates.front()];
