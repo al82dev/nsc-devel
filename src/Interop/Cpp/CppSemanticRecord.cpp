@@ -543,6 +543,65 @@ std::optional<compilation::TypeIdentity> projectCppRecordIdentity(
     return identity;
 }
 
+std::variant<std::vector<CppRecordDeclaration>, std::string> materializeCppAnonymousCRecords(
+    const CppRecordDeclaration& owner)
+{
+    if (owner.isCxx || !owner.complete || owner.name.empty() || owner.anonymousContext)
+        return std::string("anonymous C record owner is not a named complete C record");
+    std::vector<CppRecordDeclaration> result{owner};
+    result.front().anonymousCRecords.clear();
+    std::map<std::vector<std::size_t>, std::size_t> ordinalByPath{{{}, 0}};
+    std::vector<const CppAnonymousCRecord*> ordered;
+    for (const auto& record : owner.anonymousCRecords) ordered.push_back(&record);
+    std::sort(ordered.begin(), ordered.end(), [](const auto* a, const auto* b) {
+        return a->carrierPath.size() == b->carrierPath.size() ? a->carrierPath < b->carrierPath
+                                                               : a->carrierPath.size() < b->carrierPath.size();
+    });
+    for (const auto* nested : ordered)
+    {
+        if (nested->carrierPath.empty()) return std::string("anonymous C record has an empty carrier path");
+        auto parentPath = nested->carrierPath;
+        const auto index = parentPath.back();
+        parentPath.pop_back();
+        const auto parent = ordinalByPath.find(parentPath);
+        if (parent == ordinalByPath.end() || ordinalByPath.contains(nested->carrierPath))
+            return std::string("anonymous C record path is missing a parent or duplicated");
+        auto& containing = result[parent->second];
+        if (index >= containing.fields.size() || !containing.fields[index].isAnonymousCarrier ||
+            containing.fields[index].type.kind != CppTypeKind::Record || !nested->sizeBits || !nested->alignmentBits)
+            return std::string("anonymous C record carrier or dimensions are invalid");
+        const auto name = "__nsc_c_anonymous_" + std::to_string(index);
+        if (std::any_of(containing.fields.begin(), containing.fields.end(), [&](const auto& field) {
+                return field.name == name;
+            })) return std::string("anonymous C carrier name conflicts with a source field");
+        CppRecordDeclaration child;
+        child.name = name;
+        child.qualifiedName = containing.qualifiedName + "::" + name;
+        child.namespaceSegments = containing.namespaceSegments;
+        child.containingRecords = containing.containingRecords;
+        child.containingRecords.push_back(containing.name);
+        child.kind = nested->kind;
+        child.access = CppAccess::Public;
+        child.complete = true;
+        child.sizeBits = nested->sizeBits;
+        child.alignmentBits = nested->alignmentBits;
+        child.fields = nested->fields;
+        child.isCxx = false;
+        auto& carrier = containing.fields[index];
+        child.clangUsr = carrier.type.recordIdentity ? carrier.type.recordIdentity->clangUsr : std::nullopt;
+        carrier.name = name;
+        carrier.type.recordIdentity = CppRecordTypeIdentity{name, child.namespaceSegments,
+            child.containingRecords, false, false, child.clangUsr};
+        ordinalByPath.emplace(nested->carrierPath, result.size());
+        result.push_back(std::move(child));
+    }
+    for (const auto& declaration : result)
+        for (const auto& field : declaration.fields)
+            if (field.isAnonymousCarrier && field.name.empty())
+                return std::string("anonymous C carrier has no captured aggregate");
+    return result;
+}
+
 std::optional<compilation::TypeIdentity> projectCppRecordTypeIdentity(
     const CppType& type, std::string_view moduleName)
 {

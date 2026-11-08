@@ -92,6 +92,11 @@ using CppSemanticRecordsResult = std::variant<std::vector<CppSemanticRecordEntry
 CppSemanticRecordsResult collectCppSemanticRecords(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects);
 
+// Produces an owner followed by internally named anonymous C aggregates, or a diagnostic.
+// The input observation is never modified; this does not install or publish the results.
+std::variant<std::vector<CppRecordDeclaration>, std::string> materializeCppAnonymousCRecords(
+    const CppRecordDeclaration& owner);
+
 enum class CppRecordGroupStatus { ForwardOnly, OneDefinition, MultipleDefinitionsUnverified,
                                   MultipleDefinitionsPointerCompatible, Conflict };
 struct CppRecordGroup

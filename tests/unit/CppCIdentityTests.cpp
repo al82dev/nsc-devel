@@ -342,6 +342,23 @@ bool checkUsrStability(CppClangSessionFactory& factory, const std::string& resou
                 deepStruct->fields[0].name == "z" && deepStruct->fields[0].offsetBits == 0 &&
                 deepStruct->sizeBits == 16 && deepStruct->alignmentBits == 16,
                 "anonymous aggregates preserve nested paths, layout and source fields");
+            const auto materialized = materializeCppAnonymousCRecords(*record);
+            const auto* declarations = std::get_if<std::vector<CppRecordDeclaration>>(&materialized);
+            carriersOk &= expect(declarations && declarations->size() == 4 &&
+                (*declarations)[0].fields[1].name == "__nsc_c_anonymous_1" &&
+                (*declarations)[0].fields[1].type.recordIdentity &&
+                (*declarations)[0].fields[1].type.recordIdentity->containingRecords ==
+                    std::vector<std::string>{"CIdCarriers"} &&
+                (*declarations)[1].kind == CppRecordKind::Union &&
+                (*declarations)[1].fields[2].name == "__nsc_c_anonymous_2" &&
+                (*declarations)[3].containingRecords ==
+                    std::vector<std::string>({"CIdCarriers", "__nsc_c_anonymous_1"}) &&
+                record->fields[1].name.empty(),
+                "anonymous records get deterministic nested identities without modifying the Clang observation");
+            auto conflicting = *record;
+            conflicting.fields[0].name = "__nsc_c_anonymous_1";
+            carriersOk &= expect(std::holds_alternative<std::string>(materializeCppAnonymousCRecords(conflicting)),
+                "anonymous carrier names do not overwrite a source field");
         }
     }
     const auto againTable = collectUsrs(*again);
