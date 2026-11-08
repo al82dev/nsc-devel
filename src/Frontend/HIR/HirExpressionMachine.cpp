@@ -2756,6 +2756,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerLiteralExpressionImp
         {
             auto node = makeNode(ProjectOopHirNodeKind::FloatingConstant, expression, resultType);
             node->floatingValue = expression->floatingValue();
+            if (resultType == "builtin:decimal") node->stringValue = expression->text();
             return node;
         }
         case ast::AstNodeKind::StringLiteralExpression:

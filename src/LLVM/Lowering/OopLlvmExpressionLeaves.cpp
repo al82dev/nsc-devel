@@ -4,9 +4,59 @@
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
 
+#include <charconv>
+#include <limits>
+
 namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
+
+// Converts an exact decimal token to its coefficient and scale without a binary FP round trip.
+static bool decimalLiteralParts(std::string_view text, std::uint64_t& coefficient, int& scale)
+{
+    if (text.empty() || (text.back() != 'm' && text.back() != 'M')) return false;
+    text.remove_suffix(1);
+    const std::size_t exponentAt = text.find_first_of("eE");
+    std::string_view mantissa = text.substr(0, exponentAt);
+    int exponent = 0;
+    if (exponentAt != std::string_view::npos)
+    {
+        std::string_view exp = text.substr(exponentAt + 1);
+        if (exp.starts_with('+')) exp.remove_prefix(1);
+        const auto parsed = std::from_chars(exp.data(), exp.data() + exp.size(), exponent);
+        if (parsed.ec != std::errc{} || parsed.ptr != exp.data() + exp.size()) return false;
+    }
+    std::string digits;
+    int fractionalDigits = 0;
+    bool fractional = false;
+    for (char character : mantissa)
+    {
+        if (character == '.')
+        {
+            if (fractional) return false;
+            fractional = true;
+        }
+        else if (character >= '0' && character <= '9')
+        {
+            digits.push_back(character);
+            if (fractional) ++fractionalDigits;
+        }
+        else return false;
+    }
+    if (digits.empty()) return false;
+    const auto parsed = std::from_chars(digits.data(), digits.data() + digits.size(), coefficient);
+    if (parsed.ec != std::errc{} || parsed.ptr != digits.data() + digits.size()) return false;
+    const long long effectiveScale = static_cast<long long>(fractionalDigits) - exponent;
+    if (effectiveScale > 63 || effectiveScale < -19) return false;
+    scale = static_cast<int>(effectiveScale);
+    while (scale < 0)
+    {
+        if (coefficient > std::numeric_limits<std::uint64_t>::max() / 10U) return false;
+        coefficient *= 10U;
+        ++scale;
+    }
+    return true;
+}
 
 LLVMValueRef OopLlvmImplementation::lowerLeafExpression(const frontend::ProjectOopMirNode* node, std::string& error)
 {
@@ -44,8 +94,11 @@ LLVMValueRef OopLlvmImplementation::lowerLeafExpression(const frontend::ProjectO
                     // value is assembled with builder instructions.
                     std::uint64_t coefficient = 0;
                     int scale = 0;
-                    if (!decimalCoefficientAndScale(node->floatingValue, coefficient, scale))
-                        return failValue(error, "decimal literal coefficient exceeds 64 bits in Stage 34");
+                    const bool valid = node->stringValue.empty()
+                        ? decimalCoefficientAndScale(node->floatingValue, coefficient, scale)
+                        : decimalLiteralParts(node->stringValue, coefficient, scale);
+                    if (!valid)
+                        return failValue(error, "decimal literal coefficient or scale is out of range in Stage 34");
                     LLVMValueRef lo = LLVMConstInt(type, coefficient, 0);
                     LLVMValueRef scaleValue = LLVMConstInt(
                         type, static_cast<std::uint64_t>(scale), 0);
