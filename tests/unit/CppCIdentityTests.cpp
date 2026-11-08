@@ -951,6 +951,29 @@ bool checkDependencyTypeCodec()
     decodedAlias.moduleName = "sentinel";
     ok &= expect(!decodeCDependencyAlias(aliasBytes, decodedAlias, error) && decodedAlias.moduleName == "sentinel",
         "truncated C dependency alias preserves output on failure");
+    CDependencyCatalog catalogue;
+    catalogue.functions.push_back(function);
+    catalogue.globals.push_back(global);
+    catalogue.aliases.push_back(alias);
+    std::vector<std::uint8_t> catalogueBytes;
+    CDependencyCatalog restoredCatalogue;
+    ok &= expect(encodeCDependencyCatalog(catalogue, catalogueBytes, error) &&
+        decodeCDependencyCatalog(catalogueBytes, restoredCatalogue, error) &&
+        restoredCatalogue.functions.size() == 1 && restoredCatalogue.globals.size() == 1 &&
+        restoredCatalogue.aliases.size() == 1 &&
+        restoredCatalogue.functions[0].linkSymbol == function.linkSymbol &&
+        restoredCatalogue.globals[0].declaration.threadLocal &&
+        restoredCatalogue.aliases[0].declaration.clangUsr == alias.declaration.clangUsr,
+        "C dependency catalogue preserves three declaration categories");
+    catalogue.functions.push_back(function);
+    std::vector<std::uint8_t> unchangedCatalogue{42};
+    ok &= expect(!encodeCDependencyCatalog(catalogue, unchangedCatalogue, error) &&
+        unchangedCatalogue == std::vector<std::uint8_t>{42},
+        "C dependency catalogue rejects duplicate snapshots without changing output");
+    if (!catalogueBytes.empty()) catalogueBytes.pop_back();
+    restoredCatalogue.functions.clear();
+    ok &= expect(!decodeCDependencyCatalog(catalogueBytes, restoredCatalogue, error) &&
+        restoredCatalogue.functions.empty(), "truncated C dependency catalogue preserves output");
     return ok;
 }
 

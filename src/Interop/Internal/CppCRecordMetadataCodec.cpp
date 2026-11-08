@@ -14,6 +14,7 @@
 #include <map>
 #include <memory>
 #include <set>
+#include <type_traits>
 #include <utility>
 
 namespace nativesharp::interop::metadata_detail
@@ -557,6 +558,77 @@ bool decodeCDependencyAlias(std::span<const std::uint8_t> bytes,
         canonical.size() != bytes.size() || !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
     { error = "noncanonical C dependency alias"; return false; }
     output = std::move(value);
+    error.clear();
+    return true;
+}
+
+bool encodeCDependencyCatalog(const CDependencyCatalog& catalog,
+    std::vector<std::uint8_t>& output, std::string& error)
+{
+    ByteWriter writer;
+    writer.u8(1);
+    const auto writeGroup = [&](const auto& values, auto encode) {
+        if (values.size() > maxItems) return false;
+        std::vector<std::vector<std::uint8_t>> items;
+        items.reserve(values.size());
+        for (const auto& value : values)
+        {
+            std::vector<std::uint8_t> bytes;
+            if (!encode(value, bytes, error) || bytes.size() > std::numeric_limits<std::uint32_t>::max()) return false;
+            items.push_back(std::move(bytes));
+        }
+        std::sort(items.begin(), items.end());
+        if (std::adjacent_find(items.begin(), items.end()) != items.end())
+        { error = "duplicate C dependency snapshot"; return false; }
+        writer.u32(static_cast<std::uint32_t>(items.size()));
+        for (const auto& bytes : items)
+        {
+            writer.u32(static_cast<std::uint32_t>(bytes.size()));
+            writer.raw(bytes);
+        }
+        return true;
+    };
+    if (!writeGroup(catalog.functions, encodeCDependencyFunction) ||
+        !writeGroup(catalog.globals, encodeCDependencyGlobal) ||
+        !writeGroup(catalog.aliases, encodeCDependencyAlias))
+    { if (error.empty()) error = "invalid C dependency catalogue"; return false; }
+    output = writer.takeBytes();
+    error.clear();
+    return true;
+}
+
+bool decodeCDependencyCatalog(std::span<const std::uint8_t> bytes,
+    CDependencyCatalog& output, std::string& error)
+{
+    ByteReader reader(bytes);
+    CDependencyCatalog catalog;
+    std::uint8_t version = 0;
+    if (!reader.u8(version) || version != 1)
+    { error = "invalid C dependency catalogue version"; return false; }
+    const auto readGroup = [&](auto& values, auto decode) {
+        std::uint32_t count = 0;
+        if (!reader.u32(count) || count > maxItems || count > reader.remaining() / 4) return false;
+        values.reserve(count);
+        for (std::uint32_t i = 0; i < count; ++i)
+        {
+            std::uint32_t size = 0;
+            if (!reader.u32(size) || size > reader.remaining()) return false;
+            std::vector<std::uint8_t> encoded(size);
+            typename std::decay_t<decltype(values)>::value_type value;
+            if (!reader.raw(encoded) || !decode(encoded, value, error)) return false;
+            values.push_back(std::move(value));
+        }
+        return true;
+    };
+    if (!readGroup(catalog.functions, decodeCDependencyFunction) ||
+        !readGroup(catalog.globals, decodeCDependencyGlobal) ||
+        !readGroup(catalog.aliases, decodeCDependencyAlias))
+    { if (error.empty()) error = "invalid C dependency catalogue"; return false; }
+    std::vector<std::uint8_t> canonical;
+    if (!reader.atEnd() || !encodeCDependencyCatalog(catalog, canonical, error) ||
+        canonical.size() != bytes.size() || !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
+    { error = "noncanonical C dependency catalogue"; return false; }
+    output = std::move(catalog);
     error.clear();
     return true;
 }

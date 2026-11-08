@@ -54,6 +54,17 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
     std::vector<std::uint8_t>& output, std::string& error);
 bool decodeCDependencyAlias(std::span<const std::uint8_t> bytes,
     CDependencyAliasSnapshot& output, std::string& error);
+struct CDependencyCatalog
+{
+    std::vector<CDependencyFunctionSnapshot> functions;
+    std::vector<CDependencyGlobalSnapshot> globals;
+    std::vector<CDependencyAliasSnapshot> aliases;
+};
+// Canonical independent snapshot; not yet embedded in a published library.
+bool encodeCDependencyCatalog(const CDependencyCatalog& catalog,
+    std::vector<std::uint8_t>& output, std::string& error);
+bool decodeCDependencyCatalog(std::span<const std::uint8_t> bytes,
+    CDependencyCatalog& output, std::string& error);
 // Internal catalogue codec. It does not by itself publish an NSMETA section.
 // Both functions leave their output unchanged on failure.
 bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
