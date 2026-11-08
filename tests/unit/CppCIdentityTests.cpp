@@ -2602,11 +2602,16 @@ bool checkCatalogueVersions(const std::filesystem::path& nsmeta, const std::file
     const auto version = leadingWord(metadata.cppCRecordCatalog);
     std::cout << "PRODUCER " << stem << ": NSMETA 1." << metadata.formatMinor << " envelope=" << version
               << " records=" << records.size() << " enums=" << enums.size() << '\n';
-    const std::uint16_t written = version == 1 ? 43 : version == 2 ? 44 : 45;
-    bool ok = expect(metadata.formatMinor == written && metadata_detail::isCTypeCatalogWithProvenance(
-                         metadata.cppCRecordCatalog), stem + " uses the lowest minor that represents its envelope");
     std::string error;
-    if (version == 1)
+    const std::uint16_t written = version == 7 ? 49 : version == 1 ? 43 : version == 2 ? 44 : 45;
+    bool ok = expect(metadata.formatMinor == written && (version == 7 ||
+        metadata_detail::isCTypeCatalogWithProvenance(metadata.cppCRecordCatalog)),
+        stem + " uses the lowest minor that represents its envelope");
+    std::vector<std::uint8_t> historical = metadata.cppCRecordCatalog;
+    if (version == 7 && !metadata_detail::encodeCTypeCatalogWithProvenance(records, enums, historical, error))
+        return expect(false, stem + " historical catalogue encoding");
+    const auto historicalVersion = leadingWord(historical);
+    if (historicalVersion == 1)
     {
         std::vector<std::uint8_t> legacy;
         ok &= expect(metadata_detail::encodeCTypeCatalog(records, enums, legacy, error), stem + " legacy encoding");
@@ -2614,8 +2619,8 @@ bool checkCatalogueVersions(const std::filesystem::path& nsmeta, const std::file
     }
     for (const std::uint16_t minor : {std::uint16_t{43}, std::uint16_t{44}, std::uint16_t{45}})
     {
-        if (!envelopeVersionAllowed(minor, version)) continue;
-        ok &= checkCatalogueVariant(metadata, stem, minor, metadata.cppCRecordCatalog, directory, true);
+        if (!envelopeVersionAllowed(minor, historicalVersion)) continue;
+        ok &= checkCatalogueVariant(metadata, stem, minor, historical, directory, true);
     }
     return ok;
 }
