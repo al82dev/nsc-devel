@@ -1038,9 +1038,10 @@ bool ProjectMethodBodyModel::validateAssignmentTargetStorage(
     return true;
 }
 
-void ProjectMethodBodyModel::recordViewAssignmentRoot(
+bool ProjectMethodBodyModel::recordViewAssignmentRoot(
     const ast::AstNode* expression,
-    std::size_t scopeOrdinal)
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics)
 {
     const ast::AstNode* viewAssignmentRoot = expression->first();
     while (viewAssignmentRoot != nullptr &&
@@ -1049,16 +1050,35 @@ void ProjectMethodBodyModel::recordViewAssignmentRoot(
         viewAssignmentRoot = viewAssignmentRoot->first();
     }
     if (viewAssignmentRoot == nullptr ||
-        viewAssignmentRoot->kind() != ast::AstNodeKind::IdentifierExpression) return;
+        viewAssignmentRoot->kind() != ast::AstNodeKind::IdentifierExpression) return true;
     const std::optional<ScopeName> viewTarget =
         lookupScopeName(scopeOrdinal, viewAssignmentRoot->text());
     if (!viewTarget.has_value() || viewTarget->kind != ScopeNameKind::Local ||
         viewTarget->semanticOrdinal >= locals_.size() ||
-        !typeKeyIsViewLike(locals_[viewTarget->semanticOrdinal].typeKey) ||
-        !locals_[viewTarget->semanticOrdinal].viewRootLocalName.empty()) return;
+        !typeKeyIsViewLike(locals_[viewTarget->semanticOrdinal].typeKey)) return true;
     const std::optional<std::string> root =
         viewRootLocalOfExpression(expression->second(), scopeOrdinal);
-    if (root.has_value()) locals_[viewTarget->semanticOrdinal].viewRootLocalName = *root;
+    if (!root.has_value()) return true;
+    MethodLocalSymbol& target = locals_[viewTarget->semanticOrdinal];
+    const auto owner = lookupScopeName(scopeOrdinal, *root);
+    if (owner.has_value() && owner->kind == ScopeNameKind::Local &&
+        owner->semanticOrdinal < locals_.size() &&
+        !scopeContains(locals_[owner->semanticOrdinal].scopeOrdinal, target.scopeOrdinal))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "view borrowed from local '" + *root + "' cannot be stored in a longer-lived local");
+        return false;
+    }
+    if (!target.viewRootLocalName.empty() && target.viewRootLocalName != *root)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidAssignmentTarget,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "view reassignment has a different local owner; its lifetime cannot be proven");
+        return false;
+    }
+    target.viewRootLocalName = *root;
+    return true;
 }
 
 void ProjectMethodBodyModel::appendUniqueOrdinal(
@@ -2162,7 +2182,7 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
         assignmentTargetLocal, assignmentTargetParameter, expression, scopeOrdinal);
     if (!validateAssignmentTargetStorage(
             expression, right, assignmentTargetLocal, scopeOrdinal, diagnostics)) return false;
-    recordViewAssignmentRoot(expression, scopeOrdinal);
+    if (!recordViewAssignmentRoot(expression, scopeOrdinal, diagnostics)) return false;
     if (!analyzeBorrowedReassignment(
             borrowedReassignment, expression, left, right, assignmentTargetLocal,
             assignmentTargetParameter, methodMemberOrdinal, scopeOrdinal, diagnostics)) return false;

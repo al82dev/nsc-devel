@@ -71,6 +71,32 @@ std::optional<std::string> ProjectMethodBodyModel::viewRootLocalOfExpression(
         work.pop_back();
         if (current == nullptr || !visited.insert(current).second) continue;
 
+        // A view returned by an instance method conservatively borrows its receiver.
+        // This also covers value-type owners, whose own type need not carry a reference qualifier.
+        const std::size_t callable = scopeOrdinal < scopes_.size()
+            ? scopes_[scopeOrdinal].methodMemberOrdinal : std::numeric_limits<std::size_t>::max();
+        const MethodCallBinding* call = callBinding(current, callable);
+        if (call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
+            !call->staticCall && call->receiverSyntax != nullptr && typeKeyIsViewLike(call->resultTypeKey))
+        {
+            const ast::AstNode* receiver = call->receiverSyntax;
+            while (receiver != nullptr && (receiver->kind() == ast::AstNodeKind::MemberExpression ||
+                                            receiver->kind() == ast::AstNodeKind::IndexExpression))
+                receiver = receiver->first();
+            if (receiver != nullptr && receiver->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const auto name = lookupScopeName(scopeOrdinal, receiver->text());
+                if (name.has_value() && name->kind == ScopeNameKind::Local &&
+                    name->semanticOrdinal < locals_.size())
+                {
+                    const auto& local = locals_[name->semanticOrdinal];
+                    if (!local.isStatic)
+                        return typeKeyIsViewLike(local.typeKey) && !local.viewRootLocalName.empty()
+                            ? local.viewRootLocalName : local.name;
+                }
+            }
+        }
+
         if (current->kind() == ast::AstNodeKind::IdentifierExpression)
         {
             const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, current->text());

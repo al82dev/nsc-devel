@@ -5487,6 +5487,19 @@ void ProjectMethodBodyModel::finalizeSelectedCallResult(
     result.typeKey = call.resultTypeKey;
     result.valid = !isErrorType(result.typeKey);
     result.flowActiveVariantCase = provenVariantCase;
+    if (result.valid && !call.staticCall && call.receiverSyntax != nullptr &&
+        typeKeyIsViewLike(result.typeKey) &&
+        (call.receiverSyntax->kind() == ast::AstNodeKind::NewExpression ||
+         call.receiverSyntax->kind() == ast::AstNodeKind::ObjectCreationExpression ||
+         (call.receiverSyntax->kind() == ast::AstNodeKind::CallExpression &&
+          !typeKeyIsViewLike(call.receiverTypeKey))))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "a view cannot borrow from a temporary receiver; bind its owner to a local first");
+        result.valid = false;
+        return;
+    }
     if (!result.valid || !nullConditionalCall) return;
     if (callResultIsNullable(result.typeKey)) return;
     diagnostics.report(

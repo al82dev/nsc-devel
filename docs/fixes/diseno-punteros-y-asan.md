@@ -55,6 +55,10 @@ Una vista `borrowed struct` que contiene la referencia sí pasó el análisis,
 pero también lo pasó al asignarla fuera del ámbito del último `Rc` y usarla
 después (`smart-pointer-view-probe/escape-check.log`); esa comprobación no
 demuestra un préstamo seguro del payload compartido.
+El compilador ahora rechaza esa asignación y otras formas de escape de la vista
+ligada al receptor; véase `view-receiver-lifetime.md`. La referencia extraída
+con `view.Get()` todavía puede sobrevivir al propietario, de modo que esto no
+resuelve por completo el préstamo del payload.
 El prototipo recibe además un objeto ya asignado y crea el bloque de control
 por separado; no acredita la fábrica de una sola asignación del manifiesto y
 solo ensaya payloads de clase.

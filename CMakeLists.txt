@@ -5415,6 +5415,9 @@ if(NSC_BUILD_TESTS)
     target_compile_features(nsc_stage58_view_lifetimes_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_stage58_view_lifetimes_tests)
     add_test(NAME nsc.stage58.view-lifetimes COMMAND nsc_stage58_view_lifetimes_tests)
+    add_test(NAME nsc.compiler.view-receiver-lifetime
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/view_receiver_lifetime.py"
+                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/view_receiver_lifetime/Main.ns")
 
     # ID 131 -- miembros estaticos de un tipo generico CERRADO (`Caja<int>.Make(7)`). Va pegado a
     # la prueba del Bloque 3 a proposito: el hueco se descubrio implementandolo, y se rodeo alli

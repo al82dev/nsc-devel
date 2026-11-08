@@ -4281,9 +4281,10 @@ private:
         const std::optional<std::size_t>& assignmentTargetLocal,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
-    void recordViewAssignmentRoot(
+    bool recordViewAssignmentRoot(
         const ast::AstNode* expression,
-        std::size_t scopeOrdinal);
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics);
     static void appendUniqueOrdinal(
         std::vector<std::size_t>& values,
         std::size_t value);
