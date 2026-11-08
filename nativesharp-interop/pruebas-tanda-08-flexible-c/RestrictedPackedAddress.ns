@@ -1,0 +1,6 @@
+int Main()
+{
+    FlexPacked* value = flex_packed();
+    int* first = &value->data[0];
+    return *first;
+}
