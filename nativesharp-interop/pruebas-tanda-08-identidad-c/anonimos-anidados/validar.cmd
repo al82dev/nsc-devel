@@ -7,7 +7,7 @@ set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\Native
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
 if not exist "%DEST%" mkdir "%DEST%"
 if errorlevel 1 exit /b 1
-for %%F in (Api.h Api.c Main.ns Main.nsproj Producer.ns Producer.nsproj Consumer.ns Consumer.nsproj) do (
+for %%F in (Api.h Api.c Main.ns Main.nsproj Producer.ns Producer.nsproj Consumer.ns Consumer.nsproj verificar_usr.py) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -33,6 +33,8 @@ Main.exe
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib Producer.nsproj -O0 --no-artifact-cache -o AnonNestedProducer.lib > Producer.log 2>&1
 if errorlevel 1 (type Producer.log & exit /b 1)
+python verificar_usr.py usr.log AnonNestedProducer.nsmeta
+if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe Consumer.nsproj -O0 --no-artifact-cache -o Consumer.exe > Consumer.log 2>&1
 if errorlevel 1 (type Consumer.log & exit /b 1)
 Consumer.exe
