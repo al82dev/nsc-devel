@@ -1,5 +1,16 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-002 H5: campos de records C compatibles en encabezados distintos
+
+Corregir la selección de miembros de definiciones C de la misma identidad
+cuando el grupo ya acreditó compatibilidad estructural, las identidades USR y
+miembros coinciden y las observaciones provienen de archivos distintos. Conservar
+los rechazos de definiciones incompatibles y la política de origen para C++.
+Presupuesto: selector de miembros, matriz de identidad y sus controles,
+seguimiento y evidencia. Validar con compilación incremental y pruebas C de
+records, identidad y metadata. No modificar NSLink, formato NSMETA, LLVM/Clang
+ni desplegar en C:.
+
 ## T08-002 H8: lectura de catálogo C heredado 1.42
 
 Corregir la identificación de un catálogo 1.42 con solo enums, cuyos primeros

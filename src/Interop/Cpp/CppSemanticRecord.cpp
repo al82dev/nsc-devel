@@ -812,6 +812,13 @@ std::optional<std::size_t> selectCppRecordMemberDefinition(
         previousDefinitions.push_back(i);
         if (!first) { first = i; continue; }
         const auto& prior = inventory[*first].declaration;
+        // Equivalent C definitions in separate translation units may originate
+        // from different headers. The group and member checks above must have
+        // established compatibility, and both declarations must name the same
+        // Clang identity; C++ retains its stricter source-location rule.
+        if (group.status == CppRecordGroupStatus::MultipleDefinitionsPointerCompatible &&
+            !prior.isCxx && !item.isCxx && prior.clangUsr && !prior.clangUsr->empty() &&
+            item.clangUsr && prior.clangUsr == item.clangUsr) continue;
         if (!prior.location || !item.location || prior.location->line != item.location->line ||
             prior.location->column != item.location->column) return std::nullopt;
         std::error_code ec;

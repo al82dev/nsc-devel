@@ -1,1 +1,7 @@
-int Read(CTdF* value) { return value->a; } int Main() { return 0; }
+int Read(CTdF* value) { return value->a; }
+int Main()
+{
+    int stored = 37;
+    CTdF* value = (CTdF*)&stored;
+    return Read(value) == 37 ? 0 : 1;
+}

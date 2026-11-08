@@ -19,5 +19,5 @@ T07AnonStruct -CTdAnon compatible runs runs runs runs
 T08Enum CTdEnumAlias compatible runs runs runs runs
 T09OtherTag CTdTag distinto runs alias alias alias
 T10FunctionPointer CTdFn compatible runs runs runs runs
-T11SameTagFields - compatible runs member member member
+T11SameTagFields - compatible runs runs runs runs
 T12OtherTagFields - distinto runs record record record
