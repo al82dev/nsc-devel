@@ -39,7 +39,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - **T08-002-10 — Sombras en plantillas:**
 - [x] T08-002-10a: Verificar una muestra de sombra de función C por parámetro y local en una plantilla precompilada en O0. [Evidencia](registro-commits/t08-sombra-funcion-parametro-local.md).
 - [x] T08-002-10b: Verificar una muestra de sombra de global C por variables de `foreach` y `catch`, en O0. [Evidencia](registro-commits/t08-sombra-foreach-catch-o0.md).
-- [ ] T08-002-10c: Verificar que inicializadores se analicen en el ámbito correcto antes de introducir el nombre local.
+- [x] T08-002-10c: Verificar muestras de inicializadores de local, `for` y desestructuración antes de introducir el nombre sombreado, en O0. [Evidencia](registro-commits/t08-inicializadores-ambito-o0.md).
 - **T08-002-11 — Publicación y conflictos:**
 - [ ] T08-002-11a: Validar publicación y restauración de función C requerida por una plantilla con encabezado.
 - [ ] T08-002-11b: Validar la misma función con el encabezado oculto y solo metadata.
