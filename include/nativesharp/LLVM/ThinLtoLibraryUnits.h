@@ -15,5 +15,7 @@ struct ThinLtoLibraryUnits final
 {
     std::filesystem::path libraryPath;
     std::vector<std::string> units;
+    // Object bytes carried by sidecar v3, linked alongside backend objects.
+    std::vector<std::string> nativeObjects;
 };
 }

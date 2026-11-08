@@ -1536,6 +1536,21 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
                     objects.objectFiles.push_back(result.temporaryDirectory_ / (name + ".obj"));
                     backendObjects.push_back(objects.objectFiles.back());
                 }
+                for (std::size_t native = 0; native < thinLtoLibraries_[library].nativeObjects.size(); ++native)
+                {
+                    const auto path = result.temporaryDirectory_ /
+                        ("thinlto-library-" + std::to_string(library) + "-native-" + std::to_string(native) + ".obj");
+                    const auto& bytes = thinLtoLibraries_[library].nativeObjects[native];
+                    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+                    stream.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+                    stream.close();
+                    if (!stream)
+                    {
+                        error = "cannot restore native object from ThinLTO sidecar";
+                        return false;
+                    }
+                    objects.objectFiles.push_back(path);
+                }
                 result.thinLtoLibraryObjects_.push_back(std::move(objects));
             }
             if (!runThinLtoBackends(

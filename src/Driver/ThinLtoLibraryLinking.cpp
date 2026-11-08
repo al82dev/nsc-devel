@@ -287,7 +287,8 @@ bool ThinLtoLibraryLinking::collect(
             llvm_backend::ThinLtoLibrarySidecar sidecar;
             std::string reason;
             if (acceptSidecar(reference, sidecarPath, compatibility, metadataByName, sidecar, reason))
-                libraries_.push_back({reference.libraryPath, std::move(sidecar.units)});
+                libraries_.push_back({reference.libraryPath, std::move(sidecar.units),
+                                      std::move(sidecar.nativeObjects)});
             else
                 fallbacks_.push_back(reference.libraryPath.filename().string() + ": " + reason);
         }
@@ -300,6 +301,10 @@ std::optional<std::vector<std::string>> ThinLtoLibraryLinking::preservedSymbols(
     std::span<const std::string> roots) const
 {
     if (!active_) return std::nullopt;
+    // Native sidecar objects are restored after the backend. Until their
+    // undefined symbols are included in the roots, retain all definitions.
+    for (const auto& library : libraries_)
+        if (!library.nativeObjects.empty()) return std::nullopt;
     const std::filesystem::path runtime = linker::configuredWindowsRuntimeLibrary();
     // Without a separate runtime library the runtime module is built with the program after
     // ThinLTO, and nothing can scan what it references.

@@ -13,6 +13,9 @@ escritura v2 cuando no existan objetos. La integración al productor y consumido
 se hará por separado; el fallback existente sigue vigente hasta validarla.
 Se permite registrar los objetos generados en el bundle y preparar su lectura
 en `ThinLtoLibraryLinking.cpp`, sin activar aún la publicación incompleta.
+La restauración añade `ThinLtoLibraryUnits.h` y el generador; ante objetos
+nativos de sidecars se conservan las definiciones durante ThinLTO. La publicación
+sigue desactivada hasta contar con controles de los dos extremos.
 
 ## T08-002: sombras locales en plantillas públicas
 
