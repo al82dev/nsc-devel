@@ -1,0 +1,9 @@
+int Main()
+{
+    bool* p = c_bool_get();
+    if (p[0] || !p[1]) return 1;
+    c_bool_pointer[0] = true;
+    c_bool_pointer[1] = false;
+    if (c_bool_check() != 1) return 2;
+    return 0;
+}
