@@ -2121,11 +2121,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
         {
             const auto ordinal = binding->candidateMemberOrdinals.front();
             const auto states = namespaceFunctionModel_->states();
-            const bool supported = ordinal < states.size() && states[ordinal].isCppExternal &&
-                states[ordinal].cppAtomicStorage && ProjectTypeConversion::isIntegral(right.typeKey) &&
-                right.typeKey != "builtin:bool";
-            cAtomicEnum = supported && cppImportedCEnumUnderlying(nameLookup_, left.typeKey).has_value();
-            narrowCppAtomic = supported && !cAtomicEnum;
+            const bool atomic = ordinal < states.size() && states[ordinal].isCppExternal &&
+                states[ordinal].cppAtomicStorage;
+            const bool integerRhs = ProjectTypeConversion::isIntegral(right.typeKey) && right.typeKey != "builtin:bool";
+            cAtomicEnum = atomic && cppImportedCEnumUnderlying(nameLookup_, left.typeKey).has_value() &&
+                (integerRhs || cppImportedCEnumUnderlying(nameLookup_, right.typeKey).has_value());
+            narrowCppAtomic = atomic && integerRhs && !cAtomicEnum;
         }
     }
     const std::optional<std::string> common = sameEnumBitwise || shiftAssignment

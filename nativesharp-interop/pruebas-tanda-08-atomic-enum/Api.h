@@ -11,6 +11,7 @@ extern _Atomic(enum ShortState) short_state;
 int state_check(void);
 int signed_reference(int stage);
 int signed_mixed_reference(int operation);
+int same_enum_reference(void);
 unsigned long long wide_read(void);
 int tiny_reference(int stage);
 unsigned int short_reference(int stage);

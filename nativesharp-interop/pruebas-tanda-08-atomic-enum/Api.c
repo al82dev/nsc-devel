@@ -5,6 +5,13 @@ _Atomic(enum WideState) wide_state = WIDE_LARGE;
 _Atomic(enum TinyState) tiny_state = TINY_NEGATIVE;
 _Atomic(enum ShortState) short_state = SHORT_START;
 int state_check(void) { return state == STATE_READY; }
+int same_enum_reference(void)
+{
+    _Atomic(enum State) value = STATE_READY;
+    enum State rhs = STATE_READY;
+    value += rhs;
+    return (int)value;
+}
 unsigned long long wide_read(void) { return (unsigned long long)wide_state; }
 void wide_compound_reference(void) { wide_state += 5ULL; }
 int tiny_reference(int stage)

@@ -27,6 +27,8 @@ int Main()
     if (state_check() != 1) return 5;
     state = STATE_READY;
     if (state_check() != 1) return 2;
+    state += state;
+    if ((int)state != same_enum_reference()) return 29;
     signed_state /= 2;
     if ((int)signed_state != signed_reference(1)) return 10;
     signed_state >>= 1;

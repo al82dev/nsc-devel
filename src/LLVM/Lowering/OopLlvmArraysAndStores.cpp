@@ -238,7 +238,9 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
             if (const auto* enumInfo = findEnumUnderlyingInfo(nameLookup_, target->typeKey))
             {
                 const unsigned alignment = enumInfo->width / 8;
-                const auto& rhsType = node->children[1]->typeKey;
+                const auto& rhsOriginalType = node->children[1]->typeKey;
+                const auto* rhsEnumInfo = findEnumUnderlyingInfo(nameLookup_, rhsOriginalType);
+                const std::string rhsType = rhsEnumInfo ? std::string(rhsEnumInfo->key) : rhsOriginalType;
                 if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
                     !alignment || target->cppAtomicAlignmentBytes != std::optional<std::size_t>{alignment} ||
                     node->immediate != 0 || !frontend::ProjectTypeConversion::isIntegral(rhsType))
