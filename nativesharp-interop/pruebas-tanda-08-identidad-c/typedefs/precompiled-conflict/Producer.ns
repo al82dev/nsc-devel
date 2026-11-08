@@ -1,1 +1,6 @@
-namespace PublishedAlias { public class Bridge { public static Alias* Identity(Alias* value) { return value; } } }
+namespace PublishedAlias {
+    public class Bridge {
+        public static Alias* Wrap(int* value) { return (Alias*)value; }
+        public static int Read(Alias* value) { return value->a; }
+    }
+}

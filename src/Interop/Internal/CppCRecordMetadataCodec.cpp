@@ -1503,6 +1503,23 @@ bool compareCRecordClosureEvidence(std::span<const CppCRecordSnapshot> leftRecor
         const auto [a, b] = pending.back(); pending.pop_back();
         if (!seenRecords.emplace(a->identityKey, b->identityKey).second) continue;
         if (!compareCRecordSourceEvidence(*a, *b, verdict, error)) return false;
+        if (verdict == CRecordContractComparison::Different && a->complete && b->complete &&
+            a->sourceProvenance && b->sourceProvenance)
+        {
+            const auto unchanged = [](const auto& source) {
+                if (!source.sourcePath.is_absolute()) return false;
+                basic::Sha256Digest digest;
+                std::uintmax_t size = 0;
+                std::string hashError;
+                return basic::sha256File(source.sourcePath, digest, size, hashError) &&
+                    source.byteOffset < size && basic::sha256Hex(digest) == source.bufferSha256;
+            };
+            std::error_code ec;
+            const bool sameFile = std::filesystem::equivalent(a->sourceProvenance->sourcePath,
+                                                               b->sourceProvenance->sourcePath, ec);
+            if (!ec && !sameFile && unchanged(*a->sourceProvenance) && unchanged(*b->sourceProvenance) &&
+                !compareCRecordContracts(*a, *b, verdict, error)) return false;
+        }
         if (verdict != CRecordContractComparison::Matching) break;
         std::function<bool(const CppType&, unsigned)> visit = [&](const CppType& type, unsigned depth) {
             if (verdict != CRecordContractComparison::Matching) return true;

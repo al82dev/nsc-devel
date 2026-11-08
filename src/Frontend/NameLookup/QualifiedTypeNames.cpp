@@ -231,8 +231,18 @@ bool ProjectNameLookup::expandCppTypeAlias(
                 const auto reconciledRecordAlias = [&]() {
                     if (!selected || selected->projectOrdinal == alias.projectOrdinal ||
                         !selected->declaration.clangUsr || !alias.declaration.clangUsr ||
-                        selected->declaration.clangUsr->empty() ||
-                        selected->declaration.clangUsr != alias.declaration.clangUsr) return false;
+                        selected->declaration.clangUsr->empty() || alias.declaration.clangUsr->empty()) return false;
+                    if (selected->declaration.clangUsr != alias.declaration.clangUsr)
+                    {
+                        const std::string suffix = "@T@" + alias.declaration.name;
+                        const auto fileTypedef = [&](const std::string& value) {
+                            return value.size() > suffix.size() + 2 && value.compare(0, 2, "c:") == 0 &&
+                                value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+                        };
+                        if (qualified != alias.declaration.name ||
+                            !fileTypedef(*selected->declaration.clangUsr) ||
+                            !fileTypedef(*alias.declaration.clangUsr)) return false;
+                    }
                     const auto a = cppAliasRecordType(selected->declaration.underlyingType);
                     const auto b = cppAliasRecordType(alias.declaration.underlyingType);
                     const auto ea = cppAliasEnumType(selected->declaration.underlyingType);

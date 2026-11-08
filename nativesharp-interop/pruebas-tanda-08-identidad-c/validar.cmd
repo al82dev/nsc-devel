@@ -66,6 +66,8 @@ call "%~dp0homonimos\validar-global-static.cmd"
 if errorlevel 1 exit /b 1
 call "%~dp0typedefs\EnumConflict\validar.cmd"
 if errorlevel 1 exit /b 1
+call "%~dp0typedefs\precompiled-conflict\validar.cmd"
+if errorlevel 1 exit /b 1
 call :typedefs
 if errorlevel 1 exit /b 1
 call "%~dp0records-precompiled\validar.cmd"

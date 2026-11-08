@@ -1,1 +1,7 @@
-int Main() { Alias* value = null; return 0; }
+int Main() {
+    int storage = 37;
+    Alias* value = PublishedAlias.Bridge.Wrap(&storage);
+    if (PublishedAlias.Bridge.Read(value) != 37 || value->a != 37) return 1;
+    value->a = 41;
+    return storage == 41 && PublishedAlias.Bridge.Read(value) == 41 ? 0 : 2;
+}
