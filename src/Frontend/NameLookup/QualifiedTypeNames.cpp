@@ -745,15 +745,28 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     for (auto* argument : arguments) value->addTypeArgument(argument);
                     return value;
                 }
-                if (const auto builtin = cppAliasBuiltinType(type))
+                // These projection helpers reject volatile pointees. Preserve the
+                // qualification in the syntax while resolving the underlying type.
+                interop::CppType unqualified = type;
+                bool pointeeVolatile = false;
+                if (type.kind == interop::CppTypeKind::Pointer && type.element &&
+                    type.element->kind != interop::CppTypeKind::Pointer && type.element->isVolatile)
+                {
+                    auto element = std::make_shared<interop::CppType>(*type.element);
+                    element->isVolatile = false;
+                    unqualified.element = std::move(element);
+                    pointeeVolatile = true;
+                }
+                if (const auto builtin = cppAliasBuiltinType(unqualified))
                 {
                     auto* value = arena.make<ast::TypeSyntax>(syntax->range(), builtin->token, std::string(builtin->name));
                     value->prependModifiers(cppPointerModifiers(type));
                     value->setPointeeConst(builtin->pointeeConst);
+                    value->setPointeeVolatile(pointeeVolatile);
                     return value;
                 }
-                const auto enumType = cppAliasEnumType(type);
-                const auto recordType = cppAliasRecordType(type);
+                const auto enumType = cppAliasEnumType(unqualified);
+                const auto recordType = cppAliasRecordType(unqualified);
                 const std::string name = enumType ? enumType->name : recordType ? recordType->name : std::string{};
                 const std::string canonical = enumType ? enumType->name : recordType ? recordType->canonicalName : std::string{};
                 if (name.empty()) return nullptr;
@@ -769,6 +782,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
                 value->setOriginNamespace("");
                 value->prependModifiers(cppPointerModifiers(type));
                 value->setPointeeConst(enumType ? enumType->pointeeConst : recordType->pointeeConst);
+                value->setPointeeVolatile(pointeeVolatile);
                 return value;
             };
             auto* result = makeType(makeType, signature.returnType, 0);
