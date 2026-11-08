@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>StaticConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+    <LibraryReference Include="StaticProducer.lib" />
+  </ItemGroup>
+</Project>
