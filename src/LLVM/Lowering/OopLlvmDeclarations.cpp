@@ -77,8 +77,11 @@ bool OopLlvmImplementation::declareFunction(
             if (function.isTransportedInlineBody &&
                 (functionOrdinal >= reachableDefinitions_.size() ||
                  reachableDefinitions_[functionOrdinal] == 0U)) return true;
+            // The global unit defines runtime-binding wrappers, even if no ordinary
+            // function in that unit requested their declarations explicitly.
             if (partitioned_ && restrictFunctionDeclarations_ &&
-                !functionDeclarations_[functionOrdinal]) return true;
+                !functionDeclarations_[functionOrdinal] &&
+                !(ownsModuleGlobals_ && function.importRequiresRuntimeBinding)) return true;
             const bool sretReturn = function.abi.returnPassing ==
                 frontend::ProjectOopMirAbiPassing::Indirect;
             LLVMTypeRef functionType = createDeclaredFunctionType(function, sretReturn, error);
