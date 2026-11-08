@@ -47,6 +47,9 @@ class ProjectOopObjectGenerator final
 {
 public:
     void setProgressSink(std::function<void(const basic::CompilationEvent&)> sink);
+    // Instrument project code units with AddressSanitizer. This internal option does not
+    // provide runtime linkage; callers must arrange it before exposing an executable.
+    void setAddressSanitizer(bool enabled) noexcept;
     // EN: Keeps the optimized IR of every ThinLTO code unit in the bundle (tests and dumps).
     // ES: Conserva en el paquete el IR optimizado de cada unidad ThinLTO (pruebas y volcados).
     void setThinLtoFinalModuleTextCapture(bool capture) noexcept;
@@ -194,6 +197,7 @@ private:
         driver::CompilationWorkerPool* workerPool) const;
 
     std::function<void(const basic::CompilationEvent&)> progressSink_;
+    bool addressSanitizer_ = false;
     bool captureThinLtoFinalModuleTexts_ = false;
     bool captureThinLtoUnitBitcode_ = false;
     std::vector<ThinLtoLibraryUnits> thinLtoLibraries_;

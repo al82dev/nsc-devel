@@ -97,8 +97,13 @@ integración y pruebas, no solo cambiar una variable de entorno.
 
 `LlvmNativeSanitizer` ya inserta el atributo y aplica el pipeline `asan`; la
 prueba existente verifica IR. Falta conectar el indicador desde el driver a
-cada unidad generada, garantizar que las claves o la desactivación de caché
-impidan reutilizar objetos sin instrumentar, resolver la interacción con
+la generación y resolver el enlace y el arranque. El generador de objetos ya
+dispone de una configuración interna que instrumenta cada unidad tras la
+optimización, desactiva su caché de objetos y rechaza LTO. La prueba
+`nsc.project-oop-address-sanitizer` verifica en O0/O2 los símbolos de cada
+objeto, los objetos normales antes y después, la reutilización de la caché
+normal y el rechazo de ThinLTO (`A:/nsc-fixes-evidencia/asan-unit-test.log`).
+Esto no expone una opción pública ni enlaza el runtime. Falta resolver la interacción con
 ThinLTO y las bibliotecas precompiladas, y enlazar y localizar el runtime al
 ejecutar. Las combinaciones aún no soportadas deben rechazarse de forma clara,
 no producir un binario aparentemente instrumentado.

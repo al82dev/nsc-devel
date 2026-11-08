@@ -4631,6 +4631,12 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_project_oop_lowering_tests)
     add_test(NAME nsc.project-oop-lowering COMMAND nsc_project_oop_lowering_tests)
 
+    add_executable(nsc_project_oop_address_sanitizer_tests tests/unit/ProjectOopAddressSanitizerTests.cpp)
+    target_link_libraries(nsc_project_oop_address_sanitizer_tests PRIVATE nsc_llvm nsc_frontend nsc_target nsc_precompiled)
+    target_compile_features(nsc_project_oop_address_sanitizer_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_project_oop_address_sanitizer_tests)
+    add_test(NAME nsc.project-oop-address-sanitizer COMMAND nsc_project_oop_address_sanitizer_tests)
+
     add_executable(nsc_macro_a_oop_tests tests/unit/MacroAOopTests.cpp)
     target_link_libraries(nsc_macro_a_oop_tests PRIVATE nsc_llvm nsc_frontend nsc_target)
     target_compile_features(nsc_macro_a_oop_tests PRIVATE cxx_std_20)

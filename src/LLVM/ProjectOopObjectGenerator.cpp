@@ -18,6 +18,7 @@
 #include "nativesharp/LLVM/LlvmOptimizationObservation.h"
 #include "nativesharp/LLVM/LlvmOptimizer.h"
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
+#include "nativesharp/LLVM/LlvmNativeSanitizer.h"
 #include "nativesharp/LLVM/ProjectOopCodePartition.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
 #include "nativesharp/LLVM/ProjectOopMirCacheIdentity.h"
@@ -699,6 +700,7 @@ void storeSourceBoundObject(
 
 void processObjectCodeUnit(
     std::size_t ordinal,
+    bool addressSanitizer,
     bool usePartitions,
     bool usePreLlvmCache,
     bool usePreOptimizationCache,
@@ -800,6 +802,11 @@ void processObjectCodeUnit(
     if (!optimizeConfiguredCodeUnit(
             *module, *targetMachine, optimizationLevel, requiresWholeModuleRequiredInlining,
             moduleError, telemetry)) return;
+    if (addressSanitizer)
+    {
+        LlvmNativeSanitizer sanitizer;
+        if (!sanitizer.instrument(*module, *targetMachine, NativeSanitizerKind::Address, moduleError)) return;
+    }
     if (preserveModuleText) moduleText = module->text();
     if (!restorePostLlvmObject(
             cache, usePreLlvmCache, *targetMachine, codeGenerationPolicy,
@@ -1127,6 +1134,11 @@ void ProjectOopObjectGenerator::setThinLtoUnitBitcodeCapture(bool capture) noexc
     captureThinLtoUnitBitcode_ = capture;
 }
 
+void ProjectOopObjectGenerator::setAddressSanitizer(bool enabled) noexcept
+{
+    addressSanitizer_ = enabled;
+}
+
 void ProjectOopObjectGenerator::setThinLtoLibraryUnits(std::vector<ThinLtoLibraryUnits> libraries)
 {
     thinLtoLibraries_ = std::move(libraries);
@@ -1415,7 +1427,7 @@ bool ProjectOopObjectGenerator::generateCodeUnits(
     std::mutex moduleProgressMutex;
     const auto processModule = [&](std::size_t ordinal) {
         processObjectCodeUnit(
-            ordinal, usePartitions, usePreLlvmCache, usePreOptimizationCache, preserveModuleText,
+            ordinal, addressSanitizer_, usePartitions, usePreLlvmCache, usePreOptimizationCache, preserveModuleText,
             requiresWholeModuleRequiredInlining, nameLookup, memberModel, mirModel,
             sourceManager, debugInformation, optimizationLevel, debugPrefixMaps,
             reachableDefinitions, coordinatorFunctionDeclarations, partition,
@@ -1569,6 +1581,11 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     driver::CompilationWorkerPool* workerPool) const
 {
     error.clear();
+    if (addressSanitizer_ && linkTimeOptimization != LinkTimeOptimizationMode::None)
+    {
+        error = "AddressSanitizer does not yet support link-time optimization";
+        return nullptr;
+    }
     workerCount = std::max<std::size_t>(1, workerCount);
     // NSC305-L06D. At O0, using the requested worker count as the code-unit count
     // over-partitions cold builds: beyond eight units the duplicated LLVM setup,
@@ -1589,7 +1606,8 @@ std::unique_ptr<ProjectOopObjectBundle> ProjectOopObjectGenerator::generate(
     const std::size_t partitionCount = optimizationLevel == LlvmOptimizationLevel::O0
         ? maxColdO0CodeUnits
         : stableOptimizedCodeUnits;
-    const CompilationArtifactCache* const cache = activeCompilationArtifactCache();
+    // Sanitized objects must never be read from or stored in the ordinary object cache.
+    const CompilationArtifactCache* const cache = addressSanitizer_ ? nullptr : activeCompilationArtifactCache();
     ColdLlvmPreambleTelemetry preambleTelemetry;
     const PhaseClock reachabilityClock;
     const ProjectOopFunctionReachabilityAnalysis functionAnalysis(mirModel);
