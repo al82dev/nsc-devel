@@ -812,7 +812,8 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         if (node->children[0]->cppAtomicAccess)
         {
             const auto& typeKey = node->children[0]->typeKey;
-            const auto alignment = typeKey.ends_with("*") ? 8U : typeKey == "builtin:bool" ? 1U : typeKey == "builtin:float" ? 4U : typeKey == "builtin:double" ? 8U :
+            const auto* enumInfo = findEnumUnderlyingInfo(nameLookup_, typeKey);
+            const auto alignment = enumInfo ? enumInfo->width / 8 : typeKey.ends_with("*") ? 8U : typeKey == "builtin:bool" ? 1U : typeKey == "builtin:float" ? 4U : typeKey == "builtin:double" ? 8U :
                 (typeKey == "builtin:sbyte" || typeKey == "builtin:byte") ? 1U :
                 (typeKey == "builtin:short" || typeKey == "builtin:ushort") ? 2U :
                 (typeKey == "builtin:int" || typeKey == "builtin:uint") ? 4U :

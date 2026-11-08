@@ -253,7 +253,8 @@ LLVMValueRef OopLlvmImplementation::lowerLoadExpression(const frontend::ProjectO
                     return LLVMBuildICmp(builder_, LLVMIntNE, load, LLVMConstInt(loadType, 0, 0), "c.bool.global.value");
                 if (node->cppAtomicAccess)
                 {
-                    const auto alignment = atomicPointer ? 8U : atomicBool ? 1U : node->typeKey == "builtin:float" ? 4U : node->typeKey == "builtin:double" ? 8U :
+                    const auto* enumInfo = findEnumUnderlyingInfo(nameLookup_, node->typeKey);
+                    const auto alignment = enumInfo ? enumInfo->width / 8 : atomicPointer ? 8U : atomicBool ? 1U : node->typeKey == "builtin:float" ? 4U : node->typeKey == "builtin:double" ? 8U :
                         (node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte") ? 1U :
                         (node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort") ? 2U :
                         (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") ? 4U :
