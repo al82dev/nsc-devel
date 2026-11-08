@@ -34,7 +34,24 @@ for old, new in changes:
     source = source.replace(old, new)
 mismatch = "--mismatch" in sys.argv
 ambiguous = "--consumer-ambiguous" in sys.argv
+returns_enum = "--returns" in sys.argv
 work = Path(r"A:\nsc-interop-build\t08-typedef-enum-invocacion")
+if returns_enum:
+    variants = (
+        ('typedef int (*VarFn)(CKind, int, ...);', 'typedef CKind (*VarFn)(CKind, int, ...);'),
+        ('__declspec(dllimport) int var_read(CKind', '__declspec(dllimport) CKind var_read(CKind'),
+        ('int var_read(CKind kind, int count, ...) {{', 'CKind var_read(CKind kind, int count, ...) {{'),
+        ('    return result;\n}}\n__declspec(dllexport) int var_mix',
+         '    return (CKind)result;\n}}\n__declspec(dllexport) int var_mix'),
+        ('return fn(KValue, 6,', 'return (int)fn(KValue, 6,'),
+        ('Invocacion con enum C y dos DLL con cache:', 'Retorno enum C y dos DLL con cache:'),
+    )
+    for old, new in variants:
+        if old not in source:
+            sys.exit("ERROR: no se puede preparar el retorno enum: " + old)
+        source = source.replace(old, new)
+    source = source.replace(str(work), str(work) + "-retorno")
+    work = Path(str(work) + "-retorno")
 if mismatch:
     old = '"typedef enum CKind { KValue = 7 } CKind;\\n'
     new = 'f"typedef enum CKind {{ KValue = 7, KOther = {index} }} CKind;\\n'
@@ -55,7 +72,7 @@ if ambiguous:
 work.mkdir(parents=True, exist_ok=True)
 script = work / "control-generado.py"
 script.write_text(source, encoding="utf-8")
-args = [arg for arg in sys.argv[1:] if arg not in ("--mismatch", "--consumer-ambiguous")]
+args = [arg for arg in sys.argv[1:] if arg not in ("--mismatch", "--consumer-ambiguous", "--returns")]
 result = subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True, errors="replace")
 if mismatch:
     if result.returncode == 0 or "conflicting C/C++ type alias 'VarFn'" not in result.stdout + result.stderr:

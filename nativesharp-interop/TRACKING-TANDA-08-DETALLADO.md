@@ -93,6 +93,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
                 - [x] Invocar la variante con un record anidado en dos DLL, sin encabezados, O0–O3 y caché; rechazar un campo anidado incompatible del mismo tamaño. [Evidencia](registro-commits/t08-typedef-record-anidado.md).
                 - [x] Invocar punteros a función variádica con retorno de record pequeño y grande, de dos DLL homónimas, sin encabezados, O0–O3 y caché. [Evidencia](registro-commits/t08-typedef-record-retorno.md).
                 - [x] Invocar mediante typedef variádico con parámetro enum C de dos DLL homónimas, sin encabezados, O0–O3 y caché; rechazar enums de valores distintos y diagnosticar enumerador ambiguo sin productor. [Evidencia](registro-commits/t08-typedef-enum-funcion.md).
+                - [x] Invocar un typedef variádico que recibe y devuelve un enum C en dos DLL, sin encabezados, O0–O3 y caché; rechazar definiciones incompatibles. [Evidencia](registro-commits/t08-typedef-enum-retorno.md).
                 - [ ] Comprobar otras variantes de enums, calificadores y tipos de retorno.
           - [x] Probar la muestra de ambas DLL con funciones variádicas homónimas desde plantillas precompiladas y con caché, en O0–O3 y con valores distinguibles. [Evidencia](registro-commits/t08-dll-homonimas-variadicas.md).
           - [ ] Comprobar promociones, argumentos flotantes y agregados en funciones variádicas, además de otras formas de consumo.
