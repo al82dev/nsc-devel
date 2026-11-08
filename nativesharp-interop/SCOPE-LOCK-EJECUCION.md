@@ -5388,3 +5388,16 @@ referencias ambiguas y contratos no comprobados deben seguir rechazados. Los
 resultados y límites se registran en tracking y Markdown. No cerrar la tanda
 hasta superar su batería integral, incluidas regresiones y caso directo.
 
+# T08: alias C en firmas publicadas de miembros
+
+La reproducción `t08-nombres-metadata-firmas-resultado.md` muestra que una
+firma pública `NAlias*` se publica con su tipo canónico pero omite el nombre
+del alias. Capturar únicamente alias resueltos de los tipos declarados y
+parámetros de miembros presentes en la metadata, usando el catálogo de
+dependencias C existente. Preservar miembros no publicados, reglas de
+resolución y versiones anteriores; no exportar todos los alias del header.
+Archivos autorizados: `CppSemanticRecord.cpp`, el fixture de nombres C y
+registros de commits. LLVM/Clang, NSLink y despliegues en C: protegidos.
+Construcción incremental y validación dirigida agrupada; la tanda 8 sigue
+abierta hasta su gate completo.
+
