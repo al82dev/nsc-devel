@@ -1,0 +1,4 @@
+<Project><PropertyGroup><Name>CAnonymousMetadata</Name></PropertyGroup><ItemGroup>
+  <Compile Include="Consumer.ns" />
+  <LibraryReference Include="CAnonymousProducer.lib" />
+</ItemGroup></Project>

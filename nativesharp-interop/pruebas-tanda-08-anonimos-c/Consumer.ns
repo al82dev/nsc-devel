@@ -1,0 +1,11 @@
+int Main()
+{
+    var value = Published.Bridge.Obj();
+    if (sizeof(*value) != (nuint)Published.Bridge.Size()) return 1;
+    value->tag = 1;
+    value->i = 2;
+    value->x = (short)3;
+    value->y = (short)4;
+    if (Published.Bridge.Check() != 1) return 2;
+    return 0;
+}

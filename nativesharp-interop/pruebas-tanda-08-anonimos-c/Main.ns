@@ -1,0 +1,11 @@
+int Main()
+{
+    LAnonymous* value = probe_anonymous();
+    if (sizeof(LAnonymous) != (nuint)probe_anonymous_size()) return 1;
+    value->tag = 1;
+    value->i = 2;
+    value->x = (short)3;
+    value->y = (short)4;
+    if (probe_anonymous_check() != 1) return 2;
+    return 0;
+}

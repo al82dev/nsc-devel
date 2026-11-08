@@ -1,0 +1,5 @@
+<Project><PropertyGroup><Name>CAnonymousShared</Name></PropertyGroup><ItemGroup>
+  <Compile Include="Consumer.ns" />
+  <LibraryReference Include="CAnonymousProducer.lib" />
+  <CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" />
+</ItemGroup></Project>

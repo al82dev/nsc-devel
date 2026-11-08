@@ -1,0 +1,9 @@
+namespace Published
+{
+    public struct Bridge
+    {
+        public static LAnonymous* Obj() { return probe_anonymous(); }
+        public static int Size() { return probe_anonymous_size(); }
+        public static int Check() { return probe_anonymous_check(); }
+    }
+}
