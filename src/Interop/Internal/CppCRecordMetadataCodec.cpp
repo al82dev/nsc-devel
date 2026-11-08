@@ -848,7 +848,14 @@ bool decodeCTypeCatalogAndDependencies(std::span<const std::uint8_t> bytes, std:
         bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0;
     const bool dependencyEnvelope = bytes.size() >= 4 && bytes[0] == 5 &&
         bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0;
-    if (formatMinor >= 48 && anonymousEnvelope)
+    const bool enumProvenanceEnvelope = bytes.size() >= 4 && bytes[0] == 7 &&
+        bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0;
+    if (formatMinor >= 49 && enumProvenanceEnvelope)
+    {
+        if (!decodeCTypeCatalogWithEnumProvenance(bytes, decodedRecords, decodedEnums, decodedDependencies, error))
+            return false;
+    }
+    else if (formatMinor >= 48 && anonymousEnvelope)
     {
         if (!decodeCTypeCatalogWithAnonymousCarriers(bytes, decodedRecords, decodedEnums, decodedDependencies, error))
             return false;
@@ -1399,6 +1406,12 @@ bool decodeVersionedCTypeCatalog(std::span<const std::uint8_t> bytes,
     std::uint16_t formatMinor)
 {
     if (formatMinor == 42) return decodeCTypeCatalog(bytes, records, enums, error);
+    if (formatMinor >= 49 && bytes.size() >= 4 && bytes[0] == 7 &&
+        bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0)
+    {
+        CDependencyCatalog dependencies;
+        return decodeCTypeCatalogWithEnumProvenance(bytes, records, enums, dependencies, error);
+    }
     if (formatMinor >= 48 && bytes.size() >= 4 && bytes[0] == 6 &&
         bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0)
     {

@@ -437,6 +437,16 @@ bool checkUsrStability(CppClangSessionFactory& factory, const std::string& resou
                             "enum source provenance survives with carriers and dependencies");
                         if (provenanceOk)
                         {
+                            std::vector<CppCRecordSnapshot> dispatchedRecords;
+                            std::vector<CppCEnumSnapshot> dispatchedEnums;
+                            metadata_detail::CDependencyCatalog dispatchedDependencies;
+                            const bool acceptedOld = metadata_detail::decodeCTypeCatalogAndDependencies(provenanceBytes,
+                                48, dispatchedRecords, dispatchedEnums, dispatchedDependencies, error);
+                            const bool acceptedNew = metadata_detail::decodeCTypeCatalogAndDependencies(provenanceBytes,
+                                49, dispatchedRecords, dispatchedEnums, dispatchedDependencies, error);
+                            carriersOk &= expect(!acceptedOld && acceptedNew && dispatchedEnums.size() == 1 &&
+                                dispatchedEnums[0].declaration.sourceProvenance == enumeration->sourceProvenance,
+                                "enum provenance envelope requires metadata 1.49");
                             provenanceBytes.push_back(0);
                             const auto oldCount = provenanceEnums.size();
                             carriersOk &= expect(!metadata_detail::decodeCTypeCatalogWithEnumProvenance(provenanceBytes,

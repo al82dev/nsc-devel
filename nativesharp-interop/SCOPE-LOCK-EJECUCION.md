@@ -5419,6 +5419,10 @@ Preparar un envoltorio de catálogo versión 7 para procedencia de enums,
 reutilizando versiones anteriores como base y comprobando codificación
 canónica. Presupuesto adicional: codec C interno y sus pruebas. No conectar
 publicación ni despacho de versiones hasta completar el conjunto.
+Preparar el despacho de lectura del envoltorio 7 únicamente con formato 1.49
+o posterior y mantener el rechazo para 1.48 y anteriores. Presupuesto: codec
+C y prueba de identidad; la publicación y el número vigente se conectan en
+una modificación separada y se validan con el conjunto.
 
 Enmienda: la primera implementación causó conflicto entre proyectos al
 coexistir el header y la metadata. Se permite modificar
