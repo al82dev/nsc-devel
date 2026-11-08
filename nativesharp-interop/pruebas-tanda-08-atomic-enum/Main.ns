@@ -1,0 +1,7 @@
+int Main()
+{
+    if (state != STATE_IDLE) return 1;
+    state = STATE_READY;
+    if (state_check() != 1) return 2;
+    return 0;
+}
