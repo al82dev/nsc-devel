@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08: fixture histórico NSMETA 1.45 recuperado
+
+Conservar el archivo real `A:/nsc-interop-build/tanda08-opaco-c/COpaqueProducer.nsmeta`
+como fixture histórico 1.45, sin recodificarlo. El productor está identificado
+por el build incorporado y es anterior a la introducción de 1.46; el lector actual
+lo verifica con Object ABI 3. Presupuesto: `tests/fixtures/nsmeta/historical-1.45.nsmeta`,
+tracking y registro de procedencia. La correspondencia exacta del build con un
+commit no está demostrada. No alterar los demás fixtures, metadata, NSLink,
+LLVM/Clang ni C:. El fixture 1.46 sigue pendiente; no cerrar el gate.
+
 ## T08-010/015: referencias con modos volatile distintos
 
 Observar acceso directo y mediante alias al mismo campo flexible cuando el

@@ -209,6 +209,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     El control general pasó 430 de 434; faltan las muestras históricas 1.45 y
     1.46 que el control exige. Esos cuatro fallos no se consideran aprobados.
     [Evidencia](registro-commits/t08-nsmeta-147-compatibilidad.md).
+  - Se recuperó una muestra 1.45 producida antes de la introducción de 1.46 y
+    el lector actual la verificó. Falta una muestra independiente 1.46 y volver
+    a ejecutar la suite. [Procedencia](registro-commits/t08-nsmeta-145-fixture-recuperado.md).
   - Actualización H3: el catálogo 1.46 publica dependencias candidatas de alias,
     funciones externas y `static inline`, y globales externas e internas usadas
     por plantillas. Los controles específicos de esas cinco categorías pasaron
