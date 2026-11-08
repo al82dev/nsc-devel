@@ -684,6 +684,29 @@ bool decodeCTypeCatalogWithDependencies(std::span<const std::uint8_t> bytes,
     return true;
 }
 
+bool decodeCTypeCatalogAndDependencies(std::span<const std::uint8_t> bytes, std::uint16_t formatMinor,
+    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums,
+    CDependencyCatalog& dependencies, std::string& error)
+{
+    std::vector<CppCRecordSnapshot> decodedRecords;
+    std::vector<CppCEnumSnapshot> decodedEnums;
+    CDependencyCatalog decodedDependencies;
+    const bool dependencyEnvelope = bytes.size() >= 4 && bytes[0] == 5 &&
+        bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0;
+    if (formatMinor >= 46 && dependencyEnvelope)
+    {
+        if (!decodeCTypeCatalogWithDependencies(bytes, decodedRecords, decodedEnums, decodedDependencies, error))
+            return false;
+    }
+    else if (!decodeVersionedCTypeCatalog(bytes, decodedRecords, decodedEnums, error, formatMinor))
+        return false;
+    records = std::move(decodedRecords);
+    enums = std::move(decodedEnums);
+    dependencies = std::move(decodedDependencies);
+    error.clear();
+    return true;
+}
+
 bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
                           std::vector<std::uint8_t>& output, std::string& error)
 {

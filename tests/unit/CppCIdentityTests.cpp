@@ -975,6 +975,21 @@ bool checkDependencyTypeCodec()
         restoredEnums.size() == 1 && restoredEnums[0].identityKey == sourceEnums[0].identityKey &&
         restoredDependencies.functions.size() == 1 && restoredDependencies.globals.size() == 1 &&
         restoredDependencies.aliases.size() == 1, "C dependency envelope preserves types and declarations");
+    CDependencyCatalog dispatched;
+    std::vector<CppCRecordSnapshot> dispatchedRecords;
+    std::vector<CppCEnumSnapshot> dispatchedEnums;
+    ok &= expect(decodeCTypeCatalogAndDependencies(envelope, 46, dispatchedRecords, dispatchedEnums,
+        dispatched, error) && dispatched.functions.size() == 1 && dispatchedEnums.size() == 1,
+        "C dependency envelope dispatch accepts explicit future minor");
+    dispatched.functions.clear();
+    ok &= expect(!decodeCTypeCatalogAndDependencies(envelope, 45, dispatchedRecords, dispatchedEnums,
+        dispatched, error) && dispatched.functions.empty(),
+        "C dependency envelope dispatch rejects an older minor without changing outputs");
+    std::vector<std::uint8_t> legacy;
+    ok &= expect(encodeCTypeCatalog({}, sourceEnums, legacy, error) &&
+        decodeCTypeCatalogAndDependencies(legacy, 42, dispatchedRecords, dispatchedEnums, dispatched, error) &&
+        dispatchedEnums.size() == 1 && dispatched.functions.empty(),
+        "C dependency dispatch preserves legacy enum-only catalogue");
     if (!envelope.empty()) envelope.pop_back();
     restoredDependencies.functions.clear();
     ok &= expect(!decodeCTypeCatalogWithDependencies(envelope, restoredRecords, restoredEnums,

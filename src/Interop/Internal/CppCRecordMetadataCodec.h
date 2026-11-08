@@ -73,6 +73,11 @@ bool encodeCTypeCatalogWithDependencies(std::span<const CppCRecordSnapshot> reco
 bool decodeCTypeCatalogWithDependencies(std::span<const std::uint8_t> bytes,
     std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums,
     CDependencyCatalog& dependencies, std::string& error);
+// Explicit-version dispatch, prepared for a future metadata revision. Existing
+// readers remain unchanged until verification and ABI projection are connected.
+bool decodeCTypeCatalogAndDependencies(std::span<const std::uint8_t> bytes, std::uint16_t formatMinor,
+    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums,
+    CDependencyCatalog& dependencies, std::string& error);
 // Internal catalogue codec. It does not by itself publish an NSMETA section.
 // Both functions leave their output unchanged on failure.
 bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
