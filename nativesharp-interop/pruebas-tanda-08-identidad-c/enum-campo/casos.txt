@@ -11,7 +11,7 @@ HLevelInt - runs runs
 HConst - runs runs
 HNamed - runs runs
 HNamedType - runs runs
-CAnon PAnon field-identity runs
-CAnonHeader PAnon field-identity runs
+CAnon PAnon runs runs
+CAnonHeader PAnon runs runs
 CNamed PNamed runs runs
 CInternal PInternal runs runs
