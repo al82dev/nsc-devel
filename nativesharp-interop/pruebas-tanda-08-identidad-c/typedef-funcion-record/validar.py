@@ -1,0 +1,72 @@
+from pathlib import Path
+import os
+import subprocess
+import sys
+
+root = Path(r"A:\nsc-interop-build\t08-typedef-funcion-record")
+root.mkdir(parents=True, exist_ok=True)
+env = os.environ.copy()
+env["PATH"] = r"A:\al82dev-clang\bin;A:\nsc-interop-build\tanda1-ON\bin;" + env["PATH"]
+env["NSC_LINKER"] = r"A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
+env["NSC_LLVM_LIB"] = r"A:\al82dev-clang\bin\llvm-lib.exe"
+env["NSC_WINDOWS_RUNTIME_LIBRARY"] = r"A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
+nsc = r"A:\nsc-interop-build\tanda1-ON\bin\nsc.exe"
+opt = sys.argv[1] if len(sys.argv) > 1 else "0"
+incompatible = "--incompatible" in sys.argv
+expected_rejection = incompatible or "--expect-current" in sys.argv
+
+def run(args, folder):
+    result = subprocess.run(args, cwd=folder, env=env, capture_output=True, text=True, errors="replace")
+    if result.returncode:
+        print(result.stdout + result.stderr)
+        sys.exit("ERROR al ejecutar " + str(args))
+    return result
+
+for index in (1, 2):
+    folder = root / str(index)
+    folder.mkdir(exist_ok=True)
+    field = "long long" if incompatible and index == 2 else "int"
+    (folder / "api.h").write_text(
+        f"typedef struct CRecord {{ {field} value; }} CRecord;\n"
+        "typedef int (*Callback)(CRecord *, ...);\n", encoding="utf-8")
+    (folder / "Producer.ns").write_text(f"""
+namespace RecordAlias{index} {{
+    public class Bridge {{
+        public static int Test<T>(T unused) {{ Callback callback = null; return 0; }}
+    }}
+}}
+""", encoding="utf-8")
+    (folder / "Producer.nsproj").write_text(f"""<Project><PropertyGroup><Name>RecordAlias{index}</Name><OutputType>Library</OutputType></PropertyGroup><ItemGroup>
+<Compile Include="Producer.ns" />
+<CppLibraryReference Header="api.h" Language="C" Standard="c11" />
+</ItemGroup></Project>""", encoding="utf-8")
+    run([nsc, "--cpp-clang-root=A:\\al82dev-clang", "--emit-project-oop-lib", "Producer.nsproj",
+         "-O" + opt, "--no-artifact-cache", "-o", f"RecordAlias{index}.lib"], folder)
+
+(root / "Consumer.ns").write_text("""
+int Main() {
+    return RecordAlias1.Bridge.Test<int>(0) + RecordAlias2.Bridge.Test<int>(0);
+}
+""", encoding="utf-8")
+(root / "Consumer.nsproj").write_text("""<Project><PropertyGroup><Name>RecordConsumer</Name></PropertyGroup><ItemGroup>
+<Compile Include="Consumer.ns" />
+<LibraryReference Include="1/RecordAlias1.lib" />
+<LibraryReference Include="2/RecordAlias2.lib" />
+</ItemGroup></Project>""", encoding="utf-8")
+exe = root / "Consumer.exe"
+exe.unlink(missing_ok=True)
+command = [nsc, "--cpp-clang-root=A:\\al82dev-clang", "--emit-project-oop-exe", "Consumer.nsproj",
+           "-O" + opt, "--no-artifact-cache", "-o", str(exe)]
+result = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True, errors="replace")
+if expected_rejection:
+    log = result.stdout + result.stderr
+    if result.returncode == 0 or exe.exists() or "conflicting C/C++ type alias 'Callback'" not in log:
+        print(log)
+        sys.exit("ERROR: el resultado no coincide con el conflicto esperado")
+    print("Conflicto reproducido; records " + ("incompatibles" if incompatible else "equivalentes"))
+    sys.exit(0)
+if result.returncode:
+    print(result.stdout + result.stderr)
+    sys.exit(result.returncode)
+run([str(exe)], root)
+print("Typedefs con puntero a record: correcto O" + opt)
