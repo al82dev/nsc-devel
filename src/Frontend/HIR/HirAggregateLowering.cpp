@@ -1,5 +1,6 @@
 #include "HirLoweringSupport.h"
 #include "Internal/HirAggregateFrame.h"
+#include "nativesharp/Frontend/ProjectMetaprogrammingModel.h"
 
 #include <optional>
 #include <string>
@@ -279,6 +280,25 @@ bool ProjectOopHirModel::appendAggregateLeaves(
     std::vector<std::unique_ptr<ProjectOopHirNode>>& leaves,
     std::string& error)
 {
+    // A record explicitly deriving both equality and hashing uses the same
+    // selected fields for both operations. Ordinary struct comparison keeps
+    // its existing physical-field semantics.
+    std::optional<std::size_t> derivedTypeOrdinal;
+    if (metaprogrammingModel_ != nullptr && inheritanceModel_ != nullptr)
+    {
+        const auto ordinal = inheritanceModel_->typeOrdinalForTypeKey(typeKey);
+        bool equality = false;
+        bool hash = false;
+        for (const StaticDeriveInfo& derive : metaprogrammingModel_->derives())
+        {
+            if (ordinal.has_value() && derive.typeOrdinal == *ordinal)
+            {
+                equality = equality || derive.traitName == "Equality";
+                hash = hash || derive.traitName == "Hash";
+            }
+        }
+        if (equality && hash) derivedTypeOrdinal = ordinal;
+    }
     std::vector<std::pair<std::string, std::uint64_t>> pending;
     pending.emplace_back(typeKey, baseOffset);
     while (!pending.empty())
@@ -332,6 +352,22 @@ bool ProjectOopHirModel::appendAggregateLeaves(
             for (std::size_t remaining = layout->fields.size(); remaining > 0; --remaining)
             {
                 const ObjectFieldLayout& field = layout->fields[remaining - 1U];
+                bool ignored = false;
+                if (derivedTypeOrdinal.has_value() && typeOrdinal == derivedTypeOrdinal &&
+                    currentBaseOffset == baseOffset)
+                {
+                    for (const StaticAttributeInfo& attribute : metaprogrammingModel_->attributes())
+                    {
+                        if (attribute.memberOrdinal == field.memberOrdinal &&
+                            (attribute.identity == "NativeSharp.DeriveIgnore" ||
+                             attribute.identity.ends_with(".DeriveIgnore")))
+                        {
+                            ignored = true;
+                            break;
+                        }
+                    }
+                }
+                if (ignored) continue;
                 pending.emplace_back(
                     field.typeKey, currentBaseOffset + field.offset);
             }

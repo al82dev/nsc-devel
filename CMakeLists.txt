@@ -2716,7 +2716,7 @@ if(NSC_BUILD_TESTS)
     add_executable(
         nsc_ns3_t11_f03_derive_tests
         tests/unit/NativeSharp3T11DeriveTests.cpp)
-    target_link_libraries(nsc_ns3_t11_f03_derive_tests PRIVATE nsc_frontend)
+    target_link_libraries(nsc_ns3_t11_f03_derive_tests PRIVATE nsc_frontend nsc_precompiled)
     target_compile_features(nsc_ns3_t11_f03_derive_tests PRIVATE cxx_std_20)
     target_compile_definitions(nsc_ns3_t11_f03_derive_tests PRIVATE
         NSC_BINARY_DIR="${CMAKE_CURRENT_BINARY_DIR}")
@@ -6633,6 +6633,16 @@ if(NSC_BUILD_TESTS)
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
             "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyGenericDelegateReturn.cmake")
+
+    add_test(
+        NAME nsc.compiler.derive-ignore-equality
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DPROJECT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/derive_ignore_equality/DeriveIgnoreEquality.nsproj"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/derive-ignore-equality"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDeriveIgnoreEquality.cmake")
 
     set(NSC_FIXED_MATRIX_CONST_FORWARD_PROJECT
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixed_matrix_const_forward/FixedMatrixConstForward.nsproj")
