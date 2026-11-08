@@ -45,6 +45,8 @@ enum class LlvmTrapReason : std::uint32_t
     DecimalOverflow = 17,
     // Freeze 3.0 DEC-11: a dead slot of an array of structs with a destructor (never written,
     // moved out or deleted) was read as a live value. Exit 128 + 18 = 146.
-    DeadElementRead = 18
+    DeadElementRead = 18,
+    // Checked signed integer arithmetic overflow. Exit 128 + 19 = 147.
+    IntegerOverflow = 19
 };
 }

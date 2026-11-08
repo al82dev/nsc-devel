@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>CheckedI128Safe</Name></PropertyGroup><ItemGroup><Compile Include="Safe.ns" /></ItemGroup></Project>

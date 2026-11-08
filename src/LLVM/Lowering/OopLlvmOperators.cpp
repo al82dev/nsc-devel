@@ -563,6 +563,33 @@ LLVMValueRef OopLlvmImplementation::applyIntegerBinaryOperation(
         std::string& error,
         bool divisorProvenNonZero)
 {
+        if (operation == lexer::TokenKind::Plus && operandType == "builtin:i128" &&
+            currentOverflowPolicy_ == "checked")
+        {
+            if (trapFunction_ == nullptr || trapFunctionType_ == nullptr)
+                return failValue(error, "checked integer overflow but no trap is configured");
+            constexpr std::string_view name = "llvm.sadd.with.overflow";
+            const unsigned id = LLVMLookupIntrinsicID(name.data(), name.size());
+            LLVMTypeRef type = LLVMTypeOf(left);
+            LLVMValueRef intrinsic = LLVMGetIntrinsicDeclaration(module_, id, &type, 1U);
+            LLVMValueRef arguments[] = {left, right};
+            LLVMValueRef pair = LLVMBuildCall2(
+                builder_, LLVMGlobalGetValueType(intrinsic), intrinsic, arguments, 2U, "checked.add");
+            LLVMValueRef value = LLVMBuildExtractValue(builder_, pair, 0, "checked.add.value");
+            LLVMValueRef overflow = LLVMBuildExtractValue(builder_, pair, 1, "checked.add.overflow");
+            LLVMBasicBlockRef trapBlock = appendBlock("checked.add.trap");
+            LLVMBasicBlockRef okBlock = appendBlock("checked.add.ok");
+            LLVMBuildCondBr(builder_, overflow, trapBlock, okBlock);
+            enterBlock(trapBlock);
+            LLVMValueRef reason = LLVMConstInt(
+                LLVMInt32TypeInContext(context_),
+                static_cast<std::uint64_t>(LlvmTrapReason::IntegerOverflow), 0);
+            LLVMValueRef trapArguments[] = {reason};
+            buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
+            LLVMBuildUnreachable(builder_);
+            enterBlock(okBlock);
+            return value;
+        }
         if (operation == lexer::TokenKind::Plus && operandType == "builtin:int" &&
             currentOverflowPolicy_ == "saturating")
         {
