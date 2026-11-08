@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Api.c Main.ns Project.nsproj) do (
+for %%F in (Api.h Api.c Main.ns Project.nsproj ProjectISO.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 goto :failure
 )
@@ -24,10 +24,20 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Projec
 if errorlevel 1 goto :failure
 python "%~dp0verificar_ir.py" "%DEST%\clang.ll" "%DEST%\native.ll"
 if errorlevel 1 goto :failure
+clang.exe --target=x86_64-pc-windows-msvc -std=c11 -fno-ms-volatile -S -emit-llvm -O0 "%DEST%\Api.c" -o "%DEST%\clang-iso.ll"
+if errorlevel 1 goto :failure
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\ProjectISO.nsproj" > "%DEST%\native-iso.ll" 2> "%DEST%\native-iso-ir.log"
+if errorlevel 1 goto :failure
+python "%~dp0verificar_ir_iso.py" "%DEST%\clang-iso.ll" "%DEST%\native-iso.ll"
+if errorlevel 1 goto :failure
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe" > "%DEST%\consumer-O%%O.log" 2>&1
   if errorlevel 1 goto :failure
   "%DEST%\consumer-O%%O.exe"
+  if errorlevel 1 goto :failure
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\ProjectISO.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-iso-O%%O.exe" > "%DEST%\consumer-iso-O%%O.log" 2>&1
+  if errorlevel 1 goto :failure
+  "%DEST%\consumer-iso-O%%O.exe"
   if errorlevel 1 goto :failure
   echo Punteros C volatile O%%O correctos.
 )
