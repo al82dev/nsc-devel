@@ -1085,6 +1085,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     0 en O0–O3; el fixture verificó campo y arreglo enum, IR y sus rechazos de
     dirección. Es una comprobación dirigida, no el cierre de T08-009.
 - [ ] T08-010. Importar la declaración y campos de un `struct` C.
+  - La conversión de `const int[]` a `int const*` y el paso de `volatile int[]`
+    a un parámetro C `volatile int*` pasaron O0–O3; perder cada calificador se
+    rechazó. Son casos directos, sin acreditar otras rutas ni cerrar el ítem.
+    [Evidencia](registro-commits/t08-flexible-decay-calificadores-validacion.md).
   - La conversión de miembro flexible a puntero pasó O0–O3 para `int`, `double`,
     record, enum y `_Bool` en consumo directo. El caso `int` también pasó con
     productor precompilado, con header y solo metadata; el caso subalineado se
