@@ -1239,7 +1239,7 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
                 "metadata verification rejects an alias without Clang identity")) return false;
 
     const auto consumerProject = writeProject(directory / "generic-alias-consumer", "CGenericConsumer",
-        "int Main() { return Published.Bridge.Test<int>(1); }\n");
+        "int Main() { return Published.Bridge.Test<int>(1) + Published.Bridge.Call<int>(1); }\n");
     const auto metadataPath = std::filesystem::absolute(directory / "generic-publish" / "synthetic.nsmeta");
     if (consumerProject.empty() || !writeText(metadataPath, "test metadata identity")) return false;
     nativesharp::frontend::PrecompiledSyntaxModule module;
@@ -1247,6 +1247,8 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
     module.metadataPath = metadataPath;
     module.moduleName = "CGenericPublish";
     module.templateSourceText = templateSource;
+    dependencies.functions = capturedFunctions;
+    if (!metadata_detail::encodeCTypeCatalogWithDependencies(records, enums, dependencies, bytes, error)) return false;
     module.cppCTypeCatalog = bytes;
     module.cppCTypeCatalogFormatMinor = 46;
     nativesharp::frontend::ProjectCompilation consumer;
@@ -1255,9 +1257,20 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
             [&consumer](const auto& graph, auto sessions, auto& aliases, auto& why) {
                 return provideCppTypeAliasesWithPrecompiledCatalogs(
                     graph, sessions, consumer.precompiledModules(), aliases, why);
+            }, error) &&
+        consumer.setCppFunctionProvider(
+            [&consumer](const auto& graph, auto sessions, auto, auto demands, auto& functions, auto& deferred, auto& why) {
+                const auto* lookup = consumer.nameLookup();
+                return lookup && provideCppFunctionsWithPrecompiledCatalogs(graph, sessions,
+                    consumer.precompiledModules(), *lookup, demands, functions, deferred, why);
             }, error) && consumer.compileProjectMembers(consumerProject, error);
     if (!consumed) std::cerr << "generic alias consumer: " << error << ' ' << diagnosticText(consumer) << '\n';
-    return expect(consumed, "consumer compiles generic alias using only precompiled catalogue");
+    if (!expect(consumed, "consumer compiles generic alias using only precompiled catalogue")) return false;
+    const auto* model = consumer.namespaceFunctionModel();
+    const auto restoredFunctions = model ? model->functions() : std::span<const nativesharp::frontend::NamespaceFunctionSymbol>{};
+    return expect(std::any_of(restoredFunctions.begin(), restoredFunctions.end(), [](const auto& item) {
+        return item.name == "cid_function" && item.mangledName == "cid_function";
+    }), "consumer restores a demanded C function from the precompiled catalogue");
 }
 
 bool checkDependencyTypeCodec()

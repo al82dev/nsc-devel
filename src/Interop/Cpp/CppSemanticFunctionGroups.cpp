@@ -504,4 +504,63 @@ bool provideExperimentalCppFunctionsWithRecords(
 {
     return provideCppSemanticFunctionsImpl(graph, projects, &lookup, demands, projected, deferred, error);
 }
+
+bool provideCppFunctionsWithPrecompiledCatalogs(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const frontend::ProjectNameLookup& lookup, std::span<const frontend::CppFunctionDemand> demands,
+    std::vector<frontend::NamespaceFunctionSymbol>& projected,
+    std::vector<CppDeferredFunctionCandidate>& deferred, std::string& error)
+{
+    std::vector<frontend::NamespaceFunctionSymbol> result;
+    std::vector<CppDeferredFunctionCandidate> unresolved;
+    if (!provideExperimentalCppFunctionsWithRecords(graph, projects, lookup, demands, result, unresolved, error))
+        return false;
+    std::map<std::string, std::size_t> owners;
+    std::set<std::string> ambiguous;
+    for (std::size_t i = 0; i < graph.projects().size(); ++i)
+        if (!owners.emplace(graph.projects()[i].moduleName(), i).second)
+            ambiguous.insert(graph.projects()[i].moduleName());
+    for (const auto& module : modules)
+    {
+        if (module.cppCTypeCatalog.empty()) continue;
+        std::vector<CppCRecordSnapshot> records;
+        std::vector<CppCEnumSnapshot> enums;
+        metadata_detail::CDependencyCatalog dependencies;
+        if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
+                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+        for (const auto& function : dependencies.functions)
+        {
+            const auto owner = owners.find(function.moduleName);
+            if (owner == owners.end() || ambiguous.contains(function.moduleName))
+            { error = "precompiled C function owner is missing or ambiguous: " + function.moduleName; return false; }
+            const bool demanded = std::any_of(demands.begin(), demands.end(), [&](const auto& demand) {
+                return demand.lookupName == function.declaration.name &&
+                    std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), owner->second) != demand.visibleProjects.end() &&
+                    std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), "") != demand.lookupNamespaces.end();
+            });
+            if (!demanded) continue;
+            auto restored = projectCppPrecompiledCFunction(function, records, owner->second,
+                function.moduleName, "x86_64-pc-windows-msvc", lookup);
+            const auto* failure = std::get_if<CppSemanticFunctionFailure>(&restored);
+            if (failure) { error = "precompiled C function cannot be projected: " + failure->message; return false; }
+            auto value = std::move(std::get<frontend::NamespaceFunctionSymbol>(restored));
+            const auto existing = std::find_if(result.begin(), result.end(), [&](const auto& other) {
+                return other.projectOrdinal == value.projectOrdinal && other.mangledName == value.mangledName;
+            });
+            if (existing != result.end())
+            {
+                if (existing->cppCanonicalIdentity != value.cppCanonicalIdentity ||
+                    existing->cppClangUsr != value.cppClangUsr)
+                { error = "conflicting precompiled C function: " + value.name; return false; }
+                continue;
+            }
+            result.push_back(std::move(value));
+        }
+    }
+    projected = std::move(result);
+    deferred = std::move(unresolved);
+    error.clear();
+    return true;
+}
 }

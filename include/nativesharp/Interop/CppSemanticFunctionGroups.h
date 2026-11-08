@@ -124,4 +124,10 @@ bool provideExperimentalCppFunctionsWithRecords(
     const frontend::ProjectNameLookup& lookup, std::span<const frontend::CppFunctionDemand> demands,
     std::vector<frontend::NamespaceFunctionSymbol>& projected,
     std::vector<CppDeferredFunctionCandidate>& deferred, std::string& error);
+bool provideCppFunctionsWithPrecompiledCatalogs(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const frontend::ProjectNameLookup& lookup, std::span<const frontend::CppFunctionDemand> demands,
+    std::vector<frontend::NamespaceFunctionSymbol>& projected,
+    std::vector<CppDeferredFunctionCandidate>& deferred, std::string& error);
 }
