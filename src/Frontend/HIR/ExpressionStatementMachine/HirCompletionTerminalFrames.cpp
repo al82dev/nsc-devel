@@ -1,5 +1,6 @@
 #include "../HirLoweringSupport.h"
 #include "HirExpressionStatementMachineTypes.h"
+#include "CppVolatileAliasAlignment.h"
 
 #include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
@@ -471,6 +472,7 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
                 const auto mode = cppConsumerVolatileModeForSyntax(frame.syntax);
                 if (mode) load->cppMicrosoftVolatileSemantics =
                     *mode == compilation::CppConsumerVolatileMode::Microsoft;
+                if (mode) load->cppAtomicAlignmentBytes = internal::cppVolatileAliasAlignment(operandType, resultType);
             }
             if (directCVolatileInt && load->volatileAccess)
             {
@@ -496,6 +498,7 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
                     const auto mode = cppConsumerVolatileModeForSyntax(frame.syntax);
                     if (mode) address->cppMicrosoftVolatileSemantics =
                         *mode == compilation::CppConsumerVolatileMode::Microsoft;
+                    if (mode) address->cppAtomicAlignmentBytes = internal::cppVolatileAliasAlignment(operandType, resultType);
                 }
                 if (directCVolatileInt && volatilePointee)
                 {

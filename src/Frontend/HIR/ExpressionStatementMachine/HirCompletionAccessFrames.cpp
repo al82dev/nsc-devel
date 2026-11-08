@@ -1,5 +1,6 @@
 #include "../HirLoweringSupport.h"
 #include "HirExpressionStatementMachineTypes.h"
+#include "CppVolatileAliasAlignment.h"
 
 #include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
@@ -436,6 +437,7 @@ void ProjectOopHirModel::finishArrayRawIndex(
             const auto mode = cppConsumerVolatileModeForSyntax(frame.syntax);
             if (mode) address->cppMicrosoftVolatileSemantics =
                 *mode == compilation::CppConsumerVolatileMode::Microsoft;
+            if (mode) address->cppAtomicAlignmentBytes = internal::cppVolatileAliasAlignment(baseType, elementType);
         }
         const ProjectOopHirNode* provenance = base.get();
         bool indexedCGlobal = false;
