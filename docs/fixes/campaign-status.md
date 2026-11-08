@@ -20,16 +20,16 @@ se detallan en los documentos de `docs/fixes` y registros de la misma carpeta.
 
 | Caso | Resultado inicial y situación |
 | --- | --- |
-| Rc / WeakRc; Arc / WeakArc | `sdk-01`: nombres no encontrados. El contrato impreso por el compilador no demuestra una implementación. Pendiente decisión de API y propiedad. |
+| Rc / WeakRc; Arc / WeakArc | `sdk-01`: nombres no encontrados. El usuario autorizó diseñar e implementar las cuatro familias; implementación y validación pendientes. El contrato impreso no demuestra una implementación. |
 | Dictionary string AddOrUpdate | `sdk-02`: termina 3221226356; doble liberación. Corregido en `5127e4d07`, con ejecución de regresión. |
 | SortWith | `sdk-03`: nombre no encontrado. La sobrecarga vigente `Sort<T>(Span<T>, Comparison<T>)` cubre la ordenación con comparador; una copia de `c27_algoritmos` se compiló y ejecutó nativamente en O0/O2 con salida 42 (`A:/nsc-fixes-evidencia/sort-existing/result.json`). El nombre `SortWith` no existe y no se agregó. |
 | Saturación: suma y conversiones a short y byte | `comp-01`: `-2147483648`, `-25536`, `34`; corregido para esas operaciones en `a7436961d` y `bb4c18900`. No se afirma cobertura de todas las operaciones saturadas. |
 | Literales y cálculo decimal | `comp-02`: factura 101, comparación falsa, redondeo 100/100/101. `a63333883` conserva el lexema de literales y corrige la reproducción; no demuestra precisión completa de decimal ni inicializadores estáticos. |
-| checked i128 | `comp-03`: desborda y continúa con wrapping. Pendiente decisión sobre el mecanismo observable de fallo. |
+| checked i128 | `comp-03`: la suma desbordaba y continuaba con wrapping. El usuario eligió trap; `93d859e31` corrige la suma firmada i128 con regresiones O0/O2. Otras operaciones no quedan cubiertas. |
 | División i128 | `comp-04`: enlace falla por `__divti3`. `2f1ae8d47` corrige división firmada; pruebas diferenciales, extremos y divisor cero. Resto y unsigned no están cubiertos. |
 | sealed O2 | `43-dispatch`: IR optimizado conserva llamada indirecta. Pendiente decidir el objetivo de optimización. |
-| Cancelación async | `comp-06`: traza 0 y salida 5. Con un avance adicional de `MoveNextAsync`, `comp-06-deferred` da traza 7 y salida 0. Pendiente decidir limpieza inmediata o diferida. |
-| impl externo para struct | `68-struct`: parser rechaza el destino struct. Pendiente decisión de lenguaje. |
+| Cancelación async | `comp-06`: traza 0 y salida 5. Con un avance adicional de `MoveNextAsync`, `comp-06-deferred` da traza 7 y salida 0. El usuario confirmó limpieza en el siguiente avance, conforme al contrato existente. |
+| impl externo para struct | `68-struct` se rechazaba. El usuario autorizó despacho estático sin boxing; `f3b0314c0` lo implementa y añade regresión. |
 | Delegado genérico con retorno T | `69-delegate`: rechazo de T. `3c03a4440` corrige el patrón reportado; otras formas de retorno genérico no están demostradas. |
 | Restricción entre parámetros genéricos | `69-constraint`: resolución no encuentra T. Pendiente investigación y decisión del contrato de restricciones. |
 | Lambda sin captura en Main global | `69-lambda`: falla en HIR por ordinal de owner. `f8a05890f` corrige función global sin captura; cierres con captura no están cubiertos. |
@@ -41,7 +41,7 @@ se detallan en los documentos de `docs/fixes` y registros de la misma carpeta.
 | Inspección general de campos | `74-fields`: ejecuta un ejemplo explícito, no un inspector universal. No se localizó API general; pendiente diseño. |
 | derive Print | `75-derive`: texto `GridPoint`, sin campos. Pendiente decisión de formato. La igualdad falsa observada en la misma ejecución se corrigió de forma acotada; véase `derive-ignore-equality.md`. |
 | SIMD máscara a vector, indexación y condicional | `89-mask-convert`, `89-mask-index`, `89-mask-select`: rechazos reproducidos. Pendiente definir las operaciones y representación deseadas. |
-| AddressSanitizer | No se localizó opción en `nsc --help`. La clase `LlvmNativeSanitizer` sí instrumenta IR; su prueba existente pasó (`asan-existing-test.log`). No se ha ejecutado la reproducción fuera de límites bajo ASan ni demostrado su exposición/enlace desde el CLI; pendiente decisión de herramienta. |
+| AddressSanitizer | No se localizó opción en `nsc --help`. La clase `LlvmNativeSanitizer` sí instrumenta IR; su prueba existente pasó (`asan-existing-test.log`). El usuario aprobó una opción explícita con runtime externo; implementación, enlace y reproducción fuera de límites pendientes. |
 | Operadores ++ / -- | `39-increment`, `39-decrement`: parser rechaza la sobrecarga. Pendiente decisión sobre semántica y evaluación. |
 | NativeSharp.Text | `text-namespace`: namespace no encontrado. Pendiente decisión de API. |
 | Compile con .. | `102-outside`: proyecto rechaza rutas fuera de su raíz. Pendiente decisión de resolución de proyectos. |
@@ -137,10 +137,18 @@ interoperabilidad ni la instalación funcional. La selección inicial compiló
 cinco objetos de ejecutables mixtos antes de corregirse el inventario; esto
 se detalla en `decisiones-pendientes.md`.
 
+La segunda pasada, con redirección temporal de 20 cachés de proyecto a A y
+restauración de sus ubicaciones previas, obtuvo 349/385 aprobadas y 36 fallidas
+(`unit-isolated-results.xml`). La prueba de extensiones y la de enlace
+incremental pasaron frente a la primera pasada; dos pruebas con fixtures en
+rutas de interoperabilidad quedaron fuera de esta repetición. Esa pasada es
+anterior a los cambios `93d859e31` y `f3b0314c0`, cuyas regresiones dirigidas
+pasaron juntas (`struct-tests.log`).
+
 **Estado abierto:** faltan pruebas del inventario, la batería completa
 pertinente no está aprobada y no se ha demostrado ejecución nativa para todos
-los casos que CTest omite en Windows. Los 37 fallos restantes de la primera
-pasada unitaria no se han corregido ni clasificado todos contra la base. Los
+los casos que CTest omite en Windows. Los 36 fallos de la segunda pasada
+unitaria no se han corregido ni clasificado todos contra la base. Los
 casos de lenguaje/API pendientes y la evidencia para decidirlos están en
 `decisiones-pendientes.md`. No se hizo merge, push ni despliegue.
 

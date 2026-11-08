@@ -4,17 +4,17 @@ Revisión observada: `ab5870aa8a97008602c2d4d8631ea3c277d7284b` en
 `A:/nsc-devel-fixes`. Las reproducciones originales y sus resultados se
 conservan en `cases`; ninguna propuesta de este archivo está implementada por
 el hecho de aparecer aquí. Las preguntas ya enviadas están pendientes de
-respuesta mientras se continúa la validación independiente.
+respuesta mientras se continúa la validación independiente, salvo las
+decisiones posteriores indicadas explícitamente abajo.
 
 ## checked sobre i128
 
 - Evidencia: `cases/comp-03/result.json` muestra que la suma de uno al máximo
   termina normalmente con wrapping; el evaluador de políticas rechaza el
   overflow checked en `src/Language/NumericSemantics.cpp`.
-- Decisión: expresar el fallo en runtime mediante una trampa de overflow o
-  mediante una excepción. Recomendación inicial: trampa, si el contrato del
-  lenguaje no exige recuperación por excepción. La reproducción demuestra el
-  wrapping, no cuál de los mecanismos es obligatorio.
+- Decisión adoptada: el usuario eligió trap de overflow. La suma firmada i128
+  se corrigió en `93d859e31`; otras operaciones no se han acreditado. Véase
+  `checked-i128-add.md`.
 - Antecedente cercano: el backend usa una trampa específica para overflow de
   `decimal` (`LlvmTrapReason::DecimalOverflow`), pero no se ha demostrado que
   ese código o contrato corresponda a overflow entero `i128`.
@@ -29,8 +29,8 @@ respuesta mientras se continúa la validación independiente.
   distinta del original y no sustituye la reproducción.
 - El documento `docs/3.0.4/items/NS304-T07-F05-cancellation.md` describe la
   cancelación cooperativa y el cleanup en el siguiente avance, además de
-  `Drop()` para abandono. Decisión: confirmar ese contrato o exigir limpieza
-  inmediata al llamar a `Cancel()`; son comportamientos observables distintos.
+  `Drop()` para abandono. El usuario confirmó la limpieza al siguiente avance;
+  la reproducción con ese avance pasa. No se implementó limpieza inmediata.
 
 ## Punteros compartidos
 
@@ -38,9 +38,9 @@ respuesta mientras se continúa la validación independiente.
   manifiesto de `src/Language/SmartPointerSemantics.cpp` describe familias,
   operaciones, destrucción, módulo y concurrencia; `lib/NativeSharp.Core.Threading/ReferenceCounting.ns`
   implementa únicamente estado de contadores y hooks, no esas familias.
-- Decisión: confirmar implementación pública de las cuatro familias y su
-  ubicación, inicialización, representación, errores, ownership y duración.
-  No se debe confundir un manifiesto o contadores con una implementación.
+- Decisión adoptada: el usuario autorizó diseñar e implementar las cuatro
+  familias. El trabajo de implementación y validación sigue pendiente. No se
+  debe confundir un manifiesto o contadores con una implementación.
 
 ## impl para struct y métodos genéricos en tipos genéricos
 
@@ -48,9 +48,10 @@ respuesta mientras se continúa la validación independiente.
   estática local. `cases/70-method/build.log` rechaza expresamente métodos
   genéricos dentro de tipos genéricos; la función externa corregida en la
   campaña anterior no implementa ese contrato.
-- Decisión: confirmar si `impl` externo para estructuras debe admitirse con
-  despacho estático y sin boxing; confirmar por separado si se habilita la
-  especialización combinada del tipo y del método, incluidos límites y errores.
+- Decisión adoptada: admitir `impl` externo para estructuras con despacho
+  estático y sin boxing; implementado en `f3b0314c0` con regresión. Sigue
+  pendiente decidir por separado la especialización combinada del tipo y del
+  método, incluidos límites y errores.
 
 ## Restricciones entre parámetros genéricos
 
@@ -106,9 +107,11 @@ respuesta mientras se continúa la validación independiente.
   (`asan-existing-build.log`, `asan-existing-test.log`); verifica el IR, no
   una ejecución instrumentada ni un diagnóstico real de fuera de límites.
   No se localizó conexión de esa clase en `src/Driver` ni opción en la ayuda.
-- Decisiones: objetivo verificable de desvirtualización O2; si ASan debe
-  exponerse desde el CLI, sintaxis, disponibilidad y forma de encontrar y
-  enlazar el runtime sin modificar la instalación funcional.
+- Decisiones: sigue pendiente el objetivo verificable de desvirtualización O2.
+  El usuario aprobó exponer ASan como opción explícita con el runtime de Clang
+  externo; falta implementar y validar esa integración sin modificar la
+  instalación funcional. La DLL y las bibliotecas Clang 23 se localizaron en
+  `C:/clang-llvm/lib/clang/23/lib/windows` como referencias.
 
 ## Namespace Text y rutas Compile con ..
 
