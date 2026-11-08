@@ -1,0 +1,52 @@
+namespace NativeSharp.Core.Internal
+{
+    // Internal storage primitive. The caller owns the returned array and is responsible for
+    // destroying a successfully constructed payload before deleting the array. The first eight
+    // words are reserved for the future control block; this type does not publish pointer APIs.
+    internal static class SharedControlStorage
+    {
+        private static long HeaderBytes() { return 64l; }
+
+        public static long[] Allocate<T>() where T : class
+        {
+            long size = SharedStorage.InstanceSize<T>(null);
+            long alignment = SharedStorage.InstanceAlignment<T>(null);
+            return AllocateLayout(size, alignment);
+        }
+
+        // The separated calculation permits validation without attempting an enormous allocation.
+        public static long[] AllocateLayout(long size, long alignment)
+        {
+            if (size <= 0l || alignment <= 0l || alignment > 2147483647l ||
+                (alignment & (alignment - 1l)) != 0l) return null;
+
+            // Native arrays have a signed 32-bit element count. Check before every addition,
+            // including alignment and word rounding, instead of allowing a wrapped reservation.
+            long maximumBytes = 17179869176l;
+            long overhead = HeaderBytes() + alignment - 1l + 7l;
+            if (overhead > maximumBytes || size > maximumBytes - overhead) return null;
+            long words = (size + overhead) / 8l;
+            return new long[(int)words];
+        }
+
+        public static T Construct<T>(long[] block) where T : class, new()
+        {
+            if (block == null || block.Length < 8) return null;
+            unsafe("shared control block placement")
+            {
+                long size = SharedStorage.InstanceSize<T>(null);
+                long alignment = SharedStorage.InstanceAlignment<T>(null);
+                if (size <= 0l || alignment <= 0l || alignment > 2147483647l ||
+                    (alignment & (alignment - 1l)) != 0l) return null;
+                long* address = &block[0];
+                long start = (long)address + HeaderBytes();
+                long remainder = start % alignment;
+                if (remainder != 0l) start = start + alignment - remainder;
+                long offset = start - (long)address;
+                long available = (long)block.Length * 8l;
+                if (offset < HeaderBytes() || offset > available || size > available - offset) return null;
+                return new ((T*)start) T();
+            }
+        }
+    }
+}

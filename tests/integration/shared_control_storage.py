@@ -12,10 +12,10 @@ def run(command, cwd):
 
 
 def main():
-    compiler, storage_source, counts_source, thread_source = map(Path, sys.argv[1:5])
+    compiler, storage_source, control_source, counts_source, thread_source = map(Path, sys.argv[1:6])
     source = '''using NativeSharp.Core.Internal;
 using NativeSharp.Core.Threading;
-class Payload { public static int Drops; public long A; public long B; ~Payload() { Drops = Drops + 1; } }
+class Payload { public static int Drops; public align(32) long A; public long B; ~Payload() { Drops = Drops + 1; } }
 class Program {
  private static COUNTS* globalCounts; private static long failures; private static long ready; private static long last;
  public static void Work() { unsafe("shared counts") { int i = 0; while (i < 50000) {
@@ -32,12 +32,25 @@ class Program {
   if ((*globalCounts).TryRetainStrong()) RecordRelease((*globalCounts).ReleaseStrong());
  } }
  public static int Main() { unsafe("shared block") {
-  long size = SharedStorage.InstanceSize<Payload>(null); long align = SharedStorage.InstanceAlignment<Payload>(null);
-  long[] block = new long[(int)((32l + size + align - 1l + 7l) / 8l)];
+  if (SharedControlStorage.AllocateLayout(-1l, 8l) != null ||
+      SharedControlStorage.AllocateLayout(0l, 8l) != null ||
+      SharedControlStorage.AllocateLayout(8l, 0l) != null ||
+      SharedControlStorage.AllocateLayout(8l, 3l) != null ||
+      SharedControlStorage.AllocateLayout(8l, 2147483648l) != null ||
+      SharedControlStorage.AllocateLayout(17179869176l, 8l) != null ||
+      SharedControlStorage.AllocateLayout(9223372036854775807l, 8l) != null) return 13;
+  long[] tiny = SharedControlStorage.AllocateLayout(1l, 1l);
+  if (tiny == null || tiny.Length != 9) return 14; delete tiny;
+  if (SharedControlStorage.Construct<Payload>(null) != null) return 8;
+  long[] shortBlock = new long[8];
+  if (SharedControlStorage.Construct<Payload>(shortBlock) != null) return 9;
+  delete shortBlock;
+  long[] block = SharedControlStorage.Allocate<Payload>(); if (block == null) return 10;
   long* baseAddress = &block[0]; COUNTS* counts = (COUNTS*)baseAddress;
   *counts = new COUNTS(1l, 1l); THREAD_TEST
-  long at = (long)baseAddress + 32l; long rem = at % align; if (rem != 0l) at = at + align - rem;
-  Payload* storage = (Payload*)at; Payload item = new (storage) Payload(); item.A = 40l; item.B = 2l;
+  Payload item = SharedControlStorage.Construct<Payload>(block); if (item == null) return 11;
+  if (SharedStorage.InstanceAlignment<Payload>(null) != 32l || (long)&item.A % 32l != 0l) return 12;
+  item.A = 40l; item.B = 2l;
   if (!(*counts).TryRetainStrong() || !(*counts).TryRetainWeak()) return 1;
   if ((*counts).StrongCount() != 2l || (*counts).WeakCountRaw() != 2l || item.A + item.B != 42l) return 2;
   if ((*counts).ReleaseStrong() != 0 || (*counts).ReleaseStrong() != 1) return 3;
@@ -64,7 +77,7 @@ class Program {
   *counts = new AtomicSharedCounts(1l, 1l);'''
     with tempfile.TemporaryDirectory(prefix='nsc-shared-control-') as temporary:
         root = Path(temporary)
-        for path in (storage_source, counts_source, thread_source):
+        for path in (storage_source, control_source, counts_source, thread_source):
             shutil.copyfile(path, root / path.name)
         project = root / 'Probe.nsproj'
         project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'

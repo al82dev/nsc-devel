@@ -110,6 +110,15 @@ rechazo de un testigo distinto de null. El prototipo aislado
 la reserva y alinear el payload y ejecuta el ciclo fuerte-débil en O0 y O2.
 Todavía no verifica límites aritméticos, alineaciones mayores ni errores de
 construcción y no constituye una fábrica pública.
+`SharedControlStorage` traslada la reserva y construcción placement al SDK
+como primitivas internas. Reserva provisionalmente ocho palabras al inicio,
+comprueba el cálculo del tamaño antes de sumar y redondear, y valida que el
+objeto alineado quepa en el bloque. El llamador conserva la responsabilidad
+de destruir el objeto y liberar el arreglo, incluso ante una excepción; la
+prueba dirigida verifica bloque nulo, bloque insuficiente, alineación de 32,
+entradas inválidas, rechazo antes del límite de tamaño y el ciclo válido. No
+intenta realmente reservar el máximo. El layout final del control, la limpieza
+ante fallo y la API pública siguen pendientes.
 `nsc.sdk.shared-control-storage` añade una regresión dirigida que sitúa los
 contadores locales o atómicos junto al payload en la misma reserva; comprueba
 la destrucción y la expiración y, para la variante atómica, 200 000 ciclos de

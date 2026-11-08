@@ -5431,6 +5431,7 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.sdk.shared-control-storage
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_control_storage.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
+                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core.Threading/Thread.ns")
 
