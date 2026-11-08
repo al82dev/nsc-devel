@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CFlexQualifiedMetadata</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="QualifiedDecayConsumer.ns" />
+    <LibraryReference Include="CPackedProducer.lib" />
+  </ItemGroup>
+</Project>

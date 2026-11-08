@@ -1,0 +1,10 @@
+int Main()
+{
+    var c = Published.PackedBridge.Const();
+    int const* values = c->data;
+    if (values[0] != 123 || values[1] != 456) return 1;
+    var v = Published.PackedBridge.Volatile();
+    Published.PackedBridge.VolatileSet(v, 1, 333);
+    if (Published.PackedBridge.VolatilePointer(v) != 333) return 2;
+    return Published.PackedBridge.VolatileGet(v, 0) == 900 ? 0 : 3;
+}

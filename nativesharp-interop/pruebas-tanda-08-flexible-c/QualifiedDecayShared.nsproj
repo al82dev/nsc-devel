@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CFlexQualifiedShared</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="QualifiedDecayConsumer.ns" />
+    <CppLibraryReference Header="Restricted.h" Language="C" Standard="c11" />
+    <LibraryReference Include="CPackedProducer.lib" />
+  </ItemGroup>
+</Project>
