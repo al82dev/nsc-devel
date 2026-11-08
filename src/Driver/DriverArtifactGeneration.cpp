@@ -13,9 +13,11 @@
 #ifdef NSC_ENABLE_CPP_INTEROP
 #include "nativesharp/Frontend/ProjectConstructionModel.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
+#include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
 #include "nativesharp/Interop/CppSemanticInventory.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/LLVM/CppLifetimeObjectEmitter.h"
+#include "../Interop/Internal/CppCRecordMetadataCodec.h"
 #endif
 
 namespace nativesharp::driver
@@ -213,7 +215,7 @@ static bool appendCppTlsAliasedFunctionImports(
     std::vector<linker::ExternalImportModule> &imports, std::string &error)
 {
 #ifdef NSC_ENABLE_CPP_INTEROP
-    if (!compilation.projectGraph() || !compilation.oopMirModel() || compilation.cppProjectSessions().empty())
+    if (!compilation.projectGraph() || !compilation.oopMirModel())
         return true;
     auto runtimeCandidates = runtimeLibraries;
     std::vector<std::filesystem::path> dynamicRuntimes;
@@ -231,6 +233,10 @@ static bool appendCppTlsAliasedFunctionImports(
         if (function.isImportedC && function.cppDllImport)
             required.insert(function.mangledName);
     std::unordered_map<std::string, std::string> origins;
+    const auto addOrigin = [&](const std::string &name, const std::string &identity) {
+        const auto [it, inserted] = origins.emplace(name, identity);
+        if (!inserted && it->second != identity) it->second.clear();
+    };
     for (const auto &entry : std::get<std::vector<interop::CppSemanticInventoryEntry>>(inventory))
     {
         const auto *symbol = std::get_if<frontend::NamespaceFunctionSymbol>(&entry.projection);
@@ -246,8 +252,24 @@ static bool appendCppTlsAliasedFunctionImports(
             if (!basic::sha256File(path, digest, size, error)) return false;
             identity = pathToUtf8(path.filename()) + ":" + basic::sha256Hex(digest);
         }
-        const auto [it, inserted] = origins.emplace(name, identity);
-        if (!inserted && it->second != identity) it->second.clear();
+        addOrigin(name, identity);
+    }
+    for (const auto &module : compilation.precompiledModules())
+    {
+        if (module.cppCTypeCatalog.empty()) continue;
+        std::vector<interop::CppCRecordSnapshot> records;
+        std::vector<interop::CppCEnumSnapshot> enums;
+        interop::metadata_detail::CDependencyCatalog dependencies;
+        if (!interop::metadata_detail::decodeCTypeCatalogAndDependencies(
+                module.cppCTypeCatalog, module.cppCTypeCatalogFormatMinor,
+                records, enums, dependencies, error)) return false;
+        for (const auto &function : dependencies.functions)
+        {
+            if (!required.contains(function.linkSymbol)) continue;
+            const auto marker = function.referenceIdentity.rfind("#dll:");
+            addOrigin(function.linkSymbol, marker == std::string::npos ? std::string{} :
+                function.referenceIdentity.substr(marker + 5));
+        }
     }
     ExternalImportListBuilder builder(imports);
     for (const auto &[symbol, identity] : origins)

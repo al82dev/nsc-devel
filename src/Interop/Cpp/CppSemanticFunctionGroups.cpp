@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppSemanticFunctionGroups.h"
+#include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
@@ -327,7 +328,17 @@ bool captureCppTemplateFunctionCandidates(const compilation::ProjectGraph& graph
                 const auto key = std::make_tuple(entry.projectOrdinal, entry.referenceIndex, group.symbol.mangledName);
                 if (!seen.insert(key).second) continue;
                 metadata_detail::CDependencyFunctionSnapshot snapshot;
-                const auto reference = "cpp-reference:" + std::to_string(entry.referenceIndex);
+                auto reference = "cpp-reference:" + std::to_string(entry.referenceIndex);
+                const auto &runtime = project.cppLibraryReferences()[entry.referenceIndex].runtimePath;
+                if (!runtime.empty())
+                {
+                    basic::Sha256Digest digest{};
+                    std::uintmax_t size = 0;
+                    if (!basic::sha256File(runtime, digest, size, error)) return false;
+                    const auto name = runtime.filename().generic_u8string();
+                    reference += "#dll:" + std::string(reinterpret_cast<const char*>(name.data()), name.size()) +
+                        ":" + basic::sha256Hex(digest);
+                }
                 if (!metadata_detail::captureCDependencyFunction(inventory, group.symbol, entry.referenceIndex,
                                                                    reference, snapshot, error)) return false;
                 result.push_back(std::move(snapshot));

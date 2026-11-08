@@ -91,6 +91,10 @@ pushd A:\ || (popd & exit /b 1)
 "%DEST%\traslado-directo-copia\ConsumerSame.exe"
 if errorlevel 1 (echo ERROR: importacion directa y TLS no comparten instancia. & popd & popd & exit /b 1)
 popd
+if not defined NSC_T08_CACHE goto :sin_cache_directo
+python "%~dp0validar-directo-precompilado.py"
+if errorlevel 1 (popd & exit /b 1)
+:sin_cache_directo
 popd
 echo Importacion directa y TLS tras traslado: correcto.
 exit /b 0

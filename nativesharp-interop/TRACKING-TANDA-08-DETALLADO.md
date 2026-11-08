@@ -70,13 +70,14 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
     - [x] T08-002-09m7c1b: Derivar nombres de salida estables desde la identidad de las DLL y usar la misma correspondencia en generación y empaquetado. [Evidencia](registro-commits/t08-dll-homonimas-identidad.md).
     - [x] T08-002-09m7c1c: Resolver las dos TLS en dos hilos, publicar ambas DLL sin sobrescribir una DLL preexistente y ejecutar desde otra carpeta en O0–O3. [Evidencia](registro-commits/t08-dll-homonimas-identidad.md).
     - [x] T08-002-09m7c1d1: Restaurar el consumidor y ambas DLL desde caché en O0–O3, incluso cuando ya estaban presentes al guardar el paquete. [Evidencia](registro-commits/t08-dll-homonimas-identidad.md).
-    - [ ] T08-002-09m7c1d2: Resolver importaciones directas y dependencias transitivas que apuntan a DLL homónimas; hoy se diagnostican como no compatibles, no cuentan como interoperabilidad.
+    - [ ] T08-002-09m7c1d2: Resolver las importaciones y dependencias transitivas que apuntan a DLL homónimas; las variantes no comprobadas siguen abiertas.
       - [x] T08-002-09m7c1d2a: Comparar la identidad de módulo de una importación directa frente a un alias copiado y un hardlink. [Evidencia](registro-commits/t08-dll-homonimas-import-directo-control.md).
       - [x] T08-002-09m7c1d2a1: Comprobar con un control C que una importación enlazada al nombre empaquetado comparte el módulo y el estado TLS en dos hilos después de trasladar el ejecutable. [Evidencia](registro-commits/t08-dll-homonimas-import-alias-control.md).
       - [ ] T08-002-09m7c1d2b: Mantener una sola instancia y estado TLS entre la llamada importada y el acceso NativeSharp, incluso después de copiar el paquete a otro equipo.
         - Preparación: la selección de alias está separada de la inspección del PE para poder utilizarla antes del enlace. [Evidencia](registro-commits/t08-dll-homonimas-seleccion-antes-enlace.md).
         - [x] En un ejecutable, enlazar funciones C de origen Clang no ambiguo al alias TLS; comprobar lectura y escritura en dos hilos y traslado de carpeta en O0–O3. [Evidencia](registro-commits/t08-dll-homonimas-import-directo-alias.md).
-        - [ ] Comprobar la restauración de este consumidor directo desde caché, los orígenes ambiguos y el traslado a otro equipo; faltan también funciones de catálogos precompilados y demás variantes de importación.
+        - [x] Restaurar desde caché un ejecutable que utiliza una función C desde una plantilla precompilada y dos DLL TLS homónimas, de O0 a O3. [Evidencia](registro-commits/t08-dll-homonimas-funcion-precompilada-cache.md).
+        - [ ] Comprobar caché para referencias directas a encabezados cuando NSC rastree sus dependencias transitivas; verificar orígenes ambiguos, traslado a otro equipo y las demás variantes de importación.
       - [ ] T08-002-09m7c1d2c: Resolver las dependencias transitivas de las DLL homónimas y comprobar el consumidor resultante.
     - [ ] T08-002-09m7c1d3: Comprobar el mismo escenario cuando el producto consumidor sea una DLL NativeSharp.
 - [ ] T08-002-09m7d: Comprobar los demás calificadores y variantes de enlace de la global externa compartida.
