@@ -1085,6 +1085,11 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     0 en O0–O3; el fixture verificó campo y arreglo enum, IR y sus rechazos de
     dirección. Es una comprobación dirigida, no el cierre de T08-009.
 - [ ] T08-010. Importar la declaración y campos de un `struct` C.
+  - La conversión de miembro flexible a puntero pasó O0–O3 para `int`, `double`,
+    record, enum y `_Bool` en consumo directo. El caso `int` también pasó con
+    productor precompilado, con header y solo metadata; el caso subalineado se
+    rechaza. Faltan calificadores y otras rutas; no cierra el ítem.
+    [Evidencia](registro-commits/t08-flexible-decay-tipos-validacion.md).
   - Un struct C con union y struct anónimos pasó el caso de escritura cruzada con C
     en consumo directo, Shared y solo metadata, O0–O3. Quedan otras formas y la
     validación completa. [Evidencia](registro-commits/t08-anonimos-c-validacion-precompilado.md).
