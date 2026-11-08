@@ -87,9 +87,10 @@ bool getStrings(ByteReader& reader, std::vector<std::string>& values)
     return true;
 }
 
-bool putType(ByteWriter& writer, const CppType& type, unsigned depth)
+bool putType(ByteWriter& writer, const CppType& type, unsigned depth, bool allowAtomic = false)
 {
-    if (depth > maxDepth || static_cast<unsigned>(type.kind) > static_cast<unsigned>(CppTypeKind::Unsupported)) return false;
+    const auto maximumKind = allowAtomic ? CppTypeKind::Atomic : CppTypeKind::Unsupported;
+    if (depth > maxDepth || static_cast<unsigned>(type.kind) > static_cast<unsigned>(maximumKind)) return false;
     writer.u8(static_cast<std::uint8_t>(type.kind));
     if (!putText(writer, type.spelling) || !putText(writer, type.canonicalSpelling) ||
         !putText(writer, type.unqualifiedCanonicalSpelling)) return false;
@@ -114,27 +115,28 @@ bool putType(ByteWriter& writer, const CppType& type, unsigned depth)
         if (!putOptionalText(writer, id.clangUsr)) return false;
     }
     writer.u8(type.enumUnderlying ? 1 : 0);
-    if (type.enumUnderlying && !putType(writer, *type.enumUnderlying, depth + 1)) return false;
+    if (type.enumUnderlying && !putType(writer, *type.enumUnderlying, depth + 1, allowAtomic)) return false;
     writer.u8(type.element ? 1 : 0);
-    if (type.element && !putType(writer, *type.element, depth + 1)) return false;
+    if (type.element && !putType(writer, *type.element, depth + 1, allowAtomic)) return false;
     writer.u8(type.function ? 1 : 0);
     if (type.function)
     {
         const auto& function = *type.function;
-        if (!putType(writer, function.returnType, depth + 1) || function.parameterTypes.size() > maxItems) return false;
+        if (!putType(writer, function.returnType, depth + 1, allowAtomic) || function.parameterTypes.size() > maxItems) return false;
         writer.u32(static_cast<std::uint32_t>(function.parameterTypes.size()));
         for (const auto& parameter : function.parameterTypes)
-            if (!putType(writer, parameter, depth + 1)) return false;
+            if (!putType(writer, parameter, depth + 1, allowAtomic)) return false;
         if (!putText(writer, function.callingConvention)) return false;
         writer.u8(function.hasPrototype); writer.u8(function.variadic);
     }
     return true;
 }
 
-bool getType(ByteReader& reader, CppType& type, unsigned depth)
+bool getType(ByteReader& reader, CppType& type, unsigned depth, bool allowAtomic = false)
 {
     std::uint8_t kind = 0;
-    if (depth > maxDepth || !reader.u8(kind) || kind > static_cast<std::uint8_t>(CppTypeKind::Unsupported)) return false;
+    const auto maximumKind = allowAtomic ? CppTypeKind::Atomic : CppTypeKind::Unsupported;
+    if (depth > maxDepth || !reader.u8(kind) || kind > static_cast<std::uint8_t>(maximumKind)) return false;
     type.kind = static_cast<CppTypeKind>(kind);
     if (!reader.text(type.spelling) || !reader.text(type.canonicalSpelling) ||
         !reader.text(type.unqualifiedCanonicalSpelling) || !getFlag(reader, type.isConst) ||
@@ -163,14 +165,14 @@ bool getType(ByteReader& reader, CppType& type, unsigned depth)
     if (present)
     {
         auto child = std::make_shared<CppType>();
-        if (!getType(reader, *child, depth + 1)) return false;
+        if (!getType(reader, *child, depth + 1, allowAtomic)) return false;
         type.enumUnderlying = std::move(child);
     }
     if (!getFlag(reader, present)) return false;
     if (present)
     {
         auto child = std::make_shared<CppType>();
-        if (!getType(reader, *child, depth + 1)) return false;
+        if (!getType(reader, *child, depth + 1, allowAtomic)) return false;
         type.element = std::move(child);
     }
     if (!getFlag(reader, present)) return false;
@@ -178,13 +180,13 @@ bool getType(ByteReader& reader, CppType& type, unsigned depth)
     {
         auto function = std::make_shared<CppFunctionType>();
         std::uint32_t count = 0;
-        if (!getType(reader, function->returnType, depth + 1) || !reader.u32(count) ||
+        if (!getType(reader, function->returnType, depth + 1, allowAtomic) || !reader.u32(count) ||
             count > maxItems || count > reader.remaining()) return false;
         function->parameterTypes.reserve(count);
         for (std::uint32_t i = 0; i < count; ++i)
         {
             CppType parameter;
-            if (!getType(reader, parameter, depth + 1)) return false;
+            if (!getType(reader, parameter, depth + 1, allowAtomic)) return false;
             function->parameterTypes.push_back(std::move(parameter));
         }
         if (!reader.text(function->callingConvention) || !getFlag(reader, function->hasPrototype) ||
@@ -310,6 +312,35 @@ bool validateRecords(std::span<const CppCRecordSnapshot> records, std::string& e
     }
     return true;
 }
+}
+
+bool encodeCDependencyType(const CppType& type, std::vector<std::uint8_t>& output, std::string& error)
+{
+    std::vector<std::uint8_t> formats;
+    ByteWriter writer;
+    if (!collectFloatFormats(type, formats, 0) || !putType(writer, type, 0, true))
+    { error = "invalid C dependency type"; return false; }
+    writer.u32(static_cast<std::uint32_t>(formats.size()));
+    writer.raw(formats);
+    output = writer.takeBytes();
+    error.clear();
+    return true;
+}
+
+bool decodeCDependencyType(std::span<const std::uint8_t> bytes, CppType& output, std::string& error)
+{
+    ByteReader reader(bytes);
+    CppType type;
+    std::uint32_t count = 0;
+    if (!getType(reader, type, 0, true) || !reader.u32(count) || count > maxItems || count > reader.remaining())
+    { error = "invalid C dependency type"; return false; }
+    std::vector<std::uint8_t> formats(count);
+    std::size_t index = 0;
+    if (!reader.raw(formats) || !reader.atEnd() || !restoreFloatFormats(type, formats, index, 0) || index != formats.size())
+    { error = "invalid C dependency type floating formats"; return false; }
+    output = std::move(type);
+    error.clear();
+    return true;
 }
 
 bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,

@@ -13,6 +13,10 @@ namespace nativesharp::frontend { struct PrecompiledSyntaxModule; }
 
 namespace nativesharp::interop::metadata_detail
 {
+// Private building block for future C dependency snapshots, not an NSMETA format.
+// A failed operation leaves its output unchanged.
+bool encodeCDependencyType(const CppType& type, std::vector<std::uint8_t>& output, std::string& error);
+bool decodeCDependencyType(std::span<const std::uint8_t> bytes, CppType& output, std::string& error);
 // Internal catalogue codec. It does not by itself publish an NSMETA section.
 // Both functions leave their output unchanged on failure.
 bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,

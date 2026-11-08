@@ -839,6 +839,38 @@ void observeCatalogueEnvelope()
               << " first bytes=" << prefix(versioned) << '\n';
 }
 
+bool checkDependencyTypeCodec()
+{
+    using namespace nativesharp::interop::metadata_detail;
+    CppType floating;
+    floating.kind = CppTypeKind::Floating;
+    floating.unqualifiedCanonicalSpelling = "long double";
+    floating.sizeBits = 64;
+    floating.ieeeBinary64 = true;
+    CppType atomic;
+    atomic.kind = CppTypeKind::Atomic;
+    atomic.isVolatile = true;
+    atomic.element = std::make_shared<CppType>(floating);
+    CppType pointer;
+    pointer.kind = CppTypeKind::Pointer;
+    pointer.isConst = true;
+    pointer.element = std::make_shared<CppType>(atomic);
+    std::vector<std::uint8_t> bytes;
+    std::string error;
+    CppType restored;
+    bool ok = expect(encodeCDependencyType(pointer, bytes, error) &&
+        decodeCDependencyType(bytes, restored, error) && restored.kind == CppTypeKind::Pointer &&
+        restored.isConst && restored.element && restored.element->kind == CppTypeKind::Atomic &&
+        restored.element->isVolatile && restored.element->element && restored.element->element->ieeeBinary64,
+        "C dependency type round trip preserves atomic qualifiers and floating format");
+    CppType untouched;
+    untouched.spelling = "sentinel";
+    if (!bytes.empty()) bytes.pop_back();
+    ok &= expect(!decodeCDependencyType(bytes, untouched, error) && untouched.spelling == "sentinel",
+        "truncated C dependency type preserves output on failure");
+    return ok;
+}
+
 // EN: Entry of the probe mode. Writes a.h and b.h with identical text and runs probes 1-7.
 // ES: Entrada del modo de sondas. Escribe a.h y b.h con texto idéntico y ejecuta las sondas 1-7.
 int runProbes(const std::string& resource, const std::filesystem::path& work, const std::string& driver)
@@ -857,6 +889,7 @@ int runProbes(const std::string& resource, const std::filesystem::path& work, co
     observeAnonymousEnumCollision(factory, resource, directory, driver);
     ok &= checkHomonymHeaders(factory, resource, directory, driver);
     ok &= checkNestedFieldEnums(factory, resource, directory, driver);
+    ok &= checkDependencyTypeCodec();
     observeCatalogueEnvelope();
     std::cout << (ok ? "C declaration identity probes passed\n" : "C declaration identity probes failed\n");
     return ok ? 0 : 1;
