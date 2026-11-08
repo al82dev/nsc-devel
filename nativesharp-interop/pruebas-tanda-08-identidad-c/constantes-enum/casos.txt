@@ -12,4 +12,4 @@ CConstNamedTemplate PConstNamedTemplate runs runs
 CConstNamedSurfaceValue PConstNamedSurface runs runs
 CConstNamedSurfaceTemplate PConstNamedSurface runs runs
 CConstAnonPlain PConstAnonPlain runs runs
-CConstAnonTemplate PConstAnonTemplate ident ident
+CConstAnonTemplate PConstAnonTemplate runs runs

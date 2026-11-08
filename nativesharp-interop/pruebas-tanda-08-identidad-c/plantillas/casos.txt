@@ -17,4 +17,4 @@ ConsumerInline CGenProducerInline runs runs
 ConsumerEnumConstantPlain CGenProducerEnumPlain runs runs
 ConsumerEnumConstant CGenProducerEnum runs runs
 ConsumerAnonymousConstantPlain CGenProducerLoosePlain runs runs
-ConsumerAnonymousConstant CGenProducerLoose ident runs
+ConsumerAnonymousConstant CGenProducerLoose runs runs
