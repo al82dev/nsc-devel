@@ -2071,6 +2071,25 @@ int inspectTemplateAlias(char** argv)
     return expect(found, "real NSMETA carries the requested C template alias") ? 0 : 1;
 }
 
+int inspectTemplateFunction(char** argv)
+{
+    LibraryMetadataCodec codec;
+    LibraryMetadata metadata;
+    std::string error;
+    if (!codec.read(argv[2], metadata, error) || !codec.verifyCurrentCompiler(metadata, error))
+    { std::cerr << "metadata read: " << error << '\n'; return 1; }
+    std::vector<CppCRecordSnapshot> records;
+    std::vector<CppCEnumSnapshot> enums;
+    metadata_detail::CDependencyCatalog dependencies;
+    const bool found = metadata.formatMinor == 46 &&
+        metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog, metadata.formatMinor,
+            records, enums, dependencies, error) &&
+        std::any_of(dependencies.functions.begin(), dependencies.functions.end(),
+            [&](const auto& function) { return function.declaration.name == argv[3] && function.linkSymbol == argv[3]; });
+    if (!found) std::cerr << "template function inspection: " << error << '\n';
+    return expect(found, "real NSMETA carries the requested C template function") ? 0 : 1;
+}
+
 int inspectCConstants(char** argv)
 {
     const std::string forbidden = argv[3];
@@ -2371,6 +2390,7 @@ int main(int argc, char** argv)
     }
     if (argc == 5 && std::string_view(argv[1]) == "--inspect-c-constants") return inspectCConstants(argv);
     if (argc == 4 && std::string_view(argv[1]) == "--inspect-template-alias") return inspectTemplateAlias(argv);
+    if (argc == 4 && std::string_view(argv[1]) == "--inspect-template-function") return inspectTemplateFunction(argv);
     if (argc >= 3 && std::string_view(argv[1]) == "--catalogue-version-controls")
     {
         return runCatalogueVersionControls(argc, argv);

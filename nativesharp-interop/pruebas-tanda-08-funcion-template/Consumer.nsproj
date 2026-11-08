@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>FunctionConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+    <LibraryReference Include="FunctionProducer.lib" />
+  </ItemGroup>
+</Project>
