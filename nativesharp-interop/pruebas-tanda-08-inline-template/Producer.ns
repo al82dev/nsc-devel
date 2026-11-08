@@ -1,0 +1,7 @@
+namespace InlineFixture
+{
+    public class Bridge
+    {
+        public static int Twice<T>(T value) { return fixture_twice(21); }
+    }
+}
