@@ -50,6 +50,7 @@
 #include "nativesharp/Frontend/NamespaceStateSymbol.h"
 #include "nativesharp/Frontend/CppImportedTypeAlias.h"
 #include "../../src/Interop/Internal/CppCRecordMetadataCodec.h"
+#include "../../src/Interop/Internal/LibraryMetadataCodecSupport.h"
 #include "../../src/Driver/Internal/DriverInternal.h"
 
 #include <algorithm>
@@ -1213,6 +1214,18 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
         dependencies.aliases.size() == 1 && dependencies.aliases[0].declaration.name == "CIdInt";
     if (!captured) std::cerr << "generic alias publication: " << error << '\n';
     if (!expect(captured, "producer retains a template alias candidate from a real C project reference")) return false;
+    metadata.targetTriple = "x86_64-pc-windows-msvc";
+    metadata.cppCRecordCatalog = bytes;
+    if (!expect(metadata_detail::verifyBinaryClosureMetadata(metadata, error),
+                "extended C catalogue passes metadata verification")) return false;
+    auto invalidDependencies = dependencies;
+    invalidDependencies.aliases.front().declaration.clangUsr.reset();
+    std::vector<std::uint8_t> invalidBytes;
+    if (!expect(metadata_detail::encodeCTypeCatalogWithDependencies({}, {}, invalidDependencies, invalidBytes, error),
+                "incomplete alias catalogue is constructed for the verifier")) return false;
+    metadata.cppCRecordCatalog = invalidBytes;
+    if (!expect(!metadata_detail::verifyBinaryClosureMetadata(metadata, error),
+                "metadata verification rejects an alias without Clang identity")) return false;
 
     const auto consumerProject = writeProject(directory / "generic-alias-consumer", "CGenericConsumer",
         "int Main() { return Published.Bridge.Test<int>(1); }\n");

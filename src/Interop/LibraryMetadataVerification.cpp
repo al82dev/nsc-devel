@@ -1428,6 +1428,24 @@ bool verifyBinaryClosureMetadata(
         std::vector<CppCEnumSnapshot> enums;
         std::vector<std::uint8_t> canonical;
         std::string detail;
+        const bool hasDependencies = metadata.formatMinor >= 46 && metadata.cppCRecordCatalog.size() >= 4 &&
+            metadata.cppCRecordCatalog[0] == 5 && metadata.cppCRecordCatalog[1] == 0 &&
+            metadata.cppCRecordCatalog[2] == 0 && metadata.cppCRecordCatalog[3] == 0;
+        if (hasDependencies)
+        {
+            CDependencyCatalog dependencies;
+            if (!decodeCTypeCatalogWithDependencies(metadata.cppCRecordCatalog, records, enums, dependencies, detail) ||
+                !dependencies.functions.empty() || !dependencies.globals.empty() ||
+                !encodeCTypeCatalogWithDependencies(records, enums, dependencies, canonical, detail) ||
+                canonical != metadata.cppCRecordCatalog)
+            { error = "invalid or unsupported C dependency catalogue: " + detail; return false; }
+            for (const auto& alias : dependencies.aliases)
+                if (alias.declaration.insideAnonymousNamespace || !alias.declaration.clangUsr ||
+                    alias.declaration.clangUsr->empty())
+                { error = "C dependency alias has incomplete identity"; return false; }
+        }
+        else
+        {
         const bool hasProvenance = metadata.formatMinor >= 43 && isCTypeCatalogWithProvenance(metadata.cppCRecordCatalog);
         if (hasProvenance && metadata.formatMinor < 43)
         {
@@ -1452,6 +1470,7 @@ bool verifyBinaryClosureMetadata(
         {
             error = "invalid C record catalogue: " + detail;
             return false;
+        }
         }
         for (const auto& record : records)
             if (record.targetTriple != metadata.targetTriple)
