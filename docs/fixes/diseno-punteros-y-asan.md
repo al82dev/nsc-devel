@@ -118,7 +118,8 @@ de reporte persiste en el objeto generado en O0 y O2.
 
 La prueba `asan-real-entry/results.json` avanzó a los objetos reales del
 generador y a un módulo de entrada producido por `WindowsRuntimeBuilder`.
-Un adaptador `main` llamó a `__nativesharp_start` después del arranque CRT, y
+Un adaptador `main` generado por `WindowsRuntimeBuilder::buildSanitizerEntryAdapter`
+llamó a `__nativesharp_start` después del arranque CRT, y
 Clang/LLD enlazó el runtime externo. El caso inválido produjo
 `dynamic-stack-buffer-overflow` en O0 y O2; el control válido devolvió 42 en
 ambos niveles. El adaptador y el enlace se invocaron fuera del driver: todavía

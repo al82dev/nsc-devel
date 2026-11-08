@@ -104,6 +104,10 @@ int main(int argc, char** argv)
             const bool emitted = !mainSymbol.empty() && entry != nullptr && target != nullptr &&
                 target->emit(*entry, directory / "entry.obj", LlvmCodeGenFileType::Object, error);
             tests.expect(emitted, "real NativeSharp entry object emitted: " + error);
+            auto adapter = builder.buildSanitizerEntryAdapter(error);
+            const bool adapterEmitted = adapter != nullptr && target != nullptr &&
+                target->emit(*adapter, directory / "adapter.obj", LlvmCodeGenFileType::Object, error);
+            tests.expect(adapterEmitted, "sanitizer entry adapter emitted: " + error);
         }
         auto after = generate(normal, level);
         tests.expect(after != nullptr && after->cacheHitCount() == after->objectFiles().size() &&

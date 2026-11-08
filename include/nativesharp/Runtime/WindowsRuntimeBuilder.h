@@ -27,6 +27,8 @@ public:
     std::unique_ptr<llvm_backend::LlvmModule> buildEntry(
         std::string_view mainSymbol,
         std::string& error) const;
+    // Adapter used when the CRT must initialize a sanitizer before NativeSharp starts.
+    std::unique_ptr<llvm_backend::LlvmModule> buildSanitizerEntryAdapter(std::string& error) const;
     std::unique_ptr<llvm_backend::LlvmModule> buildDynamicLibraryAnchor(
         std::string& error) const;
 

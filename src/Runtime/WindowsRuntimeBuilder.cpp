@@ -6410,6 +6410,45 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildEntry(
     return result;
 }
 
+std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildSanitizerEntryAdapter(
+    std::string& error) const
+{
+    error.clear();
+    LLVMContextRef context = LLVMContextCreate();
+    if (context == nullptr)
+    {
+        error = "LLVMContextCreate failed for sanitizer entry adapter";
+        return nullptr;
+    }
+    LLVMModuleRef module = LLVMModuleCreateWithNameInContext("nativesharp.sanitizer.entry", context);
+    if (module == nullptr)
+    {
+        LLVMContextDispose(context);
+        error = "LLVMModuleCreateWithNameInContext failed for sanitizer entry adapter";
+        return nullptr;
+    }
+    const std::string triple(target::TargetInfo::WindowsX64().llvmTriple());
+    LLVMSetTarget(module, triple.c_str());
+    LLVMTypeRef startType = functionType(LLVMVoidTypeInContext(context), {});
+    LLVMTypeRef mainType = functionType(LLVMInt32TypeInContext(context), {});
+    LLVMValueRef start = LLVMAddFunction(module, "__nativesharp_start", startType);
+    LLVMValueRef main = LLVMAddFunction(module, "main", mainType);
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, main, "entry");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+    LLVMBuildCall2(builder, startType, start, nullptr, 0, "");
+    LLVMBuildRet(builder, LLVMConstInt(LLVMInt32TypeInContext(context), 0, 0));
+    LLVMDisposeBuilder(builder);
+    auto result = std::unique_ptr<llvm_backend::LlvmModule>(new llvm_backend::LlvmModule(context, module));
+    std::string verificationError;
+    if (!result->verify(verificationError))
+    {
+        error = "sanitizer entry adapter LLVM verification failed: " + verificationError;
+        return nullptr;
+    }
+    return result;
+}
+
 std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildDynamicLibraryAnchor(
     std::string& error) const
 {
