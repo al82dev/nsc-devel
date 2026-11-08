@@ -5,6 +5,18 @@ _Atomic(enum WideState) wide_state = WIDE_LARGE;
 _Atomic(enum TinyState) tiny_state = TINY_NEGATIVE;
 _Atomic(enum ShortState) short_state = SHORT_START;
 int state_check(void) { return state == STATE_READY; }
+int wide_operand_reference(int is_unsigned)
+{
+    _Atomic(enum SignedState) value = SIGNED_NEGATIVE;
+    if (is_unsigned) {
+        unsigned __int128 divisor = (unsigned __int128)1 << 80;
+        value /= divisor;
+    } else {
+        __int128 divisor = (__int128)1 << 80;
+        value /= divisor;
+    }
+    return (int)value;
+}
 int same_enum_reference(void)
 {
     _Atomic(enum State) value = STATE_READY;

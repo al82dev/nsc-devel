@@ -66,5 +66,13 @@ int Main()
     nint wide_signed = (nint)4294967296L;
     signed_state /= wide_signed;
     if ((int)signed_state != signed_mixed_reference(5)) return 31;
+    signed_state = SIGNED_NEGATIVE;
+    u128 huge_unsigned = (u128)1 << 80;
+    signed_state /= huge_unsigned;
+    if ((int)signed_state != wide_operand_reference(1)) return 32;
+    signed_state = SIGNED_NEGATIVE;
+    i128 huge_signed = (i128)1 << 80;
+    signed_state /= huge_signed;
+    if ((int)signed_state != wide_operand_reference(0)) return 33;
     return 0;
 }
