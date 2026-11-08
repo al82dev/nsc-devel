@@ -3,6 +3,60 @@
 Estado: **PROPUESTA NO IMPLEMENTADA**. NSMETA no se modifica; cualquier cambio de
 formato requiere autorización.
 
+## Revisión de la ruta actual — 2026-11-07
+
+**HECHO COMPROBADO POR LECTURA**, revisión `e0c24c25c`: el proveedor
+`provideCppCRecordMetadataCatalog` reúne semillas desde tipos de la superficie,
+firmas, estados, especializaciones y exports. Si no encuentra semillas de
+records ni enums, devuelve un catálogo vacío antes de examinar declaraciones C
+que aparecen únicamente dentro de plantillas. El catálogo actual no contiene
+funciones, globales ni aliases C para reconstruir el ámbito de esos cuerpos.
+
+El transporte del texto de plantillas es independiente: la publicación usa
+`collectTemplateSourceReplacements` para referencias de tipos externos
+registradas en `GenericTemplateRecord::externalTypeReferences`, y el consumidor
+vuelve a crear una unidad fuente en `materializePrecompiledTemplateUnit`. La
+captura de demandas en `observeCppRecords` solo se ejecuta cuando hay
+dependencias enum de firmas o globales enum; esa observación no es, por sí sola,
+un inventario de todas las declaraciones C utilizadas por plantillas públicas.
+
+**CONSECUENCIA DE DISEÑO, NO IMPLEMENTADA:** antes de cambiar el formato hay que
+capturar las dependencias del cuerpo de cada plantilla publicada con su contexto
+de resolución, conservar sus tipos transitivos y restaurarlas en el módulo del
+productor antes del análisis del consumidor. La conciliación debe comprobar
+identidad, firma y símbolo, y no confundir definiciones internas de distintos
+encabezados. `static inline` necesita preservar una definición ejecutable con
+su linkage: rechazarla no constituye interoperabilidad completa.
+
+La propuesta de formato de abajo es una alternativa, no una decisión ya tomada.
+En particular, la selección exacta de dependencias en cuerpos genéricos todavía
+requiere comprobarse; no se ha demostrado que la captura de demandas ordinaria
+vea todos los cuerpos antes de su instanciación. Los casos de `plantillas` son
+evidencia de reproducción previa; no se han vuelto a ejecutar en esta revisión.
+
+**HECHO ADICIONAL POR LECTURA:** `collectTemplateDependencies` sí recorre los
+cuerpos sin instanciarlos, pero `collectCallDependency` retorna de inmediato
+cuando la llamada no tiene argumentos de tipo explícitos. Por tanto esa función
+no inventaría `gen_c_number()`; tampoco registra las referencias a variables C.
+`collectTypeDependency` guarda referencias de tipos declarados en otro módulo,
+por lo que no basta asumir que preservará un alias C del propio productor.
+Además, `TemplateCacheBridge.cpp` vacía las referencias antes del
+redescubrimiento por compilación. Una solución debe producir el mismo resultado
+con caché fría y caliente y demostrar la resolución frente a nombres locales,
+en lugar de decidir la identidad C únicamente por el texto del identificador.
+
+**HECHO ADICIONAL POR LECTURA — enlace interno:**
+`appendCStaticInlineObjects` emite una función `static inline` únicamente si su
+símbolo aparece en `namespaceFunctionModel()->functions()` del productor. Una
+global interna se emite únicamente si aparece en los estados seleccionados del
+mismo modelo. El catálogo de declaraciones por sí solo no garantiza que los
+objetos necesarios hayan sido emitidos: la solución debe hacer que el productor
+seleccione y empaquete esas definiciones cuando solo las usa una plantilla
+publicada. También debe conservar sus símbolos y su referencia de origen para
+no mezclar definiciones internas de distintas unidades. Falta demostrar esta
+selección con consumidor precompilado y resolver las dependencias transitivas;
+no se han hecho cambios de código ni pruebas nuevas para este hallazgo.
+
 Corrección respecto a la versión anterior de este documento: proponía la
 "versión de envoltura 4" del catálogo C. Ese valor ya existe.
 `encodeCTypeCatalogWithProvenance` (`CppCRecordMetadataCodec.cpp:578-590`) usa

@@ -214,6 +214,11 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     heredado usando el minor declarado. Pasaron las variantes verificadas de
     1.42–1.45 y un consumidor real 1.42. El ítem sigue abierto por otros casos.
     [Evidencia](registro-commits/t08-h8-catalogo-142.md).
+  - H3: revisión del proveedor y la materialización de plantillas identifica la
+    salida temprana del catálogo y la falta de declaraciones C en el ámbito
+    precompilado. Falta demostrar la captura de demandas de cuerpos genéricos
+    y resolver su transporte; no se modificó metadata ni se cierra el ítem.
+    [Análisis](T08-002-PROPUESTA-METADATA-C.md#revisión-de-la-ruta-actual--2026-11-07).
   - H1: se aceptan typedef C equivalentes observados en encabezados con nombres
     distintos; la matriz conserva los rechazos por tipos y records incompatibles.
     La validación dirigida de identidad pasó, sin cerrar el ítem.
