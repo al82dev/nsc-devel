@@ -1150,6 +1150,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     [Control](registro-commits/t08-volatile-alias-reasignado-control.md).
     Se identificaron los puntos de configuración, HIR y caché que debe cubrir
     la solución de modo del consumidor. [Ruta](registro-commits/t08-volatile-consumidor-ruta.md).
+    El modelo por proyecto, cargador y consulta HIR pasaron sus controles
+    internos; la generación con modo explícito sigue protegida y el acceso por
+    alias continúa sin corregir. [Validación](registro-commits/t08-volatile-consumidor-modelo-validacion.md).
     La comparación ampliada confirmó el mismo resultado en O0–O3 para ambos
     modos. [Resultado](registro-commits/t08-flexible-var-volatile-opt-resultado.md).
     Con dos sesiones del mismo encabezado en modos distintos, NSC emite acceso
