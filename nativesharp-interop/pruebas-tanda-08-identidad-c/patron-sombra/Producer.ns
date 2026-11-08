@@ -1,0 +1,9 @@
+namespace PublishedPatternShadow {
+    public class Bridge {
+        public static int Run<T>(T value) {
+            int sum = shadow_value;
+            if (let var shadow_value = 13) { sum += shadow_value; }
+            return sum + shadow_value;
+        }
+    }
+}

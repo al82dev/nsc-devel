@@ -1,0 +1,25 @@
+@echo off
+setlocal
+set "DEST=A:\nsc-interop-build\t08-pattern-sombra-gate"
+set "PATH=A:\nsc-interop-build\tanda1-ON\bin;A:\al82dev-clang\bin;%PATH%"
+set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
+set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
+set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
+if not exist "%DEST%" mkdir "%DEST%"
+if errorlevel 1 exit /b 1
+for %%F in (Api.h Api.c Producer.ns Producer.nsproj Consumer.ns Consumer.nsproj) do (
+  copy /y "%~dp0%%F" "%DEST%\%%F" >nul
+  if errorlevel 1 exit /b 1
+)
+clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 -O0 "%DEST%\Api.c" -o "%DEST%\api.obj"
+if errorlevel 1 exit /b 1
+llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\Producer.nsproj" -O0 --no-artifact-cache -o "%DEST%\PatternShadowProducer.lib" > "%DEST%\Producer.log" 2>&1
+if errorlevel 1 (type "%DEST%\Producer.log" & exit /b 1)
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Consumer.nsproj" -O0 --no-artifact-cache -o "%DEST%\Consumer.exe" > "%DEST%\Consumer.log" 2>&1
+if errorlevel 1 (type "%DEST%\Consumer.log" & exit /b 1)
+"%DEST%\Consumer.exe"
+if errorlevel 1 exit /b 1
+echo Sombra por patron: correcta.
+exit /b 0

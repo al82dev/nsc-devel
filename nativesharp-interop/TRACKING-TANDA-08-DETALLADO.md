@@ -49,9 +49,9 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - **T08-002-12 — Ámbitos adicionales:**
 - [x] T08-002-12a: Verificar muestras de sombra por parámetro de lambda y de inicializador local dentro de lambda, en O0. [Evidencia](registro-commits/t08-lambda-sombra-inicializador.md).
 - [x] T08-002-12b: Verificar muestras de sombras dentro y fuera de bloques anidados y bucles en O0. [Evidencia](registro-commits/t08-inicializadores-ambito-o0.md).
-- [ ] T08-002-12c: Verificar el alcance de nombres introducidos por patrones y desestructuración.
+- [x] T08-002-12c: Verificar muestras de alcance de nombres introducidos por patrones y desestructuración en O0.
   - [x] T08-002-12c1: Comprobar muestras de desestructuración sencilla y anidada en O0. [Evidencia](registro-commits/t08-ambito-desestructuracion-o0.md).
-  - [ ] T08-002-12c2: Comprobar nombres introducidos por patrones y su alcance.
+  - [x] T08-002-12c2: Comprobar una ligadura `if let` que sombrea una global C y deja visible esa global fuera del bloque. [Evidencia](registro-commits/t08-sombra-patron-o0.md).
 - [ ] T08-002-13: Comprobar los conflictos de enums anónimos cuando no se demuestra la misma procedencia física.
 
 ## T08-003 — Funciones C
