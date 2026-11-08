@@ -41,7 +41,7 @@ se detallan en los documentos de `docs/fixes` y registros de la misma carpeta.
 | Inspección general de campos | `74-fields`: ejecuta un ejemplo explícito, no un inspector universal. No se localizó API general; pendiente diseño. |
 | derive Print | `75-derive`: texto `GridPoint`, sin campos. Pendiente decisión de formato. La igualdad falsa observada en la misma ejecución se corrigió de forma acotada; véase `derive-ignore-equality.md`. |
 | SIMD máscara a vector, indexación y condicional | `89-mask-convert`, `89-mask-index`, `89-mask-select`: rechazos reproducidos. Pendiente definir las operaciones y representación deseadas. |
-| AddressSanitizer | No se localizó opción en `nsc --help`. La clase `LlvmNativeSanitizer` sí instrumenta IR; su prueba existente pasó (`asan-existing-test.log`). El usuario aprobó una opción explícita con runtime externo; implementación, enlace y reproducción fuera de límites pendientes. |
+| AddressSanitizer | No se localizó opción en `nsc --help`. La clase `LlvmNativeSanitizer` instrumenta IR; su prueba existente pasó. Una reproducción exploratoria de IR instrumentado con `opt` y enlazado con Clang sí diagnosticó escritura fuera de límites (`asan-probe/run.log`). El usuario aprobó una opción explícita; integración en nsc/NSLink pendiente. |
 | Operadores ++ / -- | `39-increment`, `39-decrement`: parser rechaza la sobrecarga. Pendiente decisión sobre semántica y evaluación. |
 | NativeSharp.Text | `text-namespace`: namespace no encontrado. Pendiente decisión de API. |
 | Compile con .. | `102-outside`: proyecto rechaza rutas fuera de su raíz. Pendiente decisión de resolución de proyectos. |
@@ -88,7 +88,11 @@ advertencias de padding en encabezados. No se afirma ausencia de advertencias.
 
 La identidad registrada para el compilador de esta continuación es
 `3.0.0+build.20261108T172826Z.7cfd1570e43f8d37`, LLVM 23.1.0; los comandos y
-salidas están en `A:/nsc-fixes-evidencia/full-suite-run/`. El inventario CTest
+salidas están en `A:/nsc-fixes-evidencia/full-suite-run/`. Tras incorporar
+`checked` e `impl` para struct, el compilador usado en las regresiones tiene
+identidad `3.0.0+build.20261108T175418Z.32cbf98fdb9cb99b`
+(`compiler-identity-latest.log`). El inventario CTest previo a añadir las dos
+regresiones nuevas
 contiene 704 entradas. Se compilaron 388 objetivos seleccionados tras enlazar
 el codec de snapshots a 70 ejecutables (`610adf8bb`). La primera pasada de
 387 entradas unitarias terminó con **349 aprobadas y 38 fallidas**
