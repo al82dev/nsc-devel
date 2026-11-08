@@ -1025,10 +1025,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     identidad y calificación siguen pendientes.
     [Evidencia](registro-commits/prueba-opacos-header-compartido.md).
 - [ ] T08-014. Mapear punteros y su tipo apuntado.
-  - Una muestra `_Bool*` devuelta por C y almacenada en una global ejecutó
-    O0–O3, pero el IR de NSC accede con `i1` donde Clang usa `i8`. La
-    procedencia a través de locales sigue pendiente; el diagnóstico separado
-    no se considera aprobado. [Evidencia](registro-commits/t08-bool-puntero-c-evidencia.md).
+  - Una muestra `_Bool*` devuelta por C, almacenada en una global y elegida
+    junto a un `bool*` nativo pasó O0–O3 con acceso de byte en IR; hubo acceso
+    cruzado desde ambos lenguajes. Otras formas y calificadores siguen abiertos.
+    [Resultado](registro-commits/t08-bool-puntero-c-implementacion.md).
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
   - Clang confirmó conversiones flotantes y `fcmp une` en dos asignaciones
     compuestas `_Bool` C volatile; falta implementar y comprobar NSC.
