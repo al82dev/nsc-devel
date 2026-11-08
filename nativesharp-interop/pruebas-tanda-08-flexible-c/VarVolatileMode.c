@@ -1,5 +1,8 @@
 #include "Restricted.h"
 
+int direct_volatile_read(FlexVolatile* value) { return value->data[0]; }
+void direct_volatile_write(FlexVolatile* value, int item) { value->data[0] = item; }
+
 int var_volatile_read(FlexVolatile* value)
 {
     volatile int* data = value->data;

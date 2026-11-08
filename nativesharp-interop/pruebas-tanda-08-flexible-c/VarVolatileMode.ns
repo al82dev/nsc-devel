@@ -1,3 +1,6 @@
+int DirectVolatileRead(FlexVolatile* value) { return value->data[0]; }
+void DirectVolatileWrite(FlexVolatile* value, int item) { value->data[0] = item; }
+
 int VarVolatileRead(FlexVolatile* value)
 {
     var data = value->data;

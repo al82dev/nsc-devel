@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-010/015: referencias con modos volatile distintos
+
+Observar acceso directo y mediante alias al mismo campo flexible cuando el
+proyecto usa dos sesiones del mismo encabezado, una Microsoft y otra ISO.
+Comparar por separado ambas referencias Clang; no escoger unilateralmente una
+política ni modificar producción. Presupuesto: fixture y diagnóstico de alias
+flexible, tracking y registros. Salidas en `A:/nsc-interop-build`; preservar
+NSLink, NSMETA, LLVM/Clang y C:.
+
 ## T08-010/015: control de modo volatile por alias local
 
 Comparar con Clang la lectura y escritura por `var` de un miembro flexible C
