@@ -142,7 +142,8 @@ std::vector<Project> rewireSourcePreferredProjects(
             std::vector<std::string>(
                 project.friendModules().begin(), project.friendModules().end()),
             std::vector<CppLibraryReference>(
-                project.cppLibraryReferences().begin(), project.cppLibraryReferences().end()));
+                project.cppLibraryReferences().begin(), project.cppLibraryReferences().end()),
+            project.cppConsumerVolatileMode());
     }
     return rewired;
 }
@@ -353,7 +354,8 @@ void appendProjectsWithPrecompiledReferences(
             std::vector<std::string>(
                 project.friendModules().begin(), project.friendModules().end()),
             std::vector<CppLibraryReference>(
-                project.cppLibraryReferences().begin(), project.cppLibraryReferences().end()));
+                project.cppLibraryReferences().begin(), project.cppLibraryReferences().end()),
+            project.cppConsumerVolatileMode());
     }
 }
 
@@ -425,7 +427,8 @@ bool ProjectGraph::addLibraryReferences(
             std::vector<std::string>(
                 project.friendModules().begin(), project.friendModules().end()),
             std::vector<CppLibraryReference>(
-                project.cppLibraryReferences().begin(), project.cppLibraryReferences().end()));
+                project.cppLibraryReferences().begin(), project.cppLibraryReferences().end()),
+            project.cppConsumerVolatileMode());
     }
     if (!foundOwner)
     {

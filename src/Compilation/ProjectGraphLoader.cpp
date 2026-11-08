@@ -193,7 +193,8 @@ bool normalizeTransitiveSourceOwnership(
             std::vector<std::string>(
                 project.friendModules().begin(), project.friendModules().end()),
             std::vector<CppLibraryReference>(
-                project.cppLibraryReferences().begin(), project.cppLibraryReferences().end()));
+                project.cppLibraryReferences().begin(), project.cppLibraryReferences().end()),
+            project.cppConsumerVolatileMode());
     }
 
     projects = std::move(normalized);
@@ -283,7 +284,8 @@ void preferExactSourceModuleArtifacts(
                 std::vector<std::string>(
                     project.friendModules().begin(), project.friendModules().end()),
                 std::vector<CppLibraryReference>(
-                    project.cppLibraryReferences().begin(), project.cppLibraryReferences().end())));
+                    project.cppLibraryReferences().begin(), project.cppLibraryReferences().end()),
+                project.cppConsumerVolatileMode()));
     }
     projects = std::move(rewired);
 }
