@@ -1523,6 +1523,11 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     prueba anterior de `sizeof` también pasó. Faltan otras operaciones y
     combinaciones. [Evidencia](registro-commits/diagnostico-local-incompleto-c.md).
 - [ ] T08-020. Comparar tamaño, alineación y offsets importados con los calculados por Clang.
+  - El consumidor con alias a record y enum en firmas públicas pasó O0–O3 con
+    el mismo header y con el header oculto; un alias incompatible se rechazó.
+    La conciliación del enum independiente usa contrato serializado y USR;
+    no acredita procedencia física por separado ni cierra la tanda.
+    [Evidencia](registro-commits/t08-enum-conciliado-seleccion-validacion.md).
   - Preparado en `ad9b0a694` y `03cd47d50`: alineación explícita en el IR de
     accesos directos a campos y prueba mixta de lectura y escrituras. Falta
     ejecutarla y transportar la alineación efectiva de campos empaquetados.
