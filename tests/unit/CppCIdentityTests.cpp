@@ -926,6 +926,7 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
     const bool ready = !project.empty() && compilation.setCppProjectSessions(
         twoHeaderSessions(factory, resource, directory, driver, project, "a.h", "b.h"), error) &&
         compilation.setCppTypeAliasProvider(provideCppTypeAliases, error) &&
+        compilation.setCppGlobalProvider([](const auto&, auto, auto, auto&, auto&) { return true; }, error) &&
         compilation.compileProjectMembers(project, error);
     if (!ready) std::cerr << "generic foreign candidates: " << error << '\n';
     if (!expect(ready && compilation.genericModel(), "generic candidates fixture compiles")) return false;
@@ -971,6 +972,20 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
             }
     ok &= expect(observedCall && observedGlobal && observedShadow,
         "observer demands include the generic C call, C global and shadowed local");
+    bool retainedCall = false, retainedGlobal = false, retainedShadow = false;
+    for (const auto& record : compilation.genericModel()->templates())
+        for (const auto& retained : compilation.cppTemplateDemands())
+        {
+            if (retained.templateKey != record.canonicalKey) continue;
+            if (record.name == "Test" && retained.demand.writtenName == "cid_function" &&
+                retained.demand.directCall) retainedCall = true;
+            if (record.name == "Test" && retained.demand.writtenName == "cid_global" &&
+                !retained.demand.directCall) retainedGlobal = true;
+            if (record.name == "Shadow" && retained.demand.writtenName == "cid_global" &&
+                !retained.demand.directCall) retainedShadow = true;
+        }
+    ok &= expect(retainedCall && retainedGlobal && retainedShadow,
+        "compilation retains each generic demand under its owning template without resolving shadows");
     return ok;
 }
 

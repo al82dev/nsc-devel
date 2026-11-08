@@ -9,11 +9,17 @@
 #include <algorithm>
 #include <iterator>
 #include <system_error>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
 namespace nativesharp::frontend
 {
+std::span<const ProjectCompilation::CppTemplateDemand> ProjectCompilation::cppTemplateDemands() const noexcept
+{
+    return cppTemplateDemands_;
+}
+
 void ProjectCompilation::setReportSink(std::function<void(std::string_view)> sink)
 {
     reportSink_ = std::move(sink);
@@ -192,6 +198,7 @@ bool ProjectCompilation::buildMemberModel(std::string& error)
 bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
 {
     namespaceFunctionModel_ = std::make_unique<ProjectNamespaceFunctionModel>();
+    cppTemplateDemands_.clear();
     std::vector<NamespaceStateSymbol> importedStates = experimentalCppImportedStates_;
     if (cppFunctionProvider_ || cppGlobalProvider_)
     {
@@ -210,6 +217,21 @@ bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
                     units_[precompiledSnapshotCapture_->unitOrdinal]->fileId());
             namespaceFunctionModel_->build(*nameLookup_, *memberModel_, units_, diagnostics_, genericModel_.get());
             return false;
+        }
+        if (!cppProjectSessions_.empty() && genericModel_)
+        {
+            std::unordered_multimap<const ast::AstNode*, const GenericTemplateRecord*> owners;
+            for (const auto& record : genericModel_->templates())
+                for (const auto& candidate : record.foreignReferenceCandidates)
+                    if (candidate.syntax && !candidate.typeSyntax)
+                        owners.emplace(candidate.syntax, &record);
+            for (const auto& demand : observer.cppFunctionDemands())
+            {
+                const auto [first, last] = owners.equal_range(demand.syntax);
+                for (auto owner = first; owner != last; ++owner)
+                    if (owner->second->projectOrdinal == demand.projectOrdinal)
+                        cppTemplateDemands_.push_back({owner->second->canonicalKey, demand});
+            }
         }
         if (cppFunctionProvider_)
         {

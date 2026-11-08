@@ -106,6 +106,13 @@ public:
     interop::CppInteropSession* cppInteropSession() const noexcept;
     bool setCppProjectSessions(std::vector<interop::CppProjectSessions> sessions, std::string& error);
     std::span<const interop::CppProjectSessions> cppProjectSessions() const noexcept;
+    struct CppTemplateDemand
+    {
+        std::string templateKey;
+        CppFunctionDemand demand;
+    };
+    // Candidates retain the producer's lookup context; they are not resolved C bindings.
+    std::span<const CppTemplateDemand> cppTemplateDemands() const noexcept;
     bool setCppImportedFunctions(std::vector<NamespaceFunctionSymbol> functions, std::string& error);
     bool setExperimentalCppImportedStates(std::vector<NamespaceStateSymbol> states, std::string& error);
     // Experimental injection for isolated compiler tests. Imported records do not yet have
@@ -334,6 +341,7 @@ private:
     // Declared before the project models so that it outlives their destruction.
     std::unique_ptr<interop::CppInteropSession> cppInteropSession_;
     std::vector<interop::CppProjectSessions> cppProjectSessions_;
+    std::vector<CppTemplateDemand> cppTemplateDemands_;
     std::vector<NamespaceFunctionSymbol> cppImportedFunctions_;
     std::vector<NamespaceStateSymbol> experimentalCppImportedStates_;
     std::vector<CppImportedTypeDeclaration> experimentalCppImportedTypes_;
