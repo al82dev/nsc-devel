@@ -1,0 +1,1 @@
+int Main() { FlexPacked* value = flex_packed(); var p = value->data; return p[0]; }

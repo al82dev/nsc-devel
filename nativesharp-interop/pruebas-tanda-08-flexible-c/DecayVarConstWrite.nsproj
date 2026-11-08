@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CFlexVarConstWrite</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="DecayVarConstWrite.ns" />
+    <CppLibraryReference Header="Restricted.h" Language="C" Standard="c11" Library="restricted.lib" />
+  </ItemGroup>
+</Project>

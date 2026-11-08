@@ -3,9 +3,14 @@ int Main()
     FlexConst* c = flex_const();
     int const* readOnly = c->data;
     if (readOnly[0] != 123 || readOnly[1] != 456) return 1;
+    var inferredReadOnly = c->data;
+    if (inferredReadOnly[0] != 123 || inferredReadOnly[1] != 456) return 3;
     FlexVolatile* v = flex_volatile();
     flex_volatile_set(v, 1, 333);
     if (flex_volatile_pointer(v->data) != 333) return 2;
     if (flex_volatile_get(v, 0) != 900) return 2;
+    var inferredVolatile = v->data;
+    inferredVolatile[0] = 901;
+    if (inferredVolatile[0] != 901 || flex_volatile_get(v, 0) != 901) return 4;
     return 0;
 }

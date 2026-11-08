@@ -1,0 +1,1 @@
+int Main() { FlexConst* value = flex_const(); var p = value->data; p[0] = 1; return 0; }
