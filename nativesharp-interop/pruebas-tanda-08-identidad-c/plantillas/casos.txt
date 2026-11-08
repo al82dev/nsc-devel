@@ -11,7 +11,7 @@ ConsumerInlinePlain CGenProducer runs runs
 ConsumerGeneric CGenProducer runs runs
 ConsumerGenericHeader CGenProducer runs runs
 ConsumerAlias CGenProducer runs runs
-ConsumerRecordLocal CGenProducer ident runs
+ConsumerRecordLocal CGenProducer runs runs
 ConsumerGlobalWrite CGenProducer runs runs
 ConsumerInline CGenProducerInline runs runs
 ConsumerEnumConstantPlain CGenProducerEnumPlain runs runs

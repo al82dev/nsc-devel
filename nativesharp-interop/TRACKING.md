@@ -209,7 +209,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     funciones externas y `static inline`, y globales externas e internas usadas
     por plantillas. Los controles específicos de esas cinco categorías pasaron
     en O0–O3. El validador de identidad pasó con sus expectativas actualizadas;
-    conserva como rechazo conocido el record C local de la plantilla. Esas
+    inicialmente conservaba como rechazo conocido el record C local. Ese caso
+    ya compila y se ejecuta cuando el record está también en la superficie del
+    productor; sigue pendiente el caso de record usado solo dentro de la plantilla.
+    [Evidencia](registro-commits/t08-h3-funcion-record-publicado.md). Esas
     pruebas no cubren todas las declaraciones ni cierran T08-002. Los apuntes
     H3 anteriores de este bloque describen estados históricos. [Evidencia](registro-commits/t08-h3-identidad-expectativas.md).
   - Un alias de enum C conciliado entre encabezado y biblioteca precompilada ya
