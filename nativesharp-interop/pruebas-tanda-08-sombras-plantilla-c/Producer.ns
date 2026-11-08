@@ -29,6 +29,19 @@ namespace PublishedShadow
             return sum;
         }
 
+        public static int ForeachLoop<T>(T value)
+        {
+            int[] values = new int[2];
+            values[0] = 13;
+            values[1] = 17;
+            int sum = 0;
+            foreach (int shadow_value in values)
+            {
+                sum += shadow_value;
+            }
+            return sum;
+        }
+
         public static int Lambda<T>(T value)
         {
             ShadowCallback callback = (int shadow_value) => shadow_value;

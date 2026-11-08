@@ -224,6 +224,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     inicial](registro-commits/t08-h3-sombra-local-validacion.md), [parámetros y
     bucles](registro-commits/t08-h3-sombras-parametro-bucle-validacion.md),
     [lambdas e inicializadores](registro-commits/t08-h3-inicializadores-lambda-validacion.md).
+    Una variable foreach sobre arreglo también pasó O0–O3 en el consumidor
+    precompilado. [Control](registro-commits/t08-h3-foreach-control.md).
   - NSMETA 1.47: el control de tolerancia de versiones pasó 17 comprobaciones.
     El control general pasó 430 de 434; faltan las muestras históricas 1.45 y
     1.46 que el control exige. Esos cuatro fallos no se consideran aprobados.
