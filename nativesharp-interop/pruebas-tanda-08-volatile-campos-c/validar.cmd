@@ -77,6 +77,24 @@ echo RESULTADO ProbeOddProducer: biblioteca, codigo %ERRORLEVEL%
 if errorlevel 1 exit /b 1
 call :probe ProbeOddConsumer
 if errorlevel 1 exit /b 1
+python "%~dp0verificar_record_volatile.py" "%DEST%\probe-ref.ll" "%DEST%\ProbeOddConsumer.ll"
+if errorlevel 1 exit /b 1
+for %%O in (1 2 3) do (
+  %EMIT_EXE% "%DEST%\ProbeRecord.nsproj" -O%%O --no-artifact-cache -o "%DEST%\ProbeRecord-O%%O.exe" > "%DEST%\ProbeRecord-O%%O.log" 2>&1
+  if errorlevel 1 exit /b 1
+  "%DEST%\ProbeRecord-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  %EMIT_LIB% "%DEST%\ProbeOddProducer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\CVolatileOddProducer.lib" > "%DEST%\ProbeOddProducer-O%%O.log" 2>&1
+  if errorlevel 1 exit /b 1
+  %EMIT_EXE% "%DEST%\ProbeOddConsumer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\ProbeOddConsumer-O%%O.exe" > "%DEST%\ProbeOddConsumer-O%%O.log" 2>&1
+  if errorlevel 1 exit /b 1
+  "%DEST%\ProbeOddConsumer-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  nsc.exe %CLANG_ROOT% --dump-project-oop-llvm-opt "%DEST%\ProbeOddConsumer.nsproj" -O%%O > "%DEST%\ProbeOddConsumer-O%%O.ll"
+  if errorlevel 1 exit /b 1
+  python "%~dp0verificar_record_volatile.py" "%DEST%\probe-ref.ll" "%DEST%\ProbeOddConsumer-O%%O.ll"
+  if errorlevel 1 exit /b 1
+)
 set "IRFAIL=0"
 nsc.exe %CLANG_ROOT% --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\project.ll"
 if errorlevel 1 exit /b 1

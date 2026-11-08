@@ -4,5 +4,9 @@ int Main()
     var p = OddPublished.OddBridge.Odd();
     p->after = 7;
     if (OddPublished.OddBridge.After(p) != 7) return 1;
+    p->inner.flag = true;
+    p->inner.i = 99;
+    if (!p->inner.flag || p->inner.i != 99) return 2;
+    if (!OddPublished.OddBridge.InnerFlag(p) || OddPublished.OddBridge.InnerValue(p) != 99) return 3;
     return 0;
 }

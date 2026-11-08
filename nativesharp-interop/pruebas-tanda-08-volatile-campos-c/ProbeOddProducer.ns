@@ -5,5 +5,7 @@ namespace OddPublished
     {
         public static VOdd* Odd() { return v_odd(); }
         public static int After(VOdd* p) { return v_odd_after(p); }
+        public static bool InnerFlag(VOdd* p) { return acc_get_innerflag_c(p); }
+        public static int InnerValue(VOdd* p) { return acc_get_inneri_c(p); }
     }
 }
