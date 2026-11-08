@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>GlobalProducer</Name><OutputType>Library</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Producer.ns" />
+    <CppLibraryReference Header="fixture.h" Language="C" Standard="c11" Library="fixture.lib" />
+  </ItemGroup>
+</Project>

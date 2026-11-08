@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>GlobalConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+    <LibraryReference Include="GlobalProducer.lib" />
+  </ItemGroup>
+</Project>

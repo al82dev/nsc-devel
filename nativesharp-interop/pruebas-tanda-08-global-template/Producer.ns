@@ -1,0 +1,7 @@
+namespace GlobalFixture
+{
+    public class Bridge
+    {
+        public static int Value<T>(T value) { fixture_counter += 2; return fixture_read(); }
+    }
+}

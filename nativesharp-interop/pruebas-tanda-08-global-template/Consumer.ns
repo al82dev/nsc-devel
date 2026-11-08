@@ -1,0 +1,5 @@
+int Main()
+{
+    if (GlobalFixture.Bridge.Value<int>(1) != 42) return 1;
+    return 0;
+}
