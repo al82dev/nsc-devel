@@ -1,0 +1,9 @@
+int Main()
+{
+    var value = H4AnonymousPublished.Bridge.Get();
+    if (value->raw != 7 || value->level != H4Low || value->other != H4High) return 1;
+    value->level = H4High;
+    value->other = H4Low;
+    if (H4AnonymousPublished.Bridge.Read(value) != H4High) return 2;
+    return H4AnonymousPublished.Bridge.Check() == 1 ? 0 : 3;
+}

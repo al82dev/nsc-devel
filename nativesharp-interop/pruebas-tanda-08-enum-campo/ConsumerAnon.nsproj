@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>H4AnonymousConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ConsumerAnon.ns" />
+    <LibraryReference Include="H4AnonymousProducer.lib" />
+  </ItemGroup>
+</Project>

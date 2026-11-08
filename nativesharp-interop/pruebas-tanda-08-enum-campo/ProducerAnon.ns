@@ -3,5 +3,7 @@ namespace H4AnonymousPublished
     public struct Bridge
     {
         public static int Read(H4Anon* value) { return (int)value->level; }
+        public static H4Anon* Get() { return h4_get_anon(); }
+        public static int Check() { return h4_check_anon(); }
     }
 }

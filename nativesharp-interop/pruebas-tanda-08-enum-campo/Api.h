@@ -11,6 +11,7 @@ typedef struct {
 static H4Anon h4_anon = { 7, H4Low, H4High, H4Fixed, H4Changing };
 static H4NamedRecord h4_named = { 8, H4NamedA };
 static inline H4Anon* h4_get_anon(void) { return &h4_anon; }
+static inline int h4_check_anon(void) { return h4_anon.level == H4High && h4_anon.other == H4Low; }
 static inline H4NamedRecord* h4_get_named(void) { return &h4_named; }
 static inline enum H4Named h4_named_b(void) { return H4NamedB; }
 static inline int h4_check(void) {
