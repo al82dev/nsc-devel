@@ -941,7 +941,7 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
                     candidate.syntax->text() == "cid_function";
                 global |= candidate.syntax->kind() == nativesharp::ast::AstNodeKind::IdentifierExpression &&
                     candidate.syntax->text() == "cid_global";
-                alias |= candidate.typeSyntax && candidate.typeSyntax->baseName() == "CIdInt";
+                alias |= candidate.typeSyntax && candidate.writtenTypeName == "CIdInt";
             }
             if (record.name == "Shadow")
                 shadow |= candidate.syntax->kind() == nativesharp::ast::AstNodeKind::IdentifierExpression &&

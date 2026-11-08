@@ -19,6 +19,8 @@ struct GenericTemplateForeignReferenceCandidate final
 {
     const ast::AstNode* syntax = nullptr;
     const ast::TypeSyntax* typeSyntax = nullptr;
+    // Preserve source spelling before later name binding expands a typedef in place.
+    std::string writtenTypeName;
     std::string lexicalNamespace;
     std::vector<std::string> importedNamespaces;
     std::unordered_map<std::string, std::string> aliases;

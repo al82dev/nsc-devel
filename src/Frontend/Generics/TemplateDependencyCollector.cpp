@@ -353,19 +353,33 @@ void ProjectGenericModel::collectTemplateDependencies(
     if (captureForeignReferenceCandidates_)
     {
         const auto capture = [&](const ast::TypeSyntax* typeSyntax) {
-            root.record.foreignReferenceCandidates.push_back({node, typeSyntax, currentNamespace,
+            root.record.foreignReferenceCandidates.push_back({node, typeSyntax,
+                typeSyntax ? typeSyntax->baseName() : std::string{}, currentNamespace,
                 currentScope.importedNamespaces.read(), currentScope.aliases.read()});
+        };
+        const auto captureType = [&](const ast::TypeSyntax* typeSyntax) {
+            std::vector<const ast::TypeSyntax*> pending;
+            if (typeSyntax) pending.push_back(typeSyntax);
+            while (!pending.empty())
+            {
+                const auto* current = pending.back();
+                pending.pop_back();
+                capture(current);
+                if (current->functionReturnType()) pending.push_back(current->functionReturnType());
+                if (current->functionErrorType()) pending.push_back(current->functionErrorType());
+                for (const auto* argument : current->typeArguments()) if (argument) pending.push_back(argument);
+            }
         };
         if (node->kind() == ast::AstNodeKind::CallExpression ||
             node->kind() == ast::AstNodeKind::IdentifierExpression ||
             node->kind() == ast::AstNodeKind::MemberExpression) capture(nullptr);
-        if (node->typeSyntax()) capture(node->typeSyntax());
-        for (const auto* typeSyntax : node->typeSyntaxes()) if (typeSyntax) capture(typeSyntax);
+        captureType(node->typeSyntax());
+        for (const auto* typeSyntax : node->typeSyntaxes()) captureType(typeSyntax);
         for (const auto& clause : node->genericConstraints())
         {
-            for (const auto* typeSyntax : clause.typeConstraints) if (typeSyntax) capture(typeSyntax);
-            if (clause.equalityConstraint) capture(clause.equalityConstraint);
-            if (clause.substitutedArgument) capture(clause.substitutedArgument);
+            for (const auto* typeSyntax : clause.typeConstraints) captureType(typeSyntax);
+            captureType(clause.equalityConstraint);
+            captureType(clause.substitutedArgument);
         }
     }
 
