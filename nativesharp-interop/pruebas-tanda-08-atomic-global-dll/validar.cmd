@@ -30,6 +30,10 @@ findstr /r /c:"load atomic i32.*@atomic_global.*seq_cst" "%DEST%\native.ll" >nul
 if errorlevel 1 goto :failure
 findstr /r /c:"atomicrmw add.*@atomic_global.*seq_cst" "%DEST%\native.ll" >nul
 if errorlevel 1 goto :failure
+findstr /r /c:"load atomic i32.*@enum_global.*seq_cst" "%DEST%\native.ll" >nul
+if errorlevel 1 goto :failure
+findstr /r /c:"cmpxchg.*@enum_global.*seq_cst" "%DEST%\native.ll" >nul
+if errorlevel 1 goto :failure
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe" > "%DEST%\consumer-O%%O.log" 2>&1
   if errorlevel 1 goto :failure

@@ -2,5 +2,8 @@ int Main()
 {
     if (atomic_global != 3 || c_read_atomic_global() != 3) return 1;
     if ((atomic_global += 2) != 5 || c_read_atomic_global() != 5) return 2;
+    if ((int)enum_global != 3 || c_read_enum_global() != 3) return 3;
+    enum_global += 2;
+    if ((int)enum_global != 5 || c_read_enum_global() != 5) return 4;
     return 0;
 }
