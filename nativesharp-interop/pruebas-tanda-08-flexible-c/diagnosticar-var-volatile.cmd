@@ -8,19 +8,23 @@ for %%F in (Restricted.h VarVolatileMode.c VarVolatileMode.ns VarVolatileMS.nspr
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 2
 )
-clang.exe -S -emit-llvm -O0 --target=x86_64-pc-windows-msvc -std=c11 -fms-volatile "%DEST%\VarVolatileMode.c" -o "%DEST%\clang-ms.ll"
-if errorlevel 1 exit /b 2
-clang.exe -S -emit-llvm -O0 --target=x86_64-pc-windows-msvc -std=c11 -fno-ms-volatile "%DEST%\VarVolatileMode.c" -o "%DEST%\clang-iso.ll"
-if errorlevel 1 exit /b 2
-for %%M in (MS ISO) do (
-  nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\VarVolatile%%M.nsproj" > "%DEST%\nsc-%%M.ll"
-  if errorlevel 1 exit /b 2
-)
 set "RESULT=0"
-for %%M in (MS ISO) do (
-  echo Comparacion %%M:
-  python "%~dp0comparar-var-volatile.py" "%DEST%\clang-%%M.ll" "%DEST%\nsc-%%M.ll"
-  if errorlevel 2 exit /b 2
-  if errorlevel 1 set "RESULT=1"
+for %%O in (0 1 2 3) do (
+  clang.exe -S -emit-llvm -O%%O --target=x86_64-pc-windows-msvc -std=c11 -fms-volatile "%DEST%\VarVolatileMode.c" -o "%DEST%\clang-ms-O%%O.ll"
+  if errorlevel 1 exit /b 2
+  clang.exe -S -emit-llvm -O%%O --target=x86_64-pc-windows-msvc -std=c11 -fno-ms-volatile "%DEST%\VarVolatileMode.c" -o "%DEST%\clang-iso-O%%O.ll"
+  if errorlevel 1 exit /b 2
+  for %%M in (MS ISO) do (
+    if %%O==0 (
+      nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\VarVolatile%%M.nsproj" > "%DEST%\nsc-%%M-O%%O.ll"
+    ) else (
+      nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm-opt "%DEST%\VarVolatile%%M.nsproj" -O%%O > "%DEST%\nsc-%%M-O%%O.ll"
+    )
+    if errorlevel 1 exit /b 2
+    echo Comparacion %%M O%%O:
+    python "%~dp0comparar-var-volatile.py" "%DEST%\clang-%%M-O%%O.ll" "%DEST%\nsc-%%M-O%%O.ll"
+    if errorlevel 2 exit /b 2
+    if errorlevel 1 set "RESULT=1"
+  )
 )
 exit /b %RESULT%
