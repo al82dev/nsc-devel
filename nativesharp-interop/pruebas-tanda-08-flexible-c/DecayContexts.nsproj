@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CFlexDecayContexts</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="DecayContexts.ns" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" />
+  </ItemGroup>
+</Project>
