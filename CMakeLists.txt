@@ -6609,6 +6609,19 @@ if(NSC_BUILD_TESTS)
             "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifySaturatingNarrow.cmake")
 
+    set(NSC_SIGNED_I128_DIVISION_PROJECT
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/signed_i128_division/SignedI128Division.nsproj")
+    add_test(
+        NAME nsc.compiler.signed-i128-division
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DPROJECT_FILE=${NSC_SIGNED_I128_DIVISION_PROJECT}"
+            "-DZERO_PROJECT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/signed_i128_division/Zero.nsproj"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/signed-i128-division"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifySignedI128Division.cmake")
+
     # NSC-LIMIT-007. La entrada de driver de la fase de constraints, ejercitada de verdad.
     #
     # Una fase sin prueba de ctest solo existe para quien lee el codigo: la revision encontro que

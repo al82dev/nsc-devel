@@ -2432,6 +2432,9 @@ private:
         std::string& error,
         bool divisorProvenNonZero);
 
+    // Emit signed i128 division with a bounded 128-step restoring division.
+    LLVMValueRef emitSignedI128Division(LLVMValueRef left, LLVMValueRef right);
+
     // T03-F03 value-producing match. The governing expression is evaluated once and spilled once;
     // MatchValue nodes use that frozen pair as a value or address. Arms remain lazy and ordered.
     // Bindings exist only after the structural predicate succeeds, and their cleanup executes on
