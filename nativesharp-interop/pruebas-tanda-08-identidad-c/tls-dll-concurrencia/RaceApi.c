@@ -8,6 +8,8 @@ __declspec(dllimport) Handle __stdcall CreateThread(void*, unsigned long long, T
 __declspec(dllimport) Dword __stdcall WaitForSingleObject(Handle, Dword);
 __declspec(dllimport) int __stdcall CloseHandle(Handle);
 __declspec(dllimport) void* __stdcall GetModuleHandleA(const char*);
+int tls_install_load_observer(void);
+int tls_finish_load_observer(void);
 
 typedef struct Context { TlsRaceCallback callback; Handle ready; Handle start; int id; int result; } Context;
 static Dword __stdcall worker(void* opaque)
@@ -23,6 +25,7 @@ static Dword __stdcall worker(void* opaque)
 __declspec(dllexport) int tls_race_first_access(TlsRaceCallback callback)
 {
     if (GetModuleHandleA("api2.dll") != 0) return 1;
+    if (tls_install_load_observer() != 0) return 9;
     Handle start = CreateEventA(0, 1, 0, 0);
     Handle ready1 = CreateEventA(0, 1, 0, 0);
     Handle ready2 = CreateEventA(0, 1, 0, 0);
@@ -38,6 +41,7 @@ __declspec(dllexport) int tls_race_first_access(TlsRaceCallback callback)
     if (!SetEvent(start)) result = 6;
     if (WaitForSingleObject(thread1, 10000) != 0 || WaitForSingleObject(thread2, 10000) != 0) result = 7;
     if (first.result != 0 || second.result != 0) result = 8;
+    if (tls_finish_load_observer() != 0) result = 10;
     CloseHandle(thread1); CloseHandle(thread2);
     CloseHandle(ready1); CloseHandle(ready2); CloseHandle(start);
     return result;
