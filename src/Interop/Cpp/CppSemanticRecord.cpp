@@ -1056,7 +1056,20 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         auto functionsResult = collectCppSemanticFunctions(*graph, compilation.cppProjectSessions());
         if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&functionsResult))
         { error = failure->message; return false; }
-        const auto& functions = std::get<std::vector<CppSemanticInventoryEntry>>(functionsResult);
+        auto& functions = std::get<std::vector<CppSemanticInventoryEntry>>(functionsResult);
+        std::vector<frontend::CppFunctionDemand> functionDemands;
+        for (const auto& item : compilation.cppTemplateDemands()) functionDemands.push_back(item.demand);
+        std::vector<frontend::NamespaceFunctionSymbol> projectedFunctions;
+        std::vector<CppDeferredFunctionCandidate> deferredFunctions;
+        if (!provideExperimentalCppFunctionsWithRecords(*graph, compilation.cppProjectSessions(), *lookup,
+                functionDemands, projectedFunctions, deferredFunctions, error)) return false;
+        for (auto& entry : functions)
+            if (std::holds_alternative<CppSemanticFunctionFailure>(entry.projection))
+                for (const auto& projected : projectedFunctions)
+                    if (entry.projectOrdinal == projected.projectOrdinal &&
+                        entry.declaration.externalSymbol == projected.mangledName &&
+                        entry.declaration.clangUsr == projected.cppClangUsr)
+                    { entry.projection = projected; break; }
         const auto functionCandidates = selectCppPublishedTemplateFunctions(compilation, metadata, functions);
         if (!captureCppTemplateFunctionCandidates(*graph, functionCandidates, functions, dependencies.functions, error))
             return false;
