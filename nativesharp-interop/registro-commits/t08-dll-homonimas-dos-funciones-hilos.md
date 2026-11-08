@@ -1,0 +1,5 @@
+# Dos funciones y TLS en dos hilos
+
+La prueba extiende el caso de dos funciones C homónimas provenientes de plantillas NativeSharp precompiladas. El hilo principal asigna valores diferentes a las dos variables TLS; un hilo creado por una DLL auxiliar comprueba los valores iniciales independientes, escribe otros valores y llama ambas funciones C. Tras esperar al hilo, el principal comprueba que sus valores no cambiaron. El control pasó en O0–O3; no acredita solapamiento simultáneo de los hilos ni restauración desde caché del ejecutable con encabezado C directo.
+
+La primera DLL de prueba para el segundo origen no importaba funciones y no mostró el valor TLS inicial esperado. El mismo fallo se reprodujo con un consumidor C compilado por Clang, antes de involucrar a NativeSharp. El caso se conserva como `TlsApi2SinImport.c` y se reproduce con `validar-origen-ambiguo.py --sin-import`; la causa sigue sin determinarse. La prueba positiva usa otra DLL que importa `GetCurrentThreadId`; su valor inicial se contrastó con el control C antes de probar NativeSharp. No se afirma que el caso sin importaciones esté resuelto.

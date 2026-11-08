@@ -79,7 +79,9 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
         - [x] Restaurar desde caché un ejecutable que utiliza una función C desde una plantilla precompilada y dos DLL TLS homónimas, de O0 a O3. [Evidencia](registro-commits/t08-dll-homonimas-funcion-precompilada-cache.md).
         - [x] Comprobar que dos DLL homónimas que exportan la misma función producen un diagnóstico y no publican un ejecutable con una elección arbitraria. [Evidencia](registro-commits/t08-dll-homonimas-origen-ambiguo.md).
         - [x] Distinguir la misma función C de dos DLL TLS homónimas cuando cada llamada proviene de una plantilla precompilada con su origen identificado; comprobar O0–O3 y restauración desde caché. [Evidencia](registro-commits/t08-dll-homonimas-dos-funciones.md).
-        - [ ] Resolver las demás formas de distinguir orígenes, incluidas llamadas con argumentos variables; comprobar concurrencia de ambas funciones, caché para referencias directas a encabezados, traslado a otro equipo y las demás variantes de importación.
+        - [x] Comprobar ambas funciones y sus variables TLS desde dos hilos, en O0–O3. [Evidencia](registro-commits/t08-dll-homonimas-dos-funciones-hilos.md).
+        - [ ] Resolver las demás formas de distinguir orígenes, incluidas llamadas con argumentos variables; comprobar caché para referencias directas a encabezados, traslado a otro equipo y las demás variantes de importación.
+        - [ ] Investigar el valor inicial TLS de una DLL de control sin importaciones: también falla en el control C; causa aún no identificada. [Reproducción](pruebas-tanda-08-identidad-c/tls-dll-distintas/validar-origen-ambiguo.py).
       - [ ] T08-002-09m7c1d2c: Resolver las dependencias transitivas de las DLL homónimas y comprobar el consumidor resultante.
     - [ ] T08-002-09m7c1d3: Comprobar el mismo escenario cuando el producto consumidor sea una DLL NativeSharp.
 - [ ] T08-002-09m7d: Comprobar los demás calificadores y variantes de enlace de la global externa compartida.

@@ -1,0 +1,21 @@
+class TestState { public static int detail = 0; }
+int CheckBoth(int phase) {
+    if (phase == 0) {
+        int initial = TlsLib2.Bridge.Access<int>(0, 0);
+        if (initial != 7) { TestState.detail = 20 + (initial & 127); return 1; }
+        if (TlsLib.Bridge.ReadC<int>(0) != 3) { TestState.detail = 10; return 1; }
+        if (TlsLib2.Bridge.ReadC<int>(0) != 7) { TestState.detail = 16; return 1; }
+        return 0;
+    }
+    if (TlsLib.Bridge.Access<int>(0, 73) != 73) { TestState.detail = 12; return 1; }
+    if (TlsLib2.Bridge.Access<int>(0, 83) != 83) { TestState.detail = 13; return 1; }
+    if (TlsLib.Bridge.ReadC<int>(0) != 73) { TestState.detail = 14; return 1; }
+    if (TlsLib2.Bridge.ReadC<int>(0) != 83) { TestState.detail = 15; return 1; }
+    return 0;
+}
+int Main() {
+    if (TlsLib.Bridge.Access<int>(0, 41) != 41 || TlsLib2.Bridge.Access<int>(0, 51) != 51) return 1;
+    TlsThreadCallback callback = (int phase) => CheckBoth(phase);
+    if (run_tls_thread(callback) != 0) return TestState.detail == 0 ? 2 : TestState.detail;
+    return TlsLib.Bridge.ReadC<int>(0) == 41 && TlsLib2.Bridge.ReadC<int>(0) == 51 ? 0 : 3;
+}
