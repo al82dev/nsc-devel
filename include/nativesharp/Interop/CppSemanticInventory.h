@@ -21,10 +21,12 @@ struct CppImportedTypeAlias;
 struct CppImportedTypeDeclaration;
 struct NamespaceStateSymbol;
 class ProjectNameLookup;
+class ProjectCompilation;
 }
 
 namespace nativesharp::interop
 {
+struct LibraryMetadata;
 struct CppSemanticInventoryEntry
 {
     std::filesystem::path projectFile;
@@ -202,6 +204,18 @@ struct CppSemanticGlobalSelection
 CppSemanticGlobalSelection selectCppSemanticGlobal(
     std::span<const CppSemanticGlobalEntry> entries, std::size_t projectOrdinal,
     std::string_view qualifiedName);
+struct CppPublishedTemplateGlobalCandidates
+{
+    std::string templateKey;
+    std::size_t templateDemandIndex;
+    std::size_t projectOrdinal;
+    std::string namespaceName;
+    CppSemanticGlobalSelection selection;
+};
+// Names remain candidates until body analysis resolves locals and members.
+std::vector<CppPublishedTemplateGlobalCandidates> selectCppPublishedTemplateGlobals(
+    const frontend::ProjectCompilation& compilation, const LibraryMetadata& metadata,
+    std::span<const CppSemanticGlobalEntry> inventory);
 bool provideCppSemanticGlobals(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
     std::span<const frontend::CppFunctionDemand> demands,

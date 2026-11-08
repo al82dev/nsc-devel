@@ -9,6 +9,8 @@
 #include "nativesharp/Interop/CppScalarTypeMapping.h"
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
+#include "nativesharp/Frontend/ProjectCompilation.h"
+#include "nativesharp/Interop/LibraryMetadata.h"
 
 #include <algorithm>
 #include <charconv>
@@ -495,6 +497,33 @@ CppSemanticGlobalSelection selectCppSemanticGlobal(
             result.candidate->microsoftVolatileSemantics = option;
             result.candidate->declarationAlignmentBits = alignment;
         }
+    return result;
+}
+
+std::vector<CppPublishedTemplateGlobalCandidates> selectCppPublishedTemplateGlobals(
+    const frontend::ProjectCompilation& compilation, const LibraryMetadata& metadata,
+    std::span<const CppSemanticGlobalEntry> inventory)
+{
+    std::set<std::string> published;
+    for (const auto& item : metadata.genericTemplates) published.insert(item.canonicalKey);
+    std::vector<CppPublishedTemplateGlobalCandidates> result;
+    const auto demands = compilation.cppTemplateDemands();
+    for (std::size_t index = 0; index < demands.size(); ++index)
+    {
+        const auto& item = demands[index];
+        if (!published.contains(item.templateKey) || item.demand.lookupName.empty()) continue;
+        for (const auto project : item.demand.visibleProjects)
+            for (const auto& ns : item.demand.lookupNamespaces)
+            {
+                std::string qualified;
+                for (const char c : ns) qualified += c == '.' ? "::" : std::string(1, c);
+                if (!qualified.empty()) qualified += "::";
+                qualified += item.demand.lookupName;
+                auto selection = selectCppSemanticGlobal(inventory, project, qualified);
+                if (selection.declarationIndices.empty() && selection.internalIndices.empty()) continue;
+                result.push_back({item.templateKey, index, project, ns, std::move(selection)});
+            }
+    }
     return result;
 }
 

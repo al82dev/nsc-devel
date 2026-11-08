@@ -1008,6 +1008,19 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
     }
     ok &= expect(published.genericTemplates.size() == 1 && selectedFunction && !selectedOtherTemplate,
         "published generic function candidates retain both header origins and exclude other templates");
+    auto globalInventory = collectCppSemanticGlobals(*compilation.projectGraph(), compilation.cppProjectSessions());
+    const auto* globals = std::get_if<std::vector<CppSemanticGlobalEntry>>(&globalInventory);
+    if (!expect(globals != nullptr, "generic fixture global inventory is available")) return false;
+    const auto globalCandidates = selectCppPublishedTemplateGlobals(compilation, published, *globals);
+    bool selectedGlobal = false, globalFromOtherTemplate = false;
+    for (const auto& candidate : globalCandidates)
+    {
+        globalFromOtherTemplate |= candidate.templateKey != published.genericTemplates.front().canonicalKey;
+        if (candidate.selection.candidate && candidate.selection.candidate->name == "cid_global" &&
+            candidate.selection.declarationIndices.size() == 2) selectedGlobal = true;
+    }
+    ok &= expect(selectedGlobal && !globalFromOtherTemplate,
+        "published generic global candidates retain both header origins and exclude other templates");
     return ok;
 }
 
