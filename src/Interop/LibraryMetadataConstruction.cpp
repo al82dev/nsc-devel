@@ -3060,10 +3060,13 @@ bool buildMetadataModel(
     if (!appendBinaryDependencies(compilation, metadata, error)) return false;
     appendPlatformImports(compilation, metadata);
     const auto previousMinor = metadata.formatMinor;
-    if (metadata.formatMinor < 47) metadata.formatMinor = 47;
+    if (metadata.formatMinor < 48) metadata.formatMinor = 48;
     if (!compilation.collectCppMetadataCatalog(metadata, metadata.cppCRecordCatalog, error)) return false;
     if (metadata.cppCRecordCatalog.empty()) metadata.formatMinor = previousMinor;
-    else if (metadata.cppCRecordCatalog[0] != 5 && previousMinor < 46)
+    else if (metadata.cppCRecordCatalog[0] != 6 &&
+             (metadata.cppCRecordCatalog[0] == 5 || previousMinor >= 46))
+        metadata.formatMinor = previousMinor < 47 ? 47 : previousMinor;
+    else if (metadata.cppCRecordCatalog[0] != 6)
     {
         const std::uint16_t minimum = metadata.cppCRecordCatalog[0] >= 3 ? 45 :
             (metadata.cppCRecordCatalog[0] == 2 ? 44 : 43);

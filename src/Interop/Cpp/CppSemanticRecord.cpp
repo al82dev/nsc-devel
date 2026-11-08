@@ -1416,6 +1416,16 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         };
         for (const auto& field : record.fields) if (!checkEnum(field.type, 0)) return false;
     }
+    const bool hasAnonymousCarriers = std::any_of(records.begin(), records.end(), [](const auto& record) {
+        return std::any_of(record.fields.begin(), record.fields.end(), [](const auto& field) {
+            return field.isAnonymousCarrier;
+        });
+    });
+    if (hasAnonymousCarriers)
+    {
+        if (metadata.formatMinor < 48) { error = "anonymous C carriers require metadata 1.48"; return false; }
+        return metadata_detail::encodeCTypeCatalogWithAnonymousCarriers(records, enums, dependencies, output, error);
+    }
     if (!dependencies.aliases.empty() || !dependencies.functions.empty() || !dependencies.globals.empty() || !dependencies.enumerators.empty())
         return metadata_detail::encodeCTypeCatalogWithDependencies(records, enums, dependencies, output, error);
     if (metadata.formatMinor >= 43)

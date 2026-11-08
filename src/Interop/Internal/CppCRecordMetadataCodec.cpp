@@ -1531,7 +1531,13 @@ bool reconstructPrecompiledCImportedTypes(std::span<const frontend::PrecompiledS
             if (project == projectByModule.end() || ambiguousModules.contains(std::string(owner)))
             { error = "C type owner is missing or ambiguous: " + std::string(owner); return false; }
             std::vector<std::uint8_t> canonical;
-            if (!encodeCTypeCatalogWithProvenance(oneRecord, oneEnum, canonical, error)) return false;
+            const bool hasCarriers = std::any_of(oneRecord.begin(), oneRecord.end(), [](const auto& record) {
+                return std::any_of(record.fields.begin(), record.fields.end(), [](const auto& field) {
+                    return field.isAnonymousCarrier;
+                });
+            });
+            if (hasCarriers ? !encodeCTypeCatalogWithAnonymousCarriers(oneRecord, oneEnum, {}, canonical, error) :
+                              !encodeCTypeCatalogWithProvenance(oneRecord, oneEnum, canonical, error)) return false;
             const auto [previous, inserted] = seen.emplace(std::string(identity), canonical);
             if (!inserted)
             {
