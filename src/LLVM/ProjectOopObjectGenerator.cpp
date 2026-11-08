@@ -799,14 +799,14 @@ void processObjectCodeUnit(
                 cache, sourceDependencies, unitKey, cacheKey, sourceFiles, true, objectFile, telemetry, moduleError);
         return;
     }
-    if (!optimizeConfiguredCodeUnit(
-            *module, *targetMachine, optimizationLevel, requiresWholeModuleRequiredInlining,
-            moduleError, telemetry)) return;
     if (addressSanitizer)
     {
         LlvmNativeSanitizer sanitizer;
         if (!sanitizer.instrument(*module, *targetMachine, NativeSanitizerKind::Address, moduleError)) return;
     }
+    if (!optimizeConfiguredCodeUnit(
+            *module, *targetMachine, optimizationLevel, requiresWholeModuleRequiredInlining,
+            moduleError, telemetry)) return;
     if (preserveModuleText) moduleText = module->text();
     if (!restorePostLlvmObject(
             cache, usePreLlvmCache, *targetMachine, codeGenerationPolicy,

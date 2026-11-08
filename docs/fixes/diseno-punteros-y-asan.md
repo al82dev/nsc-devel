@@ -98,7 +98,7 @@ integración y pruebas, no solo cambiar una variable de entorno.
 `LlvmNativeSanitizer` ya inserta el atributo y aplica el pipeline `asan`; la
 prueba existente verifica IR. Falta conectar el indicador desde el driver a
 la generación y resolver el enlace y el arranque. El generador de objetos ya
-dispone de una configuración interna que instrumenta cada unidad tras la
+dispone de una configuración interna que instrumenta cada unidad antes de la
 optimización, desactiva su caché de objetos y rechaza LTO. La prueba
 `nsc.project-oop-address-sanitizer` verifica en O0/O2 los símbolos de cada
 objeto, los objetos normales antes y después, la reutilización de la caché
@@ -107,6 +107,14 @@ Esto no expone una opción pública ni enlaza el runtime. Falta resolver la inte
 ThinLTO y las bibliotecas precompiladas, y enlazar y localizar el runtime al
 ejecutar. Las combinaciones aún no soportadas deben rechazarse de forma clara,
 no producir un binario aparentemente instrumentado.
+
+La posición de esa pasada se comprobó con el mismo ejemplo de escritura fuera
+de límites: `default<O2>` antes de ASan produjo una terminación sin diagnóstico
+ASan (`asan-pass-order/results.json`); ejecutar ASan antes de `default<O2>`
+conservó el diagnóstico `dynamic-stack-buffer-overflow`
+(`asan-pass-before-opt/results.json`). Ambas pruebas usan IR y Clang externos,
+no una opción de `nsc`; la prueba del generador comprueba además que el símbolo
+de reporte persiste en el objeto generado en O0 y O2.
 
 Prueba adicional del arranque (`A:/nsc-fixes-evidencia/asan-entry-probe/results.json`):
 con el mismo objeto instrumentado y la DLL de ASan en `PATH`, el control con
