@@ -6,5 +6,6 @@ int Main()
     if (PublishedShadow.Bridge.Lambda<int>(0) != 23) return 4;
     if (PublishedShadow.Bridge.Deconstruction<int>(0) != 30) return 5;
     if (PublishedShadow.Bridge.NestedDeconstruction<int>(0) != 30) return 6;
+    if (PublishedShadow.Bridge.CatchVariable<int>(0) != 27) return 7;
     return 0;
 }

@@ -1,3 +1,8 @@
+namespace NativeSharp.Core
+{
+    public class Exception { }
+}
+
 namespace PublishedShadow
 {
     public class Bridge
@@ -40,6 +45,16 @@ namespace PublishedShadow
         {
             var (_, (shadow_value, shadow_function)) = (1, (13, 17));
             return shadow_value + shadow_function;
+        }
+
+        public static int CatchVariable<T>(T value)
+        {
+            try { return 27; }
+            catch (NativeSharp.Core.Exception shadow_value)
+            {
+                if (shadow_value != null) return 28;
+                return 29;
+            }
         }
     }
 }
