@@ -5844,7 +5844,21 @@ bool ProjectMethodBodyModel::validateBorrowedReturnValue(
 {
     const bool nullBorrow =
         statement->first()->kind() == ast::AstNodeKind::NullLiteralExpression;
-    if (!nullBorrow && value.ownership != sema::OwnershipKind::Borrowed && returnTypeOwnable)
+    bool matchingBorrowedField = false;
+    if (!method.isStatic && statement->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+        value.assignmentMemberOrdinal.has_value() && memberModel_ != nullptr &&
+        *value.assignmentMemberOrdinal < memberModel_->members().size())
+    {
+        const ClassMemberSymbol& field = memberModel_->members()[*value.assignmentMemberOrdinal];
+        const std::string_view resultLifetime = method.declaredTypeSyntax != nullptr
+            ? std::string_view(method.declaredTypeSyntax->lifetimeName()) : std::string_view{};
+        matchingBorrowedField = field.kind == ClassMemberKind::Field && !field.isStatic &&
+            field.declaringTypeOrdinal == method.declaringTypeOrdinal &&
+            field.declaredOwnership == sema::OwnershipKind::Borrowed && field.declaredTypeSyntax != nullptr &&
+            !resultLifetime.empty() && field.declaredTypeSyntax->lifetimeName() == resultLifetime;
+    }
+    if (!nullBorrow && !matchingBorrowedField &&
+        value.ownership != sema::OwnershipKind::Borrowed && returnTypeOwnable)
     {
         std::string message =
             "borrowed return requires a borrowed value whose lifetime outlives the call";

@@ -23,6 +23,9 @@ salidas en `A:/nsc-fixes-evidencia/view-lifetime-tests.log` y
 **Límite pendiente:** extraer una referencia de objeto con `view.Get()` y
 guardarla en un local que sobrevive al propietario sigue siendo aceptado
 (`view-lifetime-check/payload-leak/Probe.nsproj` y `results.json`). Esta
-corrección no demuestra una API `Rc` segura ni resuelve el préstamo de ese
+reproducción declara el campo y el retorno como referencias ordinarias. Una
+variante con campo y retorno `borrowed[a]` rechaza la asignación a un local
+ordinario y ejecuta el uso válido; véase `borrowed-field-return.md`. Esto
+no demuestra una API `Rc` segura ni resuelve todos los escapes de ese
 objeto, el control block, las familias atómicas o el pin del módulo. Tampoco
 se afirma cobertura de todas las formas posibles de receptor y composición.
