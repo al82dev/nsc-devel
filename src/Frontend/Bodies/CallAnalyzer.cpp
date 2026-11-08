@@ -2294,6 +2294,33 @@ void ProjectMethodBodyModel::recognizeCoreAtomicOperations(
     recognizeCoreAtomicValueOperations(
         expression, declaringType, selectedMember,
         methodMemberOrdinal, scopeOrdinal, result, diagnostics);
+    const auto isSharedGeneric = [&](std::string_view name) {
+        return selectedMember.name == name ||
+            (selectedMember.genericTemplateOrdinal.has_value() &&
+             selectedMember.name.starts_with(std::string(name) + "__g"));
+    };
+    if (declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Internal.SharedStorage" &&
+        (isSharedGeneric("InstanceSize") || isSharedGeneric("InstanceAlignment")) &&
+        selectedMember.isStatic && selectedMember.declaredTypeKey == "builtin:long" &&
+        selectedMember.parameters.size() == 1)
+    {
+        const auto targetType = referenceTypeOrdinalForTypeKey(selectedMember.parameters[0].typeKey);
+        if (!targetType.has_value() || inheritanceModel_ == nullptr || !inheritanceModel_->isClass(*targetType) ||
+            expression->children().size() != 1 ||
+            expression->children()[0]->kind() != ast::AstNodeKind::NullLiteralExpression)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "shared instance layout requires a class type and a null witness");
+            result.valid = false;
+            return;
+        }
+        coreBindings_.push_back(MethodCoreBinding{
+            isSharedGeneric("InstanceSize") ? MethodCoreOperationKind::SharedInstanceSize
+                                             : MethodCoreOperationKind::SharedInstanceAlignment,
+            expression, methodMemberOrdinal, scopeOrdinal, "builtin:long",
+            selectedMember.parameters[0].typeKey, false, std::nullopt, std::nullopt});
+    }
     if (declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Internal.SharedStorage" &&
         (selectedMember.name == "DestroyObject" ||
          (selectedMember.genericTemplateOrdinal.has_value() && selectedMember.name.starts_with("DestroyObject__g"))) &&

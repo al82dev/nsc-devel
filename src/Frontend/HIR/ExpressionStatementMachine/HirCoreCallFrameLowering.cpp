@@ -211,6 +211,25 @@ bool ProjectOopHirModel::initializeStringCoreOperandCallFrame(
         error = "Stage 51 string intrinsic requires a resolved Core.String call";
         return false;
     }
+    if (frame.core->kind == MethodCoreOperationKind::SharedInstanceSize ||
+        frame.core->kind == MethodCoreOperationKind::SharedInstanceAlignment)
+    {
+        const auto typeOrdinal = inheritanceModel_ != nullptr
+            ? inheritanceModel_->typeOrdinalForTypeKey(frame.core->elementTypeKey) : std::nullopt;
+        const auto* layout = typeOrdinal.has_value() && objectLayoutModel_ != nullptr
+            ? objectLayoutModel_->layoutForType(*typeOrdinal) : nullptr;
+        if (layout == nullptr)
+        {
+            error = "shared instance layout has no class layout";
+            return false;
+        }
+        call.node = makeNode(ProjectOopHirNodeKind::IntegerConstant, frame.syntax, frame.core->resultTypeKey);
+        call.node->integerValue = frame.core->kind == MethodCoreOperationKind::SharedInstanceSize
+            ? layout->size : layout->alignment;
+        call.operandSyntaxes.push_back(frame.syntax->children()[0]);
+        call.operandAddressContexts.push_back(false);
+        return true;
+    }
     if (call.binding->forwardedReceiver)
     {
         if (call.binding->receiverSyntax == nullptr)
@@ -255,6 +274,9 @@ void ProjectOopHirModel::acceptCoreOperandCallChild(
 {
     CoreOperandCallFrameState& call = *frame.coreOperandCall;
     const std::size_t index = call.nextOperand++;
+    if (frame.core->kind == MethodCoreOperationKind::SharedInstanceSize ||
+        frame.core->kind == MethodCoreOperationKind::SharedInstanceAlignment)
+        return;
     if (call.appliesConversions &&
         index < call.binding->selectedConversions.size() &&
         call.binding->selectedConversions[index].kind != ProjectConversionKind::Identity)

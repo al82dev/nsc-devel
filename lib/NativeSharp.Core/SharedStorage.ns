@@ -5,5 +5,8 @@ namespace NativeSharp.Core.Internal
     internal static class SharedStorage
     {
         public static void DestroyObject<T>(T target) where T : class { }
+        // The null witness identifies T without allocating or evaluating a payload.
+        public static long InstanceSize<T>(T witness) where T : class { return 0l; }
+        public static long InstanceAlignment<T>(T witness) where T : class { return 0l; }
     }
 }

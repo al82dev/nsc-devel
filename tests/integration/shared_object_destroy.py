@@ -11,8 +11,12 @@ def main():
     source = '''using NativeSharp.Core.Internal;
 class Payload { public static int Drops; public int Value; ~Payload() { Drops = Drops + 1; } }
 class Derived : Payload { public static int DerivedDrops; ~Derived() { DerivedDrops = DerivedDrops + 1; } }
+class Large { public long A; public long B; public long C; public long D; }
+class DerivedLarge : Large { public long E; }
 class Factory { public static T Place<T>(T* storage) where T : class, new() { return new (storage) T(); } }
 class Program { public static int Main() { unsafe("placement lifetime") {
+ if (SharedStorage.InstanceSize<Large>(null) != 40l || SharedStorage.InstanceAlignment<Large>(null) != 8l) return 6;
+ if (SharedStorage.InstanceSize<DerivedLarge>(null) != 48l) return 7;
  long* memory = stackalloc long[32]; Payload* slot = (Payload*)memory;
  Payload p = Factory.Place<Payload>(slot); p.Value = 42;
  if (p.Value != 42) return 1;
@@ -52,6 +56,16 @@ class Program { public static int Main() { unsafe("placement lifetime") {
         result = subprocess.run([str(compiler), '--check-project-oop-hir', str(project)], cwd=root,
                                 capture_output=True, text=True, errors='replace', timeout=120)
         assert result.returncode != 0 and 'requires a class with a NativeSharp object descriptor' in result.stdout + result.stderr
+        source_path.write_text(source.replace('SharedStorage.InstanceSize<Large>(null)',
+                                             'SharedStorage.InstanceSize<Large>(new Large())'), encoding='utf-8')
+        result = subprocess.run([str(compiler), '--check-project-method-bodies', str(project)], cwd=root,
+                                capture_output=True, text=True, errors='replace', timeout=120)
+        assert result.returncode != 0 and 'requires a class type and a null witness' in result.stdout + result.stderr
+        source_path.write_text(source.replace('SharedStorage.InstanceSize<Large>(null)',
+                                             'SharedStorage.InstanceSize<string>(null)'), encoding='utf-8')
+        result = subprocess.run([str(compiler), '--check-project-method-bodies', str(project)], cwd=root,
+                                capture_output=True, text=True, errors='replace', timeout=120)
+        assert result.returncode != 0 and 'requires a class type and a null witness' in result.stdout + result.stderr
     return 0
 
 

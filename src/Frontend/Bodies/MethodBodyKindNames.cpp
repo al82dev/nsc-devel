@@ -312,6 +312,10 @@ const char* methodCoreOperationKindNamePart02(MethodCoreOperationKind kind) noex
             return "raw-allocation";
         case MethodCoreOperationKind::SharedDestroyObject:
             return "shared-destroy-object";
+        case MethodCoreOperationKind::SharedInstanceSize:
+            return "shared-instance-size";
+        case MethodCoreOperationKind::SharedInstanceAlignment:
+            return "shared-instance-alignment";
         case MethodCoreOperationKind::PointerArithmetic:
             return "pointer-arithmetic";
         case MethodCoreOperationKind::ClockQueryCounter:

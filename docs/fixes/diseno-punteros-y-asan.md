@@ -99,14 +99,29 @@ cuatro campos `long`: mide la referencia, no el objeto. El modelo de layout
 distingue explícitamente el tamaño de referencia del tamaño y alineación de
 la instancia (`ClassObjectLayout`): el volcado de esa prueba informa 40 bytes
 para la instancia y 8 para la referencia. La fábrica no puede calcular el espacio
-del payload usando `sizeof(T)` sin reservar menos memoria de la necesaria;
-queda pendiente conectar el layout de instancia correcto a la reserva compartida.
+del payload usando `sizeof(T)` sin reservar menos memoria de la necesaria.
+Las operaciones internas `SharedStorage.InstanceSize<T>(null)` e
+`InstanceAlignment<T>(null)` consultan el layout de clase especializado y
+exigen un testigo literal nulo, sin evaluar expresiones con efectos; la prueba
+`nsc.sdk.shared-object-destroy` comprueba tamaños 40 y 48 para base y derivada,
+la alineación 8 y el
+rechazo de un testigo distinto de null. El prototipo aislado
+`shared-sized-lifecycle-probe/results.json` usa ambos valores para calcular
+la reserva y alinear el payload y ejecuta el ciclo fuerte-débil en O0 y O2.
+Todavía no verifica límites aritméticos, alineaciones mayores ni errores de
+construcción y no constituye una fábrica pública.
 Un experimento separado (`shared-heap-lifecycle-probe/results.json`) coloca
 contadores y un payload de clase en un arreglo de tamaño fijo; en O0 y O2
 ejecuta clonación, destrucción del último fuerte y consulta del débil expirado,
-con salida 42. No es una fábrica productiva: el tamaño fijo puede ser
+además de upgrade antes y después de expirar, con salida 42. El intento de
+copia implícita se rechaza (`shared-heap-copy-probe/result.json`). Una vista
+con campo y retorno `borrowed[a]` ejecuta el acceso válido en O0 y O2 y
+rechaza almacenar la referencia en un local sin calificador
+(`shared-heap-borrow-probe/results.json`). Esas pruebas no demuestran todas
+las formas de escape. No es una fábrica productiva: el tamaño fijo puede ser
 insuficiente, no comprueba alineación arbitraria, overflow, concurrencia,
-excepciones, pin del módulo ni acceso seguro a la referencia retornada.
+excepciones ni pin del módulo; el método de acceso ordinario devuelve una
+referencia sin comprobar su vida.
 El mecanismo actual de `new (allocator)` tampoco demuestra la asignación
 única: `installAllocatorDescriptorSidecar` reserva por separado 80 bytes para
 el descriptor y el contexto del allocator. La operación MIR `ObjectDestroy`

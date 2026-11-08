@@ -24,6 +24,9 @@ std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanGroup01(
     {
     case MethodCoreOperationKind::SharedDestroyObject:
         return HirCoreOperandCallPlan{1U, ProjectOopHirNodeKind::ObjectDestruction};
+    case MethodCoreOperationKind::SharedInstanceSize:
+    case MethodCoreOperationKind::SharedInstanceAlignment:
+        return HirCoreOperandCallPlan{1U, ProjectOopHirNodeKind::IntegerConstant};
     // ---------------------------------------------------------------------------------------
     // DOS OPERANDOS. Era el valor por omision de la cadena vieja, y por eso era la trampa: una
     // operacion nueva que se olvidara caia aqui en silencio. Ahora esta escrito.
@@ -376,6 +379,8 @@ std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanGroup04(
         case MethodCoreOperationKind::BitTrailingZeroCount:
         case MethodCoreOperationKind::CpuPause:
         case MethodCoreOperationKind::SharedDestroyObject:
+        case MethodCoreOperationKind::SharedInstanceSize:
+        case MethodCoreOperationKind::SharedInstanceAlignment:
         case MethodCoreOperationKind::CpuPrefetchRead:
         case MethodCoreOperationKind::CpuReadTimestamp:
         case MethodCoreOperationKind::DebugOutputStringRaw:

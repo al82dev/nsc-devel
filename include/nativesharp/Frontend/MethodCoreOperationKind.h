@@ -141,6 +141,8 @@ enum class MethodCoreOperationKind
     RawAllocation,
     // Internal shared-control-block operation: destroy a class object without freeing its storage.
     SharedDestroyObject,
+    SharedInstanceSize,
+    SharedInstanceAlignment,
     // CC1 fase 4D -- `p + i`, `i + p`, `p - i` y `p - q`. `elementTypeKey` es el tipo APUNTADO, que
     // es lo que da el paso; `resultTypeKey` es "T*" para las tres primeras y "builtin:nint" para la
     // diferencia. La operacion concreta se deduce en el HIR del token del nodo de sintaxis, que ya
