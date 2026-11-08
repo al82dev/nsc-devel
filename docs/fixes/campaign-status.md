@@ -6,8 +6,9 @@ Base: `152654e5a0e2d84d4c2f245ea7590488f0497430`, rama
 `A:/nsc-fixes-evidencia/build`; SDK de la copia en `A:/nsc-fixes-evidencia/sdk`.
 Windows x64, LLVM/Clang 23.1.0, host estático y Release. Se usa el enlazador
 externo `C:/native-sharp/bin/nslink.exe` como dependencia de referencia y el
-runtime generado en A. El ejecutable final informa NativeSharp 3.0.0 y build
-hash `c237186aba0246a4` (`final-nsc-version.log`). No se instala ni modifica
+runtime generado en A. Un ejecutable de una etapa anterior informa NativeSharp
+3.0.0 y build hash `c237186aba0246a4` (`final-nsc-version.log`); no identifica
+las compilaciones incrementales posteriores. No se instala ni modifica
 `C:/native-sharp`.
 
 Las reproducciones son copias en `A:/nsc-fixes-evidencia/cases`; las fuentes
@@ -41,7 +42,7 @@ se detallan en los documentos de `docs/fixes` y registros de la misma carpeta.
 | Inspección general de campos | `74-fields`: ejecuta un ejemplo explícito, no un inspector universal. No se localizó API general; pendiente diseño. |
 | derive Print | `75-derive`: texto `GridPoint`, sin campos. Pendiente decisión de formato. La igualdad falsa observada en la misma ejecución se corrigió de forma acotada; véase `derive-ignore-equality.md`. |
 | SIMD máscara a vector, indexación y condicional | `89-mask-convert`, `89-mask-index`, `89-mask-select`: rechazos reproducidos. Pendiente definir las operaciones y representación deseadas. |
-| AddressSanitizer | No se localizó opción en la base. La rama incorpora `--sanitize-address` para ejecutables de proyecto de consola con Clang y DLL externos indicados explícitamente; la ruta utiliza Clang/LLD para el enlace y conserva NSLink para las bibliotecas de importación. Caso válido y desbordamiento pasan en O0/O2; restricciones y cobertura en `diseno-punteros-y-asan.md`. La batería completa posterior sigue pendiente. |
+| AddressSanitizer | No se localizó opción en la base. La rama incorpora `--sanitize-address` para ejecutables de proyecto de consola con Clang y DLL externos indicados explícitamente; la ruta utiliza Clang/LLD para el enlace y conserva NSLink para las bibliotecas de importación. Caso válido y desbordamiento pasan en O0/O2; restricciones y cobertura en `diseno-punteros-y-asan.md`. |
 | Operadores ++ / -- | `39-increment`, `39-decrement`: parser rechaza la sobrecarga. Pendiente decisión sobre semántica y evaluación. |
 | NativeSharp.Text | `text-namespace`: namespace no encontrado. Pendiente decisión de API. |
 | Compile con .. | `102-outside`: proyecto rechaza rutas fuera de su raíz. Pendiente decisión de resolución de proyectos. |
@@ -194,12 +195,14 @@ el programa pero falló por los rangos PDB esperados. La revisión base falló
 en el mismo control de rangos (`debug-copies/` y `debug-copies-baseline/`).
 Los controles cuyos fixtures contienen `extern C` permanecen excluidos.
 
-**Estado abierto:** faltan pruebas del inventario, la batería completa
-pertinente no está aprobada y no se ha demostrado ejecución nativa para todos
+**Estado abierto:** faltan pruebas del inventario, la batería completa histórica
+no está aprobada y no se ha demostrado ejecución nativa para todos
 los casos que CTest omite en Windows. Los 36 fallos de la segunda pasada
 unitaria no se han corregido ni clasificado todos contra la base. Los
 casos de lenguaje/API pendientes y la evidencia para decidirlos están en
 `decisiones-pendientes.md`. No se hizo merge, push ni despliegue.
+El usuario indicó posteriormente utilizar siempre compilación incremental y
+pruebas dirigidas; esa instrucción rige las verificaciones siguientes.
 
 La comparación de nombres contra `development-cpp-clang` en el repositorio
 original, solo en lectura, encontró estos archivos modificados en ambas ramas:

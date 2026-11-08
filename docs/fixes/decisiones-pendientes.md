@@ -109,9 +109,10 @@ decisiones posteriores indicadas explícitamente abajo.
   No se localizó conexión de esa clase en `src/Driver` ni opción en la ayuda.
 - Decisiones: sigue pendiente el objetivo verificable de desvirtualización O2.
   El usuario aprobó exponer ASan como opción explícita con el runtime de Clang
-  externo; falta implementar y validar esa integración sin modificar la
-  instalación funcional. La DLL y las bibliotecas Clang 23 se localizaron en
-  `C:/clang-llvm/lib/clang/23/lib/windows` como referencias.
+  externo. La ruta para ejecutables de consola se implementó y sus pruebas
+  dirigidas pasaron en O0 y O2; restricciones, evidencia y límites de cobertura
+  del heap están en `diseno-punteros-y-asan.md`. No se modificó la instalación
+  funcional. La DLL y bibliotecas Clang 23 son dependencias de referencia.
 
 ## Namespace Text y rutas Compile con ..
 
@@ -135,6 +136,10 @@ repositorio omite la ejecución real en Windows al no disponer de Wine; por
 eso se ejecutó la copia de forma nativa para esta comprobación.
 
 ## Preparación de la batería completa
+
+Instrucción posterior del usuario: utilizar siempre compilación incremental
+y pruebas dirigidas. Los resultados amplios históricos que siguen no autorizan
+repetir una batería completa mientras esa instrucción permanezca vigente.
 
 `ctest --test-dir A:/nsc-fixes-evidencia/build --show-only=json-v1` descubrió
 704 entradas; el manifiesto `full-suite-names.txt` tiene SHA-256
