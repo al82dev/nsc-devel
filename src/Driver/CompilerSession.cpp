@@ -41,6 +41,8 @@ ExitCode parseAndConfigureInvocation(std::span<const std::string_view> arguments
     executionScope.reportTiming = invocation.reportTiming;
     executionScope.reportProgress = invocation.reportProgress;
     executionScope.validateSystemImports = invocation.validateSystemImports;
+    executionScope.addressSanitizerClang = invocation.addressSanitizerClang;
+    executionScope.addressSanitizerRuntime = invocation.addressSanitizerRuntime;
     executionScope.progressFormat = invocation.progressFormat;
     executionScope.projectLoadOptions = invocation.projectLoadOptions;
     if (invocation.timeoutMilliseconds.has_value())

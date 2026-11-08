@@ -1,7 +1,7 @@
 # Diseño autorizado: punteros compartidos y AddressSanitizer
 
-Este documento fija la dirección de trabajo; ninguna de estas dos capacidades
-se considera implementada ni validada por aparecer aquí.
+Este documento conserva el diseño y la evidencia. Los punteros compartidos
+siguen pendientes; ASan cuenta con la ruta limitada descrita más abajo.
 
 ## Rc, WeakRc, Arc y WeakArc
 
@@ -95,18 +95,22 @@ del enlace, pero no prueba que todas las rutas posibles de NSLink fallen.
 de modo que usar LLD como alternativa explícita para ASan requiere trabajo de
 integración y pruebas, no solo cambiar una variable de entorno.
 
-`LlvmNativeSanitizer` ya inserta el atributo y aplica el pipeline `asan`; la
-prueba existente verifica IR. Falta conectar el indicador desde el driver a
-la generación y resolver el enlace y el arranque. El generador de objetos ya
+`LlvmNativeSanitizer` inserta el atributo y aplica el pipeline `asan`; la
+prueba existente verifica IR. El generador de objetos
 dispone de una configuración interna que instrumenta cada unidad antes de la
 optimización, desactiva su caché de objetos y rechaza LTO. La prueba
 `nsc.project-oop-address-sanitizer` verifica en O0/O2 los símbolos de cada
 objeto, los objetos normales antes y después, la reutilización de la caché
 normal y el rechazo de ThinLTO (`A:/nsc-fixes-evidencia/asan-unit-test.log`).
-Esto no expone una opción pública ni enlaza el runtime. Falta resolver la interacción con
-ThinLTO y las bibliotecas precompiladas, y enlazar y localizar el runtime al
-ejecutar. Las combinaciones aún no soportadas deben rechazarse de forma clara,
-no producir un binario aparentemente instrumentado.
+El driver conecta esta ruta a `--emit-project-oop-exe` mediante
+`--sanitize-address --asan-clang=<clang.exe> --asan-runtime=<DLL>`. La DLL
+debe llamarse `clang_rt.asan_dynamic-x86_64.dll` y se publica junto al
+ejecutable; Clang y la DLL deben ser versiones compatibles, responsabilidad
+de la configuración suministrada. Se rechazan LTO, PDB, enlace incremental,
+subsystem de ventana y caché de artefactos explícita; el modo ASan desactiva
+la caché predeterminada. Bibliotecas precompiladas y runtime NativeSharp no se
+instrumentan, por lo que los accesos dentro de esas bibliotecas no están
+cubiertos. No se ha validado ASan para DLL, bibliotecas estáticas o ThinLTO.
 
 La posición de esa pasada se comprobó con el mismo ejemplo de escritura fuera
 de límites: `default<O2>` antes de ASan produjo una terminación sin diagnóstico
@@ -124,9 +128,15 @@ llamó a `__nativesharp_start` después del arranque CRT, y
 bibliotecas, y el método interno `LldLinker::linkAddressSanitizedExecutable`
 invocó Clang/LLD para enlazar el runtime externo. El caso inválido produjo
 `dynamic-stack-buffer-overflow` en O0 y O2; el control válido devolvió 42 en
-ambos niveles. El fixture invocó el constructor fuera del driver: todavía
-no prueban que `nsc` exponga o enlace ASan por sí mismo, ni sustituyen la
-validación de NSLink, bibliotecas o empaquetado del runtime.
+ambos niveles. El fixture invocó el constructor fuera del driver.
+
+La prueba posterior `nsc.driver-address-sanitizer` usa la opción real de
+`nsc`, verifica DLL publicada sin añadirla a PATH, caso válido y caso inválido
+en O0/O2, ejecución normal sin dependencia ASan y rechazo de varias
+combinaciones incompatibles. Pasó junto a la prueba del generador: 2/2
+(`A:/nsc-fixes-evidencia/asan-regressions.log`). Requiere configurar
+`NSC_TEST_ASAN_CLANG` y `NSC_TEST_ASAN_RUNTIME`; sin ellas CTest la marca
+omitida, no aprobada. Esta evidencia usa Windows x64, Clang 23 y el SDK aislado.
 
 Prueba adicional del arranque (`A:/nsc-fixes-evidencia/asan-entry-probe/results.json`):
 con el mismo objeto instrumentado y la DLL de ASan en `PATH`, el control con
@@ -138,8 +148,6 @@ configuración experimental; no identifica por sí solo la causa de la violació
 de acceso ni demuestra que no exista una integración posible. El arranque real
 de NativeSharp utiliza `__nativesharp_start` y `/nodefaultlib`.
 
-La validación mínima debe incluir una ejecución válida, una escritura fuera
-de límites que ASan diagnostique realmente, O0/O2, ausencia de instrumentación
-sin la opción, falta de runtime con diagnóstico, y aislamiento de cachés y
-resultados. Aún no se ha demostrado el enlace ni la ejecución negativa desde
-la opción de `nsc` y el enlazador NativeSharp.
+Las rutas no cubiertas y la compatibilidad entre versiones del runtime deben
+permanecer visibles; una ejecución correcta no demuestra detección completa de
+todo error de memoria.

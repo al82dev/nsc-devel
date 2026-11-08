@@ -59,6 +59,8 @@ std::unique_ptr<llvm_backend::ProjectOopObjectBundle> generateProjectObjects(
 {
     llvm_backend::ProjectOopObjectGenerator objectGenerator;
     configureObjectGeneratorProgress(objectGenerator);
+    if (activeExecutionScope != nullptr && !activeExecutionScope->addressSanitizerClang.empty())
+        objectGenerator.setAddressSanitizer(true);
     objectGenerator.setThinLtoUnitBitcodeCapture(captureThinLtoUnits);
     objectGenerator.setThinLtoLibraryUnits(std::move(thinLtoLibraries));
     objectGenerator.setThinLtoPreservedSymbols(std::move(thinLtoPreservedSymbols));
@@ -279,7 +281,10 @@ bool publishExecutableArtifact(std::string_view outputPath, const frontend::Proj
         error << "nsc: error: precompiled DLL/import-library mismatch: " << referenceError << '\n';
         return false;
     }
-    if (!packageRuntimeClosure(runtimeLibraries, publication.stage, packagedRuntimes, referenceError))
+    std::vector<std::filesystem::path> runtimeClosure(runtimeLibraries.begin(), runtimeLibraries.end());
+    if (activeExecutionScope != nullptr && !activeExecutionScope->addressSanitizerRuntime.empty())
+        runtimeClosure.push_back(activeExecutionScope->addressSanitizerRuntime);
+    if (!packageRuntimeClosure(runtimeClosure, publication.stage, packagedRuntimes, referenceError))
     {
         removePackagedFiles(packagedRuntimes);
         error << "nsc: error: runtime packaging failed: " << referenceError << '\n';
@@ -362,6 +367,8 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
     if (!prepareExecutableBuilder(compilation, extraLinkLibraries, debugInformation, incrementalLink, subsystem,
                                   linkLibraries, runtimeLibraries, builder, error))
         return ExitCode::CompilationError;
+    if (activeExecutionScope != nullptr && !activeExecutionScope->addressSanitizerClang.empty())
+        builder.setAddressSanitizerClang(activeExecutionScope->addressSanitizerClang);
     const std::vector<std::string> entrySymbols = {entryFunction->mangledName};
     std::optional<std::vector<std::string>> preservedSymbols =
         thinLtoLibraries.preservedSymbols(linkLibraries, entrySymbols);
@@ -390,6 +397,8 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
                                     linkTimeOptimization, incrementalLink, subsystem, linkLibraries.size(),
                                     packagedRuntimes.size(), resultOutput);
     thinLtoLibraries.printResult(resultOutput);
+    if (activeExecutionScope != nullptr && !activeExecutionScope->addressSanitizerClang.empty())
+        resultOutput << "address-sanitizer: enabled (precompiled libraries are not instrumented)\n";
     manifest->setBundleResultOutput(resultOutput.str());
     publishCompilationBundle(*manifest);
     output << resultOutput.str();

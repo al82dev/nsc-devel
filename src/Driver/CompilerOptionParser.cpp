@@ -136,6 +136,34 @@ OptionResult handleTraceAndIncrementalLink(OptionContext& context)
     return matched();
 }
 
+OptionResult handleAddressSanitizer(OptionContext& context)
+{
+    if (context.argument == "--sanitize-address")
+    {
+        if (context.invocation.addressSanitizer)
+        {
+            context.error << "nsc: error: duplicate --sanitize-address\n";
+            return matched(ExitCode::CommandLineError);
+        }
+        context.invocation.addressSanitizer = true;
+        return matched();
+    }
+    constexpr std::string_view clangPrefix = "--asan-clang=";
+    constexpr std::string_view runtimePrefix = "--asan-runtime=";
+    const bool clang = context.argument.starts_with(clangPrefix);
+    const bool runtime = context.argument.starts_with(runtimePrefix);
+    if (!clang && !runtime) return noMatch();
+    auto& path = clang ? context.invocation.addressSanitizerClang : context.invocation.addressSanitizerRuntime;
+    const auto value = context.argument.substr(clang ? clangPrefix.size() : runtimePrefix.size());
+    if (!path.empty() || value.empty())
+    {
+        context.error << "nsc: error: empty or duplicate AddressSanitizer dependency path\n";
+        return matched(ExitCode::CommandLineError);
+    }
+    path = std::filesystem::path(value);
+    return matched();
+}
+
 OptionResult handleLinkTimeOptimization(OptionContext& context)
 {
     if (context.argument != "-flto" && !context.argument.starts_with("-flto="))
@@ -727,6 +755,7 @@ constexpr OptionHandler kOptionHandlers[] = {
     handleGenericsTrace,
 #endif // INSTRUMENTATION CODE
     handleTraceAndIncrementalLink,
+    handleAddressSanitizer,
     handleLinkTimeOptimization,
     handleFloatingPointMode,
     handleFmaContract,

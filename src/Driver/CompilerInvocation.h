@@ -44,6 +44,9 @@ struct CompilerInvocation final
         llvm_backend::LinkTimeOptimizationMode::None;
     bool linkTimeOptimizationSeen = false;
     bool incrementalLink = false;
+    bool addressSanitizer = false;
+    std::filesystem::path addressSanitizerClang;
+    std::filesystem::path addressSanitizerRuntime;
     // EN: Freeze 3.0 DEC-13: opt-in check of `extern C from "<dll>"` symbols against host DLLs.
     // ES: Congelamiento 3.0 DEC-13: comprobacion opcional de simbolos `extern C from "<dll>"` contra
     //     las DLL del host.

@@ -284,6 +284,34 @@ ExitCode validateCompilerInvocation(
     CompilerInvocation& invocation,
     std::ostream& error)
 {
+    const bool sanitizerPaths = !invocation.addressSanitizerClang.empty() ||
+        !invocation.addressSanitizerRuntime.empty();
+    if (sanitizerPaths && !invocation.addressSanitizer)
+    {
+        error << "nsc: error: ASan dependency paths require --sanitize-address\n";
+        return ExitCode::CommandLineError;
+    }
+    if (invocation.addressSanitizer)
+    {
+        const auto& args = invocation.arguments;
+        if (args.size() != 4U || args[0] != "--emit-project-oop-exe" || args[2] != "-o" ||
+            invocation.linkTimeOptimizationSeen || invocation.incrementalLink ||
+            invocation.debugInformation != llvm_backend::DebugInformationKind::None ||
+            invocation.subsystem != linker::WindowsExecutableSubsystem::Console ||
+            invocation.artifactCacheSeen || invocation.artifactCacheMaximumSeen)
+        {
+            error << "nsc: error: --sanitize-address requires a project OOP console executable without LTO, PDB, incremental link or artifact cache\n";
+            return ExitCode::CommandLineError;
+        }
+        if (!std::filesystem::is_regular_file(invocation.addressSanitizerClang) ||
+            !std::filesystem::is_regular_file(invocation.addressSanitizerRuntime) ||
+            invocation.addressSanitizerRuntime.filename() != "clang_rt.asan_dynamic-x86_64.dll")
+        {
+            error << "nsc: error: --sanitize-address requires --asan-clang=<clang.exe> and --asan-runtime=<clang_rt.asan_dynamic-x86_64.dll>\n";
+            return ExitCode::CommandLineError;
+        }
+        invocation.artifactCacheDisabled = true;
+    }
     const InvocationCapabilities capabilities = classifyInvocation(invocation.arguments);
     const ExitCode validation = validateActionOptions(invocation, capabilities, error);
     if (validation != ExitCode::Success) return validation;
