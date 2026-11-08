@@ -1053,6 +1053,13 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         const auto& aliases = std::get<std::vector<CppSemanticTypeAliasEntry>>(aliasesResult);
         const auto candidates = selectCppPublishedTemplateAliases(compilation, metadata, aliases);
         if (!captureCppTemplateAliasCandidates(*graph, candidates, aliases, dependencies.aliases, error)) return false;
+        auto functionsResult = collectCppSemanticFunctions(*graph, compilation.cppProjectSessions());
+        if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&functionsResult))
+        { error = failure->message; return false; }
+        const auto& functions = std::get<std::vector<CppSemanticInventoryEntry>>(functionsResult);
+        const auto functionCandidates = selectCppPublishedTemplateFunctions(compilation, metadata, functions);
+        if (!captureCppTemplateFunctionCandidates(*graph, functionCandidates, functions, dependencies.functions, error))
+            return false;
     }
     std::map<std::size_t, std::set<std::string>> seeds;
     std::map<std::size_t, std::set<std::string>> enumSeeds;
@@ -1105,7 +1112,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         if (!visit(exported.returnTypeKey, 0)) return false;
         for (const auto& key : exported.parameterTypeKeys) if (!visit(key, 0)) return false;
     }
-    if (seeds.empty() && enumSeeds.empty() && dependencies.aliases.empty())
+    if (seeds.empty() && enumSeeds.empty() && dependencies.aliases.empty() && dependencies.functions.empty())
     { output.clear(); error.clear(); return true; }
     auto inventoryResult = collectCppSemanticRecords(*graph, compilation.cppProjectSessions());
     if (const auto* failure = std::get_if<CppSemanticRecordFailure>(&inventoryResult))
@@ -1180,7 +1187,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         };
         for (const auto& field : record.fields) if (!checkEnum(field.type, 0)) return false;
     }
-    if (!dependencies.aliases.empty())
+    if (!dependencies.aliases.empty() || !dependencies.functions.empty())
         return metadata_detail::encodeCTypeCatalogWithDependencies(records, enums, dependencies, output, error);
     if (metadata.formatMinor >= 43)
     {
