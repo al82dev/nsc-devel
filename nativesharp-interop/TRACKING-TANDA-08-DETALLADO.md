@@ -38,7 +38,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-002-09g: Verificar una muestra de funciones `static inline` idénticas en encabezados homónimos de directorios distintos. [Evidencia](registro-commits/t08-inline-homonima-identica.md).
 - **T08-002-10 — Sombras en plantillas:**
 - [x] T08-002-10a: Verificar una muestra de sombra de función C por parámetro y local en una plantilla precompilada en O0. [Evidencia](registro-commits/t08-sombra-funcion-parametro-local.md).
-- [ ] T08-002-10b: Verificar sombra de global C por variable de `foreach` y por variable de `catch`.
+- [x] T08-002-10b: Verificar una muestra de sombra de global C por variables de `foreach` y `catch`, en O0. [Evidencia](registro-commits/t08-sombra-foreach-catch-o0.md).
 - [ ] T08-002-10c: Verificar que inicializadores se analicen en el ámbito correcto antes de introducir el nombre local.
 - **T08-002-11 — Publicación y conflictos:**
 - [ ] T08-002-11a: Validar publicación y restauración de función C requerida por una plantilla con encabezado.
