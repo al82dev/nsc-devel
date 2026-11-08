@@ -205,6 +205,14 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Un alias de enum C conciliado entre encabezado y biblioteca precompilada ya
+    no se rechaza como tipo nativo distinto. El parser recibe los nombres del
+    catálogo precompilado antes del análisis; se comprobó su visibilidad con
+    proveedor simulado y el consumo real solo con metadata. La persistencia de
+    funciones, globales y alias usados por plantillas sigue pendiente.
+    [Conciliación](registro-commits/t08-enum-identidad-precompilada.md),
+    [parser](registro-commits/t08-parser-tipos-c-precompilados.md),
+    [visibilidad](registro-commits/t08-visibilidad-parser-metadata.md).
   - H5: los campos de records C con la misma identidad y definiciones
     estructuralmente compatibles se seleccionan aunque sus encabezados difieran.
     La matriz comprobó lecturas O0–O3 y mantuvo el rechazo de records distintos.
@@ -1149,6 +1157,13 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     cruzado desde ambos lenguajes. Otras formas y calificadores siguen abiertos.
     [Resultado](registro-commits/t08-bool-puntero-c-implementacion.md).
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
+  - Los campos C de enum y de record declarados `volatile` se proyectan con su
+    calificador. Una muestra de record anidado se comprobó directa y con solo
+    metadata O0–O3, con comprobación de accesos `volatile` en el IR. No cubre
+    todos los layouts ni concurrencia.
+    [Enum](registro-commits/t08-campo-enum-volatile.md),
+    [record](registro-commits/t08-record-anidado-volatile.md),
+    [metadata](registro-commits/t08-record-volatile-precompilado.md).
   - `CppLibraryReference` admite `VolatileMode` Default, Microsoft o ISO.
     La matriz de acceso directo pasó IR y ejecución O0–O3 en los modos
     predeterminado e ISO; Microsoft explícito pasó el control de IR y un valor
@@ -1423,6 +1438,12 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     el arreglo y la matriz de records empaquetados, con comprobación de IR O0
     y rechazo de direcciones subalineadas. T08-016 sigue abierto.
 - [ ] T08-017. Definir la representación de punteros a función C.
+  - Un callback con `volatile` heredado del record usa accesos volátiles simples;
+    el declarado `volatile` mantiene acquire/release cuando está alineado. Se
+    comprobó ejecución O0–O3 y el IR optimizado contra el control de Clang.
+    No cubre todas las rutas precompiladas.
+    [Corrección](registro-commits/t08-callback-volatile-heredado.md),
+    [IR optimizado](registro-commits/t08-callback-volatile-ir-optimizado.md).
   - Productor y consumidores precompilados para callback almacenado con enum pasaron O0–O3 con y sin referencia explícita al header; se ocultó solo la copia de salida. [Evidencia](registro-commits/enum-c-reconciliado-campo.md).
   - El callback almacenado que recibe y devuelve enum C pasó el fixture de campo/global O0–O3 y la suite de sesión. [Evidencia](registro-commits/callback-enum-precompilado.md).
   - Un callback global con record usado solo en su firma se importó y permitió
