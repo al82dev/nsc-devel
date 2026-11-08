@@ -430,6 +430,13 @@ void ProjectOopHirModel::finishArrayRawIndex(
         address->volatileAccess = ((frame.baseIsFixedArray || frame.baseIsFlexibleArray) && base && base->volatileAccess) ||
             (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray &&
              baseType && baseType->pointerPointeeVolatile);
+        if (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray &&
+            address->volatileAccess && baseType && baseType->cppVolatilePointeeContract)
+        {
+            const auto mode = cppConsumerVolatileModeForSyntax(frame.syntax);
+            if (mode) address->cppMicrosoftVolatileSemantics =
+                *mode == compilation::CppConsumerVolatileMode::Microsoft;
+        }
         const ProjectOopHirNode* provenance = base.get();
         bool indexedCGlobal = false;
         if (provenance && provenance->kind == ProjectOopHirNodeKind::PointerLoad &&

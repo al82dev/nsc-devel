@@ -466,6 +466,12 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
                 resultType);
             const auto* operandType = expressionType(frame.syntax->first());
             load->volatileAccess = operandType && operandType->pointerPointeeVolatile;
+            if (load->volatileAccess && operandType->cppVolatilePointeeContract)
+            {
+                const auto mode = cppConsumerVolatileModeForSyntax(frame.syntax);
+                if (mode) load->cppMicrosoftVolatileSemantics =
+                    *mode == compilation::CppConsumerVolatileMode::Microsoft;
+            }
             if (directCVolatileInt && load->volatileAccess)
             {
                 load->cppMicrosoftVolatileSemantics = directCVolatileMode;
@@ -485,6 +491,12 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
                 // Qualify the target independently of the pointer value's own load.
                 auto address = makeNode(ProjectOopHirNodeKind::AddressValue, frame.syntax, resultType);
                 address->volatileAccess = volatilePointee;
+                if (volatilePointee && operandType->cppVolatilePointeeContract)
+                {
+                    const auto mode = cppConsumerVolatileModeForSyntax(frame.syntax);
+                    if (mode) address->cppMicrosoftVolatileSemantics =
+                        *mode == compilation::CppConsumerVolatileMode::Microsoft;
+                }
                 if (directCVolatileInt && volatilePointee)
                 {
                     address->cppMicrosoftVolatileSemantics = directCVolatileMode;
