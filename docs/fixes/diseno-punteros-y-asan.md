@@ -93,6 +93,13 @@ través de una referencia base, nulo y reutilización del almacenamiento; rechaz
 `string`, que carece del descriptor requerido. El llamador sigue siendo
 responsable de evitar destrucciones repetidas y liberar el bloque. Esta pieza
 no implementa todavía el bloque de control ni las familias públicas.
+La prueba aislada `shared-layout-probe/results.json` muestra que
+`sizeof(T)` en una fábrica genérica devuelve 8 en O0 y O2 para una clase con
+cuatro campos `long`: mide la referencia, no el objeto. El modelo de layout
+distingue explícitamente el tamaño de referencia del tamaño y alineación de
+la instancia (`ClassObjectLayout`). La fábrica no puede calcular el espacio
+del payload usando `sizeof(T)` sin reservar menos memoria de la necesaria;
+queda pendiente conectar el layout de instancia correcto a la reserva compartida.
 El mecanismo actual de `new (allocator)` tampoco demuestra la asignación
 única: `installAllocatorDescriptorSidecar` reserva por separado 80 bytes para
 el descriptor y el contexto del allocator. La operación MIR `ObjectDestroy`
