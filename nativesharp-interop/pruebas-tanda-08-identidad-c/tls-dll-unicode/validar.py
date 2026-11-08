@@ -37,6 +37,29 @@ for item in ("ConsumerCache.ns", "ConsumerCache.nsproj"):
     shutil.copyfile(fixture / ".." / "tls-dll-distintas" / item, root / item)
 run(["nsc.exe", "--cpp-clang-root=A:\\al82dev-clang", "--emit-project-oop-lib",
      "ProducerUnicode.nsproj", "-O0", "--no-artifact-cache", "-o", "TlsProducer2.lib"])
+if "--unicode-producer" in sys.argv:
+    producer_dir = root / "productor-\u6f22"
+    producer_dir.mkdir(exist_ok=True)
+    producer_source = "Producer-\u6f22.ns"
+    for src, dst in (("Producer2.ns", producer_source), ("TlsApi.h", "TlsApi.h"),
+                     (name + ".lib", name + ".lib"), (name + ".dll", name + ".dll")):
+        shutil.copyfile(root / src, producer_dir / dst)
+    producer_project = producer_dir / "Proyecto-\u6f22.nsproj"
+    producer_project.write_text(project.replace("Producer2.ns", producer_source), encoding="utf-8")
+    run(["nsc.exe", "--cpp-clang-root=A:\\al82dev-clang", "--emit-project-oop-lib",
+         str(producer_project), "-O0", "--no-artifact-cache", "-o", str(producer_dir / "TlsProducer2.lib")])
+    (producer_dir / "TlsApi.h").unlink()
+    consumer_text = (root / "ConsumerCache.nsproj").read_text(encoding="utf-8")
+    consumer_text = consumer_text.replace("TlsProducer2.lib", "productor-\u6f22/TlsProducer2.lib")
+    (root / "ConsumerUnicodeProducer.nsproj").write_text(consumer_text, encoding="utf-8")
+    consumer_dir = root / "salida-productor-\u6f22"
+    consumer_dir.mkdir(exist_ok=True)
+    for item in ("Consumer.exe", "api.dll", name + ".dll"):
+        (consumer_dir / item).unlink(missing_ok=True)
+    run(["nsc.exe", "--cpp-clang-root=A:\\al82dev-clang", "--emit-project-oop-exe",
+         "ConsumerUnicodeProducer.nsproj", "-O0", "--no-artifact-cache", "-o", str(consumer_dir / "Consumer.exe")])
+    run([str(consumer_dir / "Consumer.exe")], cwd=Path("A:/"))
+    print("Productor C en proyecto y fuente Unicode: correcto.")
 dll_project = project.replace("<Name>TlsProducer2</Name>", "<Name>TlsUnicodeDll</Name>")
 dll_project = dll_project.replace("<OutputType>Library</OutputType>", "<OutputType>SharedLibrary</OutputType>")
 (root / "ProducerUnicodeDll.nsproj").write_text(dll_project, encoding="utf-8")

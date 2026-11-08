@@ -40,7 +40,7 @@ ExitCode Driver::runProjectHostHeaderGeneration(std::string_view inputPath, std:
         output << manifest->bundleLookup().resultOutput;
         return ExitCode::Success;
     }
-    if (!compilation.compileProjectObjectLayouts(std::filesystem::path(inputPath), loadError))
+    if (!compilation.compileProjectObjectLayouts(pathFromUtf8(inputPath), loadError))
     {
         if (!loadError.empty())
             error << "nsc: error: " << loadError << '\n';
@@ -121,7 +121,7 @@ ExitCode Driver::runProjectLibraryMetadataGeneration(std::string_view inputPath,
         output << manifest->bundleLookup().resultOutput;
         return ExitCode::Success;
     }
-    if (!compilation.compileProjectOopMir(std::filesystem::path(inputPath), loadError))
+    if (!compilation.compileProjectOopMir(pathFromUtf8(inputPath), loadError))
     {
         if (!loadError.empty())
             error << "nsc: error: " << loadError << '\n';

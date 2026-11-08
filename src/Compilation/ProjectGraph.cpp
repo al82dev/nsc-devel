@@ -16,6 +16,11 @@ namespace nativesharp::compilation
 {
 namespace
 {
+std::string utf8Path(const std::filesystem::path& path)
+{
+    const auto encoded = path.generic_u8string();
+    return std::string(reinterpret_cast<const char*>(encoded.data()), encoded.size());
+}
 std::string foldedPath(const std::filesystem::path& path)
 {
     std::error_code filesystemError;
@@ -198,7 +203,7 @@ std::unordered_map<std::string, std::string> collectModuleOwners(
     {
         moduleOwners.emplace(
             language::canonicalWindowsModuleIdentity({}, project.moduleName()),
-            [&project]() { const auto value = project.projectFile().generic_u8string(); return std::string(reinterpret_cast<const char*>(value.data()), value.size()); }());
+            utf8Path(project.projectFile()));
     }
     return moduleOwners;
 }
@@ -254,7 +259,7 @@ bool collectUniquePrecompiledDescriptors(
                 descriptor.metadataPath.generic_string() + "' and '" + moduleOwner->second + "'";
             return false;
         }
-        moduleOwners.emplace(moduleKey, descriptor.metadataPath.generic_string());
+        moduleOwners.emplace(moduleKey, utf8Path(descriptor.metadataPath));
         descriptorByPath.emplace(metadataKey, uniqueDescriptors.size());
         uniqueDescriptors.push_back(descriptor);
     }

@@ -1050,8 +1050,10 @@ bool provideCppEnumTypes(const compilation::ProjectGraph& graph,
              value.underlyingType->kind != CppTypeKind::UnsignedInteger)) continue;
         compilation::TypeIdentity identity(graph.projects()[key.first].moduleName(), {}, {}, value.name);
         if (!identity.isValid()) { error = "invalid C enum identity: " + value.name; return false; }
+        const auto encodedFile = value.location->file.generic_u8string();
         frontend::CppImportedTypeDeclaration type{std::move(identity), frontend::NamedTypeDeclarationKind::Enum,
-            frontend::NamedTypeAccessibility::Public, key.first, value.location->file.generic_string()};
+            frontend::NamedTypeAccessibility::Public, key.first,
+            std::string(reinterpret_cast<const char*>(encodedFile.data()), encodedFile.size())};
         type.objectLayout = frontend::CppImportedObjectLayout{*value.sizeBits / 8, *value.alignmentBits / 8};
         type.enumBase = frontend::CppImportedEnumBase{base->token, std::string(base->name)};
         if (!conflicts.contains(key))
@@ -1445,7 +1447,8 @@ CppSignatureEnumResult collectCppSignatureEnumDependencies(
 std::string cppCInlineLinkSymbol(const std::filesystem::path& projectFile,
     std::size_t referenceIndex, std::string_view name)
 {
-    const std::string input = projectFile.lexically_normal().generic_string() + "\x1f" +
+    const auto encoded = projectFile.lexically_normal().generic_u8string();
+    const std::string input = std::string(reinterpret_cast<const char*>(encoded.data()), encoded.size()) + "\x1f" +
         std::to_string(referenceIndex) + "\x1f" + std::string(name);
     const auto* bytes = reinterpret_cast<const std::uint8_t*>(input.data());
     return "__nsc_c_inline_" + basic::sha256Hex(basic::sha256({bytes, input.size()}));

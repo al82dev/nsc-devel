@@ -266,7 +266,7 @@ bool prepareExecutableProject(std::string_view inputPath,
         return false;
     }
     if (restored) return true;
-    if (!compilation.compileProjectOopMir(std::filesystem::path(inputPath), loadError))
+    if (!compilation.compileProjectOopMir(pathFromUtf8(inputPath), loadError))
     {
         if (!loadError.empty())
             error << "nsc: error: " << loadError << '\n';
@@ -611,7 +611,7 @@ bool prepareStaticLibraryProject(std::string_view inputPath,
         return false;
     }
     if (restored) return true;
-    if (!compilation.compileProjectOopMir(std::filesystem::path(inputPath), loadError))
+    if (!compilation.compileProjectOopMir(pathFromUtf8(inputPath), loadError))
     {
         if (!loadError.empty())
             error << "nsc: error: " << loadError << '\n';
@@ -969,7 +969,7 @@ bool prepareDynamicLibraryProject(std::string_view inputPath,
         return false;
     }
     if (restored) return true;
-    if (!compilation.compileProjectOopMir(std::filesystem::path(inputPath), loadError))
+    if (!compilation.compileProjectOopMir(pathFromUtf8(inputPath), loadError))
     {
         if (!loadError.empty())
             error << "nsc: error: " << loadError << '\n';

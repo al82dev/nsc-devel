@@ -275,7 +275,11 @@ CppSemanticFunctionResult projectFunction(
     symbol.isVariadic = function.variadic || cUnprototyped;
     symbol.cppCanonicalIdentity = *function.externalSymbol + "|" + resultType->canonicalCppType + "(";
     symbol.signatureKey = function.name + "(";
-    if (function.location) symbol.sourcePath = function.location->file.generic_string();
+    if (function.location)
+    {
+        const auto encoded = function.location->file.generic_u8string();
+        symbol.sourcePath.assign(reinterpret_cast<const char*>(encoded.data()), encoded.size());
+    }
     for (std::size_t index = 0; index < function.parameters.size(); ++index)
     {
         const auto& input = function.parameters[index];

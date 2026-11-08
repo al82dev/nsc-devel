@@ -32,6 +32,11 @@ namespace nativesharp::interop
 {
 namespace
 {
+std::string utf8SourcePath(const std::filesystem::path& path)
+{
+    const auto encoded = path.generic_u8string();
+    return std::string(reinterpret_cast<const char*>(encoded.data()), encoded.size());
+}
 std::string cEnumeratorSourceDigest(const std::optional<CppSourcePoint>& location)
 {
     if (!location || location->file.empty()) return {};
@@ -1270,7 +1275,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                     const auto digest = declaration == entry.declaration.enumerators.end() ? std::string{} : cEnumeratorSourceDigest(declaration->location);
                     auto reference = "cpp-reference:" + std::to_string(entry.referenceIndex);
                     if (!digest.empty() && declaration->location)
-                        reference += "#sha256:" + digest + "#path:" + declaration->location->file.generic_string();
+                        reference += "#sha256:" + digest + "#path:" + utf8SourcePath(declaration->location->file);
                     dependencies.enumerators.push_back({selected->moduleName, std::move(reference),
                         selected->name, *selected->cppClangUsr, selected->declaredTypeKey, selected->integerValue});
                     continue;
@@ -1406,7 +1411,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                 const auto& declaration = entry.declaration.enumerators[i];
                 const auto digest = cEnumeratorSourceDigest(declaration.location);
                 if (!digest.empty() && declaration.location)
-                    reference += "#sha256:" + digest + "#path:" + declaration.location->file.generic_string();
+                    reference += "#sha256:" + digest + "#path:" + utf8SourcePath(declaration.location->file);
                 dependencies.enumerators.push_back({module, std::move(reference), value->name,
                     *value->clangUsr, value->typeKey, value->bits});
             }
@@ -2075,7 +2080,7 @@ CppRecordObservationResult prepareCppRecordObservation(
             }
             else targetConflict = true;
             if (entry.declaration.location && sourcePath.empty())
-                sourcePath = entry.declaration.location->file.generic_string();
+                sourcePath = utf8SourcePath(entry.declaration.location->file);
             if (entry.declaration.clangUsr && !entry.declaration.clangUsr->empty())
             {
                 if (knownUsr && knownUsr != entry.declaration.clangUsr) usrConflict = true;

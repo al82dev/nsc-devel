@@ -64,6 +64,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
     - [ ] T08-002-09m7c0g2: Otras formas de ruta y equivalencia de mayúsculas/minúsculas Unicode; no quedan cubiertas por el caso anterior.
       - [x] T08-002-09m7c0g2a: Referencias `.lib` al mismo archivo con `É`/`é`, control de archivo distinto con `Ê` y archivo de proyecto con U+6F22 y `Name` explícito. [Evidencia](registro-commits/t08-rutas-unicode-mayusculas.md).
       - [ ] T08-002-09m7c0g2b: Otras equivalencias Unicode y otras entradas de ruta; no están demostradas por el caso `É`/`é`.
+      - [x] T08-002-09m7c0g2c: Compilar un productor que importa C desde proyecto, fuente y encabezado ubicados en ruta U+6F22, y consumir su biblioteca sin el encabezado en O0. [Evidencia](registro-commits/t08-productor-c-unicode.md).
   - [ ] T08-002-09m7c1: Admitir dos DLL diferentes con el mismo nombre de archivo procedentes de directorios diferentes; requieren una identidad y carga por ruta que preserven ambas bibliotecas.
 - [ ] T08-002-09m7d: Comprobar los demás calificadores y variantes de enlace de la global externa compartida.
 - [x] T08-002-09n: Enlazar una sola vez una biblioteca C idéntica propagada por dos productores y conservar dos bibliotecas distintas con el mismo nombre, en O0. [Evidencia](registro-commits/t08-dependencia-c-compartida.md).
