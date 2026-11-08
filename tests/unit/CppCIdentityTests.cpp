@@ -569,6 +569,22 @@ bool checkTwoHeaderProject(CppClangSessionFactory& factory, const std::string& r
                     selected->declaration.underlyingType.canonicalSpelling;
             if (aliasCaptured)
             {
+                metadata_detail::CDependencyCatalog dependencies;
+                dependencies.aliases.push_back(decoded);
+                nativesharp::frontend::PrecompiledSyntaxModule module;
+                module.moduleName = decoded.moduleName;
+                module.cppCTypeCatalogFormatMinor = 46;
+                std::vector<nativesharp::frontend::CppImportedTypeAlias> fromMetadata;
+                aliasCaptured = metadata_detail::encodeCTypeCatalogWithDependencies({}, {}, dependencies,
+                    module.cppCTypeCatalog, error) &&
+                    provideCppTypeAliasesWithPrecompiledCatalogs(*graph, {}, std::span(&module, 1),
+                        fromMetadata, error) && fromMetadata.size() == 1 &&
+                    fromMetadata[0].declaration.clangUsr == decoded.declaration.clangUsr &&
+                    fromMetadata[0].projectOrdinal == selected->projectOrdinal;
+                if (!aliasCaptured) std::cerr << "precompiled alias provider: " << error << '\n';
+            }
+            if (aliasCaptured)
+            {
                 const auto previous = restored.declaration.name;
                 aliasCaptured = !reconstructCppPrecompiledCAlias(decoded, *graph, graph->projects().size(),
                     selected->referenceIndex, selected->targetTriple, restored, error) &&

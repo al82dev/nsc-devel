@@ -1185,6 +1185,52 @@ bool provideCppTypeAliases(const compilation::ProjectGraph& graph,
     return true;
 }
 
+bool provideCppTypeAliasesWithPrecompiledCatalogs(const compilation::ProjectGraph& graph,
+    std::span<const CppProjectSessions> projects,
+    std::span<const frontend::PrecompiledSyntaxModule> modules,
+    std::vector<frontend::CppImportedTypeAlias>& output, std::string& error)
+{
+    std::vector<frontend::CppImportedTypeAlias> result;
+    if (!provideCppTypeAliases(graph, projects, result, error)) return false;
+    std::map<std::string, std::size_t> owners;
+    std::set<std::string> ambiguous;
+    for (std::size_t i = 0; i < graph.projects().size(); ++i)
+        if (!owners.emplace(graph.projects()[i].moduleName(), i).second)
+            ambiguous.insert(graph.projects()[i].moduleName());
+    std::map<std::pair<std::size_t, std::string>, std::size_t> references;
+    for (const auto& module : modules)
+    {
+        if (module.cppCTypeCatalog.empty()) continue;
+        std::vector<CppCRecordSnapshot> records;
+        std::vector<CppCEnumSnapshot> enums;
+        metadata_detail::CDependencyCatalog dependencies;
+        if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
+                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+        for (const auto& alias : dependencies.aliases)
+        {
+            const auto owner = owners.find(alias.moduleName);
+            if (owner == owners.end() || ambiguous.contains(alias.moduleName))
+            { error = "precompiled C alias owner is missing or ambiguous: " + alias.moduleName; return false; }
+            const auto key = std::make_pair(owner->second, alias.referenceIdentity);
+            auto reference = references.find(key);
+            if (reference == references.end())
+            {
+                std::size_t index = graph.projects()[owner->second].cppLibraryReferences().size();
+                for (const auto& [existing, unused] : references)
+                    if (existing.first == owner->second) ++index;
+                reference = references.emplace(key, index).first;
+            }
+            frontend::CppImportedTypeAlias restored;
+            if (!reconstructCppPrecompiledCAlias(alias, graph, owner->second, reference->second,
+                    "x86_64-pc-windows-msvc", restored, error)) return false;
+            result.push_back(std::move(restored));
+        }
+    }
+    output = std::move(result);
+    error.clear();
+    return true;
+}
+
 CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects)
 {

@@ -548,7 +548,12 @@ bool configurePrecompiledModules(
     if (hasPrecompiledCCatalog)
     {
 #if defined(NSC_ENABLE_CPP_INTEROP)
-        if (!compilation.setCppPrecompiledParserTypeProvider(interop::providePrecompiledCParserTypes, error) ||
+        if (!compilation.setCppTypeAliasProvider(
+                [&compilation](const auto& graph, auto projects, auto& aliases, auto& why) {
+                    return interop::provideCppTypeAliasesWithPrecompiledCatalogs(
+                        graph, projects, compilation.precompiledModules(), aliases, why);
+                }, error) ||
+            !compilation.setCppPrecompiledParserTypeProvider(interop::providePrecompiledCParserTypes, error) ||
             !compilation.setExperimentalCppTypeSelector(interop::selectCppTypesWithPrecompiledCatalogs, error) ||
             !compilation.setExperimentalCppInstanceFieldProvider(
                 [&compilation](const auto& graph, auto projects, const auto& lookup, auto& fields, auto& why) {

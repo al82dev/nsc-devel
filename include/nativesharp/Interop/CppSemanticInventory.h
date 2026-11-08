@@ -20,6 +20,7 @@ struct CppFunctionDemand;
 struct CppImportedTypeAlias;
 struct CppImportedTypeDeclaration;
 struct NamespaceStateSymbol;
+struct PrecompiledSyntaxModule;
 class ProjectNameLookup;
 class ProjectCompilation;
 }
@@ -104,6 +105,10 @@ std::vector<CppPublishedTemplateAliasCandidates> selectCppPublishedTemplateAlias
     std::span<const CppSemanticTypeAliasEntry> inventory);
 bool provideCppTypeAliases(const compilation::ProjectGraph& graph,
     std::span<const CppProjectSessions> projects,
+    std::vector<frontend::CppImportedTypeAlias>& output, std::string& error);
+bool provideCppTypeAliasesWithPrecompiledCatalogs(const compilation::ProjectGraph& graph,
+    std::span<const CppProjectSessions> projects,
+    std::span<const frontend::PrecompiledSyntaxModule> modules,
     std::vector<frontend::CppImportedTypeAlias>& output, std::string& error);
 
 struct CppSemanticEnumEntry
