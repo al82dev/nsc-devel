@@ -47,9 +47,11 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-002-11d: Diagnosticar una firma de función C incompatible entre biblioteca precompilada y encabezado visible cuando se demandan ambas. [Evidencia](registro-commits/t08-plantilla-funcion-conflicto.md).
 - [x] T08-002-11e: Verificar una declaración incompatible visible no demandada directamente: la muestra compila y ejecuta solo la llamada de la plantilla, en O0. [Evidencia](registro-commits/t08-funcion-incompatible-no-demandada.md).
 - **T08-002-12 — Ámbitos adicionales:**
-- [ ] T08-002-12a: Verificar sombras en parámetros de lambdas y sus inicializadores.
-- [ ] T08-002-12b: Verificar sombras dentro y fuera de bloques anidados y bucles.
+- [x] T08-002-12a: Verificar muestras de sombra por parámetro de lambda y de inicializador local dentro de lambda, en O0. [Evidencia](registro-commits/t08-lambda-sombra-inicializador.md).
+- [x] T08-002-12b: Verificar muestras de sombras dentro y fuera de bloques anidados y bucles en O0. [Evidencia](registro-commits/t08-inicializadores-ambito-o0.md).
 - [ ] T08-002-12c: Verificar el alcance de nombres introducidos por patrones y desestructuración.
+  - [x] T08-002-12c1: Comprobar muestras de desestructuración sencilla y anidada en O0. [Evidencia](registro-commits/t08-ambito-desestructuracion-o0.md).
+  - [ ] T08-002-12c2: Comprobar nombres introducidos por patrones y su alcance.
 - [ ] T08-002-13: Comprobar los conflictos de enums anónimos cuando no se demuestra la misma procedencia física.
 
 ## T08-003 — Funciones C

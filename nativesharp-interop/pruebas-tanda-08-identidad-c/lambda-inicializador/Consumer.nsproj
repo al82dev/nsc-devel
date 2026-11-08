@@ -1,0 +1,4 @@
+<Project><PropertyGroup><Name>LambdaShadowConsumer</Name></PropertyGroup><ItemGroup>
+<Compile Include="Consumer.ns" />
+<LibraryReference Include="LambdaShadowProducer.lib" />
+</ItemGroup></Project>

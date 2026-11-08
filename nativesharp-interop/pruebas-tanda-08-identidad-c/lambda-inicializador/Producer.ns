@@ -1,0 +1,8 @@
+namespace PublishedLambdaShadow {
+    public class Bridge {
+        public static int Run<T>(T value) {
+            ShadowCallback callback = (int arg) => { int shadow_value = shadow_value; return shadow_value + arg; };
+            return callback(7);
+        }
+    }
+}
