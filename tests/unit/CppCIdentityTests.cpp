@@ -1159,8 +1159,9 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
 bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::string& resource,
                                   const std::filesystem::path& directory, const std::string& driver)
 {
-    const auto project = writeProject(directory / "generic-publish", "CGenericPublish",
-        "public class Bridge { public static CIdInt Test<T>(T value) { return 0; } }\n");
+    const std::string templateSource =
+        "namespace Published { public class Bridge { public static CIdInt Test<T>(T value) { return 0; } } }\n";
+    const auto project = writeProject(directory / "generic-publish", "CGenericPublish", templateSource);
     const auto header = std::filesystem::absolute(directory / "a.h");
     if (project.empty() || !writeText(project,
         "<Project><PropertyGroup><Name>CGenericPublish</Name></PropertyGroup><ItemGroup>"
@@ -1211,7 +1212,28 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
         metadata_detail::decodeCTypeCatalogAndDependencies(bytes, 46, records, enums, dependencies, error) &&
         dependencies.aliases.size() == 1 && dependencies.aliases[0].declaration.name == "CIdInt";
     if (!captured) std::cerr << "generic alias publication: " << error << '\n';
-    return expect(captured, "producer retains a template alias candidate from a real C project reference");
+    if (!expect(captured, "producer retains a template alias candidate from a real C project reference")) return false;
+
+    const auto consumerProject = writeProject(directory / "generic-alias-consumer", "CGenericConsumer",
+        "int Main() { return Published.Bridge.Test<int>(1); }\n");
+    const auto metadataPath = std::filesystem::absolute(directory / "generic-publish" / "synthetic.nsmeta");
+    if (consumerProject.empty() || !writeText(metadataPath, "test metadata identity")) return false;
+    nativesharp::frontend::PrecompiledSyntaxModule module;
+    module.ownerProjectFile = consumerProject;
+    module.metadataPath = metadataPath;
+    module.moduleName = "CGenericPublish";
+    module.templateSourceText = templateSource;
+    module.cppCTypeCatalog = bytes;
+    module.cppCTypeCatalogFormatMinor = 46;
+    nativesharp::frontend::ProjectCompilation consumer;
+    const bool consumed = consumer.setPrecompiledModules({std::move(module)}, error) &&
+        consumer.setCppTypeAliasProvider(
+            [&consumer](const auto& graph, auto sessions, auto& aliases, auto& why) {
+                return provideCppTypeAliasesWithPrecompiledCatalogs(
+                    graph, sessions, consumer.precompiledModules(), aliases, why);
+            }, error) && consumer.compileProjectMembers(consumerProject, error);
+    if (!consumed) std::cerr << "generic alias consumer: " << error << ' ' << diagnosticText(consumer) << '\n';
+    return expect(consumed, "consumer compiles generic alias using only precompiled catalogue");
 }
 
 bool checkDependencyTypeCodec()
