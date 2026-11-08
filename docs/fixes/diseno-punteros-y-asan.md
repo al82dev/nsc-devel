@@ -148,6 +148,14 @@ configuración experimental; no identifica por sí solo la causa de la violació
 de acceso ni demuestra que no exista una integración posible. El arranque real
 de NativeSharp utiliza `__nativesharp_start` y `/nodefaultlib`.
 
+Una prueba adicional de la vista prestada (`smart-pointer-view-asan-confirm/results.json`)
+confirmó que el destructor del payload se ejecutó y después leyó el campo de
+ese payload; el proceso devolvió 42 sin diagnóstico ASan. En esta configuración
+el runtime de NativeSharp usa su propia ruta de asignación y no se ha acreditado
+que ASan observe la liberación de esos objetos. Por tanto, este modo **no
+garantiza detectar use-after-free en el heap administrado por NativeSharp**;
+la prueba de stackalloc no demuestra cobertura de ese heap.
+
 Las rutas no cubiertas y la compatibilidad entre versiones del runtime deben
 permanecer visibles; una ejecución correcta no demuestra detección completa de
 todo error de memoria.
