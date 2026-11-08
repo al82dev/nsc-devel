@@ -1443,8 +1443,9 @@ bool verifyBinaryClosureMetadata(
                     alias.declaration.clangUsr->empty())
                 { error = "C dependency alias has incomplete identity"; return false; }
             for (const auto& function : dependencies.functions)
-                if (!function.declaration.externalLinkage || function.declaration.isCStaticInlineDefinition ||
-                    function.declaration.languageLinkage != CppLanguageLinkage::C ||
+                if ((function.declaration.isCStaticInlineDefinition ?
+                        (function.declaration.externalLinkage || function.declaration.languageLinkage != CppLanguageLinkage::None) :
+                        (!function.declaration.externalLinkage || function.declaration.languageLinkage != CppLanguageLinkage::C)) ||
                     !function.declaration.clangUsr || function.declaration.clangUsr->empty() ||
                     function.declaration.externalSymbol != function.linkSymbol)
                 { error = "C dependency function has incomplete or unsupported identity"; return false; }

@@ -323,7 +323,7 @@ bool captureCppTemplateFunctionCandidates(const compilation::ProjectGraph& graph
                 if (entry.referenceIndex >= project.cppLibraryReferences().size())
                 { error = "C function candidate has no source reference"; return false; }
                 if (project.cppLibraryReferences()[entry.referenceIndex].language != CppLanguageMode::C ||
-                    !entry.declaration.externalLinkage) continue;
+                    (!entry.declaration.externalLinkage && !entry.declaration.isCStaticInlineDefinition)) continue;
                 const auto key = std::make_tuple(entry.projectOrdinal, entry.referenceIndex, group.symbol.mangledName);
                 if (!seen.insert(key).second) continue;
                 metadata_detail::CDependencyFunctionSnapshot snapshot;

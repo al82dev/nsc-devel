@@ -71,6 +71,12 @@ static bool appendCStaticInlineObjects(frontend::ProjectCompilation &compilation
         for (const auto& function : compilation.namespaceFunctionModel()->functions())
             if (function.projectOrdinal == entry.projectOrdinal && function.mangledName == *entry.declaration.externalSymbol)
             { selected = true; break; }
+        if (!selected)
+            for (const auto& request : compilation.cppTemplateDemands())
+                if (request.demand.lookupName == entry.declaration.name &&
+                    std::find(request.demand.visibleProjects.begin(), request.demand.visibleProjects.end(), entry.projectOrdinal) != request.demand.visibleProjects.end() &&
+                    std::find(request.demand.lookupNamespaces.begin(), request.demand.lookupNamespaces.end(), "") != request.demand.lookupNamespaces.end())
+                { selected = true; break; }
         if (!selected) continue;
         const interop::CppInteropSession* session = nullptr;
         for (const auto& project : compilation.cppProjectSessions())
