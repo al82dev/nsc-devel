@@ -99,6 +99,10 @@ if not "%NSC_T08_OPT%"=="0" goto :sin_ambiguedad
 python "%~dp0validar-origen-ambiguo.py"
 if errorlevel 1 (popd & exit /b 1)
 :sin_ambiguedad
+if not defined NSC_T08_CACHE goto :sin_dos_origenes
+python "%~dp0validar-dos-origenes.py"
+if errorlevel 1 (popd & exit /b 1)
+:sin_dos_origenes
 popd
 echo Importacion directa y TLS tras traslado: correcto.
 exit /b 0

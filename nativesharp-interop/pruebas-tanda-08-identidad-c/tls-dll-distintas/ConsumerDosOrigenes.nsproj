@@ -1,0 +1,5 @@
+<Project><PropertyGroup><Name>TlsConsumer</Name></PropertyGroup><ItemGroup>
+<Compile Include="ConsumerDosOrigenes.ns" />
+<LibraryReference Include="../directo-precompilado/TlsProducer.lib" />
+<LibraryReference Include="TlsProducer2.lib" />
+</ItemGroup></Project>

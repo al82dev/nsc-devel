@@ -6,6 +6,7 @@
 #include "../Internal/TypeIndexShadowCheck.h"
 #include "Internal/RegularFunctionResult.h"
 #include "Internal/StackClassLocalUseFrame.h"
+#include "../../LLVM/Internal/CppTlsDllAlias.h"
 
 #include "nativesharp/Sema/EffectContext.h"
 
@@ -1813,6 +1814,41 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             function.cppDllImport = symbol.cppDllImport;
             function.cAbiName = symbol.mangledName;
             function.mangledName = symbol.mangledName;
+            const auto functions = namespaceFunctionModel_->functions();
+            const bool distinctDlls = !symbol.cppDllRuntimeIdentity.empty() &&
+                std::any_of(functions.begin(), functions.end(), [&](const auto& other) {
+                    return other.mangledName == symbol.mangledName && !other.cppDllRuntimeIdentity.empty() &&
+                        other.cppDllRuntimeIdentity != symbol.cppDllRuntimeIdentity &&
+                        interop::cppTlsSameDllName(other.cppDllRuntimeIdentity, symbol.cppDllRuntimeIdentity);
+                });
+            const auto states = namespaceFunctionModel_->states();
+            const bool requiresTlsAliases = distinctDlls && std::any_of(states.begin(), states.end(), [&](const auto& state) {
+                if (!state.cppThreadLocal || !state.cppDllImport ||
+                    state.cppTlsRuntimeIdentity != symbol.cppDllRuntimeIdentity) return false;
+                return std::any_of(states.begin(), states.end(), [&](const auto& other) {
+                    return other.cppThreadLocal && other.cppDllImport && other.storageName == state.storageName &&
+                        !other.cppTlsRuntimeIdentity.empty() && other.cppTlsRuntimeIdentity != state.cppTlsRuntimeIdentity &&
+                        interop::cppTlsSameDllName(other.cppTlsRuntimeIdentity, state.cppTlsRuntimeIdentity);
+                });
+            });
+            if (requiresTlsAliases)
+            {
+                if (symbol.isVariadic)
+                {
+                    error = "C/C++ variadic functions with identical symbols in distinct DLLs are not yet supported";
+                    return false;
+                }
+                function.importDllName = interop::cppTlsDllAlias(symbol.cppDllRuntimeIdentity);
+                if (function.importDllName.empty())
+                {
+                    error = "C/C++ function has an invalid DLL identity";
+                    return false;
+                }
+                function.importRequiresRuntimeBinding = true;
+                function.cppDllImport = false;
+                function.mangledName = "__nsc_cpp_tls_import_" + function.importDllName.substr(10, 64) +
+                    "__" + compilation::symbolFragmentForIdentityKey(symbol.mangledName);
+            }
             functionByNamespaceFunction_[functionOrdinal] = functions_.size();
             functions_.push_back(std::move(function));
             return true;

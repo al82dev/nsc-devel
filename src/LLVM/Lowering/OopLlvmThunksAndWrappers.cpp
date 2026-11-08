@@ -1,5 +1,6 @@
 #include "../Internal/OopLlvmImplementation.h"
 #include "../Internal/CppBoolAbi.h"
+#include "../Internal/CppDllExportHelper.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
@@ -451,14 +452,27 @@ bool OopLlvmImplementation::defineRuntimeBoundImport(
         LLVMTypeRef importType = found->second.functionType;
         LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
 
-        if (!ensureRuntimeImportBindingFunctions(error)) return false;
-
         LLVMValueRef libraryName = cStringGlobal(function.importDllName, "dll");
         LLVMValueRef symbolName = cStringGlobal(function.cAbiName, "sym");
         if (libraryName == nullptr || symbolName == nullptr)
         {
             return fail(error, "C1.2 failed to materialize the import identity strings");
         }
+        if (function.mangledName.starts_with("__nsc_cpp_tls_import_"))
+        {
+            currentFunction_ = importFunction;
+            blockCounter_ = 0;
+            enterBlock(appendBlock("import.entry"));
+            LLVMTypeRef arguments[] = {ptr, ptr};
+            LLVMTypeRef helperType = LLVMFunctionType(ptr, arguments, 2, 0);
+            LLVMValueRef values[] = {libraryName, symbolName};
+            LLVMValueRef target = LLVMBuildCall2(builder_, helperType,
+                cppDllTlsExportHelper(context_, module_), values, 2, "import.address");
+            if (!emitGuard(LLVMBuildICmp(builder_, LLVMIntNE, target, LLVMConstNull(ptr), "import.bound"),
+                           LlvmTrapReason::ImportBindingFailure, "import.binding", error)) return false;
+            return emitRuntimeBoundForwarding(function, importFunction, importType, target, error);
+        }
+        if (!ensureRuntimeImportBindingFunctions(error)) return false;
         LLVMValueRef cache = LLVMAddGlobal(module_, ptr, (function.mangledName + "__address").c_str());
         if (cache == nullptr)
         {

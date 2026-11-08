@@ -5,6 +5,7 @@
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
 #include "../Internal/CppTlsDllAlias.h"
+#include "../Internal/CppDllExportHelper.h"
 
 namespace nativesharp::llvm_backend
 {
@@ -13,7 +14,7 @@ using namespace llvm_api;
 // Find an export in its own DLL when another DLL exports the same C symbol.
 // Pin the module before returning its address, so it cannot be unloaded while
 // generated code uses the TLS template. The loader handles concurrent loads.
-static LLVMValueRef cppDllTlsExportHelper(LLVMContextRef context, LLVMModuleRef module)
+LLVMValueRef cppDllTlsExportHelper(LLVMContextRef context, LLVMModuleRef module)
 {
     constexpr const char* name = "__nsc_cpp_dll_tls_export";
     if (auto existing = LLVMGetNamedFunction(module, name)) return existing;

@@ -556,6 +556,9 @@ bool provideCppFunctionsWithPrecompiledCatalogs(
             const auto* failure = std::get_if<CppSemanticFunctionFailure>(&restored);
             if (failure) { error = "precompiled C function cannot be projected: " + failure->message; return false; }
             auto value = std::move(std::get<frontend::NamespaceFunctionSymbol>(restored));
+            const auto dllMarker = function.referenceIdentity.rfind("#dll:");
+            if (dllMarker != std::string::npos)
+                value.cppDllRuntimeIdentity = function.referenceIdentity.substr(dllMarker + 5);
             if (function.declaration.externalLinkage && function.declaration.languageLinkage == CppLanguageLinkage::C &&
                 value.cppClangUsr && !value.cppClangUsr->empty())
             {
