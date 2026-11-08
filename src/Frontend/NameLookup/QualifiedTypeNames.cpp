@@ -276,8 +276,25 @@ bool ProjectNameLookup::expandCppTypeAlias(
                                 type.reconciledIdentityKey.value_or("<none>") + "]";
                     return details;
                 };
+                const auto compatibleFunctionAlias = [&]() {
+                    if (!selected || !selected->declaration.clangUsr || !alias.declaration.clangUsr ||
+                        selected->declaration.clangUsr->empty() || alias.declaration.clangUsr->empty()) return false;
+                    const auto a = cppAliasFunctionType(selected->declaration.underlyingType);
+                    const auto b = cppAliasFunctionType(alias.declaration.underlyingType);
+                    if (!a || !b || a->callingConvention != b->callingConvention ||
+                        a->variadic != b->variadic || a->parameters.size() != b->parameters.size()) return false;
+                    const auto same = [](const auto& left, const auto& right) {
+                        return left.token == right.token && left.pointerDepth == right.pointerDepth &&
+                            left.pointeeConst == right.pointeeConst;
+                    };
+                    if (!same(a->result, b->result)) return false;
+                    for (std::size_t i = 0; i < a->parameters.size(); ++i)
+                        if (!same(a->parameters[i], b->parameters[i])) return false;
+                    return true;
+                };
                 if (selected && (selectedName != qualified ||
-                    (selected->projectOrdinal != alias.projectOrdinal && !reconciledRecordAlias()) ||
+                    (selected->projectOrdinal != alias.projectOrdinal && !reconciledRecordAlias() &&
+                     !compatibleFunctionAlias()) ||
                     selected->targetTriple != alias.targetTriple ||
                     selected->declaration.underlyingType.canonicalSpelling != alias.declaration.underlyingType.canonicalSpelling))
                     return report(diagnostics::DiagnosticId::AmbiguousTypeName,

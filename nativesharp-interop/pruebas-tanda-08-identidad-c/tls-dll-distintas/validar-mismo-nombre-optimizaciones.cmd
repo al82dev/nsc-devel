@@ -9,6 +9,10 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 exit /b 1
   python "%~dp0validar-variadicas-puntero.py" %%O
   if errorlevel 1 exit /b 1
+  python "%~dp0validar-variadicas-puntero.py" %%O --same-alias
+  if errorlevel 1 exit /b 1
+  if "%%O"=="0" python "%~dp0validar-variadicas-puntero.py" %%O --mismatch
+  if errorlevel 1 exit /b 1
   echo DLL homonimas con cache: O%%O correcto.
 )
 exit /b 0
