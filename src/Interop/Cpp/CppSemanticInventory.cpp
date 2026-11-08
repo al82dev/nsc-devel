@@ -709,11 +709,13 @@ bool captureCppTemplateGlobalCandidates(const frontend::ProjectCompilation& comp
                 state.cppCGlobal && state.cppImportError.empty() && !state.cppThreadLocal;
         });
         if (selected == states.end()) continue;
-        for (const auto index : candidate.selection.declarationIndices)
+        auto indices = candidate.selection.declarationIndices;
+        indices.insert(indices.end(), candidate.selection.internalIndices.begin(), candidate.selection.internalIndices.end());
+        for (const auto index : indices)
         {
             if (index >= inventory.size()) { error = "C global candidate index is invalid"; return false; }
             const auto& entry = inventory[index];
-            if (!entry.cLanguage || !entry.declaration.externalLinkage || entry.declaration.threadLocal) continue;
+            if (!entry.cLanguage || entry.declaration.threadLocal) continue;
             if (!seen.emplace(entry.projectOrdinal, entry.referenceIndex, selected->storageName).second) continue;
             metadata_detail::CDependencyGlobalSnapshot snapshot;
             const auto reference = "cpp-reference:" + std::to_string(entry.referenceIndex);

@@ -97,9 +97,16 @@ static bool appendCStaticInlineObjects(frontend::ProjectCompilation &compilation
         const auto symbol = interop::cppCInlineLinkSymbol(entry.projectFile, entry.referenceIndex,
                                                         "global:" + entry.declaration.name);
         const auto states = compilation.namespaceFunctionModel()->states();
-        if (std::none_of(states.begin(), states.end(), [&](const auto& state) {
+        bool selected = std::any_of(states.begin(), states.end(), [&](const auto& state) {
             return state.projectOrdinal == entry.projectOrdinal && state.isCppExternal && state.storageName == symbol;
-        })) continue;
+        });
+        if (!selected)
+            for (const auto& request : compilation.cppTemplateDemands())
+                if (request.demand.lookupName == entry.declaration.name &&
+                    std::find(request.demand.visibleProjects.begin(), request.demand.visibleProjects.end(), entry.projectOrdinal) != request.demand.visibleProjects.end() &&
+                    std::find(request.demand.lookupNamespaces.begin(), request.demand.lookupNamespaces.end(), "") != request.demand.lookupNamespaces.end())
+                { selected = true; break; }
+        if (!selected) continue;
         const interop::CppInteropSession* session = nullptr;
         for (const auto& project : compilation.cppProjectSessions())
             if (project.projectFile == entry.projectFile && entry.referenceIndex < project.sessions.size())
