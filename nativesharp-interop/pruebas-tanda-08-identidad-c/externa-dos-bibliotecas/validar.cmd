@@ -1,5 +1,6 @@
 @echo off
 setlocal
+if not defined NSC_T08_OPT set "NSC_T08_OPT=0"
 set "DEST=A:\nsc-interop-build\t08-global-externa-dos-gate"
 if "%~1"=="incompatible" set "DEST=A:\nsc-interop-build\t08-global-externa-dos-incompatible"
 if "%~1"=="volatile" set "DEST=A:\nsc-interop-build\t08-global-externa-dos-volatile"
@@ -82,7 +83,7 @@ if "%~1"=="tls-hilos" (
   if errorlevel 1 (popd & exit /b 1)
 )
 for %%D in (a b) do (
-  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%%D\Producer.nsproj" -O0 --no-artifact-cache -o "%%D\InlineProducer%%D.lib" > "%%D\build.log" 2>&1
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%%D\Producer.nsproj" -O%NSC_T08_OPT% --no-artifact-cache -o "%%D\InlineProducer%%D.lib" > "%%D\build.log" 2>&1
   if errorlevel 1 (type "%%D\build.log" & popd & exit /b 1)
 )
 if "%~1"=="tls" goto remove_headers
@@ -95,7 +96,7 @@ goto compile_consumer
   if exist b\same.h (popd & exit /b 1)
 )
 :compile_consumer
-nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe Consumer.nsproj -O0 --no-artifact-cache -o Consumer.exe > Consumer.log 2>&1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe Consumer.nsproj -O%NSC_T08_OPT% --no-artifact-cache -o Consumer.exe > Consumer.log 2>&1
 if "%~1"=="incompatible" goto expect_incompatible
 if "%~1"=="volatile" goto expect_incompatible
 if "%~1"=="const" goto expect_incompatible

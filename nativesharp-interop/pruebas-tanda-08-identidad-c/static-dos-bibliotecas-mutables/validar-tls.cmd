@@ -1,5 +1,6 @@
 @echo off
 setlocal
+if not defined NSC_T08_OPT set "NSC_T08_OPT=0"
 set "DEST=A:\nsc-interop-build\t08-tls-interna-plantillas-repro"
 if "%~1"=="hilos" set "DEST=A:\nsc-interop-build\t08-tls-interna-plantillas-hilos"
 set "PATH=A:\nsc-interop-build\tanda1-ON\bin;A:\al82dev-clang\bin;%PATH%"
@@ -31,13 +32,13 @@ if "%~1"=="hilos" (
   if errorlevel 1 (popd & exit /b 1)
 )
 for %%D in (a b) do (
-  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%%D\Producer.nsproj" -O0 --no-artifact-cache -o "%%D\InlineProducer%%D.lib" > "%%D\build.log" 2>&1
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%%D\Producer.nsproj" -O%NSC_T08_OPT% --no-artifact-cache -o "%%D\InlineProducer%%D.lib" > "%%D\build.log" 2>&1
   if errorlevel 1 (type "%%D\build.log" & popd & exit /b 1)
 )
 del a\same.h b\same.h
 if exist a\same.h (popd & exit /b 1)
 if exist b\same.h (popd & exit /b 1)
-nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe Consumer.nsproj -O0 --no-artifact-cache -o Consumer.exe > Consumer.log 2>&1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe Consumer.nsproj -O%NSC_T08_OPT% --no-artifact-cache -o Consumer.exe > Consumer.log 2>&1
 if errorlevel 1 (type Consumer.log & popd & exit /b 1)
 Consumer.exe
 if errorlevel 1 (popd & exit /b 1)
