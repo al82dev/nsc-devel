@@ -205,6 +205,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - La desestructuración simple y anidada, incluido el descarte `_`, no captura
+    las declaraciones C homónimas en los casos comprobados. La biblioteca y el
+    consumidor pasaron O0–O3; otras formas de ámbito y la tanda siguen abiertas.
+    [Evidencia](registro-commits/t08-h3-desestructuracion-descarte-resultado.md).
   - H3 sombras: los casos probados de locales en bloques, parámetros de métodos
     y lambdas, y variables de `for` ya no publican la global C homónima; el
     local de bloque tampoco emite la función inline C homónima. Los consumidores
