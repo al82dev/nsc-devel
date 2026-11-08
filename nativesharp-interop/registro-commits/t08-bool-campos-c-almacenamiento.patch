@@ -1,0 +1,119 @@
+diff --git a/src/LLVM/Lowering/CRecordBoolStorage.h b/src/LLVM/Lowering/CRecordBoolStorage.h
+new file mode 100644
+index 000000000..d8bb4b21e
+--- /dev/null
++++ b/src/LLVM/Lowering/CRecordBoolStorage.h
+@@ -0,0 +1,40 @@
++#pragma once
++
++#include "nativesharp/Frontend/ProjectNameLookup.h"
++#include "nativesharp/Frontend/ProjectOopMirNode.h"
++
++#include <string_view>
++
++namespace nativesharp::llvm_backend
++{
++// T08-006. A C _Bool stored in an imported C struct or union occupies one byte that holds 0 or 1.
++// Clang accesses that byte as i8 (load + trunc to i1, zext to i8 + store); the NativeSharp expression
++// value stays i1. Only the memory access type changes; layout, alignment and volatility are unchanged.
++inline bool isImportedCRecordTypeKey(const frontend::ProjectNameLookup& lookup, std::string_view typeKey)
++{
++    if (typeKey.ends_with('*')) typeKey.remove_suffix(1);
++    if (!typeKey.starts_with("type:")) return false;
++    const auto ordinal = lookup.typeOrdinalForIdentity(typeKey.substr(5));
++    const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
++    return imported && (imported->origin == frontend::CppImportedTypeOrigin::CStruct ||
++                        imported->origin == frontend::CppImportedTypeOrigin::CUnion);
++}
++
++// True for the address or load of a bool field of an imported C record, or of an element of a bool
++// array field of one (any number of fixed dimensions). Bit-fields keep their own storage-unit path.
++inline bool cRecordBoolStorage(const frontend::ProjectNameLookup& lookup, const frontend::ProjectOopMirNode* node)
++{
++    if (!node || node->typeKey != "builtin:bool") return false;
++    unsigned depth = 0;
++    while (node->kind == frontend::ProjectOopMirNodeKind::RawElementAddress)
++    {
++        if (++depth > 128 || node->children.size() != 2 || !node->children.front()) return false;
++        node = node->children.front().get();
++    }
++    if (node->kind != frontend::ProjectOopMirNodeKind::FieldAddress &&
++        node->kind != frontend::ProjectOopMirNodeKind::FieldLoad) return false;
++    if (depth == 0 ? node->typeKey != "builtin:bool" : !node->typeKey.starts_with("builtin:bool[")) return false;
++    return node->children.size() == 1 && node->children.front() &&
++        isImportedCRecordTypeKey(lookup, node->children.front()->typeKey);
++}
++}
+diff --git a/src/LLVM/Lowering/OopLlvmArraysAndStores.cpp b/src/LLVM/Lowering/OopLlvmArraysAndStores.cpp
+index 5887902b8..b927e9381 100644
+--- a/src/LLVM/Lowering/OopLlvmArraysAndStores.cpp
++++ b/src/LLVM/Lowering/OopLlvmArraysAndStores.cpp
+@@ -4,6 +4,7 @@
+ #include "../Internal/MatchValuePop.h"
+ #include "OopLlvmSupport.h"
+ #include "PackedArrayAlignment.h"
++#include "CRecordBoolStorage.h"
+ 
+ namespace nativesharp::llvm_backend
+ {
+@@ -788,7 +789,7 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
+              boolTarget->typeKey == "builtin:bool" && boolTarget->volatileAccess &&
+              boolTarget->cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
+              boolTarget->cppAtomicAlignmentBytes == std::optional<std::size_t>{1});
+-        LLVMValueRef storedValue = cVolatileBool
++        LLVMValueRef storedValue = cVolatileBool || cRecordBoolStorage(nameLookup_, boolTarget)
+             ? LLVMBuildZExt(builder_, value, LLVMInt8TypeInContext(context_), "c.bool.storage")
+             : value;
+         const auto& storageTypeKey = node->children[0]->typeKey;
+diff --git a/src/LLVM/Lowering/OopLlvmExpressionMachine.cpp b/src/LLVM/Lowering/OopLlvmExpressionMachine.cpp
+index 9675e249a..cc7566504 100644
+--- a/src/LLVM/Lowering/OopLlvmExpressionMachine.cpp
++++ b/src/LLVM/Lowering/OopLlvmExpressionMachine.cpp
+@@ -4,6 +4,7 @@
+ #include "../Internal/MatchValuePop.h"
+ #include "OopLlvmSupport.h"
+ #include "PackedArrayAlignment.h"
++#include "CRecordBoolStorage.h"
+ 
+ namespace nativesharp::llvm_backend
+ {
+@@ -476,7 +477,9 @@ bool OopLlvmImplementation::lowerExpressionFrame004FieldLoad(
+     LLVMValueRef address = fieldAddressFromReceiver(current, receiver, error);
+     LLVMTypeRef type = llvmType(current->typeKey, error);
+     if (address == nullptr || type == nullptr) { values.push_back(nullptr); return true; }
+-    LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "field.load");
++    const bool cBoolStorage = cRecordBoolStorage(nameLookup_, current);
++    LLVMValueRef load = LLVMBuildLoad2(builder_, cBoolStorage ? LLVMInt8TypeInContext(context_) : type,
++        address, cBoolStorage ? "c.bool.field.load" : "field.load");
+     if (const auto alignment = fieldOrArrayAddressAlignment(current))
+         LLVMSetAlignment(load, static_cast<unsigned>(*alignment));
+     if (current->volatileAccess) LLVMSetVolatile(load, 1);
+@@ -492,7 +495,7 @@ bool OopLlvmImplementation::lowerExpressionFrame004FieldLoad(
+         values.push_back(nullptr);
+         return true;
+     }
+-    values.push_back(load);
++    values.push_back(cBoolStorage ? LLVMBuildTrunc(builder_, load, type, "c.bool.value") : load);
+     return true;
+ }
+ 
+@@ -1493,7 +1496,9 @@ bool OopLlvmImplementation::lowerExpressionFrame030PointerLoad(
+     }
+     LLVMTypeRef pointee = llvmType(current->typeKey, error);
+     if (pointee == nullptr) { values.push_back(nullptr); return true; }
+-    LLVMValueRef load = LLVMBuildLoad2(builder_, pointee, pointer, "pointer.load");
++    const bool cBoolStorage = cRecordBoolStorage(nameLookup_, current->children.front().get());
++    LLVMValueRef load = LLVMBuildLoad2(builder_, cBoolStorage ? LLVMInt8TypeInContext(context_) : pointee,
++        pointer, cBoolStorage ? "c.bool.element.load" : "pointer.load");
+     if (const auto alignment = fieldArrayElementAlignment(current->children.front().get()))
+         LLVMSetAlignment(load, static_cast<unsigned>(*alignment));
+     if (current->volatileAccess) LLVMSetVolatile(load, 1);
+@@ -1512,7 +1517,7 @@ bool OopLlvmImplementation::lowerExpressionFrame030PointerLoad(
+         LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
+         LLVMSetAlignment(load, static_cast<unsigned>(*alignment));
+     }
+-    values.push_back(load);
++    values.push_back(cBoolStorage ? LLVMBuildTrunc(builder_, load, pointee, "c.bool.value") : load);
+     return true;
+ }
+ 
