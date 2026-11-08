@@ -108,10 +108,10 @@ bool provenLocal(const TemplateParents& parents, const CppFunctionDemand& demand
             if (earlierBlockLocal(parent->first(), demand.writtenName)) return true;
         }
         else if (parent->kind() == ast::AstNodeKind::DeconstructionDeclarationStatement &&
-                 child != parent->first() && demand.writtenName != "_")
+                 child != parent->first())
         {
-            // Pattern identifiers declare locals; only the initializer is an expression.
-            if (earlierBlockLocal(parent, demand.writtenName)) return true;
+            // Pattern identifiers declare locals or discards; only the initializer is an expression.
+            return true;
         }
         else if ((parent->kind() == ast::AstNodeKind::MethodDeclaration ||
                   parent->kind() == ast::AstNodeKind::FunctionDeclaration ||
