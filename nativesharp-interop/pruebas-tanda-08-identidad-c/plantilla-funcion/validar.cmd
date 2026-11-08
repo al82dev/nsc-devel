@@ -7,7 +7,7 @@ set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\Native
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
 if not exist "%DEST%" mkdir "%DEST%"
 if errorlevel 1 exit /b 1
-for %%F in (Api.h Api.c Producer.ns Producer.nsproj Consumer.ns WithHeader.nsproj WithoutHeader.nsproj) do (
+for %%F in (Api.h Api.c Bad.h Producer.ns Producer.nsproj Consumer.ns ConsumerConflict.ns WithHeader.nsproj WithoutHeader.nsproj Conflict.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -27,5 +27,9 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Without
 if errorlevel 1 (type "%DEST%\WithoutHeader.log" & exit /b 1)
 "%DEST%\WithoutHeader.exe"
 if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Conflict.nsproj" > "%DEST%\Conflict.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"conflicting C function declarations across precompiled library and header" "%DEST%\Conflict.log" >nul
+if errorlevel 1 (type "%DEST%\Conflict.log" & exit /b 1)
 echo Funcion C en plantilla: con y sin encabezado correcto.
 exit /b 0

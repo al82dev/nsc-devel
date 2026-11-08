@@ -1,0 +1,1 @@
+int Main() { return c_template_value(1) + PublishedCFunction.Bridge.Run<int>(5); }

@@ -545,6 +545,16 @@ bool provideCppFunctionsWithPrecompiledCatalogs(
             const auto* failure = std::get_if<CppSemanticFunctionFailure>(&restored);
             if (failure) { error = "precompiled C function cannot be projected: " + failure->message; return false; }
             auto value = std::move(std::get<frontend::NamespaceFunctionSymbol>(restored));
+            if (function.declaration.externalLinkage && function.declaration.languageLinkage == CppLanguageLinkage::C &&
+                value.cppClangUsr && !value.cppClangUsr->empty())
+            {
+                const auto conflict = std::find_if(result.begin(), result.end(), [&](const auto& other) {
+                    return other.mangledName == value.mangledName && other.cppClangUsr == value.cppClangUsr &&
+                        other.cppCanonicalIdentity != value.cppCanonicalIdentity;
+                });
+                if (conflict != result.end())
+                { error = "conflicting C function declarations across precompiled library and header: " + value.name; return false; }
+            }
             const auto existing = std::find_if(result.begin(), result.end(), [&](const auto& other) {
                 return other.projectOrdinal == value.projectOrdinal && other.mangledName == value.mangledName;
             });
