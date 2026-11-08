@@ -5390,6 +5390,13 @@ hasta superar su batería integral, incluidas regresiones y caso directo.
 
 # T08: alias C en firmas publicadas de miembros
 
+Enmienda: la primera implementación causó conflicto entre proyectos al
+coexistir el header y la metadata. Se permite modificar
+`src/Frontend/NameLookup/QualifiedTypeNames.cpp` únicamente para conciliar
+alias a records con USR coincidentes cuando los records ya fueron conciliados
+con evidencia de origen y contrato. Preservar el rechazo de otros casos y
+verificar ambos caminos y el control de definiciones incompatibles.
+
 La reproducción `t08-nombres-metadata-firmas-resultado.md` muestra que una
 firma pública `NAlias*` se publica con su tipo canónico pero omite el nombre
 del alias. Capturar únicamente alias resueltos de los tipos declarados y

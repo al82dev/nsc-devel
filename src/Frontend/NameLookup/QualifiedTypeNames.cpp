@@ -228,7 +228,30 @@ bool ProjectNameLookup::expandCppTypeAlias(
                 std::size_t pos = 0;
                 while ((pos = qualified.find("::", pos)) != std::string::npos) qualified.replace(pos, 2, ".");
                 if (qualified != spelling) continue;
-                if (selected && (selectedName != qualified || selected->projectOrdinal != alias.projectOrdinal ||
+                const auto reconciledRecordAlias = [&]() {
+                    if (!selected || selected->projectOrdinal == alias.projectOrdinal ||
+                        !selected->declaration.clangUsr || !alias.declaration.clangUsr ||
+                        selected->declaration.clangUsr->empty() ||
+                        selected->declaration.clangUsr != alias.declaration.clangUsr) return false;
+                    const auto a = cppAliasRecordType(selected->declaration.underlyingType);
+                    const auto b = cppAliasRecordType(alias.declaration.underlyingType);
+                    if (!a || !b || a->canonicalName != b->canonicalName ||
+                        !a->clangUsr || !b->clangUsr || a->clangUsr != b->clangUsr) return false;
+                    for (const auto& live : cppImportedTypes_)
+                    {
+                        if (!live.reconciledIdentityKey || live.identity.fullyQualifiedName() != a->canonicalName ||
+                            !live.clangUsr || live.clangUsr != a->clangUsr ||
+                            (live.projectOrdinal != selected->projectOrdinal && live.projectOrdinal != alias.projectOrdinal)) continue;
+                        for (const auto& precompiled : cppImportedTypes_)
+                            if (precompiled.identity.key() == *live.reconciledIdentityKey &&
+                                precompiled.projectOrdinal != live.projectOrdinal &&
+                                (precompiled.projectOrdinal == selected->projectOrdinal || precompiled.projectOrdinal == alias.projectOrdinal) &&
+                                precompiled.clangUsr == live.clangUsr) return true;
+                    }
+                    return false;
+                };
+                if (selected && (selectedName != qualified ||
+                    (selected->projectOrdinal != alias.projectOrdinal && !reconciledRecordAlias()) ||
                     selected->targetTriple != alias.targetTriple ||
                     selected->declaration.underlyingType.canonicalSpelling != alias.declaration.underlyingType.canonicalSpelling))
                     return report(diagnostics::DiagnosticId::AmbiguousTypeName,
