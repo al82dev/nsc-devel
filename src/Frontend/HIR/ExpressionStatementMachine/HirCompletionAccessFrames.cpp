@@ -457,9 +457,9 @@ void ProjectOopHirModel::finishArrayRawIndex(
                 ((indexedCGlobal && state.declaredTypeKey.starts_with(elementType + "*[")) ||
                  (!indexedCGlobal && state.declaredTypeKey == elementType + "*")) &&
                 state.cppPointerPointeeVolatile &&
-                state.cppMicrosoftVolatileSemantics == std::optional<bool>{true})
+                state.cppMicrosoftVolatileSemantics.has_value())
             {
-                address->cppMicrosoftVolatileSemantics = true;
+                address->cppMicrosoftVolatileSemantics = state.cppMicrosoftVolatileSemantics;
                 address->cppAtomicAlignmentBytes = (elementType == "builtin:bool" || elementType == "builtin:sbyte" || elementType == "builtin:byte") ? 1 :
                     (elementType == "builtin:short" || elementType == "builtin:ushort") ? 2 :
                     (elementType == "builtin:long" || elementType == "builtin:ulong" || elementType == "builtin:double") ? 8 : 4;

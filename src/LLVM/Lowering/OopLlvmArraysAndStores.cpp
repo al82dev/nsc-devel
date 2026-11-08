@@ -516,10 +516,11 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 LLVMSetOrdering(previous, LLVMAtomicOrderingAcquire);
                 LLVMSetAlignment(previous, static_cast<unsigned>(*alignment));
             }
-            if (const auto alignment = clangMsVolatileDirectCPointeeAlignment(node->children[0].get()))
+            if (const auto alignment = clangVolatileDirectCPointeeAlignment(node->children[0].get()))
             {
-                LLVMSetOrdering(previous, LLVMAtomicOrderingAcquire);
                 LLVMSetAlignment(previous, static_cast<unsigned>(*alignment));
+                if (node->children[0]->cppMicrosoftVolatileSemantics == std::optional<bool>{true})
+                    LLVMSetOrdering(previous, LLVMAtomicOrderingAcquire);
             }
             if (isClangMsVolatileScalarGlobal(node->children[0].get()))
             {
@@ -577,10 +578,11 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
                 LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
             }
-            if (const auto alignment = clangMsVolatileDirectCPointeeAlignment(node->children[0].get()))
+            if (const auto alignment = clangVolatileDirectCPointeeAlignment(node->children[0].get()))
             {
-                LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
                 LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
+                if (node->children[0]->cppMicrosoftVolatileSemantics == std::optional<bool>{true})
+                    LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
             }
             if (isClangMsVolatileScalarGlobal(node->children[0].get()))
             {
@@ -850,10 +852,11 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
             LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
         }
-        if (const auto alignment = clangMsVolatileDirectCPointeeAlignment(node->children[0].get()))
+        if (const auto alignment = clangVolatileDirectCPointeeAlignment(node->children[0].get()))
         {
-            LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
             LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
+            if (node->children[0]->cppMicrosoftVolatileSemantics == std::optional<bool>{true})
+                LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
         }
         if (isClangMsVolatileScalarGlobal(node->children[0].get()))
         {

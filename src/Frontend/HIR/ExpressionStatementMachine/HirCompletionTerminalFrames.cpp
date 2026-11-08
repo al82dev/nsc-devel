@@ -372,6 +372,7 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
         ? frameType->typeKey
         : frameDelegate != nullptr ? frameDelegate->resultTypeKey : "<error>";
     bool directCVolatileInt = false;
+    std::optional<bool> directCVolatileMode;
     const ProjectOopHirNode* provenance = lowered.get();
     bool indexedCGlobal = false;
     if (provenance && provenance->kind == ProjectOopHirNodeKind::PointerLoad &&
@@ -398,7 +399,8 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
             ((indexedCGlobal && state.declaredTypeKey.starts_with(resultType + "*[")) ||
              (!indexedCGlobal && state.declaredTypeKey == resultType + "*")) &&
             state.cppPointerPointeeVolatile &&
-            state.cppMicrosoftVolatileSemantics == std::optional<bool>{true};
+            state.cppMicrosoftVolatileSemantics.has_value();
+        if (directCVolatileInt) directCVolatileMode = state.cppMicrosoftVolatileSemantics;
     }
         if (frame.syntax->tokenKind() == lexer::TokenKind::PlusPlus ||
             frame.syntax->tokenKind() == lexer::TokenKind::MinusMinus)
@@ -465,7 +467,7 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
             load->volatileAccess = operandType && operandType->pointerPointeeVolatile;
             if (directCVolatileInt && load->volatileAccess)
             {
-                load->cppMicrosoftVolatileSemantics = true;
+                load->cppMicrosoftVolatileSemantics = directCVolatileMode;
                 load->cppAtomicAlignmentBytes = (resultType == "builtin:bool" || resultType == "builtin:sbyte" || resultType == "builtin:byte") ? 1 :
                     (resultType == "builtin:short" || resultType == "builtin:ushort") ? 2 :
                     (resultType == "builtin:long" || resultType == "builtin:ulong" || resultType == "builtin:double") ? 8 : 4;
@@ -484,7 +486,7 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
                 address->volatileAccess = volatilePointee;
                 if (directCVolatileInt && volatilePointee)
                 {
-                    address->cppMicrosoftVolatileSemantics = true;
+                    address->cppMicrosoftVolatileSemantics = directCVolatileMode;
                     address->cppAtomicAlignmentBytes = (resultType == "builtin:bool" || resultType == "builtin:sbyte" || resultType == "builtin:byte") ? 1 :
                         (resultType == "builtin:short" || resultType == "builtin:ushort") ? 2 :
                         (resultType == "builtin:long" || resultType == "builtin:ulong" || resultType == "builtin:double") ? 8 : 4;

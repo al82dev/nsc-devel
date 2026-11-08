@@ -1514,10 +1514,11 @@ bool OopLlvmImplementation::lowerExpressionFrame030PointerLoad(
         LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
         LLVMSetAlignment(load, static_cast<unsigned>(*alignment));
     }
-    if (const auto alignment = clangMsVolatileDirectCPointeeAlignment(current))
+    if (const auto alignment = clangVolatileDirectCPointeeAlignment(current))
     {
-        LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
         LLVMSetAlignment(load, static_cast<unsigned>(*alignment));
+        if (current->cppMicrosoftVolatileSemantics == std::optional<bool>{true})
+            LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
     }
     if (byteBool) load = LLVMBuildTrunc(builder_, load, LLVMInt1TypeInContext(context_), "pointer.bool");
     values.push_back(load);

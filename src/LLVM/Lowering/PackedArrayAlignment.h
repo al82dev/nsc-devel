@@ -83,12 +83,12 @@ inline std::optional<std::uint64_t> clangMsVolatileGlobalScalarArrayAlignment(
     return width;
 }
 
-inline std::optional<std::uint64_t> clangMsVolatileDirectCPointeeAlignment(const frontend::ProjectOopMirNode* node) noexcept
+inline std::optional<std::uint64_t> clangVolatileDirectCPointeeAlignment(const frontend::ProjectOopMirNode* node) noexcept
 {
     if (!node || !(node->kind == frontend::ProjectOopMirNodeKind::AddressValue ||
                     node->kind == frontend::ProjectOopMirNodeKind::PointerLoad ||
                     node->kind == frontend::ProjectOopMirNodeKind::RawElementAddress) || !node->volatileAccess ||
-        node->cppMicrosoftVolatileSemantics != std::optional<bool>{true}) return std::nullopt;
+        !node->cppMicrosoftVolatileSemantics.has_value()) return std::nullopt;
     const auto width = (node->typeKey == "builtin:bool" || node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte") ? 1U :
         (node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort") ? 2U :
         (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint" || node->typeKey == "builtin:float") ? 4U :
