@@ -6537,6 +6537,18 @@ if(NSC_BUILD_TESTS)
         nsc.stage35-recovery.object
         PROPERTIES PASS_REGULAR_EXPRESSION "project OOP object emission: ok.*machine=0x8664")
 
+    set(NSC_DICTIONARY_STRING_UPDATE_PROJECT
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/dictionary_string_update/DictionaryStringUpdate.nsproj")
+    add_test(
+        NAME nsc.sdk.dictionary-string-update
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DPROJECT_FILE=${NSC_DICTIONARY_STRING_UPDATE_PROJECT}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/dictionary-string-update"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDictionaryStringUpdate.cmake")
+
     # NSC-LIMIT-007. La entrada de driver de la fase de constraints, ejercitada de verdad.
     #
     # Una fase sin prueba de ctest solo existe para quien lee el codigo: la revision encontro que

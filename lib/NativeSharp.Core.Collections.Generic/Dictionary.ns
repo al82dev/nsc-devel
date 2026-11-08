@@ -381,7 +381,7 @@ namespace NativeSharp.Core.Collections.Generic
                 delete entryValues[index];
                 // move(value): see List.ns's Add() for the full explanation.
                 entryValues[index] = move(value);
-                delete key;
+                // The owned parameter cleanup releases the unused key on return.
                 return;
             }
             InsertNew(move(key), move(value), hashCode);
