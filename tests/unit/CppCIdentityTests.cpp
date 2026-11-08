@@ -407,6 +407,18 @@ bool checkUsrStability(CppClangSessionFactory& factory, const std::string& resou
                 }
                 if (encoded)
                 {
+                    auto duplicate = bytes;
+                    std::copy_n(duplicate.end() - 24, 8, duplicate.end() - 8);
+                    auto untouched = restored;
+                    const auto before = untouched.size();
+                    carriersOk &= expect(!metadata_detail::decodeCTypeCatalogWithAnonymousCarriers(
+                        duplicate, untouched, restoredEnums, restoredDependencies, error) && untouched.size() == before,
+                        "anonymous carrier envelope rejects duplicate indices without changing output");
+                    auto outside = bytes;
+                    std::fill_n(outside.end() - 8, 4, static_cast<std::uint8_t>(0xff));
+                    carriersOk &= expect(!metadata_detail::decodeCTypeCatalogWithAnonymousCarriers(
+                        outside, untouched, restoredEnums, restoredDependencies, error) && untouched.size() == before,
+                        "anonymous carrier envelope rejects out-of-range record indices");
                     bytes.push_back(0);
                     restored.clear();
                     carriersOk &= expect(!metadata_detail::decodeCTypeCatalogWithAnonymousCarriers(
