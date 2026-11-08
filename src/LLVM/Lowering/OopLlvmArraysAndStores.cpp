@@ -266,11 +266,14 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 enterBlock(retry);
                 LLVMValueRef current = LLVMBuildPhi(builder_, storage, "atomic.enum.current");
                 LLVMAddIncoming(current, &initial, &preheader, 1);
-                // Clang's C atomic-enum compound lowering extends the 32-bit
-                // carrier as unsigned before a 64-bit arithmetic conversion.
-                LLVMValueRef lhs = enumInfo->width == 32 && enumInfo->isSigned &&
-                    (calculationType == "builtin:long" || calculationType == "builtin:ulong")
-                    ? LLVMBuildZExt(builder_, current, LLVMInt64TypeInContext(context_), "atomic.enum.promoted")
+                // Clang promotes an atomic enum's carrier with zero extension
+                // when the compound calculation uses a wider integer type.
+                const auto* calculationInfo = frontend::builtins::findIntegerType(calculationType);
+                LLVMTypeRef calculationLlvmType = llvmType(calculationType, error);
+                if (!calculationLlvmType) return nullptr;
+                LLVMValueRef lhs = enumInfo->isSigned && calculationInfo &&
+                    calculationInfo->width > enumInfo->width
+                    ? LLVMBuildZExt(builder_, current, calculationLlvmType, "atomic.enum.promoted")
                     : convert(current, underlying, calculationType, error);
                 if (!lhs) return nullptr;
                 LLVMValueRef computed = applyBinaryOperation(node->operation, lhs, operand, calculationType, error, false);

@@ -2,9 +2,29 @@
 _Atomic(enum State) state = STATE_IDLE;
 _Atomic(enum SignedState) signed_state = SIGNED_NEGATIVE;
 _Atomic(enum WideState) wide_state = WIDE_LARGE;
+_Atomic(enum TinyState) tiny_state = TINY_NEGATIVE;
+_Atomic(enum ShortState) short_state = SHORT_START;
 int state_check(void) { return state == STATE_READY; }
 unsigned long long wide_read(void) { return (unsigned long long)wide_state; }
 void wide_compound_reference(void) { wide_state += 5ULL; }
+int tiny_reference(int stage)
+{
+    _Atomic(enum TinyState) ref = TINY_NEGATIVE;
+    ref /= 2;
+    if (stage == 1) return (int)ref;
+    ref += 130;
+    if (stage == 2) return (int)ref;
+    ref >>= 1;
+    return (int)ref;
+}
+unsigned int short_reference(int stage)
+{
+    _Atomic(enum ShortState) ref = SHORT_START;
+    ref += 20;
+    if (stage == 1) return (unsigned int)ref;
+    ref *= 100;
+    return (unsigned int)ref;
+}
 int signed_reference(int stage)
 {
     _Atomic(enum SignedState) reference = SIGNED_NEGATIVE;

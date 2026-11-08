@@ -1,5 +1,15 @@
 int Main()
 {
+    tiny_state /= 2;
+    if ((int)tiny_state != tiny_reference(1)) return 24;
+    tiny_state += 130;
+    if ((int)tiny_state != tiny_reference(2)) return 25;
+    tiny_state >>= 1;
+    if ((int)tiny_state != tiny_reference(3)) return 26;
+    short_state += 20;
+    if ((uint)short_state != short_reference(1)) return 27;
+    short_state *= 100;
+    if ((uint)short_state != short_reference(2)) return 28;
     if ((ulong)wide_state != 4294967296UL || wide_read() != 4294967296UL) return 21;
     wide_state += 5UL;
     if ((ulong)wide_state != 4294967301UL || wide_read() != 4294967301UL) return 22;

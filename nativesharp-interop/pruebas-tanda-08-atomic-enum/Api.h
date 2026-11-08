@@ -1,10 +1,16 @@
 enum State { STATE_IDLE = 0, STATE_READY = 1 };
 enum SignedState { SIGNED_NEGATIVE = -8, SIGNED_ZERO = 0 };
 enum WideState : unsigned long long { WIDE_ZERO = 0, WIDE_LARGE = 0x100000000ULL };
+enum TinyState : signed char { TINY_NEGATIVE = -8, TINY_ZERO = 0 };
+enum ShortState : unsigned short { SHORT_START = 65530, SHORT_ZERO = 0 };
 extern _Atomic(enum State) state;
 extern _Atomic(enum SignedState) signed_state;
 extern _Atomic(enum WideState) wide_state;
+extern _Atomic(enum TinyState) tiny_state;
+extern _Atomic(enum ShortState) short_state;
 int state_check(void);
 int signed_reference(int stage);
 int signed_mixed_reference(int operation);
 unsigned long long wide_read(void);
+int tiny_reference(int stage);
+unsigned int short_reference(int stage);
