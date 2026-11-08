@@ -1,0 +1,8 @@
+namespace PublishedHost
+{
+    public class Bridge
+    {
+        public static export extern C int HostCallback(int value) { return value + 7; }
+        public static int Call(int value) { return call_host(value); }
+    }
+}

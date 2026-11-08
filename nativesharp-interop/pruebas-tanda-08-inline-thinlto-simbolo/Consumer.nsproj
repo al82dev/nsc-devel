@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>InlineSymbolConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+    <LibraryReference Include="InlineSymbolProducer.lib" />
+  </ItemGroup>
+</Project>

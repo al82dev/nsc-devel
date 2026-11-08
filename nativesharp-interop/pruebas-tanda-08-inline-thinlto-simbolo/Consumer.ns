@@ -1,0 +1,4 @@
+int Main()
+{
+    return PublishedHost.Bridge.Call(35) == 42 ? 0 : 1;
+}
