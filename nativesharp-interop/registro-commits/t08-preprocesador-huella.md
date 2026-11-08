@@ -29,6 +29,8 @@ originales. La validación completa de la tanda no se considera aprobada.
 El control ThinLTO se corrigió después: [resultado](t08-control-thinlto-internalizacion.md).
 La comparación de enum desde buffer virtual también se corrigió después:
 [resultado](t08-enum-fuente-virtual.md). Persisten los dos fallos del lector de catálogo.
+La lectura y el contexto del catálogo se corrigieron después; la prueba de
+sesión terminó con código 0: [resultado](t08-lectura-catalogo-contexto.md).
 Esta huella es una pieza de la identidad, no una clave de caché completa:
 faltan combinar opciones, contenido, toolchain y demás dependencias, además de
 validar su seguridad de extremo a extremo. La restricción de caché para

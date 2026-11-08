@@ -3,6 +3,7 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
+#include "nativesharp/Interop/LibraryMetadata.h"
 
 #include <filesystem>
 #include <cstdint>
@@ -44,6 +45,6 @@ struct PrecompiledSyntaxModule final
     bool surfacePruned = false;
     // Verified C type catalogue carried with this metadata surface; not yet installed.
     std::vector<std::uint8_t> cppCTypeCatalog;
-    std::uint16_t cppCTypeCatalogFormatMinor = 45;
+    std::uint16_t cppCTypeCatalogFormatMinor = interop::kMetadataFormatMinor;
 };
 }

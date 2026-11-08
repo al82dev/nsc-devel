@@ -1513,6 +1513,31 @@ bool decodeVersionedCTypeCatalog(std::span<const std::uint8_t> bytes,
         decodeCTypeCatalog(bytes, records, enums, error);
 }
 
+bool decodeVersionedCTypeCatalog(std::span<const std::uint8_t> bytes,
+    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums, std::string& error)
+{
+    if (bytes.size() < 4 || bytes[0] != 7 || bytes[1] || bytes[2] || bytes[3])
+        return isCTypeCatalogWithProvenance(bytes) ?
+            decodeCTypeCatalogWithProvenance(bytes, records, enums, error) :
+            decodeCTypeCatalog(bytes, records, enums, error);
+
+    std::vector<CppCRecordSnapshot> observedRecords, fallbackRecords;
+    std::vector<CppCEnumSnapshot> observedEnums, fallbackEnums;
+    CDependencyCatalog dependencies;
+    std::string observedError, fallbackError;
+    const bool observed = decodeCTypeCatalogWithEnumProvenance(
+        bytes, observedRecords, observedEnums, dependencies, observedError);
+    const bool fallback = decodeCTypeCatalog(bytes, fallbackRecords, fallbackEnums, fallbackError);
+    if (observed && fallback)
+    { error = "ambiguous C type catalogue without enclosing metadata"; return false; }
+    if (!observed && !fallback)
+    { error = observedError; return false; }
+    records = observed ? std::move(observedRecords) : std::move(fallbackRecords);
+    enums = observed ? std::move(observedEnums) : std::move(fallbackEnums);
+    error.clear();
+    return true;
+}
+
 bool compareCRecordClosureEvidence(std::span<const CppCRecordSnapshot> leftRecords,
     std::span<const CppCEnumSnapshot> leftEnums, std::string_view leftRoot,
     std::span<const CppCRecordSnapshot> rightRecords, std::span<const CppCEnumSnapshot> rightEnums,

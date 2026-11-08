@@ -153,7 +153,11 @@ bool decodeCTypeCatalogWithProvenance(std::span<const std::uint8_t> bytes,
 bool isCTypeCatalogWithProvenance(std::span<const std::uint8_t> bytes) noexcept;
 bool decodeVersionedCTypeCatalog(std::span<const std::uint8_t> bytes,
     std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums, std::string& error,
-    std::uint16_t formatMinor = 45);
+    std::uint16_t formatMinor);
+// When the enclosing metadata is unavailable, validate the complete input and
+// refuse ambiguous interpretations instead of guessing from the first byte.
+bool decodeVersionedCTypeCatalog(std::span<const std::uint8_t> bytes,
+    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums, std::string& error);
 // Reconstructs declarations for a single producer module; fields and constants
 // are installed separately. Output remains unchanged on failure.
 bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,

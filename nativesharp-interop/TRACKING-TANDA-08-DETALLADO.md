@@ -117,6 +117,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-002-10c: Verificar muestras de inicializadores de local, `for` y desestructuración antes de introducir el nombre sombreado, en O0. [Evidencia](registro-commits/t08-inicializadores-ambito-o0.md).
 - **T08-002-11 — Publicación y conflictos:**
   - La comparación de una declaración enum observada desde el mismo buffer virtual conserva evidencia transitoria de su fuente. [Evidencia](registro-commits/t08-enum-fuente-virtual.md).
+  - El lector de catálogos sin contexto valida la entrada y el módulo nuevo usa el contrato vigente; la prueba de sesión pasó. [Evidencia](registro-commits/t08-lectura-catalogo-contexto.md).
 - [x] T08-002-11a: Validar una función C requerida por plantilla precompilada con encabezado, en O0. [Evidencia](registro-commits/t08-plantilla-funcion-c.md).
 - [x] T08-002-11b: Validar la misma función tras retirar el encabezado del productor, en O0. [Evidencia](registro-commits/t08-plantilla-funcion-c.md).
 - [x] T08-002-11c: Validar muestras de global C y typedef requeridos por plantilla sin encabezado, en O0. [Evidencia](registro-commits/t08-plantilla-global-alias-c.md).
