@@ -17,6 +17,12 @@ clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Api.c" -o "%DEST%\
 if errorlevel 1 goto :failure
 llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
 if errorlevel 1 goto :failure
+clang.exe --target=x86_64-pc-windows-msvc -std=c11 -S -emit-llvm -O0 "%DEST%\Api.c" -o "%DEST%\clang.ll"
+if errorlevel 1 goto :failure
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\native.ll" 2> "%DEST%\native-ir.log"
+if errorlevel 1 goto :failure
+python "%~dp0verificar_ir.py" "%DEST%\clang.ll" "%DEST%\native.ll"
+if errorlevel 1 goto :failure
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe" > "%DEST%\consumer-O%%O.log" 2>&1
   if errorlevel 1 goto :failure
