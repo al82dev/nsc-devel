@@ -105,6 +105,8 @@ int Main() {
 out = root / "out"
 out.mkdir(exist_ok=True)
 cache = Path(r"A:\t8-cache") / uuid.uuid4().hex[:12]
+if "--cache-larga" in sys.argv:
+    cache = Path(r"A:\nsc-interop-build\cache-ruta-larga-para-reproducir-el-fallo-de-publicacion") / uuid.uuid4().hex[:12]
 command = [nsc, "--cpp-clang-root=A:\\al82dev-clang", "--emit-project-oop-exe", "Consumer.nsproj",
            "-O" + opt, "--time", "--artifact-cache=" + str(cache), "-o", "out/Consumer.exe"]
 for attempt in range(2):

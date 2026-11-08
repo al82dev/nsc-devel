@@ -269,6 +269,19 @@ const char* compilationBundleMissReasonName(
 
 void CompilationBundleCache::setRoot(std::filesystem::path root)
 {
+#if defined(_WIN32)
+    // Cache entries add a SHA-256 directory and retain artifact names. Use the
+    // extended spelling for absolute roots so staging and lookup can exceed
+    // the legacy MAX_PATH limit without changing the logical cache layout.
+    if (root.is_absolute())
+    {
+        const std::wstring value = root.lexically_normal().native();
+        if (!value.starts_with(L"\\\\?\\"))
+            root = value.starts_with(L"\\\\")
+                ? std::filesystem::path(L"\\\\?\\UNC\\" + value.substr(2))
+                : std::filesystem::path(L"\\\\?\\" + value);
+    }
+#endif
     root_ = std::move(root);
 }
 

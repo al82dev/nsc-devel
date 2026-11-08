@@ -77,6 +77,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
         - Preparación: la selección de alias está separada de la inspección del PE para poder utilizarla antes del enlace. [Evidencia](registro-commits/t08-dll-homonimas-seleccion-antes-enlace.md).
         - [x] En un ejecutable, enlazar funciones C de origen Clang no ambiguo al alias TLS; comprobar lectura y escritura en dos hilos y traslado de carpeta en O0–O3. [Evidencia](registro-commits/t08-dll-homonimas-import-directo-alias.md).
         - [x] Restaurar desde caché un ejecutable que utiliza una función C desde una plantilla precompilada y dos DLL TLS homónimas, de O0 a O3. [Evidencia](registro-commits/t08-dll-homonimas-funcion-precompilada-cache.md).
+        - [x] Publicar y restaurar el mismo tipo de paquete con una ruta de caché larga, incluidas ambas DLL TLS, en O0–O3. [Evidencia](registro-commits/t08-cache-ruta-larga.md).
         - [x] Comprobar que dos DLL homónimas que exportan la misma función producen un diagnóstico y no publican un ejecutable con una elección arbitraria. [Evidencia](registro-commits/t08-dll-homonimas-origen-ambiguo.md).
         - [x] Distinguir la misma función C de dos DLL TLS homónimas cuando cada llamada proviene de una plantilla precompilada con su origen identificado; comprobar O0–O3 y restauración desde caché. [Evidencia](registro-commits/t08-dll-homonimas-dos-funciones.md).
         - [x] Comprobar ambas funciones y sus variables TLS desde dos hilos, en O0–O3. [Evidencia](registro-commits/t08-dll-homonimas-dos-funciones-hilos.md).

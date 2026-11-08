@@ -7,6 +7,8 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 exit /b 1
   python "%~dp0validar-variadicas.py" %%O
   if errorlevel 1 exit /b 1
+  python "%~dp0validar-variadicas.py" %%O --cache-larga
+  if errorlevel 1 exit /b 1
   python "%~dp0validar-variadicas-puntero.py" %%O
   if errorlevel 1 exit /b 1
   python "%~dp0validar-variadicas-puntero.py" %%O --same-alias
