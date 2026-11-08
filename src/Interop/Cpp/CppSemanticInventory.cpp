@@ -685,6 +685,48 @@ std::vector<CppPublishedTemplateGlobalCandidates> selectCppPublishedTemplateGlob
     return result;
 }
 
+bool captureCppTemplateGlobalCandidates(const frontend::ProjectCompilation& compilation,
+    const LibraryMetadata& metadata, std::span<const CppSemanticGlobalEntry> inventory,
+    std::vector<metadata_detail::CDependencyGlobalSnapshot>& output, std::string& error)
+{
+    const auto* graph = compilation.projectGraph();
+    const auto* lookup = compilation.nameLookup();
+    if (!graph || !lookup) { error = "C template global capture requires a project lookup"; return false; }
+    const auto candidates = selectCppPublishedTemplateGlobals(compilation, metadata, inventory);
+    std::vector<frontend::CppFunctionDemand> demands;
+    for (const auto& item : compilation.cppTemplateDemands()) demands.push_back(item.demand);
+    std::vector<frontend::NamespaceStateSymbol> states;
+    if (!provideCppSemanticValuesWithLookup(*graph, compilation.cppProjectSessions(), *lookup,
+                                            demands, states, error)) return false;
+    std::vector<metadata_detail::CDependencyGlobalSnapshot> result;
+    std::set<std::tuple<std::size_t, std::size_t, std::string>> seen;
+    for (const auto& candidate : candidates)
+    {
+        const auto selected = std::find_if(states.begin(), states.end(), [&](const auto& state) {
+            return state.projectOrdinal == candidate.projectOrdinal && state.namespaceName == candidate.namespaceName &&
+                candidate.templateDemandIndex < compilation.cppTemplateDemands().size() &&
+                state.name == compilation.cppTemplateDemands()[candidate.templateDemandIndex].demand.lookupName &&
+                state.cppCGlobal && state.cppImportError.empty() && !state.cppThreadLocal;
+        });
+        if (selected == states.end()) continue;
+        for (const auto index : candidate.selection.declarationIndices)
+        {
+            if (index >= inventory.size()) { error = "C global candidate index is invalid"; return false; }
+            const auto& entry = inventory[index];
+            if (!entry.cLanguage || !entry.declaration.externalLinkage || entry.declaration.threadLocal) continue;
+            if (!seen.emplace(entry.projectOrdinal, entry.referenceIndex, selected->storageName).second) continue;
+            metadata_detail::CDependencyGlobalSnapshot snapshot;
+            const auto reference = "cpp-reference:" + std::to_string(entry.referenceIndex);
+            if (!metadata_detail::captureCDependencyGlobal(inventory, *selected, entry.referenceIndex,
+                                                             reference, snapshot, error)) return false;
+            result.push_back(std::move(snapshot));
+        }
+    }
+    output = std::move(result);
+    error.clear();
+    return true;
+}
+
 static bool provideGlobalsWithLookup(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
     std::span<const frontend::CppFunctionDemand> demands,

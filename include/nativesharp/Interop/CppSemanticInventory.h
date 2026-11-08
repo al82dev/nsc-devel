@@ -251,6 +251,9 @@ struct CppPublishedTemplateGlobalCandidates
 std::vector<CppPublishedTemplateGlobalCandidates> selectCppPublishedTemplateGlobals(
     const frontend::ProjectCompilation& compilation, const LibraryMetadata& metadata,
     std::span<const CppSemanticGlobalEntry> inventory);
+bool captureCppTemplateGlobalCandidates(const frontend::ProjectCompilation& compilation,
+    const LibraryMetadata& metadata, std::span<const CppSemanticGlobalEntry> inventory,
+    std::vector<metadata_detail::CDependencyGlobalSnapshot>& output, std::string& error);
 bool provideCppSemanticGlobals(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
     std::span<const frontend::CppFunctionDemand> demands,

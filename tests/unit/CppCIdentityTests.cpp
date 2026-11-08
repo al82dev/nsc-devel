@@ -1162,7 +1162,8 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
 {
     const std::string templateSource =
         "namespace Published { public class Bridge { public static CIdInt Test<T>(T value) { return 0; } "
-        "public static int Call<T>(T value) { return cid_function(2); } } }\n";
+        "public static int Call<T>(T value) { return cid_function(2); } "
+        "public static int Global<T>(T value) { return cid_global; } } }\n";
     const auto project = writeProject(directory / "generic-publish", "CGenericPublish", templateSource);
     const auto header = std::filesystem::absolute(directory / "a.h");
     if (project.empty() || !writeText(project,
@@ -1189,7 +1190,7 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
     LibraryMetadata metadata;
     metadata.formatMinor = 46;
     for (const auto& record : compilation.genericModel()->templates())
-        if (record.name == "Test" || record.name == "Call")
+        if (record.name == "Test" || record.name == "Call" || record.name == "Global")
         {
             LibraryMetadataGenericTemplate item;
             item.canonicalKey = record.canonicalKey;
@@ -1205,6 +1206,14 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
             capturedFunctions.front().declaration.name == "cid_function" &&
             capturedFunctions.front().linkSymbol == "cid_function",
             "real public template captures the external C function candidate")) return false;
+    const auto globalsResult = collectCppSemanticGlobals(*compilation.projectGraph(), compilation.cppProjectSessions());
+    const auto* globals = std::get_if<std::vector<CppSemanticGlobalEntry>>(&globalsResult);
+    if (!expect(globals != nullptr, "real C global inventory is available")) return false;
+    std::vector<metadata_detail::CDependencyGlobalSnapshot> capturedGlobals;
+    if (!expect(captureCppTemplateGlobalCandidates(compilation, metadata, *globals, capturedGlobals, error) &&
+            capturedGlobals.size() == 1 && capturedGlobals.front().declaration.name == "cid_global" &&
+            capturedGlobals.front().linkSymbol == "cid_global",
+            "real public template captures the external C global candidate")) return false;
     std::vector<std::uint8_t> bytes;
     std::vector<CppCRecordSnapshot> records;
     std::vector<CppCEnumSnapshot> enums;
