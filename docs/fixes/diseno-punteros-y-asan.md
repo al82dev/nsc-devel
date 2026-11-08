@@ -51,6 +51,13 @@ Crear antes un préstamo local también se rechaza (`local-check.log`). Los
 intentos de retornar `ref[this]` al campo también se rechazan con vida
 `unknown` (`ref-this-check.log`). Los scripts en la carpeta de evidencia
 reconstruyen cada variante por separado.
+Una vista `borrowed struct` que contiene la referencia sí pasó el análisis,
+pero también lo pasó al asignarla fuera del ámbito del último `Rc` y usarla
+después (`smart-pointer-view-probe/escape-check.log`); esa comprobación no
+demuestra un préstamo seguro del payload compartido.
+El prototipo recibe además un objeto ya asignado y crea el bloque de control
+por separado; no acredita la fábrica de una sola asignación del manifiesto y
+solo ensaya payloads de clase.
 Estos prototipos no son una implementación pública: no se han probado
 overflow, upgrade, Arc, sincronización, pin del módulo ni O2, y la API de
 acceso debe resolver explícitamente la vida del payload antes de publicarse.
@@ -72,6 +79,8 @@ el ejecutable terminó con código 1 y ASan informó el acceso fuera de límites
 (`A:/nsc-fixes-evidencia/asan-probe/run.log`, `link-result.json`). Esta prueba
 usa `opt` y Clang directamente; no demuestra integración en `nsc`, NSLink,
 productos particionados ni una opción pública funcional.
+Un control con acceso válido pasó por el mismo recorrido y terminó con 42
+(`A:/nsc-fixes-evidencia/asan-safe/results.json`).
 
 Una segunda prueba mínima intentó enlazar el objeto instrumentado con NSLink
 y las bibliotecas ASan y builtins de Clang. El enlazador de referencia rechazó

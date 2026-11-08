@@ -141,13 +141,58 @@ interoperabilidad ni la instalación funcional. La selección inicial compiló
 cinco objetos de ejecutables mixtos antes de corregirse el inventario; esto
 se detalla en `decisiones-pendientes.md`.
 
+Una auditoría posterior encontró un error de alcance en la selección inicial:
+`nsc.ns3.t13.calling-conventions` y `nsc.item345.vectorcall-hva` incluyen
+convenciones de interoperabilidad y se ejecutaron en ambas pasadas unitarias,
+aunque debían quedar fuera. Sus archivos se limitaron a la copia y build
+aislados; ambas pruebas se excluyeron de las siguientes pasadas. Evidencia y
+fuentes revisadas: `A:/nsc-fixes-evidencia/interop-extra-candidates.json`.
+
 La segunda pasada, con redirección temporal de 20 cachés de proyecto a A y
 restauración de sus ubicaciones previas, obtuvo 349/385 aprobadas y 36 fallidas
 (`unit-isolated-results.xml`). La prueba de extensiones y la de enlace
 incremental pasaron frente a la primera pasada; dos pruebas con fixtures en
-rutas de interoperabilidad quedaron fuera de esta repetición. Esa pasada es
+rutas de interoperabilidad quedaron fuera de esta repetición. La exclusión de
+las dos pruebas de convenciones se aplicó después para las siguientes pasadas.
+Esa pasada es
 anterior a los cambios `93d859e31` y `f3b0314c0`, cuyas regresiones dirigidas
 pasaron juntas (`struct-tests.log`).
+
+La comparación amplia posterior usó los mismos 383 nombres en ambos árboles,
+excluyendo las dos pruebas de convenciones y los dos fixtures de rutas de
+interoperabilidad. La base obtuvo 342 aprobadas y 41 fallidas; la rama obtuvo
+347 aprobadas y 36 fallidas. Cinco cambiaron de fallo a éxito y ninguna en
+sentido contrario; 36 fallaron en ambas, lo que no demuestra por sí solo que
+cada diagnóstico sea idéntico. Resultados y diferencias:
+`full-suite-run/baseline-full/unit-isolated-results.xml`,
+`current-final/unit-isolated-results.xml` y `full-baseline-comparison.json`.
+Ambas ejecuciones restauraron sus 20 redirecciones de caché. La base estaba en
+`152654e5a0e2d84d4c2f245ea7590488f0497430`; se modificó únicamente su
+`CMakeLists.txt` para enlazar ejecutables de prueba, sin cambiar código del
+compilador. La primera compilación amplia de la base falló en 70 enlaces por
+el codec y la segunda pasó (`baseline-full-build.log`,
+`baseline-full-build2.log`). Las huellas de los dos compiladores y ocho
+artefactos SDK están en `compiler-file-hashes.json` y `sdk-file-hashes.json`.
+
+La repetición final de los 68 ejemplos CC1 sin `extern C` produjo 132/136
+ejecuciones correctas en O0/O2; c25 y c26 siguen rechazados en ambos niveles
+(`cc1-final/results.json`). Se ejecutaron además los tres ejemplos Stage 57
+que CTest omite en Windows: 6/6 en O0/O2 (`stage57-native/results.json`).
+Los cinco ejemplos IO que las pruebas no podían resolver se comprobaron con
+`--library-reference-root` al SDK aislado: análisis y MIR 10/10 y ejecución
+nativa 10/10 en O0/O2 (`io-example-checks/results.json`,
+`io-example-native/results.json`). Esas comprobaciones no convierten las cinco
+entradas CTest originales en aprobadas bajo su configuración inicial.
+
+Una repetición CTest IO con enlaces temporales al SDK se interrumpió tras dos
+aprobaciones; no hay resultado completo. Se verificó que el proceso terminó,
+se restauraron las 25 redirecciones de caché y se retiraron ambos enlaces
+temporales. El log parcial está en `io-final/unit-isolated-tests.log`.
+Tres controles de depuración se ejecutaron con copias de sus fixtures dentro
+de la carpeta de evidencia: inline y ensamblado pasaron; el de ámbitos ejecutó
+el programa pero falló por los rangos PDB esperados. La revisión base falló
+en el mismo control de rangos (`debug-copies/` y `debug-copies-baseline/`).
+Los controles cuyos fixtures contienen `extern C` permanecen excluidos.
 
 **Estado abierto:** faltan pruebas del inventario, la batería completa
 pertinente no está aprobada y no se ha demostrado ejecución nativa para todos

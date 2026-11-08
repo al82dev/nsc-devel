@@ -147,7 +147,10 @@ la presencia de `DEPENDS` por sí sola no demuestra qué archivos se consumen.
 
 Una primera clasificación solo conservaba la primera coincidencia por fuente;
 se detuvieron las dos construcciones al descubrir el problema y se corrigió el
-inventario. No se ejecutaron pruebas de interoperabilidad. El cotejo contra la
+inventario. Esas dos construcciones no ejecutaron pruebas. Una auditoría
+posterior identificó dos pruebas de convenciones de interoperabilidad que sí
+se ejecutaron por error en las pasadas unitarias y luego se excluyeron; véase
+`campaign-status.md`. El cotejo contra la
 clasificación posterior identifica cinco objetos de tests mixtos compilados en
 la carpeta de build aislada: `nsc_ns3_t07_error_tests`,
 `nsc_ns3_t08_callable_tests`, `nsc_cc1_correctness_tests`,
