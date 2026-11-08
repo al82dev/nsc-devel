@@ -4784,7 +4784,7 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.stage40.struct-value-abi COMMAND nsc_stage40_struct_value_abi_tests)
 
     add_executable(nsc_stage41_arrays_strings_core_tests tests/unit/Stage41ArraysStringsCoreTests.cpp)
-    target_link_libraries(nsc_stage41_arrays_strings_core_tests PRIVATE nsc_llvm nsc_frontend nsc_target nsc_runtime)
+    target_link_libraries(nsc_stage41_arrays_strings_core_tests PRIVATE nsc_llvm nsc_frontend nsc_target nsc_runtime nsc_precompiled)
     target_compile_features(nsc_stage41_arrays_strings_core_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_stage41_arrays_strings_core_tests)
     add_test(NAME nsc.stage41.arrays-strings-core COMMAND nsc_stage41_arrays_strings_core_tests)
