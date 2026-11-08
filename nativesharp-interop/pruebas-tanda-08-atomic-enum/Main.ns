@@ -12,5 +12,19 @@ int Main()
     if (state_check() != 1) return 5;
     state = STATE_READY;
     if (state_check() != 1) return 2;
+    signed_state /= 2;
+    if ((int)signed_state != signed_reference(1)) return 10;
+    signed_state >>= 1;
+    if ((int)signed_state != signed_reference(2)) return 11;
+    signed_state += 9;
+    if ((int)signed_state != signed_reference(3)) return 12;
+    signed_state *= 3;
+    if ((int)signed_state != signed_reference(4)) return 13;
+    signed_state %= 11;
+    if ((int)signed_state != signed_reference(5)) return 14;
+    signed_state ^= 3;
+    if ((int)signed_state != signed_reference(6)) return 15;
+    signed_state &= 7;
+    if ((int)signed_state != signed_reference(7)) return 9;
     return 0;
 }
