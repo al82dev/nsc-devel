@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CFlexDecayMetadata</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="DecayConsumer.ns" />
+    <LibraryReference Include="CFlexibleProducer.lib" />
+  </ItemGroup>
+</Project>

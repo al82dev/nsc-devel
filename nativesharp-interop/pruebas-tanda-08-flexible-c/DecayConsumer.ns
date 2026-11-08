@@ -1,0 +1,12 @@
+int ReadElement(int* data) { return data[1]; }
+
+int Main()
+{
+    var value = Published.FlexBridge.Ints();
+    Published.FlexBridge.IntsStore(0, 21);
+    Published.FlexBridge.IntsStore(1, 22);
+    int* data = value->data;
+    if (data[0] != 21 || ReadElement(value->data) != 22) return 1;
+    data[1] = 67;
+    return Published.FlexBridge.IntsCheck(1, 67) == 0 ? 2 : 0;
+}
