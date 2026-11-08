@@ -358,6 +358,33 @@ void testExactArtifactSourcePrecedenceIsAutomatic(
             graph->projects()[2].moduleName() == "App",
         "automatic source precedence restores deterministic dependency order");
 }
+void testCppConsumerVolatileModeGraph(TestContext& tests, const std::filesystem::path& root)
+{
+    using nativesharp::compilation::CppConsumerVolatileMode;
+    const auto dep = root / "VolatileDep";
+    const auto app = root / "VolatileApp";
+    writeFile(dep / "Main.ns", "int Dependency() { return 1; }\n");
+    writeFile(dep / "Dep.nsproj", "<Project><PropertyGroup><Name>Dep</Name>"
+        "<CppConsumerVolatileMode>ISO</CppConsumerVolatileMode></PropertyGroup></Project>");
+    writeFile(app / "Main.ns", "int Main() { return 0; }\n");
+    writeFile(app / "App.nsproj", "<Project><PropertyGroup><Name>App</Name>"
+        "<CppConsumerVolatileMode>Microsoft</CppConsumerVolatileMode></PropertyGroup>"
+        "<ItemGroup><ProjectReference Include=\"../VolatileDep/Dep.nsproj\"/></ItemGroup></Project>");
+    ProjectGraphLoader loader;
+    std::string error;
+    auto graph = loader.load(app / "App.nsproj", error);
+    tests.expect(graph && graph->projects().size() == 2, "volatile mode project graph loads");
+    if (!graph || graph->projects().size() != 2) return;
+    tests.expect(graph->projects()[0].cppConsumerVolatileMode() == CppConsumerVolatileMode::Iso,
+        "dependency keeps ISO consumer mode during graph loading");
+    tests.expect(graph->rootProject()->cppConsumerVolatileMode() == CppConsumerVolatileMode::Microsoft,
+        "root keeps Microsoft consumer mode during graph loading");
+    writeFile(app / "Aux.nsmeta", "fixture");
+    const std::vector<PrecompiledProjectDescriptor> metadata = {{app / "App.nsproj", app / "Aux.nsmeta", "Aux"}};
+    tests.expect(graph->addPrecompiledProjects(metadata, error), "metadata graph expands");
+    tests.expect(graph->rootProject()->cppConsumerVolatileMode() == CppConsumerVolatileMode::Microsoft,
+        "root keeps consumer mode after precompiled graph expansion");
+}
 }
 
 int main()
@@ -370,6 +397,7 @@ int main()
     std::filesystem::create_directories(root, errorCode);
 
     testDependencyOrderAndDiamond(tests, root);
+    testCppConsumerVolatileModeGraph(tests, root);
     testIndependentReferencesLoadConcurrentlyAndRemainDeterministic(tests, root);
     testCycleDiagnostic(tests, root);
     testDuplicateModuleDiagnostic(tests, root);
