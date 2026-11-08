@@ -5400,6 +5400,9 @@ tanda; no modificar NSLink ni LLVM/Clang.
 Tras conciliar el enum, la resolución de alias también lo rechaza por dueño
 distinto. Extender el guard existente de records a enums cuyo USR coincida y
 cuya identidad haya sido conciliada; preservar el resto de las comparaciones.
+El diagnóstico de ese conflicto puede indicar dueños, tipos, USR y si el
+guard verificó la conciliación, para identificar la condición fallida sin
+relajarla.
 
 Enmienda: la primera implementación causó conflicto entre proyectos al
 coexistir el header y la metadata. Se permite modificar

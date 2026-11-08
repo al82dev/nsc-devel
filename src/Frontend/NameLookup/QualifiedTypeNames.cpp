@@ -262,7 +262,14 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     selected->targetTriple != alias.targetTriple ||
                     selected->declaration.underlyingType.canonicalSpelling != alias.declaration.underlyingType.canonicalSpelling))
                     return report(diagnostics::DiagnosticId::AmbiguousTypeName,
-                                  "conflicting C/C++ type alias '" + syntax->baseName() + "'");
+                                  "conflicting C/C++ type alias '" + syntax->baseName() + "'" +
+                                  " (projects " + std::to_string(selected->projectOrdinal) + "," +
+                                  std::to_string(alias.projectOrdinal) + "; types '" +
+                                  selected->declaration.underlyingType.canonicalSpelling + "','" +
+                                  alias.declaration.underlyingType.canonicalSpelling + "'; USRs '" +
+                                  selected->declaration.clangUsr.value_or("<none>") + "','" +
+                                  alias.declaration.clangUsr.value_or("<none>") + "'; reconciled=" +
+                                  (reconciledRecordAlias() ? "yes" : "no") + ")");
                 const auto& usr = alias.declaration.clangUsr;
                 const auto recordIdentity = cppAliasRecordType(alias.declaration.underlyingType);
                 const auto enumIdentity = cppAliasEnumType(alias.declaration.underlyingType);
