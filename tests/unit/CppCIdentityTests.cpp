@@ -1467,6 +1467,22 @@ bool checkDependencyTypeCodec()
         restoredCatalogue.globals[0].declaration.threadLocal &&
         restoredCatalogue.aliases[0].declaration.clangUsr == alias.declaration.clangUsr,
         "C dependency catalogue preserves three declaration categories");
+    ok &= expect(!catalogueBytes.empty() && catalogueBytes[0] == 1,
+        "C dependency catalogue without enumerators retains version one");
+    auto withEnumerator = catalogue;
+    withEnumerator.enumerators.push_back({"TestModule", "cpp-reference:0", "CAnonValue",
+        "c:@Ea@CAnonValue@CAnonValue", "builtin:int", 42});
+    std::vector<std::uint8_t> enumeratorBytes;
+    CDependencyCatalog restoredEnumerator;
+    ok &= expect(encodeCDependencyCatalog(withEnumerator, enumeratorBytes, error) &&
+        !enumeratorBytes.empty() && enumeratorBytes[0] == 2 &&
+        decodeCDependencyCatalog(enumeratorBytes, restoredEnumerator, error) &&
+        restoredEnumerator.enumerators.size() == 1 &&
+        restoredEnumerator.enumerators[0].name == "CAnonValue" &&
+        restoredEnumerator.enumerators[0].clangUsr == "c:@Ea@CAnonValue@CAnonValue" &&
+        restoredEnumerator.enumerators[0].typeKey == "builtin:int" &&
+        restoredEnumerator.enumerators[0].bits == 42,
+        "C dependency catalogue preserves an anonymous enumerator in version two");
     const std::vector<CppCEnumSnapshot> sourceEnums{syntheticEnumSnapshot()};
     std::vector<std::uint8_t> envelope;
     std::vector<CppCRecordSnapshot> restoredRecords;

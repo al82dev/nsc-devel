@@ -70,9 +70,19 @@ bool captureCDependencyAlias(std::span<const CppSemanticTypeAliasEntry> inventor
     std::string_view referenceIdentity, CDependencyAliasSnapshot& output, std::string& error);
 struct CDependencyCatalog
 {
+    struct Enumerator
+    {
+        std::string moduleName;
+        std::string referenceIdentity;
+        std::string name;
+        std::string clangUsr;
+        std::string typeKey;
+        std::uint64_t bits = 0;
+    };
     std::vector<CDependencyFunctionSnapshot> functions;
     std::vector<CDependencyGlobalSnapshot> globals;
     std::vector<CDependencyAliasSnapshot> aliases;
+    std::vector<Enumerator> enumerators;
 };
 // Canonical independent snapshot; not yet embedded in a published library.
 bool encodeCDependencyCatalog(const CDependencyCatalog& catalog,

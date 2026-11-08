@@ -681,11 +681,43 @@ bool decodeCDependencyAlias(std::span<const std::uint8_t> bytes,
     return true;
 }
 
+static bool encodeCDependencyEnumerator(const CDependencyCatalog::Enumerator& value,
+    std::vector<std::uint8_t>& output, std::string& error)
+{
+    if (value.moduleName.empty() || value.referenceIdentity.empty() || value.name.empty() ||
+        value.clangUsr.empty() || value.typeKey.empty())
+    { error = "invalid C dependency enumerator identity"; return false; }
+    ByteWriter writer;
+    writer.u8(1);
+    if (!putText(writer, value.moduleName) || !putText(writer, value.referenceIdentity) ||
+        !putText(writer, value.name) || !putText(writer, value.clangUsr) || !putText(writer, value.typeKey))
+    { error = "invalid C dependency enumerator text"; return false; }
+    writer.u64(value.bits);
+    output = writer.takeBytes(); error.clear(); return true;
+}
+
+static bool decodeCDependencyEnumerator(std::span<const std::uint8_t> bytes,
+    CDependencyCatalog::Enumerator& output, std::string& error)
+{
+    ByteReader reader(bytes);
+    CDependencyCatalog::Enumerator value;
+    std::uint8_t version = 0;
+    if (!reader.u8(version) || version != 1 || !reader.text(value.moduleName) ||
+        !reader.text(value.referenceIdentity) || !reader.text(value.name) ||
+        !reader.text(value.clangUsr) || !reader.text(value.typeKey) || !reader.u64(value.bits))
+    { error = "invalid C dependency enumerator"; return false; }
+    std::vector<std::uint8_t> canonical;
+    if (!reader.atEnd() || !encodeCDependencyEnumerator(value, canonical, error) ||
+        canonical.size() != bytes.size() || !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
+    { error = "noncanonical C dependency enumerator"; return false; }
+    output = std::move(value); error.clear(); return true;
+}
+
 bool encodeCDependencyCatalog(const CDependencyCatalog& catalog,
     std::vector<std::uint8_t>& output, std::string& error)
 {
     ByteWriter writer;
-    writer.u8(1);
+    writer.u8(catalog.enumerators.empty() ? 1 : 2);
     const auto writeGroup = [&](const auto& values, auto encode) {
         if (values.size() > maxItems) return false;
         std::vector<std::vector<std::uint8_t>> items;
@@ -709,7 +741,8 @@ bool encodeCDependencyCatalog(const CDependencyCatalog& catalog,
     };
     if (!writeGroup(catalog.functions, encodeCDependencyFunction) ||
         !writeGroup(catalog.globals, encodeCDependencyGlobal) ||
-        !writeGroup(catalog.aliases, encodeCDependencyAlias))
+        !writeGroup(catalog.aliases, encodeCDependencyAlias) ||
+        (!catalog.enumerators.empty() && !writeGroup(catalog.enumerators, encodeCDependencyEnumerator)))
     { if (error.empty()) error = "invalid C dependency catalogue"; return false; }
     output = writer.takeBytes();
     error.clear();
@@ -722,7 +755,7 @@ bool decodeCDependencyCatalog(std::span<const std::uint8_t> bytes,
     ByteReader reader(bytes);
     CDependencyCatalog catalog;
     std::uint8_t version = 0;
-    if (!reader.u8(version) || version != 1)
+    if (!reader.u8(version) || (version != 1 && version != 2))
     { error = "invalid C dependency catalogue version"; return false; }
     const auto readGroup = [&](auto& values, auto decode) {
         std::uint32_t count = 0;
@@ -741,7 +774,8 @@ bool decodeCDependencyCatalog(std::span<const std::uint8_t> bytes,
     };
     if (!readGroup(catalog.functions, decodeCDependencyFunction) ||
         !readGroup(catalog.globals, decodeCDependencyGlobal) ||
-        !readGroup(catalog.aliases, decodeCDependencyAlias))
+        !readGroup(catalog.aliases, decodeCDependencyAlias) ||
+        (version == 2 && !readGroup(catalog.enumerators, decodeCDependencyEnumerator)))
     { if (error.empty()) error = "invalid C dependency catalogue"; return false; }
     std::vector<std::uint8_t> canonical;
     if (!reader.atEnd() || !encodeCDependencyCatalog(catalog, canonical, error) ||
