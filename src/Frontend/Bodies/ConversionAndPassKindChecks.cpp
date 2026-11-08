@@ -58,7 +58,7 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyImportedFlexibleConver
     const ExpressionResult& source, std::string_view targetTypeKey) const
 {
     const auto element = ProjectMemberModel::flexibleArrayElementTypeKey(source.typeKey);
-    if (source.cppFlexibleArrayMember && source.addressable && element &&
+    if (source.cppFlexibleArrayMember && source.cppFlexibleArrayDecaySafe && element &&
         targetTypeKey == *element + "*")
         return {ProjectConversionKind::CFlexibleArrayToPointer, 1, source.typeKey,
                 std::string(targetTypeKey), std::nullopt};

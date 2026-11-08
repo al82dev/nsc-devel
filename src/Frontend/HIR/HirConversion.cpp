@@ -216,9 +216,8 @@ ProjectImplicitConversion ProjectOopHirModel::classifyExpressionConversion(
 {
     const auto* binding = expressionType(syntax);
     const auto element = ProjectMemberModel::flexibleArrayElementTypeKey(sourceTypeKey);
-    if (binding && binding->cppFlexibleArrayMember && element &&
-        (binding->valueCategory == sema::ValueCategory::Place ||
-         binding->valueCategory == sema::ValueCategory::BorrowedValue) && targetTypeKey == *element + "*")
+    if (binding && binding->cppFlexibleArrayMember && binding->cppFlexibleArrayDecaySafe && element &&
+        targetTypeKey == *element + "*")
         return {ProjectConversionKind::CFlexibleArrayToPointer, 1, std::string(sourceTypeKey),
                 std::string(targetTypeKey), std::nullopt};
     return classifyImplicit(sourceTypeKey, targetTypeKey,

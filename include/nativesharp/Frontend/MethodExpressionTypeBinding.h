@@ -54,5 +54,6 @@ struct MethodExpressionTypeBinding final
     bool pointerPointeeVolatile = false;
     // Preserve the origin needed to distinguish imported flexible members from native storage.
     bool cppFlexibleArrayMember = false;
+    bool cppFlexibleArrayDecaySafe = false;
 };
 }
