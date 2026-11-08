@@ -1,4 +1,5 @@
 <Project><PropertyGroup><Name>CAnonymousDirect</Name></PropertyGroup><ItemGroup>
   <Compile Include="Main.ns" />
+  <Compile Include="Access.ns" />
   <CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" />
 </ItemGroup></Project>

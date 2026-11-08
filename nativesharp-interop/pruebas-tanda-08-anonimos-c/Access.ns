@@ -1,0 +1,7 @@
+struct VolatileAccess
+{
+    public static int GetNatural(LAnonymous* p) { return p->vNatural; }
+    public static void SetNatural(LAnonymous* p, int value) { p->vNatural = value; }
+    public static int GetPacked(LPackedAnonymous* p) { return p->vPacked; }
+    public static void SetPacked(LPackedAnonymous* p, int value) { p->vPacked = value; }
+}

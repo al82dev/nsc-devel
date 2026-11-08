@@ -1,5 +1,6 @@
 <Project><PropertyGroup><Name>CAnonymousRepeat</Name></PropertyGroup><ItemGroup>
   <Compile Include="Main.ns" />
+  <Compile Include="Access.ns" />
   <CppLibraryReference Header="First.h" Language="C" Standard="c11" Library="api.lib" />
   <CppLibraryReference Header="Second.h" Language="C" Standard="c11" />
 </ItemGroup></Project>

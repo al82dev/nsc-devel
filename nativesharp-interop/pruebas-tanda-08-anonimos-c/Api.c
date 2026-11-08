@@ -12,3 +12,7 @@ int probe_anonymous_check(void) {
         value.vNatural == 12345 && packed.vPacked == 23456;
 }
 void probe_anonymous_set_bits(void) { value.low = 2; value.high = 11; packed.packedBits = 6; packed.packedMore = 23; }
+int anon_get_natural(LAnonymous* p) { return p->vNatural; }
+void anon_set_natural(LAnonymous* p, int v) { p->vNatural = v; }
+int anon_get_packed(LPackedAnonymous* p) { return p->vPacked; }
+void anon_set_packed(LPackedAnonymous* p, int v) { p->vPacked = v; }

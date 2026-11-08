@@ -1,0 +1,2 @@
+natural anon_get_natural anon_set_natural Natural 0
+packed anon_get_packed anon_set_packed Packed 0
