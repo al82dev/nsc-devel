@@ -4,6 +4,7 @@
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
 #include "PackedArrayAlignment.h"
+#include "CRecordBoolStorage.h"
 
 namespace nativesharp::llvm_backend
 {
@@ -795,7 +796,7 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
         const bool cBool = boolPointer || cBoolGlobalArrayElement(boolTarget) ||
             (boolTarget->kind == frontend::ProjectOopMirNodeKind::NamespaceStateAddress &&
              boolTarget->cppCBoolStorage && boolTarget->typeKey == "builtin:bool");
-        LLVMValueRef storedValue = (cBool || cVolatileBool)
+        LLVMValueRef storedValue = (cBool || cVolatileBool || cRecordBoolStorage(nameLookup_, boolTarget))
             ? LLVMBuildZExt(builder_, value, LLVMInt8TypeInContext(context_), "c.bool.storage")
             : value;
         const auto& storageTypeKey = node->children[0]->typeKey;

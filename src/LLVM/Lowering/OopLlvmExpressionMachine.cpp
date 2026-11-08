@@ -4,6 +4,7 @@
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
 #include "PackedArrayAlignment.h"
+#include "CRecordBoolStorage.h"
 
 namespace nativesharp::llvm_backend
 {
@@ -476,7 +477,9 @@ bool OopLlvmImplementation::lowerExpressionFrame004FieldLoad(
     LLVMValueRef address = fieldAddressFromReceiver(current, receiver, error);
     LLVMTypeRef type = llvmType(current->typeKey, error);
     if (address == nullptr || type == nullptr) { values.push_back(nullptr); return true; }
-    LLVMValueRef load = LLVMBuildLoad2(builder_, type, address, "field.load");
+    const bool cBoolStorage = cRecordBoolStorage(nameLookup_, current);
+    LLVMValueRef load = LLVMBuildLoad2(builder_, cBoolStorage ? LLVMInt8TypeInContext(context_) : type,
+        address, cBoolStorage ? "c.bool.field.load" : "field.load");
     if (const auto alignment = fieldOrArrayAddressAlignment(current))
         LLVMSetAlignment(load, static_cast<unsigned>(*alignment));
     if (current->volatileAccess) LLVMSetVolatile(load, 1);
@@ -492,7 +495,7 @@ bool OopLlvmImplementation::lowerExpressionFrame004FieldLoad(
         values.push_back(nullptr);
         return true;
     }
-    values.push_back(load);
+    values.push_back(cBoolStorage ? LLVMBuildTrunc(builder_, load, type, "c.bool.value") : load);
     return true;
 }
 
