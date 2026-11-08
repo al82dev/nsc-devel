@@ -35,11 +35,14 @@ simplemente agregar una referencia inversa para implementar Arc: primero hay
 que ubicar la primitiva compartida sin crear un ciclo, manteniendo disponibles
 los nombres esperados por los consumidores de Core.
 Como primer paso, `SharedReferenceCounts.ns` añade a Core un estado interno
-de contadores con cargas y compare-exchange secuencialmente consistentes. El
+de contadores locales para Rc y otro con cargas y compare-exchange
+secuencialmente consistentes para Arc. El
 frontend reconoce exclusivamente las firmas internas de 64 bits para emitir
 los mismos helpers atómicos usados por Threading. La prueba dirigida
-`nsc.sdk.atomic-shared-counts` comprueba cero, último fuerte y débil, rechazo
-de overflow y 200 000 ciclos distribuidos en cuatro hilos en O0/O2; el análisis
+`nsc.sdk.atomic-shared-counts` comprueba cero, último fuerte y débil y rechazo
+de overflow para ambos; también comprueba 200 000 ciclos atómicos distribuidos
+en cuatro hilos en O0/O2, detectando fallos intermedios de retención y
+liberación. El análisis
 del proyecto Core completo también pasó (`shared-counts-test.log` y
 `shared-core-check.log` en `A:/nsc-fixes-evidencia`). Es una primitiva interna,
 no demuestra todavía las familias públicas, la destrucción del payload ni

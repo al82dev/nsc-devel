@@ -8,6 +8,46 @@ namespace NativeSharp.Core.Internal
         public static long CompareExchange(ref long location, long value, long comparand) { return 0; }
     }
 
+    // Rc uses local-only counters and does not pay for atomic operations.
+    internal struct LocalSharedCounts
+    {
+        private long strong;
+        private long weak;
+
+        public LocalSharedCounts(long initialStrong, long initialWeak)
+        {
+            strong = initialStrong;
+            weak = initialWeak;
+        }
+
+        public long StrongCount() { return strong; }
+        public long WeakCountRaw() { return weak; }
+        public bool TryRetainStrong()
+        {
+            if (strong <= 0 || strong == 9223372036854775807l) return false;
+            strong = strong + 1;
+            return true;
+        }
+        public bool TryRetainWeak()
+        {
+            if (weak <= 0 || weak == 9223372036854775807l) return false;
+            weak = weak + 1;
+            return true;
+        }
+        public int ReleaseStrong()
+        {
+            if (strong <= 0) return -1;
+            strong = strong - 1;
+            return strong == 0 ? 1 : 0;
+        }
+        public int ReleaseWeak()
+        {
+            if (weak <= 0) return -1;
+            weak = weak - 1;
+            return weak == 0 ? 1 : 0;
+        }
+    }
+
     // weak includes the implicit weak reference owned while at least one strong reference exists.
     // ReleaseStrong returns 1 for the last strong owner; its caller destroys the payload and then
     // releases that implicit weak reference. ReleaseWeak returns 1 only to the block deallocator.

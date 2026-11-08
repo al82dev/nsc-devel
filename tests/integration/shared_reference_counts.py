@@ -27,6 +27,16 @@ class Program {
   AtomicSharedCounts full = new AtomicSharedCounts(9223372036854775807l, 9223372036854775807l);
   if (full.TryRetainStrong() || full.TryRetainWeak()) return 7;
   if (full.StrongCount() != 9223372036854775807l || full.WeakCountRaw() != 9223372036854775807l) return 8;
+  LocalSharedCounts local = new LocalSharedCounts(1l, 1l);
+  if (!local.TryRetainStrong() || !local.TryRetainWeak()) return 9;
+  if (local.StrongCount() != 2l || local.WeakCountRaw() != 2l) return 10;
+  if (local.ReleaseStrong() != 0 || local.ReleaseStrong() != 1) return 11;
+  if (local.TryRetainStrong() || local.ReleaseStrong() != -1) return 12;
+  if (local.ReleaseWeak() != 0 || local.ReleaseWeak() != 1) return 13;
+  if (local.TryRetainWeak() || local.ReleaseWeak() != -1) return 14;
+  LocalSharedCounts localFull = new LocalSharedCounts(9223372036854775807l, 9223372036854775807l);
+  if (localFull.TryRetainStrong() || localFull.TryRetainWeak()) return 15;
+  if (localFull.StrongCount() != 9223372036854775807l || localFull.WeakCountRaw() != 9223372036854775807l) return 16;
   return 42;
  }
 }''', encoding='utf-8')
@@ -49,9 +59,14 @@ class Program {
 using NativeSharp.Core.Threading;
 class Program {
  private static AtomicSharedCounts counts;
+ private static long failures;
  public static void Work() {
   int i = 0;
-  while (i < 50000) { if (counts.TryRetainStrong()) counts.ReleaseStrong(); i = i + 1; }
+  while (i < 50000) {
+   if (!counts.TryRetainStrong()) SharedAtomic.CompareExchange(ref failures, 1l, 0l);
+   else if (counts.ReleaseStrong() != 0) SharedAtomic.CompareExchange(ref failures, 1l, 0l);
+   i = i + 1;
+  }
  }
  public static int Main() {
   counts = new AtomicSharedCounts(1l, 1l);
@@ -60,7 +75,7 @@ class Program {
   raii Thread b = new Thread(start);
   raii Thread c = new Thread(start);
   Work(); a.Join(); b.Join(); c.Join();
-  return counts.StrongCount() == 1l ? 42 : 1;
+  return counts.StrongCount() == 1l && SharedAtomic.Load(ref failures) == 0l ? 42 : 1;
  }
 }''', encoding='utf-8')
             for level in ('O0', 'O2'):
