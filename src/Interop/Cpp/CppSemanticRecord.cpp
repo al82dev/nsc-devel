@@ -2063,6 +2063,23 @@ CppRecordObservationResult prepareCppRecordObservation(
                 const auto& record = inventory[*chosen].declaration;
                 if (record.sizeBits && record.alignmentBits && *record.sizeBits % 8 == 0 && *record.alignmentBits % 8 == 0)
                     memberAccessLayout = frontend::CppImportedObjectLayout{*record.sizeBits / 8, *record.alignmentBits / 8};
+                const bool hasCarrier = !record.isCxx && std::any_of(record.fields.begin(), record.fields.end(),
+                    [](const auto& field) { return field.isAnonymousCarrier; });
+                bool sameSource = hasCarrier && record.clangUsr && !record.clangUsr->empty() && record.sourceProvenance;
+                for (const auto entryIndex : group.inventoryIndices)
+                {
+                    const auto& other = inventory[entryIndex].declaration;
+                    if (!other.complete) continue;
+                    if (!sameSource || other.isCxx || other.clangUsr != record.clangUsr || !other.sourceProvenance ||
+                        other.sourceProvenance->bufferSha256 != record.sourceProvenance->bufferSha256 ||
+                        other.sourceProvenance->byteOffset != record.sourceProvenance->byteOffset ||
+                        other.sizeBits != record.sizeBits || other.alignmentBits != record.alignmentBits ||
+                        !sameCapturedMembers(record, other)) { sameSource = false; break; }
+                    std::error_code ec;
+                    if (!std::filesystem::equivalent(record.sourceProvenance->sourcePath,
+                            other.sourceProvenance->sourcePath, ec) || ec) { sameSource = false; break; }
+                }
+                if (sameSource && memberAccessLayout) objectLayout = memberAccessLayout;
             }
         result.types.push_back({group.identity, frontend::NamedTypeDeclarationKind::Struct,
                                 frontend::NamedTypeAccessibility::Public, group.projectOrdinal,
