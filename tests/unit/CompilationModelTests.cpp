@@ -1,4 +1,5 @@
 #include "nativesharp/Compilation/PartialTypeAggregator.h"
+#include "nativesharp/Compilation/Project.h"
 #include "nativesharp/Compilation/ProjectSourceSet.h"
 #include "nativesharp/Compilation/TypeIdentity.h"
 
@@ -14,6 +15,9 @@ namespace
 using nativesharp::compilation::DeclaredAccessibility;
 using nativesharp::compilation::PartialTypeAggregator;
 using nativesharp::compilation::ProjectSourceSet;
+using nativesharp::compilation::Project;
+using nativesharp::compilation::ProjectOutputKind;
+using nativesharp::compilation::CppConsumerVolatileMode;
 using nativesharp::compilation::TypeDeclarationKind;
 using nativesharp::compilation::TypeIdentity;
 using nativesharp::compilation::symbolFragmentForIdentityKey;
@@ -27,6 +31,24 @@ using nativesharp::tests::TestContext;
 TypeIdentity playerIdentity()
 {
     return TypeIdentity("Game", {"Game", "Entities"}, {}, "Player");
+}
+
+void testCppConsumerVolatileMode(TestContext& tests)
+{
+    const std::filesystem::path root = std::filesystem::temp_directory_path();
+    const auto makeProject = [&](std::optional<CppConsumerVolatileMode> mode) {
+        return Project(root / "mode.nsproj", "Mode", ProjectOutputKind::Library,
+            ProjectSourceSet(root), {}, {}, {}, nativesharp::language::PanicProfile::Abort,
+            {}, {}, {}, {}, mode);
+    };
+    const Project unspecified = makeProject(std::nullopt);
+    const Project microsoft = makeProject(CppConsumerVolatileMode::Microsoft);
+    const Project iso = makeProject(CppConsumerVolatileMode::Iso);
+    tests.expect(!unspecified.cppConsumerVolatileMode(), "consumer volatile mode remains unspecified");
+    tests.expect(microsoft.cppConsumerVolatileMode() == CppConsumerVolatileMode::Microsoft,
+        "consumer Microsoft volatile mode is retained per project");
+    tests.expect(iso.cppConsumerVolatileMode() == CppConsumerVolatileMode::Iso,
+        "consumer ISO volatile mode is retained independently");
 }
 
 TypePartDescriptor playerPart(std::size_t ordinal, bool isPartial = true)
@@ -303,6 +325,7 @@ void testPartialAggregationNegative(TestContext& tests)
 int main()
 {
     TestContext tests;
+    testCppConsumerVolatileMode(tests);
     testProjectSources(tests);
     testTypeIdentity(tests);
     testPartialAggregationPositive(tests);
