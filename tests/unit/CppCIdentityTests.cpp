@@ -546,6 +546,26 @@ bool checkTwoHeaderProject(CppClangSessionFactory& factory, const std::string& r
         aliasCaptured = selected != provided.end() && metadata_detail::captureCDependencyAlias(
             *aliases, *selected, graph->projects()[selected->projectOrdinal].moduleName(),
             "reference-a", captured, error) && captured.declaration.clangUsr == selected->declaration.clangUsr;
+        if (aliasCaptured)
+        {
+            std::vector<std::uint8_t> bytes;
+            metadata_detail::CDependencyAliasSnapshot decoded;
+            nativesharp::frontend::CppImportedTypeAlias restored{};
+            aliasCaptured = metadata_detail::encodeCDependencyAlias(captured, bytes, error) &&
+                metadata_detail::decodeCDependencyAlias(bytes, decoded, error) &&
+                reconstructCppPrecompiledCAlias(decoded, *graph, selected->projectOrdinal,
+                    selected->referenceIndex, selected->targetTriple, restored, error) &&
+                restored.declaration.clangUsr == selected->declaration.clangUsr &&
+                restored.declaration.underlyingType.canonicalSpelling ==
+                    selected->declaration.underlyingType.canonicalSpelling;
+            if (aliasCaptured)
+            {
+                const auto previous = restored.declaration.name;
+                aliasCaptured = !reconstructCppPrecompiledCAlias(decoded, *graph, graph->projects().size(),
+                    selected->referenceIndex, selected->targetTriple, restored, error) &&
+                    restored.declaration.name == previous;
+            }
+        }
     }
     if (!aliasCaptured) std::cerr << "real alias capture: " << error << '\n';
     return external && tagged && expect(aliasCaptured, "real Clang C alias observation is captured with its USR");

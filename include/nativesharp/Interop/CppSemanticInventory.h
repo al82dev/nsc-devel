@@ -27,7 +27,7 @@ class ProjectCompilation;
 namespace nativesharp::interop
 {
 struct LibraryMetadata;
-namespace metadata_detail { struct CDependencyGlobalSnapshot; }
+namespace metadata_detail { struct CDependencyGlobalSnapshot; struct CDependencyAliasSnapshot; }
 struct CppSemanticInventoryEntry
 {
     std::filesystem::path projectFile;
@@ -87,6 +87,11 @@ using CppSemanticTypeAliasInventoryResult =
     std::variant<std::vector<CppSemanticTypeAliasEntry>, CppSemanticInventoryFailure>;
 CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects);
+// Reconstructs the alias under its producer project. The caller maps the saved
+// reference identity to a reference index; this does not install the alias.
+bool reconstructCppPrecompiledCAlias(const metadata_detail::CDependencyAliasSnapshot& alias,
+    const compilation::ProjectGraph& graph, std::size_t projectOrdinal, std::size_t referenceIndex,
+    std::string_view targetTriple, frontend::CppImportedTypeAlias& output, std::string& error);
 struct CppPublishedTemplateAliasCandidates
 {
     std::string templateKey;

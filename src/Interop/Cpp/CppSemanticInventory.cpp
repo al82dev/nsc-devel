@@ -28,6 +28,27 @@
 
 namespace nativesharp::interop
 {
+bool reconstructCppPrecompiledCAlias(const metadata_detail::CDependencyAliasSnapshot& alias,
+    const compilation::ProjectGraph& graph, std::size_t projectOrdinal, std::size_t referenceIndex,
+    std::string_view targetTriple, frontend::CppImportedTypeAlias& output, std::string& error)
+{
+    if (targetTriple != "x86_64-pc-windows-msvc" || projectOrdinal >= graph.projects().size() ||
+        alias.moduleName.empty() || graph.projects()[projectOrdinal].moduleName() != alias.moduleName ||
+        alias.referenceIdentity.empty() || alias.declaration.name.empty() ||
+        alias.declaration.qualifiedName.empty() || alias.declaration.insideAnonymousNamespace ||
+        !alias.declaration.clangUsr || alias.declaration.clangUsr->empty())
+    {
+        error = "precompiled C alias has invalid owner, target or identity";
+        return false;
+    }
+    frontend::CppImportedTypeAlias value{projectOrdinal, graph.projects()[projectOrdinal].projectFile(),
+        referenceIndex, std::string(targetTriple), alias.declaration};
+    value.declaration.location.reset();
+    output = std::move(value);
+    error.clear();
+    return true;
+}
+
 std::vector<CppPublishedTemplateAliasCandidates> selectCppPublishedTemplateAliases(
     const frontend::ProjectCompilation& compilation, const LibraryMetadata& metadata,
     std::span<const CppSemanticTypeAliasEntry> inventory)
