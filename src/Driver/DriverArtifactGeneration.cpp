@@ -870,10 +870,10 @@ void printStaticLibraryGenerationResult(const llvm_backend::ProjectOopObjectBund
            << '\n'
            << "library-references: " << referencedLibraryCount << '\n'
            << "archive-members: " << builder.archiveInfo().memberCount << '\n'
-           << "host-header: " << publication.headerDestination.generic_string() << '\n'
-           << "library-metadata: " << publication.metadataDestination.generic_string() << '\n';
+           << "host-header: " << pathToUtf8(publication.headerDestination) << '\n'
+           << "library-metadata: " << pathToUtf8(publication.metadataDestination) << '\n';
     if (publication.thinLtoSidecarStaged)
-        output << "thinlto-library-sidecar: " << publication.thinLtoSidecarDestination.generic_string() << '\n';
+        output << "thinlto-library-sidecar: " << pathToUtf8(publication.thinLtoSidecarDestination) << '\n';
     if (activeExecutionScope != nullptr && activeExecutionScope->reportTiming)
         appendCodeUnitTelemetry(output, objectBundle);
 }
@@ -1325,13 +1325,13 @@ void printDynamicLibraryGenerationResult(const llvm_backend::ProjectOopObjectBun
            << "program-database: "
            << (debugInformation == llvm_backend::DebugInformationKind::None
                    ? "none"
-                   : publication.pdbDestination.generic_string())
+                   : pathToUtf8(publication.pdbDestination))
            << '\n'
            << "linked-libraries: " << linkLibraryCount << '\n'
            << "packaged-runtimes: " << packagedRuntimeCount << '\n'
-           << "import-library: " << publication.importLibraryDestination.generic_string() << '\n'
-           << "host-header: " << publication.headerDestination.generic_string() << '\n'
-           << "library-metadata: " << publication.metadataDestination.generic_string() << '\n'
+           << "import-library: " << pathToUtf8(publication.importLibraryDestination) << '\n'
+           << "host-header: " << pathToUtf8(publication.headerDestination) << '\n'
+           << "library-metadata: " << pathToUtf8(publication.metadataDestination) << '\n'
            << "exports: " << builder.dynamicLibraryInfo().exportedSymbols.size() << '\n';
     for (const std::string &symbol : builder.dynamicLibraryInfo().exportedSymbols)
         output << "  " << symbol << '\n';

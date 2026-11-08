@@ -15,7 +15,7 @@ static bool hasEquivalentCppLibrary(const std::vector<std::filesystem::path> &li
                                     const std::filesystem::path &candidate)
 {
     for (const auto &library : libraries)
-        if (foldedName(library.filename().string()) == foldedName(candidate.filename().string()) &&
+        if (foldedPathKey(library.filename()) == foldedPathKey(candidate.filename()) &&
             filesHaveEqualContents(library, candidate))
             return true;
     return false;
@@ -112,7 +112,7 @@ bool validateCppImportRuntimes(
         for (const auto &[unused, runtime] : group)
         {
             (void)unused;
-            expected.insert(foldedName(runtime.filename().string()));
+            expected.insert(foldedPathKey(runtime.filename()));
         }
         for (const auto &name : names)
         {
@@ -121,7 +121,7 @@ bool validateCppImportRuntimes(
             if (expected.contains(folded)) continue;
             if (expected.size() == 1)
                 error = "C/C++ import library '" + library.string() + "' names DLL '" + name +
-                        "' but Runtime is '" + group.front().second.filename().string() + "'";
+                        "' but Runtime is '" + pathToUtf8(group.front().second.filename()) + "'";
             else
                 error = "C/C++ import library '" + library.string() + "' requires undeclared DLL '" + name + "'";
             return false;
@@ -129,9 +129,9 @@ bool validateCppImportRuntimes(
         for (const auto &[unused, runtime] : group)
         {
             (void)unused;
-            if (imported.contains(foldedName(runtime.filename().string()))) continue;
+            if (imported.contains(foldedPathKey(runtime.filename()))) continue;
             error = "C/C++ import library '" + library.string() + "' does not name declared Runtime '" +
-                    runtime.filename().string() + "'";
+                    pathToUtf8(runtime.filename()) + "'";
             return false;
         }
     }
@@ -320,14 +320,14 @@ bool validateLibraryReferenceRuntime(const compilation::LibraryReference &refere
             error += "; unexpected " + std::to_string(unexpected.size()) + ": " + describeSymbols(unexpected);
         return false;
     }
-    const std::string runtimeName = foldedName(reference.runtimePath.filename().string());
+    const std::string runtimeName = foldedPathKey(reference.runtimePath.filename());
     const auto runtimeOwner = runtimeNames.find(runtimeName);
     if (runtimeOwner != runtimeNames.end() &&
         foldedPathKey(runtimeOwner->second) != foldedPathKey(reference.runtimePath) &&
         !filesHaveEqualContents(runtimeOwner->second, reference.runtimePath))
     {
         error = "two precompiled library references require different DLLs named '" +
-                reference.runtimePath.filename().string() + "'";
+                pathToUtf8(reference.runtimePath.filename()) + "'";
         return false;
     }
     if (runtimeOwner == runtimeNames.end())
@@ -375,7 +375,7 @@ bool validateLibraryReference(const compilation::LibraryReference &reference,
     if (owner == moduleOwners.end())
         moduleOwners.emplace(metadata->moduleName, reference.libraryPath);
     const std::string runtimeName =
-        reference.runtimePath.empty() ? std::string() : foldedName(reference.runtimePath.filename().string());
+        reference.runtimePath.empty() ? std::string() : foldedPathKey(reference.runtimePath.filename());
     for (const interop::LibraryMetadataExport &exportRecord : metadata->exports)
         publishedExports[exportRecord.cAbiName].push_back(
             {metadata->moduleName, runtimeName, exportRecord.returnTypeKey, exportRecord.parameterTypeKeys});
@@ -532,7 +532,7 @@ bool validateImportedFunctionRuntime(
     if (!function.importDllName.empty())
     {
         const std::string requestedRuntime =
-            foldedName(std::filesystem::path(function.importDllName).filename().string());
+            foldedPathKey(pathFromUtf8(function.importDllName).filename());
         for (const PrecompiledExportContract &candidate : found->second)
         {
             if (candidate.runtimeName != requestedRuntime)
@@ -643,7 +643,7 @@ bool verifyLinkedRuntimeLibraries(std::span<const std::filesystem::path> runtime
     for (const std::string &imported : image.importedLibraries)
         reachable.insert(foldedName(imported));
     for (const auto &runtime : dynamicallyLoadedRuntimes)
-        reachable.insert(foldedName(runtime.filename().string()));
+        reachable.insert(foldedPathKey(runtime.filename()));
 
     // An import archive is lazy: a runtime whose types are used only in another DLL's public
     // signature need not contribute a direct EXE import. Follow the declared runtime DLLs so a
@@ -656,7 +656,7 @@ bool verifyLinkedRuntimeLibraries(std::span<const std::filesystem::path> runtime
         changed = false;
         for (const std::filesystem::path &runtime : runtimeLibraries)
         {
-            const std::string runtimeName = foldedName(runtime.filename().string());
+            const std::string runtimeName = foldedPathKey(runtime.filename());
             if (!reachable.contains(runtimeName) || !expanded.insert(runtimeName).second)
                 continue;
             linker::PeExecutableVerifier verifier;
@@ -674,12 +674,12 @@ bool verifyLinkedRuntimeLibraries(std::span<const std::filesystem::path> runtime
 
     for (const std::filesystem::path &runtime : runtimeLibraries)
     {
-        const std::string expected = foldedName(runtime.filename().string());
+        const std::string expected = foldedPathKey(runtime.filename());
         const bool dynamic = std::any_of(dynamicallyLoadedRuntimes.begin(), dynamicallyLoadedRuntimes.end(),
             [&](const auto &path) { return foldedPathKey(path) == foldedPathKey(runtime); });
         if (!reachable.contains(expected) && !dynamic)
         {
-            error = "linked PE does not import declared runtime DLL '" + runtime.filename().string() +
+            error = "linked PE does not import declared runtime DLL '" + pathToUtf8(runtime.filename()) +
                     "' directly or transitively; the import .lib does not match Runtime";
             return false;
         }

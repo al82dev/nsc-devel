@@ -58,7 +58,8 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
   - [x] T08-002-09m7c0c: Comprobar primeros accesos a las DLL TLS desde dos hilos liberados por una señal común, en O0–O3. [Evidencia y límite](registro-commits/t08-tls-dll-concurrencia.md).
   - [x] T08-002-09m7c0d: Instrumentar la entrada a `LoadLibraryExW` y comprobar que dos hilos coinciden antes de permitir la carga inicial. [Evidencia](registro-commits/t08-tls-dll-concurrencia-instrumentada.md).
   - [x] T08-002-09m7c0e: Resolver la DLL TLS por la ruta del módulo cuando otra DLL con el mismo nombre ya está cargada, en O0–O3. [Evidencia](registro-commits/t08-tls-dll-preexistente.md).
-  - [ ] T08-002-09m7c0f: Comprobar rutas y nombres de DLL con caracteres fuera de la página de códigos del sistema.
+  - [x] T08-002-09m7c0f: Comprobar una DLL y una salida con U+6F22, incluyendo restauración desde caché. [Evidencia](registro-commits/t08-tls-dll-unicode.md).
+  - [ ] T08-002-09m7c0g: Ampliar la cobertura Unicode a otras formas de ruta, nombres de fuentes y equivalencia de mayúsculas/minúsculas.
   - [ ] T08-002-09m7c1: Admitir dos DLL diferentes con el mismo nombre de archivo procedentes de directorios diferentes; requieren una identidad y carga por ruta que preserven ambas bibliotecas.
 - [ ] T08-002-09m7d: Comprobar los demás calificadores y variantes de enlace de la global externa compartida.
 - [x] T08-002-09n: Enlazar una sola vez una biblioteca C idéntica propagada por dos productores y conservar dos bibliotecas distintas con el mismo nombre, en O0. [Evidencia](registro-commits/t08-dependencia-c-compartida.md).

@@ -152,6 +152,7 @@ bool verifyLinkedRuntimeLibraries(std::span<const std::filesystem::path> runtime
                                   std::span<const std::filesystem::path> dynamicallyLoadedRuntimes,
                                   std::string &error);
 std::filesystem::path pathFromUtf8(std::string_view value);
+std::string pathToUtf8(const std::filesystem::path &value);
 // EN: Shared by file code generation and the project `-opt` actions: creates the target machine
 //     of the level and runs the LLVM pipeline over the module.
 // ES: Compartida por la generacion de codigo de archivo y las acciones `-opt` de proyecto: crea la

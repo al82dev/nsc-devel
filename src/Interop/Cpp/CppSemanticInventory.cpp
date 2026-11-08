@@ -868,7 +868,10 @@ static bool provideGlobalsWithLookup(
                         basic::Sha256Digest digest{};
                         std::uintmax_t size = 0;
                         if (!basic::sha256File(*tlsRuntime, digest, size, error)) return false;
-                        state.cppTlsRuntimeIdentity = tlsRuntime->filename().string() + ":" + basic::sha256Hex(digest);
+                        const auto encodedName = tlsRuntime->filename().generic_u8string();
+                        state.cppTlsRuntimeIdentity =
+                            std::string(reinterpret_cast<const char*>(encodedName.data()), encodedName.size()) +
+                            ":" + basic::sha256Hex(digest);
                     }
                     const auto fromC = [&](std::size_t index) { return entries[index].cLanguage; };
                     state.cppCGlobal = !selected.declarationIndices.empty() &&

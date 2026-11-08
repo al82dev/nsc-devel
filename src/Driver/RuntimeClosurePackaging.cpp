@@ -6,6 +6,12 @@ namespace nativesharp::driver
 {
 using target::BuiltinLayoutKind;
 
+std::string pathToUtf8(const std::filesystem::path &value)
+{
+    const auto encoded = value.generic_u8string();
+    return std::string(reinterpret_cast<const char*>(encoded.data()), encoded.size());
+}
+
 std::filesystem::path pathFromUtf8(std::string_view value)
 {
 #if defined(_WIN32)
@@ -120,7 +126,9 @@ bool appendReferencedCppRuntimes(const frontend::ProjectCompilation &compilation
         basic::Sha256Digest digest{};
         std::uintmax_t size = 0;
         if (!basic::sha256File(candidate, digest, size, error)) return false;
-        const auto identity = candidate.filename().string() + ":" + basic::sha256Hex(digest);
+        const auto encodedName = candidate.filename().generic_u8string();
+        const auto identity = std::string(reinterpret_cast<const char*>(encodedName.data()), encodedName.size()) +
+            ":" + basic::sha256Hex(digest);
         if (!dynamicIdentities.contains(identity)) continue;
         matchedIdentities.insert(identity);
         if (selectedPaths.insert(foldedPathKey(candidate)).second) selected.push_back(candidate);
@@ -150,7 +158,7 @@ bool appendReferencedCppRuntimes(const frontend::ProjectCompilation &compilation
             ++scanned;
         }
         for (const auto &candidate : candidates)
-            if (importedNames.contains(foldedName(candidate.filename().string())) &&
+            if (importedNames.contains(foldedPathKey(candidate.filename())) &&
                 selectedPaths.insert(foldedPathKey(candidate)).second)
             {
                 selected.push_back(candidate);
@@ -237,7 +245,7 @@ bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibrari
     std::unordered_map<std::string, std::filesystem::path> owners;
     auto addRuntime = [&](const std::filesystem::path &runtime)
     {
-        const std::string name = foldedName(runtime.filename().string());
+        const std::string name = foldedPathKey(runtime.filename());
         const auto owner = owners.find(name);
         if (owner != owners.end())
         {

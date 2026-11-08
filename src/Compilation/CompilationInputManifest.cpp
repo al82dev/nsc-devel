@@ -13,9 +13,15 @@ namespace nativesharp::compilation
 {
 namespace
 {
+std::string inputPathUtf8(const std::filesystem::path& path)
+{
+    const auto encoded = path.generic_u8string();
+    return std::string(reinterpret_cast<const char*>(encoded.data()), encoded.size());
+}
+
 std::string inputPathKey(const std::filesystem::path& path)
 {
-    std::string key = path.lexically_normal().generic_string();
+    std::string key = inputPathUtf8(path.lexically_normal());
     std::transform(
         key.begin(), key.end(), key.begin(),
         [](unsigned char value)
@@ -39,9 +45,9 @@ std::string logicalInputPath(
     const std::filesystem::path relative = path.lexically_relative(rootDirectory);
     if (!relative.empty() && *relative.begin() != "..")
     {
-        return relative.generic_string();
+        return inputPathUtf8(relative);
     }
-    return path.filename().generic_string();
+    return inputPathUtf8(path.filename());
 }
 
 bool appendInputIdentity(
@@ -320,7 +326,7 @@ void CompilationInputManifest::setBundleOutputPath(std::filesystem::path outputP
 void CompilationInputManifest::addRequiredBundleOutput(
     std::filesystem::path outputPath)
 {
-    const std::string name = outputPath.filename().generic_string();
+    const std::string name = inputPathUtf8(outputPath.filename());
     if (name.empty() || std::ranges::find(requiredBundleOutputNames_, name) !=
             requiredBundleOutputNames_.end())
     {

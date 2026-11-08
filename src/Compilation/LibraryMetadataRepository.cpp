@@ -192,7 +192,8 @@ std::filesystem::path LibraryMetadataRepository::canonicalPath(
 
 std::string LibraryMetadataRepository::pathKey(const std::filesystem::path& path)
 {
-    std::string key = path.generic_string();
+    const auto encoded = path.generic_u8string();
+    std::string key(reinterpret_cast<const char*>(encoded.data()), encoded.size());
     std::transform(key.begin(), key.end(), key.begin(), [](unsigned char character) {
         return static_cast<char>(std::tolower(character));
     });

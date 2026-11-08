@@ -97,7 +97,8 @@ static LLVMValueRef cppDllTlsExportHelper(LLVMContextRef context, LLVMModuleRef 
     auto afterSeparator = LLVMBuildAdd(builder, previous, one, "directory.length");
     const auto suffix = LLVMBuildGEP2(builder, i16, path, &afterSeparator, 1, "path.suffix");
     const auto remaining = LLVMBuildSub(builder, capacity, afterSeparator, "path.remaining");
-    LLVMValueRef convertValues[] = {zero, zero, library, LLVMConstInt(i32, -1, 1), suffix, remaining};
+    LLVMValueRef convertValues[] = {LLVMConstInt(i32, 65001, 0), LLVMConstInt(i32, 8, 0),
+                                    library, LLVMConstInt(i32, -1, 1), suffix, remaining};
     const auto converted = LLVMBuildCall2(builder, convertType, convert, convertValues, 6, "path.converted");
     LLVMBuildCondBr(builder, LLVMBuildICmp(builder, LLVMIntSGT, converted, zero, "convert.ok"), findBlock, fail);
     LLVMPositionBuilderAtEnd(builder, findBlock);

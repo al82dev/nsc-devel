@@ -21,7 +21,8 @@ std::string entryKey(
     std::filesystem::file_time_type writeTime)
 {
     std::string material = "nsc-file-digest-v1\n";
-    material += canonical.generic_string();
+    const auto encoded = canonical.generic_u8string();
+    material.append(reinterpret_cast<const char*>(encoded.data()), encoded.size());
     material.push_back('\n');
     material += std::to_string(size);
     material.push_back('\n');

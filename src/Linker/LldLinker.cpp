@@ -968,6 +968,48 @@ bool prepareStableLinkInputs(
 #endif
 }
 
+// NSLink's response-file path handling cannot open some non-ASCII archive
+// names. Keep their contents unchanged and supply ASCII names in the private
+// link working directory; the original paths remain the source of identity.
+bool stageUnicodeLinkLibraries(const std::filesystem::path& directory,
+    std::span<const std::filesystem::path> libraries,
+    std::vector<std::filesystem::path>& staged, std::string& error)
+{
+    staged.clear();
+    for (std::size_t index = 0; index < libraries.size(); ++index)
+    {
+#ifdef _WIN32
+        const auto encoded = libraries[index].generic_u8string();
+        const bool nonAscii = std::any_of(encoded.begin(), encoded.end(),
+            [](char8_t c) { return static_cast<unsigned char>(c) >= 0x80; });
+        if (nonAscii && !directory.empty())
+        {
+            const auto name = std::filesystem::path("__nsc_archive_" + std::to_string(index) + ".lib");
+            const auto target = directory / name;
+            std::error_code ec;
+            std::filesystem::create_hard_link(libraries[index], target, ec);
+            if (ec)
+            {
+                ec.clear();
+                std::filesystem::copy_file(libraries[index], target, ec);
+            }
+            if (ec)
+            {
+                error = "could not stage Unicode linker input '" + utf8Path(libraries[index]) + "': " + ec.message();
+                return false;
+            }
+            staged.push_back(name);
+            continue;
+        }
+#else
+        (void)directory;
+        (void)error;
+#endif
+        staged.push_back(libraries[index]);
+    }
+    return true;
+}
+
 /// EN: Returns how `/pdb:` names the PDB: its file name inside the link directory on Windows,
 ///     the full path where the portable launcher cannot choose a working directory.
 /// ES: Devuelve como nombra `/pdb:` al PDB: su nombre de archivo dentro del directorio de enlace en
@@ -1211,8 +1253,11 @@ bool LldLinker::linkDynamicLibrary(
     std::vector<std::filesystem::path> stableObjects;
     if (!prepareStableLinkInputs(outputPath, objectFiles, linkDirectory, stableObjects, error))
         return false;
+    std::vector<std::filesystem::path> stableLibraries;
+    if (!stageUnicodeLinkLibraries(linkDirectory, importLibraries, stableLibraries, error))
+        return finishStableLinkInputs(linkDirectory, {}, false, error);
     const std::vector<std::string> arguments = dynamicLibraryArguments(
-        stableObjects, importLibraries, exportSymbols, outputPath, importLibraryPath, pdbPath,
+        stableObjects, stableLibraries, exportSymbols, outputPath, importLibraryPath, pdbPath,
         removeUnreferencedSections_);
     std::error_code cleanupError;
     if (!writeResponseFile(responsePath, arguments, error))
@@ -1345,8 +1390,11 @@ bool LldLinker::linkExecutable(
     std::vector<std::filesystem::path> stableObjects;
     if (!prepareStableLinkInputs(outputPath, objectFiles, linkDirectory, stableObjects, error))
         return false;
+    std::vector<std::filesystem::path> stableLibraries;
+    if (!stageUnicodeLinkLibraries(linkDirectory, importLibraries, stableLibraries, error))
+        return finishStableLinkInputs(linkDirectory, {}, false, error);
     const std::vector<std::string> arguments = executableArguments(
-        stableObjects, importLibraries, outputPath, subsystem, pdbPath, removeUnreferencedSections_);
+        stableObjects, stableLibraries, outputPath, subsystem, pdbPath, removeUnreferencedSections_);
     std::error_code cleanupError;
     if (!writeResponseFile(responsePath, arguments, error))
         return finishStableLinkInputs(linkDirectory, {}, false, error);

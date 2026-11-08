@@ -824,7 +824,8 @@ bool parseDescriptor(const SimpleXmlElement& root, ProjectDescriptor& descriptor
 
 bool isReservedDirectory(const std::filesystem::path& path)
 {
-    const std::string name = path.filename().string();
+    const auto encoded = path.filename().generic_u8string();
+    const std::string name(reinterpret_cast<const char*>(encoded.data()), encoded.size());
     return equalsFolded(name, "bin") || equalsFolded(name, "obj") ||
         equalsFolded(name, ".git") || equalsFolded(name, ".nsc");
 }
@@ -1118,7 +1119,7 @@ std::filesystem::path resolveLibraryReferencePath(
     const ProjectLoadOptions& options,
     std::string_view text)
 {
-    const std::filesystem::path path{std::string(text)};
+    const std::filesystem::path path{std::u8string(text.begin(), text.end())};
     const std::optional<std::filesystem::path>& explicitRoot =
         options.libraryReferenceRoot.has_value()
             ? options.libraryReferenceRoot

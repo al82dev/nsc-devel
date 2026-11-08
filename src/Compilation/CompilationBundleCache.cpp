@@ -68,6 +68,17 @@ bool validArtifactName(const std::filesystem::path& name)
     return !name.empty() && name == name.filename() && name != "." && name != "..";
 }
 
+std::filesystem::path artifactPathFromUtf8(std::string_view text)
+{
+    return std::filesystem::path(std::u8string(text.begin(), text.end()));
+}
+
+std::string artifactPathToUtf8(const std::filesystem::path& path)
+{
+    const auto encoded = path.generic_u8string();
+    return std::string(reinterpret_cast<const char*>(encoded.data()), encoded.size());
+}
+
 // EN: Hashes each file with sha256File, one file per worker when there are several. hashed[index]
 //     is the result of sha256File for paths[index] and errors[index] its error.
 // ES: Calcula el hash de cada archivo con sha256File, un archivo por worker cuando hay varios.
@@ -120,10 +131,10 @@ void hashBundleOutputs(
     std::set<std::string> names;
     std::vector<std::filesystem::path> paths;
     while (paths.size() < outputNames.size() &&
-           validArtifactName(std::filesystem::path(outputNames[paths.size()])) &&
+           validArtifactName(artifactPathFromUtf8(outputNames[paths.size()])) &&
            names.insert(outputNames[paths.size()]).second)
     {
-        paths.push_back(outputDirectory / std::filesystem::path(outputNames[paths.size()]));
+        paths.push_back(outputDirectory / artifactPathFromUtf8(outputNames[paths.size()]));
     }
     hashFiles(paths, digests, sizes, errors, hashed);
 }
@@ -165,10 +176,16 @@ bool readArtifactRecords(
             detail = "artifact-name-encoding";
             return false;
         }
-        const std::filesystem::path name = std::filesystem::path(decodedName).filename();
+        std::filesystem::path name;
+        try { name = artifactPathFromUtf8(decodedName).filename(); }
+        catch (const std::exception&)
+        {
+            detail = "artifact-name-encoding";
+            return false;
+        }
         std::uintmax_t expectedSize = 0;
         const std::string digest = line.substr(secondTab + 1);
-        if (!validArtifactName(name) || name.generic_string() != decodedName ||
+        if (!validArtifactName(name) || artifactPathToUtf8(name) != decodedName ||
             !names.insert(decodedName).second ||
             !parseSize(
                 std::string_view(line).substr(firstTab + 1, secondTab - firstTab - 1),
@@ -195,7 +212,7 @@ bool checkArtifactRecord(
     CompilationBundleMissReason& reason,
     std::string& detail)
 {
-    detail = record.cachedPath.filename().generic_string();
+    detail = artifactPathToUtf8(record.cachedPath.filename());
     std::error_code fileError;
     if (!std::filesystem::is_regular_file(record.cachedPath, fileError))
     {
@@ -514,7 +531,7 @@ bool CompilationBundleCache::store(
     for (std::size_t index = 0; index < outputNames.size(); ++index)
     {
         const std::string& outputName = outputNames[index];
-        const std::filesystem::path name = outputName;
+        const std::filesystem::path name = artifactPathFromUtf8(outputName);
         if (!validArtifactName(name) || !names.insert(outputName).second)
         {
             std::filesystem::remove_all(staging, filesystemError);
