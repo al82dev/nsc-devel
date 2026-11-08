@@ -46,6 +46,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-002-09m3: Verificar un puntero externo compartido y rechazar discrepancias `const` o `volatile` en el dato apuntado, en O0. [Evidencia](registro-commits/t08-global-externa-puntero-calificadores.md).
 - [x] T08-002-09m4: Verificar lectura y actualización atómicas de una global C externa compartida y rechazar discrepancia de `_Atomic`, en O0. [Evidencia](registro-commits/t08-global-externa-atomica.md).
 - [x] T08-002-09m5: Publicar y consumir una global C externa TLS usada por plantillas de dos bibliotecas sin encabezados originales, en O0. [Evidencia](registro-commits/t08-tls-externa-plantillas.md).
+  - [x] T08-002-09m5a: Comprobar el aislamiento de la global externa compartida entre el hilo principal y otro hilo real, en O0. [Evidencia](registro-commits/t08-tls-externa-hilos.md).
 - [x] T08-002-09m6: Publicar y consumir dos globales C TLS internas desde plantillas precompiladas sin encabezados, en O0. [Evidencia](registro-commits/t08-tls-interna-plantillas.md).
   - [x] T08-002-09m6a: Comprobar aislamiento entre hilo principal y un hilo real para las dos globales TLS internas, en O0. [Evidencia](registro-commits/t08-tls-interna-hilos.md).
 - [ ] T08-002-09m7: Comprobar los demás calificadores y variantes de enlace de la global externa compartida.
