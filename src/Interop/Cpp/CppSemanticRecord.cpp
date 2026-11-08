@@ -349,13 +349,15 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         const auto target = projectCppRecordTypeIdentity(field.type, moduleName);
         const auto ordinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
         const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
-        if (target && imported && imported->projectOrdinal == projectOrdinal && imported->objectLayout &&
+        const auto* layout = imported && imported->objectLayout ? &*imported->objectLayout :
+            imported && field.isAnonymousCarrier && imported->memberAccessLayout ? &*imported->memberAccessLayout : nullptr;
+        if (target && imported && imported->projectOrdinal == projectOrdinal && layout &&
             (!field.type.recordIdentity || !field.type.recordIdentity->clangUsr || !imported->clangUsr ||
              field.type.recordIdentity->clangUsr == imported->clangUsr) &&
             !imported->isIncomplete && field.type.sizeBits && *field.type.sizeBits % 8 == 0 &&
-            *field.type.sizeBits / 8 == imported->objectLayout->sizeBytes && field.type.alignmentBits &&
+            *field.type.sizeBits / 8 == layout->sizeBytes && field.type.alignmentBits &&
             *field.type.alignmentBits % 8 == 0 &&
-            *field.type.alignmentBits / 8 == imported->objectLayout->alignmentBytes)
+            *field.type.alignmentBits / 8 == layout->alignmentBytes)
             mapped = CppScalarTypeMapping{"type:" + target->key(), field.type.canonicalSpelling,
                                           field.type.isConst, field.type.isVolatile};
     }

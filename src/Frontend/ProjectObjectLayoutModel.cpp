@@ -140,6 +140,14 @@ bool ProjectObjectLayoutModel::build(
             const auto* ownerLayout = owner && owner->memberAccessLayout ? &*owner->memberAccessLayout :
                 owner && owner->objectLayout ? &*owner->objectLayout : nullptr;
             auto physical = valueLayoutForTypeKey(nameLookup, member.declaredTypeKey);
+            if (!physical && member.isCppAnonymousCarrier && member.declaredTypeKey.starts_with("type:"))
+            {
+                const auto ordinal = nameLookup.typeOrdinalForIdentity(member.declaredTypeKey.substr(5));
+                const auto* type = ordinal ? nameLookup.cppImportedType(*ordinal) : nullptr;
+                if (type && type->memberAccessLayout)
+                    physical = std::pair<std::uint64_t, std::uint64_t>{
+                        type->memberAccessLayout->sizeBytes, type->memberAccessLayout->alignmentBytes};
+            }
             // Miembro de arreglo flexible C importado: cero bytes en su offset de Clang, alineacion del
             // elemento. Imported C flexible array member: zero bytes at its Clang offset, element alignment.
             if (!physical)
