@@ -1,5 +1,8 @@
 int Main()
 {
     FlexPacked* value = flex_packed();
-    return value->data[0];
+    PackedAccess.SetPacked(value, 0, 1234567);
+    if (flex_packed_get(value, 0) != 1234567) return 1;
+    flex_packed_set(value, 1, -9876);
+    return PackedAccess.GetPacked(value, 1) == -9876 ? 0 : 2;
 }

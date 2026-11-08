@@ -1,0 +1,10 @@
+int Main()
+{
+    var value = Published.PackedBridge.Pointer();
+    PackedAccess.SetPacked(value, 0, 1234567);
+    if (Published.PackedBridge.Get(value, 0) != 1234567) return 1;
+    Published.PackedBridge.Set(value, 1, -9876);
+    if (PackedAccess.GetPacked(value, 1) != -9876) return 2;
+    var copy = Published.PackedBridge.Value();
+    return copy.tag == (sbyte)7 && Published.PackedBridge.Take(copy) == 7 ? 0 : 3;
+}

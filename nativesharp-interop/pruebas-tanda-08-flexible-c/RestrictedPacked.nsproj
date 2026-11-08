@@ -2,6 +2,7 @@
   <PropertyGroup><Name>CFlexRestrictedPacked</Name></PropertyGroup>
   <ItemGroup>
     <Compile Include="RestrictedPacked.ns" />
+    <Compile Include="PackedAccess.ns" />
     <CppLibraryReference Header="Restricted.h" Language="C" Standard="c11" Library="restricted.lib" />
   </ItemGroup>
 </Project>

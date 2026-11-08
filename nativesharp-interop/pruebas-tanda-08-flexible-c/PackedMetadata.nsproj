@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CPackedMetadata</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="PackedConsumer.ns" />
+    <Compile Include="PackedAccess.ns" />
+    <LibraryReference Include="CPackedProducer.lib" />
+  </ItemGroup>
+</Project>

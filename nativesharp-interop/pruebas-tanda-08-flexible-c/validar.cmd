@@ -23,6 +23,7 @@ set "FILES=%FILES% Project.nsproj Producer.nsproj Metadata.nsproj Shared.nsproj"
 set "FILES=%FILES% RestrictedConst.ns RestrictedConst.nsproj RestrictedPacked.ns RestrictedPacked.nsproj"
 set "FILES=%FILES% ProbeSizeofMember.ns ProbeSizeofMember.nsproj ProbeDecay.ns ProbeDecay.nsproj"
 set "FILES=%FILES% ProbeValueInts.ns ProbeValueInts.nsproj ProbeValuePacked.ns ProbeValuePacked.nsproj"
+set "FILES=%FILES% PackedAccess.ns PackedProducer.ns PackedConsumer.ns PackedProducer.nsproj PackedShared.nsproj PackedMetadata.nsproj"
 for %%F in (%FILES%) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
@@ -34,6 +35,8 @@ if errorlevel 1 exit /b 1
 llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\ApiRestricted.c" -o "%DEST%\restricted.obj"
+if errorlevel 1 exit /b 1
+clang.exe -S -emit-llvm -O1 --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\ApiRestricted.c" -o "%DEST%\restricted-ref.ll"
 if errorlevel 1 exit /b 1
 llvm-lib.exe /nologo /out:"%DEST%\restricted.lib" "%DEST%\restricted.obj"
 if errorlevel 1 exit /b 1
@@ -65,12 +68,32 @@ for %%P in (Shared Metadata) do (
   python "%VERIFY%" "%DEST%\api-ref.ll" "%DEST%\%%P.ll" "%DEST%\alineacion-%%P.txt" "%~dp0tabla-alineacion.txt"
   if errorlevel 1 exit /b 1
 )
-for %%P in (RestrictedConst RestrictedPacked) do (
+for %%P in (RestrictedConst) do (
   %EMIT_EXE% "%DEST%\%%P.nsproj" -O0 --no-artifact-cache -o "%DEST%\%%P.exe" > "%DEST%\%%P.log" 2>&1
   if not errorlevel 1 exit /b 1
   findstr /l /c:"has no compatible member named 'data'" "%DEST%\%%P.log" >nul
   if errorlevel 1 exit /b 1
   echo Restriccion %%P: rechazo esperado confirmado.
+)
+for %%O in (0 1 2 3) do (
+  %EMIT_EXE% "%DEST%\RestrictedPacked.nsproj" -O%%O --no-artifact-cache -o "%DEST%\packed-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  "%DEST%\packed-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  %EMIT_LIB% "%DEST%\PackedProducer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\CPackedProducer.lib"
+  if errorlevel 1 exit /b 1
+  for %%P in (PackedShared PackedMetadata) do (
+    %EMIT_EXE% "%DEST%\%%P.nsproj" -O%%O --no-artifact-cache -o "%DEST%\%%P-O%%O.exe"
+    if errorlevel 1 exit /b 1
+    "%DEST%\%%P-O%%O.exe"
+    if errorlevel 1 exit /b 1
+  )
+)
+for %%P in (RestrictedPacked PackedShared PackedMetadata) do (
+  nsc.exe %CLANG_ROOT% --dump-project-oop-llvm "%DEST%\%%P.nsproj" > "%DEST%\%%P.ll"
+  if errorlevel 1 exit /b 1
+  python "%VERIFY%" "%DEST%\restricted-ref.ll" "%DEST%\%%P.ll" "%DEST%\alignment-%%P.txt" "%~dp0tabla-alineacion-packed.txt"
+  if errorlevel 1 exit /b 1
 )
 for %%P in (ProbeSizeofMember ProbeDecay) do call :probe %%P
 for %%O in (0 1 2 3) do (

@@ -1,0 +1,5 @@
+public struct PackedAccess
+{
+    public static int GetPacked(FlexPacked* value, int index) { return value->data[index]; }
+    public static void SetPacked(FlexPacked* value, int index, int element) { value->data[index] = element; }
+}

@@ -1073,6 +1073,11 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     conversión implícita a puntero sigue rechazada y la tanda permanece abierta.
     [Proyección](registro-commits/t08-flexible-c-integracion.md) y
     [ABI](registro-commits/t08-flexible-c-abi.md).
+  - El miembro flexible `int` desalineado de un struct `pack(1)` ya admite
+    lecturas y escrituras en directo, Shared y Metadata O0–O3; su IR conserva
+    alineación 1 como Clang. El retorno y argumento por valor del caso empaquetado
+    pasaron también en los consumidores precompilados.
+    [Evidencia](registro-commits/t08-flexible-c-packed.md).
   - Miembros anónimos C11: diseño con carriers y aliases del punto 326 y catálogo C versión 5; no
     implementado porque requiere NSMETA. [Diseño](registro-commits/t08-anonimos-c-diseno.md).
 - [ ] T08-011. Importar la declaración y campos de una `union` C.

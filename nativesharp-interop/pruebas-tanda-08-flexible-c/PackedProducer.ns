@@ -1,0 +1,11 @@
+namespace Published
+{
+    public struct PackedBridge
+    {
+        public static FlexPacked* Pointer() { return flex_packed(); }
+        public static FlexPacked Value() { return flex_packed_value(); }
+        public static int Take(FlexPacked value) { return flex_packed_take(value); }
+        public static int Get(FlexPacked* value, int index) { return flex_packed_get(value, index); }
+        public static void Set(FlexPacked* value, int index, int element) { flex_packed_set(value, index, element); }
+    }
+}

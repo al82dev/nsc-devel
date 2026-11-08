@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-010: miembro flexible C empaquetado
+
+Permitir índices y acceso cruzado de miembros flexibles desalineados de structs
+C empaquetados, preservando el offset y la alineación efectiva de Clang. Probar
+lecturas, escrituras, alineación del IR y paso y retorno por valor en directo y
+mediante biblioteca precompilada O0–O3. Presupuesto: proyección de campos C,
+fixture flexible, gate existente, seguimiento y evidencia. Conservar los
+rechazos de tipos aún no representables; no modificar NSLink, formato NSMETA,
+LLVM/Clang ni desplegar en C:.
+
 ## T08-010: ABI Win64 de structs C con miembro flexible
 
 Corregir el fallo de acceso reproducido al pasar o devolver por valor un struct

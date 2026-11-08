@@ -131,7 +131,9 @@ std::optional<CppSemanticInstanceField> projectCFlexibleArrayField(const CppReco
     const auto naturalAlignment = *element->alignmentBits / 8;
     const auto recordAlignment = *record.alignmentBits / 8;
     if ((naturalAlignment & (naturalAlignment - 1)) != 0 || recordAlignment == 0 ||
-        std::gcd(recordAlignment, *field.offsetBits / 8) % naturalAlignment != 0) return std::nullopt;
+        (recordAlignment & (recordAlignment - 1)) != 0) return std::nullopt;
+    const auto effectiveAlignment = std::min(naturalAlignment, std::gcd(recordAlignment, *field.offsetBits / 8));
+    if (effectiveAlignment == 0) return std::nullopt;
     std::optional<CppScalarTypeMapping> mapped;
     if (element->kind == CppTypeKind::Boolean || element->kind == CppTypeKind::SignedInteger ||
         element->kind == CppTypeKind::UnsignedInteger || element->kind == CppTypeKind::Floating)
@@ -154,7 +156,7 @@ std::optional<CppSemanticInstanceField> projectCFlexibleArrayField(const CppReco
     if (!mapped) return std::nullopt;
     return CppSemanticInstanceField{projectOrdinal, ownerIdentityKey, field.name,
         CppScalarTypeMapping{mapped->nativeSharpTypeKey + "[*]", field.type.canonicalSpelling, false, false},
-        *field.offsetBits / 8, false, 0, naturalAlignment, field.clangUsr};
+        *field.offsetBits / 8, false, 0, effectiveAlignment, field.clangUsr};
 }
 }
 
