@@ -817,6 +817,8 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
         !field.declaredPointerPointeeVolatile && !unalignedImportedField && !unaddressableValueReceiver &&
         !(field.isCppExternal && (field.isReadonly || receiver.readonlyReceiver));
     result.readonlyReceiver = receiver.readonlyReceiver || field.isReadonly;
+    result.cppFlexibleArrayMember = field.isCppExternal &&
+        ProjectMemberModel::flexibleArrayElementTypeKey(field.declaredTypeKey).has_value();
     result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
     result.pointerPointeeVolatile = field.declaredPointerPointeeVolatile;
     result.pointerNullable = field.declaredPointerNullable;
