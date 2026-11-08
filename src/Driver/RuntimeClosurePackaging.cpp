@@ -171,11 +171,9 @@ bool appendReferencedCppRuntimes(const frontend::ProjectCompilation &compilation
     return true;
 }
 
-bool computeCppTlsRuntimeAliases(const frontend::ProjectCompilation &compilation,
-                                 std::span<const std::filesystem::path> dynamicallyLoadedRuntimes,
-                                 std::span<const std::filesystem::path> runtimeLibraries,
-                                 const linker::PeExecutableInfo &image,
-                                 CppTlsRuntimeAliases &aliases, std::string &error)
+bool selectCppTlsRuntimeAliases(const frontend::ProjectCompilation &compilation,
+                                std::span<const std::filesystem::path> dynamicallyLoadedRuntimes,
+                                CppTlsRuntimeAliases &aliases, std::string &error)
 {
     aliases.clear();
     const auto *mir = compilation.oopMirModel();
@@ -194,7 +192,6 @@ bool computeCppTlsRuntimeAliases(const frontend::ProjectCompilation &compilation
             })) identities.insert(field.cppTlsRuntimeIdentity);
     }
     if (identities.empty()) return true;
-    std::unordered_set<std::string> renamedNames;
     std::unordered_set<std::string> matched;
     for (const auto &path : dynamicallyLoadedRuntimes)
     {
@@ -206,7 +203,6 @@ bool computeCppTlsRuntimeAliases(const frontend::ProjectCompilation &compilation
         const std::string alias = interop::cppTlsDllAlias(identity);
         if (alias.empty()) { error = "invalid C TLS DLL identity"; return false; }
         aliases.emplace(foldedPathKey(path), alias);
-        renamedNames.insert(foldedPathKey(path.filename()));
         matched.insert(identity);
     }
     if (matched.size() != identities.size())
@@ -214,6 +210,20 @@ bool computeCppTlsRuntimeAliases(const frontend::ProjectCompilation &compilation
         error = "cannot locate all DLLs needed for C TLS aliases";
         return false;
     }
+    return true;
+}
+
+bool computeCppTlsRuntimeAliases(const frontend::ProjectCompilation &compilation,
+                                 std::span<const std::filesystem::path> dynamicallyLoadedRuntimes,
+                                 std::span<const std::filesystem::path> runtimeLibraries,
+                                 const linker::PeExecutableInfo &image,
+                                 CppTlsRuntimeAliases &aliases, std::string &error)
+{
+    if (!selectCppTlsRuntimeAliases(compilation, dynamicallyLoadedRuntimes, aliases, error)) return false;
+    if (aliases.empty()) return true;
+    std::unordered_set<std::string> renamedNames;
+    for (const auto &path : dynamicallyLoadedRuntimes)
+        if (aliases.contains(foldedPathKey(path))) renamedNames.insert(foldedPathKey(path.filename()));
     const auto hasAmbiguousImport = [&](const linker::PeExecutableInfo &info) {
         return std::any_of(info.importedLibraries.begin(), info.importedLibraries.end(),
             [&](const std::string &name) { return renamedNames.contains(foldedName(name)); });

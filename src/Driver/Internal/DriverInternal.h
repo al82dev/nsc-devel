@@ -176,6 +176,10 @@ std::optional<std::filesystem::path> registerImplicitProject(std::string_view so
 bool lowerSourceFileModule(std::string_view sourcePath, bool executable,
                            std::unique_ptr<llvm_backend::LlvmModule> &llvmModule, std::ostream &error);
 using CppTlsRuntimeAliases = std::unordered_map<std::string, std::string>;
+// The selection itself is independent of the linked image and can be reused before linking.
+bool selectCppTlsRuntimeAliases(const frontend::ProjectCompilation &compilation,
+                                std::span<const std::filesystem::path> dynamicallyLoadedRuntimes,
+                                CppTlsRuntimeAliases &aliases, std::string &error);
 bool computeCppTlsRuntimeAliases(const frontend::ProjectCompilation &compilation,
                                  std::span<const std::filesystem::path> dynamicallyLoadedRuntimes,
                                  std::span<const std::filesystem::path> runtimeLibraries,

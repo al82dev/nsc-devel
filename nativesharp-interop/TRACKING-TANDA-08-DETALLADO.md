@@ -74,6 +74,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
       - [x] T08-002-09m7c1d2a: Comparar la identidad de módulo de una importación directa frente a un alias copiado y un hardlink. [Evidencia](registro-commits/t08-dll-homonimas-import-directo-control.md).
       - [x] T08-002-09m7c1d2a1: Comprobar con un control C que una importación enlazada al nombre empaquetado comparte el módulo y el estado TLS en dos hilos después de trasladar el ejecutable. [Evidencia](registro-commits/t08-dll-homonimas-import-alias-control.md).
       - [ ] T08-002-09m7c1d2b: Mantener una sola instancia y estado TLS entre la llamada importada y el acceso NativeSharp, incluso después de copiar el paquete a otro equipo.
+        - Preparación: la selección de alias ya está separada de la inspección del PE para poder utilizarla antes del enlace; la importación directa sigue pendiente. [Evidencia](registro-commits/t08-dll-homonimas-seleccion-antes-enlace.md).
       - [ ] T08-002-09m7c1d2c: Resolver las dependencias transitivas de las DLL homónimas y comprobar el consumidor resultante.
     - [ ] T08-002-09m7c1d3: Comprobar el mismo escenario cuando el producto consumidor sea una DLL NativeSharp.
 - [ ] T08-002-09m7d: Comprobar los demás calificadores y variantes de enlace de la global externa compartida.
