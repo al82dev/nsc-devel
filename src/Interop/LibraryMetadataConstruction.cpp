@@ -3060,7 +3060,7 @@ bool buildMetadataModel(
     if (!appendBinaryDependencies(compilation, metadata, error)) return false;
     appendPlatformImports(compilation, metadata);
     const auto previousMinor = metadata.formatMinor;
-    if (metadata.formatMinor < 46) metadata.formatMinor = 46;
+    if (metadata.formatMinor < 47) metadata.formatMinor = 47;
     if (!compilation.collectCppMetadataCatalog(metadata, metadata.cppCRecordCatalog, error)) return false;
     if (metadata.cppCRecordCatalog.empty()) metadata.formatMinor = previousMinor;
     else if (metadata.cppCRecordCatalog[0] != 5 && previousMinor < 46)

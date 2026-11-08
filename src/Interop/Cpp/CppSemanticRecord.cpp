@@ -1089,6 +1089,12 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         auto inventory = collectCppSemanticEnums(*graph, compilation.cppProjectSessions());
         if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&inventory))
         { error = failure->message; return false; }
+        std::vector<frontend::CppFunctionDemand> demands;
+        for (const auto& item : compilation.cppTemplateDemands())
+            if (published.contains(item.templateKey)) demands.push_back(item.demand);
+        std::vector<frontend::NamespaceStateSymbol> constants;
+        if (!provideCppSemanticEnumConstants(*graph, compilation.cppProjectSessions(), demands, constants, error)) return false;
+        std::set<std::pair<std::size_t, std::string>> capturedEnumerators;
         for (const auto& item : compilation.cppTemplateDemands())
         {
             const auto& demand = item.demand;
@@ -1096,10 +1102,22 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                 std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), "") == demand.lookupNamespaces.end()) continue;
             for (const auto& entry : std::get<std::vector<CppSemanticEnumEntry>>(inventory))
             {
-                if (entry.declaration.isCxx || entry.declaration.name.empty() || entry.projectOrdinal >= graph->projects().size() ||
+                if (entry.declaration.isCxx || entry.projectOrdinal >= graph->projects().size() ||
                     std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), entry.projectOrdinal) == demand.visibleProjects.end()) continue;
                 if (std::none_of(entry.declaration.enumerators.begin(), entry.declaration.enumerators.end(),
                     [&](const auto& value) { return value.name == demand.lookupName; })) continue;
+                if (entry.declaration.name.empty())
+                {
+                    if (metadata.formatMinor < 47) continue;
+                    const auto selected = std::find_if(constants.begin(), constants.end(), [&](const auto& value) {
+                        return value.projectOrdinal == entry.projectOrdinal && value.name == demand.lookupName &&
+                            value.isCppEnumConstant && value.cppImportError.empty() && value.cppClangUsr && !value.cppClangUsr->empty();
+                    });
+                    if (selected == constants.end() || !capturedEnumerators.emplace(entry.projectOrdinal, selected->name).second) continue;
+                    dependencies.enumerators.push_back({selected->moduleName, "cpp-reference:" + std::to_string(entry.referenceIndex),
+                        selected->name, *selected->cppClangUsr, selected->declaredTypeKey, selected->integerValue});
+                    continue;
+                }
                 compilation::TypeIdentity identity(graph->projects()[entry.projectOrdinal].moduleName(), {}, {}, entry.declaration.name);
                 if (identity.isValid()) enumSeeds[entry.projectOrdinal].insert(identity.key());
             }
@@ -1159,7 +1177,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
             if (function.moduleName == dependency.moduleName && function.mangledName == dependency.linkSymbol &&
                 function.cppClangUsr == dependency.declaration.clangUsr && !visitCallable(function)) return false;
     if (seeds.empty() && enumSeeds.empty() && dependencies.aliases.empty() && dependencies.functions.empty() &&
-        dependencies.globals.empty())
+        dependencies.globals.empty() && dependencies.enumerators.empty())
     { output.clear(); error.clear(); return true; }
     auto inventoryResult = collectCppSemanticRecords(*graph, compilation.cppProjectSessions());
     if (const auto* failure = std::get_if<CppSemanticRecordFailure>(&inventoryResult))
@@ -1234,7 +1252,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         };
         for (const auto& field : record.fields) if (!checkEnum(field.type, 0)) return false;
     }
-    if (!dependencies.aliases.empty() || !dependencies.functions.empty() || !dependencies.globals.empty())
+    if (!dependencies.aliases.empty() || !dependencies.functions.empty() || !dependencies.globals.empty() || !dependencies.enumerators.empty())
         return metadata_detail::encodeCTypeCatalogWithDependencies(records, enums, dependencies, output, error);
     if (metadata.formatMinor >= 43)
     {
@@ -1535,6 +1553,27 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             }
             names.emplace(key, live.size());
             live.push_back(std::move(state));
+        }
+        for (const auto& enumerator : dependencies.enumerators)
+        {
+            const auto owner = owners.find(enumerator.moduleName);
+            if (owner == owners.end() || ambiguous.contains(enumerator.moduleName))
+            { error = "precompiled C enumerator owner is missing or ambiguous: " + enumerator.moduleName; return false; }
+            frontend::NamespaceStateSymbol state;
+            state.projectOrdinal = owner->second;
+            state.moduleName = enumerator.moduleName;
+            state.name = enumerator.name;
+            state.accessibility = frontend::NamespaceFunctionAccessibility::Public;
+            state.isConst = true;
+            state.isCppEnumConstant = true;
+            state.cppClangUsr = enumerator.clangUsr;
+            state.declaredTypeKey = enumerator.typeKey;
+            state.initializerKind = frontend::NamespaceStateInitializerKind::Integer;
+            state.integerValue = enumerator.bits;
+            state.identityKey = "state:" + state.moduleName + "::." + state.name;
+            state.storageName = "__nsc_cenum_" + std::to_string(state.moduleName.size()) + "_" +
+                state.moduleName + "_" + std::to_string(state.name.size()) + "_" + state.name;
+            constants.push_back(std::move(state));
         }
     }
     for (auto& constant : constants)
