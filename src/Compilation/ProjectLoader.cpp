@@ -150,6 +150,11 @@ std::string displayPathUtf8(const std::filesystem::path& path)
     return std::string(reinterpret_cast<const char*>(encoded.data()), encoded.size());
 }
 
+std::filesystem::path pathFromUtf8(std::string_view value)
+{
+    return std::filesystem::path(std::u8string(value.begin(), value.end()));
+}
+
 std::string pathKey(const std::filesystem::path& path)
 {
     std::string key = displayPathUtf8(path);
@@ -671,7 +676,7 @@ bool parseCppLibraryReferenceItem(
                 error = "IncludeDirectory Kind must be User or System";
                 return false;
             }
-            reference.includePaths.push_back({std::filesystem::path(trim(*path)), includeKind});
+            reference.includePaths.push_back({pathFromUtf8(trim(*path)), includeKind});
         }
         else if (child.name == "Define" || child.name == "Undefine")
         {
@@ -1088,7 +1093,7 @@ std::optional<std::vector<std::filesystem::path>> loadProjectReferences(
     std::error_code filesystemError;
     for (const std::string& referenceText : descriptor.projectReferences)
     {
-        const std::filesystem::path unresolved = projectDirectory / referenceText;
+        const std::filesystem::path unresolved = projectDirectory / pathFromUtf8(referenceText);
         const std::filesystem::path reference =
             std::filesystem::weakly_canonical(unresolved, filesystemError);
         if (filesystemError || !std::filesystem::is_regular_file(reference))
@@ -1267,7 +1272,7 @@ std::optional<std::vector<CppLibraryReference>> loadCppLibraryReferences(
     {
         CppLibraryReference reference;
         std::error_code ec;
-        reference.headerPath = std::filesystem::weakly_canonical(projectDirectory / input.header, ec);
+        reference.headerPath = std::filesystem::weakly_canonical(projectDirectory / pathFromUtf8(input.header), ec);
         if (ec || !std::filesystem::is_regular_file(reference.headerPath, ec) || ec)
         {
             error = "CppLibraryReference header does not exist: '" + input.header + "'";
@@ -1300,7 +1305,7 @@ std::optional<std::vector<CppLibraryReference>> loadCppLibraryReferences(
             const auto path = std::filesystem::weakly_canonical(projectDirectory / include.path, ec);
             if (ec || !std::filesystem::is_directory(path, ec) || ec)
             {
-                error = "CppLibraryReference include directory does not exist: '" + include.path.string() + "'";
+                error = "CppLibraryReference include directory does not exist: '" + displayPathUtf8(include.path) + "'";
                 return std::nullopt;
             }
             reference.includePaths.push_back({path, include.kind});
