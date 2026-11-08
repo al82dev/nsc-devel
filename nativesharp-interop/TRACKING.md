@@ -221,6 +221,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Se recuperó una muestra 1.45 producida antes de la introducción de 1.46 y
     el lector actual la verificó. Falta una muestra independiente 1.46 y volver
     a ejecutar la suite. [Procedencia](registro-commits/t08-nsmeta-145-fixture-recuperado.md).
+  - Se conservó una muestra real 1.47 generada antes de introducir 1.48; el
+    lector actual la verificó. Con el formato actual 1.49 faltan muestras
+    independientes 1.46 y 1.48 y repetir la suite completa de metadata.
+    [Procedencia](registro-commits/t08-nsmeta-147-fixture-recuperado.md).
   - Actualización H3: el catálogo 1.46 publica dependencias candidatas de alias,
     funciones externas y `static inline`, y globales externas e internas usadas
     por plantillas. Los controles específicos de esas cinco categorías pasaron
