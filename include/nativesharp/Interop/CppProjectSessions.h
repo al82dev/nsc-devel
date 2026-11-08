@@ -21,6 +21,7 @@ struct CppProjectSessionEnvironment
     std::filesystem::path resourceDirectory;
     std::filesystem::path workingDirectory;
     std::vector<std::filesystem::path> systemIncludePaths;
+    bool capturePreprocessingFingerprint = false;
 };
 
 struct CppProjectSessions

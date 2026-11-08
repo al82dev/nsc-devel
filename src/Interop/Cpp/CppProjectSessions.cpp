@@ -57,6 +57,7 @@ CppProjectSessionsResult openCppProjectSessions(
         for (const auto& path : environment.systemIncludePaths)
             options.includePaths.push_back({path, CppIncludeKind::System});
         options.macros = reference.macros;
+        options.capturePreprocessingFingerprint = environment.capturePreprocessingFingerprint;
         options.input = CppFileInput{reference.headerPath};
 
         auto opened = factory.open(std::move(options), cancellation);

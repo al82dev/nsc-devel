@@ -8,6 +8,7 @@
 #include "nativesharp/Linker/WindowsRuntimeImports.h"
 #include "nativesharp/Linker/WindowsRuntimeLibrary.h"
 #include "nativesharp/Interop/CppBinaryDependencies.h"
+#include "nativesharp/Basic/Sha256.h"
 #if defined(NSC_ENABLE_CPP_INTEROP)
 #include "nativesharp/Frontend/CppDiagnosticAdapter.h"
 #include "nativesharp/Interop/CppNamespaceInventory.h"
@@ -17,6 +18,7 @@
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #endif
 
+#include <algorithm>
 #include <memory>
 #include <string>
 #include <system_error>
@@ -302,6 +304,8 @@ bool lookupCompilationBundle(
     frontend::ProjectCompilation& compilation,
     const compilation::ProjectGraph& closedGraph,
     bool deferrable,
+    bool cppInputsComplete,
+    const std::vector<std::pair<std::string, std::size_t>>& cppSessionOwners,
     bool& skipMaterialization,
     std::string& error)
 {
@@ -311,7 +315,15 @@ bool lookupCompilationBundle(
         llvm_backend::activeCompilationArtifactCache();
     // Only the bundle cache uses the identity. Without it the inputs are not hashed: the lookup
     // below reports the cache as disabled and the sources are read again by the syntax phase.
-    if (artifactCache != nullptr && artifactCache->enabled())
+    for (const auto& project : closedGraph.projects())
+    {
+        if (project.cppLibraryReferences().empty()) continue;
+        const auto owner = std::make_pair(foldedPathKey(project.projectFile()),
+                                          project.cppLibraryReferences().size());
+        if (std::find(cppSessionOwners.begin(), cppSessionOwners.end(), owner) == cppSessionOwners.end())
+            cppInputsComplete = false;
+    }
+    if (artifactCache != nullptr && artifactCache->enabled() && cppInputsComplete)
     {
         interop::LibraryMetadataCodec codec;
         for (const auto& project : closedGraph.projects())
@@ -413,13 +425,9 @@ bool configurePrecompiledModules(
     }
 #endif
     const auto* artifactCache = llvm_backend::activeCompilationArtifactCache();
-    if (artifactCache != nullptr && artifactCache->enabled())
-        for (const auto& project : manifest.projectGraph().projects())
-            if (!project.cppLibraryReferences().empty())
-            {
-                error = "C/C++ project references require --no-artifact-cache until transitive headers are tracked";
-                return false;
-            }
+    const bool captureCppInputs = artifactCache != nullptr && artifactCache->enabled();
+    bool cppInputsComplete = true;
+    std::vector<std::pair<std::string, std::size_t>> cppSessionOwners;
 #if defined(NSC_ENABLE_CPP_INTEROP)
     if (activeExecutionScope != nullptr && activeExecutionScope->cppSessionEnvironment.has_value())
     {
@@ -430,8 +438,10 @@ bool configurePrecompiledModules(
         }
         interop::CppCancellationToken cancellation;
         if (activeExecutionScope->expired()) cancellation.cancel();
+        auto environment = *activeExecutionScope->cppSessionEnvironment;
+        environment.capturePreprocessingFingerprint = captureCppInputs;
         auto opened = interop::openCppGraphSessions(
-            manifest.projectGraph(), *activeExecutionScope->cppSessionEnvironment,
+            manifest.projectGraph(), environment,
             *activeExecutionScope->cppSessionFactory, cancellation);
         if (auto* failure = std::get_if<interop::CppGraphSessionFailure>(&opened))
         {
@@ -443,6 +453,35 @@ bool configurePrecompiledModules(
             return false;
         }
         const bool hasSessions = !std::get<interop::CppGraphSessions>(opened).projects.empty();
+        if (captureCppInputs)
+        {
+            for (const auto& group : std::get<interop::CppGraphSessions>(opened).projects)
+            {
+                const auto owner = foldedPathKey(group.projectFile);
+                cppSessionOwners.emplace_back(owner, group.sessions.size());
+                for (std::size_t index = 0; index < group.sessions.size(); ++index)
+                {
+                    const auto& session = group.sessions[index];
+                    if (!session) { cppInputsComplete = false; continue; }
+                    const auto options = session->optionsSnapshot();
+                    const auto fingerprint = session->preprocessingFingerprint();
+                    const auto sources = session->sourceFileContentsSnapshot();
+                    if (!fingerprint || !sources || sources->empty() || options.language != interop::CppLanguageMode::C)
+                    { cppInputsComplete = false; continue; }
+                    const std::string key = "clang-session:" + owner + ":" + std::to_string(index);
+                    manifest.addIdentityField(key + ":options", interop::cppSessionConfigurationIdentity(options));
+                    manifest.addIdentityField(key + ":preprocessing", basic::sha256Hex(*fingerprint));
+                    for (const auto& source : *sources)
+                    {
+                        const auto encoded = source.path.generic_u8string();
+                        const std::string path(reinterpret_cast<const char*>(encoded.data()), encoded.size());
+                        manifest.addIdentityField(key + ":source:" + path,
+                            std::to_string(source.size) + ":" + basic::sha256Hex(source.digest));
+                    }
+                    manifest.addInputFile(options.driverReferencePath);
+                }
+            }
+        }
         bool hasCppSessions = false;
         for (const auto& group : std::get<interop::CppGraphSessions>(opened).projects)
             for (const auto& session : group.sessions)
@@ -516,13 +555,14 @@ bool configurePrecompiledModules(
 #endif
     const bool deferrable = !manifest.requiredBundleOutputNames().empty();
     const compilation::PrecompiledMaterializationGate gate =
-        [&manifest, &compilation, deferrable](
+        [&manifest, &compilation, deferrable, cppInputsComplete, cppSessionOwners](
             const compilation::ProjectGraph& closedGraph,
             bool& skipMaterialization,
             std::string& gateError)
         {
             return lookupCompilationBundle(
-                manifest, compilation, closedGraph, deferrable, skipMaterialization, gateError);
+                manifest, compilation, closedGraph, deferrable, cppInputsComplete, cppSessionOwners,
+                skipMaterialization, gateError);
         };
     // Sources the manifest hashed for the bundle identity are served from memory; the others are
     // read from disk.
@@ -604,7 +644,7 @@ void publishCompilationBundle(
     {
         const llvm_backend::CompilationArtifactCache* const artifactCache =
             llvm_backend::activeCompilationArtifactCache();
-        if (artifactCache == nullptr || !artifactCache->enabled()) return;
+        if (artifactCache == nullptr || !artifactCache->enabled() || manifest.identity().empty()) return;
         compilation::CompilationBundleCache bundleCache;
         bundleCache.setRoot(artifactCache->root() / "compilation-bundles");
         std::string ignoredError;
