@@ -3063,6 +3063,8 @@ bool buildMetadataModel(
     if (metadata.formatMinor < 49) metadata.formatMinor = 49;
     if (!compilation.collectCppMetadataCatalog(metadata, metadata.cppCRecordCatalog, error)) return false;
     if (metadata.cppCRecordCatalog.empty()) metadata.formatMinor = previousMinor;
+    else if (metadata.cppCRecordCatalog[0] == 7)
+        metadata.formatMinor = 49;
     else if (metadata.cppCRecordCatalog[0] != 6 &&
              (metadata.cppCRecordCatalog[0] == 5 || previousMinor >= 46))
         metadata.formatMinor = previousMinor < 47 ? 47 : previousMinor;
