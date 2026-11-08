@@ -4,6 +4,7 @@
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
+#include "../Internal/CppTlsDllAlias.h"
 
 namespace nativesharp::llvm_backend
 {
@@ -584,7 +585,18 @@ LLVMValueRef OopLlvmImplementation::staticFieldAddress(const frontend::ProjectOo
                 const auto separator = field.cppTlsRuntimeIdentity.rfind(':');
                 if (separator == std::string::npos || separator == 0)
                     return failValue(error, "C TLS DLL identity has no runtime name");
-                const auto library = cStringGlobal(field.cppTlsRuntimeIdentity.substr(0, separator), "tls_dll");
+                const bool sameNameCollision = std::any_of(
+                    mirModel_.staticFields().begin(), mirModel_.staticFields().end(), [&](const auto& other) {
+                        return other.isCppExternal && other.cppThreadLocal && other.cppDllImport &&
+                            other.storageSymbol == field.storageSymbol &&
+                            other.cppTlsRuntimeIdentity != field.cppTlsRuntimeIdentity &&
+                            interop::cppTlsSameDllName(field.cppTlsRuntimeIdentity, other.cppTlsRuntimeIdentity);
+                    });
+                const auto libraryName = sameNameCollision
+                    ? interop::cppTlsDllAlias(field.cppTlsRuntimeIdentity)
+                    : field.cppTlsRuntimeIdentity.substr(0, separator);
+                if (libraryName.empty()) return failValue(error, "C TLS DLL identity has an invalid digest");
+                const auto library = cStringGlobal(libraryName, "tls_dll");
                 const auto symbol = cStringGlobal(field.storageSymbol, "tls_symbol");
                 if (!library || !symbol) return failValue(error, "C TLS DLL identity strings are unavailable");
                 LLVMTypeRef exportArguments[] = {ptr, ptr};

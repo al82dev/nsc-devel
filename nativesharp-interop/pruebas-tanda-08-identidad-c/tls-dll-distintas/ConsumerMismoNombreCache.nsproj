@@ -1,0 +1,5 @@
+<Project><PropertyGroup><Name>TlsConsumer</Name></PropertyGroup><ItemGroup>
+<Compile Include="ConsumerCache.ns" />
+<LibraryReference Include="uno/TlsProducer.lib" />
+<LibraryReference Include="dos/TlsProducer2.lib" />
+</ItemGroup></Project>

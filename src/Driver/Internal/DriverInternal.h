@@ -175,7 +175,14 @@ std::optional<std::filesystem::path> registerImplicitProject(std::string_view so
 //     Un ejecutable debe tener exactamente un punto de entrada.
 bool lowerSourceFileModule(std::string_view sourcePath, bool executable,
                            std::unique_ptr<llvm_backend::LlvmModule> &llvmModule, std::ostream &error);
+using CppTlsRuntimeAliases = std::unordered_map<std::string, std::string>;
+bool computeCppTlsRuntimeAliases(const frontend::ProjectCompilation &compilation,
+                                 std::span<const std::filesystem::path> dynamicallyLoadedRuntimes,
+                                 std::span<const std::filesystem::path> runtimeLibraries,
+                                 const linker::PeExecutableInfo &image,
+                                 CppTlsRuntimeAliases &aliases, std::string &error);
 bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibraries,
+                           const CppTlsRuntimeAliases &aliases,
                            const std::filesystem::path &destination, std::vector<std::filesystem::path> &copiedFiles,
                            std::string &error);
 bool appendReferencedCppRuntimes(const frontend::ProjectCompilation &compilation,
@@ -185,6 +192,7 @@ bool appendReferencedCppRuntimes(const frontend::ProjectCompilation &compilation
                                  std::string &error);
 bool validateCppRuntimeDestinations(const frontend::ProjectCompilation &compilation,
                                     std::span<const std::filesystem::path> runtimeLibraries,
+                                    const CppTlsRuntimeAliases &aliases,
                                     const std::filesystem::path &destinationDirectory,
                                     std::string &error);
 bool validatePackagedCppRuntimeDestinations(const frontend::ProjectCompilation &compilation,

@@ -1,0 +1,11 @@
+int CheckOtherThread(int value) {
+    if (value == 0) return TlsLib.Bridge.Access<int>(0, 0) == 3 && TlsLib2.Bridge.Access<int>(0, 0) == 7 ? 0 : 1;
+    return TlsLib.Bridge.Access<int>(0, 73) == 73 && TlsLib2.Bridge.Access<int>(0, 83) == 83 ? 0 : 1;
+}
+int Main() {
+    if (TlsLib.Bridge.Access<int>(0, 0) != 3 || TlsLib2.Bridge.Access<int>(0, 0) != 7) return 1;
+    if (TlsLib.Bridge.Access<int>(0, 41) != 41 || TlsLib2.Bridge.Access<int>(0, 51) != 51) return 2;
+    TlsThreadCallback callback = (int value) => CheckOtherThread(value);
+    if (run_tls_thread(callback) != 0) return 3;
+    return TlsLib.Bridge.Access<int>(0, 0) == 41 && TlsLib2.Bridge.Access<int>(0, 0) == 51 ? 0 : 4;
+}

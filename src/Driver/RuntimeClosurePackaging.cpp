@@ -1,6 +1,7 @@
 #include "Internal/DriverInternal.h"
 #include "nativesharp/Interop/CppBinaryDependencies.h"
 #include "nativesharp/Basic/Sha256.h"
+#include "../LLVM/Internal/CppTlsDllAlias.h"
 
 namespace nativesharp::driver
 {
@@ -170,8 +171,78 @@ bool appendReferencedCppRuntimes(const frontend::ProjectCompilation &compilation
     return true;
 }
 
+bool computeCppTlsRuntimeAliases(const frontend::ProjectCompilation &compilation,
+                                 std::span<const std::filesystem::path> dynamicallyLoadedRuntimes,
+                                 std::span<const std::filesystem::path> runtimeLibraries,
+                                 const linker::PeExecutableInfo &image,
+                                 CppTlsRuntimeAliases &aliases, std::string &error)
+{
+    aliases.clear();
+    const auto *mir = compilation.oopMirModel();
+    if (!mir) return true;
+    const auto fields = mir->staticFields();
+    std::unordered_set<std::string> identities;
+    for (const auto &field : fields)
+    {
+        if (!field.isCppExternal || !field.cppThreadLocal || !field.cppDllImport ||
+            field.cppTlsRuntimeIdentity.empty()) continue;
+        if (std::any_of(fields.begin(), fields.end(), [&](const auto &other) {
+                return other.isCppExternal && other.cppThreadLocal && other.cppDllImport &&
+                    other.storageSymbol == field.storageSymbol &&
+                    other.cppTlsRuntimeIdentity != field.cppTlsRuntimeIdentity &&
+                    interop::cppTlsSameDllName(field.cppTlsRuntimeIdentity, other.cppTlsRuntimeIdentity);
+            })) identities.insert(field.cppTlsRuntimeIdentity);
+    }
+    if (identities.empty()) return true;
+    std::unordered_set<std::string> renamedNames;
+    std::unordered_set<std::string> matched;
+    for (const auto &path : dynamicallyLoadedRuntimes)
+    {
+        basic::Sha256Digest digest{};
+        std::uintmax_t size = 0;
+        if (!basic::sha256File(path, digest, size, error)) return false;
+        const std::string identity = pathToUtf8(path.filename()) + ":" + basic::sha256Hex(digest);
+        if (!identities.contains(identity)) continue;
+        const std::string alias = interop::cppTlsDllAlias(identity);
+        if (alias.empty()) { error = "invalid C TLS DLL identity"; return false; }
+        aliases.emplace(foldedPathKey(path), alias);
+        renamedNames.insert(foldedPathKey(path.filename()));
+        matched.insert(identity);
+    }
+    if (matched.size() != identities.size())
+    {
+        error = "cannot locate all DLLs needed for C TLS aliases";
+        return false;
+    }
+    const auto hasAmbiguousImport = [&](const linker::PeExecutableInfo &info) {
+        return std::any_of(info.importedLibraries.begin(), info.importedLibraries.end(),
+            [&](const std::string &name) { return renamedNames.contains(foldedName(name)); });
+    };
+    if (hasAmbiguousImport(image))
+    {
+        error = "same-named C TLS DLLs are also imported directly and cannot yet be distinguished";
+        return false;
+    }
+    for (const auto &path : runtimeLibraries)
+    {
+        linker::PeExecutableVerifier verifier;
+        if (!verifier.verifyDynamicLibrary(path))
+        {
+            error = "cannot inspect C TLS runtime '" + pathToUtf8(path) + "': " + verifier.error();
+            return false;
+        }
+        if (hasAmbiguousImport(verifier.info()))
+        {
+            error = "same-named C TLS DLLs are also imported transitively and cannot yet be distinguished";
+            return false;
+        }
+    }
+    return true;
+}
+
 bool validateCppRuntimeDestinations(const frontend::ProjectCompilation &compilation,
                                     std::span<const std::filesystem::path> runtimeLibraries,
+                                    const CppTlsRuntimeAliases &aliases,
                                     const std::filesystem::path &destinationDirectory,
                                     std::string &error)
 {
@@ -182,7 +253,9 @@ bool validateCppRuntimeDestinations(const frontend::ProjectCompilation &compilat
     for (const auto &source : candidates)
         {
             if (source.empty() || !selected.contains(foldedPathKey(source))) continue;
-            const auto destination = destinationDirectory / source.filename();
+            const auto alias = aliases.find(foldedPathKey(source));
+            const auto destination = destinationDirectory /
+                (alias == aliases.end() ? source.filename() : pathFromUtf8(alias->second));
             std::error_code ec;
             const bool exists = std::filesystem::exists(destination, ec);
             if (ec)
@@ -235,6 +308,7 @@ bool validatePackagedCppRuntimeDestinations(const frontend::ProjectCompilation &
 }
 
 bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibraries,
+                           const CppTlsRuntimeAliases &aliases,
                            const std::filesystem::path &destination, std::vector<std::filesystem::path> &copiedFiles,
                            std::string &error)
 {
@@ -245,7 +319,9 @@ bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibrari
     std::unordered_map<std::string, std::filesystem::path> owners;
     auto addRuntime = [&](const std::filesystem::path &runtime)
     {
-        const std::string name = foldedPathKey(runtime.filename());
+        const auto alias = aliases.find(foldedPathKey(runtime));
+        const auto targetName = alias == aliases.end() ? runtime.filename() : pathFromUtf8(alias->second);
+        const std::string name = foldedPathKey(targetName);
         const auto owner = owners.find(name);
         if (owner != owners.end())
         {
@@ -292,7 +368,9 @@ bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibrari
     const std::filesystem::path packageDirectory = destination.parent_path();
     for (const std::filesystem::path &source : closure)
     {
-        const std::filesystem::path target = packageDirectory / source.filename();
+        const auto alias = aliases.find(foldedPathKey(source));
+        const std::filesystem::path target = packageDirectory /
+            (alias == aliases.end() ? source.filename() : pathFromUtf8(alias->second));
         std::error_code equivalentError;
         if (std::filesystem::equivalent(source, target, equivalentError) && !equivalentError)
             continue;

@@ -110,6 +110,8 @@ call "%~dp0tls-dll-plantillas\validar-optimizaciones.cmd"
 if errorlevel 1 exit /b 1
 call "%~dp0tls-dll-distintas\validar-optimizaciones.cmd"
 if errorlevel 1 exit /b 1
+call "%~dp0tls-dll-distintas\validar-mismo-nombre-optimizaciones.cmd"
+if errorlevel 1 exit /b 1
 call "%~dp0tls-dll-distintas\validar-empaquetado.cmd"
 if errorlevel 1 exit /b 1
 call "%~dp0tls-dll-distintas\validar-cache.cmd"

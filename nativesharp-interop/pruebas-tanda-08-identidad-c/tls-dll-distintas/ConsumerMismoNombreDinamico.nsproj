@@ -1,0 +1,6 @@
+<Project><PropertyGroup><Name>TlsConsumer</Name></PropertyGroup><ItemGroup>
+<Compile Include="ConsumerMismoNombreDinamico.ns" />
+<LibraryReference Include="uno/TlsProducer.lib" />
+<LibraryReference Include="dos/TlsProducer2.lib" />
+<CppLibraryReference Header="ThreadOnly.h" Language="C" Standard="c11" Library="thread-only.lib" Runtime="thread-only.dll" />
+</ItemGroup></Project>

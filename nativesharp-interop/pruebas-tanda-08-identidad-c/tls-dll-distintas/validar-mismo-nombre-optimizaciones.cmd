@@ -1,0 +1,10 @@
+@echo off
+setlocal
+set "NSC_T08_CACHE=1"
+for %%O in (0 1 2 3) do (
+  set "NSC_T08_OPT=%%O"
+  call "%~dp0validar-mismo-nombre.cmd"
+  if errorlevel 1 exit /b 1
+  echo DLL homonimas con cache: O%%O correcto.
+)
+exit /b 0

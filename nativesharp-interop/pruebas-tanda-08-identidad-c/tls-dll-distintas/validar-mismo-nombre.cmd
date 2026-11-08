@@ -1,5 +1,6 @@
 @echo off
 setlocal
+if not defined NSC_T08_OPT set "NSC_T08_OPT=0"
 call "%~dp0validar.cmd" dos || exit /b 1
 set "DEST=A:\nsc-interop-build\t08-tls-dos-dll-repro"
 set "PATH=A:\al82dev-clang\bin;A:\nsc-interop-build\tanda1-ON\bin;%PATH%"
@@ -14,12 +15,21 @@ lld-link.exe /nologo /dll /noentry /nodefaultlib /include:_tls_used /export:tls_
 if errorlevel 1 (type "%DEST%\mismonombre-dll.log" & exit /b 1)
 copy /y "%~dp0Producer2MismoNombre.nsproj" "%DEST%\Producer2MismoNombre.nsproj" >nul || exit /b 1
 copy /y "%~dp0ConsumerMismoNombre.nsproj" "%DEST%\ConsumerMismoNombre.nsproj" >nul || exit /b 1
+copy /y "%~dp0ConsumerMismoNombreDinamico.nsproj" "%DEST%\ConsumerMismoNombreDinamico.nsproj" >nul || exit /b 1
+copy /y "%~dp0ConsumerMismoNombreCache.nsproj" "%DEST%\ConsumerMismoNombreCache.nsproj" >nul || exit /b 1
+copy /y "%~dp0ConsumerMismoNombreDinamico.ns" "%DEST%\ConsumerMismoNombreDinamico.ns" >nul || exit /b 1
+copy /y "%~dp0ThreadOnly.h" "%DEST%\ThreadOnly.h" >nul || exit /b 1
+copy /y "%~dp0ConsumerCache.ns" "%DEST%\ConsumerCache.ns" >nul || exit /b 1
 copy /y "%~dp0ControlMismoNombre.c" "%DEST%\ControlMismoNombre.c" >nul || exit /b 1
 copy /y "%~dp0..\..\pruebas-tanda-08-tls-c\directo\TlsApi.h" "%DEST%\TlsApi.h" >nul || exit /b 1
 pushd "%DEST%" || exit /b 1
-nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib Producer.nsproj -O0 --no-artifact-cache -o uno\TlsProducer.lib > mismonombre-producer1.log 2>&1
+clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%~dp0ThreadOnly.c" -o ThreadOnly.obj > thread-only.log 2>&1
+if errorlevel 1 (type thread-only.log & popd & exit /b 1)
+lld-link.exe /nologo /dll /noentry /nodefaultlib /out:thread-only.dll /implib:thread-only.lib ThreadOnly.obj "A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\um\x64\kernel32.lib" >> thread-only.log 2>&1
+if errorlevel 1 (type thread-only.log & popd & exit /b 1)
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib Producer.nsproj -O%NSC_T08_OPT% --no-artifact-cache -o uno\TlsProducer.lib > mismonombre-producer1.log 2>&1
 if errorlevel 1 (type mismonombre-producer1.log & popd & exit /b 1)
-nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib Producer2MismoNombre.nsproj -O0 --no-artifact-cache -o dos\TlsProducer2.lib > mismonombre-producer2.log 2>&1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib Producer2MismoNombre.nsproj -O%NSC_T08_OPT% --no-artifact-cache -o dos\TlsProducer2.lib > mismonombre-producer2.log 2>&1
 if errorlevel 1 (type mismonombre-producer2.log & popd & exit /b 1)
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 ControlMismoNombre.c -o ControlMismoNombre.obj > mismonombre-control.log 2>&1
 if errorlevel 1 (type mismonombre-control.log & popd & exit /b 1)
@@ -44,10 +54,28 @@ if errorlevel 1 (echo ERROR: control C de DLL renombradas fallo. & popd & popd &
 popd
 echo Control C de DLL renombradas: correcto.
 del TlsApi.h
+if not exist salida-mismo-nombre mkdir salida-mismo-nombre
+if exist salida-mismo-nombre\ConsumerSameDynamic.exe del salida-mismo-nombre\ConsumerSameDynamic.exe
+if exist salida-mismo-nombre\__nsc_tls_*.dll del salida-mismo-nombre\__nsc_tls_*.dll
+if exist salida-mismo-nombre\thread-only.dll del salida-mismo-nombre\thread-only.dll
+copy /y dos\api.dll salida-mismo-nombre\api.dll >nul || (popd & exit /b 1)
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe ConsumerMismoNombreDinamico.nsproj -O%NSC_T08_OPT% --no-artifact-cache -o salida-mismo-nombre\ConsumerSameDynamic.exe > mismonombre-dinamico.log 2>&1
+if errorlevel 1 (type mismonombre-dinamico.log & popd & exit /b 1)
+fc /b dos\api.dll salida-mismo-nombre\api.dll >nul
+if errorlevel 1 (echo ERROR: se modifico la DLL preexistente. & popd & exit /b 1)
+pushd A:\ || (popd & exit /b 1)
+"%DEST%\salida-mismo-nombre\ConsumerSameDynamic.exe"
+if errorlevel 1 (echo ERROR: consumidor de DLL homonimas fallo. & popd & popd & exit /b 1)
+popd
+echo Consumidor de DLL homonimas: correcto.
+if defined NSC_T08_CACHE (
+  call "%~dp0validar-mismo-nombre-cache.cmd"
+  if errorlevel 1 (popd & exit /b 1)
+)
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe ConsumerMismoNombre.nsproj -O0 --no-artifact-cache -o ConsumerSame.exe > mismonombre-consumer.log 2>&1
-if not errorlevel 1 (echo ERROR: se aceptaron DLL distintas con igual nombre. & popd & exit /b 1)
-findstr /c:"same file name cannot yet be distinguished" mismonombre-consumer.log >nul
+if not errorlevel 1 (echo ERROR: se aceptaron importaciones directas ambiguas. & popd & exit /b 1)
+findstr /c:"imported directly and cannot yet be distinguished" mismonombre-consumer.log >nul
 if errorlevel 1 (type mismonombre-consumer.log & popd & exit /b 1)
 popd
-echo DLL distintas con igual nombre: diagnostico detectado; interoperabilidad pendiente.
+echo Importaciones directas ambiguas: diagnostico detectado.
 exit /b 0
