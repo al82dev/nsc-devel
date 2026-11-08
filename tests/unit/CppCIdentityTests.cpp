@@ -355,6 +355,53 @@ bool checkUsrStability(CppClangSessionFactory& factory, const std::string& resou
                     std::vector<std::string>({"CIdCarriers", "__nsc_c_anonymous_1"}) &&
                 record->fields[1].name.empty(),
                 "anonymous records get deterministic nested identities without modifying the Clang observation");
+            if (declarations)
+            {
+                std::vector<CppCRecordSnapshot> snapshots;
+                for (const auto& declaration : *declarations)
+                {
+                    const auto identity = projectCppRecordIdentity(declaration, "Probe");
+                    if (!identity) { carriersOk = false; break; }
+                    CppCRecordSnapshot snapshot;
+                    snapshot.identityKey = identity->key();
+                    snapshot.moduleName = "Probe";
+                    snapshot.namespaceSegments = declaration.namespaceSegments;
+                    snapshot.containingRecords = declaration.containingRecords;
+                    snapshot.name = declaration.name;
+                    snapshot.targetTriple = "x86_64-pc-windows-msvc";
+                    snapshot.kind = declaration.kind;
+                    snapshot.complete = true;
+                    snapshot.sizeBits = declaration.sizeBits;
+                    snapshot.alignmentBits = declaration.alignmentBits;
+                    snapshot.fields = declaration.fields;
+                    snapshots.push_back(std::move(snapshot));
+                }
+                std::sort(snapshots.begin(), snapshots.end(), [](const auto& a, const auto& b) {
+                    return a.identityKey < b.identityKey;
+                });
+                std::vector<std::uint8_t> bytes;
+                std::string error;
+                metadata_detail::CDependencyCatalog dependencies, restoredDependencies;
+                std::vector<CppCRecordSnapshot> restored;
+                std::vector<CppCEnumSnapshot> restoredEnums;
+                const bool encoded = snapshots.size() == declarations->size() &&
+                    metadata_detail::encodeCTypeCatalogWithAnonymousCarriers(snapshots, {}, dependencies, bytes, error);
+                const bool decoded = encoded && metadata_detail::decodeCTypeCatalogWithAnonymousCarriers(
+                    bytes, restored, restoredEnums, restoredDependencies, error);
+                std::size_t carrierCount = 0;
+                for (const auto& item : restored)
+                    for (const auto& field : item.fields) carrierCount += field.isAnonymousCarrier;
+                carriersOk &= expect(decoded && restored.size() == 4 && carrierCount == 3,
+                    "anonymous carrier envelope preserves all nested carrier markers");
+                if (encoded)
+                {
+                    bytes.push_back(0);
+                    restored.clear();
+                    carriersOk &= expect(!metadata_detail::decodeCTypeCatalogWithAnonymousCarriers(
+                        bytes, restored, restoredEnums, restoredDependencies, error) && restored.empty(),
+                        "anonymous carrier envelope rejects trailing bytes without publishing output");
+                }
+            }
             auto conflicting = *record;
             conflicting.fields[0].name = "__nsc_c_anonymous_1";
             carriersOk &= expect(std::holds_alternative<std::string>(materializeCppAnonymousCRecords(conflicting)),

@@ -84,6 +84,14 @@ struct CDependencyCatalog
     std::vector<CDependencyAliasSnapshot> aliases;
     std::vector<Enumerator> enumerators;
 };
+// Version 6 envelope: base catalogue plus explicit anonymous C carrier indices.
+// These helpers are not connected to NSMETA publication or dispatch yet.
+bool encodeCTypeCatalogWithAnonymousCarriers(std::span<const CppCRecordSnapshot> records,
+    std::span<const CppCEnumSnapshot> enums, const CDependencyCatalog& dependencies,
+    std::vector<std::uint8_t>& output, std::string& error);
+bool decodeCTypeCatalogWithAnonymousCarriers(std::span<const std::uint8_t> bytes,
+    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums,
+    CDependencyCatalog& dependencies, std::string& error);
 // Canonical independent snapshot; not yet embedded in a published library.
 bool encodeCDependencyCatalog(const CDependencyCatalog& catalog,
     std::vector<std::uint8_t>& output, std::string& error);

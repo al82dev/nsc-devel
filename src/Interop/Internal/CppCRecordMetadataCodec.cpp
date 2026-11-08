@@ -862,6 +862,82 @@ bool decodeCTypeCatalogAndDependencies(std::span<const std::uint8_t> bytes, std:
     return true;
 }
 
+bool encodeCTypeCatalogWithAnonymousCarriers(std::span<const CppCRecordSnapshot> records,
+    std::span<const CppCEnumSnapshot> enums, const CDependencyCatalog& dependencies,
+    std::vector<std::uint8_t>& output, std::string& error)
+{
+    std::vector<std::pair<std::uint32_t, std::uint32_t>> carriers;
+    if (records.size() > maxItems) { error = "too many C records"; return false; }
+    for (std::size_t r = 0; r < records.size(); ++r)
+    {
+        if (records[r].fields.size() > maxItems) { error = "too many C fields"; return false; }
+        for (std::size_t f = 0; f < records[r].fields.size(); ++f)
+        {
+            const auto& field = records[r].fields[f];
+            if (!field.isAnonymousCarrier) continue;
+            if (field.name != "__nsc_c_anonymous_" + std::to_string(f) ||
+                field.type.kind != CppTypeKind::Record || !field.type.recordIdentity ||
+                field.type.recordIdentity->name != field.name || field.type.recordIdentity->anonymousContext ||
+                field.bitWidth || !records[r].complete)
+            { error = "invalid anonymous C carrier"; return false; }
+            if (carriers.size() == maxItems) { error = "too many anonymous C carriers"; return false; }
+            carriers.emplace_back(static_cast<std::uint32_t>(r), static_cast<std::uint32_t>(f));
+        }
+    }
+    if (carriers.empty()) { error = "empty anonymous C carrier envelope"; return false; }
+    std::vector<std::uint8_t> base;
+    const bool hasDependencies = !dependencies.functions.empty() || !dependencies.globals.empty() ||
+        !dependencies.aliases.empty() || !dependencies.enumerators.empty();
+    if (hasDependencies ? !encodeCTypeCatalogWithDependencies(records, enums, dependencies, base, error)
+                        : !encodeCTypeCatalogWithProvenance(records, enums, base, error)) return false;
+    ByteWriter writer;
+    writer.u32(6);
+    writer.u64(static_cast<std::uint64_t>(base.size()));
+    writer.raw(base);
+    writer.u32(static_cast<std::uint32_t>(carriers.size()));
+    for (const auto& [record, field] : carriers) { writer.u32(record); writer.u32(field); }
+    output = writer.takeBytes();
+    error.clear();
+    return true;
+}
+
+bool decodeCTypeCatalogWithAnonymousCarriers(std::span<const std::uint8_t> bytes,
+    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums,
+    CDependencyCatalog& dependencies, std::string& error)
+{
+    ByteReader reader(bytes);
+    std::uint32_t version = 0, count = 0;
+    std::uint64_t size = 0;
+    if (!reader.u32(version) || version != 6 || !reader.u64(size) || size > reader.remaining())
+    { error = "invalid anonymous C carrier envelope"; return false; }
+    std::vector<std::uint8_t> base(static_cast<std::size_t>(size));
+    std::vector<CppCRecordSnapshot> decodedRecords;
+    std::vector<CppCEnumSnapshot> decodedEnums;
+    CDependencyCatalog decodedDependencies;
+    if (!reader.raw(base) || !decodeCTypeCatalogAndDependencies(base, 47, decodedRecords, decodedEnums,
+                                                                  decodedDependencies, error)) return false;
+    if (!reader.u32(count) || !count || count > maxItems || count > reader.remaining() / 8)
+    { error = "invalid anonymous C carrier count"; return false; }
+    for (std::uint32_t i = 0; i < count; ++i)
+    {
+        std::uint32_t record = 0, field = 0;
+        if (!reader.u32(record) || !reader.u32(field) || record >= decodedRecords.size() ||
+            field >= decodedRecords[record].fields.size() || decodedRecords[record].fields[field].isAnonymousCarrier)
+        { error = "invalid anonymous C carrier index"; return false; }
+        decodedRecords[record].fields[field].isAnonymousCarrier = true;
+    }
+    std::vector<std::uint8_t> canonical;
+    if (!reader.atEnd() || !encodeCTypeCatalogWithAnonymousCarriers(decodedRecords, decodedEnums,
+            decodedDependencies, canonical, error) || canonical.size() != bytes.size() ||
+        !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
+    { error = "noncanonical anonymous C carrier envelope"; return false; }
+    records = std::move(decodedRecords);
+    enums = std::move(decodedEnums);
+    dependencies = std::move(decodedDependencies);
+    error.clear();
+    return true;
+}
+
 bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
                           std::vector<std::uint8_t>& output, std::string& error)
 {
