@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 
 #include "MethodBodyInternals.h"
+#include "CppFlexiblePointerAlignment.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
@@ -831,6 +832,10 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
     result.pointerNullable = field.declaredPointerNullable;
     result.pointerHasProvenance = field.declaredPointerHasProvenance;
     result.pointerKnownAlignment = field.declaredPointerKnownAlignment;
+    if (result.cppFlexibleArrayDecaySafe)
+        result.pointerKnownAlignment = method_body_detail::cppFlexiblePointerKnownAlignment(
+            ProjectTypeConversion::isPointer(receiver.typeKey), receiver.pointerKnownAlignment,
+            field.explicitFieldAlignment, field.explicitFieldOffset);
     result.pointerAddressSpace = field.declaredPointerAddressSpace;
     result.receiverSyntax = typeReceiver ? nullptr : expression->first();
     result.receiverTypeKey = typeReceiver ? "" : receiver.typeKey;
