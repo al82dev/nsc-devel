@@ -15,6 +15,7 @@ if "%~1"=="dos" (
   copy /y "%~dp0Consumer2.ns" "%DEST%\Consumer.ns" >nul || exit /b 1
   copy /y "%~dp0Consumer2.nsproj" "%DEST%\Consumer.nsproj" >nul || exit /b 1
   copy /y "%~dp0TlsApi2.c" "%DEST%\TlsApi2.c" >nul || exit /b 1
+  copy /y "%~dp0ControlDinamico.c" "%DEST%\ControlDinamico.c" >nul || exit /b 1
 )
 for %%F in (TlsApi.h TlsApi.c ThreadApi.h ThreadApi.c) do copy /y "%~dp0..\..\pruebas-tanda-08-tls-c\directo\%%F" "%DEST%\%%F" >nul || exit /b 1
 pushd "%DEST%" || exit /b 1
@@ -28,6 +29,13 @@ clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 TlsApi2.c -o TlsApi2.obj
 if errorlevel 1 (popd & exit /b 1)
 lld-link.exe /nologo /dll /noentry /nodefaultlib /include:_tls_used /export:tls_exported,DATA /out:api2.dll /implib:api2.lib TlsApi2.obj "A:\vc2026-runtime\lib\x64\release\libcmt.lib" "A:\vc2026-runtime\lib\x64\release\libcpmt.lib" "A:\vc2026-runtime\lib\x64\release\libvcruntime.lib" "A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\ucrt\x64\libucrt.lib" "A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\um\x64\kernel32.lib" > dll2-link.log 2>&1
 if errorlevel 1 (type dll2-link.log & popd & exit /b 1)
+clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 ControlDinamico.c -o ControlDinamico.obj > control-c.log 2>&1
+if errorlevel 1 (type control-c.log & popd & exit /b 1)
+lld-link.exe /nologo /entry:mainCRTStartup /subsystem:console /nodefaultlib /out:ControlDinamico.exe ControlDinamico.obj "A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\um\x64\kernel32.lib" >> control-c.log 2>&1
+if errorlevel 1 (type control-c.log & popd & exit /b 1)
+ControlDinamico.exe
+if errorlevel 1 (echo ERROR: control C de TLS de DLL distintas fallo. & popd & exit /b 1)
+echo Control C de TLS de DLL distintas: correcto.
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib Producer.nsproj -O%NSC_T08_OPT% --no-artifact-cache -o TlsProducer.lib > producer.log 2>&1
 if errorlevel 1 (type producer.log & popd & exit /b 1)
 if "%~1"=="dos" (
