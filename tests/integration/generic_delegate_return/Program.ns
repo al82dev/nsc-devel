@@ -1,0 +1,24 @@
+public delegate T Reducer<T>(T left, T right);
+public delegate bool Predicate<T>(T value);
+
+/// <summary>Supplies a concrete method for the generic delegate.</summary>
+public static class Operations
+{
+    public static int Add(int left, int right)
+    {
+        return left + right;
+    }
+
+    public static bool Positive(int value)
+    {
+        return value > 0;
+    }
+}
+
+/// <summary>Instantiates and invokes a delegate whose return type is generic.</summary>
+int Main()
+{
+    raii Reducer<int> add = Operations.Add;
+    raii Predicate<int> positive = Operations.Positive;
+    return add(1, 2) == 3 && positive(3) && !positive(-1) ? 0 : 1;
+}

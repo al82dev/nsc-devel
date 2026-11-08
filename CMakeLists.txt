@@ -6622,6 +6622,18 @@ if(NSC_BUILD_TESTS)
             "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifySignedI128Division.cmake")
 
+    set(NSC_GENERIC_DELEGATE_RETURN_PROJECT
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_delegate_return/GenericDelegateReturn.nsproj")
+    add_test(
+        NAME nsc.compiler.generic-delegate-return
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DPROJECT_FILE=${NSC_GENERIC_DELEGATE_RETURN_PROJECT}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/generic-delegate-return"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyGenericDelegateReturn.cmake")
+
     # NSC-LIMIT-007. La entrada de driver de la fase de constraints, ejercitada de verdad.
     #
     # Una fase sin prueba de ctest solo existe para quien lee el codigo: la revision encontro que

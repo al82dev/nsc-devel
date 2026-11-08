@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>GenericDelegateReturn</Name><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><Compile Include="Program.ns" /></ItemGroup>
+</Project>

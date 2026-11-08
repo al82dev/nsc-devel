@@ -767,7 +767,11 @@ ast::AstNode* Parser::parseDelegateDeclaration()
         consume();
         returnLifetime = parseOptionalLifetimeAnnotation("delegate ref return");
     }
-    if (!canStartTypeAt(index_))
+    // A delegate's first type parameter is declared after its return type.
+    const bool genericReturn = at(TokenKind::Identifier) && peek().kind() == TokenKind::Identifier &&
+        peek(2U).kind() == TokenKind::Less && peek(3U).kind() == TokenKind::Identifier &&
+        peek(3U).lexeme() == current().lexeme();
+    if (!canStartTypeAt(index_) && !genericReturn)
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::ExpectedType,
