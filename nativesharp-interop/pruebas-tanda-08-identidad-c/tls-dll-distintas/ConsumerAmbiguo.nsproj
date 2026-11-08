@@ -1,0 +1,7 @@
+<Project><PropertyGroup><Name>TlsConsumer</Name></PropertyGroup><ItemGroup>
+<Compile Include="ConsumerAmbiguo.ns" />
+<LibraryReference Include="../uno/TlsProducer.lib" />
+<LibraryReference Include="TlsProducer2.lib" />
+<CppLibraryReference Header="ReadApi.h" Language="C" Standard="c11" Library="../uno/api.lib" Runtime="../uno/api.dll" />
+<CppLibraryReference Header="ReadApi.h" Language="C" Standard="c11" Library="api.lib" Runtime="api.dll" />
+</ItemGroup></Project>

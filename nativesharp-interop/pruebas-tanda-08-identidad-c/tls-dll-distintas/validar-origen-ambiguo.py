@@ -1,0 +1,50 @@
+from pathlib import Path
+import os
+import shutil
+import subprocess
+import sys
+
+fixtures = Path(__file__).resolve().parent
+root = Path(r"A:\nsc-interop-build\t08-tls-dos-dll-repro")
+work = root / "origen-ambiguo"
+work.mkdir(parents=True, exist_ok=True)
+for name in ("TlsApi2Ambiguo.c", "ConsumerAmbiguo.ns", "ConsumerAmbiguo.nsproj",
+             "Producer2Ambiguo.nsproj", "Producer2.ns", "ReadApi.h"):
+    shutil.copyfile(fixtures / name, work / name)
+shutil.copyfile(fixtures.parents[1] / "pruebas-tanda-08-tls-c" / "directo" / "TlsApi.h", work / "TlsApi.h")
+env = os.environ.copy()
+env["PATH"] = r"A:\al82dev-clang\bin;A:\nsc-interop-build\tanda1-ON\bin;" + env["PATH"]
+env["NSC_LINKER"] = r"A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
+env["NSC_LLVM_LIB"] = r"A:\al82dev-clang\bin\llvm-lib.exe"
+env["NSC_WINDOWS_RUNTIME_LIBRARY"] = r"A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
+clang = r"A:\al82dev-clang\bin\clang.exe"
+lld = r"A:\al82dev-clang\bin\lld-link.exe"
+nsc = r"A:\nsc-interop-build\tanda1-ON\bin\nsc.exe"
+sdk = r"A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\um\x64\kernel32.lib"
+crt = "A:\\vc2026-runtime\\lib\\x64\\release\\"
+def run(command):
+    result = subprocess.run(command, cwd=work, env=env, capture_output=True, text=True, errors="replace")
+    if result.returncode:
+        print(result.stdout + result.stderr)
+        sys.exit(result.returncode)
+
+run([clang, "-c", "--target=x86_64-pc-windows-msvc", "-std=c11", "TlsApi2Ambiguo.c", "-o", "api.obj"])
+run([lld, "/nologo", "/dll", "/noentry", "/nodefaultlib", "/include:_tls_used", "/export:tls_exported,DATA",
+     "/out:api.dll", "/implib:api.lib", "api.obj", crt + "libcmt.lib", crt + "libcpmt.lib",
+     crt + "libvcruntime.lib", r"A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\ucrt\x64\libucrt.lib", sdk])
+run([nsc, "--cpp-clang-root=A:\\al82dev-clang", "--emit-project-oop-lib", "Producer2Ambiguo.nsproj",
+     "-O0", "--no-artifact-cache", "-o", "TlsProducer2.lib"])
+(work / "ConsumerAmbiguo.exe").unlink(missing_ok=True)
+result = subprocess.run([nsc, "--cpp-clang-root=A:\\al82dev-clang", "--emit-project-oop-exe",
+                         "ConsumerAmbiguo.nsproj", "-O0", "--no-artifact-cache", "-o", "ConsumerAmbiguo.exe"],
+                        cwd=work, env=env, capture_output=True, text=True, errors="replace")
+if result.returncode == 0:
+    sys.exit("ERROR: NSC selecciono una DLL pese a dos origenes para tls_read")
+log = result.stdout + result.stderr
+(work / "diagnostico.log").write_text(log, encoding="utf-8")
+if "same-named C TLS DLLs are also imported directly and cannot yet be distinguished" not in log:
+    print(log)
+    sys.exit("ERROR: fallo por una causa distinta de la ambiguedad")
+if (work / "ConsumerAmbiguo.exe").exists():
+    sys.exit("ERROR: se publico el ejecutable pese al rechazo")
+print("Dos origenes de tls_read: diagnostico de ambiguedad correcto")

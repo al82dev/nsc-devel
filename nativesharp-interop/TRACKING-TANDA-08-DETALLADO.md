@@ -77,7 +77,8 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
         - Preparación: la selección de alias está separada de la inspección del PE para poder utilizarla antes del enlace. [Evidencia](registro-commits/t08-dll-homonimas-seleccion-antes-enlace.md).
         - [x] En un ejecutable, enlazar funciones C de origen Clang no ambiguo al alias TLS; comprobar lectura y escritura en dos hilos y traslado de carpeta en O0–O3. [Evidencia](registro-commits/t08-dll-homonimas-import-directo-alias.md).
         - [x] Restaurar desde caché un ejecutable que utiliza una función C desde una plantilla precompilada y dos DLL TLS homónimas, de O0 a O3. [Evidencia](registro-commits/t08-dll-homonimas-funcion-precompilada-cache.md).
-        - [ ] Comprobar caché para referencias directas a encabezados cuando NSC rastree sus dependencias transitivas; verificar orígenes ambiguos, traslado a otro equipo y las demás variantes de importación.
+        - [x] Comprobar que dos DLL homónimas que exportan la misma función producen un diagnóstico y no publican un ejecutable con una elección arbitraria. [Evidencia](registro-commits/t08-dll-homonimas-origen-ambiguo.md).
+        - [ ] Implementar la distinción de orígenes ambiguos; comprobar caché para referencias directas a encabezados cuando NSC rastree sus dependencias transitivas, traslado a otro equipo y las demás variantes de importación.
       - [ ] T08-002-09m7c1d2c: Resolver las dependencias transitivas de las DLL homónimas y comprobar el consumidor resultante.
     - [ ] T08-002-09m7c1d3: Comprobar el mismo escenario cuando el producto consumidor sea una DLL NativeSharp.
 - [ ] T08-002-09m7d: Comprobar los demás calificadores y variantes de enlace de la global externa compartida.
