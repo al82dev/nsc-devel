@@ -235,12 +235,19 @@ bool ProjectNameLookup::expandCppTypeAlias(
                         selected->declaration.clangUsr != alias.declaration.clangUsr) return false;
                     const auto a = cppAliasRecordType(selected->declaration.underlyingType);
                     const auto b = cppAliasRecordType(alias.declaration.underlyingType);
-                    if (!a || !b || a->canonicalName != b->canonicalName ||
-                        !a->clangUsr || !b->clangUsr || a->clangUsr != b->clangUsr) return false;
+                    const auto ea = cppAliasEnumType(selected->declaration.underlyingType);
+                    const auto eb = cppAliasEnumType(alias.declaration.underlyingType);
+                    std::string name;
+                    std::optional<std::string> usr;
+                    if (a && b && a->canonicalName == b->canonicalName && a->clangUsr && a->clangUsr == b->clangUsr)
+                    { name = a->canonicalName; usr = a->clangUsr; }
+                    else if (ea && eb && ea->name == eb->name && ea->clangUsr && ea->clangUsr == eb->clangUsr)
+                    { name = ea->name; usr = ea->clangUsr; }
+                    else return false;
                     for (const auto& live : cppImportedTypes_)
                     {
-                        if (!live.reconciledIdentityKey || live.identity.fullyQualifiedName() != a->canonicalName ||
-                            !live.clangUsr || live.clangUsr != a->clangUsr ||
+                        if (!live.reconciledIdentityKey || live.identity.fullyQualifiedName() != name ||
+                            !live.clangUsr || live.clangUsr != usr ||
                             (live.projectOrdinal != selected->projectOrdinal && live.projectOrdinal != alias.projectOrdinal)) continue;
                         for (const auto& precompiled : cppImportedTypes_)
                             if (precompiled.identity.key() == *live.reconciledIdentityKey &&

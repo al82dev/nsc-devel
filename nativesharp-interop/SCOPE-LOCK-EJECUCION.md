@@ -5397,6 +5397,9 @@ incluidos USR, enumeradores, representación y destino, y conciliar únicamente
 una coincidencia visible no ambigua. Presupuesto: `CppSemanticRecord.cpp`,
 fixture de nombres C y registros Markdown. Conservar rechazos y alcance de la
 tanda; no modificar NSLink ni LLVM/Clang.
+Tras conciliar el enum, la resolución de alias también lo rechaza por dueño
+distinto. Extender el guard existente de records a enums cuyo USR coincida y
+cuya identidad haya sido conciliada; preservar el resto de las comparaciones.
 
 Enmienda: la primera implementación causó conflicto entre proyectos al
 coexistir el header y la metadata. Se permite modificar
