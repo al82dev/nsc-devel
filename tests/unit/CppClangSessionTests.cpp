@@ -976,6 +976,31 @@ int main(int argc, char** argv)
     }
     {
         namespace fs = std::filesystem;
+        const fs::path root = fs::absolute(fs::path(argv[2]) / "cpp-fixtures" / "preprocessing-fingerprint");
+        std::error_code ec;
+        fs::create_directories(root, ec);
+        const fs::path header = root / "main.h";
+        const fs::path optional = root / "optional.h";
+        fs::remove(optional, ec);
+        { std::ofstream file(header); file <<
+            "#if __has_include(\"optional.h\")\n#pragma pack(push,1)\n#else\n#pragma pack(push,4)\n#endif\n"
+            "struct Conditional { char a; int b; };\n#pragma pack(pop)\n"; }
+        const auto openTrace = [&]() {
+            auto config = options(argv[1], argv[2], argv[3], CppLanguageMode::C, "");
+            config.input = CppFileInput{header};
+            config.capturePreprocessingFingerprint = true;
+            auto session = open(factory, std::move(config));
+            return session ? session->preprocessingFingerprint() : std::nullopt;
+        };
+        const auto absent = openTrace();
+        const auto repeated = openTrace();
+        { std::ofstream file(optional); file << "/* existence probe only */\n"; }
+        const auto present = openTrace();
+        ok &= expect(absent && repeated && present && *absent == *repeated && *absent != *present,
+                     "preprocessor fingerprint is stable and captures conditional include probes");
+    }
+    {
+        namespace fs = std::filesystem;
         const fs::path root = fs::absolute(fs::path(argv[2]) / "cpp-fixtures" / "binary-catalog");
         std::error_code ec;
         fs::create_directories(root / "first", ec);

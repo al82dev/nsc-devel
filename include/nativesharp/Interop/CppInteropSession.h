@@ -107,6 +107,10 @@ public:
     // Hashes already-loaded Clang buffers; nullopt also means a buffer is unavailable.
     // This is not a full cache key or a snapshot of files changing concurrently.
     virtual std::optional<std::vector<CppSourceFileContent>> sourceFileContentsSnapshot() const = 0;
+    // Fingerprint of the expanded tokens and observed preprocessor decisions.
+    // It must be combined with options, file contents and toolchain identity;
+    // by itself it is not a complete or validated cache key.
+    virtual std::optional<basic::Sha256Digest> preprocessingFingerprint() const { return std::nullopt; }
     virtual CppSessionCloseResult close() = 0;
 };
 

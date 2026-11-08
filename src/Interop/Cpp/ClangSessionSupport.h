@@ -23,7 +23,8 @@ std::unique_ptr<clang::ASTUnit> runClangSessionAction(
     std::string_view source, const std::vector<std::string>& arguments,
     std::string_view inputPath, std::string_view driverPath,
     clang::DiagnosticConsumer* consumer, llvm::IntrusiveRefCntPtr<llvm::vfs::FileSystem> filesystem,
-    CppCancellationToken cancellation, clang::FrontendAction* actionForTest = nullptr);
+    CppCancellationToken cancellation, clang::FrontendAction* actionForTest = nullptr,
+    std::optional<basic::Sha256Digest>* preprocessingFingerprint = nullptr);
 
 class DiagnosticCollector final : public clang::DiagnosticConsumer
 {

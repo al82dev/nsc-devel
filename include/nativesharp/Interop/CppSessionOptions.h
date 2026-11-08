@@ -49,6 +49,8 @@ struct CppSessionOptions
     std::vector<CppMacroOption> macros;
     std::variant<CppFileInput, CppBufferInput> input;
     CppVolatileMode volatileMode = CppVolatileMode::Default;
+    // Optional because ordinary compilation does not need the extra token tracing.
+    bool capturePreprocessingFingerprint = false;
 };
 
 // Stable identity of these option values. It is not a complete cache key: file

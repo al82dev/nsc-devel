@@ -1209,6 +1209,11 @@ public:
             if (result[i - 1].path == result[i].path) return std::nullopt;
         return result;
     }
+    std::optional<basic::Sha256Digest> preprocessingFingerprint() const override
+    {
+        std::lock_guard lock(mutex_);
+        return ast_ ? preprocessingFingerprint_ : std::nullopt;
+    }
     CppSessionCloseResult close() override
     {
         std::lock_guard lock(mutex_);
@@ -1270,7 +1275,8 @@ public:
 
         ast_ = detail::runClangSessionAction(
             source, args, utf8(inputPath), utf8(options_.driverReferencePath),
-            &consumer_, std::move(filesystem), cancellation);
+            &consumer_, std::move(filesystem), cancellation, nullptr,
+            options_.capturePreprocessingFingerprint ? &preprocessingFingerprint_ : nullptr);
         if (cancellation.cancelled())
         {
             ast_.reset();
@@ -1301,6 +1307,7 @@ private:
     detail::DiagnosticCollector consumer_;
     // Destroy before consumer_: Clang's diagnostic engine borrows the consumer.
     std::unique_ptr<clang::ASTUnit> ast_;
+    std::optional<basic::Sha256Digest> preprocessingFingerprint_;
     CppSessionState state_ = CppSessionState::Closed;
 };
 }
