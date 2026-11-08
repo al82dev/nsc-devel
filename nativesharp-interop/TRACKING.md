@@ -254,6 +254,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     distintos; la matriz conserva los rechazos por tipos y records incompatibles.
     La validación dirigida de identidad pasó, sin cerrar el ítem.
     [Evidencia](registro-commits/t08-h1-typedef-c-equivalentes.md).
+  - Para enumeradores anónimos no basta que dos archivos tengan bytes idénticos:
+    `GenIdentical.h` es otra ruta y la matriz exige ambigüedad; con el mismo
+    `Gen.h` exige ejecución. La prueba anterior pasó ambas expectativas.
+    [Evidencia](registro-commits/t08-h3-enum-anonimo-archivo-identico.md).
   - H7: las constantes de enum C dejan de publicarse como estados de
     NativeSharp. Los productores y consumidores ordinarios antes rechazados
     pasaron el validador dirigido; algunas plantillas siguen sin resolver la
