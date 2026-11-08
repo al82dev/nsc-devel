@@ -10,7 +10,7 @@ set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Api.c Main.ns Project.nsproj ProjectISO.nsproj) do (
+for %%F in (Api.h Api.c Main.ns Project.nsproj ProjectISO.nsproj ProjectMicrosoft.nsproj ProjectBad.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 goto :failure
 )
@@ -29,6 +29,14 @@ if errorlevel 1 goto :failure
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\ProjectISO.nsproj" > "%DEST%\native-iso.ll" 2> "%DEST%\native-iso-ir.log"
 if errorlevel 1 goto :failure
 python "%~dp0verificar_ir_iso.py" "%DEST%\clang-iso.ll" "%DEST%\native-iso.ll"
+if errorlevel 1 goto :failure
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\ProjectMicrosoft.nsproj" > "%DEST%\native-ms.ll" 2> "%DEST%\native-ms-ir.log"
+if errorlevel 1 goto :failure
+python "%~dp0verificar_ir.py" "%DEST%\clang.ll" "%DEST%\native-ms.ll"
+if errorlevel 1 goto :failure
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-oop-hir "%DEST%\ProjectBad.nsproj" > "%DEST%\bad-mode.log" 2>&1
+if not errorlevel 1 goto :failure
+findstr /c:"VolatileMode must be Default, Microsoft or ISO" "%DEST%\bad-mode.log" >nul
 if errorlevel 1 goto :failure
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O%%O --no-artifact-cache -o "%DEST%\consumer-O%%O.exe" > "%DEST%\consumer-O%%O.log" 2>&1

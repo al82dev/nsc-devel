@@ -823,6 +823,8 @@ int main(int argc, char** argv)
         };
         ok &= expect(identity.size() == 64 && identity == cppSessionConfigurationIdentity(base) &&
             changed([](auto& o) { o.language = CppLanguageMode::C; }) &&
+            changed([](auto& o) { o.volatileMode = CppVolatileMode::Iso; }) &&
+            changed([](auto& o) { o.volatileMode = CppVolatileMode::Microsoft; }) &&
             changed([](auto& o) { o.languageStandard = "c++23"; }) &&
             changed([](auto& o) { o.targetTriple = "other"; }) &&
             changed([](auto& o) { o.driverReferencePath = "A:/other/clang.exe"; }) &&
