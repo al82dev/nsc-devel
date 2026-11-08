@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CGenConsumerAnonymousConstantIdentical</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ConsumerAnonymousConstantIdentical.ns" />
+    <CppLibraryReference Header="GenIdentical.h" Language="C" Standard="c11" />
+    <LibraryReference Include="CGenProducerLoose.lib" />
+  </ItemGroup>
+</Project>
