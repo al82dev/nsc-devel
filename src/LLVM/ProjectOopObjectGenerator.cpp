@@ -1230,6 +1230,7 @@ bool ProjectOopObjectBundle::appendGeneratedObjects(std::size_t count,
         { error = "generated object is missing or not a regular file"; return false; }
     }
     objectFiles_.insert(objectFiles_.end(), paths.begin(), paths.end());
+    generatedNativeObjectFiles_.insert(generatedNativeObjectFiles_.end(), paths.begin(), paths.end());
     hasGeneratedNativeObjects_ = true;
     error.clear();
     return true;
@@ -1238,6 +1239,11 @@ bool ProjectOopObjectBundle::appendGeneratedObjects(std::size_t count,
 bool ProjectOopObjectBundle::hasGeneratedNativeObjects() const noexcept
 {
     return hasGeneratedNativeObjects_;
+}
+
+std::span<const std::filesystem::path> ProjectOopObjectBundle::generatedNativeObjectFiles() const noexcept
+{
+    return generatedNativeObjectFiles_;
 }
 
 const std::string& ProjectOopObjectBundle::combinedLlvmText() const noexcept

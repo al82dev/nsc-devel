@@ -27,6 +27,7 @@ public:
         const std::function<bool(std::span<const std::filesystem::path>, std::string&)>& emit,
         std::string& error);
     bool hasGeneratedNativeObjects() const noexcept;
+    std::span<const std::filesystem::path> generatedNativeObjectFiles() const noexcept;
     const std::string& combinedLlvmText() const noexcept;
     std::size_t codeUnitCount() const noexcept;
     bool usedParallelOptimization() const noexcept;
@@ -66,6 +67,7 @@ private:
     std::vector<std::filesystem::path> objectFiles_;
     std::size_t generatedObjectGroup_ = 0;
     bool hasGeneratedNativeObjects_ = false;
+    std::vector<std::filesystem::path> generatedNativeObjectFiles_;
     std::string combinedLlvmText_;
     std::size_t codeUnitCount_ = 0;
     bool usedParallelOptimization_ = false;

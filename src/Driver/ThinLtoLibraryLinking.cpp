@@ -8,6 +8,8 @@
 
 #include <chrono>
 #include <cstdint>
+#include <fstream>
+#include <iterator>
 #include <memory>
 #include <span>
 #include <system_error>
@@ -371,6 +373,22 @@ bool ThinLtoLibraryLinking::writeSidecar(
         return false;
     }
     sidecar.units.assign(bundle.thinLtoUnitBitcode().begin(), bundle.thinLtoUnitBitcode().end());
+    for (const auto& path : bundle.generatedNativeObjectFiles())
+    {
+        std::ifstream stream(path, std::ios::binary);
+        if (!stream)
+        {
+            error = "cannot open generated native object for ThinLTO sidecar";
+            return false;
+        }
+        std::string bytes((std::istreambuf_iterator<char>(stream)), {});
+        if (stream.bad() || bytes.empty())
+        {
+            error = "cannot read generated native object for ThinLTO sidecar";
+            return false;
+        }
+        sidecar.nativeObjects.push_back(std::move(bytes));
+    }
     return llvm_backend::ThinLtoLibrarySidecarCodec::write(sidecarStage, sidecar, error);
 }
 } // namespace nativesharp::driver
