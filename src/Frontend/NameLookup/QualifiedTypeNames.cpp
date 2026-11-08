@@ -381,6 +381,37 @@ bool ProjectNameLookup::expandCppTypeAlias(
         };
         if (!nativeCandidates.empty())
         {
+            if (record && record->pointerDepth == 0 && !record->pointeeConst &&
+                selected->projectOrdinal == owner && !selected->equivalentRecordFunctionAliases.empty())
+            {
+                bool ownerFound = false;
+                bool allEquivalentImports = true;
+                for (const auto candidate : nativeCandidates)
+                {
+                    const auto* declaration = typeForOrdinal(candidate);
+                    if (!declaration || declaration->identity.fullyQualifiedName() != record->canonicalName ||
+                        declaration->parts.size() != 1 || declaration->parts.front().syntax)
+                    { allEquivalentImports = false; break; }
+                    const bool matchingImport = std::any_of(cppImportedTypes_.begin(), cppImportedTypes_.end(),
+                        [&](const auto& imported) {
+                            return imported.projectOrdinal == declaration->projectOrdinal &&
+                                imported.identity.key() == declaration->identity.key() &&
+                                imported.sourcePath == declaration->parts.front().sourcePath &&
+                                compatibleUsr(record->clangUsr, imported.clangUsr);
+                        });
+                    if (!matchingImport) { allEquivalentImports = false; break; }
+                    if (declaration->projectOrdinal == owner) ownerFound = true;
+                    else if (std::none_of(selected->equivalentRecordFunctionAliases.begin(),
+                                         selected->equivalentRecordFunctionAliases.end(),
+                                         [&](const auto& item) { return item.first == declaration->projectOrdinal; }))
+                    { allEquivalentImports = false; break; }
+                }
+                if (ownerFound && allEquivalentImports)
+                {
+                    const_cast<ast::TypeSyntax*>(syntax)->setOriginProjectOrdinal(owner);
+                    return true;
+                }
+            }
             if (record && record->pointerDepth == 0 && !record->pointeeConst && nativeCandidates.size() == 1)
             {
                 const auto* canonical = typeForOrdinal(nativeCandidates.front());

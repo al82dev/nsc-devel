@@ -1348,7 +1348,9 @@ bool provideCppTypeAliasesWithPrecompiledCatalogs(const compilation::ProjectGrap
     {
         const auto& alias = result[i];
         const auto& type = alias.declaration.underlyingType;
-        if (type.kind == CppTypeKind::Pointer && type.element && type.element->kind == CppTypeKind::Function)
+        if (type.kind == CppTypeKind::Record ||
+            (type.kind == CppTypeKind::Pointer && type.element &&
+             (type.element->kind == CppTypeKind::Function || type.element->kind == CppTypeKind::Record)))
             functionAliases[{alias.declaration.qualifiedName, alias.targetTriple}].push_back(i);
     }
     for (const auto& [key, indices] : functionAliases)
@@ -1359,10 +1361,7 @@ bool provideCppTypeAliasesWithPrecompiledCatalogs(const compilation::ProjectGrap
             auto& b = result[indices[rightIndex]];
             if (a.projectOrdinal == b.projectOrdinal || a.targetTriple != b.targetTriple ||
                 a.declaration.qualifiedName != b.declaration.qualifiedName ||
-                a.declaration.underlyingType.canonicalSpelling != b.declaration.underlyingType.canonicalSpelling ||
-                a.declaration.underlyingType.kind != CppTypeKind::Pointer ||
-                !a.declaration.underlyingType.element ||
-                a.declaration.underlyingType.element->kind != CppTypeKind::Function) continue;
+                a.declaration.underlyingType.canonicalSpelling != b.declaration.underlyingType.canonicalSpelling) continue;
             bool comparedRecord = false;
             const auto sameType = [&](const auto& self, const CppType& left, const CppType& right,
                                       unsigned depth) -> bool {
