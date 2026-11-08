@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-002: sombras locales en plantillas públicas
+
+Una plantilla declara variables locales que sombrean una global y una función
+`static inline` C. El consumidor usa los valores locales, pero NSMETA contiene
+ambas declaraciones C como candidatas. Preparar control reproducible y corregir
+la captura solo tras resolver el alcance léxico efectivo, sin excluir nombres C
+verdaderos en otros bloques ni en inicializadores. Presupuesto inicial: fixture
+aislado y registros; ampliación causal posterior al identificar la solución.
+NSLink, NSMETA como formato, LLVM/Clang y C: protegidos. La tanda sigue abierta.
+
 ## T08: fixture histórico NSMETA 1.45 recuperado
 
 Conservar el archivo real `A:/nsc-interop-build/tanda08-opaco-c/COpaqueProducer.nsmeta`

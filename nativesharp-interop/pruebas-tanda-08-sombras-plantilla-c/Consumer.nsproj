@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>ShadowConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+    <LibraryReference Include="ShadowProducer.lib" />
+  </ItemGroup>
+</Project>

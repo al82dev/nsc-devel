@@ -1,0 +1,12 @@
+namespace PublishedShadow
+{
+    public class Bridge
+    {
+        public static int Local<T>(T value)
+        {
+            int shadow_value = 13;
+            int shadow_function = 17;
+            return shadow_value + shadow_function;
+        }
+    }
+}
