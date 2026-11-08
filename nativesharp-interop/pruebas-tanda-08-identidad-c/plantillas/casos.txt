@@ -18,3 +18,4 @@ ConsumerEnumConstantPlain CGenProducerEnumPlain runs runs
 ConsumerEnumConstant CGenProducerEnum runs runs
 ConsumerAnonymousConstantPlain CGenProducerLoosePlain runs runs
 ConsumerAnonymousConstant CGenProducerLoose runs runs
+ConsumerAnonymousConstantHeader CGenProducerLoose runs runs

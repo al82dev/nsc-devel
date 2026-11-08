@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CGenConsumerAnonymousConstantHeader</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ConsumerAnonymousConstantHeader.ns" />
+    <CppLibraryReference Header="Gen.h" Language="C" Standard="c11" />
+    <LibraryReference Include="CGenProducerLoose.lib" />
+  </ItemGroup>
+</Project>

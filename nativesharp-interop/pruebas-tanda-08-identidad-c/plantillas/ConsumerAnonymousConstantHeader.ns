@@ -1,0 +1,6 @@
+int Main()
+{
+    if (PublishedGenLoose.Bridge.LooseOf<int>(1) != 12) return 1;
+    if (GenLoose != 12) return 2;
+    return 0;
+}
