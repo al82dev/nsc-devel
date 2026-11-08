@@ -7193,6 +7193,83 @@ if(NSC_BUILD_TESTS)
         COMMAND "${NSC_TEST_COMPILER}" --check ${NSC_INTEGRATION_DIR}/invalid/llvm_reserved_runtime.ns)
     set_tests_properties(nsc.invalid.llvm-reserved-runtime PROPERTIES WILL_FAIL TRUE)
 
+    # Snapshot loading in the frontend requires the codec in nsc_precompiled.
+    # These test executables exercise that path and must link the provider.
+    foreach(snapshot_test IN ITEMS
+        nsc_explicit_field_alignment_tests
+        nsc_flexible_array_tests
+        nsc_forceinline_modifier_tests
+        nsc_implicit_language_edition_semantics_tests
+        nsc_implicit_language_feature_recognition_tests
+        nsc_inlining_modifier_tests
+        nsc_integrated_assembly_mir_tests
+        nsc_item395_mir_layout_abi_tests
+        nsc_item396_mir_ownership_cleanup_tests
+        nsc_item397_mir_exception_flow_tests
+        nsc_item398_mir_generics_interfaces_tests
+        nsc_item399_llvm_backend_encapsulation_tests
+        nsc_macro_a_oop_tests
+        nsc_multidimensional_index_tests
+        nsc_namespace_function_body_tests
+        nsc_namespace_function_entry_tests
+        nsc_namespace_function_hir_tests
+        nsc_namespace_function_identity_tests
+        nsc_namespace_function_llvm_tests
+        nsc_namespace_function_lookup_tests
+        nsc_namespace_function_mir_tests
+        nsc_namespace_function_model_tests
+        nsc_namespace_function_signature_tests
+        nsc_noinline_modifier_tests
+        nsc_ns3_t11_comptime_integration_tests
+        nsc_ns3_t11_f01_typed_introspection_tests
+        nsc_ns3_t11_f02_user_attributes_tests
+        nsc_ns3_t11_f04_hygienic_macros_tests
+        nsc_ns3_t11_f05_comptime_capabilities_tests
+        nsc_ns3_t11_f06_comptime_diagnostics_tests
+        nsc_offsetof_tests
+        nsc_partial_class_aggregation_tests
+        nsc_project_callable_result_merger_ordinal_tests
+        nsc_project_compilation_tests
+        nsc_project_construction_model_tests
+        nsc_project_member_model_tests
+        nsc_project_member_ownership_cache_tests
+        nsc_project_member_type_worklist_tests
+        nsc_project_method_body_model_tests
+        nsc_project_name_lookup_tests
+        nsc_project_object_layout_model_tests
+        nsc_project_oop_lowering_tests
+        nsc_readonly_receiver_tests
+        nsc_readonly_struct_tests
+        nsc_stage35_recovery_tests
+        nsc_stage36_recovery_tests
+        nsc_stage37_static_initialization_tests
+        nsc_stage38_properties_indexers_operators_tests
+        nsc_stage39_rtti_casts_tests
+        nsc_stage40_struct_value_abi_tests
+        nsc_stage45_cleanup_scope_tests
+        nsc_stage45_exception_sema_tests
+        nsc_stage45_finally_flow_tests
+        nsc_stage45_hir_exceptional_cfg_tests
+        nsc_stage45_llvm_cleanup_funclet_tests
+        nsc_stage45_llvm_win64_eh_basic_tests
+        nsc_stage45_mir_exceptional_cfg_tests
+        nsc_stage45_typed_catch_rtti_tests
+        nsc_stage45_using_disposable_tests
+        nsc_stage50_2_ownership_type_system_tests
+        nsc_stage50_3_owned_parameters_returns_tests
+        nsc_stage50_4_borrowed_parameters_tests
+        nsc_stage50_5_local_borrows_lifetimes_tests
+        nsc_stage50_6_ownership_control_flow_tests
+        nsc_stage50_7_borrow_escape_analysis_tests
+        nsc_stage58_view_lifetimes_tests
+        nsc_stage59_closed_generic_member_tests
+        nsc_static_assert_tests
+        nsc_struct_interface_inlining_tests
+        nsc_variable_length_array_tests
+    )
+        target_link_libraries(${snapshot_test} PRIVATE nsc_precompiled)
+    endforeach()
+
     # =================================================================================
     # `pruebas` -- UN OBJETIVO CON TODOS LOS EJECUTABLES DE PRUEBA Y NINGUNO DEL COMPILADOR.
     #
