@@ -6,6 +6,12 @@ int Main()
     value->i = 2;
     value->x = (short)3;
     value->y = (short)4;
+    value->deep = 5;
+    var packed = Published.Bridge.Packed();
+    if (sizeof(*packed) != (nuint)Published.Bridge.PackedSize()) return 3;
+    packed->tag = (byte)6;
+    packed->packedInt = 7;
+    packed->packedShort = (short)8;
     if (Published.Bridge.Check() != 1) return 2;
     return 0;
 }
