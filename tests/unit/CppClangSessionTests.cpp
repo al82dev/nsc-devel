@@ -2060,6 +2060,23 @@ int main(int argc, char** argv)
                                         }
                                         ok &= expect(transitiveRejected && emptyAccepted,
                                                      "field USR conflicts remain visible after an initially missing observation");
+                                        auto anonymousEntries = usrEntries;
+                                        for (const auto index : record.inventoryIndices)
+                                        {
+                                            auto& declaration = anonymousEntries[index].declaration;
+                                            CppAnonymousCRecord nested;
+                                            nested.carrierPath = {1};
+                                            nested.kind = CppRecordKind::Union;
+                                            nested.sizeBits = 32;
+                                            nested.alignmentBits = 32;
+                                            nested.fields.push_back(declaration.fields[0]);
+                                            declaration.anonymousCRecords.push_back(std::move(nested));
+                                        }
+                                        const bool matchingAnonymous = selectCppRecordMemberDefinition(anonymousEntries, record).has_value();
+                                        anonymousEntries[record.inventoryIndices.back()].declaration.anonymousCRecords[0].fields[0].name = "different";
+                                        const bool differentAnonymous = !selectCppRecordMemberDefinition(anonymousEntries, record);
+                                        ok &= expect(matchingAnonymous && differentAnonymous,
+                                                     "repeated records compare the captured anonymous aggregate fields");
                                         const auto nestedIdentityConflict = [&](bool isEnum) {
                                             auto nestedEntries = usrEntries;
                                             auto nestedGroup = record;

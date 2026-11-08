@@ -741,7 +741,8 @@ bool sameMemberType(const CppType& a, const CppType& b, unsigned depth = 0)
 bool sameCapturedMembers(const CppRecordDeclaration& a, const CppRecordDeclaration& b)
 {
     if (a.kind != b.kind || a.access != b.access || a.implicitLifetimeMembers != b.implicitLifetimeMembers || a.bases.size() != b.bases.size() ||
-        a.fields.size() != b.fields.size() || a.staticFields.size() != b.staticFields.size() ||
+        a.fields.size() != b.fields.size() || a.anonymousCRecords.size() != b.anonymousCRecords.size() ||
+        a.staticFields.size() != b.staticFields.size() ||
         a.methods.size() != b.methods.size()) return false;
     for (std::size_t i = 0; i < a.bases.size(); ++i)
         if (a.bases[i].access != b.bases[i].access || a.bases[i].isVirtual != b.bases[i].isVirtual ||
@@ -751,7 +752,22 @@ bool sameCapturedMembers(const CppRecordDeclaration& a, const CppRecordDeclarati
             (a.fields[i].clangUsr && !a.fields[i].clangUsr->empty() && b.fields[i].clangUsr &&
              !b.fields[i].clangUsr->empty() && a.fields[i].clangUsr != b.fields[i].clangUsr) ||
             a.fields[i].offsetBits != b.fields[i].offsetBits || a.fields[i].bitWidth != b.fields[i].bitWidth ||
+            a.fields[i].isAnonymousCarrier != b.fields[i].isAnonymousCarrier ||
             !sameMemberType(a.fields[i].type, b.fields[i].type)) return false;
+    for (std::size_t i = 0; i < a.anonymousCRecords.size(); ++i)
+    {
+        const auto& x = a.anonymousCRecords[i]; const auto& y = b.anonymousCRecords[i];
+        if (x.carrierPath != y.carrierPath || x.kind != y.kind || x.sizeBits != y.sizeBits ||
+            x.alignmentBits != y.alignmentBits || x.fields.size() != y.fields.size()) return false;
+        for (std::size_t j = 0; j < x.fields.size(); ++j)
+        {
+            const auto& left = x.fields[j]; const auto& right = y.fields[j];
+            if (left.name != right.name || left.access != right.access || left.offsetBits != right.offsetBits ||
+                left.bitWidth != right.bitWidth || left.isAnonymousCarrier != right.isAnonymousCarrier ||
+                !compatibleKnownUsr(left.clangUsr, right.clangUsr) || !sameMemberType(left.type, right.type))
+                return false;
+        }
+    }
     for (std::size_t i = 0; i < a.staticFields.size(); ++i)
         if (a.staticFields[i].name != b.staticFields[i].name || a.staticFields[i].access != b.staticFields[i].access ||
             a.staticFields[i].threadLocal != b.staticFields[i].threadLocal || a.staticFields[i].dllImport != b.staticFields[i].dllImport ||
