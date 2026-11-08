@@ -885,9 +885,12 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Las funciones C libres que reciben o retornan `_Bool` llevan `zeroext` en
     declaraciones y llamadas LLVM. IR contrastado con Clang y ejecución O0–O3;
     muestra. También pasaron una función C++ libre, un método estático y otro
-    de instancia; llamadas indirectas y callbacks siguen pendientes.
+    de instancia. Un puntero C invocado desde NS y un callback NS invocado
+    desde C pasaron O0–O3 con atributos de ABI comparados contra Clang.
+    El reenvío dinámico y otras variantes siguen sin validación específica.
     [C](registro-commits/t08-bool-abi-c-implementacion.md) ·
     [C++](registro-commits/t08-bool-abi-cpp-prueba.md).
+    [Callbacks](registro-commits/t08-bool-callback-c-implementacion.md).
   - Las globales C _Bool no volátiles escalares y de arreglo usan byte en
     declaraciones y accesos LLVM. Pasaron lectura y escritura cruzadas O0–O3,
     regresiones y controles de identidad/restauración de caché. Los punteros
