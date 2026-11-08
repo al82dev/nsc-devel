@@ -108,6 +108,21 @@ inline std::optional<std::uint64_t> clangMsVolatileDirectCPointeeAlignment(const
 }
 
 // A C _Bool occupies one byte even though the NS expression value is i1.
+inline bool cBoolGlobalArrayElement(const frontend::ProjectOopMirNode* node) noexcept
+{
+    if (!node || node->kind != frontend::ProjectOopMirNodeKind::RawElementAddress ||
+        node->typeKey != "builtin:bool") return false;
+    unsigned depth = 0;
+    while (node && node->kind == frontend::ProjectOopMirNodeKind::RawElementAddress)
+    {
+        if (++depth > 128 || node->children.size() != 2 || !node->children.front() ||
+            node->immediate == 0) return false;
+        node = node->children.front().get();
+    }
+    return node && node->kind == frontend::ProjectOopMirNodeKind::NamespaceStateAddress &&
+        node->cppCBoolStorage && node->typeKey.starts_with("builtin:bool[");
+}
+
 inline bool clangMsVolatileGlobalBoolArray(const frontend::ProjectOopMirNode* node) noexcept
 {
     if (!node || node->kind != frontend::ProjectOopMirNodeKind::RawElementAddress ||

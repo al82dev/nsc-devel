@@ -61,8 +61,22 @@ bool OopLlvmImplementation::declareStaticFields(std::string& error, bool defineS
                     type = LLVMArrayType2(LLVMInt8TypeInContext(context_),
                                           count * imported->objectLayout->sizeBytes);
             }
-            if (type == nullptr && field.cppCVolatileBoolStorage)
+            if (type == nullptr && field.cppCBoolStorage)
+            {
+                std::string elementKey = field.typeKey;
+                std::vector<std::uint64_t> dimensions;
+                while (const auto element = frontend::ProjectMemberModel::fixedArrayElementTypeKey(elementKey))
+                {
+                    const auto extent = frontend::ProjectMemberModel::fixedArrayCount(elementKey);
+                    if (!extent || *extent == 0) return fail(error, "C bool global has invalid array extent");
+                    dimensions.push_back(*extent);
+                    elementKey = *element;
+                }
+                if (elementKey != "builtin:bool") return fail(error, "C bool global has invalid element type");
                 type = LLVMInt8TypeInContext(context_);
+                for (auto it = dimensions.rbegin(); it != dimensions.rend(); ++it)
+                    type = LLVMArrayType2(type, *it);
+            }
             if (type == nullptr) type = llvmType(field.typeKey, error);
             if (type == nullptr || type == LLVMVoidTypeInContext(context_))
             {

@@ -232,12 +232,13 @@ LLVMValueRef OopLlvmImplementation::lowerLoadExpression(const frontend::ProjectO
                 const bool atomicFloat = node->cppAtomicAccess &&
                     (node->typeKey == "builtin:float" || node->typeKey == "builtin:double");
                 const bool atomicBool = node->cppAtomicAccess && node->typeKey == "builtin:bool";
+                const bool cBool = node->cppCBoolStorage && node->typeKey == "builtin:bool";
                 const bool cVolatileBool = !node->cppAtomicAccess && node->kind == frontend::ProjectOopMirNodeKind::NamespaceStateLoad &&
                     node->typeKey == "builtin:bool" && node->volatileAccess &&
                     node->cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
                     node->cppAtomicAlignmentBytes == std::optional<std::size_t>{1};
                 const bool atomicPointer = node->cppAtomicAccess && node->typeKey.ends_with("*");
-                LLVMTypeRef loadType = atomicPointer ? LLVMInt64TypeInContext(context_) : (atomicBool || cVolatileBool) ? LLVMInt8TypeInContext(context_) : atomicFloat
+                LLVMTypeRef loadType = atomicPointer ? LLVMInt64TypeInContext(context_) : (atomicBool || cBool || cVolatileBool) ? LLVMInt8TypeInContext(context_) : atomicFloat
                     ? (node->typeKey == "builtin:float" ? LLVMInt32TypeInContext(context_) : LLVMInt64TypeInContext(context_))
                     : type;
                 LLVMValueRef load = LLVMBuildLoad2(builder_, loadType, address, "static.field.load");
@@ -248,6 +249,8 @@ LLVMValueRef OopLlvmImplementation::lowerLoadExpression(const frontend::ProjectO
                     LLVMSetAlignment(load, 1);
                     return LLVMBuildICmp(builder_, LLVMIntNE, load, LLVMConstInt(loadType, 0, 0), "c.bool.global.value");
                 }
+                if (cBool)
+                    return LLVMBuildICmp(builder_, LLVMIntNE, load, LLVMConstInt(loadType, 0, 0), "c.bool.global.value");
                 if (node->cppAtomicAccess)
                 {
                     const auto alignment = atomicPointer ? 8U : atomicBool ? 1U : node->typeKey == "builtin:float" ? 4U : node->typeKey == "builtin:double" ? 8U :

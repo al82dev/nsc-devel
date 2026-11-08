@@ -1481,12 +1481,15 @@ bool OopLlvmImplementation::lowerExpressionFrame030PointerLoad(
     LLVMValueRef pointer = values.back();
     values.pop_back();
     if (pointer == nullptr) { values.push_back(nullptr); return true; }
-    if (clangMsVolatileGlobalBoolArray(current->children.front().get()))
+    if (cBoolGlobalArrayElement(current->children.front().get()) ||
+        clangMsVolatileGlobalBoolArray(current->children.front().get()))
     {
         LLVMTypeRef storageType = LLVMInt8TypeInContext(context_);
         LLVMValueRef load = LLVMBuildLoad2(builder_, storageType, pointer, "c.bool.storage.load");
-        LLVMSetVolatile(load, 1);
-        LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
+        if (current->volatileAccess || clangMsVolatileGlobalBoolArray(current->children.front().get()))
+            LLVMSetVolatile(load, 1);
+        if (clangMsVolatileGlobalBoolArray(current->children.front().get()))
+            LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
         LLVMSetAlignment(load, 1);
         values.push_back(LLVMBuildICmp(builder_, LLVMIntNE, load, LLVMConstInt(storageType, 0, 0), "c.bool.value"));
         return true;
