@@ -2,6 +2,7 @@
 
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #include "nativesharp/Interop/CppSemanticInventory.h"
+#include "nativesharp/Interop/CppTypeAliasDeclaration.h"
 
 #include <cstdint>
 #include <span>
@@ -43,6 +44,16 @@ bool encodeCDependencyGlobal(const CDependencyGlobalSnapshot& value,
     std::vector<std::uint8_t>& output, std::string& error);
 bool decodeCDependencyGlobal(std::span<const std::uint8_t> bytes,
     CDependencyGlobalSnapshot& output, std::string& error);
+struct CDependencyAliasSnapshot
+{
+    std::string moduleName;
+    std::string referenceIdentity;
+    CppTypeAliasDeclaration declaration;
+};
+bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
+    std::vector<std::uint8_t>& output, std::string& error);
+bool decodeCDependencyAlias(std::span<const std::uint8_t> bytes,
+    CDependencyAliasSnapshot& output, std::string& error);
 // Internal catalogue codec. It does not by itself publish an NSMETA section.
 // Both functions leave their output unchanged on failure.
 bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,

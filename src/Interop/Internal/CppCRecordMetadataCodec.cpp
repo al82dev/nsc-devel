@@ -513,6 +513,54 @@ bool decodeCDependencyGlobal(std::span<const std::uint8_t> bytes,
     return true;
 }
 
+bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
+    std::vector<std::uint8_t>& output, std::string& error)
+{
+    const auto& alias = value.declaration;
+    if (value.moduleName.empty() || value.referenceIdentity.empty() ||
+        alias.name.empty() || alias.qualifiedName.empty())
+    { error = "invalid C dependency alias identity"; return false; }
+    ByteWriter writer;
+    writer.u8(1);
+    if (!putText(writer, value.moduleName) || !putText(writer, value.referenceIdentity) ||
+        !putText(writer, alias.name) || !putText(writer, alias.qualifiedName) ||
+        !putOptionalText(writer, alias.clangUsr))
+    { error = "invalid C dependency alias text"; return false; }
+    writer.u8(alias.insideAnonymousNamespace);
+    std::vector<std::uint8_t> encoded;
+    if (!encodeCDependencyType(alias.underlyingType, encoded, error) ||
+        encoded.size() > std::numeric_limits<std::uint32_t>::max()) return false;
+    writer.u32(static_cast<std::uint32_t>(encoded.size()));
+    writer.raw(encoded);
+    output = writer.takeBytes();
+    error.clear();
+    return true;
+}
+
+bool decodeCDependencyAlias(std::span<const std::uint8_t> bytes,
+    CDependencyAliasSnapshot& output, std::string& error)
+{
+    ByteReader reader(bytes);
+    CDependencyAliasSnapshot value;
+    auto& alias = value.declaration;
+    std::uint8_t version = 0;
+    std::uint32_t size = 0;
+    if (!reader.u8(version) || version != 1 || !reader.text(value.moduleName) ||
+        !reader.text(value.referenceIdentity) || !reader.text(alias.name) ||
+        !reader.text(alias.qualifiedName) || !getOptionalText(reader, alias.clangUsr) ||
+        !getFlag(reader, alias.insideAnonymousNamespace) || !reader.u32(size) || size > reader.remaining())
+    { error = "invalid C dependency alias"; return false; }
+    std::vector<std::uint8_t> encoded(size);
+    if (!reader.raw(encoded) || !decodeCDependencyType(encoded, alias.underlyingType, error)) return false;
+    std::vector<std::uint8_t> canonical;
+    if (!reader.atEnd() || !encodeCDependencyAlias(value, canonical, error) ||
+        canonical.size() != bytes.size() || !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
+    { error = "noncanonical C dependency alias"; return false; }
+    output = std::move(value);
+    error.clear();
+    return true;
+}
+
 bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
                           std::vector<std::uint8_t>& output, std::string& error)
 {

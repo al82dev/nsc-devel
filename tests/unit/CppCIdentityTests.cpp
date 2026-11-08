@@ -932,6 +932,25 @@ bool checkDependencyTypeCodec()
     decodedGlobal.moduleName = "sentinel";
     ok &= expect(!decodeCDependencyGlobal(globalBytes, decodedGlobal, error) && decodedGlobal.moduleName == "sentinel",
         "truncated C dependency global preserves output on failure");
+    CDependencyAliasSnapshot alias;
+    alias.moduleName = "Producer";
+    alias.referenceIdentity = "header-digest";
+    alias.declaration.name = "CAlias";
+    alias.declaration.qualifiedName = "CAlias";
+    alias.declaration.clangUsr = "c:test.h@T@CAlias";
+    alias.declaration.underlyingType = pointer;
+    std::vector<std::uint8_t> aliasBytes;
+    CDependencyAliasSnapshot decodedAlias;
+    ok &= expect(encodeCDependencyAlias(alias, aliasBytes, error) &&
+        decodeCDependencyAlias(aliasBytes, decodedAlias, error) &&
+        decodedAlias.declaration.clangUsr == alias.declaration.clangUsr &&
+        decodedAlias.declaration.underlyingType.element &&
+        decodedAlias.declaration.underlyingType.element->kind == CppTypeKind::Atomic,
+        "C dependency alias preserves identity and underlying type");
+    if (!aliasBytes.empty()) aliasBytes.pop_back();
+    decodedAlias.moduleName = "sentinel";
+    ok &= expect(!decodeCDependencyAlias(aliasBytes, decodedAlias, error) && decodedAlias.moduleName == "sentinel",
+        "truncated C dependency alias preserves output on failure");
     return ok;
 }
 
