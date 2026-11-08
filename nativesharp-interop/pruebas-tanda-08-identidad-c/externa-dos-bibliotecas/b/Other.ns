@@ -1,0 +1,1 @@
+namespace InlineB { public class Bridge { public static int Read<T>(T value) { return second_value; } public static int Add<T>(T value, int delta) { second_value += delta; return second_value; } } }

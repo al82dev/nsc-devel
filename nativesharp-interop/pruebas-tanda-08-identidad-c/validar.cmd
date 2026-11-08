@@ -92,6 +92,10 @@ call "%~dp0externa-dos-bibliotecas\validar.cmd"
 if errorlevel 1 exit /b 1
 call "%~dp0externa-dos-bibliotecas\validar.cmd" incompatible
 if errorlevel 1 exit /b 1
+call "%~dp0externa-dos-bibliotecas\validar-dependencia-compartida.cmd"
+if errorlevel 1 exit /b 1
+call "%~dp0externa-dos-bibliotecas\validar-dependencia-compartida.cmd" distintas
+if errorlevel 1 exit /b 1
 call :typedefs
 if errorlevel 1 exit /b 1
 call "%~dp0records-precompiled\validar.cmd"

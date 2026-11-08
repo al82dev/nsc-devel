@@ -11,6 +11,16 @@ using target::BuiltinLayoutKind;
 
 bool filesHaveEqualContents(const std::filesystem::path &left, const std::filesystem::path &right);
 
+static bool hasEquivalentCppLibrary(const std::vector<std::filesystem::path> &libraries,
+                                    const std::filesystem::path &candidate)
+{
+    for (const auto &library : libraries)
+        if (foldedName(library.filename().string()) == foldedName(candidate.filename().string()) &&
+            filesHaveEqualContents(library, candidate))
+            return true;
+    return false;
+}
+
 bool precompiledReferenceRequiresLld(const compilation::LibraryReference &reference,
                                      const compilation::ProjectLoadOptions &options)
 {
@@ -330,6 +340,7 @@ bool validateLibraryReference(const compilation::LibraryReference &reference,
                                const compilation::LibraryMetadataRepository &repository,
                               interop::LibraryMetadataCodec &metadataCodec,
                               std::unordered_set<std::string> &linkedLibraries,
+                              std::vector<std::filesystem::path> &linkedCppLibraries,
                               std::unordered_set<std::string> &validatedReferences,
                               std::unordered_map<std::string, std::filesystem::path> &runtimeNames,
                               std::unordered_map<std::string, std::filesystem::path> &runtimeByModule,
@@ -388,17 +399,20 @@ bool validateLibraryReference(const compilation::LibraryReference &reference,
     // Preserve order and repetitions within this producer while avoiding an input
     // already supplied by a previous producer or the enclosing project.
     std::vector<std::string> currentCppDependencies;
+    std::vector<std::filesystem::path> currentCppLibraries;
     for (const auto &dependency : cppDependencies)
     {
         const std::string key = foldedPathKey(dependency.libraryPath);
-        if (!linkedLibraries.contains(key))
+        if (!linkedLibraries.contains(key) && !hasEquivalentCppLibrary(linkedCppLibraries, dependency.libraryPath))
         {
             libraries.push_back(dependency.libraryPath);
             currentCppDependencies.push_back(key);
+            currentCppLibraries.push_back(dependency.libraryPath);
         }
     }
     for (const auto &key : currentCppDependencies)
         linkedLibraries.insert(key);
+    linkedCppLibraries.insert(linkedCppLibraries.end(), currentCppLibraries.begin(), currentCppLibraries.end());
     return true;
 }
 
@@ -417,6 +431,7 @@ bool validateProjectLibraryReferences(
     for (const compilation::Project &project : compilation.projectGraph()->projects())
         moduleOwners.emplace(project.moduleName(), project.projectFile());
     std::unordered_set<std::string> validatedReferences;
+    std::vector<std::filesystem::path> linkedCppLibraries;
     interop::LibraryMetadataCodec metadataCodec;
     // One builder for the whole inherited list, so its indexes span every reference.
     std::optional<ExternalImportListBuilder> inheritedImportList;
@@ -427,7 +442,7 @@ bool validateProjectLibraryReferences(
     for (const compilation::Project &project : compilation.projectGraph()->projects())
         for (const compilation::LibraryReference &reference : project.libraryReferences())
             if (!validateLibraryReference(reference, compilation.libraryMetadataRepository(), metadataCodec,
-                                           linkedLibraries, validatedReferences, runtimeNames,
+                                           linkedLibraries, linkedCppLibraries, validatedReferences, runtimeNames,
                                           runtimeByModule, moduleOwners, publishedExports, publishedNativeMethods,
                                           libraries, inheritedImportBuilder, error))
                 return false;
@@ -436,8 +451,12 @@ bool validateProjectLibraryReferences(
         for (const compilation::CppLibraryReference &reference : project.cppLibraryReferences())
         {
             cppRuntimeReferences.emplace_back(reference.libraryPath, reference.runtimePath);
-            if (!reference.libraryPath.empty() && linkedLibraries.insert(foldedPathKey(reference.libraryPath)).second)
+            if (!reference.libraryPath.empty() && linkedLibraries.insert(foldedPathKey(reference.libraryPath)).second &&
+                !hasEquivalentCppLibrary(linkedCppLibraries, reference.libraryPath))
+            {
                 libraries.push_back(reference.libraryPath);
+                linkedCppLibraries.push_back(reference.libraryPath);
+            }
         }
     if (!validateCppImportRuntimes(cppRuntimeReferences, error)) return false;
     return true;
