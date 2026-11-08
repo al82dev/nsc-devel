@@ -53,6 +53,8 @@ struct MethodExpressionTypeBinding final
     // Immediate pointee qualification, separate from the pointer storage.
     bool pointerPointeeVolatile = false;
     bool cppVolatilePointeeContract = false;
+    // Analysis-time alignment fact; consumers must account for reassignment and flow joins.
+    std::size_t pointerKnownAlignment = 1;
     // Preserve the origin needed to distinguish imported flexible members from native storage.
     bool cppFlexibleArrayMember = false;
     bool cppFlexibleArrayDecaySafe = false;

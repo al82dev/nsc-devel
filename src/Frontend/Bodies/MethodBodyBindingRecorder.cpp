@@ -114,6 +114,7 @@ MethodExpressionTypeBinding ProjectMethodBodyModel::makeExpressionTypeBinding(
     binding.pointerPointeeReadonly = result.pointerPointeeReadonly;
     binding.pointerPointeeVolatile = result.pointerPointeeVolatile;
     binding.cppVolatilePointeeContract = result.cppVolatilePointeeContract;
+    binding.pointerKnownAlignment = result.pointerKnownAlignment;
     binding.cppFlexibleArrayMember = result.cppFlexibleArrayMember;
     binding.cppFlexibleArrayDecaySafe = result.cppFlexibleArrayDecaySafe;
     binding.ownership = result.ownership;
