@@ -120,13 +120,13 @@ decisiones posteriores indicadas explícitamente abajo.
   `cases/102-outside/build.log` rechaza segmentos `..` en el glob. El SDK sí
   declara `NativeSharp.Core.StringBuilder` y `NativeSharp.Core.Utf8` en
   `lib/NativeSharp.Core`; esto no demuestra que reemplacen toda una API Text.
-- Decisiones: confirmar si `NativeSharp.Text` es una superficie pública
-  requerida y qué tipos contiene; decidir si un proyecto puede incluir
+- Decisiones: el usuario decidió mantener `NativeSharp.Text` pendiente hasta
+  definir su superficie y tipos; decidir si un proyecto puede incluir
   archivos fuera de su raíz y bajo qué reglas de resolución y límites.
 
 ## Ordenación con comparador
 
-No requiere crear `SortWith` para demostrar la operación: la sobrecarga
+La sobrecarga
 `Algorithm.Sort<T>(Span<T>, Comparison<T>)` existe en
 `lib/NativeSharp.Core.Collections.Generic/Algorithm.ns`, y
 `tests/cc1/c27_algoritmos/Main.ns` comprueba el orden descendente. Una copia
@@ -134,6 +134,10 @@ se compiló con el compilador y SDK aislados, con caché desactivada, y salió 4
 en O0 y O2 (`sort-existing/result.json`). El ejecutable de pruebas CC1 del
 repositorio omite la ejecución real en Windows al no disponer de Wine; por
 eso se ejecutó la copia de forma nativa para esta comprobación.
+El usuario eligió añadir el alias `SortWith`. El SDK delega en la sobrecarga
+con `Comparison<T>`; la reproducción original pasó en O0/O2 y la prueba
+`nsc.sdk.sort-with-alias` verificó el orden y casos vacío/unitario en ambos
+niveles (`sortwith-original/results.json`, `sortwith-test.log`).
 
 ## Preparación de la batería completa
 

@@ -242,8 +242,8 @@ namespace NativeSharp.Core.Collections.Generic
         //      identity. Se rodea renombrando."
         //
         // El ID 132 se cerro: la identidad de una plantilla generica incluye ahora la CUENTA DE
-        // PARAMETROS DE VALOR, asi que las dos conviven y el rodeo sobra. Un nombre peor que
-        // sobrevive al motivo que lo justificaba es deuda disfrazada de decision.
+        // PARAMETROS DE VALOR, asi que las dos conviven. SortWith se conserva como alias de
+        // compatibilidad para los consumidores que utilizan el nombre anterior.
         //
         // EN: Freeze 3.0 P2: Sort(span, Comparison) and Sort(span, InComparison) have the same
         //     count and differ in the delegate type; measured on 2026-10-26, overload resolution
@@ -298,6 +298,11 @@ namespace NativeSharp.Core.Collections.Generic
                 SiftDownWithComparison<T>(elements, 0, endIndex, comparison);
                 endIndex = endIndex - 1;
             }
+        }
+
+        public static void SortWith<T>(Span<T> data, Comparison<T> comparison) where T : copy
+        {
+            Sort<T>(data, comparison);
         }
 
         public static void Sort<T>(Span<T> data, InComparison<T> comparison)

@@ -23,7 +23,7 @@ se detallan en los documentos de `docs/fixes` y registros de la misma carpeta.
 | --- | --- |
 | Rc / WeakRc; Arc / WeakArc | `sdk-01`: nombres no encontrados. El usuario autorizó diseñar e implementar las cuatro familias; implementación y validación pendientes. El contrato impreso no demuestra una implementación. |
 | Dictionary string AddOrUpdate | `sdk-02`: termina 3221226356; doble liberación. Corregido en `5127e4d07`, con ejecución de regresión. |
-| SortWith | `sdk-03`: nombre no encontrado. La sobrecarga vigente `Sort<T>(Span<T>, Comparison<T>)` cubre la ordenación con comparador; una copia de `c27_algoritmos` se compiló y ejecutó nativamente en O0/O2 con salida 42 (`A:/nsc-fixes-evidencia/sort-existing/result.json`). El nombre `SortWith` no existe y no se agregó. |
+| SortWith | `sdk-03`: nombre no encontrado. Por decisión del usuario, `SortWith<T>(Span<T>, Comparison<T>)` delega en la sobrecarga existente de `Sort`. La reproducción original compiló y ejecutó con salida 0 en O0/O2 (`sortwith-original/results.json`); `nsc.sdk.sort-with-alias` verifica orden descendente, duplicados, vacío y un elemento, con ejecución 42 en O0/O2 (`sortwith-test.log`). El span vacío requiere tipo explícito en esta prueba. |
 | Saturación: suma y conversiones a short y byte | `comp-01`: `-2147483648`, `-25536`, `34`; corregido para esas operaciones en `a7436961d` y `bb4c18900`. No se afirma cobertura de todas las operaciones saturadas. |
 | Literales y cálculo decimal | `comp-02`: factura 101, comparación falsa, redondeo 100/100/101. `a63333883` conserva el lexema de literales y corrige la reproducción; no demuestra precisión completa de decimal ni inicializadores estáticos. |
 | checked i128 | `comp-03`: la suma desbordaba y continuaba con wrapping. El usuario eligió trap; `93d859e31` corrige la suma firmada i128 con regresiones O0/O2. Otras operaciones no quedan cubiertas. |
@@ -44,7 +44,7 @@ se detallan en los documentos de `docs/fixes` y registros de la misma carpeta.
 | SIMD máscara a vector, indexación y condicional | `89-mask-convert`, `89-mask-index`, `89-mask-select`: rechazos reproducidos. Pendiente definir las operaciones y representación deseadas. |
 | AddressSanitizer | No se localizó opción en la base. La rama incorpora `--sanitize-address` para ejecutables de proyecto de consola con Clang y DLL externos indicados explícitamente; la ruta utiliza Clang/LLD para el enlace y conserva NSLink para las bibliotecas de importación. Caso válido y desbordamiento pasan en O0/O2; restricciones y cobertura en `diseno-punteros-y-asan.md`. |
 | Operadores ++ / -- | `39-increment`, `39-decrement`: parser rechaza la sobrecarga. Pendiente decisión sobre semántica y evaluación. |
-| NativeSharp.Text | `text-namespace`: namespace no encontrado. Pendiente decisión de API. |
+| NativeSharp.Text | `text-namespace`: namespace no encontrado. El usuario decidió mantenerlo pendiente hasta definir su superficie. |
 | Compile con .. | `102-outside`: proyecto rechaza rutas fuera de su raíz. Pendiente decisión de resolución de proyectos. |
 | Ejemplo 66 | Antecedente ya resuelto en el ejemplo; no se atribuye un defecto vigente al compilador. |
 
