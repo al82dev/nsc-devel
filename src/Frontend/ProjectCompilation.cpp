@@ -160,6 +160,18 @@ bool ProjectCompilation::setExperimentalCppTypeSelector(ExperimentalCppTypeSelec
     return true;
 }
 
+bool ProjectCompilation::setCppPrecompiledParserTypeProvider(CppPrecompiledParserTypeProvider provider, std::string& error)
+{
+    if (compilationAttempted_)
+    {
+        error = "precompiled C parser type provider must be set before compilation starts";
+        return false;
+    }
+    cppPrecompiledParserTypeProvider_ = std::move(provider);
+    error.clear();
+    return true;
+}
+
 bool ProjectCompilation::setExperimentalCppInstanceMethodProvider(
     ExperimentalCppInstanceMethodProvider provider, std::string& error)
 {
@@ -2628,8 +2640,11 @@ bool ProjectCompilation::parseSyntaxUnits(
     std::vector<std::pair<std::size_t, std::string>> cppNamespaces;
     if (!experimentalCppImportedTypes_.empty() && cppNamespaceProvider_ &&
         !cppNamespaceProvider_(*projectGraph_, cppProjectSessions_, cppNamespaces, loadError)) return false;
+    std::vector<CppImportedTypeDeclaration> parserTypes = experimentalCppImportedTypes_;
+    if (cppPrecompiledParserTypeProvider_ &&
+        !cppPrecompiledParserTypeProvider_(*this, parserTypes, loadError)) return false;
     std::vector<std::optional<parser::ScopedKnownTypeNames>> scopedNames;
-    if (!prepareCppScopedParserNames(*projectGraph_, units_, experimentalCppImportedTypes_,
+    if (!prepareCppScopedParserNames(*projectGraph_, units_, parserTypes,
                                      cppNamespaces, cppImportedTypeAliases_, scopedNames, loadError)) return false;
     const std::size_t progressTotal = visibleSourceCount(units_, sourceManager_);
     std::atomic_size_t completed = 0;
@@ -2903,8 +2918,11 @@ bool ProjectCompilation::cloneSyntaxForObservation(
     std::vector<std::pair<std::size_t, std::string>> cppNamespaces;
     if (!experimentalCppImportedTypes_.empty() && cppNamespaceProvider_ &&
         !cppNamespaceProvider_(*projectGraph_, cppProjectSessions_, cppNamespaces, error)) return false;
+    std::vector<CppImportedTypeDeclaration> parserTypes = experimentalCppImportedTypes_;
+    if (cppPrecompiledParserTypeProvider_ &&
+        !cppPrecompiledParserTypeProvider_(*this, parserTypes, error)) return false;
     std::vector<std::optional<parser::ScopedKnownTypeNames>> scopedNames;
-    if (!prepareCppScopedParserNames(*projectGraph_, units_, experimentalCppImportedTypes_,
+    if (!prepareCppScopedParserNames(*projectGraph_, units_, parserTypes,
                                      cppNamespaces, cppImportedTypeAliases_, scopedNames, error)) return false;
     for (std::size_t unitIndex = 0; unitIndex < units_.size(); ++unitIndex)
     {

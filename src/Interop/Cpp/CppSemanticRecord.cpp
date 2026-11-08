@@ -1187,6 +1187,18 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     return metadata_detail::encodeCTypeCatalog(records, enums, output, error);
 }
 
+bool providePrecompiledCParserTypes(const frontend::ProjectCompilation& compilation,
+    std::vector<frontend::CppImportedTypeDeclaration>& output, std::string& error)
+{
+    const auto* graph = compilation.projectGraph();
+    if (!graph) { error = "C parser type selection requires a project graph"; return false; }
+    std::vector<frontend::CppImportedTypeDeclaration> restored;
+    if (!metadata_detail::reconstructPrecompiledCImportedTypes(compilation.precompiledModules(), *graph,
+            "x86_64-pc-windows-msvc", restored, error)) return false;
+    output.insert(output.end(), std::make_move_iterator(restored.begin()), std::make_move_iterator(restored.end()));
+    return true;
+}
+
 bool selectCppTypesWithPrecompiledCatalogs(const frontend::ProjectCompilation& compilation,
     std::vector<frontend::CppImportedTypeDeclaration>& output, std::string& error)
 {

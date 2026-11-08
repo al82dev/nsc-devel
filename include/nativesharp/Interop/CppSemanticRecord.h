@@ -174,6 +174,8 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     const LibraryMetadata& metadata, std::vector<std::uint8_t>& output, std::string& error);
 bool selectCppTypesWithPrecompiledCatalogs(const frontend::ProjectCompilation& compilation,
     std::vector<frontend::CppImportedTypeDeclaration>& output, std::string& error);
+bool providePrecompiledCParserTypes(const frontend::ProjectCompilation& compilation,
+    std::vector<frontend::CppImportedTypeDeclaration>& output, std::string& error);
 bool reconstructCImportedFields(std::span<const CppCRecordSnapshot> records,
     std::size_t projectOrdinal, std::string_view moduleName, std::string_view targetTriple,
     const frontend::ProjectNameLookup& lookup, std::vector<frontend::CppImportedInstanceField>& output,

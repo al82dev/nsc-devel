@@ -548,7 +548,8 @@ bool configurePrecompiledModules(
     if (hasPrecompiledCCatalog)
     {
 #if defined(NSC_ENABLE_CPP_INTEROP)
-        if (!compilation.setExperimentalCppTypeSelector(interop::selectCppTypesWithPrecompiledCatalogs, error) ||
+        if (!compilation.setCppPrecompiledParserTypeProvider(interop::providePrecompiledCParserTypes, error) ||
+            !compilation.setExperimentalCppTypeSelector(interop::selectCppTypesWithPrecompiledCatalogs, error) ||
             !compilation.setExperimentalCppInstanceFieldProvider(
                 [&compilation](const auto& graph, auto projects, const auto& lookup, auto& fields, auto& why) {
                     return interop::provideCppFieldsWithPrecompiledCatalogs(

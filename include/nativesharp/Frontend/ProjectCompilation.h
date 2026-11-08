@@ -79,6 +79,8 @@ public:
         std::vector<CppImportedTypeAlias>&, std::string&)>;
     using ExperimentalCppTypeSelector = std::function<bool(
         const ProjectCompilation&, std::vector<CppImportedTypeDeclaration>&, std::string&)>;
+    using CppPrecompiledParserTypeProvider = std::function<bool(
+        const ProjectCompilation&, std::vector<CppImportedTypeDeclaration>&, std::string&)>;
     using ExperimentalCppInstanceMethodProvider = std::function<bool(
         const compilation::ProjectGraph&, std::span<const interop::CppProjectSessions>,
         const ProjectNameLookup&, std::vector<CppImportedInstanceMethod>&, std::string&)>;
@@ -112,6 +114,7 @@ public:
     bool setExperimentalCppTypeProvider(ExperimentalCppTypeProvider provider, std::string& error);
     bool setCppTypeAliasProvider(CppTypeAliasProvider provider, std::string& error);
     bool setExperimentalCppTypeSelector(ExperimentalCppTypeSelector selector, std::string& error);
+    bool setCppPrecompiledParserTypeProvider(CppPrecompiledParserTypeProvider provider, std::string& error);
     bool setExperimentalCppInstanceMethodProvider(ExperimentalCppInstanceMethodProvider provider, std::string& error);
     bool setExperimentalCppLifetimeMethodProvider(ExperimentalCppLifetimeMethodProvider provider, std::string& error);
     bool setExperimentalCppInstanceFieldProvider(ExperimentalCppInstanceFieldProvider provider, std::string& error);
@@ -338,6 +341,7 @@ private:
     CppTypeAliasProvider cppTypeAliasProvider_;
     ExperimentalCppTypeProvider experimentalCppTypeProvider_;
     ExperimentalCppTypeSelector experimentalCppTypeSelector_;
+    CppPrecompiledParserTypeProvider cppPrecompiledParserTypeProvider_;
     ExperimentalCppInstanceMethodProvider experimentalCppInstanceMethodProvider_;
     ExperimentalCppLifetimeMethodProvider experimentalCppLifetimeMethodProvider_;
     ExperimentalCppInstanceFieldProvider experimentalCppInstanceFieldProvider_;
