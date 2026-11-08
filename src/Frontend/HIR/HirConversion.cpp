@@ -24,6 +24,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapImplicitConversion(
     {
         return value;
     }
+    if (conversion.kind == ProjectConversionKind::CFlexibleArrayToPointer &&
+        value->kind == ProjectOopHirNodeKind::FieldValue)
+    {
+        value->kind = ProjectOopHirNodeKind::FieldAddress;
+        auto address = makeNode(ProjectOopHirNodeKind::AddressValue, syntax, conversion.targetTypeKey);
+        address->children.push_back(std::move(value));
+        return address;
+    }
     if ((conversion.kind == ProjectConversionKind::UserDefinedImplicit ||
          conversion.kind == ProjectConversionKind::UserDefinedExplicit) &&
         conversion.userDefinedMemberOrdinal.has_value())
