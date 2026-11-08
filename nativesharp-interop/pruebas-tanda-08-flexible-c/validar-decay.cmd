@@ -13,7 +13,7 @@ for %%F in (Api.h Api.c DecayContexts.ns DecayContexts.nsproj DecayConsumer.ns D
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
-for %%F in (QualifiedDecay.ns QualifiedDecay.nsproj DecayDiscardConst.ns DecayDiscardConst.nsproj DecayDiscardVolatile.ns DecayDiscardVolatile.nsproj) do (
+for %%F in (QualifiedDecay.ns QualifiedDecay.nsproj DecayDiscardConst.ns DecayDiscardConst.nsproj DecayDiscardVolatile.ns DecayDiscardVolatile.nsproj PackedProducer.ns PackedProducer.nsproj QualifiedDecayConsumer.ns QualifiedDecayShared.nsproj QualifiedDecayMetadata.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -50,6 +50,20 @@ for %%O in (0 1 2 3) do (
   "%DEST%\qualified-O%%O.exe"
   if errorlevel 1 exit /b 1
   echo Conversion flexible calificada: O%%O paso.
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\PackedProducer.nsproj" -O%%O --no-artifact-cache -o "%DEST%\CPackedProducer.lib"
+  if errorlevel 1 exit /b 1
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\QualifiedDecayShared.nsproj" -O%%O --no-artifact-cache -o "%DEST%\qualified-shared-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  "%DEST%\qualified-shared-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  move /y "%DEST%\Restricted.h" "%DEST%\Restricted.hidden" >nul
+  if errorlevel 1 exit /b 1
+  call :qualifiedmetadata %%O
+  set "RESULT=!ERRORLEVEL!"
+  move /y "%DEST%\Restricted.hidden" "%DEST%\Restricted.h" >nul
+  if errorlevel 1 exit /b 1
+  if not "!RESULT!"=="0" exit /b !RESULT!
+  echo Conversion flexible calificada precompilada: O%%O paso.
 )
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\RestrictedPackedAddress.nsproj" > "%DEST%\packed.log" 2>&1
 if not errorlevel 1 exit /b 1
@@ -74,4 +88,10 @@ exit /b 0
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\DecayMetadata.nsproj" -O%1 --no-artifact-cache -o "%DEST%\metadata-O%1.exe"
 if errorlevel 1 exit /b 1
 "%DEST%\metadata-O%1.exe"
+exit /b %ERRORLEVEL%
+
+:qualifiedmetadata
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\QualifiedDecayMetadata.nsproj" -O%1 --no-artifact-cache -o "%DEST%\qualified-metadata-O%1.exe"
+if errorlevel 1 exit /b 1
+"%DEST%\qualified-metadata-O%1.exe"
 exit /b %ERRORLEVEL%
