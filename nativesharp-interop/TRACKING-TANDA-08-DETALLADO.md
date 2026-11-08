@@ -82,7 +82,9 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
         - [x] Comprobar ambas funciones y sus variables TLS desde dos hilos, en O0–O3. [Evidencia](registro-commits/t08-dll-homonimas-dos-funciones-hilos.md).
         - [ ] Resolver las demás formas de distinguir orígenes, incluidas llamadas con argumentos variables; comprobar caché para referencias directas a encabezados, traslado a otro equipo y las demás variantes de importación.
           - [x] Resolver en el sitio de llamada una función C variádica de cada una de dos DLL TLS homónimas y comprobar seis argumentos enteros de O0 a O3. [Evidencia](registro-commits/t08-dll-homonimas-variadicas.md).
-          - [ ] Comprobar la resolución de esa misma función cuando se obtiene su dirección o se convierte a un delegado; no emitir referencias a un símbolo interno sin definición.
+          - [ ] Completar las variantes de dirección de función y delegados, incluidos typedefs homónimos y otros modos de consumo.
+            - [x] Guardar y llamar mediante punteros C variádicos de dos DLL TLS homónimas desde plantillas precompiladas, con typedefs de nombres distintos, en O0–O3 y con caché. [Evidencia](registro-commits/t08-dll-homonimas-variadicas-puntero.md).
+            - [ ] Corregir o conciliar typedefs de puntero C equivalentes y homónimos de dos productores: la muestra precompilada los rechaza como conflicto antes de analizar el cuerpo.
           - [x] Probar la muestra de ambas DLL con funciones variádicas homónimas desde plantillas precompiladas y con caché, en O0–O3 y con valores distinguibles. [Evidencia](registro-commits/t08-dll-homonimas-variadicas.md).
           - [ ] Comprobar promociones, argumentos flotantes y agregados en funciones variádicas, además de otras formas de consumo.
             - [x] Comparar promociones de `byte`, `short` y `float`, junto con `double`, contra controles C para dos DLL homónimas, O0–O3 y caché. [Evidencia](registro-commits/t08-dll-homonimas-variadicas-promociones.md).

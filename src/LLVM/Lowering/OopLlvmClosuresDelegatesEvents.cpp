@@ -1,5 +1,6 @@
 #include "../Internal/OopLlvmImplementation.h"
 #include "../Internal/CppBoolAbi.h"
+#include "../Internal/CppDllExportHelper.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
@@ -770,10 +771,6 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateCreate(const frontend::ProjectO
         const auto found = functions_.find(node->calleeName);
         if (!dynamicTarget && (found == functions_.end() || found->second.function == nullptr))
             return failValue(error, "Stage 42 delegate target function is unavailable: " + node->calleeName);
-        if (!dynamicTarget && found->second.mirFunction != nullptr &&
-            found->second.mirFunction->isVariadic && found->second.mirFunction->importRequiresRuntimeBinding &&
-            found->second.mirFunction->mangledName.starts_with("__nsc_cpp_tls_import_"))
-            return failValue(error, "taking a delegate to a variadic function from a same-named TLS DLL is not yet supported");
 
         // Interop Foundation (callbacks C -> NativeSharp): an extern C delegate is a raw C
         // function pointer END TO END, so binding a static method to one yields the function's
@@ -791,6 +788,24 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateCreate(const frontend::ProjectO
             if (!node->children.empty())
                 return failValue(error,
                     "Stage 47 extern C delegate cannot capture a receiver; only static methods convert");
+            const auto* imported = found->second.mirFunction;
+            if (imported != nullptr && imported->isVariadic && imported->importRequiresRuntimeBinding &&
+                imported->mangledName.starts_with("__nsc_cpp_tls_import_"))
+            {
+                LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                LLVMValueRef library = cStringGlobal(imported->importDllName, "dll");
+                LLVMValueRef symbol = cStringGlobal(imported->cAbiName, "sym");
+                if (library == nullptr || symbol == nullptr)
+                    return failValue(error, "variadic TLS import lost its library or symbol identity");
+                LLVMTypeRef parameters[] = {ptr, ptr};
+                LLVMTypeRef helperType = LLVMFunctionType(ptr, parameters, 2, 0);
+                LLVMValueRef arguments[] = {library, symbol};
+                LLVMValueRef target = LLVMBuildCall2(builder_, helperType,
+                    cppDllTlsExportHelper(context_, module_), arguments, 2, "import.address");
+                if (!emitGuard(LLVMBuildICmp(builder_, LLVMIntNE, target, LLVMConstNull(ptr), "import.bound"),
+                               LlvmTrapReason::ImportBindingFailure, "import.binding", error)) return nullptr;
+                return target;
+            }
             // C1.3 "callback exception boundary": what C receives is the GUARD THUNK's address,
             // not the target's. The thunk has the target's exact signature -- which is already the
             // Win64 C ABI -- so nothing about the call changes for the host; what changes is that

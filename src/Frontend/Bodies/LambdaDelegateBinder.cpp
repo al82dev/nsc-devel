@@ -1489,7 +1489,8 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
         if (functionOrdinal >= namespaceFunctionModel_->functions().size()) return false;
         const NamespaceFunctionSymbol& function =
             namespaceFunctionModel_->functions()[functionOrdinal];
-        if (function.definitionSyntax == nullptr && !function.isExternC && !function.isPrecompiled)
+        if (function.definitionSyntax == nullptr && !function.isExternC && !function.isPrecompiled &&
+            function.cppCanonicalIdentity.empty())
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::MissingFunctionDefinition,

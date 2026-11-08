@@ -62,6 +62,9 @@ bool OopLlvmImplementation::defineCallbackGuardThunks(std::string& error, bool d
                  node->kind == frontend::ProjectOopMirNodeKind::LambdaCreate) &&
                 isExternCDelegateType(node->typeKey) && !node->calleeName.empty())
             {
+                const auto* imported = findCallbackMirFunction(node->calleeName);
+                if (imported != nullptr && imported->isVariadic && imported->importRequiresRuntimeBinding &&
+                    imported->mangledName.starts_with("__nsc_cpp_tls_import_")) return;
                 const std::pair<std::string, bool> target = {
                     node->calleeName, isVectorCallDelegateType(node->typeKey)};
                 if (std::find(targets.begin(), targets.end(), target) == targets.end())
