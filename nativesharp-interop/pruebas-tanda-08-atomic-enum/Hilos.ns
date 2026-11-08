@@ -1,0 +1,9 @@
+int Main()
+{
+    state = STATE_READY;
+    if (state_start_worker() != 0) return 1;
+    if (state != STATE_READY || state_check() != 1) return 2;
+    if (state_finish_worker() != 0) return 3;
+    if (state != STATE_READY) return 4;
+    return 0;
+}
