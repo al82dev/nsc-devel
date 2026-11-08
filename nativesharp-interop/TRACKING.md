@@ -205,6 +205,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - NSMETA 1.47: el control de tolerancia de versiones pasó 17 comprobaciones.
+    El control general pasó 430 de 434; faltan las muestras históricas 1.45 y
+    1.46 que el control exige. Esos cuatro fallos no se consideran aprobados.
+    [Evidencia](registro-commits/t08-nsmeta-147-compatibilidad.md).
   - Actualización H3: el catálogo 1.46 publica dependencias candidatas de alias,
     funciones externas y `static inline`, y globales externas e internas usadas
     por plantillas. Los controles específicos de esas cinco categorías pasaron
