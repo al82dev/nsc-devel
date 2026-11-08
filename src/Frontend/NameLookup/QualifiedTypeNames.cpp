@@ -323,6 +323,15 @@ bool ProjectNameLookup::expandCppTypeAlias(
             if (enumeration && enumeration->pointerDepth == 0 && !enumeration->pointeeConst &&
                 nativeCandidates.size() == 1)
             {
+                const auto* canonical = typeForOrdinal(nativeCandidates.front());
+                if (canonical)
+                    for (const auto& imported : cppImportedTypes_)
+                        if (imported.projectOrdinal == selected->projectOrdinal && imported.enumBase &&
+                            imported.reconciledIdentityKey &&
+                            *imported.reconciledIdentityKey == canonical->identity.key() &&
+                            imported.identity.fullyQualifiedName() == enumeration->name &&
+                            compatibleUsr(enumeration->clangUsr, imported.clangUsr) &&
+                            imported.enumBase->token == enumeration->base.token) return true;
                 const auto* declaration = typeForOrdinal(nativeCandidates.front());
                 if (declaration && declaration->projectOrdinal == selected->projectOrdinal &&
                     declaration->identity.fullyQualifiedName() == enumeration->name && declaration->parts.size() == 1)
