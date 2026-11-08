@@ -903,7 +903,7 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
     const bool ready = !project.empty() && compilation.setCppProjectSessions(
         twoHeaderSessions(factory, resource, directory, driver, project, "a.h", "b.h"), error) &&
         compilation.setCppTypeAliasProvider(provideCppTypeAliases, error) &&
-        compilation.compileProjectGenerics(project, error);
+        compilation.compileProjectMembers(project, error);
     if (!ready) std::cerr << "generic foreign candidates: " << error << '\n';
     if (!expect(ready && compilation.genericModel(), "generic candidates fixture compiles")) return false;
     bool call = false, global = false, alias = false, shadow = false;
@@ -923,8 +923,32 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
                 shadow |= candidate.syntax->kind() == nativesharp::ast::AstNodeKind::IdentifierExpression &&
                     candidate.syntax->text() == "cid_global";
         }
-    return expect(call && global && alias && shadow,
+    bool ok = expect(call && global && alias && shadow,
         "generic candidate capture retains lexical context and does not claim shadowed names are imports");
+    nativesharp::frontend::ProjectNamespaceFunctionModel observer;
+    nativesharp::diagnostics::DiagnosticEngine observerDiagnostics;
+    const bool observed = compilation.nameLookup() && compilation.memberModel() &&
+        observer.setCaptureCppFunctionDemands(true) &&
+        observer.build(*compilation.nameLookup(), *compilation.memberModel(), compilation.units(),
+                       observerDiagnostics, compilation.genericModel());
+    if (!expect(observed, "namespace observer builds for generic candidate fixture")) return false;
+    bool observedCall = false, observedGlobal = false, observedShadow = false;
+    for (const auto& record : compilation.genericModel()->templates())
+        for (const auto& candidate : record.foreignReferenceCandidates)
+            for (const auto& demand : observer.cppFunctionDemands())
+            {
+                if (candidate.syntax != demand.syntax || candidate.typeSyntax ||
+                    record.projectOrdinal != demand.projectOrdinal) continue;
+                if (record.name == "Test" && demand.writtenName == "cid_function" && demand.directCall)
+                    observedCall = true;
+                if (record.name == "Test" && demand.writtenName == "cid_global" && !demand.directCall)
+                    observedGlobal = true;
+                if (record.name == "Shadow" && demand.writtenName == "cid_global" && !demand.directCall)
+                    observedShadow = true;
+            }
+    ok &= expect(observedCall && observedGlobal && observedShadow,
+        "observer demands include the generic C call, C global and shadowed local");
+    return ok;
 }
 
 bool checkDependencyTypeCodec()
