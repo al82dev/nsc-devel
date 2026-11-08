@@ -51,6 +51,54 @@ int main()
     writeFile(root / "Thin.nsproj",
         "<Project><PropertyGroup><Name>Thin</Name></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
+    {
+        using nativesharp::llvm_backend::ThinLtoLibrarySidecar;
+        using nativesharp::llvm_backend::ThinLtoLibrarySidecarCodec;
+        ThinLtoLibrarySidecar input;
+        input.compatibility = "test";
+        input.libraryDigest = "library";
+        input.metadataDigest = "metadata";
+        input.dependencies = "dependencies";
+        input.units = {std::string("b\0c", 3)};
+        input.nativeObjects = {std::string("o\0a", 3), std::string("o\0b", 3)};
+        const auto path = root / "codec-native.nsthinlto";
+        std::string error;
+        ThinLtoLibrarySidecar decoded;
+        const bool wrote = ThinLtoLibrarySidecarCodec::write(path, input, error);
+        const bool read = wrote && ThinLtoLibrarySidecarCodec::read(path, decoded, error);
+        tests.expect(read && decoded.units == input.units && decoded.nativeObjects == input.nativeObjects &&
+                decoded.dependencies == input.dependencies,
+            "sidecar v3 preserves binary units and native objects: " + error);
+        std::ifstream stream(path, std::ios::binary);
+        std::string bytes((std::istreambuf_iterator<char>(stream)), {});
+        tests.expect(bytes.size() > 43 && static_cast<unsigned char>(bytes[8]) == 3,
+            "a sidecar with native objects uses version 3");
+        if (bytes.size() > 43)
+        {
+            // Change the second object's length, then authenticate the malformed payload.
+            bytes[bytes.size() - 32 - 3 - 8] = static_cast<char>(0xff);
+            bytes.resize(bytes.size() - 32);
+            const auto hash = nativesharp::basic::sha256(std::span<const std::uint8_t>(
+                reinterpret_cast<const std::uint8_t*>(bytes.data()), bytes.size()));
+            bytes.append(reinterpret_cast<const char*>(hash.data()), hash.size());
+            writeFile(path, bytes);
+            error.clear();
+            tests.expect(!ThinLtoLibrarySidecarCodec::read(path, decoded, error),
+                "sidecar v3 rejects an authenticated invalid native-object length");
+        }
+        input.nativeObjects.clear();
+        error.clear();
+        const bool wroteV2 = ThinLtoLibrarySidecarCodec::write(path, input, error);
+        const bool readV2 = wroteV2 && ThinLtoLibrarySidecarCodec::read(path, decoded, error);
+        std::ifstream v2stream(path, std::ios::binary);
+        const std::string v2bytes((std::istreambuf_iterator<char>(v2stream)), {});
+        tests.expect(readV2 && decoded.nativeObjects.empty() && v2bytes.size() > 8 &&
+                static_cast<unsigned char>(v2bytes[8]) == 2,
+            "a sidecar without native objects remains readable in version 2: " + error);
+        input.nativeObjects = {std::string{}};
+        tests.expect(!ThinLtoLibrarySidecarCodec::write(path, input, error),
+            "sidecar v3 rejects an empty native object");
+    }
     writeFile(root / "Program.ns", R"NS(
 class Program
 {
