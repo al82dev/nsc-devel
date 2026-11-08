@@ -314,11 +314,30 @@ bool validateRecords(std::span<const CppCRecordSnapshot> records, std::string& e
 }
 }
 
+namespace
+{
+bool validDependencyAtomicTypes(const CppType& type, unsigned depth)
+{
+    if (depth > maxDepth) return false;
+    if (type.kind == CppTypeKind::Atomic && !type.element) return false;
+    if (type.enumUnderlying && !validDependencyAtomicTypes(*type.enumUnderlying, depth + 1)) return false;
+    if (type.element && !validDependencyAtomicTypes(*type.element, depth + 1)) return false;
+    if (type.function)
+    {
+        if (!validDependencyAtomicTypes(type.function->returnType, depth + 1)) return false;
+        for (const auto& parameter : type.function->parameterTypes)
+            if (!validDependencyAtomicTypes(parameter, depth + 1)) return false;
+    }
+    return true;
+}
+}
+
 bool encodeCDependencyType(const CppType& type, std::vector<std::uint8_t>& output, std::string& error)
 {
     std::vector<std::uint8_t> formats;
     ByteWriter writer;
-    if (!collectFloatFormats(type, formats, 0) || !putType(writer, type, 0, true))
+    if (!validDependencyAtomicTypes(type, 0) || !collectFloatFormats(type, formats, 0) ||
+        !putType(writer, type, 0, true))
     { error = "invalid C dependency type"; return false; }
     writer.u32(static_cast<std::uint32_t>(formats.size()));
     writer.raw(formats);
@@ -336,7 +355,8 @@ bool decodeCDependencyType(std::span<const std::uint8_t> bytes, CppType& output,
     { error = "invalid C dependency type"; return false; }
     std::vector<std::uint8_t> formats(count);
     std::size_t index = 0;
-    if (!reader.raw(formats) || !reader.atEnd() || !restoreFloatFormats(type, formats, index, 0) || index != formats.size())
+    if (!reader.raw(formats) || !reader.atEnd() || !restoreFloatFormats(type, formats, index, 0) ||
+        index != formats.size() || !validDependencyAtomicTypes(type, 0))
     { error = "invalid C dependency type floating formats"; return false; }
     output = std::move(type);
     error.clear();

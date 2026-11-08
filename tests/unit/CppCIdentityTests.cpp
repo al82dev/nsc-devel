@@ -863,6 +863,18 @@ bool checkDependencyTypeCodec()
         restored.isConst && restored.element && restored.element->kind == CppTypeKind::Atomic &&
         restored.element->isVolatile && restored.element->element && restored.element->element->ieeeBinary64,
         "C dependency type round trip preserves atomic qualifiers and floating format");
+    const auto validBytes = bytes;
+    bytes.push_back(0);
+    CppType trailing;
+    trailing.spelling = "sentinel";
+    ok &= expect(!decodeCDependencyType(bytes, trailing, error) && trailing.spelling == "sentinel",
+        "C dependency type rejects trailing data without changing output");
+    CppType malformedAtomic;
+    malformedAtomic.kind = CppTypeKind::Atomic;
+    std::vector<std::uint8_t> unchanged{42};
+    ok &= expect(!encodeCDependencyType(malformedAtomic, unchanged, error) && unchanged == std::vector<std::uint8_t>{42},
+        "C dependency type rejects an atomic without an element");
+    bytes = validBytes;
     CppType untouched;
     untouched.spelling = "sentinel";
     if (!bytes.empty()) bytes.pop_back();
