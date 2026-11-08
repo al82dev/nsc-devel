@@ -986,6 +986,28 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
         }
     ok &= expect(retainedCall && retainedGlobal && retainedShadow,
         "compilation retains each generic demand under its owning template without resolving shadows");
+    nativesharp::interop::LibraryMetadata published;
+    for (const auto& record : compilation.genericModel()->templates())
+        if (record.name == "Test")
+        {
+            nativesharp::interop::LibraryMetadataGenericTemplate item;
+            item.canonicalKey = record.canonicalKey;
+            published.genericTemplates.push_back(std::move(item));
+        }
+    auto inventory = collectCppSemanticFunctions(*compilation.projectGraph(), compilation.cppProjectSessions());
+    const auto* entries = std::get_if<std::vector<CppSemanticInventoryEntry>>(&inventory);
+    if (!expect(entries != nullptr, "generic fixture function inventory is available")) return false;
+    const auto candidates = selectCppPublishedTemplateFunctions(compilation, published, *entries);
+    bool selectedFunction = false, selectedOtherTemplate = false;
+    for (const auto& candidate : candidates)
+    {
+        selectedOtherTemplate |= candidate.templateKey != published.genericTemplates.front().canonicalKey;
+        for (const auto& group : candidate.selection.candidates.groups)
+            if (group.symbol.name == "cid_function" && group.inventoryIndices.size() == 2)
+                selectedFunction = true;
+    }
+    ok &= expect(published.genericTemplates.size() == 1 && selectedFunction && !selectedOtherTemplate,
+        "published generic function candidates retain both header origins and exclude other templates");
     return ok;
 }
 

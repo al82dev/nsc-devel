@@ -2,6 +2,8 @@
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
+#include "nativesharp/Frontend/ProjectCompilation.h"
+#include "nativesharp/Interop/LibraryMetadata.h"
 
 #include <map>
 #include <algorithm>
@@ -269,6 +271,34 @@ CppSemanticDemandSelection selectCppSemanticDemands(
                     result.push_back({index, project, ns, std::move(candidates), std::nullopt});
             }
         }
+    }
+    return result;
+}
+
+std::vector<CppPublishedTemplateFunctionCandidates> selectCppPublishedTemplateFunctions(
+    const frontend::ProjectCompilation& compilation, const LibraryMetadata& metadata,
+    std::span<const CppSemanticInventoryEntry> inventory)
+{
+    std::set<std::string> published;
+    for (const auto& item : metadata.genericTemplates) published.insert(item.canonicalKey);
+    std::vector<frontend::CppFunctionDemand> demands;
+    std::vector<std::size_t> originalIndices;
+    const auto input = compilation.cppTemplateDemands();
+    for (std::size_t i = 0; i < input.size(); ++i)
+        if (published.contains(input[i].templateKey))
+        {
+            demands.push_back(input[i].demand);
+            originalIndices.push_back(i);
+        }
+    auto selected = selectCppSemanticDemands(inventory, demands, true);
+    auto& matches = std::get<std::vector<CppSemanticDemandCandidates>>(selected);
+    std::vector<CppPublishedTemplateFunctionCandidates> result;
+    result.reserve(matches.size());
+    for (auto& match : matches)
+    {
+        const auto original = originalIndices[match.demandIndex];
+        match.demandIndex = original;
+        result.push_back({input[original].templateKey, original, std::move(match)});
     }
     return result;
 }

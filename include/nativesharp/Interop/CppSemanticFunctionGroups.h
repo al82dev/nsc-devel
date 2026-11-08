@@ -11,10 +11,11 @@
 #include <variant>
 #include <vector>
 
-namespace nativesharp::frontend { struct CppFunctionDemand; class ProjectNameLookup; }
+namespace nativesharp::frontend { struct CppFunctionDemand; class ProjectNameLookup; class ProjectCompilation; }
 
 namespace nativesharp::interop
 {
+struct LibraryMetadata;
 struct CppSemanticFunctionGroup
 {
     frontend::NamespaceFunctionSymbol symbol;
@@ -68,6 +69,19 @@ using CppSemanticDemandSelection =
 CppSemanticDemandSelection selectCppSemanticDemands(
     std::span<const CppSemanticInventoryEntry> entries,
     std::span<const frontend::CppFunctionDemand> demands, bool deferConflicts = false);
+
+struct CppPublishedTemplateFunctionCandidates
+{
+    std::string templateKey;
+    // Index into ProjectCompilation::cppTemplateDemands(), not the filtered demand list.
+    std::size_t templateDemandIndex;
+    CppSemanticDemandCandidates selection;
+};
+// Candidate groups only: local shadowing and overload selection still happen later.
+// Inventory indices and deferred conflicts retain their original provenance.
+std::vector<CppPublishedTemplateFunctionCandidates> selectCppPublishedTemplateFunctions(
+    const frontend::ProjectCompilation& compilation, const LibraryMetadata& metadata,
+    std::span<const CppSemanticInventoryEntry> inventory);
 
 // Returns candidate indices for enums appearing in functions selected by the supplied demands.
 // Unprojected and conflicting overloads are included because later resolution may need them.
