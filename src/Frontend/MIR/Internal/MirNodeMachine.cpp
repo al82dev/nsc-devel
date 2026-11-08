@@ -1,6 +1,7 @@
 #include "MirNodeMachine.h"
 #include "../../Internal/TypeIndexShadowCheck.h"
 #include "nativesharp/Frontend/ProjectCompilationIndexes.h"
+#include "nativesharp/Target/TargetDataLayout.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -1344,7 +1345,13 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup13(
                 error = "Stage 41 array lowering requires name lookup and value layouts";
                 return -1;
             }
-            const auto layout = model_.elementLayout(node->elementTypeKey);
+            auto layout = model_.elementLayout(node->elementTypeKey);
+            if (!layout.has_value() && node->elementTypeKey == "builtin:decimal")
+            {
+                const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(
+                    target::BuiltinLayoutKind::Decimal);
+                layout = {{decimal.size, decimal.alignment}};
+            }
             if (!layout.has_value() || layout->first == 0)
             {
                 error = "Stage 41 cannot determine native array element layout for '" + node->elementTypeKey + "'";

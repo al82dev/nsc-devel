@@ -6549,6 +6549,18 @@ if(NSC_BUILD_TESTS)
             "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDictionaryStringUpdate.cmake")
 
+    set(NSC_DECIMAL_GENERIC_ARRAY_PROJECT
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decimal_generic_array/DecimalGenericArray.nsproj")
+    add_test(
+        NAME nsc.compiler.decimal-generic-array
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DPROJECT_FILE=${NSC_DECIMAL_GENERIC_ARRAY_PROJECT}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/decimal-generic-array"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDecimalGenericArray.cmake")
+
     # NSC-LIMIT-007. La entrada de driver de la fase de constraints, ejercitada de verdad.
     #
     # Una fase sin prueba de ctest solo existe para quien lee el codigo: la revision encontro que

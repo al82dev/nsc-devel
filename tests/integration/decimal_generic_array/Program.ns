@@ -1,0 +1,14 @@
+using NativeSharp.Examples.Chapter16.GenericVectorAndMatrix;
+
+/// <summary>Exercises allocation, stores and loads for decimal in a generic array.</summary>
+int Main()
+{
+    raii Matrix<decimal> matrix = new Matrix<decimal>(2, 2);
+    matrix.Set(0, 0, 1.0m);
+    matrix.Set(1, 1, 2.0m);
+    if ((int)matrix.Get(0, 0) != 1 || (int)matrix.Get(1, 1) != 2)
+    {
+        return 1;
+    }
+    return 0;
+}
