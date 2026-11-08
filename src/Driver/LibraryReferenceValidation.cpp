@@ -635,11 +635,15 @@ bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compil
 }
 
 bool verifyLinkedRuntimeLibraries(std::span<const std::filesystem::path> runtimeLibraries,
-                                  const linker::PeExecutableInfo &image, std::string &error)
+                                  const linker::PeExecutableInfo &image,
+                                  std::span<const std::filesystem::path> dynamicallyLoadedRuntimes,
+                                  std::string &error)
 {
     std::unordered_set<std::string> reachable;
     for (const std::string &imported : image.importedLibraries)
         reachable.insert(foldedName(imported));
+    for (const auto &runtime : dynamicallyLoadedRuntimes)
+        reachable.insert(foldedName(runtime.filename().string()));
 
     // An import archive is lazy: a runtime whose types are used only in another DLL's public
     // signature need not contribute a direct EXE import. Follow the declared runtime DLLs so a
@@ -671,7 +675,9 @@ bool verifyLinkedRuntimeLibraries(std::span<const std::filesystem::path> runtime
     for (const std::filesystem::path &runtime : runtimeLibraries)
     {
         const std::string expected = foldedName(runtime.filename().string());
-        if (!reachable.contains(expected))
+        const bool dynamic = std::any_of(dynamicallyLoadedRuntimes.begin(), dynamicallyLoadedRuntimes.end(),
+            [&](const auto &path) { return foldedPathKey(path) == foldedPathKey(runtime); });
+        if (!reachable.contains(expected) && !dynamic)
         {
             error = "linked PE does not import declared runtime DLL '" + runtime.filename().string() +
                     "' directly or transitively; the import .lib does not match Runtime";

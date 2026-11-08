@@ -1,5 +1,6 @@
 #include "Internal/DriverInternal.h"
 #include "nativesharp/Interop/CppBinaryDependencies.h"
+#include "nativesharp/Basic/Sha256.h"
 
 namespace nativesharp::driver
 {
@@ -86,15 +87,51 @@ bool collectCppRuntimeCandidates(const frontend::ProjectCompilation &compilation
 bool appendReferencedCppRuntimes(const frontend::ProjectCompilation &compilation,
                                  const linker::PeExecutableInfo &image,
                                  std::vector<std::filesystem::path> &runtimeLibraries,
+                                 std::vector<std::filesystem::path> &dynamicallyLoadedRuntimes,
                                  std::string &error)
 {
     std::vector<std::filesystem::path> candidates;
     if (!collectCppRuntimeCandidates(compilation, candidates, error)) return false;
     auto selected = runtimeLibraries;
     std::unordered_set<std::string> selectedPaths;
-    std::unordered_set<std::string> importedNames;
-    for (const auto &name : image.importedLibraries) importedNames.insert(foldedName(name));
     for (const auto &path : selected) selectedPaths.insert(foldedPathKey(path));
+    std::unordered_set<std::string> importedNames;
+    std::unordered_set<std::string> dynamicIdentities;
+    if (const auto *mir = compilation.oopMirModel())
+    {
+        const auto fields = mir->staticFields();
+        for (const auto &field : fields)
+        {
+            if (!field.isCppExternal || !field.cppThreadLocal || !field.cppDllImport ||
+                field.cppTlsRuntimeIdentity.empty()) continue;
+            const bool collision = std::any_of(fields.begin(), fields.end(), [&](const auto &other) {
+                return other.isCppExternal && other.cppThreadLocal && other.cppDllImport &&
+                    other.storageSymbol == field.storageSymbol && !other.cppTlsRuntimeIdentity.empty() &&
+                    other.cppTlsRuntimeIdentity != field.cppTlsRuntimeIdentity;
+            });
+            if (collision) dynamicIdentities.insert(field.cppTlsRuntimeIdentity);
+        }
+    }
+    std::unordered_set<std::string> matchedIdentities;
+    std::vector<std::filesystem::path> dynamicPaths;
+    for (const auto &candidate : candidates)
+    {
+        if (dynamicIdentities.empty()) break;
+        basic::Sha256Digest digest{};
+        std::uintmax_t size = 0;
+        if (!basic::sha256File(candidate, digest, size, error)) return false;
+        const auto identity = candidate.filename().string() + ":" + basic::sha256Hex(digest);
+        if (!dynamicIdentities.contains(identity)) continue;
+        matchedIdentities.insert(identity);
+        if (selectedPaths.insert(foldedPathKey(candidate)).second) selected.push_back(candidate);
+        dynamicPaths.push_back(candidate);
+    }
+    if (matchedIdentities.size() != dynamicIdentities.size())
+    {
+        error = "a dynamically resolved C TLS runtime is missing from the declared dependencies";
+        return false;
+    }
+    for (const auto &name : image.importedLibraries) importedNames.insert(foldedName(name));
     std::size_t scanned = 0;
     bool changed = true;
     while (changed)
@@ -121,6 +158,7 @@ bool appendReferencedCppRuntimes(const frontend::ProjectCompilation &compilation
             }
     }
     runtimeLibraries = std::move(selected);
+    dynamicallyLoadedRuntimes = std::move(dynamicPaths);
     return true;
 }
 

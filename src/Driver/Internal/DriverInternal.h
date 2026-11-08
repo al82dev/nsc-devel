@@ -148,7 +148,9 @@ bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compil
 bool precompiledReferenceRequiresLld(const compilation::LibraryReference &reference,
                                      const compilation::ProjectLoadOptions &options);
 bool verifyLinkedRuntimeLibraries(std::span<const std::filesystem::path> runtimeLibraries,
-                                  const linker::PeExecutableInfo &image, std::string &error);
+                                  const linker::PeExecutableInfo &image,
+                                  std::span<const std::filesystem::path> dynamicallyLoadedRuntimes,
+                                  std::string &error);
 std::filesystem::path pathFromUtf8(std::string_view value);
 // EN: Shared by file code generation and the project `-opt` actions: creates the target machine
 //     of the level and runs the LLVM pipeline over the module.
@@ -178,6 +180,7 @@ bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibrari
 bool appendReferencedCppRuntimes(const frontend::ProjectCompilation &compilation,
                                  const linker::PeExecutableInfo &image,
                                  std::vector<std::filesystem::path> &runtimeLibraries,
+                                 std::vector<std::filesystem::path> &dynamicallyLoadedRuntimes,
                                  std::string &error);
 bool validateCppRuntimeDestinations(const frontend::ProjectCompilation &compilation,
                                     std::span<const std::filesystem::path> runtimeLibraries,

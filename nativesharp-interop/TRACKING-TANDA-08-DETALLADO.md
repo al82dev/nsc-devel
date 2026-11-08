@@ -52,6 +52,9 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-002-09m7a: Verificar TLS de DLL usada por plantilla precompilada desde dos hilos sin el encabezado original, en O0–O3. [Evidencia](registro-commits/t08-tls-dll-plantillas.md), [O0–O3](registro-commits/t08-tls-dll-dos-productores.md).
 - [x] T08-002-09m7b: Verificar la misma TLS de DLL compartida por dos productores y aislada entre dos hilos, en O0–O3. [Evidencia](registro-commits/t08-tls-dll-dos-productores.md).
 - [x] T08-002-09m7c: Conservar la identidad de TLS homónima procedente de DLL de nombres diferentes y comprobar aislamiento por hilo en O0–O3. [Evidencia](registro-commits/t08-tls-dll-resolucion.md).
+  - [x] T08-002-09m7c0: Empaquetar las DLL TLS cargadas dinámicamente y ejecutar el programa desde una salida aislada y otro directorio de trabajo. [Evidencia](registro-commits/t08-tls-dll-empaquetado-dinamico.md).
+  - [ ] T08-002-09m7c0a: Comprobar el empaquetado de una dependencia transitiva de una DLL TLS cargada dinámicamente.
+  - [ ] T08-002-09m7c0b: Comprobar caché y primeros accesos concurrentes a las dos DLL TLS.
   - [ ] T08-002-09m7c1: Admitir dos DLL diferentes con el mismo nombre de archivo procedentes de directorios diferentes; requieren una identidad y carga por ruta que preserven ambas bibliotecas.
 - [ ] T08-002-09m7d: Comprobar los demás calificadores y variantes de enlace de la global externa compartida.
 - [x] T08-002-09n: Enlazar una sola vez una biblioteca C idéntica propagada por dos productores y conservar dos bibliotecas distintas con el mismo nombre, en O0. [Evidencia](registro-commits/t08-dependencia-c-compartida.md).

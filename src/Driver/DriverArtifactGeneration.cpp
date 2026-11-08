@@ -440,12 +440,13 @@ bool publishExecutableArtifact(std::string_view outputPath, const frontend::Proj
         error << "nsc: error: OOP Windows executable generation failed: " << buildError << '\n';
         return false;
     }
-    if (!appendReferencedCppRuntimes(compilation, builder.info(), runtimeLibraries, referenceError))
+    std::vector<std::filesystem::path> dynamicallyLoadedRuntimes;
+    if (!appendReferencedCppRuntimes(compilation, builder.info(), runtimeLibraries, dynamicallyLoadedRuntimes, referenceError))
     {
         error << "nsc: error: C/C++ runtime selection failed: " << referenceError << '\n';
         return false;
     }
-    if (!verifyLinkedRuntimeLibraries(runtimeLibraries, builder.info(), referenceError))
+    if (!verifyLinkedRuntimeLibraries(runtimeLibraries, builder.info(), dynamicallyLoadedRuntimes, referenceError))
     {
         error << "nsc: error: precompiled DLL/import-library mismatch: " << referenceError << '\n';
         return false;
@@ -1228,7 +1229,8 @@ bool buildDynamicLibraryProduct(const std::filesystem::path &destination,
         return false;
     }
     std::string referenceError;
-    if (!appendReferencedCppRuntimes(compilation, builder.dynamicLibraryInfo(), runtimeLibraries, referenceError))
+    std::vector<std::filesystem::path> dynamicallyLoadedRuntimes;
+    if (!appendReferencedCppRuntimes(compilation, builder.dynamicLibraryInfo(), runtimeLibraries, dynamicallyLoadedRuntimes, referenceError))
     {
         error << "nsc: error: C/C++ runtime selection failed: " << referenceError << '\n';
         return false;
@@ -1239,7 +1241,7 @@ bool buildDynamicLibraryProduct(const std::filesystem::path &destination,
         error << "nsc: error: C/C++ runtime output preflight failed: " << referenceError << '\n';
         return false;
     }
-    if (!verifyLinkedRuntimeLibraries(runtimeLibraries, builder.dynamicLibraryInfo(), referenceError))
+    if (!verifyLinkedRuntimeLibraries(runtimeLibraries, builder.dynamicLibraryInfo(), dynamicallyLoadedRuntimes, referenceError))
     {
         error << "nsc: error: precompiled DLL/import-library mismatch: " << referenceError << '\n';
         return false;
