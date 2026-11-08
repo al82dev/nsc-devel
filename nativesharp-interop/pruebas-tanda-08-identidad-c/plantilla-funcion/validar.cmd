@@ -7,7 +7,7 @@ set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\Native
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
 if not exist "%DEST%" mkdir "%DEST%"
 if errorlevel 1 exit /b 1
-for %%F in (Api.h Api.c Bad.h Producer.ns Producer.nsproj Consumer.ns ConsumerConflict.ns WithHeader.nsproj WithoutHeader.nsproj Conflict.nsproj) do (
+for %%F in (Api.h Api.c Bad.h Producer.ns Producer.nsproj Consumer.ns ConsumerConflict.ns WithHeader.nsproj WithoutHeader.nsproj Conflict.nsproj Unused.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -26,6 +26,10 @@ if exist "%DEST%\Api.h" exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\WithoutHeader.nsproj" -O0 --no-artifact-cache -o "%DEST%\WithoutHeader.exe" > "%DEST%\WithoutHeader.log" 2>&1
 if errorlevel 1 (type "%DEST%\WithoutHeader.log" & exit /b 1)
 "%DEST%\WithoutHeader.exe"
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Unused.nsproj" -O0 --no-artifact-cache -o "%DEST%\Unused.exe" > "%DEST%\Unused.log" 2>&1
+if errorlevel 1 (type "%DEST%\Unused.log" & exit /b 1)
+"%DEST%\Unused.exe"
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Conflict.nsproj" > "%DEST%\Conflict.log" 2>&1
 if not errorlevel 1 exit /b 1
