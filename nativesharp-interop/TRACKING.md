@@ -1030,6 +1030,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     cruzado desde ambos lenguajes. Otras formas y calificadores siguen abiertos.
     [Resultado](registro-commits/t08-bool-puntero-c-implementacion.md).
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
+  - El acceso directo a global C `volatile _Bool*`, por índice y por `*`,
+    conserva byte acquire/release y pasó O0–O3. La propagación por locales,
+    parámetros y otras variantes sigue pendiente.
+    [Resultado](registro-commits/t08-volatile-bool-puntero-implementacion.md).
   - Clang confirmó conversiones flotantes y `fcmp une` en dos asignaciones
     compuestas `_Bool` C volatile; falta implementar y comprobar NSC.
     [Referencia](registro-commits/t08-bool-compuesto-flotante-referencia.md).
