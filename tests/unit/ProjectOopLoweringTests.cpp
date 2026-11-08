@@ -3,6 +3,7 @@
 #include "nativesharp/Frontend/ProjectOopHirModelDumper.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "../../src/Frontend/HIR/HirLoweringSupport.h"
+#include "../../src/Frontend/HIR/ExpressionStatementMachine/CppVolatileAliasAlignment.h"
 #include "../../src/Frontend/MIR/MirConstantEvaluator.h"
 #include "../../src/Frontend/MIR/HirCacheIdentity.h"
 #include "nativesharp/Frontend/ProjectOopMirModelDumper.h"
@@ -21718,6 +21719,26 @@ void testDeepMirNodeDestruction(TestContext& tests)
         "a field initializer destroys its 32768-level MIR ownership tree iteratively");
 }
 
+void testCppVolatileAliasAlignment(TestContext& tests)
+{
+    using nativesharp::frontend::MethodExpressionTypeBinding;
+    using nativesharp::frontend::internal::cppVolatileAliasAlignment;
+    MethodExpressionTypeBinding binding;
+    binding.pointerPointeeVolatile = true;
+    binding.cppVolatilePointeeContract = true;
+    binding.pointerKnownAlignment = 4;
+    tests.expect(cppVolatileAliasAlignment(&binding, "builtin:int") == 4,
+        "aligned C volatile int alias preserves four-byte alignment");
+    tests.expect(!cppVolatileAliasAlignment(&binding, "builtin:long"),
+        "under-aligned C volatile long alias is not marked atomic");
+    tests.expect(!cppVolatileAliasAlignment(&binding, "type:unknown"),
+        "unrecognized element types do not acquire guessed alignment");
+    binding.cppVolatilePointeeContract = false;
+    tests.expect(!cppVolatileAliasAlignment(&binding, "builtin:int") &&
+        !cppVolatileAliasAlignment(nullptr, "builtin:int"),
+        "native or missing pointer binding does not acquire C alignment");
+}
+
 void testCppConsumerVolatileHirMap(TestContext& tests)
 {
     using nativesharp::FileId;
@@ -21750,6 +21771,7 @@ void testCppConsumerVolatileHirMap(TestContext& tests)
 int main()
 {
     TestContext tests;
+    testCppVolatileAliasAlignment(tests);
     testCppConsumerVolatileHirMap(tests);
     const std::filesystem::path root =
         std::filesystem::temp_directory_path() / "nativesharp_project_oop_lowering_tests";
