@@ -791,6 +791,8 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
     // the pointer type carries the field's const/volatile contract.
     result.volatileStorage = receiver.volatileStorage || (field.isCppExternal && field.isVolatile);
     std::string alignedElementKey = field.declaredTypeKey;
+    if (const auto element = ProjectMemberModel::flexibleArrayElementTypeKey(alignedElementKey))
+        alignedElementKey = *element;
     while (const auto element = ProjectMemberModel::fixedArrayElementTypeKey(alignedElementKey))
         alignedElementKey = *element;
     std::uint64_t naturalScalarAlignment = 0;
