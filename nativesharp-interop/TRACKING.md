@@ -560,6 +560,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     cada compilación; el consumidor conserva las bibliotecas nativas completas
     sin sidecars incompletos. La optimización entre bibliotecas con objetos C
     generados sigue pendiente. [Resultado](registro-commits/t08-inline-c-thinlto-validacion.md).
+    Un objeto inline C también llamó a un símbolo `export extern C` de
+    NativeSharp en O0–O3; en O1–O3 se comprobó el índice ThinLTO.
+    [Resultado](registro-commits/t08-inline-thinlto-simbolo-validacion.md).
   - Una definición C11 con parámetros de estilo antiguo recibió `byte` y
     `float` desde NativeSharp con promociones predeterminadas y pasó O0–O3.
     Clang emitió advertencias de obsolescencia. Es una muestra, no el cierre
