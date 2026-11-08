@@ -23,5 +23,11 @@ namespace PublishedShadow
             }
             return sum;
         }
+
+        public static int Lambda<T>(T value)
+        {
+            ShadowCallback callback = (int shadow_value) => shadow_value;
+            return callback(23);
+        }
     }
 }
