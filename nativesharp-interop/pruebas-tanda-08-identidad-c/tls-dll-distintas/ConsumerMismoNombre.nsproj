@@ -1,5 +1,5 @@
 <Project><PropertyGroup><Name>TlsConsumer</Name></PropertyGroup><ItemGroup>
-<Compile Include="Consumer.ns" />
+<Compile Include="ConsumerMismoNombreDirecto.ns" />
 <LibraryReference Include="uno/TlsProducer.lib" />
 <LibraryReference Include="dos/TlsProducer2.lib" />
 <CppLibraryReference Header="ThreadApi.h" Language="C" Standard="c11" Library="api.lib" Runtime="api.dll" />

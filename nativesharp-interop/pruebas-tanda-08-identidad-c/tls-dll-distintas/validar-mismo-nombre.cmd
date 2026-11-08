@@ -15,6 +15,7 @@ lld-link.exe /nologo /dll /noentry /nodefaultlib /include:_tls_used /export:tls_
 if errorlevel 1 (type "%DEST%\mismonombre-dll.log" & exit /b 1)
 copy /y "%~dp0Producer2MismoNombre.nsproj" "%DEST%\Producer2MismoNombre.nsproj" >nul || exit /b 1
 copy /y "%~dp0ConsumerMismoNombre.nsproj" "%DEST%\ConsumerMismoNombre.nsproj" >nul || exit /b 1
+copy /y "%~dp0ConsumerMismoNombreDirecto.ns" "%DEST%\ConsumerMismoNombreDirecto.ns" >nul || exit /b 1
 copy /y "%~dp0ConsumerMismoNombreDinamico.nsproj" "%DEST%\ConsumerMismoNombreDinamico.nsproj" >nul || exit /b 1
 copy /y "%~dp0ConsumerMismoNombreCache.nsproj" "%DEST%\ConsumerMismoNombreCache.nsproj" >nul || exit /b 1
 copy /y "%~dp0ConsumerMismoNombreDinamico.ns" "%DEST%\ConsumerMismoNombreDinamico.ns" >nul || exit /b 1
@@ -74,10 +75,22 @@ if defined NSC_T08_CACHE (
   call "%~dp0validar-mismo-nombre-cache.cmd"
   if errorlevel 1 (popd & exit /b 1)
 )
-nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe ConsumerMismoNombre.nsproj -O0 --no-artifact-cache -o ConsumerSame.exe > mismonombre-consumer.log 2>&1
-if not errorlevel 1 (echo ERROR: se aceptaron importaciones directas ambiguas. & popd & exit /b 1)
-findstr /c:"imported directly and cannot yet be distinguished" mismonombre-consumer.log >nul
+if not exist traslado-directo mkdir traslado-directo
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe ConsumerMismoNombre.nsproj -O%NSC_T08_OPT% --no-artifact-cache -o traslado-directo\ConsumerSame.exe > mismonombre-consumer.log 2>&1
 if errorlevel 1 (type mismonombre-consumer.log & popd & exit /b 1)
+llvm-readobj.exe --coff-imports traslado-directo\ConsumerSame.exe > traslado-directo\imports.log 2>&1
+if errorlevel 1 (type traslado-directo\imports.log & popd & exit /b 1)
+findstr /c:"Name: __nsc_tls_" traslado-directo\imports.log >nul || (echo ERROR: falta la importacion por alias. & popd & exit /b 1)
+findstr /c:"Symbol: tls_read" traslado-directo\imports.log >nul || (echo ERROR: falta la funcion C importada. & popd & exit /b 1)
+findstr /i /c:"Name: api.dll" traslado-directo\imports.log >nul && (echo ERROR: se conserva la importacion homonima. & popd & exit /b 1)
+if not exist traslado-directo-copia mkdir traslado-directo-copia
+if exist traslado-directo-copia\api.dll (echo ERROR: el destino de traslado contiene api.dll. & popd & exit /b 1)
+copy /y traslado-directo\ConsumerSame.exe traslado-directo-copia\ConsumerSame.exe >nul || (popd & exit /b 1)
+copy /y traslado-directo\__nsc_tls_*.dll traslado-directo-copia\ >nul || (popd & exit /b 1)
+pushd A:\ || (popd & exit /b 1)
+"%DEST%\traslado-directo-copia\ConsumerSame.exe"
+if errorlevel 1 (echo ERROR: importacion directa y TLS no comparten instancia. & popd & popd & exit /b 1)
 popd
-echo Importaciones directas ambiguas: diagnostico detectado.
+popd
+echo Importacion directa y TLS tras traslado: correcto.
 exit /b 0

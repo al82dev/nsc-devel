@@ -1,6 +1,7 @@
 #include "Internal/DriverInternal.h"
 #include "Internal/ProjectCommandSupport.h"
 #include "ThinLtoLibraryLinking.h"
+#include "../LLVM/Internal/CppTlsDllAlias.h"
 
 #include "nativesharp/Linker/ExternalImportValidation.h"
 #include "nativesharp/Interop/CppBinaryDependencies.h"
@@ -203,6 +204,70 @@ std::vector<linker::ExternalImportModule> collectExternalImports(const frontend:
     return modules;
 }
 
+// An import library for the packaged name must precede the original import archive.
+// Only declarations with an unambiguous Clang origin are added here; other cases
+// retain the existing post-link diagnostic instead of selecting an arbitrary DLL.
+static bool appendCppTlsAliasedFunctionImports(
+    const frontend::ProjectCompilation &compilation,
+    const std::vector<std::filesystem::path> &runtimeLibraries,
+    std::vector<linker::ExternalImportModule> &imports, std::string &error)
+{
+#ifdef NSC_ENABLE_CPP_INTEROP
+    if (!compilation.projectGraph() || !compilation.oopMirModel() || compilation.cppProjectSessions().empty())
+        return true;
+    auto runtimeCandidates = runtimeLibraries;
+    std::vector<std::filesystem::path> dynamicRuntimes;
+    linker::PeExecutableInfo beforeLink;
+    if (!appendReferencedCppRuntimes(compilation, beforeLink, runtimeCandidates, dynamicRuntimes, error))
+        return false;
+    CppTlsRuntimeAliases aliases;
+    if (!selectCppTlsRuntimeAliases(compilation, dynamicRuntimes, aliases, error)) return false;
+    if (aliases.empty()) return true;
+    auto inventory = interop::collectCppSemanticFunctions(*compilation.projectGraph(), compilation.cppProjectSessions());
+    if (const auto *failure = std::get_if<interop::CppSemanticInventoryFailure>(&inventory))
+    { error = "C/C++ import inventory failed: " + failure->message; return false; }
+    std::unordered_set<std::string> required;
+    for (const auto &function : compilation.oopMirModel()->functions())
+        if (function.isImportedC && function.cppDllImport)
+            required.insert(function.mangledName);
+    std::unordered_map<std::string, std::string> origins;
+    for (const auto &entry : std::get<std::vector<interop::CppSemanticInventoryEntry>>(inventory))
+    {
+        const auto *symbol = std::get_if<frontend::NamespaceFunctionSymbol>(&entry.projection);
+        const std::string name = symbol ? symbol->mangledName : entry.declaration.externalSymbol.value_or("");
+        if (!required.contains(name)) continue;
+        const auto &references = compilation.projectGraph()->projects()[entry.projectOrdinal].cppLibraryReferences();
+        std::string identity;
+        if (symbol && entry.referenceIndex < references.size() && !references[entry.referenceIndex].runtimePath.empty())
+        {
+            const auto &path = references[entry.referenceIndex].runtimePath;
+            basic::Sha256Digest digest{};
+            std::uintmax_t size = 0;
+            if (!basic::sha256File(path, digest, size, error)) return false;
+            identity = pathToUtf8(path.filename()) + ":" + basic::sha256Hex(digest);
+        }
+        const auto [it, inserted] = origins.emplace(name, identity);
+        if (!inserted && it->second != identity) it->second.clear();
+    }
+    ExternalImportListBuilder builder(imports);
+    for (const auto &[symbol, identity] : origins)
+    {
+        if (identity.empty()) continue;
+        const std::string alias = interop::cppTlsDllAlias(identity);
+        if (alias.empty() || std::none_of(aliases.begin(), aliases.end(),
+                [&](const auto &item) { return item.second == alias; })) continue;
+        const bool claimed = std::any_of(imports.begin(), imports.end(), [&](const auto &module) {
+            return foldedName(module.dllName) != foldedName(alias) &&
+                std::find(module.symbols.begin(), module.symbols.end(), symbol) != module.symbols.end();
+        });
+        if (!claimed) builder.append(alias, symbol);
+    }
+#else
+    (void)compilation; (void)runtimeLibraries; (void)imports; (void)error;
+#endif
+    return true;
+}
+
 std::unique_ptr<llvm_backend::ProjectOopObjectBundle> generateProjectObjects(
     frontend::ProjectCompilation &compilation, llvm_backend::DebugInformationKind debugInformation,
     llvm_backend::LlvmOptimizationLevel optimizationLevel,
@@ -394,6 +459,11 @@ bool prepareExecutableBuilder(const frontend::ProjectCompilation &compilation,
         for (const std::string &symbol : module.symbols)
             externalImportList.append(module.dllName, symbol);
     if (!validateSystemImportsWhenRequested(externalImports, error)) return false;
+    if (!appendCppTlsAliasedFunctionImports(compilation, runtimeLibraries, externalImports, referenceError))
+    {
+        error << "nsc: error: C/C++ alias imports failed: " << referenceError << '\n';
+        return false;
+    }
     builder.setExternalImports(std::move(externalImports));
     builder.setExtraLinkLibraries(linkLibraries);
     return true;
