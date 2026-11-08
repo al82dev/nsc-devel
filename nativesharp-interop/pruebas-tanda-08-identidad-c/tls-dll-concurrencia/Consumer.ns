@@ -1,0 +1,13 @@
+int RaceAccess(int id) {
+    if (TlsLib2.Bridge.Access<int>(0, 0) != 7 || TlsLib.Bridge.Access<int>(0, 0) != 3) return 1;
+    if (TlsLib2.Bridge.Access<int>(0, 50 + id) != 50 + id) return 2;
+    if (TlsLib.Bridge.Access<int>(0, 30 + id) != 30 + id) return 3;
+    if (TlsLib2.Bridge.Access<int>(0, 0) != 50 + id || TlsLib.Bridge.Access<int>(0, 0) != 30 + id) return 4;
+    return 0;
+}
+int Main() {
+    TlsRaceCallback callback = (int id) => RaceAccess(id);
+    if (tls_race_first_access(callback) != 0) return 1;
+    if (TlsLib2.Bridge.Access<int>(0, 0) != 7 || TlsLib.Bridge.Access<int>(0, 0) != 3) return 2;
+    return 0;
+}

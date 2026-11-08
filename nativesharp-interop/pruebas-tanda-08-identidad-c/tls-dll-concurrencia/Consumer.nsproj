@@ -1,0 +1,6 @@
+<Project><PropertyGroup><Name>TlsRaceConsumer</Name></PropertyGroup><ItemGroup>
+<Compile Include="Consumer.ns" />
+<LibraryReference Include="TlsProducer.lib" />
+<LibraryReference Include="TlsProducer2.lib" />
+<CppLibraryReference Header="RaceApi.h" Language="C" Standard="c11" Library="api.lib" Runtime="api.dll" />
+</ItemGroup></Project>

@@ -116,6 +116,8 @@ call "%~dp0tls-dll-distintas\validar-cache.cmd"
 if errorlevel 1 exit /b 1
 call "%~dp0tls-dll-transitiva\validar.cmd"
 if errorlevel 1 exit /b 1
+call "%~dp0tls-dll-concurrencia\validar.cmd"
+if errorlevel 1 exit /b 1
 call "%~dp0puntero-externo-dos-bibliotecas\validar.cmd" compatible
 if errorlevel 1 exit /b 1
 call "%~dp0puntero-externo-dos-bibliotecas\validar.cmd" const
