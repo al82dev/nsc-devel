@@ -1100,6 +1100,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     [Comparación](registro-commits/t08-flexible-var-volatile-modos-resultado.md).
     La comparación ampliada confirmó el mismo resultado en O0–O3 para ambos
     modos. [Resultado](registro-commits/t08-flexible-var-volatile-opt-resultado.md).
+    Con dos sesiones del mismo encabezado en modos distintos, NSC emite acceso
+    directo y por alias sin orden atómico en O0–O3. Coincide con la referencia
+    ISO y difiere de Microsoft; falta definir el modo de la unidad consumidora.
+    [Resultado](registro-commits/t08-flexible-var-modos-mixtos-resultado.md).
   - La conversión de `const int[]` a `int const*` y el paso de `volatile int[]`
     a un parámetro C `volatile int*` pasaron O0–O3; perder cada calificador se
     rechazó. Son casos directos, sin acreditar otras rutas ni cerrar el ítem.
