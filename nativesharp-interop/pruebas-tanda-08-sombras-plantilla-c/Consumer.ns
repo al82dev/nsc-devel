@@ -4,5 +4,6 @@ int Main()
     if (PublishedShadow.Bridge.Parameter<int>(19) != 19) return 2;
     if (PublishedShadow.Bridge.Loop<int>(0) != 3) return 3;
     if (PublishedShadow.Bridge.Lambda<int>(0) != 23) return 4;
+    if (PublishedShadow.Bridge.Deconstruction<int>(0) != 30) return 5;
     return 0;
 }

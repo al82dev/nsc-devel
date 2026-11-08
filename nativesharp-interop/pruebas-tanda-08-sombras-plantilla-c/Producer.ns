@@ -29,5 +29,11 @@ namespace PublishedShadow
             ShadowCallback callback = (int shadow_value) => shadow_value;
             return callback(23);
         }
+
+        public static int Deconstruction<T>(T value)
+        {
+            var (shadow_value, other) = (13, 17);
+            return shadow_value + other;
+        }
     }
 }
