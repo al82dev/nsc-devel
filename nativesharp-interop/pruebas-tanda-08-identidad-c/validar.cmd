@@ -106,6 +106,8 @@ call "%~dp0externa-dos-bibliotecas\validar.cmd" atomic-compatible
 if errorlevel 1 exit /b 1
 call "%~dp0validar-tls-optimizaciones.cmd"
 if errorlevel 1 exit /b 1
+call "%~dp0tls-dll-plantillas\validar.cmd"
+if errorlevel 1 exit /b 1
 call "%~dp0puntero-externo-dos-bibliotecas\validar.cmd" compatible
 if errorlevel 1 exit /b 1
 call "%~dp0puntero-externo-dos-bibliotecas\validar.cmd" const
