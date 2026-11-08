@@ -32,6 +32,17 @@ pushd A:\ || (popd & exit /b 1)
 if errorlevel 1 (echo ERROR: control C desde otro directorio fallo. & popd & popd & exit /b 1)
 popd
 echo Control C de DLL de igual nombre: correcto.
+copy /y "uno\api.dll" "alias-a.dll" >nul || (popd & exit /b 1)
+copy /y "dos\api.dll" "alias-b.dll" >nul || (popd & exit /b 1)
+clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%~dp0ControlRenombrado.c" -o ControlRenombrado.obj > renombrado-control.log 2>&1
+if errorlevel 1 (type renombrado-control.log & popd & exit /b 1)
+lld-link.exe /nologo /entry:mainCRTStartup /subsystem:console /nodefaultlib /out:ControlRenombrado.exe ControlRenombrado.obj "A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\um\x64\kernel32.lib" >> renombrado-control.log 2>&1
+if errorlevel 1 (type renombrado-control.log & popd & exit /b 1)
+pushd A:\ || (popd & exit /b 1)
+"%DEST%\ControlRenombrado.exe"
+if errorlevel 1 (echo ERROR: control C de DLL renombradas fallo. & popd & popd & exit /b 1)
+popd
+echo Control C de DLL renombradas: correcto.
 del TlsApi.h
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe ConsumerMismoNombre.nsproj -O0 --no-artifact-cache -o ConsumerSame.exe > mismonombre-consumer.log 2>&1
 if not errorlevel 1 (echo ERROR: se aceptaron DLL distintas con igual nombre. & popd & exit /b 1)
