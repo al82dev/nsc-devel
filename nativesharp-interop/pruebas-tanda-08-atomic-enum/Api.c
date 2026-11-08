@@ -2,10 +2,13 @@
 _Atomic(enum State) state = STATE_IDLE;
 _Atomic(enum SignedState) signed_state = SIGNED_NEGATIVE;
 enum SignedState plain_state = SIGNED_NEGATIVE;
+enum SignedState plain_values[2] = { SIGNED_NEGATIVE, SIGNED_ZERO };
+struct EnumHolder plain_holder = { SIGNED_NEGATIVE };
 _Atomic(enum WideState) wide_state = WIDE_LARGE;
 _Atomic(enum TinyState) tiny_state = TINY_NEGATIVE;
 _Atomic(enum ShortState) short_state = SHORT_START;
 int state_check(void) { return state == STATE_READY; }
+int plain_storage_check(void) { return (int)plain_values[0] == -7 && (int)plain_holder.value == -7; }
 int plain_reference(int stage)
 {
     enum SignedState value = SIGNED_NEGATIVE;

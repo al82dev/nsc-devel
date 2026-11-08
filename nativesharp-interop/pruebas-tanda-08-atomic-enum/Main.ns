@@ -1,5 +1,10 @@
 int Main()
 {
+    SignedState local_value = SIGNED_NEGATIVE;
+    if ((int)local_value++ != -8 || (int)local_value != -7) return 37;
+    if ((int)plain_values[0]++ != -8) return 38;
+    if ((int)++plain_holder.value != -7) return 39;
+    if (plain_storage_check() != 1) return 40;
     if ((int)plain_state++ != plain_reference(0)) return 34;
     if ((int)plain_state != plain_reference(1)) return 35;
     if ((int)--plain_state != plain_reference(2)) return 36;
