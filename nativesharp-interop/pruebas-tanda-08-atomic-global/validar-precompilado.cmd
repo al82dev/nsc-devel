@@ -22,7 +22,7 @@ llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   call :run_one %%O
-  if errorlevel 1 exit /b 1
+  if errorlevel 1 goto :failure
   echo Global atomico precompilado y DLL O%%O correctos.
 )
 exit /b 0
@@ -36,7 +36,7 @@ call :consumer %~1
 set "TASK_RESULT=%ERRORLEVEL%"
 move /y "%DEST%\Api.h.hidden" "%DEST%\Api.h" >nul
 if errorlevel 1 exit /b 1
-if not "%TASK_RESULT%"=="0" exit /b 1
+if not "%TASK_RESULT%"=="0" goto :failure
 exit /b 0
 
 :consumer
