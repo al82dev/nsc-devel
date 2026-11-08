@@ -433,7 +433,7 @@ void ProjectOopHirModel::finishArrayRawIndex(
         const ProjectOopHirNode* provenance = base.get();
         bool indexedCGlobal = false;
         if (provenance && provenance->kind == ProjectOopHirNodeKind::PointerLoad &&
-            provenance->typeKey == "builtin:int*" && provenance->children.size() == 1)
+            provenance->typeKey == elementType + "*" && provenance->children.size() == 1)
         {
             provenance = provenance->children.front().get();
             unsigned depth = 0;
@@ -454,7 +454,7 @@ void ProjectOopHirModel::finishArrayRawIndex(
         {
             const auto& state = namespaceFunctionModel_->states()[*provenance->namespaceStateOrdinal];
             if (state.isCppExternal && state.cppCGlobal &&
-                ((indexedCGlobal && state.declaredTypeKey.starts_with("builtin:int*[")) ||
+                ((indexedCGlobal && state.declaredTypeKey.starts_with(elementType + "*[")) ||
                  (!indexedCGlobal && state.declaredTypeKey == elementType + "*")) &&
                 state.cppPointerPointeeVolatile &&
                 state.cppMicrosoftVolatileSemantics == std::optional<bool>{true})

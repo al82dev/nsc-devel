@@ -375,7 +375,7 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
     const ProjectOopHirNode* provenance = lowered.get();
     bool indexedCGlobal = false;
     if (provenance && provenance->kind == ProjectOopHirNodeKind::PointerLoad &&
-        provenance->typeKey == "builtin:int*" && provenance->children.size() == 1)
+        provenance->typeKey == resultType + "*" && provenance->children.size() == 1)
     {
         provenance = provenance->children.front().get();
         unsigned depth = 0;
@@ -395,7 +395,7 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
     {
         const auto& state = namespaceFunctionModel_->states()[*provenance->namespaceStateOrdinal];
         directCVolatileInt = state.isCppExternal && state.cppCGlobal &&
-            ((indexedCGlobal && state.declaredTypeKey.starts_with("builtin:int*[")) ||
+            ((indexedCGlobal && state.declaredTypeKey.starts_with(resultType + "*[")) ||
              (!indexedCGlobal && state.declaredTypeKey == resultType + "*")) &&
             state.cppPointerPointeeVolatile &&
             state.cppMicrosoftVolatileSemantics == std::optional<bool>{true};
