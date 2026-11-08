@@ -1,0 +1,5 @@
+<Project><PropertyGroup><Name>TlsProducer2</Name><OutputType>Library</OutputType></PropertyGroup><ItemGroup>
+<Compile Include="Producer2.ns" />
+<CppLibraryReference Header="TlsApi.h" Language="C" Standard="c11" Library="api2.lib" Runtime="api2.dll" />
+<CppLibraryReference Header="Leaf.h" Language="C" Standard="c11" Library="leaf.lib" Runtime="leaf.dll" />
+</ItemGroup></Project>
