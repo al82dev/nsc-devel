@@ -496,7 +496,7 @@ private:
         diagnostics::DiagnosticEngine& diagnostics);
     bool expandCppTypeAlias(const ProjectSyntaxUnit& unit, const ast::TypeSyntax* syntax,
         const std::vector<std::string>& namespaceSegments, const LookupEnvironment& environment,
-        diagnostics::DiagnosticEngine& diagnostics) const;
+        diagnostics::DiagnosticEngine& diagnostics, const CppImportedTypeAlias*& expandedAlias) const;
     void bindChildTypeSyntaxes(
         const ProjectSyntaxUnit& unit,
         const ast::TypeSyntax* syntax,

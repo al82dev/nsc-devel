@@ -151,7 +151,8 @@ void ProjectNameLookup::bindTypeSyntax(
     // binding record must keep saying `PointAlias`, not the type it turned out to mean.
     const std::string writtenName = syntax->baseName();
     expandTypeAlias(syntax, environment, diagnostics);
-    if (!expandCppTypeAlias(unit, syntax, namespaceSegments, environment, diagnostics)) return;
+    const CppImportedTypeAlias* expandedAlias = nullptr;
+    if (!expandCppTypeAlias(unit, syntax, namespaceSegments, environment, diagnostics, expandedAlias)) return;
     bindChildTypeSyntaxes(unit, syntax, namespaceSegments, environment, diagnostics, index);
     // Stage 52 fix: a generic type argument substituted into a specialization cloned from a
     // referenced project's template (e.g. List<MyOwnClass> where List<T> lives in a shared
@@ -168,6 +169,7 @@ void ProjectNameLookup::bindTypeSyntax(
     binding.fileId = unit.fileId();
     binding.namespaceName = joinSegments(effectiveNamespaceSegments);
     binding.writtenName = writtenName;
+    binding.expandedCppAlias = expandedAlias;
     binding.enclosingTypeOrdinals = environment.enclosingTypeOrdinals;
     const bool portableSimd = syntax->baseName() == "simd" || syntax->baseName() == "mask";
     if (isBuiltinTypeSurface(syntax, portableSimd))
@@ -183,7 +185,7 @@ void ProjectNameLookup::bindTypeSyntax(
 bool ProjectNameLookup::expandCppTypeAlias(
     const ProjectSyntaxUnit& unit, const ast::TypeSyntax* syntax,
     const std::vector<std::string>& namespaceSegments, const LookupEnvironment& environment,
-    diagnostics::DiagnosticEngine& diagnostics) const
+    diagnostics::DiagnosticEngine& diagnostics, const CppImportedTypeAlias*& expandedAlias) const
 {
     if (cppImportedTypeAliases_.empty() || syntax->isFunction() ||
         lexer::isBuiltinTypeKeyword(syntax->baseTokenKind()) || !syntax->typeArguments().empty()) return true;
@@ -277,6 +279,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
             if (!nativeCandidates.empty()) return true;
             continue;
         }
+        expandedAlias = selected;
         const auto& originalAlias = selected->declaration.underlyingType;
         const bool volatileAliasPointee = originalAlias.kind == interop::CppTypeKind::Pointer &&
             originalAlias.element && originalAlias.element->isVolatile &&

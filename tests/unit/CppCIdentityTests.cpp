@@ -629,10 +629,17 @@ bool bindTwoSessionAlias(CppClangSessionFactory& factory, const std::string& res
         compilation.setCppTypeAliasProvider(provideCppTypeAliases, error);
     const bool bound = configured && compilation.compileProjectNames(project, error) &&
         !compilation.diagnostics().hasErrors();
+    const auto* lookup = compilation.nameLookup();
+    const bool observedAlias = bound && lookup && std::any_of(lookup->bindings().begin(), lookup->bindings().end(),
+        [&](const auto& binding) {
+            return binding.writtenName == alias && binding.expandedCppAlias &&
+                binding.expandedCppAlias->declaration.name == alias &&
+                binding.expandedCppAlias->declaration.clangUsr.has_value();
+        });
     std::cout << "OBSERVATION typedef " << alias << " from " << first << " and " << second << ": bound="
               << (bound ? "yes" : "no") << " diagnostics=" << diagnosticText(compilation)
               << " error='" << error << "'\n";
-    return bound;
+    return bound && expect(observedAlias, "resolved C typedef retains the selected declaration");
 }
 
 // EN: Probe 3. The same typedef seen twice through one header file name must bind (control).

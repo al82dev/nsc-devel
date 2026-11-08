@@ -33,6 +33,7 @@ class DiagnosticEngine;
 namespace nativesharp::frontend
 {
 struct ProjectOopHirModelTestAccess;
+struct CppImportedTypeAlias;
 
 struct TypeNameBinding final
 {
@@ -42,6 +43,9 @@ struct TypeNameBinding final
     FileId fileId;
     std::string namespaceName;
     std::string writtenName;
+    // Non-owning observation of the C/C++ alias actually expanded for this syntax.
+    // Owned by ProjectNameLookup for the lifetime of this binding.
+    const CppImportedTypeAlias* expandedCppAlias = nullptr;
     std::optional<std::size_t> targetTypeOrdinal;
     std::vector<std::size_t> candidateTypeOrdinals;
     // NSC-LIMIT-009. Los tipos dentro de los que se escribio ESTE nombre, del mas exterior al mas
