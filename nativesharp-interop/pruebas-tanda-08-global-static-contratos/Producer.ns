@@ -17,6 +17,7 @@ namespace AtomicContracts
             ticks = 15U;
             local = 16U;
             atomic_local = 17U;
+            atomic_mode += 18;
             return inspect() == 1 ? 0 : 5;
         }
     }

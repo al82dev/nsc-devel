@@ -7,6 +7,7 @@ int Main()
     ticks = 15U;
     local = 16U;
     atomic_local = 17U;
+    atomic_mode += 18;
     box_ptr += 1;
     bool_ptr = next_bool();
     box_ptr -= 1;
