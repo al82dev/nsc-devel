@@ -97,6 +97,12 @@ inline std::optional<std::uint64_t> clangVolatileDirectCPointeeAlignment(const f
     return width;
 }
 
+inline std::optional<std::uint64_t> clangMsVolatileDirectCPointeeAlignment(const frontend::ProjectOopMirNode* node) noexcept
+{
+    if (!node || node->cppMicrosoftVolatileSemantics != std::optional<bool>{true}) return std::nullopt;
+    return clangVolatileDirectCPointeeAlignment(node);
+}
+
 // A C _Bool occupies one byte even though the NS expression value is i1.
 inline bool cBoolGlobalArrayElement(const frontend::ProjectOopMirNode* node) noexcept
 {
