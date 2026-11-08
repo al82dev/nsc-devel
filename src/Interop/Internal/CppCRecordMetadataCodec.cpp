@@ -5,6 +5,7 @@
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Frontend/CppAliasBuiltinType.h"
 #include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
+#include "nativesharp/Frontend/NamespaceStateSymbol.h"
 
 #include <algorithm>
 #include <exception>
@@ -478,6 +479,43 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
     if (!reader.atEnd() || !encodeCDependencyFunction(value, canonical, error) ||
         canonical.size() != bytes.size() || !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
     { error = "noncanonical C dependency function"; return false; }
+    output = std::move(value);
+    error.clear();
+    return true;
+}
+
+bool captureCDependencyGlobal(std::span<const CppSemanticGlobalEntry> inventory,
+    const frontend::NamespaceStateSymbol& selected, std::size_t referenceIndex,
+    std::string_view referenceIdentity, CDependencyGlobalSnapshot& output, std::string& error)
+{
+    if (!selected.isCppExternal || !selected.cppCGlobal || !selected.cppImportError.empty() ||
+        selected.moduleName.empty() || selected.storageName.empty() || !selected.cppClangUsr ||
+        selected.cppClangUsr->empty() || referenceIdentity.empty())
+    { error = "selected C global has incomplete identity"; return false; }
+    const CppSemanticGlobalEntry* match = nullptr;
+    for (const auto& entry : inventory)
+    {
+        const auto& declaration = entry.declaration;
+        if (!entry.cLanguage || entry.projectOrdinal != selected.projectOrdinal ||
+            entry.referenceIndex != referenceIndex || entry.targetTriple != "x86_64-pc-windows-msvc" ||
+            declaration.name != selected.name || declaration.clangUsr != selected.cppClangUsr ||
+            declaration.threadLocal != selected.cppThreadLocal ||
+            entry.microsoftVolatileSemantics != selected.cppMicrosoftVolatileSemantics) continue;
+        const auto symbol = declaration.externalLinkage ? declaration.externalSymbol :
+            std::optional<std::string>{cppCInlineLinkSymbol(entry.projectFile, entry.referenceIndex,
+                                                            "global:" + declaration.name)};
+        if (!symbol || *symbol != selected.storageName) continue;
+        if (match) { error = "selected C global has multiple matching observations"; return false; }
+        match = &entry;
+    }
+    if (!match) { error = "selected C global has no matching observation"; return false; }
+    CDependencyGlobalSnapshot value;
+    value.moduleName = selected.moduleName;
+    value.referenceIdentity = std::string(referenceIdentity);
+    value.linkSymbol = selected.storageName;
+    value.microsoftVolatileSemantics = selected.cppMicrosoftVolatileSemantics;
+    value.declaration = match->declaration;
+    value.declaration.location.reset();
     output = std::move(value);
     error.clear();
     return true;

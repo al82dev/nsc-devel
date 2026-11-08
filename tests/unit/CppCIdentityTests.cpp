@@ -47,6 +47,7 @@
 #include "nativesharp/Compilation/CompilationInputManifest.h"
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
 #include "nativesharp/Compilation/TypeIdentity.h"
+#include "nativesharp/Frontend/NamespaceStateSymbol.h"
 #include "../../src/Interop/Internal/CppCRecordMetadataCodec.h"
 #include "../../src/Driver/Internal/DriverInternal.h"
 
@@ -938,6 +939,28 @@ bool checkDependencyTypeCodec()
     global.declaration.threadLocal = true;
     global.declaration.declarationAlignmentBits = 64;
     global.declaration.type = pointer;
+    nativesharp::frontend::NamespaceStateSymbol selectedGlobal;
+    selectedGlobal.projectOrdinal = 4;
+    selectedGlobal.moduleName = "Producer";
+    selectedGlobal.name = "c_global";
+    selectedGlobal.storageName = "c_global";
+    selectedGlobal.isCppExternal = true;
+    selectedGlobal.cppCGlobal = true;
+    selectedGlobal.cppThreadLocal = true;
+    selectedGlobal.cppClangUsr = global.declaration.clangUsr;
+    selectedGlobal.cppMicrosoftVolatileSemantics = false;
+    std::vector<CppSemanticGlobalEntry> globalInventory{{{}, 2, 4, "x86_64-pc-windows-msvc",
+        global.declaration, CppSemanticGlobalFailure{"not used"}, true, false}};
+    CDependencyGlobalSnapshot capturedGlobal;
+    ok &= expect(captureCDependencyGlobal(globalInventory, selectedGlobal, 2, "header-digest", capturedGlobal, error) &&
+        capturedGlobal.linkSymbol == selectedGlobal.storageName && capturedGlobal.declaration.threadLocal,
+        "C dependency capture retains selected global identity and TLS");
+    capturedGlobal.moduleName = "sentinel";
+    ok &= expect(!captureCDependencyGlobal(globalInventory, selectedGlobal, 3, "header-digest", capturedGlobal, error) &&
+        capturedGlobal.moduleName == "sentinel", "C global capture rejects another reference without changing output");
+    globalInventory.push_back(globalInventory.front());
+    ok &= expect(!captureCDependencyGlobal(globalInventory, selectedGlobal, 2, "header-digest", capturedGlobal, error) &&
+        capturedGlobal.moduleName == "sentinel", "C global capture rejects ambiguous observations");
     std::vector<std::uint8_t> globalBytes;
     CDependencyGlobalSnapshot decodedGlobal;
     ok &= expect(encodeCDependencyGlobal(global, globalBytes, error) &&

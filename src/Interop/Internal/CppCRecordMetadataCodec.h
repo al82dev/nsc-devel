@@ -49,6 +49,9 @@ bool encodeCDependencyGlobal(const CDependencyGlobalSnapshot& value,
     std::vector<std::uint8_t>& output, std::string& error);
 bool decodeCDependencyGlobal(std::span<const std::uint8_t> bytes,
     CDependencyGlobalSnapshot& output, std::string& error);
+bool captureCDependencyGlobal(std::span<const CppSemanticGlobalEntry> inventory,
+    const frontend::NamespaceStateSymbol& selected, std::size_t referenceIndex,
+    std::string_view referenceIdentity, CDependencyGlobalSnapshot& output, std::string& error);
 struct CDependencyAliasSnapshot
 {
     std::string moduleName;
