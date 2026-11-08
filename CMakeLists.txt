@@ -6632,6 +6632,16 @@ if(NSC_BUILD_TESTS)
             "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyCheckedI128Add.cmake")
 
+    add_test(
+        NAME nsc.compiler.struct-trait-impl
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DFIXTURE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/struct_trait_impl"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/struct-trait-impl"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyStructTraitImpl.cmake")
+
     set(NSC_GENERIC_DELEGATE_RETURN_PROJECT
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_delegate_return/GenericDelegateReturn.nsproj")
     add_test(

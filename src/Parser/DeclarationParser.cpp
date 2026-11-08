@@ -698,7 +698,7 @@ void Parser::validateTraitImplementationTarget(
             diagnostics::DiagnosticId::InvalidType,
             diagnostics::DiagnosticSeverity::Error,
             target == nullptr ? current().range() : target->range(),
-            "an impl target must be a direct unqualified class type owned by this module");
+            "an impl target must be a direct unqualified class or struct type owned by this module");
         return;
     }
     declaration->setText(target->baseName());

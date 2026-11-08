@@ -1,0 +1,19 @@
+namespace Demo
+{
+    public trait Formattable { int Value(); }
+    public struct Number { public int value; }
+    impl Formattable for Number { int Value() { return this.value; } }
+    public class Program
+    {
+        private static int StaticValue<T>(T item) where T : Formattable
+        {
+            return item.Value();
+        }
+        public static int Main()
+        {
+            Number number;
+            number.value = 42;
+            return StaticValue(number) + number.Value() - 42;
+        }
+    }
+}

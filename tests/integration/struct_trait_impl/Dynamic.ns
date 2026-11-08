@@ -1,0 +1,15 @@
+namespace Demo
+{
+    public trait Formattable { int Value(); }
+    public struct Number { public int value; }
+    impl Formattable for Number { int Value() { return this.value; } }
+    public class Program
+    {
+        public static int Main()
+        {
+            Number number;
+            borrowed dyn Formattable erased = number;
+            return erased.Value();
+        }
+    }
+}
