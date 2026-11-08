@@ -1018,11 +1018,21 @@ CppCRecordClosureResult collectCppCRecordClosure(
             }
             if (type.kind == CppTypeKind::Enumeration)
             {
-                if (!type.enumIdentity || type.enumIdentity->anonymousContext || type.enumIdentity->name.empty())
+                if (!type.enumIdentity)
                 { failure = "C enum field dependency has no importable identity"; return false; }
-                const compilation::TypeIdentity identity(module, {}, {}, type.enumIdentity->name);
-                if (!identity.isValid()) { failure = "C enum field identity is invalid"; return false; }
-                enums.insert(identity.key());
+                if (type.enumIdentity->anonymousContext || type.enumIdentity->name.empty())
+                {
+                    if (!type.enumIdentity->clangUsr || type.enumIdentity->clangUsr->empty() || !type.enumUnderlying ||
+                        !type.sizeBits || !type.alignmentBits || type.sizeBits != type.enumUnderlying->sizeBits ||
+                        type.alignmentBits != type.enumUnderlying->alignmentBits)
+                    { failure = "C anonymous enum field has incomplete identity or layout"; return false; }
+                }
+                else
+                {
+                    const compilation::TypeIdentity identity(module, {}, {}, type.enumIdentity->name);
+                    if (!identity.isValid()) { failure = "C enum field identity is invalid"; return false; }
+                    enums.insert(identity.key());
+                }
             }
             if (type.element && !visit(*type.element, depth + 1)) return false;
             if (type.enumUnderlying && !visit(*type.enumUnderlying, depth + 1)) return false;
@@ -1219,6 +1229,60 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                        std::make_move_iterator(selected.records.end()));
     }
     std::sort(records.begin(), records.end(), [](const auto& a, const auto& b) { return a.identityKey < b.identityKey; });
+    std::set<std::pair<std::string, std::string>> anonymousEnumFields;
+    for (const auto& record : records)
+    {
+        std::function<void(const CppType&)> collect = [&](const CppType& type) {
+            if (type.kind == CppTypeKind::Enumeration && type.enumIdentity &&
+                (type.enumIdentity->anonymousContext || type.enumIdentity->name.empty()) && type.enumIdentity->clangUsr)
+                anonymousEnumFields.emplace(record.moduleName, *type.enumIdentity->clangUsr);
+            if (type.element) collect(*type.element);
+        };
+        for (const auto& field : record.fields) collect(field.type);
+    }
+    if (!anonymousEnumFields.empty())
+    {
+        if (metadata.formatMinor < 47) { error = "anonymous C enum fields require metadata 1.47"; return false; }
+        auto observed = collectCppSemanticEnums(*graph, compilation.cppProjectSessions());
+        if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&observed))
+        { error = failure->message; return false; }
+        std::map<std::tuple<std::string, std::string, std::string>, std::pair<std::string, std::uint64_t>> captured;
+        for (const auto& value : dependencies.enumerators)
+            captured.emplace(std::make_tuple(value.moduleName, value.name, value.clangUsr), std::make_pair(value.typeKey, value.bits));
+        std::set<std::pair<std::string, std::string>> matched;
+        for (const auto& entry : std::get<std::vector<CppSemanticEnumEntry>>(observed))
+        {
+            if (entry.projectOrdinal >= graph->projects().size() || entry.declaration.isCxx ||
+                !entry.declaration.clangUsr || !entry.declaration.name.empty()) continue;
+            const auto& module = graph->projects()[entry.projectOrdinal].moduleName();
+            const auto identity = std::make_pair(module, *entry.declaration.clangUsr);
+            if (!anonymousEnumFields.contains(identity)) continue;
+            matched.insert(identity);
+            for (std::size_t i = 0; i < entry.declaration.enumerators.size(); ++i)
+            {
+                auto projected = projectCppEnumConstant(entry, i);
+                const auto* value = std::get_if<CppSemanticEnumConstant>(&projected);
+                if (!value || !value->clangUsr || value->clangUsr->empty())
+                { error = "C anonymous enum field enumerator is unavailable"; return false; }
+                const auto [prior, inserted] = captured.emplace(std::make_tuple(module, value->name, *value->clangUsr),
+                    std::make_pair(value->typeKey, value->bits));
+                if (!inserted)
+                {
+                    if (prior->second != std::make_pair(value->typeKey, value->bits))
+                    { error = "conflicting C anonymous enum field enumerator"; return false; }
+                    continue;
+                }
+                auto reference = "cpp-reference:" + std::to_string(entry.referenceIndex);
+                const auto& declaration = entry.declaration.enumerators[i];
+                const auto digest = cEnumeratorSourceDigest(declaration.location);
+                if (!digest.empty() && declaration.location)
+                    reference += "#sha256:" + digest + "#path:" + declaration.location->file.generic_string();
+                dependencies.enumerators.push_back({module, std::move(reference), value->name,
+                    *value->clangUsr, value->typeKey, value->bits});
+            }
+        }
+        if (matched != anonymousEnumFields) { error = "C anonymous enum field definition is unavailable"; return false; }
+    }
     std::vector<CppCEnumSnapshot> enums;
     if (!enumSeeds.empty())
     {
@@ -1246,6 +1310,13 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
             if (type.kind == CppTypeKind::Enumeration)
             {
                 if (!type.enumIdentity) { error = "C enum field identity is unavailable"; return false; }
+                if (type.enumIdentity->anonymousContext || type.enumIdentity->name.empty())
+                {
+                    if (!type.enumIdentity->clangUsr || type.enumIdentity->clangUsr->empty() || !type.enumUnderlying ||
+                        type.sizeBits != type.enumUnderlying->sizeBits || type.alignmentBits != type.enumUnderlying->alignmentBits)
+                    { error = "C anonymous enum field has incompatible layout"; return false; }
+                    return true;
+                }
                 const compilation::TypeIdentity identity(record.moduleName, {}, {}, type.enumIdentity->name);
                 const auto found = std::find_if(enums.begin(), enums.end(), [&](const auto& value) {
                     return value.identityKey == identity.key();
