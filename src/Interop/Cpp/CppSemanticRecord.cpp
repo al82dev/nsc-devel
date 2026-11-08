@@ -511,6 +511,7 @@ bool provideExperimentalCppInstanceFields(
                     graph.projects()[group.projectOrdinal].moduleName(), entry.targetTriple, &lookup))
                 {
                     auto imported = toCppImportedInstanceField(*field);
+                    imported.isAnonymousCarrier = entry.declaration.fields[fieldIndex].isAnonymousCarrier;
                     if (!imported.clangUsr || imported.clangUsr->empty())
                         for (const auto observed : group.inventoryIndices)
                         {
@@ -1512,6 +1513,7 @@ bool reconstructCImportedFields(std::span<const CppCRecordSnapshot> records,
             if (!field || field->ownerIdentityKey != snapshot.identityKey)
             { error = "C record field cannot be reconstructed: " + snapshot.identityKey + "." + record.fields[i].name; return false; }
             auto projected = toCppImportedInstanceField(*field);
+            projected.isAnonymousCarrier = record.fields[i].isAnonymousCarrier;
             projected.microsoftVolatileSemantics = snapshot.microsoftVolatileSemantics;
             result.push_back(std::move(projected));
         }
