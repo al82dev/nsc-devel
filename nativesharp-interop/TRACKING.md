@@ -554,10 +554,12 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     No demuestra todavía el ciclo completo entre productor y consumidor
     independientes ni la identidad de otras declaraciones. [Prueba](registro-commits/t08-usr-campos-nsmeta-ruta.md).
 - [ ] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
-  - El control ThinLTO de funciones `static inline` reproduce en O0 el rechazo
-    `generated native objects are not yet supported in ThinLTO bundles` antes
-    del enlace. Se confirmó la salida de error mediante `CALL`; los demás niveles
-    y el consumo precompilado aún no se ejecutaron. [Diagnóstico](registro-commits/t08-inline-c-thinlto-diagnostico.md).
+  - La opción ThinLTO con funciones C `static inline` pasó en O0–O3 tanto
+    directamente como con dos productores precompilados. En O0 NSC usa código
+    normal; en O1–O3 ThinLTO opera dentro de
+    cada compilación; el consumidor conserva las bibliotecas nativas completas
+    sin sidecars incompletos. La optimización entre bibliotecas con objetos C
+    generados sigue pendiente. [Resultado](registro-commits/t08-inline-c-thinlto-validacion.md).
   - Una definición C11 con parámetros de estilo antiguo recibió `byte` y
     `float` desde NativeSharp con promociones predeterminadas y pasó O0–O3.
     Clang emitió advertencias de obsolescencia. Es una muestra, no el cierre
