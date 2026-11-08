@@ -5527,3 +5527,12 @@ registros de commits. LLVM/Clang, NSLink y despliegues en C: protegidos.
 Construcción incremental y validación dirigida agrupada; la tanda 8 sigue
 abierta hasta su gate completo.
 
+## T08: diagnóstico de aritmética de alias flexible volátil
+
+Contrastar `*(data + index)` de un alias de arreglo flexible C volátil con
+Clang en modos Microsoft e ISO y O0–O3. Archivos: `VarVolatileMode.c`,
+`VarVolatileMode.ns`, `comparar-var-volatile.py` y registro de commits del
+fixture. No modificar el compilador en este control; NSLink, LLVM/Clang y C:
+permanecen protegidos. Un desacuerdo mantiene abierta la tanda y orienta una
+corrección causal posterior; no constituye validación de la tanda completa.
+

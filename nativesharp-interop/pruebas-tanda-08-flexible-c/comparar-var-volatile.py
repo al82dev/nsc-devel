@@ -28,6 +28,8 @@ def main():
                                         ("direct_volatile_write", "DirectVolatileWrite", "store"),
                                         ("var_volatile_read", "VarVolatileRead", "load"),
                                         ("var_volatile_write", "VarVolatileWrite", "store"),
+                                        ("arithmetic_volatile_read", "ArithmeticVolatileRead", "load"),
+                                        ("arithmetic_volatile_write", "ArithmeticVolatileWrite", "store"),
                                         ("reassign_volatile_read", "ReassignVolatileRead", "load"),
                                         ("reassign_volatile_write", "ReassignVolatileWrite", "store")):
         reference = access(sys.argv[1], c_name, operation)

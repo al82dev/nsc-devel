@@ -13,6 +13,18 @@ void VarVolatileWrite(FlexVolatile* value, int item)
     data[0] = item;
 }
 
+int ArithmeticVolatileRead(FlexVolatile* value, int index)
+{
+    var data = value->data;
+    return *(data + index);
+}
+
+void ArithmeticVolatileWrite(FlexVolatile* value, int index, int item)
+{
+    var data = value->data;
+    *(data + index) = item;
+}
+
 int ReassignVolatileRead(FlexVolatile* first, FlexVolatile* second)
 {
     var data = first->data;

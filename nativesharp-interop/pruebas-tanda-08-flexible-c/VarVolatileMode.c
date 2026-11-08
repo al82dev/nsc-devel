@@ -15,6 +15,18 @@ void var_volatile_write(FlexVolatile* value, int item)
     data[0] = item;
 }
 
+int arithmetic_volatile_read(FlexVolatile* value, int index)
+{
+    volatile int* data = value->data;
+    return *(data + index);
+}
+
+void arithmetic_volatile_write(FlexVolatile* value, int index, int item)
+{
+    volatile int* data = value->data;
+    *(data + index) = item;
+}
+
 int reassign_volatile_read(FlexVolatile* first, FlexVolatile* second)
 {
     volatile int* data = first->data;
