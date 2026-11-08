@@ -15,6 +15,14 @@ for %%F in (Api.h Api.c First.h Second.h Main.ns Producer.ns Consumer.ns Project
   copy /y "%~dp0%%F" "%NSC_T08_OUT%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
+for %%F in (Conflict.h ConflictFirst.h ConflictSecond.h Conflict.ns Conflict.nsproj) do (
+  copy /y "%~dp0%%F" "%NSC_T08_OUT%\%%F" >nul
+  if errorlevel 1 exit /b 1
+)
+nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-method-bodies "%NSC_T08_OUT%\Conflict.nsproj" > "%NSC_T08_OUT%\Conflict.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"referenced C/C++ record has conflicting or unverified definitions: CAnonymousConflict::CConflict" "%NSC_T08_OUT%\Conflict.log" >nul
+if errorlevel 1 exit /b 1
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%NSC_T08_OUT%\Api.c" -o "%NSC_T08_OUT%\api.obj"
 if errorlevel 1 exit /b 1
 llvm-lib.exe /nologo /out:"%NSC_T08_OUT%\api.lib" "%NSC_T08_OUT%\api.obj"

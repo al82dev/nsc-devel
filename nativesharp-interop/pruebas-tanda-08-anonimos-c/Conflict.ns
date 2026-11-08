@@ -1,0 +1,5 @@
+int Main()
+{
+    CConflict* value = null;
+    return value->item;
+}

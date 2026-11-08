@@ -1,0 +1,5 @@
+<Project><PropertyGroup><Name>CAnonymousConflict</Name></PropertyGroup><ItemGroup>
+  <Compile Include="Conflict.ns" />
+  <CppLibraryReference Header="ConflictFirst.h" Language="C" Standard="c11" />
+  <CppLibraryReference Header="ConflictSecond.h" Language="C" Standard="c11" />
+</ItemGroup></Project>
