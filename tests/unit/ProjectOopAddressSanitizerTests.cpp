@@ -5,6 +5,7 @@
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
 #include "nativesharp/LLVM/ProjectOopObjectGenerator.h"
 #include "nativesharp/Linker/LldLinker.h"
+#include "nativesharp/Linker/WindowsExecutableBuilder.h"
 #include "nativesharp/Runtime/WindowsRuntimeBuilder.h"
 #include "../support/TestContext.h"
 
@@ -112,13 +113,15 @@ int main(int argc, char** argv)
             tests.expect(adapterEmitted, "sanitizer entry adapter emitted: " + error);
             if (argc >= 6 && emitted && adapterEmitted)
             {
-                std::vector<std::filesystem::path> objects = {directory / "adapter.obj", directory / "entry.obj"};
+                std::vector<std::filesystem::path> objects;
                 for (std::size_t i = 0; i < index; ++i)
                     objects.push_back(directory / ("unit-" + std::to_string(i) + ".obj"));
-                const std::vector<std::filesystem::path> libraries = {argv[4], argv[5]};
-                const bool linked = linker::LldLinker::linkAddressSanitizedExecutable(
-                    argv[3], objects, libraries, directory / "probe.exe", error);
-                tests.expect(linked, "Clang links sanitized NativeSharp objects: " + error);
+                linker::WindowsExecutableBuilder executableBuilder;
+                executableBuilder.setRuntimeLibrary(argv[4]);
+                executableBuilder.setAddressSanitizerClang(argv[3]);
+                const bool linked = executableBuilder.buildObjects(
+                    objects, {}, directory / "probe.exe", level, mainSymbol, error);
+                tests.expect(linked, "NativeSharp builder links sanitized objects with Clang: " + error);
             }
         }
         auto after = generate(normal, level);

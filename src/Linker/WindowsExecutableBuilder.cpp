@@ -603,6 +603,11 @@ bool WindowsExecutableBuilder::build(
 {
     info_ = {};
     error.clear();
+    if (!addressSanitizerClang_.empty())
+    {
+        error = "AddressSanitizer requires instrumented project objects";
+        return false;
+    }
     if (!validateExecutableRequest(outputPath, mainSymbol, error)) return false;
     if (!verifyExecutableRuntimeLibrary(runtimeLibrary_, error)) return false;
     std::unique_ptr<llvm_backend::LlvmTargetMachine> targetMachine;
@@ -720,6 +725,13 @@ bool WindowsExecutableBuilder::buildObjects(
     error.clear();
     if (!validatePartitionedExecutableRequest(
             programObjects, programObjectsVerified_, outputPath, mainSymbol, error)) return false;
+    if (!addressSanitizerClang_.empty() &&
+        (incrementalLink_ || debugInformation_ != llvm_backend::DebugInformationKind::None ||
+         subsystem_ != WindowsExecutableSubsystem::Console))
+    {
+        error = "AddressSanitizer currently supports console executables without PDB or incremental link";
+        return false;
+    }
     if (!verifyExecutableRuntimeLibrary(runtimeLibrary_, error)) return false;
     std::string runtimeIdentity;
     if (!executableRuntimeIdentity(runtimeLibrary_, mainSymbol, runtimeIdentity, error)) return false;
@@ -749,6 +761,29 @@ bool WindowsExecutableBuilder::buildObjects(
     linker->setRemoveUnreferencedSections(removeUnreferencedSections_);
     std::vector<std::filesystem::path> objectFiles(programObjects.begin(), programObjects.end());
     objectFiles.push_back(runtimeObject);
+    if (!addressSanitizerClang_.empty())
+    {
+        runtime::WindowsRuntimeBuilder runtimeBuilder;
+        auto adapter = runtimeBuilder.buildSanitizerEntryAdapter(error);
+        auto targetMachine = llvm_backend::LlvmTargetMachine::createWindowsX64(optimizationLevel, error);
+        const auto adapterPath = temporaryDirectory->path() / "sanitizer-entry.obj";
+        if (adapter == nullptr || targetMachine == nullptr ||
+            !targetMachine->emit(*adapter, adapterPath, llvm_backend::LlvmCodeGenFileType::Object, error))
+            return false;
+        objectFiles.push_back(adapterPath);
+        if (!LldLinker::linkAddressSanitizedExecutable(
+                addressSanitizerClang_, objectFiles, importLibraries, outputPath, error)) return false;
+        PeExecutableVerifier verifier;
+        if (!verifier.verify(outputPath))
+        {
+            error = "linked ASan PE verification failed: " + verifier.error();
+            std::error_code cleanupError;
+            std::filesystem::remove(outputPath, cleanupError);
+            return false;
+        }
+        info_ = verifier.info();
+        return true;
+    }
     const std::filesystem::path pdbPath = executablePdbPath(outputPath, debugInformation_);
     if (!linkAndVerifyExecutable(
             *linker, objectFiles, importLibraries, outputPath,
@@ -770,6 +805,11 @@ void WindowsExecutableBuilder::setExtraLinkLibraries(std::vector<std::filesystem
 void WindowsExecutableBuilder::setRuntimeLibrary(std::filesystem::path runtimeLibrary)
 {
     runtimeLibrary_ = std::move(runtimeLibrary);
+}
+
+void WindowsExecutableBuilder::setAddressSanitizerClang(std::filesystem::path clang)
+{
+    addressSanitizerClang_ = std::move(clang);
 }
 
 void WindowsExecutableBuilder::setDebugInformation(
