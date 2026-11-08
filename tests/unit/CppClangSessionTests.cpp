@@ -7905,6 +7905,34 @@ int main(int argc, char** argv)
                 ok &= expect(ready && copied && hasCoreMultiplication(compilation.units()) && hasCoreMultiplication(copies) &&
                              hasAppPointer(compilation.units()) && hasAppPointer(copies),
                              "C++ parser seed is visible to its owner without changing a dependency's multiplication");
+                auto restoredGraph = graphLoader.load(app / "App.nsproj", visibilityError);
+                nativesharp::frontend::ProjectCompilation restoredCompilation;
+                const bool restoredReady = restoredGraph && identity && token &&
+                    restoredCompilation.setPreloadedProjectGraph(std::move(*restoredGraph), visibilityError) &&
+                    restoredCompilation.setCppPrecompiledParserTypeProvider(
+                        [&](const auto& current, auto& types, auto& error) {
+                            const auto* currentGraph = current.projectGraph();
+                            if (!currentGraph) { error = "missing project graph"; return false; }
+                            for (std::size_t i = 0; i < currentGraph->projects().size(); ++i)
+                                if (currentGraph->projects()[i].moduleName() == "App")
+                                {
+                                    types.push_back({*identity, nativesharp::frontend::NamedTypeDeclarationKind::Struct,
+                                        nativesharp::frontend::NamedTypeAccessibility::Public, i,
+                                        token->location ? token->location->file.generic_string() : ""});
+                                    return true;
+                                }
+                            error = "missing App project";
+                            return false;
+                        }, visibilityError) &&
+                    restoredCompilation.compileProjectSyntax(app / "App.nsproj", visibilityError);
+                std::vector<std::unique_ptr<nativesharp::frontend::ProjectSyntaxUnit>> restoredCopies;
+                nativesharp::diagnostics::DiagnosticEngine restoredDiagnostics;
+                const bool restoredCopied = restoredReady && restoredCompilation.cloneSyntaxForObservation(
+                    restoredCopies, restoredDiagnostics, visibilityError);
+                ok &= expect(restoredReady && restoredCopied && hasCoreMultiplication(restoredCompilation.units()) &&
+                             hasCoreMultiplication(restoredCopies) && hasAppPointer(restoredCompilation.units()) &&
+                             hasAppPointer(restoredCopies),
+                             "precompiled parser types preserve project visibility in original and copied syntax");
                 { std::ofstream file(core / "Core.ns"); file << "int CoreValue() { return 2; }\n"; }
                 auto dependencyGraph = graphLoader.load(app / "App.nsproj", visibilityError);
                 std::size_t coreOrdinal = 0;
