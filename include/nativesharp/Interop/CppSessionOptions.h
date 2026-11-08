@@ -10,6 +10,7 @@ namespace nativesharp::interop
 enum class CppLanguageMode { C, Cpp };
 enum class CppIncludeKind { User, System };
 enum class CppMacroAction { Define, Undefine };
+enum class CppVolatileMode { Default, Microsoft, Iso };
 
 struct CppIncludePath
 {
@@ -47,6 +48,7 @@ struct CppSessionOptions
     std::vector<CppIncludePath> includePaths;
     std::vector<CppMacroOption> macros;
     std::variant<CppFileInput, CppBufferInput> input;
+    CppVolatileMode volatileMode = CppVolatileMode::Default;
 };
 
 // Stable identity of these option values. It is not a complete cache key: file

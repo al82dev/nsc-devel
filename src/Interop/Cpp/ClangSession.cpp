@@ -1161,6 +1161,10 @@ public:
             options_.driverReferencePath.empty() || !options_.workingDirectory.is_absolute() ||
             !options_.resourceDirectory.is_absolute())
             return failure("options", "language standard, target, driver reference and absolute directories are required");
+        if (options_.volatileMode != CppVolatileMode::Default &&
+            options_.volatileMode != CppVolatileMode::Microsoft &&
+            options_.volatileMode != CppVolatileMode::Iso)
+            return failure("options", "invalid C/C++ volatile mode");
         if (!std::filesystem::is_directory(options_.workingDirectory, ec) || ec)
             return failure("options", "working directory is not accessible");
         ec.clear();

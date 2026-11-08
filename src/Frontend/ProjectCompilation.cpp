@@ -2710,6 +2710,7 @@ bool ProjectCompilation::compileSyntaxCore(
                 valid = group->sessions[i]->state() == interop::CppSessionState::Ready && input != nullptr &&
                     std::filesystem::equivalent(input->path, reference.headerPath, ec) && !ec &&
                     options.language == reference.language && options.languageStandard == reference.languageStandard &&
+                    options.volatileMode == reference.volatileMode &&
                     options.targetTriple == "x86_64-pc-windows-msvc" &&
                     options.macros.size() == reference.macros.size() &&
                     options.includePaths.size() >= reference.includePaths.size();

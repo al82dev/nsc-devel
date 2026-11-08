@@ -22,6 +22,10 @@ CppProjectSessionsResult openCppProjectSessions(
         if ((reference.language != CppLanguageMode::C && reference.language != CppLanguageMode::Cpp) ||
             reference.languageStandard.empty())
             return CppProjectSessionFailure{index, {"options", "invalid C/C++ language or empty standard", {}}};
+        if (reference.volatileMode != CppVolatileMode::Default &&
+            reference.volatileMode != CppVolatileMode::Microsoft &&
+            reference.volatileMode != CppVolatileMode::Iso)
+            return CppProjectSessionFailure{index, {"options", "invalid C/C++ volatile mode", {}}};
         const auto* standard = clang::LangStandard::getLangStandardForName(reference.languageStandard);
         if (!standard ||
             (reference.language == CppLanguageMode::C && standard->getLanguage() != clang::Language::C) ||
@@ -44,6 +48,7 @@ CppProjectSessionsResult openCppProjectSessions(
         CppSessionOptions options;
         options.language = reference.language;
         options.languageStandard = reference.languageStandard;
+        options.volatileMode = reference.volatileMode;
         options.targetTriple = environment.targetTriple;
         options.driverReferencePath = environment.driverReferencePath;
         options.resourceDirectory = environment.resourceDirectory;

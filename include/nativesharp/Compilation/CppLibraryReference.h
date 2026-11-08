@@ -18,5 +18,6 @@ struct CppLibraryReference final
     std::string languageStandard;
     std::vector<interop::CppIncludePath> includePaths;
     std::vector<interop::CppMacroOption> macros;
+    interop::CppVolatileMode volatileMode = interop::CppVolatileMode::Default;
 };
 }

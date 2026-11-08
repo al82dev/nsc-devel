@@ -21,8 +21,9 @@ std::string cppSessionConfigurationIdentity(const CppSessionOptions& options)
         const auto encoded = value.generic_u8string();
         text(std::string_view(reinterpret_cast<const char*>(encoded.data()), encoded.size()));
     };
-    text("NativeSharp.CppSessionConfiguration.v1");
+    text("NativeSharp.CppSessionConfiguration.v2");
     number(static_cast<std::uint64_t>(options.language));
+    number(static_cast<std::uint64_t>(options.volatileMode));
     text(options.languageStandard);
     text(options.targetTriple);
     path(options.driverReferencePath);

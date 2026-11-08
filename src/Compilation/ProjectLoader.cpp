@@ -587,7 +587,7 @@ bool parseLibraryReferenceItem(
 bool parseCppLibraryReferenceItem(
     const SimpleXmlElement& item, ProjectDescriptor& descriptor, std::string& error)
 {
-    if (!hasOnlyAttributes(item, {"Header", "Language", "Standard", "Library", "Runtime"}, error))
+    if (!hasOnlyAttributes(item, {"Header", "Language", "Standard", "Library", "Runtime", "VolatileMode"}, error))
         return false;
     if (!trim(item.text).empty())
     {
@@ -605,6 +605,13 @@ bool parseCppLibraryReferenceItem(
     CppLibraryReferenceDescriptor reference;
     reference.header = trim(*header);
     reference.languageStandard = trim(*standard);
+    if (const auto* mode = attribute(item, "VolatileMode"))
+    {
+        if (trim(*mode) == "Default") reference.volatileMode = interop::CppVolatileMode::Default;
+        else if (trim(*mode) == "Microsoft") reference.volatileMode = interop::CppVolatileMode::Microsoft;
+        else if (trim(*mode) == "ISO") reference.volatileMode = interop::CppVolatileMode::Iso;
+        else { error = "CppLibraryReference VolatileMode must be Default, Microsoft or ISO"; return false; }
+    }
     if (trim(*language) == "C") reference.language = interop::CppLanguageMode::C;
     else if (trim(*language) == "C++") reference.language = interop::CppLanguageMode::Cpp;
     else
@@ -1261,6 +1268,7 @@ std::optional<std::vector<CppLibraryReference>> loadCppLibraryReferences(
         }
         reference.language = input.language;
         reference.languageStandard = input.languageStandard;
+        reference.volatileMode = input.volatileMode;
         reference.macros = input.macros;
         for (const auto& include : input.includePaths)
         {
