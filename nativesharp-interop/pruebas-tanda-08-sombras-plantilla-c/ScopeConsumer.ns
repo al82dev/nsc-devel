@@ -1,0 +1,5 @@
+int Main()
+{
+    if (PublishedScope.Bridge.Mixed<int>(0) != 179) return 1;
+    return 0;
+}

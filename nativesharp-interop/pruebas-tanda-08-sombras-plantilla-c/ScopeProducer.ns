@@ -1,0 +1,15 @@
+namespace PublishedScope
+{
+    public class Bridge
+    {
+        public static int Mixed<T>(T value)
+        {
+            int sum = shadow_function();
+            {
+                int shadow_function = 17;
+                sum += shadow_function;
+            }
+            return sum + shadow_function();
+        }
+    }
+}

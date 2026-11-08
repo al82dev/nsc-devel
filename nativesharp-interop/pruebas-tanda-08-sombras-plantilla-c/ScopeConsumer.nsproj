@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>ScopeConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ScopeConsumer.ns" />
+    <LibraryReference Include="ScopeProducer.lib" />
+  </ItemGroup>
+</Project>
