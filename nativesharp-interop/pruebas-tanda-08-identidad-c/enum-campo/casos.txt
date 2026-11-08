@@ -6,12 +6,12 @@
 #   type (unknown type name), field-identity (C enum field dependency has no importable identity),
 #   enum-unavailable (required C enum is unavailable).
 HRaw - runs runs
-HLevel - member runs
-HLevelInt - member runs
-HConst - ident runs
-HNamed - member runs
-HNamedType - type runs
+HLevel - runs runs
+HLevelInt - runs runs
+HConst - runs runs
+HNamed - runs runs
+HNamedType - runs runs
 CAnon PAnon field-identity runs
 CAnonHeader PAnon field-identity runs
-CNamed PNamed enum-unavailable runs
-CInternal PInternal member runs
+CNamed PNamed runs runs
+CInternal PInternal runs runs

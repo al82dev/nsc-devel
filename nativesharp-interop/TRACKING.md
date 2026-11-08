@@ -205,6 +205,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - La validación dirigida del carril integrado pasó tras actualizar siete
+    expectativas de enum de campo ya resueltas en esta rama. El validador aún
+    comprueba rechazos esperados de capacidades pendientes; no cierra el ítem.
+    [Evidencia](registro-commits/t08-identidad-enum-campo-expectativas.md).
   - El cuarto conjunto del carril aportó reproducciones y propuestas para
     constantes de enum en bibliotecas (H7), compatibilidad de catálogo (H8)
     y formas adicionales de USR de typedef. El parche H7 está sin aplicar;
