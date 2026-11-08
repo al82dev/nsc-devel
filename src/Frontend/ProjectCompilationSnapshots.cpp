@@ -56,7 +56,7 @@ bool earlierBlockLocal(const ast::AstNode* statement, std::string_view name)
 // A candidate is removed only when an earlier declaration in an enclosing
 // block proves that this unqualified use denotes a local. Other forms remain
 // candidates until their own binding rules can be established.
-bool provenBlockLocal(const TemplateParents& parents, const CppFunctionDemand& demand)
+bool provenLocal(const TemplateParents& parents, const CppFunctionDemand& demand)
 {
     const auto* expression = demand.syntax;
     if (!expression) return false;
@@ -78,11 +78,24 @@ bool provenBlockLocal(const TemplateParents& parents, const CppFunctionDemand& d
         {
             const auto& statements = parent->children();
             const auto position = std::find(statements.begin(), statements.end(), child);
-            for (auto it = statements.begin(); it != position; ++it)
-            {
-                if (position == statements.end()) break;
-                if (earlierBlockLocal(*it, demand.writtenName)) return true;
-            }
+            if (position != statements.end())
+                for (auto it = statements.begin(); it != position; ++it)
+                    if (earlierBlockLocal(*it, demand.writtenName)) return true;
+        }
+        else if (parent->kind() == ast::AstNodeKind::ForStatement && child != parent->first())
+        {
+            // The loop variable is in scope in the condition, increment and
+            // body, but not before it has been declared in the initializer.
+            if (earlierBlockLocal(parent->first(), demand.writtenName)) return true;
+        }
+        else if ((parent->kind() == ast::AstNodeKind::MethodDeclaration ||
+                  parent->kind() == ast::AstNodeKind::FunctionDeclaration) &&
+                 child == parent->first())
+        {
+            // Parameters are children; only the callable body is their scope.
+            for (const auto* parameter : parent->children())
+                if (parameter && parameter->kind() == ast::AstNodeKind::ParameterDeclaration &&
+                    parameter->text() == demand.writtenName) return true;
         }
         child = parent;
         current = parents.find(parent);
@@ -316,7 +329,7 @@ bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
                     {
                         if (owner->second->projectOrdinal != demand.projectOrdinal) continue;
                         hasOwner = true;
-                        if (!provenBlockLocal(parentIndexes.at(owner->second), demand)) return false;
+                        if (!provenLocal(parentIndexes.at(owner->second), demand)) return false;
                     }
                     return hasOwner;
                 }), effectiveDemands.end());
