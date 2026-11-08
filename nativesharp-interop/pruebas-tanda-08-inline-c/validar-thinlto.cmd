@@ -48,4 +48,33 @@ for %%O in (0 1 2 3) do (
   )
   echo ThinLTO inline C y bibliotecas precompiladas O%%O: correcto.
 )
+copy /y "%DEST%\CInlineProducer.nsthinlto" "%DEST%\producer-v3-original.bin" >nul
+if errorlevel 1 exit /b 1
+copy /y "%DEST%\CInlineProducerSecond.nsthinlto" "%DEST%\producer2-v3-original.bin" >nul
+if errorlevel 1 exit /b 1
+python "%~dp0corromper_sidecar.py" "%DEST%\CInlineProducer.nsthinlto"
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Consumer.nsproj" -O3 -flto=thin --no-artifact-cache -o "%DEST%\consumer-corrupt-one.exe" > "%DEST%\consumer-corrupt-one.log" 2>&1
+if errorlevel 1 exit /b 1
+"%DEST%\consumer-corrupt-one.exe"
+if errorlevel 1 exit /b 1
+findstr /l /c:"thinlto-libraries: 1" "%DEST%\consumer-corrupt-one.log" >nul
+if errorlevel 1 exit /b 1
+findstr /l /c:"thinlto-library-fallback: CInlineProducer.lib:" "%DEST%\consumer-corrupt-one.log" >nul
+if errorlevel 1 exit /b 1
+python "%~dp0corromper_sidecar.py" "%DEST%\CInlineProducerSecond.nsthinlto"
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Consumer.nsproj" -O3 -flto=thin --no-artifact-cache -o "%DEST%\consumer-corrupt-both.exe" > "%DEST%\consumer-corrupt-both.log" 2>&1
+if errorlevel 1 exit /b 1
+"%DEST%\consumer-corrupt-both.exe"
+if errorlevel 1 exit /b 1
+findstr /l /c:"thinlto-libraries: 0" "%DEST%\consumer-corrupt-both.log" >nul
+if errorlevel 1 exit /b 1
+findstr /l /c:"thinlto-library-fallback: CInlineProducerSecond.lib:" "%DEST%\consumer-corrupt-both.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%DEST%\producer-v3-original.bin" "%DEST%\CInlineProducer.nsthinlto" >nul
+if errorlevel 1 exit /b 1
+copy /y "%DEST%\producer2-v3-original.bin" "%DEST%\CInlineProducerSecond.nsthinlto" >nul
+if errorlevel 1 exit /b 1
+echo Sidecars v3 corruptos: fallback nativo comprobado para una y dos bibliotecas.
 exit /b 0
