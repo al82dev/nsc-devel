@@ -6,6 +6,8 @@ La evidencia histórica y sus revisiones se conserva en [TRACKING.md](TRACKING.m
 
 Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del mismo número; su estado anterior se conserva como encabezado, sin contar una segunda tarea. Una casilla pendiente de comprobación no afirma que la capacidad esté ausente: indica que falta cotejar la evidencia o completar su implementación si la comprobación falla.
 
+**Decisión vigente del usuario:** NativeSharp todavía no está liberado. Se trabaja con un único compilador y el formato NSMETA vigente; la compatibilidad con versiones históricas de NSMETA no es un objetivo de esta tanda. No introducir versiones nuevas ni conservar compatibilidad histórica por iniciativa propia. Las notas históricas se mantienen como evidencia y no son requisitos activos.
+
 ## T08-001 — Representación y nombres
 
 - [x] T08-001-01: Auditar la representación y búsqueda de nombres existentes. [Auditoría](TANDA-08-TIPOS-C.md).
@@ -18,18 +20,16 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-002-04: Comprobar casos de typedef C equivalentes y rechazos por incompatibilidad. [Evidencia](registro-commits/t08-h1-typedef-c-equivalentes.md).
 - [x] T08-002-05: Comprobar conciliación de records compatibles entre encabezados y metadata. [Evidencia](registro-commits/t08-h5-records-c-precompilado.md).
 - [x] T08-002-06: Comprobar muestras de dependencias C en plantillas precompiladas. [Evidencia](registro-commits/t08-h3-identidad-expectativas.md).
-- [x] T08-002-07: Recuperar y verificar muestras históricas NSMETA 1.45, 1.47 y 1.48. [1.45](registro-commits/t08-nsmeta-145-fixture-recuperado.md), [1.47](registro-commits/t08-nsmeta-147-fixture-recuperado.md), [1.48](registro-commits/t08-nsmeta-148-fixture-recuperado.md).
-- [ ] T08-002-08: Obtener una muestra independiente NSMETA 1.46 y ejecutar la suite de compatibilidad de metadata.
-  La búsqueda por encabezado encontró dos muestras 1.46 generadas por el
-  escritor de pruebas posterior; no se consideran independientes. Se sigue
-  buscando un productor histórico sin reconstruir todo por esta casilla.
-  [Evidencia](registro-commits/t08-nsmeta-146-busqueda-artefactos.md).
+- T08-002-07 y T08-002-08: **Retirados del alcance por decisión del usuario.**
 - **T08-002-09 — Identidad y conciliación:**
-- [ ] T08-002-09a: Cotejar identidad y redeclaraciones de funciones C externas entre encabezados.
-- [ ] T08-002-09b: Cotejar identidad de funciones `static inline` con encabezados homónimos de directorios distintos.
-- [ ] T08-002-09c: Cotejar identidad de globales externas y `static` en encabezados homónimos.
+- [x] T08-002-09a: Cotejar una función C externa con firma idéntica declarada en dos encabezados: Clang aporta el mismo USR y NSC agrupa ambas declaraciones. [Prueba](registro-commits/t08-002-pruebas-identidad-c.md), [resultado](registro-commits/t08-002-resultados-identidad-c.md).
+- [x] T08-002-09b: Cotejar funciones `static inline` distintas en encabezados homónimos: el USR coincide, pero NSC conserva dos grupos y diagnostica ambigüedad en la muestra comprobada. [Evidencia](registro-commits/t08-002-homonimos-c.md).
+- [x] T08-002-09c: Cotejar los USR de globales externas y `static` entre encabezados; la sonda homónima observó el mismo USR para las `static`. [Evidencia](registro-commits/t08-002-homonimos-c.md).
+- [ ] T08-002-09c1: Verificar en NSC la selección y separación de globales `static` de encabezados homónimos con la implementación actual.
 - [ ] T08-002-09d: Verificar conciliación de typedefs que apuntan a records o enums incompatibles.
 - [ ] T08-002-09e: Verificar identidad de campos y enumeradores dentro de records anónimos anidados.
+- [ ] T08-002-09f: Verificar el diagnóstico cuando dos encabezados declaran la función externa con firmas incompatibles.
+- [ ] T08-002-09g: Verificar por separado la identidad y selección de funciones `static inline` con el mismo contenido en encabezados homónimos de directorios distintos.
 - **T08-002-10 — Sombras en plantillas:**
 - [ ] T08-002-10a: Verificar sombra de función C por parámetro y local en una plantilla precompilada.
 - [ ] T08-002-10b: Verificar sombra de global C por variable de `foreach` y por variable de `catch`.

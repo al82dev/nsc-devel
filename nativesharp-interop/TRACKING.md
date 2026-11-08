@@ -188,6 +188,11 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 ## 08. Declaraciones, nombres y tipos C
 
+**Decisión vigente:** NativeSharp aún no está liberado. Se trabaja con un
+único compilador y el formato NSMETA vigente; no se introducen nuevas versiones
+ni se exige compatibilidad con versiones históricas. Las notas anteriores sobre
+esa compatibilidad quedan como historial y no son requisitos activos.
+
 [Ver seguimiento detallado por casillas](TRACKING-TANDA-08-DETALLADO.md). La vista
 detallada conserva los ítems originales y distingue muestras verificadas de
 trabajo y validación pendientes.
