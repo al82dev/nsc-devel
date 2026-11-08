@@ -18,6 +18,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace nativesharp::frontend
@@ -76,6 +77,7 @@ public:
         const std::filesystem::path& file,
         std::vector<std::string>& symbols,
         std::string& error);
+    static bool validateThinLtoNativeObject(std::string_view bytes, std::string& error);
     // EN: Inspect static inputs for features requiring LLD. False means inspection failed.
     // ES: Inspecciona entradas estaticas que necesitan LLD. False indica fallo de inspeccion.
     static bool requiresLldForStaticInput(const std::filesystem::path& file, bool& found, std::string& error);

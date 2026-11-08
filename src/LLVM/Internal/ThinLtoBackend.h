@@ -8,6 +8,7 @@
 #include <mutex>
 #include <span>
 #include <string>
+#include <string_view>
 #include <unordered_set>
 #include <vector>
 
@@ -122,6 +123,7 @@ public:
         const std::filesystem::path& file,
         std::vector<std::string>& symbols,
         std::string& error);
+    static bool validateNativeObject(std::string_view bytes, std::string& error);
     static bool requiresLldForStaticInput(const std::filesystem::path& file, bool& found, std::string& error);
 
     /// EN: Function definitions the backends imported from other units (available_externally).

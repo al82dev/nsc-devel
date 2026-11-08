@@ -1145,6 +1145,11 @@ bool ProjectOopObjectGenerator::collectUndefinedSymbols(
     return ThinLtoBackend::collectUndefinedSymbols(file, symbols, error);
 }
 
+bool ProjectOopObjectGenerator::validateThinLtoNativeObject(std::string_view bytes, std::string& error)
+{
+    return ThinLtoBackend::validateNativeObject(bytes, error);
+}
+
 bool ProjectOopObjectGenerator::requiresLldForStaticInput(
     const std::filesystem::path& file, bool& found, std::string& error)
 {

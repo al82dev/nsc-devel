@@ -16,6 +16,9 @@ Se registran los objetos generados en el bundle y se leen sus bytes en
 La restauración añade `ThinLtoLibraryUnits.h` y el generador; ante objetos
 nativos de sidecars se conservan las definiciones durante ThinLTO. Se activa la
 publicación v3 y se valida agrupadamente productor, consumidor y compatibilidad.
+Se permite validar los objetos del sidecar mediante el lector COFF de LLVM antes
+de aceptarlo, en el backend ThinLTO y el punto de selección del driver; los
+sidecars inválidos deben conservar la biblioteca nativa como fallback.
 
 ## T08-002: sombras locales en plantillas públicas
 

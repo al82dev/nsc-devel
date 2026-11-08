@@ -140,6 +140,9 @@ bool acceptSidecar(
         reason = "the sidecar does not match its metadata";
         return false;
     }
+    for (const auto& nativeObject : sidecar.nativeObjects)
+        if (!llvm_backend::ProjectOopObjectGenerator::validateThinLtoNativeObject(nativeObject, reason))
+            return false;
     return dependenciesMatch(sidecar.dependencies, metadataByName, reason);
 }
 

@@ -91,6 +91,11 @@ bool ThinLtoBackend::collectUndefinedSymbols(
     error = "ThinLTO needs the STATIC LLVM host";
     return false;
 }
+bool ThinLtoBackend::validateNativeObject(std::string_view, std::string& error)
+{
+    error = "ThinLTO needs the STATIC LLVM host";
+    return false;
+}
 bool ThinLtoBackend::requiresLldForStaticInput(
     const std::filesystem::path&, bool& found, std::string& error)
 {
@@ -180,6 +185,25 @@ ThinLtoBackend::ThinLtoBackend(std::size_t moduleCount)
 
 bool ThinLtoBackend::available() noexcept
 {
+    return true;
+}
+
+bool ThinLtoBackend::validateNativeObject(std::string_view bytes, std::string& error)
+{
+    const llvm::StringRef content(bytes.data(), bytes.size());
+    auto object = llvm::object::ObjectFile::createObjectFile(llvm::MemoryBufferRef(content, "sidecar-native"));
+    if (!object)
+    {
+        error = "invalid native object in ThinLTO sidecar: " + llvm::toString(object.takeError());
+        return false;
+    }
+    const auto* coff = llvm::dyn_cast<llvm::object::COFFObjectFile>(object->get());
+    if (!coff || coff->getMachine() != llvm::COFF::IMAGE_FILE_MACHINE_AMD64 || coff->getNumberOfSections() == 0)
+    {
+        error = "native object in ThinLTO sidecar is not an AMD64 COFF object with sections";
+        return false;
+    }
+    error.clear();
     return true;
 }
 
