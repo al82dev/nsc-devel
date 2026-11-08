@@ -5,10 +5,18 @@
 
 namespace nativesharp::source
 {
+namespace
+{
+std::string displayUtf8Path(const std::filesystem::path& path)
+{
+    const auto encoded = path.u8string();
+    return std::string(reinterpret_cast<const char*>(encoded.data()), encoded.size());
+}
+}
 SourceFile::SourceFile(FileId id, std::filesystem::path path, std::string buffer)
     : id_(id),
       path_(std::move(path)),
-      displayPath_(path_.string()),
+      displayPath_(displayUtf8Path(path_)),
       buffer_(std::move(buffer))
 {
     buildLineStarts();

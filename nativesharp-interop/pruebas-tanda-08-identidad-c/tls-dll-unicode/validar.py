@@ -74,8 +74,38 @@ if "--unicode-source" in sys.argv:
     project_text = project_text.replace("TlsProducer2.lib", "../TlsProducer2.lib")
     project_path = source_dir / "Proyecto.nsproj"
     project_path.write_text(project_text, encoding="utf-8")
-    run(["nsc.exe", "--cpp-clang-root=A:\\al82dev-clang", "--emit-project-oop-exe",
-         str(project_path), "-O0", "--no-artifact-cache", "-o", str(source_dir / "Consumer.exe")])
-    run([str(source_dir / "Consumer.exe")], cwd=Path("A:/"))
+    for item in ("Consumer.exe", "api.dll", name + ".dll"):
+        (source_dir / item).unlink(missing_ok=True)
+    for attempt in range(2 if cached else 1):
+        cache_option = ("--artifact-cache=A:\\nsc-interop-build\\t08-tls-unicode-source-cache"
+                        if cached else "--no-artifact-cache")
+        report = run(["nsc.exe", "--cpp-clang-root=A:\\al82dev-clang", "--emit-project-oop-exe",
+                      str(project_path), "-O0", "--time", cache_option, "-o", str(source_dir / "Consumer.exe")])
+        if attempt == 1 and "compilation-bundle-cache: hit" not in report:
+            print("ERROR: no se restauro el proyecto Unicode desde cache.")
+            print(report)
+            sys.exit(1)
+        run([str(source_dir / "Consumer.exe")], cwd=Path("A:/"))
+        if cached and attempt == 0:
+            for item in ("Consumer.exe", "api.dll", name + ".dll"):
+                (source_dir / item).unlink()
+    conflicting = source_dir / (name + ".dll")
+    saved = conflicting.read_bytes()
+    try:
+        conflicting.write_bytes(b"existing different runtime")
+        result = subprocess.run(
+            ["nsc.exe", "--cpp-clang-root=A:\\al82dev-clang", "--emit-project-oop-exe",
+             str(project_path), "-O0", "--no-artifact-cache", "-o", str(source_dir / "Consumer.exe")],
+            cwd=root, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, encoding="utf-8", errors="replace")
+        if result.returncode == 0 or "internal error" in result.stdout or "different" not in result.stdout:
+            print("ERROR: el conflicto de DLL Unicode no produjo un diagnostico correcto.")
+            print(result.stdout)
+            sys.exit(1)
+        if conflicting.read_bytes() != b"existing different runtime":
+            print("ERROR: se modifico la DLL preexistente en conflicto.")
+            sys.exit(1)
+    finally:
+        conflicting.write_bytes(saved)
     print("Proyecto y fuente Unicode: correctos.")
 print("DLL Unicode y salida", "ASCII" if "--ascii-output" in sys.argv else "Unicode", ": correctas.")

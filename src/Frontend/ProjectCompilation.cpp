@@ -494,6 +494,12 @@ bool ProjectCompilation::cancellationRequested(std::string& loadError, std::stri
 }
 namespace
 {
+std::string utf8Path(const std::filesystem::path& path)
+{
+    const auto encoded = path.generic_u8string();
+    return std::string(reinterpret_cast<const char*>(encoded.data()), encoded.size());
+}
+
 using lexer::Token;
 using lexer::TokenKind;
 
@@ -582,14 +588,14 @@ void reportSourceProgress(
     std::size_t total)
 {
     if (!sink) return;
-    const std::string detail = path.generic_string();
+    const std::string detail = utf8Path(path);
     sink({basic::CompilationEventKind::WorkFinished,
         phase, detail, completed, total, {}});
 }
 
 bool isMetadataBackedVirtualSource(const std::filesystem::path& path)
 {
-    const std::string sourcePath = path.generic_string();
+    const std::string sourcePath = utf8Path(path);
     return sourcePath.ends_with(".nsmeta.public-api.ns") ||
         sourcePath.ends_with(".nsmeta.public-templates.ns");
 }
@@ -637,8 +643,8 @@ std::size_t visibleSourceCount(
     std::size_t count = 0;
     for (const std::unique_ptr<ProjectSyntaxUnit>& unit : units)
     {
-        const std::filesystem::path path(sourceManager.getPath(
-            SourceLocation(unit->fileId(), 0U)));
+        const auto sourcePath = sourceManager.getPath(SourceLocation(unit->fileId(), 0U));
+        const std::filesystem::path path(std::u8string(sourcePath.begin(), sourcePath.end()));
         if (!isMetadataBackedVirtualSource(path)) ++count;
     }
     return count;
@@ -1057,7 +1063,7 @@ std::vector<std::shared_ptr<const parser::KnownTypeNameSet>> parserTypeIndexesBy
         std::error_code error;
         auto canonical = std::filesystem::weakly_canonical(path, error);
         if (error) canonical = std::filesystem::absolute(path).lexically_normal();
-        auto key = canonical.generic_string();
+        auto key = utf8Path(canonical);
         std::transform(key.begin(), key.end(), key.begin(),
                        [](unsigned char value) { return static_cast<char>(std::tolower(value)); });
         return key;
@@ -1966,7 +1972,7 @@ void ProjectCompilation::appendComptimeRecord(
         read.projectOrdinal,
         read.sourceOrdinal,
         read.moduleName,
-        relativePath.generic_string(),
+        utf8Path(relativePath),
         read.comptime->evaluations.size(),
         read.comptime->executedSteps,
         read.comptime->cacheHits,
@@ -2009,7 +2015,7 @@ bool ProjectCompilation::materializeComptimeSource(
 {
     if (!read.comptime.has_value() || !read.comptime->success)
     {
-        loadError = read.path.generic_string() + ": " +
+        loadError = utf8Path(read.path) + ": " +
             (read.comptime.has_value() ? read.comptime->error : "comptime produced no result");
         return false;
     }
@@ -2109,7 +2115,7 @@ std::optional<std::size_t> ProjectCompilation::precompiledProjectOrdinal(
         if (scanned != indexed)
         {
             internal::reportIndexShadowMismatch(
-                "ProjectCompilation::precompiledProjectOrdinal", canonicalMetadataPath.generic_string());
+                "ProjectCompilation::precompiledProjectOrdinal", utf8Path(canonicalMetadataPath));
         }
     }
     if (found == precompiledProjectOrdinals_.end()) return std::nullopt;
@@ -2235,11 +2241,10 @@ bool ProjectCompilation::materializePrecompiledModule(
     std::error_code metadataKeyError;
     const std::filesystem::path canonicalMetadata =
         std::filesystem::weakly_canonical(module.metadataPath, metadataKeyError);
-    std::string metadataKey = canonicalMetadata.generic_string();
+    std::string metadataKey = utf8Path(canonicalMetadata);
     if (metadataKeyError)
     {
-        metadataKey = std::filesystem::absolute(
-            module.metadataPath).lexically_normal().generic_string();
+        metadataKey = utf8Path(std::filesystem::absolute(module.metadataPath).lexically_normal());
     }
     if (!materializedMetadata.insert(metadataKey).second)
     {
@@ -2679,8 +2684,8 @@ bool ProjectCompilation::parseSyntaxUnits(
         {
             units_[index]->parse(localDiagnostics[index], *knownTypesByProject.at(units_[index]->projectOrdinal()),
                                  scopedNames[index] ? &*scopedNames[index] : nullptr);
-            const std::filesystem::path sourcePath(sourceManager_.getPath(
-                SourceLocation(units_[index]->fileId(), 0U)));
+            const auto sourceName = sourceManager_.getPath(SourceLocation(units_[index]->fileId(), 0U));
+            const std::filesystem::path sourcePath(std::u8string(sourceName.begin(), sourceName.end()));
             if (!isMetadataBackedVirtualSource(sourcePath))
             {
                 reportSourceProgress(

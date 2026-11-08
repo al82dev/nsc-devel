@@ -42,7 +42,8 @@ namespace
 {
 std::string modulePathKey(const std::filesystem::path& path)
 {
-    std::string key = path.lexically_normal().generic_string();
+    const auto encoded = path.lexically_normal().generic_u8string();
+    std::string key(reinterpret_cast<const char*>(encoded.data()), encoded.size());
     std::ranges::transform(key, key.begin(), [](unsigned char value) {
         return static_cast<char>(std::tolower(value));
     });

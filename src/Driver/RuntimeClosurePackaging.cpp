@@ -187,12 +187,12 @@ bool validateCppRuntimeDestinations(const frontend::ProjectCompilation &compilat
             const bool exists = std::filesystem::exists(destination, ec);
             if (ec)
             {
-                error = "cannot inspect C/C++ runtime destination '" + destination.string() + "': " + ec.message();
+                error = "cannot inspect C/C++ runtime destination '" + pathToUtf8(destination) + "': " + ec.message();
                 return false;
             }
             if (exists && !filesHaveEqualContents(source, destination))
             {
-                error = "runtime package destination already contains a different '" + destination.filename().string() + "': '" + destination.string() + "'";
+                error = "runtime package destination already contains a different '" + pathToUtf8(destination.filename()) + "': '" + pathToUtf8(destination) + "'";
                 return false;
             }
         }
@@ -222,12 +222,12 @@ bool validatePackagedCppRuntimeDestinations(const frontend::ProjectCompilation &
         const bool exists = std::filesystem::exists(destination, ec);
         if (ec)
         {
-            error = "cannot inspect runtime destination '" + destination.string() + "': " + ec.message();
+            error = "cannot inspect runtime destination '" + pathToUtf8(destination) + "': " + ec.message();
             return false;
         }
         if (exists && !filesHaveEqualContents(source, destination))
         {
-            error = "runtime package destination already contains a different '" + destination.filename().string() + "': '" + destination.string() + "'";
+            error = "runtime package destination already contains a different '" + pathToUtf8(destination.filename()) + "': '" + pathToUtf8(destination) + "'";
             return false;
         }
     }
@@ -252,8 +252,8 @@ bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibrari
             if (foldedPathKey(owner->second) != foldedPathKey(runtime) &&
                 !filesHaveEqualContents(owner->second, runtime))
             {
-                error = "runtime package contains different DLLs named '" + runtime.filename().string() + "': '" +
-                        owner->second.string() + "' and '" + runtime.string() + "'";
+                error = "runtime package contains different DLLs named '" + pathToUtf8(runtime.filename()) + "': '" +
+                        pathToUtf8(owner->second) + "' and '" + pathToUtf8(runtime) + "'";
                 return false;
             }
             return true;
@@ -274,7 +274,7 @@ bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibrari
         linker::PeExecutableVerifier verifier;
         if (!verifier.verifyDynamicLibrary(closure[index]))
         {
-            error = "runtime package dependency '" + closure[index].string() +
+            error = "runtime package dependency '" + pathToUtf8(closure[index]) +
                     "' is not a valid AMD64 DLL: " + verifier.error();
             return false;
         }
@@ -301,8 +301,8 @@ bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibrari
         {
             if (!existsError && filesHaveEqualContents(source, target))
                 continue;
-            error = "runtime package destination already contains a different '" + target.filename().string() + "': '" +
-                    target.string() + "'";
+            error = "runtime package destination already contains a different '" + pathToUtf8(target.filename()) + "': '" +
+                    pathToUtf8(target) + "'";
             return false;
         }
         std::error_code copyError;
@@ -310,7 +310,7 @@ bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibrari
         if (copyError)
         {
             error =
-                "cannot package runtime '" + source.string() + "' as '" + target.string() + "': " + copyError.message();
+                "cannot package runtime '" + pathToUtf8(source) + "' as '" + pathToUtf8(target) + "': " + copyError.message();
             return false;
         }
         copiedFiles.push_back(target);

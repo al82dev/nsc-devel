@@ -435,7 +435,8 @@ void ProjectGenericModel::buildVisibility(const compilation::ProjectGraph& graph
         std::error_code errorCode;
         std::filesystem::path canonical = std::filesystem::weakly_canonical(path, errorCode);
         if (errorCode) canonical = std::filesystem::absolute(path).lexically_normal();
-        std::string key = canonical.generic_string();
+        const auto encoded = canonical.generic_u8string();
+        std::string key(reinterpret_cast<const char*>(encoded.data()), encoded.size());
         std::transform(key.begin(), key.end(), key.begin(), [](unsigned char ch) {
             return static_cast<char>(std::tolower(ch));
         });

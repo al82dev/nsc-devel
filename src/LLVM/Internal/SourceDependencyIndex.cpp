@@ -30,7 +30,8 @@ SourceDependencyIndex::SourceDependencyIndex(const source::SourceManager& source
     {
         const source::SourceFile* file = sourceManager_.getFile(FileId(value));
         if (file == nullptr) break;
-        paths_.push_back(file->path().lexically_normal().generic_string());
+        const auto encoded = file->path().lexically_normal().generic_u8string();
+        paths_.emplace_back(reinterpret_cast<const char*>(encoded.data()), encoded.size());
         filesByPath_.emplace(paths_.back(), FileId(value));
     }
     digestOnce_ = std::make_unique<std::once_flag[]>(paths_.size());

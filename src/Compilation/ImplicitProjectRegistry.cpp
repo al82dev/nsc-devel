@@ -30,7 +30,8 @@ std::string registryKey(const std::filesystem::path& projectFile)
     std::error_code error;
     std::filesystem::path canonical = std::filesystem::weakly_canonical(projectFile, error);
     if (error) canonical = projectFile.lexically_normal();
-    std::string key = canonical.generic_string();
+    const auto encoded = canonical.generic_u8string();
+    std::string key(reinterpret_cast<const char*>(encoded.data()), encoded.size());
     std::ranges::transform(key, key.begin(), [](unsigned char value)
     {
         return static_cast<char>(std::tolower(value));

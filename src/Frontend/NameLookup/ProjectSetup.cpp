@@ -40,7 +40,8 @@ std::string pathKey(const std::filesystem::path& path)
         canonical = std::filesystem::absolute(path).lexically_normal();
     }
 
-    std::string key = canonical.generic_string();
+    const auto encoded = canonical.generic_u8string();
+    std::string key(reinterpret_cast<const char*>(encoded.data()), encoded.size());
     std::transform(
         key.begin(),
         key.end(),
@@ -64,7 +65,8 @@ std::string sourcePathForUnit(
         {
             if (source.ordinal == unit.sourceOrdinal())
             {
-                return source.absolutePath.generic_string();
+                const auto encoded = source.absolutePath.generic_u8string();
+                return std::string(reinterpret_cast<const char*>(encoded.data()), encoded.size());
             }
         }
     }

@@ -11,7 +11,7 @@ std::optional<ExitCode> runBasicProjectAction(std::string_view action, std::stri
     {
         std::string loadError;
         const std::optional<compilation::Project> project =
-            activeProjectLoader().load(std::filesystem::path(path), activeProjectLoadOptions(), loadError);
+            activeProjectLoader().load(pathFromUtf8(path), activeProjectLoadOptions(), loadError);
         if (!project.has_value())
         {
             error << "nsc: error: " << loadError << '\n';
@@ -44,7 +44,7 @@ std::optional<ExitCode> runBasicProjectAction(std::string_view action, std::stri
             ? &activeExecutionScope->compilationLifetime.workerPool()
             : nullptr);
     std::string loadError;
-    const std::optional<compilation::ProjectGraph> graph = loader.load(std::filesystem::path(path), loadError);
+    const std::optional<compilation::ProjectGraph> graph = loader.load(pathFromUtf8(path), loadError);
     if (!graph.has_value())
     {
         error << "nsc: error: " << loadError << '\n';
@@ -97,7 +97,7 @@ bool compileProjectAction(std::string_view action, std::string_view path,
         memberBindingAction || action == "--check-project-names" || action == "--dump-project-names";
     const bool genericAction =
         nameBindingAction || action == "--check-project-generics" || action == "--dump-project-generics";
-    const std::filesystem::path projectPath(path);
+    const std::filesystem::path projectPath = pathFromUtf8(path);
     return oopMirAction              ? projectCompilation.compileProjectOopMir(projectPath, loadError)
            : oopHirAction            ? projectCompilation.compileProjectOopHir(projectPath, loadError)
            : layoutAction            ? projectCompilation.compileProjectObjectLayouts(projectPath, loadError)
@@ -522,7 +522,7 @@ bool prepareOopCodeCompilation(std::string_view inputPath,
         return false;
     }
     if (restored) return true;
-    if (!compilation.compileProjectOopMir(std::filesystem::path(inputPath), loadError))
+    if (!compilation.compileProjectOopMir(pathFromUtf8(inputPath), loadError))
     {
         if (!loadError.empty())
         {
