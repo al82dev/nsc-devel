@@ -272,6 +272,9 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNamespaceStateNameBi
     node->namespaceStateOrdinal = stateOrdinal;
     node->volatileAccess = state.isVolatile;
     node->cppAtomicAccess = state.isCppExternal && state.cppAtomicStorage;
+    node->cppCBoolStorage = state.isCppExternal && state.cppCGlobal &&
+        !state.cppAtomicStorage && (state.declaredTypeKey == "builtin:bool" ||
+        state.declaredTypeKey.starts_with("builtin:bool["));
     if (node->cppAtomicAccess && state.declaredTypeKey.ends_with("*") &&
         state.cppStorageSizeBits == std::optional<std::uint64_t>{64} &&
         state.cppDeclarationAlignmentBits && *state.cppDeclarationAlignmentBits >= 64)

@@ -146,6 +146,7 @@ struct ProjectOopMirNode final
     // Item 308. Mirrors ProjectOopHirNode::volatileAccess without re-inferring declarations.
     bool volatileAccess = false;
     bool cppAtomicAccess = false;
+    bool cppCBoolStorage = false;
     // Mirrors the imported-global option without assuming eligibility for atomics.
     std::optional<bool> cppMicrosoftVolatileSemantics;
     // Present only when the imported access has a proven atomic alignment.

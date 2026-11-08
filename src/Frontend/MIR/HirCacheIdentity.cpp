@@ -126,7 +126,7 @@ void appendNodeFlags(std::string& out, const ProjectOopHirNode& node)
         node.referenceResult, node.governingReference, node.nullConditionalCall,
         node.returnsAssignedValue, node.mustTailCall, node.automaticDestruction,
         node.variableLengthArray, node.placementConstructed, node.stackPromotedObject,
-        node.volatileAccess, node.cppAtomicAccess, node.baseReceiver, node.interfaceDispatch,
+        node.volatileAccess, node.cppAtomicAccess, node.cppCBoolStorage, node.baseReceiver, node.interfaceDispatch,
         node.targetIsInterface, node.dynamicDestruction, node.valueTypeNoOpDeletion,
         node.catchAll, node.catchHasFilter, node.catchExhaustive,
         node.interfaceCleanupDispatch};

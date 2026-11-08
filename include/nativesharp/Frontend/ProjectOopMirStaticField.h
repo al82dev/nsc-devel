@@ -56,6 +56,6 @@ struct ProjectOopMirStaticField final
     SourceRange sourceRange;
     std::string debugDisplayName;
     bool cppThreadLocal = false;
-    bool cppCVolatileBoolStorage = false;
+    bool cppCBoolStorage = false;
 };
 }

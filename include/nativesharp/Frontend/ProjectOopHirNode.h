@@ -161,6 +161,7 @@ struct ProjectOopHirNode final
     bool volatileAccess = false;
     // C atomic storage is distinct from an LLVM volatile access.
     bool cppAtomicAccess = false;
+    bool cppCBoolStorage = false;
     // Effective Clang option for an imported global access; not an atomicity proof.
     std::optional<bool> cppMicrosoftVolatileSemantics;
     // Proven minimum alignment for a direct imported volatile scalar access.

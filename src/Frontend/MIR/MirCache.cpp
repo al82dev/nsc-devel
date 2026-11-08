@@ -371,7 +371,8 @@ void appendMirNodeFields(
     appendMirNodeCoreFields(out, node, syntaxIndices);
     appendMirNodeShapeFields(out, node);
     appendMirNodeFlags(out, node);
-    internal::CachePayloadWriter::byte(out, node.cppAtomicAccess ? 1U : 0U);
+    internal::CachePayloadWriter::byte(out, (node.cppAtomicAccess ? 1U : 0U) |
+                                           (node.cppCBoolStorage ? 2U : 0U));
     appendMirNodeOptionals(out, node);
     appendMirNodeVectors(out, node);
 }
@@ -663,8 +664,9 @@ bool readMirNodeFields(
     if (!reader.u32(flags)) return false;
     applyMirNodeFlags(flags, node);
     std::uint8_t atomicAccess = 0;
-    if (!reader.byte(atomicAccess) || atomicAccess > 1) return false;
-    node.cppAtomicAccess = atomicAccess != 0;
+    if (!reader.byte(atomicAccess) || atomicAccess > 3) return false;
+    node.cppAtomicAccess = (atomicAccess & 1U) != 0;
+    node.cppCBoolStorage = (atomicAccess & 2U) != 0;
     if (!readMirNodeOptionals(reader, node)) return false;
     return readMirNodeVectors(reader, node);
 }

@@ -113,15 +113,15 @@ int main()
         if (!staticFields.empty())
         {
             auto& field = const_cast<ProjectOopMirStaticField&>(staticFields.front());
-            const bool saved = field.cppCVolatileBoolStorage;
-            field.cppCVolatileBoolStorage = false;
+            const bool saved = field.cppCBoolStorage;
+            field.cppCBoolStorage = false;
             const auto ordinary = projectOopMirCacheIdentity(mir, ordinals, ordinals);
-            field.cppCVolatileBoolStorage = true;
+            field.cppCBoolStorage = true;
             const auto cByte = projectOopMirCacheIdentity(mir, ordinals, ordinals);
             const ProjectOopMirCacheIdentityIndex cByteIndex(mir);
             tests.expect(ordinary != cByte && cByte == cByteIndex.identity(ordinals, ordinals),
                 "cache identity distinguishes C volatile bool byte storage");
-            field.cppCVolatileBoolStorage = saved;
+            field.cppCBoolStorage = saved;
         }
 
         const auto functions = mir.functions();
