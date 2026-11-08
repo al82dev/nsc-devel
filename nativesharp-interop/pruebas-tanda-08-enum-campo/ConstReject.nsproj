@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>H4ConstReject</Name></PropertyGroup>
+  <ItemGroup><Compile Include="ConstReject.ns" /><CppLibraryReference Header="Api.h" Language="C" Standard="c11" /></ItemGroup>
+</Project>

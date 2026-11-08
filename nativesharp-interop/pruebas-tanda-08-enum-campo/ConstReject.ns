@@ -1,0 +1,1 @@
+int Main() { var a = h4_get_anon(); a->fixed = H4Fixed; return 0; }
