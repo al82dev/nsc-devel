@@ -395,6 +395,18 @@ bool checkUsrStability(CppClangSessionFactory& factory, const std::string& resou
                     "anonymous carrier envelope preserves all nested carrier markers");
                 if (encoded)
                 {
+                    std::vector<CppCRecordSnapshot> dispatched;
+                    std::vector<CppCEnumSnapshot> dispatchedEnums;
+                    metadata_detail::CDependencyCatalog dispatchedDependencies;
+                    const bool oldAccepted = metadata_detail::decodeCTypeCatalogAndDependencies(
+                        bytes, 47, dispatched, dispatchedEnums, dispatchedDependencies, error);
+                    const bool currentAccepted = metadata_detail::decodeCTypeCatalogAndDependencies(
+                        bytes, 48, dispatched, dispatchedEnums, dispatchedDependencies, error);
+                    carriersOk &= expect(!oldAccepted && currentAccepted && dispatched.size() == 4,
+                        "anonymous carrier envelope requires the newer metadata version");
+                }
+                if (encoded)
+                {
                     bytes.push_back(0);
                     restored.clear();
                     carriersOk &= expect(!metadata_detail::decodeCTypeCatalogWithAnonymousCarriers(

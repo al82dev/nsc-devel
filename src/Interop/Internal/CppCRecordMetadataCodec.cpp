@@ -844,9 +844,16 @@ bool decodeCTypeCatalogAndDependencies(std::span<const std::uint8_t> bytes, std:
     std::vector<CppCRecordSnapshot> decodedRecords;
     std::vector<CppCEnumSnapshot> decodedEnums;
     CDependencyCatalog decodedDependencies;
+    const bool anonymousEnvelope = bytes.size() >= 4 && bytes[0] == 6 &&
+        bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0;
     const bool dependencyEnvelope = bytes.size() >= 4 && bytes[0] == 5 &&
         bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0;
-    if (formatMinor >= 46 && dependencyEnvelope)
+    if (formatMinor >= 48 && anonymousEnvelope)
+    {
+        if (!decodeCTypeCatalogWithAnonymousCarriers(bytes, decodedRecords, decodedEnums, decodedDependencies, error))
+            return false;
+    }
+    else if (formatMinor >= 46 && dependencyEnvelope)
     {
         if (!decodeCTypeCatalogWithDependencies(bytes, decodedRecords, decodedEnums, decodedDependencies, error))
             return false;
@@ -1306,6 +1313,12 @@ bool decodeVersionedCTypeCatalog(std::span<const std::uint8_t> bytes,
     std::uint16_t formatMinor)
 {
     if (formatMinor == 42) return decodeCTypeCatalog(bytes, records, enums, error);
+    if (formatMinor >= 48 && bytes.size() >= 4 && bytes[0] == 6 &&
+        bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0)
+    {
+        CDependencyCatalog dependencies;
+        return decodeCTypeCatalogWithAnonymousCarriers(bytes, records, enums, dependencies, error);
+    }
     if (formatMinor >= 46 && bytes.size() >= 4 && bytes[0] == 5 &&
         bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0)
     {
