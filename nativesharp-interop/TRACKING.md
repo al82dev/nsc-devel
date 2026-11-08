@@ -455,6 +455,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     No demuestra todavía el ciclo completo entre productor y consumidor
     independientes ni la identidad de otras declaraciones. [Prueba](registro-commits/t08-usr-campos-nsmeta-ruta.md).
 - [ ] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
+  - Una definición C11 con parámetros de estilo antiguo recibió `byte` y
+    `float` desde NativeSharp con promociones predeterminadas y pasó O0–O3.
+    Clang emitió advertencias de obsolescencia. Es una muestra, no el cierre
+    de todas las convenciones antiguas. [Evidencia](registro-commits/t08-definicion-c-estilo-antiguo.md).
   - Funciones C `static inline` de un encabezado se llamaron desde NSC en
     O0–O3, directamente y mediante dos bibliotecas NativeSharp precompiladas;
     en la muestra cada productor conservó su propio estado estático. La misma

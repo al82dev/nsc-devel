@@ -3,6 +3,7 @@ int read_calls(void);
 void* identity_pointer(void* value);
 int no_arguments(void);
 int old_style();
+int old_kr();
 int old_style_noargs();
 int refined();
 int refined(int value);

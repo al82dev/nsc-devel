@@ -6,6 +6,7 @@ int Main()
     byte value = 3;
     float fraction = 1.5f;
     if (old_style(value, fraction) != 18) return 3;
+    if (old_kr(value, fraction) != 18) return 6;
     if (refined(4) != 15 || refined_zero() != 29) return 4;
     if (refined_reverse(3) != 10) return 5;
     return 0;
