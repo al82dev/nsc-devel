@@ -188,6 +188,10 @@ Evidencia conjunta: [tanda 03](TANDA-03-CONTRATO.md).
 
 ## 08. Declaraciones, nombres y tipos C
 
+[Ver seguimiento detallado por casillas](TRACKING-TANDA-08-DETALLADO.md). La vista
+detallada conserva los ítems originales y distingue muestras verificadas de
+trabajo y validación pendientes.
+
 El validador integral incluye los scripts de la tanda inventariados. La última
 ejecución integral registrada terminó con cuatro fallos en controles TLS de DLL
 C; desde entonces se añadieron controles dirigidos sin repetir el gate. La tanda
