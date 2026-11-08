@@ -977,6 +977,11 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     struct, struct empaquetado y union, con comparación de IR frente a Clang.
     Construcción y validación pendientes; no se cierra el ítem.
     [Detalle](registro-commits/t08-campo-enum-volatile.md).
+  - Actualización: el validador de campos `volatile` pasó con NSC build
+    `5c1e6c7fa15d8a3e`: ejecución O0–O3 en directo, Shared y metadata, y
+    comparación IR de enum alineado, empaquetado y union con Clang. Esto no
+    acredita aliases de punteros ni cierra el ítem.
+    [Resultado](registro-commits/t08-campo-enum-volatile-validacion.md).
   - Las funciones C libres que reciben o retornan `_Bool` llevan `zeroext` en
     declaraciones y llamadas LLVM. IR contrastado con Clang y ejecución O0–O3;
     muestra. También pasaron una función C++ libre, un método estático y otro
