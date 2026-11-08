@@ -20,5 +20,15 @@ int signed_reference(int stage)
     reference &= 7;
     return (int)reference;
 }
+int signed_mixed_reference(int operation)
+{
+    _Atomic(enum SignedState) reference = SIGNED_NEGATIVE;
+    if (operation == 1) reference /= 4294967296ULL;
+    else if (operation == 2) reference %= 4294967296ULL;
+    else if (operation == 3) reference += 4294967295ULL;
+    else if (operation == 4) reference >>= 1ULL;
+    else if (operation == 5) reference /= 4294967296LL;
+    return (int)reference;
+}
 void state_write_reference(void) { state = STATE_READY; }
 void state_compound_reference(void) { state += 1; state -= 1; state |= 1; state++; --state; }

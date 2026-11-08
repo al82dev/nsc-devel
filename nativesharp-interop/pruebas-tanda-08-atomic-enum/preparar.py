@@ -5,7 +5,7 @@ source, destination = map(Path, sys.argv[1:3])
 mode = sys.argv[3]
 for name in ("Api.h", "Api.c"):
     text = (source / name).read_text(encoding="utf-8")
-    expected = 2 if name == "Api.h" else 3
+    expected = 2 if name == "Api.h" else 4
     if text.count("_Atomic(") != expected:
         raise SystemExit(f"Cantidad inesperada de declaraciones atomicas: {name}")
     if mode == "tls":

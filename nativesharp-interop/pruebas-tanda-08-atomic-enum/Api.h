@@ -4,3 +4,4 @@ extern _Atomic(enum State) state;
 extern _Atomic(enum SignedState) signed_state;
 int state_check(void);
 int signed_reference(int stage);
+int signed_mixed_reference(int operation);
