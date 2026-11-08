@@ -1,0 +1,14 @@
+extern C delegate bool BoolCallback(int tag, bool value);
+class Program
+{
+    public static bool NativeCallback(int tag, bool value) { return tag == 7 && !value; }
+    public static int Main()
+    {
+        BoolCallback foreign = (BoolCallback)c_get_bool_callback();
+        if (!foreign(7, false) || foreign(7, true) || foreign(2, false)) return 1;
+        BoolCallback own = NativeCallback;
+        if (!own(7, false) || own(7, true) || own(2, false)) return 2;
+        if (c_invoke_bool_callback((void*)own) != 1) return 3;
+        return 0;
+    }
+}
