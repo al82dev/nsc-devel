@@ -1,6 +1,6 @@
 namespace Published
 {
-    public struct Bridge
+    public class Bridge
     {
         public static LAnonymous* Obj() { return probe_anonymous(); }
         public static LPackedAnonymous* Packed() { return probe_packed_anonymous(); }
