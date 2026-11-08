@@ -15,6 +15,6 @@ ConsumerRecordLocal CGenProducer runs runs
 ConsumerGlobalWrite CGenProducer runs runs
 ConsumerInline CGenProducerInline runs runs
 ConsumerEnumConstantPlain CGenProducerEnumPlain runs runs
-ConsumerEnumConstant CGenProducerEnum ident runs
+ConsumerEnumConstant CGenProducerEnum runs runs
 ConsumerAnonymousConstantPlain CGenProducerLoosePlain runs runs
 ConsumerAnonymousConstant CGenProducerLoose ident runs
