@@ -706,7 +706,8 @@ bool captureCppTemplateGlobalCandidates(const frontend::ProjectCompilation& comp
             return state.projectOrdinal == candidate.projectOrdinal && state.namespaceName == candidate.namespaceName &&
                 candidate.templateDemandIndex < compilation.cppTemplateDemands().size() &&
                 state.name == compilation.cppTemplateDemands()[candidate.templateDemandIndex].demand.lookupName &&
-                state.cppCGlobal && state.cppImportError.empty() && !state.cppThreadLocal;
+                state.cppCGlobal && state.cppImportError.empty() &&
+                (!state.cppThreadLocal || !state.cppCInternalLinkage);
         });
         if (selected == states.end()) continue;
         auto indices = candidate.selection.declarationIndices;
@@ -715,7 +716,7 @@ bool captureCppTemplateGlobalCandidates(const frontend::ProjectCompilation& comp
         {
             if (index >= inventory.size()) { error = "C global candidate index is invalid"; return false; }
             const auto& entry = inventory[index];
-            if (!entry.cLanguage || entry.declaration.threadLocal) continue;
+            if (!entry.cLanguage || (entry.declaration.threadLocal && !entry.declaration.externalLinkage)) continue;
             if (!seen.emplace(entry.projectOrdinal, entry.referenceIndex, selected->storageName).second) continue;
             metadata_detail::CDependencyGlobalSnapshot snapshot;
             const auto reference = "cpp-reference:" + std::to_string(entry.referenceIndex);

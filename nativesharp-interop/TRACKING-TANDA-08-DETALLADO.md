@@ -45,7 +45,8 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-002-09m2: Verificar una global externa `const` compartida y rechazar una redeclaración sin `const`, en O0. [Evidencia](registro-commits/t08-global-externa-const.md).
 - [x] T08-002-09m3: Verificar un puntero externo compartido y rechazar discrepancias `const` o `volatile` en el dato apuntado, en O0. [Evidencia](registro-commits/t08-global-externa-puntero-calificadores.md).
 - [x] T08-002-09m4: Verificar lectura y actualización atómicas de una global C externa compartida y rechazar discrepancia de `_Atomic`, en O0. [Evidencia](registro-commits/t08-global-externa-atomica.md).
-- [ ] T08-002-09m5: Comprobar los demás calificadores y variantes de enlace de la global externa compartida.
+- [x] T08-002-09m5: Publicar y consumir una global C externa TLS usada por plantillas de dos bibliotecas sin encabezados originales, en O0. [Evidencia](registro-commits/t08-tls-externa-plantillas.md).
+- [ ] T08-002-09m6: Comprobar los demás calificadores y variantes de enlace de la global externa compartida, incluida TLS interna.
 - [x] T08-002-09n: Enlazar una sola vez una biblioteca C idéntica propagada por dos productores y conservar dos bibliotecas distintas con el mismo nombre, en O0. [Evidencia](registro-commits/t08-dependencia-c-compartida.md).
 - **T08-002-10 — Sombras en plantillas:**
 - [x] T08-002-10a: Verificar una muestra de sombra de función C por parámetro y local en una plantilla precompilada en O0. [Evidencia](registro-commits/t08-sombra-funcion-parametro-local.md).

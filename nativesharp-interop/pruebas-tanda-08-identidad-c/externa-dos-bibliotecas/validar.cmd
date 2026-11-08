@@ -8,10 +8,12 @@ if "%~1"=="const" set "DEST=A:\nsc-interop-build\t08-global-externa-dos-const"
 if "%~1"=="const-compatible" set "DEST=A:\nsc-interop-build\t08-global-externa-dos-const-compatible"
 if "%~1"=="atomic" set "DEST=A:\nsc-interop-build\t08-global-externa-dos-atomic"
 if "%~1"=="atomic-compatible" set "DEST=A:\nsc-interop-build\t08-global-externa-dos-atomic-compatible"
+if "%~1"=="tls" set "DEST=A:\nsc-interop-build\t08-global-externa-dos-tls"
 set "PATH=A:\nsc-interop-build\tanda1-ON\bin;A:\al82dev-clang\bin;%PATH%"
 set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
+if "%~1"=="tls" set "NSC_LINKER=A:\al82dev-clang\bin\lld-link.exe"
 for %%D in (a b) do (
   if not exist "%DEST%\%%D" mkdir "%DEST%\%%D"
   for %%F in (same.h Producer.ns Producer.nsproj) do (
@@ -34,6 +36,7 @@ if "%~1"=="const" goto setup_const
 if "%~1"=="const-compatible" goto setup_const
 if "%~1"=="atomic" goto setup_atomic
 if "%~1"=="atomic-compatible" goto setup_atomic
+if "%~1"=="tls" goto setup_tls
 goto build_fixture
 :setup_const
 for %%D in (a b) do (
@@ -50,6 +53,13 @@ goto build_fixture
 > "%DEST%\a\same.h" echo extern _Atomic(int) internal_value;
 > "%DEST%\fixture.c" echo _Atomic(int) internal_value = 11;
 if "%~1"=="atomic-compatible" > "%DEST%\b\same.h" echo extern _Atomic(int) internal_value;
+goto build_fixture
+:setup_tls
+> "%DEST%\a\same.h" echo extern _Thread_local int internal_value;
+> "%DEST%\b\same.h" echo extern _Thread_local int internal_value;
+> "%DEST%\fixture.c" echo _Thread_local int internal_value = 11;
+copy /y "%~dp0Crt.h" "%DEST%\Crt.h" >nul || exit /b 1
+copy /y "%~dp0Consumer-tls.nsproj" "%DEST%\Consumer.nsproj" >nul || exit /b 1
 :build_fixture
 pushd "%DEST%" || exit /b 1
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 fixture.c -o fixture.obj
@@ -59,6 +69,11 @@ if errorlevel 1 (popd & exit /b 1)
 for %%D in (a b) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%%D\Producer.nsproj" -O0 --no-artifact-cache -o "%%D\InlineProducer%%D.lib" > "%%D\build.log" 2>&1
   if errorlevel 1 (type "%%D\build.log" & popd & exit /b 1)
+)
+if "%~1"=="tls" (
+  del a\same.h b\same.h
+  if exist a\same.h (popd & exit /b 1)
+  if exist b\same.h (popd & exit /b 1)
 )
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe Consumer.nsproj -O0 --no-artifact-cache -o Consumer.exe > Consumer.log 2>&1
 if "%~1"=="incompatible" goto expect_incompatible
