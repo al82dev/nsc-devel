@@ -5390,6 +5390,14 @@ hasta superar su batería integral, incluidas regresiones y caso directo.
 
 # T08: alias C en firmas publicadas de miembros
 
+Enmienda enum: el consumidor con header y metadata falla al observar `NMood`
+porque la conciliación actual solo contempla enums dependientes de un record.
+Comparar el contrato serializado completo del enum vivo y el precompilado,
+incluidos USR, enumeradores, representación y destino, y conciliar únicamente
+una coincidencia visible no ambigua. Presupuesto: `CppSemanticRecord.cpp`,
+fixture de nombres C y registros Markdown. Conservar rechazos y alcance de la
+tanda; no modificar NSLink ni LLVM/Clang.
+
 Enmienda: la primera implementación causó conflicto entre proyectos al
 coexistir el header y la metadata. Se permite modificar
 `src/Frontend/NameLookup/QualifiedTypeNames.cpp` únicamente para conciliar

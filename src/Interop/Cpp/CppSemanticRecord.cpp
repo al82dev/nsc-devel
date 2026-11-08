@@ -2402,6 +2402,42 @@ static bool collectVisibleCRecordReconciliations(
                             matchedRecord.substr(0, separator) + enumIdentity.substr(prefix.size() - 2));
         }
     }
+    std::set<std::pair<std::size_t, std::string>> observedEnums;
+    for (const auto& entry : enumEntries)
+    {
+        if (entry.declaration.isCxx || entry.declaration.name.empty() ||
+            entry.projectOrdinal >= graph->projects().size() ||
+            entry.projectOrdinal >= lookup.modules().size() || !lookup.modules()[entry.projectOrdinal] ||
+            !observedEnums.emplace(entry.projectOrdinal, entry.declaration.name).second) continue;
+        const auto& project = graph->projects()[entry.projectOrdinal];
+        const compilation::TypeIdentity identity(project.moduleName(), {}, {}, entry.declaration.name);
+        if (!identity.isValid()) continue;
+        const std::vector<std::string> requested{identity.key()};
+        const auto captured = captureCppCEnumCatalog(enumEntries, entry.projectOrdinal, project.moduleName(), requested);
+        const auto* live = std::get_if<std::vector<CppCEnumSnapshot>>(&captured);
+        if (!live || live->size() != 1 || !live->front().declaration.clangUsr ||
+            live->front().declaration.clangUsr->empty()) continue;
+        const auto visible = lookup.modules()[entry.projectOrdinal]->visibleProjectOrdinals();
+        for (const auto& catalog : catalogs)
+            for (const auto& candidate : catalog.enums)
+            {
+                if (candidate.identityKey == identity.key() || candidate.declaration.name != entry.declaration.name ||
+                    candidate.declaration.clangUsr != live->front().declaration.clangUsr) continue;
+                const auto separator = candidate.identityKey.find("::");
+                if (separator == std::string::npos) continue;
+                const auto owner = std::find_if(graph->projects().begin(), graph->projects().end(), [&](const auto& value) {
+                    return value.moduleName() == candidate.identityKey.substr(0, separator);
+                });
+                if (owner == graph->projects().end() || std::find(visible.begin(), visible.end(),
+                        static_cast<std::size_t>(owner - graph->projects().begin())) == visible.end()) continue;
+                auto normalized = candidate;
+                normalized.identityKey = live->front().identityKey;
+                std::vector<std::uint8_t> left, right;
+                if (!metadata_detail::encodeCTypeCatalog({}, std::span(&live->front(), 1), left, error) ||
+                    !metadata_detail::encodeCTypeCatalog({}, std::span(&normalized, 1), right, error)) return false;
+                if (left == right) enumMatches[{entry.projectOrdinal, identity.key()}].insert(candidate.identityKey);
+            }
+    }
     for (const auto& [source, matches] : enumMatches)
         if (matches.size() == 1 && source.second != *matches.begin())
             reconciliations.push_back({source.first, source.second, *matches.begin()});
