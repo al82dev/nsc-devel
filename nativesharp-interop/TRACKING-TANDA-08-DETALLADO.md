@@ -85,6 +85,8 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
           - [ ] Comprobar la resolución de esa misma función cuando se obtiene su dirección o se convierte a un delegado; no emitir referencias a un símbolo interno sin definición.
           - [x] Probar la muestra de ambas DLL con funciones variádicas homónimas desde plantillas precompiladas y con caché, en O0–O3 y con valores distinguibles. [Evidencia](registro-commits/t08-dll-homonimas-variadicas.md).
           - [ ] Comprobar promociones, argumentos flotantes y agregados en funciones variádicas, además de otras formas de consumo.
+            - [x] Comparar promociones de `byte`, `short` y `float`, junto con `double`, contra controles C para dos DLL homónimas, O0–O3 y caché. [Evidencia](registro-commits/t08-dll-homonimas-variadicas-promociones.md).
+            - [ ] Comprobar agregados y otras promociones, incluidas variantes con signo y punteros, sin extrapolar la muestra anterior.
         - [ ] Investigar el valor inicial TLS de una DLL de control sin importaciones: también falla en el control C; causa aún no identificada. [Reproducción](pruebas-tanda-08-identidad-c/tls-dll-distintas/validar-origen-ambiguo.py).
           - [x] Contrastar importación directa y carga dinámica, con y sin `DllMain`; inspeccionar el índice y el bloque TLS observado. [Evidencia](registro-commits/t08-dll-sin-import-inspeccion-tls.md).
           - [x] Confirmar que `DllMain` se ejecuta y contrastar una DLL que contiene una importación no invocada por la función TLS. [Evidencia](registro-commits/t08-dll-tls-importacion-no-invocada.md).

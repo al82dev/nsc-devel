@@ -31,7 +31,8 @@ for index, initial in ((1, 3), (2, 7)):
     folder.mkdir(exist_ok=True)
     (folder / "api.h").write_text(
         "extern __declspec(thread) int tls_exported;\n"
-        "__declspec(dllimport) int var_read(int count, ...);\n", encoding="utf-8")
+        "__declspec(dllimport) int var_read(int count, ...);\n"
+        "__declspec(dllimport) int var_mix(int marker, ...);\n", encoding="utf-8")
     (folder / "api.c").write_text(f"""
 __declspec(thread) int tls_exported = {initial};
 __declspec(dllimport) unsigned long __stdcall GetCurrentThreadId(void);
@@ -43,12 +44,25 @@ __declspec(dllexport) int var_read(int count, ...) {{
     __builtin_va_end(ap);
     return result;
 }}
+__declspec(dllexport) int var_mix(int marker, ...) {{
+    __builtin_va_list ap;
+    __builtin_va_start(ap, marker);
+    int a = __builtin_va_arg(ap, int);
+    double b = __builtin_va_arg(ap, double);
+    int c = __builtin_va_arg(ap, int);
+    double d = __builtin_va_arg(ap, double);
+    double e = __builtin_va_arg(ap, double);
+    __builtin_va_end(ap);
+    return marker == {index} && a == 5 && b == 1.5 && c == 6 && d == 2.25 && e == 3.5
+        ? tls_exported : -100;
+}}
 """, encoding="utf-8")
     (folder / "Producer.ns").write_text(f"""
 namespace Variadic{index} {{
     public class Bridge {{
         public static int Access<T>(T unused, int value) {{ tls_exported = value; return tls_exported; }}
         public static int Read<T>(T unused) {{ return var_read(6, {index * 10 + 1}, {index * 10 + 2}, {index * 10 + 3}, {index * 10 + 4}, {index * 10 + 5}, {index * 10 + 6}); }}
+        public static int Mix<T>(T unused) {{ return var_mix({index}, (byte)5, (float)1.5, (short)6, 2.25, (float)3.5); }}
     }}
 }}
 """, encoding="utf-8")
@@ -64,8 +78,10 @@ namespace Variadic{index} {{
     expected = initial + sum(index * 10 + i for i in range(1, 7))
     (folder / "Control.c").write_text(
         "__declspec(dllimport) int var_read(int, ...);\n"
+        "__declspec(dllimport) int var_mix(int, ...);\n"
         "__declspec(dllimport) void __stdcall ExitProcess(unsigned long);\n"
-        f"void mainCRTStartup(void) {{ ExitProcess(var_read(6, {values}) != {expected}); }}\n", encoding="utf-8")
+        "int _fltused = 0;\n"
+        f"void mainCRTStartup(void) {{ ExitProcess(var_read(6, {values}) != {expected} || var_mix({index}, (unsigned char)5, 1.5f, (short)6, 2.25, 3.5f) != {initial}); }}\n", encoding="utf-8")
     run([clang, "-c", "--target=x86_64-pc-windows-msvc", "-std=c11", "Control.c", "-o", "Control.obj"], folder)
     run([linker, "/nologo", "/entry:mainCRTStartup", "/subsystem:console", "/nodefaultlib", "/out:Control.exe",
          "Control.obj", "api.lib", str(sdk / "um/x64/kernel32.lib")], folder)
@@ -77,6 +93,7 @@ namespace Variadic{index} {{
 int Main() {
     if (Variadic1.Bridge.Access<int>(0, 41) != 41 || Variadic2.Bridge.Access<int>(0, 51) != 51) return 1;
     if (Variadic1.Bridge.Read<int>(0) != 122 || Variadic2.Bridge.Read<int>(0) != 192) return 2;
+    if (Variadic1.Bridge.Mix<int>(0) != 41 || Variadic2.Bridge.Mix<int>(0) != 51) return 3;
     return 0;
 }
 """, encoding="utf-8")
