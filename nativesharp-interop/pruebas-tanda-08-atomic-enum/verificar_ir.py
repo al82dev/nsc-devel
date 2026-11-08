@@ -7,6 +7,14 @@ for path in sys.argv[2:]:
     text = pathlib.Path(path).read_text(encoding="utf-8")
     if mode == "tls" and not re.search(r"@state\s*=\s*[^\n]*\bthread_local\b", text):
         raise SystemExit(f"{path}: state no aparece como variable TLS")
+    if not re.search(r"@wide_state\s*=\s*[^\n]*\bi64\b", text):
+        raise SystemExit(f"{path}: wide_state no tiene almacenamiento de 64 bits")
+    if mode == "tls" and not re.search(r"@wide_state\s*=\s*[^\n]*\bthread_local\b", text):
+        raise SystemExit(f"{path}: wide_state no aparece como variable TLS")
+    if not re.search(r"\bload\s+atomic\s+i64\b[^\n]*\bseq_cst\b[^\n]*\balign 8\b", text):
+        raise SystemExit(f"{path}: falta carga atomica de 64 bits alineada a 8")
+    if not re.search(r"\b(?:cmpxchg|atomicrmw)\b[^\n]*\bi64\b[^\n]*\bseq_cst\b[^\n]*\balign 8\b", text):
+        raise SystemExit(f"{path}: falta modificacion atomica de 64 bits alineada a 8")
     if not re.search(r"\b(?:cmpxchg|atomicrmw)\b[^\n]*\bseq_cst\b", text):
         raise SystemExit(f"{path}: falta lectura-modificacion-escritura atomica seq_cst")
     for operation in ("load", "store"):

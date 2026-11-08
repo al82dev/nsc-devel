@@ -1,5 +1,10 @@
 int Main()
 {
+    if ((ulong)wide_state != 4294967296UL || wide_read() != 4294967296UL) return 21;
+    wide_state += 5UL;
+    if ((ulong)wide_state != 4294967301UL || wide_read() != 4294967301UL) return 22;
+    wide_state >>= 1;
+    if ((ulong)wide_state != 2147483650UL || wide_read() != 2147483650UL) return 23;
     if (state != STATE_IDLE) return 1;
     if (state++ != STATE_IDLE || state != STATE_READY) return 6;
     if (state-- != STATE_READY || state != STATE_IDLE) return 7;

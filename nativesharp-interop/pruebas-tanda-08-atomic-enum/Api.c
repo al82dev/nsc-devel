@@ -1,7 +1,10 @@
 #include "Api.h"
 _Atomic(enum State) state = STATE_IDLE;
 _Atomic(enum SignedState) signed_state = SIGNED_NEGATIVE;
+_Atomic(enum WideState) wide_state = WIDE_LARGE;
 int state_check(void) { return state == STATE_READY; }
+unsigned long long wide_read(void) { return (unsigned long long)wide_state; }
+void wide_compound_reference(void) { wide_state += 5ULL; }
 int signed_reference(int stage)
 {
     _Atomic(enum SignedState) reference = SIGNED_NEGATIVE;
