@@ -34,7 +34,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-002-09e: Verificar la identidad de los campos y enumeradores de la muestra de records anónimos anidados al restaurarse en NSC. [Evidencia](registro-commits/t08-identidad-anonimos-restaurados.md).
   - [x] T08-002-09e1: Verificar los USR de Clang de una muestra, su presencia en la biblioteca y ejecutar accesos directos y precompilados en O0. [Evidencia](registro-commits/t08-identidad-anonimos-publicacion.md).
   - [x] T08-002-09e2: Comparar los USR de los campos y enumeradores con los que NSC restaura para esa muestra mediante el driver.
-- [ ] T08-002-09f: Verificar el diagnóstico cuando dos encabezados declaran la función externa con firmas incompatibles.
+- [x] T08-002-09f: Verificar una muestra de firmas de función externa C equivalentes e incompatibles en dos encabezados. [Evidencia](registro-commits/t08-firma-externa-c-conflicto.md).
 - [ ] T08-002-09g: Verificar por separado la identidad y selección de funciones `static inline` con el mismo contenido en encabezados homónimos de directorios distintos.
 - **T08-002-10 — Sombras en plantillas:**
 - [ ] T08-002-10a: Verificar sombra de función C por parámetro y local en una plantilla precompilada.

@@ -1,0 +1,5 @@
+<Project><PropertyGroup><Name>CExternalControl</Name></PropertyGroup><ItemGroup>
+<Compile Include="Main.ns" />
+<CppLibraryReference Header="x.h" Language="C" Standard="c11" />
+<CppLibraryReference Header="z.h" Language="C" Standard="c11" />
+</ItemGroup></Project>
