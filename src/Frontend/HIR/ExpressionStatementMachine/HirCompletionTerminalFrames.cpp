@@ -385,21 +385,18 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
         indexedCGlobal = depth > 0 && depth <= 64 && provenance &&
             provenance->kind == ProjectOopHirNodeKind::NamespaceStateAddress;
     }
-    if ((resultType == "builtin:bool" || resultType == "builtin:int" || resultType == "builtin:uint" || resultType == "builtin:short" ||
-         resultType == "builtin:long" || resultType == "builtin:double" || resultType == "builtin:float") && provenance &&
+    if ((resultType == "builtin:bool" || resultType == "builtin:sbyte" || resultType == "builtin:byte" ||
+         resultType == "builtin:int" || resultType == "builtin:uint" || resultType == "builtin:short" ||
+         resultType == "builtin:ushort" || resultType == "builtin:long" || resultType == "builtin:ulong" ||
+         resultType == "builtin:double" || resultType == "builtin:float") && provenance &&
         (provenance->kind == ProjectOopHirNodeKind::NamespaceStateValue || indexedCGlobal) &&
         provenance->namespaceStateOrdinal && namespaceFunctionModel_ &&
         *provenance->namespaceStateOrdinal < namespaceFunctionModel_->states().size())
     {
         const auto& state = namespaceFunctionModel_->states()[*provenance->namespaceStateOrdinal];
         directCVolatileInt = state.isCppExternal && state.cppCGlobal &&
-            ((indexedCGlobal ? state.declaredTypeKey.starts_with("builtin:int*[")
-                             : state.declaredTypeKey == "builtin:int*") ||
-             (!indexedCGlobal && state.declaredTypeKey == "builtin:bool*") ||
-             (!indexedCGlobal && state.cppAtomicStorage &&
-              (state.declaredTypeKey == "builtin:uint*" || state.declaredTypeKey == "builtin:short*" ||
-               state.declaredTypeKey == "builtin:long*" || state.declaredTypeKey == "builtin:double*" ||
-               state.declaredTypeKey == "builtin:float*"))) &&
+            ((indexedCGlobal && state.declaredTypeKey.starts_with("builtin:int*[")) ||
+             (!indexedCGlobal && state.declaredTypeKey == resultType + "*")) &&
             state.cppPointerPointeeVolatile &&
             state.cppMicrosoftVolatileSemantics == std::optional<bool>{true};
     }
@@ -469,8 +466,9 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
             if (directCVolatileInt && load->volatileAccess)
             {
                 load->cppMicrosoftVolatileSemantics = true;
-                load->cppAtomicAlignmentBytes = resultType == "builtin:bool" ? 1 : resultType == "builtin:short" ? 2 :
-                    (resultType == "builtin:long" || resultType == "builtin:double") ? 8 : 4;
+                load->cppAtomicAlignmentBytes = (resultType == "builtin:bool" || resultType == "builtin:sbyte" || resultType == "builtin:byte") ? 1 :
+                    (resultType == "builtin:short" || resultType == "builtin:ushort") ? 2 :
+                    (resultType == "builtin:long" || resultType == "builtin:ulong" || resultType == "builtin:double") ? 8 : 4;
             }
             load->children.push_back(std::move(lowered));
             lowered = std::move(load);
@@ -487,8 +485,9 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
                 if (directCVolatileInt && volatilePointee)
                 {
                     address->cppMicrosoftVolatileSemantics = true;
-                    address->cppAtomicAlignmentBytes = resultType == "builtin:bool" ? 1 : resultType == "builtin:short" ? 2 :
-                        (resultType == "builtin:long" || resultType == "builtin:double") ? 8 : 4;
+                    address->cppAtomicAlignmentBytes = (resultType == "builtin:bool" || resultType == "builtin:sbyte" || resultType == "builtin:byte") ? 1 :
+                        (resultType == "builtin:short" || resultType == "builtin:ushort") ? 2 :
+                        (resultType == "builtin:long" || resultType == "builtin:ulong" || resultType == "builtin:double") ? 8 : 4;
                 }
                 address->children.push_back(std::move(lowered));
                 lowered = std::move(address);

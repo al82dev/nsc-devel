@@ -444,27 +444,25 @@ void ProjectOopHirModel::finishArrayRawIndex(
                 provenance->kind == ProjectOopHirNodeKind::NamespaceStateAddress;
         }
         if (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray &&
-            (elementType == "builtin:bool" || elementType == "builtin:int" || elementType == "builtin:uint" || elementType == "builtin:short" ||
-             elementType == "builtin:long" || elementType == "builtin:double" || elementType == "builtin:float") && address->volatileAccess && provenance &&
+            (elementType == "builtin:bool" || elementType == "builtin:sbyte" || elementType == "builtin:byte" ||
+             elementType == "builtin:int" || elementType == "builtin:uint" || elementType == "builtin:short" ||
+             elementType == "builtin:ushort" || elementType == "builtin:long" || elementType == "builtin:ulong" ||
+             elementType == "builtin:double" || elementType == "builtin:float") && address->volatileAccess && provenance &&
             (provenance->kind == ProjectOopHirNodeKind::NamespaceStateValue || indexedCGlobal) &&
             provenance->namespaceStateOrdinal && namespaceFunctionModel_ &&
             *provenance->namespaceStateOrdinal < namespaceFunctionModel_->states().size())
         {
             const auto& state = namespaceFunctionModel_->states()[*provenance->namespaceStateOrdinal];
             if (state.isCppExternal && state.cppCGlobal &&
-                ((indexedCGlobal ? state.declaredTypeKey.starts_with("builtin:int*[")
-                                 : state.declaredTypeKey == "builtin:int*") ||
-                 (!indexedCGlobal && state.declaredTypeKey == "builtin:bool*") ||
-                 (!indexedCGlobal && state.cppAtomicStorage &&
-                  (state.declaredTypeKey == "builtin:uint*" || state.declaredTypeKey == "builtin:short*" ||
-                   state.declaredTypeKey == "builtin:long*" || state.declaredTypeKey == "builtin:double*" ||
-                   state.declaredTypeKey == "builtin:float*"))) &&
+                ((indexedCGlobal && state.declaredTypeKey.starts_with("builtin:int*[")) ||
+                 (!indexedCGlobal && state.declaredTypeKey == elementType + "*")) &&
                 state.cppPointerPointeeVolatile &&
                 state.cppMicrosoftVolatileSemantics == std::optional<bool>{true})
             {
                 address->cppMicrosoftVolatileSemantics = true;
-                address->cppAtomicAlignmentBytes = elementType == "builtin:bool" ? 1 : elementType == "builtin:short" ? 2 :
-                    (elementType == "builtin:long" || elementType == "builtin:double") ? 8 : 4;
+                address->cppAtomicAlignmentBytes = (elementType == "builtin:bool" || elementType == "builtin:sbyte" || elementType == "builtin:byte") ? 1 :
+                    (elementType == "builtin:short" || elementType == "builtin:ushort") ? 2 :
+                    (elementType == "builtin:long" || elementType == "builtin:ulong" || elementType == "builtin:double") ? 8 : 4;
             }
         }
         if (frame.baseIsFixedArray && base &&
