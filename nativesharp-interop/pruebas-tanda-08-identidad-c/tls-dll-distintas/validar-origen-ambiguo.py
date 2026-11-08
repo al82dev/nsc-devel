@@ -7,7 +7,9 @@ import sys
 fixtures = Path(__file__).resolve().parent
 root = Path(r"A:\nsc-interop-build\t08-tls-dos-dll-repro")
 without_imports = "--sin-import" in sys.argv
-work = root / ("origen-sin-import" if without_imports else "origen-ambiguo")
+with_entry = "--entrada" in sys.argv
+work = root / ("origen-sin-import-entrada" if with_entry else
+               "origen-sin-import" if without_imports else "origen-ambiguo")
 work.mkdir(parents=True, exist_ok=True)
 for name in ("TlsApi2Ambiguo.c", "TlsApi2SinImport.c", "ConsumerAmbiguo.ns", "ConsumerAmbiguo.nsproj",
              "Producer2Ambiguo.nsproj", "Producer2.ns", "ReadApi.h"):
@@ -31,8 +33,11 @@ def run(command):
         sys.exit(result.returncode)
 
 source = "TlsApi2SinImport.c" if without_imports else "TlsApi2Ambiguo.c"
-run([clang, "-c", "--target=x86_64-pc-windows-msvc", "-std=c11", source, "-o", "api.obj"])
-run([lld, "/nologo", "/dll", "/noentry", "/nodefaultlib", "/include:_tls_used", "/export:tls_exported,DATA",
+compile_dll = [clang, "-c", "--target=x86_64-pc-windows-msvc", "-std=c11"]
+if with_entry:
+    compile_dll.append("-DTEST_DLL_ENTRY")
+run(compile_dll + [source, "-o", "api.obj"])
+run([lld, "/nologo", "/dll", "/entry:DllMain" if with_entry else "/noentry", "/nodefaultlib", "/include:_tls_used", "/export:tls_exported,DATA",
      "/out:api.dll", "/implib:api.lib", "api.obj", crt + "libcmt.lib", crt + "libcpmt.lib",
      crt + "libvcruntime.lib", r"A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib\ucrt\x64\libucrt.lib", sdk])
 probe = (fixtures.parents[1] / "pruebas-tanda-08-tls-c" / "directo" / "ProbePeTls.c").read_text(encoding="utf-8")
@@ -45,11 +50,19 @@ run([lld, "/nologo", "/entry:mainCRTStartup", "/subsystem:console", "/nodefaultl
      "ProbeAmbiguo.obj", "api.lib", sdk])
 if without_imports:
     result = subprocess.run([str(work / "ProbeAmbiguo.exe")], cwd=work, env=env)
+    if with_entry:
+        print("Control C sin importaciones, con DllMain: codigo", result.returncode)
+        if result.returncode != 103:
+            sys.exit("ERROR: el resultado del control con entrada cambio")
+        sys.exit(0)
     if result.returncode != 103:
         sys.exit("ERROR: el resultado del control sin importaciones cambio: " + str(result.returncode))
     print("Control C sin importaciones: tls_read no observa el valor inicial; pendiente de investigar")
     sys.exit(0)
 run([str(work / "ProbeAmbiguo.exe")])
+if "--solo-c" in sys.argv:
+    print("Control C con importacion: valor TLS inicial correcto")
+    sys.exit(0)
 run([nsc, "--cpp-clang-root=A:\\al82dev-clang", "--emit-project-oop-lib", "Producer2Ambiguo.nsproj",
      "-O0", "--no-artifact-cache", "-o", "TlsProducer2.lib"])
 (work / "ConsumerAmbiguo.exe").unlink(missing_ok=True)

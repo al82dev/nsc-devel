@@ -1,0 +1,5 @@
+# Inspección del TLS de DLL sin importaciones
+
+`inspeccionar-tls.py` genera tres DLL con la misma variable TLS inicializada a 7: sin importaciones y sin punto de entrada; sin importaciones y con `DllMain`; y con una importación de Windows. Con un consumidor C y enlace directo, los bytes iniciales de las tres DLL contienen 7. En la ejecución observada, las dos primeras muestran índice TLS 0 y leen `0x80000000` tanto desde el bloque indicado por el índice como desde la función C; la tercera muestra índice 1 y lee 7. El control de carga con `LoadLibraryExW` también obtiene un valor incorrecto para las dos primeras y el esperado para la tercera.
+
+La comparación se ejecutó correctamente en esta máquina con Clang y LLD, sin ejecutar código NativeSharp. Un `DllMain` explícito no corrigió el resultado observado. Estas mediciones no identifican todavía la causa ni prueban un comportamiento general de Windows: hay que distinguir posibles problemas del enlace, del ejecutable de control y de la carga antes de decidir una corrección. El caso continúa abierto.
