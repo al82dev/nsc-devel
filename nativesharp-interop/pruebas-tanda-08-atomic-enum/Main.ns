@@ -58,5 +58,13 @@ int Main()
     signed_state = SIGNED_NEGATIVE;
     signed_state /= 4294967296L;
     if ((int)signed_state != signed_mixed_reference(5)) return 20;
+    signed_state = SIGNED_NEGATIVE;
+    nuint wide_unsigned = (nuint)4294967296UL;
+    signed_state /= wide_unsigned;
+    if ((int)signed_state != signed_mixed_reference(1)) return 30;
+    signed_state = SIGNED_NEGATIVE;
+    nint wide_signed = (nint)4294967296L;
+    signed_state /= wide_signed;
+    if ((int)signed_state != signed_mixed_reference(5)) return 31;
     return 0;
 }

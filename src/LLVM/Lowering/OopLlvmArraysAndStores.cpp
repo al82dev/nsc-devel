@@ -250,8 +250,10 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 const bool shift = node->operation == lexer::TokenKind::LessLess ||
                     node->operation == lexer::TokenKind::GreaterGreater;
                 const std::string calculationType = shift ? promoted :
-                    (promoted == "builtin:ulong" || rhsType == "builtin:ulong") ? "builtin:ulong" :
-                    (promoted == "builtin:long" || rhsType == "builtin:long") ? "builtin:long" :
+                    (promoted == "builtin:u128" || rhsType == "builtin:u128") ? "builtin:u128" :
+                    (promoted == "builtin:i128" || rhsType == "builtin:i128") ? "builtin:i128" :
+                    (promoted == "builtin:ulong" || rhsType == "builtin:ulong" || rhsType == "builtin:nuint") ? "builtin:ulong" :
+                    (promoted == "builtin:long" || rhsType == "builtin:long" || rhsType == "builtin:nint") ? "builtin:long" :
                     (promoted == "builtin:uint" || rhsType == "builtin:uint") ? "builtin:uint" : "builtin:int";
                 LLVMTypeRef storage = llvmType(target->typeKey, error);
                 LLVMValueRef operand = shift ? normalizeShiftCount(value, rhsType, calculationType, error) :
