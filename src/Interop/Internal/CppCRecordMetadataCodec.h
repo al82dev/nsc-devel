@@ -17,6 +17,20 @@ namespace nativesharp::interop::metadata_detail
 // A failed operation leaves its output unchanged.
 bool encodeCDependencyType(const CppType& type, std::vector<std::uint8_t>& output, std::string& error);
 bool decodeCDependencyType(std::span<const std::uint8_t> bytes, CppType& output, std::string& error);
+// A function snapshot retains the producer's reference identity and the actual
+// symbol chosen for its linkage. Source locations are diagnostic-only and are
+// deliberately not transported. This is not yet an NSMETA section.
+struct CDependencyFunctionSnapshot
+{
+    std::string moduleName;
+    std::string referenceIdentity;
+    std::string linkSymbol;
+    CppFunctionDeclaration declaration;
+};
+bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
+    std::vector<std::uint8_t>& output, std::string& error);
+bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
+    CDependencyFunctionSnapshot& output, std::string& error);
 // Internal catalogue codec. It does not by itself publish an NSMETA section.
 // Both functions leave their output unchanged on failure.
 bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,

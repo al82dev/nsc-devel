@@ -363,6 +363,92 @@ bool decodeCDependencyType(std::span<const std::uint8_t> bytes, CppType& output,
     return true;
 }
 
+bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
+    std::vector<std::uint8_t>& output, std::string& error)
+{
+    const auto& f = value.declaration;
+    if (value.moduleName.empty() || value.referenceIdentity.empty() || value.linkSymbol.empty() ||
+        f.name.empty() || f.qualifiedName.empty() || f.callingConvention.empty() ||
+        f.languageLinkage != CppLanguageLinkage::C || f.parameters.size() > maxItems)
+    { error = "invalid C dependency function identity"; return false; }
+    ByteWriter writer;
+    writer.u8(1);
+    if (!putText(writer, value.moduleName) || !putText(writer, value.referenceIdentity) ||
+        !putText(writer, value.linkSymbol) || !putText(writer, f.name) || !putText(writer, f.qualifiedName) ||
+        !putText(writer, f.canonicalFunctionType) || !putText(writer, f.callingConvention) ||
+        !putText(writer, f.returnTypeSpelling) || !putText(writer, f.canonicalReturnTypeSpelling) ||
+        !putOptionalText(writer, f.externalSymbol) || !putOptionalText(writer, f.clangUsr))
+    { error = "invalid C dependency function text"; return false; }
+    writer.u8(f.variadic); writer.u8(f.externalLinkage); writer.u8(f.isNonThrowing);
+    writer.u8(f.dllImport); writer.u8(f.hasPrototype); writer.u8(f.isCStaticInlineDefinition);
+    const auto putDependencyType = [&](const CppType& type) {
+        std::vector<std::uint8_t> encoded;
+        if (!encodeCDependencyType(type, encoded, error) ||
+            encoded.size() > std::numeric_limits<std::uint32_t>::max()) return false;
+        writer.u32(static_cast<std::uint32_t>(encoded.size()));
+        writer.raw(encoded);
+        return true;
+    };
+    if (!putDependencyType(f.returnType)) return false;
+    writer.u32(static_cast<std::uint32_t>(f.parameters.size()));
+    for (const auto& parameter : f.parameters)
+    {
+        if (!putText(writer, parameter.name) || !putText(writer, parameter.typeSpelling) ||
+            !putText(writer, parameter.canonicalTypeSpelling) || !putDependencyType(parameter.type))
+        { if (error.empty()) error = "invalid C dependency function parameter"; return false; }
+        writer.u8(parameter.hasDefaultArgument);
+    }
+    output = writer.takeBytes();
+    error.clear();
+    return true;
+}
+
+bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
+    CDependencyFunctionSnapshot& output, std::string& error)
+{
+    ByteReader reader(bytes);
+    CDependencyFunctionSnapshot value;
+    auto& f = value.declaration;
+    std::uint8_t version = 0;
+    if (!reader.u8(version) || version != 1 || !reader.text(value.moduleName) ||
+        !reader.text(value.referenceIdentity) || !reader.text(value.linkSymbol) || !reader.text(f.name) ||
+        !reader.text(f.qualifiedName) || !reader.text(f.canonicalFunctionType) ||
+        !reader.text(f.callingConvention) || !reader.text(f.returnTypeSpelling) ||
+        !reader.text(f.canonicalReturnTypeSpelling) || !getOptionalText(reader, f.externalSymbol) ||
+        !getOptionalText(reader, f.clangUsr) || !getFlag(reader, f.variadic) ||
+        !getFlag(reader, f.externalLinkage) || !getFlag(reader, f.isNonThrowing) ||
+        !getFlag(reader, f.dllImport) || !getFlag(reader, f.hasPrototype) ||
+        !getFlag(reader, f.isCStaticInlineDefinition))
+    { error = "invalid C dependency function"; return false; }
+    f.languageLinkage = CppLanguageLinkage::C;
+    const auto getDependencyType = [&](CppType& type) {
+        std::uint32_t size = 0;
+        if (!reader.u32(size) || size > reader.remaining()) return false;
+        std::vector<std::uint8_t> encoded(size);
+        return reader.raw(encoded) && decodeCDependencyType(encoded, type, error);
+    };
+    std::uint32_t count = 0;
+    if (!getDependencyType(f.returnType) || !reader.u32(count) || count > maxItems || count > reader.remaining())
+    { error = "invalid C dependency function type"; return false; }
+    f.parameters.reserve(count);
+    for (std::uint32_t i = 0; i < count; ++i)
+    {
+        CppFunctionParameter parameter;
+        if (!reader.text(parameter.name) || !reader.text(parameter.typeSpelling) ||
+            !reader.text(parameter.canonicalTypeSpelling) || !getDependencyType(parameter.type) ||
+            !getFlag(reader, parameter.hasDefaultArgument))
+        { error = "invalid C dependency function parameter"; return false; }
+        f.parameters.push_back(std::move(parameter));
+    }
+    std::vector<std::uint8_t> canonical;
+    if (!reader.atEnd() || !encodeCDependencyFunction(value, canonical, error) ||
+        canonical.size() != bytes.size() || !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
+    { error = "noncanonical C dependency function"; return false; }
+    output = std::move(value);
+    error.clear();
+    return true;
+}
+
 bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
                           std::vector<std::uint8_t>& output, std::string& error)
 {

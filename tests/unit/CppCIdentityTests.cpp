@@ -880,6 +880,32 @@ bool checkDependencyTypeCodec()
     if (!bytes.empty()) bytes.pop_back();
     ok &= expect(!decodeCDependencyType(bytes, untouched, error) && untouched.spelling == "sentinel",
         "truncated C dependency type preserves output on failure");
+    CDependencyFunctionSnapshot function;
+    function.moduleName = "Producer";
+    function.referenceIdentity = "header-digest";
+    function.linkSymbol = "c_function";
+    function.declaration.name = "c_function";
+    function.declaration.qualifiedName = "c_function";
+    function.declaration.callingConvention = "cdecl";
+    function.declaration.languageLinkage = CppLanguageLinkage::C;
+    function.declaration.clangUsr = "c:@F@c_function";
+    function.declaration.externalSymbol = "c_function";
+    function.declaration.externalLinkage = true;
+    function.declaration.returnType = floating;
+    function.declaration.parameters.push_back({"value", "T*", "T*", pointer, false});
+    std::vector<std::uint8_t> functionBytes;
+    CDependencyFunctionSnapshot decoded;
+    ok &= expect(encodeCDependencyFunction(function, functionBytes, error) &&
+        decodeCDependencyFunction(functionBytes, decoded, error) &&
+        decoded.declaration.clangUsr == function.declaration.clangUsr &&
+        decoded.declaration.returnType.ieeeBinary64 && decoded.declaration.parameters.size() == 1 &&
+        decoded.declaration.parameters[0].type.element &&
+        decoded.declaration.parameters[0].type.element->kind == CppTypeKind::Atomic,
+        "C dependency function round trip preserves identity, signature and atomic type");
+    if (!functionBytes.empty()) functionBytes.pop_back();
+    decoded.moduleName = "sentinel";
+    ok &= expect(!decodeCDependencyFunction(functionBytes, decoded, error) && decoded.moduleName == "sentinel",
+        "truncated C dependency function preserves output on failure");
     return ok;
 }
 
