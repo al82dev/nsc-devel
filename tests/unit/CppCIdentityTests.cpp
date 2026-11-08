@@ -368,6 +368,18 @@ bool checkExternalSelection(const nativesharp::frontend::ProjectCompilation& com
         ok &= expect(groups && groups->groups.size() == 1 && groups->groups.front().inventoryIndices.size() == 2 &&
                      groups->groups.front().symbol.cppClangUsr,
                      "one external C function declared by two headers forms one group with its USR");
+        if (groups && groups->groups.size() == 1 && !groups->groups.front().inventoryIndices.empty())
+        {
+            const auto& group = groups->groups.front();
+            const auto& entry = entries->at(group.inventoryIndices.front());
+            metadata_detail::CDependencyFunctionSnapshot captured;
+            std::string why;
+            ok &= expect(metadata_detail::captureCDependencyFunction(*entries, group.symbol, entry.referenceIndex,
+                "reference-a", captured, why) && captured.declaration.clangUsr == group.symbol.cppClangUsr &&
+                captured.linkSymbol == group.symbol.mangledName,
+                "selected real Clang C function is captured with its symbol and USR");
+            if (!why.empty()) std::cerr << "real function capture: " << why << '\n';
+        }
         auto inlineSelected = selectCppSemanticFunctions(*entries, 0, "cid_inline");
         const auto* inlineGroups = std::get_if<CppSemanticFunctionGroups>(&inlineSelected);
         std::cout << "OBSERVATION static inline cid_inline from a.h and b.h: "
@@ -383,6 +395,28 @@ bool checkExternalSelection(const nativesharp::frontend::ProjectCompilation& com
         const auto selection = selectCppSemanticGlobal(*globalEntries, 0, "cid_global");
         ok &= expect(selection.candidate && selection.conflict.empty() && selection.candidate->clangUsr,
                      "one external C global declared by two headers is selected with its USR");
+        if (selection.candidate && !selection.declarationIndices.empty())
+        {
+            const auto& candidate = *selection.candidate;
+            const auto& entry = globalEntries->at(selection.declarationIndices.front());
+            nativesharp::frontend::NamespaceStateSymbol selectedState;
+            selectedState.projectOrdinal = candidate.projectOrdinal;
+            selectedState.moduleName = candidate.moduleName;
+            selectedState.name = candidate.name;
+            selectedState.storageName = candidate.externalSymbol;
+            selectedState.isCppExternal = true;
+            selectedState.cppCGlobal = true;
+            selectedState.cppThreadLocal = candidate.threadLocal;
+            selectedState.cppClangUsr = candidate.clangUsr;
+            selectedState.cppMicrosoftVolatileSemantics = entry.microsoftVolatileSemantics;
+            metadata_detail::CDependencyGlobalSnapshot captured;
+            std::string why;
+            ok &= expect(metadata_detail::captureCDependencyGlobal(*globalEntries, selectedState, entry.referenceIndex,
+                "reference-a", captured, why) && captured.linkSymbol == candidate.externalSymbol &&
+                captured.declaration.clangUsr == candidate.clangUsr,
+                "selected real Clang C global is captured with its symbol and USR");
+            if (!why.empty()) std::cerr << "real global capture: " << why << '\n';
+        }
         const auto internal = selectCppSemanticGlobal(*globalEntries, 0, "cid_static_global");
         std::cout << "OBSERVATION static cid_static_global from a.h and b.h: candidate="
                   << (internal.candidate ? "yes" : "no") << " conflict='" << internal.conflict << "'\n";
@@ -438,7 +472,23 @@ bool checkTwoHeaderProject(CppClangSessionFactory& factory, const std::string& r
     if (!expect(loaded, "two-header project loads its names")) return false;
     const bool external = checkExternalSelection(compilation);
     const bool tagged = checkTaggedTypes(compilation);
-    return external && tagged;
+    const auto* graph = compilation.projectGraph();
+    auto observations = collectCppSemanticTypeAliases(*graph, compilation.cppProjectSessions());
+    const auto* aliases = std::get_if<std::vector<CppSemanticTypeAliasEntry>>(&observations);
+    std::vector<nativesharp::frontend::CppImportedTypeAlias> provided;
+    bool aliasCaptured = aliases && provideCppTypeAliases(*graph, compilation.cppProjectSessions(), provided, error);
+    if (aliasCaptured)
+    {
+        const auto selected = std::find_if(provided.begin(), provided.end(), [](const auto& item) {
+            return item.referenceIndex == 0 && item.declaration.name == "CIdInt";
+        });
+        metadata_detail::CDependencyAliasSnapshot captured;
+        aliasCaptured = selected != provided.end() && metadata_detail::captureCDependencyAlias(
+            *aliases, *selected, graph->projects()[selected->projectOrdinal].moduleName(),
+            "reference-a", captured, error) && captured.declaration.clangUsr == selected->declaration.clangUsr;
+    }
+    if (!aliasCaptured) std::cerr << "real alias capture: " << error << '\n';
+    return external && tagged && expect(aliasCaptured, "real Clang C alias observation is captured with its USR");
 }
 
 // EN: Prints every diagnostic message of `compilation` on one evidence line.
