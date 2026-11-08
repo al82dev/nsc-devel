@@ -1,0 +1,8 @@
+namespace Published
+{
+    public struct NamesBridge
+    {
+        public static NAlias* Alias() { return names_record(); }
+        public static NMood Mood(NMood value) { return value; }
+    }
+}
