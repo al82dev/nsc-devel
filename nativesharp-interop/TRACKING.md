@@ -214,6 +214,12 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - Validación agrupada vigente: pasaron los controles dirigidos de identidad,
+    los consumidores de la matriz actual y la restauración de cinco variantes
+    de productor en O0–O3. La evidencia y las exclusiones están en
+    [validación agrupada](registro-commits/t08-identidad-validacion-agrupada-actual.md).
+    Las casillas detalladas describen muestras; aún no demuestran identidad
+    estable para cada declaración C importada, por lo que T08-002 sigue abierta.
   - Una variable de `catch` que oculta una global C dejó de publicarla en la
     prueba de biblioteca precompilada O0–O3. Se ejecutó el filtro al lanzar
     una excepción con `CALL` al validador en O0–O3.
