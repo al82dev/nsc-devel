@@ -54,6 +54,17 @@ using method_body_detail::Stage37ConstantKind;
 using method_body_detail::Stage37ConstantValue;
 using method_body_detail::writeMethodBodyTrace;
 
+ProjectImplicitConversion ProjectMethodBodyModel::classifyImportedFlexibleConversion(
+    const ExpressionResult& source, std::string_view targetTypeKey) const
+{
+    const auto element = ProjectMemberModel::flexibleArrayElementTypeKey(source.typeKey);
+    if (source.cppFlexibleArrayMember && source.addressable && element &&
+        targetTypeKey == *element + "*")
+        return {ProjectConversionKind::CFlexibleArrayToPointer, 1, source.typeKey,
+                std::string(targetTypeKey), std::nullopt};
+    return classifyImplicit(source.typeKey, targetTypeKey, source.integerConstant);
+}
+
 ProjectImplicitConversion ProjectMethodBodyModel::classifyImplicit(
     std::string_view sourceTypeKey,
     std::string_view targetTypeKey,

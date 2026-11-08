@@ -4888,6 +4888,8 @@ private:
         std::string_view sourceTypeKey,
         std::string_view targetTypeKey,
         std::optional<ProjectIntegerConstant> integerConstant = std::nullopt) const;
+    ProjectImplicitConversion classifyImportedFlexibleConversion(
+        const ExpressionResult& source, std::string_view targetTypeKey) const;
     bool reportTupleConversionFailure(
         std::string_view sourceTypeKey,
         std::string_view targetTypeKey,
