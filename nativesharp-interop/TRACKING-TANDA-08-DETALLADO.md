@@ -39,6 +39,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-002-09h: Verificar que dos bibliotecas con funciones `static inline` homónimas conservan implementaciones distintas al consumir sus plantillas, en O0. [Evidencia](registro-commits/t08-inline-dos-bibliotecas.md).
 - [x] T08-002-09i: Preservar la identidad de globales C `static` homónimas usadas por plantillas de dos bibliotecas precompiladas, en O0. [Reproducción](registro-commits/t08-static-dos-bibliotecas.md), [corrección](registro-commits/t08-static-dos-bibliotecas-correccion.md).
 - [x] T08-002-09j: Comprobar lecturas y modificaciones independientes de dos globales C internas homónimas mediante plantillas precompiladas, en O0–O3. [Evidencia](registro-commits/t08-static-dos-bibliotecas-mutables.md).
+- [x] T08-002-09k: Comprobar las mismas operaciones con dos productores referenciados como proyectos fuente, en O0. [Evidencia](registro-commits/t08-static-proyectos-fuente.md).
 - **T08-002-10 — Sombras en plantillas:**
 - [x] T08-002-10a: Verificar una muestra de sombra de función C por parámetro y local en una plantilla precompilada en O0. [Evidencia](registro-commits/t08-sombra-funcion-parametro-local.md).
 - [x] T08-002-10b: Verificar una muestra de sombra de global C por variables de `foreach` y `catch`, en O0. [Evidencia](registro-commits/t08-sombra-foreach-catch-o0.md).

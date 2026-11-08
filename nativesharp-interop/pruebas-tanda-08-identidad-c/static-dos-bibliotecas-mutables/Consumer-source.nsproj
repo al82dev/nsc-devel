@@ -1,0 +1,5 @@
+<Project><PropertyGroup><Name>InlineConsumer</Name></PropertyGroup><ItemGroup>
+<Compile Include="Consumer.ns" />
+<ProjectReference Include="a/Producer.nsproj" />
+<ProjectReference Include="b/Producer.nsproj" />
+</ItemGroup></Project>
