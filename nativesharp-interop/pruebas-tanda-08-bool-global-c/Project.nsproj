@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CBoolGlobals</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" />
+  </ItemGroup>
+</Project>

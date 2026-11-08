@@ -1,0 +1,11 @@
+int Main()
+{
+    if (c_flag || c_values[0] || !c_values[1]) return 1;
+    c_flag = true;
+    c_values[0] = true;
+    c_values[1] = false;
+    if (c_check() != 1) return 2;
+    c_set();
+    if (c_flag || c_values[0] || !c_values[1]) return 3;
+    return 0;
+}
