@@ -11,8 +11,6 @@
 #include "nativesharp/Interop/CppNamespaceInventory.h"
 #include "nativesharp/Interop/CppSemanticInventory.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
-#include "nativesharp/Frontend/ProjectMemberModel.h"
-#include "nativesharp/Frontend/TypeNameBinding.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "../Internal/CppCRecordMetadataCodec.h"
@@ -1164,46 +1162,14 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     if (!lookup || !graph) { error = "C record metadata requires a compiled project lookup"; return false; }
     metadata_detail::CDependencyCatalog dependencies;
     std::vector<frontend::NamespaceFunctionSymbol> projectedFunctions;
-    if (metadata.formatMinor >= 46)
+    if (metadata.formatMinor >= 46 && !metadata.genericTemplates.empty())
     {
         auto aliasesResult = collectCppSemanticTypeAliases(*graph, compilation.cppProjectSessions());
         if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&aliasesResult))
         { error = failure->message; return false; }
         const auto& aliases = std::get<std::vector<CppSemanticTypeAliasEntry>>(aliasesResult);
-        auto candidates = selectCppPublishedTemplateAliases(compilation, metadata, aliases);
-        if (const auto* members = compilation.memberModel())
-        {
-            const auto types = lookup->namedTypes();
-            const auto addAlias = [&](const ast::TypeSyntax* syntax) {
-                if (!syntax) return;
-                for (const auto& binding : lookup->bindings())
-                    if (binding.syntax == syntax && binding.expandedCppAlias)
-                    {
-                        CppPublishedTemplateAliasCandidates candidate{};
-                        candidate.resolvedAlias = binding.expandedCppAlias;
-                        candidate.hasNameBinding = true;
-                        candidates.push_back(std::move(candidate));
-                        break;
-                    }
-            };
-            for (const auto& member : members->members())
-            {
-                if (member.isPrecompiled || member.isCppExternal || member.declaringTypeOrdinal >= types.size()) continue;
-                const auto owner = "type:" + types[member.declaringTypeOrdinal].identity.key();
-                const bool published = std::any_of(metadata.members.begin(), metadata.members.end(), [&](const auto& item) {
-                    return item.declaringTypeKey == owner && item.name == member.name &&
-                        item.signatureKey == member.signatureKey && item.kind == static_cast<std::uint8_t>(member.kind);
-                });
-                if (!published) continue;
-                addAlias(member.declaredTypeSyntax);
-                addAlias(member.declaredErrorTypeSyntax);
-                for (const auto& parameter : member.parameters) addAlias(parameter.typeSyntax);
-            }
-        }
+        const auto candidates = selectCppPublishedTemplateAliases(compilation, metadata, aliases);
         if (!captureCppTemplateAliasCandidates(*graph, candidates, aliases, dependencies.aliases, error)) return false;
-    }
-    if (metadata.formatMinor >= 46 && !metadata.genericTemplates.empty())
-    {
         auto functionsResult = collectCppSemanticFunctions(*graph, compilation.cppProjectSessions());
         if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&functionsResult))
         { error = failure->message; return false; }
