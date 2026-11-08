@@ -4,6 +4,7 @@ typedef struct LAnonymous {
     struct { short x; short y; };
     union { struct { int deep; }; long long storage; };
     struct { unsigned low : 3; unsigned high : 5; };
+    struct { volatile int vNatural; };
 } LAnonymous;
 #pragma pack(push, 1)
 typedef struct LPackedAnonymous {
@@ -11,6 +12,7 @@ typedef struct LPackedAnonymous {
     union { int packedInt; float packedFloat; };
     struct { short packedShort; };
     struct { unsigned packedBits : 3; unsigned packedMore : 5; };
+    struct { volatile int vPacked; };
 } LPackedAnonymous;
 #pragma pack(pop)
 LAnonymous* probe_anonymous(void);

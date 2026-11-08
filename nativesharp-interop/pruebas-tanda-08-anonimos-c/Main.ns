@@ -9,6 +9,7 @@ int Main()
     value->deep = 5;
     value->low = (uint)3;
     value->high = (uint)17;
+    value->vNatural = 12345;
     LPackedAnonymous* packed = probe_packed_anonymous();
     if (sizeof(LPackedAnonymous) != (nuint)probe_packed_anonymous_size()) return 3;
     packed->tag = (byte)6;
@@ -16,7 +17,9 @@ int Main()
     packed->packedShort = (short)8;
     packed->packedBits = (uint)5;
     packed->packedMore = (uint)19;
+    packed->vPacked = 23456;
     if (probe_anonymous_check() != 1) return 2;
+    if (value->vNatural != 12345 || packed->vPacked != 23456) return 6;
     probe_anonymous_set_bits();
     if (value->low != (uint)2 || value->high != (uint)11) return 4;
     if (packed->packedBits != (uint)6 || packed->packedMore != (uint)23) return 5;
