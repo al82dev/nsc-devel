@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>GlobalStaticAB</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="GlobalStatic.ns" />
+    <CppLibraryReference Header="dirA/same.h" Language="C" Standard="c11" />
+    <CppLibraryReference Header="dirB/same.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>

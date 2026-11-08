@@ -25,7 +25,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-002-09a: Cotejar una función C externa con firma idéntica declarada en dos encabezados: Clang aporta el mismo USR y NSC agrupa ambas declaraciones. [Prueba](registro-commits/t08-002-pruebas-identidad-c.md), [resultado](registro-commits/t08-002-resultados-identidad-c.md).
 - [x] T08-002-09b: Cotejar funciones `static inline` distintas en encabezados homónimos: el USR coincide, pero NSC conserva dos grupos y diagnostica ambigüedad en la muestra comprobada. [Evidencia](registro-commits/t08-002-homonimos-c.md).
 - [x] T08-002-09c: Cotejar los USR de globales externas y `static` entre encabezados; la sonda homónima observó el mismo USR para las `static`. [Evidencia](registro-commits/t08-002-homonimos-c.md).
-- [ ] T08-002-09c1: Verificar en NSC la selección y separación de globales `static` de encabezados homónimos con la implementación actual.
+- [x] T08-002-09c1: Verificar selección de globales `static` de encabezados homónimos: una sola se acepta y dos se diagnostican como ambiguas, con contenido igual o distinto. [Evidencia](registro-commits/t08-identidad-global-static-homonima.md).
 - [ ] T08-002-09d: Verificar conciliación de typedefs que apuntan a records o enums incompatibles.
 - [ ] T08-002-09e: Verificar identidad de campos y enumeradores dentro de records anónimos anidados.
 - [ ] T08-002-09f: Verificar el diagnóstico cuando dos encabezados declaran la función externa con firmas incompatibles.
