@@ -136,8 +136,8 @@ normal y el rechazo de ThinLTO (`A:/nsc-fixes-evidencia/asan-unit-test.log`).
 El driver conecta esta ruta a `--emit-project-oop-exe` mediante
 `--sanitize-address --asan-clang=<clang.exe> --asan-runtime=<DLL>`. La DLL
 debe llamarse `clang_rt.asan_dynamic-x86_64.dll` y se publica junto al
-ejecutable; Clang y la DLL deben ser versiones compatibles, responsabilidad
-de la configuración suministrada. Se rechazan LTO, PDB, enlace incremental,
+ejecutable. El driver consulta a Clang por su DLL y compara tamaño y SHA-256;
+acepta una copia idéntica y rechaza un archivo distinto. Se rechazan LTO, PDB, enlace incremental,
 subsystem de ventana y caché de artefactos explícita; el modo ASan desactiva
 la caché predeterminada. Bibliotecas precompiladas y runtime NativeSharp no se
 instrumentan, por lo que los accesos dentro de esas bibliotecas no están

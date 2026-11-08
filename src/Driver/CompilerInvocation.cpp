@@ -310,6 +310,13 @@ ExitCode validateCompilerInvocation(
             error << "nsc: error: --sanitize-address requires --asan-clang=<clang.exe> and --asan-runtime=<clang_rt.asan_dynamic-x86_64.dll>\n";
             return ExitCode::CommandLineError;
         }
+        std::string sanitizerError;
+        if (!linker::LldLinker::validateAddressSanitizerRuntime(
+                invocation.addressSanitizerClang, invocation.addressSanitizerRuntime, sanitizerError))
+        {
+            error << "nsc: error: " << sanitizerError << '\n';
+            return ExitCode::CommandLineError;
+        }
         invocation.artifactCacheDisabled = true;
     }
     const InvocationCapabilities capabilities = classifyInvocation(invocation.arguments);

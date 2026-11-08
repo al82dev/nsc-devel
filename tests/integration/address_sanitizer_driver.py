@@ -30,6 +30,16 @@ def main():
                                   if p.lower().rstrip('\\/') != runtime_dir.rstrip('\\/'))
     with tempfile.TemporaryDirectory(prefix='nsc asan regression ') as tmp:
         root = Path(tmp)
+        wrong_dir = root / 'wrong-runtime'
+        wrong_dir.mkdir()
+        wrong_runtime = wrong_dir / runtime.name
+        wrong_bytes = bytearray(runtime.read_bytes())
+        wrong_bytes[-1] ^= 1
+        wrong_runtime.write_bytes(wrong_bytes)
+        copied_dir = root / 'matching-runtime'
+        copied_dir.mkdir()
+        copied_runtime = copied_dir / runtime.name
+        copied_runtime.write_bytes(runtime.read_bytes())
         for case in ('safe', 'bad'):
             for level in ('O0', 'O2'):
                 folder = root / (case + '-' + level)
@@ -42,7 +52,8 @@ def main():
                 exe = folder / 'probe.exe'
                 base = [compiler, '--emit-project-oop-exe', folder / 'Probe.nsproj', '-o', exe,
                         '-' + level, '--no-banner']
-                flags = ['--sanitize-address', '--asan-clang=' + str(clang), '--asan-runtime=' + str(runtime)]
+                selected_runtime = copied_runtime if (case, level) == ('safe', 'O0') else runtime
+                flags = ['--sanitize-address', '--asan-clang=' + str(clang), '--asan-runtime=' + str(selected_runtime)]
                 result = run(base + flags, env, folder)
                 assert result.returncode == 0, 'sanitized build failed'
                 packaged = folder / runtime.name
@@ -68,6 +79,9 @@ def main():
                 missing_runtime = run(base + ['--sanitize-address', '--asan-clang=' + str(clang),
                                               '--asan-runtime=' + str(folder / 'missing.dll')], env, folder)
                 assert missing_runtime.returncode != 0 and '--asan-runtime' in missing_runtime.stdout
+                mismatch = run(base + ['--sanitize-address', '--asan-clang=' + str(clang),
+                                        '--asan-runtime=' + str(wrong_runtime)], env, folder)
+                assert mismatch.returncode != 0 and 'runtime does not match' in mismatch.stdout
     return 0
 
 

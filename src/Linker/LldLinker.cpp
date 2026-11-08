@@ -1,4 +1,6 @@
 #include "nativesharp/Linker/LldLinker.h"
+#include "nativesharp/Basic/Sha256.h"
+#include "Internal/ScopedTemporaryDirectory.h"
 
 #include <algorithm>
 #include <cctype>
@@ -1307,6 +1309,42 @@ bool LldLinker::linkExecutable(
         return false;
     }
     return verifyExecutableProducts(executablePath_, outputPath, pdbPath, error);
+}
+
+bool LldLinker::validateAddressSanitizerRuntime(
+    const std::filesystem::path& clang,
+    const std::filesystem::path& runtime,
+    std::string& error)
+{
+    error.clear();
+    if (!std::filesystem::is_regular_file(clang) || !std::filesystem::is_regular_file(runtime))
+    {
+        error = "AddressSanitizer requires existing Clang and runtime files";
+        return false;
+    }
+    auto temp = ScopedTemporaryDirectory::create("nsc-asan-runtime-", "ASan runtime", {}, error);
+    if (temp == nullptr) return false;
+    const auto responsePath = temp->path() / "query.rsp";
+    const auto logPath = temp->path() / "query.log";
+    const std::vector<std::string> arguments = {
+        "--target=x86_64-pc-windows-msvc", "-print-file-name=clang_rt.asan_dynamic-x86_64.dll"};
+    if (!writeResponseFile(responsePath, arguments, error)) return false;
+    const LldLinker clangDriver(clang);
+    if (!clangDriver.runResponseFile(responsePath, logPath, error)) return false;
+    const std::string reported = trimTrailingWhitespace(readText(logPath));
+    const std::filesystem::path expected = std::filesystem::u8path(reported);
+    if (!expected.is_absolute() || !std::filesystem::is_regular_file(expected))
+    {
+        error = "Clang could not locate its AddressSanitizer runtime DLL";
+        return false;
+    }
+    basic::Sha256Digest expectedHash{}, actualHash{};
+    std::uintmax_t expectedSize = 0, actualSize = 0;
+    if (!basic::sha256File(expected, expectedHash, expectedSize, error) ||
+        !basic::sha256File(runtime, actualHash, actualSize, error)) return false;
+    if (expectedSize == actualSize && expectedHash == actualHash) return true;
+    error = "AddressSanitizer runtime does not match the DLL supplied by the selected Clang";
+    return false;
 }
 
 bool LldLinker::linkAddressSanitizedExecutable(

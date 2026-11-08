@@ -17,6 +17,10 @@ public:
     LldLinker& operator=(const LldLinker&) = delete;
 
     static std::unique_ptr<LldLinker> discover(std::string& error);
+    static bool validateAddressSanitizerRuntime(
+        const std::filesystem::path& clang,
+        const std::filesystem::path& runtime,
+        std::string& error);
 
     // Clang supplies its matching ASan runtime and CRT startup for explicitly sanitized builds.
     static bool linkAddressSanitizedExecutable(
