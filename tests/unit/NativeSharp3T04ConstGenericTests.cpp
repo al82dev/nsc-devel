@@ -148,13 +148,31 @@ class Program
     public static int Main()
     {
         Matrix<int, 2, 3> value;
-        value.Data[2][1] = 42;
-        return value.Data[2][1];
+        value.Data[1][2] = 42;
+        return value.Data[1][2];
     }
 }
 )NS", 42, diagnostic);
     tests.expect(matrixRuntime,
         "two independent const dimensions determine matrix layout (" + diagnostic + ")");
+
+    diagnostic.clear();
+    tests.expect(rejected(root / "matrix-out-of-bounds", "ConstMatrixOutOfBounds", R"NS(
+struct Matrix<T, const int Rows, const int Columns>
+{
+    public T[Rows][Columns] Data;
+}
+class Program
+{
+    public static int Main()
+    {
+        Matrix<int, 2, 3> value;
+        value.Data[2][1] = 42;
+        return value.Data[2][1];
+    }
+}
+)NS", "constant fixed-array index is outside [0, 2)", diagnostic),
+        "the original first index is rejected outside the two-row bound (" + diagnostic + ")");
 
     diagnostic.clear();
     const bool comparisonRuntime = compileAndRun(root / "comparison", "ComparisonLookahead", R"NS(
