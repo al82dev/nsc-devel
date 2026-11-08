@@ -1236,6 +1236,13 @@ bool checkDependencyTypeCodec()
     ok &= expect(decodeCTypeCatalogAndDependencies(envelope, 46, dispatchedRecords, dispatchedEnums,
         dispatched, error) && dispatched.functions.size() == 1 && dispatchedEnums.size() == 1,
         "C dependency envelope dispatch accepts explicit future minor");
+    dispatchedEnums.clear();
+    ok &= expect(decodeVersionedCTypeCatalog(envelope, dispatchedRecords, dispatchedEnums, error, 46) &&
+        dispatchedEnums.size() == 1 && dispatchedEnums[0].identityKey == sourceEnums[0].identityKey,
+        "versioned type reader extracts enums from the dependency envelope");
+    dispatchedEnums.clear();
+    ok &= expect(!decodeVersionedCTypeCatalog(envelope, dispatchedRecords, dispatchedEnums, error, 45) &&
+        dispatchedEnums.empty(), "versioned type reader does not accept the new envelope under minor 45");
     dispatched.functions.clear();
     ok &= expect(!decodeCTypeCatalogAndDependencies(envelope, 45, dispatchedRecords, dispatchedEnums,
         dispatched, error) && dispatched.functions.empty(),

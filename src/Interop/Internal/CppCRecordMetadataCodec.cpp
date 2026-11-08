@@ -1187,6 +1187,12 @@ bool decodeVersionedCTypeCatalog(std::span<const std::uint8_t> bytes,
     std::uint16_t formatMinor)
 {
     if (formatMinor == 42) return decodeCTypeCatalog(bytes, records, enums, error);
+    if (formatMinor >= 46 && bytes.size() >= 4 && bytes[0] == 5 &&
+        bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0)
+    {
+        CDependencyCatalog dependencies;
+        return decodeCTypeCatalogWithDependencies(bytes, records, enums, dependencies, error);
+    }
     return isCTypeCatalogWithProvenance(bytes) ?
         decodeCTypeCatalogWithProvenance(bytes, records, enums, error) :
         decodeCTypeCatalog(bytes, records, enums, error);
