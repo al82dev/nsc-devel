@@ -437,6 +437,32 @@ bool checkUsrStability(CppClangSessionFactory& factory, const std::string& resou
                             "enum source provenance survives with carriers and dependencies");
                         if (provenanceOk)
                         {
+                            using Comparison = metadata_detail::CRecordContractComparison;
+                            const auto compare = [&](const CppCEnumSnapshot& candidate, Comparison expected,
+                                                     const char* message) {
+                                Comparison actual{};
+                                const bool compared = metadata_detail::compareCEnumSourceEvidence(
+                                    inputEnums[0], candidate, actual, error);
+                                carriersOk &= expect(compared && actual == expected, message);
+                            };
+                            compare(provenanceEnums[0], Comparison::Matching,
+                                "same enum contract and source are reconciled");
+                            auto changed = provenanceEnums[0];
+                            changed.declaration.enumerators[0].decimalValue = "999";
+                            compare(changed, Comparison::Different,
+                                "changed enum value prevents reconciliation");
+                            changed = provenanceEnums[0];
+                            ++changed.declaration.sourceProvenance->byteOffset;
+                            compare(changed, Comparison::Different,
+                                "different enum source offset prevents reconciliation");
+                            changed = provenanceEnums[0];
+                            changed.declaration.sourceProvenance.reset();
+                            compare(changed, Comparison::Insufficient,
+                                "missing enum source cannot establish reconciliation");
+                            changed = provenanceEnums[0];
+                            changed.declaration.clangUsr.reset();
+                            compare(changed, Comparison::Insufficient,
+                                "missing enum USR cannot establish reconciliation");
                             std::vector<CppCRecordSnapshot> dispatchedRecords;
                             std::vector<CppCEnumSnapshot> dispatchedEnums;
                             metadata_detail::CDependencyCatalog dispatchedDependencies;
