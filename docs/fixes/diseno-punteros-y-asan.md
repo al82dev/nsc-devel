@@ -116,6 +116,15 @@ conservó el diagnóstico `dynamic-stack-buffer-overflow`
 no una opción de `nsc`; la prueba del generador comprueba además que el símbolo
 de reporte persiste en el objeto generado en O0 y O2.
 
+La prueba `asan-real-entry/results.json` avanzó a los objetos reales del
+generador y a un módulo de entrada producido por `WindowsRuntimeBuilder`.
+Un adaptador `main` llamó a `__nativesharp_start` después del arranque CRT, y
+Clang/LLD enlazó el runtime externo. El caso inválido produjo
+`dynamic-stack-buffer-overflow` en O0 y O2; el control válido devolvió 42 en
+ambos niveles. El adaptador y el enlace se invocaron fuera del driver: todavía
+no prueban que `nsc` exponga o enlace ASan por sí mismo, ni sustituyen la
+validación de NSLink, bibliotecas o empaquetado del runtime.
+
 Prueba adicional del arranque (`A:/nsc-fixes-evidencia/asan-entry-probe/results.json`):
 con el mismo objeto instrumentado y la DLL de ASan en `PATH`, el control con
 arranque convencional de Clang enlazó y devolvió 42. Al forzar `/entry:main`,

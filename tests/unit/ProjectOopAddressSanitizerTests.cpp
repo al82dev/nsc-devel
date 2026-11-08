@@ -1,6 +1,10 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
+#include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
+#include "nativesharp/LLVM/LlvmModule.h"
+#include "nativesharp/LLVM/LlvmTargetMachine.h"
 #include "nativesharp/LLVM/ProjectOopObjectGenerator.h"
+#include "nativesharp/Runtime/WindowsRuntimeBuilder.h"
 #include "../support/TestContext.h"
 
 #include <chrono>
@@ -9,7 +13,7 @@
 #include <iterator>
 #include <string>
 
-int main()
+int main(int argc, char** argv)
 {
     using namespace nativesharp;
     using namespace nativesharp::llvm_backend;
@@ -20,9 +24,12 @@ int main()
     std::ofstream(root / "Probe.nsproj") <<
         "<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>";
+    const bool safeFixture = argc == 3 && std::string(argv[2]) == "safe";
     std::ofstream(root / "Probe.ns") <<
-        "public class Probe { public static int Main() { int* p = stackalloc int[2]; "
-        "int index = 3; p[index] = 42; return p[0]; } }";
+        (safeFixture
+            ? "public class Probe { public static int Main() { int* p = stackalloc int[2]; p[0] = 42; return p[0]; } }"
+            : "public class Probe { public static int Main() { int* p = stackalloc int[2]; "
+              "int index = 3; p[index] = 42; return p[0]; } }");
     frontend::ProjectCompilation compilation;
     std::string error;
     const bool compiled = compilation.compileProjectOopMir(root / "Probe.nsproj", error);
@@ -36,6 +43,8 @@ int main()
     ProjectOopObjectGenerator normal;
     ProjectOopObjectGenerator asan;
     asan.setAddressSanitizer(true);
+    const std::filesystem::path fixtureOutput = argc >= 2 ? std::filesystem::path(argv[1]) : std::filesystem::path{};
+    if (!fixtureOutput.empty()) std::filesystem::create_directories(fixtureOutput);
     const auto generate = [&](ProjectOopObjectGenerator& generator, LlvmOptimizationLevel level)
     {
         error.clear();
@@ -75,8 +84,27 @@ int main()
         auto instrumented = generate(asan, level);
         tests.expect(instrumented != nullptr && instrumented->cacheHitCount() == 0 &&
             containsAsan(*instrumented, true), "every ASan object is instrumented and avoids cache: " + error);
-        tests.expect(instrumented != nullptr && containsReport(*instrumented),
-            "out-of-bounds write retains an ASan report after optimization: " + error);
+        if (!safeFixture)
+            tests.expect(instrumented != nullptr && containsReport(*instrumented),
+                "out-of-bounds write retains an ASan report after optimization: " + error);
+        if (instrumented != nullptr && !fixtureOutput.empty())
+        {
+            const auto directory = fixtureOutput / (level == LlvmOptimizationLevel::O0 ? "O0" : "O2");
+            std::filesystem::create_directories(directory);
+            std::size_t index = 0;
+            for (const auto& object : instrumented->objectFiles())
+                std::filesystem::copy_file(object, directory / ("unit-" + std::to_string(index++) + ".obj"),
+                    std::filesystem::copy_options::overwrite_existing);
+            std::string mainSymbol;
+            for (const auto& function : compilation.oopMirModel()->functions())
+                if (function.mangledName.find("Probe__Main") != std::string::npos) mainSymbol = function.mangledName;
+            runtime::WindowsRuntimeBuilder builder;
+            auto entry = builder.buildEntry(mainSymbol, error);
+            auto target = LlvmTargetMachine::createWindowsX64(level, error);
+            const bool emitted = !mainSymbol.empty() && entry != nullptr && target != nullptr &&
+                target->emit(*entry, directory / "entry.obj", LlvmCodeGenFileType::Object, error);
+            tests.expect(emitted, "real NativeSharp entry object emitted: " + error);
+        }
         auto after = generate(normal, level);
         tests.expect(after != nullptr && after->cacheHitCount() == after->objectFiles().size() &&
             containsAsan(*after, false), "ASan does not contaminate ordinary object cache: " + error);
