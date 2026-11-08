@@ -34,6 +34,16 @@ propiedad genérica, destrucción, restricciones Send/Sync y módulo productor.
 simplemente agregar una referencia inversa para implementar Arc: primero hay
 que ubicar la primitiva compartida sin crear un ciclo, manteniendo disponibles
 los nombres esperados por los consumidores de Core.
+Como primer paso, `SharedReferenceCounts.ns` añade a Core un estado interno
+de contadores con cargas y compare-exchange secuencialmente consistentes. El
+frontend reconoce exclusivamente las firmas internas de 64 bits para emitir
+los mismos helpers atómicos usados por Threading. La prueba dirigida
+`nsc.sdk.atomic-shared-counts` comprueba cero, último fuerte y débil, rechazo
+de overflow y 200 000 ciclos distribuidos en cuatro hilos en O0/O2; el análisis
+del proyecto Core completo también pasó (`shared-counts-test.log` y
+`shared-core-check.log` en `A:/nsc-fixes-evidencia`). Es una primitiva interna,
+no demuestra todavía las familias públicas, la destrucción del payload ni
+seguridad de concurrencia para todos los intercalados posibles.
 La búsqueda de `validateSmartPointerOperation` solo encuentra su definición
 en `src/Language/SmartPointerSemantics.cpp`; no se ha encontrado una llamada
 desde el frontend. El manifiesto de reglas, por tanto, no demuestra que hoy se

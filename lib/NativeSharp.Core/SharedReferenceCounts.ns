@@ -1,0 +1,73 @@
+namespace NativeSharp.Core.Internal
+{
+    // These exact signatures are lowered to sequentially consistent native atomics by nsc.
+    // They are internal to Core so Arc need not depend on the higher-level Threading module.
+    internal static class SharedAtomic
+    {
+        public static long Load(ref long location) { return 0; }
+        public static long CompareExchange(ref long location, long value, long comparand) { return 0; }
+    }
+
+    // weak includes the implicit weak reference owned while at least one strong reference exists.
+    // ReleaseStrong returns 1 for the last strong owner; its caller destroys the payload and then
+    // releases that implicit weak reference. ReleaseWeak returns 1 only to the block deallocator.
+    internal struct AtomicSharedCounts
+    {
+        private long strong;
+        private long weak;
+
+        public AtomicSharedCounts(long initialStrong, long initialWeak)
+        {
+            strong = initialStrong;
+            weak = initialWeak;
+        }
+
+        public long StrongCount() { return SharedAtomic.Load(ref strong); }
+        public long WeakCountRaw() { return SharedAtomic.Load(ref weak); }
+
+        public bool TryRetainStrong()
+        {
+            while (true)
+            {
+                long current = SharedAtomic.Load(ref strong);
+                if (current <= 0 || current == 9223372036854775807l) return false;
+                if (SharedAtomic.CompareExchange(ref strong, current + 1, current) == current) return true;
+            }
+        }
+
+        public bool TryRetainWeak()
+        {
+            while (true)
+            {
+                long current = SharedAtomic.Load(ref weak);
+                if (current <= 0 || current == 9223372036854775807l) return false;
+                if (SharedAtomic.CompareExchange(ref weak, current + 1, current) == current) return true;
+            }
+        }
+
+        // -1 means invalid, 0 means retained, 1 means the caller released the last reference.
+        public int ReleaseStrong()
+        {
+            while (true)
+            {
+                long current = SharedAtomic.Load(ref strong);
+                if (current <= 0) return -1;
+                long next = current - 1;
+                if (SharedAtomic.CompareExchange(ref strong, next, current) == current)
+                    return next == 0 ? 1 : 0;
+            }
+        }
+
+        public int ReleaseWeak()
+        {
+            while (true)
+            {
+                long current = SharedAtomic.Load(ref weak);
+                if (current <= 0) return -1;
+                long next = current - 1;
+                if (SharedAtomic.CompareExchange(ref weak, next, current) == current)
+                    return next == 0 ? 1 : 0;
+            }
+        }
+    }
+}

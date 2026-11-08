@@ -1964,8 +1964,13 @@ void ProjectMethodBodyModel::recognizeCoreAtomicValueOperations(
         atomicDeclaringType == "NativeSharp.Core.Threading.AtomicInt32" ||
         atomicDeclaringType == "NativeSharp.Core.Threading.AtomicInt64" ||
         atomicDeclaringType == "NativeSharp.Core.Threading.AtomicPointer";
+    const bool internalSharedAtomic =
+        atomicDeclaringType == "NativeSharp.Core.Internal.SharedAtomic" &&
+        !selectedMember.parameters.empty() &&
+        selectedMember.parameters[0].pointeeTypeKey == "builtin:long" &&
+        (selectedMember.name == "Load" || selectedMember.name == "CompareExchange");
     const bool publicInterlocked =
-        atomicDeclaringType == "NativeSharp.Core.Threading.Interlocked" &&
+        (atomicDeclaringType == "NativeSharp.Core.Threading.Interlocked" || internalSharedAtomic) &&
         selectedMember.isStatic && !selectedMember.parameters.empty() &&
         selectedMember.parameters[0].passKind == ParameterPassKind::Ref &&
         (selectedMember.parameters[0].pointeeTypeKey == "builtin:int" ||
