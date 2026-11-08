@@ -62,6 +62,9 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
     std::vector<std::uint8_t>& output, std::string& error);
 bool decodeCDependencyAlias(std::span<const std::uint8_t> bytes,
     CDependencyAliasSnapshot& output, std::string& error);
+bool captureCDependencyAlias(std::span<const CppSemanticTypeAliasEntry> inventory,
+    const frontend::CppImportedTypeAlias& selected, std::string_view moduleName,
+    std::string_view referenceIdentity, CDependencyAliasSnapshot& output, std::string& error);
 struct CDependencyCatalog
 {
     std::vector<CDependencyFunctionSnapshot> functions;

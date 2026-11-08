@@ -48,6 +48,7 @@
 #include "nativesharp/Compilation/ProjectGraphLoader.h"
 #include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Frontend/NamespaceStateSymbol.h"
+#include "nativesharp/Frontend/CppImportedTypeAlias.h"
 #include "../../src/Interop/Internal/CppCRecordMetadataCodec.h"
 #include "../../src/Driver/Internal/DriverInternal.h"
 
@@ -981,6 +982,20 @@ bool checkDependencyTypeCodec()
     alias.declaration.qualifiedName = "CAlias";
     alias.declaration.clangUsr = "c:test.h@T@CAlias";
     alias.declaration.underlyingType = pointer;
+    nativesharp::frontend::CppImportedTypeAlias selectedAlias{4, {}, 2, "x86_64-pc-windows-msvc", alias.declaration};
+    std::vector<CppSemanticTypeAliasEntry> aliasInventory{{{}, 2, 4, "x86_64-pc-windows-msvc", alias.declaration}};
+    CDependencyAliasSnapshot capturedAlias;
+    ok &= expect(captureCDependencyAlias(aliasInventory, selectedAlias, "Producer", "header-digest", capturedAlias, error) &&
+        capturedAlias.declaration.clangUsr == alias.declaration.clangUsr,
+        "C alias capture retains the selected reference identity");
+    capturedAlias.moduleName = "sentinel";
+    selectedAlias.referenceIndex = 3;
+    ok &= expect(!captureCDependencyAlias(aliasInventory, selectedAlias, "Producer", "header-digest", capturedAlias, error) &&
+        capturedAlias.moduleName == "sentinel", "C alias capture rejects another reference without changing output");
+    selectedAlias.referenceIndex = 2;
+    aliasInventory.push_back(aliasInventory.front());
+    ok &= expect(!captureCDependencyAlias(aliasInventory, selectedAlias, "Producer", "header-digest", capturedAlias, error) &&
+        capturedAlias.moduleName == "sentinel", "C alias capture rejects ambiguous observations");
     std::vector<std::uint8_t> aliasBytes;
     CDependencyAliasSnapshot decodedAlias;
     ok &= expect(encodeCDependencyAlias(alias, aliasBytes, error) &&

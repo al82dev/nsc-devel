@@ -4,6 +4,7 @@
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Frontend/CppAliasBuiltinType.h"
+#include "nativesharp/Frontend/CppImportedTypeAlias.h"
 #include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
 #include "nativesharp/Frontend/NamespaceStateSymbol.h"
 
@@ -580,6 +581,42 @@ bool decodeCDependencyGlobal(std::span<const std::uint8_t> bytes,
     if (!reader.atEnd() || !encodeCDependencyGlobal(value, canonical, error) ||
         canonical.size() != bytes.size() || !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
     { error = "noncanonical C dependency global"; return false; }
+    output = std::move(value);
+    error.clear();
+    return true;
+}
+
+bool captureCDependencyAlias(std::span<const CppSemanticTypeAliasEntry> inventory,
+    const frontend::CppImportedTypeAlias& selected, std::string_view moduleName,
+    std::string_view referenceIdentity, CDependencyAliasSnapshot& output, std::string& error)
+{
+    const auto& alias = selected.declaration;
+    if (moduleName.empty() || referenceIdentity.empty() || alias.name.empty() ||
+        alias.qualifiedName.empty() || !alias.clangUsr || alias.clangUsr->empty() ||
+        selected.targetTriple != "x86_64-pc-windows-msvc")
+    { error = "selected C alias has incomplete identity"; return false; }
+    std::vector<std::uint8_t> selectedType;
+    if (!encodeCDependencyType(alias.underlyingType, selectedType, error)) return false;
+    const CppSemanticTypeAliasEntry* match = nullptr;
+    for (const auto& entry : inventory)
+    {
+        const auto& candidate = entry.declaration;
+        if (entry.projectOrdinal != selected.projectOrdinal || entry.referenceIndex != selected.referenceIndex ||
+            entry.targetTriple != selected.targetTriple || candidate.name != alias.name ||
+            candidate.qualifiedName != alias.qualifiedName || candidate.clangUsr != alias.clangUsr ||
+            candidate.insideAnonymousNamespace != alias.insideAnonymousNamespace) continue;
+        std::vector<std::uint8_t> candidateType;
+        if (!encodeCDependencyType(candidate.underlyingType, candidateType, error)) return false;
+        if (candidateType != selectedType) continue;
+        if (match) { error = "selected C alias has multiple matching observations"; return false; }
+        match = &entry;
+    }
+    if (!match) { error = "selected C alias has no matching observation"; return false; }
+    CDependencyAliasSnapshot value;
+    value.moduleName = std::string(moduleName);
+    value.referenceIdentity = std::string(referenceIdentity);
+    value.declaration = match->declaration;
+    value.declaration.location.reset();
     output = std::move(value);
     error.clear();
     return true;
