@@ -3884,8 +3884,7 @@ void ProjectMethodBodyModel::validateVariableInitializerConversion(
     bool declaredPointerPointeeReadonly,
     bool isVarInferred) const
 {
-    const ProjectImplicitConversion conversion = classifyImplicit(
-        initializer.typeKey, typeKey, initializer.integerConstant);
+    const ProjectImplicitConversion conversion = classifyImportedFlexibleConversion(initializer, typeKey);
     if (!conversion.exists() && !reportTupleConversionFailure(
             initializer.typeKey, typeKey, variable->first()->range(), diagnostics))
         diagnostics.report(
@@ -6168,8 +6167,7 @@ void ProjectMethodBodyModel::analyzeReturn(
     if (rejectRefFieldReturn(statement, value, diagnostics)) return;
     if (rejectBoundMethodReturn(statement, value, diagnostics)) return;
     if (rejectMoveOnlyPlaceReturn(statement, value, directOwnerReturnWithoutMove, diagnostics)) return;
-    const ProjectImplicitConversion conversion = classifyImplicit(
-        value.typeKey, declaredReturnTypeKey, value.integerConstant);
+    const ProjectImplicitConversion conversion = classifyImportedFlexibleConversion(value, declaredReturnTypeKey);
     if (!conversion.exists())
     {
         if (!reportTupleConversionFailure(

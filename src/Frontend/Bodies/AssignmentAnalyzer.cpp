@@ -1881,8 +1881,7 @@ bool ProjectMethodBodyModel::validatePlainAssignmentConversion(
     const ExpressionResult& right,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
-    const ProjectImplicitConversion conversion =
-        classifyImplicit(right.typeKey, left.typeKey, right.integerConstant);
+    const ProjectImplicitConversion conversion = classifyImportedFlexibleConversion(right, left.typeKey);
     if (!conversion.exists())
     {
         diagnostics.report(

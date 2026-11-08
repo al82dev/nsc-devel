@@ -565,10 +565,8 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
             conversionTarget = parameter.parameterPackElementTypeKey;
         }
     }
-    ProjectImplicitConversion conversion = classifyImplicit(
-        arguments[argumentOrdinal].typeKey,
-        conversionTarget,
-        arguments[argumentOrdinal].integerConstant);
+    ProjectImplicitConversion conversion =
+        classifyImportedFlexibleConversion(arguments[argumentOrdinal], conversionTarget);
     // EN: Freeze 3.0 P3: an `in` parameter only reads its argument, so a readonly place (another
     //     `in` parameter, a readonly field, a `ref readonly` result) may be lent to it.
     // ES: Congelamiento 3.0 P3: un parametro `in` solo lee su argumento, asi que se le puede prestar
@@ -4255,8 +4253,7 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
         if (elementType.empty()) candidateBinding.viable = false;
         else conversionTarget = elementType;
     }
-    ProjectImplicitConversion conversion = classifyImplicit(
-        argument.typeKey, conversionTarget, argument.integerConstant);
+    ProjectImplicitConversion conversion = classifyImportedFlexibleConversion(argument, conversionTarget);
     const MethodParameterSymbol& parameter = candidate.parameters[parameterOrdinal];
     // EN: Freeze 3.0 P3: as above, an `in` parameter accepts a readonly place.
     // ES: Congelamiento 3.0 P3: como arriba, un parametro `in` acepta un lugar readonly.
