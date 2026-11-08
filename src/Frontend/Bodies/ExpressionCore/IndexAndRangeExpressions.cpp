@@ -829,7 +829,7 @@ void ProjectMethodBodyModel::analyzeRawIndex(
             (validFixedIndices || validFlexibleIndex)) ||
             (validPointerIndex && base.pointerPointeeReadonly);
         bool unalignedImportedFieldElement = false;
-        if (validFixedIndices && memberModel_ != nullptr)
+        if ((validFixedIndices || validFlexibleIndex) && memberModel_ != nullptr)
         {
             const ast::AstNode* root = expression;
             while (root != nullptr && root->kind() == ast::AstNodeKind::IndexExpression)
@@ -844,6 +844,8 @@ void ProjectMethodBodyModel::analyzeRawIndex(
             {
                 const auto& field = memberModel_->members()[binding->candidateMemberOrdinals.front()];
                 std::string elementKey = field.declaredTypeKey;
+                if (const auto element = ProjectMemberModel::flexibleArrayElementTypeKey(elementKey))
+                    elementKey = *element;
                 while (const auto element = ProjectMemberModel::fixedArrayElementTypeKey(elementKey))
                     elementKey = *element;
                 std::uint64_t naturalAlignment = 0;
