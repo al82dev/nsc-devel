@@ -205,10 +205,15 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
-  - Una plantilla cuyos locales sombrean una global y una función inline C
-    ejecuta correctamente, pero publica la global en el catálogo y emite la
-    función inline sin usarlas. Reproducido en O0–O3; corrección pendiente.
-    [Evidencia](registro-commits/t08-h3-sombras-locales-resultado.md).
+  - H3 sombras: los casos probados de locales en bloques, parámetros de métodos
+    y lambdas, y variables de `for` ya no publican la global C homónima; el
+    local de bloque tampoco emite la función inline C homónima. Los consumidores
+    precompilados y controles de metadata pasaron
+    O0–O3; también se conservaron llamadas C en inicializadores y fuera de los
+    ámbitos sombreados. Otras formas de ámbito siguen pendientes. [Evidencia
+    inicial](registro-commits/t08-h3-sombra-local-validacion.md), [parámetros y
+    bucles](registro-commits/t08-h3-sombras-parametro-bucle-validacion.md),
+    [lambdas e inicializadores](registro-commits/t08-h3-inicializadores-lambda-validacion.md).
   - NSMETA 1.47: el control de tolerancia de versiones pasó 17 comprobaciones.
     El control general pasó 430 de 434; faltan las muestras históricas 1.45 y
     1.46 que el control exige. Esos cuatro fallos no se consideran aprobados.
