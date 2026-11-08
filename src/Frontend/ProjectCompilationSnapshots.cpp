@@ -89,10 +89,11 @@ bool provenLocal(const TemplateParents& parents, const CppFunctionDemand& demand
             if (earlierBlockLocal(parent->first(), demand.writtenName)) return true;
         }
         else if ((parent->kind() == ast::AstNodeKind::MethodDeclaration ||
-                  parent->kind() == ast::AstNodeKind::FunctionDeclaration) &&
+                  parent->kind() == ast::AstNodeKind::FunctionDeclaration ||
+                  parent->kind() == ast::AstNodeKind::LambdaExpression) &&
                  child == parent->first())
         {
-            // Parameters are children; only the callable body is their scope.
+            // Parameters are children; only the callable or lambda body is their scope.
             for (const auto* parameter : parent->children())
                 if (parameter && parameter->kind() == ast::AstNodeKind::ParameterDeclaration &&
                     parameter->text() == demand.writtenName) return true;

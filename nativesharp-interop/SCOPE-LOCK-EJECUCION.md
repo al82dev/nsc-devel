@@ -11,7 +11,7 @@ aislado y registros. Ampliación causal: `ProjectCompilationSnapshots.cpp` filtr
 usos no calificados demostrablemente ligados a declaraciones locales anteriores
 en bloques, antes de invocar los proveedores C y publicar demandas; se actualiza
 el control correspondiente en `CppCIdentityTests.cpp`. La ampliación cubre también
-parámetros de métodos y variables del inicializador de `for`, preservando las
+parámetros de métodos y lambdas y variables del inicializador de `for`, preservando las
 referencias en inicializadores y fuera de su ámbito. El resto de formas de
 ámbito requiere evidencia específica; no se elimina una demanda por su nombre.
 NSLink, NSMETA como formato, LLVM/Clang y C: protegidos. La tanda sigue abierta.
