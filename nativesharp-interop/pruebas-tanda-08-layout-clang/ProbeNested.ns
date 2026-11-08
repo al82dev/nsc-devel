@@ -1,0 +1,11 @@
+int Main()
+{
+    LGuestHost* value = probe_nested();
+    value->guest.g = 1;
+    value->guest.h = 2.5;
+    value->k = 7;
+    LGuest* guest = probe_guest();
+    guest->h = 3.5;
+    if (probe_nested_check() != 1) return 1;
+    return 0;
+}

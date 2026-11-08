@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CLayoutProbeAnonymous</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ProbeAnonymous.ns" />
+    <CppLibraryReference Header="ProbeAnonymous.h" Language="C" Standard="c11" Library="probes.lib" />
+  </ItemGroup>
+</Project>

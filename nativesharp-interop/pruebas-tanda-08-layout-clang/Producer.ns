@@ -1,0 +1,74 @@
+namespace Published
+{
+    public struct Bridge
+    {
+        public static long Layout(int id) { return l_layout(id); }
+        public static void Reset(int id) { l_reset(id); }
+        public static int Same(int id) { return l_same(id); }
+        public static LNatural* ObjLNatural() { return l_obj_lnatural(); }
+        public static LNatural* ShadowLNatural() { return l_shadow_lnatural(); }
+        public static LPack4* ObjLPack4() { return l_obj_lpack4(); }
+        public static LPack4* ShadowLPack4() { return l_shadow_lpack4(); }
+        public static LPack2* ObjLPack2() { return l_obj_lpack2(); }
+        public static LPack2* ShadowLPack2() { return l_shadow_lpack2(); }
+        public static LPack1* ObjLPack1() { return l_obj_lpack1(); }
+        public static LPack1* ShadowLPack1() { return l_shadow_lpack1(); }
+        public static LOuter* ObjLOuter() { return l_obj_louter(); }
+        public static LOuter* ShadowLOuter() { return l_shadow_louter(); }
+        public static LHost* ObjLHost() { return l_obj_lhost(); }
+        public static LHost* ShadowLHost() { return l_shadow_lhost(); }
+        public static LPack2Array* ObjLPack2Array() { return l_obj_lpack2array(); }
+        public static LPack2Array* ShadowLPack2Array() { return l_shadow_lpack2array(); }
+        public static LAlignedField* ObjLAlignedField() { return l_obj_lalignedfield(); }
+        public static LAlignedField* ShadowLAlignedField() { return l_shadow_lalignedfield(); }
+        public static LAlignedTypedef* ObjLAlignedTypedef() { return l_obj_lalignedtypedef(); }
+        public static LAlignedTypedef* ShadowLAlignedTypedef() { return l_shadow_lalignedtypedef(); }
+        public static LUnderTypedef* ObjLUnderTypedef() { return l_obj_lundertypedef(); }
+        public static LUnderTypedef* ShadowLUnderTypedef() { return l_shadow_lundertypedef(); }
+        public static LUnion* ObjLUnion() { return l_obj_lunion(); }
+        public static LUnion* ShadowLUnion() { return l_shadow_lunion(); }
+        public static LPackedUnion* ObjLPackedUnion() { return l_obj_lpackedunion(); }
+        public static LPackedUnion* ShadowLPackedUnion() { return l_shadow_lpackedunion(); }
+        public static LPackedHoldsUnion* ObjLPackedHoldsUnion() { return l_obj_lpackedholdsunion(); }
+        public static LPackedHoldsUnion* ShadowLPackedHoldsUnion() { return l_shadow_lpackedholdsunion(); }
+        public static LUnionHoldsStruct* ObjLUnionHoldsStruct() { return l_obj_lunionholdsstruct(); }
+        public static LUnionHoldsStruct* ShadowLUnionHoldsStruct() { return l_shadow_lunionholdsstruct(); }
+        public static LBits* ObjLBits() { return l_obj_lbits(); }
+        public static LBits* ShadowLBits() { return l_shadow_lbits(); }
+        public static LPackedBits* ObjLPackedBits() { return l_obj_lpackedbits(); }
+        public static LPackedBits* ShadowLPackedBits() { return l_shadow_lpackedbits(); }
+        public static LBitsUnion* ObjLBitsUnion() { return l_obj_lbitsunion(); }
+        public static LBitsUnion* ShadowLBitsUnion() { return l_shadow_lbitsunion(); }
+        public static void CSetLNaturalD(LNatural* p, double v) { acc_set_lnatural_d(p, v); }
+        public static void CSetLNaturalS(LNatural* p, short v) { acc_set_lnatural_s(p, v); }
+        public static void CSetLPack4D(LPack4* p, double v) { acc_set_lpack4_d(p, v); }
+        public static void CSetLPack4S(LPack4* p, short v) { acc_set_lpack4_s(p, v); }
+        public static void CSetLPack2D(LPack2* p, double v) { acc_set_lpack2_d(p, v); }
+        public static void CSetLPack2S(LPack2* p, short v) { acc_set_lpack2_s(p, v); }
+        public static void CSetLPack1D(LPack1* p, double v) { acc_set_lpack1_d(p, v); }
+        public static void CSetLPack1S(LPack1* p, short v) { acc_set_lpack1_s(p, v); }
+        public static void CSetLOuterA(LOuter* p, int v) { acc_set_louter_a(p, v); }
+        public static void CSetLOuterB(LOuter* p, double v) { acc_set_louter_b(p, v); }
+        public static void CSetLHostV(LHost* p, int v) { acc_set_lhost_v(p, v); }
+        public static void CSetLHostZ(LHost* p, int v) { acc_set_lhost_z(p, v); }
+        public static void CSetLPack2ArrayA(LPack2Array* p, int v) { acc_set_lpack2array_a(p, v); }
+        public static void CSetLPack2ArrayB(LPack2Array* p, double v) { acc_set_lpack2array_b(p, v); }
+        public static void CSetLAlignedFieldX(LAlignedField* p, int v) { acc_set_lalignedfield_x(p, v); }
+        public static void CSetLAlignedTypedefX(LAlignedTypedef* p, int v) { acc_set_lalignedtypedef_x(p, v); }
+        public static void CSetLUnderTypedefX(LUnderTypedef* p, int v) { acc_set_lundertypedef_x(p, v); }
+        public static void CSetLUnionD(LUnion* p, double v) { acc_set_lunion_d(p, v); }
+        public static void CSetLUnionI(LUnion* p, int v) { acc_set_lunion_i(p, v); }
+        public static void CSetLPackedUnionD(LPackedUnion* p, double v) { acc_set_lpackedunion_d(p, v); }
+        public static void CSetLPackedHoldsUnionD(LPackedHoldsUnion* p, double v) { acc_set_lpackedholdsunion_d(p, v); }
+        public static void CSetLPackedHoldsUnionI(LPackedHoldsUnion* p, int v) { acc_set_lpackedholdsunion_i(p, v); }
+        public static void CSetLUnionHoldsStructB(LUnionHoldsStruct* p, double v) { acc_set_lunionholdsstruct_b(p, v); }
+        public static void CSetLUnionHoldsStructLl(LUnionHoldsStruct* p, long v) { acc_set_lunionholdsstruct_ll(p, v); }
+        public static void CSetLBitsA(LBits* p, uint v) { acc_set_lbits_a(p, v); }
+        public static void CSetLBitsB(LBits* p, uint v) { acc_set_lbits_b(p, v); }
+        public static void CSetLBitsC(LBits* p, uint v) { acc_set_lbits_c(p, v); }
+        public static void CSetLPackedBitsA(LPackedBits* p, ushort v) { acc_set_lpackedbits_a(p, v); }
+        public static void CSetLPackedBitsB(LPackedBits* p, uint v) { acc_set_lpackedbits_b(p, v); }
+        public static void CSetLBitsUnionA(LBitsUnion* p, uint v) { acc_set_lbitsunion_a(p, v); }
+        public static void CSetLBitsUnionB(LBitsUnion* p, ushort v) { acc_set_lbitsunion_b(p, v); }
+    }
+}

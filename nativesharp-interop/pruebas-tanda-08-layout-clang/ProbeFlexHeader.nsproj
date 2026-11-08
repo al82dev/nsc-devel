@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CLayoutProbeFlexHeader</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ProbeFlexHeader.ns" />
+    <CppLibraryReference Header="ProbeFlex.h" Language="C" Standard="c11" Library="probes.lib" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,65 @@
+public struct Access
+{
+    public static double GetLNaturalD(LNatural* p) { return p->d; }
+    public static void SetLNaturalD(LNatural* p, double v) { p->d = v; }
+    public static short GetLNaturalS(LNatural* p) { return p->s; }
+    public static void SetLNaturalS(LNatural* p, short v) { p->s = v; }
+    public static double GetLPack4D(LPack4* p) { return p->d; }
+    public static void SetLPack4D(LPack4* p, double v) { p->d = v; }
+    public static short GetLPack4S(LPack4* p) { return p->s; }
+    public static void SetLPack4S(LPack4* p, short v) { p->s = v; }
+    public static double GetLPack2D(LPack2* p) { return p->d; }
+    public static void SetLPack2D(LPack2* p, double v) { p->d = v; }
+    public static short GetLPack2S(LPack2* p) { return p->s; }
+    public static void SetLPack2S(LPack2* p, short v) { p->s = v; }
+    public static double GetLPack1D(LPack1* p) { return p->d; }
+    public static void SetLPack1D(LPack1* p, double v) { p->d = v; }
+    public static short GetLPack1S(LPack1* p) { return p->s; }
+    public static void SetLPack1S(LPack1* p, short v) { p->s = v; }
+    public static int GetLOuterA(LOuter* p) { return p->m.inner.a; }
+    public static void SetLOuterA(LOuter* p, int v) { p->m.inner.a = v; }
+    public static double GetLOuterB(LOuter* p) { return p->m.inner.b; }
+    public static void SetLOuterB(LOuter* p, double v) { p->m.inner.b = v; }
+    public static int GetLHostV(LHost* p) { return p->pi.v; }
+    public static void SetLHostV(LHost* p, int v) { p->pi.v = v; }
+    public static int GetLHostZ(LHost* p) { return p->z; }
+    public static void SetLHostZ(LHost* p, int v) { p->z = v; }
+    public static int GetLPack2ArrayA(LPack2Array* p) { return p->items[1].a; }
+    public static void SetLPack2ArrayA(LPack2Array* p, int v) { p->items[1].a = v; }
+    public static double GetLPack2ArrayB(LPack2Array* p) { return p->items[1].b; }
+    public static void SetLPack2ArrayB(LPack2Array* p, double v) { p->items[1].b = v; }
+    public static int GetLAlignedFieldX(LAlignedField* p) { return p->x; }
+    public static void SetLAlignedFieldX(LAlignedField* p, int v) { p->x = v; }
+    public static int GetLAlignedTypedefX(LAlignedTypedef* p) { return p->x; }
+    public static void SetLAlignedTypedefX(LAlignedTypedef* p, int v) { p->x = v; }
+    public static int GetLUnderTypedefX(LUnderTypedef* p) { return p->x; }
+    public static void SetLUnderTypedefX(LUnderTypedef* p, int v) { p->x = v; }
+    public static double GetLUnionD(LUnion* p) { return p->d; }
+    public static void SetLUnionD(LUnion* p, double v) { p->d = v; }
+    public static int GetLUnionI(LUnion* p) { return p->i; }
+    public static void SetLUnionI(LUnion* p, int v) { p->i = v; }
+    public static double GetLPackedUnionD(LPackedUnion* p) { return p->d; }
+    public static void SetLPackedUnionD(LPackedUnion* p, double v) { p->d = v; }
+    public static double GetLPackedHoldsUnionD(LPackedHoldsUnion* p) { return p->u.d; }
+    public static void SetLPackedHoldsUnionD(LPackedHoldsUnion* p, double v) { p->u.d = v; }
+    public static int GetLPackedHoldsUnionI(LPackedHoldsUnion* p) { return p->u.i; }
+    public static void SetLPackedHoldsUnionI(LPackedHoldsUnion* p, int v) { p->u.i = v; }
+    public static double GetLUnionHoldsStructB(LUnionHoldsStruct* p) { return p->inner.b; }
+    public static void SetLUnionHoldsStructB(LUnionHoldsStruct* p, double v) { p->inner.b = v; }
+    public static long GetLUnionHoldsStructLl(LUnionHoldsStruct* p) { return p->ll; }
+    public static void SetLUnionHoldsStructLl(LUnionHoldsStruct* p, long v) { p->ll = v; }
+    public static uint GetLBitsA(LBits* p) { return p->a; }
+    public static void SetLBitsA(LBits* p, uint v) { p->a = v; }
+    public static uint GetLBitsB(LBits* p) { return p->b; }
+    public static void SetLBitsB(LBits* p, uint v) { p->b = v; }
+    public static uint GetLBitsC(LBits* p) { return p->c; }
+    public static void SetLBitsC(LBits* p, uint v) { p->c = v; }
+    public static ushort GetLPackedBitsA(LPackedBits* p) { return p->a; }
+    public static void SetLPackedBitsA(LPackedBits* p, ushort v) { p->a = v; }
+    public static uint GetLPackedBitsB(LPackedBits* p) { return p->b; }
+    public static void SetLPackedBitsB(LPackedBits* p, uint v) { p->b = v; }
+    public static uint GetLBitsUnionA(LBitsUnion* p) { return p->a; }
+    public static void SetLBitsUnionA(LBitsUnion* p, uint v) { p->a = v; }
+    public static ushort GetLBitsUnionB(LBitsUnion* p) { return p->b; }
+    public static void SetLBitsUnionB(LBitsUnion* p, ushort v) { p->b = v; }
+}

@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CLayoutProbeNested</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ProbeNested.ns" />
+    <CppLibraryReference Header="ProbeNested.h" Language="C" Standard="c11" Library="probes.lib" />
+  </ItemGroup>
+</Project>

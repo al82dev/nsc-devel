@@ -1,0 +1,7 @@
+int Main()
+{
+    LFlex* value = probe_flex();
+    if (sizeof(LFlex) != (nuint)probe_flex_size()) return 1;
+    value->n = 3;
+    return 0;
+}
