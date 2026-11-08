@@ -9,7 +9,7 @@ if not exist "%DEST%" mkdir "%DEST%"
 if errorlevel 1 exit /b 1
 set "TMP=%DEST%"
 set "TEMP=%DEST%"
-for %%F in (Api.h Api.c DecayContexts.ns DecayContexts.nsproj DecayConsumer.ns DecayShared.nsproj DecayMetadata.nsproj Producer.ns Producer.nsproj Restricted.h ApiRestricted.c RestrictedPackedAddress.ns RestrictedPackedAddress.nsproj) do (
+for %%F in (Api.h Api.c DecayContexts.ns DecayContexts.nsproj DecayConsumer.ns DecayShared.nsproj DecayMetadata.nsproj Producer.ns Producer.nsproj Restricted.h ApiRestricted.c RestrictedPackedAddress.ns RestrictedPackedAddress.nsproj RestrictedPackedDecay.ns RestrictedPackedDecay.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -47,6 +47,11 @@ if not errorlevel 1 exit /b 1
 findstr /l /c:"operand of & must name addressable storage" "%DEST%\packed.log" >nul
 if errorlevel 1 exit /b 1
 echo Conversion flexible: rechazo subalineado paso.
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\RestrictedPackedDecay.nsproj" > "%DEST%\packed-decay.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /l /c:"cannot initialize local" "%DEST%\packed-decay.log" >nul
+if errorlevel 1 exit /b 1
+echo Conversion flexible implicita subalineada: rechazo confirmado.
 exit /b 0
 
 :metadata
