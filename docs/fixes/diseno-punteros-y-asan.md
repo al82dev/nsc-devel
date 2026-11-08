@@ -103,6 +103,16 @@ ThinLTO y las bibliotecas precompiladas, y enlazar y localizar el runtime al
 ejecutar. Las combinaciones aún no soportadas deben rechazarse de forma clara,
 no producir un binario aparentemente instrumentado.
 
+Prueba adicional del arranque (`A:/nsc-fixes-evidencia/asan-entry-probe/results.json`):
+con el mismo objeto instrumentado y la DLL de ASan en `PATH`, el control con
+arranque convencional de Clang enlazó y devolvió 42. Al forzar `/entry:main`,
+LLD informó símbolos CRT sin resolver; al agregar explícitamente `libcmt`,
+`libvcruntime` y `libucrt`, enlazó pero el proceso terminó con `0xC0000005`.
+Esto evidencia que cambiar la entrada o añadir bibliotecas no basta en esta
+configuración experimental; no identifica por sí solo la causa de la violación
+de acceso ni demuestra que no exista una integración posible. El arranque real
+de NativeSharp utiliza `__nativesharp_start` y `/nodefaultlib`.
+
 La validación mínima debe incluir una ejecución válida, una escritura fuera
 de límites que ASan diagnostique realmente, O0/O2, ausencia de instrumentación
 sin la opción, falta de runtime con diagnóstico, y aislamiento de cachés y
