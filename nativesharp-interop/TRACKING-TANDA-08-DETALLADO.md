@@ -89,7 +89,8 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
               - [x] Reproducir en O0 el conflicto de dos typedefs de función que reciben un record C idéntico desde productores precompilados y contrastarlo con un record incompatible. [Evidencia](registro-commits/t08-typedef-funcion-record-reproduccion.md).
               - [ ] Conciliar firmas con records precompilados usando evidencia de identidad y definición suficiente; comprobar también records distintos con igual tamaño y nombres coincidentes.
                 - [x] Conciliar typedefs de función con un parámetro puntero a record equivalente de dos productores precompilados, sin encabezados, O0–O3; rechazar records incompatibles, incluso del mismo tamaño. [Evidencia](registro-commits/t08-typedef-funcion-record-conciliacion.md).
-                - [ ] Comprobar la invocación real de la función con ese parámetro y variantes de records anidados, retornos, enums y otros calificadores.
+                - [x] Invocar mediante typedef variádico dos funciones de DLL homónimas con un puntero a record proporcionado por cada DLL, sin encabezados, O0–O3 y con caché. [Evidencia](registro-commits/t08-typedef-record-invocacion.md).
+                - [ ] Comprobar variantes de records anidados, retornos, enums y otros calificadores.
           - [x] Probar la muestra de ambas DLL con funciones variádicas homónimas desde plantillas precompiladas y con caché, en O0–O3 y con valores distinguibles. [Evidencia](registro-commits/t08-dll-homonimas-variadicas.md).
           - [ ] Comprobar promociones, argumentos flotantes y agregados en funciones variádicas, además de otras formas de consumo.
             - [x] Comparar promociones de `byte`, `short` y `float`, junto con `double`, contra controles C para dos DLL homónimas, O0–O3 y caché. [Evidencia](registro-commits/t08-dll-homonimas-variadicas-promociones.md).
