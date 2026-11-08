@@ -790,7 +790,7 @@ bool encodeCTypeCatalogWithDependencies(std::span<const CppCRecordSnapshot> reco
     std::span<const CppCEnumSnapshot> enums, const CDependencyCatalog& dependencies,
     std::vector<std::uint8_t>& output, std::string& error)
 {
-    if (dependencies.functions.empty() && dependencies.globals.empty() && dependencies.aliases.empty())
+    if (dependencies.functions.empty() && dependencies.globals.empty() && dependencies.aliases.empty() && dependencies.enumerators.empty())
     { error = "empty C dependency catalogue"; return false; }
     std::vector<std::uint8_t> types;
     std::vector<std::uint8_t> declarations;
@@ -850,6 +850,8 @@ bool decodeCTypeCatalogAndDependencies(std::span<const std::uint8_t> bytes, std:
     {
         if (!decodeCTypeCatalogWithDependencies(bytes, decodedRecords, decodedEnums, decodedDependencies, error))
             return false;
+        if (formatMinor < 47 && !decodedDependencies.enumerators.empty())
+        { error = "C enumerator dependencies require metadata 1.47"; return false; }
     }
     else if (!decodeVersionedCTypeCatalog(bytes, decodedRecords, decodedEnums, error, formatMinor))
         return false;
@@ -1232,7 +1234,14 @@ bool decodeVersionedCTypeCatalog(std::span<const std::uint8_t> bytes,
         bytes[1] == 0 && bytes[2] == 0 && bytes[3] == 0)
     {
         CDependencyCatalog dependencies;
-        return decodeCTypeCatalogWithDependencies(bytes, records, enums, dependencies, error);
+        std::vector<CppCRecordSnapshot> decodedRecords;
+        std::vector<CppCEnumSnapshot> decodedEnums;
+        if (!decodeCTypeCatalogWithDependencies(bytes, decodedRecords, decodedEnums, dependencies, error)) return false;
+        if (formatMinor < 47 && !dependencies.enumerators.empty())
+        { error = "C enumerator dependencies require metadata 1.47"; return false; }
+        records = std::move(decodedRecords);
+        enums = std::move(decodedEnums);
+        return true;
     }
     return isCTypeCatalogWithProvenance(bytes) ?
         decodeCTypeCatalogWithProvenance(bytes, records, enums, error) :

@@ -1484,6 +1484,16 @@ bool checkDependencyTypeCodec()
         restoredEnumerator.enumerators[0].bits == 42,
         "C dependency catalogue preserves an anonymous enumerator in version two");
     const std::vector<CppCEnumSnapshot> sourceEnums{syntheticEnumSnapshot()};
+    std::vector<std::uint8_t> enumeratorEnvelope;
+    std::vector<CppCRecordSnapshot> enumVersionRecords;
+    std::vector<CppCEnumSnapshot> enumVersionEnums;
+    CDependencyCatalog enumVersionDependencies;
+    ok &= expect(encodeCTypeCatalogWithDependencies({}, {}, withEnumerator, enumeratorEnvelope, error) &&
+        !decodeCTypeCatalogAndDependencies(enumeratorEnvelope, 46, enumVersionRecords, enumVersionEnums,
+            enumVersionDependencies, error) && enumVersionDependencies.enumerators.empty() &&
+        decodeCTypeCatalogAndDependencies(enumeratorEnvelope, 47, enumVersionRecords, enumVersionEnums,
+            enumVersionDependencies, error) && enumVersionDependencies.enumerators.size() == 1,
+        "anonymous enumerator dependencies require minor 47");
     std::vector<std::uint8_t> envelope;
     std::vector<CppCRecordSnapshot> restoredRecords;
     std::vector<CppCEnumSnapshot> restoredEnums;
@@ -2087,7 +2097,7 @@ int inspectTemplateAlias(char** argv)
     std::vector<CppCRecordSnapshot> records;
     std::vector<CppCEnumSnapshot> enums;
     metadata_detail::CDependencyCatalog dependencies;
-    const bool found = metadata.formatMinor == 46 &&
+    const bool found = metadata.formatMinor >= 46 &&
         metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog, metadata.formatMinor,
             records, enums, dependencies, error) &&
         std::any_of(dependencies.aliases.begin(), dependencies.aliases.end(),
@@ -2106,7 +2116,7 @@ int inspectTemplateFunction(char** argv)
     std::vector<CppCRecordSnapshot> records;
     std::vector<CppCEnumSnapshot> enums;
     metadata_detail::CDependencyCatalog dependencies;
-    const bool found = metadata.formatMinor == 46 &&
+    const bool found = metadata.formatMinor >= 46 &&
         metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog, metadata.formatMinor,
             records, enums, dependencies, error) &&
         std::any_of(dependencies.functions.begin(), dependencies.functions.end(),
@@ -2125,13 +2135,31 @@ int inspectTemplateGlobal(char** argv)
     std::vector<CppCRecordSnapshot> records;
     std::vector<CppCEnumSnapshot> enums;
     metadata_detail::CDependencyCatalog dependencies;
-    const bool found = metadata.formatMinor == 46 &&
+    const bool found = metadata.formatMinor >= 46 &&
         metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog, metadata.formatMinor,
             records, enums, dependencies, error) &&
         std::any_of(dependencies.globals.begin(), dependencies.globals.end(),
             [&](const auto& global) { return global.declaration.name == argv[3] && global.linkSymbol == argv[3]; });
     if (!found) std::cerr << "template global inspection: " << error << '\n';
     return expect(found, "real NSMETA carries the requested C template global") ? 0 : 1;
+}
+
+int inspectTemplateEnumerator(char** argv)
+{
+    LibraryMetadataCodec codec;
+    LibraryMetadata metadata;
+    std::string error;
+    if (!codec.read(argv[2], metadata, error) || !codec.verifyCurrentCompiler(metadata, error))
+    { std::cerr << "metadata read: " << error << '\n'; return 1; }
+    std::vector<CppCRecordSnapshot> records;
+    std::vector<CppCEnumSnapshot> enums;
+    metadata_detail::CDependencyCatalog dependencies;
+    if (!metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog, metadata.formatMinor,
+            records, enums, dependencies, error))
+    { std::cerr << "catalogue read: " << error << '\n'; return 1; }
+    const bool found = std::any_of(dependencies.enumerators.begin(), dependencies.enumerators.end(),
+        [&](const auto& value) { return value.name == argv[3]; });
+    return expect(found, "real NSMETA carries the requested C template enumerator") ? 0 : 1;
 }
 
 int inspectCConstants(char** argv)
@@ -2436,6 +2464,7 @@ int main(int argc, char** argv)
     if (argc == 4 && std::string_view(argv[1]) == "--inspect-template-alias") return inspectTemplateAlias(argv);
     if (argc == 4 && std::string_view(argv[1]) == "--inspect-template-function") return inspectTemplateFunction(argv);
     if (argc == 4 && std::string_view(argv[1]) == "--inspect-template-global") return inspectTemplateGlobal(argv);
+    if (argc == 4 && std::string_view(argv[1]) == "--inspect-template-enumerator") return inspectTemplateEnumerator(argv);
     if (argc >= 3 && std::string_view(argv[1]) == "--catalogue-version-controls")
     {
         return runCatalogueVersionControls(argc, argv);

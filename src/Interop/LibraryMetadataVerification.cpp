@@ -1435,6 +1435,7 @@ bool verifyBinaryClosureMetadata(
         {
             CDependencyCatalog dependencies;
             if (!decodeCTypeCatalogWithDependencies(metadata.cppCRecordCatalog, records, enums, dependencies, detail) ||
+                (metadata.formatMinor < 47 && !dependencies.enumerators.empty()) ||
                 !encodeCTypeCatalogWithDependencies(records, enums, dependencies, canonical, detail) ||
                 canonical != metadata.cppCRecordCatalog)
             { error = "invalid or unsupported C dependency catalogue: " + detail; return false; }
@@ -1455,6 +1456,13 @@ bool verifyBinaryClosureMetadata(
                     (global.declaration.externalLinkage && global.declaration.externalSymbol != global.linkSymbol) ||
                     (!global.declaration.externalLinkage && global.effectiveDllImport))
                 { error = "C dependency global has incomplete or unsupported identity"; return false; }
+            for (const auto& value : dependencies.enumerators)
+                if (value.moduleName.empty() || value.referenceIdentity.empty() || value.name.empty() || value.clangUsr.empty() ||
+                    (value.typeKey != "builtin:sbyte" && value.typeKey != "builtin:byte" &&
+                     value.typeKey != "builtin:short" && value.typeKey != "builtin:ushort" &&
+                     value.typeKey != "builtin:int" && value.typeKey != "builtin:uint" &&
+                     value.typeKey != "builtin:long" && value.typeKey != "builtin:ulong"))
+                { error = "C dependency enumerator has invalid identity or type"; return false; }
         }
         else
         {
