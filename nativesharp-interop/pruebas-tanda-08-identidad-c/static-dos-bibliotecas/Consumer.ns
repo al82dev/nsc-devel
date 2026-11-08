@@ -1,0 +1,1 @@
+int Main() { return InlineA.Bridge.Read<int>(0) == 11 && InlineB.Bridge.Read<int>(0) == 29 ? 0 : 1; }
