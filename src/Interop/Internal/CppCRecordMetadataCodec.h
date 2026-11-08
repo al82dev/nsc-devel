@@ -32,6 +32,11 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     std::vector<std::uint8_t>& output, std::string& error);
 bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
     CDependencyFunctionSnapshot& output, std::string& error);
+// Captures one explicitly bound function from its exact project/reference; it
+// does not treat speculative name-lookup candidates as selected declarations.
+bool captureCDependencyFunction(std::span<const CppSemanticInventoryEntry> inventory,
+    const frontend::NamespaceFunctionSymbol& selected, std::size_t referenceIndex,
+    std::string_view referenceIdentity, CDependencyFunctionSnapshot& output, std::string& error);
 struct CDependencyGlobalSnapshot
 {
     std::string moduleName;

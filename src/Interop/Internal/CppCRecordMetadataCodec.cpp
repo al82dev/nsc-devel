@@ -364,6 +364,39 @@ bool decodeCDependencyType(std::span<const std::uint8_t> bytes, CppType& output,
     return true;
 }
 
+bool captureCDependencyFunction(std::span<const CppSemanticInventoryEntry> inventory,
+    const frontend::NamespaceFunctionSymbol& selected, std::size_t referenceIndex,
+    std::string_view referenceIdentity, CDependencyFunctionSnapshot& output, std::string& error)
+{
+    if (selected.moduleName.empty() || selected.mangledName.empty() || selected.cppCanonicalIdentity.empty() ||
+        !selected.cppClangUsr || selected.cppClangUsr->empty() || referenceIdentity.empty())
+    { error = "selected C function has incomplete identity"; return false; }
+    const CppSemanticInventoryEntry* match = nullptr;
+    for (const auto& entry : inventory)
+    {
+        if (entry.projectOrdinal != selected.projectOrdinal || entry.referenceIndex != referenceIndex ||
+            entry.targetTriple != "x86_64-pc-windows-msvc" ||
+            entry.declaration.languageLinkage != CppLanguageLinkage::C ||
+            entry.declaration.clangUsr != selected.cppClangUsr ||
+            entry.declaration.externalSymbol != std::optional<std::string>{selected.mangledName}) continue;
+        const auto* projection = std::get_if<frontend::NamespaceFunctionSymbol>(&entry.projection);
+        if (!projection || projection->cppCanonicalIdentity != selected.cppCanonicalIdentity ||
+            projection->moduleName != selected.moduleName || projection->name != selected.name) continue;
+        if (match) { error = "selected C function has multiple matching observations"; return false; }
+        match = &entry;
+    }
+    if (!match) { error = "selected C function has no matching observation"; return false; }
+    CDependencyFunctionSnapshot value;
+    value.moduleName = selected.moduleName;
+    value.referenceIdentity = std::string(referenceIdentity);
+    value.linkSymbol = selected.mangledName;
+    value.declaration = match->declaration;
+    value.declaration.location.reset();
+    output = std::move(value);
+    error.clear();
+    return true;
+}
+
 bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     std::vector<std::uint8_t>& output, std::string& error)
 {

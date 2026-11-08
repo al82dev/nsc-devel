@@ -893,6 +893,25 @@ bool checkDependencyTypeCodec()
     function.declaration.externalLinkage = true;
     function.declaration.returnType = floating;
     function.declaration.parameters.push_back({"value", "T*", "T*", pointer, false});
+    nativesharp::frontend::NamespaceFunctionSymbol selected;
+    selected.projectOrdinal = 4;
+    selected.moduleName = "Producer";
+    selected.name = "c_function";
+    selected.mangledName = "c_function";
+    selected.cppCanonicalIdentity = "c_function|signature";
+    selected.cppClangUsr = function.declaration.clangUsr;
+    std::vector<CppSemanticInventoryEntry> inventory{{{}, 2, 4, "x86_64-pc-windows-msvc",
+        function.declaration, selected}};
+    CDependencyFunctionSnapshot captured;
+    ok &= expect(captureCDependencyFunction(inventory, selected, 2, "header-digest", captured, error) &&
+        captured.linkSymbol == selected.mangledName && captured.declaration.clangUsr == selected.cppClangUsr,
+        "C dependency capture requires an explicitly selected function with matching provenance");
+    captured.moduleName = "sentinel";
+    ok &= expect(!captureCDependencyFunction(inventory, selected, 3, "header-digest", captured, error) &&
+        captured.moduleName == "sentinel", "C dependency capture rejects another reference without changing output");
+    inventory.push_back(inventory.front());
+    ok &= expect(!captureCDependencyFunction(inventory, selected, 2, "header-digest", captured, error) &&
+        captured.moduleName == "sentinel", "C dependency capture rejects ambiguous observations");
     std::vector<std::uint8_t> functionBytes;
     CDependencyFunctionSnapshot decoded;
     ok &= expect(encodeCDependencyFunction(function, functionBytes, error) &&
