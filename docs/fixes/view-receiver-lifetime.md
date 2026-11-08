@@ -14,6 +14,22 @@ vistas cuyo origen sea un propietario que sigue vivo. En ausencia de un
 contrato explícito de vida para estas vistas, la regla puede rechazar una
 vista global devuelta por un método de instancia.
 
+La construcción directa de una vista con argumentos `ref` a locales
+también conserva la raíz local, aunque sea un valor `struct`: para varios
+argumentos directos se usa el ámbito más interior. La revisión base aceptaba
+guardar la vista fuera del ámbito del valor y la rama corregida la rechaza
+(`shared-value-view-compare/results.json`). La prueba dirigida
+`nsc.compiler.shared-value-view-lifetime` ejecuta el caso válido O0/O2 y
+comprueba escapes por asignación y retorno, movimiento del valor y dos
+argumentos con ámbitos distintos (`shared-view-tests.log`). Esta regla es
+conservadora: un constructor que recibe un `ref` y no lo conserva puede ser
+rechazado al escapar su vista. Solo se comprobó procedencia local directa;
+esto no demuestra toda expresión indirecta, raw pointer o contrato entre
+módulos.
+La variante `in` no se incluyó en esta corrección: la reproducción también
+falla al convertir la dirección de solo lectura al campo mutable, por lo que
+no aisló una vista válida (`shared-value-view-in-probe/results.json`).
+
 `nsc.compiler.view-receiver-lifetime` comprueba los rechazos por asignación,
 retorno, movimiento y temporales; ejecuta un caso válido y un encadenamiento.
 La prueba existente `nsc.stage58.view-lifetimes` también pasó. Comandos y

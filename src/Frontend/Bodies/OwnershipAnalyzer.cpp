@@ -75,6 +75,34 @@ std::optional<std::string> ProjectMethodBodyModel::viewRootLocalOfExpression(
         // This also covers value-type owners, whose own type need not carry a reference qualifier.
         const std::size_t callable = scopeOrdinal < scopes_.size()
             ? scopes_[scopeOrdinal].methodMemberOrdinal : std::numeric_limits<std::size_t>::max();
+        // A view constructed from an explicit ref argument borrows the addressed local,
+        // including a value-type local that does not otherwise carry a lifetime qualifier.
+        // When several locals participate, the innermost lexical scope is the limiting one.
+        if (current == expression && current->kind() == ast::AstNodeKind::ObjectCreationExpression &&
+            typeKeyIsViewLike(recordedExpressionTypeKey(current, callable)))
+        {
+            const MethodLocalSymbol* limiting = nullptr;
+            for (const ast::AstNode* argument : current->children())
+            {
+                if (argument == nullptr || argument->kind() != ast::AstNodeKind::UnaryExpression ||
+                    argument->auxiliaryText() != "pass:ref")
+                    continue;
+                const ast::AstNode* root = argument->first();
+                while (root != nullptr && (root->kind() == ast::AstNodeKind::MemberExpression ||
+                                             root->kind() == ast::AstNodeKind::IndexExpression))
+                    root = root->first();
+                if (root == nullptr || root->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+                const auto name = lookupScopeName(scopeOrdinal, root->text());
+                if (!name.has_value() || name->kind != ScopeNameKind::Local ||
+                    name->semanticOrdinal >= locals_.size()) continue;
+                const MethodLocalSymbol& local = locals_[name->semanticOrdinal];
+                if (!local.isStatic && (limiting == nullptr ||
+                    scopeContains(limiting->scopeOrdinal, local.scopeOrdinal))) limiting = &local;
+            }
+            if (limiting != nullptr)
+                return typeKeyIsViewLike(limiting->typeKey) && !limiting->viewRootLocalName.empty()
+                    ? limiting->viewRootLocalName : limiting->name;
+        }
         const MethodCallBinding* call = callBinding(current, callable);
         if (call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
             !call->staticCall && call->receiverSyntax != nullptr && typeKeyIsViewLike(call->resultTypeKey))
