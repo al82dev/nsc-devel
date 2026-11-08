@@ -1033,6 +1033,12 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     cruzado desde ambos lenguajes. Otras formas y calificadores siguen abiertos.
     [Resultado](registro-commits/t08-bool-puntero-c-implementacion.md).
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
+  - `CppLibraryReference` admite `VolatileMode` Default, Microsoft o ISO.
+    La matriz de acceso directo pasó IR y ejecución O0–O3 en los modos
+    predeterminado e ISO; Microsoft explícito pasó el control de IR y un valor
+    inválido se rechazó. La suite de sesión pasó con 32 advertencias al compilar.
+    Los accesos por locales o parámetros no quedan cubiertos.
+    [Resultado](registro-commits/t08-volatile-modo-validacion.md).
   - Arreglos globales C de punteros a `_Bool` y siete tipos escalares volatile
     pasaron IR y ejecución O0–O3; la muestra es de una dimensión y no cubre
     transporte por locales o parámetros.

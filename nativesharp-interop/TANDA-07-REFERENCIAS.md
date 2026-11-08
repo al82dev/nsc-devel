@@ -9,6 +9,10 @@ lenguaje siguen registradas; no equivalen a interoperabilidad total.
   `IncludeDirectory` (`User`/`System`), `Define` y `Undefine` conservan orden.
   El cargador canoniza y verifica header, directorios y artefactos; `Runtime`
   requiere una biblioteca y un archivo DLL existente.
+- Una referencia puede especificar `VolatileMode="Default"`, `"Microsoft"`
+  o `"ISO"`. La opción configura la sesión Clang de esa referencia; `Default`
+  conserva la selección predeterminada del objetivo. Esta opción no establece
+  todavía una política para punteros que circulan por locales o parámetros NS.
 - `Project.h` conserva una lista de `CppLibraryReference` por proyecto. Cada
   referencia contiene header, biblioteca, DLL, lenguaje, estándar, directorios y
   macros. `CppProjectSessions.cpp` abre una sesión por referencia, en orden y
