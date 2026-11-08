@@ -39,6 +39,7 @@ for %%T in (
   pruebas-tanda-08-bool-abi-c\validar.cmd
   pruebas-tanda-08-bool-abi-cpp\validar.cmd
   pruebas-tanda-08-bool-callback-c\validar.cmd
+  pruebas-tanda-08-bool-import-dinamico\validar.cmd
   pruebas-tanda-08-atomic-global\validar.cmd
   pruebas-tanda-08-atomic-global\validar-hilos.cmd
   pruebas-tanda-08-atomic-global\validar-precompilado.cmd
