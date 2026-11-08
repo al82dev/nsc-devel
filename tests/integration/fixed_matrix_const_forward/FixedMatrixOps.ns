@@ -1,0 +1,30 @@
+namespace NativeSharp.Examples.Chapter16.GenericVectorAndMatrix
+{
+    public static class FixedMatrixOps
+    {
+        // Inner must be positive. The inner dimensions match at compile time.
+        public static FixedMatrix<T, Rows, Columns> Multiply<T, const int Rows, const int Inner, const int Columns>(
+            FixedMatrix<T, Rows, Inner> first, FixedMatrix<T, Inner, Columns> second)
+        {
+            FixedMatrix<T, Rows, Columns> result;
+            for (int row = 0; row < Rows; row++)
+            {
+                for (int column = 0; column < Columns; column++)
+                {
+                    T left = first.Data[row][0];
+                    T right = second.Data[0][column];
+                    T sum = left * right;
+                    for (int k = 1; k < Inner; k++)
+                    {
+                        left = first.Data[row][k];
+                        right = second.Data[k][column];
+                        T product = left * right;
+                        sum = sum + product;
+                    }
+                    result.Data[row][column] = sum;
+                }
+            }
+            return move(result);
+        }
+    }
+}

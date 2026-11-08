@@ -610,20 +610,36 @@ bool ProjectGenericModel::processTypeSyntax(
     }
 
     if (!validateGenericTypeArgumentCount(*state, syntax, diagnostics)) return false;
-    if (!normalizeGenericArguments(
-            state->record, syntax->typeArguments(), syntax->range(), diagnostics))
-        return false;
-
-    // NS304-T08-F06: an open generic reference whose argument is a scope parameter does not
-    // materialize a closed clone; record its template identity and keep its source spelling so a
-    // later substitution can still replace T.
+    // Open parameters are substituted later. Validate the concrete arguments now, but do not
+    // demand a compile-time value from an outer const parameter before specialization.
     if (hasOpenGenericParameter(syntax, scope))
     {
+        const auto packIndex = trailingPackIndex(state->record);
+        const auto arguments = syntax->typeArguments();
+        for (std::size_t i = 0; i < arguments.size(); ++i)
+        {
+            const ast::TypeSyntax* argument = arguments[i];
+            const std::size_t parameterIndex = packIndex.has_value() && i >= *packIndex ? *packIndex : i;
+            const ast::GenericParameterSyntaxKind kind = parameterIndex < state->record.parameterSyntaxes.size()
+                ? state->record.parameterSyntaxes[parameterIndex].kind : ast::GenericParameterSyntaxKind::Type;
+            const bool expectedConst = kind == ast::GenericParameterSyntaxKind::Constant ||
+                kind == ast::GenericParameterSyntaxKind::ConstantPack;
+            if (argument != nullptr && argument->typeArguments().empty() &&
+                scope.typeParameters.read().contains(argument->baseName()) &&
+                scope.constParameters.read().contains(argument->baseName()) == expectedConst)
+                continue;
+            if (!normalizeGenericArgument(
+                    state->record, arguments, i, packIndex, syntax->range(), diagnostics))
+                return false;
+        }
         std::string canonical = "generic:" + state->record.canonicalKey;
         appendTypeModifiers(canonical, syntax);
         resolvedTypeIdentityBySyntax_[syntax] = std::move(canonical);
         return true;
     }
+    if (!normalizeGenericArguments(
+            state->record, syntax->typeArguments(), syntax->range(), diagnostics))
+        return false;
 
     // NSC305-G08. The two-pass: record the demand (the wave scheduler executes + rewrites later).
     collectTypeSpecializationDemand(unit, syntax, *state, namespaceName);

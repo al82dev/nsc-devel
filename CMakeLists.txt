@@ -6634,6 +6634,24 @@ if(NSC_BUILD_TESTS)
             "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyGenericDelegateReturn.cmake")
 
+    set(NSC_FIXED_MATRIX_CONST_FORWARD_PROJECT
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixed_matrix_const_forward/FixedMatrixConstForward.nsproj")
+    set(NSC_FIXED_MATRIX_INVALID_PROJECT
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixed_matrix_const_forward/InvalidConst.nsproj")
+    set(NSC_FIXED_MATRIX_INVALID_OPEN_PROJECT
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fixed_matrix_const_forward/InvalidOpenType.nsproj")
+    add_test(
+        NAME nsc.compiler.fixed-matrix-const-forward
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DPROJECT_FILE=${NSC_FIXED_MATRIX_CONST_FORWARD_PROJECT}"
+            "-DINVALID_PROJECT_FILE=${NSC_FIXED_MATRIX_INVALID_PROJECT}"
+            "-DINVALID_OPEN_PROJECT_FILE=${NSC_FIXED_MATRIX_INVALID_OPEN_PROJECT}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/fixed-matrix-const-forward"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyFixedMatrixConstForward.cmake")
+
     # NSC-LIMIT-007. La entrada de driver de la fase de constraints, ejercitada de verdad.
     #
     # Una fase sin prueba de ctest solo existe para quien lee el codigo: la revision encontro que

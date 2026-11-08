@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>InvalidOpenTypeForward</Name><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><Compile Include="InvalidOpenType.ns" /></ItemGroup>
+</Project>

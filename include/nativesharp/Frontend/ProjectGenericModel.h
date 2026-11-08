@@ -461,6 +461,7 @@ private:
         // carries both the target syntax and its optional type-parameter list.
         Cow<std::unordered_map<std::string, const ast::AstNode*>> typeAliases;
         Cow<std::unordered_set<std::string>> typeParameters;
+        Cow<std::unordered_set<std::string>> constParameters;
         // NSC305-G04. Item 277. Types written on parameters, fields, and preceding locals are
         // sufficient for local generic inference. This container is the one that grows with the
         // number of locals, so it is a persistent parent-linked chain: copying a scope is O(1) and

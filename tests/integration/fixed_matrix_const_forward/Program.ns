@@ -1,0 +1,19 @@
+using NativeSharp.Examples.Chapter16.GenericVectorAndMatrix;
+
+/// <summary>Checks const generic dimensions forwarded through a generic function.</summary>
+int Main()
+{
+    FixedMatrix<int, 2, 2> a;
+    FixedMatrix<int, 2, 2> b;
+    a.Data[0][0] = 1;
+    a.Data[0][1] = 2;
+    a.Data[1][0] = 3;
+    a.Data[1][1] = 4;
+    b.Data[0][0] = 5;
+    b.Data[0][1] = 6;
+    b.Data[1][0] = 7;
+    b.Data[1][1] = 8;
+    FixedMatrix<int, 2, 2> result = FixedMatrixOps.Multiply<int, 2, 2, 2>(a, b);
+    return result.Data[0][0] == 19 && result.Data[0][1] == 22 &&
+        result.Data[1][0] == 43 && result.Data[1][1] == 50 ? 0 : 1;
+}

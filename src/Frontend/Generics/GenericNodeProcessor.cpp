@@ -249,6 +249,12 @@ bool ProjectGenericModel::shouldSkipTemplateNode(
             GenericLookupScope receiverScope = currentScope;
             for (const std::string& parameter : node->genericParameters())
                 receiverScope.typeParameters.write().insert(parameter);
+            for (const ast::GenericParameterSyntax& parameter : node->genericParameterSyntaxes())
+            {
+                if (parameter.kind == ast::GenericParameterSyntaxKind::Constant ||
+                    parameter.kind == ast::GenericParameterSyntaxKind::ConstantPack)
+                    receiverScope.constParameters.write().insert(parameter.name);
+            }
             for (const ast::AstNode* child : node->children())
             {
                 if (child == nullptr ||
