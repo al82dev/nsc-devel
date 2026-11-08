@@ -882,6 +882,11 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     local, enum, struct y callback. Una función `const CMatrix*` sigue sin
     importarse y tiene prueba separada. [Evidencia](registro-commits/proyecto-typedef-c.md).
 - [ ] T08-006. Mapear los tipos enteros C con su tamaño y signo efectivos.
+  - Las globales C _Bool no volátiles escalares y de arreglo usan byte en
+    declaraciones y accesos LLVM. Pasaron lectura y escritura cruzadas O0–O3,
+    regresiones y controles de identidad/restauración de caché. Los punteros
+    que escapan y otras formas de almacenamiento siguen pendientes.
+    [Resultado](registro-commits/t08-bool-global-c-validacion.md).
   - La prueba mixta `_Bool` de campo, arreglo y llamada pasó O0–O3. Es una
     muestra, no el cierre del ítem. [Evidencia](TANDA-08-TIPOS-C.md#validación-dirigida-agrupada-identidades-y-_bool).
   - `8be3c138f` prepara un control mixto de campo y arreglo `_Bool`, con
