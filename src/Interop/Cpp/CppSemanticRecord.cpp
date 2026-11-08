@@ -1052,7 +1052,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         { error = failure->message; return false; }
         const auto& aliases = std::get<std::vector<CppSemanticTypeAliasEntry>>(aliasesResult);
         const auto candidates = selectCppPublishedTemplateAliases(compilation, metadata, aliases);
-        if (!captureCppResolvedTemplateAliases(*graph, candidates, aliases, dependencies.aliases, error)) return false;
+        if (!captureCppTemplateAliasCandidates(*graph, candidates, aliases, dependencies.aliases, error)) return false;
     }
     std::map<std::size_t, std::set<std::string>> seeds;
     std::map<std::size_t, std::set<std::string>> enumSeeds;

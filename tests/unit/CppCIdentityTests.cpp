@@ -1149,7 +1149,7 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
         captured.front().moduleName = "sentinel";
         std::string why;
         if (entry.referenceIndex >= compilation.projectGraph()->projects()[entry.projectOrdinal].cppLibraryReferences().size())
-            ok &= expect(!captureCppResolvedTemplateAliases(*compilation.projectGraph(), std::span(&candidate, 1),
+            ok &= expect(!captureCppTemplateAliasCandidates(*compilation.projectGraph(), std::span(&candidate, 1),
                 *aliases, captured, why) && captured.size() == 1 && captured.front().moduleName == "sentinel",
                 "resolved template alias rejects missing source reference without changing output");
     }
@@ -1211,7 +1211,7 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
         metadata_detail::decodeCTypeCatalogAndDependencies(bytes, 46, records, enums, dependencies, error) &&
         dependencies.aliases.size() == 1 && dependencies.aliases[0].declaration.name == "CIdInt";
     if (!captured) std::cerr << "generic alias publication: " << error << '\n';
-    return expect(captured, "producer captures a resolved template alias from a real C project reference");
+    return expect(captured, "producer retains a template alias candidate from a real C project reference");
 }
 
 bool checkDependencyTypeCodec()
