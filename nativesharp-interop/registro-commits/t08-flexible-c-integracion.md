@@ -9,9 +9,9 @@ tamaño y alineación, sin eliminar la comprobación del arreglo fijo.
 
 ## Evidencia y límites
 
-- Compilación incremental de NSC: código 0; la compilación de la prueba de
-  sesión seguía en curso al registrar el cambio. El código nuevo generó una
-  advertencia de inicializador de campos opcionales.
+- Compilación incremental de NSC y `nsc_cpp_session_tests`: código 0. La
+  prueba de sesión ejecutó con Clang 23.1.0 y terminó con código 0. El código
+  nuevo generó una advertencia de inicializador de campos opcionales.
 - `pruebas-tanda-08-flexible-c/validar.cmd`, salida aislada
   `A:/nsc-interop-build/tanda08-flexible-integracion-20261107`: ejecución
   directa, Shared y Metadata O0–O3 y controles de alineación pasaron. La
