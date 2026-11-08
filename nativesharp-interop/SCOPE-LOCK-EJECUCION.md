@@ -5412,6 +5412,9 @@ Clang la ruta física, SHA-256 del buffer analizado y desplazamiento; ubicacione
 de macro o no disponibles permanecen sin procedencia. Archivos adicionales:
 `CppEnumDeclaration.h` y `ClangSession.cpp` de NSC. El formato persistente y
 la comparación aún no cambian en esta etapa; validación agrupada posterior.
+Al agrupar observaciones enum, conservar procedencia solo si todas coinciden;
+añadir `CppSemanticInventory.cpp` al presupuesto sin alterar la selección de
+tipos ni la semántica de conciliación actual.
 
 Enmienda: la primera implementación causó conflicto entre proyectos al
 coexistir el header y la metadata. Se permite modificar

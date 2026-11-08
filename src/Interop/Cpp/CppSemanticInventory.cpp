@@ -962,6 +962,7 @@ CppCEnumCatalogResult captureCppCEnumCatalog(
                 reconcileUsr(a.clangUsr, b.clangUsr);
         }
         if (!same) return CppCEnumSnapshotFailure{"conflicting C enum observations: " + identity.key()};
+        if (prior.sourceProvenance != value.sourceProvenance) prior.sourceProvenance.reset();
     }
     if (result.size() != requested.size()) return CppCEnumSnapshotFailure{"required C enum is unavailable"};
     std::vector<CppCEnumSnapshot> catalog;
