@@ -936,6 +936,17 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     de cero argumentos en O0–O3, con rechazo de argumento extra. No cubre
     todas las posiciones o combinaciones. [Evidencia](registro-commits/prueba-prototipos-c.md).
 - [ ] T08-009. Mapear enumeraciones y sus valores representables.
+  - Enum C atómico: lectura, escritura, operaciones compuestas e incremento
+    se contrastaron con Clang O0–O3 en muestras de 8, 16, 32 y 64 bits,
+    incluyendo global y TLS. También pasaron casos de enlace interno,
+    biblioteca NS precompilada y DLL, y un control de dos hilos. Los casos
+    dirigidos no acreditan todas las combinaciones ni cierran el ítem.
+    [Operaciones con signo](registro-commits/t08-enum-atomico-operaciones-signo.md),
+    [tipos estrechos](registro-commits/t08-enum-atomico-estrecho.md),
+    [64 bits](registro-commits/t08-enum-atomico-64.md),
+    [precompilado](registro-commits/t08-enum-atomico-static-precompilado.md),
+    [DLL C](registro-commits/t08-enum-atomico-dll-c.md) y
+    [dos hilos](registro-commits/t08-enum-atomico-contencion.md).
   - Una comparación mixta enum C unsigned / int signed difiere entre las
     promociones NS y C; pendiente decisión sobre semántica de la expresión.
     [Evidencia](registro-commits/enum-c-mixto-referencia.md).
