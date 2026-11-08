@@ -4648,7 +4648,7 @@ if(NSC_BUILD_TESTS)
         nsc.project-type-conversion)
 
     add_executable(nsc_project_method_body_model_tests tests/unit/ProjectMethodBodyModelTests.cpp)
-    target_link_libraries(nsc_project_method_body_model_tests PRIVATE nsc_frontend nsc_compilation)
+    target_link_libraries(nsc_project_method_body_model_tests PRIVATE nsc_frontend nsc_precompiled nsc_compilation)
     target_compile_features(nsc_project_method_body_model_tests PRIVATE cxx_std_20)
     nsc_enable_warnings(nsc_project_method_body_model_tests)
     add_test(NAME nsc.project-method-body-model COMMAND nsc_project_method_body_model_tests)
