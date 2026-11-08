@@ -6,7 +6,7 @@ La evidencia histórica y sus revisiones se conserva en [TRACKING.md](TRACKING.m
 
 Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del mismo número; su estado anterior se conserva como encabezado, sin contar una segunda tarea. Una casilla pendiente de comprobación no afirma que la capacidad esté ausente: indica que falta cotejar la evidencia o completar su implementación si la comprobación falla.
 
-**Decisión vigente del usuario:** NativeSharp todavía no está liberado. Se trabaja con un único compilador y el formato NSMETA vigente; la compatibilidad con versiones históricas de NSMETA no es un objetivo de esta tanda. No introducir versiones nuevas ni conservar compatibilidad histórica por iniciativa propia. Las notas históricas se mantienen como evidencia y no son requisitos activos.
+**Decisión vigente del usuario:** NativeSharp tiene un único contrato NSMETA: el que entiende el compilador actual. El lenguaje evoluciona de forma acumulativa; los programas anteriores que usan capacidades todavía admitidas deben seguir compilándose. El contenido y las capacidades que requiere determinan si puede procesarse, no las etiquetas históricas. No introducir versiones paralelas ni planear migraciones entre etiquetas. No consultar documentación histórica de versionamiento; el material archivado queda fuera de la consulta activa. Se conservan intactas las pruebas existentes. Esta decisión no certifica automáticamente todos los artefactos anteriores.
 
 ## T08-001 — Representación y nombres
 
