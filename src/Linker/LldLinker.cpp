@@ -1308,4 +1308,42 @@ bool LldLinker::linkExecutable(
     }
     return verifyExecutableProducts(executablePath_, outputPath, pdbPath, error);
 }
+
+bool LldLinker::linkAddressSanitizedExecutable(
+    const std::filesystem::path& clang,
+    std::span<const std::filesystem::path> objectFiles,
+    std::span<const std::filesystem::path> libraries,
+    const std::filesystem::path& outputPath,
+    std::string& error)
+{
+    error.clear();
+    if (clang.empty() || containsQuote(clang) || !std::filesystem::is_regular_file(clang))
+    {
+        error = "AddressSanitizer requires a valid Clang executable path";
+        return false;
+    }
+    if (!validateExecutableRequest(objectFiles, libraries, outputPath, {}, error)) return false;
+    std::filesystem::path responsePath = outputPath;
+    std::filesystem::path logPath = outputPath;
+    responsePath += ".asan-link.rsp";
+    logPath += ".asan-link.log";
+    std::vector<std::string> arguments = {
+        "--target=x86_64-pc-windows-msvc", "-fuse-ld=lld", "-fsanitize=address"};
+    for (const auto& object : objectFiles) arguments.push_back(responseFileArgument(object));
+    for (const auto& library : libraries) arguments.push_back(responseFileArgument(library));
+    arguments.push_back("-o");
+    arguments.push_back(responseFileArgument(outputPath));
+    if (!writeResponseFile(responsePath, arguments, error)) return false;
+    std::error_code cleanupError;
+    removeExecutableOutputs(outputPath, {}, cleanupError);
+    const LldLinker clangDriver(clang);
+    const bool success = clangDriver.runResponseFile(responsePath, logPath, error);
+    cleanupLinkerTemporaries(responsePath, logPath, cleanupError);
+    if (!success)
+    {
+        removeExecutableOutputs(outputPath, {}, cleanupError);
+        return false;
+    }
+    return verifyExecutableProducts(clang, outputPath, {}, error);
+}
 }

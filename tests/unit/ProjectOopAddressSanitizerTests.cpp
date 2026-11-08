@@ -4,6 +4,7 @@
 #include "nativesharp/LLVM/LlvmModule.h"
 #include "nativesharp/LLVM/LlvmTargetMachine.h"
 #include "nativesharp/LLVM/ProjectOopObjectGenerator.h"
+#include "nativesharp/Linker/LldLinker.h"
 #include "nativesharp/Runtime/WindowsRuntimeBuilder.h"
 #include "../support/TestContext.h"
 
@@ -12,6 +13,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <vector>
 
 int main(int argc, char** argv)
 {
@@ -24,7 +26,7 @@ int main(int argc, char** argv)
     std::ofstream(root / "Probe.nsproj") <<
         "<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>";
-    const bool safeFixture = argc == 3 && std::string(argv[2]) == "safe";
+    const bool safeFixture = argc >= 3 && std::string(argv[2]) == "safe";
     std::ofstream(root / "Probe.ns") <<
         (safeFixture
             ? "public class Probe { public static int Main() { int* p = stackalloc int[2]; p[0] = 42; return p[0]; } }"
@@ -108,6 +110,16 @@ int main(int argc, char** argv)
             const bool adapterEmitted = adapter != nullptr && target != nullptr &&
                 target->emit(*adapter, directory / "adapter.obj", LlvmCodeGenFileType::Object, error);
             tests.expect(adapterEmitted, "sanitizer entry adapter emitted: " + error);
+            if (argc >= 6 && emitted && adapterEmitted)
+            {
+                std::vector<std::filesystem::path> objects = {directory / "adapter.obj", directory / "entry.obj"};
+                for (std::size_t i = 0; i < index; ++i)
+                    objects.push_back(directory / ("unit-" + std::to_string(i) + ".obj"));
+                const std::vector<std::filesystem::path> libraries = {argv[4], argv[5]};
+                const bool linked = linker::LldLinker::linkAddressSanitizedExecutable(
+                    argv[3], objects, libraries, directory / "probe.exe", error);
+                tests.expect(linked, "Clang links sanitized NativeSharp objects: " + error);
+            }
         }
         auto after = generate(normal, level);
         tests.expect(after != nullptr && after->cacheHitCount() == after->objectFiles().size() &&
@@ -119,5 +131,10 @@ int main(int argc, char** argv)
         LlvmOptimizationLevel::O2, 2, {}, LinkTimeOptimizationMode::Thin, error);
     tests.expect(unsupported == nullptr && error.find("AddressSanitizer") != std::string::npos,
         "unsupported ASan and LTO combination is rejected");
+    error.clear();
+    const bool missingClang = linker::LldLinker::linkAddressSanitizedExecutable(
+        root / "missing-clang.exe", {}, {}, root / "missing.exe", error);
+    tests.expect(!missingClang && error.find("Clang") != std::string::npos,
+        "missing Clang reports a clear error");
     return tests.result();
 }

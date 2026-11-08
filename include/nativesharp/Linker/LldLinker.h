@@ -18,6 +18,14 @@ public:
 
     static std::unique_ptr<LldLinker> discover(std::string& error);
 
+    // Clang supplies its matching ASan runtime and CRT startup for explicitly sanitized builds.
+    static bool linkAddressSanitizedExecutable(
+        const std::filesystem::path& clang,
+        std::span<const std::filesystem::path> objectFiles,
+        std::span<const std::filesystem::path> libraries,
+        const std::filesystem::path& outputPath,
+        std::string& error);
+
     const std::filesystem::path& executablePath() const noexcept;
     std::filesystem::path librarianExecutablePath() const;
 
