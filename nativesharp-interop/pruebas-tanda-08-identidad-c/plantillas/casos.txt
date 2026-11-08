@@ -14,7 +14,7 @@ ConsumerAlias CGenProducer type runs
 ConsumerRecordLocal CGenProducer ident runs
 ConsumerGlobalWrite CGenProducer ident runs
 ConsumerInline CGenProducerInline ident fails
-ConsumerEnumConstantPlain CGenProducerEnumPlain state runs
-ConsumerEnumConstant CGenProducerEnum state runs
-ConsumerAnonymousConstantPlain CGenProducerLoosePlain state runs
-ConsumerAnonymousConstant CGenProducerLoose state runs
+ConsumerEnumConstantPlain CGenProducerEnumPlain runs runs
+ConsumerEnumConstant CGenProducerEnum ident runs
+ConsumerAnonymousConstantPlain CGenProducerLoosePlain runs runs
+ConsumerAnonymousConstant CGenProducerLoose ident runs

@@ -7,9 +7,9 @@
 #   namespace state).
 CConstNone PConstNone runs runs
 CConstSurfaceOnly PConstSurfaceOnly runs runs
-CConstNamedPlain PConstNamedPlain state runs
-CConstNamedTemplate PConstNamedTemplate state ident
-CConstNamedSurfaceValue PConstNamedSurface state runs
-CConstNamedSurfaceTemplate PConstNamedSurface state runs
-CConstAnonPlain PConstAnonPlain state runs
-CConstAnonTemplate PConstAnonTemplate state ident
+CConstNamedPlain PConstNamedPlain runs runs
+CConstNamedTemplate PConstNamedTemplate ident ident
+CConstNamedSurfaceValue PConstNamedSurface runs runs
+CConstNamedSurfaceTemplate PConstNamedSurface runs runs
+CConstAnonPlain PConstAnonPlain runs runs
+CConstAnonTemplate PConstAnonTemplate ident ident

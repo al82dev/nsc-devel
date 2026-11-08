@@ -205,6 +205,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - H7: las constantes de enum C dejan de publicarse como estados de
+    NativeSharp. Los productores y consumidores ordinarios antes rechazados
+    pasaron el validador dirigido; algunas plantillas siguen sin resolver la
+    constante cuando el catálogo no la contiene. [Evidencia](registro-commits/t08-h7-constantes-c-publicacion.md).
   - La validación dirigida del carril integrado pasó tras actualizar siete
     expectativas de enum de campo ya resueltas en esta rama. El validador aún
     comprueba rechazos esperados de capacidades pendientes; no cierra el ítem.

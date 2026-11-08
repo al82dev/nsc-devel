@@ -2967,9 +2967,10 @@ void appendNamespaceStateMetadata(
     for (const frontend::NamespaceStateSymbol& state :
          compilation.namespaceFunctionModel()->states())
     {
+        // Imported C enumerators are not NativeSharp namespace storage.
         if (state.projectOrdinal != rootProjectOrdinal ||
             state.accessibility != frontend::NamespaceFunctionAccessibility::Public ||
-            state.isPrecompiled || state.isCppExternal)
+            state.isPrecompiled || state.isCppExternal || state.isCppEnumConstant)
         {
             continue;
         }
