@@ -3149,7 +3149,22 @@ bool ProjectMethodBodyModel::inferVariableType(
             "'var' cannot infer a type from a void-returning expression");
         return false;
     }
-    varInferredTypeKey = varInit.typeKey;
+    if (varInit.cppFlexibleArrayMember)
+    {
+        const auto element = ProjectMemberModel::flexibleArrayElementTypeKey(varInit.typeKey);
+        if (!varInit.cppFlexibleArrayDecaySafe || !element)
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error,
+                variable->first()->range(),
+                "cannot infer a pointer from this C flexible array member");
+            return false;
+        }
+        varInferredTypeKey = *element + "*";
+    }
+    else
+        varInferredTypeKey = varInit.typeKey;
     precomputedVarInitializer = std::move(varInit);
     return true;
 }

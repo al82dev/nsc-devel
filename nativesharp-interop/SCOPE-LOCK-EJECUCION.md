@@ -1,5 +1,15 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-010: inferencia de `var` para miembro flexible C
+
+Un inicializador `var data = v->data` de un miembro flexible C importado conserva
+`T[*]` y falla al generar LLVM. Inferir `T*` solo para la conversión segura ya
+admitida, conservando los calificadores y rechazando miembros subalineados.
+Presupuesto: `StatementAnalyzer.cpp` en `inferVariableType`, fixture flexible,
+su validador, tracking y registros Markdown. Mantener la inferencia restante,
+NSLink, NSMETA, LLVM/Clang y C: intactos. Comprobar casos directos, negativos,
+Shared y metadata en O0–O3 con construcción incremental y validación agrupada.
+
 ## T08-006: campos C de enum volatile
 
 Proyectar campos de enum C declarados volatile conservando su identidad,
