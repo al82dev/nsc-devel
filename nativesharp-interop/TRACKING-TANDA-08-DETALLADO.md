@@ -83,6 +83,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
         - [x] Comprobar ambas funciones y sus variables TLS desde dos hilos, en O0–O3. [Evidencia](registro-commits/t08-dll-homonimas-dos-funciones-hilos.md).
         - [ ] Resolver las demás formas de distinguir orígenes, incluidas llamadas con argumentos variables; comprobar caché para referencias directas a encabezados, traslado a otro equipo y las demás variantes de importación.
           - Avance: la sesión de Clang puede registrar opcionalmente una huella de tokens y decisiones del preprocesador, incluido `__has_include`; aún no constituye una clave de caché completa. [Detalle](registro-commits/t08-preprocesador-huella.md).
+          - Avance: la huella también registra decisiones de condicionales por macros que afectan directivas; el soporte de caché directa sigue pendiente. [Detalle](registro-commits/t08-huella-condicionales-macro.md).
           - [x] Resolver en el sitio de llamada una función C variádica de cada una de dos DLL TLS homónimas y comprobar seis argumentos enteros de O0 a O3. [Evidencia](registro-commits/t08-dll-homonimas-variadicas.md).
           - [ ] Completar las variantes de dirección de función y delegados, incluidos typedefs homónimos y otros modos de consumo.
             - [x] Guardar y llamar mediante punteros C variádicos de dos DLL TLS homónimas desde plantillas precompiladas, con typedefs de nombres distintos, en O0–O3 y con caché. [Evidencia](registro-commits/t08-dll-homonimas-variadicas-puntero.md).

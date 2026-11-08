@@ -38,6 +38,18 @@ public:
     void Elif(clang::SourceLocation, clang::SourceRange, ConditionValueKind value,
               clang::SourceLocation) override
     { trace_->record("elif", std::to_string(static_cast<int>(value))); }
+    void Ifdef(clang::SourceLocation, const clang::Token&, const clang::MacroDefinition& macro) override
+    { trace_->record("ifdef", macro.getMacroInfo() ? "defined" : "undefined"); }
+    void Ifndef(clang::SourceLocation, const clang::Token&, const clang::MacroDefinition& macro) override
+    { trace_->record("ifndef", macro.getMacroInfo() ? "defined" : "undefined"); }
+    void Elifdef(clang::SourceLocation, const clang::Token&, const clang::MacroDefinition& macro) override
+    { trace_->record("elifdef", macro.getMacroInfo() ? "defined" : "undefined"); }
+    void Elifdef(clang::SourceLocation, clang::SourceRange, clang::SourceLocation) override
+    { trace_->record("elifdef", "skipped"); }
+    void Elifndef(clang::SourceLocation, const clang::Token&, const clang::MacroDefinition& macro) override
+    { trace_->record("elifndef", macro.getMacroInfo() ? "defined" : "undefined"); }
+    void Elifndef(clang::SourceLocation, clang::SourceRange, clang::SourceLocation) override
+    { trace_->record("elifndef", "skipped"); }
     void HasInclude(clang::SourceLocation, llvm::StringRef name, bool angled,
                     clang::OptionalFileEntryRef file, clang::SrcMgr::CharacteristicKind) override
     {

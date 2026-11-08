@@ -998,6 +998,19 @@ int main(int argc, char** argv)
         const auto present = openTrace();
         ok &= expect(absent && repeated && present && *absent == *repeated && *absent != *present,
                      "preprocessor fingerprint is stable and captures conditional include probes");
+        { std::ofstream file(header); file <<
+            "#ifdef FEATURE\n#pragma pack(push,1)\n#else\n#pragma pack(push,4)\n#endif\n"
+            "#ifndef FEATURE\n#pragma pack(push,2)\n#else\n#pragma pack(push,8)\n#endif\n"
+            "struct Conditional { char a; int b; };\n#pragma pack(pop)\n#pragma pack(pop)\n"; }
+        const auto undefined = openTrace();
+        auto config = options(argv[1], argv[2], argv[3], CppLanguageMode::C, "");
+        config.input = CppFileInput{header};
+        config.capturePreprocessingFingerprint = true;
+        config.macros.push_back({CppMacroAction::Define, "FEATURE"});
+        auto definedSession = open(factory, std::move(config));
+        const auto defined = definedSession ? definedSession->preprocessingFingerprint() : std::nullopt;
+        ok &= expect(undefined && defined && *undefined != *defined,
+                     "preprocessor fingerprint captures ifdef and ifndef decisions affecting pragmas");
     }
     {
         namespace fs = std::filesystem;
