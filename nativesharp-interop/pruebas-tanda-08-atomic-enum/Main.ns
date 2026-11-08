@@ -1,6 +1,12 @@
 int Main()
 {
     if (state != STATE_IDLE) return 1;
+    state += 1;
+    if (state_check() != 1) return 3;
+    state -= 1;
+    if (state != STATE_IDLE) return 4;
+    state |= 1;
+    if (state_check() != 1) return 5;
     state = STATE_READY;
     if (state_check() != 1) return 2;
     return 0;

@@ -235,6 +235,55 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
         if (node->children[0]->cppAtomicAccess)
         {
             const auto* target = node->children[0].get();
+            if (const auto* enumInfo = findEnumUnderlyingInfo(nameLookup_, target->typeKey))
+            {
+                const unsigned alignment = enumInfo->width / 8;
+                const auto& rhsType = node->children[1]->typeKey;
+                if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||
+                    !alignment || target->cppAtomicAlignmentBytes != std::optional<std::size_t>{alignment} ||
+                    node->immediate != 0 || !frontend::ProjectTypeConversion::isIntegral(rhsType))
+                    return failValue(error, "C atomic enum compound operation lacks supported alignment or operand");
+                const std::string underlying(enumInfo->key);
+                const std::string promoted = enumInfo->width < 32 ? "builtin:int" : underlying;
+                const bool shift = node->operation == lexer::TokenKind::LessLess ||
+                    node->operation == lexer::TokenKind::GreaterGreater;
+                const std::string calculationType = shift ? promoted :
+                    (promoted == "builtin:ulong" || rhsType == "builtin:ulong") ? "builtin:ulong" :
+                    (promoted == "builtin:long" || rhsType == "builtin:long") ? "builtin:long" :
+                    (promoted == "builtin:uint" || rhsType == "builtin:uint") ? "builtin:uint" : "builtin:int";
+                LLVMTypeRef storage = llvmType(target->typeKey, error);
+                LLVMValueRef operand = shift ? normalizeShiftCount(value, rhsType, calculationType, error) :
+                    convert(value, rhsType, calculationType, error);
+                if (!storage || !operand) return nullptr;
+                LLVMValueRef initial = LLVMBuildLoad2(builder_, storage, address, "atomic.enum.initial");
+                LLVMSetOrdering(initial, LLVMAtomicOrderingSequentiallyConsistent);
+                LLVMSetAlignment(initial, alignment);
+                if (target->volatileAccess) LLVMSetVolatile(initial, 1);
+                LLVMBasicBlockRef preheader = LLVMGetInsertBlock(builder_);
+                LLVMBasicBlockRef retry = appendBlock("atomic.enum.retry");
+                LLVMBasicBlockRef done = appendBlock("atomic.enum.done");
+                LLVMBuildBr(builder_, retry);
+                enterBlock(retry);
+                LLVMValueRef current = LLVMBuildPhi(builder_, storage, "atomic.enum.current");
+                LLVMAddIncoming(current, &initial, &preheader, 1);
+                LLVMValueRef lhs = convert(current, underlying, calculationType, error);
+                if (!lhs) return nullptr;
+                LLVMValueRef computed = applyBinaryOperation(node->operation, lhs, operand, calculationType, error, false);
+                if (!computed) return nullptr;
+                LLVMValueRef updated = convert(computed, calculationType, underlying, error);
+                if (!updated) return nullptr;
+                LLVMValueRef pair = LLVMBuildAtomicCmpXchg(builder_, address, current, updated,
+                    LLVMAtomicOrderingSequentiallyConsistent, LLVMAtomicOrderingSequentiallyConsistent, 0);
+                LLVMSetAlignment(pair, alignment);
+                if (target->volatileAccess) LLVMSetVolatile(pair, 1);
+                LLVMValueRef observed = LLVMBuildExtractValue(builder_, pair, 0, "atomic.enum.observed");
+                LLVMValueRef success = LLVMBuildExtractValue(builder_, pair, 1, "atomic.enum.success");
+                LLVMBasicBlockRef attempt = LLVMGetInsertBlock(builder_);
+                LLVMBuildCondBr(builder_, success, done, retry);
+                LLVMAddIncoming(current, &observed, &attempt, 1);
+                enterBlock(done);
+                return node->booleanValue ? current : updated;
+            }
             if (target->typeKey.ends_with("*"))
             {
                 if (target->kind != frontend::ProjectOopMirNodeKind::NamespaceStateAddress ||

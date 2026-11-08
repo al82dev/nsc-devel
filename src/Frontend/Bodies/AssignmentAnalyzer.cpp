@@ -6,6 +6,7 @@
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
+#include "nativesharp/Frontend/CppImportedEnumNumeric.h"
 #include "nativesharp/Frontend/IntegerLiteralTyping.h"
 #include "nativesharp/Frontend/ProjectConversionClassifier.h"
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
@@ -2076,6 +2077,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
         ProjectTypeConversion::isIntegral(right.typeKey) &&
         left.typeKey != "builtin:bool" && right.typeKey != "builtin:bool";
     bool narrowCppAtomic = false;
+    bool cAtomicEnum = false;
     bool cVolatileBoolArrayBitwise = false;
     const auto* target = expression->first();
     const bool boolBitwise = right.typeKey == "builtin:bool" &&
@@ -2110,7 +2112,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
                                       states[ordinal].declaredTypeKey == "builtin:bool");
         }
     }
-    if (namespaceFunctionModel_ && ProjectTypeConversion::isIntegral(left.typeKey) && left.typeKey != "builtin:bool")
+    if (namespaceFunctionModel_ && (ProjectTypeConversion::isIntegral(left.typeKey) ||
+        cppImportedCEnumUnderlying(nameLookup_, left.typeKey)) && left.typeKey != "builtin:bool")
     {
         const auto* binding = recordedNameBinding(expression->first(), methodMemberOrdinal);
         if (binding && binding->kind == MethodNameBindingKind::NamespaceState &&
@@ -2118,16 +2121,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
         {
             const auto ordinal = binding->candidateMemberOrdinals.front();
             const auto states = namespaceFunctionModel_->states();
-            narrowCppAtomic = ordinal < states.size() && states[ordinal].isCppExternal &&
+            const bool supported = ordinal < states.size() && states[ordinal].isCppExternal &&
                 states[ordinal].cppAtomicStorage && ProjectTypeConversion::isIntegral(right.typeKey) &&
                 right.typeKey != "builtin:bool";
+            cAtomicEnum = supported && cppImportedCEnumUnderlying(nameLookup_, left.typeKey).has_value();
+            narrowCppAtomic = supported && !cAtomicEnum;
         }
     }
     const std::optional<std::string> common = sameEnumBitwise || shiftAssignment
         ? std::optional<std::string>(left.typeKey)
         : ProjectTypeConversion::commonNumericType(
               left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
-    if (!common.has_value() && !narrowCppAtomic && !cVolatileBoolArrayBitwise)
+    if (!common.has_value() && !narrowCppAtomic && !cAtomicEnum && !cVolatileBoolArrayBitwise)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
@@ -2138,7 +2143,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
     }
     const ProjectImplicitConversion narrowing =
         classifyImplicit(right.typeKey, left.typeKey, right.integerConstant);
-    if (!shiftAssignment && !narrowing.exists() && !narrowCppAtomic && !cVolatileBoolArrayBitwise)
+    if (!shiftAssignment && !narrowing.exists() && !narrowCppAtomic && !cAtomicEnum && !cVolatileBoolArrayBitwise)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidConversion,
