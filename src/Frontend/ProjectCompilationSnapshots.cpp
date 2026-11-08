@@ -113,6 +113,13 @@ bool provenLocal(const TemplateParents& parents, const CppFunctionDemand& demand
             // Pattern identifiers declare locals or discards; only the initializer is an expression.
             return true;
         }
+        else if (parent->kind() == ast::AstNodeKind::CatchClause &&
+                 (child == parent->first() || child == parent->second()) &&
+                 parent->text() == demand.writtenName)
+        {
+            // The exception variable is visible in both the handler and its filter.
+            return true;
+        }
         else if ((parent->kind() == ast::AstNodeKind::MethodDeclaration ||
                   parent->kind() == ast::AstNodeKind::FunctionDeclaration ||
                   parent->kind() == ast::AstNodeKind::LambdaExpression) &&
