@@ -257,6 +257,15 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     }
                     return false;
                 };
+                const auto reconciliationDetails = [&]() {
+                    std::string details;
+                    for (const auto& type : cppImportedTypes_)
+                        if (type.identity.name() == syntax->baseName())
+                            details += " [" + std::to_string(type.projectOrdinal) + ":" + type.identity.key() +
+                                ",usr=" + type.clangUsr.value_or("<none>") + ",target=" +
+                                type.reconciledIdentityKey.value_or("<none>") + "]";
+                    return details;
+                };
                 if (selected && (selectedName != qualified ||
                     (selected->projectOrdinal != alias.projectOrdinal && !reconciledRecordAlias()) ||
                     selected->targetTriple != alias.targetTriple ||
@@ -269,7 +278,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
                                   alias.declaration.underlyingType.canonicalSpelling + "'; USRs '" +
                                   selected->declaration.clangUsr.value_or("<none>") + "','" +
                                   alias.declaration.clangUsr.value_or("<none>") + "'; reconciled=" +
-                                  (reconciledRecordAlias() ? "yes" : "no") + ")");
+                                  (reconciledRecordAlias() ? "yes" : "no") + ")" + reconciliationDetails());
                 const auto& usr = alias.declaration.clangUsr;
                 const auto recordIdentity = cppAliasRecordType(alias.declaration.underlyingType);
                 const auto enumIdentity = cppAliasEnumType(alias.declaration.underlyingType);
