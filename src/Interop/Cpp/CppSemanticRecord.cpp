@@ -1045,6 +1045,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     const auto* graph = compilation.projectGraph();
     if (!lookup || !graph) { error = "C record metadata requires a compiled project lookup"; return false; }
     metadata_detail::CDependencyCatalog dependencies;
+    std::vector<frontend::NamespaceFunctionSymbol> projectedFunctions;
     if (metadata.formatMinor >= 46 && !metadata.genericTemplates.empty())
     {
         auto aliasesResult = collectCppSemanticTypeAliases(*graph, compilation.cppProjectSessions());
@@ -1059,7 +1060,6 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         auto& functions = std::get<std::vector<CppSemanticInventoryEntry>>(functionsResult);
         std::vector<frontend::CppFunctionDemand> functionDemands;
         for (const auto& item : compilation.cppTemplateDemands()) functionDemands.push_back(item.demand);
-        std::vector<frontend::NamespaceFunctionSymbol> projectedFunctions;
         std::vector<CppDeferredFunctionCandidate> deferredFunctions;
         if (!provideExperimentalCppFunctionsWithRecords(*graph, compilation.cppProjectSessions(), *lookup,
                 functionDemands, projectedFunctions, deferredFunctions, error)) return false;
@@ -1131,6 +1131,10 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         if (!visit(exported.returnTypeKey, 0)) return false;
         for (const auto& key : exported.parameterTypeKeys) if (!visit(key, 0)) return false;
     }
+    for (const auto& dependency : dependencies.functions)
+        for (const auto& function : projectedFunctions)
+            if (function.moduleName == dependency.moduleName && function.mangledName == dependency.linkSymbol &&
+                function.cppClangUsr == dependency.declaration.clangUsr && !visitCallable(function)) return false;
     if (seeds.empty() && enumSeeds.empty() && dependencies.aliases.empty() && dependencies.functions.empty() &&
         dependencies.globals.empty())
     { output.clear(); error.clear(); return true; }
