@@ -1,0 +1,9 @@
+public class Host
+{
+    public static export extern C int HostCallback(int value) { return value + 7; }
+}
+
+int Main()
+{
+    return call_host(35) == 42 ? 0 : 1;
+}
