@@ -5407,6 +5407,11 @@ La observación confirmó que el índice final omitía el enum vivo ya conciliad
 cuando la vinculación seleccionaba el precompilado. Conservar también el enum
 vivo en esa selección, solo si existe conciliación verificada, y mantener las
 comprobaciones de errores diferidos y colisiones.
+Para conservar evidencia de origen de enums C, capturar en el snapshot de
+Clang la ruta física, SHA-256 del buffer analizado y desplazamiento; ubicaciones
+de macro o no disponibles permanecen sin procedencia. Archivos adicionales:
+`CppEnumDeclaration.h` y `ClangSession.cpp` de NSC. El formato persistente y
+la comparación aún no cambian en esta etapa; validación agrupada posterior.
 
 Enmienda: la primera implementación causó conflicto entre proyectos al
 coexistir el header y la metadata. Se permite modificar

@@ -187,24 +187,25 @@ CppType describeType(clang::QualType type, clang::ASTContext& context, unsigned 
 }
 
 void collectEnums(const clang::DeclContext& context, clang::ASTContext& astContext,
-                  std::set<const clang::EnumDecl*>& seen, std::vector<CppEnumDeclaration>& result)
+                  std::set<const clang::EnumDecl*>& seen, std::vector<CppEnumDeclaration>& result,
+                  std::map<unsigned, std::string>& bufferHashes)
 {
     for (const clang::Decl* declaration : context.decls())
     {
         if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
         {
-            collectEnums(*nested, astContext, seen, result);
+            collectEnums(*nested, astContext, seen, result, bufferHashes);
             continue;
         }
         if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
         {
-            collectEnums(*linkage, astContext, seen, result);
+            collectEnums(*linkage, astContext, seen, result, bufferHashes);
             continue;
         }
         if (!astContext.getLangOpts().CPlusPlus)
             if (const auto* record = llvm::dyn_cast<clang::RecordDecl>(declaration))
             {
-                collectEnums(*record, astContext, seen, result);
+                collectEnums(*record, astContext, seen, result, bufferHashes);
                 continue;
             }
         const auto* enumeration = llvm::dyn_cast<clang::EnumDecl>(declaration);
@@ -233,6 +234,26 @@ void collectEnums(const clang::DeclContext& context, clang::ASTContext& astConte
         const auto location = astContext.getSourceManager().getPresumedLoc(enumeration->getLocation());
         if (location.isValid())
             value.location = CppSourcePoint{pathFromUtf8(location.getFilename()), location.getLine(), location.getColumn()};
+        const auto physical = enumeration->getLocation();
+        if (physical.isFileID())
+        {
+            const auto& source = astContext.getSourceManager();
+            const auto filename = source.getFilename(physical);
+            const auto file = source.getFileID(physical);
+            bool invalid = false;
+            const auto contents = source.getBufferData(file, &invalid);
+            if (!invalid && !filename.empty() && filename.front() != '<')
+            {
+                auto [position, inserted] = bufferHashes.try_emplace(file.getHashValue());
+                if (inserted)
+                {
+                    const auto* data = reinterpret_cast<const std::uint8_t*>(contents.data());
+                    position->second = basic::sha256Hex(basic::sha256(std::span(data, contents.size())));
+                }
+                value.sourceProvenance = CppEnumDeclaration::SourceProvenance{
+                    pathFromUtf8(filename.str().c_str()), position->second, source.getFileOffset(physical)};
+            }
+        }
         if (value.complete)
             for (const auto* enumerator : enumeration->enumerators())
             {
@@ -844,7 +865,8 @@ public:
         auto& context = ast_->getASTContext();
         std::vector<CppEnumDeclaration> result;
         std::set<const clang::EnumDecl*> seen;
-        collectEnums(*context.getTranslationUnitDecl(), context, seen, result);
+        std::map<unsigned, std::string> bufferHashes;
+        collectEnums(*context.getTranslationUnitDecl(), context, seen, result, bufferHashes);
         return result;
     }
     std::optional<std::vector<CppImplicitLifetimeDeclaration>> implicitLifetimeDeclarations(

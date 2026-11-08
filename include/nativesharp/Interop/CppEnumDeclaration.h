@@ -25,6 +25,13 @@ struct CppEnumeratorDeclaration
 
 struct CppEnumDeclaration
 {
+    struct SourceProvenance
+    {
+        std::filesystem::path sourcePath;
+        std::string bufferSha256;
+        std::uint32_t byteOffset = 0;
+        bool operator==(const SourceProvenance&) const = default;
+    };
     // Anonymous enums have empty names but may still contain usable constants.
     std::string name;
     std::string qualifiedName;
@@ -37,5 +44,7 @@ struct CppEnumDeclaration
     std::optional<std::uint64_t> sizeBits;
     std::optional<std::uint64_t> alignmentBits;
     std::optional<std::string> clangUsr;
+    // From Clang's parsed buffer; unavailable for macro locations.
+    std::optional<SourceProvenance> sourceProvenance;
 };
 }
