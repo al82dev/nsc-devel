@@ -848,6 +848,7 @@ bool ProjectMethodBodyModel::analyzePointerArithmetic(
         const ExpressionResult& sourcePointer = leftIsPointer ? left : right;
         result.pointerPointeeReadonly = sourcePointer.pointerPointeeReadonly;
         result.pointerPointeeVolatile = sourcePointer.pointerPointeeVolatile;
+        result.cppVolatilePointeeContract = sourcePointer.cppVolatilePointeeContract;
         result.pointerNullable = sourcePointer.pointerNullable;
         result.pointerHasProvenance = sourcePointer.pointerHasProvenance;
         // An arbitrary element offset preserves provenance and address space, but only
