@@ -14,6 +14,11 @@ namespace NativeSharp.Core.Internal
             return AllocateLayout(size, alignment);
         }
 
+        public static long[] AllocateValue<T>()
+        {
+            return AllocateLayout((long)sizeof(T), (long)alignof(T));
+        }
+
         // The separated calculation permits validation without attempting an enormous allocation.
         public static long[] AllocateLayout(long size, long alignment)
         {
@@ -31,13 +36,32 @@ namespace NativeSharp.Core.Internal
 
         public static T Construct<T>(long[] block) where T : class, new()
         {
-            if (block == null || block.Length < 8) return null;
             unsafe("shared control block placement")
             {
                 long size = SharedStorage.InstanceSize<T>(null);
                 long alignment = SharedStorage.InstanceAlignment<T>(null);
-                if (size <= 0l || alignment <= 0l || alignment > 2147483647l ||
-                    (alignment & (alignment - 1l)) != 0l) return null;
+                byte* storage = PayloadAddress(block, size, alignment);
+                if (storage == null) return null;
+                return new ((T*)storage) T();
+            }
+        }
+
+        public static T* ConstructValue<T>(long[] block) where T : new()
+        {
+            unsafe("shared control block placement")
+            {
+                byte* storage = PayloadAddress(block, (long)sizeof(T), (long)alignof(T));
+                if (storage == null) return null;
+                return new ((T*)storage) T();
+            }
+        }
+
+        private static byte* PayloadAddress(long[] block, long size, long alignment)
+        {
+            if (block == null || block.Length < 8 || size <= 0l || alignment <= 0l ||
+                alignment > 2147483647l || (alignment & (alignment - 1l)) != 0l) return null;
+            unsafe("shared control block placement")
+            {
                 long* address = &block[0];
                 long start = (long)address + HeaderBytes();
                 long remainder = start % alignment;
@@ -45,7 +69,7 @@ namespace NativeSharp.Core.Internal
                 long offset = start - (long)address;
                 long available = (long)block.Length * 8l;
                 if (offset < HeaderBytes() || offset > available || size > available - offset) return null;
-                return new ((T*)start) T();
+                return (byte*)start;
             }
         }
     }

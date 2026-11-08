@@ -16,6 +16,7 @@ def main():
     source = '''using NativeSharp.Core.Internal;
 using NativeSharp.Core.Threading;
 class Payload { public static int Drops; public align(32) long A; public long B; ~Payload() { Drops = Drops + 1; } }
+struct Value { public static int Drops; public align(32) long A; ~Value() { Drops = Drops + 1; } }
 class Program {
  private static COUNTS* globalCounts; private static long failures; private static long ready; private static long last;
  public static void Work() { unsafe("shared counts") { int i = 0; while (i < 50000) {
@@ -41,6 +42,12 @@ class Program {
       SharedControlStorage.AllocateLayout(9223372036854775807l, 8l) != null) return 13;
   long[] tiny = SharedControlStorage.AllocateLayout(1l, 1l);
   if (tiny == null || tiny.Length != 9) return 14; delete tiny;
+  if (SharedControlStorage.ConstructValue<Value>(null) != null) return 15;
+  long[] valueBlock = SharedControlStorage.AllocateValue<Value>(); if (valueBlock == null) return 16;
+  Value* value = SharedControlStorage.ConstructValue<Value>(valueBlock); if (value == null) return 17;
+  if ((long)&(*value).A % 32l != 0l) return 18; (*value).A = 42l;
+  if ((*value).A != 42l) return 19; destroy value;
+  if (Value.Drops != 1) return 20; delete valueBlock;
   if (SharedControlStorage.Construct<Payload>(null) != null) return 8;
   long[] shortBlock = new long[8];
   if (SharedControlStorage.Construct<Payload>(shortBlock) != null) return 9;
