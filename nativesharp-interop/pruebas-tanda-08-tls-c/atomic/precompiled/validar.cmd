@@ -32,10 +32,7 @@ for %%O in (0 1 2 3) do (
   move /y "%DEST%\Api.h" "%DEST%\Api.h.hidden" >nul
   if errorlevel 1 exit /b 1
   call :consumer %%O
-  if errorlevel 1 (
-    move /y "%DEST%\Api.h.hidden" "%DEST%\Api.h" >nul
-    exit /b 1
-  )
+  if errorlevel 1 goto :failure_restore
   move /y "%DEST%\Api.h.hidden" "%DEST%\Api.h" >nul
   if errorlevel 1 exit /b 1
   echo Biblioteca TLS atomica precompilada y DLL O%%O correctas.
@@ -57,6 +54,9 @@ if errorlevel 1 goto :failure
 "%DEST%\dll-consumer-O%~1.exe"
 if errorlevel 1 exit /b 1
 exit /b 0
+:failure_restore
+if exist "%DEST%\Api.h.hidden" move /y "%DEST%\Api.h.hidden" "%DEST%\Api.h" >nul
+goto :failure
 :failure
 type "%DEST%\*.log"
 exit /b 1
