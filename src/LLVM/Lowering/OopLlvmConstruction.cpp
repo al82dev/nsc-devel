@@ -639,6 +639,99 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                 constructorArguments.end(), orderedArguments.begin(), orderedArguments.end());
             releaseTransferredArguments(node);
             LLVMBasicBlockRef allocatorFailureCleanup = nullptr;
+            // Raw shared placement owns the object lifetime but borrows the storage. For the
+            // restricted shape below, every owned reference field starts null and may be cleaned
+            // on constructor unwind without invoking the incomplete object's own destructor.
+            // Nontrivial value fields and base subobjects require separate liveness tracking.
+            bool constructorThrows = false;
+            for (const auto& function : mirModel_.functions())
+                if (function.mangledName == node->calleeName)
+                {
+                    constructorThrows = !function.errorTypeKey.empty();
+                    break;
+                }
+            bool sharedThrowingConstruction = false;
+            if (currentMirFunction_ != nullptr && memberModel_ != nullptr &&
+                currentMirFunction_->memberOrdinal < memberModel_->members().size() &&
+                currentMirFunction_->declaringTypeOrdinal < nameLookup_.namedTypes().size())
+            {
+                const auto& currentMember = memberModel_->members()[currentMirFunction_->memberOrdinal];
+                const auto& currentType = nameLookup_.namedTypes()[currentMirFunction_->declaringTypeOrdinal];
+                sharedThrowingConstruction =
+                    currentType.identity.fullyQualifiedName() == "NativeSharp.Core.Internal.SharedControlStorage" &&
+                    (currentMember.name.starts_with("ConstructThrowing__g") ||
+                     currentMember.name.starts_with("ConstructValueThrowing__g"));
+            }
+            bool safePartialCleanup = false;
+            if (constructorThrows && node->zeroInitialize && memberModel_ != nullptr && !targetType.isPrecompiled &&
+                !node->allocatorContextLocalOrdinal.has_value())
+            {
+                const std::vector<frontend::ObjectFieldLayout>* fields = nullptr;
+                bool simple = false;
+                if (targetType.kind == frontend::NamedTypeDeclarationKind::Class)
+                {
+                    for (const auto& layout : mirModel_.classLayouts())
+                        if (layout.typeOrdinal == *node->targetTypeOrdinal)
+                        {
+                            fields = &layout.fields;
+                            simple = !layout.baseTypeOrdinal.has_value();
+                            break;
+                        }
+                }
+                else if (targetType.kind == frontend::NamedTypeDeclarationKind::Struct)
+                {
+                    for (const auto& layout : mirModel_.structLayouts())
+                        if (layout.typeOrdinal == *node->targetTypeOrdinal)
+                        {
+                            fields = &layout.fields;
+                            simple = !layout.isUnion && !layout.hasExplicitFieldOffsets;
+                            break;
+                        }
+                }
+                std::vector<const frontend::ObjectFieldLayout*> ownedFields;
+                if (fields != nullptr && simple)
+                {
+                    for (const auto& field : *fields)
+                    {
+                        if (field.memberOrdinal >= memberModel_->members().size()) { simple = false; break; }
+                        const auto& symbol = memberModel_->members()[field.memberOrdinal];
+                        const bool ownedPointer = symbol.declaredOwnership == sema::OwnershipKind::Owned &&
+                            requiresOwnedDestruction(field.typeKey);
+                        if (ownedPointer) ownedFields.push_back(&field);
+                        else if (memberModel_->typeRequiresValueDrop(field.typeKey)) { simple = false; break; }
+                    }
+                }
+                safePartialCleanup = fields != nullptr && simple;
+                if (simple && !ownedFields.empty())
+                {
+                    LLVMBasicBlockRef outerUnwind = buildCurrentUnwindDestination(error);
+                    if (!error.empty()) return false;
+                    LLVMBasicBlockRef sourceBlock = LLVMGetInsertBlock(builder_);
+                    allocatorFailureCleanup = appendBlock("placement.fields.failure");
+                    enterBlock(allocatorFailureCleanup);
+                    LLVMValueRef cleanupPad = LLVMBuildCleanupPad(
+                        builder_, activeFuncletPad(), nullptr, 0, "placement.fields.failure.pad");
+                    if (cleanupPad == nullptr) return fail(error, "placement field cleanup has no pad");
+                    funcletStack_.push_back(FuncletContext{
+                        cleanupPad, FuncletKind::Cleanup, activeCleanupRegions_.size(), nullptr, outerUnwind});
+                    LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                    for (auto it = ownedFields.rbegin(); it != ownedFields.rend(); ++it)
+                    {
+                        const auto& field = **it;
+                        LLVMValueRef fieldAddress = byteOffset(storage, field.offset, "placement.failure.field.addr");
+                        LLVMValueRef value = LLVMBuildLoad2(builder_, ptr, fieldAddress, "placement.failure.field.load");
+                        LLVMBuildStore(builder_, LLVMConstNull(ptr), fieldAddress);
+                        if (!emitOwnedPointerDestroy(value, field.typeKey, "placement.failure.field", error))
+                            return false;
+                    }
+                    LLVMBuildCleanupRet(builder_, cleanupPad, outerUnwind);
+                    funcletStack_.pop_back();
+                    enterBlock(sourceBlock);
+                    LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+                }
+            }
+            if (sharedThrowingConstruction && constructorThrows && !safePartialCleanup)
+                return fail(error, "shared throwing construction cannot safely clean this payload shape");
             if (targetType.kind == frontend::NamedTypeDeclarationKind::Class &&
                 node->allocatorContextLocalOrdinal.has_value() &&
                 node->allocatorDeallocateMemberOrdinal.has_value() &&

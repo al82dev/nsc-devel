@@ -1,5 +1,19 @@
 namespace NativeSharp.Core.Internal
 {
+    internal struct SharedClassCreation<T> where T : class
+    {
+        public long[] Block;
+        public T Value;
+        public SharedClassCreation(long[] block, T value) { Block = block; Value = value; }
+    }
+
+    internal struct SharedValueCreation<T>
+    {
+        public long[] Block;
+        public T* Value;
+        public SharedValueCreation(long[] block, T* value) { Block = block; Value = value; }
+    }
+
     // Internal storage primitive. The caller owns the returned array and is responsible for
     // destroying a successfully constructed payload before deleting the array. The first eight
     // words are reserved for the future control block; this type does not publish pointer APIs.
@@ -54,6 +68,60 @@ namespace NativeSharp.Core.Internal
                 if (storage == null) return null;
                 return new ((T*)storage) T();
             }
+        }
+
+        public static T ConstructThrowing<T>(long[] block) throws NativeSharp.Core.Exception where T : class, new()
+        {
+            unsafe("shared control block placement")
+            {
+                byte* storage = PayloadAddress(block, SharedStorage.InstanceSize<T>(null),
+                                               SharedStorage.InstanceAlignment<T>(null));
+                if (storage == null) return null;
+                return new ((T*)storage) T();
+            }
+        }
+
+        public static T* ConstructValueThrowing<T>(long[] block) throws NativeSharp.Core.Exception where T : new()
+        {
+            unsafe("shared control block placement")
+            {
+                byte* storage = PayloadAddress(block, (long)sizeof(T), (long)alignof(T));
+                if (storage == null) return null;
+                return new ((T*)storage) T();
+            }
+        }
+
+        // On failure the finally block releases the array; on success the caller takes it.
+        public static SharedClassCreation<T> CreateThrowing<T>() throws NativeSharp.Core.Exception where T : class, new()
+        {
+            long[] block = Allocate<T>();
+            if (block == null) return new SharedClassCreation<T>(null, null);
+            bool transferred = false;
+            try
+            {
+                T value = ConstructThrowing<T>(block);
+                if (value == null) return new SharedClassCreation<T>(null, null);
+                SharedClassCreation<T> result = new SharedClassCreation<T>(block, value);
+                transferred = true;
+                return result;
+            }
+            finally { if (!transferred) delete[] block; }
+        }
+
+        public static SharedValueCreation<T> CreateValueThrowing<T>() throws NativeSharp.Core.Exception where T : new()
+        {
+            long[] block = AllocateValue<T>();
+            if (block == null) return new SharedValueCreation<T>(null, null);
+            bool transferred = false;
+            try
+            {
+                T* value = ConstructValueThrowing<T>(block);
+                if (value == null) return new SharedValueCreation<T>(null, null);
+                SharedValueCreation<T> result = new SharedValueCreation<T>(block, value);
+                transferred = true;
+                return result;
+            }
+            finally { if (!transferred) delete[] block; }
         }
 
         private static byte* PayloadAddress(long[] block, long size, long alignment)

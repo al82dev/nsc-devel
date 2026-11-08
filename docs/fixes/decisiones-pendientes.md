@@ -38,9 +38,11 @@ decisiones posteriores indicadas explícitamente abajo.
   manifiesto de `src/Language/SmartPointerSemantics.cpp` describe familias,
   operaciones, destrucción, módulo y concurrencia; `lib/NativeSharp.Core.Threading/ReferenceCounting.ns`
   implementa únicamente estado de contadores y hooks, no esas familias.
-- Decisión adoptada: el usuario autorizó diseñar e implementar las cuatro
-  familias. El trabajo de implementación y validación sigue pendiente. No se
-  debe confundir un manifiesto o contadores con una implementación.
+- Decisiones adoptadas: el usuario autorizó las cuatro familias para clases y
+  estructuras, y una fábrica adicional que propague excepciones y libere el
+  bloque si falla. El trabajo sigue pendiente: las variantes internas de
+  excepción rechazan por ahora formas de payload cuya limpieza no está
+  acreditada. Véase `diseno-punteros-y-asan.md`.
 
 ## impl para struct y métodos genéricos en tipos genéricos
 

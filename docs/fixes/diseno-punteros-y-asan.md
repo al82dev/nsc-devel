@@ -12,6 +12,8 @@ módulo productor mientras exista el bloque de control. `Rc` y `WeakRc` son
 locales; `Arc` y `WeakArc` pueden cruzar hilos solo cuando el payload satisface
 Send/Sync. Las familias y fábricas pertenecen a `NativeSharp.Core`, que es el
 namespace usado por la reproducción, y deben respetar el contrato publicado.
+El usuario aprobó admitir clases y estructuras y una fábrica adicional que
+propague excepciones y libere el bloque si la construcción falla.
 
 Cada bloque conserva contadores fuertes y débiles, origen del allocator,
 destructor, liberador y procedencia del módulo. El último fuerte destruye el
@@ -51,6 +53,17 @@ La búsqueda de `validateSmartPointerOperation` solo encuentra su definición
 en `src/Language/SmartPointerSemantics.cpp`; no se ha encontrado una llamada
 desde el frontend. El manifiesto de reglas, por tanto, no demuestra que hoy se
 rechacen copias implícitas o cruces de hilo indebidos en programas reales.
+El contrato T13-F08 también describe `ModuleLifetimeRegistry`, pero la búsqueda
+del símbolo en `src`, `include` y `lib` encuentra únicamente su definición en
+`src/Language/CrossModuleLifetime.cpp` y su interfaz en `include`; esto no
+acredita un registro de módulos conectado al runtime de los programas.
+En Windows, [GetModuleHandleEx](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulehandleexa)
+puede adquirir una referencia desde una dirección del módulo; la opción PIN
+mantiene el módulo hasta terminar el proceso. [FreeLibrary](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-freelibrary)
+puede descargarlo al llegar a cero. Estos hechos identifican piezas posibles,
+pero no demuestran una solución segura para liberar el último control block
+mientras todavía se ejecuta código del módulo. No se ha implementado ni
+validado esa integración.
 
 En `A:/nsc-fixes-evidencia/smart-pointer-probe/` un prototipo descartable de
 struct genérico con destructor poseyó un payload y ejecutó con salida 42; una
@@ -127,8 +140,23 @@ Una prueba de constructor con `throws NativeSharp.Core.Exception` no llegó a
 ejecución: la especialización de `SharedControlStorage.Construct<T>` lo
 rechazó porque el método genérico no declara el efecto
 (`shared-constructor-failure-probe/results.json`). Ese rechazo no demuestra
-limpieza durante una excepción; queda por resolver la propagación del efecto y
-su cleanup sin imponer silenciosamente otro contrato a todos los constructores.
+limpieza durante una excepción. Las variantes internas `CreateThrowing` y
+`CreateValueThrowing` declaran el efecto y liberan el arreglo con `delete[]`
+si la construcción no se transfiere. Para placement inicializado en cero con
+campos owned de referencia, sin base ni campos de valor con drop, el compilador
+destruye los campos inicializados en orden inverso al fallar el constructor,
+sin llamar el destructor del objeto incompleto. La prueba dirigida verifica
+clases y estructuras, excepción antes y después de inicializar campos, orden,
+constructores correctos y liberación en el cleanup del IR; pasó O0/O2
+(`shared-throwing-tests.log`). Las formas con base, valores no triviales,
+layout explícito o productor precompilado se rechazan en esta ruta interna
+hasta acreditar su cleanup; esto no completa la fábrica pública.
+La construcción ordinaria de los ejemplos `Bad` y `BadValue` también dejó
+vivos los campos en O0/O2 (`shared-throwing-normal-compare/results.json`);
+esta corrección se limita a placement. La prueba histórica TL-LANG-472 no
+distingue destrucción al asignar de destrucción al lanzar: una reproducción
+registra dos drops antes y dos después (`constructor-drop-existing-probe/results.json`),
+por lo que no demuestra por sí sola cleanup durante la excepción.
 Para un payload `struct` con destructor, la construcción placement devuelve
 `Payload*`. En dos pruebas separadas, `delete *slot` y `delete slot[0]`
 compilaron en O0/O2, pero el contador del destructor siguió en cero y el
@@ -141,6 +169,23 @@ destructor de la estructura, destrucción de un campo owned, puntero nulo y
 reutilización del bloque; también pasó la prueba existente de item 319
 (`shared-destroy-test.log`, `shared-item319-test.log`). Estos componentes
 internos no declaran todavía soporte de payloads `struct` en familias públicas.
+Una especialización controlada distingue una fábrica para clase de otra para
+valor con el mismo nombre (`shared-factory-specialize-probe/results.json`);
+sin `specialize`, el compilador rechaza esa familia
+(`shared-factory-overload-probe/results.json`). Un propietario experimental
+con una ranura `T*` común construye y destruye una clase y una estructura en
+O0/O2 (`shared-unified-owner-probe/results.json`), pero su retorno `ref[this] T`
+es inseguro como API: el compilador acepta asignar otra referencia de clase a
+esa ranura (`shared-unified-owner-mutation-probe/results.json`), lo que puede
+romper la propiedad del bloque. Esa variante solo se analizó, no se ejecutó.
+La escritura `in[this] T` como retorno se rechaza en parsing
+(`shared-unified-owner-in-probe/results.json`); esto no prueba que no exista
+otra forma segura. La representación experimental no se publicó.
+El lenguaje también admite `ref readonly T`: un prototipo posterior leyó una
+clase y una estructura en O0/O2 y rechazó sustituir la ranura
+(`shared-unified-owner-readonly-probe/results.json`,
+`shared-unified-owner-readonly-mutation-probe/results.json`). No se han
+acreditado todavía todas sus garantías de préstamo o concurrencia.
 `nsc.sdk.shared-control-storage` añade una regresión dirigida que sitúa los
 contadores locales o atómicos junto al payload en la misma reserva; comprueba
 la destrucción y la expiración y, para la variante atómica, 200 000 ciclos de
@@ -149,6 +194,10 @@ retención y liberación en cuatro hilos. Pasó con ejecución Windows en O0/O2
 última liberación y una retención: comprueba que exista exactamente un último
 fuerte y que la retención falle después de llegar a cero. El análisis en otros sistemas no implica que el
 ejecutable se haya ejecutado. No demuestra exhaustivamente los intercalados.
+Los primeros prototipos usaron `delete` con un arreglo, que no lo libera; por
+ello sus salidas no prueban desasignación. La prueba del SDK y las variantes
+internas actuales usan `delete[]`; en la ruta excepcional el IR contiene la
+llamada de liberación. No se afirma que ASan haya medido ese heap.
 Un experimento separado (`shared-heap-lifecycle-probe/results.json`) coloca
 contadores y un payload de clase en un arreglo de tamaño fijo; en O0 y O2
 ejecuta clonación, destrucción del último fuerte y consulta del débil expirado,
@@ -168,9 +217,9 @@ ya distingue destrucción object-only, pero aún no existe una fábrica comparti
 que la conecte con un bloque de control de vida independiente. Evidencia:
 `src/LLVM/Lowering/OopLlvmTypesAbiAttributes.cpp` y
 `src/LLVM/Lowering/OopLlvmConstruction.cpp`.
-Estos prototipos no son una implementación pública: no se han probado
-overflow, upgrade, Arc, sincronización, pin del módulo ni O2, y la API de
-acceso debe resolver explícitamente la vida del payload antes de publicarse.
+Estos prototipos no son una implementación pública: las comprobaciones de
+contadores y upgrade descritas arriba no demuestran la familia Arc completa,
+el pin del módulo ni la seguridad general del acceso al payload.
 
 ## AddressSanitizer
 

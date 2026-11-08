@@ -15,6 +15,7 @@ def main():
     compiler, storage_source, control_source, counts_source, thread_source = map(Path, sys.argv[1:6])
     source = '''using NativeSharp.Core.Internal;
 using NativeSharp.Core.Threading;
+namespace NativeSharp.Core { public class Exception { } }
 class Payload { public static int Drops; public align(32) long A; public long B; ~Payload() { Drops = Drops + 1; } }
 struct Value { public static int Drops; public align(32) long A; ~Value() { Drops = Drops + 1; } }
 class Program {
@@ -41,17 +42,17 @@ class Program {
       SharedControlStorage.AllocateLayout(17179869176l, 8l) != null ||
       SharedControlStorage.AllocateLayout(9223372036854775807l, 8l) != null) return 13;
   long[] tiny = SharedControlStorage.AllocateLayout(1l, 1l);
-  if (tiny == null || tiny.Length != 9) return 14; delete tiny;
+  if (tiny == null || tiny.Length != 9) return 14; delete[] tiny;
   if (SharedControlStorage.ConstructValue<Value>(null) != null) return 15;
   long[] valueBlock = SharedControlStorage.AllocateValue<Value>(); if (valueBlock == null) return 16;
   Value* value = SharedControlStorage.ConstructValue<Value>(valueBlock); if (value == null) return 17;
   if ((long)&(*value).A % 32l != 0l) return 18; (*value).A = 42l;
   if ((*value).A != 42l) return 19; destroy value;
-  if (Value.Drops != 1) return 20; delete valueBlock;
+  if (Value.Drops != 1) return 20; delete[] valueBlock;
   if (SharedControlStorage.Construct<Payload>(null) != null) return 8;
   long[] shortBlock = new long[8];
   if (SharedControlStorage.Construct<Payload>(shortBlock) != null) return 9;
-  delete shortBlock;
+  delete[] shortBlock;
   long[] block = SharedControlStorage.Allocate<Payload>(); if (block == null) return 10;
   long* baseAddress = &block[0]; COUNTS* counts = (COUNTS*)baseAddress;
   *counts = new COUNTS(1l, 1l); THREAD_TEST
@@ -63,7 +64,7 @@ class Program {
   if ((*counts).ReleaseStrong() != 0 || (*counts).ReleaseStrong() != 1) return 3;
   SharedStorage.DestroyObject<Payload>(item); if (Payload.Drops != 1 || (*counts).TryRetainStrong()) return 4;
   if ((*counts).ReleaseWeak() != 0 || (*counts).ReleaseWeak() != 1) return 5;
-  delete block; return 42;
+  delete[] block; return 42;
  } }
 }
 '''
