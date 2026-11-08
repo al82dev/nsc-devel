@@ -1060,6 +1060,12 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         const auto functionCandidates = selectCppPublishedTemplateFunctions(compilation, metadata, functions);
         if (!captureCppTemplateFunctionCandidates(*graph, functionCandidates, functions, dependencies.functions, error))
             return false;
+        auto globalsResult = collectCppSemanticGlobals(*graph, compilation.cppProjectSessions());
+        if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&globalsResult))
+        { error = failure->message; return false; }
+        const auto& globals = std::get<std::vector<CppSemanticGlobalEntry>>(globalsResult);
+        if (!captureCppTemplateGlobalCandidates(compilation, metadata, globals, dependencies.globals, error))
+            return false;
     }
     std::map<std::size_t, std::set<std::string>> seeds;
     std::map<std::size_t, std::set<std::string>> enumSeeds;
@@ -1112,7 +1118,8 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         if (!visit(exported.returnTypeKey, 0)) return false;
         for (const auto& key : exported.parameterTypeKeys) if (!visit(key, 0)) return false;
     }
-    if (seeds.empty() && enumSeeds.empty() && dependencies.aliases.empty() && dependencies.functions.empty())
+    if (seeds.empty() && enumSeeds.empty() && dependencies.aliases.empty() && dependencies.functions.empty() &&
+        dependencies.globals.empty())
     { output.clear(); error.clear(); return true; }
     auto inventoryResult = collectCppSemanticRecords(*graph, compilation.cppProjectSessions());
     if (const auto* failure = std::get_if<CppSemanticRecordFailure>(&inventoryResult))
@@ -1187,7 +1194,7 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         };
         for (const auto& field : record.fields) if (!checkEnum(field.type, 0)) return false;
     }
-    if (!dependencies.aliases.empty() || !dependencies.functions.empty())
+    if (!dependencies.aliases.empty() || !dependencies.functions.empty() || !dependencies.globals.empty())
         return metadata_detail::encodeCTypeCatalogWithDependencies(records, enums, dependencies, output, error);
     if (metadata.formatMinor >= 43)
     {
@@ -1424,6 +1431,72 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
     for (std::size_t i = 0; i < live.size(); ++i)
         if (!names.emplace(Key{live[i].projectOrdinal, live[i].namespaceName, live[i].name}, i).second)
         { error = "duplicate live C/C++ value: " + live[i].name; return false; }
+    std::map<std::string, std::size_t> owners;
+    std::set<std::string> ambiguous;
+    for (std::size_t i = 0; i < graph.projects().size(); ++i)
+        if (!owners.emplace(graph.projects()[i].moduleName(), i).second)
+            ambiguous.insert(graph.projects()[i].moduleName());
+    for (const auto& module : modules)
+    {
+        if (module.cppCTypeCatalog.empty()) continue;
+        std::vector<CppCRecordSnapshot> records;
+        std::vector<CppCEnumSnapshot> enums;
+        metadata_detail::CDependencyCatalog dependencies;
+        if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
+                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+        for (const auto& global : dependencies.globals)
+        {
+            const auto owner = owners.find(global.moduleName);
+            if (owner == owners.end() || ambiguous.contains(global.moduleName))
+            { error = "precompiled C global owner is missing or ambiguous: " + global.moduleName; return false; }
+            const bool demanded = std::any_of(demands.begin(), demands.end(), [&](const auto& demand) {
+                return demand.lookupName == global.declaration.name &&
+                    std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), owner->second) != demand.visibleProjects.end() &&
+                    std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), "") != demand.lookupNamespaces.end();
+            });
+            if (!demanded) continue;
+            auto projected = projectCppPrecompiledCGlobal(global, owner->second, global.moduleName,
+                                                           "x86_64-pc-windows-msvc", lookup);
+            if (const auto* failure = std::get_if<CppSemanticGlobalFailure>(&projected))
+            { error = "precompiled C global cannot be projected: " + failure->message; return false; }
+            const auto& value = std::get<CppSemanticGlobal>(projected);
+            frontend::NamespaceStateSymbol state;
+            state.projectOrdinal = owner->second;
+            state.moduleName = value.moduleName;
+            state.namespaceName = value.namespaceName;
+            state.name = value.name;
+            state.accessibility = frontend::NamespaceFunctionAccessibility::Public;
+            state.isCppExternal = true;
+            state.cppCGlobal = true;
+            state.declaredTypeKey = value.typeKey;
+            state.storageName = value.externalSymbol;
+            state.isVolatile = value.isVolatile;
+            state.isCppReadonly = value.isConst;
+            state.cppPointerPointeeReadonly = value.pointerPointeeReadonly;
+            state.cppPointerPointeeVolatile = value.pointerPointeeVolatile;
+            state.cppMicrosoftVolatileSemantics = value.microsoftVolatileSemantics;
+            state.cppStorageSizeBits = value.storageSizeBits;
+            state.cppDeclarationAlignmentBits = value.declarationAlignmentBits;
+            state.cppClangUsr = value.clangUsr;
+            state.cppDllImport = value.dllImport;
+            state.cppThreadLocal = value.threadLocal;
+            state.cppAtomicStorage = value.atomicStorage;
+            const Key key{state.projectOrdinal, state.namespaceName, state.name};
+            const auto existing = names.find(key);
+            if (existing != names.end())
+            {
+                const auto& other = live[existing->second];
+                if (!other.cppCGlobal || other.storageName != state.storageName ||
+                    other.declaredTypeKey != state.declaredTypeKey || other.cppClangUsr != state.cppClangUsr ||
+                    other.isVolatile != state.isVolatile || other.cppThreadLocal != state.cppThreadLocal ||
+                    other.cppAtomicStorage != state.cppAtomicStorage || other.cppDllImport != state.cppDllImport)
+                { error = "conflicting precompiled C global: " + state.name; return false; }
+                continue;
+            }
+            names.emplace(key, live.size());
+            live.push_back(std::move(state));
+        }
+    }
     for (auto& constant : constants)
     {
         const bool demanded = std::any_of(demands.begin(), demands.end(), [&](const auto& demand) {

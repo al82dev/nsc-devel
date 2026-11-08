@@ -1435,7 +1435,6 @@ bool verifyBinaryClosureMetadata(
         {
             CDependencyCatalog dependencies;
             if (!decodeCTypeCatalogWithDependencies(metadata.cppCRecordCatalog, records, enums, dependencies, detail) ||
-                !dependencies.globals.empty() ||
                 !encodeCTypeCatalogWithDependencies(records, enums, dependencies, canonical, detail) ||
                 canonical != metadata.cppCRecordCatalog)
             { error = "invalid or unsupported C dependency catalogue: " + detail; return false; }
@@ -1449,6 +1448,11 @@ bool verifyBinaryClosureMetadata(
                     !function.declaration.clangUsr || function.declaration.clangUsr->empty() ||
                     function.declaration.externalSymbol != function.linkSymbol)
                 { error = "C dependency function has incomplete or unsupported identity"; return false; }
+            for (const auto& global : dependencies.globals)
+                if (!global.declaration.externalLinkage || global.declaration.threadLocal ||
+                    !global.declaration.clangUsr || global.declaration.clangUsr->empty() ||
+                    global.declaration.externalSymbol != global.linkSymbol)
+                { error = "C dependency global has incomplete or unsupported identity"; return false; }
         }
         else
         {
