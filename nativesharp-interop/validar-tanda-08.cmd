@@ -35,6 +35,7 @@ for %%T in (
   pruebas-tanda-08-identidad-c\validar.cmd
   pruebas-tanda-08-dependencias-template\validar.cmd
   pruebas-tanda-08-volatile-campos-c\validar.cmd
+  pruebas-tanda-08-anonimos-c\validar.cmd
   pruebas-tanda-08-flexible-c\validar.cmd
   pruebas-tanda-08-record-c\precompiled-bool\validar.cmd
   pruebas-tanda-08-record-c\precompiled-bool\validar-cache.cmd
