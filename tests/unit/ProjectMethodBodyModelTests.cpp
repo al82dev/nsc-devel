@@ -8,6 +8,7 @@
 #include "nativesharp/Lexer/Lexer.h"
 #include "nativesharp/Parser/Parser.h"
 #include "nativesharp/Source/SourceManager.h"
+#include "../../src/Frontend/Bodies/CppFlexiblePointerAlignment.h"
 
 #include "../support/TestContext.h"
 
@@ -1776,11 +1777,28 @@ void testDeterministicCallableWaves(TestContext& tests, const std::filesystem::p
             countWavePhases(dualPhases, "-wait") == dualStats.parallelWaves,
         "timing mode emits analysis, merge and parallel wait telemetry per wave");
 }
+void testCppFlexiblePointerAlignment(TestContext& tests)
+{
+    using nativesharp::frontend::method_body_detail::cppFlexiblePointerKnownAlignment;
+    tests.expect(cppFlexiblePointerKnownAlignment(true, 8, 4, 4) == 4,
+        "aligned receiver and field preserve the proven field alignment");
+    tests.expect(cppFlexiblePointerKnownAlignment(true, 1, 4, 4) == 1,
+        "unknown receiver alignment is not strengthened by the field layout");
+    tests.expect(cppFlexiblePointerKnownAlignment(true, 8, 8, 4) == 4,
+        "field offset limits pointer alignment");
+    tests.expect(cppFlexiblePointerKnownAlignment(true, 8, 4, 0) == 4,
+        "zero offset preserves the receiver alignment up to the field guarantee");
+    tests.expect(cppFlexiblePointerKnownAlignment(false, 8, 4, 4) == 1 &&
+        cppFlexiblePointerKnownAlignment(true, 8, std::nullopt, 4) == 1 &&
+        cppFlexiblePointerKnownAlignment(true, 8, 4, std::nullopt) == 1,
+        "unknown field facts and value receivers stay conservatively aligned");
+}
 }
 
 int main()
 {
     TestContext tests;
+    testCppFlexiblePointerAlignment(tests);
     const std::filesystem::path root =
         std::filesystem::temp_directory_path() / "nativesharp_stage27_project_method_body_tests";
     std::error_code error;
