@@ -39,6 +39,8 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe Consumer.nsproj
 if errorlevel 1 (type Consumer.log & exit /b 1)
 Consumer.exe
 if errorlevel 1 exit /b 1
+nsc_cpp_c_anonymous_identity_tests.exe Consumer.nsproj usr.log
+if errorlevel 1 exit /b 1
 popd
 echo Anonimos anidados: USR de Clang y ejecucion directa y precompilada correctos.
 exit /b 0
