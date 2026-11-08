@@ -1,0 +1,17 @@
+namespace Published
+{
+    public struct BoolBridge
+    {
+        public static long Layout(int id) { return bool_layout(id); }
+        public static BoolFields* Fields() { return bool_fields(); }
+        public static BoolPacked* Packed() { return bool_packed(); }
+        public static BoolBytes* Bytes() { return bool_bytes(); }
+        public static void Reset() { bool_reset(); }
+        public static int Raw(int id) { return bool_raw(id); }
+        public static int Load(int id) { return bool_c_load(id); }
+        public static int Intact() { return bool_neighbors_intact(); }
+        public static void Store(int id, bool value) { bool_c_store(id, value); }
+        public static bool CGetFlag(BoolFields* p) { return acc_get_flag(p); }
+        public static void CSetFlag(BoolFields* p, bool value) { acc_set_flag(p, value); }
+    }
+}

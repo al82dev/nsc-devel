@@ -1,0 +1,12 @@
+// Probe (records only): a bool* taken from a C _Bool field loses the C record origin.
+int Main()
+{
+    BoolFields* fields = bool_fields();
+    bool_reset();
+    bool* flag = &fields->flag;
+    *flag = true;
+    if (bool_raw(1) != 1 || bool_c_load(1) != 1) return 1;
+    bool_c_store(1, false);
+    if (*flag) return 2;
+    return 0;
+}

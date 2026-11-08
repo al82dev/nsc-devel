@@ -1,0 +1,11 @@
+public struct BoolAccess
+{
+    public static bool GetFlag(BoolFields* p) { return p->flag; }
+    public static void SetFlag(BoolFields* p, bool value) { p->flag = value; }
+    public static bool GetValue(BoolFields* p, int index) { return p->values[index]; }
+    public static void SetValue(BoolFields* p, int index, bool value) { p->values[index] = value; }
+    public static bool GetPacked(BoolPacked* p) { return p->last; }
+    public static void SetPacked(BoolPacked* p, bool value) { p->last = value; }
+    public static bool GetUnion(BoolBytes* p) { return p->flag; }
+    public static void SetUnion(BoolBytes* p, bool value) { p->flag = value; }
+}

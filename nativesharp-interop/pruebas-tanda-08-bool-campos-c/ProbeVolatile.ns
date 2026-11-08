@@ -1,0 +1,16 @@
+// Probe (records only): volatile _Bool field of a C record; its IR is compared informatively with Clang.
+public struct VolatileAccess
+{
+    public static bool GetVolatile(BoolVolatile* p) { return p->flag; }
+    public static void SetVolatile(BoolVolatile* p, bool value) { p->flag = value; }
+}
+
+int Main()
+{
+    BoolVolatile* p = bool_volatile();
+    VolatileAccess.SetVolatile(p, true);
+    if (!acc_get_volatile(p)) return 1;
+    acc_set_volatile(p, false);
+    if (VolatileAccess.GetVolatile(p)) return 2;
+    return 0;
+}

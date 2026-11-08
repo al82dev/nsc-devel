@@ -1,0 +1,10 @@
+// Probe (records only): compound assignment on a C _Bool field and array element, valid in C.
+int Main()
+{
+    BoolFields* fields = bool_fields();
+    bool_reset();
+    fields->values[1] |= true;
+    fields->flag ^= true;
+    if (bool_raw(3) != 1 || bool_raw(1) != 1) return 1;
+    return 0;
+}

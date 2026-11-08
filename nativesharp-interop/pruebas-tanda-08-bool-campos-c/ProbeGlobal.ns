@@ -1,0 +1,8 @@
+// Probe (records only): C _Bool globals are not record fields; their access type is recorded in the IR.
+int Main()
+{
+    bool_global = true;
+    bool_global_array[1] = true;
+    if (!bool_global || !bool_global_array[1] || bool_global_array[0]) return 1;
+    return 0;
+}

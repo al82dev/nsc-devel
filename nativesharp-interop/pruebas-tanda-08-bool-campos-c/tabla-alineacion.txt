@@ -1,0 +1,4 @@
+flag acc_get_flag acc_set_flag Flag 0
+value acc_get_value acc_set_value Value 0
+packed acc_get_packed acc_set_packed Packed 0
+union acc_get_union acc_set_union Union 0

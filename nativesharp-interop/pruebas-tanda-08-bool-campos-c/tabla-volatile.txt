@@ -1,0 +1,1 @@
+volatile acc_get_volatile acc_set_volatile Volatile 0

@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CBoolProbeAddress</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ProbeAddress.ns" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" />
+  </ItemGroup>
+</Project>
