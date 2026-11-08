@@ -1302,6 +1302,11 @@ bool prepareDynamicLibraryBuilder(const frontend::ProjectCompilation &compilatio
         for (const std::string &symbol : module.symbols)
             externalImportList.append(module.dllName, symbol);
     if (!validateSystemImportsWhenRequested(externalImports, error)) return false;
+    if (!appendCppTlsAliasedFunctionImports(compilation, runtimeLibraries, externalImports, referenceError))
+    {
+        error << "nsc: error: C/C++ alias imports failed: " << referenceError << '\n';
+        return false;
+    }
     builder.setExternalImports(std::move(externalImports));
     builder.setExtraLinkLibraries(linkLibraries);
     return true;

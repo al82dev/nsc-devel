@@ -114,6 +114,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
       - [ ] T08-002-09m7c1d2c: Resolver las dependencias transitivas de las DLL homónimas y comprobar el consumidor resultante.
         - [x] Invalidar el bundle al cambiar una DLL transitiva del runtime C y comprobar reconstrucción y restauración en O0 y O3; la resolución de homónimas permanece pendiente. [Evidencia](registro-commits/t08-cache-runtime-transitivo.md).
     - [x] T08-002-09m7c1d3: Comprobar dos DLL TLS homónimas cuando el consumidor es una DLL NativeSharp, con hilos y caché en O0–O3. [Evidencia y límites](registro-commits/t08-dll-producto-tls-homonimas.md). Las importaciones transitivas ambiguas siguen pendientes en T08-002-09m7c1d2c.
+      - [x] Enlazar funciones C de nombre distinto al alias de cada DLL desde el producto DLL NativeSharp y comprobar que comparten la TLS, con hilos y caché en O0–O3. [Evidencia](registro-commits/t08-dll-producto-funciones-alias.md).
 - [ ] T08-002-09m7d: Comprobar los demás calificadores y variantes de enlace de la global externa compartida.
 - [x] T08-002-09n: Enlazar una sola vez una biblioteca C idéntica propagada por dos productores y conservar dos bibliotecas distintas con el mismo nombre, en O0. [Evidencia](registro-commits/t08-dependencia-c-compartida.md).
 - **T08-002-10 — Sombras en plantillas:**
