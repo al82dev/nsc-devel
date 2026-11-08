@@ -1040,7 +1040,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerIncrementDecrementEx
         // El uno se construye YA en el tipo del destino, no en `int` con una conversion
         // detras: asi la operacion entera ocurre en un solo tipo y no hay una segunda
         // regla de promocion que mantener de acuerdo con la de `Binary`.
-        one = makeNode(ProjectOopHirNodeKind::IntegerConstant, expression, targetType->typeKey);
+        one = makeNode(ProjectOopHirNodeKind::IntegerConstant, expression,
+            cppImportedCEnumUnderlying(nameLookup_, targetType->typeKey) ? "builtin:int" : targetType->typeKey);
         one->integerValue = 1;
     }
     step->children.push_back(std::move(address));

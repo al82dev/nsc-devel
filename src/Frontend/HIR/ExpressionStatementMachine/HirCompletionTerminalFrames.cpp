@@ -5,6 +5,7 @@
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
+#include "nativesharp/Frontend/CppImportedEnumNumeric.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <cstdint>
@@ -441,7 +442,7 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
                 one = makeNode(
                     ProjectOopHirNodeKind::IntegerConstant,
                     frame.syntax,
-                    targetType->typeKey);
+                    cppImportedCEnumUnderlying(nameLookup_, targetType->typeKey) ? "builtin:int" : targetType->typeKey);
                 one->integerValue = 1;
             }
             step->children.push_back(std::move(lowered));

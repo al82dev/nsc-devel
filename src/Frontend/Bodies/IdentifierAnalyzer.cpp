@@ -1341,7 +1341,8 @@ if (operation == TokenKind::PlusPlus || operation == TokenKind::MinusMinus)
     const bool pointerOperand = ProjectTypeConversion::isPointer(operand.typeKey) &&
         operand.typeKey != "builtin:void*";
     if (!operand.assignable ||
-        !(ProjectTypeConversion::isNumeric(operand.typeKey) || pointerOperand))
+        !(ProjectTypeConversion::isNumeric(operand.typeKey) || pointerOperand ||
+          cppImportedCEnumUnderlying(nameLookup_, operand.typeKey)))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidAssignmentTarget,
