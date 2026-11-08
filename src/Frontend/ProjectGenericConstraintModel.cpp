@@ -914,8 +914,12 @@ bool ProjectGenericConstraintModel::satisfiesThreadSafetyConstraint(
                 memberFacts.kind = language::ThreadSafetyMemberKind::Value;
                 memberFacts.send = true;
                 memberFacts.sync = true;
+                std::string nestedTypeKey = member.declaredTypeKey;
+                while (const auto element = ProjectMemberModel::fixedArrayElementTypeKey(nestedTypeKey))
+                    nestedTypeKey = *element;
+                if (nestedTypeKey.ends_with("*")) return false;
                 std::size_t nestedOrdinal = 0;
-                if (declarationForTypeKey(nameLookup, member.declaredTypeKey, nestedOrdinal) != nullptr)
+                if (declarationForTypeKey(nameLookup, nestedTypeKey, nestedOrdinal) != nullptr)
                     pending.push_back(nestedOrdinal);
             }
             facts.members.push_back(std::move(memberFacts));

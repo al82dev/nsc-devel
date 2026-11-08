@@ -208,9 +208,16 @@ campo `Inner` se acepta (`shared-send-structural-probe/results.json`). La ruta
 campos de tipos nombrados anidados y detecta ciclos; en la comparación rechaza
 ambos. La regresión dirigida verifica Send y Sync con uno a tres niveles y
 controles válidos (`nested-thread-safety-tests.log`). Esta prueba solo cubre
-restricciones genéricas de esos tipos, no todos los genéricos, arreglos ni
+restricciones genéricas de esos tipos, no todos los genéricos ni
 las rutas de traslado entre hilos; el executor tiene otra comprobación. No
 constituye por sí sola una garantía suficiente para publicar `Rc`.
+Un caso posterior reveló que un arreglo fijo de `Inner` volvía a aceptarse como
+Send (`shared-send-generic-probe/results.json`, antes de la corrección). El
+analizador ahora revisa el elemento de arreglos fijos anidados. La regresión
+dirigida rechaza arreglos de tipos con punteros y de punteros directos, comprueba
+arreglos seguros y wrappers genéricos, tanto en Send como Sync; junto con la
+prueba de vista pasó 2/2 (`nested-thread-safety-tests.log`). Los arreglos
+dinámicos y otras representaciones no quedan acreditados por esos casos.
 La primera ejecución de esta regresión utilizó por error `C:/Windows/Temp`;
 `TemporaryDirectory` eliminó su carpeta al terminar. Se repitió con TEMP, TMP,
 APPDATA y LOCALAPPDATA en A; el registro corresponde a la segunda ejecución.

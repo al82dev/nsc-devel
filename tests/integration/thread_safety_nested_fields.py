@@ -12,6 +12,11 @@ struct Nested { public Unsafe value; }
 struct Deep { public Nested value; }
 struct Safe { public int value; }
 struct SafeNested { public Safe value; }
+struct Wrapper<T> { public T value; }
+struct WrappedUnsafe { public Wrapper<Unsafe> value; }
+struct ArrayUnsafe { public Unsafe[2] value; }
+struct ArraySafe { public Safe[2] value; }
+struct ArrayPointer { public int*[2] value; }
 class Program { public static int Require<T>() where T : MARKER { return 42; }
 public static int Main() { return Require<TYPE>(); } }'''
     with tempfile.TemporaryDirectory(prefix='nsc-nested-thread-safety-') as tmp:
@@ -21,7 +26,10 @@ public static int Main() { return Require<TYPE>(); } }'''
                            '<ItemGroup><Compile Include="Main.ns" /></ItemGroup></Project>', encoding='utf-8')
         for marker in ('Send', 'Sync'):
             for name, safe in (('Unsafe', False), ('Nested', False), ('Deep', False),
-                               ('Safe', True), ('SafeNested', True)):
+                               ('Wrapper<Unsafe>', False), ('WrappedUnsafe', False),
+                               ('ArrayUnsafe', False), ('ArrayPointer', False),
+                               ('Safe', True), ('SafeNested', True), ('Wrapper<Safe>', True),
+                               ('ArraySafe', True)):
                 (folder / 'Main.ns').write_text(source.replace('MARKER', marker).replace('TYPE', name), encoding='utf-8')
                 result = subprocess.run([str(compiler), '--check-project-method-bodies', str(project)],
                                         capture_output=True, text=True, errors='replace', timeout=120)
