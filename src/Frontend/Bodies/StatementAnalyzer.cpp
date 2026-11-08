@@ -3059,6 +3059,25 @@ std::string ProjectMethodBodyModel::delegateErrorTypeKey(
         : memberModel_->canonicalTypeKey(syntax->throwsTypeSyntax(), *nameLookup_);
 }
 
+namespace
+{
+// EN: T08-002: copies the volatile pointees of a method signature into its natural `fn*` type. The
+//     implicit receiver slot, when present, is never qualified. Effects: fills
+//     `signature.parameterPointeeVolatile` (aligned with `signature.parameters`) and
+//     `signature.resultPointeeVolatile`. Complexity: O(parameter count).
+// ES: T08-002: copia los datos apuntados volatile de la firma de un método a su tipo natural `fn*`.
+//     La ranura del receptor implícito, si existe, nunca está calificada. Efectos: llena
+//     `signature.parameterPointeeVolatile` (alineado con `signature.parameters`) y
+//     `signature.resultPointeeVolatile`. Complejidad: O(número de parámetros).
+void appendMethodPointeeVolatileFlags(language::FunctionType& signature, const ClassMemberSymbol& method)
+{
+    if (method.hasImplicitThis) signature.parameterPointeeVolatile.push_back(false);
+    for (const MethodParameterSymbol& parameter : method.parameters)
+        signature.parameterPointeeVolatile.push_back(parameter.pointerPointeeVolatile);
+    signature.resultPointeeVolatile = method.declaredPointerPointeeVolatile;
+}
+}
+
 bool ProjectMethodBodyModel::inferVariableType(
     std::optional<ExpressionResult>& precomputedVarInitializer,
     std::string& varInferredTypeKey,
@@ -3127,6 +3146,7 @@ bool ProjectMethodBodyModel::inferVariableType(
         for (const MethodParameterSymbol& parameter : candidate->parameters)
             signature.parameters.push_back(parameter.typeKey);
         signature.result = candidate->declaredTypeKey;
+        appendMethodPointeeVolatileFlags(signature, *candidate);
         signature.carrier = language::FunctionCarrier::Pointer;
         signature.callingConvention = candidate->isExternC
             ? language::CallingConvention::C : language::CallingConvention::NativeSharp;

@@ -81,6 +81,16 @@ std::string ProjectMemberModel::canonicalFunctionTypeKey(
     function.parameters.reserve(syntax->typeArguments().size());
     for (const ast::TypeSyntax* parameter : syntax->typeArguments())
         function.parameters.push_back(canonicalTypeKey(parameter, nameLookup));
+    // EN: T08-002: a C callback typedef marks `volatile T*` parameters and results on the syntax.
+    //     The structural identity keeps that qualification so that conversions and indirect calls
+    //     can check it instead of discarding it.
+    // ES: T08-002: un typedef de callback C marca en la sintaxis los parámetros y resultados
+    //     `volatile T*`. La identidad estructural conserva esa calificación para que las conversiones
+    //     y las llamadas indirectas puedan comprobarla en lugar de descartarla.
+    for (const ast::TypeSyntax* parameter : syntax->typeArguments())
+        function.parameterPointeeVolatile.push_back(parameter != nullptr && parameter->isPointeeVolatile());
+    function.resultPointeeVolatile = syntax->functionReturnType() != nullptr &&
+        syntax->functionReturnType()->isPointeeVolatile();
     function.result = canonicalTypeKey(syntax->functionReturnType(), nameLookup);
     function.errorType = syntax->functionErrorType() == nullptr
         ? std::string{}

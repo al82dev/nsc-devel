@@ -3,6 +3,9 @@ import subprocess
 import sys
 import tempfile
 
+# T08-002: indirect invocation of a C callback typedef whose record pointer parameter is qualified
+# with `volatile` or `const volatile`. Two DLLs, precompiled templates, consumer without headers and
+# artifact cache (the base control runs the consumer twice: cache miss, then cache hit).
 original = Path(__file__).resolve().parent.parent / "typedef-funcion-record" / "validar-invocacion.py"
 base = original.parent.parent / "tls-dll-distintas" / "validar-variadicas.py"
 opt = sys.argv[1] if len(sys.argv) > 1 else "0"
@@ -15,7 +18,8 @@ source = source.replace('base = Path(__file__).parent.parent / "tls-dll-distinta
                         "base = Path(" + repr(str(base)) + ")")
 source = source.replace(r"A:\nsc-interop-build\t08-typedef-record-invocacion", str(root))
 insert = "source = source.replace('Payload*', " + repr(qualifier + " Payload*") + ")\n"
-insert += "source = source.replace('static Payload payload', " + repr("static " + qualifier + " Payload payload") + ")\n"
+insert += ("source = source.replace('static Payload payload', " +
+           repr("static " + qualifier + " Payload payload") + ")\n")
 source = source.replace("script.write_text(source, encoding=\"utf-8\")", insert +
                         "script.write_text(source, encoding=\"utf-8\")")
 generated = root / "wrapper.py"
@@ -23,7 +27,7 @@ generated.write_text(source, encoding="utf-8")
 result = subprocess.run([sys.executable, str(generated), opt], cwd=root, text=True,
                         encoding="utf-8", errors="replace", stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT)
-if result.returncode == 0 or "indirect call cannot yet preserve pointer pointee volatile qualification" not in result.stdout:
+if result.returncode != 0 or "Invocacion con record C y dos DLL con cache: correcto O" + opt not in result.stdout:
     print(result.stdout)
-    raise SystemExit("La reproducción dejó de coincidir con el diagnóstico esperado")
-print("Reproducido rechazo de callback", qualifier, "en O" + opt, ";", root)
+    raise SystemExit("La invocación del callback " + qualifier + " falló en O" + opt)
+print("Invocación indirecta de callback", qualifier, "correcta en O" + opt, ";", root)

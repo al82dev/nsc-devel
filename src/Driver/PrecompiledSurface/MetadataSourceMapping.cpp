@@ -155,8 +155,13 @@ bool sourceCoreTypeForMetadataKey(const std::string &typeKey, std::string &sourc
                 (function->callingConvention != language::CallingConvention::C &&
                  function->callingConvention != language::CallingConvention::Win64))) ||
             function->isUnsafe || function->isNoHeap || function->isAsync || function->nullable ||
-            !function->lifetime.empty() || !function->errorType.empty())
+            !function->lifetime.empty() || !function->errorType.empty() ||
+            language::functionHasPointeeVolatile(*function))
         {
+            // EN: T08-002: NativeSharp source cannot spell a volatile pointee in a callback
+            //     signature; materializing it would silently discard the qualification.
+            // ES: T08-002: el código NativeSharp no puede escribir un dato apuntado volatile en una
+            //     firma de callback; materializarla descartaría la calificación en silencio.
             error = "metadata-backed source import cannot materialize this function type";
             return false;
         }

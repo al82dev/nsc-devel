@@ -103,8 +103,13 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
                 - [x] Invocar un typedef variádico que recibe y devuelve un enum C en dos DLL, sin encabezados, O0–O3 y caché; rechazar definiciones incompatibles. [Evidencia](registro-commits/t08-typedef-enum-retorno.md).
                 - [x] Conciliar firmas con `const CRecord*` iguales y rechazar la firma sin `const`, sin encabezados, en O0. [Evidencia](registro-commits/t08-typedef-record-const.md).
                 - [x] Conciliar firmas con `volatile` y `const volatile` en el record apuntado, rechazar calificadores incompatibles y contrastar calificadores superiores del puntero con Clang, en O0 y O3. [Evidencia y límite](registro-commits/t08-callback-puntero-volatile.md).
-                - [ ] Conservar el calificador al invocar indirectamente callbacks C que reciben punteros volátiles; reproducción en O0 y O3. [Evidencia](registro-commits/t08-callback-volatile-invocacion.md).
+                - [x] Conservar el calificador al invocar indirectamente callbacks C que reciben punteros volátiles: identidad `fn:` con calificación por parámetro y retorno, conversión de métodos, invocación, retorno y `var`; directo y precompilado sin encabezado, O0–O3, con rechazos de pérdida. [Reproducción](registro-commits/t08-callback-volatile-invocacion.md), [corrección](registro-commits/t08-callback-volatile-identidad.md).
                 - [ ] Comprobar otras variantes de enums, calificadores y tipos de retorno.
+                  - [ ] Conservar `const` del dato apuntado en la identidad de callbacks C (hoy no se codifica). Origen: [registro](registro-commits/t08-callback-volatile-identidad.md).
+                  - [ ] Importar funciones, campos y globales C cuyo tipo es un puntero a función con parámetros `volatile T*` (`CppSemanticFunction` rechaza el mapeo; solo el typedef conserva la calificación).
+                  - [ ] Verificar el parámetro `volatile T*` de una lambda o método NativeSharp convertido a callback C (inferencia: el cuerpo no recibe la calificación).
+                  - [ ] Llevar la calificación `volatile` a la firma de un `delegate` con nombre declarado con alias C.
+                  - [ ] Representar en la superficie pública materializada desde metadata una firma de callback con `volatile` (hoy se rechaza explícitamente).
           - [x] Probar la muestra de ambas DLL con funciones variádicas homónimas desde plantillas precompiladas y con caché, en O0–O3 y con valores distinguibles. [Evidencia](registro-commits/t08-dll-homonimas-variadicas.md).
           - [ ] Comprobar promociones, argumentos flotantes y agregados en funciones variádicas, además de otras formas de consumo.
             - [x] Comparar promociones de `byte`, `short` y `float`, junto con `double`, contra controles C para dos DLL homónimas, O0–O3 y caché. [Evidencia](registro-commits/t08-dll-homonimas-variadicas-promociones.md).
@@ -373,6 +378,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 
 - [x] T08-017-01: Probar las muestras registradas de callbacks escalares y callbacks con record o enum.
 - [x] T08-017-02: Probar las muestras precompiladas de callbacks con y sin encabezado indicadas en el tracking principal.
+  - [ ] T08-017-02a: `pruebas-tanda-08-callback/validar-record-precompilado.cmd` falla con `conflicting C/C++ type alias 'RecordCallback'` (tipos idénticos, `reconciled=no`); observado el 2026-11-08 durante la regresión de [t08-callback-volatile-identidad.md](registro-commits/t08-callback-volatile-identidad.md). Causa no determinada.
 - **T08-017-03 — Firmas y convenciones:**
 - [ ] T08-017-03a: Verificar callback con parámetros y retorno escalares.
 - [ ] T08-017-03b: Verificar callback con parámetros o retorno de puntero a record y enum.

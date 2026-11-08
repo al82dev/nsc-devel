@@ -17,3 +17,9 @@ ejecuta el control C y verifica que NSC emite el diagnóstico observado. El
 script tiene éxito al reproducir el fallo: no acredita una corrección. Para
 cerrar el caso hace falta conservar la calificación en la firma, validar las
 conversiones y comprobar la invocación y el rechazo de pérdida de calificador.
+
+## Estado posterior
+
+Corregido en [t08-callback-volatile-identidad.md](t08-callback-volatile-identidad.md). Desde esa corrección,
+`typedef-calificadores/validar-invocacion.py` exige que la invocación compile y se ejecute; ya no reproduce el
+rechazo descrito arriba, que se conserva como registro histórico.

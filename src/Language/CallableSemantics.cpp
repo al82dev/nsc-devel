@@ -58,6 +58,92 @@ std::optional<CallingConvention> parseConvention(std::string_view value) noexcep
     if (value == "win64") return CallingConvention::Win64;
     return std::nullopt;
 }
+
+// EN: Tag of the optional identity suffix that records volatile pointees of a C signature.
+// ES: Etiqueta del sufijo opcional de la identidad que registra datos apuntados volatile de una firma C.
+constexpr std::string_view kPointeeVolatileTag = ":volatile-pointee:";
+
+// EN: Appends the volatile-pointee suffix: one '0'/'1' per parameter followed by one for the
+//     result. Called only when at least one flag is set, so identities without the qualifier keep
+//     their exact historical bytes. Complexity: O(parameter count).
+// ES: Agrega el sufijo de datos apuntados volatile: un '0'/'1' por parámetro y uno final para el
+//     resultado. Solo se llama cuando hay al menos una marca, por lo que las identidades sin el
+//     calificador conservan exactamente sus bytes anteriores. Complejidad: O(número de parámetros).
+void appendPointeeVolatileSuffix(std::string& identity, const FunctionType& type)
+{
+    identity += kPointeeVolatileTag;
+    for (std::size_t index = 0; index < type.parameters.size(); ++index)
+        identity.push_back(functionParameterPointeeVolatile(type, index) ? '1' : '0');
+    identity.push_back(type.resultPointeeVolatile ? '1' : '0');
+}
+
+// EN: Decodes the optional suffix written by appendPointeeVolatileSuffix. `cursor` points just after
+//     the error type. Returns false for any other trailing text, a mask of the wrong length, a
+//     character other than '0'/'1', or an all-zero mask (which is never written, so the canonical
+//     identity stays unique).
+// ES: Decodifica el sufijo opcional escrito por appendPointeeVolatileSuffix. `cursor` apunta justo
+//     después del tipo de error. Devuelve false ante cualquier otro texto final, una máscara de
+//     longitud incorrecta, un carácter distinto de '0'/'1' o una máscara sin marcas (nunca se
+//     escribe, así la identidad canónica sigue siendo única).
+bool consumePointeeVolatileSuffix(std::string_view identity, std::size_t cursor, FunctionType& type)
+{
+    if (cursor == identity.size()) return true;
+    if (!consumeLiteral(identity, cursor, kPointeeVolatileTag)) return false;
+    const std::string_view mask = identity.substr(cursor);
+    if (mask.size() != type.parameters.size() + 1U) return false;
+    bool anyParameter = false;
+    for (const char value : mask)
+        if (value != '0' && value != '1') return false;
+    for (std::size_t index = 0; index < type.parameters.size(); ++index)
+        anyParameter = anyParameter || mask[index] == '1';
+    type.resultPointeeVolatile = mask.back() == '1';
+    if (!anyParameter && !type.resultPointeeVolatile) return false;
+    if (anyParameter)
+    {
+        type.parameterPointeeVolatile.reserve(type.parameters.size());
+        for (std::size_t index = 0; index < type.parameters.size(); ++index)
+            type.parameterPointeeVolatile.push_back(mask[index] == '1');
+    }
+    return true;
+}
+
+// EN: Exact comparison of the volatile-pointee flags of two signatures. C treats `T*` and
+//     `volatile T*` parameters (and results) as different function types, so no direction widens.
+// ES: Comparación exacta de las marcas volatile de dos firmas. C considera tipos de función
+//     distintos a parámetros (y resultados) `T*` y `volatile T*`, por lo que ninguna dirección amplía.
+bool samePointeeVolatile(const FunctionType& source, const FunctionType& target) noexcept
+{
+    if (source.resultPointeeVolatile != target.resultPointeeVolatile ||
+        source.parameters.size() != target.parameters.size())
+        return false;
+    for (std::size_t index = 0; index < source.parameters.size(); ++index)
+    {
+        if (functionParameterPointeeVolatile(source, index) !=
+            functionParameterPointeeVolatile(target, index))
+            return false;
+    }
+    return true;
+}
+}
+
+// EN: True when parameter `parameterIndex` is a pointer whose pointee is volatile. An empty flag
+//     vector or an index outside it reads as false.
+// ES: Verdadero cuando el parámetro `parameterIndex` es un puntero cuyo dato apuntado es volatile.
+//     Un vector de marcas vacío o un índice fuera de él se leen como falso.
+bool functionParameterPointeeVolatile(const FunctionType& type, std::size_t parameterIndex) noexcept
+{
+    return parameterIndex < type.parameterPointeeVolatile.size() &&
+        type.parameterPointeeVolatile[parameterIndex];
+}
+
+// EN: True when any parameter or the result carries a volatile pointee.
+// ES: Verdadero cuando algún parámetro o el resultado tiene un dato apuntado volatile.
+bool functionHasPointeeVolatile(const FunctionType& type) noexcept
+{
+    if (type.resultPointeeVolatile) return true;
+    for (std::size_t index = 0; index < type.parameters.size(); ++index)
+        if (functionParameterPointeeVolatile(type, index)) return true;
+    return false;
 }
 
 std::string_view functionCarrierName(FunctionCarrier carrier) noexcept
@@ -109,6 +195,7 @@ std::string functionTypeIdentity(const FunctionType& type)
     appendLengthPrefixed(identity, type.result);
     identity.push_back(':');
     appendLengthPrefixed(identity, type.errorType);
+    if (functionHasPointeeVolatile(type)) appendPointeeVolatileSuffix(identity, type);
     return identity;
 }
 
@@ -168,7 +255,7 @@ std::optional<FunctionType> parseFunctionTypeIdentity(std::string_view identity)
     if (!consumeLengthPrefixed(identity, cursor, type.result) ||
         !consumeLiteral(identity, cursor, ":") ||
         !consumeLengthPrefixed(identity, cursor, type.errorType) ||
-        cursor != identity.size() || type.result.empty())
+        !consumePointeeVolatileSuffix(identity, cursor, type) || type.result.empty())
         return std::nullopt;
     return type;
 }
@@ -240,7 +327,8 @@ bool functionTypesAssignable(const FunctionType& source, const FunctionType& tar
         (!source.isUnsafe || target.isUnsafe) &&
         (!target.isNoHeap || source.isNoHeap) &&
         source.isAsync == target.isAsync &&
-        (!source.nullable || target.nullable);
+        (!source.nullable || target.nullable) &&
+        samePointeeVolatile(source, target);
 }
 
 bool computeClosureLayout(

@@ -56,6 +56,37 @@ using method_body_detail::Stage37ConstantKind;
 using method_body_detail::Stage37ConstantValue;
 using method_body_detail::writeMethodBodyTrace;
 
+namespace
+{
+// EN: T08-002: true when `method` has exactly the volatile pointees recorded by a structural callback
+//     type: each parameter and the result must match, because C treats `T*` and `volatile T*` as
+//     different callback signatures. A non-structural target (named delegate or lambda identity)
+//     records no such flags and is not filtered here. Complexity: O(parameter count).
+// ES: T08-002: verdadero cuando `method` tiene exactamente los datos apuntados volatile registrados
+//     por un tipo de callback estructural: cada parámetro y el resultado deben coincidir, porque C
+//     considera firmas distintas a `T*` y `volatile T*`. Un destino no estructural (delegate con
+//     nombre o identidad de lambda) no registra esas marcas y no se filtra aquí.
+//     Complejidad: O(número de parámetros).
+bool methodPointeeVolatileMatches(
+    const ClassMemberSymbol& method,
+    const std::optional<language::FunctionType>& target) noexcept
+{
+    if (!target.has_value()) return true;
+    if (method.declaredPointerPointeeVolatile != target->resultPointeeVolatile) return false;
+    // EN: A natural `fn*` of an instance method starts with the unqualified `abi:this` slot.
+    // ES: El `fn*` natural de un método de instancia empieza con la ranura `abi:this` sin calificar.
+    const std::size_t offset = method.hasImplicitThis && !target->parameters.empty() &&
+        target->parameters.front() == "abi:this" ? 1U : 0U;
+    for (std::size_t index = 0; index < method.parameters.size(); ++index)
+    {
+        if (method.parameters[index].pointerPointeeVolatile !=
+            language::functionParameterPointeeVolatile(*target, index + offset))
+            return false;
+    }
+    return true;
+}
+}
+
 std::optional<std::size_t> ProjectMethodBodyModel::delegateTypeOrdinalForTypeKey(
     std::string_view typeKey) const noexcept
 {
@@ -144,7 +175,8 @@ bool ProjectMethodBodyModel::methodGroupExactlyMatchesDelegate(
             candidate->declaredTypeKey != returnType ||
             candidate->declaredErrorTypeKey != expectedErrorType ||
             (candidate->isUnsafe &&
-             (!structuralTarget.has_value() || !structuralTarget->isUnsafe)))
+             (!structuralTarget.has_value() || !structuralTarget->isUnsafe)) ||
+            !methodPointeeVolatileMatches(*candidate, structuralTarget))
             continue;
         bool exact = true;
         for (std::size_t index = 0; index < parameterTypes.size(); ++index)
@@ -1632,8 +1664,22 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
             "method group target is not a Stage 42 delegate type");
         return result;
     }
-    const std::vector<std::size_t> compatible = compatibleDelegateMethods(
+    std::vector<std::size_t> compatible = compatibleDelegateMethods(
         methodGroup, parameterTypes, returnType, delegateErrorTypeKey(delegateTypeKey));
+    // EN: T08-002: a structural C callback type records volatile pointees; only a method whose
+    //     signature carries exactly the same qualification may become that callback.
+    // ES: T08-002: un tipo de callback C estructural registra datos apuntados volatile; solo un método
+    //     cuya firma tenga exactamente la misma calificación puede convertirse en ese callback.
+    const std::optional<language::FunctionType> structuralTarget =
+        language::parseFunctionTypeIdentity(delegateTypeKey);
+    std::vector<std::size_t> qualified;
+    for (const std::size_t ordinal : compatible)
+    {
+        const ClassMemberSymbol* candidate = methodSymbol(ordinal);
+        if (candidate != nullptr && methodPointeeVolatileMatches(*candidate, structuralTarget))
+            qualified.push_back(ordinal);
+    }
+    compatible = std::move(qualified);
     if (compatible.empty())
     {
         diagnostics.report(

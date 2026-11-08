@@ -116,6 +116,14 @@ std::string ProjectGenericModel::functionTypeSpelling(const ast::TypeSyntax* syn
     }
     for (const ast::TypeSyntax* parameter : syntax->typeArguments())
         function.parameters.push_back(typeSpelling(parameter));
+    // EN: T08-002: the spelling keeps volatile pointees like the canonical key does, so two callback
+    //     types that differ only in that qualification never share a generic specialization.
+    // ES: T08-002: la grafía conserva los datos apuntados volatile igual que la clave canónica, para
+    //     que dos tipos de callback que solo difieren en esa calificación no compartan especialización.
+    for (const ast::TypeSyntax* parameter : syntax->typeArguments())
+        function.parameterPointeeVolatile.push_back(parameter != nullptr && parameter->isPointeeVolatile());
+    function.resultPointeeVolatile = syntax->functionReturnType() != nullptr &&
+        syntax->functionReturnType()->isPointeeVolatile();
     function.result = typeSpelling(syntax->functionReturnType());
     function.errorType = syntax->functionErrorType() == nullptr
         ? std::string{} : typeSpelling(syntax->functionErrorType());

@@ -3897,6 +3897,12 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
             methodMemberOrdinal, diagnostics);
         delegateBindings_.push_back(std::move(binding));
         result.typeKey = returnType;
+        // EN: T08-002: a C callback declared to return `volatile T*` keeps that qualification on the
+        //     result, exactly like a direct call to a C function with the same return type.
+        // ES: T08-002: un callback C declarado con retorno `volatile T*` conserva esa calificación en el
+        //     resultado, igual que una llamada directa a una función C con el mismo tipo de retorno.
+        result.pointerPointeeVolatile =
+            structuralFunction.has_value() && structuralFunction->resultPointeeVolatile;
         result.valid = true;
         // EN: Freeze 3.0 (plan item 135a): the delegate result may alias a lent argument temporary.
         // ES: Congelamiento 3.0 (elemento 135a del plan): el resultado del delegate puede ser alias de un temporal
@@ -4009,13 +4015,23 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
     MethodDelegateBinding& binding,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
+    // EN: T08-002: the structural callback identity records which parameters point to volatile data.
+    //     A volatile-pointee argument is accepted only by such a parameter; a parameter without the
+    //     qualification, a variadic slot or a callee type without that information would discard it.
+    // ES: T08-002: la identidad estructural del callback registra qué parámetros apuntan a datos
+    //     volatile. Un argumento con dato apuntado volatile solo se acepta en uno de esos parámetros; un
+    //     parámetro sin la calificación, una posición variádica o un tipo sin esa información la descartaría.
+    const std::optional<language::FunctionType> structuralFunction =
+        language::parseFunctionTypeIdentity(binding.delegateTypeKey);
     for (std::size_t index = 0; index < arguments.size(); ++index)
     {
-        if (arguments[index].pointerPointeeVolatile)
+        if (arguments[index].pointerPointeeVolatile &&
+            (index >= parameterTypes.size() || !structuralFunction.has_value() ||
+             !language::functionParameterPointeeVolatile(*structuralFunction, index)))
         {
             diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
                 diagnostics::DiagnosticSeverity::Error, expression->children()[index]->range(),
-                "indirect call cannot yet preserve pointer pointee volatile qualification");
+                "indirect call argument would discard pointer pointee volatile qualification");
             return false;
         }
         if (index >= parameterTypes.size())
