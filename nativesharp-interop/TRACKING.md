@@ -1030,6 +1030,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     cruzado desde ambos lenguajes. Otras formas y calificadores siguen abiertos.
     [Resultado](registro-commits/t08-bool-puntero-c-implementacion.md).
 - [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
+  - Una matriz de siete tipos escalares mediante globales C puntero a volatile
+    pasó O0–O3 y contrastó acquire/release por tipo contra Clang. El alcance es
+    acceso directo; locales y parámetros siguen pendientes.
+    [Resultado](registro-commits/t08-volatile-punteros-c-matriz-implementacion.md).
   - El acceso directo a global C `volatile _Bool*`, por índice y por `*`,
     conserva byte acquire/release y pasó O0–O3. La propagación por locales,
     parámetros y otras variantes sigue pendiente.

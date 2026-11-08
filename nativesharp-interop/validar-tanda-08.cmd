@@ -37,6 +37,7 @@ for %%T in (
   pruebas-tanda-08-record-c\dll-bool\validar.cmd
   pruebas-tanda-08-bool-global-c\validar.cmd
   pruebas-tanda-08-bool-puntero-c\validar.cmd
+  pruebas-tanda-08-volatile-punteros-c\validar.cmd
   pruebas-tanda-08-bool-abi-c\validar.cmd
   pruebas-tanda-08-bool-abi-cpp\validar.cmd
   pruebas-tanda-08-bool-callback-c\validar.cmd
