@@ -1021,6 +1021,21 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
     }
     ok &= expect(selectedGlobal && !globalFromOtherTemplate,
         "published generic global candidates retain both header origins and exclude other templates");
+    auto aliasInventory = collectCppSemanticTypeAliases(*compilation.projectGraph(), compilation.cppProjectSessions());
+    const auto* aliases = std::get_if<std::vector<CppSemanticTypeAliasEntry>>(&aliasInventory);
+    if (!expect(aliases != nullptr, "generic fixture alias inventory is available")) return false;
+    const auto aliasCandidates = selectCppPublishedTemplateAliases(compilation, published, *aliases);
+    bool selectedAlias = false, aliasFromOtherTemplate = false;
+    for (const auto& candidate : aliasCandidates)
+    {
+        aliasFromOtherTemplate |= candidate.templateKey != published.genericTemplates.front().canonicalKey;
+        std::size_t origins = 0;
+        for (const auto index : candidate.inventoryIndices)
+            if (aliases->at(index).declaration.name == "CIdInt") ++origins;
+        if (origins == 2) selectedAlias = true;
+    }
+    ok &= expect(selectedAlias && !aliasFromOtherTemplate,
+        "published generic alias candidates retain both header origins and exclude other templates");
     return ok;
 }
 

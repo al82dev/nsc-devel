@@ -11,6 +11,7 @@
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
+#include "nativesharp/Frontend/QualifiedNameLadder.h"
 
 #include <algorithm>
 #include <charconv>
@@ -26,6 +27,63 @@
 
 namespace nativesharp::interop
 {
+std::vector<CppPublishedTemplateAliasCandidates> selectCppPublishedTemplateAliases(
+    const frontend::ProjectCompilation& compilation, const LibraryMetadata& metadata,
+    std::span<const CppSemanticTypeAliasEntry> inventory)
+{
+    const auto* model = compilation.genericModel();
+    const auto* lookup = compilation.nameLookup();
+    if (!model || !lookup) return {};
+    std::set<std::string> published;
+    for (const auto& item : metadata.genericTemplates) published.insert(item.canonicalKey);
+    std::vector<CppPublishedTemplateAliasCandidates> result;
+    for (const auto& record : model->templates())
+    {
+        if (!published.contains(record.canonicalKey)) continue;
+        for (std::size_t index = 0; index < record.foreignReferenceCandidates.size(); ++index)
+        {
+            const auto& candidate = record.foreignReferenceCandidates[index];
+            if (!candidate.typeSyntax || candidate.writtenTypeName.empty()) continue;
+            const auto owner = candidate.typeSyntax->originProjectOrdinal().value_or(record.projectOrdinal);
+            if (owner >= lookup->modules().size() || !lookup->modules()[owner]) continue;
+            const auto visible = lookup->modules()[owner]->visibleProjectOrdinals();
+            const auto& lexicalNamespace = candidate.typeSyntax->originNamespace().value_or(candidate.lexicalNamespace);
+            std::vector<std::string> segments;
+            std::size_t start = 0;
+            while (start < lexicalNamespace.size())
+            {
+                const auto end = lexicalNamespace.find('.', start);
+                segments.push_back(lexicalNamespace.substr(start, end - start));
+                if (end == std::string::npos) break;
+                start = end + 1;
+            }
+            frontend::QualifiedNameSite site;
+            site.namespaceSegments = segments;
+            site.importedNamespaces = candidate.importedNamespaces;
+            site.aliases = &candidate.aliases;
+            std::set<std::string> spellings;
+            for (const auto& rung : frontend::qualifiedNameLadder(site, candidate.writtenTypeName))
+                spellings.insert(rung.spellings.begin(), rung.spellings.end());
+            CppPublishedTemplateAliasCandidates found{record.canonicalKey, index, {}};
+            for (std::size_t i = 0; i < inventory.size(); ++i)
+            {
+                const auto& alias = inventory[i];
+                if (alias.declaration.insideAnonymousNamespace ||
+                    (alias.projectOrdinal != owner &&
+                     std::find(visible.begin(), visible.end(), alias.projectOrdinal) == visible.end())) continue;
+                auto qualified = alias.declaration.qualifiedName;
+                std::size_t pos = 0;
+                while ((pos = qualified.find("::", pos)) != std::string::npos) qualified.replace(pos, 2, ".");
+                // Keep possible enclosing-type matches for later semantic filtering: the
+                // candidate currently does not retain every enclosing type spelling.
+                if (spellings.contains(qualified) ||
+                    qualified.ends_with("." + candidate.writtenTypeName)) found.inventoryIndices.push_back(i);
+            }
+            if (!found.inventoryIndices.empty()) result.push_back(std::move(found));
+        }
+    }
+    return result;
+}
 namespace
 {
 std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size_t projectOrdinal,

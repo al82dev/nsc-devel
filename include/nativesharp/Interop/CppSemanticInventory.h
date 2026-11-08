@@ -86,6 +86,16 @@ using CppSemanticTypeAliasInventoryResult =
     std::variant<std::vector<CppSemanticTypeAliasEntry>, CppSemanticInventoryFailure>;
 CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects);
+struct CppPublishedTemplateAliasCandidates
+{
+    std::string templateKey;
+    std::size_t candidateIndex;
+    // Indices into the supplied alias inventory; these are not resolved bindings.
+    std::vector<std::size_t> inventoryIndices;
+};
+std::vector<CppPublishedTemplateAliasCandidates> selectCppPublishedTemplateAliases(
+    const frontend::ProjectCompilation& compilation, const LibraryMetadata& metadata,
+    std::span<const CppSemanticTypeAliasEntry> inventory);
 bool provideCppTypeAliases(const compilation::ProjectGraph& graph,
     std::span<const CppProjectSessions> projects,
     std::vector<frontend::CppImportedTypeAlias>& output, std::string& error);
