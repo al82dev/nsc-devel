@@ -120,7 +120,7 @@ int main()
             const auto cByte = projectOopMirCacheIdentity(mir, ordinals, ordinals);
             const ProjectOopMirCacheIdentityIndex cByteIndex(mir);
             tests.expect(ordinary != cByte && cByte == cByteIndex.identity(ordinals, ordinals),
-                "cache identity distinguishes C volatile bool byte storage");
+                "cache identity distinguishes C bool byte storage");
             field.cppCBoolStorage = saved;
         }
 
@@ -149,6 +149,13 @@ int main()
                     enabled != alignedOne && alignedOne != alignedFour && alignedFour != changedAtomic,
                 "code cache identity distinguishes volatile mode, proven alignment and C atomic access");
             node->cppAtomicAccess = savedAtomic;
+            const auto beforeCBool = projectOopMirCacheIdentity(mir, ordinals, ordinals);
+            const bool savedCBool = node->cppCBoolStorage;
+            node->cppCBoolStorage = !savedCBool;
+            const auto afterCBool = projectOopMirCacheIdentity(mir, ordinals, ordinals);
+            tests.expect(beforeCBool != afterCBool,
+                "code cache identity distinguishes C bool access storage");
+            node->cppCBoolStorage = savedCBool;
             node->cppMicrosoftVolatileSemantics = savedMode;
             node->cppAtomicAlignmentBytes = savedAlignment;
         }
