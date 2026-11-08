@@ -1133,6 +1133,24 @@ bool compareCEnumSourceEvidence(const CppCEnumSnapshot& left, const CppCEnumSnap
     { result = CRecordContractComparison::Insufficient; error.clear(); return true; }
     const auto& first = *a.sourceProvenance;
     const auto& second = *b.sourceProvenance;
+    if (allowEquivalentDistinctSources && first.sourcePath.is_absolute() && second.sourcePath.is_absolute() &&
+        first.sourcePath != second.sourcePath)
+    {
+        const auto state = [](const auto& source) {
+            std::error_code ec;
+            const bool exists = std::filesystem::exists(source.sourcePath, ec);
+            if (ec) return -1;
+            if (!exists) return 0;
+            basic::Sha256Digest digest;
+            std::uintmax_t size = 0;
+            std::string hashError;
+            return basic::sha256File(source.sourcePath, digest, size, hashError) &&
+                source.byteOffset < size && basic::sha256Hex(digest) == source.bufferSha256 ? 1 : -1;
+        };
+        const auto leftState = state(first), rightState = state(second);
+        if ((leftState == 0 && rightState == 1) || (leftState == 1 && rightState == 0))
+        { result = CRecordContractComparison::Matching; error.clear(); return true; }
+    }
     if (!allowEquivalentDistinctSources &&
         (first.bufferSha256 != second.bufferSha256 || first.byteOffset != second.byteOffset))
     { result = CRecordContractComparison::Different; error.clear(); return true; }
@@ -1511,21 +1529,29 @@ bool compareCRecordClosureEvidence(std::span<const CppCRecordSnapshot> leftRecor
         const auto [a, b] = pending.back(); pending.pop_back();
         if (!seenRecords.emplace(a->identityKey, b->identityKey).second) continue;
         if (!compareCRecordSourceEvidence(*a, *b, verdict, error)) return false;
-        if (verdict == CRecordContractComparison::Different && a->complete && b->complete &&
+        if (verdict != CRecordContractComparison::Matching && a->complete && b->complete &&
             a->sourceProvenance && b->sourceProvenance)
         {
-            const auto unchanged = [](const auto& source) {
-                if (!source.sourcePath.is_absolute()) return false;
+            const auto state = [](const auto& source) {
+                if (!source.sourcePath.is_absolute()) return -1;
+                std::error_code ec;
+                const bool exists = std::filesystem::exists(source.sourcePath, ec);
+                if (ec) return -1;
+                if (!exists) return 0;
                 basic::Sha256Digest digest;
                 std::uintmax_t size = 0;
                 std::string hashError;
                 return basic::sha256File(source.sourcePath, digest, size, hashError) &&
-                    source.byteOffset < size && basic::sha256Hex(digest) == source.bufferSha256;
+                    source.byteOffset < size && basic::sha256Hex(digest) == source.bufferSha256 ? 1 : -1;
             };
+            const auto leftState = state(*a->sourceProvenance), rightState = state(*b->sourceProvenance);
             std::error_code ec;
-            const bool sameFile = std::filesystem::equivalent(a->sourceProvenance->sourcePath,
-                                                               b->sourceProvenance->sourcePath, ec);
-            if (!ec && !sameFile && unchanged(*a->sourceProvenance) && unchanged(*b->sourceProvenance) &&
+            const bool bothPresent = leftState == 1 && rightState == 1;
+            const bool oneMissing = (leftState == 0 && rightState == 1) || (leftState == 1 && rightState == 0);
+            const bool differentFiles = bothPresent
+                ? !std::filesystem::equivalent(a->sourceProvenance->sourcePath, b->sourceProvenance->sourcePath, ec) && !ec
+                : oneMissing && a->sourceProvenance->sourcePath != b->sourceProvenance->sourcePath;
+            if (differentFiles && (bothPresent || oneMissing) &&
                 !compareCRecordContracts(*a, *b, verdict, error)) return false;
         }
         if (verdict != CRecordContractComparison::Matching) break;

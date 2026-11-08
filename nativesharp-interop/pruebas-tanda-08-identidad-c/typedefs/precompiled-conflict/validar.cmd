@@ -26,6 +26,18 @@ nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\
 if not errorlevel 1 exit /b 1
 findstr /c:"conflicting C/C++ type alias" "%DEST%\Consumer.log" >nul
 if errorlevel 1 exit /b 1
+del "%DEST%\x.h"
+if exist "%DEST%\x.h" exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Control.nsproj" -O0 --no-artifact-cache -o "%DEST%\Absent.exe" > "%DEST%\Absent.log" 2>&1
+if errorlevel 1 (type "%DEST%\Absent.log" & exit /b 1)
+"%DEST%\Absent.exe"
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Consumer.nsproj" > "%DEST%\AbsentConflict.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"conflicting C/C++ type alias" "%DEST%\AbsentConflict.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%~dp0x.h" "%DEST%\x.h" >nul
+if errorlevel 1 exit /b 1
 echo /* changed after producer */>>"%DEST%\x.h"
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\Control.nsproj" > "%DEST%\Stale.log" 2>&1
 if not errorlevel 1 exit /b 1
