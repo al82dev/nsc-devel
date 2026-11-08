@@ -2,12 +2,14 @@
 
 #include "nativesharp/Compilation/LibraryReference.h"
 #include "nativesharp/Compilation/CppLibraryReference.h"
+#include "nativesharp/Compilation/CppConsumerVolatileMode.h"
 #include "nativesharp/Compilation/ProjectOutputKind.h"
 #include "nativesharp/Compilation/ProjectSourceSet.h"
 #include "nativesharp/Compilation/SdkManifest.h"
 #include "nativesharp/Language/ErrorSemantics.h"
 
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -30,7 +32,8 @@ public:
         std::string panicHandler = {},
         std::string packageName = {},
         std::vector<std::string> friendModules = {},
-        std::vector<CppLibraryReference> cppLibraryReferences = {});
+        std::vector<CppLibraryReference> cppLibraryReferences = {},
+        std::optional<CppConsumerVolatileMode> cppConsumerVolatileMode = std::nullopt);
 
     const std::filesystem::path& projectFile() const noexcept;
     const std::string& moduleName() const noexcept;
@@ -39,6 +42,7 @@ public:
     std::span<const std::filesystem::path> projectReferences() const noexcept;
     std::span<const LibraryReference> libraryReferences() const noexcept;
     std::span<const CppLibraryReference> cppLibraryReferences() const noexcept;
+    std::optional<CppConsumerVolatileMode> cppConsumerVolatileMode() const noexcept;
     std::span<const SdkManifest> sdkReferences() const noexcept;
     language::PanicProfile panicProfile() const noexcept;
     std::string_view panicHandler() const noexcept;
@@ -53,6 +57,7 @@ private:
     std::vector<std::filesystem::path> projectReferences_;
     std::vector<LibraryReference> libraryReferences_;
     std::vector<CppLibraryReference> cppLibraryReferences_;
+    std::optional<CppConsumerVolatileMode> cppConsumerVolatileMode_;
     std::vector<SdkManifest> sdkReferences_;
     language::PanicProfile panicProfile_ = language::PanicProfile::Abort;
     std::string panicHandler_;

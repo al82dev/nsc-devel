@@ -16,7 +16,8 @@ Project::Project(
     std::string panicHandler,
     std::string packageName,
     std::vector<std::string> friendModules,
-    std::vector<CppLibraryReference> cppLibraryReferences)
+    std::vector<CppLibraryReference> cppLibraryReferences,
+    std::optional<CppConsumerVolatileMode> cppConsumerVolatileMode)
     : projectFile_(std::move(projectFile)),
       moduleName_(std::move(moduleName)),
       outputKind_(outputKind),
@@ -24,6 +25,7 @@ Project::Project(
       projectReferences_(std::move(projectReferences)),
       libraryReferences_(std::move(libraryReferences)),
       cppLibraryReferences_(std::move(cppLibraryReferences)),
+      cppConsumerVolatileMode_(cppConsumerVolatileMode),
       sdkReferences_(std::move(sdkReferences)),
       panicProfile_(panicProfile),
       panicHandler_(std::move(panicHandler)),
@@ -65,6 +67,11 @@ std::span<const LibraryReference> Project::libraryReferences() const noexcept
 std::span<const CppLibraryReference> Project::cppLibraryReferences() const noexcept
 {
     return cppLibraryReferences_;
+}
+
+std::optional<CppConsumerVolatileMode> Project::cppConsumerVolatileMode() const noexcept
+{
+    return cppConsumerVolatileMode_;
 }
 
 std::span<const SdkManifest> Project::sdkReferences() const noexcept
