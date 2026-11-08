@@ -1,5 +1,6 @@
 int Main()
 {
+    if (Published.Bridge.Constant<int>(1) != 12) return 7;
     var value = Published.Bridge.Obj();
     if (sizeof(*value) != (nuint)Published.Bridge.Size()) return 1;
     value->tag = 1;

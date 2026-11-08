@@ -21,3 +21,4 @@ int probe_anonymous_check(void);
 int probe_anonymous_size(void);
 int probe_packed_anonymous_size(void);
 void probe_anonymous_set_bits(void);
+enum { AnonExtra = 12 };
