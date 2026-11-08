@@ -8,6 +8,7 @@
 #include "../support/TestContext.h"
 
 #include <array>
+#include <charconv>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -50,7 +51,7 @@ int main()
     std::filesystem::remove_all(root, ignored);
     writeFile(root / "Thin.nsproj",
         "<Project><PropertyGroup><Name>Thin</Name></PropertyGroup>"
-        "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>");
+        "<ItemGroup><Compile Include=\"Program.ns\" /></ItemGroup></Project>");
     {
         using nativesharp::llvm_backend::ThinLtoLibrarySidecar;
         using nativesharp::llvm_backend::ThinLtoLibrarySidecarCodec;
@@ -130,8 +131,11 @@ class Program
             "ThinLTO at -O2 runs real backends and does not warn");
         const std::string text = output.str();
         const std::string index = valueAfter(text, "thinlto-index: ");
+        const std::string summaries = valueAfter(text, "thinlto-summaries: ");
+        std::size_t summaryCount = 0;
+        const auto parsed = std::from_chars(summaries.data(), summaries.data() + summaries.size(), summaryCount);
         tests.expect(text.find("link-time-optimization: thin") != std::string::npos &&
-                text.find("thinlto-summaries: 1") == std::string::npos &&
+                parsed.ec == std::errc{} && parsed.ptr == summaries.data() + summaries.size() && summaryCount > 1 &&
                 text.find("thinlto-imports: ") != std::string::npos &&
                 index.size() == 64,
             "ThinLTO builds multiple indexed summaries");
