@@ -6390,7 +6390,7 @@ if(NSC_BUILD_TESTS)
         NAME nsc.stage30.project-oop-object
         COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage30/App/Stage30App.nsproj
-            -O2 -o ${NSC_STAGE30_OBJECT})
+            -O2 -o ${NSC_STAGE30_OBJECT} --verbose)
     set_tests_properties(
         nsc.stage30.project-oop-object
         PROPERTIES PASS_REGULAR_EXPRESSION "project OOP object emission: ok.*machine=0x8664")
@@ -6464,7 +6464,7 @@ if(NSC_BUILD_TESTS)
         NAME nsc.stage34.virtual-object
         COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage34/App/Stage34App.nsproj
-            -O2 -o ${NSC_STAGE34_OBJECT})
+            -O2 -o ${NSC_STAGE34_OBJECT} --verbose)
     set_tests_properties(
         nsc.stage34.virtual-object
         PROPERTIES PASS_REGULAR_EXPRESSION "project OOP object emission: ok.*machine=0x8664")
@@ -6498,7 +6498,7 @@ if(NSC_BUILD_TESTS)
         NAME nsc.stage37.object
         COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage37/App/Stage37App.nsproj
-            -O2 -o ${NSC_STAGE37_OBJECT})
+            -O2 -o ${NSC_STAGE37_OBJECT} --verbose)
     set_tests_properties(
         nsc.stage37.object
         PROPERTIES PASS_REGULAR_EXPRESSION "project OOP object emission: ok.*machine=0x8664")
@@ -6532,7 +6532,7 @@ if(NSC_BUILD_TESTS)
         NAME nsc.stage35-recovery.object
         COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage35_recovery/App/Stage35RecoveryApp.nsproj
-            -O2 -o ${NSC_STAGE35_RECOVERY_OBJECT})
+            -O2 -o ${NSC_STAGE35_RECOVERY_OBJECT} --verbose)
     set_tests_properties(
         nsc.stage35-recovery.object
         PROPERTIES PASS_REGULAR_EXPRESSION "project OOP object emission: ok.*machine=0x8664")
@@ -6714,7 +6714,7 @@ if(NSC_BUILD_TESTS)
         NAME nsc.stage36-recovery.object
         COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage36_recovery/App/Stage36RecoveryApp.nsproj
-            -O2 -o ${NSC_STAGE36_RECOVERY_OBJECT})
+            -O2 -o ${NSC_STAGE36_RECOVERY_OBJECT} --verbose)
     set_tests_properties(
         nsc.stage36-recovery.object
         PROPERTIES PASS_REGULAR_EXPRESSION "project OOP object emission: ok.*machine=0x8664")
@@ -6756,7 +6756,7 @@ if(NSC_BUILD_TESTS)
         NAME nsc.stage38.object
         COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage38/App/Stage38App.nsproj
-            -O2 -o ${NSC_STAGE38_OBJECT})
+            -O2 -o ${NSC_STAGE38_OBJECT} --verbose)
     set_tests_properties(
         nsc.stage38.object
         PROPERTIES PASS_REGULAR_EXPRESSION "project OOP object emission: ok.*machine=0x8664")
@@ -6798,7 +6798,7 @@ if(NSC_BUILD_TESTS)
         NAME nsc.stage39.object
         COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage39/App/Stage39App.nsproj
-            -O2 -o ${NSC_STAGE39_OBJECT})
+            -O2 -o ${NSC_STAGE39_OBJECT} --verbose)
     set_tests_properties(
         nsc.stage39.object
         PROPERTIES PASS_REGULAR_EXPRESSION "project OOP object emission: ok.*machine=0x8664")
@@ -6848,7 +6848,7 @@ if(NSC_BUILD_TESTS)
         NAME nsc.stage40.object
         COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage40/App/Stage40App.nsproj
-            -O2 -o ${NSC_STAGE40_OBJECT})
+            -O2 -o ${NSC_STAGE40_OBJECT} --verbose)
     set_tests_properties(
         nsc.stage40.object
         PROPERTIES PASS_REGULAR_EXPRESSION "project OOP object emission: ok.*machine=0x8664")
@@ -6890,7 +6890,7 @@ if(NSC_BUILD_TESTS)
         NAME nsc.stage42.object
         COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage42/App/Stage42App.nsproj
-            -O2 -o ${NSC_STAGE42_OBJECT})
+            -O2 -o ${NSC_STAGE42_OBJECT} --verbose)
     set_tests_properties(
         nsc.stage42.object
         PROPERTIES PASS_REGULAR_EXPRESSION "project OOP object emission: ok.*machine=0x8664")
@@ -6932,7 +6932,7 @@ if(NSC_BUILD_TESTS)
         NAME nsc.stage43.object
         COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage43/App/Stage43App.nsproj
-            -O2 -o ${NSC_STAGE43_OBJECT})
+            -O2 -o ${NSC_STAGE43_OBJECT} --verbose)
     set_tests_properties(
         nsc.stage43.object
         PROPERTIES PASS_REGULAR_EXPRESSION "project OOP object emission: ok.*machine=0x8664")
@@ -6974,7 +6974,7 @@ if(NSC_BUILD_TESTS)
         NAME nsc.stage44.object
         COMMAND "${NSC_TEST_COMPILER}" --emit-project-oop-obj
             ${CMAKE_CURRENT_SOURCE_DIR}/examples/project_stage44/App/Stage44App.nsproj
-            -O2 -o ${NSC_STAGE44_OBJECT})
+            -O2 -o ${NSC_STAGE44_OBJECT} --verbose)
     set_tests_properties(
         nsc.stage44.object
         PROPERTIES PASS_REGULAR_EXPRESSION "project OOP object emission: ok.*machine=0x8664")
