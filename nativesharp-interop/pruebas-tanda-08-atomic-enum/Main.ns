@@ -1,5 +1,8 @@
 int Main()
 {
+    if ((int)plain_state++ != plain_reference(0)) return 34;
+    if ((int)plain_state != plain_reference(1)) return 35;
+    if ((int)--plain_state != plain_reference(2)) return 36;
     tiny_state /= 2;
     if ((int)tiny_state != tiny_reference(1)) return 24;
     tiny_state += 130;

@@ -1,10 +1,19 @@
 #include "Api.h"
 _Atomic(enum State) state = STATE_IDLE;
 _Atomic(enum SignedState) signed_state = SIGNED_NEGATIVE;
+enum SignedState plain_state = SIGNED_NEGATIVE;
 _Atomic(enum WideState) wide_state = WIDE_LARGE;
 _Atomic(enum TinyState) tiny_state = TINY_NEGATIVE;
 _Atomic(enum ShortState) short_state = SHORT_START;
 int state_check(void) { return state == STATE_READY; }
+int plain_reference(int stage)
+{
+    enum SignedState value = SIGNED_NEGATIVE;
+    int previous = (int)value++;
+    if (stage == 0) return previous;
+    if (stage == 1) return (int)value;
+    return (int)--value;
+}
 int wide_operand_reference(int is_unsigned)
 {
     _Atomic(enum SignedState) value = SIGNED_NEGATIVE;
