@@ -9,6 +9,7 @@
 #include "nativesharp/Frontend/ClassDestructionPlan.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Frontend/ProjectOopMirNode.h"
+#include "../Internal/CppCRecordMetadataCodec.h"
 
 #include <algorithm>
 #include <unordered_map>
@@ -328,6 +329,37 @@ CppSemanticFunctionResult projectCppSemanticFunctionWithRecords(
             return CppSemanticFunctionFailure{"duplicate record group for project"};
     }
     return projectFunction(function, projectOrdinal, moduleName, &index, lookup);
+}
+
+CppSemanticFunctionResult projectCppPrecompiledCFunction(
+    const metadata_detail::CDependencyFunctionSnapshot& function,
+    std::span<const CppCRecordSnapshot> records, std::size_t projectOrdinal,
+    std::string_view moduleName, std::string_view targetTriple,
+    const frontend::ProjectNameLookup& lookup)
+{
+    if (targetTriple != "x86_64-pc-windows-msvc" || !lookup.isBuilt() ||
+        projectOrdinal >= lookup.modules().size() || !lookup.modules()[projectOrdinal] ||
+        lookup.modules()[projectOrdinal]->moduleName() != moduleName ||
+        moduleName.empty() || function.moduleName != moduleName || function.referenceIdentity.empty() ||
+        function.linkSymbol.empty() || function.declaration.externalSymbol != function.linkSymbol ||
+        !function.declaration.clangUsr || function.declaration.clangUsr->empty())
+        return CppSemanticFunctionFailure{"precompiled C function has invalid owner, target or identity"};
+    CppRecordGroups groups;
+    std::set<std::string> identities;
+    for (const auto& record : records)
+    {
+        if (record.moduleName != moduleName) continue;
+        std::vector<compilation::TypeNameSegment> containing;
+        for (const auto& name : record.containingRecords) containing.push_back({name, 0});
+        compilation::TypeIdentity identity(record.moduleName, record.namespaceSegments, containing, record.name);
+        if (!identity.isValid() || identity.key() != record.identityKey || record.targetTriple != targetTriple ||
+            !identities.insert(record.identityKey).second)
+            return CppSemanticFunctionFailure{"precompiled C function has invalid record closure"};
+        groups.groups.push_back({projectOrdinal, std::move(identity), {},
+            record.complete ? CppRecordGroupStatus::OneDefinition : CppRecordGroupStatus::ForwardOnly,
+            record.clangUsr});
+    }
+    return projectCppSemanticFunctionWithRecords(function.declaration, projectOrdinal, moduleName, groups, &lookup);
 }
 
 CppSemanticInstanceMethodResult projectCppSemanticInstanceMethod(

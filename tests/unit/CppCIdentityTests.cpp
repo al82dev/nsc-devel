@@ -379,6 +379,24 @@ bool checkExternalSelection(const nativesharp::frontend::ProjectCompilation& com
                 captured.linkSymbol == group.symbol.mangledName,
                 "selected real Clang C function is captured with its symbol and USR");
             if (!why.empty()) std::cerr << "real function capture: " << why << '\n';
+            std::vector<std::uint8_t> bytes;
+            metadata_detail::CDependencyFunctionSnapshot restored;
+            const bool decoded = metadata_detail::encodeCDependencyFunction(captured, bytes, why) &&
+                metadata_detail::decodeCDependencyFunction(bytes, restored, why);
+            ok &= expect(decoded && compilation.nameLookup(), "real C function snapshot can be decoded");
+            if (decoded && compilation.nameLookup())
+            {
+                auto projected = projectCppPrecompiledCFunction(restored, {}, 0, group.symbol.moduleName,
+                    entry.targetTriple, *compilation.nameLookup());
+                const auto* symbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projected);
+                ok &= expect(symbol && symbol->cppCanonicalIdentity == group.symbol.cppCanonicalIdentity &&
+                    symbol->mangledName == group.symbol.mangledName && symbol->cppClangUsr == group.symbol.cppClangUsr,
+                    "restored C function projects to the same ABI identity as the live declaration");
+                const auto invalid = projectCppPrecompiledCFunction(restored, {}, 0, "wrong-owner",
+                    entry.targetTriple, *compilation.nameLookup());
+                ok &= expect(std::holds_alternative<CppSemanticFunctionFailure>(invalid),
+                    "restored C function rejects a different owner");
+            }
         }
         auto inlineSelected = selectCppSemanticFunctions(*entries, 0, "cid_inline");
         const auto* inlineGroups = std::get_if<CppSemanticFunctionGroups>(&inlineSelected);

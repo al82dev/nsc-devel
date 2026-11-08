@@ -23,6 +23,8 @@ struct ClassDestructionPlan;
 namespace nativesharp::interop
 {
 struct CppRecordGroups;
+struct CppCRecordSnapshot;
+namespace metadata_detail { struct CDependencyFunctionSnapshot; }
 struct CppSemanticFunctionFailure
 {
     std::string message;
@@ -48,6 +50,13 @@ CppSemanticFunctionResult projectCppSemanticFunction(
 CppSemanticFunctionResult projectCppSemanticFunctionWithRecords(
     const CppFunctionDeclaration& function, std::size_t projectOrdinal, std::string_view moduleName,
     const CppRecordGroups& records, const frontend::ProjectNameLookup* lookup = nullptr);
+// Reprojects a saved C declaration through the same type and ABI mapping used
+// by live Clang observations. It does not install or link the resulting symbol.
+CppSemanticFunctionResult projectCppPrecompiledCFunction(
+    const metadata_detail::CDependencyFunctionSnapshot& function,
+    std::span<const CppCRecordSnapshot> records, std::size_t projectOrdinal,
+    std::string_view moduleName, std::string_view targetTriple,
+    const frontend::ProjectNameLookup& lookup);
 
 struct CppSemanticInstanceMethod
 {
