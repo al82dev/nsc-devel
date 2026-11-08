@@ -75,6 +75,20 @@ resuelve por completo el préstamo del payload.
 El prototipo recibe además un objeto ya asignado y crea el bloque de control
 por separado; no acredita la fábrica de una sola asignación del manifiesto y
 solo ensaya payloads de clase.
+Una fábrica genérica ordinaria `new T()` sí compiló y ejecutó con salida 42
+(`smart-pointer-generic-factory/results.json`). En cambio, una fábrica que
+retorna `owned T` desde `new (storage) T()` fue rechazada en O0 y O2
+(`smart-pointer-placement-factory/results.json`): la construcción placement
+posee el objeto pero toma prestado el almacenamiento. No se debe eliminar ese
+rechazo sin transportar de forma segura la distinción entre destrucción del
+objeto y liberación del bloque compartido.
+El mecanismo actual de `new (allocator)` tampoco demuestra la asignación
+única: `installAllocatorDescriptorSidecar` reserva por separado 80 bytes para
+el descriptor y el contexto del allocator. La operación MIR `ObjectDestroy`
+ya distingue destrucción object-only, pero aún no existe una fábrica compartida
+que la conecte con un bloque de control de vida independiente. Evidencia:
+`src/LLVM/Lowering/OopLlvmTypesAbiAttributes.cpp` y
+`src/LLVM/Lowering/OopLlvmConstruction.cpp`.
 Estos prototipos no son una implementación pública: no se han probado
 overflow, upgrade, Arc, sincronización, pin del módulo ni O2, y la API de
 acceso debe resolver explícitamente la vida del payload antes de publicarse.
