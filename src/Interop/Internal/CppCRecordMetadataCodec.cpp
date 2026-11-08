@@ -1669,7 +1669,11 @@ bool reconstructPrecompiledCImportedTypes(std::span<const frontend::PrecompiledS
                     return field.isAnonymousCarrier;
                 });
             });
-            if (hasCarriers ? !encodeCTypeCatalogWithAnonymousCarriers(oneRecord, oneEnum, {}, canonical, error) :
+            const bool hasEnumProvenance = std::any_of(oneEnum.begin(), oneEnum.end(), [](const auto& item) {
+                return item.declaration.sourceProvenance.has_value();
+            });
+            if (hasEnumProvenance ? !encodeCTypeCatalogWithEnumProvenance(oneRecord, oneEnum, {}, canonical, error) :
+                hasCarriers ? !encodeCTypeCatalogWithAnonymousCarriers(oneRecord, oneEnum, {}, canonical, error) :
                               !encodeCTypeCatalogWithProvenance(oneRecord, oneEnum, canonical, error)) return false;
             const auto [previous, inserted] = seen.emplace(std::string(identity), canonical);
             if (!inserted)

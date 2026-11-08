@@ -5432,6 +5432,8 @@ La conciliación de enums independientes y dependientes de records exigirá
 contrato, USR, hash, desplazamiento y archivo físico coincidentes. Una fuente
 ausente o modificada no constituye prueba de identidad. Presupuesto adicional:
 codec C interno y `CppSemanticRecord.cpp`; validación agrupada pendiente.
+Al detectar definiciones precompiladas duplicadas, incluir la procedencia enum
+en la codificación que se compara, sin convertir datos ausentes en una prueba.
 
 Enmienda: la primera implementación causó conflicto entre proyectos al
 coexistir el header y la metadata. Se permite modificar
