@@ -14,4 +14,8 @@ if re.search(r"%pointer\.load\d* = load i1\b", native_ir):
     raise SystemExit("NSC: la lectura por puntero sigue usando i1")
 if re.search(r"\bstore i1 (?:true|false), ptr %raw\.element\.addr", native_ir):
     raise SystemExit("NSC: la escritura por puntero sigue usando i1")
-print("Sin accesos i1 en los patrones comprobados; revisar el resto del IR.")
+if not re.search(r"%pointer\.load\d* = load i8\b", native_ir):
+    raise SystemExit("NSC: falta lectura de byte por puntero")
+if not re.search(r"\bstore i8 [^,]+, ptr %raw\.element\.addr", native_ir):
+    raise SystemExit("NSC: falta escritura de byte por puntero")
+print("Lecturas y escrituras bool por puntero usan bytes en el IR comprobado.")

@@ -1,3 +1,8 @@
+bool* Choose(bool first, bool* a, bool* b)
+{
+    if (first) return a;
+    return b;
+}
 int Main()
 {
     bool* p = c_bool_get();
@@ -5,5 +10,17 @@ int Main()
     c_bool_pointer[0] = true;
     c_bool_pointer[1] = false;
     if (c_bool_check() != 1) return 2;
+    bool local = false;
+    bool* nativePointer = &local;
+    c_set_through_pointer(nativePointer, true);
+    if (!local || !*nativePointer) return 3;
+    *nativePointer = false;
+    if (c_read_through_pointer(nativePointer) != 0) return 4;
+    bool* selected = Choose(true, p, nativePointer);
+    selected[0] = false;
+    if (p[0]) return 5;
+    selected = Choose(false, p, nativePointer);
+    *selected = true;
+    if (c_read_through_pointer(nativePointer) != 1) return 6;
     return 0;
 }
