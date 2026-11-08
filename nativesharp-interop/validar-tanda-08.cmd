@@ -124,6 +124,8 @@ for %%T in (
   pruebas-tanda-08-tls-c\lld\validar-transitivo.cmd
   pruebas-tanda-08-meta-c\validar-productor.cmd
   pruebas-tanda-08-meta-c\validar-sombras.cmd
+  pruebas-tanda-08-sombras-plantilla-c\diagnosticar.cmd
+  pruebas-tanda-08-sombras-plantilla-c\validar-ambito.cmd
 ) do call :run_script %%T
 echo === Publicacion y consumo de tipo C por NSMETA ===
 call "%~dp0pruebas-tanda-08-meta-c\validar.cmd"
