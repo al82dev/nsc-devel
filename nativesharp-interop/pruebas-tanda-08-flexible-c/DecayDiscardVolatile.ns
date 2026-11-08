@@ -1,0 +1,1 @@
+int Main() { FlexVolatile* value = flex_volatile(); int* p = value->data; return *p; }

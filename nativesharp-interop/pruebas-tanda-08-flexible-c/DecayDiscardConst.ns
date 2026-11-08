@@ -1,0 +1,1 @@
+int Main() { FlexConst* value = flex_const(); int* p = value->data; return *p; }

@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CFlexQualifiedDecay</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="QualifiedDecay.ns" />
+    <CppLibraryReference Header="Restricted.h" Language="C" Standard="c11" Library="restricted.lib" />
+  </ItemGroup>
+</Project>

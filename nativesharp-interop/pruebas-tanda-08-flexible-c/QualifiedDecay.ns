@@ -1,0 +1,12 @@
+int Main()
+{
+    FlexConst* c = flex_const();
+    int const* readOnly = c->data;
+    if (readOnly[0] != 123 || readOnly[1] != 456) return 1;
+    FlexVolatile* v = flex_volatile();
+    int volatile* observed = v->data;
+    observed[0] = 900;
+    if (flex_volatile_get(v, 0) != 900) return 2;
+    flex_volatile_set(v, 1, 333);
+    return observed[1] == 333 ? 0 : 3;
+}
