@@ -1146,6 +1146,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     Un control aislado confirmó que el modo ISO coincide con Clang y el modo
     Microsoft difiere en lectura y escritura; no está conectado como gate.
     [Comparación](registro-commits/t08-flexible-var-volatile-modos-resultado.md).
+    El alias reasignado reproduce la misma diferencia en O0–O3; en ISO coincide.
+    [Control](registro-commits/t08-volatile-alias-reasignado-control.md).
     La comparación ampliada confirmó el mismo resultado en O0–O3 para ambos
     modos. [Resultado](registro-commits/t08-flexible-var-volatile-opt-resultado.md).
     Con dos sesiones del mismo encabezado en modos distintos, NSC emite acceso

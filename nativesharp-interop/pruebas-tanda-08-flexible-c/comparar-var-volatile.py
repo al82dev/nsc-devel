@@ -27,7 +27,9 @@ def main():
     for c_name, ns_name, operation in (("direct_volatile_read", "DirectVolatileRead", "load"),
                                         ("direct_volatile_write", "DirectVolatileWrite", "store"),
                                         ("var_volatile_read", "VarVolatileRead", "load"),
-                                        ("var_volatile_write", "VarVolatileWrite", "store")):
+                                        ("var_volatile_write", "VarVolatileWrite", "store"),
+                                        ("reassign_volatile_read", "ReassignVolatileRead", "load"),
+                                        ("reassign_volatile_write", "ReassignVolatileWrite", "store")):
         reference = access(sys.argv[1], c_name, operation)
         actual = access(sys.argv[2], ns_name, operation)
         print(f"{ns_name}: Clang={reference} NSC={actual} {'IGUAL' if reference == actual else 'DIFIERE'}")
