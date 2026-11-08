@@ -45,6 +45,25 @@ bool earlierBlockLocal(const ast::AstNode* statement, std::string_view name)
     if (!statement) return false;
     if (statement->kind() == ast::AstNodeKind::VariableDeclarationStatement)
         return statement->text() == name;
+    if (statement->kind() == ast::AstNodeKind::DeconstructionDeclarationStatement)
+    {
+        std::vector<const ast::AstNode*> pending(statement->children().begin(), statement->children().end());
+        while (!pending.empty())
+        {
+            const auto* binding = pending.back();
+            pending.pop_back();
+            if (!binding) continue;
+            if (binding->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                if (binding->text() != "_" && binding->text() == name) return true;
+            }
+            else if (binding->kind() == ast::AstNodeKind::TupleExpression)
+            {
+                pending.insert(pending.end(), binding->children().begin(), binding->children().end());
+            }
+        }
+        return false;
+    }
     if (statement->kind() != ast::AstNodeKind::BlockStatement ||
         statement->auxiliaryText() != "declaration-list") return false;
     for (const auto* declaration : statement->children())
