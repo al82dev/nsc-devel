@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CNamesEnumConflict</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="ConsumerEnumConflict.ns" />
+    <CppLibraryReference Header="ApiConflictEnum.h" Language="C" Standard="c11" />
+    <LibraryReference Include="CNamesReferenced.lib" />
+  </ItemGroup>
+</Project>
