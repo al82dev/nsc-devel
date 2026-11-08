@@ -1047,6 +1047,11 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     0 en O0–O3; el fixture verificó campo y arreglo enum, IR y sus rechazos de
     dirección. Es una comprobación dirigida, no el cierre de T08-009.
 - [ ] T08-010. Importar la declaración y campos de un `struct` C.
+  - Arreglos flexibles C de `int const` y `int volatile`: lectura, escritura
+    permitida y controles negativos de const validados en consumo directo y
+    precompilado O0–O3; IR volatile contrastado con Clang. Quedan pendientes
+    otras combinaciones y la conversión implícita del arreglo a puntero.
+    [Evidencia](registro-commits/t08-flexible-c-calificados.md).
   - Los campos de bits enteros no volátiles en structs C se proyectan con
     coordenadas de Clang. El fixture mixto de lectura y escritura, incluidos
     campos con signo y empaquetados, pasó en O0–O3. También pasó con productor

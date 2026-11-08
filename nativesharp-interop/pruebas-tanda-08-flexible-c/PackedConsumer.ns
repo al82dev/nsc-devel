@@ -1,6 +1,13 @@
 int Main()
 {
     var value = Published.PackedBridge.Pointer();
+    var constValue = Published.PackedBridge.Const();
+    if (constValue->data[0] != 123 || constValue->data[1] != 456) return 4;
+    var volatileValue = Published.PackedBridge.Volatile();
+    VolatileAccess.SetVolatile(volatileValue, 0, 912);
+    if (Published.PackedBridge.VolatileGet(volatileValue, 0) != 912) return 5;
+    Published.PackedBridge.VolatileSet(volatileValue, 1, -321);
+    if (VolatileAccess.GetVolatile(volatileValue, 1) != -321) return 6;
     PackedAccess.SetPacked(value, 0, 1234567);
     if (Published.PackedBridge.Get(value, 0) != 1234567) return 1;
     Published.PackedBridge.Set(value, 1, -9876);

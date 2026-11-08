@@ -1,0 +1,5 @@
+public struct VolatileAccess
+{
+    public static int GetVolatile(FlexVolatile* value, int index) { return value->data[index]; }
+    public static void SetVolatile(FlexVolatile* value, int index, int element) { value->data[index] = element; }
+}

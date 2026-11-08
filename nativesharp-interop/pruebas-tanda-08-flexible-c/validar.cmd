@@ -24,6 +24,8 @@ set "FILES=%FILES% RestrictedConst.ns RestrictedConst.nsproj RestrictedPacked.ns
 set "FILES=%FILES% ProbeSizeofMember.ns ProbeSizeofMember.nsproj ProbeDecay.ns ProbeDecay.nsproj"
 set "FILES=%FILES% ProbeValueInts.ns ProbeValueInts.nsproj ProbeValuePacked.ns ProbeValuePacked.nsproj"
 set "FILES=%FILES% PackedAccess.ns PackedProducer.ns PackedConsumer.ns PackedProducer.nsproj PackedShared.nsproj PackedMetadata.nsproj"
+set "FILES=%FILES% QualifiedAccess.ns QualifiedDirect.ns QualifiedDirect.nsproj RestrictedConstWrite.ns RestrictedConstWrite.nsproj"
+set "FILES=%FILES% RestrictedConstEscape.ns RestrictedConstEscape.nsproj"
 for %%F in (%FILES%) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
@@ -68,14 +70,27 @@ for %%P in (Shared Metadata) do (
   python "%VERIFY%" "%DEST%\api-ref.ll" "%DEST%\%%P.ll" "%DEST%\alineacion-%%P.txt" "%~dp0tabla-alineacion.txt"
   if errorlevel 1 exit /b 1
 )
-for %%P in (RestrictedConst) do (
+for %%P in (RestrictedConstWrite) do (
   %EMIT_EXE% "%DEST%\%%P.nsproj" -O0 --no-artifact-cache -o "%DEST%\%%P.exe" > "%DEST%\%%P.log" 2>&1
   if not errorlevel 1 exit /b 1
-  findstr /l /c:"has no compatible member named 'data'" "%DEST%\%%P.log" >nul
+  findstr /l /c:"left side of assignment is not assignable" "%DEST%\%%P.log" >nul
   if errorlevel 1 exit /b 1
   echo Restriccion %%P: rechazo esperado confirmado.
 )
+%EMIT_EXE% "%DEST%\RestrictedConstEscape.nsproj" -O0 --no-artifact-cache -o "%DEST%\RestrictedConstEscape.exe" > "%DEST%\RestrictedConstEscape.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /l /c:"would discard pointee constness" "%DEST%\RestrictedConstEscape.log" >nul
+if errorlevel 1 exit /b 1
+echo Restriccion RestrictedConstEscape: rechazo esperado confirmado.
 for %%O in (0 1 2 3) do (
+  %EMIT_EXE% "%DEST%\RestrictedConst.nsproj" -O%%O --no-artifact-cache -o "%DEST%\const-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  "%DEST%\const-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  %EMIT_EXE% "%DEST%\QualifiedDirect.nsproj" -O%%O --no-artifact-cache -o "%DEST%\qualified-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  "%DEST%\qualified-O%%O.exe"
+  if errorlevel 1 exit /b 1
   %EMIT_EXE% "%DEST%\RestrictedPacked.nsproj" -O%%O --no-artifact-cache -o "%DEST%\packed-O%%O.exe"
   if errorlevel 1 exit /b 1
   "%DEST%\packed-O%%O.exe"
@@ -93,6 +108,12 @@ for %%P in (RestrictedPacked PackedShared PackedMetadata) do (
   nsc.exe %CLANG_ROOT% --dump-project-oop-llvm "%DEST%\%%P.nsproj" > "%DEST%\%%P.ll"
   if errorlevel 1 exit /b 1
   python "%VERIFY%" "%DEST%\restricted-ref.ll" "%DEST%\%%P.ll" "%DEST%\alignment-%%P.txt" "%~dp0tabla-alineacion-packed.txt"
+  if errorlevel 1 exit /b 1
+)
+for %%P in (QualifiedDirect PackedShared PackedMetadata) do (
+  nsc.exe %CLANG_ROOT% --dump-project-oop-llvm "%DEST%\%%P.nsproj" > "%DEST%\volatile-%%P.ll"
+  if errorlevel 1 exit /b 1
+  python "%~dp0..\pruebas-tanda-08-volatile-campos-c\verificar_volatile_clang.py" "%DEST%\restricted-ref.ll" "%DEST%\volatile-%%P.ll" "%DEST%\volatile-%%P.txt" "%~dp0tabla-volatile-flexible.txt"
   if errorlevel 1 exit /b 1
 )
 for %%P in (ProbeSizeofMember ProbeDecay) do call :probe %%P

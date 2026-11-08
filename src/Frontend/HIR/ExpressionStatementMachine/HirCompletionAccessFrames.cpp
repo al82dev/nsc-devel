@@ -427,7 +427,7 @@ void ProjectOopHirModel::finishArrayRawIndex(
             frame.syntax,
             elementType);
         address->elementTypeKey = elementType;
-        address->volatileAccess = (frame.baseIsFixedArray && base && base->volatileAccess) ||
+        address->volatileAccess = ((frame.baseIsFixedArray || frame.baseIsFlexibleArray) && base && base->volatileAccess) ||
             (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray &&
              baseType && baseType->pointerPointeeVolatile);
         const ProjectOopHirNode* provenance = base.get();
@@ -465,7 +465,7 @@ void ProjectOopHirModel::finishArrayRawIndex(
                     (elementType == "builtin:long" || elementType == "builtin:ulong" || elementType == "builtin:double") ? 8 : 4;
             }
         }
-        if (frame.baseIsFixedArray && base &&
+        if ((frame.baseIsFixedArray || frame.baseIsFlexibleArray) && base &&
             (base->kind == ProjectOopHirNodeKind::FieldAddress ||
              base->kind == ProjectOopHirNodeKind::RawElementAddress))
             address->cppMicrosoftVolatileSemantics = base->cppMicrosoftVolatileSemantics;

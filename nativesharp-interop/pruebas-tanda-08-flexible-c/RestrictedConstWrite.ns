@@ -1,0 +1,6 @@
+int Main()
+{
+    FlexConst* value = flex_const();
+    value->data[0] = 9;
+    return 0;
+}

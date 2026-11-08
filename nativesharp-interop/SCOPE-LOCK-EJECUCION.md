@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-010: miembros flexibles C const y volatile
+
+Proyectar los calificadores const y volatile de elementos de arreglos flexibles
+C a través de acceso directo y metadata; impedir escrituras sobre const y emitir
+accesos volatile con alineación y orden verificados contra Clang. Presupuesto:
+proyección de campos, validación de miembros, análisis de índices, lowering HIR,
+fixture flexible, seguimiento y registros. Validar O0–O3 y regresiones de layout,
+bool y volatile. No modificar NSLink, formato NSMETA, LLVM/Clang ni desplegar en C:.
+
 ## T08-002 H5: verificación precompilada de records C compatibles
 
 Comprobar lectura y escritura de un record C definido de forma compatible en

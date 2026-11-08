@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CFlexConstWrite</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="RestrictedConstWrite.ns" />
+    <CppLibraryReference Header="Restricted.h" Language="C" Standard="c11" Library="restricted.lib" />
+  </ItemGroup>
+</Project>

@@ -3,6 +3,7 @@
   <ItemGroup>
     <Compile Include="PackedConsumer.ns" />
     <Compile Include="PackedAccess.ns" />
+    <Compile Include="QualifiedAccess.ns" />
     <CppLibraryReference Header="Restricted.h" Language="C" Standard="c11" />
     <LibraryReference Include="CPackedProducer.lib" />
   </ItemGroup>

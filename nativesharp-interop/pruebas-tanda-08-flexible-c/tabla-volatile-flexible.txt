@@ -1,0 +1,1 @@
+volatile flex_volatile_get flex_volatile_set Volatile 0

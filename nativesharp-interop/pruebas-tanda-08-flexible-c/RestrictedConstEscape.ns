@@ -1,0 +1,7 @@
+int Main()
+{
+    FlexConst* value = flex_const();
+    int* pointer = &value->data[0];
+    *pointer = 9;
+    return 0;
+}

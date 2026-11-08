@@ -1,0 +1,10 @@
+int Main()
+{
+    var constValue = flex_const();
+    if (constValue->data[0] != 123 || constValue->data[1] != 456) return 1;
+    var value = flex_volatile();
+    VolatileAccess.SetVolatile(value, 0, 912);
+    if (flex_volatile_get(value, 0) != 912) return 2;
+    flex_volatile_set(value, 1, -321);
+    return VolatileAccess.GetVolatile(value, 1) == -321 ? 0 : 3;
+}

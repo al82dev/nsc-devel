@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CQualifiedFlexibleDirect</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="QualifiedDirect.ns" />
+    <Compile Include="QualifiedAccess.ns" />
+    <CppLibraryReference Header="Restricted.h" Language="C" Standard="c11" Library="restricted.lib" />
+  </ItemGroup>
+</Project>

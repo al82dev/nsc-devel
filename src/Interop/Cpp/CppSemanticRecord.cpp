@@ -123,9 +123,9 @@ std::optional<CppSemanticInstanceField> projectCFlexibleArrayField(const CppReco
     const CppType* element = field.type.element.get();
     if (record.isCxx || record.kind != CppRecordKind::Struct || fieldIndex + 1 != record.fields.size() ||
         field.name.empty() || field.access != CppAccess::Public || field.bitWidth || !field.offsetBits ||
-        *field.offsetBits % 8 != 0 || *field.offsetBits > *record.sizeBits || field.type.isConst ||
-        field.type.isVolatile || !element || element->kind == CppTypeKind::Array || element->isConst ||
-        element->isVolatile || !element->sizeBits || !element->alignmentBits || *element->sizeBits == 0 ||
+        *field.offsetBits % 8 != 0 || *field.offsetBits > *record.sizeBits ||
+        !element || element->kind == CppTypeKind::Array ||
+        !element->sizeBits || !element->alignmentBits || *element->sizeBits == 0 ||
         *element->sizeBits % 8 != 0 || *element->alignmentBits == 0 || *element->alignmentBits % 8 != 0)
         return std::nullopt;
     const auto naturalAlignment = *element->alignmentBits / 8;
@@ -134,12 +134,17 @@ std::optional<CppSemanticInstanceField> projectCFlexibleArrayField(const CppReco
         (recordAlignment & (recordAlignment - 1)) != 0) return std::nullopt;
     const auto effectiveAlignment = std::min(naturalAlignment, std::gcd(recordAlignment, *field.offsetBits / 8));
     if (effectiveAlignment == 0) return std::nullopt;
+    const bool isConst = field.type.isConst || element->isConst;
+    const bool isVolatile = field.type.isVolatile || element->isVolatile;
+    CppType unqualified = *element;
+    unqualified.isConst = false;
+    unqualified.isVolatile = false;
     std::optional<CppScalarTypeMapping> mapped;
     if (element->kind == CppTypeKind::Boolean || element->kind == CppTypeKind::SignedInteger ||
         element->kind == CppTypeKind::UnsignedInteger || element->kind == CppTypeKind::Floating)
-        mapped = mapCppScalarType(*element);
+        mapped = mapCppScalarType(unqualified);
     else if (element->kind == CppTypeKind::Enumeration)
-        mapped = projectCppSemanticEnumType(*element, projectOrdinal, moduleName, lookup);
+        mapped = projectCppSemanticEnumType(unqualified, projectOrdinal, moduleName, lookup);
     else if (element->kind == CppTypeKind::Record && lookup)
     {
         const auto target = projectCppRecordTypeIdentity(*element, moduleName);
@@ -155,7 +160,7 @@ std::optional<CppSemanticInstanceField> projectCFlexibleArrayField(const CppReco
     }
     if (!mapped) return std::nullopt;
     return CppSemanticInstanceField{projectOrdinal, ownerIdentityKey, field.name,
-        CppScalarTypeMapping{mapped->nativeSharpTypeKey + "[*]", field.type.canonicalSpelling, false, false},
+        CppScalarTypeMapping{mapped->nativeSharpTypeKey + "[*]", field.type.canonicalSpelling, isConst, isVolatile},
         *field.offsetBits / 8, false, 0, effectiveAlignment, field.clangUsr};
 }
 }

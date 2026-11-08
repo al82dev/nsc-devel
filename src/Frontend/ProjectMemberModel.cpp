@@ -219,7 +219,7 @@ bool ProjectMemberModel::setExperimentalCppInstanceFields(
         const bool flexible = flexibleArrayElementTypeKey(field.typeKey).has_value();
         if (field.ownerIdentityKey.empty() || field.name.empty() ||
             (flexible && (field.byteSize != 0 || field.byteAlignment == 0 || field.bitWidth ||
-                          field.pointeeReadonly || field.isConst || field.isVolatile)) ||
+                          field.pointeeReadonly)) ||
             (!flexible && !experimentalCppFieldBytes(field.typeKey) && (!field.byteSize || !field.byteAlignment)) ||
             (!flexible && (field.byteSize == 0) != (field.byteAlignment == 0)) ||
             (field.pointeeReadonly && !field.typeKey.ends_with('*')))

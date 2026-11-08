@@ -3,6 +3,10 @@ namespace Published
     public struct PackedBridge
     {
         public static FlexPacked* Pointer() { return flex_packed(); }
+        public static FlexConst* Const() { return flex_const(); }
+        public static FlexVolatile* Volatile() { return flex_volatile(); }
+        public static int VolatileGet(FlexVolatile* value, int index) { return flex_volatile_get(value, index); }
+        public static void VolatileSet(FlexVolatile* value, int index, int element) { flex_volatile_set(value, index, element); }
         public static FlexPacked Value() { return flex_packed_value(); }
         public static int Take(FlexPacked value) { return flex_packed_take(value); }
         public static int Get(FlexPacked* value, int index) { return flex_packed_get(value, index); }
