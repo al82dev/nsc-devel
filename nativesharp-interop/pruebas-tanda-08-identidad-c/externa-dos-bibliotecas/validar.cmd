@@ -2,6 +2,8 @@
 setlocal
 set "DEST=A:\nsc-interop-build\t08-global-externa-dos-gate"
 if "%~1"=="incompatible" set "DEST=A:\nsc-interop-build\t08-global-externa-dos-incompatible"
+if "%~1"=="volatile" set "DEST=A:\nsc-interop-build\t08-global-externa-dos-volatile"
+if "%~1"=="volatile-compatible" set "DEST=A:\nsc-interop-build\t08-global-externa-dos-volatile-compatible"
 set "PATH=A:\nsc-interop-build\tanda1-ON\bin;A:\al82dev-clang\bin;%PATH%"
 set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
@@ -18,6 +20,12 @@ for %%F in (fixture.c Consumer.ns Consumer.nsproj) do (
   if errorlevel 1 exit /b 1
 )
 if "%~1"=="incompatible" > "%DEST%\b\same.h" echo extern long internal_value;
+if "%~1"=="volatile" > "%DEST%\b\same.h" echo extern volatile int internal_value;
+if "%~1"=="volatile-compatible" (
+  > "%DEST%\a\same.h" echo extern volatile int internal_value;
+  > "%DEST%\b\same.h" echo extern volatile int internal_value;
+  > "%DEST%\fixture.c" echo volatile int internal_value = 11;
+)
 pushd "%DEST%" || exit /b 1
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 fixture.c -o fixture.obj
 if errorlevel 1 (popd & exit /b 1)
@@ -28,7 +36,16 @@ for %%D in (a b) do (
   if errorlevel 1 (type "%%D\build.log" & popd & exit /b 1)
 )
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe Consumer.nsproj -O0 --no-artifact-cache -o Consumer.exe > Consumer.log 2>&1
-if "%~1"=="incompatible" (
+if "%~1"=="incompatible" goto expect_incompatible
+if "%~1"=="volatile" goto expect_incompatible
+if errorlevel 1 (type Consumer.log & popd & exit /b 1)
+Consumer.exe
+if errorlevel 1 (popd & exit /b 1)
+popd
+echo Global externa compartida validada.
+exit /b 0
+:expect_incompatible
+(
   if not errorlevel 1 (echo Se aceptaron declaraciones incompatibles. & popd & exit /b 1)
   findstr /c:"ambiguous namespace state reference" Consumer.log >nul
   if errorlevel 1 (type Consumer.log & popd & exit /b 1)
@@ -36,8 +53,3 @@ if "%~1"=="incompatible" (
   echo Declaraciones C incompatibles rechazadas.
   exit /b 0
 )
-if errorlevel 1 (type Consumer.log & popd & exit /b 1)
-Consumer.exe
-if errorlevel 1 (popd & exit /b 1)
-popd
-echo Global externa compartida validada.
