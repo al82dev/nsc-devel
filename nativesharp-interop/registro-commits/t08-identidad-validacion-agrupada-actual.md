@@ -25,7 +25,22 @@ no se toma como prueba independiente del comportamiento actual de NSC. Los
 records precompilados se ejecutaron de O0 a O3; los demás controles anteriores
 se limitaron a O0 o análisis semántico según su propio validador.
 
+## Ampliación de la matriz actual
+
+Se ejecutó una copia temporal del validador de identidad en
+`A:\nsc-interop-build\t08-validar-identidad-actual.cmd`, con salidas en
+`A:\nsc-interop-build\t08-identidad-bloque-actual`. Terminó con código 0:
+
+- Restauró USR de cinco variantes de productor en O0, O1, O2 y O3, mediante
+  módulo precompilado y mediante el driver.
+- Ejecutó 36 combinaciones de la matriz de typedefs y las muestras de records
+  precompilados de O0 a O3.
+- Ejecutó las matrices existentes de campos enum, plantillas y constantes,
+  incluidos sus diagnósticos esperados.
+
+La copia temporal omite la sonda general que mezcla controles históricos y la
+sección de formatos históricos. Los originales y sus pruebas no se modificaron.
 Por decisión del usuario, la compatibilidad entre formatos históricos de NSMETA
-no se emplea como criterio de cierre. No se ejecutó el validador integral de
-T08-002 ni el gate completo de la tanda, y este resultado no acredita todos los
-casos posibles. La tanda 8 continúa abierta.
+no se emplea como criterio de cierre. Esta es la matriz actual seleccionada,
+no el validador integral original ni el gate completo de la tanda; tampoco
+acredita todos los casos posibles. La tanda 8 continúa abierta.
