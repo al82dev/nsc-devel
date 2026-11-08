@@ -26,5 +26,7 @@ struct ThinLtoLibrarySidecar final
     std::string metadataDigest;
     std::string dependencies;
     std::vector<std::string> units;
+    // Native object bytes needed alongside the optimized bitcode units (v3).
+    std::vector<std::string> nativeObjects;
 };
 }

@@ -7,6 +7,10 @@ Se permite ajustar `ProjectOopObjectBundle`, `ProjectOopObjectGenerator.cpp` y
 generados después del backend y evitar publicar un sidecar incompleto. El caso
 debe conservar la biblioteca nativa para el consumidor hasta implementar el
 transporte completo de objetos en sidecars. NSLink, LLVM/Clang y C: protegidos.
+Se amplía el alcance al codec y modelo `ThinLtoLibrarySidecar` para preparar una
+versión 3 que transporte los bytes de objetos nativos, conservando lectura y
+escritura v2 cuando no existan objetos. La integración al productor y consumidor
+se hará por separado; el fallback existente sigue vigente hasta validarla.
 
 ## T08-002: sombras locales en plantillas públicas
 

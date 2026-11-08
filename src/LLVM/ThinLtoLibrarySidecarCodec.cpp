@@ -15,6 +15,7 @@ namespace
 {
 constexpr std::string_view kSignature = "NSTHINLT";
 constexpr std::uint32_t kVersion = 2;
+constexpr std::uint32_t kNativeObjectsVersion = 3;
 // A library has one unit per code partition; this only bounds a corrupt count.
 // Una biblioteca tiene una unidad por particion de codigo; esto solo acota un conteo corrupto.
 constexpr std::uint32_t kMaximumUnits = 65536;
@@ -85,7 +86,7 @@ bool decode(std::string_view bytes, ThinLtoLibrarySidecar& sidecar, std::string&
     std::uint64_t count = 0;
     ThinLtoLibrarySidecar decoded;
     if (!readText(body, offset, signature, kSignature.size()) || !readInteger(body, offset, version, 4) ||
-        version != kVersion)
+        (version != kVersion && version != kNativeObjectsVersion))
     {
         error = "unsupported ThinLTO sidecar version";
         return false;
@@ -106,6 +107,25 @@ bool decode(std::string_view bytes, ThinLtoLibrarySidecar& sidecar, std::string&
         {
             error = "truncated or invalid ThinLTO sidecar unit";
             return false;
+        }
+    }
+    if (version == kNativeObjectsVersion)
+    {
+        if (!readInteger(body, offset, count, 4) || count == 0 || count > kMaximumUnits)
+        {
+            error = "truncated or invalid ThinLTO native object count";
+            return false;
+        }
+        decoded.nativeObjects.resize(static_cast<std::size_t>(count));
+        for (std::string& object : decoded.nativeObjects)
+        {
+            std::uint64_t size = 0;
+            if (!readInteger(body, offset, size, 8) || size == 0 || size > body.size() ||
+                !readText(body, offset, object, static_cast<std::size_t>(size)))
+            {
+                error = "truncated or invalid ThinLTO native object";
+                return false;
+            }
         }
     }
     if (offset != body.size())
@@ -130,8 +150,19 @@ bool ThinLtoLibrarySidecarCodec::write(
     const ThinLtoLibrarySidecar& sidecar,
     std::string& error)
 {
+    if (sidecar.nativeObjects.size() > kMaximumUnits)
+    {
+        error = "too many ThinLTO native objects";
+        return false;
+    }
+    for (const auto& object : sidecar.nativeObjects)
+        if (object.empty())
+        {
+            error = "empty ThinLTO native object";
+            return false;
+        }
     std::string bytes(kSignature);
-    appendInteger(bytes, kVersion, 4);
+    appendInteger(bytes, sidecar.nativeObjects.empty() ? kVersion : kNativeObjectsVersion, 4);
     appendString(bytes, sidecar.compatibility);
     appendString(bytes, sidecar.libraryDigest);
     appendString(bytes, sidecar.metadataDigest);
@@ -141,6 +172,15 @@ bool ThinLtoLibrarySidecarCodec::write(
     {
         appendInteger(bytes, unit.size(), 8);
         bytes.append(unit);
+    }
+    if (!sidecar.nativeObjects.empty())
+    {
+        appendInteger(bytes, sidecar.nativeObjects.size(), 4);
+        for (const auto& object : sidecar.nativeObjects)
+        {
+            appendInteger(bytes, object.size(), 8);
+            bytes.append(object);
+        }
     }
     const basic::Sha256Digest digest = digestOf(bytes);
     bytes.append(reinterpret_cast<const char*>(digest.data()), digest.size());
