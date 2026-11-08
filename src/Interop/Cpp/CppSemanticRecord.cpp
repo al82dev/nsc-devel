@@ -1776,6 +1776,8 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             state.cppDllImport = value.dllImport;
             state.cppThreadLocal = value.threadLocal;
             state.cppAtomicStorage = value.atomicStorage;
+            state.cppCInternalLinkage = !global.declaration.externalLinkage;
+            state.cppCanonicalCType = value.canonicalCppType;
             const Key key{state.projectOrdinal, state.namespaceName, state.name};
             const auto existing = names.find(key);
             if (existing != names.end())

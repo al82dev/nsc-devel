@@ -2,4 +2,5 @@
 <Compile Include="Consumer.ns" />
 <LibraryReference Include="a/InlineProducerA.lib" />
 <LibraryReference Include="b/InlineProducerB.lib" />
+<CppLibraryReference Header="a/same.h" Language="C" Standard="c11" Library="fixture.lib" />
 </ItemGroup></Project>

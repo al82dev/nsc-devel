@@ -68,6 +68,10 @@ struct NamespaceStateSymbol final
     std::optional<std::string> cppClangUsr;
     // True only when every reconciled global declaration was parsed as C.
     bool cppCGlobal = false;
+    // C linkage and canonical type are retained to reconcile the same external
+    // declaration imported by independent projects without merging C statics.
+    bool cppCInternalLinkage = false;
+    std::string cppCanonicalCType;
     // Counterpart established through a reconciled enum, not by the value name alone.
     std::optional<std::string> cppReconciledStateKey;
     bool cppThreadLocal = false;

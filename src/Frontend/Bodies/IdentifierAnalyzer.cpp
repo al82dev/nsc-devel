@@ -976,6 +976,31 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
             [&](const auto other) { return other < states.size() && other != ordinal &&
                 states[other].identityKey == *states[ordinal].cppReconciledStateKey; });
     });
+    if (candidates.size() > 1 && candidates.front() < states.size())
+    {
+        const auto& first = states[candidates.front()];
+        const auto equivalentExternalC = [&](std::size_t ordinal) {
+            if (ordinal >= states.size()) return false;
+            const auto& other = states[ordinal];
+            return first.cppCGlobal && other.cppCGlobal && first.isCppExternal && other.isCppExternal &&
+                !first.cppCInternalLinkage &&
+                !other.cppCInternalLinkage && first.cppImportError.empty() && other.cppImportError.empty() &&
+                first.cppClangUsr && !first.cppClangUsr->empty() && first.cppClangUsr == other.cppClangUsr &&
+                !first.storageName.empty() && first.storageName == other.storageName &&
+                !first.cppCanonicalCType.empty() && first.cppCanonicalCType == other.cppCanonicalCType &&
+                first.declaredTypeKey == other.declaredTypeKey && first.isVolatile == other.isVolatile &&
+                first.isCppReadonly == other.isCppReadonly &&
+                first.cppPointerPointeeReadonly == other.cppPointerPointeeReadonly &&
+                first.cppPointerPointeeVolatile == other.cppPointerPointeeVolatile &&
+                first.cppMicrosoftVolatileSemantics == other.cppMicrosoftVolatileSemantics &&
+                first.cppStorageSizeBits == other.cppStorageSizeBits &&
+                first.cppDeclarationAlignmentBits == other.cppDeclarationAlignmentBits &&
+                first.cppDllImport == other.cppDllImport && first.cppThreadLocal == other.cppThreadLocal &&
+                first.cppAtomicStorage == other.cppAtomicStorage;
+        };
+        if (std::all_of(candidates.begin(), candidates.end(), equivalentExternalC))
+            candidates.resize(1);
+    }
     if (candidates.size() != 1)
     {
         diagnostics.report(
