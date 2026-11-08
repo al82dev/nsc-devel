@@ -74,6 +74,8 @@ call "%~dp0anonimos-anidados\validar.cmd"
 if errorlevel 1 exit /b 1
 call "%~dp0funcion-firma\validar.cmd"
 if errorlevel 1 exit /b 1
+call "%~dp0sombra-funcion\validar.cmd"
+if errorlevel 1 exit /b 1
 call :typedefs
 if errorlevel 1 exit /b 1
 call "%~dp0records-precompiled\validar.cmd"

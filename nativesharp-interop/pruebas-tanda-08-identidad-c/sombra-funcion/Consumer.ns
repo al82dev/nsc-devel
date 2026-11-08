@@ -1,0 +1,5 @@
+int Main() {
+    if (PublishedShadowFunction.Bridge.Parameter<int>(19) != 19) return 1;
+    if (PublishedShadowFunction.Bridge.Local<int>(0) != 17) return 2;
+    return 0;
+}

@@ -35,9 +35,9 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
   - [x] T08-002-09e1: Verificar los USR de Clang de una muestra, su presencia en la biblioteca y ejecutar accesos directos y precompilados en O0. [Evidencia](registro-commits/t08-identidad-anonimos-publicacion.md).
   - [x] T08-002-09e2: Comparar los USR de los campos y enumeradores con los que NSC restaura para esa muestra mediante el driver.
 - [x] T08-002-09f: Verificar una muestra de firmas de función externa C equivalentes e incompatibles en dos encabezados. [Evidencia](registro-commits/t08-firma-externa-c-conflicto.md).
-- [ ] T08-002-09g: Verificar por separado la identidad y selección de funciones `static inline` con el mismo contenido en encabezados homónimos de directorios distintos.
+- [x] T08-002-09g: Verificar una muestra de funciones `static inline` idénticas en encabezados homónimos de directorios distintos. [Evidencia](registro-commits/t08-inline-homonima-identica.md).
 - **T08-002-10 — Sombras en plantillas:**
-- [ ] T08-002-10a: Verificar sombra de función C por parámetro y local en una plantilla precompilada.
+- [x] T08-002-10a: Verificar una muestra de sombra de función C por parámetro y local en una plantilla precompilada en O0. [Evidencia](registro-commits/t08-sombra-funcion-parametro-local.md).
 - [ ] T08-002-10b: Verificar sombra de global C por variable de `foreach` y por variable de `catch`.
 - [ ] T08-002-10c: Verificar que inicializadores se analicen en el ámbito correcto antes de introducir el nombre local.
 - **T08-002-11 — Publicación y conflictos:**

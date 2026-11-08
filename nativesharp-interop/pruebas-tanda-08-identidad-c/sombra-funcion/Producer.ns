@@ -1,0 +1,6 @@
+namespace PublishedShadowFunction {
+    public class Bridge {
+        public static int Parameter<T>(int shadow_function) { return shadow_function; }
+        public static int Local<T>(T value) { int shadow_function = 17; return shadow_function; }
+    }
+}
