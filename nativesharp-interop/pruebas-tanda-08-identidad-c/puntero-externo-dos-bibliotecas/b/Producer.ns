@@ -1,0 +1,1 @@
+namespace InlineB { public class Bridge { public static int Read<T>(T value) { return *external_pointer; } } }

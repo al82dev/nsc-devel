@@ -43,7 +43,8 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-002-09l: Conciliar una global C externa compartida por plantillas de dos bibliotecas precompiladas y rechazar la muestra incompatible `int`/`long`, en O0. [Reproducción](registro-commits/t08-externa-dos-bibliotecas.md), [corrección](registro-commits/t08-externa-dos-bibliotecas-correccion.md).
 - [x] T08-002-09m1: Verificar una global externa `volatile` compartida y rechazar una redeclaración sin `volatile`, en O0. [Evidencia](registro-commits/t08-global-externa-volatile.md).
 - [x] T08-002-09m2: Verificar una global externa `const` compartida y rechazar una redeclaración sin `const`, en O0. [Evidencia](registro-commits/t08-global-externa-const.md).
-- [ ] T08-002-09m3: Comprobar los demás calificadores y variantes de enlace de la global externa compartida.
+- [x] T08-002-09m3: Verificar un puntero externo compartido y rechazar discrepancias `const` o `volatile` en el dato apuntado, en O0. [Evidencia](registro-commits/t08-global-externa-puntero-calificadores.md).
+- [ ] T08-002-09m4: Comprobar los demás calificadores y variantes de enlace de la global externa compartida.
 - [x] T08-002-09n: Enlazar una sola vez una biblioteca C idéntica propagada por dos productores y conservar dos bibliotecas distintas con el mismo nombre, en O0. [Evidencia](registro-commits/t08-dependencia-c-compartida.md).
 - **T08-002-10 — Sombras en plantillas:**
 - [x] T08-002-10a: Verificar una muestra de sombra de función C por parámetro y local en una plantilla precompilada en O0. [Evidencia](registro-commits/t08-sombra-funcion-parametro-local.md).

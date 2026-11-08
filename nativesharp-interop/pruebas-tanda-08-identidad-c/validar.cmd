@@ -100,6 +100,12 @@ call "%~dp0externa-dos-bibliotecas\validar.cmd" const
 if errorlevel 1 exit /b 1
 call "%~dp0externa-dos-bibliotecas\validar.cmd" const-compatible
 if errorlevel 1 exit /b 1
+call "%~dp0puntero-externo-dos-bibliotecas\validar.cmd" compatible
+if errorlevel 1 exit /b 1
+call "%~dp0puntero-externo-dos-bibliotecas\validar.cmd" const
+if errorlevel 1 exit /b 1
+call "%~dp0puntero-externo-dos-bibliotecas\validar.cmd" volatile
+if errorlevel 1 exit /b 1
 call "%~dp0externa-dos-bibliotecas\validar-dependencia-compartida.cmd"
 if errorlevel 1 exit /b 1
 call "%~dp0externa-dos-bibliotecas\validar-dependencia-compartida.cmd" distintas
