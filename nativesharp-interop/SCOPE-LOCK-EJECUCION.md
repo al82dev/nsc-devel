@@ -5428,6 +5428,10 @@ verificar su codificación y conservar el tratamiento de formatos anteriores.
 Archivos adicionales: `LibraryMetadata.h`, `LibraryMetadataConstruction.cpp`,
 `LibraryMetadataVerification.cpp` y `CppSemanticRecord.cpp`. No modifica NSLink
 ni LLVM/Clang; construcción y pruebas agrupadas aún pendientes.
+La conciliación de enums independientes y dependientes de records exigirá
+contrato, USR, hash, desplazamiento y archivo físico coincidentes. Una fuente
+ausente o modificada no constituye prueba de identidad. Presupuesto adicional:
+codec C interno y `CppSemanticRecord.cpp`; validación agrupada pendiente.
 
 Enmienda: la primera implementación causó conflicto entre proyectos al
 coexistir el header y la metadata. Se permite modificar

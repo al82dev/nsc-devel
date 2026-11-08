@@ -130,6 +130,8 @@ bool compareCRecordContracts(const CppCRecordSnapshot& left, const CppCRecordSna
 // Evidence concerns the root declaration only, not its transitive type closure.
 bool compareCRecordSourceEvidence(const CppCRecordSnapshot& left, const CppCRecordSnapshot& right,
                                   CRecordContractComparison& result, std::string& error);
+bool compareCEnumSourceEvidence(const CppCEnumSnapshot& left, const CppCEnumSnapshot& right,
+                                CRecordContractComparison& result, std::string& error);
 bool compareCRecordClosureEvidence(std::span<const CppCRecordSnapshot> leftRecords,
     std::span<const CppCEnumSnapshot> leftEnums, std::string_view leftRoot,
     std::span<const CppCRecordSnapshot> rightRecords, std::span<const CppCEnumSnapshot> rightEnums,

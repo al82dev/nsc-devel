@@ -2435,12 +2435,10 @@ static bool collectVisibleCRecordReconciliations(
                 });
                 if (owner == graph->projects().end() || std::find(visible.begin(), visible.end(),
                         static_cast<std::size_t>(owner - graph->projects().begin())) == visible.end()) continue;
-                auto normalized = candidate;
-                normalized.identityKey = live->front().identityKey;
-                std::vector<std::uint8_t> left, right;
-                if (!metadata_detail::encodeCTypeCatalog({}, std::span(&live->front(), 1), left, error) ||
-                    !metadata_detail::encodeCTypeCatalog({}, std::span(&normalized, 1), right, error)) return false;
-                if (left == right) enumMatches[{entry.projectOrdinal, identity.key()}].insert(candidate.identityKey);
+                metadata_detail::CRecordContractComparison verdict{};
+                if (!metadata_detail::compareCEnumSourceEvidence(live->front(), candidate, verdict, error)) return false;
+                if (verdict == metadata_detail::CRecordContractComparison::Matching)
+                    enumMatches[{entry.projectOrdinal, identity.key()}].insert(candidate.identityKey);
             }
     }
     for (const auto& [source, matches] : enumMatches)
