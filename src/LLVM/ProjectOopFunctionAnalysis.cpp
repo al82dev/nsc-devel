@@ -18,6 +18,33 @@ void appendIdentityField(std::string& output, std::string_view value)
     output.append(value);
     output.push_back(';');
 }
+
+// EN: T08-002: collects the callee of every DelegateCreate / LambdaCreate node below `root`. The
+//     coordinator code unit defines one callback guard thunk per such callee for ALL reachable
+//     bodies, including bodies owned by other units, and each thunk calls its target; an imported C
+//     function whose address becomes a callback is therefore a coordinator declaration even when no
+//     coordinator body calls it. Explicit work stack, no recursion. Complexity: O(nodes below root).
+// ES: T08-002: reúne el destino de cada nodo DelegateCreate / LambdaCreate bajo `root`. La unidad
+//     coordinadora define un thunk de protección por cada destino de TODOS los cuerpos alcanzables,
+//     incluidos los de otras unidades, y cada thunk llama a su destino; por eso una función C
+//     importada cuya dirección se vuelve callback es una declaración de la coordinadora aunque
+//     ningún cuerpo propio la llame. Pila explícita, sin recursión. Complejidad: O(nodos bajo root).
+void collectCallbackTargetNames(const frontend::ProjectOopMirNode* root, std::vector<std::string_view>& names)
+{
+    std::vector<const frontend::ProjectOopMirNode*> work;
+    if (root != nullptr) work.push_back(root);
+    while (!work.empty())
+    {
+        const frontend::ProjectOopMirNode* node = work.back();
+        work.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind == frontend::ProjectOopMirNodeKind::DelegateCreate ||
+            node->kind == frontend::ProjectOopMirNodeKind::LambdaCreate)
+            names.push_back(node->calleeName);
+        for (const auto& child : node->children)
+            if (child != nullptr) work.push_back(child.get());
+    }
+}
 }
 
 ProjectOopFunctionReachabilityAnalysis::ProjectOopFunctionReachabilityAnalysis(
@@ -269,6 +296,17 @@ ProjectOopFunctionReachabilityAnalysis::coordinatorFunctionDeclarations() const
             ordinal < reachableDefinitions_.size() && reachableDefinitions_[ordinal] != 0U)
             selected[ordinal] = 1U;
     }
+    // EN: T08-002: callback guard thunk targets of every reachable body (see collectCallbackTargetNames).
+    // ES: T08-002: destinos de thunks de protección de todo cuerpo alcanzable (ver collectCallbackTargetNames).
+    std::vector<std::string_view> callbackTargets;
+    for (std::size_t ordinal = 0; ordinal < functions.size(); ++ordinal)
+    {
+        if (ordinal >= reachableDefinitions_.size() || reachableDefinitions_[ordinal] == 0U) continue;
+        collectCallbackTargetNames(functions[ordinal].body.get(), callbackTargets);
+        for (const frontend::ProjectOopMirCleanupRegion& cleanup : functions[ordinal].cleanupRegions)
+            collectCallbackTargetNames(cleanup.action, callbackTargets);
+    }
+    for (const std::string_view name : callbackTargets) addFunctionName(name, selected);
 
     const std::span<const frontend::ProjectOopMirStaticField> fields = mirModel_.staticFields();
     for (const frontend::ProjectOopMirFieldInitializer& initializer : mirModel_.fieldInitializers())
