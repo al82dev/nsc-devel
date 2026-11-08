@@ -1928,15 +1928,21 @@ bool ProjectOopHirModel::buildLambdaFunction(
     const MethodLambdaBinding& lambda,
     std::string& error)
 {
-    if (lambda.ownerMemberOrdinal >= memberModel_->members().size())
+    const std::size_t memberCount = memberModel_->members().size();
+    const bool globalOwner = lambda.ownerMemberOrdinal >= memberCount &&
+        namespaceFunctionModel_ != nullptr &&
+        lambda.ownerMemberOrdinal - memberCount < namespaceFunctionModel_->functions().size() &&
+        lambda.captures.empty();
+    if (lambda.ownerMemberOrdinal >= memberCount && !globalOwner)
     {
         error = "Stage 43 lambda owner member ordinal is invalid";
         return false;
     }
-    const ClassMemberSymbol& owner = memberModel_->members()[lambda.ownerMemberOrdinal];
     ProjectOopHirFunction function;
     function.memberOrdinal = lambda.ownerMemberOrdinal;
-    function.declaringTypeOrdinal = owner.declaringTypeOrdinal;
+    function.declaringTypeOrdinal = globalOwner
+        ? nameLookup_->namedTypes().size()
+        : memberModel_->members()[lambda.ownerMemberOrdinal].declaringTypeOrdinal;
     function.isLambda = true;
     function.lambdaOrdinal = lambda.lambdaOrdinal;
     function.hasClosureEnvironment = !lambda.captures.empty();
