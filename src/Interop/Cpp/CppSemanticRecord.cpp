@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppSemanticRecord.h"
+#include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/Interop/CppSemanticEnumType.h"
 #include "nativesharp/Frontend/CppAliasArrayType.h"
@@ -29,6 +30,15 @@ namespace nativesharp::interop
 {
 namespace
 {
+std::string cEnumeratorSourceDigest(const std::optional<CppSourcePoint>& location)
+{
+    if (!location || location->file.empty()) return {};
+    basic::Sha256Digest digest{};
+    std::uintmax_t size = 0;
+    std::string error;
+    if (!basic::sha256File(location->file, digest, size, error)) return {};
+    return basic::sha256Hex(digest);
+}
 std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type, std::size_t projectOrdinal,
     std::string_view moduleName, const frontend::ProjectNameLookup* lookup)
 {
@@ -1114,7 +1124,13 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                             value.isCppEnumConstant && value.cppImportError.empty() && value.cppClangUsr && !value.cppClangUsr->empty();
                     });
                     if (selected == constants.end() || !capturedEnumerators.emplace(entry.projectOrdinal, selected->name).second) continue;
-                    dependencies.enumerators.push_back({selected->moduleName, "cpp-reference:" + std::to_string(entry.referenceIndex),
+                    const auto declaration = std::find_if(entry.declaration.enumerators.begin(), entry.declaration.enumerators.end(), [&](const auto& value) {
+                        return value.name == selected->name && value.clangUsr == selected->cppClangUsr;
+                    });
+                    const auto digest = declaration == entry.declaration.enumerators.end() ? std::string{} : cEnumeratorSourceDigest(declaration->location);
+                    auto reference = "cpp-reference:" + std::to_string(entry.referenceIndex);
+                    if (!digest.empty()) reference += "#sha256:" + digest;
+                    dependencies.enumerators.push_back({selected->moduleName, std::move(reference),
                         selected->name, *selected->cppClangUsr, selected->declaredTypeKey, selected->integerValue});
                     continue;
                 }
@@ -1490,6 +1506,7 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
         if (!names.emplace(Key{live[i].projectOrdinal, live[i].namespaceName, live[i].name}, i).second)
         { error = "duplicate live C/C++ value: " + live[i].name; return false; }
     std::map<std::string, std::size_t> owners;
+    std::map<std::tuple<std::size_t, std::string, std::string>, std::string> enumeratorDigests;
     std::set<std::string> ambiguous;
     for (std::size_t i = 0; i < graph.projects().size(); ++i)
         if (!owners.emplace(graph.projects()[i].moduleName(), i).second)
@@ -1559,6 +1576,9 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             const auto owner = owners.find(enumerator.moduleName);
             if (owner == owners.end() || ambiguous.contains(enumerator.moduleName))
             { error = "precompiled C enumerator owner is missing or ambiguous: " + enumerator.moduleName; return false; }
+            const auto marker = enumerator.referenceIdentity.rfind("#sha256:");
+            if (marker != std::string::npos && enumerator.referenceIdentity.size() == marker + 8 + 64)
+                enumeratorDigests[{owner->second, enumerator.name, enumerator.clangUsr}] = enumerator.referenceIdentity.substr(marker + 8);
             frontend::NamespaceStateSymbol state;
             state.projectOrdinal = owner->second;
             state.moduleName = enumerator.moduleName;
@@ -1615,8 +1635,26 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             std::set<std::string> candidates;
             for (const auto& enumeration : enums)
             {
-                if (enumeration.projectOrdinal != item.projectOrdinal || enumeration.declaration.isCxx ||
-                    enumeration.declaration.name.empty()) continue;
+                if (enumeration.projectOrdinal != item.projectOrdinal || enumeration.declaration.isCxx) continue;
+                if (enumeration.declaration.name.empty())
+                {
+                    for (const auto& value : enumeration.declaration.enumerators)
+                    {
+                        if (value.name != item.name || value.clangUsr != item.cppClangUsr) continue;
+                        const auto digest = cEnumeratorSourceDigest(value.location);
+                        if (digest.empty()) continue;
+                        for (std::size_t target = liveCount; target < live.size(); ++target)
+                        {
+                            const auto& other = live[target];
+                            const auto source = enumeratorDigests.find({other.projectOrdinal, other.name, *item.cppClangUsr});
+                            if (source != enumeratorDigests.end() && source->second == digest && other.isCppEnumConstant &&
+                                other.cppClangUsr == item.cppClangUsr && other.name == item.name &&
+                                other.declaredTypeKey == item.declaredTypeKey && other.integerValue == item.integerValue &&
+                                other.cppImportError.empty() && item.cppImportError.empty()) candidates.insert(other.identityKey);
+                        }
+                    }
+                    continue;
+                }
                 const bool hasValue = std::any_of(enumeration.declaration.enumerators.begin(),
                     enumeration.declaration.enumerators.end(), [&](const auto& value) {
                         return value.name == item.name && value.clangUsr == item.cppClangUsr;
