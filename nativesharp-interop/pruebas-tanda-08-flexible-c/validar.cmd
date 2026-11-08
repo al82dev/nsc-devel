@@ -25,7 +25,7 @@ set "FILES=%FILES% ProbeSizeofMember.ns ProbeSizeofMember.nsproj ProbeDecay.ns P
 set "FILES=%FILES% ProbeValueInts.ns ProbeValueInts.nsproj ProbeValuePacked.ns ProbeValuePacked.nsproj"
 set "FILES=%FILES% PackedAccess.ns PackedProducer.ns PackedConsumer.ns PackedProducer.nsproj PackedShared.nsproj PackedMetadata.nsproj"
 set "FILES=%FILES% QualifiedAccess.ns QualifiedDirect.ns QualifiedDirect.nsproj RestrictedConstWrite.ns RestrictedConstWrite.nsproj"
-set "FILES=%FILES% RestrictedConstEscape.ns RestrictedConstEscape.nsproj"
+set "FILES=%FILES% RestrictedConstEscape.ns RestrictedConstEscape.nsproj RestrictedPackedAddress.ns RestrictedPackedAddress.nsproj"
 for %%F in (%FILES%) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
@@ -82,6 +82,11 @@ if not errorlevel 1 exit /b 1
 findstr /l /c:"would discard pointee constness" "%DEST%\RestrictedConstEscape.log" >nul
 if errorlevel 1 exit /b 1
 echo Restriccion RestrictedConstEscape: rechazo esperado confirmado.
+%EMIT_EXE% "%DEST%\RestrictedPackedAddress.nsproj" -O0 --no-artifact-cache -o "%DEST%\RestrictedPackedAddress.exe" > "%DEST%\RestrictedPackedAddress.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /l /c:"operand of & must name addressable storage" "%DEST%\RestrictedPackedAddress.log" >nul
+if errorlevel 1 exit /b 1
+echo Restriccion RestrictedPackedAddress: rechazo esperado confirmado.
 for %%O in (0 1 2 3) do (
   %EMIT_EXE% "%DEST%\RestrictedConst.nsproj" -O%%O --no-artifact-cache -o "%DEST%\const-O%%O.exe"
   if errorlevel 1 exit /b 1
