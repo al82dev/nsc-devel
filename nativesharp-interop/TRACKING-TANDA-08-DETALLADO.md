@@ -102,6 +102,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
                 - [x] Invocar un typedef variádico que recibe y devuelve un enum C en dos DLL, sin encabezados, O0–O3 y caché; rechazar definiciones incompatibles. [Evidencia](registro-commits/t08-typedef-enum-retorno.md).
                 - [x] Conciliar firmas con `const CRecord*` iguales y rechazar la firma sin `const`, sin encabezados, en O0. [Evidencia](registro-commits/t08-typedef-record-const.md).
                 - [x] Conciliar firmas con `volatile` y `const volatile` en el record apuntado, rechazar calificadores incompatibles y contrastar calificadores superiores del puntero con Clang, en O0 y O3. [Evidencia y límite](registro-commits/t08-callback-puntero-volatile.md).
+                - [ ] Conservar el calificador al invocar indirectamente callbacks C que reciben punteros volátiles; reproducción en O0 y O3. [Evidencia](registro-commits/t08-callback-volatile-invocacion.md).
                 - [ ] Comprobar otras variantes de enums, calificadores y tipos de retorno.
           - [x] Probar la muestra de ambas DLL con funciones variádicas homónimas desde plantillas precompiladas y con caché, en O0–O3 y con valores distinguibles. [Evidencia](registro-commits/t08-dll-homonimas-variadicas.md).
           - [ ] Comprobar promociones, argumentos flotantes y agregados en funciones variádicas, además de otras formas de consumo.
