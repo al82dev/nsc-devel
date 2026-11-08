@@ -9,7 +9,7 @@ ExitCode Driver::runProjectHostHeaderGeneration(std::string_view inputPath, std:
 {
     std::string loadError;
     std::optional<compilation::CompilationInputManifest> manifest =
-        loadCompilationInputManifest(std::filesystem::path(inputPath), loadError);
+        loadCompilationInputManifest(pathFromUtf8(inputPath), loadError);
     if (!manifest.has_value())
     {
         error << "nsc: error: " << loadError << '\n';
@@ -90,7 +90,7 @@ ExitCode Driver::runProjectLibraryMetadataGeneration(std::string_view inputPath,
 {
     std::string loadError;
     std::optional<compilation::CompilationInputManifest> manifest =
-        loadCompilationInputManifest(std::filesystem::path(inputPath), loadError);
+        loadCompilationInputManifest(pathFromUtf8(inputPath), loadError);
     if (!manifest.has_value())
     {
         error << "nsc: error: " << loadError << '\n';

@@ -10,6 +10,14 @@
 
 namespace nativesharp::compilation
 {
+namespace
+{
+std::string utf8Path(const std::filesystem::path& path)
+{
+    const auto encoded = path.generic_u8string();
+    return std::string(reinterpret_cast<const char*>(encoded.data()), encoded.size());
+}
+}
 ProjectSourceSet::ProjectSourceSet(std::filesystem::path projectDirectory)
     : projectDirectory_(std::filesystem::absolute(std::move(projectDirectory)).lexically_normal())
 {
@@ -120,7 +128,7 @@ bool ProjectSourceSet::finalize(std::string& error, bool allowEmpty)
     for (const ProjectSource& source : sources_)
     {
         keys.push_back(comparisonKey(source.projectRelativePath));
-        spellings.push_back(source.projectRelativePath.generic_string());
+        spellings.push_back(utf8Path(source.projectRelativePath));
     }
     std::vector<std::size_t> order(sources_.size());
     std::iota(order.begin(), order.end(), std::size_t{0});
@@ -168,7 +176,7 @@ bool ProjectSourceSet::isFinalized() const noexcept
 
 std::string ProjectSourceSet::comparisonKey(const std::filesystem::path& path)
 {
-    std::string key = path.generic_string();
+    std::string key = utf8Path(path);
     std::transform(
         key.begin(),
         key.end(),

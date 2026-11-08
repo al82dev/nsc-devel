@@ -146,7 +146,8 @@ bool equalsFolded(std::string_view left, std::string_view right)
 
 std::string pathKey(const std::filesystem::path& path)
 {
-    std::string key = path.generic_string();
+    const auto encoded = path.generic_u8string();
+    std::string key(reinterpret_cast<const char*>(encoded.data()), encoded.size());
     std::transform(
         key.begin(),
         key.end(),
@@ -998,7 +999,8 @@ bool collectSourceCandidates(
     {
         for (const SourceIncludeRule& rule : descriptor.includes)
         {
-            const std::filesystem::path relative = std::filesystem::path(rule.include.pattern()).lexically_normal();
+            const auto& pattern = rule.include.pattern();
+            const std::filesystem::path relative = std::filesystem::path(std::u8string(pattern.begin(), pattern.end())).lexically_normal();
             const std::filesystem::path source = projectDirectory / relative;
             if (source.extension() != ".ns" || !std::filesystem::is_regular_file(source, filesystemError))
             {

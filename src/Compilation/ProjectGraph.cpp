@@ -19,8 +19,10 @@ namespace
 std::string foldedPath(const std::filesystem::path& path)
 {
     std::error_code filesystemError;
-    std::string key = std::filesystem::weakly_canonical(path, filesystemError).generic_string();
-    if (filesystemError) key = std::filesystem::absolute(path).lexically_normal().generic_string();
+    std::filesystem::path canonical = std::filesystem::weakly_canonical(path, filesystemError);
+    if (filesystemError) canonical = std::filesystem::absolute(path).lexically_normal();
+    const auto encoded = canonical.generic_u8string();
+    std::string key(reinterpret_cast<const char*>(encoded.data()), encoded.size());
     std::transform(key.begin(), key.end(), key.begin(), [](unsigned char character) {
         return static_cast<char>(std::tolower(character));
     });
@@ -196,7 +198,7 @@ std::unordered_map<std::string, std::string> collectModuleOwners(
     {
         moduleOwners.emplace(
             language::canonicalWindowsModuleIdentity({}, project.moduleName()),
-            project.projectFile().generic_string());
+            [&project]() { const auto value = project.projectFile().generic_u8string(); return std::string(reinterpret_cast<const char*>(value.data()), value.size()); }());
     }
     return moduleOwners;
 }

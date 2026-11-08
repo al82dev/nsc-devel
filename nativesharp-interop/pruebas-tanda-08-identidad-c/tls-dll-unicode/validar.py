@@ -63,4 +63,19 @@ for attempt in range(2 if cached else 1):
     if cached and attempt == 0:
         for item in items:
             (output / item).unlink()
+if "--unicode-source" in sys.argv:
+    source_dir = root / "proyecto-\u6f22"
+    source_dir.mkdir(exist_ok=True)
+    source_name = "Consumer-\u6f22.ns"
+    shutil.copyfile(root / "ConsumerCache.ns", source_dir / source_name)
+    project_text = (root / "ConsumerCache.nsproj").read_text(encoding="utf-8")
+    project_text = project_text.replace("ConsumerCache.ns", source_name)
+    project_text = project_text.replace("TlsProducer.lib", "../TlsProducer.lib")
+    project_text = project_text.replace("TlsProducer2.lib", "../TlsProducer2.lib")
+    project_path = source_dir / "Proyecto.nsproj"
+    project_path.write_text(project_text, encoding="utf-8")
+    run(["nsc.exe", "--cpp-clang-root=A:\\al82dev-clang", "--emit-project-oop-exe",
+         str(project_path), "-O0", "--no-artifact-cache", "-o", str(source_dir / "Consumer.exe")])
+    run([str(source_dir / "Consumer.exe")], cwd=Path("A:/"))
+    print("Proyecto y fuente Unicode: correctos.")
 print("DLL Unicode y salida", "ASCII" if "--ascii-output" in sys.argv else "Unicode", ": correctas.")

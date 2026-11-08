@@ -36,7 +36,9 @@ bool GlobPattern::matches(const std::filesystem::path& projectRelativePath) cons
     {
         return false;
     }
-    const std::vector<std::string> pathSegments = split(projectRelativePath.generic_string());
+    const auto encoded = projectRelativePath.generic_u8string();
+    const std::vector<std::string> pathSegments = split(
+        std::string_view(reinterpret_cast<const char*>(encoded.data()), encoded.size()));
     std::vector<std::vector<int>> memo(
         segments_.size() + 1,
         std::vector<int>(pathSegments.size() + 1, -1));

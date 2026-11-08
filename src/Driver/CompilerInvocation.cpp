@@ -129,8 +129,9 @@ ExitCode loadProjectDefaults(
 {
     if (!isProjectSettingsAction(invocation.arguments)) return ExitCode::Success;
     std::string settingsError;
+    const auto projectArgument = invocation.arguments[1];
     const auto settings = projectLoader.loadBuildSettings(
-        std::filesystem::path(std::string(invocation.arguments[1])), settingsError);
+        std::filesystem::path(std::u8string(projectArgument.begin(), projectArgument.end())), settingsError);
     if (!settings.has_value())
     {
         error << "nsc: error: " << settingsError << '\n';
@@ -235,8 +236,9 @@ ExitCode applyDefaultArtifactCache(
         invocation.artifactCacheDisabled)
         return ExitCode::Success;
     std::error_code pathError;
+    const auto projectArgument = invocation.arguments[1];
     const std::filesystem::path projectFile = std::filesystem::absolute(
-        std::filesystem::path{invocation.arguments[1]}, pathError);
+        std::filesystem::path(std::u8string(projectArgument.begin(), projectArgument.end())), pathError);
     if (pathError)
     {
         error << "nsc: error: cannot resolve project path for artifact cache: "

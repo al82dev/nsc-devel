@@ -457,7 +457,7 @@ ExitCode Driver::runProject(std::string_view action, std::string_view path, std:
 
     std::string loadError;
     std::optional<compilation::CompilationInputManifest> manifest =
-        loadCompilationInputManifest(std::filesystem::path(path), loadError);
+        loadCompilationInputManifest(pathFromUtf8(path), loadError);
     if (!manifest.has_value())
     {
         error << "nsc: error: " << loadError << '\n';
@@ -651,7 +651,7 @@ ExitCode Driver::runProjectOopCodeGeneration(std::string_view inputPath, std::st
 {
     std::string loadError;
     std::optional<compilation::CompilationInputManifest> manifest =
-        loadCompilationInputManifest(std::filesystem::path(inputPath), loadError);
+        loadCompilationInputManifest(pathFromUtf8(inputPath), loadError);
     if (!manifest.has_value())
     {
         error << "nsc: error: " << loadError << '\n';
