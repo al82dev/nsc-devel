@@ -1085,6 +1085,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     0 en O0–O3; el fixture verificó campo y arreglo enum, IR y sus rechazos de
     dirección. Es una comprobación dirigida, no el cierre de T08-009.
 - [ ] T08-010. Importar la declaración y campos de un `struct` C.
+  - Un struct C con union y struct anónimos pasó el caso de escritura cruzada con C
+    en consumo directo, Shared y solo metadata, O0–O3. Quedan otras formas y la
+    validación completa. [Evidencia](registro-commits/t08-anonimos-c-validacion-precompilado.md).
   - Arreglos flexibles C de `int const` y `int volatile`: lectura, escritura
     permitida y controles negativos de const validados en consumo directo y
     precompilado O0–O3; IR volatile contrastado con Clang. Quedan pendientes
