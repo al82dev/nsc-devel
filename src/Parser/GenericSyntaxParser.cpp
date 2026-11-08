@@ -861,7 +861,16 @@ bool Parser::looksLikeGenericCallTypeArguments() const noexcept
                 kind == TokenKind::Tilde || kind == TokenKind::Bang ||
                 kind == TokenKind::IntegerLiteral || kind == TokenKind::KwTrue ||
                 kind == TokenKind::KwFalse;
-            if (!constantArgument && !canStartTypeArgumentAt(cursor)) return false;
+            const bool packExpansion = kind == TokenKind::Identifier &&
+                cursor + 1U < tokens_.size() &&
+                tokens_[cursor + 1U].kind() == TokenKind::Ellipsis;
+            const bool knownQualifiedValue = kind == TokenKind::Identifier &&
+                cursor + 1U < tokens_.size() && tokens_[cursor + 1U].kind() == TokenKind::Dot &&
+                std::any_of(knownTypeNames_.begin(), knownTypeNames_.end(), [&](const std::string& name) {
+                    return name == tokens_[cursor].lexeme();
+                });
+            if (!constantArgument && !packExpansion && !knownQualifiedValue && !canStartTypeArgumentAt(cursor))
+                return false;
             expectsArgument = false;
             sawArgument = true;
         }
