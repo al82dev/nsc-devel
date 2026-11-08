@@ -411,6 +411,47 @@ bool checkUsrStability(CppClangSessionFactory& factory, const std::string& resou
                     combinedDependencies.enumerators[0].name == "CConstant" &&
                     combinedDependencies.enumerators[0].bits == 7,
                     "anonymous carriers and C enumerator dependencies survive the same envelope");
+                const auto observedEnums = first->enumsSnapshot();
+                if (observedEnums)
+                {
+                    const auto enumeration = std::find_if(observedEnums->begin(), observedEnums->end(),
+                        [](const auto& item) { return item.name == "CIdKind"; });
+                    if (enumeration != observedEnums->end())
+                    {
+                        std::vector<CppCEnumSnapshot> inputEnums{{"Probe::CIdKind", "x86_64-pc-windows-msvc", *enumeration}};
+                        std::vector<std::uint8_t> provenanceBytes;
+                        std::vector<CppCRecordSnapshot> provenanceRecords;
+                        std::vector<CppCEnumSnapshot> provenanceEnums;
+                        metadata_detail::CDependencyCatalog provenanceDependencies;
+                        const bool provenanceOk = enumeration->sourceProvenance &&
+                            metadata_detail::encodeCTypeCatalogWithEnumProvenance(snapshots, inputEnums,
+                                dependencies, provenanceBytes, error) &&
+                            metadata_detail::decodeCTypeCatalogWithEnumProvenance(provenanceBytes, provenanceRecords,
+                                provenanceEnums, provenanceDependencies, error);
+                        std::size_t restoredCarriers = 0;
+                        for (const auto& item : provenanceRecords)
+                            for (const auto& field : item.fields) restoredCarriers += field.isAnonymousCarrier;
+                        carriersOk &= expect(provenanceOk && provenanceEnums.size() == 1 &&
+                            provenanceEnums[0].declaration.sourceProvenance == enumeration->sourceProvenance &&
+                            restoredCarriers == 3 && provenanceDependencies.enumerators.size() == 1,
+                            "enum source provenance survives with carriers and dependencies");
+                        if (provenanceOk)
+                        {
+                            provenanceBytes.push_back(0);
+                            const auto oldCount = provenanceEnums.size();
+                            carriersOk &= expect(!metadata_detail::decodeCTypeCatalogWithEnumProvenance(provenanceBytes,
+                                provenanceRecords, provenanceEnums, provenanceDependencies, error) &&
+                                provenanceEnums.size() == oldCount,
+                                "enum provenance envelope rejects trailing bytes without changing output");
+                            inputEnums[0].declaration.sourceProvenance->bufferSha256 = "invalid";
+                            carriersOk &= expect(!metadata_detail::encodeCTypeCatalogWithEnumProvenance(snapshots,
+                                inputEnums, dependencies, provenanceBytes, error),
+                                "enum provenance envelope rejects invalid digest");
+                        }
+                    }
+                    else carriersOk &= expect(false, "named enum for provenance is available");
+                }
+                else carriersOk &= expect(false, "enum snapshot for provenance is available");
                 if (encoded)
                 {
                     std::vector<CppCRecordSnapshot> dispatched;
