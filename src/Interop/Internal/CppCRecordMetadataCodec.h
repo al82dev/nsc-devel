@@ -43,6 +43,9 @@ struct CDependencyGlobalSnapshot
     std::string referenceIdentity;
     std::string linkSymbol;
     std::optional<bool> microsoftVolatileSemantics;
+    // Includes a DLL TLS origin supplied by the project reference, even when
+    // the C declaration itself has no dllimport attribute.
+    bool effectiveDllImport = false;
     CppGlobalDeclaration declaration;
 };
 bool encodeCDependencyGlobal(const CDependencyGlobalSnapshot& value,

@@ -471,6 +471,15 @@ bool checkExternalSelection(const nativesharp::frontend::ProjectCompilation& com
                     value->typeKey == candidate.typeKey && value->clangUsr == candidate.clangUsr &&
                     value->isVolatile == candidate.isVolatile && value->threadLocal == candidate.threadLocal,
                     "restored C global projects to the live symbol, type and qualifiers");
+                auto tlsDll = restored;
+                tlsDll.declaration.threadLocal = true;
+                tlsDll.declaration.dllImport = false;
+                tlsDll.effectiveDllImport = true;
+                auto projectedTls = projectCppPrecompiledCGlobal(tlsDll, candidate.projectOrdinal,
+                    candidate.moduleName, entry.targetTriple, *compilation.nameLookup());
+                const auto* tlsValue = std::get_if<CppSemanticGlobal>(&projectedTls);
+                ok &= expect(tlsValue && tlsValue->threadLocal && tlsValue->dllImport,
+                    "restored TLS global preserves effective DLL import without a declaration attribute");
                 const auto invalid = projectCppPrecompiledCGlobal(restored, candidate.projectOrdinal,
                     "wrong-owner", entry.targetTriple, *compilation.nameLookup());
                 ok &= expect(std::holds_alternative<CppSemanticGlobalFailure>(invalid),
@@ -1203,14 +1212,17 @@ bool checkDependencyTypeCodec()
     selectedGlobal.isCppExternal = true;
     selectedGlobal.cppCGlobal = true;
     selectedGlobal.cppThreadLocal = true;
+    selectedGlobal.cppDllImport = true;
     selectedGlobal.cppClangUsr = global.declaration.clangUsr;
     selectedGlobal.cppMicrosoftVolatileSemantics = false;
     std::vector<CppSemanticGlobalEntry> globalInventory{{{}, 2, 4, "x86_64-pc-windows-msvc",
         global.declaration, CppSemanticGlobalFailure{"not used"}, true, false}};
     CDependencyGlobalSnapshot capturedGlobal;
     ok &= expect(captureCDependencyGlobal(globalInventory, selectedGlobal, 2, "header-digest", capturedGlobal, error) &&
-        capturedGlobal.linkSymbol == selectedGlobal.storageName && capturedGlobal.declaration.threadLocal,
-        "C dependency capture retains selected global identity and TLS");
+        capturedGlobal.linkSymbol == selectedGlobal.storageName && capturedGlobal.declaration.threadLocal &&
+        capturedGlobal.effectiveDllImport && !capturedGlobal.declaration.dllImport,
+        "C dependency capture retains TLS DLL import inferred from the project reference");
+    global.effectiveDllImport = true;
     capturedGlobal.moduleName = "sentinel";
     ok &= expect(!captureCDependencyGlobal(globalInventory, selectedGlobal, 3, "header-digest", capturedGlobal, error) &&
         capturedGlobal.moduleName == "sentinel", "C global capture rejects another reference without changing output");
@@ -1222,7 +1234,8 @@ bool checkDependencyTypeCodec()
     ok &= expect(encodeCDependencyGlobal(global, globalBytes, error) &&
         decodeCDependencyGlobal(globalBytes, decodedGlobal, error) &&
         decodedGlobal.microsoftVolatileSemantics == std::optional<bool>{false} &&
-        decodedGlobal.declaration.threadLocal && decodedGlobal.declaration.declarationAlignmentBits == 64 &&
+        decodedGlobal.declaration.threadLocal && decodedGlobal.effectiveDllImport &&
+        !decodedGlobal.declaration.dllImport && decodedGlobal.declaration.declarationAlignmentBits == 64 &&
         decodedGlobal.declaration.clangUsr == global.declaration.clangUsr &&
         decodedGlobal.declaration.type.element && decodedGlobal.declaration.type.element->kind == CppTypeKind::Atomic,
         "C dependency global preserves identity, TLS, alignment, mode and type");

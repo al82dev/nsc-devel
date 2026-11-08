@@ -466,6 +466,7 @@ CppSemanticGlobalResult projectCppPrecompiledCGlobal(
     {
         value->clangUsr = declaration.clangUsr;
         value->microsoftVolatileSemantics = global.microsoftVolatileSemantics;
+        value->dllImport = global.effectiveDllImport;
     }
     return projected;
 }

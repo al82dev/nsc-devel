@@ -505,6 +505,8 @@ bool captureCDependencyGlobal(std::span<const CppSemanticGlobalEntry> inventory,
             entry.referenceIndex != referenceIndex || entry.targetTriple != "x86_64-pc-windows-msvc" ||
             declaration.name != selected.name || declaration.clangUsr != selected.cppClangUsr ||
             declaration.threadLocal != selected.cppThreadLocal ||
+            (declaration.dllImport && !selected.cppDllImport) ||
+            (!declaration.externalLinkage && selected.cppDllImport) ||
             entry.microsoftVolatileSemantics != selected.cppMicrosoftVolatileSemantics) continue;
         const auto symbol = declaration.externalLinkage ? declaration.externalSymbol :
             std::optional<std::string>{cppCInlineLinkSymbol(entry.projectFile, entry.referenceIndex,
@@ -519,6 +521,7 @@ bool captureCDependencyGlobal(std::span<const CppSemanticGlobalEntry> inventory,
     value.referenceIdentity = std::string(referenceIdentity);
     value.linkSymbol = selected.storageName;
     value.microsoftVolatileSemantics = selected.cppMicrosoftVolatileSemantics;
+    value.effectiveDllImport = selected.cppDllImport;
     value.declaration = match->declaration;
     value.declaration.location.reset();
     output = std::move(value);
@@ -531,16 +534,19 @@ bool encodeCDependencyGlobal(const CDependencyGlobalSnapshot& value,
 {
     const auto& global = value.declaration;
     if (value.moduleName.empty() || value.referenceIdentity.empty() || value.linkSymbol.empty() ||
-        global.name.empty() || global.qualifiedName.empty())
+        global.name.empty() || global.qualifiedName.empty() ||
+        (global.dllImport && !value.effectiveDllImport) ||
+        (!global.externalLinkage && value.effectiveDllImport))
     { error = "invalid C dependency global identity"; return false; }
     ByteWriter writer;
-    writer.u8(1);
+    writer.u8(2);
     if (!putText(writer, value.moduleName) || !putText(writer, value.referenceIdentity) ||
         !putText(writer, value.linkSymbol) || !putText(writer, global.name) ||
         !putText(writer, global.qualifiedName) || !putOptionalText(writer, global.externalSymbol) ||
         !putOptionalText(writer, global.clangUsr))
     { error = "invalid C dependency global text"; return false; }
     writer.u8(global.externalLinkage); writer.u8(global.threadLocal); writer.u8(global.dllImport);
+    writer.u8(value.effectiveDllImport);
     putOptionalNumber(writer, global.declarationAlignmentBits);
     writer.u8(value.microsoftVolatileSemantics.has_value());
     if (value.microsoftVolatileSemantics) writer.u8(*value.microsoftVolatileSemantics);
@@ -562,12 +568,13 @@ bool decodeCDependencyGlobal(std::span<const std::uint8_t> bytes,
     auto& global = value.declaration;
     std::uint8_t version = 0;
     bool present = false;
-    if (!reader.u8(version) || version != 1 || !reader.text(value.moduleName) ||
+    if (!reader.u8(version) || version != 2 || !reader.text(value.moduleName) ||
         !reader.text(value.referenceIdentity) || !reader.text(value.linkSymbol) ||
         !reader.text(global.name) || !reader.text(global.qualifiedName) ||
         !getOptionalText(reader, global.externalSymbol) || !getOptionalText(reader, global.clangUsr) ||
         !getFlag(reader, global.externalLinkage) || !getFlag(reader, global.threadLocal) ||
-        !getFlag(reader, global.dllImport) || !getOptionalNumber(reader, global.declarationAlignmentBits) ||
+        !getFlag(reader, global.dllImport) || !getFlag(reader, value.effectiveDllImport) ||
+        !getOptionalNumber(reader, global.declarationAlignmentBits) ||
         !getFlag(reader, present))
     { error = "invalid C dependency global"; return false; }
     if (present)
