@@ -1,1 +1,1 @@
-namespace PublishedEnum { public class Bridge { public static Alias* Identity(Alias* value) { return value; } } }
+namespace PublishedEnum { public class Bridge { public static Alias Echo(Alias value) { return value; } } }

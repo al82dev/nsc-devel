@@ -30,7 +30,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-002-09d1: Verificar muestras de conflictos de identidad mediante bibliotecas precompiladas en O0, con y sin fuente original. [Evidencia](registro-commits/t08-typedef-precompilado-fuente-ausente.md).
   - Resuelto para el record completo con fuentes disponibles: encabezados distintos equivalentes se concilian y un record incompatible se rechaza. [Evidencia](registro-commits/t08-typedef-precompilado-conciliacion.md).
   - Resuelto para el enum completo con fuentes disponibles: encabezados equivalentes se concilian y valores incompatibles se rechazan. [Evidencia](registro-commits/t08-typedef-enum-precompilado-conciliacion.md).
-  - Pendiente independiente: operaciones sobre valores de enum, más allá de declarar un puntero.
+- [x] T08-002-09d2: Comprobar paso y retorno de un valor de enum con typedefs conciliados entre biblioteca precompilada y encabezado diferente, en O0 y con y sin fuente original. [Evidencia](registro-commits/t08-typedef-enum-valor-precompilado.md).
 - [ ] T08-002-09e: Verificar identidad de campos y enumeradores dentro de records anónimos anidados.
 - [ ] T08-002-09f: Verificar el diagnóstico cuando dos encabezados declaran la función externa con firmas incompatibles.
 - [ ] T08-002-09g: Verificar por separado la identidad y selección de funciones `static inline` con el mismo contenido en encabezados homónimos de directorios distintos.
