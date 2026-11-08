@@ -1470,6 +1470,11 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         };
         for (const auto& field : record.fields) if (!checkEnum(field.type, 0)) return false;
     }
+    const bool hasEnumProvenance = std::any_of(enums.begin(), enums.end(), [](const auto& value) {
+        return value.declaration.sourceProvenance.has_value();
+    });
+    if (hasEnumProvenance && metadata.formatMinor >= 49)
+        return metadata_detail::encodeCTypeCatalogWithEnumProvenance(records, enums, dependencies, output, error);
     const bool hasAnonymousCarriers = std::any_of(records.begin(), records.end(), [](const auto& record) {
         return std::any_of(record.fields.begin(), record.fields.end(), [](const auto& field) {
             return field.isAnonymousCarrier;

@@ -5423,6 +5423,11 @@ Preparar el despacho de lectura del envoltorio 7 únicamente con formato 1.49
 o posterior y mantener el rechazo para 1.48 y anteriores. Presupuesto: codec
 C y prueba de identidad; la publicación y el número vigente se conectan en
 una modificación separada y se validan con el conjunto.
+Conectar NSMETA 1.49: publicar el envoltorio 7 cuando exista procedencia enum,
+verificar su codificación y conservar el tratamiento de formatos anteriores.
+Archivos adicionales: `LibraryMetadata.h`, `LibraryMetadataConstruction.cpp`,
+`LibraryMetadataVerification.cpp` y `CppSemanticRecord.cpp`. No modifica NSLink
+ni LLVM/Clang; construcción y pruebas agrupadas aún pendientes.
 
 Enmienda: la primera implementación causó conflicto entre proyectos al
 coexistir el header y la metadata. Se permite modificar

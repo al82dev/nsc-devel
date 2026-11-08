@@ -119,7 +119,7 @@ inline constexpr std::uint16_t kMetadataFormatMajor = 1;
 // MINOR 44: C catalogue carries confirmed floating-point representation.
 // MINOR 46: C catalogue can contain alias dependencies of public templates.
 // MINOR 48: C catalogue can preserve anonymous aggregate carriers.
-inline constexpr std::uint16_t kMetadataFormatMinor = 48;
+inline constexpr std::uint16_t kMetadataFormatMinor = 49;
 
 // NSMETA 1.39. These bits version producer language capabilities that affect private lowering
 // and debug behavior without changing the public NativeSharp ABI projection. Older files decode

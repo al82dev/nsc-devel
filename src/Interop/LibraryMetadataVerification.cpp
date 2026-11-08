@@ -1434,15 +1434,20 @@ bool verifyBinaryClosureMetadata(
         const bool hasCarriers = metadata.formatMinor >= 48 && metadata.cppCRecordCatalog.size() >= 4 &&
             metadata.cppCRecordCatalog[0] == 6 && metadata.cppCRecordCatalog[1] == 0 &&
             metadata.cppCRecordCatalog[2] == 0 && metadata.cppCRecordCatalog[3] == 0;
-        if (hasDependencies || hasCarriers)
+        const bool hasEnumProvenance = metadata.formatMinor >= 49 && metadata.cppCRecordCatalog.size() >= 4 &&
+            metadata.cppCRecordCatalog[0] == 7 && metadata.cppCRecordCatalog[1] == 0 &&
+            metadata.cppCRecordCatalog[2] == 0 && metadata.cppCRecordCatalog[3] == 0;
+        if (hasDependencies || hasCarriers || hasEnumProvenance)
         {
             CDependencyCatalog dependencies;
-            const bool decoded = hasCarriers ?
+            const bool decoded = hasEnumProvenance ?
+                decodeCTypeCatalogWithEnumProvenance(metadata.cppCRecordCatalog, records, enums, dependencies, detail) : hasCarriers ?
                 decodeCTypeCatalogWithAnonymousCarriers(metadata.cppCRecordCatalog, records, enums, dependencies, detail) :
                 decodeCTypeCatalogWithDependencies(metadata.cppCRecordCatalog, records, enums, dependencies, detail);
             if (!decoded ||
                 (metadata.formatMinor < 47 && !dependencies.enumerators.empty()) ||
-                !(hasCarriers ? encodeCTypeCatalogWithAnonymousCarriers(records, enums, dependencies, canonical, detail) :
+                !(hasEnumProvenance ? encodeCTypeCatalogWithEnumProvenance(records, enums, dependencies, canonical, detail) :
+                  hasCarriers ? encodeCTypeCatalogWithAnonymousCarriers(records, enums, dependencies, canonical, detail) :
                   encodeCTypeCatalogWithDependencies(records, enums, dependencies, canonical, detail)) ||
                 canonical != metadata.cppCRecordCatalog)
             { error = "invalid or unsupported C dependency catalogue: " + detail; return false; }
