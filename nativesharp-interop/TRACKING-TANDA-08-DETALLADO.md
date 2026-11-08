@@ -72,6 +72,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
     - [x] T08-002-09m7c1d1: Restaurar el consumidor y ambas DLL desde caché en O0–O3, incluso cuando ya estaban presentes al guardar el paquete. [Evidencia](registro-commits/t08-dll-homonimas-identidad.md).
     - [ ] T08-002-09m7c1d2: Resolver importaciones directas y dependencias transitivas que apuntan a DLL homónimas; hoy se diagnostican como no compatibles, no cuentan como interoperabilidad.
       - [x] T08-002-09m7c1d2a: Comparar la identidad de módulo de una importación directa frente a un alias copiado y un hardlink. [Evidencia](registro-commits/t08-dll-homonimas-import-directo-control.md).
+      - [x] T08-002-09m7c1d2a1: Comprobar con un control C que una importación enlazada al nombre empaquetado comparte el módulo y el estado TLS en dos hilos después de trasladar el ejecutable. [Evidencia](registro-commits/t08-dll-homonimas-import-alias-control.md).
       - [ ] T08-002-09m7c1d2b: Mantener una sola instancia y estado TLS entre la llamada importada y el acceso NativeSharp, incluso después de copiar el paquete a otro equipo.
       - [ ] T08-002-09m7c1d2c: Resolver las dependencias transitivas de las DLL homónimas y comprobar el consumidor resultante.
     - [ ] T08-002-09m7c1d3: Comprobar el mismo escenario cuando el producto consumidor sea una DLL NativeSharp.
