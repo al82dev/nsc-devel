@@ -8,5 +8,20 @@ namespace PublishedShadow
             int shadow_function = 17;
             return shadow_value + shadow_function;
         }
+
+        public static int Parameter<T>(int shadow_value)
+        {
+            return shadow_value;
+        }
+
+        public static int Loop<T>(T value)
+        {
+            int sum = 0;
+            for (int shadow_value = 0; shadow_value < 3; shadow_value++)
+            {
+                sum += shadow_value;
+            }
+            return sum;
+        }
     }
 }

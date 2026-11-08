@@ -1,1 +1,7 @@
-int Main() { return PublishedShadow.Bridge.Local<int>(1) == 30 ? 0 : 1; }
+int Main()
+{
+    if (PublishedShadow.Bridge.Local<int>(1) != 30) return 1;
+    if (PublishedShadow.Bridge.Parameter<int>(19) != 19) return 2;
+    if (PublishedShadow.Bridge.Loop<int>(0) != 3) return 3;
+    return 0;
+}
