@@ -69,4 +69,10 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 exit /b 1
   echo Callback C volatile O%%O: resultado esperado cero.
 )
+for %%O in (1 2 3) do (
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm-opt "%DEST%\Volatile.nsproj" -O%%O > "%DEST%\volatile-O%%O.ll"
+  if errorlevel 1 exit /b 1
+  python "%~dp0verificar_ir.py" "%DEST%\api.ll" "%DEST%\volatile-O%%O.ll"
+  if errorlevel 1 exit /b 1
+)
 exit /b 0
