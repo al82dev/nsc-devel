@@ -20,6 +20,10 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-002-06: Comprobar muestras de dependencias C en plantillas precompiladas. [Evidencia](registro-commits/t08-h3-identidad-expectativas.md).
 - [x] T08-002-07: Recuperar y verificar muestras históricas NSMETA 1.45, 1.47 y 1.48. [1.45](registro-commits/t08-nsmeta-145-fixture-recuperado.md), [1.47](registro-commits/t08-nsmeta-147-fixture-recuperado.md), [1.48](registro-commits/t08-nsmeta-148-fixture-recuperado.md).
 - [ ] T08-002-08: Obtener una muestra independiente NSMETA 1.46 y ejecutar la suite de compatibilidad de metadata.
+  La búsqueda por encabezado encontró dos muestras 1.46 generadas por el
+  escritor de pruebas posterior; no se consideran independientes. Se sigue
+  buscando un productor histórico sin reconstruir todo por esta casilla.
+  [Evidencia](registro-commits/t08-nsmeta-146-busqueda-artefactos.md).
 - **T08-002-09 — Identidad y conciliación:**
 - [ ] T08-002-09a: Cotejar identidad y redeclaraciones de funciones C externas entre encabezados.
 - [ ] T08-002-09b: Cotejar identidad de funciones `static inline` con encabezados homónimos de directorios distintos.
