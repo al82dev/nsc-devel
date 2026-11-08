@@ -583,11 +583,13 @@ std::variant<std::vector<CppRecordDeclaration>, std::string> materializeCppAnony
         child.containingRecords.push_back(containing.name);
         child.kind = nested->kind;
         child.access = CppAccess::Public;
+        child.location = containing.location;
         child.complete = true;
         child.sizeBits = nested->sizeBits;
         child.alignmentBits = nested->alignmentBits;
         child.fields = nested->fields;
         child.isCxx = false;
+        child.isAnonymousCInternal = true;
         auto& carrier = containing.fields[index];
         child.clangUsr = carrier.type.recordIdentity ? carrier.type.recordIdentity->clangUsr : std::nullopt;
         carrier.name = name;
@@ -1973,12 +1975,14 @@ CppRecordObservationResult prepareCppRecordObservation(
         std::optional<frontend::CppImportedObjectLayout> objectLayout;
         bool usrConflict = false;
         bool deferred = !group.identity.containingTypes().empty();
+        bool allAnonymousCInternal = true;
         for (const auto entryIndex : group.inventoryIndices)
         {
             if (entryIndex >= inventory.size() || claimed[entryIndex])
                 return CppRecordObservationFailure{"invalid or repeated record inventory index"};
             claimed[entryIndex] = true;
             const auto& entry = inventory[entryIndex];
+            allAnonymousCInternal &= !entry.declaration.isCxx && entry.declaration.isAnonymousCInternal;
             if (!entry.identity || entry.projectOrdinal != group.projectOrdinal ||
                 entry.identity->key() != group.identity.key())
                 return CppRecordObservationFailure{"record inventory does not match group identity"};
@@ -2014,6 +2018,7 @@ CppRecordObservationResult prepareCppRecordObservation(
                 objectLayout = frontend::CppImportedObjectLayout{size, alignment};
             }
         }
+        if (allAnonymousCInternal) deferred = false;
         if (deferred || sourcePath.empty())
         {
             result.deferredGroups.push_back(groupIndex);

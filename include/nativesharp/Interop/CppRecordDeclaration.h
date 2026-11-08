@@ -128,5 +128,6 @@ struct CppRecordDeclaration
     bool isCxx = true;
     std::optional<std::string> clangUsr;
     std::vector<CppAnonymousCRecord> anonymousCRecords;
+    bool isAnonymousCInternal = false;
 };
 }
