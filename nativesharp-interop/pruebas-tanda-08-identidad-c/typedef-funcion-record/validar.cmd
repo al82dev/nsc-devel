@@ -22,6 +22,10 @@ python "%~dp0validar.py" 0 --same-size-incompatible --headers-hidden
 if errorlevel 1 exit /b 1
 python "%~dp0validar.py" 0 --nested --same-size-incompatible --headers-hidden
 if errorlevel 1 exit /b 1
+python "%~dp0validar.py" 0 --const-pointer --headers-hidden
+if errorlevel 1 exit /b 1
+python "%~dp0validar.py" 0 --const-mismatch --headers-hidden
+if errorlevel 1 exit /b 1
 python "%~dp0validar.py" 0 --header-changed
 if errorlevel 1 exit /b 1
 python "%~dp0validar-enum.py" 0 --mismatch

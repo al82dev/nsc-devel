@@ -16,7 +16,9 @@ incompatible = "--incompatible" in sys.argv or "--same-size-incompatible" in sys
 same_size = "--same-size-incompatible" in sys.argv
 nested = "--nested" in sys.argv
 changed_header = "--header-changed" in sys.argv
-expected_rejection = incompatible or changed_header
+const_pointer = "--const-pointer" in sys.argv
+const_mismatch = "--const-mismatch" in sys.argv
+expected_rejection = incompatible or changed_header or const_mismatch
 
 def run(args, folder):
     result = subprocess.run(args, cwd=folder, env=env, capture_output=True, text=True, errors="replace")
@@ -33,7 +35,9 @@ for index in (1, 2):
               "typedef struct CRecord { Inner inner; } CRecord;\n") if nested else (
               f"typedef struct CRecord {{ {field} value; }} CRecord;\n")
     (folder / "api.h").write_text(
-        record + "typedef int (*Callback)(CRecord *, ...);\n", encoding="utf-8")
+        record + ("typedef int (*Callback)(const CRecord *, ...);\n"
+                  if const_pointer or (const_mismatch and index == 1)
+                  else "typedef int (*Callback)(CRecord *, ...);\n"), encoding="utf-8")
     (folder / "Producer.ns").write_text(f"""
 namespace RecordAlias{index} {{
     public class Bridge {{
@@ -74,7 +78,8 @@ if expected_rejection:
     if result.returncode == 0 or exe.exists() or "conflicting C/C++ type alias 'Callback'" not in log:
         print(log)
         sys.exit("ERROR: el resultado no coincide con el conflicto esperado")
-    print("Conflicto reproducido; " + ("records incompatibles" if incompatible else "encabezado modificado"))
+    print("Conflicto reproducido; " + ("records incompatibles" if incompatible else
+          "calificadores incompatibles" if const_mismatch else "encabezado modificado"))
     sys.exit(0)
 if result.returncode:
     print(result.stdout + result.stderr)
