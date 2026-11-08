@@ -867,6 +867,16 @@ public:
         std::set<const clang::EnumDecl*> seen;
         std::map<unsigned, std::string> bufferHashes;
         collectEnums(*context.getTranslationUnitDecl(), context, seen, result, bufferHashes);
+        if (const auto* input = std::get_if<CppBufferInput>(&options_.input))
+        {
+            auto path = input->virtualPath;
+            if (path.is_relative()) path = options_.workingDirectory / path;
+            path = path.lexically_normal();
+            auto contents = std::make_shared<const std::string>(input->contents);
+            for (auto& item : result)
+                if (item.sourceProvenance && item.sourceProvenance->sourcePath.lexically_normal() == path)
+                    item.transientSourceBuffer = contents;
+        }
         return result;
     }
     std::optional<std::vector<CppImplicitLifetimeDeclaration>> implicitLifetimeDeclarations(

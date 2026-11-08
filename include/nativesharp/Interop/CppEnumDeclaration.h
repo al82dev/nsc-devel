@@ -4,6 +4,7 @@
 #include "nativesharp/Interop/CppType.h"
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -46,5 +47,7 @@ struct CppEnumDeclaration
     std::optional<std::string> clangUsr;
     // From Clang's parsed buffer; unavailable for macro locations.
     std::optional<SourceProvenance> sourceProvenance;
+    // Session-owned evidence for a virtual main input; never serialized.
+    std::shared_ptr<const std::string> transientSourceBuffer;
 };
 }

@@ -1134,6 +1134,17 @@ bool compareCEnumSourceEvidence(const CppCEnumSnapshot& left, const CppCEnumSnap
     { result = CRecordContractComparison::Insufficient; error.clear(); return true; }
     const auto& first = *a.sourceProvenance;
     const auto& second = *b.sourceProvenance;
+    // Two copies of one live virtual-source observation can be verified against
+    // their shared immutable buffer; serialized catalogs never carry this token.
+    if (a.transientSourceBuffer && a.transientSourceBuffer == b.transientSourceBuffer &&
+        first.sourcePath == second.sourcePath && first.bufferSha256 == second.bufferSha256 &&
+        first.byteOffset == second.byteOffset && first.byteOffset < a.transientSourceBuffer->size())
+    {
+        const auto& buffer = *a.transientSourceBuffer;
+        const auto* data = reinterpret_cast<const std::uint8_t*>(buffer.data());
+        if (basic::sha256Hex(basic::sha256(std::span(data, buffer.size()))) == first.bufferSha256)
+        { result = CRecordContractComparison::Matching; error.clear(); return true; }
+    }
     if (allowEquivalentDistinctSources && first.sourcePath.is_absolute() && second.sourcePath.is_absolute() &&
         first.sourcePath != second.sourcePath)
     {
