@@ -11,7 +11,7 @@ set "TEMP=%NSC_T08_OUT%"
 set "NSC_LINKER=%NSC_T08_NSLINK%"
 set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=%NSC_T08_BUILD%\generated\NativeSharp.Runtime.Win32.lib"
-for %%F in (Api.h Api.c Main.ns Producer.ns Consumer.ns Project.nsproj Producer.nsproj Shared.nsproj Metadata.nsproj) do (
+for %%F in (Api.h Api.c First.h Second.h Main.ns Producer.ns Consumer.ns Project.nsproj Repeat.nsproj Producer.nsproj Shared.nsproj Metadata.nsproj) do (
   copy /y "%~dp0%%F" "%NSC_T08_OUT%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -23,6 +23,10 @@ for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%NSC_T08_OUT%\Project.nsproj" -O%%O --no-artifact-cache -o "%NSC_T08_OUT%\Direct-O%%O.exe"
   if errorlevel 1 exit /b 1
   "%NSC_T08_OUT%\Direct-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%NSC_T08_OUT%\Repeat.nsproj" -O%%O --no-artifact-cache -o "%NSC_T08_OUT%\Repeat-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  "%NSC_T08_OUT%\Repeat-O%%O.exe"
   if errorlevel 1 exit /b 1
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%NSC_T08_OUT%\Producer.nsproj" -O%%O --no-artifact-cache -o "%NSC_T08_OUT%\CAnonymousProducer.lib"
   if errorlevel 1 exit /b 1
