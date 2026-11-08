@@ -67,6 +67,7 @@ for %%T in (
   pruebas-tanda-08-global-static-punteros\validar.cmd
   pruebas-tanda-08-global-static-contratos\validar.cmd
   pruebas-tanda-08-global-static-tipos\validar.cmd
+  pruebas-tanda-08-enum-campo\validar.cmd
   pruebas-tanda-08-global-static-ambiguedad\validar.cmd
   pruebas-tanda-08-callback\validar-record-precompilado.cmd
   pruebas-tanda-08-enum-funcion\validar-callback-precompilado.cmd

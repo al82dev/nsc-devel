@@ -205,6 +205,11 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - H4 partes A y B: enums declarados dentro de records C se capturan y los
+    campos escalares de enum anónimo se proyectan como el entero subyacente.
+    El consumo directo y el enum nombrado precompilado pasaron O0–O3. La
+    publicación del enum anónimo permanece rechazada sin metadata nueva.
+    [Resultado](registro-commits/t08-h4-enum-campo-validacion.md).
   - Un productor NSC real conservó en su NSMETA los USR de Clang del registro
     C y todos sus campos; la comparación con Clang y el consumidor separado
     pasaron O0–O3. Esto no demuestra que el consumidor restaure cada USR ni
