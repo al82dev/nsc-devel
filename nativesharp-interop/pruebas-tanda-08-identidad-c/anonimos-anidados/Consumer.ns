@@ -1,0 +1,7 @@
+int Main() {
+    var value = PublishedNested.Bridge.Get();
+    value->mode = AnonFirst;
+    value->value = 7;
+    if ((int)value->mode != 11 || PublishedNested.Bridge.Read() != 18) return 1;
+    return 0;
+}

@@ -1,0 +1,4 @@
+<Project><PropertyGroup><Name>AnonNestedConsumer</Name></PropertyGroup><ItemGroup>
+<Compile Include="Consumer.ns" />
+<LibraryReference Include="AnonNestedProducer.lib" />
+</ItemGroup></Project>

@@ -1,0 +1,7 @@
+int Main() {
+    var value = get_anon();
+    value->mode = AnonFirst;
+    value->value = 7;
+    if ((int)value->mode != 11 || read_anon() != 18) return 1;
+    return 0;
+}

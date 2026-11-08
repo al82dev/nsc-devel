@@ -1,0 +1,6 @@
+namespace PublishedNested {
+    public struct Bridge {
+        public static AnonOuter* Get() { return get_anon(); }
+        public static int Read() { return read_anon(); }
+    }
+}
