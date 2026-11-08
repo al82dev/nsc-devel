@@ -13,5 +13,11 @@ int Main()
     if (packedValue(39) != 42) return 3;
     packed->run = replacement;
     if (run_packed_volatile(packed, 37) != 42) return 4;
+    Callback inherited = inherited_callback_holder.run;
+    if (inherited(39) != 42) return 5;
+    inherited_callback_holder.run = replacement;
+    if (get_inherited_callback()(37) != 42) return 6;
+    set_inherited_callback(get_callback());
+    if (inherited_callback_holder.run(39) != 42) return 7;
     return 0;
 }

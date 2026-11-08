@@ -10,6 +10,10 @@ extern Callback const readonly_callback;
 int run_holder(CallbackHolder* holder, int value);
 int run_shared(int value);
 typedef struct VolatileCallbackHolder { Callback volatile run; } VolatileCallbackHolder;
+typedef struct InheritedCallbackHolder { Callback run; } InheritedCallbackHolder;
+extern volatile InheritedCallbackHolder inherited_callback_holder;
+Callback get_inherited_callback(void);
+void set_inherited_callback(Callback value);
 #pragma pack(push, 1)
 typedef struct PackedVolatileCallbackHolder { char prefix; Callback volatile run; } PackedVolatileCallbackHolder;
 #pragma pack(pop)

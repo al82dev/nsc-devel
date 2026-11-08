@@ -1,6 +1,7 @@
 #pragma once
 
 #include "nativesharp/Frontend/ProjectOopMirNode.h"
+#include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Language/CallableSemantics.h"
 
 #include <cstdint>
@@ -137,11 +138,13 @@ inline bool clangMsVolatileGlobalBoolArray(const frontend::ProjectOopMirNode* no
 }
 
 inline std::optional<std::uint64_t> clangMsVolatileFunctionFieldAlignment(
-    const frontend::ProjectOopMirNode* node) noexcept
+    const frontend::ProjectMemberModel* members, const frontend::ProjectOopMirNode* node) noexcept
 {
     if (!node || (node->kind != frontend::ProjectOopMirNodeKind::FieldAddress &&
                   node->kind != frontend::ProjectOopMirNodeKind::FieldLoad) ||
         !node->volatileAccess || !node->cppMicrosoftVolatileSemantics.value_or(false)) return std::nullopt;
+    if (!members || !node->memberOrdinal || *node->memberOrdinal >= members->members().size() ||
+        !members->members()[*node->memberOrdinal].isVolatile) return std::nullopt;
     const auto function = language::parseFunctionTypeIdentity(node->typeKey);
     if (!function || function->carrier != language::FunctionCarrier::Pointer) return std::nullopt;
     const auto alignment = fieldOrArrayAddressAlignment(node);

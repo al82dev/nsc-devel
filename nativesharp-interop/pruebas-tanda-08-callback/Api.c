@@ -11,6 +11,9 @@ Callback const readonly_callback = add_three;
 int run_holder(CallbackHolder* item, int value) { return item->run(value); }
 int run_shared(int value) { return shared_callback(value); }
 static VolatileCallbackHolder volatile_holder = { add_three };
+volatile InheritedCallbackHolder inherited_callback_holder = { add_three };
+Callback get_inherited_callback(void) { return inherited_callback_holder.run; }
+void set_inherited_callback(Callback value) { inherited_callback_holder.run = value; }
 static PackedVolatileCallbackHolder packed_volatile_holder = { 0, add_three };
 Callback volatile volatile_callback = add_three;
 VolatileCallbackHolder* get_volatile_holder(void) { return &volatile_holder; }

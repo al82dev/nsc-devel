@@ -484,7 +484,7 @@ bool OopLlvmImplementation::lowerExpressionFrame004FieldLoad(
     if (const auto alignment = fieldOrArrayAddressAlignment(current))
         LLVMSetAlignment(load, static_cast<unsigned>(*alignment));
     if (current->volatileAccess) LLVMSetVolatile(load, 1);
-    if (const auto alignment = clangMsVolatileFunctionFieldAlignment(current))
+    if (const auto alignment = clangMsVolatileFunctionFieldAlignment(memberModel_, current))
     {
         LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
         LLVMSetAlignment(load, static_cast<unsigned>(*alignment));

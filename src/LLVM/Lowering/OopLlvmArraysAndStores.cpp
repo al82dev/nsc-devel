@@ -569,7 +569,7 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 LLVMSetOrdering(previous, LLVMAtomicOrderingAcquire);
                 LLVMSetAlignment(previous, static_cast<unsigned>(*width));
             }
-            if (const auto alignment = clangMsVolatileFunctionFieldAlignment(node->children[0].get()))
+            if (const auto alignment = clangMsVolatileFunctionFieldAlignment(memberModel_, node->children[0].get()))
             {
                 LLVMSetOrdering(previous, LLVMAtomicOrderingAcquire);
                 LLVMSetAlignment(previous, static_cast<unsigned>(*alignment));
@@ -636,7 +636,7 @@ LLVMValueRef OopLlvmImplementation::compoundStoreFromParts(
                 LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
                 LLVMSetAlignment(store, static_cast<unsigned>(*width));
             }
-            if (const auto alignment = clangMsVolatileFunctionFieldAlignment(node->children[0].get()))
+            if (const auto alignment = clangMsVolatileFunctionFieldAlignment(memberModel_, node->children[0].get()))
             {
                 LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
                 LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
@@ -916,7 +916,7 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
             LLVMSetAlignment(store, static_cast<unsigned>(*width));
         }
-        if (const auto alignment = clangMsVolatileFunctionFieldAlignment(node->children[0].get()))
+        if (const auto alignment = clangMsVolatileFunctionFieldAlignment(memberModel_, node->children[0].get()))
         {
             LLVMSetOrdering(store, LLVMAtomicOrderingRelease);
             LLVMSetAlignment(store, static_cast<unsigned>(*alignment));
