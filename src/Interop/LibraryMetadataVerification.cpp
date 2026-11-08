@@ -1435,7 +1435,7 @@ bool verifyBinaryClosureMetadata(
         {
             CDependencyCatalog dependencies;
             if (!decodeCTypeCatalogWithDependencies(metadata.cppCRecordCatalog, records, enums, dependencies, detail) ||
-                !dependencies.functions.empty() || !dependencies.globals.empty() ||
+                !dependencies.globals.empty() ||
                 !encodeCTypeCatalogWithDependencies(records, enums, dependencies, canonical, detail) ||
                 canonical != metadata.cppCRecordCatalog)
             { error = "invalid or unsupported C dependency catalogue: " + detail; return false; }
@@ -1443,6 +1443,12 @@ bool verifyBinaryClosureMetadata(
                 if (alias.declaration.insideAnonymousNamespace || !alias.declaration.clangUsr ||
                     alias.declaration.clangUsr->empty())
                 { error = "C dependency alias has incomplete identity"; return false; }
+            for (const auto& function : dependencies.functions)
+                if (!function.declaration.externalLinkage || function.declaration.isCStaticInlineDefinition ||
+                    function.declaration.languageLinkage != CppLanguageLinkage::C ||
+                    !function.declaration.clangUsr || function.declaration.clangUsr->empty() ||
+                    function.declaration.externalSymbol != function.linkSymbol)
+                { error = "C dependency function has incomplete or unsupported identity"; return false; }
         }
         else
         {
