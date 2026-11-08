@@ -4,6 +4,7 @@
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
 #include "nativesharp/Diagnostics/DiagnosticSeverity.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/Language/GenericSemantics.h"
@@ -915,8 +916,14 @@ bool ProjectGenericConstraintModel::satisfiesThreadSafetyConstraint(
                 memberFacts.send = true;
                 memberFacts.sync = true;
                 std::string nestedTypeKey = member.declaredTypeKey;
-                while (const auto element = ProjectMemberModel::fixedArrayElementTypeKey(nestedTypeKey))
-                    nestedTypeKey = *element;
+                while (true)
+                {
+                    auto element = ProjectMemberModel::fixedArrayElementTypeKey(nestedTypeKey);
+                    if (!element.has_value())
+                        element = ProjectTypeConversion::nativeArrayElementType(nestedTypeKey);
+                    if (!element.has_value()) break;
+                    nestedTypeKey = std::move(*element);
+                }
                 if (nestedTypeKey.ends_with("*")) return false;
                 std::size_t nestedOrdinal = 0;
                 if (declarationForTypeKey(nameLookup, nestedTypeKey, nestedOrdinal) != nullptr)

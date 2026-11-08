@@ -215,9 +215,12 @@ Un caso posterior reveló que un arreglo fijo de `Inner` volvía a aceptarse com
 Send (`shared-send-generic-probe/results.json`, antes de la corrección). El
 analizador ahora revisa el elemento de arreglos fijos anidados. La regresión
 dirigida rechaza arreglos de tipos con punteros y de punteros directos, comprueba
-arreglos seguros y wrappers genéricos, tanto en Send como Sync; junto con la
-prueba de vista pasó 2/2 (`nested-thread-safety-tests.log`). Los arreglos
-dinámicos y otras representaciones no quedan acreditados por esos casos.
+arreglos seguros y wrappers genéricos, tanto en Send como Sync. El mismo fallo
+se reprodujo con arreglos dinámicos (`shared-send-generic-probe/results.json`);
+la comprobación ahora recorre también su elemento. La selección dirigida pasó
+2/2 (`nested-thread-safety-tests.log`). Otras representaciones y rutas de envío
+no quedan acreditadas por esos casos. La primera compilación incremental falló
+por un include ausente; se agregó y la segunda compilación pasó.
 La primera ejecución de esta regresión utilizó por error `C:/Windows/Temp`;
 `TemporaryDirectory` eliminó su carpeta al terminar. Se repitió con TEMP, TMP,
 APPDATA y LOCALAPPDATA en A; el registro corresponde a la segunda ejecución.
