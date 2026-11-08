@@ -77,6 +77,7 @@ using UsrTable = std::map<std::string, std::optional<std::string>>;
 const char* const kProbeHeader =
     "typedef int CIdInt;\n"
     "struct CIdRecord { int value; };\n"
+    "struct CIdCarriers { int tag; union { int x; float f; }; struct { short y; }; unsigned : 1; };\n"
     "typedef struct { int raw; } CIdAnonRecord;\n"
     "union CIdUnion { int whole; unsigned char bytes[4]; };\n"
     "enum CIdKind { CIdFirst = 1, CIdSecond = 2 };\n"
@@ -312,13 +313,27 @@ bool checkUsrStability(CppClangSessionFactory& factory, const std::string& resou
     auto renamed = openSession(factory, headerOptions(resource, directory, driver, "b.h"));
     if (!expect(first && again && renamed, "probe sessions open on a.h and b.h")) return false;
     const auto firstTable = collectUsrs(*first);
+    const auto records = first->recordsSnapshot();
+    bool carriersOk = expect(records.has_value(), "anonymous carrier record snapshot is available");
+    if (records)
+    {
+        const auto record = std::find_if(records->begin(), records->end(), [](const auto& item) {
+            return item.qualifiedName == "CIdCarriers";
+        });
+        carriersOk &= expect(record != records->end(), "anonymous carrier owner is captured");
+        if (record != records->end())
+            carriersOk &= expect(record->fields.size() == 4 && !record->fields[0].isAnonymousCarrier &&
+                record->fields[1].isAnonymousCarrier && record->fields[2].isAnonymousCarrier &&
+                !record->fields[3].isAnonymousCarrier && record->fields[3].bitWidth.has_value(),
+                "anonymous union and struct carriers are distinguished from unnamed bit-fields");
+    }
     const auto againTable = collectUsrs(*again);
     const auto renamedTable = collectUsrs(*renamed);
     printTables(firstTable, againTable, renamedTable);
     first->close();
     again->close();
     renamed->close();
-    return checkUsrTables(firstTable, againTable, renamedTable);
+    return checkUsrTables(firstTable, againTable, renamedTable) && carriersOk;
 }
 
 // EN: Writes a minimal NativeSharp project and its Main.ns beneath `directory`.

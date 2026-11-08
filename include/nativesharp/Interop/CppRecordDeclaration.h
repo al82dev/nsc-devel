@@ -22,6 +22,8 @@ struct CppRecordField
     std::optional<std::uint64_t> offsetBits;
     std::optional<unsigned> bitWidth;
     std::optional<std::string> clangUsr;
+    // C11 anonymous struct/union carrier, distinct from an unnamed bit-field.
+    bool isAnonymousCarrier = false;
 };
 
 struct CppMethodDeclaration

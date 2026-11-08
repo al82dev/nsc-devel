@@ -569,6 +569,7 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                 projected.name = field->getNameAsString();
                 projected.type = describeType(field->getType(), astContext);
                 projected.access = value.isCxx ? describeAccess(field->getAccess()) : CppAccess::Public;
+                projected.isAnonymousCarrier = !value.isCxx && field->isAnonymousStructOrUnion();
                 projected.offsetBits = layout.getFieldOffset(index++);
                 if (field->isBitField()) projected.bitWidth = field->getBitWidthValue();
                 value.fields.push_back(std::move(projected));
