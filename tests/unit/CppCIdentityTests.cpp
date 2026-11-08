@@ -1156,6 +1156,64 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
     return ok;
 }
 
+bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::string& resource,
+                                  const std::filesystem::path& directory, const std::string& driver)
+{
+    const auto project = writeProject(directory / "generic-publish", "CGenericPublish",
+        "public class Bridge { public static CIdInt Test<T>(T value) { return 0; } }\n");
+    const auto header = std::filesystem::absolute(directory / "a.h");
+    if (project.empty() || !writeText(project,
+        "<Project><PropertyGroup><Name>CGenericPublish</Name></PropertyGroup><ItemGroup>"
+        "<CppLibraryReference Header=\"" + header.generic_string() + "\" Language=\"C\" Standard=\"c11\" />"
+        "</ItemGroup></Project>\n")) return false;
+    auto options = headerOptions(resource, directory, driver, "a.h");
+    options.input = CppFileInput{header};
+    CppProjectSessions sessions;
+    sessions.projectFile = project;
+    sessions.sessions.push_back(openSession(factory, std::move(options)));
+    if (!sessions.sessions.front()) return false;
+    std::vector<CppProjectSessions> groups;
+    groups.push_back(std::move(sessions));
+    nativesharp::frontend::ProjectCompilation compilation;
+    std::string error;
+    const bool ready = compilation.setCppProjectSessions(std::move(groups), error) &&
+        compilation.setCppTypeAliasProvider(provideCppTypeAliases, error) &&
+        compilation.setCppNamespaceProvider([](const auto&, auto, auto&, auto&) { return true; }, error) &&
+        compilation.setCppFunctionProvider([](const auto&, auto, auto, auto, auto&, auto&, auto&) { return true; }, error) &&
+        compilation.compileProjectMembers(project, error);
+    if (!ready) std::cerr << "generic publication fixture: " << error << ' ' << diagnosticText(compilation) << '\n';
+    if (!expect(ready && compilation.genericModel(), "generic publication fixture compiles with C project reference")) return false;
+    LibraryMetadata metadata;
+    metadata.formatMinor = 46;
+    for (const auto& record : compilation.genericModel()->templates())
+        if (record.name == "Test")
+        {
+            LibraryMetadataGenericTemplate item;
+            item.canonicalKey = record.canonicalKey;
+            metadata.genericTemplates.push_back(std::move(item));
+        }
+    std::vector<std::uint8_t> bytes;
+    std::vector<CppCRecordSnapshot> records;
+    std::vector<CppCEnumSnapshot> enums;
+    metadata_detail::CDependencyCatalog dependencies;
+    const auto observedInventory = collectCppSemanticTypeAliases(*compilation.projectGraph(), compilation.cppProjectSessions());
+    if (const auto* observed = std::get_if<std::vector<CppSemanticTypeAliasEntry>>(&observedInventory))
+    {
+        const auto candidates = selectCppPublishedTemplateAliases(compilation, metadata, *observed);
+        for (const auto& item : candidates)
+            std::cout << "OBSERVATION generic publication alias candidates=" << item.inventoryIndices.size()
+                      << " binding=" << item.hasNameBinding << " selected=" << (item.resolvedAlias != nullptr) << '\n';
+    }
+    const bool produced = !metadata.genericTemplates.empty() &&
+        provideCppCRecordMetadataCatalog(compilation, metadata, bytes, error);
+    if (produced && bytes.empty()) error = "producer returned an empty C dependency catalogue";
+    const bool captured = produced && !bytes.empty() &&
+        metadata_detail::decodeCTypeCatalogAndDependencies(bytes, 46, records, enums, dependencies, error) &&
+        dependencies.aliases.size() == 1 && dependencies.aliases[0].declaration.name == "CIdInt";
+    if (!captured) std::cerr << "generic alias publication: " << error << '\n';
+    return expect(captured, "producer captures a resolved template alias from a real C project reference");
+}
+
 bool checkDependencyTypeCodec()
 {
     using namespace nativesharp::interop::metadata_detail;
@@ -1410,6 +1468,7 @@ int runProbes(const std::string& resource, const std::filesystem::path& work, co
     ok &= checkNestedFieldEnums(factory, resource, directory, driver);
     ok &= checkDependencyTypeCodec();
     ok &= checkGenericForeignCandidates(factory, resource, directory, driver);
+    ok &= checkGenericAliasPublication(factory, resource, directory, driver);
     observeCatalogueEnvelope();
     std::cout << (ok ? "C declaration identity probes passed\n" : "C declaration identity probes failed\n");
     return ok ? 0 : 1;
