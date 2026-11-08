@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CppBoolFunctionAbi</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Main.ns" />
+    <CppLibraryReference Header="Api.h" Language="C++" Standard="c++20" Library="api.lib" />
+  </ItemGroup>
+</Project>

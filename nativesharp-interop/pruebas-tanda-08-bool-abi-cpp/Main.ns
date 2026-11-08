@@ -1,0 +1,8 @@
+int Main()
+{
+    var item = Demo.instance();
+    if (!item->flip(false) || item->flip(true)) return 1;
+    if (!Demo.Switch.choose(3, true, 7) || Demo.Switch.choose(3, false, 7)) return 2;
+    if (!Demo.invert(false) || Demo.invert(true)) return 3;
+    return 0;
+}
