@@ -144,10 +144,15 @@ bool equalsFolded(std::string_view left, std::string_view right)
     return true;
 }
 
-std::string pathKey(const std::filesystem::path& path)
+std::string displayPathUtf8(const std::filesystem::path& path)
 {
     const auto encoded = path.generic_u8string();
-    std::string key(reinterpret_cast<const char*>(encoded.data()), encoded.size());
+    return std::string(reinterpret_cast<const char*>(encoded.data()), encoded.size());
+}
+
+std::string pathKey(const std::filesystem::path& path)
+{
+    std::string key = displayPathUtf8(path);
     std::transform(
         key.begin(),
         key.end(),
@@ -974,7 +979,7 @@ bool prepareProjectDescriptor(
     std::string& moduleName,
     std::string& error)
 {
-    moduleName = descriptor.name.value_or(canonicalProject.stem().string());
+    moduleName = descriptor.name ? *descriptor.name : displayPathUtf8(canonicalProject.stem());
     if (!isIdentifier(moduleName))
     {
         error = "project Name '" + moduleName + "' is not a valid NativeSharp identifier";
@@ -1088,18 +1093,18 @@ std::optional<std::vector<std::filesystem::path>> loadProjectReferences(
             std::filesystem::weakly_canonical(unresolved, filesystemError);
         if (filesystemError || !std::filesystem::is_regular_file(reference))
         {
-            error = "referenced project does not exist: '" + unresolved.string() + "'";
+            error = "referenced project does not exist: '" + displayPathUtf8(unresolved) + "'";
             return std::nullopt;
         }
         if (reference.extension() != ".nsproj")
         {
-            error = "ProjectReference must refer to a .nsproj file: '" + reference.string() + "'";
+            error = "ProjectReference must refer to a .nsproj file: '" + displayPathUtf8(reference) + "'";
             return std::nullopt;
         }
         const std::string key = pathKey(reference);
         if (std::find(referenceKeys.begin(), referenceKeys.end(), key) != referenceKeys.end())
         {
-            error = "duplicate ProjectReference: '" + reference.string() + "'";
+            error = "duplicate ProjectReference: '" + displayPathUtf8(reference) + "'";
             return std::nullopt;
         }
         referenceKeys.push_back(key);
@@ -1147,11 +1152,11 @@ bool loadLibraryArtifact(
     library = std::filesystem::weakly_canonical(unresolvedLibrary, filesystemError);
     if (filesystemError || !std::filesystem::is_regular_file(library))
     {
-        error = "referenced library does not exist: '" + unresolvedLibrary.string() + "'";
+        error = "referenced library does not exist: '" + displayPathUtf8(unresolvedLibrary) + "'";
         return false;
     }
     if (equalsFolded(library.extension().string(), ".lib")) return true;
-    error = "LibraryReference Include must refer to a .lib file: '" + library.string() + "'";
+    error = "LibraryReference Include must refer to a .lib file: '" + displayPathUtf8(library) + "'";
     return false;
 }
 
@@ -1177,11 +1182,11 @@ bool loadMetadataArtifact(
     metadata = std::filesystem::weakly_canonical(unresolvedMetadata, filesystemError);
     if (filesystemError || !std::filesystem::is_regular_file(metadata))
     {
-        error = "LibraryReference metadata does not exist: '" + unresolvedMetadata.string() + "'";
+        error = "LibraryReference metadata does not exist: '" + displayPathUtf8(unresolvedMetadata) + "'";
         return false;
     }
     if (equalsFolded(metadata.extension().string(), ".nsmeta")) return true;
-    error = "LibraryReference Metadata must refer to a .nsmeta file: '" + metadata.string() + "'";
+    error = "LibraryReference Metadata must refer to a .nsmeta file: '" + displayPathUtf8(metadata) + "'";
     return false;
 }
 
@@ -1200,11 +1205,11 @@ bool loadRuntimeArtifact(
     runtime = std::filesystem::weakly_canonical(unresolvedRuntime, filesystemError);
     if (filesystemError || !std::filesystem::is_regular_file(runtime))
     {
-        error = "LibraryReference runtime DLL does not exist: '" + unresolvedRuntime.string() + "'";
+        error = "LibraryReference runtime DLL does not exist: '" + displayPathUtf8(unresolvedRuntime) + "'";
         return false;
     }
     if (equalsFolded(runtime.extension().string(), ".dll")) return true;
-    error = "LibraryReference Runtime must refer to a .dll file: '" + runtime.string() + "'";
+    error = "LibraryReference Runtime must refer to a .dll file: '" + displayPathUtf8(runtime) + "'";
     return false;
 }
 
@@ -1236,7 +1241,7 @@ std::optional<std::vector<LibraryReference>> loadLibraryReferences(
         if (std::find(libraryReferenceKeys.begin(), libraryReferenceKeys.end(), key) !=
             libraryReferenceKeys.end())
         {
-            error = "duplicate LibraryReference: '" + library.string() + "'";
+            error = "duplicate LibraryReference: '" + displayPathUtf8(library) + "'";
             return std::nullopt;
         }
         libraryReferenceKeys.push_back(key);
