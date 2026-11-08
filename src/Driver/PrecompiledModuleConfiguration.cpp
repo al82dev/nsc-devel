@@ -560,6 +560,14 @@ bool configurePrecompiledModules(
                     return interop::provideCppFieldsWithPrecompiledCatalogs(
                         graph, projects, compilation.precompiledModules(), lookup, fields, why);
                 }, error) ||
+            !compilation.setCppFunctionProvider(
+                [&compilation](const auto& graph, auto projects, auto, auto demands,
+                               auto& functions, auto& deferred, auto& why) {
+                    const auto* lookup = compilation.nameLookup();
+                    if (!lookup) { why = "C/C++ name lookup is unavailable"; return false; }
+                    return interop::provideCppFunctionsWithPrecompiledCatalogs(
+                        graph, projects, compilation.precompiledModules(), *lookup, demands, functions, deferred, why);
+                }, error) ||
             !compilation.setCppGlobalProvider(
                 [&compilation](const auto& graph, auto projects, auto demands, auto& values, auto& why) {
                     const auto* lookup = compilation.nameLookup();
