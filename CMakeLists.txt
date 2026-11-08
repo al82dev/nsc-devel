@@ -5443,6 +5443,20 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.compiler.thread-safety-nested-fields
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/thread_safety_nested_fields.py"
                 "${NSC_TEST_COMPILER}")
+    add_test(NAME nsc.sdk.shared-local-control
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_local_control.py"
+                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
+                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
+                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalControl.ns"
+                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns")
+    add_test(NAME nsc.sdk.shared-atomic-control-concurrency
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_atomic_control_concurrency.py"
+                "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
+                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
+                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
+                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns"
+                "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core.Threading/Thread.ns")
     add_test(NAME nsc.sdk.sort-with-alias
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/sort_with_alias.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core.Collections.Generic/NativeSharp.Core.Collections.Generic.nsproj")

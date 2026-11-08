@@ -1,0 +1,80 @@
+namespace NativeSharp.Core.Internal
+{
+    // Internal atomic control block operations. Every operation requires an existing strong
+    // or weak owner; no caller may access the block after releasing its last reference.
+    internal static class SharedAtomicControl
+    {
+        // The initial strong owner holds the implicit weak reference until destruction.
+        public static void Initialize(long[] block)
+        {
+            unsafe("shared atomic control header")
+            {
+                AtomicSharedCounts* counts = (AtomicSharedCounts*)&block[0];
+                *counts = new AtomicSharedCounts(1l, 1l);
+            }
+        }
+
+        public static bool TryRetainStrong(long[] block)
+        {
+            unsafe("shared atomic control header")
+            {
+                AtomicSharedCounts* counts = (AtomicSharedCounts*)&block[0];
+                return (*counts).TryRetainStrong();
+            }
+        }
+
+        public static bool TryRetainWeak(long[] block)
+        {
+            unsafe("shared atomic control header")
+            {
+                AtomicSharedCounts* counts = (AtomicSharedCounts*)&block[0];
+                return (*counts).TryRetainWeak();
+            }
+        }
+
+        public static long StrongCount(long[] block)
+        {
+            unsafe("shared atomic control header")
+            {
+                AtomicSharedCounts* counts = (AtomicSharedCounts*)&block[0];
+                return (*counts).StrongCount();
+            }
+        }
+
+        // Only the thread observing the final strong release destroys the payload.
+        public static int DropStrong<T>(long[] block, T* payload)
+        {
+            unsafe("shared atomic control header")
+            {
+                AtomicSharedCounts* counts = (AtomicSharedCounts*)&block[0];
+                int result = (*counts).ReleaseStrong();
+                if (result != 1) return result;
+                Destroy<T>(payload);
+                DropWeak(block);
+                return 1;
+            }
+        }
+
+        // Only the thread observing the final weak release frees the block.
+        public static int DropWeak(long[] block)
+        {
+            unsafe("shared atomic control header")
+            {
+                AtomicSharedCounts* counts = (AtomicSharedCounts*)&block[0];
+                int result = (*counts).ReleaseWeak();
+                if (result == 1) delete[] block;
+                return result;
+            }
+        }
+
+        private static void Destroy<T>(T* payload)
+        {
+            destroy payload;
+        }
+
+        private specialize static void Destroy<T>(T* payload) where T : class
+        {
+            SharedStorage.DestroyObject<T>(*payload);
+        }
+    }
+}

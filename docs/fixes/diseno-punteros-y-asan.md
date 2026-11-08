@@ -253,6 +253,21 @@ Estos prototipos no son una implementación pública: las comprobaciones de
 contadores y upgrade descritas arriba no demuestran la familia Arc completa,
 el pin del módulo ni la seguridad general del acceso al payload.
 
+Los componentes internos `SharedLocalControl` y `SharedAtomicControl` conectan
+los contadores existentes al ciclo de vida del bloque: el último fuerte destruye
+el payload de clase o estructura y suelta el débil implícito; el último débil
+libera el arreglo. Sus métodos requieren un bloque vivo y referencias válidas;
+no representan por sí solos handles públicos ni fijan el módulo productor.
+`nsc.sdk.shared-local-control` ejecuta ambos controles con clases y estructuras,
+sin resurrección, doble liberación fuerte ni overflow de retención. La prueba
+`nsc.sdk.shared-atomic-control-concurrency` disputa la última liberación entre
+cuatro hilos durante 64 rondas en O0 y O2 y observa una destrucción por ronda.
+Ambas pasaron junto a las dos pruebas dirigidas previas de almacenamiento y
+constructores (`A:/nsc-fixes-evidencia/shared-control-suite.log`, 4/4). Estas
+pruebas no agotan los intercalados ni prueban el pin del módulo o la seguridad
+de las futuras APIs públicas; el análisis del proyecto Core pasó por separado
+(`shared-core-check.log`).
+
 ## AddressSanitizer
 
 El usuario aprobó exposición explícita y desactivada por defecto. La opción

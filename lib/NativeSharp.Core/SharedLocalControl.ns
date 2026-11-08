@@ -1,0 +1,84 @@
+namespace NativeSharp.Core.Internal
+{
+    // Internal single-threaded control block operations. The caller supplies the same live
+    // block and payload address to every operation and must not use either after final release.
+    internal static class SharedLocalControl
+    {
+        // Install the initial strong owner and its implicit weak owner in the reserved header.
+        public static void Initialize(long[] block)
+        {
+            unsafe("shared local control header")
+            {
+                LocalSharedCounts* counts = (LocalSharedCounts*)&block[0];
+                *counts = new LocalSharedCounts(1l, 1l);
+            }
+        }
+
+        // Retain only live objects and reject counter overflow.
+        public static bool TryRetainStrong(long[] block)
+        {
+            unsafe("shared local control header")
+            {
+                LocalSharedCounts* counts = (LocalSharedCounts*)&block[0];
+                return (*counts).TryRetainStrong();
+            }
+        }
+
+        // A live weak handle or strong handle keeps the control block available.
+        public static bool TryRetainWeak(long[] block)
+        {
+            unsafe("shared local control header")
+            {
+                LocalSharedCounts* counts = (LocalSharedCounts*)&block[0];
+                return (*counts).TryRetainWeak();
+            }
+        }
+
+        public static long StrongCount(long[] block)
+        {
+            unsafe("shared local control header")
+            {
+                LocalSharedCounts* counts = (LocalSharedCounts*)&block[0];
+                return (*counts).StrongCount();
+            }
+        }
+
+        // The last strong owner destroys the payload once, then releases its implicit weak.
+        public static int DropStrong<T>(long[] block, T* payload)
+        {
+            unsafe("shared local control header")
+            {
+                LocalSharedCounts* counts = (LocalSharedCounts*)&block[0];
+                int result = (*counts).ReleaseStrong();
+                if (result != 1) return result;
+                Destroy<T>(payload);
+                DropWeak(block);
+                return 1;
+            }
+        }
+
+        // A final weak release frees the array backing the whole control block.
+        public static int DropWeak(long[] block)
+        {
+            unsafe("shared local control header")
+            {
+                LocalSharedCounts* counts = (LocalSharedCounts*)&block[0];
+                int result = (*counts).ReleaseWeak();
+                if (result == 1) delete[] block;
+                return result;
+            }
+        }
+
+        // Value payloads live directly in the placement storage.
+        private static void Destroy<T>(T* payload)
+        {
+            destroy payload;
+        }
+
+        // Class payload storage points at the object reference stored in the header.
+        private specialize static void Destroy<T>(T* payload) where T : class
+        {
+            SharedStorage.DestroyObject<T>(*payload);
+        }
+    }
+}
