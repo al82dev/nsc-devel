@@ -633,6 +633,57 @@ bool decodeCDependencyCatalog(std::span<const std::uint8_t> bytes,
     return true;
 }
 
+bool encodeCTypeCatalogWithDependencies(std::span<const CppCRecordSnapshot> records,
+    std::span<const CppCEnumSnapshot> enums, const CDependencyCatalog& dependencies,
+    std::vector<std::uint8_t>& output, std::string& error)
+{
+    if (dependencies.functions.empty() && dependencies.globals.empty() && dependencies.aliases.empty())
+    { error = "empty C dependency catalogue"; return false; }
+    std::vector<std::uint8_t> types;
+    std::vector<std::uint8_t> declarations;
+    if (!encodeCTypeCatalogWithProvenance(records, enums, types, error) ||
+        !encodeCDependencyCatalog(dependencies, declarations, error)) return false;
+    ByteWriter writer;
+    writer.u32(5);
+    writer.u64(static_cast<std::uint64_t>(types.size()));
+    writer.raw(types);
+    writer.u64(static_cast<std::uint64_t>(declarations.size()));
+    writer.raw(declarations);
+    output = writer.takeBytes();
+    error.clear();
+    return true;
+}
+
+bool decodeCTypeCatalogWithDependencies(std::span<const std::uint8_t> bytes,
+    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums,
+    CDependencyCatalog& dependencies, std::string& error)
+{
+    ByteReader reader(bytes);
+    std::uint32_t version = 0;
+    std::uint64_t size = 0;
+    if (!reader.u32(version) || version != 5 || !reader.u64(size) || size > reader.remaining())
+    { error = "invalid C dependency envelope"; return false; }
+    std::vector<std::uint8_t> types(static_cast<std::size_t>(size));
+    std::vector<CppCRecordSnapshot> decodedRecords;
+    std::vector<CppCEnumSnapshot> decodedEnums;
+    if (!reader.raw(types) || !decodeCTypeCatalogWithProvenance(types, decodedRecords, decodedEnums, error)) return false;
+    if (!reader.u64(size) || size > reader.remaining())
+    { error = "invalid C dependency envelope size"; return false; }
+    std::vector<std::uint8_t> declarations(static_cast<std::size_t>(size));
+    CDependencyCatalog decodedDependencies;
+    if (!reader.raw(declarations) || !decodeCDependencyCatalog(declarations, decodedDependencies, error)) return false;
+    std::vector<std::uint8_t> canonical;
+    if (!reader.atEnd() || !encodeCTypeCatalogWithDependencies(decodedRecords, decodedEnums,
+            decodedDependencies, canonical, error) || canonical.size() != bytes.size() ||
+        !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
+    { error = "noncanonical C dependency envelope"; return false; }
+    records = std::move(decodedRecords);
+    enums = std::move(decodedEnums);
+    dependencies = std::move(decodedDependencies);
+    error.clear();
+    return true;
+}
+
 bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
                           std::vector<std::uint8_t>& output, std::string& error)
 {

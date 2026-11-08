@@ -65,6 +65,14 @@ bool encodeCDependencyCatalog(const CDependencyCatalog& catalog,
     std::vector<std::uint8_t>& output, std::string& error);
 bool decodeCDependencyCatalog(std::span<const std::uint8_t> bytes,
     CDependencyCatalog& output, std::string& error);
+// Prepared envelope only. Callers must select it using an explicit metadata
+// version and verify target, ownership, binding and ABI projection before use.
+bool encodeCTypeCatalogWithDependencies(std::span<const CppCRecordSnapshot> records,
+    std::span<const CppCEnumSnapshot> enums, const CDependencyCatalog& dependencies,
+    std::vector<std::uint8_t>& output, std::string& error);
+bool decodeCTypeCatalogWithDependencies(std::span<const std::uint8_t> bytes,
+    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums,
+    CDependencyCatalog& dependencies, std::string& error);
 // Internal catalogue codec. It does not by itself publish an NSMETA section.
 // Both functions leave their output unchanged on failure.
 bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,

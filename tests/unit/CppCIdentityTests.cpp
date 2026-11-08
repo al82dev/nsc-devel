@@ -965,6 +965,21 @@ bool checkDependencyTypeCodec()
         restoredCatalogue.globals[0].declaration.threadLocal &&
         restoredCatalogue.aliases[0].declaration.clangUsr == alias.declaration.clangUsr,
         "C dependency catalogue preserves three declaration categories");
+    const std::vector<CppCEnumSnapshot> sourceEnums{syntheticEnumSnapshot()};
+    std::vector<std::uint8_t> envelope;
+    std::vector<CppCRecordSnapshot> restoredRecords;
+    std::vector<CppCEnumSnapshot> restoredEnums;
+    CDependencyCatalog restoredDependencies;
+    ok &= expect(encodeCTypeCatalogWithDependencies({}, sourceEnums, catalogue, envelope, error) &&
+        decodeCTypeCatalogWithDependencies(envelope, restoredRecords, restoredEnums, restoredDependencies, error) &&
+        restoredEnums.size() == 1 && restoredEnums[0].identityKey == sourceEnums[0].identityKey &&
+        restoredDependencies.functions.size() == 1 && restoredDependencies.globals.size() == 1 &&
+        restoredDependencies.aliases.size() == 1, "C dependency envelope preserves types and declarations");
+    if (!envelope.empty()) envelope.pop_back();
+    restoredDependencies.functions.clear();
+    ok &= expect(!decodeCTypeCatalogWithDependencies(envelope, restoredRecords, restoredEnums,
+        restoredDependencies, error) && restoredDependencies.functions.empty(),
+        "truncated C dependency envelope preserves outputs");
     catalogue.functions.push_back(function);
     std::vector<std::uint8_t> unchangedCatalogue{42};
     ok &= expect(!encodeCDependencyCatalog(catalogue, unchangedCatalogue, error) &&
