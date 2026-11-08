@@ -13,6 +13,10 @@ for %%F in (Api.h Api.c DecayContexts.ns DecayContexts.nsproj DecayConsumer.ns D
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
+for %%F in (QualifiedDecay.ns QualifiedDecay.nsproj DecayDiscardConst.ns DecayDiscardConst.nsproj DecayDiscardVolatile.ns DecayDiscardVolatile.nsproj) do (
+  copy /y "%~dp0%%F" "%DEST%\%%F" >nul
+  if errorlevel 1 exit /b 1
+)
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Api.c" -o "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
 llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
@@ -41,6 +45,11 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 exit /b 1
   if not "!RESULT!"=="0" exit /b !RESULT!
   echo Conversion flexible precompilada: O%%O paso.
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\QualifiedDecay.nsproj" -O%%O --no-artifact-cache -o "%DEST%\qualified-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  "%DEST%\qualified-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  echo Conversion flexible calificada: O%%O paso.
 )
 nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\RestrictedPackedAddress.nsproj" > "%DEST%\packed.log" 2>&1
 if not errorlevel 1 exit /b 1
@@ -52,6 +61,13 @@ if not errorlevel 1 exit /b 1
 findstr /l /c:"cannot initialize local" "%DEST%\packed-decay.log" >nul
 if errorlevel 1 exit /b 1
 echo Conversion flexible implicita subalineada: rechazo confirmado.
+for %%P in (DecayDiscardConst DecayDiscardVolatile) do (
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\%%P.nsproj" > "%DEST%\%%P.log" 2>&1
+  if not errorlevel 1 exit /b 1
+  findstr /l /c:"discard" "%DEST%\%%P.log" >nul
+  if errorlevel 1 exit /b 1
+  echo Perdida de calificador %%P: rechazo confirmado.
+)
 exit /b 0
 
 :metadata
