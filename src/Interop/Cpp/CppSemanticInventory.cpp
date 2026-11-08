@@ -114,6 +114,37 @@ std::vector<CppPublishedTemplateAliasCandidates> selectCppPublishedTemplateAlias
     }
     return result;
 }
+
+bool captureCppResolvedTemplateAliases(const compilation::ProjectGraph& graph,
+    std::span<const CppPublishedTemplateAliasCandidates> candidates,
+    std::span<const CppSemanticTypeAliasEntry> inventory,
+    std::vector<metadata_detail::CDependencyAliasSnapshot>& output, std::string& error)
+{
+    std::vector<metadata_detail::CDependencyAliasSnapshot> result;
+    std::set<std::tuple<std::size_t, std::size_t, std::string>> seen;
+    for (const auto& candidate : candidates)
+    {
+        if (!candidate.resolvedAlias) continue;
+        const auto& alias = *candidate.resolvedAlias;
+        if (alias.projectOrdinal >= graph.projects().size())
+        { error = "resolved C alias has no project owner"; return false; }
+        const auto& project = graph.projects()[alias.projectOrdinal];
+        if (alias.referenceIndex >= project.cppLibraryReferences().size())
+        { error = "resolved C alias has no source reference"; return false; }
+        if (project.cppLibraryReferences()[alias.referenceIndex].language != CppLanguageMode::C) continue;
+        const auto identity = std::make_tuple(alias.projectOrdinal, alias.referenceIndex,
+                                               alias.declaration.qualifiedName);
+        if (!seen.insert(identity).second) continue;
+        metadata_detail::CDependencyAliasSnapshot snapshot;
+        const auto reference = "cpp-reference:" + std::to_string(alias.referenceIndex);
+        if (!metadata_detail::captureCDependencyAlias(inventory, alias, project.moduleName(),
+                                                       reference, snapshot, error)) return false;
+        result.push_back(std::move(snapshot));
+    }
+    output = std::move(result);
+    error.clear();
+    return true;
+}
 namespace
 {
 std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size_t projectOrdinal,

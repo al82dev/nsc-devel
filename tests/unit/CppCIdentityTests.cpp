@@ -1137,6 +1137,22 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
     ok &= expect(selectedAlias && !aliasFromOtherTemplate,
         "published generic alias candidates retain both header origins and exclude other templates");
     ok &= expect(bindingMatches, "published generic alias candidates retain actual binding observations");
+    if (!aliases->empty())
+    {
+        const auto& entry = aliases->front();
+        nativesharp::frontend::CppImportedTypeAlias resolved{
+            entry.projectOrdinal, entry.projectFile, entry.referenceIndex, entry.targetTriple, entry.declaration};
+        CppPublishedTemplateAliasCandidates candidate;
+        candidate.resolvedAlias = &resolved;
+        candidate.hasNameBinding = true;
+        std::vector<metadata_detail::CDependencyAliasSnapshot> captured(1);
+        captured.front().moduleName = "sentinel";
+        std::string why;
+        if (entry.referenceIndex >= compilation.projectGraph()->projects()[entry.projectOrdinal].cppLibraryReferences().size())
+            ok &= expect(!captureCppResolvedTemplateAliases(*compilation.projectGraph(), std::span(&candidate, 1),
+                *aliases, captured, why) && captured.size() == 1 && captured.front().moduleName == "sentinel",
+                "resolved template alias rejects missing source reference without changing output");
+    }
     return ok;
 }
 

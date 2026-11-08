@@ -106,6 +106,12 @@ struct CppPublishedTemplateAliasCandidates
 std::vector<CppPublishedTemplateAliasCandidates> selectCppPublishedTemplateAliases(
     const frontend::ProjectCompilation& compilation, const LibraryMetadata& metadata,
     std::span<const CppSemanticTypeAliasEntry> inventory);
+// Captures only aliases that name binding actually selected. An unbound generic
+// body remains unresolved and must not be considered covered by this result.
+bool captureCppResolvedTemplateAliases(const compilation::ProjectGraph& graph,
+    std::span<const CppPublishedTemplateAliasCandidates> candidates,
+    std::span<const CppSemanticTypeAliasEntry> inventory,
+    std::vector<metadata_detail::CDependencyAliasSnapshot>& output, std::string& error);
 bool provideCppTypeAliases(const compilation::ProjectGraph& graph,
     std::span<const CppProjectSessions> projects,
     std::vector<frontend::CppImportedTypeAlias>& output, std::string& error);
