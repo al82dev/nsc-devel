@@ -1095,6 +1095,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     const y miembro subalineado. El IR del alias volatile conserva `volatile`,
     pero no reproduce acquire/release de Clang en modo Microsoft: sigue pendiente.
     [Evidencia](registro-commits/t08-flexible-var-validacion.md).
+    Un control aislado confirmó que el modo ISO coincide con Clang y el modo
+    Microsoft difiere en lectura y escritura; no está conectado como gate.
+    [Comparación](registro-commits/t08-flexible-var-volatile-modos-resultado.md).
   - La conversión de `const int[]` a `int const*` y el paso de `volatile int[]`
     a un parámetro C `volatile int*` pasaron O0–O3; perder cada calificador se
     rechazó. Son casos directos, sin acreditar otras rutas ni cerrar el ítem.
