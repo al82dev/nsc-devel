@@ -22,7 +22,7 @@ se detallan en los documentos de `docs/fixes` y registros de la misma carpeta.
 | --- | --- |
 | Rc / WeakRc; Arc / WeakArc | `sdk-01`: nombres no encontrados. El contrato impreso por el compilador no demuestra una implementación. Pendiente decisión de API y propiedad. |
 | Dictionary string AddOrUpdate | `sdk-02`: termina 3221226356; doble liberación. Corregido en `5127e4d07`, con ejecución de regresión. |
-| SortWith | `sdk-03`: miembro no encontrado. Pendiente decisión de API. |
+| SortWith | `sdk-03`: nombre no encontrado. La sobrecarga vigente `Sort<T>(Span<T>, Comparison<T>)` cubre la ordenación con comparador; una copia de `c27_algoritmos` se compiló y ejecutó nativamente en O0/O2 con salida 42 (`A:/nsc-fixes-evidencia/sort-existing/result.json`). El nombre `SortWith` no existe y no se agregó. |
 | Saturación: suma y conversiones a short y byte | `comp-01`: `-2147483648`, `-25536`, `34`; corregido para esas operaciones en `a7436961d` y `bb4c18900`. No se afirma cobertura de todas las operaciones saturadas. |
 | Literales y cálculo decimal | `comp-02`: factura 101, comparación falsa, redondeo 100/100/101. `a63333883` conserva el lexema de literales y corrige la reproducción; no demuestra precisión completa de decimal ni inicializadores estáticos. |
 | checked i128 | `comp-03`: desborda y continúa con wrapping. Pendiente decisión sobre el mecanismo observable de fallo. |
@@ -41,7 +41,7 @@ se detallan en los documentos de `docs/fixes` y registros de la misma carpeta.
 | Inspección general de campos | `74-fields`: ejecuta un ejemplo explícito, no un inspector universal. No se localizó API general; pendiente diseño. |
 | derive Print | `75-derive`: texto `GridPoint`, sin campos. Pendiente decisión de formato. La igualdad falsa observada en la misma ejecución se corrigió de forma acotada; véase `derive-ignore-equality.md`. |
 | SIMD máscara a vector, indexación y condicional | `89-mask-convert`, `89-mask-index`, `89-mask-select`: rechazos reproducidos. Pendiente definir las operaciones y representación deseadas. |
-| AddressSanitizer | No se localizó opción en `nsc --help`; no se ejecutó la reproducción fuera de límites bajo ASan. Bloqueado por falta de soporte/configuración demostrada; pendiente diseño de herramienta. |
+| AddressSanitizer | No se localizó opción en `nsc --help`. La clase `LlvmNativeSanitizer` sí instrumenta IR; su prueba existente pasó (`asan-existing-test.log`). No se ha ejecutado la reproducción fuera de límites bajo ASan ni demostrado su exposición/enlace desde el CLI; pendiente decisión de herramienta. |
 | Operadores ++ / -- | `39-increment`, `39-decrement`: parser rechaza la sobrecarga. Pendiente decisión sobre semántica y evaluación. |
 | NativeSharp.Text | `text-namespace`: namespace no encontrado. Pendiente decisión de API. |
 | Compile con .. | `102-outside`: proyecto rechaza rutas fuera de su raíz. Pendiente decisión de resolución de proyectos. |
@@ -70,12 +70,79 @@ tres emisiones de objeto con salida explícita en A (`cli-objects.log`). La
 primera tentativa de emisión usó una opción de caché que ese comando no admite;
 se corrigió la invocación y las tres pasaron.
 
+**Aclaración posterior:** en Windows algunas pruebas declaran éxito aunque
+omiten ejecutar programas generados cuando Wine no está disponible. En
+particular, `nsc.stage56.c8-type-root` contiene esa ruta; su resultado CTest
+anterior no demuestra que sus programas se hayan ejecutado. Una búsqueda
+posterior identificó 103 entradas candidatas que comparten 33 fuentes con
+mensajes de omisión (`A:/nsc-fixes-evidencia/runtime-skip-candidates.json`);
+ese inventario aún requiere separar las ramas realmente ejecutadas y las
+pruebas excluidas de interoperabilidad. Los resultados de los ejemplos y
+regresiones ejecutados directamente no dependen de esa ruta de Wine.
+
 El análisis `clang-tidy --checks=clang-analyzer-*` de los cuatro últimos
 archivos de frontend terminó con código 0; `analyze-final-*.log` incluye
 advertencias de padding en encabezados. No se afirma ausencia de advertencias.
-El inventario general de CTest contiene otros objetivos no ejecutados; no se
-incluyen pruebas ni builds de interoperabilidad en la batería seleccionada.
-No se ha ejecutado una batería general completa.
+
+## Continuación de la batería
+
+La identidad registrada para el compilador de esta continuación es
+`3.0.0+build.20261108T172826Z.7cfd1570e43f8d37`, LLVM 23.1.0; los comandos y
+salidas están en `A:/nsc-fixes-evidencia/full-suite-run/`. El inventario CTest
+contiene 704 entradas. Se compilaron 388 objetivos seleccionados tras enlazar
+el codec de snapshots a 70 ejecutables (`610adf8bb`). La primera pasada de
+387 entradas unitarias terminó con **349 aprobadas y 38 fallidas**
+(`unit-results.xml`, `unit-tests.log`). Las omisiones silenciosas de ejecución
+en Windows no se detectan como skipped en ese resumen. Es una primera pasada,
+anterior a la corrección de extensión, no una batería final aprobada.
+
+Las 13 pruebas comparadas también fallaron en la revisión base; esto no prueba
+que todos sus diagnósticos sean idénticos. Tras `8467d6efc`, la prueba de
+extensiones pasó y las otras 12 siguieron
+fallando (`baseline-compare-results.xml`, `current-compare-results.xml`). Entre
+ellos hay cuatro cierres anómalos en pruebas numéricas/vectoriales. El caso
+`item347` también falló invocando `nsc.exe` directamente con `-j 1` y caché
+desactivada: Windows devolvió `0xC00000FD` durante la generación LLVM del
+módulo `code-0005`. Una copia diagnóstica con 64 MiB de reserva de pila
+terminó con el mismo código; esto no identifica todavía la causa de la
+recursión. Evidencia en `simd-repro/`.
+
+Las diez regresiones específicas del reporte pasaron nuevamente 10/10
+(`regression-results.xml`). La selección de línea de comandos pasó 38/38;
+las comprobaciones de proyectos obtuvieron 36/37 (la restante sigue esperando
+`destruction=dynamic-descriptor`). Las verificaciones LLVM y emisión de
+objetos fallaron inicialmente 11/24 por una expectativa de salida antigua;
+`fa6dd489c` conserva la comprobación de máquina y obtuvo 24/24 al volver a
+ejecutarlas. Son selecciones separadas, no una cuenta global de cobertura.
+
+Para sustituir la omisión de Wine en CC1 se compilaron y ejecutaron los 68
+ejemplos seleccionados directamente en Windows, O0 y O2. Inicialmente pasaron
+126/136 ejecuciones. Los cuatro proyectos IO que no encontraban la biblioteca
+se repitieron con `--library-reference-root A:/nsc-fixes-evidencia/sdk` y
+fuentes originales: c24 y c28 pasaron en ambos niveles; c25 y c26 siguen
+rechazados por diagnósticos de excepciones y destrucción, sin que se haya
+demostrado aún si el defecto está en el ejemplo o el compilador. El caso c69
+pasó en ambos niveles tras `8467d6efc`; quedan 132/136 combinaciones
+verificadas, contando sus repeticiones exitosas. Los dos proyectos CC1 con
+`extern C` se excluyeron. Véanse `cc1-native/results.json`,
+`cc1-root-retry/results.json` y `extension-fixed/results.json`.
+
+La primera pasada unitaria creó cachés bajo varios proyectos fuente pese a
+configurar temporales en A. Las carpetas creadas exclusivamente durante esa
+pasada se trasladaron a `relocated-test-caches/`; se conservaron las carpetas
+que mezclaban datos anteriores y las situadas en rutas de fixtures de
+interoperabilidad. Debe aislarse explícitamente la caché de cada fixture
+antes de repetir toda la pasada. No se modificaron las carpetas de build de
+interoperabilidad ni la instalación funcional. La selección inicial compiló
+cinco objetos de ejecutables mixtos antes de corregirse el inventario; esto
+se detalla en `decisiones-pendientes.md`.
+
+**Estado abierto:** faltan pruebas del inventario, la batería completa
+pertinente no está aprobada y no se ha demostrado ejecución nativa para todos
+los casos que CTest omite en Windows. Los 37 fallos restantes de la primera
+pasada unitaria no se han corregido ni clasificado todos contra la base. Los
+casos de lenguaje/API pendientes y la evidencia para decidirlos están en
+`decisiones-pendientes.md`. No se hizo merge, push ni despliegue.
 
 La comparación de nombres contra `development-cpp-clang` en el repositorio
 original, solo en lectura, encontró estos archivos modificados en ambas ramas:
