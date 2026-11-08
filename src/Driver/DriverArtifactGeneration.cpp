@@ -798,11 +798,9 @@ bool publishStaticLibraryArtifact(std::string_view outputPath, const frontend::P
         return false;
     }
     publishPrecompiledSnapshot(compilation, publication.metadataStage);
-    // A sidecar contains bitcode only. Publishing it for a bundle with native
-    // generated objects would make a consumer replace the archive and lose
-    // those objects. Keep the complete native archive until sidecars can carry
-    // them explicitly.
-    if (!objectBundle.thinLtoUnitBitcode().empty() && !objectBundle.hasGeneratedNativeObjects())
+    // Sidecar v3 carries generated native objects alongside bitcode; otherwise
+    // the writer keeps the existing v2 representation.
+    if (!objectBundle.thinLtoUnitBitcode().empty())
     {
         // The sidecar binds the staged .lib and .nsmeta, so it is written after both (item 48).
         // El sidecar liga la .lib y la .nsmeta en staging, asi que se escribe despues de ambas.

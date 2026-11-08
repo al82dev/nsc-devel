@@ -11,11 +11,11 @@ Se amplía el alcance al codec y modelo `ThinLtoLibrarySidecar` para preparar un
 versión 3 que transporte los bytes de objetos nativos, conservando lectura y
 escritura v2 cuando no existan objetos. La integración al productor y consumidor
 se hará por separado; el fallback existente sigue vigente hasta validarla.
-Se permite registrar los objetos generados en el bundle y preparar su lectura
-en `ThinLtoLibraryLinking.cpp`, sin activar aún la publicación incompleta.
+Se registran los objetos generados en el bundle y se leen sus bytes en
+`ThinLtoLibraryLinking.cpp` para incluirlos íntegramente en el sidecar.
 La restauración añade `ThinLtoLibraryUnits.h` y el generador; ante objetos
-nativos de sidecars se conservan las definiciones durante ThinLTO. La publicación
-sigue desactivada hasta contar con controles de los dos extremos.
+nativos de sidecars se conservan las definiciones durante ThinLTO. Se activa la
+publicación v3 y se valida agrupadamente productor, consumidor y compatibilidad.
 
 ## T08-002: sombras locales en plantillas públicas
 
