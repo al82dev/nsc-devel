@@ -22,6 +22,7 @@
 #include <memory>
 #include <string>
 #include <system_error>
+#include <unordered_set>
 #include <vector>
 
 namespace nativesharp::driver
@@ -299,6 +300,36 @@ namespace
 ///     `compilation-bundle-cache:` con --time.
 ///     Motivo: antes esto corria despues de materializar los modulos precompilados; correrlo antes
 ///     permite que un acierto verificado omita ese trabajo (auditoria 2026-10-22).
+// Capture sibling runtime dependencies before lookup: packaging discovers the same
+// closure later, so a bundle must change when a sibling appears, disappears or changes.
+bool addCppRuntimeClosureInputs(compilation::CompilationInputManifest& manifest,
+                                std::vector<std::filesystem::path> pending)
+{
+    std::unordered_set<std::string> seen;
+    for (std::size_t index = 0; index < pending.size(); ++index)
+    {
+        const auto runtime = pending[index].lexically_normal();
+        if (!seen.insert(foldedPathKey(runtime)).second) continue;
+        linker::PeExecutableVerifier verifier;
+        if (!verifier.verifyDynamicLibrary(runtime)) return false;
+        manifest.addInputFile(runtime);
+        for (const auto& imported : verifier.info().importedLibraries)
+        {
+            const auto leaf = pathFromUtf8(imported);
+            if (leaf.empty() || leaf != leaf.filename() || leaf.has_root_name()) return false;
+            const auto sibling = (runtime.parent_path() / leaf).lexically_normal();
+            std::error_code ec;
+            const bool present = std::filesystem::is_regular_file(sibling, ec);
+            if (ec && ec != std::errc::no_such_file_or_directory &&
+                ec != std::errc::not_a_directory) return false;
+            manifest.addIdentityField("cpp-runtime-sibling:" + foldedPathKey(sibling),
+                                      present ? "present" : "absent");
+            if (present) pending.push_back(sibling);
+        }
+    }
+    return true;
+}
+
 bool lookupCompilationBundle(
     compilation::CompilationInputManifest& manifest,
     frontend::ProjectCompilation& compilation,
@@ -326,7 +357,11 @@ bool lookupCompilationBundle(
     if (artifactCache != nullptr && artifactCache->enabled() && cppInputsComplete)
     {
         interop::LibraryMetadataCodec codec;
+        std::vector<std::filesystem::path> cppRuntimeRoots;
         for (const auto& project : closedGraph.projects())
+        {
+            for (const auto& reference : project.cppLibraryReferences())
+                if (!reference.runtimePath.empty()) cppRuntimeRoots.push_back(reference.runtimePath);
             for (const auto& reference : project.libraryReferences())
             {
                 const auto metadata = compilation.libraryMetadataRepository().decode(
@@ -344,17 +379,20 @@ bool lookupCompilationBundle(
                     for (const auto& dependency : dependencies)
                     {
                         manifest.addInputFile(dependency.libraryPath);
-                        if (!dependency.runtimePath.empty()) manifest.addInputFile(dependency.runtimePath);
+                        if (!dependency.runtimePath.empty())
+                        {
+                            manifest.addInputFile(dependency.runtimePath);
+                            cppRuntimeRoots.push_back(dependency.runtimePath);
+                        }
                     }
                 }
             }
-        bundleCache.setRoot(
-            artifactCache->root() / "compilation-bundles");
-        manifest.setInputDigestCacheRoot(artifactCache->root() / "input-digests");
-        if (!manifest.calculateIdentity(
-                compilation.libraryMetadataRepository(), error))
+        }
+        if (addCppRuntimeClosureInputs(manifest, std::move(cppRuntimeRoots)))
         {
-            return false;
+            bundleCache.setRoot(artifactCache->root() / "compilation-bundles");
+            manifest.setInputDigestCacheRoot(artifactCache->root() / "input-digests");
+            if (!manifest.calculateIdentity(compilation.libraryMetadataRepository(), error)) return false;
         }
     }
     compilation::CompilationBundleLookup lookup;
