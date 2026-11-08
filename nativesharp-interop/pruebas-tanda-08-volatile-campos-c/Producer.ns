@@ -39,5 +39,11 @@ namespace Published
         public static void CSetPS(VPacked* p, short value) { acc_set_ps(p, value); }
         public static bool CGetUFlag(VUnion* p) { return acc_get_uflag(p); }
         public static void CSetUFlag(VUnion* p, bool value) { acc_set_uflag(p, value); }
+        public static int CGetMode(VFields* p) { return acc_get_mode(p); }
+        public static void CSetMode(VFields* p, int value) { acc_set_mode(p, value); }
+        public static int CGetPMode(VPacked* p) { return acc_get_pmode(p); }
+        public static void CSetPMode(VPacked* p, int value) { acc_set_pmode(p, value); }
+        public static int CGetUMode(VUnion* p) { return acc_get_umode(p); }
+        public static void CSetUMode(VUnion* p, int value) { acc_set_umode(p, value); }
     }
 }

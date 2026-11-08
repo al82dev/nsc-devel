@@ -13,5 +13,8 @@ pflag acc_get_pflag acc_set_pflag PFlag 0
 pd acc_get_pd acc_set_pd PD 0
 ps acc_get_ps acc_set_ps PS 0
 uflag acc_get_uflag acc_set_uflag UFlag 0
+mode acc_get_mode acc_set_mode Mode 0
+pmode acc_get_pmode acc_set_pmode PMode 0
+umode acc_get_umode acc_set_umode UMode 0
 add acc_add_i acc_add_i Add 0
 inc acc_inc_s acc_inc_s Inc 0

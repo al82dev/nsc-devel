@@ -944,6 +944,11 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     local, enum, struct y callback. Una función `const CMatrix*` sigue sin
     importarse y tiene prueba separada. [Evidencia](registro-commits/proyecto-typedef-c.md).
 - [ ] T08-006. Mapear los tipos enteros C con su tamaño y signo efectivos.
+  - Preparada la proyección de campos C `volatile` de enum con identidad
+    nominal preservada. Se agregaron controles directo y precompilado para
+    struct, struct empaquetado y union, con comparación de IR frente a Clang.
+    Construcción y validación pendientes; no se cierra el ítem.
+    [Detalle](registro-commits/t08-campo-enum-volatile.md).
   - Las funciones C libres que reciben o retornan `_Bool` llevan `zeroext` en
     declaraciones y llamadas LLVM. IR contrastado con Clang y ejecución O0–O3;
     muestra. También pasaron una función C++ libre, un método estático y otro

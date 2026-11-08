@@ -31,6 +31,12 @@ public struct VolatileAccess
     public static void SetPS(VPacked* p, short value) { p->s = value; }
     public static bool GetUFlag(VUnion* p) { return p->flag; }
     public static void SetUFlag(VUnion* p, bool value) { p->flag = value; }
+    public static VMode GetMode(VFields* p) { return p->mode; }
+    public static void SetMode(VFields* p, VMode value) { p->mode = value; }
+    public static VMode GetPMode(VPacked* p) { return p->mode; }
+    public static void SetPMode(VPacked* p, VMode value) { p->mode = value; }
+    public static VMode GetUMode(VUnion* p) { return p->mode; }
+    public static void SetUMode(VUnion* p, VMode value) { p->mode = value; }
     // Compound assignment and increment: Get/Set carry the same body (compared with acc_add_i and acc_inc_s).
     public static void GetAdd(VFields* p, int value) { p->i += value; }
     public static void SetAdd(VFields* p, int value) { p->i += value; }

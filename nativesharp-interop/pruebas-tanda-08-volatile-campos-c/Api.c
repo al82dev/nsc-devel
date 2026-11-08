@@ -71,3 +71,9 @@ _Bool acc_get_uflag(VUnion* p) { return p->flag; }
 void acc_set_uflag(VUnion* p, _Bool value) { p->flag = value; }
 void acc_add_i(VFields* p, int value) { p->i += value; }
 void acc_inc_s(VFields* p) { p->s++; }
+int acc_get_mode(VFields* p) { return (int)p->mode; }
+void acc_set_mode(VFields* p, int value) { p->mode = (VMode)value; }
+int acc_get_pmode(VPacked* p) { return (int)p->mode; }
+void acc_set_pmode(VPacked* p, int value) { p->mode = (VMode)value; }
+int acc_get_umode(VUnion* p) { return (int)p->mode; }
+void acc_set_umode(VUnion* p, int value) { p->mode = (VMode)value; }

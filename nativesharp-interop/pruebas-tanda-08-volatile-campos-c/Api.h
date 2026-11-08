@@ -1,3 +1,4 @@
+typedef enum VMode { VModeA = -1, VModeB = 2 } VMode;
 typedef struct VFields
 {
     char tag;
@@ -12,11 +13,20 @@ typedef struct VFields
     volatile _Bool flags[2];
     volatile int ints[2];
     int after;
+    volatile VMode mode;
 } VFields;
 #pragma pack(push, 1)
-typedef struct VPacked { char tag; volatile int i; volatile _Bool flag; volatile double d; volatile short s; } VPacked;
+typedef struct VPacked
+{
+    char tag;
+    volatile int i;
+    volatile _Bool flag;
+    volatile double d;
+    volatile short s;
+    volatile VMode mode;
+} VPacked;
 #pragma pack(pop)
-typedef union VUnion { volatile _Bool flag; volatile int i; } VUnion;
+typedef union VUnion { volatile _Bool flag; volatile int i; volatile VMode mode; } VUnion;
 VFields* v_fields(void);
 VPacked* v_packed(void);
 VUnion* v_union(void);
@@ -56,3 +66,9 @@ _Bool acc_get_uflag(VUnion* p);
 void acc_set_uflag(VUnion* p, _Bool value);
 void acc_add_i(VFields* p, int value);
 void acc_inc_s(VFields* p);
+int acc_get_mode(VFields* p);
+void acc_set_mode(VFields* p, int value);
+int acc_get_pmode(VPacked* p);
+void acc_set_pmode(VPacked* p, int value);
+int acc_get_umode(VUnion* p);
+void acc_set_umode(VUnion* p, int value);

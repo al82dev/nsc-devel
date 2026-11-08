@@ -1,5 +1,17 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-006: campos C de enum volatile
+
+Proyectar campos de enum C declarados volatile conservando su identidad,
+calificadores y alineación efectiva; comprobar acceso normal, empaquetado y de
+union contra Clang, en consumo directo y precompilado. La causa es el rechazo
+del mapeador de enum al recibir volatile; el lowering ya contempla enums.
+Presupuesto: proyección de campos C en `CppSemanticRecord.cpp`, fixture de
+campos volatile, tracking y registro. Mantener NSLink, formato NSMETA,
+LLVM/Clang y C: sin modificar; la tanda 8 continúa abierta. La compilación y
+las pruebas se agrupan con el resto de la tanda; no se afirma su resultado antes
+de ejecutarlas.
+
 ## T08-010: miembros flexibles C const y volatile
 
 Proyectar los calificadores const y volatile de elementos de arreglos flexibles

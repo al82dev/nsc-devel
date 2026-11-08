@@ -310,8 +310,17 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         mapped = projectCppStoredFunctionPointer(field.type, projectOrdinal, moduleName, lookup);
     if (!mapped && !record.isCxx && field.type.kind == CppTypeKind::Array)
         mapped = projectCArrayField(field.type, projectOrdinal, moduleName, lookup);
-    if (!mapped && !record.isCxx)
-        mapped = projectCppSemanticEnumType(field.type, projectOrdinal, moduleName, lookup);
+    if (!mapped && !record.isCxx && field.type.kind == CppTypeKind::Enumeration)
+    {
+        CppType unqualified = field.type;
+        unqualified.isVolatile = false;
+        mapped = projectCppSemanticEnumType(unqualified, projectOrdinal, moduleName, lookup);
+        if (mapped)
+        {
+            mapped->canonicalCppType = field.type.canonicalSpelling;
+            mapped->isVolatile = field.type.isVolatile;
+        }
+    }
     if (!mapped && !record.isCxx && field.type.kind == CppTypeKind::Enumeration &&
         field.type.enumIdentity && field.type.enumIdentity->anonymousContext &&
         field.type.enumIdentity->name.empty() && field.type.enumUnderlying &&
