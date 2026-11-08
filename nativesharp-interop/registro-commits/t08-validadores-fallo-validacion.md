@@ -1,5 +1,10 @@
 # T08: fallos inducidos en validadores
 
+**Precisión posterior:** el código cero descrito abajo se observó al lanzar
+directamente el script desde la herramienta. Los scripts anteriores, llamados
+con CALL como en el gate principal, sí propagaron los fallos en las muestras
+comprobadas. Véase t08-validadores-precision-call.md.
+
 Se reprodujeron dos falsos éxitos: un productor inválido en global-static y
 una opción inválida durante emisión dentro del bucle de widths. Ambos scripts
 mostraban el error pero devolvían cero. Después de la corrección, las copias

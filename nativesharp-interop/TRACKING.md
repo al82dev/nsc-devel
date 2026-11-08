@@ -475,20 +475,13 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     global y fallan dentro de namespace por nombre desconocido. Es necesario
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
 - [ ] T08-004. Importar declaraciones de variables globales C.
-  - **Integridad de validadores:** se reprodujo un falso éxito en dos
-    validadores con errores inducidos dentro de sus bucles; ambos se
-    corrigieron y verificaron. Otros scripts usan patrones similares y
-    requieren revisión antes de confiar en la validación integral.
-    [Evidencia](registro-commits/t08-validadores-fallo-validacion.md).
-    Se corrigieron nueve validadores adicionales de la matriz atómica:
-    pasaron sus rutas normales y se indujeron fallos de emisión y de rechazo
-    esperado en copias aisladas. La auditoría de los demás scripts continúa.
-    [Detalle](registro-commits/t08-validadores-matriz-atomica-validacion.md).
-    Se corrigieron salidas directas y propagación entre subrutinas en seis
-    controles atómicos/TLS, y salidas directas en la matriz y globales.
-    Un ejecutable con salida 42 y dos fallos en DLL precompiladas devolvieron
-    error; las rutas normales pasaron. Otros scripts siguen por auditar.
-    [Detalle](registro-commits/t08-validadores-atomic-tls-validacion.md).
+  - **Precisión sobre validadores:** la ejecución directa desde la herramienta
+    informó salida cero en varios fallos, pero al invocar los scripts
+    anteriores con CALL, como hace el gate, tres muestras propagaron el error.
+    No se demostró un falso éxito del gate. Se conservaron los ajustes que
+    hacen explícitas las salidas y sus pruebas. La ejecución directa debe
+    comprobar marcadores o usar un llamador que capture el error.
+    [Corrección](registro-commits/t08-validadores-precision-call.md).
   - Globales `static` de encabezado: la ruta anterior excluía nombres sin enlace
     externo. El control C pasó y NSC reprodujo el rechazo.
     [Análisis](T08-004-GLOBAL-STATIC-INVESTIGACION.md).
