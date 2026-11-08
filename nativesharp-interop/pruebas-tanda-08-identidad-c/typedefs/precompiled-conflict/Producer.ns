@@ -1,0 +1,1 @@
+namespace PublishedAlias { public class Bridge { public static Alias* Identity(Alias* value) { return value; } } }

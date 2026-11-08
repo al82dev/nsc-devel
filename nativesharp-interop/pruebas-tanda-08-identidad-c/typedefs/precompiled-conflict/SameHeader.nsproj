@@ -1,0 +1,5 @@
+<Project><PropertyGroup><Name>TypedefSameHeader</Name></PropertyGroup><ItemGroup>
+<Compile Include="Consumer.ns" />
+<CppLibraryReference Header="x.h" Language="C" Standard="c11" />
+<LibraryReference Include="TypedefProducer.lib" />
+</ItemGroup></Project>

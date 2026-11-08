@@ -1,0 +1,5 @@
+<Project><PropertyGroup><Name>TypedefConsumer</Name></PropertyGroup><ItemGroup>
+<Compile Include="Consumer.ns" />
+<CppLibraryReference Header="y.h" Language="C" Standard="c11" />
+<LibraryReference Include="TypedefProducer.lib" />
+</ItemGroup></Project>
