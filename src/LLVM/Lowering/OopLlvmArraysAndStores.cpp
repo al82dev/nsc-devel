@@ -788,6 +788,7 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
              boolTarget->cppAtomicAlignmentBytes == std::optional<std::size_t>{1});
         const bool boolPointer = node->typeKey == "builtin:bool" &&
             (boolTarget->kind == frontend::ProjectOopMirNodeKind::RawElementAddress ||
+             boolTarget->kind == frontend::ProjectOopMirNodeKind::AddressValue ||
              boolTarget->typeKey == "builtin:bool*");
         const bool cBool = boolPointer || cBoolGlobalArrayElement(boolTarget) ||
             (boolTarget->kind == frontend::ProjectOopMirNodeKind::NamespaceStateAddress &&

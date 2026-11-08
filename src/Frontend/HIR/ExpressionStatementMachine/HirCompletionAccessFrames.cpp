@@ -444,7 +444,7 @@ void ProjectOopHirModel::finishArrayRawIndex(
                 provenance->kind == ProjectOopHirNodeKind::NamespaceStateAddress;
         }
         if (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray &&
-            (elementType == "builtin:int" || elementType == "builtin:uint" || elementType == "builtin:short" ||
+            (elementType == "builtin:bool" || elementType == "builtin:int" || elementType == "builtin:uint" || elementType == "builtin:short" ||
              elementType == "builtin:long" || elementType == "builtin:double" || elementType == "builtin:float") && address->volatileAccess && provenance &&
             (provenance->kind == ProjectOopHirNodeKind::NamespaceStateValue || indexedCGlobal) &&
             provenance->namespaceStateOrdinal && namespaceFunctionModel_ &&
@@ -454,6 +454,7 @@ void ProjectOopHirModel::finishArrayRawIndex(
             if (state.isCppExternal && state.cppCGlobal &&
                 ((indexedCGlobal ? state.declaredTypeKey.starts_with("builtin:int*[")
                                  : state.declaredTypeKey == "builtin:int*") ||
+                 (!indexedCGlobal && state.declaredTypeKey == "builtin:bool*") ||
                  (!indexedCGlobal && state.cppAtomicStorage &&
                   (state.declaredTypeKey == "builtin:uint*" || state.declaredTypeKey == "builtin:short*" ||
                    state.declaredTypeKey == "builtin:long*" || state.declaredTypeKey == "builtin:double*" ||
@@ -462,7 +463,7 @@ void ProjectOopHirModel::finishArrayRawIndex(
                 state.cppMicrosoftVolatileSemantics == std::optional<bool>{true})
             {
                 address->cppMicrosoftVolatileSemantics = true;
-                address->cppAtomicAlignmentBytes = elementType == "builtin:short" ? 2 :
+                address->cppAtomicAlignmentBytes = elementType == "builtin:bool" ? 1 : elementType == "builtin:short" ? 2 :
                     (elementType == "builtin:long" || elementType == "builtin:double") ? 8 : 4;
             }
         }

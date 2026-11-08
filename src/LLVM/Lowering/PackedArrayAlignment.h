@@ -89,7 +89,7 @@ inline std::optional<std::uint64_t> clangMsVolatileDirectCPointeeAlignment(const
                     node->kind == frontend::ProjectOopMirNodeKind::PointerLoad ||
                     node->kind == frontend::ProjectOopMirNodeKind::RawElementAddress) || !node->volatileAccess ||
         node->cppMicrosoftVolatileSemantics != std::optional<bool>{true}) return std::nullopt;
-    auto width = node->typeKey == "builtin:short" ? 2U :
+    auto width = node->typeKey == "builtin:bool" ? 1U : node->typeKey == "builtin:short" ? 2U :
         (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") ? 4U :
         (node->typeKey == "builtin:long" || node->typeKey == "builtin:double") ? 8U : 0U;
     if (node->typeKey == "builtin:float")

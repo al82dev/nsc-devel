@@ -19,8 +19,10 @@ if not re.search(r"%pointer\.load\d* = load i8\b", native_ir):
 if not re.search(r"\bstore i8 [^,]+, ptr %raw\.element\.addr", native_ir):
     raise SystemExit("NSC: falta escritura de byte por puntero")
 for label, ir in (("Clang", clang_ir), ("NSC", native_ir)):
-    if not re.search(r"\bload atomic volatile i8\b[^\n]*\bacquire, align 1", ir):
+    reads = re.findall(r"\bload atomic volatile i8\b[^\n]*\bacquire, align 1", ir)
+    writes = re.findall(r"\bstore atomic volatile i8\b[^\n]*\brelease, align 1", ir)
+    if len(reads) < (2 if label == "Clang" else 4):
         raise SystemExit(f"{label}: falta lectura volatile acquire de byte")
-    if not re.search(r"\bstore atomic volatile i8\b[^\n]*\brelease, align 1", ir):
+    if len(writes) < (1 if label == "Clang" else 3):
         raise SystemExit(f"{label}: falta escritura volatile release de byte")
 print("Lecturas y escrituras bool por puntero usan bytes en el IR comprobado.")
