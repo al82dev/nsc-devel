@@ -565,6 +565,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     NativeSharp en O0–O3, también desde un sidecar consumido en O1–O3. Un
     consumidor conservó su comportamiento ante uno o dos sidecars corruptos
     mediante fallback nativo. [Resultado](registro-commits/t08-inline-thinlto-v3-integracion-validacion.md).
+    También se rechazó antes del backend un objeto COFF inválido con huella de
+    sidecar recalculada; el consumidor conservó la biblioteca nativa y pasó.
+    [Resultado](registro-commits/t08-thinlto-objeto-invalido-validacion.md).
   - Una definición C11 con parámetros de estilo antiguo recibió `byte` y
     `float` desde NativeSharp con promociones predeterminadas y pasó O0–O3.
     Clang emitió advertencias de obsolescencia. Es una muestra, no el cierre
