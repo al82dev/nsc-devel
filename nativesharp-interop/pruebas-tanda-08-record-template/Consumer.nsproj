@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>RecordConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+    <LibraryReference Include="RecordProducer.lib" />
+  </ItemGroup>
+</Project>

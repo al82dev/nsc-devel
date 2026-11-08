@@ -211,7 +211,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     en O0–O3. El validador de identidad pasó con sus expectativas actualizadas;
     inicialmente conservaba como rechazo conocido el record C local. Ese caso
     ya compila y se ejecuta cuando el record está también en la superficie del
-    productor; sigue pendiente el caso de record usado solo dentro de la plantilla.
+    productor. Un fixture separado pasó en O0–O3 cuando el record solo aparece
+    en la firma de una función C utilizada en la plantilla.
     [Evidencia](registro-commits/t08-h3-funcion-record-publicado.md). Esas
     pruebas no cubren todas las declaraciones ni cierran T08-002. Los apuntes
     H3 anteriores de este bloque describen estados históricos. [Evidencia](registro-commits/t08-h3-identidad-expectativas.md).
