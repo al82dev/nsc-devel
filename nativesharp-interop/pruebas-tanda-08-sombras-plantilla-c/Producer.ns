@@ -72,11 +72,12 @@ namespace PublishedShadow
 
         public static int CatchFilter<T>(T value)
         {
-            try { return 31; }
+            try { throw new NativeSharp.Core.Exception(); }
             catch (NativeSharp.Core.Exception shadow_value) when (shadow_value != null)
             {
                 return 32;
             }
+            catch { return 33; }
         }
     }
 }
