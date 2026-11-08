@@ -27,6 +27,7 @@ class ProjectCompilation;
 namespace nativesharp::interop
 {
 struct LibraryMetadata;
+namespace metadata_detail { struct CDependencyGlobalSnapshot; }
 struct CppSemanticInventoryEntry
 {
     std::filesystem::path projectFile;
@@ -181,6 +182,11 @@ using CppSemanticGlobalResult = std::variant<CppSemanticGlobal, CppSemanticGloba
 // Projection retains unsupported declarations as failures; it does not create storage or an accessor.
 CppSemanticGlobalResult projectCppSemanticGlobal(
     const CppGlobalDeclaration& global, std::size_t projectOrdinal, std::string_view moduleName);
+// Reprojects a saved C global; it does not install storage or resolve a DLL's TLS origin.
+CppSemanticGlobalResult projectCppPrecompiledCGlobal(
+    const metadata_detail::CDependencyGlobalSnapshot& global, std::size_t projectOrdinal,
+    std::string_view moduleName, std::string_view targetTriple,
+    const frontend::ProjectNameLookup& lookup);
 struct CppSemanticGlobalEntry
 {
     std::filesystem::path projectFile;

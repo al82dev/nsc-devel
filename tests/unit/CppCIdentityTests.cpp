@@ -457,6 +457,25 @@ bool checkExternalSelection(const nativesharp::frontend::ProjectCompilation& com
                 captured.declaration.clangUsr == candidate.clangUsr,
                 "selected real Clang C global is captured with its symbol and USR");
             if (!why.empty()) std::cerr << "real global capture: " << why << '\n';
+            std::vector<std::uint8_t> bytes;
+            metadata_detail::CDependencyGlobalSnapshot restored;
+            const bool decoded = metadata_detail::encodeCDependencyGlobal(captured, bytes, why) &&
+                metadata_detail::decodeCDependencyGlobal(bytes, restored, why);
+            ok &= expect(decoded && compilation.nameLookup(), "real C global snapshot can be decoded");
+            if (decoded && compilation.nameLookup())
+            {
+                auto projected = projectCppPrecompiledCGlobal(restored, candidate.projectOrdinal,
+                    candidate.moduleName, entry.targetTriple, *compilation.nameLookup());
+                const auto* value = std::get_if<CppSemanticGlobal>(&projected);
+                ok &= expect(value && value->externalSymbol == candidate.externalSymbol &&
+                    value->typeKey == candidate.typeKey && value->clangUsr == candidate.clangUsr &&
+                    value->isVolatile == candidate.isVolatile && value->threadLocal == candidate.threadLocal,
+                    "restored C global projects to the live symbol, type and qualifiers");
+                const auto invalid = projectCppPrecompiledCGlobal(restored, candidate.projectOrdinal,
+                    "wrong-owner", entry.targetTriple, *compilation.nameLookup());
+                ok &= expect(std::holds_alternative<CppSemanticGlobalFailure>(invalid),
+                    "restored C global rejects a different owner");
+            }
         }
         const auto internal = selectCppSemanticGlobal(*globalEntries, 0, "cid_static_global");
         std::cout << "OBSERVATION static cid_static_global from a.h and b.h: candidate="

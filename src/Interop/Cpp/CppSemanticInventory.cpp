@@ -12,6 +12,7 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Frontend/QualifiedNameLadder.h"
+#include "../Internal/CppCRecordMetadataCodec.h"
 
 #include <algorithm>
 #include <charconv>
@@ -421,6 +422,31 @@ CppSemanticGlobalResult projectCppSemanticGlobal(
     const CppGlobalDeclaration& global, std::size_t projectOrdinal, std::string_view moduleName)
 {
     return projectGlobalWithLookup(global, projectOrdinal, moduleName, nullptr);
+}
+
+CppSemanticGlobalResult projectCppPrecompiledCGlobal(
+    const metadata_detail::CDependencyGlobalSnapshot& global, std::size_t projectOrdinal,
+    std::string_view moduleName, std::string_view targetTriple,
+    const frontend::ProjectNameLookup& lookup)
+{
+    const auto& declaration = global.declaration;
+    if (targetTriple != "x86_64-pc-windows-msvc" || !lookup.isBuilt() ||
+        projectOrdinal >= lookup.modules().size() || !lookup.modules()[projectOrdinal] ||
+        lookup.modules()[projectOrdinal]->moduleName() != moduleName || moduleName.empty() ||
+        global.moduleName != moduleName || global.referenceIdentity.empty() || global.linkSymbol.empty() ||
+        !declaration.clangUsr || declaration.clangUsr->empty() ||
+        (declaration.externalLinkage && declaration.externalSymbol != global.linkSymbol))
+        return CppSemanticGlobalFailure{"precompiled C global has invalid owner, target or identity"};
+    auto projectedDeclaration = declaration;
+    projectedDeclaration.externalLinkage = true;
+    projectedDeclaration.externalSymbol = global.linkSymbol;
+    auto projected = projectGlobalWithLookup(projectedDeclaration, projectOrdinal, moduleName, &lookup, true);
+    if (auto* value = std::get_if<CppSemanticGlobal>(&projected))
+    {
+        value->clangUsr = declaration.clangUsr;
+        value->microsoftVolatileSemantics = global.microsoftVolatileSemantics;
+    }
+    return projected;
 }
 
 CppSemanticGlobalInventoryResult collectCppSemanticGlobals(
