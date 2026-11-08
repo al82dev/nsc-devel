@@ -205,6 +205,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - H1: se aceptan typedef C equivalentes observados en encabezados con nombres
+    distintos; la matriz conserva los rechazos por tipos y records incompatibles.
+    La validación dirigida de identidad pasó, sin cerrar el ítem.
+    [Evidencia](registro-commits/t08-h1-typedef-c-equivalentes.md).
   - H7: las constantes de enum C dejan de publicarse como estados de
     NativeSharp. Los productores y consumidores ordinarios antes rechazados
     pasaron el validador dirigido; algunas plantillas siguen sin resolver la

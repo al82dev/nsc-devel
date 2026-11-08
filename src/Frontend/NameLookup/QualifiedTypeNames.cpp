@@ -206,6 +206,10 @@ bool ProjectNameLookup::expandCppTypeAlias(
         const CppImportedTypeAlias* selected = nullptr;
         std::string selectedName;
         std::optional<std::string> knownAliasUsr;
+        std::optional<std::string> knownRecordUsr;
+        std::optional<std::string> knownEnumUsr;
+        bool conflictingRecordUsr = false;
+        bool conflictingEnumUsr = false;
         std::vector<std::size_t> nativeCandidates;
         for (const auto& spelling : rung.spellings)
         {
@@ -228,12 +232,41 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     return report(diagnostics::DiagnosticId::AmbiguousTypeName,
                                   "conflicting C/C++ type alias '" + syntax->baseName() + "'");
                 const auto& usr = alias.declaration.clangUsr;
+                const auto recordIdentity = cppAliasRecordType(alias.declaration.underlyingType);
+                const auto enumIdentity = cppAliasEnumType(alias.declaration.underlyingType);
                 if (usr && !usr->empty())
                 {
                     if (knownAliasUsr && *knownAliasUsr != *usr)
-                        return report(diagnostics::DiagnosticId::AmbiguousTypeName,
-                                      "conflicting C/C++ type alias '" + syntax->baseName() + "'");
+                    {
+                        // Clang's file-scope C typedef USR includes the header's
+                        // basename, which is not part of the C type identity.
+                        const std::string suffix = "@T@" + alias.declaration.name;
+                        const auto isFileTypedef = [&](const std::string& value) {
+                            return value.size() > suffix.size() + 2 && value.compare(0, 2, "c:") == 0 &&
+                                value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+                        };
+                        const auto compatible = [](const auto& left, const auto& right) {
+                            return !left || left->empty() || !right || right->empty() || left == right;
+                        };
+                        if (qualified != alias.declaration.name || conflictingRecordUsr || conflictingEnumUsr ||
+                            !isFileTypedef(*knownAliasUsr) ||
+                            !isFileTypedef(*usr) ||
+                            !compatible(knownRecordUsr, recordIdentity ? recordIdentity->clangUsr : std::nullopt) ||
+                            !compatible(knownEnumUsr, enumIdentity ? enumIdentity->clangUsr : std::nullopt))
+                            return report(diagnostics::DiagnosticId::AmbiguousTypeName,
+                                          "conflicting C/C++ type alias '" + syntax->baseName() + "'");
+                    }
                     knownAliasUsr = usr;
+                }
+                if (recordIdentity && recordIdentity->clangUsr && !recordIdentity->clangUsr->empty())
+                {
+                    if (knownRecordUsr && knownRecordUsr != recordIdentity->clangUsr) conflictingRecordUsr = true;
+                    else knownRecordUsr = recordIdentity->clangUsr;
+                }
+                if (enumIdentity && enumIdentity->clangUsr && !enumIdentity->clangUsr->empty())
+                {
+                    if (knownEnumUsr && knownEnumUsr != enumIdentity->clangUsr) conflictingEnumUsr = true;
+                    else knownEnumUsr = enumIdentity->clangUsr;
                 }
                 selected = &alias;
                 selectedName = qualified;

@@ -1,5 +1,18 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-002: corrección de typedef C equivalentes (carril de integración)
+
+La auditoría del carril de identidad terminó y sus pruebas están integradas.
+Corregir en NSC el rechazo de typedef C equivalentes cuyo USR solo cambia por
+el nombre del encabezado; preservar los conflictos de tipos y de identidades
+subyacentes y los USR que no correspondan a typedef C de ámbito de archivo.
+Presupuesto: resolución de nombres, pruebas de identidad y su matriz existente,
+este alcance, tracking y registro del cambio. Validar mediante compilación
+incremental y pruebas dirigidas; la batería completa se ejecuta al terminar la
+tanda. No cambiar NSLink, formato NSMETA, LLVM/Clang, C: ni el carril de layout
+de Claude. La restricción de solo pruebas del carril original permanece vigente
+para ese carril; esta sección autoriza el trabajo de integración de NSC.
+
 ## T08-002: identidad de declaraciones C y su conservación precompilada
 
 Auditar cómo se obtiene, transporta, persiste y restaura el USR de Clang de

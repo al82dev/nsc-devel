@@ -488,8 +488,9 @@ bool checkTwoSessionAlias(CppClangSessionFactory& factory, const std::string& re
                           const std::filesystem::path& directory, const std::string& driver)
 {
     const bool control = bindTwoSessionAlias(factory, resource, directory, driver, "a-a", "a.h", "a.h", "CIdInt");
-    bindTwoSessionAlias(factory, resource, directory, driver, "a-b", "a.h", "b.h", "CIdInt");
-    return expect(control, "one typedef observed by two sessions of the same header binds");
+    const bool distinctHeaders = bindTwoSessionAlias(factory, resource, directory, driver, "a-b", "a.h", "b.h", "CIdInt");
+    return expect(control, "one typedef observed by two sessions of the same header binds") &&
+        expect(distinctHeaders, "equivalent C typedefs from different headers bind");
 }
 
 // EN: Probe 4 (observation). Two anonymous enums from c.h and d.h share the first enumerator
@@ -1289,7 +1290,7 @@ bool checkTypedefCase(CppClangSessionFactory& factory, const std::string& resour
     if (observeOnly) return true;
     bool ok = expect(xy->first.found && xy->second.found && pq->first.found && pq->second.found,
                      row.name + ": every header declares the typedef");
-    ok &= expect(currentXy == (row.distinctFiles != "alias"), row.name + ": current rule matches XY outcome");
+    ok &= expect(proposedXy == (row.distinctFiles != "alias"), row.name + ": active rule matches XY outcome");
     ok &= expect(currentPq == (row.homonymFiles != "alias"), row.name + ": current rule matches PQ outcome");
     ok &= expect(proposedXy == (row.proposal != "alias"), row.name + ": proposed rule matches PROP outcome");
     ok &= expect(proposedPq == currentPq, row.name + ": proposed rule leaves homonymous headers unchanged");

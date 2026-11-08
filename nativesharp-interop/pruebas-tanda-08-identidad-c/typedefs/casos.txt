@@ -9,15 +9,15 @@
 # Resultados: runs (compila y ejecuta), alias (conflicting C/C++ type alias),
 #   record (referenced C/C++ record has conflicting or unverified definitions),
 #   member (has no compatible member named).
-T01Int CTdInt compatible runs alias runs runs
+T01Int CTdInt compatible runs runs runs runs
 T02IntLong CTdWide distinto runs alias alias alias
-T03Spelling CTdUnsigned compatible runs alias runs runs
-T04Chain CTdChain compatible runs alias runs runs
-T05Struct CTdStructAlias compatible runs alias runs runs
-T06StructDiffers CTdOtherAlias distinto runs alias record record
+T03Spelling CTdUnsigned compatible runs runs runs runs
+T04Chain CTdChain compatible runs runs runs runs
+T05Struct CTdStructAlias compatible runs runs runs runs
+T06StructDiffers CTdOtherAlias distinto runs record record record
 T07AnonStruct -CTdAnon compatible runs runs runs runs
-T08Enum CTdEnumAlias compatible runs alias runs runs
+T08Enum CTdEnumAlias compatible runs runs runs runs
 T09OtherTag CTdTag distinto runs alias alias alias
-T10FunctionPointer CTdFn compatible runs alias runs runs
+T10FunctionPointer CTdFn compatible runs runs runs runs
 T11SameTagFields - compatible runs member member member
 T12OtherTagFields - distinto runs record record record
