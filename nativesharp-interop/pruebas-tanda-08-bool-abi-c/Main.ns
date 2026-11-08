@@ -1,0 +1,10 @@
+int Main()
+{
+    if (!c_bool_identity(true) || c_bool_identity(false)) return 1;
+    if (!c_bool_mixed(3, true, 7) || c_bool_mixed(3, false, 7)) return 2;
+    c_bool_save(true);
+    if (c_bool_saved() != 1) return 3;
+    c_bool_save(false);
+    if (c_bool_saved() != 0) return 4;
+    return 0;
+}
