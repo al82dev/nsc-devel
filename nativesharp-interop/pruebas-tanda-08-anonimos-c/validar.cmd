@@ -40,12 +40,10 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 exit /b 1
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%NSC_T08_OUT%\Producer.nsproj" -O%%O --no-artifact-cache -o "%NSC_T08_OUT%\CAnonymousProducer.lib"
   if errorlevel 1 exit /b 1
-  for %%P in (Shared Metadata) do (
-    nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%NSC_T08_OUT%\%%P.nsproj" -O%%O --no-artifact-cache -o "%NSC_T08_OUT%\%%P-O%%O.exe"
-    if errorlevel 1 exit /b 1
-    "%NSC_T08_OUT%\%%P-O%%O.exe"
-    if errorlevel 1 exit /b 1
-  )
+  call :consumer Shared %%O
+  if errorlevel 1 exit /b 1
+  call :metadata_without_header %%O
+  if errorlevel 1 exit /b 1
   echo Miembros anonimos C O%%O: directo, Shared y Metadata pasaron.
 )
 for %%P in (Project Repeat Shared Metadata) do (
@@ -57,3 +55,18 @@ for %%P in (Project Repeat Shared Metadata) do (
   )
 )
 exit /b 0
+
+:metadata_without_header
+move /y "%NSC_T08_OUT%\Api.h" "%NSC_T08_OUT%\Api.hidden" >nul
+if errorlevel 1 exit /b 1
+call :consumer Metadata %1
+set "CONSUMER_RESULT=%ERRORLEVEL%"
+move /y "%NSC_T08_OUT%\Api.hidden" "%NSC_T08_OUT%\Api.h" >nul
+if errorlevel 1 exit /b 1
+exit /b %CONSUMER_RESULT%
+
+:consumer
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%NSC_T08_OUT%\%1.nsproj" -O%2 --no-artifact-cache -o "%NSC_T08_OUT%\%1-O%2.exe"
+if errorlevel 1 exit /b 1
+"%NSC_T08_OUT%\%1-O%2.exe"
+exit /b %ERRORLEVEL%
