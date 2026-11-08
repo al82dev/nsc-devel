@@ -81,6 +81,9 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
         - [x] Distinguir la misma función C de dos DLL TLS homónimas cuando cada llamada proviene de una plantilla precompilada con su origen identificado; comprobar O0–O3 y restauración desde caché. [Evidencia](registro-commits/t08-dll-homonimas-dos-funciones.md).
         - [x] Comprobar ambas funciones y sus variables TLS desde dos hilos, en O0–O3. [Evidencia](registro-commits/t08-dll-homonimas-dos-funciones-hilos.md).
         - [ ] Resolver las demás formas de distinguir orígenes, incluidas llamadas con argumentos variables; comprobar caché para referencias directas a encabezados, traslado a otro equipo y las demás variantes de importación.
+          - [ ] Resolver en el sitio de llamada la dirección de una función C variádica procedente de una DLL TLS homónima, preservando todos los argumentos y su ABI.
+          - [ ] Comprobar la resolución de esa misma función cuando se obtiene su dirección o se convierte a un delegado; no emitir referencias a un símbolo interno sin definición.
+          - [ ] Probar ambas DLL con funciones variádicas homónimas, desde plantillas precompiladas y con caché, en O0–O3 y con valores distinguibles.
         - [ ] Investigar el valor inicial TLS de una DLL de control sin importaciones: también falla en el control C; causa aún no identificada. [Reproducción](pruebas-tanda-08-identidad-c/tls-dll-distintas/validar-origen-ambiguo.py).
           - [x] Contrastar importación directa y carga dinámica, con y sin `DllMain`; inspeccionar el índice y el bloque TLS observado. [Evidencia](registro-commits/t08-dll-sin-import-inspeccion-tls.md).
           - [x] Confirmar que `DllMain` se ejecuta y contrastar una DLL que contiene una importación no invocada por la función TLS. [Evidencia](registro-commits/t08-dll-tls-importacion-no-invocada.md).
