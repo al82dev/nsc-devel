@@ -15,6 +15,83 @@
 
 namespace nativesharp::frontend
 {
+namespace
+{
+using TemplateParents = std::unordered_map<const ast::AstNode*, const ast::AstNode*>;
+
+TemplateParents templateParents(const ast::AstNode* root)
+{
+    TemplateParents parents;
+    if (!root) return parents;
+    std::vector<const ast::AstNode*> pending{root};
+    parents.emplace(root, nullptr);
+    while (!pending.empty())
+    {
+        const auto* node = pending.back();
+        pending.pop_back();
+        const auto add = [&](const ast::AstNode* child) {
+            if (child && parents.emplace(child, node).second) pending.push_back(child);
+        };
+        add(node->first());
+        add(node->second());
+        add(node->third());
+        for (const auto* child : node->children()) add(child);
+    }
+    return parents;
+}
+
+bool earlierBlockLocal(const ast::AstNode* statement, std::string_view name)
+{
+    if (!statement) return false;
+    if (statement->kind() == ast::AstNodeKind::VariableDeclarationStatement)
+        return statement->text() == name;
+    if (statement->kind() != ast::AstNodeKind::BlockStatement ||
+        statement->auxiliaryText() != "declaration-list") return false;
+    for (const auto* declaration : statement->children())
+        if (declaration && declaration->kind() == ast::AstNodeKind::VariableDeclarationStatement &&
+            declaration->text() == name) return true;
+    return false;
+}
+
+// A candidate is removed only when an earlier declaration in an enclosing
+// block proves that this unqualified use denotes a local. Other forms remain
+// candidates until their own binding rules can be established.
+bool provenBlockLocal(const TemplateParents& parents, const CppFunctionDemand& demand)
+{
+    const auto* expression = demand.syntax;
+    if (!expression) return false;
+    if (demand.directCall)
+    {
+        if (expression->kind() != ast::AstNodeKind::CallExpression) return false;
+        expression = expression->first();
+    }
+    if (!expression || expression->kind() != ast::AstNodeKind::IdentifierExpression ||
+        expression->text() != demand.writtenName) return false;
+
+    const auto* child = demand.syntax;
+    auto current = parents.find(child);
+    if (current == parents.end()) return false;
+    while (current->second)
+    {
+        const auto* parent = current->second;
+        if (parent->kind() == ast::AstNodeKind::BlockStatement)
+        {
+            const auto& statements = parent->children();
+            const auto position = std::find(statements.begin(), statements.end(), child);
+            for (auto it = statements.begin(); it != position; ++it)
+            {
+                if (position == statements.end()) break;
+                if (earlierBlockLocal(*it, demand.writtenName)) return true;
+            }
+        }
+        child = parent;
+        current = parents.find(parent);
+        if (current == parents.end()) break;
+    }
+    return false;
+}
+}
+
 std::span<const ProjectCompilation::CppTemplateDemand> ProjectCompilation::cppTemplateDemands() const noexcept
 {
     return cppTemplateDemands_;
@@ -218,14 +295,32 @@ bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
             namespaceFunctionModel_->build(*nameLookup_, *memberModel_, units_, diagnostics_, genericModel_.get());
             return false;
         }
+        const auto observedDemands = observer.cppFunctionDemands();
+        std::vector<CppFunctionDemand> effectiveDemands(observedDemands.begin(), observedDemands.end());
         if (!cppProjectSessions_.empty() && genericModel_)
         {
             std::unordered_multimap<const ast::AstNode*, const GenericTemplateRecord*> owners;
+            std::unordered_map<const GenericTemplateRecord*, TemplateParents> parentIndexes;
             for (const auto& record : genericModel_->templates())
+            {
+                parentIndexes.emplace(&record, templateParents(record.syntax));
                 for (const auto& candidate : record.foreignReferenceCandidates)
                     if (candidate.syntax && !candidate.typeSyntax)
                         owners.emplace(candidate.syntax, &record);
-            for (const auto& demand : observer.cppFunctionDemands())
+            }
+            effectiveDemands.erase(std::remove_if(effectiveDemands.begin(), effectiveDemands.end(),
+                [&](const CppFunctionDemand& demand) {
+                    const auto [first, last] = owners.equal_range(demand.syntax);
+                    bool hasOwner = false;
+                    for (auto owner = first; owner != last; ++owner)
+                    {
+                        if (owner->second->projectOrdinal != demand.projectOrdinal) continue;
+                        hasOwner = true;
+                        if (!provenBlockLocal(parentIndexes.at(owner->second), demand)) return false;
+                    }
+                    return hasOwner;
+                }), effectiveDemands.end());
+            for (const auto& demand : effectiveDemands)
             {
                 const auto [first, last] = owners.equal_range(demand.syntax);
                 for (auto owner = first; owner != last; ++owner)
@@ -238,11 +333,11 @@ bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
         std::vector<NamespaceFunctionSymbol> functions;
         std::vector<interop::CppDeferredFunctionCandidate> deferred;
         if (!cppFunctionProvider_(*projectGraph_, cppProjectSessions_, units_,
-                                  observer.cppFunctionDemands(), functions, deferred, error))
+                                  effectiveDemands, functions, deferred, error))
             return false;
         for (const auto& candidate : deferred)
         {
-            const auto demands = observer.cppFunctionDemands();
+            const auto& demands = effectiveDemands;
             const auto demand = std::find_if(demands.begin(), demands.end(), [&](const auto& item) {
                 if (item.syntax != candidate.syntax || item.projectOrdinal != candidate.consumerProject ||
                     item.directCall != candidate.directCall ||
@@ -295,7 +390,7 @@ bool ProjectCompilation::buildNamespaceFunctionModel(std::string& error)
         if (cppGlobalProvider_)
         {
             std::vector<NamespaceStateSymbol> globals;
-            if (!cppGlobalProvider_(*projectGraph_, cppProjectSessions_, observer.cppFunctionDemands(),
+            if (!cppGlobalProvider_(*projectGraph_, cppProjectSessions_, effectiveDemands,
                                     globals, error)) return false;
             importedStates.insert(importedStates.end(),
                                   std::make_move_iterator(globals.begin()), std::make_move_iterator(globals.end()));

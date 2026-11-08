@@ -1289,8 +1289,8 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
             if (record.name == "Shadow" && retained.demand.writtenName == "cid_global" &&
                 !retained.demand.directCall) retainedShadow = true;
         }
-    ok &= expect(retainedCall && retainedGlobal && retainedShadow,
-        "compilation retains each generic demand under its owning template without resolving shadows");
+    ok &= expect(retainedCall && retainedGlobal && !retainedShadow,
+        "compilation retains C demands and excludes the proven shadowed block local");
     nativesharp::interop::LibraryMetadata published;
     for (const auto& record : compilation.genericModel()->templates())
         if (record.name == "Test")

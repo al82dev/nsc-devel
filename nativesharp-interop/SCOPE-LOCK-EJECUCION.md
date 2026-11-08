@@ -7,7 +7,11 @@ Una plantilla declara variables locales que sombrean una global y una función
 ambas declaraciones C como candidatas. Preparar control reproducible y corregir
 la captura solo tras resolver el alcance léxico efectivo, sin excluir nombres C
 verdaderos en otros bloques ni en inicializadores. Presupuesto inicial: fixture
-aislado y registros; ampliación causal posterior al identificar la solución.
+aislado y registros. Ampliación causal: `ProjectCompilationSnapshots.cpp` filtra
+usos no calificados demostrablemente ligados a declaraciones locales anteriores
+en bloques, antes de invocar los proveedores C y publicar demandas; se actualiza
+el control correspondiente en `CppCIdentityTests.cpp`. El resto de formas de
+ámbito requiere evidencia específica; no se elimina una demanda por su nombre.
 NSLink, NSMETA como formato, LLVM/Clang y C: protegidos. La tanda sigue abierta.
 
 ## T08: fixture histórico NSMETA 1.45 recuperado
