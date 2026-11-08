@@ -1,5 +1,14 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-010/015: control de modo volatile por alias local
+
+Comparar con Clang la lectura y escritura por `var` de un miembro flexible C
+`volatile int[]`, en modos Microsoft e ISO, registrando el orden y alineación
+del IR sin atribuir modo al valor del puntero. Presupuesto: fixture nuevo bajo
+`pruebas-tanda-08-flexible-c`, validador diagnóstico, seguimiento y registros;
+artefactos en `A:/nsc-interop-build`. NSC de desarrollo ya construido; no cambiar
+producción, NSLink, NSMETA, LLVM/Clang ni C:. El diagnóstico no es gate aprobado.
+
 ## T08-010: inferencia de `var` para miembro flexible C
 
 Un inicializador `var data = v->data` de un miembro flexible C importado conserva

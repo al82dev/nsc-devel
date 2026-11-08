@@ -1,0 +1,13 @@
+int VarVolatileRead(FlexVolatile* value)
+{
+    var data = value->data;
+    return data[0];
+}
+
+void VarVolatileWrite(FlexVolatile* value, int item)
+{
+    var data = value->data;
+    data[0] = item;
+}
+
+int Main() { return 0; }

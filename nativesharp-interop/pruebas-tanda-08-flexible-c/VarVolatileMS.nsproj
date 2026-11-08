@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CFlexVarVolatileMS</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="VarVolatileMode.ns" />
+    <CppLibraryReference Header="Restricted.h" Language="C" Standard="c11" VolatileMode="Microsoft" />
+  </ItemGroup>
+</Project>
