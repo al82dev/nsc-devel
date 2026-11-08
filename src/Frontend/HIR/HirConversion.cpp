@@ -211,6 +211,20 @@ bool ProjectOopHirModel::delegateParameterOwned(std::size_t delegateTypeOrdinal,
     return false;
 }
 
+ProjectImplicitConversion ProjectOopHirModel::classifyExpressionConversion(
+    const ast::AstNode* syntax, std::string_view sourceTypeKey, std::string_view targetTypeKey) const
+{
+    const auto* binding = expressionType(syntax);
+    const auto element = ProjectMemberModel::flexibleArrayElementTypeKey(sourceTypeKey);
+    if (binding && binding->cppFlexibleArrayMember && element &&
+        (binding->valueCategory == sema::ValueCategory::Place ||
+         binding->valueCategory == sema::ValueCategory::BorrowedValue) && targetTypeKey == *element + "*")
+        return {ProjectConversionKind::CFlexibleArrayToPointer, 1, std::string(sourceTypeKey),
+                std::string(targetTypeKey), std::nullopt};
+    return classifyImplicit(sourceTypeKey, targetTypeKey,
+                            binding ? binding->integerConstant : std::nullopt);
+}
+
 ProjectImplicitConversion ProjectOopHirModel::classifyImplicit(
     std::string_view sourceTypeKey,
     std::string_view targetTypeKey,

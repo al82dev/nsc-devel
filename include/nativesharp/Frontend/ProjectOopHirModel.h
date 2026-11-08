@@ -4333,6 +4333,8 @@ private:
         std::string_view sourceTypeKey,
         std::string_view targetTypeKey,
         std::optional<ProjectIntegerConstant> integerConstant = std::nullopt) const;
+    ProjectImplicitConversion classifyExpressionConversion(
+        const ast::AstNode* syntax, std::string_view sourceTypeKey, std::string_view targetTypeKey) const;
     bool isStructValueType(std::string_view typeKey) const noexcept;
     // C8 "type root", struct half. See the definitions for the contract the leaves define.
     std::string shortTypeName(std::string_view typeKey) const;

@@ -243,12 +243,7 @@ bool ProjectOopHirModel::acceptVariableInitializer(
         ? ProjectImplicitConversion{
             ProjectConversionKind::Identity, 0, local.typeKey,
             local.typeKey, std::nullopt}
-        : classifyImplicit(
-            child->typeKey,
-            local.typeKey,
-            expressionType(frame.syntax->first()) != nullptr
-                ? expressionType(frame.syntax->first())->integerConstant
-                : std::nullopt);
+        : classifyExpressionConversion(frame.syntax->first(), child->typeKey, local.typeKey);
     if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
     {
         child = wrapImplicitConversion(

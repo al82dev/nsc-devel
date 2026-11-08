@@ -640,10 +640,8 @@ LoopBlockAdvance ProjectOopHirModel::completeScheduledDirectAssignmentFrame(
             descend = true;
             break;
         }
-        const MethodExpressionTypeBinding* rhsType = expressionType(frame.syntax->second());
-        const ProjectImplicitConversion conversion = classifyImplicit(
-            lowered->typeKey, frame.first->typeKey,
-            rhsType != nullptr ? rhsType->integerConstant : std::nullopt);
+        const ProjectImplicitConversion conversion = classifyExpressionConversion(
+            frame.syntax->second(), lowered->typeKey, frame.first->typeKey);
         if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
             lowered = wrapImplicitConversion(std::move(lowered), conversion, frame.syntax->second());
         auto assignment = makeNode(

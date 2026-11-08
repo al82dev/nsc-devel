@@ -949,10 +949,8 @@ LoopBlockAdvance ProjectOopHirModel::completeReturnExitValue(
     if (state.valueReturningCallable && state.declaredTypeKey != "builtin:void" &&
         !state.referenceReturn)
     {
-        const MethodExpressionTypeBinding* type = expressionType(valueSyntax);
-        const ProjectImplicitConversion conversion = classifyImplicit(
-            lowered->typeKey, state.declaredTypeKey,
-            type != nullptr ? type->integerConstant : std::nullopt);
+        const ProjectImplicitConversion conversion = classifyExpressionConversion(
+            valueSyntax, lowered->typeKey, state.declaredTypeKey);
         if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
             lowered = wrapImplicitConversion(
                 std::move(lowered), conversion, valueSyntax);
