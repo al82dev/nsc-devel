@@ -110,6 +110,14 @@ rechazo de un testigo distinto de null. El prototipo aislado
 la reserva y alinear el payload y ejecuta el ciclo fuerte-débil en O0 y O2.
 Todavía no verifica límites aritméticos, alineaciones mayores ni errores de
 construcción y no constituye una fábrica pública.
+`nsc.sdk.shared-control-storage` añade una regresión dirigida que sitúa los
+contadores locales o atómicos junto al payload en la misma reserva; comprueba
+la destrucción y la expiración y, para la variante atómica, 200 000 ciclos de
+retención y liberación en cuatro hilos. Pasó con ejecución Windows en O0/O2
+(`shared-control-test.log`). Además ejecuta 1000 carreras por nivel entre la
+última liberación y una retención: comprueba que exista exactamente un último
+fuerte y que la retención falle después de llegar a cero. El análisis en otros sistemas no implica que el
+ejecutable se haya ejecutado. No demuestra exhaustivamente los intercalados.
 Un experimento separado (`shared-heap-lifecycle-probe/results.json`) coloca
 contadores y un payload de clase en un arreglo de tamaño fijo; en O0 y O2
 ejecuta clonación, destrucción del último fuerte y consulta del débil expirado,
