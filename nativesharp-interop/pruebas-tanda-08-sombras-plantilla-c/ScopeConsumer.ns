@@ -1,5 +1,5 @@
 int Main()
 {
-    if (PublishedScope.Bridge.Mixed<int>(0) != 183) return 1;
+    if (PublishedScope.Bridge.Mixed<int>(0) != 264) return 1;
     return 0;
 }

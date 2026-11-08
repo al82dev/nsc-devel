@@ -6,6 +6,10 @@ namespace PublishedScope
         {
             int sum = shadow_function();
             {
+                int shadow_function = shadow_function();
+                sum += shadow_function;
+            }
+            {
                 int shadow_function = 17;
                 sum += shadow_function;
             }
