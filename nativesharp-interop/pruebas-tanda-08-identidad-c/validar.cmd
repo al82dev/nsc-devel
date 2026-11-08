@@ -84,6 +84,8 @@ call "%~dp0patron-sombra\validar.cmd"
 if errorlevel 1 exit /b 1
 call "%~dp0inline-dos-bibliotecas\validar.cmd"
 if errorlevel 1 exit /b 1
+call "%~dp0static-dos-bibliotecas\validar.cmd"
+if errorlevel 1 exit /b 1
 call :typedefs
 if errorlevel 1 exit /b 1
 call "%~dp0records-precompiled\validar.cmd"

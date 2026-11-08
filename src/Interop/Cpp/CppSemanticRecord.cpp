@@ -1758,7 +1758,9 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             state.moduleName = value.moduleName;
             state.namespaceName = value.namespaceName;
             state.name = value.name;
-            state.accessibility = frontend::NamespaceFunctionAccessibility::Public;
+            state.accessibility = global.declaration.externalLinkage
+                ? frontend::NamespaceFunctionAccessibility::Public
+                : frontend::NamespaceFunctionAccessibility::Internal;
             state.isCppExternal = true;
             state.cppCGlobal = true;
             state.declaredTypeKey = value.typeKey;
