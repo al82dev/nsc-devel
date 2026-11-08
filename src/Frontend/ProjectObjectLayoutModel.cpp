@@ -134,7 +134,8 @@ bool ProjectObjectLayoutModel::build(
         for (std::size_t ordinal = 0; ordinal < memberModel.members().size(); ++ordinal)
         {
             const auto& member = memberModel.members()[ordinal];
-            if (!member.isCppExternal || member.isStatic || member.kind != ClassMemberKind::Field) continue;
+            if (!member.isCppExternal || member.isStatic || member.kind != ClassMemberKind::Field ||
+                member.isAnonymousMemberPromotion) continue;
             const auto* owner = nameLookup.cppImportedType(member.declaringTypeOrdinal);
             const auto* ownerLayout = owner && owner->memberAccessLayout ? &*owner->memberAccessLayout :
                 owner && owner->objectLayout ? &*owner->objectLayout : nullptr;
