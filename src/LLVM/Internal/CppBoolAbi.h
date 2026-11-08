@@ -5,6 +5,16 @@
 
 namespace nativesharp::llvm_backend
 {
+template <typename AddAttribute>
+void applyBoolZeroExtension(llvm_api::LLVMContextRef context, unsigned index,
+                            AddAttribute&& addAttribute)
+{
+    const unsigned kind = llvm_api::LLVMGetEnumAttributeKindForName("zeroext", 7);
+    if (kind == 0) return;
+    const auto attribute = llvm_api::LLVMCreateEnumAttribute(context, kind, 0);
+    if (attribute != nullptr) addAttribute(index, attribute);
+}
+
 // The Win64 Clang ABI attaches zeroext to C/C++ bool values, including call sites.
 // LLVM attribute indices use zero for the return and physical parameter index + 1.
 template <typename AddAttribute>

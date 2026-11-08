@@ -1,4 +1,5 @@
 #include "../Internal/OopLlvmImplementation.h"
+#include "../Internal/CppBoolAbi.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
@@ -1064,6 +1065,17 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             callArguments.empty() ? nullptr : callArguments.data(),
             static_cast<unsigned>(callArguments.size()),
             returnType == LLVMVoidTypeInContext(context_) ? "" : "cabi.callback.result");
+        auto addBoolAttribute = [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+            { LLVMAddCallSiteAttribute(call, index, attribute); };
+        if (returnTypeKey == "builtin:bool" && returnType == LLVMInt1TypeInContext(context_))
+            applyBoolZeroExtension(context_, 0, addBoolAttribute);
+        for (std::size_t index = 0; index < fixedParameterCount; ++index)
+        {
+            const std::size_t position = index + (sretReturn ? 1U : 0U);
+            if (argumentTypeKeys[index] == "builtin:bool" &&
+                LLVMTypeOf(callArguments[position]) == LLVMInt1TypeInContext(context_))
+                applyBoolZeroExtension(context_, static_cast<unsigned>(position + 1), addBoolAttribute);
+        }
         if (vectorCall) LLVMSetInstructionCallConv(call, LLVMX86VectorCallCallConv);
         if (vectorCall) applyVectorCallArgumentAttributes(call, sretReturn, argumentTypeKeys);
         if (sretSlot != nullptr)

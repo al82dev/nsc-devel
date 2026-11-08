@@ -1,4 +1,5 @@
 #include "../Internal/OopLlvmImplementation.h"
+#include "../Internal/CppBoolAbi.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
@@ -194,6 +195,18 @@ void OopLlvmImplementation::applyCallbackGuardThunkAttributes(
         bool vectorCall,
         bool externalSretReturn)
 {
+        auto addBoolAttribute = [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+            { LLVMAddAttributeAtIndex(thunk, index, attribute); };
+        if (!function.referenceReturn && function.returnTypeKey == "builtin:bool")
+            applyBoolZeroExtension(context_, 0, addBoolAttribute);
+        std::size_t boolPosition = (externalSretReturn ? 1U : 0U) + (function.isStatic ? 0U : 1U);
+        for (const std::string& typeKey : function.parameterTypeKeys)
+        {
+            if (typeKey == "builtin:bool" &&
+                LLVMTypeOf(LLVMGetParam(thunk, static_cast<unsigned>(boolPosition))) == LLVMInt1TypeInContext(context_))
+                applyBoolZeroExtension(context_, static_cast<unsigned>(boolPosition + 1), addBoolAttribute);
+            ++boolPosition;
+        }
         if (externalSretReturn)
         {
             applySretAttributes(
@@ -543,6 +556,9 @@ bool OopLlvmImplementation::emitRuntimeBoundForwarding(
         {
             return fail(error, "C1.2 failed to emit the runtime-bound import forwarding call");
         }
+        applyExternalBoolAbi(context_, &function,
+            [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+            { LLVMAddCallSiteAttribute(result, index, attribute); });
         // Win64 aggregate ABI: an indirect struct return travels through a leading sret pointer.
         // The declaration carries the attribute; the forwarding call site must carry it too, so
         // the two agree about which pointer is the return slot.
