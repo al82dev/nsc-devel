@@ -2436,7 +2436,7 @@ static bool collectVisibleCRecordReconciliations(
                 if (owner == graph->projects().end() || std::find(visible.begin(), visible.end(),
                         static_cast<std::size_t>(owner - graph->projects().begin())) == visible.end()) continue;
                 metadata_detail::CRecordContractComparison verdict{};
-                if (!metadata_detail::compareCEnumSourceEvidence(live->front(), candidate, verdict, error)) return false;
+                if (!metadata_detail::compareCEnumSourceEvidence(live->front(), candidate, verdict, error, true)) return false;
                 if (verdict == metadata_detail::CRecordContractComparison::Matching)
                     enumMatches[{entry.projectOrdinal, identity.key()}].insert(candidate.identityKey);
             }

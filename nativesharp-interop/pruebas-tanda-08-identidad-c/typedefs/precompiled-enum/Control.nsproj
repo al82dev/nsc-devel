@@ -1,0 +1,5 @@
+<Project><PropertyGroup><Name>EnumControl</Name></PropertyGroup><ItemGroup>
+<Compile Include="Consumer.ns" />
+<CppLibraryReference Header="z.h" Language="C" Standard="c11" />
+<LibraryReference Include="EnumProducer.lib" />
+</ItemGroup></Project>

@@ -1113,7 +1113,8 @@ bool compareCRecordContracts(const CppCRecordSnapshot& left, const CppCRecordSna
 }
 
 bool compareCEnumSourceEvidence(const CppCEnumSnapshot& left, const CppCEnumSnapshot& right,
-                                CRecordContractComparison& result, std::string& error)
+                                CRecordContractComparison& result, std::string& error,
+                                bool allowEquivalentDistinctSources)
 {
     const auto& a = left.declaration;
     const auto& b = right.declaration;
@@ -1132,7 +1133,8 @@ bool compareCEnumSourceEvidence(const CppCEnumSnapshot& left, const CppCEnumSnap
     { result = CRecordContractComparison::Insufficient; error.clear(); return true; }
     const auto& first = *a.sourceProvenance;
     const auto& second = *b.sourceProvenance;
-    if (first.bufferSha256 != second.bufferSha256 || first.byteOffset != second.byteOffset)
+    if (!allowEquivalentDistinctSources &&
+        (first.bufferSha256 != second.bufferSha256 || first.byteOffset != second.byteOffset))
     { result = CRecordContractComparison::Different; error.clear(); return true; }
     std::error_code ec;
     if (!first.sourcePath.is_absolute() || !second.sourcePath.is_absolute() ||
@@ -1140,12 +1142,18 @@ bool compareCEnumSourceEvidence(const CppCEnumSnapshot& left, const CppCEnumSnap
     { result = CRecordContractComparison::Insufficient; error.clear(); return true; }
     const bool sameFile = std::filesystem::equivalent(first.sourcePath, second.sourcePath, ec);
     if (ec) { result = CRecordContractComparison::Insufficient; error.clear(); return true; }
-    if (!sameFile) { result = CRecordContractComparison::Different; error.clear(); return true; }
-    basic::Sha256Digest digest;
-    std::uintmax_t size = 0;
-    std::string hashError;
-    if (!basic::sha256File(first.sourcePath, digest, size, hashError) || first.byteOffset >= size ||
-        basic::sha256Hex(digest) != first.bufferSha256)
+    if (sameFile && (first.bufferSha256 != second.bufferSha256 || first.byteOffset != second.byteOffset))
+    { result = CRecordContractComparison::Different; error.clear(); return true; }
+    if (!sameFile && !allowEquivalentDistinctSources)
+    { result = CRecordContractComparison::Different; error.clear(); return true; }
+    const auto unchanged = [](const auto& source) {
+        basic::Sha256Digest digest;
+        std::uintmax_t size = 0;
+        std::string hashError;
+        return basic::sha256File(source.sourcePath, digest, size, hashError) &&
+            source.byteOffset < size && basic::sha256Hex(digest) == source.bufferSha256;
+    };
+    if (!unchanged(first) || (!sameFile && !unchanged(second)))
     { result = CRecordContractComparison::Insufficient; error.clear(); return true; }
     result = CRecordContractComparison::Matching; error.clear(); return true;
 }
@@ -1566,7 +1574,7 @@ bool compareCRecordClosureEvidence(std::span<const CppCRecordSnapshot> leftRecor
                 { verdict = CRecordContractComparison::Different; return true; }
                 if (seenEnums.emplace(leftIdentity.key(), rightIdentity.key()).second)
                 {
-                    if (!compareCEnumSourceEvidence(*leftEnum, *rightEnum, verdict, error)) return false;
+                    if (!compareCEnumSourceEvidence(*leftEnum, *rightEnum, verdict, error, true)) return false;
                     if (verdict != CRecordContractComparison::Matching) return true;
                 }
             }
