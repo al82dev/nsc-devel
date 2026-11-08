@@ -2802,6 +2802,20 @@ bool selectExperimentalCppRecordTypesForCompilation(
         if (selectedIdentities.insert(type.identity.key()).second) output.push_back(type);
     };
     for (const auto& enumeration : observation.referencedEnumTypes) addEnum(enumeration);
+    for (const auto& reconciliation : observation.reconciliations)
+    {
+        const auto candidate = std::find_if(enumCandidates.begin(), enumCandidates.end(), [&](const auto& item) {
+            return item.projectOrdinal == reconciliation.projectOrdinal && item.identity.key() == reconciliation.liveIdentityKey;
+        });
+        if (candidate == enumCandidates.end()) continue;
+        if (!candidate->deferredImportError.empty()) { error = candidate->deferredImportError; return false; }
+        if (std::find(observation.collidingEnumIdentities.begin(), observation.collidingEnumIdentities.end(),
+                      candidate->identity.key()) != observation.collidingEnumIdentities.end())
+        { error = "reconciled C enum conflicts with another type: " + candidate->identity.name(); return false; }
+        if (selectedRecordIdentities.contains(candidate->identity.key()))
+        { error = "reconciled C enum conflicts with a selected record: " + candidate->identity.name(); return false; }
+        addEnum(*candidate);
+    }
     for (const auto& group : observation.groups.groups)
     {
         if (!selectedIdentities.contains(group.identity.key())) continue;

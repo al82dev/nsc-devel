@@ -5403,6 +5403,10 @@ cuya identidad haya sido conciliada; preservar el resto de las comparaciones.
 El diagnóstico de ese conflicto puede indicar dueños, tipos, USR y si el
 guard verificó la conciliación, para identificar la condición fallida sin
 relajarla.
+La observación confirmó que el índice final omitía el enum vivo ya conciliado
+cuando la vinculación seleccionaba el precompilado. Conservar también el enum
+vivo en esa selección, solo si existe conciliación verificada, y mantener las
+comprobaciones de errores diferidos y colisiones.
 
 Enmienda: la primera implementación causó conflicto entre proyectos al
 coexistir el header y la metadata. Se permite modificar
