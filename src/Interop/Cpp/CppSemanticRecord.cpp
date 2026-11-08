@@ -584,6 +584,7 @@ std::variant<std::vector<CppRecordDeclaration>, std::string> materializeCppAnony
         child.kind = nested->kind;
         child.access = CppAccess::Public;
         child.location = containing.location;
+        child.sourceProvenance = containing.sourceProvenance;
         child.complete = true;
         child.sizeBits = nested->sizeBits;
         child.alignmentBits = nested->alignmentBits;
@@ -1891,6 +1892,34 @@ CppRecordRefinementResult refineCppRecordGroupsForPointerTransport(
             { consistent = false; break; }
         }
         if (consistent && first) group.status = CppRecordGroupStatus::MultipleDefinitionsPointerCompatible;
+    }
+    // Clang cannot look up the internal names we synthesize for C anonymous
+    // aggregates. Compare the captured contract only when every observation
+    // has the same known Clang identity and comes from the same parsed file.
+    for (auto& group : result.groups)
+    {
+        if (group.status != CppRecordGroupStatus::MultipleDefinitionsUnverified) continue;
+        const CppRecordDeclaration* first = nullptr;
+        bool matching = true;
+        for (const auto index : group.inventoryIndices)
+        {
+            const auto& record = inventory[index].declaration;
+            if (!record.complete) continue;
+            if (record.isCxx || !record.isAnonymousCInternal || !record.clangUsr || record.clangUsr->empty() ||
+                !record.sourceProvenance || !record.sizeBits || !record.alignmentBits)
+            { matching = false; break; }
+            if (!first) { first = &record; continue; }
+            std::error_code ec;
+            const bool sameFile = std::filesystem::equivalent(first->sourceProvenance->sourcePath,
+                record.sourceProvenance->sourcePath, ec);
+            if (ec || !sameFile || first->clangUsr != record.clangUsr ||
+                first->sourceProvenance->bufferSha256 != record.sourceProvenance->bufferSha256 ||
+                first->sourceProvenance->byteOffset != record.sourceProvenance->byteOffset ||
+                first->sizeBits != record.sizeBits || first->alignmentBits != record.alignmentBits ||
+                !sameCapturedMembers(*first, record))
+            { matching = false; break; }
+        }
+        if (matching && first) group.status = CppRecordGroupStatus::MultipleDefinitionsPointerCompatible;
     }
     return result;
 }
