@@ -72,6 +72,8 @@ struct NamespaceStateSymbol final
     // declaration imported by independent projects without merging C statics.
     bool cppCInternalLinkage = false;
     std::string cppCanonicalCType;
+    // Authenticated DLL identity for a TLS global when its runtime is known.
+    std::string cppTlsRuntimeIdentity;
     // Counterpart established through a reconciled enum, not by the value name alone.
     std::optional<std::string> cppReconciledStateKey;
     bool cppThreadLocal = false;

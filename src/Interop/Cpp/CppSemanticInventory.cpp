@@ -718,7 +718,9 @@ bool captureCppTemplateGlobalCandidates(const frontend::ProjectCompilation& comp
             if (!entry.cLanguage) continue;
             if (!seen.emplace(entry.projectOrdinal, entry.referenceIndex, selected->storageName).second) continue;
             metadata_detail::CDependencyGlobalSnapshot snapshot;
-            const auto reference = "cpp-reference:" + std::to_string(entry.referenceIndex);
+            auto reference = "cpp-reference:" + std::to_string(entry.referenceIndex);
+            if (!selected->cppTlsRuntimeIdentity.empty())
+                reference += "#tls-dll:" + selected->cppTlsRuntimeIdentity;
             if (!metadata_detail::captureCDependencyGlobal(inventory, *selected, entry.referenceIndex,
                                                              reference, snapshot, error)) return false;
             result.push_back(std::move(snapshot));
@@ -861,6 +863,13 @@ static bool provideGlobalsWithLookup(
                     state.cppAtomicStorage = selected.candidate->atomicStorage;
                     state.cppCInternalLinkage = !internalC.empty();
                     state.cppCanonicalCType = selected.candidate->canonicalCppType;
+                    if (tlsRuntime)
+                    {
+                        basic::Sha256Digest digest{};
+                        std::uintmax_t size = 0;
+                        if (!basic::sha256File(*tlsRuntime, digest, size, error)) return false;
+                        state.cppTlsRuntimeIdentity = tlsRuntime->filename().string() + ":" + basic::sha256Hex(digest);
+                    }
                     const auto fromC = [&](std::size_t index) { return entries[index].cLanguage; };
                     state.cppCGlobal = !selected.declarationIndices.empty() &&
                         std::all_of(selected.declarationIndices.begin(), selected.declarationIndices.end(), fromC) &&

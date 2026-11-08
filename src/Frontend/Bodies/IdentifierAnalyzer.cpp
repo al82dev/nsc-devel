@@ -996,6 +996,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
                 first.cppStorageSizeBits == other.cppStorageSizeBits &&
                 first.cppDeclarationAlignmentBits == other.cppDeclarationAlignmentBits &&
                 first.cppDllImport == other.cppDllImport && first.cppThreadLocal == other.cppThreadLocal &&
+                (!(first.cppDllImport && first.cppThreadLocal) ||
+                    (!first.cppTlsRuntimeIdentity.empty() &&
+                     first.cppTlsRuntimeIdentity == other.cppTlsRuntimeIdentity)) &&
                 first.cppAtomicStorage == other.cppAtomicStorage;
         };
         if (std::all_of(candidates.begin(), candidates.end(), equivalentExternalC))

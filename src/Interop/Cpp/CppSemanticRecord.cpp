@@ -1778,6 +1778,9 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             state.cppAtomicStorage = value.atomicStorage;
             state.cppCInternalLinkage = !global.declaration.externalLinkage;
             state.cppCanonicalCType = value.canonicalCppType;
+            const auto tlsDllMarker = global.referenceIdentity.rfind("#tls-dll:");
+            if (tlsDllMarker != std::string::npos)
+                state.cppTlsRuntimeIdentity = global.referenceIdentity.substr(tlsDllMarker + 9);
             const Key key{state.projectOrdinal, state.namespaceName, state.name};
             const auto existing = names.find(key);
             if (existing != names.end())
