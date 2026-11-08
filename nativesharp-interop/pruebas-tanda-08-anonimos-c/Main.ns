@@ -10,6 +10,7 @@ int Main()
     value->low = (uint)3;
     value->high = (uint)17;
     VolatileAccess.SetNatural(value, 12345);
+    value->items[1] = 21;
     LPackedAnonymous* packed = probe_packed_anonymous();
     if (sizeof(LPackedAnonymous) != (nuint)probe_packed_anonymous_size()) return 3;
     packed->tag = (byte)6;
@@ -18,10 +19,13 @@ int Main()
     packed->packedBits = (uint)5;
     packed->packedMore = (uint)19;
     VolatileAccess.SetPacked(packed, 23456);
+    packed->packedItems[1] = (short)22;
     if (probe_anonymous_check() != 1) return 2;
     if (VolatileAccess.GetNatural(value) != 12345 || VolatileAccess.GetPacked(packed) != 23456) return 6;
     probe_anonymous_set_bits();
     if (value->low != (uint)2 || value->high != (uint)11) return 4;
     if (packed->packedBits != (uint)6 || packed->packedMore != (uint)23) return 5;
+    probe_anonymous_set_items();
+    if (value->items[1] != 31 || packed->packedItems[1] != (short)32) return 8;
     return 0;
 }

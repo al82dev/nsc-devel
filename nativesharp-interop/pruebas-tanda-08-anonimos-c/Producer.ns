@@ -8,6 +8,7 @@ namespace Published
         public static int PackedSize() { return probe_packed_anonymous_size(); }
         public static int Check() { return probe_anonymous_check(); }
         public static void SetBits() { probe_anonymous_set_bits(); }
+        public static void SetItems() { probe_anonymous_set_items(); }
         public static int Constant<T>(T value) { return AnonExtra; }
     }
 }
