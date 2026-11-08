@@ -9,7 +9,7 @@ if not exist "%DEST%" mkdir "%DEST%"
 if errorlevel 1 exit /b 1
 set "TEMP=%DEST%"
 set "TMP=%DEST%"
-for %%F in (Api.h Api.c ProducerReferenced.ns ProducerReferenced.nsproj ConsumerReferenced.ns ConsumerReferenced.nsproj) do (
+for %%F in (Api.h Api.c ApiConflict.h ProducerReferenced.ns ProducerReferenced.nsproj ConsumerReferenced.ns ConsumerReferenced.nsproj SharedReferenced.nsproj ConflictReferenced.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
@@ -20,6 +20,10 @@ if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\ProducerReferenced.nsproj" -O%%O --no-artifact-cache -o "%DEST%\CNamesReferenced.lib"
   if errorlevel 1 exit /b 1
+  nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\SharedReferenced.nsproj" -O%%O --no-artifact-cache -o "%DEST%\Shared-O%%O.exe"
+  if errorlevel 1 exit /b 1
+  "%DEST%\Shared-O%%O.exe"
+  if errorlevel 1 exit /b 1
   move /y "%DEST%\Api.h" "%DEST%\Api.hidden" >nul
   if errorlevel 1 exit /b 1
   call :consumer %%O
@@ -28,6 +32,10 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 exit /b 1
   if not "!RESULT!"=="0" exit /b !RESULT!
 )
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\ConflictReferenced.nsproj" -O0 --no-artifact-cache -o "%DEST%\Conflict.exe" > "%DEST%\Conflict.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /c:"conflicting C/C++ type alias" "%DEST%\Conflict.log" >nul
+if errorlevel 1 exit /b 1
 exit /b 0
 
 :consumer
