@@ -5,6 +5,7 @@
 #include "OopLlvmSupport.h"
 #include "PackedArrayAlignment.h"
 #include "CRecordBoolStorage.h"
+#include "CVolatileRecordField.h"
 
 namespace nativesharp::llvm_backend
 {
@@ -487,6 +488,11 @@ bool OopLlvmImplementation::lowerExpressionFrame004FieldLoad(
     {
         LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
         LLVMSetAlignment(load, static_cast<unsigned>(*alignment));
+    }
+    if (const auto width = clangMsVolatileRecordFieldWidth(memberModel_, nameLookup_, current))
+    {
+        LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
+        LLVMSetAlignment(load, static_cast<unsigned>(*width));
     }
     const std::string record =
         runtimeDebugFieldLoadRecord(*current, "FIELD-LOAD-END");
@@ -1507,6 +1513,11 @@ bool OopLlvmImplementation::lowerExpressionFrame030PointerLoad(
     if (const auto alignment = fieldArrayElementAlignment(current->children.front().get()))
         LLVMSetAlignment(load, static_cast<unsigned>(*alignment));
     if (current->volatileAccess) LLVMSetVolatile(load, 1);
+    if (const auto width = clangMsVolatileRecordFieldWidth(memberModel_, nameLookup_, current->children.front().get()))
+    {
+        LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
+        LLVMSetAlignment(load, static_cast<unsigned>(*width));
+    }
     if (const auto alignment = clangMsVolatileEnumElementAlignment(current->children.front().get()))
     {
         LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);

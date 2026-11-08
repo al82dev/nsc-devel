@@ -1,5 +1,17 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-006: integración de campos C volátiles de Claude
+
+Integrar y revisar el control y el diagnóstico de Claude sobre orden Microsoft
+de campos volátiles C. Aplicar la corrección de cargas y almacenes para campos
+escalares declarados volátiles y alineados; conservar el acceso simple de los
+desalineados y de los que solo heredan volatilidad. Presupuesto: los dos archivos
+de lowering y el helper del parche, el control de Claude, el gate de tanda,
+tracking y registro. Validar incrementalmente con el control directo, Shared y
+Metadata O0–O3 y sus regresiones; reservar la batería completa para el cierre de
+la tanda. No cambiar NSLink, formato NSMETA, LLVM/Clang ni desplegar en C:.
+Los enum y record volátiles no importados y los miembros anónimos siguen abiertos.
+
 ## T08-002: corrección de typedef C equivalentes (carril de integración)
 
 La auditoría del carril de identidad terminó y sus pruebas están integradas.

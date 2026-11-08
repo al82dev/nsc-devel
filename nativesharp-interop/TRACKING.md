@@ -954,12 +954,13 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     de ejecución, no demuestra aún su ABI.
   - Control de campos volátiles C contra Clang (orden MS): la ejecución pasa O0–O3 en
     directo, `Shared` y `Metadata`, pero 28 de 34 accesos no llevan `acquire`/`release`
-    (todos los escalares volátiles alineados, no sólo `_Bool`). Sigue abierto.
+    (todos los escalares volátiles alineados, no sólo `_Bool`). Reproducción previa.
     [Control](registro-commits/t08-volatile-campos-c-control.md).
-  - Causa: en campos, el orden MS sólo existía para punteros a función. Parche para
-    integrar (no aplicado), probado sobre `fd8ed5c1a`: 34 de 34 accesos iguales a Clang
-    en los tres caminos y O1–O3; regresiones dirigidas pasaron.
+  - Causa: en campos, el orden MS sólo existía para punteros a función. El parche
+    se integró y en esta rama 34 de 34 accesos coinciden con Clang; las regresiones
+    dirigidas pasaron. Enum y record volátiles siguen sin importarse.
     [Diagnóstico](registro-commits/t08-volatile-campos-c-diagnostico.md).
+    [Integración](registro-commits/t08-volatile-campos-c-integracion.md).
 - [ ] T08-007. Mapear los tipos de punto flotante según el objetivo.
   - `long double` IEEE binary64 pasó en uso directo y biblioteca precompilada
     O0–O3. La suite pasó controles de catálogo, versión y fingerprint. Otras

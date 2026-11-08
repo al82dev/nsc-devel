@@ -1,0 +1,56 @@
+#pragma once
+
+#include "PackedArrayAlignment.h"
+#include "nativesharp/LLVM/LlvmTypeLayout.h"
+#include "nativesharp/Frontend/ProjectMemberModel.h"
+#include "nativesharp/Frontend/ProjectNameLookup.h"
+#include "nativesharp/Frontend/ProjectOopMirNode.h"
+#include "nativesharp/Language/CallableSemantics.h"
+
+#include <cstdint>
+#include <optional>
+
+namespace nativesharp::llvm_backend
+{
+// T08-006 volatile fields. Under Microsoft volatile semantics Clang emits an acquire load and a release store
+// (atomic, with the scalar width as alignment) for a field of a C struct or union that is itself declared
+// volatile, or for an element of an array field whose elements are volatile, when the scalar is 1, 2, 4 or 8
+// bytes wide and its address alignment is at least that width. A misaligned (packed) field keeps a plain
+// volatile access, and so does a field whose volatility is only inherited from a volatile receiver object.
+// Function pointer fields keep their own rule (clangMsVolatileFunctionFieldAlignment).
+inline std::optional<std::uint64_t> clangMsVolatileRecordFieldWidth(
+    const frontend::ProjectMemberModel* memberModel, const frontend::ProjectNameLookup& lookup,
+    const frontend::ProjectOopMirNode* node)
+{
+    if (!node || !memberModel || !node->volatileAccess) return std::nullopt;
+    const frontend::ProjectOopMirNode* root = node;
+    unsigned depth = 0;
+    while (root->kind == frontend::ProjectOopMirNodeKind::RawElementAddress)
+    {
+        if (++depth > 128 || root->children.size() != 2 || !root->children.front()) return std::nullopt;
+        root = root->children.front().get();
+    }
+    if (root->kind != frontend::ProjectOopMirNodeKind::FieldAddress &&
+        root->kind != frontend::ProjectOopMirNodeKind::FieldLoad) return std::nullopt;
+    if (!root->memberOrdinal || *root->memberOrdinal >= memberModel->members().size()) return std::nullopt;
+    const auto& member = memberModel->members()[*root->memberOrdinal];
+    if (!member.isCppExternal || !member.isVolatile || member.isBitField ||
+        member.cppMicrosoftVolatileSemantics != std::optional<bool>{true}) return std::nullopt;
+    const auto* owner = lookup.cppImportedType(member.declaringTypeOrdinal);
+    if (!owner || (owner->origin != frontend::CppImportedTypeOrigin::CStruct &&
+                   owner->origin != frontend::CppImportedTypeOrigin::CUnion)) return std::nullopt;
+    const auto& type = node->typeKey;
+    if (language::isFunctionTypeIdentity(type)) return std::nullopt;
+    std::uint64_t width = 0;
+    if (type == "builtin:bool" || type == "builtin:sbyte" || type == "builtin:byte") width = 1;
+    else if (type == "builtin:short" || type == "builtin:ushort") width = 2;
+    else if (type == "builtin:int" || type == "builtin:uint" || type == "builtin:float") width = 4;
+    else if (type == "builtin:long" || type == "builtin:ulong" || type == "builtin:double") width = 8;
+    else if (type.ends_with('*')) width = 8;
+    else if (const auto* info = findEnumUnderlyingInfo(lookup, type)) width = info->width / 8;
+    if (width != 1 && width != 2 && width != 4 && width != 8) return std::nullopt;
+    const auto alignment = fieldOrArrayAddressAlignment(node);
+    if (!alignment || *alignment < width || *alignment % width != 0) return std::nullopt;
+    return width;
+}
+}
