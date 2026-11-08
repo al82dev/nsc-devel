@@ -386,6 +386,29 @@ bool checkExternalSelection(const nativesharp::frontend::ProjectCompilation& com
                   << (inlineGroups ? std::to_string(inlineGroups->groups.size()) + " group(s)"
                                    : "selection failure: " +
                                      std::get<CppSemanticFunctionGroupFailure>(inlineSelected).message) << '\n';
+        ok &= expect(inlineGroups && inlineGroups->groups.size() == 2,
+                     "two C static inline definitions retain distinct groups");
+        if (inlineGroups)
+            for (const auto& group : inlineGroups->groups)
+            {
+                if (group.inventoryIndices.empty()) { ok = false; continue; }
+                const auto& entry = entries->at(group.inventoryIndices.front());
+                metadata_detail::CDependencyFunctionSnapshot captured, restored;
+                std::vector<std::uint8_t> encoded;
+                std::string why;
+                const bool capturedInline = metadata_detail::captureCDependencyFunction(*entries, group.symbol,
+                    entry.referenceIndex, "inline-reference-" + std::to_string(entry.referenceIndex),
+                    captured, why) && metadata_detail::encodeCDependencyFunction(captured, encoded, why) &&
+                    metadata_detail::decodeCDependencyFunction(encoded, restored, why) &&
+                    restored.declaration.isCStaticInlineDefinition &&
+                    restored.declaration.languageLinkage == entry.declaration.languageLinkage &&
+                    restored.declaration.clangUsr == group.symbol.cppClangUsr &&
+                    restored.linkSymbol == group.symbol.mangledName;
+                ok &= expect(capturedInline, "C static inline dependency retains its own symbol and USR");
+                if (!why.empty()) std::cerr << "static inline capture: " << why
+                    << " linkage=" << static_cast<int>(entry.declaration.languageLinkage)
+                    << " inline=" << entry.declaration.isCStaticInlineDefinition << '\n';
+            }
     }
     auto globals = collectCppSemanticGlobals(*graph, compilation.cppProjectSessions());
     const auto* globalEntries = std::get_if<std::vector<CppSemanticGlobalEntry>>(&globals);

@@ -378,7 +378,9 @@ bool captureCDependencyFunction(std::span<const CppSemanticInventoryEntry> inven
     {
         if (entry.projectOrdinal != selected.projectOrdinal || entry.referenceIndex != referenceIndex ||
             entry.targetTriple != "x86_64-pc-windows-msvc" ||
-            entry.declaration.languageLinkage != CppLanguageLinkage::C ||
+            (entry.declaration.languageLinkage != CppLanguageLinkage::C &&
+             !(entry.declaration.languageLinkage == CppLanguageLinkage::None &&
+               entry.declaration.isCStaticInlineDefinition && !entry.declaration.externalLinkage)) ||
             entry.declaration.clangUsr != selected.cppClangUsr ||
             entry.declaration.externalSymbol != std::optional<std::string>{selected.mangledName}) continue;
         const auto* projection = std::get_if<frontend::NamespaceFunctionSymbol>(&entry.projection);
@@ -405,7 +407,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     const auto& f = value.declaration;
     if (value.moduleName.empty() || value.referenceIdentity.empty() || value.linkSymbol.empty() ||
         f.name.empty() || f.qualifiedName.empty() || f.callingConvention.empty() ||
-        f.languageLinkage != CppLanguageLinkage::C || f.parameters.size() > maxItems)
+        (f.isCStaticInlineDefinition ?
+            (f.languageLinkage != CppLanguageLinkage::None || f.externalLinkage) :
+            f.languageLinkage != CppLanguageLinkage::C) || f.parameters.size() > maxItems)
     { error = "invalid C dependency function identity"; return false; }
     ByteWriter writer;
     writer.u8(1);
@@ -456,7 +460,7 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
         !getFlag(reader, f.dllImport) || !getFlag(reader, f.hasPrototype) ||
         !getFlag(reader, f.isCStaticInlineDefinition))
     { error = "invalid C dependency function"; return false; }
-    f.languageLinkage = CppLanguageLinkage::C;
+    f.languageLinkage = f.isCStaticInlineDefinition ? CppLanguageLinkage::None : CppLanguageLinkage::C;
     const auto getDependencyType = [&](CppType& type) {
         std::uint32_t size = 0;
         if (!reader.u32(size) || size > reader.remaining()) return false;
