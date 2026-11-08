@@ -13,6 +13,19 @@ terminó con código 1: tres comprobaciones de dependencias de enum y dos del
 gate ThinLTO fallaron. Se repitió con el entorno de la tanda y el resultado fue
 el mismo; no se ha establecido su causa ni atribuido al cambio. El flujo C con
 caché de ruta larga, con la captura desactivada, pasó en O0.
+
+Investigación posterior: dos controles de catálogo llaman al lector sin indicar
+el contexto del catálogo. Cambiar su valor predeterminado al contrato actual
+hizo desaparecer esos dos fallos, pero produjo otros seis: determinadas entradas
+se interpretaron como un tipo de catálogo diferente. Se retiró el cambio; no se
+modificaron las pruebas de NSMETA. La corrección requiere desambiguar el contexto
+sin adivinar por el primer byte. Los dos controles ThinLTO, por su parte, esperan
+el rechazo general que se retiró en `e73afd9b0` al habilitar objetos nativos sin
+internalización; no se restauró ese rechazo. La comprobación de enum restante
+también sigue pendiente de diagnóstico.
+Tras reconstruir incrementalmente el compilador y el ejecutable de pruebas
+con el código restaurado, la prueba de sesión volvió a mostrar los cinco fallos
+originales. La validación completa de la tanda no se considera aprobada.
 Esta huella es una pieza de la identidad, no una clave de caché completa:
 faltan combinar opciones, contenido, toolchain y demás dependencias, además de
 validar su seguridad de extremo a extremo. La restricción de caché para
