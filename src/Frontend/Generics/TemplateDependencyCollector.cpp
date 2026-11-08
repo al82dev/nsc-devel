@@ -350,6 +350,25 @@ void ProjectGenericModel::collectTemplateDependencies(
     GenericLookupScope currentScope = scope;
     collectBodyDependencyImports(node, currentScope);
 
+    if (captureForeignReferenceCandidates_)
+    {
+        const auto capture = [&](const ast::TypeSyntax* typeSyntax) {
+            root.record.foreignReferenceCandidates.push_back({node, typeSyntax, currentNamespace,
+                currentScope.importedNamespaces.read(), currentScope.aliases.read()});
+        };
+        if (node->kind() == ast::AstNodeKind::CallExpression ||
+            node->kind() == ast::AstNodeKind::IdentifierExpression ||
+            node->kind() == ast::AstNodeKind::MemberExpression) capture(nullptr);
+        if (node->typeSyntax()) capture(node->typeSyntax());
+        for (const auto* typeSyntax : node->typeSyntaxes()) if (typeSyntax) capture(typeSyntax);
+        for (const auto& clause : node->genericConstraints())
+        {
+            for (const auto* typeSyntax : clause.typeConstraints) if (typeSyntax) capture(typeSyntax);
+            if (clause.equalityConstraint) capture(clause.equalityConstraint);
+            if (clause.substitutedArgument) capture(clause.substitutedArgument);
+        }
+    }
+
     collectTypeDependency(root, unit, node->typeSyntax(), currentNamespace, currentScope);
     for (const ast::TypeSyntax* syntax : node->typeSyntaxes())
         collectTypeDependency(root, unit, syntax, currentNamespace, currentScope);

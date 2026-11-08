@@ -8,10 +8,22 @@
 
 #include <cstddef>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace nativesharp::frontend
 {
+// Syntactic candidates only. A later semantic pass must resolve locals, members,
+// overloads and aliases before attributing any candidate to an imported C declaration.
+struct GenericTemplateForeignReferenceCandidate final
+{
+    const ast::AstNode* syntax = nullptr;
+    const ast::TypeSyntax* typeSyntax = nullptr;
+    std::string lexicalNamespace;
+    std::vector<std::string> importedNamespaces;
+    std::unordered_map<std::string, std::string> aliases;
+};
+
 struct GenericTemplateRecord final
 {
     GenericTemplateKind kind = GenericTemplateKind::Class;
@@ -50,6 +62,7 @@ struct GenericTemplateRecord final
     // These references let NSMETA make the declaration self-contained instead of depending on
     // source-level using directives that are intentionally not transported with a template body.
     std::vector<GenericTemplateExternalTypeReference> externalTypeReferences;
+    std::vector<GenericTemplateForeignReferenceCandidate> foreignReferenceCandidates;
 
     // T05-F02. Source-level impl blocks merged into this template. They are retained separately
     // so NSMETA can publish the original class declaration followed by its coherence extensions;

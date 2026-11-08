@@ -891,6 +891,42 @@ void observeCatalogueEnvelope()
               << " first bytes=" << prefix(versioned) << '\n';
 }
 
+bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::string& resource,
+                                   const std::filesystem::path& directory, const std::string& driver)
+{
+    const auto project = writeProject(directory / "generic-candidates", "CGenericCandidates",
+        "namespace Example { class Bridge { public static int Test<T>(T value) { "
+        "CIdInt x = 0; cid_function(x); return cid_global; } "
+        "public static int Shadow<T>(T value) { int cid_global = 3; return cid_global; } } }\n");
+    nativesharp::frontend::ProjectCompilation compilation;
+    std::string error;
+    const bool ready = !project.empty() && compilation.setCppProjectSessions(
+        twoHeaderSessions(factory, resource, directory, driver, project, "a.h", "b.h"), error) &&
+        compilation.setCppTypeAliasProvider(provideCppTypeAliases, error) &&
+        compilation.compileProjectGenerics(project, error);
+    if (!ready) std::cerr << "generic foreign candidates: " << error << '\n';
+    if (!expect(ready && compilation.genericModel(), "generic candidates fixture compiles")) return false;
+    bool call = false, global = false, alias = false, shadow = false;
+    for (const auto& record : compilation.genericModel()->templates())
+        for (const auto& candidate : record.foreignReferenceCandidates)
+        {
+            if (candidate.lexicalNamespace != "Example" || !candidate.syntax) continue;
+            if (record.name == "Test")
+            {
+                call |= candidate.syntax->kind() == nativesharp::ast::AstNodeKind::IdentifierExpression &&
+                    candidate.syntax->text() == "cid_function";
+                global |= candidate.syntax->kind() == nativesharp::ast::AstNodeKind::IdentifierExpression &&
+                    candidate.syntax->text() == "cid_global";
+                alias |= candidate.typeSyntax && candidate.typeSyntax->baseName() == "CIdInt";
+            }
+            if (record.name == "Shadow")
+                shadow |= candidate.syntax->kind() == nativesharp::ast::AstNodeKind::IdentifierExpression &&
+                    candidate.syntax->text() == "cid_global";
+        }
+    return expect(call && global && alias && shadow,
+        "generic candidate capture retains lexical context and does not claim shadowed names are imports");
+}
+
 bool checkDependencyTypeCodec()
 {
     using namespace nativesharp::interop::metadata_detail;
@@ -1133,6 +1169,7 @@ int runProbes(const std::string& resource, const std::filesystem::path& work, co
     ok &= checkHomonymHeaders(factory, resource, directory, driver);
     ok &= checkNestedFieldEnums(factory, resource, directory, driver);
     ok &= checkDependencyTypeCodec();
+    ok &= checkGenericForeignCandidates(factory, resource, directory, driver);
     observeCatalogueEnvelope();
     std::cout << (ok ? "C declaration identity probes passed\n" : "C declaration identity probes failed\n");
     return ok ? 0 : 1;

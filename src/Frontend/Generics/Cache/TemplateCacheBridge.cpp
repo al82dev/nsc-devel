@@ -135,6 +135,7 @@ bool ProjectGenericModel::tryRestoreTemplateRecord(
     record.dependencies.clear();
     record.unresolvedDependencies.clear();
     record.externalTypeReferences.clear();
+    record.foreignReferenceCandidates.clear();
 
     if (isGenericTypeTemplateNode(node))
     {

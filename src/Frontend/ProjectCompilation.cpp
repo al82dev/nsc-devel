@@ -1261,6 +1261,7 @@ bool ProjectCompilation::compileProjectGenerics(
             ProjectGenericModel::DefaultMaximumInstantiationDepth),
         projectLoadOptions_.genericInstantiationCount.value_or(
             ProjectGenericModel::DefaultMaximumInstantiationCount));
+    genericModel_->setCaptureForeignReferenceCandidates(!cppProjectSessions_.empty());
     // EN: The generic model's C1 record cache and C3 clone cache stay disconnected, exactly as
     //     before 3.0.6. C3 persists a clone after its nested references were rewritten, keys it only
     //     by the specialization key (self-references inside a restored clone keep the producer's

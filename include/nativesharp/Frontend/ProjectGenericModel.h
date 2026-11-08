@@ -72,6 +72,7 @@ public:
         diagnostics::DiagnosticEngine& diagnostics);
 
     std::span<const GenericTemplateRecord> templates() const noexcept;
+    void setCaptureForeignReferenceCandidates(bool enabled) noexcept { captureForeignReferenceCandidates_ = enabled; }
     std::span<const GenericSpecializationRecord> specializations() const noexcept;
     const GenericTemplateRecord* templateForCanonicalKey(
         std::string_view canonicalKey) const noexcept;
@@ -1661,6 +1662,7 @@ private:
         basic::TransparentStringHash,
         std::equal_to<>> declaredTypeIdentitiesBySourceName_;
     std::vector<GenericTemplateRecord> templateRecords_;
+    bool captureForeignReferenceCandidates_ = false;
     std::vector<GenericSpecializationRecord> specializations_;
     // EN: Physical names published by imported metadata for type specializations that still need
     //     local materialization. The canonical key remains the authority; this only preserves the
