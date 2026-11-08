@@ -77,4 +77,17 @@ if errorlevel 1 exit /b 1
 copy /y "%DEST%\producer2-v3-original.bin" "%DEST%\CInlineProducerSecond.nsthinlto" >nul
 if errorlevel 1 exit /b 1
 echo Sidecars v3 corruptos: fallback nativo comprobado para una y dos bibliotecas.
+python "%~dp0corromper_sidecar.py" "%DEST%\CInlineProducer.nsthinlto" objeto
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Consumer.nsproj" -O3 -flto=thin --no-artifact-cache -o "%DEST%\consumer-bad-object.exe" > "%DEST%\consumer-bad-object.log" 2>&1
+if errorlevel 1 exit /b 1
+"%DEST%\consumer-bad-object.exe"
+if errorlevel 1 exit /b 1
+findstr /l /c:"thinlto-libraries: 1" "%DEST%\consumer-bad-object.log" >nul
+if errorlevel 1 exit /b 1
+findstr /l /c:"thinlto-library-fallback: CInlineProducer.lib:" "%DEST%\consumer-bad-object.log" >nul
+if errorlevel 1 exit /b 1
+copy /y "%DEST%\producer-v3-original.bin" "%DEST%\CInlineProducer.nsthinlto" >nul
+if errorlevel 1 exit /b 1
+echo Objeto nativo invalido con huella valida: fallback comprobado.
 exit /b 0
