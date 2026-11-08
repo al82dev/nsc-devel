@@ -1,0 +1,5 @@
+<Project><PropertyGroup><Name>TypedefEnumConflict</Name></PropertyGroup><ItemGroup>
+<Compile Include="Test.ns" />
+<CppLibraryReference Header="x.h" Language="C" Standard="c11" />
+<CppLibraryReference Header="y.h" Language="C" Standard="c11" />
+</ItemGroup></Project>

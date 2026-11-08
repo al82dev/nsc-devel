@@ -26,7 +26,8 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-002-09b: Cotejar funciones `static inline` distintas en encabezados homónimos: el USR coincide, pero NSC conserva dos grupos y diagnostica ambigüedad en la muestra comprobada. [Evidencia](registro-commits/t08-002-homonimos-c.md).
 - [x] T08-002-09c: Cotejar los USR de globales externas y `static` entre encabezados; la sonda homónima observó el mismo USR para las `static`. [Evidencia](registro-commits/t08-002-homonimos-c.md).
 - [x] T08-002-09c1: Verificar selección de globales `static` de encabezados homónimos: una sola se acepta y dos se diagnostican como ambiguas, con contenido igual o distinto. [Evidencia](registro-commits/t08-identidad-global-static-homonima.md).
-- [ ] T08-002-09d: Verificar conciliación de typedefs que apuntan a records o enums incompatibles.
+- [x] T08-002-09d: Verificar en análisis directo muestras de typedefs que apuntan a records o enums incompatibles. [Evidencia](registro-commits/t08-identidad-typedef-record-enum-conflicto.md).
+- [ ] T08-002-09d1: Verificar los mismos conflictos de identidad mediante la ruta de bibliotecas precompiladas.
 - [ ] T08-002-09e: Verificar identidad de campos y enumeradores dentro de records anónimos anidados.
 - [ ] T08-002-09f: Verificar el diagnóstico cuando dos encabezados declaran la función externa con firmas incompatibles.
 - [ ] T08-002-09g: Verificar por separado la identidad y selección de funciones `static inline` con el mismo contenido en encabezados homónimos de directorios distintos.

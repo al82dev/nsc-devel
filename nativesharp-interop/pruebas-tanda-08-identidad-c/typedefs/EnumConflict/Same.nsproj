@@ -1,0 +1,5 @@
+<Project><PropertyGroup><Name>TypedefSameEnumConflict</Name></PropertyGroup><ItemGroup>
+<Compile Include="Same.ns" />
+<CppLibraryReference Header="same-x.h" Language="C" Standard="c11" />
+<CppLibraryReference Header="same-y.h" Language="C" Standard="c11" />
+</ItemGroup></Project>
