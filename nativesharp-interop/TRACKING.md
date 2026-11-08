@@ -1085,6 +1085,11 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     0 en O0–O3; el fixture verificó campo y arreglo enum, IR y sus rechazos de
     dirección. Es una comprobación dirigida, no el cierre de T08-009.
 - [ ] T08-010. Importar la declaración y campos de un `struct` C.
+  - `var` sobre miembros flexibles C ahora infiere puntero: pasaron lectura y
+    escritura en directo, Shared y solo metadata O0–O3, y rechazos de escritura
+    const y miembro subalineado. El IR del alias volatile conserva `volatile`,
+    pero no reproduce acquire/release de Clang en modo Microsoft: sigue pendiente.
+    [Evidencia](registro-commits/t08-flexible-var-validacion.md).
   - La conversión de `const int[]` a `int const*` y el paso de `volatile int[]`
     a un parámetro C `volatile int*` pasaron O0–O3; perder cada calificador se
     rechazó. Son casos directos, sin acreditar otras rutas ni cerrar el ítem.
