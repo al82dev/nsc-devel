@@ -1,0 +1,26 @@
+/// <summary>Checks the reported int-to-short and int-to-byte saturated casts.</summary>
+int Main()
+{
+    int high = 40000;
+    int low = -40000;
+    int color = 290;
+    int negative = -1;
+    int ordinary = 123;
+    if (saturating((short)high) != 32767 || saturating((short)low) != -32768)
+    {
+        return 1;
+    }
+    if (saturating((byte)color) != 255 || saturating((byte)negative) != 0)
+    {
+        return 2;
+    }
+    if (saturating((short)ordinary) != 123 || saturating((byte)ordinary) != 123)
+    {
+        return 3;
+    }
+    if ((byte)color != 34)
+    {
+        return 4;
+    }
+    return 0;
+}

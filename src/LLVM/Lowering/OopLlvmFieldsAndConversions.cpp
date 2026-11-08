@@ -504,6 +504,20 @@ LLVMValueRef OopLlvmImplementation::convertScalar(
         if (sourceWidth != 0 && targetWidth != 0)
         {
             if (sourceWidth == targetWidth) return value;
+            if (source == "builtin:int" && (target == "builtin:short" || target == "builtin:byte") &&
+                currentOverflowPolicy_ == "saturating")
+            {
+                LLVMTypeRef type = LLVMTypeOf(value);
+                const std::int64_t minimum = target == "builtin:short" ? -32768 : 0;
+                const std::uint64_t maximum = target == "builtin:short" ? 32767U : 255U;
+                LLVMValueRef lower = LLVMConstInt(type, static_cast<std::uint64_t>(minimum), 1);
+                LLVMValueRef upper = LLVMConstInt(type, maximum, 0);
+                LLVMValueRef below = LLVMBuildICmp(builder_, LLVMIntSLT, value, lower, "sat.below");
+                LLVMValueRef above = LLVMBuildICmp(builder_, LLVMIntSGT, value, upper, "sat.above");
+                LLVMValueRef clampedLow = LLVMBuildSelect(builder_, below, lower, value, "sat.low");
+                LLVMValueRef clamped = LLVMBuildSelect(builder_, above, upper, clampedLow, "sat.high");
+                return LLVMBuildTrunc(builder_, clamped, destination, "sat.trunc");
+            }
             if (sourceWidth > targetWidth) return LLVMBuildTrunc(builder_, value, destination, "trunc");
             return sourceSigned
                 ? LLVMBuildSExt(builder_, value, destination, "sext")
