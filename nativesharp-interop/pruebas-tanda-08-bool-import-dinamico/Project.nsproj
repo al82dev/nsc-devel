@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>CBoolDynamicImport</Name></PropertyGroup>
+  <ItemGroup><Compile Include="Main.ns" /></ItemGroup>
+</Project>

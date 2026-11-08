@@ -1,0 +1,9 @@
+class A { extern C from "a.dll" { public bool Shared(bool value); } }
+class B { extern C from "b.dll" { public bool Shared(bool value); } }
+class Program {
+    public static int Main() {
+        if (!A.Shared(true) || A.Shared(false)) return 1;
+        if (B.Shared(true) || !B.Shared(false)) return 2;
+        return 0;
+    }
+}
