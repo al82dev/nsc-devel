@@ -24,5 +24,6 @@ struct CppImportedInstanceField final
     std::optional<std::string> clangUsr;
     std::optional<std::uint64_t> bitOffset;
     std::optional<std::uint64_t> bitWidth;
+    bool isAnonymousCarrier = false;
 };
 }

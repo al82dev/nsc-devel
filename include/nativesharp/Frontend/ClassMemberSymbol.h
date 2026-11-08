@@ -209,6 +209,8 @@ struct ClassMemberSymbol final
     // second physical field: the source member remains inside the anonymous aggregate and this
     // path names the compiler-generated carrier fields that lead from the containing object to it.
     bool isAnonymousMemberPromotion = false;
+    // Imported C carriers have no NativeSharp syntax node.
+    bool isCppAnonymousCarrier = false;
     std::optional<std::size_t> promotedSourceMemberOrdinal;
     std::vector<std::size_t> anonymousCarrierMemberOrdinals;
 };

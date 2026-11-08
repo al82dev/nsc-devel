@@ -137,9 +137,10 @@ void ProjectMemberModel::promoteAnonymousCarrierMembers(
     if (carrierOrdinal >= members_.size()) return;
     const ClassMemberSymbol& carrierBeforeVisit = members_[carrierOrdinal];
     if (carrierBeforeVisit.kind != ClassMemberKind::Field || carrierBeforeVisit.isStatic ||
-        carrierBeforeVisit.syntax == nullptr ||
-        carrierBeforeVisit.syntax->auxiliaryText().find("anonymous-member-carrier") ==
-            std::string::npos)
+        (!carrierBeforeVisit.isCppAnonymousCarrier &&
+         (carrierBeforeVisit.syntax == nullptr ||
+          carrierBeforeVisit.syntax->auxiliaryText().find("anonymous-member-carrier") ==
+              std::string::npos)))
         return;
     const std::optional<std::size_t> nestedTypeOrdinal =
         typeOrdinalForKey(carrierBeforeVisit.declaredTypeKey);

@@ -463,6 +463,8 @@ bool ProjectMemberModel::build(
         member.isVolatile = imported.isVolatile;
         member.isCppExternal = true;
         member.cppMicrosoftVolatileSemantics = imported.microsoftVolatileSemantics;
+        member.isCppAnonymousCarrier = imported.isAnonymousCarrier;
+        member.isCompilerGenerated = imported.isAnonymousCarrier;
         member.cppClangUsr = imported.clangUsr;
         member.explicitFieldOffset = imported.byteOffset;
         member.explicitFieldAlignment = alignment;

@@ -342,8 +342,9 @@ void ProjectMemberModel::buildMemberNameIndex()
         {
             if (memberOrdinal >= members_.size()) continue;
             const ClassMemberSymbol& member = members_[memberOrdinal];
-            if (member.isCompilerGenerated && member.syntax != nullptr &&
-                member.syntax->auxiliaryText().find("anonymous-member-carrier") != std::string::npos)
+            if (member.isCppAnonymousCarrier ||
+                (member.isCompilerGenerated && member.syntax != nullptr &&
+                 member.syntax->auxiliaryText().find("anonymous-member-carrier") != std::string::npos))
                 continue;
             byName[member.name].push_back(memberOrdinal);
         }
