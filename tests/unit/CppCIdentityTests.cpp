@@ -2028,6 +2028,25 @@ int runTypedefMatrix(const std::filesystem::path& directory, const std::string& 
 //     `forbidden` ('-' omite la comprobación del nombre) y, salvo que `required` sea '-', un
 //     enumerador del catálogo C con ese nombre. Imprime los estados publicados y los enums del
 //     catálogo como evidencia. Devuelve 0 si pasan todas las comprobaciones.
+int inspectTemplateAlias(char** argv)
+{
+    LibraryMetadataCodec codec;
+    LibraryMetadata metadata;
+    std::string error;
+    if (!codec.read(argv[2], metadata, error) || !codec.verifyCurrentCompiler(metadata, error))
+    { std::cerr << "metadata read: " << error << '\n'; return 1; }
+    std::vector<CppCRecordSnapshot> records;
+    std::vector<CppCEnumSnapshot> enums;
+    metadata_detail::CDependencyCatalog dependencies;
+    const bool found = metadata.formatMinor == 46 &&
+        metadata_detail::decodeCTypeCatalogAndDependencies(metadata.cppCRecordCatalog, metadata.formatMinor,
+            records, enums, dependencies, error) &&
+        std::any_of(dependencies.aliases.begin(), dependencies.aliases.end(),
+            [&](const auto& alias) { return alias.declaration.name == argv[3]; });
+    if (!found) std::cerr << "template alias inspection: " << error << '\n';
+    return expect(found, "real NSMETA carries the requested C template alias") ? 0 : 1;
+}
+
 int inspectCConstants(char** argv)
 {
     const std::string forbidden = argv[3];
@@ -2327,6 +2346,7 @@ int main(int argc, char** argv)
         return runTypedefMatrix(argv[2], argv[3], argv[4]);
     }
     if (argc == 5 && std::string_view(argv[1]) == "--inspect-c-constants") return inspectCConstants(argv);
+    if (argc == 4 && std::string_view(argv[1]) == "--inspect-template-alias") return inspectTemplateAlias(argv);
     if (argc >= 3 && std::string_view(argv[1]) == "--catalogue-version-controls")
     {
         return runCatalogueVersionControls(argc, argv);

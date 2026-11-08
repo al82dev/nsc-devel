@@ -1,0 +1,7 @@
+namespace AliasFixture
+{
+    public class Bridge
+    {
+        public static AliasInt Value<T>(T value) { return 42; }
+    }
+}

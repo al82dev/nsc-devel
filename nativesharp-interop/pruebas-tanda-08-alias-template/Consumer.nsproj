@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>AliasConsumer</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+    <LibraryReference Include="AliasProducer.lib" />
+  </ItemGroup>
+</Project>
