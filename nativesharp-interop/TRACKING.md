@@ -882,6 +882,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     local, enum, struct y callback. Una función `const CMatrix*` sigue sin
     importarse y tiene prueba separada. [Evidencia](registro-commits/proyecto-typedef-c.md).
 - [ ] T08-006. Mapear los tipos enteros C con su tamaño y signo efectivos.
+  - Las funciones C libres que reciben o retornan `_Bool` llevan `zeroext` en
+    declaraciones y llamadas LLVM. IR contrastado con Clang y ejecución O0–O3;
+    métodos C++, llamadas indirectas y callbacks no quedan acreditados por esa
+    muestra. [Resultado](registro-commits/t08-bool-abi-c-implementacion.md).
   - Las globales C _Bool no volátiles escalares y de arreglo usan byte en
     declaraciones y accesos LLVM. Pasaron lectura y escritura cruzadas O0–O3,
     regresiones y controles de identidad/restauración de caché. Los punteros
