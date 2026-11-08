@@ -5536,3 +5536,10 @@ fixture. No modificar el compilador en este control; NSLink, LLVM/Clang y C:
 permanecen protegidos. Un desacuerdo mantiene abierta la tanda y orienta una
 corrección causal posterior; no constituye validación de la tanda completa.
 
+En la aritmética del alias C volátil, conservar únicamente la alineación común
+entre el puntero de entrada y el paso de un escalar de tamaño conocido; para
+tipos desconocidos y punteros nativos se mantiene la garantía mínima. Archivos:
+`CppFlexiblePointerAlignment.h`, `OperatorExpressionAnalyzer.cpp`, su control
+unitario y registro. La corrección no habilita el modo aún protegido; se
+compilará y validará de forma agrupada con el resto del contrato.
+

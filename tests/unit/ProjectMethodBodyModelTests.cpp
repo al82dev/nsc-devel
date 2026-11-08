@@ -1780,6 +1780,14 @@ void testDeterministicCallableWaves(TestContext& tests, const std::filesystem::p
 void testCppFlexiblePointerAlignment(TestContext& tests)
 {
     using nativesharp::frontend::method_body_detail::cppFlexiblePointerKnownAlignment;
+    using nativesharp::frontend::method_body_detail::cppVolatilePointerArithmeticAlignment;
+    tests.expect(cppVolatilePointerArithmeticAlignment(true, 8, "builtin:int") == 4 &&
+        cppVolatilePointerArithmeticAlignment(true, 2, "builtin:int") == 2,
+        "C volatile pointer arithmetic preserves only alignment common to source and stride");
+    tests.expect(cppVolatilePointerArithmeticAlignment(false, 8, "builtin:int") == 1 &&
+        cppVolatilePointerArithmeticAlignment(true, 8, "type:unknown") == 1 &&
+        cppVolatilePointerArithmeticAlignment(true, 0, "builtin:int") == 1,
+        "native pointers and unknown C strides retain conservative alignment");
     tests.expect(cppFlexiblePointerKnownAlignment(true, 8, 4, 4) == 4,
         "aligned receiver and field preserve the proven field alignment");
     tests.expect(cppFlexiblePointerKnownAlignment(true, 1, 4, 4) == 1,

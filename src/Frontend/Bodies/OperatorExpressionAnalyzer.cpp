@@ -7,6 +7,7 @@
 
 
 #include "MethodBodyInternals.h"
+#include "CppFlexiblePointerAlignment.h"
 #include "../Internal/Stage37ConstantValue.h"
 
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
@@ -851,10 +852,10 @@ bool ProjectMethodBodyModel::analyzePointerArithmetic(
         result.cppVolatilePointeeContract = sourcePointer.cppVolatilePointeeContract;
         result.pointerNullable = sourcePointer.pointerNullable;
         result.pointerHasProvenance = sourcePointer.pointerHasProvenance;
-        // An arbitrary element offset preserves provenance and address space, but only
-        // byte alignment is guaranteed without proving the offset is a multiple of the
-        // pointee alignment.
-        result.pointerKnownAlignment = 1;
+        // An element offset is a multiple of the element stride. Keep only the
+        // alignment proven by both the source and that stride for C volatile aliases.
+        result.pointerKnownAlignment = method_body_detail::cppVolatilePointerArithmeticAlignment(
+            sourcePointer.cppVolatilePointeeContract, sourcePointer.pointerKnownAlignment, element);
         result.pointerAddressSpace = sourcePointer.pointerAddressSpace;
         result.onePastEndPointer = sourcePointer.onePastEndPointer;
     }
