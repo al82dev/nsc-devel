@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-003: objetos C generados y ThinLTO
+
+Se permite ajustar `ProjectOopObjectBundle`, `ProjectOopObjectGenerator.cpp` y
+`DriverArtifactGeneration.cpp` para conservar símbolos al añadir objetos nativos
+generados después del backend y evitar publicar un sidecar incompleto. El caso
+debe conservar la biblioteca nativa para el consumidor hasta implementar el
+transporte completo de objetos en sidecars. NSLink, LLVM/Clang y C: protegidos.
+
 ## T08-002: sombras locales en plantillas públicas
 
 Una plantilla declara variables locales que sombrean una global y una función

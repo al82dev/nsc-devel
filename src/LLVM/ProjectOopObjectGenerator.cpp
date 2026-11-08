@@ -1204,8 +1204,8 @@ bool ProjectOopObjectBundle::appendGeneratedObjects(std::size_t count,
 {
     if (!emit || temporaryDirectory_.empty() || !temporaryDirectory_.is_absolute())
     { error = "generated objects require an owned temporary directory and emitter"; return false; }
-    if (thinLtoSummaryCount_ != 0 || !thinLtoUnitBitcode_.empty() || thinLtoInternalized_)
-    { error = "generated native objects are not yet supported in ThinLTO bundles"; return false; }
+    if (thinLtoInternalized_)
+    { error = "generated native objects require ThinLTO without internalization"; return false; }
     if (count == 0) { error.clear(); return true; }
     std::filesystem::path group;
     std::error_code filesystemError;
@@ -1230,8 +1230,14 @@ bool ProjectOopObjectBundle::appendGeneratedObjects(std::size_t count,
         { error = "generated object is missing or not a regular file"; return false; }
     }
     objectFiles_.insert(objectFiles_.end(), paths.begin(), paths.end());
+    hasGeneratedNativeObjects_ = true;
     error.clear();
     return true;
+}
+
+bool ProjectOopObjectBundle::hasGeneratedNativeObjects() const noexcept
+{
+    return hasGeneratedNativeObjects_;
 }
 
 const std::string& ProjectOopObjectBundle::combinedLlvmText() const noexcept

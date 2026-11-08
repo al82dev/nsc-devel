@@ -215,6 +215,10 @@ std::unique_ptr<llvm_backend::ProjectOopObjectBundle> generateProjectObjects(
     configureObjectGeneratorProgress(objectGenerator);
     objectGenerator.setThinLtoUnitBitcodeCapture(captureThinLtoUnits);
     objectGenerator.setThinLtoLibraryUnits(std::move(thinLtoLibraries));
+    // Native objects emitted from Clang sessions are appended after ThinLTO.
+    // Their undefined references cannot be scanned before the backend runs,
+    // so retain all externally visible definitions for mixed compilations.
+    if (!compilation.cppProjectSessions().empty()) thinLtoPreservedSymbols.reset();
     objectGenerator.setThinLtoPreservedSymbols(std::move(thinLtoPreservedSymbols));
     std::unique_ptr<llvm_backend::ProjectOopObjectBundle> objectBundle =
         measureDriverPhase("llvm-object-generation",
@@ -794,7 +798,11 @@ bool publishStaticLibraryArtifact(std::string_view outputPath, const frontend::P
         return false;
     }
     publishPrecompiledSnapshot(compilation, publication.metadataStage);
-    if (!objectBundle.thinLtoUnitBitcode().empty())
+    // A sidecar contains bitcode only. Publishing it for a bundle with native
+    // generated objects would make a consumer replace the archive and lose
+    // those objects. Keep the complete native archive until sidecars can carry
+    // them explicitly.
+    if (!objectBundle.thinLtoUnitBitcode().empty() && !objectBundle.hasGeneratedNativeObjects())
     {
         // The sidecar binds the staged .lib and .nsmeta, so it is written after both (item 48).
         // El sidecar liga la .lib y la .nsmeta en staging, asi que se escribe despues de ambas.
