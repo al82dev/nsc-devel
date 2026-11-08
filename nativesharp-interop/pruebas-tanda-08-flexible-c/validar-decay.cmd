@@ -17,6 +17,10 @@ for %%F in (QualifiedDecay.ns QualifiedDecay.nsproj DecayDiscardConst.ns DecayDi
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 1
 )
+for %%F in (DecayVarConstWrite.ns DecayVarConstWrite.nsproj DecayVarPacked.ns DecayVarPacked.nsproj) do (
+  copy /y "%~dp0%%F" "%DEST%\%%F" >nul
+  if errorlevel 1 exit /b 1
+)
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 "%DEST%\Api.c" -o "%DEST%\api.obj"
 if errorlevel 1 exit /b 1
 llvm-lib.exe /nologo /out:"%DEST%\api.lib" "%DEST%\api.obj"
@@ -75,6 +79,15 @@ if not errorlevel 1 exit /b 1
 findstr /l /c:"cannot initialize local" "%DEST%\packed-decay.log" >nul
 if errorlevel 1 exit /b 1
 echo Conversion flexible implicita subalineada: rechazo confirmado.
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\DecayVarPacked.nsproj" > "%DEST%\var-packed.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /l /c:"cannot infer a pointer from this C flexible array member" "%DEST%\var-packed.log" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\DecayVarConstWrite.nsproj" > "%DEST%\var-const.log" 2>&1
+if not errorlevel 1 exit /b 1
+findstr /l /c:"left side of assignment is not assignable" "%DEST%\var-const.log" >nul
+if errorlevel 1 exit /b 1
+echo Inferencia flexible: rechazos const y subalineado confirmados.
 for %%P in (DecayDiscardConst DecayDiscardVolatile) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --check-project-method-bodies "%DEST%\%%P.nsproj" > "%DEST%\%%P.log" 2>&1
   if not errorlevel 1 exit /b 1
