@@ -556,10 +556,11 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 - [ ] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
   - La opción ThinLTO con funciones C `static inline` pasó en O0–O3 tanto
     directamente como con dos productores precompilados. En O0 NSC usa código
-    normal; en O1–O3 ThinLTO opera dentro de
-    cada compilación; el consumidor conserva las bibliotecas nativas completas
-    sin sidecars incompletos. La optimización entre bibliotecas con objetos C
-    generados sigue pendiente. [Resultado](registro-commits/t08-inline-c-thinlto-validacion.md).
+    normal; en O1–O3 ThinLTO consume bitcode entre bibliotecas. Los sidecars v3
+    transportan los objetos C generados y el
+    consumidor usó ambos sidecars en O1–O3 sin perder el estado independiente.
+    Se conservan todas las definiciones si hay objetos nativos. Faltan otras
+    referencias y controles de corrupción en integración. [Resultado](registro-commits/t08-inline-thinlto-sidecar-v3-validacion.md).
     Un objeto inline C también llamó a un símbolo `export extern C` de
     NativeSharp en O0–O3; en O1–O3 se comprobó el índice ThinLTO.
     [Resultado](registro-commits/t08-inline-thinlto-simbolo-validacion.md).
