@@ -14,10 +14,18 @@ void ProjectOopHirModel::setCppConsumerVolatileModes(
 std::optional<compilation::CppConsumerVolatileMode>
 ProjectOopHirModel::cppConsumerVolatileModeForFile(FileId file) const noexcept
 {
+    if (!file.isValid()) return std::nullopt;
     const auto* source = lookupSource_ == nullptr ? this : lookupSource_;
     const auto found = source->cppConsumerVolatileModes_.find(file.value());
     if (found == source->cppConsumerVolatileModes_.end()) return std::nullopt;
     return found->second;
+}
+
+std::optional<compilation::CppConsumerVolatileMode>
+ProjectOopHirModel::cppConsumerVolatileModeForSyntax(const ast::AstNode* syntax) const noexcept
+{
+    if (!syntax || !syntax->range().isValid()) return std::nullopt;
+    return cppConsumerVolatileModeForFile(syntax->range().begin().fileId());
 }
 
 const MethodNameBinding* ProjectOopHirModel::nameBinding(const ast::AstNode* syntax) const noexcept

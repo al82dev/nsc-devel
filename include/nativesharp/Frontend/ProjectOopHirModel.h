@@ -93,6 +93,8 @@ public:
     void setCppConsumerVolatileModes(
         std::unordered_map<std::uint32_t, compilation::CppConsumerVolatileMode> modes);
     std::optional<compilation::CppConsumerVolatileMode> cppConsumerVolatileModeForFile(FileId file) const noexcept;
+    std::optional<compilation::CppConsumerVolatileMode> cppConsumerVolatileModeForSyntax(
+        const ast::AstNode* syntax) const noexcept;
 
     bool build(
         const ProjectNameLookup& nameLookup,
