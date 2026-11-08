@@ -1,8 +1,25 @@
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
+
+#include <utility>
 #include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 
 namespace nativesharp::frontend
 {
+void ProjectOopHirModel::setCppConsumerVolatileModes(
+    std::unordered_map<std::uint32_t, compilation::CppConsumerVolatileMode> modes)
+{
+    cppConsumerVolatileModes_ = std::move(modes);
+}
+
+std::optional<compilation::CppConsumerVolatileMode>
+ProjectOopHirModel::cppConsumerVolatileModeForFile(FileId file) const noexcept
+{
+    const auto* source = lookupSource_ == nullptr ? this : lookupSource_;
+    const auto found = source->cppConsumerVolatileModes_.find(file.value());
+    if (found == source->cppConsumerVolatileModes_.end()) return std::nullopt;
+    return found->second;
+}
+
 const MethodNameBinding* ProjectOopHirModel::nameBinding(const ast::AstNode* syntax) const noexcept
 {
     const auto& index = lookupSource_ == nullptr ? nameBindingBySyntax_ : lookupSource_->nameBindingBySyntax_;

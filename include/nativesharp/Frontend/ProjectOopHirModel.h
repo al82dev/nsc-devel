@@ -1,5 +1,8 @@
 #pragma once
 
+#include "nativesharp/Compilation/CppConsumerVolatileMode.h"
+#include "nativesharp/Basic/FileId.h"
+
 #include "nativesharp/Frontend/InliningPolicy.h"
 
 #include "nativesharp/AST/AstNode.h"
@@ -86,6 +89,10 @@ public:
     ProjectOopHirModel() = default;
     explicit ProjectOopHirModel(ProjectCompilationIndexes& indexes) noexcept;
     ~ProjectOopHirModel();
+
+    void setCppConsumerVolatileModes(
+        std::unordered_map<std::uint32_t, compilation::CppConsumerVolatileMode> modes);
+    std::optional<compilation::CppConsumerVolatileMode> cppConsumerVolatileModeForFile(FileId file) const noexcept;
 
     bool build(
         const ProjectNameLookup& nameLookup,
@@ -4381,6 +4388,7 @@ private:
     const ProjectGenericConstraintModel* genericConstraintModel_ = nullptr;
     const ProjectMetaprogrammingModel* metaprogrammingModel_ = nullptr;
     const ProjectOopHirModel* lookupSource_ = nullptr;
+    std::unordered_map<std::uint32_t, compilation::CppConsumerVolatileMode> cppConsumerVolatileModes_;
     ProjectCompilationIndexes* indexes_ = nullptr;
     driver::CompilationWorkerPool* workerPool_ = nullptr;
     std::vector<ProjectOopHirFunction> functions_;

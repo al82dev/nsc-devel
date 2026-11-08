@@ -1688,6 +1688,15 @@ bool ProjectCompilation::compileProjectOopHir(
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "oop-hir");
     oopHirModel_ = std::make_unique<ProjectOopHirModel>(lifetime_->indexes());
+    std::unordered_map<std::uint32_t, compilation::CppConsumerVolatileMode> cppConsumerModes;
+    for (const auto& unit : units_)
+    {
+        if (!unit || !unit->fileId().isValid() || unit->projectOrdinal() >= projectGraph_->projects().size())
+            continue;
+        const auto mode = projectGraph_->projects()[unit->projectOrdinal()].cppConsumerVolatileMode();
+        if (mode) cppConsumerModes.emplace(unit->fileId().value(), *mode);
+    }
+    oopHirModel_->setCppConsumerVolatileModes(std::move(cppConsumerModes));
     if (oopHirModel_->build(
             *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
             *constructionModel_, *objectLayoutModel_, loadError, genericConstraintModel_.get(),
