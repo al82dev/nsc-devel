@@ -31,17 +31,19 @@ for %%O in (0 1 2 3) do (
   echo stale> "%DEST%\CInlineProducer.nsthinlto"
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\Producer.nsproj" -O%%O -flto=thin --no-artifact-cache -o "%DEST%\CInlineProducer.lib" > "%DEST%\producer-O%%O.log" 2>&1
   if errorlevel 1 exit /b 1
-  if exist "%DEST%\CInlineProducer.nsthinlto" exit /b 1
+  if %%O==0 if exist "%DEST%\CInlineProducer.nsthinlto" exit /b 1
+  if not %%O==0 if not exist "%DEST%\CInlineProducer.nsthinlto" exit /b 1
   echo stale> "%DEST%\CInlineProducerSecond.nsthinlto"
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\ProducerSecond.nsproj" -O%%O -flto=thin --no-artifact-cache -o "%DEST%\CInlineProducerSecond.lib" > "%DEST%\producer2-O%%O.log" 2>&1
   if errorlevel 1 exit /b 1
-  if exist "%DEST%\CInlineProducerSecond.nsthinlto" exit /b 1
+  if %%O==0 if exist "%DEST%\CInlineProducerSecond.nsthinlto" exit /b 1
+  if not %%O==0 if not exist "%DEST%\CInlineProducerSecond.nsthinlto" exit /b 1
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Consumer.nsproj" -O%%O -flto=thin --no-artifact-cache -o "%DEST%\consumer-O%%O.exe" > "%DEST%\consumer-O%%O.log" 2>&1
   if errorlevel 1 exit /b 1
   "%DEST%\consumer-O%%O.exe"
   if errorlevel 1 exit /b 1
   if not %%O==0 (
-    findstr /l /c:"thinlto-libraries: 0" "%DEST%\consumer-O%%O.log" >nul
+    findstr /l /c:"thinlto-libraries: 2" "%DEST%\consumer-O%%O.log" >nul
     if errorlevel 1 exit /b 1
   )
   echo ThinLTO inline C y bibliotecas precompiladas O%%O: correcto.
