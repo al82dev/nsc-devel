@@ -47,6 +47,8 @@ def main():
                 assert result.returncode == 0, 'sanitized build failed'
                 packaged = folder / runtime.name
                 assert packaged.is_file() and hashlib.sha256(packaged.read_bytes()).digest() == hashlib.sha256(runtime.read_bytes()).digest()
+                result = run(base + flags, env, folder)
+                assert result.returncode == 0, 'rebuilding an existing sanitized output failed'
                 result = run([exe], env, folder)
                 if case == 'safe':
                     assert result.returncode == 42 and 'ERROR: AddressSanitizer' not in result.stdout
@@ -58,11 +60,14 @@ def main():
                     assert run([plain], env, folder).returncode == 42
                 else:
                     assert result.returncode != 0 and 'dynamic-stack-buffer-overflow' in result.stdout
-                for bad_flag in ('-flto=thin', '--incremental-link', '-g'):
+                for bad_flag in ('-flto=thin', '--incremental-link', '-g', '--artifact-cache=' + str(folder / 'cache')):
                     rejected = run(base + flags + [bad_flag], env, folder)
                     assert rejected.returncode != 0 and '--sanitize-address' in rejected.stdout
                 missing = run(base + ['--sanitize-address'], env, folder)
                 assert missing.returncode != 0 and '--asan-clang' in missing.stdout
+                missing_runtime = run(base + ['--sanitize-address', '--asan-clang=' + str(clang),
+                                              '--asan-runtime=' + str(folder / 'missing.dll')], env, folder)
+                assert missing_runtime.returncode != 0 and '--asan-runtime' in missing_runtime.stdout
     return 0
 
 
