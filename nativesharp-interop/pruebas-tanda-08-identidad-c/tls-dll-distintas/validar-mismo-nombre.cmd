@@ -53,6 +53,8 @@ pushd A:\ || (popd & exit /b 1)
 if errorlevel 1 (echo ERROR: control C de DLL renombradas fallo. & popd & popd & exit /b 1)
 popd
 echo Control C de DLL renombradas: correcto.
+call "%~dp0diagnosticar-import-directo.cmd"
+if errorlevel 1 (popd & exit /b 1)
 del TlsApi.h
 if not exist salida-mismo-nombre mkdir salida-mismo-nombre
 if exist salida-mismo-nombre\ConsumerSameDynamic.exe del salida-mismo-nombre\ConsumerSameDynamic.exe
