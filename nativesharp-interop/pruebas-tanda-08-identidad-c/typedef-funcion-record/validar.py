@@ -12,8 +12,10 @@ env["NSC_LLVM_LIB"] = r"A:\al82dev-clang\bin\llvm-lib.exe"
 env["NSC_WINDOWS_RUNTIME_LIBRARY"] = r"A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
 nsc = r"A:\nsc-interop-build\tanda1-ON\bin\nsc.exe"
 opt = sys.argv[1] if len(sys.argv) > 1 else "0"
-incompatible = "--incompatible" in sys.argv
-expected_rejection = incompatible or "--expect-current" in sys.argv
+incompatible = "--incompatible" in sys.argv or "--same-size-incompatible" in sys.argv
+same_size = "--same-size-incompatible" in sys.argv
+changed_header = "--header-changed" in sys.argv
+expected_rejection = incompatible or changed_header
 
 def run(args, folder):
     result = subprocess.run(args, cwd=folder, env=env, capture_output=True, text=True, errors="replace")
@@ -25,14 +27,14 @@ def run(args, folder):
 for index in (1, 2):
     folder = root / str(index)
     folder.mkdir(exist_ok=True)
-    field = "long long" if incompatible and index == 2 else "int"
+    field = ("float" if same_size else "long long") if incompatible and index == 2 else "int"
     (folder / "api.h").write_text(
         f"typedef struct CRecord {{ {field} value; }} CRecord;\n"
         "typedef int (*Callback)(CRecord *, ...);\n", encoding="utf-8")
     (folder / "Producer.ns").write_text(f"""
 namespace RecordAlias{index} {{
     public class Bridge {{
-        public static int Test<T>(T unused) {{ Callback callback = null; return 0; }}
+        public static int Test<T>(T unused) {{ Callback callback; return 0; }}
     }}
 }}
 """, encoding="utf-8")
@@ -42,6 +44,12 @@ namespace RecordAlias{index} {{
 </ItemGroup></Project>""", encoding="utf-8")
     run([nsc, "--cpp-clang-root=A:\\al82dev-clang", "--emit-project-oop-lib", "Producer.nsproj",
          "-O" + opt, "--no-artifact-cache", "-o", f"RecordAlias{index}.lib"], folder)
+
+if "--headers-hidden" in sys.argv:
+    for index in (1, 2):
+        (root / str(index) / "api.h").unlink()
+if changed_header:
+    (root / "1" / "api.h").write_text("/* changed after publication */\n", encoding="utf-8")
 
 (root / "Consumer.ns").write_text("""
 int Main() {
@@ -63,7 +71,7 @@ if expected_rejection:
     if result.returncode == 0 or exe.exists() or "conflicting C/C++ type alias 'Callback'" not in log:
         print(log)
         sys.exit("ERROR: el resultado no coincide con el conflicto esperado")
-    print("Conflicto reproducido; records " + ("incompatibles" if incompatible else "equivalentes"))
+    print("Conflicto reproducido; " + ("records incompatibles" if incompatible else "encabezado modificado"))
     sys.exit(0)
 if result.returncode:
     print(result.stdout + result.stderr)

@@ -1350,6 +1350,36 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
     if (const auto* failure = std::get_if<CppRecordStructuralComparisonFailure>(&refined))
     { error = failure->message; return false; }
     const auto& groups = std::get<CppRecordGroups>(refined).groups;
+    // A public generic body may mention only a typedef whose function signature
+    // contains a record. The callable metadata above does not see that type:
+    // seed its C record closure from the captured alias before publication.
+    for (const auto& alias : dependencies.aliases)
+    {
+        const auto owner = std::find_if(graph->projects().begin(), graph->projects().end(),
+            [&](const auto& project) { return project.moduleName() == alias.moduleName; });
+        if (owner == graph->projects().end()) continue;
+        const auto project = static_cast<std::size_t>(owner - graph->projects().begin());
+        const auto visitAliasType = [&](const auto& self, const CppType& type, unsigned depth) -> bool {
+            if (depth > 64) { error = "C alias dependency exceeds type depth"; return false; }
+            if (type.kind == CppTypeKind::Record && type.recordIdentity &&
+                type.recordIdentity->clangUsr && !type.recordIdentity->clangUsr->empty())
+            {
+                for (const auto& entry : inventory)
+                    if (entry.projectOrdinal == project && !entry.declaration.isCxx && entry.identity &&
+                        entry.declaration.clangUsr == type.recordIdentity->clangUsr)
+                        seeds[project].insert(entry.identity->key());
+            }
+            if (type.element && !self(self, *type.element, depth + 1)) return false;
+            if (type.function)
+            {
+                if (!self(self, type.function->returnType, depth + 1)) return false;
+                for (const auto& parameter : type.function->parameterTypes)
+                    if (!self(self, parameter, depth + 1)) return false;
+            }
+            return true;
+        };
+        if (!visitAliasType(visitAliasType, alias.declaration.underlyingType, 0)) return false;
+    }
     std::vector<CppCRecordSnapshot> records;
     for (const auto& [project, identities] : seeds)
     {

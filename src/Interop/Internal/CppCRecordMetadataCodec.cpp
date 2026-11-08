@@ -1503,7 +1503,8 @@ bool decodeVersionedCTypeCatalog(std::span<const std::uint8_t> bytes,
 bool compareCRecordClosureEvidence(std::span<const CppCRecordSnapshot> leftRecords,
     std::span<const CppCEnumSnapshot> leftEnums, std::string_view leftRoot,
     std::span<const CppCRecordSnapshot> rightRecords, std::span<const CppCEnumSnapshot> rightEnums,
-    std::string_view rightRoot, CRecordContractComparison& result, std::string& error)
+    std::string_view rightRoot, CRecordContractComparison& result, std::string& error,
+    bool allowBothSourcesMissing)
 {
     std::vector<std::uint8_t> checked;
     if (!encodeCTypeCatalog(leftRecords, leftEnums, checked, error) ||
@@ -1548,10 +1549,11 @@ bool compareCRecordClosureEvidence(std::span<const CppCRecordSnapshot> leftRecor
             std::error_code ec;
             const bool bothPresent = leftState == 1 && rightState == 1;
             const bool oneMissing = (leftState == 0 && rightState == 1) || (leftState == 1 && rightState == 0);
+            const bool bothMissing = allowBothSourcesMissing && leftState == 0 && rightState == 0;
             const bool differentFiles = bothPresent
                 ? !std::filesystem::equivalent(a->sourceProvenance->sourcePath, b->sourceProvenance->sourcePath, ec) && !ec
-                : oneMissing && a->sourceProvenance->sourcePath != b->sourceProvenance->sourcePath;
-            if (differentFiles && (bothPresent || oneMissing) &&
+                : (oneMissing || bothMissing) && a->sourceProvenance->sourcePath != b->sourceProvenance->sourcePath;
+            if (differentFiles && (bothPresent || oneMissing || bothMissing) &&
                 !compareCRecordContracts(*a, *b, verdict, error)) return false;
         }
         if (verdict != CRecordContractComparison::Matching) break;

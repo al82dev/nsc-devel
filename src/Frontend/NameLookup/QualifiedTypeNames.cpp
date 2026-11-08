@@ -279,6 +279,10 @@ bool ProjectNameLookup::expandCppTypeAlias(
                 const auto compatibleFunctionAlias = [&]() {
                     if (!selected || !selected->declaration.clangUsr || !alias.declaration.clangUsr ||
                         selected->declaration.clangUsr->empty() || alias.declaration.clangUsr->empty()) return false;
+                    if (std::find(selected->equivalentRecordFunctionAliases.begin(),
+                                  selected->equivalentRecordFunctionAliases.end(),
+                                  std::make_pair(alias.projectOrdinal, alias.referenceIndex)) !=
+                        selected->equivalentRecordFunctionAliases.end()) return true;
                     const auto a = cppAliasFunctionType(selected->declaration.underlyingType);
                     const auto b = cppAliasFunctionType(alias.declaration.underlyingType);
                     if (!a || !b || a->callingConvention != b->callingConvention ||
@@ -343,8 +347,13 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     if (knownEnumUsr && knownEnumUsr != enumIdentity->clangUsr) conflictingEnumUsr = true;
                     else knownEnumUsr = enumIdentity->clangUsr;
                 }
-                selected = &alias;
-                selectedName = qualified;
+                // Keep the current producer's spelling when equivalent aliases
+                // from several precompiled modules are visible in its template.
+                if (!selected || selected->projectOrdinal != owner || alias.projectOrdinal == owner)
+                {
+                    selected = &alias;
+                    selectedName = qualified;
+                }
             }
         }
         if (!selected)

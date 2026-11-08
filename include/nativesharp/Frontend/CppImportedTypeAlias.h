@@ -5,6 +5,8 @@
 #include <cstddef>
 #include <filesystem>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace nativesharp::frontend
 {
@@ -17,5 +19,7 @@ struct CppImportedTypeAlias
     std::size_t referenceIndex;
     std::string targetTriple;
     interop::CppTypeAliasDeclaration declaration;
+    // Pairs established from complete precompiled C record closures in this compilation.
+    std::vector<std::pair<std::size_t, std::size_t>> equivalentRecordFunctionAliases;
 };
 }

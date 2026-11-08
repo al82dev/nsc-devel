@@ -33,6 +33,7 @@ for %%T in (global-puntero-const flotante-c inline-c prototipos-c typedef-c bitf
 for %%T in (
   pruebas-tanda-08-incompleto\validar-opaco.cmd
   pruebas-tanda-08-identidad-c\validar.cmd
+  pruebas-tanda-08-identidad-c\typedef-funcion-record\validar.cmd
   pruebas-tanda-08-dependencias-template\validar.cmd
   pruebas-tanda-08-volatile-campos-c\validar.cmd
   pruebas-tanda-08-anonimos-c\validar.cmd

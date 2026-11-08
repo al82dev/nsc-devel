@@ -136,7 +136,8 @@ bool compareCEnumSourceEvidence(const CppCEnumSnapshot& left, const CppCEnumSnap
 bool compareCRecordClosureEvidence(std::span<const CppCRecordSnapshot> leftRecords,
     std::span<const CppCEnumSnapshot> leftEnums, std::string_view leftRoot,
     std::span<const CppCRecordSnapshot> rightRecords, std::span<const CppCEnumSnapshot> rightEnums,
-    std::string_view rightRoot, CRecordContractComparison& result, std::string& error);
+    std::string_view rightRoot, CRecordContractComparison& result, std::string& error,
+    bool allowBothSourcesMissing = false);
 bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
                         std::span<const CppCEnumSnapshot> enums,
                         std::vector<std::uint8_t>& output, std::string& error);

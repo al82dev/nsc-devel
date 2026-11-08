@@ -43,7 +43,7 @@ bool reconstructCppPrecompiledCAlias(const metadata_detail::CDependencyAliasSnap
         return false;
     }
     frontend::CppImportedTypeAlias value{projectOrdinal, graph.projects()[projectOrdinal].projectFile(),
-        referenceIndex, std::string(targetTriple), alias.declaration};
+        referenceIndex, std::string(targetTriple), alias.declaration, {}};
     value.declaration.location.reset();
     output = std::move(value);
     error.clear();
@@ -134,7 +134,7 @@ bool captureCppTemplateAliasCandidates(const compilation::ProjectGraph& graph,
             if (index >= inventory.size()) { error = "C alias candidate index is invalid"; return false; }
             const auto& entry = inventory[index];
             pending.push_back({entry.projectOrdinal, entry.projectFile, entry.referenceIndex,
-                               entry.targetTriple, entry.declaration});
+                               entry.targetTriple, entry.declaration, {}});
         }
         for (const auto& alias : pending)
         {
@@ -1292,7 +1292,7 @@ bool provideCppTypeAliases(const compilation::ProjectGraph& graph,
     std::vector<frontend::CppImportedTypeAlias> result;
     for (auto& entry : std::get<std::vector<CppSemanticTypeAliasEntry>>(inventory))
         result.push_back({entry.projectOrdinal, std::move(entry.projectFile), entry.referenceIndex,
-                          std::move(entry.targetTriple), std::move(entry.declaration)});
+                          std::move(entry.targetTriple), std::move(entry.declaration), {}});
     output = std::move(result);
     error.clear();
     return true;
@@ -1311,6 +1311,8 @@ bool provideCppTypeAliasesWithPrecompiledCatalogs(const compilation::ProjectGrap
         if (!owners.emplace(graph.projects()[i].moduleName(), i).second)
             ambiguous.insert(graph.projects()[i].moduleName());
     std::map<std::pair<std::size_t, std::string>, std::size_t> references;
+    std::vector<CppCRecordSnapshot> catalogRecords;
+    std::vector<CppCEnumSnapshot> catalogEnums;
     for (const auto& module : modules)
     {
         if (module.cppCTypeCatalog.empty()) continue;
@@ -1319,6 +1321,8 @@ bool provideCppTypeAliasesWithPrecompiledCatalogs(const compilation::ProjectGrap
         metadata_detail::CDependencyCatalog dependencies;
         if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
                 module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return false;
+        catalogRecords.insert(catalogRecords.end(), records.begin(), records.end());
+        catalogEnums.insert(catalogEnums.end(), enums.begin(), enums.end());
         for (const auto& alias : dependencies.aliases)
         {
             const auto owner = owners.find(alias.moduleName);
@@ -1339,6 +1343,74 @@ bool provideCppTypeAliasesWithPrecompiledCatalogs(const compilation::ProjectGrap
             result.push_back(std::move(restored));
         }
     }
+    std::map<std::pair<std::string, std::string>, std::vector<std::size_t>> functionAliases;
+    for (std::size_t i = 0; i < result.size(); ++i)
+    {
+        const auto& alias = result[i];
+        const auto& type = alias.declaration.underlyingType;
+        if (type.kind == CppTypeKind::Pointer && type.element && type.element->kind == CppTypeKind::Function)
+            functionAliases[{alias.declaration.qualifiedName, alias.targetTriple}].push_back(i);
+    }
+    for (const auto& [key, indices] : functionAliases)
+        for (std::size_t leftIndex = 0; leftIndex < indices.size(); ++leftIndex)
+        for (std::size_t rightIndex = leftIndex + 1; rightIndex < indices.size(); ++rightIndex)
+        {
+            auto& a = result[indices[leftIndex]];
+            auto& b = result[indices[rightIndex]];
+            if (a.projectOrdinal == b.projectOrdinal || a.targetTriple != b.targetTriple ||
+                a.declaration.qualifiedName != b.declaration.qualifiedName ||
+                a.declaration.underlyingType.canonicalSpelling != b.declaration.underlyingType.canonicalSpelling ||
+                a.declaration.underlyingType.kind != CppTypeKind::Pointer ||
+                !a.declaration.underlyingType.element ||
+                a.declaration.underlyingType.element->kind != CppTypeKind::Function) continue;
+            bool comparedRecord = false;
+            const auto sameType = [&](const auto& self, const CppType& left, const CppType& right,
+                                      unsigned depth) -> bool {
+                if (depth > 64 || left.kind != right.kind || left.isConst != right.isConst ||
+                    left.isVolatile != right.isVolatile || left.isRestrict != right.isRestrict ||
+                    left.sizeBits != right.sizeBits || left.alignmentBits != right.alignmentBits ||
+                    left.canonicalSpelling != right.canonicalSpelling) return false;
+                if (left.kind == CppTypeKind::Record)
+                {
+                    if (!left.recordIdentity || !right.recordIdentity || !left.recordIdentity->clangUsr ||
+                        left.recordIdentity->clangUsr != right.recordIdentity->clangUsr) return false;
+                    const auto find = [&](std::size_t project, const auto& usr) {
+                        return std::find_if(catalogRecords.begin(), catalogRecords.end(), [&](const auto& record) {
+                            return record.moduleName == graph.projects()[project].moduleName() && record.clangUsr == usr;
+                        });
+                    };
+                    const auto l = find(a.projectOrdinal, left.recordIdentity->clangUsr);
+                    const auto r = find(b.projectOrdinal, right.recordIdentity->clangUsr);
+                    if (l == catalogRecords.end() || r == catalogRecords.end()) return false;
+                    metadata_detail::CRecordContractComparison verdict{};
+                    std::string comparisonError;
+                    if (!metadata_detail::compareCRecordClosureEvidence(catalogRecords, catalogEnums, l->identityKey,
+                            catalogRecords, catalogEnums, r->identityKey, verdict, comparisonError, true) ||
+                        verdict != metadata_detail::CRecordContractComparison::Matching) return false;
+                    comparedRecord = true;
+                }
+                else if (left.kind == CppTypeKind::Enumeration || left.kind == CppTypeKind::Unsupported)
+                    return false;
+                if (bool(left.element) != bool(right.element) || bool(left.function) != bool(right.function)) return false;
+                if (left.element && !self(self, *left.element, *right.element, depth + 1)) return false;
+                if (left.function)
+                {
+                    const auto& x = *left.function;
+                    const auto& y = *right.function;
+                    if (x.callingConvention != y.callingConvention || x.hasPrototype != y.hasPrototype ||
+                        x.variadic != y.variadic || x.parameterTypes.size() != y.parameterTypes.size() ||
+                        !self(self, x.returnType, y.returnType, depth + 1)) return false;
+                    for (std::size_t k = 0; k < x.parameterTypes.size(); ++k)
+                        if (!self(self, x.parameterTypes[k], y.parameterTypes[k], depth + 1)) return false;
+                }
+                return true;
+            };
+            if (sameType(sameType, a.declaration.underlyingType, b.declaration.underlyingType, 0) && comparedRecord)
+            {
+                a.equivalentRecordFunctionAliases.emplace_back(b.projectOrdinal, b.referenceIndex);
+                b.equivalentRecordFunctionAliases.emplace_back(a.projectOrdinal, a.referenceIndex);
+            }
+        }
     output = std::move(result);
     error.clear();
     return true;
