@@ -786,7 +786,10 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
              boolTarget->typeKey == "builtin:bool" && boolTarget->volatileAccess &&
              boolTarget->cppMicrosoftVolatileSemantics == std::optional<bool>{true} &&
              boolTarget->cppAtomicAlignmentBytes == std::optional<std::size_t>{1});
-        const bool cBool = cBoolGlobalArrayElement(boolTarget) ||
+        const bool boolPointer = node->typeKey == "builtin:bool" &&
+            (boolTarget->kind == frontend::ProjectOopMirNodeKind::RawElementAddress ||
+             boolTarget->typeKey == "builtin:bool*");
+        const bool cBool = boolPointer || cBoolGlobalArrayElement(boolTarget) ||
             (boolTarget->kind == frontend::ProjectOopMirNodeKind::NamespaceStateAddress &&
              boolTarget->cppCBoolStorage && boolTarget->typeKey == "builtin:bool");
         LLVMValueRef storedValue = (cBool || cVolatileBool)

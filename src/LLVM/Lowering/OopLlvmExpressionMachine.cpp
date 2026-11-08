@@ -1494,7 +1494,11 @@ bool OopLlvmImplementation::lowerExpressionFrame030PointerLoad(
         values.push_back(LLVMBuildICmp(builder_, LLVMIntNE, load, LLVMConstInt(storageType, 0, 0), "c.bool.value"));
         return true;
     }
-    LLVMTypeRef pointee = llvmType(current->typeKey, error);
+    // A bool pointer may refer either to NativeSharp storage or to a C _Bool.
+    // Both occupy one byte on this target; keep the expression value as i1,
+    // but read the whole byte and retain the low bit used by native i1 stores.
+    const bool byteBool = current->typeKey == "builtin:bool";
+    LLVMTypeRef pointee = byteBool ? LLVMInt8TypeInContext(context_) : llvmType(current->typeKey, error);
     if (pointee == nullptr) { values.push_back(nullptr); return true; }
     LLVMValueRef load = LLVMBuildLoad2(builder_, pointee, pointer, "pointer.load");
     if (const auto alignment = fieldArrayElementAlignment(current->children.front().get()))
@@ -1515,6 +1519,7 @@ bool OopLlvmImplementation::lowerExpressionFrame030PointerLoad(
         LLVMSetOrdering(load, LLVMAtomicOrderingAcquire);
         LLVMSetAlignment(load, static_cast<unsigned>(*alignment));
     }
+    if (byteBool) load = LLVMBuildTrunc(builder_, load, LLVMInt1TypeInContext(context_), "pointer.bool");
     values.push_back(load);
     return true;
 }
