@@ -1,0 +1,9 @@
+namespace NativeSharp.Core.Internal
+{
+    // Internal building block for a shared allocation. The compiler lowers this exact operation
+    // to the descriptor's object-only destruction entry; the caller retains and frees storage.
+    internal static class SharedStorage
+    {
+        public static void DestroyObject<T>(T target) where T : class { }
+    }
+}

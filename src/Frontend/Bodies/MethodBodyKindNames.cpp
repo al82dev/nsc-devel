@@ -310,6 +310,8 @@ const char* methodCoreOperationKindNamePart02(MethodCoreOperationKind kind) noex
             return "stack-allocation";
         case MethodCoreOperationKind::RawAllocation:
             return "raw-allocation";
+        case MethodCoreOperationKind::SharedDestroyObject:
+            return "shared-destroy-object";
         case MethodCoreOperationKind::PointerArithmetic:
             return "pointer-arithmetic";
         case MethodCoreOperationKind::ClockQueryCounter:

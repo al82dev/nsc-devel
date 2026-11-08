@@ -78,10 +78,21 @@ solo ensaya payloads de clase.
 Una fábrica genérica ordinaria `new T()` sí compiló y ejecutó con salida 42
 (`smart-pointer-generic-factory/results.json`). En cambio, una fábrica que
 retorna `owned T` desde `new (storage) T()` fue rechazada en O0 y O2
-(`smart-pointer-placement-factory/results.json`): la construcción placement
+(`smart-pointer-placement-factory/all-results.json`): la construcción placement
 posee el objeto pero toma prestado el almacenamiento. No se debe eliminar ese
 rechazo sin transportar de forma segura la distinción entre destrucción del
 objeto y liberación del bloque compartido.
+Una variante que retorna una referencia ordinaria al objeto placement sí
+ejecutó y leyó el valor en O0 y O2; no destruyó el objeto ni transfirió su
+ownership. Intentar adoptarla como `raii` fue rechazado en ambos niveles. Las
+tres variantes se conservan por separado en el mismo registro.
+`SharedStorage.DestroyObject<T>` es una operación interna para destruir el
+objeto por su descriptor dinámico sin liberar el almacenamiento: la prueba
+`nsc.sdk.shared-object-destroy` verifica O0 y O2, destructor derivado llamado a
+través de una referencia base, nulo y reutilización del almacenamiento; rechaza
+`string`, que carece del descriptor requerido. El llamador sigue siendo
+responsable de evitar destrucciones repetidas y liberar el bloque. Esta pieza
+no implementa todavía el bloque de control ni las familias públicas.
 El mecanismo actual de `new (allocator)` tampoco demuestra la asignación
 única: `installAllocatorDescriptorSidecar` reserva por separado 80 bytes para
 el descriptor y el contexto del allocator. La operación MIR `ObjectDestroy`

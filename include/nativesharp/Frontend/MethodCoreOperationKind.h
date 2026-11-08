@@ -139,6 +139,8 @@ enum class MethodCoreOperationKind
     // CC1 fase 4C -- `new T` escalar (no clase, no arreglo). Misma forma: `elementTypeKey` es T,
     // `resultTypeKey` es "T*", el tamano lo resuelve el MIR.
     RawAllocation,
+    // Internal shared-control-block operation: destroy a class object without freeing its storage.
+    SharedDestroyObject,
     // CC1 fase 4D -- `p + i`, `i + p`, `p - i` y `p - q`. `elementTypeKey` es el tipo APUNTADO, que
     // es lo que da el paso; `resultTypeKey` es "T*" para las tres primeras y "builtin:nint" para la
     // diferencia. La operacion concreta se deduce en el HIR del token del nodo de sintaxis, que ya

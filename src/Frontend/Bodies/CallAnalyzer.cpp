@@ -2294,6 +2294,25 @@ void ProjectMethodBodyModel::recognizeCoreAtomicOperations(
     recognizeCoreAtomicValueOperations(
         expression, declaringType, selectedMember,
         methodMemberOrdinal, scopeOrdinal, result, diagnostics);
+    if (declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Internal.SharedStorage" &&
+        (selectedMember.name == "DestroyObject" ||
+         (selectedMember.genericTemplateOrdinal.has_value() && selectedMember.name.starts_with("DestroyObject__g"))) &&
+        selectedMember.isStatic && selectedMember.declaredTypeKey == "builtin:void" &&
+        selectedMember.parameters.size() == 1)
+    {
+        const auto targetType = referenceTypeOrdinalForTypeKey(selectedMember.parameters[0].typeKey);
+        if (!targetType.has_value() || inheritanceModel_ == nullptr || !inheritanceModel_->isClass(*targetType))
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "shared object destruction requires a class with a NativeSharp object descriptor");
+            result.valid = false;
+            return;
+        }
+        coreBindings_.push_back(MethodCoreBinding{
+            MethodCoreOperationKind::SharedDestroyObject, expression, methodMemberOrdinal, scopeOrdinal,
+            "builtin:void", selectedMember.parameters[0].typeKey, false, std::nullopt, std::nullopt});
+    }
     // Item 307: static fences consume MemoryOrder during semantic analysis. The source
     // argument never becomes a runtime integer; HIR carries only the validated ABI value.
     if (declaringType.identity.fullyQualifiedName() == "NativeSharp.Core.Threading.AtomicFence" &&

@@ -232,6 +232,8 @@ bool ProjectOopHirModel::initializeStringCoreOperandCallFrame(
         return false;
     }
     call.node = makeNode(plan->hirKind, frame.syntax, frame.core->resultTypeKey);
+    if (frame.core->kind == MethodCoreOperationKind::SharedDestroyObject)
+        call.node->dynamicDestruction = true;
     call.appliesConversions = true;
     return true;
 }
