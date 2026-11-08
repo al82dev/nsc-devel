@@ -1161,7 +1161,8 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
                                   const std::filesystem::path& directory, const std::string& driver)
 {
     const std::string templateSource =
-        "namespace Published { public class Bridge { public static CIdInt Test<T>(T value) { return 0; } } }\n";
+        "namespace Published { public class Bridge { public static CIdInt Test<T>(T value) { return 0; } "
+        "public static int Call<T>(T value) { return cid_function(2); } } }\n";
     const auto project = writeProject(directory / "generic-publish", "CGenericPublish", templateSource);
     const auto header = std::filesystem::absolute(directory / "a.h");
     if (project.empty() || !writeText(project,
@@ -1188,12 +1189,22 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
     LibraryMetadata metadata;
     metadata.formatMinor = 46;
     for (const auto& record : compilation.genericModel()->templates())
-        if (record.name == "Test")
+        if (record.name == "Test" || record.name == "Call")
         {
             LibraryMetadataGenericTemplate item;
             item.canonicalKey = record.canonicalKey;
             metadata.genericTemplates.push_back(std::move(item));
         }
+    const auto functionsResult = collectCppSemanticFunctions(*compilation.projectGraph(), compilation.cppProjectSessions());
+    const auto* functions = std::get_if<std::vector<CppSemanticInventoryEntry>>(&functionsResult);
+    if (!expect(functions != nullptr, "real C function inventory is available")) return false;
+    const auto functionCandidates = selectCppPublishedTemplateFunctions(compilation, metadata, *functions);
+    std::vector<metadata_detail::CDependencyFunctionSnapshot> capturedFunctions;
+    if (!expect(captureCppTemplateFunctionCandidates(*compilation.projectGraph(), functionCandidates,
+            *functions, capturedFunctions, error) && capturedFunctions.size() == 1 &&
+            capturedFunctions.front().declaration.name == "cid_function" &&
+            capturedFunctions.front().linkSymbol == "cid_function",
+            "real public template captures the external C function candidate")) return false;
     std::vector<std::uint8_t> bytes;
     std::vector<CppCRecordSnapshot> records;
     std::vector<CppCEnumSnapshot> enums;

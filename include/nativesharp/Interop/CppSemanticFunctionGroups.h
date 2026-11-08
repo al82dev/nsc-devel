@@ -16,6 +16,7 @@ namespace nativesharp::frontend { struct CppFunctionDemand; class ProjectNameLoo
 namespace nativesharp::interop
 {
 struct LibraryMetadata;
+namespace metadata_detail { struct CDependencyFunctionSnapshot; }
 struct CppSemanticFunctionGroup
 {
     frontend::NamespaceFunctionSymbol symbol;
@@ -82,6 +83,12 @@ struct CppPublishedTemplateFunctionCandidates
 std::vector<CppPublishedTemplateFunctionCandidates> selectCppPublishedTemplateFunctions(
     const frontend::ProjectCompilation& compilation, const LibraryMetadata& metadata,
     std::span<const CppSemanticInventoryEntry> inventory);
+// Captures projected external C candidates, retaining their original reference.
+// Deferred conflicts and unprojected declarations remain outside this result.
+bool captureCppTemplateFunctionCandidates(const compilation::ProjectGraph& graph,
+    std::span<const CppPublishedTemplateFunctionCandidates> candidates,
+    std::span<const CppSemanticInventoryEntry> inventory,
+    std::vector<metadata_detail::CDependencyFunctionSnapshot>& output, std::string& error);
 
 // Returns candidate indices for enums appearing in functions selected by the supplied demands.
 // Unprojected and conflicting overloads are included because later resolution may need them.

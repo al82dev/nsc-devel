@@ -4,6 +4,7 @@
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
+#include "../Internal/CppCRecordMetadataCodec.h"
 
 #include <map>
 #include <algorithm>
@@ -301,6 +302,39 @@ std::vector<CppPublishedTemplateFunctionCandidates> selectCppPublishedTemplateFu
         result.push_back({input[original].templateKey, original, std::move(match)});
     }
     return result;
+}
+
+bool captureCppTemplateFunctionCandidates(const compilation::ProjectGraph& graph,
+    std::span<const CppPublishedTemplateFunctionCandidates> candidates,
+    std::span<const CppSemanticInventoryEntry> inventory,
+    std::vector<metadata_detail::CDependencyFunctionSnapshot>& output, std::string& error)
+{
+    std::vector<metadata_detail::CDependencyFunctionSnapshot> result;
+    std::set<std::tuple<std::size_t, std::size_t, std::string>> seen;
+    for (const auto& candidate : candidates)
+        for (const auto& group : candidate.selection.candidates.groups)
+            for (const auto index : group.inventoryIndices)
+            {
+                if (index >= inventory.size()) { error = "C function candidate index is invalid"; return false; }
+                const auto& entry = inventory[index];
+                if (entry.projectOrdinal >= graph.projects().size())
+                { error = "C function candidate has no project owner"; return false; }
+                const auto& project = graph.projects()[entry.projectOrdinal];
+                if (entry.referenceIndex >= project.cppLibraryReferences().size())
+                { error = "C function candidate has no source reference"; return false; }
+                if (project.cppLibraryReferences()[entry.referenceIndex].language != CppLanguageMode::C ||
+                    !entry.declaration.externalLinkage) continue;
+                const auto key = std::make_tuple(entry.projectOrdinal, entry.referenceIndex, group.symbol.mangledName);
+                if (!seen.insert(key).second) continue;
+                metadata_detail::CDependencyFunctionSnapshot snapshot;
+                const auto reference = "cpp-reference:" + std::to_string(entry.referenceIndex);
+                if (!metadata_detail::captureCDependencyFunction(inventory, group.symbol, entry.referenceIndex,
+                                                                   reference, snapshot, error)) return false;
+                result.push_back(std::move(snapshot));
+            }
+    output = std::move(result);
+    error.clear();
+    return true;
 }
 
 CppDeferredFunctionResult materializeCppDeferredFunctions(
