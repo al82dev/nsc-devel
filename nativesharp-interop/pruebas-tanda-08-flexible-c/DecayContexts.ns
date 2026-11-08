@@ -22,5 +22,17 @@ int Main()
     if (assigned[1] != 72) return 3;
     if (ReadFirst(value->data) != 41) return 4;
     if (First(value)[1] != 72) return 5;
+    double* doubles = flex_doubles()->values;
+    doubles[1] = 3.5;
+    if (flex_doubles_check(1, 3.5) == 0) return 6;
+    FlexItem* records = flex_records()->items;
+    records[1].b = 456;
+    if (flex_records_check(1, 456) == 0) return 7;
+    FlexMood* moods = flex_enums()->moods;
+    moods[1] = flex_happy();
+    if (flex_enums_check(1, flex_happy()) == 0) return 8;
+    bool* flags = flex_bools()->flags;
+    flags[1] = true;
+    if (flex_bools_check(1, true) == 0) return 9;
     return 0;
 }
