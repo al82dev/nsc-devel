@@ -1176,6 +1176,11 @@ bool OopLlvmImplementation::lowerExpressionFrame021ObjectDestroy(
     if (object == nullptr) { values.push_back(nullptr); return true; }
     if (!current->dynamicDestruction)
     {
+        if (!emitObjectOnlyValueDestruction(object, current->elementTypeKey, error))
+        {
+            values.push_back(nullptr);
+            return true;
+        }
         values.push_back(LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0));
         return true;
     }

@@ -748,6 +748,25 @@ LLVMValueRef OopLlvmImplementation::lowerPlacementConstruction(
         return storage;
     }
 
+bool OopLlvmImplementation::emitObjectOnlyValueDestruction(
+        LLVMValueRef address, std::string_view pointerTypeKey, std::string& error)
+{
+        if (!pointerTypeKey.ends_with('*')) return true;
+        const std::string_view valueType = pointerTypeKey.substr(0, pointerTypeKey.size() - 1U);
+        if (memberModel_ == nullptr || !memberModel_->typeRequiresValueDrop(valueType)) return true;
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef isNull = LLVMBuildICmp(
+            builder_, LLVMIntEQ, address, LLVMConstNull(ptr), "destroy.value.isnull");
+        LLVMBasicBlockRef destroyBlock = appendBlock("destroy.value");
+        LLVMBasicBlockRef doneBlock = appendBlock("destroy.value.done");
+        LLVMBuildCondBr(builder_, isNull, doneBlock, destroyBlock);
+        enterBlock(destroyBlock);
+        if (!emitValueDropAddress(address, valueType, "destroy.value", error)) return false;
+        if (!terminated()) LLVMBuildBr(builder_, doneBlock);
+        enterBlock(doneBlock);
+        return true;
+}
+
 LLVMValueRef OopLlvmImplementation::lowerObjectDestruction(
         const frontend::ProjectOopMirNode* node,
         std::string& error)
@@ -758,11 +777,12 @@ LLVMValueRef OopLlvmImplementation::lowerObjectDestruction(
         LLVMValueRef object = lowerExpression(node->children.front().get(), error);
         if (object == nullptr) return nullptr;
 
-        // Structs currently have no destructor or owned fields. Evaluating the pointer ends the
-        // language lifetime contract and requires no machine operation; importantly, it still
-        // never becomes a call to the allocator's free hook.
+        // Value drop runs in place and does not release the borrowed storage.
         if (!node->dynamicDestruction)
+        {
+            if (!emitObjectOnlyValueDestruction(object, node->elementTypeKey, error)) return nullptr;
             return LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0);
+        }
 
         if (descriptorType_ == nullptr || destructionEntryFunctionType_ == nullptr)
             return failValue(error, "item 319 object destruction has no descriptor ABI");

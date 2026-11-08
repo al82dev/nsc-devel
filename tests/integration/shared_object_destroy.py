@@ -61,6 +61,28 @@ class Program { public static int Main() { unsafe("placement lifetime") {
         result = subprocess.run([str(compiler), '--check-project-method-bodies', str(project)], cwd=root,
                                 capture_output=True, text=True, errors='replace', timeout=120)
         assert result.returncode != 0 and 'requires a class type and a null witness' in result.stdout + result.stderr
+        source_path.write_text('''class Resource { public static int Drops; ~Resource() { Drops = Drops + 1; } }
+struct Value { public static int Drops; public owned Resource item; public long Number;
+ ~Value() { Drops = Drops + 1; } }
+class Program { public static int Main() { unsafe("placement lifetime") {
+ long* words = stackalloc long[16]; Value* slot = (Value*)words; Value* empty = null;
+ Value* first = new (slot) Value(); (*slot).item = new Resource(); (*slot).Number = 42l;
+ if ((*slot).Number != 42l) return 1; destroy empty; destroy slot;
+ if (Value.Drops != 1 || Resource.Drops != 1) return 2;
+ Value* second = new (slot) Value(); (*slot).item = new Resource();
+ destroy slot; if (Value.Drops != 2 || Resource.Drops != 2) return 3;
+ words[0] = 99l; return words[0] == 99l ? 42 : 4;
+} } }
+''', encoding='utf-8')
+        if os.name == 'nt':
+            for level in ('O0', 'O2'):
+                exe = root / ('value-' + level + '.exe')
+                result = subprocess.run([str(compiler), '--emit-project-oop-exe', str(project), '-o', str(exe),
+                                         '--no-artifact-cache', '-' + level], cwd=root, capture_output=True,
+                                        text=True, errors='replace', timeout=120)
+                assert result.returncode == 0, result.stdout + result.stderr
+                result = subprocess.run([str(exe)], cwd=root, capture_output=True, timeout=60)
+                assert result.returncode == 42, (level, result.returncode)
         source_path.write_text(source.replace('SharedStorage.InstanceSize<Large>(null)',
                                              'SharedStorage.InstanceSize<string>(null)'), encoding='utf-8')
         result = subprocess.run([str(compiler), '--check-project-method-bodies', str(project)], cwd=root,

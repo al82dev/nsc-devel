@@ -831,6 +831,11 @@ private:
         std::string& error,
         bool allowNamedThunk = true);
 
+    bool emitObjectOnlyValueDestruction(
+        LLVMValueRef address,
+        std::string_view pointerTypeKey,
+        std::string& error);
+
     bool emitFixedArrayDropAddress(
         LLVMValueRef address,
         std::string_view typeKey,

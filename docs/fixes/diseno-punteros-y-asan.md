@@ -119,6 +119,25 @@ prueba dirigida verifica bloque nulo, bloque insuficiente, alineación de 32,
 entradas inválidas, rechazo antes del límite de tamaño y el ciclo válido. No
 intenta realmente reservar el máximo. El layout final del control, la limpieza
 ante fallo y la API pública siguen pendientes.
+Una prueba de constructor con `throws NativeSharp.Core.Exception` no llegó a
+ejecución: la especialización de `SharedControlStorage.Construct<T>` lo
+rechazó porque el método genérico no declara el efecto
+(`shared-constructor-failure-probe/results.json`). Ese rechazo no demuestra
+limpieza durante una excepción; queda por resolver la propagación del efecto y
+su cleanup sin imponer silenciosamente otro contrato a todos los constructores.
+Para un payload `struct` con destructor, la construcción placement devuelve
+`Payload*`. En dos pruebas separadas, `delete *slot` y `delete slot[0]`
+compilaron en O0/O2, pero el contador del destructor siguió en cero y el
+programa salió con 2 (`shared-value-placement-probe/results.json` y
+`shared-value-delete-index-probe/results.json`). La operación explícita
+`destroy slot` tenía el mismo resultado en la revisión base; ahora ejecuta
+drop in situ sin liberar el almacenamiento y la misma reproducción devuelve 42
+en O0/O2 (`shared-value-destroy-compare/results.json`). La regresión prueba el
+destructor de la estructura, destrucción de un campo owned, puntero nulo y
+reutilización del bloque; también pasó la prueba existente de item 319
+(`shared-destroy-test.log`, `shared-item319-test.log`). Las primitivas de
+reserva genérica siguen admitiendo solo clases; esto no declara soporte de
+payloads `struct` en las familias públicas.
 `nsc.sdk.shared-control-storage` añade una regresión dirigida que sitúa los
 contadores locales o atómicos junto al payload en la misma reserva; comprueba
 la destrucción y la expiración y, para la variante atómica, 200 000 ciclos de
