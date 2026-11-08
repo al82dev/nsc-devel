@@ -830,7 +830,7 @@ void observeCatalogueEnvelope()
     std::vector<CppCRecordSnapshot> records;
     std::vector<CppCEnumSnapshot> decoded;
     std::string detail;
-    const bool roundTrip = encoded && decodeVersionedCTypeCatalog(legacy, records, decoded, detail);
+    const bool roundTrip = encoded && decodeVersionedCTypeCatalog(legacy, records, decoded, detail, 42);
     std::cout << "OBSERVATION legacy enum-only C catalogue encoded=" << (encoded ? "yes" : "no")
               << " first bytes=" << prefix(legacy) << "classified-as-envelope="
               << (encoded && isCTypeCatalogWithProvenance(legacy) ? "yes" : "no") << " decoded="
@@ -1004,7 +1004,7 @@ bool readProducerCatalogue(const std::filesystem::path& path, LibraryMetadata& m
         std::cerr << "NSMETA verification failed: " << error << '\n';
         return false;
     }
-    if (!metadata_detail::decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error))
+    if (!metadata_detail::decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error, metadata.formatMinor))
     {
         std::cerr << "C catalogue decode failed: " << error << '\n';
         return false;
@@ -1395,7 +1395,7 @@ int inspectCConstants(char** argv)
     if (!metadata.cppCRecordCatalog.empty())
     {
         const bool decoded =
-            metadata_detail::decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error);
+            metadata_detail::decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error, metadata.formatMinor);
         if (!expect(decoded, "producer C catalogue decodes: " + error)) return 1;
     }
     bool ok = true;
@@ -1556,7 +1556,7 @@ bool checkLegacyEnumOnlyFixture(const std::filesystem::path& directory)
     std::vector<CppCEnumSnapshot> decoded;
     std::string current;
     const bool sniffed = metadata_detail::isCTypeCatalogWithProvenance(*fixture);
-    const bool currentDecodes = metadata_detail::decodeVersionedCTypeCatalog(*fixture, records, decoded, current);
+    const bool currentDecodes = metadata_detail::decodeVersionedCTypeCatalog(*fixture, records, decoded, current, 42);
     std::string proposed;
     std::vector<CppCEnumSnapshot> proposedEnums;
     const bool proposedDecodes = proposedCatalogueDecode(42, *fixture, records, proposedEnums, proposed);
@@ -1565,7 +1565,8 @@ bool checkLegacyEnumOnlyFixture(const std::filesystem::path& directory)
               << " current: envelope=" << (sniffed ? "yes" : "no") << " decoded="
               << (currentDecodes ? "yes" : "no") << " '" << current << "'; proposed 1.42: decoded="
               << (proposedDecodes ? "yes" : "no") << " enums=" << proposedEnums.size() << '\n';
-    bool ok = expect(sniffed && !currentDecodes, "current reader takes the 1.42 enum-only catalogue for envelope 4");
+    bool ok = expect(sniffed && currentDecodes && decoded.size() == 1,
+                     "declared 1.42 decodes the legacy enum-only catalogue despite its ambiguous prefix");
     ok &= expect(proposedDecodes && proposedEnums.size() == 1, "proposed rule decodes it with the declared 1.42");
     return ok;
 }
@@ -1638,7 +1639,7 @@ bool checkCatalogueVersions(const std::filesystem::path& nsmeta, const std::file
     {
         std::vector<std::uint8_t> legacy;
         ok &= expect(metadata_detail::encodeCTypeCatalog(records, enums, legacy, error), stem + " legacy encoding");
-        ok &= checkCatalogueVariant(metadata, stem, 42, legacy, directory, !records.empty());
+        ok &= checkCatalogueVariant(metadata, stem, 42, legacy, directory, true);
     }
     for (const std::uint16_t minor : {std::uint16_t{43}, std::uint16_t{44}, std::uint16_t{45}})
     {

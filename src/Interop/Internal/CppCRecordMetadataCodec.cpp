@@ -676,8 +676,10 @@ bool isCTypeCatalogWithProvenance(std::span<const std::uint8_t> bytes) noexcept
 }
 
 bool decodeVersionedCTypeCatalog(std::span<const std::uint8_t> bytes,
-    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums, std::string& error)
+    std::vector<CppCRecordSnapshot>& records, std::vector<CppCEnumSnapshot>& enums, std::string& error,
+    std::uint16_t formatMinor)
 {
+    if (formatMinor == 42) return decodeCTypeCatalog(bytes, records, enums, error);
     return isCTypeCatalogWithProvenance(bytes) ?
         decodeCTypeCatalogWithProvenance(bytes, records, enums, error) :
         decodeCTypeCatalog(bytes, records, enums, error);
@@ -868,7 +870,8 @@ bool reconstructPrecompiledCImportedTypes(std::span<const frontend::PrecompiledS
         if (module.cppCTypeCatalog.empty()) continue;
         std::vector<CppCRecordSnapshot> records;
         std::vector<CppCEnumSnapshot> enums;
-        if (!decodeVersionedCTypeCatalog(module.cppCTypeCatalog, records, enums, error)) return false;
+        if (!decodeVersionedCTypeCatalog(module.cppCTypeCatalog, records, enums, error,
+                                         module.cppCTypeCatalogFormatMinor)) return false;
         const auto add = [&](std::string_view identity, std::string_view owner,
                              std::span<const CppCRecordSnapshot> oneRecord,
                              std::span<const CppCEnumSnapshot> oneEnum) {

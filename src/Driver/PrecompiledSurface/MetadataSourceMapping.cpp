@@ -430,7 +430,8 @@ bool metadataProvidesType(const interop::LibraryMetadata &metadata, const std::s
     if (!interop::metadata_detail::verifyBinaryClosureMetadata(metadata, error)) return false;
     std::vector<interop::CppCRecordSnapshot> records;
     std::vector<interop::CppCEnumSnapshot> enums;
-    if (!interop::metadata_detail::decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error)) return false;
+    if (!interop::metadata_detail::decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error,
+                                                                metadata.formatMinor)) return false;
     return std::ranges::any_of(records, [&](const auto &record) { return "type:" + record.identityKey == typeKey; }) ||
            std::ranges::any_of(enums, [&](const auto &enumeration) { return "type:" + enumeration.identityKey == typeKey; });
 }

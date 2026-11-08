@@ -1299,7 +1299,8 @@ bool reconstructPrecompiledCMembers(std::span<const frontend::PrecompiledSyntaxM
         if (module.cppCTypeCatalog.empty()) continue;
         std::vector<CppCRecordSnapshot> records;
         std::vector<CppCEnumSnapshot> enums;
-        if (!metadata_detail::decodeVersionedCTypeCatalog(module.cppCTypeCatalog, records, enums, error)) return false;
+        if (!metadata_detail::decodeVersionedCTypeCatalog(module.cppCTypeCatalog, records, enums, error,
+                                                          module.cppCTypeCatalogFormatMinor)) return false;
         for (const auto& record : records)
         {
             if (!seenTypes.insert(record.identityKey).second) continue;
@@ -1835,7 +1836,7 @@ static bool collectVisibleCRecordReconciliations(
         if (module.cppCTypeCatalog.empty()) continue;
         Catalog catalog;
         if (!metadata_detail::decodeVersionedCTypeCatalog(module.cppCTypeCatalog,
-                catalog.records, catalog.enums, error)) return false;
+                catalog.records, catalog.enums, error, module.cppCTypeCatalogFormatMinor)) return false;
         catalogs.push_back(std::move(catalog));
     }
     if (catalogs.empty()) { output.clear(); error.clear(); return true; }

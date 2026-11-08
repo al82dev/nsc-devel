@@ -1,5 +1,16 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-002 H8: lectura de catálogo C heredado 1.42
+
+Corregir la identificación de un catálogo 1.42 con solo enums, cuyos primeros
+bytes coinciden con una envoltura posterior. Propagar el minor del archivo a
+los lectores y decodificar 1.42 como catálogo heredado, conservando el formato,
+las versiones posteriores y la huella ABI. Presupuesto: codec y verificadores
+de metadata, preparación y mapeo precompilados, modelo de módulo precompilado,
+lectores de tipos C, pruebas de identidad, seguimiento y evidencia. Validar los
+fixtures existentes de 1.42 a 1.45 y el consumo precompilado. No cambiar NSLink,
+LLVM/Clang, el formato NSMETA ni desplegar en C:.
+
 ## T08-010: miembro flexible C empaquetado
 
 Permitir índices y acceso cruzado de miembros flexibles desalineados de structs

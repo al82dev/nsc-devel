@@ -760,7 +760,7 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
     if (metadata.formatMinor >= 42 && !metadata.cppCRecordCatalog.empty())
     {
         std::vector<std::uint8_t> abiCatalog = metadata.cppCRecordCatalog;
-        if (isCTypeCatalogWithProvenance(abiCatalog))
+        if (metadata.formatMinor >= 43 && isCTypeCatalogWithProvenance(abiCatalog))
         {
             std::vector<CppCRecordSnapshot> records;
             std::vector<CppCEnumSnapshot> enums;

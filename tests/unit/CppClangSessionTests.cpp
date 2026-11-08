@@ -402,7 +402,7 @@ int main(int argc, char** argv)
         { std::cerr << "NSMETA verification failed: " << error << '\n'; return 1; }
         std::vector<CppCRecordSnapshot> records;
         std::vector<CppCEnumSnapshot> enums;
-        if (!metadata_detail::decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error))
+        if (!metadata_detail::decodeVersionedCTypeCatalog(metadata.cppCRecordCatalog, records, enums, error, metadata.formatMinor))
         { std::cerr << "C catalogue decode failed: " << error << '\n'; return 1; }
         const auto header = std::filesystem::absolute(argv[3]);
         const auto workingDirectory = header.parent_path().string();
@@ -3734,9 +3734,9 @@ int main(int argc, char** argv)
                         std::vector<CppCRecordSnapshot> decodedVersioned;
                         std::vector<CppCEnumSnapshot> enumsVersioned;
                         const bool readNew = metadata_detail::decodeVersionedCTypeCatalog(
-                            newerMetadata.cppCRecordCatalog, decodedVersioned, enumsVersioned, codecError);
+                            newerMetadata.cppCRecordCatalog, decodedVersioned, enumsVersioned, codecError, newerMetadata.formatMinor);
                         const bool readOld = metadata_detail::decodeVersionedCTypeCatalog(
-                            catalogMetadata.cppCRecordCatalog, decodedVersioned, enumsVersioned, codecError);
+                            catalogMetadata.cppCRecordCatalog, decodedVersioned, enumsVersioned, codecError, catalogMetadata.formatMinor);
                         ok &= expect(oldRejected && newAccepted && readNew && readOld,
                                      "versioned C provenance requires metadata 1.43 and legacy catalogues remain readable");
                         ok &= expect(metadata_detail::encodeAbiProjection(newerMetadata) ==
@@ -3749,7 +3749,7 @@ int main(int argc, char** argv)
                             metadataCodec.read(originFile, loadedOrigin, codecError) &&
                             metadataCodec.verifyCurrentCompiler(loadedOrigin, codecError) &&
                             loadedOrigin.formatMinor == 43 && metadata_detail::decodeVersionedCTypeCatalog(
-                                loadedOrigin.cppCRecordCatalog, decodedVersioned, enumsVersioned, codecError);
+                                loadedOrigin.cppCRecordCatalog, decodedVersioned, enumsVersioned, codecError, loadedOrigin.formatMinor);
                         const auto foundOrigin = std::find_if(decodedVersioned.begin(), decodedVersioned.end(),
                             [&](const auto& item) { return item.identityKey == completeRecord->identityKey; });
                         ok &= expect(originRoundTrip && foundOrigin != decodedVersioned.end() &&

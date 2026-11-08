@@ -236,7 +236,23 @@ for %%P in (PCatEnumOnly PCatRecord PCatRecordEnum PCatFloat PCatOpaque PCatFloa
   if errorlevel 1 exit /b 1
 )
 nsc_cpp_c_identity_tests.exe --catalogue-version-controls "%DEST%" %CATALOGUE_INPUTS%
-exit /b %errorlevel%
+if errorlevel 1 exit /b 1
+if not exist "%DEST%\driver-142" mkdir "%DEST%\driver-142"
+if errorlevel 1 exit /b 1
+copy /y "%DEST%\PCatEnumOnly.lib" "%DEST%\driver-142\PCatEnumOnly.lib" >nul
+if errorlevel 1 exit /b 1
+copy /y "%DEST%\variantes\PCatEnumOnly-1.42.nsmeta" "%DEST%\driver-142\PCatEnumOnly.nsmeta" >nul
+if errorlevel 1 exit /b 1
+copy /y "%DEST%\Consumer142.ns" "%DEST%\driver-142\Consumer142.ns" >nul
+if errorlevel 1 exit /b 1
+copy /y "%DEST%\Consumer142.nsproj" "%DEST%\driver-142\Consumer142.nsproj" >nul
+if errorlevel 1 exit /b 1
+nsc.exe --cpp-clang-root=%NSC_T08_CLANG% --emit-project-oop-exe "%DEST%\driver-142\Consumer142.nsproj" -O0 --no-artifact-cache -o "%DEST%\driver-142\consumer.exe"
+if errorlevel 1 exit /b 1
+"%DEST%\driver-142\consumer.exe"
+if errorlevel 1 exit /b 1
+echo Consumidor de metadata 1.42 solo con enum: resultado esperado cero.
+exit /b 0
 
 rem :catalogue_producer <productor> construye la biblioteca y anade su NSMETA a CATALOGUE_INPUTS.
 :catalogue_producer

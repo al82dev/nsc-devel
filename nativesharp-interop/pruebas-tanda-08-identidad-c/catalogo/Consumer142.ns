@@ -1,0 +1,4 @@
+int Main()
+{
+    return (int)PublishedCatalogue.Bridge.Echo(CCatKindA) - 1;
+}

@@ -205,6 +205,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
 - [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+  - H8: los catálogos C 1.42 con solo enums se decodifican como formato
+    heredado usando el minor declarado. Pasaron las variantes verificadas de
+    1.42–1.45 y un consumidor real 1.42. El ítem sigue abierto por otros casos.
+    [Evidencia](registro-commits/t08-h8-catalogo-142.md).
   - H1: se aceptan typedef C equivalentes observados en encabezados con nombres
     distintos; la matriz conserva los rechazos por tipos y records incompatibles.
     La validación dirigida de identidad pasó, sin cerrar el ítem.

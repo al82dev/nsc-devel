@@ -455,7 +455,8 @@ bool materializeModules(
             moduleMetadataDigest(entry, repository),
             std::move(publicApiSnapshot),
             pruned,
-            surface.cppCRecordCatalog});
+            surface.cppCRecordCatalog,
+            surface.formatMinor});
     }
     return true;
 }

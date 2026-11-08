@@ -44,5 +44,6 @@ struct PrecompiledSyntaxModule final
     bool surfacePruned = false;
     // Verified C type catalogue carried with this metadata surface; not yet installed.
     std::vector<std::uint8_t> cppCTypeCatalog;
+    std::uint16_t cppCTypeCatalogFormatMinor = 45;
 };
 }

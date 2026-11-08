@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CIdentityLegacy142</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer142.ns" />
+    <LibraryReference Include="PCatEnumOnly.lib" />
+  </ItemGroup>
+</Project>
