@@ -21547,6 +21547,10 @@ void testDeepMirCacheRestore(TestContext& tests)
     const auto atomicIdentity = nativesharp::frontend::serializeHirCacheIdentity(identityFunction);
     tests.expect(atomicIdentity != enabledIdentity,
                  "HIR cache identity distinguishes C atomic access from volatile access");
+    identityFunction.body->cppCBoolStorage = true;
+    const auto cBoolIdentity = nativesharp::frontend::serializeHirCacheIdentity(identityFunction);
+    tests.expect(cBoolIdentity != atomicIdentity,
+                 "HIR cache identity distinguishes C bool storage");
     constexpr std::size_t nestingDepth = 32768U;
     std::unique_ptr<ProjectOopMirNode> root;
     for (std::size_t depth = nestingDepth; depth-- > 0U;)
@@ -21558,6 +21562,7 @@ void testDeepMirCacheRestore(TestContext& tests)
         if (depth % 2U == 0U) node->localOrdinal = depth;
         if (depth % 3U != 0U) node->cppMicrosoftVolatileSemantics = (depth % 3U == 1U);
         node->cppAtomicAccess = (depth % 7U == 0U);
+        node->cppCBoolStorage = (depth % 11U == 0U);
         if (depth % 5U != 0U) node->cppAtomicAlignmentBytes = std::size_t{1} << (depth % 5U - 1U);
         if (root != nullptr) node->children.push_back(std::move(root));
         else node->children.emplace_back();
@@ -21578,6 +21583,7 @@ void testDeepMirCacheRestore(TestContext& tests)
             current->typeKey == "type:Node" + std::to_string(depth) &&
             current->integerValue == depth && current->localOrdinal.has_value() == (depth % 2U == 0U) &&
             current->cppAtomicAccess == (depth % 7U == 0U) &&
+            current->cppCBoolStorage == (depth % 11U == 0U) &&
             current->cppMicrosoftVolatileSemantics.has_value() == (depth % 3U != 0U) &&
             (!current->cppMicrosoftVolatileSemantics.has_value() ||
              *current->cppMicrosoftVolatileSemantics == (depth % 3U == 1U)) &&
