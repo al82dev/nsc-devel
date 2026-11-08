@@ -906,6 +906,32 @@ bool checkDependencyTypeCodec()
     decoded.moduleName = "sentinel";
     ok &= expect(!decodeCDependencyFunction(functionBytes, decoded, error) && decoded.moduleName == "sentinel",
         "truncated C dependency function preserves output on failure");
+    CDependencyGlobalSnapshot global;
+    global.moduleName = "Producer";
+    global.referenceIdentity = "header-digest";
+    global.linkSymbol = "c_global";
+    global.microsoftVolatileSemantics = false;
+    global.declaration.name = "c_global";
+    global.declaration.qualifiedName = "c_global";
+    global.declaration.externalLinkage = true;
+    global.declaration.externalSymbol = "c_global";
+    global.declaration.clangUsr = "c:@c_global";
+    global.declaration.threadLocal = true;
+    global.declaration.declarationAlignmentBits = 64;
+    global.declaration.type = pointer;
+    std::vector<std::uint8_t> globalBytes;
+    CDependencyGlobalSnapshot decodedGlobal;
+    ok &= expect(encodeCDependencyGlobal(global, globalBytes, error) &&
+        decodeCDependencyGlobal(globalBytes, decodedGlobal, error) &&
+        decodedGlobal.microsoftVolatileSemantics == std::optional<bool>{false} &&
+        decodedGlobal.declaration.threadLocal && decodedGlobal.declaration.declarationAlignmentBits == 64 &&
+        decodedGlobal.declaration.clangUsr == global.declaration.clangUsr &&
+        decodedGlobal.declaration.type.element && decodedGlobal.declaration.type.element->kind == CppTypeKind::Atomic,
+        "C dependency global preserves identity, TLS, alignment, mode and type");
+    if (!globalBytes.empty()) globalBytes.pop_back();
+    decodedGlobal.moduleName = "sentinel";
+    ok &= expect(!decodeCDependencyGlobal(globalBytes, decodedGlobal, error) && decodedGlobal.moduleName == "sentinel",
+        "truncated C dependency global preserves output on failure");
     return ok;
 }
 

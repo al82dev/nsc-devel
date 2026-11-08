@@ -449,6 +449,70 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
     return true;
 }
 
+bool encodeCDependencyGlobal(const CDependencyGlobalSnapshot& value,
+    std::vector<std::uint8_t>& output, std::string& error)
+{
+    const auto& global = value.declaration;
+    if (value.moduleName.empty() || value.referenceIdentity.empty() || value.linkSymbol.empty() ||
+        global.name.empty() || global.qualifiedName.empty())
+    { error = "invalid C dependency global identity"; return false; }
+    ByteWriter writer;
+    writer.u8(1);
+    if (!putText(writer, value.moduleName) || !putText(writer, value.referenceIdentity) ||
+        !putText(writer, value.linkSymbol) || !putText(writer, global.name) ||
+        !putText(writer, global.qualifiedName) || !putOptionalText(writer, global.externalSymbol) ||
+        !putOptionalText(writer, global.clangUsr))
+    { error = "invalid C dependency global text"; return false; }
+    writer.u8(global.externalLinkage); writer.u8(global.threadLocal); writer.u8(global.dllImport);
+    putOptionalNumber(writer, global.declarationAlignmentBits);
+    writer.u8(value.microsoftVolatileSemantics.has_value());
+    if (value.microsoftVolatileSemantics) writer.u8(*value.microsoftVolatileSemantics);
+    std::vector<std::uint8_t> encoded;
+    if (!encodeCDependencyType(global.type, encoded, error) ||
+        encoded.size() > std::numeric_limits<std::uint32_t>::max()) return false;
+    writer.u32(static_cast<std::uint32_t>(encoded.size()));
+    writer.raw(encoded);
+    output = writer.takeBytes();
+    error.clear();
+    return true;
+}
+
+bool decodeCDependencyGlobal(std::span<const std::uint8_t> bytes,
+    CDependencyGlobalSnapshot& output, std::string& error)
+{
+    ByteReader reader(bytes);
+    CDependencyGlobalSnapshot value;
+    auto& global = value.declaration;
+    std::uint8_t version = 0;
+    bool present = false;
+    if (!reader.u8(version) || version != 1 || !reader.text(value.moduleName) ||
+        !reader.text(value.referenceIdentity) || !reader.text(value.linkSymbol) ||
+        !reader.text(global.name) || !reader.text(global.qualifiedName) ||
+        !getOptionalText(reader, global.externalSymbol) || !getOptionalText(reader, global.clangUsr) ||
+        !getFlag(reader, global.externalLinkage) || !getFlag(reader, global.threadLocal) ||
+        !getFlag(reader, global.dllImport) || !getOptionalNumber(reader, global.declarationAlignmentBits) ||
+        !getFlag(reader, present))
+    { error = "invalid C dependency global"; return false; }
+    if (present)
+    {
+        bool mode = false;
+        if (!getFlag(reader, mode)) { error = "invalid C dependency volatile mode"; return false; }
+        value.microsoftVolatileSemantics = mode;
+    }
+    std::uint32_t size = 0;
+    if (!reader.u32(size) || size > reader.remaining())
+    { error = "invalid C dependency global type size"; return false; }
+    std::vector<std::uint8_t> encoded(size);
+    if (!reader.raw(encoded) || !decodeCDependencyType(encoded, global.type, error)) return false;
+    std::vector<std::uint8_t> canonical;
+    if (!reader.atEnd() || !encodeCDependencyGlobal(value, canonical, error) ||
+        canonical.size() != bytes.size() || !std::equal(canonical.begin(), canonical.end(), bytes.begin()))
+    { error = "noncanonical C dependency global"; return false; }
+    output = std::move(value);
+    error.clear();
+    return true;
+}
+
 bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
                           std::vector<std::uint8_t>& output, std::string& error)
 {

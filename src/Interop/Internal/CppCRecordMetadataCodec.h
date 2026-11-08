@@ -31,6 +31,18 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     std::vector<std::uint8_t>& output, std::string& error);
 bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
     CDependencyFunctionSnapshot& output, std::string& error);
+struct CDependencyGlobalSnapshot
+{
+    std::string moduleName;
+    std::string referenceIdentity;
+    std::string linkSymbol;
+    std::optional<bool> microsoftVolatileSemantics;
+    CppGlobalDeclaration declaration;
+};
+bool encodeCDependencyGlobal(const CDependencyGlobalSnapshot& value,
+    std::vector<std::uint8_t>& output, std::string& error);
+bool decodeCDependencyGlobal(std::span<const std::uint8_t> bytes,
+    CDependencyGlobalSnapshot& output, std::string& error);
 // Internal catalogue codec. It does not by itself publish an NSMETA section.
 // Both functions leave their output unchanged on failure.
 bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
