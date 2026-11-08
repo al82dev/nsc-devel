@@ -764,8 +764,26 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         if (!callArgumentOrder(node, sourceArguments.size(), parameterToSource, error)) return nullptr;
         for (const std::size_t source : parameterToSource) arguments.push_back(sourceArguments[source]);
         releaseTransferredArguments(node);
+        LLVMValueRef target = found->second.function;
+        const auto* imported = found->second.mirFunction;
+        if (imported != nullptr && imported->isVariadic && imported->importRequiresRuntimeBinding &&
+            imported->mangledName.starts_with("__nsc_cpp_tls_import_"))
+        {
+            LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+            LLVMValueRef library = cStringGlobal(imported->importDllName, "dll");
+            LLVMValueRef symbol = cStringGlobal(imported->cAbiName, "sym");
+            if (library == nullptr || symbol == nullptr)
+                return failValue(error, "variadic TLS import lost its library or symbol identity");
+            LLVMTypeRef parameterTypes[] = {ptr, ptr};
+            LLVMTypeRef helperType = LLVMFunctionType(ptr, parameterTypes, 2, 0);
+            LLVMValueRef helperArgs[] = {library, symbol};
+            target = LLVMBuildCall2(builder_, helperType, cppDllTlsExportHelper(context_, module_),
+                helperArgs, 2, "import.address");
+            if (!emitGuard(LLVMBuildICmp(builder_, LLVMIntNE, target, LLVMConstNull(ptr), "import.bound"),
+                           LlvmTrapReason::ImportBindingFailure, "import.binding", error)) return nullptr;
+        }
         LLVMValueRef call = buildPotentiallyThrowingCall(
-            found->second.functionType, found->second.function,
+            found->second.functionType, target,
             arguments.empty() ? nullptr : arguments.data(),
             static_cast<unsigned>(arguments.size()),
             node->typeKey == "builtin:void" || sretSlot != nullptr ? "" : "static.call", error);

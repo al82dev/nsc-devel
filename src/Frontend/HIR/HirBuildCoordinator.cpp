@@ -1833,11 +1833,6 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             });
             if (requiresTlsAliases)
             {
-                if (symbol.isVariadic)
-                {
-                    error = "C/C++ variadic functions with identical symbols in distinct DLLs are not yet supported";
-                    return false;
-                }
                 function.importDllName = interop::cppTlsDllAlias(symbol.cppDllRuntimeIdentity);
                 if (function.importDllName.empty())
                 {

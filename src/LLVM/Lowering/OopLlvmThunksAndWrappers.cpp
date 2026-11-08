@@ -31,6 +31,7 @@ bool OopLlvmImplementation::defineFunctions(std::string& error)
                 // Same deduplication as declareFunctions: one identity, one body. The set is what
                 // keeps a second declaration of the same import from redefining it.
                 if (function.importRequiresRuntimeBinding &&
+                    !(function.isVariadic && function.mangledName.starts_with("__nsc_cpp_tls_import_")) &&
                     definedRuntimeBoundImports_.insert(function.mangledName).second &&
                     !defineRuntimeBoundImport(function, error))
                 {
