@@ -52,7 +52,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-002-12c: Verificar muestras de alcance de nombres introducidos por patrones y desestructuración en O0.
   - [x] T08-002-12c1: Comprobar muestras de desestructuración sencilla y anidada en O0. [Evidencia](registro-commits/t08-ambito-desestructuracion-o0.md).
   - [x] T08-002-12c2: Comprobar una ligadura `if let` que sombrea una global C y deja visible esa global fuera del bloque. [Evidencia](registro-commits/t08-sombra-patron-o0.md).
-- [ ] T08-002-13: Comprobar los conflictos de enums anónimos cuando no se demuestra la misma procedencia física.
+- [x] T08-002-13: Comprobar dos muestras de enums anónimos sin procedencia física compartida, incluso con contenido igual, en O0. [Evidencia](registro-commits/t08-enum-anonimo-conflicto-o0.md).
 
 ## T08-003 — Funciones C
 
