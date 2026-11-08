@@ -34,7 +34,25 @@ for old, new in changes:
         sys.exit("ERROR: el control base cambio: " + old)
     source = source.replace(old, new)
 work = Path(r"A:\nsc-interop-build\t08-typedef-record-invocacion")
+if "--nested" in sys.argv:
+    nested = (
+        ('typedef struct Payload { int value; } Payload;',
+         'typedef struct Inner { int value; } Inner; typedef struct Payload { Inner inner; } Payload;'),
+        ('typedef struct Payload {{ int value; }} Payload;',
+         'typedef struct Inner {{ int value; }} Inner; typedef struct Payload {{ Inner inner; }} Payload;'),
+        ('Payload payload = {{{index}0}};', 'Payload payload = {{{{{index}0}}}};'),
+        ('Payload p = {{{index}0}};', 'Payload p = {{{{{index}0}}}};'),
+        ('p->value', 'p->inner.value'),
+        (r"A:\nsc-interop-build\t08-typedef-record-invocacion",
+         r"A:\nsc-interop-build\t08-typedef-record-anidado"),
+    )
+    for old, new in nested:
+        if old not in source:
+            sys.exit("ERROR: la variante no puede localizar: " + old)
+        source = source.replace(old, new)
+    work = Path(r"A:\nsc-interop-build\t08-typedef-record-anidado")
 work.mkdir(parents=True, exist_ok=True)
 script = work / "control-generado.py"
 script.write_text(source, encoding="utf-8")
-sys.exit(subprocess.run([sys.executable, str(script), *sys.argv[1:]]).returncode)
+args = [arg for arg in sys.argv[1:] if arg != "--nested"]
+sys.exit(subprocess.run([sys.executable, str(script), *args]).returncode)

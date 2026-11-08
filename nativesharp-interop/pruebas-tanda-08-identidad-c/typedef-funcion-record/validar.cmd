@@ -5,10 +5,14 @@ for %%O in (0 1 2 3) do (
   if errorlevel 1 exit /b 1
   python "%~dp0validar-invocacion.py" %%O
   if errorlevel 1 exit /b 1
+  python "%~dp0validar-invocacion.py" %%O --nested
+  if errorlevel 1 exit /b 1
 )
 python "%~dp0validar.py" 0 --incompatible --headers-hidden
 if errorlevel 1 exit /b 1
 python "%~dp0validar.py" 0 --same-size-incompatible --headers-hidden
+if errorlevel 1 exit /b 1
+python "%~dp0validar.py" 0 --nested --same-size-incompatible --headers-hidden
 if errorlevel 1 exit /b 1
 python "%~dp0validar.py" 0 --header-changed
 if errorlevel 1 exit /b 1

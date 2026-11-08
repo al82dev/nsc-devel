@@ -14,6 +14,7 @@ nsc = r"A:\nsc-interop-build\tanda1-ON\bin\nsc.exe"
 opt = sys.argv[1] if len(sys.argv) > 1 else "0"
 incompatible = "--incompatible" in sys.argv or "--same-size-incompatible" in sys.argv
 same_size = "--same-size-incompatible" in sys.argv
+nested = "--nested" in sys.argv
 changed_header = "--header-changed" in sys.argv
 expected_rejection = incompatible or changed_header
 
@@ -28,9 +29,11 @@ for index in (1, 2):
     folder = root / str(index)
     folder.mkdir(exist_ok=True)
     field = ("float" if same_size else "long long") if incompatible and index == 2 else "int"
+    record = (f"typedef struct Inner {{ {field} value; }} Inner; "
+              "typedef struct CRecord { Inner inner; } CRecord;\n") if nested else (
+              f"typedef struct CRecord {{ {field} value; }} CRecord;\n")
     (folder / "api.h").write_text(
-        f"typedef struct CRecord {{ {field} value; }} CRecord;\n"
-        "typedef int (*Callback)(CRecord *, ...);\n", encoding="utf-8")
+        record + "typedef int (*Callback)(CRecord *, ...);\n", encoding="utf-8")
     (folder / "Producer.ns").write_text(f"""
 namespace RecordAlias{index} {{
     public class Bridge {{
