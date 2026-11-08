@@ -83,6 +83,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
         - [ ] Resolver las demás formas de distinguir orígenes, incluidas llamadas con argumentos variables; comprobar caché para referencias directas a encabezados, traslado a otro equipo y las demás variantes de importación.
         - [ ] Investigar el valor inicial TLS de una DLL de control sin importaciones: también falla en el control C; causa aún no identificada. [Reproducción](pruebas-tanda-08-identidad-c/tls-dll-distintas/validar-origen-ambiguo.py).
           - [x] Contrastar importación directa y carga dinámica, con y sin `DllMain`; inspeccionar el índice y el bloque TLS observado. [Evidencia](registro-commits/t08-dll-sin-import-inspeccion-tls.md).
+          - [x] Confirmar que `DllMain` se ejecuta y contrastar una DLL que contiene una importación no invocada por la función TLS. [Evidencia](registro-commits/t08-dll-tls-importacion-no-invocada.md).
           - [ ] Determinar la causa y resolver el comportamiento sin depender de añadir una importación artificial a la DLL.
       - [ ] T08-002-09m7c1d2c: Resolver las dependencias transitivas de las DLL homónimas y comprobar el consumidor resultante.
     - [ ] T08-002-09m7c1d3: Comprobar el mismo escenario cuando el producto consumidor sea una DLL NativeSharp.

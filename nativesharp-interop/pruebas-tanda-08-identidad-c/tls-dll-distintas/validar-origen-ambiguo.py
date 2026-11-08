@@ -8,7 +8,9 @@ fixtures = Path(__file__).resolve().parent
 root = Path(r"A:\nsc-interop-build\t08-tls-dos-dll-repro")
 without_imports = "--sin-import" in sys.argv
 with_entry = "--entrada" in sys.argv
-work = root / ("origen-sin-import-entrada" if with_entry else
+unused_import = "--import-sin-llamar" in sys.argv
+work = root / ("origen-import-sin-llamar" if unused_import else
+               "origen-sin-import-entrada" if with_entry else
                "origen-sin-import" if without_imports else "origen-ambiguo")
 work.mkdir(parents=True, exist_ok=True)
 for name in ("TlsApi2Ambiguo.c", "TlsApi2SinImport.c", "ConsumerAmbiguo.ns", "ConsumerAmbiguo.nsproj",
@@ -36,6 +38,8 @@ source = "TlsApi2SinImport.c" if without_imports else "TlsApi2Ambiguo.c"
 compile_dll = [clang, "-c", "--target=x86_64-pc-windows-msvc", "-std=c11"]
 if with_entry:
     compile_dll.append("-DTEST_DLL_ENTRY")
+if unused_import:
+    compile_dll.append("-DTEST_UNUSED_IMPORT")
 run(compile_dll + [source, "-o", "api.obj"])
 run([lld, "/nologo", "/dll", "/entry:DllMain" if with_entry else "/noentry", "/nodefaultlib", "/include:_tls_used", "/export:tls_exported,DATA",
      "/out:api.dll", "/implib:api.lib", "api.obj", crt + "libcmt.lib", crt + "libcpmt.lib",
@@ -50,6 +54,9 @@ run([lld, "/nologo", "/entry:mainCRTStartup", "/subsystem:console", "/nodefaultl
      "ProbeAmbiguo.obj", "api.lib", sdk])
 if without_imports:
     result = subprocess.run([str(work / "ProbeAmbiguo.exe")], cwd=work, env=env)
+    if unused_import:
+        print("Control C con importacion no invocada: codigo", result.returncode)
+        sys.exit(result.returncode)
     if with_entry:
         print("Control C sin importaciones, con DllMain: codigo", result.returncode)
         if result.returncode != 103:

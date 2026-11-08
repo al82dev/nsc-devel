@@ -4,6 +4,7 @@ typedef unsigned long long U64;
 typedef unsigned char Byte;
 typedef void *Handle;
 __declspec(dllimport) Handle __stdcall GetModuleHandleA(const char *);
+__declspec(dllimport) void * __stdcall GetProcAddress(Handle, const char *);
 __declspec(dllimport) Handle __stdcall GetStdHandle(U32);
 __declspec(dllimport) int __stdcall WriteFile(Handle, const void *, U32, U32 *, void *);
 __declspec(dllimport) void __stdcall ExitProcess(U32);
@@ -40,5 +41,7 @@ void mainCRTStartup(void)
     number("slot0=", *(U32 *)slots[*index]);
     number("slot4=", *(U32 *)(slots[*index] + 4));
     number("read=", (U32)tls_read());
+    U32 *attach = (U32 *)GetProcAddress(module, "dll_attach_count");
+    if (attach) number("attach=", *attach);
     ExitProcess(0);
 }
