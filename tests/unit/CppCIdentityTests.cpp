@@ -1115,9 +1115,20 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
     if (!expect(aliases != nullptr, "generic fixture alias inventory is available")) return false;
     const auto aliasCandidates = selectCppPublishedTemplateAliases(compilation, published, *aliases);
     bool selectedAlias = false, aliasFromOtherTemplate = false;
+    bool bindingMatches = true;
     for (const auto& candidate : aliasCandidates)
     {
         aliasFromOtherTemplate |= candidate.templateKey != published.genericTemplates.front().canonicalKey;
+        for (const auto& record : compilation.genericModel()->templates())
+            if (record.canonicalKey == candidate.templateKey && candidate.candidateIndex < record.foreignReferenceCandidates.size())
+            {
+                const auto* syntax = record.foreignReferenceCandidates[candidate.candidateIndex].typeSyntax;
+                const auto bindings = compilation.nameLookup()->bindings();
+                const auto binding = std::find_if(bindings.begin(), bindings.end(),
+                    [&](const auto& item) { return item.syntax == syntax; });
+                bindingMatches &= candidate.hasNameBinding == (binding != bindings.end());
+                if (binding != bindings.end()) bindingMatches &= candidate.resolvedAlias == binding->expandedCppAlias;
+            }
         std::size_t origins = 0;
         for (const auto index : candidate.inventoryIndices)
             if (aliases->at(index).declaration.name == "CIdInt") ++origins;
@@ -1125,6 +1136,7 @@ bool checkGenericForeignCandidates(CppClangSessionFactory& factory, const std::s
     }
     ok &= expect(selectedAlias && !aliasFromOtherTemplate,
         "published generic alias candidates retain both header origins and exclude other templates");
+    ok &= expect(bindingMatches, "published generic alias candidates retain actual binding observations");
     return ok;
 }
 

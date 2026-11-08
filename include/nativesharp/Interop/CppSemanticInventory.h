@@ -99,6 +99,9 @@ struct CppPublishedTemplateAliasCandidates
     std::size_t candidateIndex;
     // Indices into the supplied alias inventory; these are not resolved bindings.
     std::vector<std::size_t> inventoryIndices;
+    // Present only when name binding expanded an alias for this exact syntax.
+    const frontend::CppImportedTypeAlias* resolvedAlias = nullptr;
+    bool hasNameBinding = false;
 };
 std::vector<CppPublishedTemplateAliasCandidates> selectCppPublishedTemplateAliases(
     const frontend::ProjectCompilation& compilation, const LibraryMetadata& metadata,

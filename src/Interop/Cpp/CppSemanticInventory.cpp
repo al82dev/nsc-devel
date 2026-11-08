@@ -23,6 +23,7 @@
 #include <set>
 #include <system_error>
 #include <tuple>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -59,6 +60,8 @@ std::vector<CppPublishedTemplateAliasCandidates> selectCppPublishedTemplateAlias
     std::set<std::string> published;
     for (const auto& item : metadata.genericTemplates) published.insert(item.canonicalKey);
     std::vector<CppPublishedTemplateAliasCandidates> result;
+    std::unordered_map<const ast::TypeSyntax*, const frontend::TypeNameBinding*> bindings;
+    for (const auto& binding : lookup->bindings()) bindings.emplace(binding.syntax, &binding);
     for (const auto& record : model->templates())
     {
         if (!published.contains(record.canonicalKey)) continue;
@@ -87,6 +90,11 @@ std::vector<CppPublishedTemplateAliasCandidates> selectCppPublishedTemplateAlias
             for (const auto& rung : frontend::qualifiedNameLadder(site, candidate.writtenTypeName))
                 spellings.insert(rung.spellings.begin(), rung.spellings.end());
             CppPublishedTemplateAliasCandidates found{record.canonicalKey, index, {}};
+            if (const auto binding = bindings.find(candidate.typeSyntax); binding != bindings.end())
+            {
+                found.hasNameBinding = true;
+                found.resolvedAlias = binding->second->expandedCppAlias;
+            }
             for (std::size_t i = 0; i < inventory.size(); ++i)
             {
                 const auto& alias = inventory[i];
