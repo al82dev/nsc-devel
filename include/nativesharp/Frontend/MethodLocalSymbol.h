@@ -104,6 +104,8 @@ struct MethodLocalSymbol final
     bool onePastEndPointer = false;
     bool pointerPointeeReadonly = false;
     bool pointerPointeeVolatile = false;
+    // Static C access contract of an inferred pointer, not a property of its current address.
+    bool cppVolatilePointeeContract = false;
     bool pointerNullable = true;
     bool pointerHasProvenance = true;
     std::size_t pointerKnownAlignment = 1;

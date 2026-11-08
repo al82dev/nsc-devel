@@ -4544,6 +4544,10 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
     const language::PointerContract declaredPointerContract = pointerContractFromSyntax(variable->typeSyntax());
     bool pendingPointerPointeeReadonly = declaredPointerPointeeReadonly;
     bool pendingPointerPointeeVolatile = declaredPointerPointeeVolatile;
+    const bool inferredCppVolatilePointeeContract = isVarInferred && precomputedVarInitializer &&
+        precomputedVarInitializer->pointerPointeeVolatile &&
+        (precomputedVarInitializer->cppFlexibleArrayMember ||
+         precomputedVarInitializer->cppVolatilePointeeContract);
     bool pendingPointerNullable = declaredPointerContract.nullable;
     bool pendingPointerHasProvenance = declaredPointerContract.hasProvenance;
     std::size_t pendingPointerKnownAlignment = declaredPointerContract.knownAlignment;
@@ -4573,6 +4577,7 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
         pendingPointerAddressSpace, isStaticLocal, isReferenceLocal,
         isReadonlyReference, isVariableLengthArray, isVolatile, isRaii, isScope,
         isMoveOnly, isPinnedLocal, isBorrowed, pendingLocalBorrow.has_value());
+    local.cppVolatilePointeeContract = inferredCppVolatilePointeeContract;
     recordVariableShadowing(variable, methodMemberOrdinal, scopeOrdinal);
     const std::size_t localOrdinal = registerVariableLocal(
         std::move(local), variable, scopeOrdinal, isVariableLengthArray);

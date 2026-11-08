@@ -113,6 +113,7 @@ MethodExpressionTypeBinding ProjectMethodBodyModel::makeExpressionTypeBinding(
     binding.integerConstant = result.integerConstant;
     binding.pointerPointeeReadonly = result.pointerPointeeReadonly;
     binding.pointerPointeeVolatile = result.pointerPointeeVolatile;
+    binding.cppVolatilePointeeContract = result.cppVolatilePointeeContract;
     binding.cppFlexibleArrayMember = result.cppFlexibleArrayMember;
     binding.cppFlexibleArrayDecaySafe = result.cppFlexibleArrayDecaySafe;
     binding.ownership = result.ownership;

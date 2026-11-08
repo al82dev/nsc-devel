@@ -52,6 +52,7 @@ struct MethodExpressionTypeBinding final
     bool flowRuntimeCheckElided = false;
     // Immediate pointee qualification, separate from the pointer storage.
     bool pointerPointeeVolatile = false;
+    bool cppVolatilePointeeContract = false;
     // Preserve the origin needed to distinguish imported flexible members from native storage.
     bool cppFlexibleArrayMember = false;
     bool cppFlexibleArrayDecaySafe = false;

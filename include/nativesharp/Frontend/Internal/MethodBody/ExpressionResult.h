@@ -103,6 +103,7 @@ struct ExpressionResult final
     bool volatileStorage = false;
     // The immediate pointee is volatile; independent of the pointer's storage.
     bool pointerPointeeVolatile = false;
+    bool cppVolatilePointeeContract = false;
     // This expression denotes an imported C-family flexible array member, not a native array.
     bool cppFlexibleArrayMember = false;
     bool cppFlexibleArrayDecaySafe = false;

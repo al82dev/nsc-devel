@@ -278,6 +278,7 @@ void ProjectMethodBodyModel::completeLocalIdentifier(
     result.readonlyReceiver = local.isConst;
     result.pointerPointeeReadonly = local.pointerPointeeReadonly;
     result.pointerPointeeVolatile = local.pointerPointeeVolatile;
+    result.cppVolatilePointeeContract = local.cppVolatilePointeeContract;
     result.pointerNullable = local.pointerNullable;
     result.pointerHasProvenance = local.pointerHasProvenance;
     result.pointerKnownAlignment = local.pointerKnownAlignment;
