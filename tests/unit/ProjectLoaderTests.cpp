@@ -384,6 +384,40 @@ void testLibraryReferenceRoot(TestContext& tests, const std::filesystem::path& r
             "fallback roots never rebase an existing project-relative dependency");
 }
 
+void testCppConsumerVolatileConfiguration(TestContext& tests, const std::filesystem::path& root)
+{
+    using nativesharp::compilation::CppConsumerVolatileMode;
+    const auto directory = root / "CppConsumerVolatile";
+    writeFile(directory / "Main.ns", "int Main() { return 0; }\n");
+    writeFile(directory / "Microsoft.nsproj",
+        "<Project><PropertyGroup><CppConsumerVolatileMode>Microsoft</CppConsumerVolatileMode>"
+        "</PropertyGroup></Project>\n");
+    writeFile(directory / "Iso.nsproj",
+        "<Project><PropertyGroup><CppConsumerVolatileMode>ISO</CppConsumerVolatileMode>"
+        "</PropertyGroup></Project>\n");
+    writeFile(directory / "Absent.nsproj", "<Project/>\n");
+    writeFile(directory / "Invalid.nsproj",
+        "<Project><PropertyGroup><CppConsumerVolatileMode>Default</CppConsumerVolatileMode>"
+        "</PropertyGroup></Project>\n");
+    writeFile(directory / "Duplicate.nsproj",
+        "<Project><PropertyGroup><CppConsumerVolatileMode>ISO</CppConsumerVolatileMode>"
+        "<CppConsumerVolatileMode>Microsoft</CppConsumerVolatileMode></PropertyGroup></Project>\n");
+    ProjectLoader loader;
+    std::string error;
+    const auto microsoft = loader.load(directory / "Microsoft.nsproj", error);
+    const auto iso = loader.load(directory / "Iso.nsproj", error);
+    const auto absent = loader.load(directory / "Absent.nsproj", error);
+    tests.expect(microsoft && microsoft->cppConsumerVolatileMode() == CppConsumerVolatileMode::Microsoft,
+        "consumer Microsoft volatile mode loads per project");
+    tests.expect(iso && iso->cppConsumerVolatileMode() == CppConsumerVolatileMode::Iso,
+        "consumer ISO volatile mode loads per project");
+    tests.expect(absent && !absent->cppConsumerVolatileMode(), "consumer volatile mode may be absent");
+    expectLoadFailure(tests, directory / "Invalid.nsproj", "must be 'Microsoft' or 'ISO'",
+        "invalid consumer volatile mode is rejected");
+    expectLoadFailure(tests, directory / "Duplicate.nsproj", "declared more than once",
+        "duplicate consumer volatile mode is rejected");
+}
+
 void testBuildSettings(TestContext& tests, const std::filesystem::path& root)
 {
     const std::filesystem::path directory = root / "BuildSettings";
@@ -465,6 +499,7 @@ int main()
     testItemsAndReferences(tests, root);
     testLibraryReferenceRoot(tests, root);
     testBuildSettings(tests, root);
+    testCppConsumerVolatileConfiguration(tests, root);
     testInvalidProjects(tests, root);
 
     std::filesystem::remove_all(root, error);
