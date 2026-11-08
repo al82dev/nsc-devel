@@ -48,6 +48,7 @@ for %%T in (
   pruebas-tanda-08-atomic-enum\validar-global.cmd
   pruebas-tanda-08-atomic-enum\validar-tls.cmd
   pruebas-tanda-08-atomic-enum\validar-hilos.cmd
+  pruebas-tanda-08-atomic-enum\validar-contencion.cmd
   pruebas-tanda-08-atomic-global-dll\validar.cmd
   pruebas-tanda-08-atomic-global-matrix\validar.cmd
   pruebas-tanda-08-atomic-global-matrix\validar-extra.cmd
