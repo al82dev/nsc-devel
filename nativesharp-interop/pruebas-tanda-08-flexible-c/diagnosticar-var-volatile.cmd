@@ -4,7 +4,7 @@ set "DEST=A:\nsc-interop-build\tanda08-flexible-var-volatile"
 set "PATH=A:\al82dev-clang\bin;A:\nsc-interop-build\tanda1-ON\bin;%PATH%"
 if not exist "%DEST%" mkdir "%DEST%"
 if errorlevel 1 exit /b 2
-for %%F in (Restricted.h VarVolatileMode.c VarVolatileMode.ns VarVolatileMS.nsproj VarVolatileISO.nsproj) do (
+for %%F in (Restricted.h VarVolatileMode.c VarVolatileMode.ns VarVolatileMS.nsproj VarVolatileISO.nsproj VarVolatileMixed.nsproj) do (
   copy /y "%~dp0%%F" "%DEST%\%%F" >nul
   if errorlevel 1 exit /b 2
 )
@@ -23,6 +23,18 @@ for %%O in (0 1 2 3) do (
     if errorlevel 1 exit /b 2
     echo Comparacion %%M O%%O:
     python "%~dp0comparar-var-volatile.py" "%DEST%\clang-%%M-O%%O.ll" "%DEST%\nsc-%%M-O%%O.ll"
+    if errorlevel 2 exit /b 2
+    if errorlevel 1 set "RESULT=1"
+  )
+  if %%O==0 (
+    nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\VarVolatileMixed.nsproj" > "%DEST%\nsc-mixed-O%%O.ll"
+  ) else (
+    nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm-opt "%DEST%\VarVolatileMixed.nsproj" -O%%O > "%DEST%\nsc-mixed-O%%O.ll"
+  )
+  if errorlevel 1 exit /b 2
+  for %%M in (MS ISO) do (
+    echo Comparacion referencias mixtas frente a %%M O%%O:
+    python "%~dp0comparar-var-volatile.py" "%DEST%\clang-%%M-O%%O.ll" "%DEST%\nsc-mixed-O%%O.ll"
     if errorlevel 2 exit /b 2
     if errorlevel 1 set "RESULT=1"
   )

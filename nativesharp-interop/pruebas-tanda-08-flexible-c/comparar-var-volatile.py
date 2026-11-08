@@ -24,11 +24,13 @@ def main():
     if len(sys.argv) != 3:
         raise ValueError("usage: comparar-var-volatile.py clang.ll nsc.ll")
     different = False
-    for c_name, ns_name, operation in (("var_volatile_read", "VarVolatileRead", "load"),
+    for c_name, ns_name, operation in (("direct_volatile_read", "DirectVolatileRead", "load"),
+                                        ("direct_volatile_write", "DirectVolatileWrite", "store"),
+                                        ("var_volatile_read", "VarVolatileRead", "load"),
                                         ("var_volatile_write", "VarVolatileWrite", "store")):
         reference = access(sys.argv[1], c_name, operation)
         actual = access(sys.argv[2], ns_name, operation)
-        print(f"{operation}: Clang={reference} NSC={actual} {'IGUAL' if reference == actual else 'DIFIERE'}")
+        print(f"{ns_name}: Clang={reference} NSC={actual} {'IGUAL' if reference == actual else 'DIFIERE'}")
         different |= reference != actual
     return 1 if different else 0
 
