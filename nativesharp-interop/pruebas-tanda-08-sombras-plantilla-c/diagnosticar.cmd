@@ -31,6 +31,14 @@ for %%O in (0 1 2 3) do (
     findstr /l /c:"FAIL: real NSMETA carries the requested C template global" "%DEST%\global-O%%O.log" >nul
     if errorlevel 1 exit /b 2
   )
+  nsc_cpp_c_identity_tests.exe --inspect-template-global "%DEST%\ShadowProducer.nsmeta" _ > "%DEST%\discard-O%%O.log" 2>&1
+  if not errorlevel 1 (
+    echo O%%O: global C con nombre de descarte capturada indebidamente.
+    set "RESULT=1"
+  ) else (
+    findstr /l /c:"FAIL: real NSMETA carries the requested C template global" "%DEST%\discard-O%%O.log" >nul
+    if errorlevel 1 exit /b 2
+  )
   llvm-nm.exe "%DEST%\ShadowProducer.lib" > "%DEST%\symbols-O%%O.log"
   if errorlevel 1 exit /b 2
   findstr /l /c:"__nsc_c_inline_" "%DEST%\symbols-O%%O.log" >nul

@@ -35,5 +35,11 @@ namespace PublishedShadow
             var (shadow_value, other) = (13, 17);
             return shadow_value + other;
         }
+
+        public static int NestedDeconstruction<T>(T value)
+        {
+            var (_, (shadow_value, shadow_function)) = (1, (13, 17));
+            return shadow_value + shadow_function;
+        }
     }
 }
