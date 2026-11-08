@@ -484,6 +484,11 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     pasaron sus rutas normales y se indujeron fallos de emisión y de rechazo
     esperado en copias aisladas. La auditoría de los demás scripts continúa.
     [Detalle](registro-commits/t08-validadores-matriz-atomica-validacion.md).
+    Se corrigieron salidas directas y propagación entre subrutinas en seis
+    controles atómicos/TLS, y salidas directas en la matriz y globales.
+    Un ejecutable con salida 42 y dos fallos en DLL precompiladas devolvieron
+    error; las rutas normales pasaron. Otros scripts siguen por auditar.
+    [Detalle](registro-commits/t08-validadores-atomic-tls-validacion.md).
   - Globales `static` de encabezado: la ruta anterior excluía nombres sin enlace
     externo. El control C pasó y NSC reprodujo el rechazo.
     [Análisis](T08-004-GLOBAL-STATIC-INVESTIGACION.md).
