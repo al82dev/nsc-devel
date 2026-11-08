@@ -1,0 +1,1 @@
+int Main() { return PublishedCFunction.Bridge.Run<int>(5) == 42 ? 0 : 1; }

@@ -1,0 +1,4 @@
+<Project><PropertyGroup><Name>CFunctionWithoutHeader</Name></PropertyGroup><ItemGroup>
+<Compile Include="Consumer.ns" />
+<LibraryReference Include="CFunctionProducer.lib" />
+</ItemGroup></Project>

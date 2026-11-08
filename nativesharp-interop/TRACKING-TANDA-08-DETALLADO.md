@@ -41,9 +41,9 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-002-10b: Verificar una muestra de sombra de global C por variables de `foreach` y `catch`, en O0. [Evidencia](registro-commits/t08-sombra-foreach-catch-o0.md).
 - [x] T08-002-10c: Verificar muestras de inicializadores de local, `for` y desestructuración antes de introducir el nombre sombreado, en O0. [Evidencia](registro-commits/t08-inicializadores-ambito-o0.md).
 - **T08-002-11 — Publicación y conflictos:**
-- [ ] T08-002-11a: Validar publicación y restauración de función C requerida por una plantilla con encabezado.
-- [ ] T08-002-11b: Validar la misma función con el encabezado oculto y solo metadata.
-- [ ] T08-002-11c: Validar publicación y restauración de global C y typedef requeridos por plantilla.
+- [x] T08-002-11a: Validar una función C requerida por plantilla precompilada con encabezado, en O0. [Evidencia](registro-commits/t08-plantilla-funcion-c.md).
+- [x] T08-002-11b: Validar la misma función tras retirar el encabezado del productor, en O0. [Evidencia](registro-commits/t08-plantilla-funcion-c.md).
+- [x] T08-002-11c: Validar muestras de global C y typedef requeridos por plantilla sin encabezado, en O0. [Evidencia](registro-commits/t08-plantilla-global-alias-c.md).
 - [ ] T08-002-11d: Verificar diagnóstico de identidad incompatible entre metadata y encabezado visible.
 - **T08-002-12 — Ámbitos adicionales:**
 - [ ] T08-002-12a: Verificar sombras en parámetros de lambdas y sus inicializadores.

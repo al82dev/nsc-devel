@@ -1,0 +1,5 @@
+namespace PublishedCFunction {
+    public class Bridge {
+        public static int Run<T>(T value) { return c_template_value() + (int)value; }
+    }
+}
