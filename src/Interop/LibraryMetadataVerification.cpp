@@ -1463,8 +1463,7 @@ bool verifyBinaryClosureMetadata(
                     function.declaration.externalSymbol != function.linkSymbol)
                 { error = "C dependency function has incomplete or unsupported identity"; return false; }
             for (const auto& global : dependencies.globals)
-                if ((global.declaration.threadLocal && !global.declaration.externalLinkage) ||
-                    !global.declaration.clangUsr || global.declaration.clangUsr->empty() ||
+                if (!global.declaration.clangUsr || global.declaration.clangUsr->empty() ||
                     (global.declaration.externalLinkage && global.declaration.externalSymbol != global.linkSymbol) ||
                     (!global.declaration.externalLinkage && global.effectiveDllImport))
                 { error = "C dependency global has incomplete or unsupported identity"; return false; }
