@@ -6,6 +6,7 @@ FlexConst* flex_const(void) { return (FlexConst*)&const_storage; }
 FlexVolatile* flex_volatile(void) { return (FlexVolatile*)&volatile_storage; }
 int flex_volatile_get(const FlexVolatile* value, int index) { return value->data[index]; }
 void flex_volatile_set(FlexVolatile* value, int index, int element) { value->data[index] = element; }
+int flex_volatile_pointer(volatile int* value) { value[0] = 900; return value[1]; }
 FlexPacked* flex_packed(void) { return (FlexPacked*)packed_storage; }
 FlexPacked flex_packed_value(void) { FlexPacked value = { 7 }; return value; }
 int flex_packed_take(FlexPacked value) { return value.tag; }
