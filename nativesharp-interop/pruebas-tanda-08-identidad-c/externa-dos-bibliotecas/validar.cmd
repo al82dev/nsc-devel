@@ -4,6 +4,8 @@ set "DEST=A:\nsc-interop-build\t08-global-externa-dos-gate"
 if "%~1"=="incompatible" set "DEST=A:\nsc-interop-build\t08-global-externa-dos-incompatible"
 if "%~1"=="volatile" set "DEST=A:\nsc-interop-build\t08-global-externa-dos-volatile"
 if "%~1"=="volatile-compatible" set "DEST=A:\nsc-interop-build\t08-global-externa-dos-volatile-compatible"
+if "%~1"=="const" set "DEST=A:\nsc-interop-build\t08-global-externa-dos-const"
+if "%~1"=="const-compatible" set "DEST=A:\nsc-interop-build\t08-global-externa-dos-const-compatible"
 set "PATH=A:\nsc-interop-build\tanda1-ON\bin;A:\al82dev-clang\bin;%PATH%"
 set "NSC_LLVM_LIB=A:\al82dev-clang\bin\llvm-lib.exe"
 set "NSC_WINDOWS_RUNTIME_LIBRARY=A:\nsc-interop-build\tanda1-ON\generated\NativeSharp.Runtime.Win32.lib"
@@ -26,6 +28,20 @@ if "%~1"=="volatile-compatible" (
   > "%DEST%\b\same.h" echo extern volatile int internal_value;
   > "%DEST%\fixture.c" echo volatile int internal_value = 11;
 )
+if "%~1"=="const" goto setup_const
+if "%~1"=="const-compatible" goto setup_const
+goto build_fixture
+:setup_const
+for %%D in (a b) do (
+  copy /y "%~dp0%%D\ReadOnly.ns" "%DEST%\%%D\Producer.ns" >nul || exit /b 1
+)
+copy /y "%~dp0Consumer-readonly.ns" "%DEST%\Consumer.ns" >nul || exit /b 1
+> "%DEST%\b\same.h" echo extern const int internal_value;
+if "%~1"=="const-compatible" (
+  > "%DEST%\a\same.h" echo extern const int internal_value;
+  > "%DEST%\fixture.c" echo const int internal_value = 11;
+)
+:build_fixture
 pushd "%DEST%" || exit /b 1
 clang.exe -c --target=x86_64-pc-windows-msvc -std=c11 fixture.c -o fixture.obj
 if errorlevel 1 (popd & exit /b 1)
@@ -38,6 +54,7 @@ for %%D in (a b) do (
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe Consumer.nsproj -O0 --no-artifact-cache -o Consumer.exe > Consumer.log 2>&1
 if "%~1"=="incompatible" goto expect_incompatible
 if "%~1"=="volatile" goto expect_incompatible
+if "%~1"=="const" goto expect_incompatible
 if errorlevel 1 (type Consumer.log & popd & exit /b 1)
 Consumer.exe
 if errorlevel 1 (popd & exit /b 1)
