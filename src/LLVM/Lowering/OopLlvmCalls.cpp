@@ -9,6 +9,66 @@ namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
 
+// Find an export in its own DLL when another DLL exports the same C symbol.
+// Pin the module before returning its address, so it cannot be unloaded while
+// generated code uses the TLS template. The loader handles concurrent loads.
+static LLVMValueRef cppDllTlsExportHelper(LLVMContextRef context, LLVMModuleRef module)
+{
+    constexpr const char* name = "__nsc_cpp_dll_tls_export";
+    if (auto existing = LLVMGetNamedFunction(module, name)) return existing;
+    const auto ptr = LLVMPointerTypeInContext(context, 0);
+    const auto i32 = LLVMInt32TypeInContext(context);
+    LLVMTypeRef arguments[] = {ptr, ptr};
+    const auto type = LLVMFunctionType(ptr, arguments, 2, 0);
+    const auto helper = LLVMAddFunction(module, name, type);
+    LLVMSetLinkage(helper, LLVMInternalLinkage);
+    LLVMTypeRef moduleArgs[] = {i32, ptr, ptr};
+    const auto moduleType = LLVMFunctionType(i32, moduleArgs, 3, 0);
+    auto getModule = LLVMGetNamedFunction(module, "GetModuleHandleExA");
+    if (!getModule) getModule = LLVMAddFunction(module, "GetModuleHandleExA", moduleType);
+    LLVMSetDLLStorageClass(getModule, LLVMDLLImportStorageClass);
+    LLVMTypeRef loadArgs[] = {ptr};
+    const auto loadType = LLVMFunctionType(ptr, loadArgs, 1, 0);
+    auto load = LLVMGetNamedFunction(module, "LoadLibraryA");
+    if (!load) load = LLVMAddFunction(module, "LoadLibraryA", loadType);
+    LLVMSetDLLStorageClass(load, LLVMDLLImportStorageClass);
+    const auto procType = LLVMFunctionType(ptr, arguments, 2, 0);
+    auto proc = LLVMGetNamedFunction(module, "GetProcAddress");
+    if (!proc) proc = LLVMAddFunction(module, "GetProcAddress", procType);
+    LLVMSetDLLStorageClass(proc, LLVMDLLImportStorageClass);
+    const auto entry = LLVMAppendBasicBlockInContext(context, helper, "entry");
+    const auto loadBlock = LLVMAppendBasicBlockInContext(context, helper, "load");
+    const auto pinBlock = LLVMAppendBasicBlockInContext(context, helper, "pin");
+    const auto lookup = LLVMAppendBasicBlockInContext(context, helper, "lookup");
+    const auto fail = LLVMAppendBasicBlockInContext(context, helper, "fail");
+    const auto builder = LLVMCreateBuilderInContext(context);
+    const auto zero = LLVMConstInt(i32, 0, 0);
+    const auto pin = LLVMConstInt(i32, 1, 0);
+    const auto library = LLVMGetParam(helper, 0);
+    const auto symbol = LLVMGetParam(helper, 1);
+    LLVMPositionBuilderAtEnd(builder, entry);
+    const auto slot = LLVMBuildAlloca(builder, ptr, "module.slot");
+    LLVMBuildStore(builder, LLVMConstNull(ptr), slot);
+    LLVMValueRef moduleValues[] = {pin, library, slot};
+    const auto found = LLVMBuildCall2(builder, moduleType, getModule, moduleValues, 3, "module.pinned");
+    LLVMBuildCondBr(builder, LLVMBuildICmp(builder, LLVMIntNE, found, zero, "module.found"), lookup, loadBlock);
+    LLVMPositionBuilderAtEnd(builder, loadBlock);
+    LLVMValueRef loadValues[] = {library};
+    const auto loaded = LLVMBuildCall2(builder, loadType, load, loadValues, 1, "module.loaded");
+    LLVMBuildCondBr(builder, LLVMBuildICmp(builder, LLVMIntNE, loaded, LLVMConstNull(ptr), "load.ok"), pinBlock, fail);
+    LLVMPositionBuilderAtEnd(builder, pinBlock);
+    const auto pinned = LLVMBuildCall2(builder, moduleType, getModule, moduleValues, 3, "module.pin");
+    LLVMBuildCondBr(builder, LLVMBuildICmp(builder, LLVMIntNE, pinned, zero, "pin.ok"), lookup, fail);
+    LLVMPositionBuilderAtEnd(builder, lookup);
+    const auto moduleValue = LLVMBuildLoad2(builder, ptr, slot, "module");
+    LLVMValueRef procValues[] = {moduleValue, symbol};
+    LLVMBuildRet(builder, LLVMBuildCall2(builder, procType, proc, procValues, 2, "export"));
+    LLVMPositionBuilderAtEnd(builder, fail);
+    LLVMBuildRet(builder, LLVMConstNull(ptr));
+    LLVMDisposeBuilder(builder);
+    return helper;
+}
+
 // Resolve an exported PE TLS template address to this thread's storage.
 // The loader keeps the DLL loaded via its import; no reference count is changed.
 static LLVMValueRef cppDllTlsAddressHelper(LLVMContextRef context, LLVMModuleRef module)
@@ -451,18 +511,49 @@ LLVMValueRef OopLlvmImplementation::staticFieldAddress(const frontend::ProjectOo
             if (address == nullptr && !error.empty()) return nullptr;
             return address;
         }
-        if (globalFound == staticFieldGlobals_.end())
-            return failValue(error, "Stage 37 static field has no declared LLVM global");
         if (field.isCppExternal && field.cppThreadLocal && field.cppDllImport)
         {
             const auto ptr = LLVMPointerTypeInContext(context_, 0);
             LLVMTypeRef arguments[] = {ptr};
             const auto type = LLVMFunctionType(ptr, arguments, 1, 0);
             const auto helper = cppDllTlsAddressHelper(context_, module_);
-            LLVMValueRef values[] = {globalFound->second};
+            const auto collision = !field.cppTlsRuntimeIdentity.empty() &&
+                std::any_of(mirModel_.staticFields().begin(), mirModel_.staticFields().end(),
+                    [&](const auto& other) {
+                        return other.isCppExternal && other.cppThreadLocal && other.cppDllImport &&
+                            other.storageSymbol == field.storageSymbol &&
+                            !other.cppTlsRuntimeIdentity.empty() &&
+                            other.cppTlsRuntimeIdentity != field.cppTlsRuntimeIdentity;
+                    });
+            LLVMValueRef exported = nullptr;
+            if (collision)
+            {
+                const auto separator = field.cppTlsRuntimeIdentity.rfind(':');
+                if (separator == std::string::npos || separator == 0)
+                    return failValue(error, "C TLS DLL identity has no runtime name");
+                const auto library = cStringGlobal(field.cppTlsRuntimeIdentity.substr(0, separator), "tls_dll");
+                const auto symbol = cStringGlobal(field.storageSymbol, "tls_symbol");
+                if (!library || !symbol) return failValue(error, "C TLS DLL identity strings are unavailable");
+                LLVMTypeRef exportArguments[] = {ptr, ptr};
+                const auto exportType = LLVMFunctionType(ptr, exportArguments, 2, 0);
+                LLVMValueRef exportValues[] = {library, symbol};
+                exported = LLVMBuildCall2(builder_, exportType, cppDllTlsExportHelper(context_, module_),
+                                          exportValues, 2, "cpp.dll.tls.export");
+                exported = checkedReceiver(exported, error);
+                if (!exported) return nullptr;
+            }
+            else
+            {
+                if (globalFound == staticFieldGlobals_.end())
+                    return failValue(error, "C TLS DLL global was not declared");
+                exported = globalFound->second;
+            }
+            LLVMValueRef values[] = {exported};
             const auto address = LLVMBuildCall2(builder_, type, helper, values, 1, "cpp.dll.tls.address");
             return checkedReceiver(address, error);
         }
+        if (globalFound == staticFieldGlobals_.end())
+            return failValue(error, "Stage 37 static field has no declared LLVM global");
         if (!field.isConst && !field.isCppExternal && !ensureTypeInitialized(field.declaringTypeOrdinal, error))
         {
             return nullptr;

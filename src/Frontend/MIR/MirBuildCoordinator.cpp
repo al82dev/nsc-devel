@@ -671,6 +671,7 @@ void ProjectOopMirModel::buildNamespaceStateFields(
         staticField.isCppExternal = state.isCppExternal;
         staticField.cppDllImport = state.cppDllImport;
         staticField.cppThreadLocal = state.cppThreadLocal;
+        staticField.cppTlsRuntimeIdentity = state.cppTlsRuntimeIdentity;
         staticField.cppCBoolStorage = state.isCppExternal && state.cppCGlobal &&
             !state.cppAtomicStorage && (state.declaredTypeKey == "builtin:bool" ||
             state.declaredTypeKey.starts_with("builtin:bool["));

@@ -976,6 +976,43 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
             [&](const auto other) { return other < states.size() && other != ordinal &&
                 states[other].identityKey == *states[ordinal].cppReconciledStateKey; });
     });
+    // Imported TLS declarations with the same C name can belong to different
+    // DLLs. A transported template resolves names in its producer's scope.
+    if (candidates.size() > 1 &&
+        std::all_of(candidates.begin(), candidates.end(), [&](const auto ordinal) {
+            return ordinal < states.size() && states[ordinal].cppCGlobal &&
+                states[ordinal].cppThreadLocal && states[ordinal].cppDllImport &&
+                !states[ordinal].cppTlsRuntimeIdentity.empty();
+        }))
+    {
+        // The Windows loader resolves by DLL name here. Two different binaries
+        // with the same name cannot safely be selected through that name alone.
+        for (std::size_t i = 0; i < candidates.size(); ++i)
+            for (std::size_t j = i + 1; j < candidates.size(); ++j)
+            {
+                const auto& left = states[candidates[i]].cppTlsRuntimeIdentity;
+                const auto& right = states[candidates[j]].cppTlsRuntimeIdentity;
+                const auto leftSep = left.rfind(':');
+                const auto rightSep = right.rfind(':');
+                if (leftSep == std::string::npos || rightSep == std::string::npos ||
+                    leftSep != rightSep || left.substr(leftSep) == right.substr(rightSep)) continue;
+                const bool sameName = std::equal(left.begin(), left.begin() + leftSep, right.begin(),
+                    [](unsigned char a, unsigned char b) { return std::tolower(a) == std::tolower(b); });
+                if (!sameName) continue;
+                diagnostics.report(diagnostics::DiagnosticId::InvalidMemberAccess,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression != nullptr ? expression->range() : SourceRange{},
+                    "C TLS exports from different DLLs with the same file name cannot yet be distinguished");
+                return result;
+            }
+        const bool hasLocal = std::any_of(candidates.begin(), candidates.end(), [&](const auto ordinal) {
+            return states[ordinal].projectOrdinal == reference.projectOrdinal;
+        });
+        if (hasLocal)
+            std::erase_if(candidates, [&](const auto ordinal) {
+                return states[ordinal].projectOrdinal != reference.projectOrdinal;
+            });
+    }
     if (candidates.size() > 1 && candidates.front() < states.size())
     {
         const auto& first = states[candidates.front()];

@@ -56,6 +56,7 @@ struct ProjectOopMirStaticField final
     SourceRange sourceRange;
     std::string debugDisplayName;
     bool cppThreadLocal = false;
+    std::string cppTlsRuntimeIdentity;
     bool cppCBoolStorage = false;
 };
 }
