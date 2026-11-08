@@ -3,6 +3,7 @@ setlocal
 if "%NSC_T08_BUILD%"=="" set "NSC_T08_BUILD=A:\nsc-interop-build\tanda1-ON"
 if "%NSC_T08_OUT%"=="" set "NSC_T08_OUT=A:\nsc-interop-build\tanda08-alias-template"
 if "%NSC_T08_CLANG%"=="" set "NSC_T08_CLANG=A:\al82dev-clang"
+if "%NSC_T08_OPT%"=="" set "NSC_T08_OPT=0"
 if "%NSC_LINKER%"=="" set "NSC_LINKER=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"
 set "PATH=%NSC_T08_CLANG%\bin;%NSC_T08_BUILD%\bin;%PATH%"
 set "NSC_LLVM_LIB=%NSC_T08_CLANG%\bin\llvm-lib.exe"
@@ -22,7 +23,7 @@ copy /y "%~dp0Consumer.ns" "%NSC_T08_OUT%\consumer\Consumer.ns" >nul
 if errorlevel 1 exit /b 1
 copy /y "%~dp0Consumer.nsproj" "%NSC_T08_OUT%\consumer\Consumer.nsproj" >nul
 if errorlevel 1 exit /b 1
-nsc.exe --cpp-clang-root=%NSC_T08_CLANG% --emit-project-oop-lib "%NSC_T08_OUT%\producer\Producer.nsproj" -O0 --no-artifact-cache -o "%NSC_T08_OUT%\producer\AliasProducer.lib"
+nsc.exe --cpp-clang-root=%NSC_T08_CLANG% --emit-project-oop-lib "%NSC_T08_OUT%\producer\Producer.nsproj" -O%NSC_T08_OPT% --no-artifact-cache -o "%NSC_T08_OUT%\producer\AliasProducer.lib"
 if errorlevel 1 exit /b 1
 nsc_cpp_c_identity_tests.exe --inspect-template-alias "%NSC_T08_OUT%\producer\AliasProducer.nsmeta" AliasInt
 if errorlevel 1 exit /b 1
@@ -30,7 +31,7 @@ copy /y "%NSC_T08_OUT%\producer\AliasProducer.lib" "%NSC_T08_OUT%\consumer\Alias
 if errorlevel 1 exit /b 1
 copy /y "%NSC_T08_OUT%\producer\AliasProducer.nsmeta" "%NSC_T08_OUT%\consumer\AliasProducer.nsmeta" >nul
 if errorlevel 1 exit /b 1
-nsc.exe --cpp-clang-root=%NSC_T08_CLANG% --emit-project-oop-exe "%NSC_T08_OUT%\consumer\Consumer.nsproj" -O0 --no-artifact-cache -o "%NSC_T08_OUT%\consumer\Consumer.exe"
+nsc.exe --cpp-clang-root=%NSC_T08_CLANG% --emit-project-oop-exe "%NSC_T08_OUT%\consumer\Consumer.nsproj" -O%NSC_T08_OPT% --no-artifact-cache -o "%NSC_T08_OUT%\consumer\Consumer.exe"
 if errorlevel 1 exit /b 1
 "%NSC_T08_OUT%\consumer\Consumer.exe"
 exit /b %errorlevel%
