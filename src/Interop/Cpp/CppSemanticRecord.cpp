@@ -644,9 +644,24 @@ CppSemanticRecordsResult collectCppSemanticRecords(
             const auto microsoftVolatileSemantics = session->microsoftVolatileSemantics();
             for (auto& declaration : *declarations)
             {
-                auto identity = projectCppRecordIdentity(declaration, graph.projects()[*owner].moduleName());
-                result.push_back({group.projectFile, index, *owner, target,
-                                  std::move(declaration), std::move(identity), microsoftVolatileSemantics});
+                if (!declaration.isCxx && !declaration.anonymousCRecords.empty())
+                {
+                    auto expanded = materializeCppAnonymousCRecords(declaration);
+                    if (const auto* failure = std::get_if<std::string>(&expanded))
+                        return CppSemanticRecordFailure{group.projectFile, index, *failure};
+                    for (auto& item : std::get<std::vector<CppRecordDeclaration>>(expanded))
+                    {
+                        auto identity = projectCppRecordIdentity(item, graph.projects()[*owner].moduleName());
+                        result.push_back({group.projectFile, index, *owner, target,
+                                          std::move(item), std::move(identity), microsoftVolatileSemantics});
+                    }
+                }
+                else
+                {
+                    auto identity = projectCppRecordIdentity(declaration, graph.projects()[*owner].moduleName());
+                    result.push_back({group.projectFile, index, *owner, target,
+                                      std::move(declaration), std::move(identity), microsoftVolatileSemantics});
+                }
             }
         }
     }
