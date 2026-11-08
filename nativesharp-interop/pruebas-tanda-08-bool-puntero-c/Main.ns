@@ -22,5 +22,12 @@ int Main()
     selected = Choose(false, p, nativePointer);
     *selected = true;
     if (c_read_through_pointer(nativePointer) != 1) return 6;
+    if (c_volatile_bool_pointer[0] || !c_volatile_bool_pointer[1]) return 7;
+    c_volatile_bool_pointer[0] = true;
+    c_volatile_bool_pointer[1] = false;
+    if (c_volatile_bool_check() != 1) return 8;
+    if (!*c_volatile_bool_pointer) return 9;
+    *c_volatile_bool_pointer = false;
+    if (*c_volatile_bool_pointer) return 10;
     return 0;
 }
