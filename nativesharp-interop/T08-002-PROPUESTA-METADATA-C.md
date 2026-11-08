@@ -3,6 +3,29 @@
 Estado: **PROPUESTA NO IMPLEMENTADA**. NSMETA no se modifica; cualquier cambio de
 formato requiere autorización.
 
+## Orden real de captura de tipos — revisión adicional
+
+El colector de referencias de tipos de `ProjectGenericModel` no puede por sí
+solo identificar todos los tipos C usados por una plantilla. En
+`Generics/TemplateCollector.cpp`, `collectDeclaredTypeIdentity` construye su
+índice a partir de declaraciones del AST; el propio comentario indica que la
+especialización genérica ocurre antes de `ProjectNameLookup`. Además,
+`collectTypeDependency` solo conserva como referencia externa un tipo que
+resuelve y cuyo módulo difiere del de la plantilla. Un record o enum C de la
+sesión del propio productor no cumple automáticamente esas condiciones.
+
+Por separado, `ProjectCompilationSnapshots.cpp` construye un observador de
+`ProjectNamespaceFunctionModel` que captura demandas de funciones y valores,
+pero la selección a partir de esas demandas no demuestra por sí sola que cada
+referencia de una plantilla no instanciada se haya enlazado: las sombras locales
+y la especialización deben resolverse. La siguiente implementación debe conectar
+las identidades C al contexto genérico antes de descartar el AST original y
+conservar la procedencia y el ámbito de cada dependencia; no basta con agregar
+todos los nombres del encabezado ni con tratar como externa toda coincidencia de
+texto. Falta una prueba que demuestre qué demandas de cuerpos genéricos captura
+el observador y compare los casos con sombras locales. Esta revisión es por
+lectura: no demuestra que la captura, la publicación o el consumo funcionen.
+
 ## Revisión de la ruta actual — 2026-11-07
 
 **HECHO COMPROBADO POR LECTURA**, revisión `e0c24c25c`: el proveedor
