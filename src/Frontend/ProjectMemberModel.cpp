@@ -213,9 +213,15 @@ bool ProjectMemberModel::setExperimentalCppInstanceFields(
     std::set<std::pair<std::string, std::string>> identities;
     for (const auto& field : fields)
     {
+        // Un miembro de arreglo flexible C (`T[*]`) no tiene almacenamiento propio: tamano cero y la
+        // alineacion de su elemento. A C flexible array member (`T[*]`) has zero storage and its
+        // element's alignment; every other field keeps the previous size/alignment pairing rule.
+        const bool flexible = flexibleArrayElementTypeKey(field.typeKey).has_value();
         if (field.ownerIdentityKey.empty() || field.name.empty() ||
-            (!experimentalCppFieldBytes(field.typeKey) && (!field.byteSize || !field.byteAlignment)) ||
-            ((field.byteSize == 0) != (field.byteAlignment == 0)) ||
+            (flexible && (field.byteSize != 0 || field.byteAlignment == 0 || field.bitWidth ||
+                          field.pointeeReadonly || field.isConst || field.isVolatile)) ||
+            (!flexible && !experimentalCppFieldBytes(field.typeKey) && (!field.byteSize || !field.byteAlignment)) ||
+            (!flexible && (field.byteSize == 0) != (field.byteAlignment == 0)) ||
             (field.pointeeReadonly && !field.typeKey.ends_with('*')))
         { error = "invalid experimental C++ instance field"; return false; }
         if (!identities.emplace(field.ownerIdentityKey, field.name).second)

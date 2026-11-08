@@ -4891,8 +4891,11 @@ int main(int argc, char** argv)
         const auto flexibleField = flexible ? projectCppSemanticInstanceField(
             *flexible, 1, 0, "Semantic", "x86_64-pc-windows-msvc") : std::nullopt;
         ok &= expect(matrixField && matrixField->type.nativeSharpTypeKey == "builtin:int[3][2]" &&
-                     matrixField->byteOffset == 0 && !flexibleField,
-                     "C array field retains fixed dimensions and rejects incomplete bounds");
+                     matrixField->byteOffset == 0 && flexibleField &&
+                     flexibleField->type.nativeSharpTypeKey == "builtin:int[*]" &&
+                     flexibleField->byteOffset == 4 && flexibleField->byteSize == 0 &&
+                     flexibleField->byteAlignment == 4,
+                     "C array fields retain fixed dimensions and project the trailing flexible member");
         ok &= expect(pair && pair->complete && pair->odrHash && pair->sizeBits == 64 && pair->fields.size() == 2 &&
                      pair->fields[0].offsetBits == 0 && pair->fields[1].offsetBits == 32,
                      "C struct size and field offsets match the target");

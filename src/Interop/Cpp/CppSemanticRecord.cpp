@@ -113,6 +113,49 @@ std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type, std:
         key += "[" + std::to_string(*dimension) + "]";
     return CppScalarTypeMapping{std::move(key), type.canonicalSpelling, aggregateReadonly, aggregateVolatile};
 }
+
+// Project the final C flexible array member as NativeSharp's zero-storage T[*].
+std::optional<CppSemanticInstanceField> projectCFlexibleArrayField(const CppRecordDeclaration& record,
+    std::size_t fieldIndex, const std::string& ownerIdentityKey, std::size_t projectOrdinal,
+    std::string_view moduleName, const frontend::ProjectNameLookup* lookup)
+{
+    const auto& field = record.fields[fieldIndex];
+    const CppType* element = field.type.element.get();
+    if (record.isCxx || record.kind != CppRecordKind::Struct || fieldIndex + 1 != record.fields.size() ||
+        field.name.empty() || field.access != CppAccess::Public || field.bitWidth || !field.offsetBits ||
+        *field.offsetBits % 8 != 0 || *field.offsetBits > *record.sizeBits || field.type.isConst ||
+        field.type.isVolatile || !element || element->kind == CppTypeKind::Array || element->isConst ||
+        element->isVolatile || !element->sizeBits || !element->alignmentBits || *element->sizeBits == 0 ||
+        *element->sizeBits % 8 != 0 || *element->alignmentBits == 0 || *element->alignmentBits % 8 != 0)
+        return std::nullopt;
+    const auto naturalAlignment = *element->alignmentBits / 8;
+    const auto recordAlignment = *record.alignmentBits / 8;
+    if ((naturalAlignment & (naturalAlignment - 1)) != 0 || recordAlignment == 0 ||
+        std::gcd(recordAlignment, *field.offsetBits / 8) % naturalAlignment != 0) return std::nullopt;
+    std::optional<CppScalarTypeMapping> mapped;
+    if (element->kind == CppTypeKind::Boolean || element->kind == CppTypeKind::SignedInteger ||
+        element->kind == CppTypeKind::UnsignedInteger || element->kind == CppTypeKind::Floating)
+        mapped = mapCppScalarType(*element);
+    else if (element->kind == CppTypeKind::Enumeration)
+        mapped = projectCppSemanticEnumType(*element, projectOrdinal, moduleName, lookup);
+    else if (element->kind == CppTypeKind::Record && lookup)
+    {
+        const auto target = projectCppRecordTypeIdentity(*element, moduleName);
+        const auto ordinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
+        const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+        if (target && imported && imported->projectOrdinal == projectOrdinal && imported->objectLayout &&
+            !imported->isIncomplete &&
+            (!element->recordIdentity || !element->recordIdentity->clangUsr || !imported->clangUsr ||
+             element->recordIdentity->clangUsr == imported->clangUsr) &&
+            *element->sizeBits / 8 == imported->objectLayout->sizeBytes &&
+            naturalAlignment == imported->objectLayout->alignmentBytes)
+            mapped = CppScalarTypeMapping{"type:" + target->key(), element->canonicalSpelling, false, false};
+    }
+    if (!mapped) return std::nullopt;
+    return CppSemanticInstanceField{projectOrdinal, ownerIdentityKey, field.name,
+        CppScalarTypeMapping{mapped->nativeSharpTypeKey + "[*]", field.type.canonicalSpelling, false, false},
+        *field.offsetBits / 8, false, 0, naturalAlignment, field.clangUsr};
+}
 }
 
 std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
@@ -123,6 +166,8 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         (record.kind == CppRecordKind::Union && record.isCxx) || fieldIndex >= record.fields.size()) return std::nullopt;
     const auto identity = projectCppRecordIdentity(record, moduleName);
     const auto& field = record.fields[fieldIndex];
+    if (identity && field.type.kind == CppTypeKind::Array && field.type.isIncompleteArray)
+        return projectCFlexibleArrayField(record, fieldIndex, identity->key(), projectOrdinal, moduleName, lookup);
     if (field.bitWidth)
     {
         // Clang supplies absolute coordinates; union members intentionally overlap.

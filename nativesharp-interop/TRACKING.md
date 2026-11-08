@@ -1067,10 +1067,10 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     O0–O3, lo que supera la nota anterior sobre `40a0062b8`, `84549e59f` y `35e9cf099`. No cierra el ítem.
     [Comparación](registro-commits/t08-layout-comparacion-clang.md) y
     [formas pendientes](registro-commits/t08-layout-formas-pendientes.md).
-  - Miembro de arreglo flexible: implementación como `T[*]` preparada y probada (directo y precompilado
-    O0–O3, IR igual a Clang salvo `_Bool`), pero no aplicada porque `CppClangSessionTests.cpp` afirma el
-     contrato anterior; pendiente de revisión e integración en esta rama. Parche y pruebas:
-    [diseño](registro-commits/t08-flexible-c-diseno.md).
+  - Miembro de arreglo flexible: proyección como `T[*]` integrada para los tipos y alineaciones
+    comprobados. El control pasó O0–O3 en directo, Shared y Metadata. Las sondas de retorno por valor
+    reproducen una excepción de acceso y la conversión implícita a puntero sigue rechazada; el caso y
+    la tanda permanecen abiertos. [Evidencia](registro-commits/t08-flexible-c-integracion.md).
   - Miembros anónimos C11: diseño con carriers y aliases del punto 326 y catálogo C versión 5; no
     implementado porque requiere NSMETA. [Diseño](registro-commits/t08-anonimos-c-diseno.md).
 - [ ] T08-011. Importar la declaración y campos de una `union` C.

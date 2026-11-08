@@ -138,7 +138,13 @@ bool ProjectObjectLayoutModel::build(
             const auto* owner = nameLookup.cppImportedType(member.declaringTypeOrdinal);
             const auto* ownerLayout = owner && owner->memberAccessLayout ? &*owner->memberAccessLayout :
                 owner && owner->objectLayout ? &*owner->objectLayout : nullptr;
-            const auto physical = valueLayoutForTypeKey(nameLookup, member.declaredTypeKey);
+            auto physical = valueLayoutForTypeKey(nameLookup, member.declaredTypeKey);
+            // Miembro de arreglo flexible C importado: cero bytes en su offset de Clang, alineacion del
+            // elemento. Imported C flexible array member: zero bytes at its Clang offset, element alignment.
+            if (!physical)
+                if (const auto element = ProjectMemberModel::flexibleArrayElementTypeKey(member.declaredTypeKey))
+                    if (const auto elementLayout = valueLayoutForTypeKey(nameLookup, *element))
+                        physical = std::pair<std::uint64_t, std::uint64_t>{0, elementLayout->second};
             const auto alignment = member.explicitFieldAlignment.value_or(physical ? physical->second : 0);
             const auto storageSize = member.explicitBitStorageSize.value_or(physical ? physical->first : 0);
             const bool invalidBits = member.isBitField &&

@@ -1,5 +1,17 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-010: miembros C de arreglo flexible
+
+Integrar la representación del miembro flexible final C como `T[*]` para los
+elementos y alineaciones ya representables; mantener el mismo comportamiento al
+leer encabezados y al restaurar metadata. Actualizar la aserción que exigía
+rechazar expresamente este caso, conservando las demás verificaciones. Presupuesto:
+`CppSemanticRecord.cpp`, `ProjectMemberModel.cpp`, `ProjectObjectLayoutModel.cpp`,
+la aserción de `CppClangSessionTests.cpp`, control flexible y gate, seguimiento y
+registro. Validar con construcción incremental y pruebas dirigidas; no modificar
+NSLink, LLVM/Clang ni desplegar en C:. No afirmar soporte de retorno por valor:
+la discrepancia ABI detectada queda abierta para corrección y validación propia.
+
 ## T08-006: integración de campos C volátiles de Claude
 
 Integrar y revisar el control y el diagnóstico de Claude sobre orden Microsoft
