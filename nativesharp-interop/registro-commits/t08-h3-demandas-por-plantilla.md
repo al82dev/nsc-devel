@@ -11,5 +11,11 @@ símbolo y no se publica como dependencia C por el mero nombre. Los tipos no se
 resuelven mediante esta lista. El control existente se amplió para verificar
 llamada, global y local con sombra bajo sus plantillas originales.
 
-Pendiente: compilar y ejecutar el control agrupado con la conexión del catálogo;
-el cambio aún no publica metadata ni acredita consumo precompilado.
+Validación: se construyó incrementalmente `nsc_cpp_c_identity_tests` y se
+ejecutó con sesiones Clang 23.1 y temporales en A:; ambas operaciones terminaron
+con código 0. El control confirmó la asociación de la llamada, la global y el
+local sombreado a sus plantillas. La construcción emitió tres advertencias de
+inicializadores incompletos en `CppSemanticRecord.cpp`, fuera de este cambio.
+
+La conexión del catálogo sigue pendiente. El cambio no publica metadata ni
+acredita consumo precompilado; no se ejecutó la batería completa de la tanda 8.
