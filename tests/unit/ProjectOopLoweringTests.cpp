@@ -48,6 +48,10 @@ namespace nativesharp::frontend
 {
 struct ProjectOopHirModelTestAccess final
 {
+    static void useLookupSource(ProjectOopHirModel& worker, const ProjectOopHirModel& source)
+    {
+        worker.lookupSource_ = &source;
+    }
     static std::vector<std::uint8_t> coordinatorStaticFieldMask(
         std::vector<ProjectOopMirStaticField> fields)
     {
@@ -21713,11 +21717,40 @@ void testDeepMirNodeDestruction(TestContext& tests)
     tests.expect(initializer.value == nullptr,
         "a field initializer destroys its 32768-level MIR ownership tree iteratively");
 }
+
+void testCppConsumerVolatileHirMap(TestContext& tests)
+{
+    using nativesharp::FileId;
+    using nativesharp::SourceLocation;
+    using nativesharp::SourceRange;
+    using nativesharp::compilation::CppConsumerVolatileMode;
+    using nativesharp::frontend::ProjectOopHirModel;
+    using nativesharp::frontend::ProjectOopHirModelTestAccess;
+    ProjectOopHirModel source;
+    source.setCppConsumerVolatileModes({{1, CppConsumerVolatileMode::Microsoft},
+                                       {2, CppConsumerVolatileMode::Iso}});
+    ProjectOopHirModel worker;
+    ProjectOopHirModelTestAccess::useLookupSource(worker, source);
+    nativesharp::ast::AstNode ms(nativesharp::ast::AstNodeKind::IdentifierExpression,
+        SourceRange(SourceLocation(FileId(1), 1), SourceLocation(FileId(1), 2)));
+    nativesharp::ast::AstNode iso(nativesharp::ast::AstNodeKind::IdentifierExpression,
+        SourceRange(SourceLocation(FileId(2), 1), SourceLocation(FileId(2), 2)));
+    nativesharp::ast::AstNode invalid(nativesharp::ast::AstNodeKind::IdentifierExpression, SourceRange{});
+    tests.expect(worker.cppConsumerVolatileModeForSyntax(&ms) == CppConsumerVolatileMode::Microsoft,
+        "HIR worker resolves Microsoft mode by expression file");
+    tests.expect(worker.cppConsumerVolatileModeForSyntax(&iso) == CppConsumerVolatileMode::Iso,
+        "HIR worker keeps ISO mode independent by expression file");
+    tests.expect(!worker.cppConsumerVolatileModeForSyntax(&invalid) &&
+        !worker.cppConsumerVolatileModeForSyntax(nullptr) &&
+        !worker.cppConsumerVolatileModeForFile(FileId(3)),
+        "HIR does not invent a mode for invalid or unknown source positions");
+}
 }
 
 int main()
 {
     TestContext tests;
+    testCppConsumerVolatileHirMap(tests);
     const std::filesystem::path root =
         std::filesystem::temp_directory_path() / "nativesharp_project_oop_lowering_tests";
     std::error_code cleanupError;
