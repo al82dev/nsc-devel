@@ -22,6 +22,7 @@ namespace
 struct PreprocessingTrace
 {
     llvm::SHA256 hash;
+    bool hasUnstableBuiltin = false;
     void record(llvm::StringRef kind, llvm::StringRef value)
     {
         hash.update(std::to_string(kind.size())); hash.update(":"); hash.update(kind);
@@ -33,6 +34,15 @@ class TraceCallbacks final : public clang::PPCallbacks
 {
 public:
     explicit TraceCallbacks(std::shared_ptr<PreprocessingTrace> trace) : trace_(std::move(trace)) {}
+    void MacroExpands(const clang::Token& name, const clang::MacroDefinition&,
+                      clang::SourceRange, const clang::MacroArgs*) override
+    {
+        const auto* identifier = name.getIdentifierInfo();
+        if (!identifier) return;
+        const auto spelling = identifier->getName();
+        if (spelling == "__DATE__" || spelling == "__TIME__" || spelling == "__TIMESTAMP__")
+            trace_->hasUnstableBuiltin = true;
+    }
     void If(clang::SourceLocation, clang::SourceRange, ConditionValueKind value) override
     { trace_->record("if", std::to_string(static_cast<int>(value))); }
     void Elif(clang::SourceLocation, clang::SourceRange, ConditionValueKind value,
@@ -150,7 +160,7 @@ std::unique_ptr<clang::ASTUnit> runClangSessionAction(
         std::make_shared<clang::PCHContainerOperations>());
     invocation.setDiagnosticConsumer(consumer);
     if (!invocation.run()) return nullptr;
-    if (trace) *preprocessingFingerprint = trace->hash.result();
+    if (trace && !trace->hasUnstableBuiltin) *preprocessingFingerprint = trace->hash.result();
     return ast;
 }
 }

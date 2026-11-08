@@ -1011,6 +1011,11 @@ int main(int argc, char** argv)
         const auto defined = definedSession ? definedSession->preprocessingFingerprint() : std::nullopt;
         ok &= expect(undefined && defined && *undefined != *defined,
                      "preprocessor fingerprint captures ifdef and ifndef decisions affecting pragmas");
+        for (const char* builtin : {"__DATE__", "__TIME__", "__TIMESTAMP__"})
+        {
+            { std::ofstream file(header); file << "const char* dynamic_value = " << builtin << ";\n"; }
+            ok &= expect(!openTrace(), "unstable builtin prevents using the preprocessor fingerprint");
+        }
     }
     {
         namespace fs = std::filesystem;

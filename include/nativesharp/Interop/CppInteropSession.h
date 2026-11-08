@@ -109,7 +109,8 @@ public:
     virtual std::optional<std::vector<CppSourceFileContent>> sourceFileContentsSnapshot() const = 0;
     // Fingerprint of the expanded tokens and observed preprocessor decisions.
     // It must be combined with options, file contents and toolchain identity;
-    // by itself it is not a complete or validated cache key.
+    // by itself it is not a complete or validated cache key. nullopt also denotes
+    // an unstable builtin such as __TIME__, __DATE__ or __TIMESTAMP__.
     virtual std::optional<basic::Sha256Digest> preprocessingFingerprint() const { return std::nullopt; }
     virtual CppSessionCloseResult close() = 0;
 };
