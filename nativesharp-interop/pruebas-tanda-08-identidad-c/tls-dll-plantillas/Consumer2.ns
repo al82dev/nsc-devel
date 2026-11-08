@@ -1,0 +1,13 @@
+int ThreadAccess(int value) {
+    int first = TlsLib.Bridge.Access<int>(0, value);
+    int second = TlsLib2.Bridge.Access<int>(0, 0);
+    return first == second ? first : -1;
+}
+int Main() {
+    if (TlsLib.Bridge.Access<int>(0, 0) != 3 || TlsLib2.Bridge.Access<int>(0, 0) != 3) return 1;
+    if (TlsLib.Bridge.Access<int>(0, 41) != 41 || TlsLib2.Bridge.Access<int>(0, 0) != 41) return 2;
+    TlsThreadCallback callback = (int value) => ThreadAccess(value);
+    if (tls_call_native_thread(callback) != 0) return 3;
+    if (TlsLib.Bridge.Access<int>(0, 0) != 41 || TlsLib2.Bridge.Access<int>(0, 0) != 41 || tls_read() != 41) return 4;
+    return 0;
+}
