@@ -110,6 +110,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
           - [x] Contrastar importación directa y carga dinámica, con y sin `DllMain`; inspeccionar el índice y el bloque TLS observado. [Evidencia](registro-commits/t08-dll-sin-import-inspeccion-tls.md).
           - [x] Confirmar que `DllMain` se ejecuta y contrastar una DLL que contiene una importación no invocada por la función TLS. [Evidencia](registro-commits/t08-dll-tls-importacion-no-invocada.md).
           - [x] Comparar la DLL sin importaciones con una copia que contiene un descriptor de importación vacío, sin añadir dependencias. [Evidencia](registro-commits/t08-dll-tls-directorio-importacion.md).
+          - [x] Reproducir la diferencia en un proceso anfitrión convencional, tanto en el hilo principal como en otro hilo. [Evidencia](registro-commits/t08-tls-sin-import-host-estandar.md).
           - [ ] Determinar la causa y resolver el comportamiento sin depender de añadir una importación artificial a la DLL.
       - [ ] T08-002-09m7c1d2c: Resolver las dependencias transitivas de las DLL homónimas y comprobar el consumidor resultante.
         - [x] Invalidar el bundle al cambiar una DLL transitiva del runtime C y comprobar reconstrucción y restauración en O0 y O3; la resolución de homónimas permanece pendiente. [Evidencia](registro-commits/t08-cache-runtime-transitivo.md).
