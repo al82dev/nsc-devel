@@ -393,6 +393,24 @@ bool checkUsrStability(CppClangSessionFactory& factory, const std::string& resou
                     for (const auto& field : item.fields) carrierCount += field.isAnonymousCarrier;
                 carriersOk &= expect(decoded && restored.size() == 4 && carrierCount == 3,
                     "anonymous carrier envelope preserves all nested carrier markers");
+                dependencies.enumerators.push_back({"Probe", "header-id", "CConstant", "c:@E@CConstant",
+                                                    "builtin:int", 7});
+                std::vector<std::uint8_t> combined;
+                std::vector<CppCRecordSnapshot> combinedRecords;
+                std::vector<CppCEnumSnapshot> combinedEnums;
+                metadata_detail::CDependencyCatalog combinedDependencies;
+                const bool combinedOk = metadata_detail::encodeCTypeCatalogWithAnonymousCarriers(
+                    snapshots, {}, dependencies, combined, error) &&
+                    metadata_detail::decodeCTypeCatalogAndDependencies(combined, 48, combinedRecords,
+                        combinedEnums, combinedDependencies, error);
+                std::size_t combinedCarriers = 0;
+                for (const auto& item : combinedRecords)
+                    for (const auto& field : item.fields) combinedCarriers += field.isAnonymousCarrier;
+                carriersOk &= expect(combinedOk && combinedCarriers == 3 &&
+                    combinedDependencies.enumerators.size() == 1 &&
+                    combinedDependencies.enumerators[0].name == "CConstant" &&
+                    combinedDependencies.enumerators[0].bits == 7,
+                    "anonymous carriers and C enumerator dependencies survive the same envelope");
                 if (encoded)
                 {
                     std::vector<CppCRecordSnapshot> dispatched;
