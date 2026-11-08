@@ -6,6 +6,8 @@
 
 #include <cstdint>
 
+namespace nativesharp::frontend { struct ProjectOopMirFunction; }
+
 namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
@@ -17,5 +19,6 @@ struct FunctionInfo final
     LLVMMetadataRef subprogram = nullptr;
     std::uint64_t asyncFrameSize = 0;
     language::FrameStorage asyncFrameStorage = language::FrameStorage::CallerStack;
+    const frontend::ProjectOopMirFunction* mirFunction = nullptr;
 };
 }

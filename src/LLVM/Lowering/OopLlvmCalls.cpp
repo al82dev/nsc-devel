@@ -1,4 +1,5 @@
 #include "../Internal/OopLlvmImplementation.h"
+#include "../Internal/CppBoolAbi.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
@@ -351,6 +352,9 @@ LLVMValueRef OopLlvmImplementation::lowerCall(
             node->typeKey == "builtin:void" || sretSlot != nullptr ? "" : "call", error);
         if (call == nullptr) return nullptr;
         if (!applyMustTail(node, call, error)) return nullptr;
+        applyExternalBoolAbi(context_, found->second.mirFunction,
+            [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+            { LLVMAddCallSiteAttribute(call, index, attribute); });
         if (sretSlot != nullptr)
         {
             applySretAttributes(
@@ -610,6 +614,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             node->typeKey == "builtin:void" || sretSlot != nullptr ? "" : "static.call", error);
         if (call == nullptr) return nullptr;
         if (!applyMustTail(node, call, error)) return nullptr;
+        applyExternalBoolAbi(context_, found->second.mirFunction,
+            [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+            { LLVMAddCallSiteAttribute(call, index, attribute); });
         if (sretSlot != nullptr)
         {
             applySretAttributes(

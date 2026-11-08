@@ -2,6 +2,7 @@
 #include "../Internal/DropCase.h"
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
+#include "../Internal/CppBoolAbi.h"
 #include "OopLlvmSupport.h"
 
 namespace nativesharp::llvm_backend
@@ -131,6 +132,9 @@ bool OopLlvmImplementation::declareFunction(
                 }
             }
             applyUwtableAttribute(llvmFunction);
+            applyExternalBoolAbi(context_, &function,
+                [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); });
             applyDenormalFloatingPointAttribute(llvmFunction);
             if (function.inliningPolicy == frontend::InliningPolicy::Preferred &&
                 !function.isImportedC && !function.isImportedNative)
@@ -168,7 +172,7 @@ bool OopLlvmImplementation::declareFunction(
             if (subprogram != nullptr) LLVMSetSubprogram(llvmFunction, subprogram);
             functions_[function.mangledName] =
                 FunctionInfo{llvmFunction, functionType, subprogram, function.asyncFrameSize,
-                             function.frameStorage};
+                             function.frameStorage, &function};
         return true;
     }
 
