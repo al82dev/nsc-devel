@@ -1,5 +1,7 @@
 int Main()
 {
+    var valueCopy = Published.FlexBridge.IntsValue();
+    if (valueCopy.n != 7 || Published.FlexBridge.IntsTake(valueCopy) != 7) return 90;
     if (sizeof(*Published.FlexBridge.Ints()) != (nuint)Published.FlexBridge.Layout(1)) return 1;
     if (alignof(*Published.FlexBridge.Ints()) != (nuint)Published.FlexBridge.Layout(2)) return 2;
     if (offsetof(FlexInts, data) != (nuint)Published.FlexBridge.Layout(3)) return 3;

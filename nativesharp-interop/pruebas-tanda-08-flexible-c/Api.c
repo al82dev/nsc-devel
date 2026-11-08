@@ -42,6 +42,7 @@ void flex_records_store(int index, int value) { flex_records()->items[index].b =
 void flex_enums_store(int index, enum FlexMood value) { flex_enums()->moods[index] = value; }
 void flex_bools_store(int index, _Bool value) { flex_bools()->flags[index] = value; }
 FlexInts flex_ints_value(void) { FlexInts value = { 7 }; return value; }
+int flex_ints_take(FlexInts value) { return value.n; }
 int flex_get_ints(const FlexInts* p, int index) { return p->data[index]; }
 void flex_set_ints(FlexInts* p, int index, int value) { p->data[index] = value; }
 double flex_get_doubles(const FlexDoubles* p, int index) { return p->values[index]; }

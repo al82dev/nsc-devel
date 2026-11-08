@@ -1606,6 +1606,15 @@ CppRecordObservationResult prepareCppRecordObservation(
                                 frontend::NamedTypeAccessibility::Public, group.projectOrdinal,
                                 std::move(sourcePath), objectLayout, memberAccessLayout});
         result.types.back().isIncomplete = group.status == CppRecordGroupStatus::ForwardOnly;
+        if (group.status == CppRecordGroupStatus::OneDefinition)
+            for (const auto entryIndex : group.inventoryIndices)
+            {
+                const auto& record = inventory[entryIndex].declaration;
+                if (!record.isCxx && record.kind == CppRecordKind::Struct && record.complete &&
+                    !record.fields.empty() && record.fields.back().type.kind == CppTypeKind::Array &&
+                    record.fields.back().type.isIncompleteArray)
+                    result.types.back().hasCFlexibleArrayMember = true;
+            }
         if (group.status != CppRecordGroupStatus::Conflict && !originConflict && knownOrigin)
             result.types.back().origin = *knownOrigin;
         if (group.status != CppRecordGroupStatus::Conflict && !targetConflict)

@@ -1068,9 +1068,11 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     [Comparación](registro-commits/t08-layout-comparacion-clang.md) y
     [formas pendientes](registro-commits/t08-layout-formas-pendientes.md).
   - Miembro de arreglo flexible: proyección como `T[*]` integrada para los tipos y alineaciones
-    comprobados. El control pasó O0–O3 en directo, Shared y Metadata. Las sondas de retorno por valor
-    reproducen una excepción de acceso y la conversión implícita a puntero sigue rechazada; el caso y
-    la tanda permanecen abiertos. [Evidencia](registro-commits/t08-flexible-c-integracion.md).
+    comprobados. El control pasó O0–O3 en directo, Shared y Metadata. La clasificación ABI indirecta
+    corrigió los fallos de argumento y retorno por valor de los casos natural y empaquetado; la
+    conversión implícita a puntero sigue rechazada y la tanda permanece abierta.
+    [Proyección](registro-commits/t08-flexible-c-integracion.md) y
+    [ABI](registro-commits/t08-flexible-c-abi.md).
   - Miembros anónimos C11: diseño con carriers y aliases del punto 326 y catálogo C versión 5; no
     implementado porque requiere NSMETA. [Diseño](registro-commits/t08-anonimos-c-diseno.md).
 - [ ] T08-011. Importar la declaración y campos de una `union` C.

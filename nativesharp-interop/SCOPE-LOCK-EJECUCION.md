@@ -1,5 +1,17 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-010: ABI Win64 de structs C con miembro flexible
+
+Corregir el fallo de acceso reproducido al pasar o devolver por valor un struct
+C con miembro flexible: Clang 23 usa paso indirecto incluso en tamaños 1/2/4/8.
+Conservar esta propiedad a partir de las declaraciones y de los campos ya
+serializados en el catálogo; usarla al clasificar el layout MIR. Presupuesto:
+tipo C importado, construcción y restauración de ese tipo, importador MIR,
+controles de arreglo flexible, seguimiento y evidencia. No cambiar el formato
+NSMETA, NSLink, LLVM/Clang ni desplegar en C:. Verificar paso y retorno por valor
+en directo y precompilado, incluyendo empaquetado y optimizaciones O0–O3, además
+de regresiones de agregados y layout. La tanda 9 no se inicia con esta corrección.
+
 ## T08-010: miembros C de arreglo flexible
 
 Integrar la representación del miembro flexible final C como `T[*]` para los

@@ -1,5 +1,5 @@
 int Main()
 {
     FlexInts copy = flex_ints_value();
-    return copy.n == 7 ? 0 : 1;
+    return copy.n == 7 && flex_ints_take(copy) == 7 ? 0 : 1;
 }

@@ -72,8 +72,21 @@ for %%P in (RestrictedConst RestrictedPacked) do (
   if errorlevel 1 exit /b 1
   echo Restriccion %%P: rechazo esperado confirmado.
 )
-for %%P in (ProbeSizeofMember ProbeDecay ProbeValueInts ProbeValuePacked) do call :probe %%P
+for %%P in (ProbeSizeofMember ProbeDecay) do call :probe %%P
+for %%O in (0 1 2 3) do (
+  for %%P in (ProbeValueInts ProbeValuePacked) do (
+    call :check_value %%P %%O
+    if errorlevel 1 exit /b 1
+  )
+)
 echo Arreglo flexible C comparado con Clang: resultado esperado cero.
+exit /b 0
+:check_value
+%EMIT_EXE% "%DEST%\%1.nsproj" -O%2 --no-artifact-cache -o "%DEST%\%1-O%2.exe" > "%DEST%\%1-O%2.log" 2>&1
+if errorlevel 1 exit /b 1
+"%DEST%\%1-O%2.exe"
+if errorlevel 1 exit /b 1
+echo ABI flexible %1 O%2: resultado esperado cero.
 exit /b 0
 :probe
 %EMIT_EXE% "%DEST%\%1.nsproj" -O0 --no-artifact-cache -o "%DEST%\%1.exe" > "%DEST%\%1.log" 2>&1

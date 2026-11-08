@@ -4,6 +4,8 @@ namespace Published
     {
         public static long Layout(int id) { return flex_layout(id); }
         public static FlexInts* Ints() { return flex_ints(); }
+        public static FlexInts IntsValue() { return flex_ints_value(); }
+        public static int IntsTake(FlexInts value) { return flex_ints_take(value); }
         public static FlexDoubles* Doubles() { return flex_doubles(); }
         public static FlexRecords* Records() { return flex_records(); }
         public static FlexEnums* Enums() { return flex_enums(); }

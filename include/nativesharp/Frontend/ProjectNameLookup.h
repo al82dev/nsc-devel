@@ -111,6 +111,8 @@ struct CppImportedTypeDeclaration final
     std::optional<std::string> targetTriple = std::nullopt;
     // Producer identity matched by the C provenance and closure reconciliation.
     std::optional<std::string> reconciledIdentityKey = std::nullopt;
+    // C flexible members make the Win64 aggregate ABI indirect even for small records.
+    bool hasCFlexibleArrayMember = false;
 };
 
 class ProjectNameLookup final

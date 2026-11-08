@@ -22,6 +22,7 @@ void flex_records_store(int index, int value);
 void flex_enums_store(int index, enum FlexMood value);
 void flex_bools_store(int index, _Bool value);
 FlexInts flex_ints_value(void);
+int flex_ints_take(FlexInts value);
 int flex_get_ints(const FlexInts* p, int index);
 void flex_set_ints(FlexInts* p, int index, int value);
 double flex_get_doubles(const FlexDoubles* p, int index);

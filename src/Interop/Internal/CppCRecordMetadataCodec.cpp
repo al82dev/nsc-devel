@@ -810,6 +810,9 @@ bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
         type.targetTriple = record.targetTriple;
         type.clangUsr = record.clangUsr;
         type.isIncomplete = !record.complete;
+        type.hasCFlexibleArrayMember = record.complete && record.kind == CppRecordKind::Struct &&
+            !record.fields.empty() && record.fields.back().type.kind == CppTypeKind::Array &&
+            record.fields.back().type.isIncompleteArray;
         if (record.complete)
         {
             const auto alignment = *record.alignmentBits / 8;

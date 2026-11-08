@@ -5,3 +5,4 @@ typedef struct FlexPacked { char tag; int data[]; } FlexPacked;
 FlexConst* flex_const(void);
 FlexPacked* flex_packed(void);
 FlexPacked flex_packed_value(void);
+int flex_packed_take(FlexPacked value);

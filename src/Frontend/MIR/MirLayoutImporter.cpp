@@ -116,7 +116,8 @@ void ProjectOopMirModel::importNamedStructLayouts(
         structLayouts_.push_back(ProjectOopMirStructLayout{
             ordinal, "type:" + imported->identity.key(), layout.sizeBytes, layout.alignmentBytes,
             imported->origin == CppImportedTypeOrigin::CUnion, 0, 0, true,
-            abiPassingForSize(layout.sizeBytes), nameLookup.namedTypes()[ordinal].isPrecompiled,
+            imported->hasCFlexibleArrayMember ? ProjectOopMirAbiPassing::Indirect : abiPassingForSize(layout.sizeBytes),
+            nameLookup.namedTypes()[ordinal].isPrecompiled,
             false, {}, std::move(fields)});
     }
 }
