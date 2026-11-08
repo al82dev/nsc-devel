@@ -563,6 +563,17 @@ LLVMValueRef OopLlvmImplementation::applyIntegerBinaryOperation(
         std::string& error,
         bool divisorProvenNonZero)
 {
+        if (operation == lexer::TokenKind::Plus && operandType == "builtin:int" &&
+            currentOverflowPolicy_ == "saturating")
+        {
+            constexpr std::string_view name = "llvm.sadd.sat";
+            const unsigned id = LLVMLookupIntrinsicID(name.data(), name.size());
+            LLVMTypeRef type = LLVMTypeOf(left);
+            LLVMValueRef intrinsic = LLVMGetIntrinsicDeclaration(module_, id, &type, 1U);
+            LLVMValueRef arguments[] = {left, right};
+            return LLVMBuildCall2(
+                builder_, LLVMGlobalGetValueType(intrinsic), intrinsic, arguments, 2U, "saturating.add");
+        }
         switch (operation)
         {
             case lexer::TokenKind::Plus: return LLVMBuildAdd(builder_, left, right, "add");

@@ -1,0 +1,25 @@
+/// <summary>Checks saturated int addition at both limits and within range.</summary>
+int Main()
+{
+    int maximum = 2147483647;
+    int minimum = -2147483647 - 1;
+    int one = 1;
+    int minusOne = -1;
+    if (saturating(maximum + one) != maximum)
+    {
+        return 1;
+    }
+    if (saturating(minimum + minusOne) != minimum)
+    {
+        return 2;
+    }
+    if (saturating(one + one) != 2)
+    {
+        return 3;
+    }
+    if (maximum + one != minimum)
+    {
+        return 4;
+    }
+    return 0;
+}
