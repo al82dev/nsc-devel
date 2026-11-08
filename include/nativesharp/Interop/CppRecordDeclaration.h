@@ -26,6 +26,16 @@ struct CppRecordField
     bool isAnonymousCarrier = false;
 };
 
+// Physical anonymous C11 aggregates, addressed by field indices from their named owner.
+struct CppAnonymousCRecord
+{
+    std::vector<std::size_t> carrierPath;
+    CppRecordKind kind = CppRecordKind::Struct;
+    std::uint64_t sizeBits = 0;
+    std::uint64_t alignmentBits = 0;
+    std::vector<CppRecordField> fields;
+};
+
 struct CppMethodDeclaration
 {
     CppMethodKind kind = CppMethodKind::Method;
@@ -117,5 +127,6 @@ struct CppRecordDeclaration
     // unions have different member lifetime rules.
     bool isCxx = true;
     std::optional<std::string> clangUsr;
+    std::vector<CppAnonymousCRecord> anonymousCRecords;
 };
 }

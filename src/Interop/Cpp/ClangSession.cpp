@@ -468,6 +468,50 @@ CppAccess describeAccess(clang::AccessSpecifier access)
     }
 }
 
+// Capture nested C11 aggregates separately until their identities can be projected and persisted.
+void collectAnonymousCRecords(const clang::RecordDecl& owner, clang::ASTContext& context,
+                              std::vector<CppAnonymousCRecord>& output)
+{
+    struct Pending { const clang::RecordDecl* record; std::vector<std::size_t> path; };
+    std::vector<Pending> pending;
+    const auto enqueue = [&pending](const clang::FieldDecl* field, std::vector<std::size_t> path) {
+        if (!field->isAnonymousStructOrUnion()) return;
+        const auto* type = field->getType()->getAs<clang::RecordType>();
+        const auto* definition = type ? type->getDecl()->getDefinition() : nullptr;
+        if (definition) pending.push_back({definition, std::move(path)});
+    };
+    std::size_t ownerIndex = 0;
+    for (const auto* field : owner.fields()) enqueue(field, {ownerIndex++});
+    while (!pending.empty())
+    {
+        auto item = std::move(pending.back());
+        pending.pop_back();
+        const auto& layout = context.getASTRecordLayout(item.record);
+        CppAnonymousCRecord result;
+        result.carrierPath = item.path;
+        result.kind = item.record->isUnion() ? CppRecordKind::Union : CppRecordKind::Struct;
+        result.sizeBits = layout.getSize().getQuantity() * context.getCharWidth();
+        result.alignmentBits = layout.getAlignment().getQuantity() * context.getCharWidth();
+        unsigned index = 0;
+        for (const auto* field : item.record->fields())
+        {
+            CppRecordField projected;
+            projected.clangUsr = declarationUsr(field);
+            projected.name = field->getNameAsString();
+            projected.type = describeType(field->getType(), context);
+            projected.access = CppAccess::Public;
+            projected.offsetBits = layout.getFieldOffset(index);
+            projected.isAnonymousCarrier = field->isAnonymousStructOrUnion();
+            if (field->isBitField()) projected.bitWidth = field->getBitWidthValue();
+            auto childPath = item.path;
+            childPath.push_back(index++);
+            enqueue(field, std::move(childPath));
+            result.fields.push_back(std::move(projected));
+        }
+        output.push_back(std::move(result));
+    }
+}
+
 void collectRecords(const clang::DeclContext& context, clang::ASTContext& astContext,
                     clang::MangleContext& mangler, std::set<const clang::TagDecl*>& seen,
                     std::vector<CppRecordDeclaration>& result, std::map<unsigned, std::string>& bufferHashes)
@@ -691,6 +735,8 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
                 }
             }
         }
+        if (!value.isCxx && value.complete)
+            collectAnonymousCRecords(*record, astContext, value.anonymousCRecords);
         result.push_back(std::move(value));
         if (record->isCompleteDefinition())
             collectRecords(*record, astContext, mangler, seen, result, bufferHashes);
