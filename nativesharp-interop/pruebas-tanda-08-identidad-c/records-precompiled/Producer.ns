@@ -1,0 +1,8 @@
+namespace PublishedRecords
+{
+    public struct Bridge
+    {
+        public static CTdF* Wrap(int* value) { return (CTdF*)value; }
+        public static int Read(CTdF* value) { return value->a; }
+    }
+}

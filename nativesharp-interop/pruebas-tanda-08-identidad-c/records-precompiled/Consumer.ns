@@ -1,0 +1,8 @@
+int Main()
+{
+    int storage = 37;
+    var value = PublishedRecords.Bridge.Wrap(&storage);
+    if (PublishedRecords.Bridge.Read(value) != 37 || value->a != 37) return 1;
+    value->a = 41;
+    return storage == 41 && PublishedRecords.Bridge.Read(value) == 41 ? 0 : 2;
+}

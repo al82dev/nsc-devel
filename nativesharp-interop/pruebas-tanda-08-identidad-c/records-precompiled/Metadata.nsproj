@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup><Name>CCompatibleRecordsMetadata</Name></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Consumer.ns" />
+    <LibraryReference Include="CCompatibleRecords.lib" />
+  </ItemGroup>
+</Project>

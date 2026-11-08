@@ -1,0 +1,1 @@
+struct CTdF { int a; };

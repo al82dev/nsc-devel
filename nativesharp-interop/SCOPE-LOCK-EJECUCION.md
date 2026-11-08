@@ -1,5 +1,13 @@
 # Alcance de ejecución: interoperabilidad C/C++ desde NativeSharp
 
+## T08-002 H5: verificación precompilada de records C compatibles
+
+Comprobar lectura y escritura de un record C definido de forma compatible en
+dos encabezados, publicado mediante biblioteca y consumido con y sin encabezado
+en O0–O3. Presupuesto: fixture de identidad, su validador, correcciones de NSC
+que el resultado haga necesarias, seguimiento y registros. Mantener intactos
+NSLink, formato NSMETA, LLVM/Clang y C:; no cerrar la tanda sin el gate completo.
+
 ## T08-002 H5: campos de records C compatibles en encabezados distintos
 
 Corregir la selección de miembros de definiciones C de la misma identidad

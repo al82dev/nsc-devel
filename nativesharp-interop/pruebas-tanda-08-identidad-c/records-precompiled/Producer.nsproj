@@ -1,0 +1,8 @@
+<Project>
+  <PropertyGroup><Name>CCompatibleRecords</Name><OutputType>Library</OutputType></PropertyGroup>
+  <ItemGroup>
+    <Compile Include="Producer.ns" />
+    <CppLibraryReference Header="x.h" Language="C" Standard="c11" />
+    <CppLibraryReference Header="y.h" Language="C" Standard="c11" />
+  </ItemGroup>
+</Project>
