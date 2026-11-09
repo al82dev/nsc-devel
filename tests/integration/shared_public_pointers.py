@@ -1328,6 +1328,19 @@ class Program { public static int Main() { Holder holder = default(Holder);
  class SafePayload { public static Holder Box; public int Data; public SafePayload() { Box.Value = 1; Data = 42; } }
  class Program { public static int Main() { SafePayload.Box = new Holder();
  STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>(); return owner.Get().Data; } }''', 'run:42'),
+        'shared_global_field_local_constructor': ('''class Holder { public EscapePayload Value; }
+ class EscapePayload { public static Holder Box; public EscapePayload() { Holder alias = Box; alias.Value = this; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_global_field_local_destructor': ('''class Holder { public EscapePayload Value; }
+ class EscapePayload { public static Holder Box; public EscapePayload() { }
+ ~EscapePayload() { Holder first = Box; Holder second = first; second.Value = this; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_global_field_local_control': ('''class Holder { public SafePayload Value; }
+ class SafePayload { public int Data; public SafePayload() { Holder local = new Holder(); local.Value = this; Data = 42; } }
+ class Program { public static int Main() { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
+ return owner.Get().Data; } }''', 'run:42'),
         'shared_destructor_static_chain': ('''class EscapePayload { public static EscapePayload Alias;
  public EscapePayload() { } ~EscapePayload() { Forward(1, this); }
  public static void Forward(int ignored, EscapePayload value) { EscapePayload local = value; Publish(local); }

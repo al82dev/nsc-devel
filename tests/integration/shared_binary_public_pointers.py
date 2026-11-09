@@ -186,6 +186,8 @@ class Program { public static int Main() { FAMILY<Payload> owner = SharedPointer
                 ('constructor-static', 'public EscapePayload() { Publish(this); } public static void Publish(EscapePayload value) { Alias = value; }'),
                 ('constructor-global-field', 'public EscapePayload() { Box.Value = this; }'),
                 ('destructor-global-field', 'public EscapePayload() { } ~EscapePayload() { Box.Value = this; }'),
+                ('constructor-global-field-local', 'public EscapePayload() { Holder local = Box; local.Value = this; }'),
+                ('destructor-global-field-local', 'public EscapePayload() { } ~EscapePayload() { Holder first = Box; Holder second = first; second.Value = this; }'),
                 ('constructor-named-static', 'public EscapePayload() { Publish(value: this, ignored: 1); } public static void Publish(int ignored, EscapePayload value) { Alias = value; }'),
                 ('destructor-static', 'public EscapePayload() { } ~EscapePayload() { Publish(this); } public static void Publish(EscapePayload value) { Alias = value; }'),
                 ('constructor-instance-arg', 'public EscapePayload() { Helper helper = new Helper(); helper.Publish(this); }'),

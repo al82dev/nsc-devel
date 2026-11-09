@@ -104,7 +104,9 @@ ReceiverPublicationScan scanReceiverPublication(
     };
     std::unordered_map<std::size_t, std::vector<std::size_t>> localCopies;
     std::vector<std::size_t> receiverLocals;
+    std::vector<std::size_t> globalLocals;
     std::vector<const frontend::ProjectOopMirNode*> globalValues;
+    std::vector<std::pair<const frontend::ProjectOopMirNode*, const frontend::ProjectOopMirNode*>> fieldStores;
     std::vector<const frontend::ProjectOopMirNode*> returnValues;
     std::vector<const frontend::ProjectOopMirNode*> directCalls;
     const auto isOrigin = [&](const frontend::ProjectOopMirNode* value) {
@@ -116,6 +118,8 @@ ReceiverPublicationScan scanReceiverPublication(
         for (const auto* origin : origins(value))
         {
             if (isOrigin(origin)) receiverLocals.push_back(destination);
+            else if (origin->kind == Kind::StaticFieldLoad || origin->kind == Kind::NamespaceStateLoad)
+                globalLocals.push_back(destination);
             else if (origin->kind == Kind::LocalValue && origin->localOrdinal.has_value())
                 localCopies[*origin->localOrdinal].push_back(destination);
         }
@@ -145,6 +149,9 @@ ReceiverPublicationScan scanReceiverPublication(
                  (target->children.front()->kind == Kind::StaticFieldLoad ||
                   target->children.front()->kind == Kind::NamespaceStateLoad)))
                 globalValues.push_back(node->children[1].get());
+            else if (target->kind == Kind::FieldAddress && target->children.size() == 1U &&
+                target->children.front() != nullptr)
+                fieldStores.emplace_back(target->children.front().get(), node->children[1].get());
         }
         for (const auto& child : node->children) pending.push_back(child.get());
     }
@@ -158,6 +165,16 @@ ReceiverPublicationScan scanReceiverPublication(
         if (copies != localCopies.end())
             receiverLocals.insert(receiverLocals.end(), copies->second.begin(), copies->second.end());
     }
+    std::unordered_set<std::size_t> globalReached;
+    while (!globalLocals.empty())
+    {
+        const std::size_t local = globalLocals.back();
+        globalLocals.pop_back();
+        if (!globalReached.insert(local).second) continue;
+        const auto copies = localCopies.find(local);
+        if (copies != localCopies.end())
+            globalLocals.insert(globalLocals.end(), copies->second.begin(), copies->second.end());
+    }
     const auto isReceiver = [&](const frontend::ProjectOopMirNode* value) {
         for (const auto* origin : origins(value))
             if (isOrigin(origin) || (origin->kind == Kind::LocalValue && origin->localOrdinal.has_value() &&
@@ -169,6 +186,11 @@ ReceiverPublicationScan scanReceiverPublication(
         if (isReceiver(value)) { result.returnsSource = true; break; }
     for (const auto* value : globalValues)
         if (isReceiver(value)) { result.publishes = true; return result; }
+    for (const auto& [object, value] : fieldStores)
+        for (const auto* origin : origins(object))
+            if (origin->kind == Kind::LocalValue && origin->localOrdinal.has_value() &&
+                globalReached.contains(*origin->localOrdinal) && isReceiver(value))
+            { result.publishes = true; return result; }
     for (const auto* call : directCalls)
     {
         if ((call->kind == Kind::DirectInstanceCall || call->kind == Kind::DirectStaticCall) &&
