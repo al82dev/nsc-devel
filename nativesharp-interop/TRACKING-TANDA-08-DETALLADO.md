@@ -246,10 +246,10 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 
 - [x] T08-008-01: Probar el retorno `void`, `void*` y prototipo `f(void)` de la muestra C11.
 - **T08-008-02 — Usos de `void`:**
-- [ ] T08-008-02a: Verificar `void` como retorno y `f(void)` sin parámetros.
-- [ ] T08-008-02b: Verificar `void*` en parámetro, retorno, campo y global.
-- [ ] T08-008-02c: Verificar conservación de `const void*` y `volatile void*` en conversiones.
-- [ ] T08-008-02d: Verificar restauración de firmas con `void*` desde metadata.
+- [x] T08-008-02a: Verificar `void` como retorno y `f(void)` sin parámetros. [Evidencia](registro-commits/t08-void-c.md).
+- [x] T08-008-02b: Verificar `void*` en parámetro, retorno, campo y global. [Evidencia](registro-commits/t08-void-c.md).
+- [x] T08-008-02c: Verificar conservación de `const void*` y `volatile void*` en conversiones. [Evidencia](registro-commits/t08-void-c.md).
+- [x] T08-008-02d: Verificar restauración de firmas con `void*` desde metadata. [Evidencia](registro-commits/t08-void-c.md).
 
 ## T08-009 — Enumeraciones
 
@@ -278,6 +278,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - **T08-010-04 — Miembros de struct:**
 - [ ] T08-010-04a: Verificar campos escalares enteros, flotantes, enum y `_Bool`.
 - [ ] T08-010-04b: Verificar campos puntero y puntero a función, incluidos calificadores.
+  - Evidencia previa: un campo `volatile void *` no se importa («has no compatible member named», «C record field cannot be reconstructed»); `projectCppSemanticInstanceField` excluye apuntados `volatile`. [Hallazgo](registro-commits/t08-void-c.md#hallazgo-para-t08-010-04b).
 - [ ] T08-010-04c: Verificar arreglos fijos y miembro flexible al final del struct.
 - [ ] T08-010-04d: Verificar campos de bits con y sin signo, anónimos y de ancho cero.
 - [ ] T08-010-04e: Verificar promoción de miembros de struct y union anónimos en varios niveles.
