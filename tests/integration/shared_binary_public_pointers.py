@@ -1,3 +1,4 @@
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -83,6 +84,31 @@ class Program { public static int Main() { STRONG<Payload> owner = SharedPointer
                 result = run([exe], root)
                 print('binary constructor cleanup', family, level, 'exit=' + str(result.returncode), flush=True)
                 assert result.returncode == 42, ('constructor cleanup', family, level, result.returncode)
+            throwing_source = '''using NativeSharp.Core;
+class Resource { public static int Drops; public Resource() { }
+ ~Resource() { Drops = Drops + 1; } }
+class Bad { public owned Resource item;
+ public Bad() throws Exception { item = new Resource(); throw new Exception(); } }
+struct BadValue { public owned Resource item;
+ public BadValue() throws Exception { item = new Resource(); throw new Exception(); } }
+class Program { public static int Main() { int caught = 0;
+ CLASS_CASE
+ try { STRONG<BadValue> failed = SharedPointers.MAKE<BadValue>(); } catch (Exception error) { caught = caught + 1; }
+ return caught == EXPECTED && Resource.Drops == EXPECTED ? 42 : 1; } }
+'''
+            class_case = os.environ.get('NSC_SHARED_BINARY_THROWING_CLASS') == '1'
+            throwing_source = throwing_source.replace('CLASS_CASE',
+                'try { STRONG<Bad> failed = SharedPointers.MAKE<Bad>(); } '
+                'catch (Exception error) { caught = caught + 1; }' if class_case else '')
+            source.write_text(throwing_source.replace('EXPECTED', '2' if class_case else '1')
+                              .replace('STRONG', family).replace('MAKE', make + 'Throwing'), encoding='utf-8')
+            for level in ('O0', 'O2'):
+                exe = root / ('binary-throwing-' + family + '-' + level + '.exe')
+                result = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', exe], root)
+                assert result.returncode == 0, ('throwing compile', family, level, result.stdout + result.stderr)
+                result = run([exe], root)
+                print('binary throwing factories', family, level, 'exit=' + str(result.returncode), flush=True)
+                assert result.returncode == 42, ('throwing factory', family, level, result.returncode)
         source.write_text('''using NativeSharp.Core;
 class Payload { public long Data; }
 class Program { public static int Main() {
