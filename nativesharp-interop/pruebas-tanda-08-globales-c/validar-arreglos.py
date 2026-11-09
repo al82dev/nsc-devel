@@ -1,12 +1,12 @@
 """T08-004-04c: C global arrays and matrices, including arrays of qualified pointers.
 
 Globals: `int[4]`, `int[2][3]`, `const int[3]`, `volatile int[2]`, `int *[2]`, `const char *[3]`,
-`volatile int *[2]`, `int *const [2]`, `Pair[2]`, `const Pair[2][2]` and `double[2][2][2]`. NativeSharp reads
-elements, writes the mutable ones (C checks the writes), reads through the pointers and takes a row as a
-pointer (`&g_mat[1][0]`). Checked against a Clang control, directly, from a DLL and through a precompiled
-template consumed without the header, O0-O3. Rejections (O0): writing an element of a `const` array or of `int *const [2]`,
-writing through a `const char *` element, storing a `volatile int *` element in a plain `int*`, assigning a
-whole array and indexing with a constant out of bounds.
+`volatile int *[2]`, `int *const [2]`, `Pair[2]`, `const Pair[2][2]` and `double[2][2][2]`.
+NativeSharp reads elements, writes the mutable ones (C checks the writes), reads through the pointers and
+takes a row as a pointer (`&g_mat[1][0]`). Checked against a Clang control, directly, from a DLL and
+through a precompiled template consumed without the header, O0-O3. Rejections (O0): writing an element of a
+`const` array or of `int *const [2]`, writing through a `const char *` element, storing a `volatile int *`
+element in a plain `int*`, assigning a whole array and indexing with a constant out of bounds.
 """
 from pathlib import Path
 import os
