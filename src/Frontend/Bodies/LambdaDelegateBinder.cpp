@@ -1446,6 +1446,28 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     {
         return result;
     }
+    // EN: T08-002: a lambda converted to a structural C callback receives the `const` and `volatile`
+    //     pointees of the callback's parameters, like the parameters of a C function: the body may not
+    //     write through a `const T*` and reads a `volatile T*` with volatile accesses.
+    // ES: T08-002: una lambda convertida a un callback C estructural recibe los datos apuntados `const` y
+    //     `volatile` de los parámetros del callback, igual que los parámetros de una función C: el cuerpo
+    //     no puede escribir mediante un `const T*` y lee un `volatile T*` con accesos volatile.
+    if (const std::optional<language::FunctionType> structural =
+            language::parseFunctionTypeIdentity(delegateTypeKey))
+    {
+        const std::vector<std::size_t>& parameterLocals = scopes_[lambdaScope].localOrdinals;
+        for (std::size_t index = 0; index < parameterLocals.size() && index < parameterTypes.size(); ++index)
+        {
+            MethodLocalSymbol& parameter = locals_[parameterLocals[index]];
+            if ((index < binding.parameterByReference.size() && binding.parameterByReference[index]) ||
+                parameter.typeKey.empty() || parameter.typeKey.back() != '*')
+                continue;
+            parameter.pointerPointeeReadonly = parameter.pointerPointeeReadonly ||
+                language::functionParameterPointeeReadonly(*structural, index);
+            parameter.pointerPointeeVolatile = parameter.pointerPointeeVolatile ||
+                language::functionParameterPointeeVolatile(*structural, index);
+        }
+    }
     bindLocalFunctionSelf(
         syntax, parameterTypes, returnType, methodMemberOrdinal, lambdaScope, binding);
     bool bodyValid = analyzeLambdaBodyAndCaptures(
