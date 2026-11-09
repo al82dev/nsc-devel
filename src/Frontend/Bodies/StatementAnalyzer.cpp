@@ -4087,6 +4087,29 @@ void ProjectMethodBodyModel::analyzeBorrowedVariableInitializer(
                     pendingLocalBorrow = std::move(borrow);
                     return;
                 }
+                const auto parameter = lookupScopeName(viewLocal.scopeOrdinal, viewLocal.viewRootLocalName);
+                const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
+                if (!viewLocal.viewRootLocalName.empty() && parameter.has_value() &&
+                    parameter->kind == ScopeNameKind::Parameter && method != nullptr &&
+                    parameter->semanticOrdinal < method->parameters.size() && memberModel_ != nullptr &&
+                    method->parameters[parameter->semanticOrdinal].passKind == ParameterPassKind::Value &&
+                    memberModel_->typeIsMoveOnly(method->parameters[parameter->semanticOrdinal].typeKey) &&
+                    scopeContains(viewLocal.scopeOrdinal, scopeOrdinal))
+                {
+                    MethodLocalBorrowBinding borrow;
+                    borrow.syntax = variable;
+                    borrow.methodMemberOrdinal = methodMemberOrdinal;
+                    borrow.creationScopeOrdinal = scopeOrdinal;
+                    borrow.typeKey = typeKey;
+                    borrow.sourceKind = MethodLocalBorrowSourceKind::OwnedParameter;
+                    borrow.sourceLocalOrdinal = view->semanticOrdinal;
+                    borrow.sourceParameterOrdinal = parameter->semanticOrdinal;
+                    borrow.sourceOwnerParameterOrdinal = parameter->semanticOrdinal;
+                    borrow.possibleSourceOwnerParameterOrdinals.push_back(parameter->semanticOrdinal);
+                    borrow.maximumValidScopeOrdinal = viewLocal.scopeOrdinal;
+                    pendingLocalBorrow = std::move(borrow);
+                    return;
+                }
             }
         }
         // A class read through a reference return tied to a move-only receiver

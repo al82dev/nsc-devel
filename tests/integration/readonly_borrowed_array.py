@@ -114,6 +114,12 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
         'parameter_get_replace': ('''return Work(FACTORY.Create<Payload>()); }
  public static int Work(HANDLE<Payload> value) { borrowed Payload item = value.Get();
  value = FACTORY.Create<Payload>(); return item.Data[0];''', 'cannot overwrite owner'),
+        'parameter_view_get_read': ('''return Work(FACTORY.Create<Payload>()); }
+ public static int Work(HANDLE<Payload> value) { SharedBorrow<Payload> view = value.Borrow();
+ borrowed Payload item = view.Get(); return item.Data[0] == 0 ? 42 : 1;''', None),
+        'parameter_view_get_move': ('''return Work(FACTORY.Create<Payload>()); }
+ public static int Work(HANDLE<Payload> value) { SharedBorrow<Payload> view = value.Borrow();
+ borrowed Payload item = view.Get(); HANDLE<Payload> other = move(value); return item.Data[0];''', 'cannot move'),
         'nested_write': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
  borrowed Children nested = nestedOwner.Get(); nested.Data[0].Value = 10; return 0;''', 'not assignable'),
         'nested_escape': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
