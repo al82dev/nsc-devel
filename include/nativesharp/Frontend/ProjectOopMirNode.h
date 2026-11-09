@@ -92,6 +92,11 @@ struct ProjectOopMirNode final
     bool hasTrailingLengthBounds = false;
     // NS304-T13-F06: Length's byte offset relative to the flexible-array base (can be negative).
     std::int64_t trailingLengthRelativeOffset = 0;
+    // EN: T08-D15: a RawElementAddress whose element is a C struct or union; as in C, the element's alignment is
+    //     guaranteed for `p[i]` through a pointer to the record, so member accesses use Clang's alignment.
+    // ES: T08-D15: un RawElementAddress cuyo elemento es un struct o union C; como en C, la alineacion del elemento
+    //     esta garantizada en `p[i]` mediante un puntero al record, y los accesos a miembros usan la de Clang.
+    bool cppRecordElementAlignmentGuaranteed = false;
     // NS304-T13-F07: allocator provenance attached to a placement construction.
     std::optional<std::size_t> allocatorContextLocalOrdinal;
     std::optional<std::size_t> allocatorDeallocateMemberOrdinal;

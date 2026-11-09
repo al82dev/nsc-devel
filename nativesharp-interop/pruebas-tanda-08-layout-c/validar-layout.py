@@ -7,7 +7,7 @@
 03e) The same layout restored from metadata: a consumer without the header measures the published types with
      `sizeof`, `alignof` and `offsetof` in its own code, and runs the accesses through a precompiled template.
 02)  Effective access alignment: for every scalar access, the alignment of the `load` and `store` that NSC emits
-     at -O1 must equal `min(Clang alignment, natural alignment of the IR type)`, never more than Clang's.
+     at -O1 must equal Clang's (T08-D15; it was `min(Clang alignment, natural alignment of the IR type)`).
      Bit-field windows are reported (they may be narrower than Clang's) and their values are checked by C.
 Layout values come from `sizeof`, `_Alignof`, `offsetof` and `__alignof__` compiled by Clang. Every access is a
 getter and a setter in NativeSharp and in C; NativeSharp writes through its setter and C reads the value back, and
@@ -86,7 +86,6 @@ ACCESSES = [
     ("Bits", "c", "byte", "unsigned char", True, "9"), ("Bits", "d", "int", "int", True, "-64"),
     ("Bits", "e", "long", "long long", True, "-4294967296"),
 ]
-NATURAL = {"sbyte": 1, "byte": 1, "short": 2, "int": 4, "uint": 4, "long": 8, "float": 4, "double": 8}
 
 
 def c_literal(value, ctype):
@@ -226,7 +225,9 @@ def compare_ir():
             if bit:
                 verdict = "VENTANA" if ns_access[1] <= c_access[1] else "DEFECTO"
             else:
-                expected = min(c_access[1], NATURAL[nt])
+                # T08-D15: Clang's alignment, also above the natural one (it was min(Clang, natural)).
+                # T08-D15: la alineacion de Clang, tambien por encima de la natural (era min(Clang, natural)).
+                expected = c_access[1]
                 verdict = "IGUAL" if ns_access == (c_access[0], expected) else "DEFECTO"
             report.append(f"{r}.{a} {kind} clang={c_access} nsc={ns_access} {verdict}")
             if verdict == "DEFECTO":

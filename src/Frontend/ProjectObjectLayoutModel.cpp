@@ -161,9 +161,13 @@ bool ProjectObjectLayoutModel::build(
                  !storageSize || storageSize > 8 || (storageSize & (storageSize - 1)) != 0 ||
                  *member.explicitBitOffset >= storageSize * 8 || !*member.explicitBitWidth ||
                  *member.explicitBitWidth > storageSize * 8 - *member.explicitBitOffset);
+            // EN: T08-D15: a C member's access alignment may exceed its type's natural alignment (Clang's
+            //     effective alignment); it must still divide the member offset and the record alignment.
+            // ES: T08-D15: la alineacion de acceso de un miembro C puede superar la natural de su tipo (la efectiva
+            //     de Clang); debe seguir dividiendo el offset del miembro y la alineacion del record.
             if (!ownerLayout || !member.explicitFieldOffset || !physical ||
                 invalidBits || physical->second == 0 || alignment == 0 || (alignment & (alignment - 1)) != 0 ||
-                alignment > physical->second || *member.explicitFieldOffset > ownerLayout->sizeBytes ||
+                *member.explicitFieldOffset > ownerLayout->sizeBytes ||
                 storageSize > ownerLayout->sizeBytes - *member.explicitFieldOffset ||
                 *member.explicitFieldOffset % alignment != 0 ||
                 ownerLayout->alignmentBytes % alignment != 0)

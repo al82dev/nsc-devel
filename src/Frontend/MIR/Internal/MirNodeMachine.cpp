@@ -444,6 +444,15 @@ int ProjectOopMirModel::MirNodeMachine::lowerRawElementAddress(
             imported->objectLayout->alignmentBytes == layout->second)
             result->cppAtomicAlignmentBytes = layout->first;
     }
+    if (node->elementTypeKey.starts_with("type:") && !node->elementTypeKey.ends_with('*'))
+    {
+        const auto ordinal = model_.nameLookup_->typeOrdinalForIdentity(
+            std::string_view(node->elementTypeKey).substr(5));
+        const auto* imported = ordinal ? model_.nameLookup_->cppImportedType(*ordinal) : nullptr;
+        result->cppRecordElementAlignmentGuaranteed = imported && imported->objectLayout &&
+            (imported->origin == CppImportedTypeOrigin::CStruct || imported->origin == CppImportedTypeOrigin::CUnion) &&
+            imported->objectLayout->alignmentBytes == layout->second;
+    }
     // NS304-T13-F06: the flexible array's `Length` bounds-check data, resolved by the HIR
     // from [TrailingStorage(...)]; the raw element address emits `index < Length`.
     result->hasTrailingLengthBounds = node->hasTrailingLengthBounds;

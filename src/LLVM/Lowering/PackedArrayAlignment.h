@@ -29,7 +29,12 @@ inline std::optional<std::uint64_t> fieldOrArrayAddressAlignment(
     if (node->kind != frontend::ProjectOopMirNodeKind::RawElementAddress || node->children.size() != 2 ||
         !node->children.front() || node->immediate == 0) return std::nullopt;
     const auto parent = fieldOrArrayAddressAlignment(node->children.front().get(), depth + 1);
-    return parent ? std::optional<std::uint64_t>{std::gcd(*parent, node->immediate)} : std::nullopt;
+    if (parent) return std::optional<std::uint64_t>{std::gcd(*parent, node->immediate)};
+    // EN: T08-D15: `p[i]` through a pointer to a C record: the element alignment is guaranteed, as in Clang.
+    // ES: T08-D15: `p[i]` mediante un puntero a record C: la alineacion del elemento esta garantizada, como en Clang.
+    if (node->cppRecordElementAlignmentGuaranteed && node->alignment != 0)
+        return std::optional<std::uint64_t>{node->alignment};
+    return std::nullopt;
 }
 
 // Pointer-based indexing without a field-address root has no field alignment proof.

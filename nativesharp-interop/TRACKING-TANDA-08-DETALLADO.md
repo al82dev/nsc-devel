@@ -319,9 +319,9 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 ## T08-012 — Layout obtenido de Clang
 
 - [x] T08-012-01: Comparar los tamaños, alineaciones de record y offsets de la muestra de layout. [Evidencia](registro-commits/t08-layout-comparacion-clang.md).
-- [ ] T08-012-02: Resolver y verificar el contrato de alineación efectiva de cada campo frente a Clang.
+- [x] T08-012-02: Resolver y verificar el contrato de alineación efectiva de cada campo frente a Clang. [Evidencia](registro-commits/t08-d15-alineacion-efectiva.md).
   - Verificado el contrato vigente: en 56 accesos ordinarios NSC = min(alineación de Clang, natural) y nunca la excede; los campos de bits usan ventanas más estrechas con alineación no mayor. [Evidencia](registro-commits/t08-layout-c.md).
-  - **Bloqueada — decisión pendiente T08-012-02a:** mantener la alineación derivada o adoptar la declarada por Clang, lo que exige guardarla en NSMeta. [Detalle](registro-commits/t08-layout-c.md#decisión-pendiente-t08-012-02a).
+  - Resuelta T08-012-02a por T08-D15: se adopta la alineación de Clang, `gcd(alineación del record, offset)`, donde está garantizada (objetos y elementos del record); un puntero a miembro conserva la natural. Se calcula con los datos que NSMeta ya transporta. [Evidencia](registro-commits/t08-d15-alineacion-efectiva.md).
 - **T08-012-03 — Cobertura de layout:**
 - [x] T08-012-03a: Comparar offset y alineación de campos escalares naturales y bajo `pack(1/2/4)`. [Evidencia](registro-commits/t08-layout-c.md).
 - [x] T08-012-03b: Comparar layout de arreglos de records y records anidados. [Evidencia](registro-commits/t08-layout-c.md).
@@ -492,7 +492,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-020-02d: Comparar arreglos de records y miembros flexibles. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
 - **T08-020-03 — Comparación de IR:**
 - [x] T08-020-03a: Comparar alineación de `load` y `store` de campos escalares. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
-  - NSC emite `min(alineación de Clang, alineación natural)` y nunca supera a Clang; adoptar la de Clang es la decisión pendiente T08-012-02a.
+  - Desde T08-D15, NSC emite la alineación de Clang en los accesos donde está garantizada. [Evidencia](registro-commits/t08-d15-alineacion-efectiva.md).
 - [x] T08-020-03b: Comparar ventanas de lectura y escritura de bitfields. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
 - [ ] T08-020-03c: Comparar accesos `volatile` alineados y empaquetados en modos Microsoft e ISO.
   - Verificado el acceso directo a campos `volatile` alineados y empaquetados en modos Microsoft e ISO, directo y desde plantilla precompilada: idéntico a Clang. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
@@ -525,7 +525,7 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 - [ ] T08-D12: `int` frente a `unsigned int` en operaciones C (T08-009-03c1).
 - [ ] T08-D13: modo `volatile` del alias NativeSharp a almacenamiento C (T08-010-05a).
 - [x] T08-D14: miembro de tipo struct o union sin etiqueta (T08-011-02c1). [Evidencia](registro-commits/t08-d14-miembro-sin-etiqueta.md).
-- [ ] T08-D15: alineación efectiva de Clang en NSMeta, usada solo cuando está garantizada (T08-012-02a).
+- [x] T08-D15: alineación efectiva de Clang, usada solo cuando está garantizada (T08-012-02a). [Evidencia](registro-commits/t08-d15-alineacion-efectiva.md).
 - [ ] T08-D16: declaración opaca propia del consumidor reconciliada con NSMeta (T08-013-02c1).
 - [ ] T08-D17: rechazo de `int const** q = &p` (T08-014-02d1).
 - [ ] T08-D18: dirección de función C frente al envoltorio `__c_boundary` (T08-017-04a1).

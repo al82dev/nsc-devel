@@ -345,6 +345,9 @@ void appendMirNodeOptionals(std::string& out, const ProjectOopMirNode& node)
     appendMirOptionalU64(out, node.bitWidth);
     appendMirOptionalU64(out, node.replaySpillOffset);
     appendMirOptionalU64(out, node.cppAtomicAlignmentBytes);
+    // EN: T08-D15: the 32 flag bits are taken; this flag travels as its own byte.
+    // ES: T08-D15: los 32 bits de banderas estan ocupados; esta bandera viaja en su propio byte.
+    internal::CachePayloadWriter::byte(out, node.cppRecordElementAlignmentGuaranteed ? 1U : 0U);
 }
 
 void appendMirNodeVectors(std::string& out, const ProjectOopMirNode& node)
@@ -594,6 +597,9 @@ bool readMirNodeOptionals(internal::CachePayloadReader& reader, ProjectOopMirNod
         !readMirOptionalU64(reader, node.replaySpillOffset) ||
         !readMirOptionalU64(reader, node.cppAtomicAlignmentBytes))
         return false;
+    std::uint8_t recordElementAlignment = 0;
+    if (!reader.byte(recordElementAlignment) || recordElementAlignment > 1) return false;
+    node.cppRecordElementAlignmentGuaranteed = recordElementAlignment != 0;
     return true;
 }
 

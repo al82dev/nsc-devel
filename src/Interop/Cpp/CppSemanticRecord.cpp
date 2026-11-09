@@ -150,7 +150,9 @@ std::optional<CppSemanticInstanceField> projectCFlexibleArrayField(const CppReco
     const auto recordAlignment = *record.alignmentBits / 8;
     if ((naturalAlignment & (naturalAlignment - 1)) != 0 || recordAlignment == 0 ||
         (recordAlignment & (recordAlignment - 1)) != 0) return std::nullopt;
-    const auto effectiveAlignment = std::min(naturalAlignment, std::gcd(recordAlignment, *field.offsetBits / 8));
+    // EN: T08-D15: Clang's effective alignment of the member, guaranteed by the record's own alignment.
+    // ES: T08-D15: alineacion efectiva de Clang para el miembro, garantizada por la alineacion del propio record.
+    const auto effectiveAlignment = std::gcd(recordAlignment, *field.offsetBits / 8);
     if (effectiveAlignment == 0) return std::nullopt;
     const bool isConst = field.type.isConst || element->isConst;
     const bool isVolatile = field.type.isVolatile || element->isVolatile;
@@ -320,8 +322,19 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     const auto recordAlignment = *record.alignmentBits / 8;
     if ((naturalAlignment & (naturalAlignment - 1)) != 0 ||
         (recordAlignment & (recordAlignment - 1)) != 0) return std::nullopt;
-    const auto effectiveAlignment = std::min(naturalAlignment,
-        std::gcd(recordAlignment, *field.offsetBits / 8));
+    // EN: T08-D15: Clang's effective alignment for a member access, `alignmentAtOffset(record alignment, offset)`.
+    //     The record's alignment is guaranteed for every object of the record: C storage and pointers by the C
+    //     rules, and NativeSharp locals, globals and allocations by the record's object layout. Nested members and
+    //     array elements combine it with their parent (fieldOrArrayAddressAlignment), so it is never assumed
+    //     beyond what the containing object guarantees. It is computed from the record alignment and the member
+    //     offset already carried by NSMETA, so the metadata does not change.
+    // ES: T08-D15: alineacion efectiva de Clang para un acceso a miembro, `alignmentAtOffset(alineacion del record,
+    //     offset)`. La alineacion del record esta garantizada para todo objeto del record: el almacenamiento y los
+    //     punteros C por las reglas de C, y los locales, globales y reservas de NativeSharp por el layout de objeto
+    //     del record. Los miembros anidados y los elementos de arreglo la combinan con su padre
+    //     (fieldOrArrayAddressAlignment), asi que nunca se supone mas de lo que garantiza el objeto contenedor. Se
+    //     calcula con la alineacion del record y el offset del miembro que NSMETA ya lleva; la metadata no cambia.
+    const auto effectiveAlignment = std::gcd(recordAlignment, *field.offsetBits / 8);
     const CppType* arrayElement = &field.type;
     bool scalarArray = field.type.kind == CppTypeKind::Array;
     while (scalarArray && arrayElement && arrayElement->kind == CppTypeKind::Array)
