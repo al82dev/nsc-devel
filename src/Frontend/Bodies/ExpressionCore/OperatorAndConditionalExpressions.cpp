@@ -228,6 +228,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 const ExpressionResult value = analyzeExpression(
                     element, methodMemberOrdinal, scopeOrdinal, diagnostics);
                 valid = valid && value.valid;
+                if (value.valid && value.readonlyBorrowedObject)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error,
+                        element->range(),
+                        "readonly borrowed value cannot be stored in a tuple without lifetime tracking");
+                    valid = false;
+                }
                 elementTypeKeys.push_back(value.valid ? value.typeKey : std::string("<error>"));
                 MethodAggregateInitializerEntryBinding entry;
                 entry.syntax = element;

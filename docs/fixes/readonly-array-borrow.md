@@ -47,6 +47,27 @@ prueba: el compilador sí los rechazaba, pero con `requires a modifiable` en vez
 de `not assignable`. Se ajustó la expectativa al diagnóstico observado y la
 selección posterior pasó. No hubo cambio del compilador en esta comprobación.
 
+## Tuplas que contienen un préstamo de solo lectura
+
+El análisis aceptaba `(Payload, int) saved = (alias, 42)` y la forma que usa
+`owner.Get()` directamente para `Rc` y `Arc`; al construir la tupla descartaba
+la marca de préstamo del elemento. Las reproducciones se limitaron al análisis
+semántico, sin ejecutar un alias potencialmente inválido. Resultados anteriores
+en `A:/nsc-fixes-evidencia/public-tuple-borrow-tuple_alias_escape*.log` y
+`public-tuple-borrow-tuple_direct_escape*.log`.
+
+Como la tupla no conserva una vida por elemento, el análisis rechaza ahora un
+elemento que ya lleva la marca de préstamo de solo lectura. La regla también
+puede rechazar una tupla local cuyo uso sería seguro; no implementa seguimiento
+general de vidas dentro de tuplas. La selección dirigida comprueba alias y
+llamada directa, tupla anidada y arreglo prestado, para controles local y
+atómico; ejecuta tuplas ordinarias y lecturas escalares en O0/O2
+(`readonly-array-ctest-tuple_alias,tuple_direct,tuple_nested,tuple_array,tuple_scalar,tuple_ordinary.log`).
+La prueba pública desde fuentes rechazó ambas formas para `Rc` y `Arc`
+(`public-tuple-borrow-tuple_alias_escape,tuple_direct_escape.log`). El build fue
+incremental y cuatro controles de tuplas y referencias pasaron
+(`readonly-tuple-existing-controls.log`). No se verificó el SDK binario.
+
 ## Estructuras anidadas
 
 Tras `764137d50`, una regresión con un arreglo de estructuras que contienen un
