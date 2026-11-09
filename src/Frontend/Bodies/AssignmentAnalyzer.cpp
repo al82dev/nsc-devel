@@ -1015,6 +1015,24 @@ bool ProjectMethodBodyModel::validateAssignmentTargetStorage(
         // a pointer readonly or one-past, later dereference must remain conservative.
         locals_[*assignmentTargetLocal].onePastEndPointer =
             locals_[*assignmentTargetLocal].onePastEndPointer || right.onePastEndPointer;
+        // EN: T08-D13. A reassigned C alias joins the contract of every assigned value: its mode becomes unknown
+        //     (plain volatile, as a direct access to a record of mixed modes) when they disagree or the value is not
+        //     a C alias, and its alignment is the smallest one.
+        // ES: T08-D13. Un alias C reasignado une el contrato de cada valor asignado: su modo pasa a desconocido
+        //     (volatile simple, como el acceso directo a un record de modos mezclados) si discrepan o el valor no es
+        //     alias C, y su alineacion es la menor.
+        // EN: A volatile C flexible member that decays into the alias is a C alias value, as in its initializer.
+        // ES: Un miembro flexible C volatile que decae en el alias es valor alias C, como en su inicializador.
+        MethodLocalSymbol& alias = locals_[*assignmentTargetLocal];
+        const bool cAliasValue = right.pointerPointeeVolatile &&
+            (right.cppVolatilePointeeContract || right.cppFlexibleArrayMember);
+        if (alias.cppVolatilePointeeContract)
+        {
+            if (!cAliasValue || alias.cppVolatilePointeeMicrosoft != right.cppVolatilePointeeMicrosoft)
+                alias.cppVolatilePointeeMicrosoft.reset();
+            alias.cppVolatilePointeeAlignment = cAliasValue
+                ? std::min(alias.cppVolatilePointeeAlignment, right.cppVolatilePointeeAlignment) : 0U;
+        }
         // ES: La dirección asignada se une al origen del valor del puntero (ver
         // MethodLocalSymbol::pointerValueOrigin). EN: The assigned address joins the pointer's value
         // origin (see MethodLocalSymbol::pointerValueOrigin).

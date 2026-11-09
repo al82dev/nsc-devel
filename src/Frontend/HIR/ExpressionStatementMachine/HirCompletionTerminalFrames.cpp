@@ -475,13 +475,16 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
                 resultType);
             const auto* operandType = expressionType(frame.syntax->first());
             load->volatileAccess = operandType && operandType->pointerPointeeVolatile;
-            if (load->volatileAccess && operandType->cppVolatilePointeeContract)
-            {
-                const auto mode = cppConsumerVolatileModeForSyntax(frame.syntax);
-                if (mode) load->cppMicrosoftVolatileSemantics =
-                    *mode == compilation::CppConsumerVolatileMode::Microsoft;
-                if (mode) load->cppAtomicAlignmentBytes = internal::cppVolatileAliasAlignment(operandType, resultType);
-            }
+            // EN: T08-D13. Through a C alias the access follows the volatile mode of the C origin.
+            // ES: T08-D13. Por un alias C el acceso sigue el modo volatile del origen C.
+            if (load->volatileAccess)
+                if (const auto alias = internal::cVolatileAliasAccess(operandType,
+                        methodBodyModel_ ? internal::cAliasLocal(methodBodyModel_->locals(), lowered.get()) : nullptr,
+                        resultType))
+                {
+                    load->cppMicrosoftVolatileSemantics = alias->microsoft;
+                    load->cppAtomicAlignmentBytes = alias->atomicWidth;
+                }
             if (directCVolatileInt && load->volatileAccess)
             {
                 load->cppMicrosoftVolatileSemantics = directCVolatileMode;
@@ -501,13 +504,17 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
                 // Qualify the target independently of the pointer value's own load.
                 auto address = makeNode(ProjectOopHirNodeKind::AddressValue, frame.syntax, resultType);
                 address->volatileAccess = volatilePointee;
-                if (volatilePointee && operandType->cppVolatilePointeeContract)
-                {
-                    const auto mode = cppConsumerVolatileModeForSyntax(frame.syntax);
-                    if (mode) address->cppMicrosoftVolatileSemantics =
-                        *mode == compilation::CppConsumerVolatileMode::Microsoft;
-                    if (mode) address->cppAtomicAlignmentBytes = internal::cppVolatileAliasAlignment(operandType, resultType);
-                }
+                // EN: T08-D13. Through a C alias the access follows the volatile mode of the C origin.
+                // ES: T08-D13. Por un alias C el acceso sigue el modo volatile del origen C.
+                if (volatilePointee)
+                    if (const auto alias = internal::cVolatileAliasAccess(operandType,
+                            methodBodyModel_ ? internal::cAliasLocal(methodBodyModel_->locals(), lowered.get())
+                                             : nullptr,
+                            resultType))
+                    {
+                        address->cppMicrosoftVolatileSemantics = alias->microsoft;
+                        address->cppAtomicAlignmentBytes = alias->atomicWidth;
+                    }
                 if (directCVolatileInt && volatilePointee)
                 {
                     address->cppMicrosoftVolatileSemantics = directCVolatileMode;

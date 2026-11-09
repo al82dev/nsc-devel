@@ -2,6 +2,7 @@
 
 #include "MethodBodyInternals.h"
 #include "CppFlexiblePointerAlignment.h"
+#include "CppVolatileAliasContract.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
@@ -858,6 +859,39 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
             ProjectTypeConversion::isPointer(receiver.typeKey), receiver.pointerKnownAlignment,
             field.explicitFieldAlignment, field.explicitFieldOffset);
     result.pointerAddressSpace = field.declaredPointerAddressSpace;
+    // EN: T08-D13. C volatile storage reached through a member starts the C contract with the record's volatile
+    //     mode and the alignment the direct access assumes. A volatile flexible member that decays (it is not
+    //     packed nor under-aligned) has the field's alignment, as C assumes for a record pointer and as the direct
+    //     access `v->items[i]` uses; `pointerKnownAlignment` keeps the alignment proven by the receiver. A pointer
+    //     to volatile scalars (or an array of them) carries C's natural alignment of the pointee.
+    // ES: T08-D13. El almacenamiento C volatile alcanzado por un miembro inicia el contrato C con el modo volatile
+    //     del record y la alineacion que supone el acceso directo. Un miembro flexible volatile que decae (no esta
+    //     empaquetado ni subalineado) tiene la alineacion del campo, la que C supone para un puntero a record y la
+    //     que usa el acceso directo `v->items[i]`; `pointerKnownAlignment` conserva la demostrada por el receptor.
+    //     Un puntero a escalares volatile (o un arreglo de ellos) lleva la alineacion natural del apuntado que
+    //     supone C.
+    if (field.isCppExternal && !field.isBitField)
+    {
+        if (result.cppFlexibleArrayMember && result.volatileStorage)
+        {
+            result.cppVolatilePointeeMicrosoft = field.cppMicrosoftVolatileSemantics;
+            std::size_t assumed = 0;
+            if (result.cppFlexibleArrayDecaySafe)
+            {
+                const auto element = ProjectMemberModel::flexibleArrayElementTypeKey(field.declaredTypeKey);
+                assumed = field.explicitFieldAlignment ? static_cast<std::size_t>(*field.explicitFieldAlignment) :
+                    element ? method_body_detail::cVolatilePointeeScalarWidth(*element + "*") : 0;
+            }
+            result.cppVolatilePointeeAlignment = assumed;
+        }
+        else if (field.declaredPointerPointeeVolatile)
+            if (const std::size_t width = method_body_detail::cVolatilePointeeScalarWidth(field.declaredTypeKey))
+            {
+                result.cppVolatilePointeeContract = true;
+                result.cppVolatilePointeeMicrosoft = field.cppMicrosoftVolatileSemantics;
+                result.cppVolatilePointeeAlignment = width;
+            }
+    }
     result.receiverSyntax = typeReceiver ? nullptr : expression->first();
     result.receiverTypeKey = typeReceiver ? "" : receiver.typeKey;
     result.receiverTypeOrdinal = typeReceiver

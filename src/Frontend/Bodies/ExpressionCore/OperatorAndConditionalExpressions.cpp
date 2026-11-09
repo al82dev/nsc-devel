@@ -652,6 +652,17 @@ bool ProjectMethodBodyModel::resolveConditionalMatchingType(
         whenTrue.pointerKnownAlignment, whenFalse.pointerKnownAlignment);
     result.pointerAddressSpace = whenTrue.pointerAddressSpace;
     result.onePastEndPointer = whenTrue.onePastEndPointer || whenFalse.onePastEndPointer;
+    // EN: T08-D13. Both branches C aliases: the contract joins (mode unknown on a mismatch, smallest alignment).
+    // ES: T08-D13. Las dos ramas alias C: el contrato se une (modo desconocido si discrepan, menor alineacion).
+    result.cppVolatilePointeeContract = whenTrue.cppVolatilePointeeContract && whenFalse.cppVolatilePointeeContract;
+    if (result.cppVolatilePointeeContract)
+    {
+        result.cppVolatilePointeeMicrosoft =
+            whenTrue.cppVolatilePointeeMicrosoft == whenFalse.cppVolatilePointeeMicrosoft
+            ? whenTrue.cppVolatilePointeeMicrosoft : std::nullopt;
+        result.cppVolatilePointeeAlignment =
+            std::min(whenTrue.cppVolatilePointeeAlignment, whenFalse.cppVolatilePointeeAlignment);
+    }
     mergeConditionalOwnership(result, whenTrue, whenFalse);
     return true;
 }

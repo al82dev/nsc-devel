@@ -395,10 +395,30 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     return *selected->declaration.clangUsr == *alias.declaration.clangUsr ||
                         (fileTypedef(*selected->declaration.clangUsr) && fileTypedef(*alias.declaration.clangUsr));
                 };
+                // EN: T08-015-03c. The same C typedef of a record from the same header in two live projects of a
+                //     graph, one of them the owner (each imports the header with its own reference): the owner's
+                //     alias names the owner's record. Homonymous typedefs of other records stay ambiguous.
+                // ES: T08-015-03c. El mismo typedef C de un record del mismo encabezado en dos proyectos vivos de un
+                //     grafo, uno de ellos el duenio (cada uno importa el encabezado con su referencia): el alias del
+                //     duenio nombra el record del duenio. Los typedef homonimos de otros records siguen ambiguos.
+                const auto sameLiveRecordAlias = [&]() {
+                    if (!selected || selected->projectOrdinal == alias.projectOrdinal ||
+                        (selected->projectOrdinal != owner && alias.projectOrdinal != owner) ||
+                        selected->fromPrecompiledCatalog || alias.fromPrecompiledCatalog ||
+                        !selected->declaration.clangUsr || selected->declaration.clangUsr->empty() ||
+                        selected->declaration.clangUsr != alias.declaration.clangUsr ||
+                        selected->declaration.underlyingType.canonicalSpelling !=
+                            alias.declaration.underlyingType.canonicalSpelling) return false;
+                    const auto a = cppAliasRecordType(selected->declaration.underlyingType);
+                    const auto b = cppAliasRecordType(alias.declaration.underlyingType);
+                    return a && b && a->canonicalName == b->canonicalName && a->clangUsr && !a->clangUsr->empty() &&
+                        a->clangUsr == b->clangUsr && a->pointerDepth == b->pointerDepth &&
+                        a->pointeeConst == b->pointeeConst;
+                };
                 if (selected && (selectedName != qualified ||
                     (selected->projectOrdinal != alias.projectOrdinal && !reconciledRecordAlias() &&
                      !compatibleFunctionAlias() && !compatibleScalarAlias() &&
-                     !reconciledFunctionRecordAlias()) ||
+                     !reconciledFunctionRecordAlias() && !sameLiveRecordAlias()) ||
                     selected->targetTriple != alias.targetTriple ||
                     selected->declaration.underlyingType.canonicalSpelling != alias.declaration.underlyingType.canonicalSpelling))
                     return report(diagnostics::DiagnosticId::AmbiguousTypeName,
@@ -492,10 +512,23 @@ bool ProjectNameLookup::expandCppTypeAlias(
         const auto compatibleUsr = [](const auto& left, const auto& right) {
             return !left || !right || left == right;
         };
+        // EN: T08-015-03c. A live project of the graph whose own reference declares the owner's typedef.
+        // ES: T08-015-03c. Un proyecto vivo del grafo cuya propia referencia declara el typedef del duenio.
+        const auto sameLiveAliasIn = [&](std::size_t projectOrdinal) {
+            if (selected->fromPrecompiledCatalog || !selected->declaration.clangUsr ||
+                selected->declaration.clangUsr->empty()) return false;
+            return std::any_of(cppImportedTypeAliases_.begin(), cppImportedTypeAliases_.end(), [&](const auto& other) {
+                return other.projectOrdinal == projectOrdinal && !other.fromPrecompiledCatalog &&
+                    other.declaration.clangUsr == selected->declaration.clangUsr &&
+                    other.declaration.underlyingType.canonicalSpelling ==
+                        selected->declaration.underlyingType.canonicalSpelling;
+            });
+        };
         if (!nativeCandidates.empty())
         {
             if (record && record->pointerDepth == 0 && !record->pointeeConst &&
-                selected->projectOrdinal == owner && !selected->equivalentRecordFunctionAliases.empty())
+                selected->projectOrdinal == owner && (!selected->equivalentRecordFunctionAliases.empty() ||
+                    (!selected->fromPrecompiledCatalog && nativeCandidates.size() > 1)))
             {
                 bool ownerFound = false;
                 bool allEquivalentImports = true;
@@ -516,7 +549,8 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     if (declaration->projectOrdinal == owner) ownerFound = true;
                     else if (std::none_of(selected->equivalentRecordFunctionAliases.begin(),
                                          selected->equivalentRecordFunctionAliases.end(),
-                                         [&](const auto& item) { return item.first == declaration->projectOrdinal; }))
+                                         [&](const auto& item) { return item.first == declaration->projectOrdinal; }) &&
+                             !sameLiveAliasIn(declaration->projectOrdinal))
                     { allEquivalentImports = false; break; }
                 }
                 if (ownerFound && allEquivalentImports)

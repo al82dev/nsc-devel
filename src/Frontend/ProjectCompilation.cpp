@@ -1682,12 +1682,18 @@ bool ProjectCompilation::compileProjectOopHir(
     }
     if (cancellationRequested(loadError, "oop-hir")) return false;
 
+    // EN: T08-D13. The volatile mode of C storage, and of every NativeSharp alias of it, is the VolatileMode of
+    //     the CppLibraryReference that declares it, never a mode of the consuming project; the project property
+    //     is therefore rejected.
+    // ES: T08-D13. El modo volatile del almacenamiento C, y de todo alias NativeSharp suyo, es el VolatileMode de
+    //     la CppLibraryReference que lo declara, nunca un modo del proyecto consumidor; por eso se rechaza la
+    //     propiedad del proyecto.
     for (const auto& project : projectGraph_->projects())
     {
         if (project.cppConsumerVolatileMode().has_value())
         {
-            loadError = "CppConsumerVolatileMode is not yet supported by code generation: " +
-                project.projectFile().string();
+            loadError = "CppConsumerVolatileMode is not supported: the volatile mode of C storage and of its "
+                "aliases is the VolatileMode of its CppLibraryReference: " + project.projectFile().string();
             return false;
         }
     }

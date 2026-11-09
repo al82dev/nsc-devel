@@ -106,6 +106,12 @@ struct MethodLocalSymbol final
     bool pointerPointeeVolatile = false;
     // Static C access contract of an inferred pointer, not a property of its current address.
     bool cppVolatilePointeeContract = false;
+    // EN: T08-D13. Mode and alignment of that contract, joined over every assignment (mode unknown on a mismatch,
+    //     alignment the smallest).
+    // ES: T08-D13. Modo y alineacion de ese contrato, unidos en cada asignacion (modo desconocido si discrepan,
+    //     alineacion la menor).
+    std::optional<bool> cppVolatilePointeeMicrosoft;
+    std::size_t cppVolatilePointeeAlignment = 0;
     bool pointerNullable = true;
     bool pointerHasProvenance = true;
     std::size_t pointerKnownAlignment = 1;

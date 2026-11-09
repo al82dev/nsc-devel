@@ -431,14 +431,16 @@ void ProjectOopHirModel::finishArrayRawIndex(
         address->volatileAccess = ((frame.baseIsFixedArray || frame.baseIsFlexibleArray) && base && base->volatileAccess) ||
             (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray &&
              baseType && baseType->pointerPointeeVolatile);
-        if (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray &&
-            address->volatileAccess && baseType && baseType->cppVolatilePointeeContract)
-        {
-            const auto mode = cppConsumerVolatileModeForSyntax(frame.syntax);
-            if (mode) address->cppMicrosoftVolatileSemantics =
-                *mode == compilation::CppConsumerVolatileMode::Microsoft;
-            if (mode) address->cppAtomicAlignmentBytes = internal::cppVolatileAliasAlignment(baseType, elementType);
-        }
+        // EN: T08-D13. Indexing a C alias follows the volatile mode of the C origin.
+        // ES: T08-D13. Indexar un alias C sigue el modo volatile del origen C.
+        if (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray && address->volatileAccess)
+            if (const auto alias = internal::cVolatileAliasAccess(baseType,
+                    methodBodyModel_ ? internal::cAliasLocal(methodBodyModel_->locals(), base.get()) : nullptr,
+                    elementType))
+            {
+                address->cppMicrosoftVolatileSemantics = alias->microsoft;
+                address->cppAtomicAlignmentBytes = alias->atomicWidth;
+            }
         const ProjectOopHirNode* provenance = base.get();
         bool indexedCGlobal = false;
         if (provenance && provenance->kind == ProjectOopHirNodeKind::PointerLoad &&

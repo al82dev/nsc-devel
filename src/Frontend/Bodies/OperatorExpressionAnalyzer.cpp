@@ -850,12 +850,17 @@ bool ProjectMethodBodyModel::analyzePointerArithmetic(
         result.pointerPointeeReadonly = sourcePointer.pointerPointeeReadonly;
         result.pointerPointeeVolatile = sourcePointer.pointerPointeeVolatile;
         result.cppVolatilePointeeContract = sourcePointer.cppVolatilePointeeContract;
+        result.cppVolatilePointeeMicrosoft = sourcePointer.cppVolatilePointeeMicrosoft;
         result.pointerNullable = sourcePointer.pointerNullable;
         result.pointerHasProvenance = sourcePointer.pointerHasProvenance;
         // An element offset is a multiple of the element stride. Keep only the
         // alignment proven by both the source and that stride for C volatile aliases.
         result.pointerKnownAlignment = method_body_detail::cppVolatilePointerArithmeticAlignment(
             sourcePointer.cppVolatilePointeeContract, sourcePointer.pointerKnownAlignment, element);
+        // EN: T08-D13. The element stride keeps the contract's alignment (C assumes `p + i` is as aligned as `p`).
+        // ES: T08-D13. El paso del elemento conserva la alineacion del contrato (C supone `p + i` tan alineado como p).
+        result.cppVolatilePointeeAlignment = method_body_detail::cppVolatilePointerArithmeticAlignment(
+            sourcePointer.cppVolatilePointeeContract, sourcePointer.cppVolatilePointeeAlignment, element);
         result.pointerAddressSpace = sourcePointer.pointerAddressSpace;
         result.onePastEndPointer = sourcePointer.onePastEndPointer;
     }

@@ -889,6 +889,15 @@ void ProjectMethodBodyModel::analyzeRawIndex(
         }
         result.pointerPointeeReadonly = qualifiedPointerElement || (nestedPointerIndex && base.pointerPointeeReadonly);
         result.pointerPointeeVolatile = volatilePointerElement;
+        // EN: T08-D13. A pointer element of a C array of pointers to volatile scalars keeps its C contract.
+        // ES: T08-D13. Un elemento puntero de un arreglo C de punteros a escalares volatile conserva su contrato C.
+        if (volatilePointerElement && base.cppVolatilePointeeContract &&
+            ProjectTypeConversion::isPointer(result.typeKey))
+        {
+            result.cppVolatilePointeeContract = true;
+            result.cppVolatilePointeeMicrosoft = base.cppVolatilePointeeMicrosoft;
+            result.cppVolatilePointeeAlignment = base.cppVolatilePointeeAlignment;
+        }
         result.addressable = !result.volatileStorage && !unalignedImportedFieldElement &&
             !qualifiedPointerElement && !volatilePointerElement;
         result.readonlyReceiver = readonlyElement;

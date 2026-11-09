@@ -104,6 +104,12 @@ struct ExpressionResult final
     // The immediate pointee is volatile; independent of the pointer's storage.
     bool pointerPointeeVolatile = false;
     bool cppVolatilePointeeContract = false;
+    // EN: T08-D13. With the C contract: the volatile mode of the C origin (true Microsoft, false ISO, none unknown
+    //     or mixed) and the alignment the contract proves or C assumes for the pointee (0 when unknown).
+    // ES: T08-D13. Con el contrato C: el modo volatile del origen C (true Microsoft, false ISO, ninguno si se
+    //     desconoce o se mezcla) y la alineacion que el contrato demuestra o C supone para el apuntado (0 si no).
+    std::optional<bool> cppVolatilePointeeMicrosoft;
+    std::size_t cppVolatilePointeeAlignment = 0;
     // T08-D07: this expression denotes C `_Atomic` record storage, accessed only as a whole value.
     bool cppAtomicRecordStorage = false;
     // This expression denotes an imported C-family flexible array member, not a native array.

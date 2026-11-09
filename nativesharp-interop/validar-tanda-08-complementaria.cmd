@@ -25,6 +25,7 @@ for %%T in (
   pruebas-tanda-08-colisiones-c\validar-colisiones.py
   pruebas-tanda-08-colisiones-c\validar-dependencias-privadas.py
   pruebas-tanda-08-enteros-c\validar-anchos.py
+  pruebas-tanda-08-enteros-c\sonda-semantica-c.py
   pruebas-tanda-08-enum-c\validar-identidad.py
   pruebas-tanda-08-enum-c\validar-valores.py
   pruebas-tanda-08-flotante-c\validar-formatos.py
@@ -92,6 +93,7 @@ for %%T in (
   pruebas-tanda-08-union-c\validar-uniones.py
   pruebas-tanda-08-union-c\validar-miembro-sin-etiqueta.py
   pruebas-tanda-08-void-c\validar-void.py
+  pruebas-tanda-08-volatile-alias-c\validar-alias-modo.py
   validar-tanda-08-derivados.py
 ) do call :run_python %%T
 for %%T in (

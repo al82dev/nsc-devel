@@ -6,6 +6,7 @@
 
 
 #include "MethodBodyInternals.h"
+#include "CppVolatileAliasContract.h"
 #include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
 #include "../Internal/Stage37ConstantValue.h"
 
@@ -279,6 +280,8 @@ void ProjectMethodBodyModel::completeLocalIdentifier(
     result.pointerPointeeReadonly = local.pointerPointeeReadonly;
     result.pointerPointeeVolatile = local.pointerPointeeVolatile;
     result.cppVolatilePointeeContract = local.cppVolatilePointeeContract;
+    result.cppVolatilePointeeMicrosoft = local.cppVolatilePointeeMicrosoft;
+    result.cppVolatilePointeeAlignment = local.cppVolatilePointeeAlignment;
     result.pointerNullable = local.pointerNullable;
     result.pointerHasProvenance = local.pointerHasProvenance;
     result.pointerKnownAlignment = local.pointerKnownAlignment;
@@ -1014,7 +1017,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
         });
     if (candidates.size() > 1 && candidates.front() < states.size())
     {
-        const auto& first = states[candidates.front()];
         // Same C object except, possibly, its bound: `extern T a[];` (T[*]) and `extern T a[N];` (T[N]).
         // Mismo objeto C salvo, quizá, su límite: `extern T a[];` (T[*]) y `extern T a[N];` (T[N]).
         const auto sameElementAndBound = [](const NamespaceStateSymbol& left, const NamespaceStateSymbol& right,
@@ -1043,9 +1045,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
             };
             return unbounded(left) != unbounded(right);
         };
-        const auto compatibleExternalC = [&](std::size_t ordinal, bool allowUnknownBound) {
+        const auto compatibleExternalC = [&](std::size_t ordinal, bool allowUnknownBound,
+                                             bool anyVolatileMode = false) {
             if (ordinal >= states.size()) return false;
             const auto& other = states[ordinal];
+            const auto& first = states[candidates.front()];
             return first.cppCGlobal && other.cppCGlobal && first.isCppExternal && other.isCppExternal &&
                 !first.cppCInternalLinkage &&
                 !other.cppCInternalLinkage && first.cppImportError.empty() && other.cppImportError.empty() &&
@@ -1055,7 +1059,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
                 first.isCppReadonly == other.isCppReadonly &&
                 first.cppPointerPointeeReadonly == other.cppPointerPointeeReadonly &&
                 first.cppPointerPointeeVolatile == other.cppPointerPointeeVolatile &&
-                first.cppMicrosoftVolatileSemantics == other.cppMicrosoftVolatileSemantics &&
+                (anyVolatileMode || first.cppMicrosoftVolatileSemantics == other.cppMicrosoftVolatileSemantics) &&
                 (first.cppDeclarationAlignmentBits == other.cppDeclarationAlignmentBits ||
                  (allowUnknownBound && unboundedWithoutAlignment(first, other))) &&
                 first.cppDllImport == other.cppDllImport && first.cppThreadLocal == other.cppThreadLocal &&
@@ -1064,6 +1068,22 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
                      first.cppTlsRuntimeIdentity == other.cppTlsRuntimeIdentity)) &&
                 first.cppAtomicStorage == other.cppAtomicStorage;
         };
+        // EN: T08-D13. The same C object declared by the referencing project and by a referenced one with another
+        //     volatile mode (VolatileMode of each CppLibraryReference): the code of a project reads it through its
+        //     own header reference, whose mode governs the access and its aliases. Without a declaration of its
+        //     own, the candidates stay ambiguous.
+        // ES: T08-D13. El mismo objeto C declarado por el proyecto que lo usa y por uno referenciado con otro modo
+        //     volatile (VolatileMode de cada CppLibraryReference): el codigo de un proyecto lo lee por su propia
+        //     referencia del encabezado, cuyo modo rige el acceso y sus alias. Sin una declaracion propia, los
+        //     candidatos siguen siendo ambiguos.
+        const auto ownProject = [&](std::size_t ordinal) {
+            return states[ordinal].projectOrdinal == reference.projectOrdinal;
+        };
+        if (std::any_of(candidates.begin(), candidates.end(), ownProject) &&
+            !std::all_of(candidates.begin(), candidates.end(), ownProject) &&
+            std::all_of(candidates.begin(), candidates.end(),
+                        [&](std::size_t ordinal) { return compatibleExternalC(ordinal, true, true); }))
+            std::erase_if(candidates, [&](std::size_t ordinal) { return !ownProject(ordinal); });
         if (std::all_of(candidates.begin(), candidates.end(),
                         [&](std::size_t ordinal) { return compatibleExternalC(ordinal, false); }))
             candidates.resize(1);
@@ -1152,6 +1172,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     result.volatileStorage = state.isCppExternal && state.isVolatile;
     result.pointerPointeeReadonly = state.cppPointerPointeeReadonly;
     result.pointerPointeeVolatile = pointeeVolatile;
+    // EN: T08-D13. A C global pointer to volatile scalars (or array of them) starts the C contract: aliases keep
+    //     the global's volatile mode and C's natural alignment of the pointee.
+    // ES: T08-D13. Una global C puntero a escalares volatile (o arreglo de ellos) inicia el contrato C: los alias
+    //     conservan el modo volatile de la global y la alineacion natural del apuntado que supone C.
+    if (state.isCppExternal && state.cppCGlobal && state.cppPointerPointeeVolatile)
+        if (const std::size_t width = method_body_detail::cVolatilePointeeScalarWidth(state.declaredTypeKey))
+        {
+            result.cppVolatilePointeeContract = true;
+            result.cppVolatilePointeeMicrosoft = state.cppMicrosoftVolatileSemantics;
+            result.cppVolatilePointeeAlignment = width;
+        }
     // `extern T name[];` is projected as T[*]: like a C flexible array member it cannot be assigned or copied
     // as a whole, and decays to T* carrying the element's const/volatile qualifiers.
     // `extern T name[];` se proyecta como T[*]: igual que un miembro flexible C no se asigna ni copia entero y
@@ -1163,6 +1194,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
         result.cppFlexibleArrayDecaySafe = !state.cppPointerPointeeReadonly && !pointeeVolatile;
         result.pointerPointeeReadonly = result.readonlyReceiver;
         result.pointerPointeeVolatile = result.volatileStorage;
+        // EN: T08-D13. Its decay keeps the global's volatile mode; a C global is naturally aligned.
+        // ES: T08-D13. Su decaimiento conserva el modo volatile de la global; una global C esta alineada naturalmente.
+        result.cppVolatilePointeeMicrosoft = state.cppMicrosoftVolatileSemantics;
+        if (const auto element = ProjectMemberModel::flexibleArrayElementTypeKey(state.declaredTypeKey))
+            result.cppVolatilePointeeAlignment = method_body_detail::cVolatilePointeeScalarWidth(*element + "*");
     }
     recordNameBinding(MethodNameBinding{
         MethodNameBindingKind::NamespaceState,

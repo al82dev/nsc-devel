@@ -286,19 +286,17 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
   - Corregidos: la máscara de preservación se creaba con bits fuera de la unidad de asignación y detenía el backend en -O1; los campos cuya ventana mínima cruzaba el final del record no se importaban.
 - [x] T08-010-04e: Verificar promoción de miembros de struct y union anónimos en varios niveles. [Evidencia](registro-commits/t08-record-miembros.md).
 - [x] T08-010-04f: Verificar struct anidado en `pack(1)`, `pack(2)` y `pack(4)`. [Evidencia](registro-commits/t08-record-miembros.md).
-- [ ] T08-010-05: Resolver el orden de acceso mediante alias a miembro flexible `volatile` en modo Microsoft e ISO.
-  - **Bloqueada — decisión pendiente T08-010-05a:** el modo que rige un alias NativeSharp de almacenamiento C `volatile` puede ser el del record o encabezado de origen (como el acceso directo) o un modo propio de la unidad consumidora (`CppConsumerVolatileMode`, modelado pero bloqueado en HIR). Las dos opciones generan IR distinto. [Detalle](registro-commits/t08-record-miembros.md#decisión-pendiente-t08-010-05a).
+- [x] T08-010-05: Resolver el orden de acceso mediante alias a miembro flexible `volatile` en modo Microsoft e ISO. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+  - Resuelta T08-010-05a por T08-D13 (opción 1): el alias sigue el modo del record o encabezado de origen, como el acceso directo. Con Microsoft (y Default) emite acquire/release como Clang `-fms-volatile`; con ISO, accesos simples como `-fno-ms-volatile`. Antes: el alias perdía el orden en modo Microsoft.
 - **T08-010-06 — Caminos de consumo:**
 - [x] T08-010-06a: Verificar lectura y escritura cruzadas para miembros anónimos por encabezado directo. [Evidencia](registro-commits/t08-record-miembros.md).
 - [x] T08-010-06b: Verificar los mismos miembros con biblioteca precompilada y encabezado. [Evidencia](registro-commits/t08-record-miembros.md).
 - [x] T08-010-06c: Verificar los mismos miembros con biblioteca precompilada y solo metadata. [Evidencia](registro-commits/t08-record-miembros.md).
 - [x] T08-010-06d: Verificar campos flexibles calificados en esos tres caminos. [Evidencia](registro-commits/t08-record-miembros.md).
-- [ ] T08-010-07: Validar los modos Microsoft e ISO con dos referencias al mismo encabezado en la misma compilación.
-  - **Bloqueada por T08-010-05a.**
-- [ ] T08-010-08: Verificar el alias volátil reasignado en los cuatro niveles de optimización después de la corrección.
-  - **Bloqueada por T08-010-05a.**
-- [ ] T08-010-09: Verificar lectura y escritura `*(data + index)` frente a Clang después de la corrección.
-  - **Bloqueada por T08-010-05a.**
+- [x] T08-010-07: Validar los modos Microsoft e ISO con dos referencias al mismo encabezado en la misma compilación. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+  - Sin modo único, el alias es `volatile` simple, igual que el acceso directo al mismo almacenamiento.
+- [x] T08-010-08: Verificar el alias volátil reasignado en los cuatro niveles de optimización después de la corrección. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+- [x] T08-010-09: Verificar lectura y escritura `*(data + index)` frente a Clang después de la corrección. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
 - [x] T08-010-10: Publicar en metadata un struct C declarado solo con etiqueta (`struct Holder { … };`, sin typedef): el consumidor precompilado sin encabezado informa `unknown type name 'Holder'`, mientras el camino directo funciona. [Origen](registro-commits/t08-puntero-funcion-calificado.md). [Evidencia](registro-commits/t08-record-etiqueta.md).
   - Corregido: las plantillas publicadas siembran en el catálogo C los records, unions y enums nombrados solo por su etiqueta.
 
@@ -368,49 +366,45 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-015-01: Probar las muestras registradas de `const` y `volatile` en globales, campos y arreglos.
 - [x] T08-015-02: Comparar los campos volátiles C contra Clang en los casos del fixture. [Resultado](registro-commits/t08-volatile-campos-revalidacion-alias-pendiente.md).
 - **T08-015-03 — Modo de la unidad consumidora:**
-- [ ] T08-015-03a: Definir el modo predeterminado del consumidor cuando no se especifica uno explícito.
-  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
-- [ ] T08-015-03b: Verificar selección explícita de Microsoft e ISO por proyecto.
-  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
-- [ ] T08-015-03c: Conservar la selección por archivo en un grafo con múltiples proyectos.
-  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
-- [ ] T08-015-03d: Resolver el modo del consumidor cuando dos referencias usan modos distintos.
-  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
+- [x] T08-015-03a: Definir el modo predeterminado del consumidor cuando no se especifica uno explícito. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+  - Con T08-D13 el consumidor no tiene modo: rige el `VolatileMode` de cada `CppLibraryReference` (Default es el del destino, Microsoft en Windows). La propiedad `CppConsumerVolatileMode` se rechaza.
+- [x] T08-015-03b: Verificar selección explícita de Microsoft e ISO por proyecto. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+  - La selección es por referencia (`VolatileMode`), verificada en Default, Microsoft e ISO, directo, precompilado y en grafo.
+- [x] T08-015-03c: Conservar la selección por archivo en un grafo con múltiples proyectos. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+  - Corregido: en un grafo de proyectos vivos que importan el mismo encabezado, la global C declarada en los dos con modos distintos era ambigua y el typedef de record era «conflicting C/C++ type alias». Ahora el código de cada proyecto usa su propia referencia.
+- [x] T08-015-03d: Resolver el modo del consumidor cuando dos referencias usan modos distintos. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+  - Modo desconocido: `volatile` simple, igual que el acceso directo.
 - **T08-015-04 — Alias y alineación:** [Diagnóstico](registro-commits/t08-volatile-alias-aritmetica-diagnostico.md).
-- [ ] T08-015-04a: Conservar el contrato C volátil al inferir un alias local.
-  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
-- [ ] T08-015-04b: Conservar el orden y la alineación al leer y escribir mediante el alias.
-  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
-- [ ] T08-015-04c: Verificar el contrato después de reasignar el alias.
-  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
-- [ ] T08-015-04d: Verificar el contrato después de aritmética e indexación de punteros.
-  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
-- [ ] T08-015-04e: Verificar que un campo empaquetado o subalineado no reciba alineación atómica no demostrada.
-  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
+- [x] T08-015-04a: Conservar el contrato C volátil al inferir un alias local. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+- [x] T08-015-04b: Conservar el orden y la alineación al leer y escribir mediante el alias. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+- [x] T08-015-04c: Verificar el contrato después de reasignar el alias. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+- [x] T08-015-04d: Verificar el contrato después de aritmética e indexación de punteros. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+- [x] T08-015-04e: Verificar que un campo empaquetado o subalineado no reciba alineación atómica no demostrada. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+  - Un miembro flexible empaquetado no tiene alias (`var p = v->items` se rechaza); el alias de un miembro flexible alineado toma la alineación del campo, como C y el acceso directo.
 - **T08-015-05 — Transporte del contrato:**
-- [ ] T08-015-05a: Verificar alias `volatile` pasado como parámetro y retornado por función.
-  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
-- [ ] T08-015-05b: Verificar alias reasignado en ramas de control con modos compatibles.
-  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
-- [ ] T08-015-05c: Verificar propagación entre proyectos y biblioteca precompilada.
-  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
+- [ ] T08-015-05a: Verificar alias `volatile` pasado como parámetro y retornado por función. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+  - Verificado: el alias pasado a un parámetro C conserva el orden (lo aplica C); un parámetro NativeSharp `int*` no lo recibe («no viable overload»), porque NativeSharp no escribe `T volatile*` en firmas propias.
+  - **Pendiente funcional:** un puntero `volatile T*` devuelto por una función C no inicia el contrato. En modo Microsoft NSC emite `volatile` simple y Clang, acquire/release: los símbolos de función C no llevan el modo de su referencia. Alternativas en la evidencia.
+- [x] T08-015-05b: Verificar alias reasignado en ramas de control con modos compatibles. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+  - Corregido: reasignar desde un miembro flexible (`p = b->items`) borraba el modo.
+- [x] T08-015-05c: Verificar propagación entre proyectos y biblioteca precompilada. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
 - **T08-015-06 — Caché y aislamiento:**
-- [ ] T08-015-06a: Verificar invalidación o identidad de caché al cambiar Microsoft/ISO.
-  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
+- [x] T08-015-06a: Verificar invalidación o identidad de caché al cambiar Microsoft/ISO. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
 - [x] T08-015-06b: Verificar que `volatile` nativo conserve su contrato sin importar un header C. [Evidencia](registro-commits/t08-calificadores-c.md).
 - [x] T08-015-06c: Verificar el mismo comportamiento nativo al importar un header C. [Evidencia](registro-commits/t08-calificadores-c.md).
 - **T08-015-07 — Calificadores de puntero:**
 - [x] T08-015-07a: Verificar rechazo de escritura mediante `const T*` importado. [Evidencia](registro-commits/t08-calificadores-c.md).
 - [x] T08-015-07b: Verificar acceso `volatile T*` en lectura, escritura e índice. [Evidencia](registro-commits/t08-calificadores-c.md).
-  - El orden acquire/release a través del alias `var` en modo Microsoft depende de T08-010-05a.
+  - El orden acquire/release a través del alias `var` en modo Microsoft quedó resuelto por T08-D13.
 - [x] T08-015-07c: Verificar `const volatile T*` en campos, globales y parámetros. [Evidencia](registro-commits/t08-calificadores-c.md).
 - [x] T08-015-07d: Verificar calificadores del apuntado y del puntero en `T* const` y `T**`. [Evidencia](registro-commits/t08-calificadores-c.md).
-- [ ] T08-015-08: Habilitar la generación con modo explícito únicamente después de completar su contrato y retirar la protección temporal con pruebas.
-  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
-- [ ] T08-015-09: Repetir la comparación de IR de alias directo, reasignado y con aritmética en Microsoft e ISO O0–O3.
-  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
-- [ ] T08-015-10: Verificar el comportamiento con referencias mixtas y con biblioteca precompilada.
-  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
+- [x] T08-015-08: Habilitar la generación con modo explícito únicamente después de completar su contrato y retirar la protección temporal con pruebas. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+  - El modo explícito es el `VolatileMode` de la referencia y ya genera código. La protección temporal de `CppConsumerVolatileMode` («not yet supported by code generation») pasa a rechazo definitivo con la causa, probado.
+- [x] T08-015-09: Repetir la comparación de IR de alias directo, reasignado y con aritmética en Microsoft e ISO O0–O3. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+  - `flexible-c/diagnosticar-var-volatile.cmd` da ahora `IGUAL` en todos los casos de Microsoft e ISO en O0–O3.
+- [x] T08-015-10: Verificar el comportamiento con referencias mixtas y con biblioteca precompilada. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+- [ ] T08-015-11: Condicional entre dos miembros flexibles C (`var p = c ? a->items : b->items;`). [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+  - **Pendiente funcional** (hallado en T08-D13): se rechaza con «operand of * must be a non-void pointer» porque el condicional no hace decaer los arreglos; C lo acepta. Con alias intermedios (`c ? pa : pb`) funciona.
 
 ## T08-016 — Arreglos fijos
 
@@ -494,9 +488,9 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-020-03a: Comparar alineación de `load` y `store` de campos escalares. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
   - Desde T08-D15, NSC emite la alineación de Clang en los accesos donde está garantizada. [Evidencia](registro-commits/t08-d15-alineacion-efectiva.md).
 - [x] T08-020-03b: Comparar ventanas de lectura y escritura de bitfields. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
-- [ ] T08-020-03c: Comparar accesos `volatile` alineados y empaquetados en modos Microsoft e ISO.
+- [x] T08-020-03c: Comparar accesos `volatile` alineados y empaquetados en modos Microsoft e ISO.
   - Verificado el acceso directo a campos `volatile` alineados y empaquetados en modos Microsoft e ISO, directo y desde plantilla precompilada: idéntico a Clang. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
-  - **Bloqueada por T08-010-05a** para el acceso por alias NativeSharp (modo volatile del alias o de la unidad consumidora).
+  - Por alias NativeSharp (T08-D13): los alineados son iguales a Clang en los dos modos; el miembro flexible empaquetado no tiene alias; el campo puntero de un struct `pack(1)` apunta a un dato alineado y es atómico en Microsoft, como Clang. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
 - **T08-020-04 — Tipos desde metadata:**
 - [x] T08-020-04a: Verificar `sizeof(T)` y `alignof(T)` para un struct C publicado sin encabezado. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
 - [x] T08-020-04b: Verificar declaración y cast de puntero a tipo C publicado sin encabezado. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
@@ -512,18 +506,22 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 - [x] T08-D03: firma pública con callback `volatile`, publicada y consumida conservando el calificador. [Evidencia](registro-commits/t08-d02-d03-calificadores-nsmeta.md).
 - [ ] T08-D04: TLS en DLL sin importaciones, con solución reproducible y sin importación artificial. [Evidencia](registro-commits/t08-d04-tls-sin-importaciones.md).
   - [x] T08-D04a: diagnóstico al consumir (directo y precompilado) sin modificar la DLL; `validar-variadicas-agregados.py` deja de usar DLL con TLS sin inicializar.
-  - [ ] T08-D04b: copia distribuida con directorio de importación vacío, opt-in por referencia. **Pendiente de aprobación del usuario:** el cambio concreto y sus efectos (identidad, firma, CheckSum, alcance) están presentados en la evidencia.
+  - [ ] T08-D04b: copia distribuida con directorio de importación vacío, opt-in por referencia. **Pendiente de aprobación del usuario:** el cambio concreto y sus efectos (identidad, firma, CheckSum, alcance) están presentados en la evidencia. Revisión del prototipo, plan de implementación y pruebas: [preparación](registro-commits/t08-d04b-d05b-soluciones-preparadas.md).
 - [ ] T08-D05: DLL homónimas con dependencias transitivas. [Evidencia](registro-commits/t08-d05-dll-homonimas-transitivas.md).
   - [x] T08-D05a: alias TLS cargados por el cargador de alias: cada uno recibe un ensamblado privado `NativeSharp.Isolation.*` y un manifiesto de contexto de activación; ejecutable y producto DLL, O0–O3, caché; sin modificar DLL.
-  - [ ] T08-D05b: alias importado directamente (función exclusiva de una de las DLL homónimas) con dependencias homónimas: requiere enlazar en ejecución esas funciones cuando el alias necesita aislamiento; hoy se rechaza con la causa.
+  - [ ] T08-D05b: alias importado directamente (función exclusiva de una de las DLL homónimas) con dependencias homónimas: requiere enlazar en ejecución esas funciones cuando el alias necesita aislamiento; hoy se rechaza con la causa. Solución A (enlace en ejecución, sin alterar DLL; alcance estricto recomendado), solución B (manifiesto embebido, altera la DLL), pruebas y efectos: [preparación](registro-commits/t08-d04b-d05b-soluciones-preparadas.md). **Pendiente de la decisión del usuario.**
 - [x] T08-D06: `&` de global C `const` produce un puntero a dato constante; la escritura se rechaza (T08-004-04a1). [Evidencia](registro-commits/t08-d06-direccion-global-const.md).
 - [x] T08-D07: `_Atomic` sobre record, tamaños directos y con biblioteca atómica (T08-004-04d1); también TLS, `volatile`, `static` del encabezado y DLL. [Evidencia](registro-commits/t08-d07-atomicas-record.md).
 - [x] T08-D08: validadores `.cmd` versionados con LF pasan a CRLF: `.gitattributes` fija `eol=crlf` para `.cmd`/`.bat` y los 176 archivos en LF del árbol de trabajo se convirtieron. [Evidencia](registro-commits/t08-d08-cmd-crlf.md).
 - [x] T08-D09: struct C equivalente en dos encabezados, usado por valor (T08-005-03a1). [Evidencia](registro-commits/t08-d09-record-dos-encabezados.md).
 - [x] T08-D10: typedef C homónimos e incompatibles de productores distintos (T08-005-03b1). [Evidencia](registro-commits/t08-d10-typedef-productores.md).
-- [ ] T08-D11: `-` y `~` sobre enteros estrechos: reglas de NativeSharp frente a expresiones C (T08-006-04b1).
-- [ ] T08-D12: `int` frente a `unsigned int` en operaciones C (T08-009-03c1).
-- [ ] T08-D13: modo `volatile` del alias NativeSharp a almacenamiento C (T08-010-05a).
+- [ ] T08-D11: `-` y `~` sobre enteros estrechos: reglas de NativeSharp frente a expresiones C (T08-006-04b1). [Investigación](registro-commits/t08-d11-d12-semantica-c-investigacion.md).
+  - Sin cambio de reglas, por instrucción del usuario. La sonda `enteros-c/sonda-semantica-c.py` fija 38 casos C/NSC. La investigación muestra que el tipo no distingue un entero de C y compara cinco delimitaciones del «operando C» (origen directo con regla A o B, tipos C distintos, diagnóstico, contexto explícito) con sus efectos en expresiones mixtas. **Pendiente de la elección del usuario.**
+- [ ] T08-D12: `int` frente a `unsigned int` en operaciones C (T08-009-03c1). [Investigación](registro-commits/t08-d11-d12-semantica-c-investigacion.md).
+  - Igual que T08-D11: el mismo análisis y la misma sonda. **Pendiente de la elección del usuario.**
+- [ ] T08-D13: modo `volatile` del alias NativeSharp a almacenamiento C (T08-010-05a). [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+  - [x] T08-D13a: el alias sigue el modo del record, la global o la referencia de origen, verificado frente al acceso directo y a Clang (directo O0–O3, precompilado, referencias mixtas, grafo, caché y ejecución). La propiedad `CppConsumerVolatileMode` se rechaza.
+  - [ ] T08-D13b: puntero `volatile T*` devuelto por una función C (T08-015-05a). Pendiente funcional, con diagnóstico y alternativas.
 - [x] T08-D14: miembro de tipo struct o union sin etiqueta (T08-011-02c1). [Evidencia](registro-commits/t08-d14-miembro-sin-etiqueta.md).
 - [x] T08-D15: alineación efectiva de Clang, usada solo cuando está garantizada (T08-012-02a). [Evidencia](registro-commits/t08-d15-alineacion-efectiva.md).
 - [x] T08-D16: declaración opaca propia del consumidor reconciliada con NSMeta (T08-013-02c1). [Evidencia](registro-commits/t08-d16-opaco-consumidor.md).
@@ -535,12 +533,14 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 - [x] T08-D22: callbacks `__vectorcall` (T08-017-03d1). [Evidencia](registro-commits/t08-d22-vectorcall.md).
 - [x] T08-D23: arreglos de punteros calificados como campo de record (T08-016-03d1). [Evidencia](registro-commits/t08-d23-arreglos-punteros-campo.md).
 - [x] T08-D24: el productor NSMeta escribía un minor mínimo según su catálogo (lógica del 2026-11-06 al 08). Ahora escribe siempre el contrato vigente (`kMetadataFormatMinor`); pasan `nsc_namespace_function_metadata_tests`, `nsc_stage50_9_metadata_host_compatibility_tests` e `item344`. [Evidencia](registro-commits/t08-d24-minor-vigente.md).
+  - Fixture histórico 1.46 (`nsc.stage48_2.library-metadata`, 2 de 444 comprobaciones): no existe una muestra auténtica ni en el repositorio ni en `A:` (1.46 vivió menos de una hora, entre `d801af165` y `311431667`). La prueba no se modifica y no se reintroduce compatibilidad. Opciones para el usuario: dejarlo así (vigente) o construir el escritor de la época para archivar su muestra. [Investigación](registro-commits/t08-d24-fixture-historico-146.md).
 
 ## Cierre de la tanda
 
 - [ ] T08-GATE-01: Completar la implementación y las comprobaciones pendientes de T08-002 a T08-020.
   - Todas las casillas de T08-002 a T08-020 están terminadas o bloqueadas con evidencia; las bloqueadas dependen de decisiones pendientes (sobre todo T08-010-05a) o son características nuevas registradas (T08-016-03d1, T08-017-03d1). [Evidencia](registro-commits/t08-validacion-integral-20261109.md).
   - 2026-11-09, tarde: T08-016-03d1 (D23) y T08-017-03d1 (D22) cerradas. Siguen bloqueadas las casillas de T08-010-05a (D13), además de D11, D12, D04b y D05b. [Evidencia](registro-commits/t08-validacion-integral-cierre-20261109.md).
+  - 2026-11-09, noche: T08-D13a resuelve T08-010-05a y cierra T08-010-05/07/08/09, T08-015-03, 04, 05b, 05c, 06a, 08, 09, 10 y T08-020-03c. Quedan pendientes funcionales T08-015-05a (D13b) y T08-015-11; siguen esperando decisión D11, D12, D04b y D05b. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
 - [x] T08-GATE-02: Resolver o clasificar con evidencia el fallo de la prueba de topología de ondas paralelas. [Evidencia](registro-commits/t08-gate-ondas-paralelas.md).
 - [x] T08-GATE-03: Ejecutar la validación integral agrupada de la tanda 8 y corregir sus fallos hasta que pase. [Evidencia](registro-commits/t08-validacion-integral-cierre-20261109.md).
   - Ejecutada el 2026-11-09: el gate complementario pasa; el histórico falla en cuatro validadores ajenos al compilador (LF, restricción de caché retirada por `03bf12e42` en dos pruebas y carrera del control C de relleno TLS). Las tres primeras pasan en ejecución derivada. T08-GATE-03a resuelta por T08-D20 (validadores actualizados). [Evidencia](registro-commits/t08-validacion-integral-20261109.md).

@@ -3061,6 +3061,20 @@ std::string ProjectMethodBodyModel::delegateErrorTypeKey(
 
 namespace
 {
+// EN: T08-D13. C volatile contract of the last initializer analyzed for a declared (non-`var`) local; set when the
+//     initializer's analysis is complete, so nested declarations inside it cannot overwrite it. Per thread because
+//     method bodies are analyzed in parallel waves.
+// ES: T08-D13. Contrato C volatile del ultimo inicializador analizado para un local declarado (sin `var`); se fija
+//     al terminar su analisis, asi que las declaraciones anidadas no lo pisan. Por hilo, porque los cuerpos se
+//     analizan en ondas paralelas.
+struct DeclaredInitializerCppVolatile
+{
+    bool contract = false;
+    std::optional<bool> microsoft;
+    std::size_t alignment = 0;
+};
+thread_local DeclaredInitializerCppVolatile declaredInitializerCppVolatile;
+
 // EN: T08-002: copies the volatile pointees of a method signature into its natural `fn*` type. The
 //     implicit receiver slot, when present, is never qualified. Effects: fills
 //     `signature.parameterPointeeVolatile` (aligned with `signature.parameters`) and
@@ -3633,6 +3647,10 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::evaluateVariabl
         initializer = bindMethodGroupToDelegate(
             variable->first(), initializer, typeKey, methodMemberOrdinal, scopeOrdinal,
             diagnostics);
+    declaredInitializerCppVolatile = DeclaredInitializerCppVolatile{
+        initializer.pointerPointeeVolatile &&
+            (initializer.cppFlexibleArrayMember || initializer.cppVolatilePointeeContract),
+        initializer.cppVolatilePointeeMicrosoft, initializer.cppVolatilePointeeAlignment};
     return initializer;
 }
 
@@ -4576,10 +4594,15 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
     const language::PointerContract declaredPointerContract = pointerContractFromSyntax(variable->typeSyntax());
     bool pendingPointerPointeeReadonly = declaredPointerPointeeReadonly;
     bool pendingPointerPointeeVolatile = declaredPointerPointeeVolatile;
-    const bool inferredCppVolatilePointeeContract = isVarInferred && precomputedVarInitializer &&
-        precomputedVarInitializer->pointerPointeeVolatile &&
+    const bool inferredCppVolatilePointeeContract = isVarInferred &&
+        precomputedVarInitializer && precomputedVarInitializer->pointerPointeeVolatile &&
         (precomputedVarInitializer->cppFlexibleArrayMember ||
          precomputedVarInitializer->cppVolatilePointeeContract);
+    const std::optional<bool> inferredCppVolatileMicrosoft = inferredCppVolatilePointeeContract
+        ? precomputedVarInitializer->cppVolatilePointeeMicrosoft : std::nullopt;
+    const std::size_t inferredCppVolatileAlignment = inferredCppVolatilePointeeContract
+        ? precomputedVarInitializer->cppVolatilePointeeAlignment : 0U;
+    declaredInitializerCppVolatile = DeclaredInitializerCppVolatile{};
     bool pendingPointerNullable = declaredPointerContract.nullable;
     bool pendingPointerHasProvenance = declaredPointerContract.hasProvenance;
     std::size_t pendingPointerKnownAlignment = declaredPointerContract.knownAlignment;
@@ -4610,6 +4633,16 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
         isReadonlyReference, isVariableLengthArray, isVolatile, isRaii, isScope,
         isMoveOnly, isPinnedLocal, isBorrowed, pendingLocalBorrow.has_value());
     local.cppVolatilePointeeContract = inferredCppVolatilePointeeContract;
+    local.cppVolatilePointeeMicrosoft = inferredCppVolatileMicrosoft;
+    local.cppVolatilePointeeAlignment = inferredCppVolatileAlignment;
+    // EN: T08-D13. A local declared `T volatile*` from C volatile storage is an alias too, like one inferred by `var`.
+    // ES: T08-D13. Un local declarado `T volatile*` desde almacenamiento C volatile tambien es alias, como con `var`.
+    if (!isVarInferred && declaredPointerPointeeVolatile && declaredInitializerCppVolatile.contract)
+    {
+        local.cppVolatilePointeeContract = true;
+        local.cppVolatilePointeeMicrosoft = declaredInitializerCppVolatile.microsoft;
+        local.cppVolatilePointeeAlignment = declaredInitializerCppVolatile.alignment;
+    }
     recordVariableShadowing(variable, methodMemberOrdinal, scopeOrdinal);
     const std::size_t localOrdinal = registerVariableLocal(
         std::move(local), variable, scopeOrdinal, isVariableLengthArray);

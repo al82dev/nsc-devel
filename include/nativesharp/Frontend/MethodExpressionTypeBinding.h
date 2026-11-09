@@ -53,6 +53,10 @@ struct MethodExpressionTypeBinding final
     // Immediate pointee qualification, separate from the pointer storage.
     bool pointerPointeeVolatile = false;
     bool cppVolatilePointeeContract = false;
+    // EN: T08-D13. Volatile mode of the C origin and the alignment of the C contract (see ExpressionResult).
+    // ES: T08-D13. Modo volatile del origen C y alineacion del contrato C (ver ExpressionResult).
+    std::optional<bool> cppVolatilePointeeMicrosoft;
+    std::size_t cppVolatilePointeeAlignment = 0;
     // Analysis-time alignment fact; consumers must account for reassignment and flow joins.
     std::size_t pointerKnownAlignment = 1;
     // Preserve the origin needed to distinguish imported flexible members from native storage.

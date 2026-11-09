@@ -5,8 +5,8 @@
       `pack(1)` struct. As for C globals (T08-016-03d):
       - writing through a `const` pointer element is accepted; reassigning the element is rejected;
       - reassigning an element that points to `const` data is accepted; writing through it is rejected;
-      - an element that points to `volatile` data keeps the qualifier with `var` (the store is `volatile` in the
-        IR) and dropping it is rejected.
+      - an element that points to `volatile` data keeps the qualifier with `var` (in the Microsoft mode the store
+        is an atomic `volatile` release in the IR, as in Clang) and dropping it is rejected.
 04a) Sizes compared with Clang; the element offsets are checked by 04b: C fills and NativeSharp reads, then
      NativeSharp writes and C checks. As for globals, `&` of an element is rejected: a `const` pointer would be a
      `T* const*`, and a `const` or `volatile` pointee needs the element-address rule of T08-016-03d;
@@ -112,7 +112,11 @@ BODY = """    QP q;
     *p.pvs[0] = 55;
     return check_pq(&p) == 1 ? 0 : 10;
 """
-IR_CHECKS = ["store volatile i32 99", "store volatile i32 73", "store volatile i32 55"]
+# EN: the reference keeps the target's default (Microsoft) volatile mode: as with Clang -fms-volatile, each store is an
+#     atomic release, directly through the element and through the `var` alias (T08-D13).
+# ES: la referencia conserva el modo volatile predeterminado del destino (Microsoft): como Clang -fms-volatile, cada
+#     store es atomico release, directo por el elemento y por el alias `var` (T08-D13).
+IR_CHECKS = ["store atomic volatile i32 99", "store atomic volatile i32 73", "store atomic volatile i32 55"]
 REJECTIONS = [
     ("03d1-escribir-puntero-const", "QP q; fill_qp(&q); int x = 1; q.cps[0] = &x; return 0;", "not assignable"),
     ("03d1-escribir-apuntado-const", "QP q; fill_qp(&q); *q.pcs[0] = 2; return 0;", "not assignable"),
