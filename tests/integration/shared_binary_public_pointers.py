@@ -183,6 +183,8 @@ class Program { public static int Main() { FAMILY<Payload> owner = SharedPointer
                 ('destructor-helper', 'public EscapePayload() { } ~EscapePayload() { Publish(); } public void Publish() { Alias = this; }'),
                 ('constructor-virtual', 'public EscapePayload() { Publish(); } public virtual void Publish() { Alias = this; }'),
                 ('destructor-virtual', 'public EscapePayload() { } ~EscapePayload() { Publish(); } public virtual void Publish() { Alias = this; }'),
+                ('constructor-static', 'public EscapePayload() { Publish(this); } public static void Publish(EscapePayload value) { Alias = value; }'),
+                ('destructor-static', 'public EscapePayload() { } ~EscapePayload() { Publish(this); } public static void Publish(EscapePayload value) { Alias = value; }'),
             ):
                 source.write_text(('''using NativeSharp.Core;
 class EscapePayload { public static EscapePayload Alias; BODY }
