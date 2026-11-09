@@ -56,6 +56,23 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
         'direct_foreach_move': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
  foreach (Child child in nestedOwner.Get().Data) { HANDLE<Children> moved = move(nestedOwner); }
  return 0;''', 'cannot move owner'),
+        'direct_view_foreach_read': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>(); int sum = 0;
+ foreach (Child child in nestedOwner.Borrow().Get().Data) { sum = sum + child.Value; }
+ return sum == 0 ? 42 : 1;''', None),
+        'direct_view_foreach_ref_read': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>(); int sum = 0;
+ foreach (ref Child child in nestedOwner.Borrow().Get().Data) { sum = sum + child.Value; }
+ return sum == 0 ? 42 : 1;''', None),
+        'direct_view_foreach_escape': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>(); Child saved;
+ foreach (Child child in nestedOwner.Borrow().Get().Data) { saved = child; } return 0;''', 'borrowed value cannot'),
+        'direct_view_foreach_move': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
+ foreach (Child child in nestedOwner.Borrow().Get().Data) { HANDLE<Children> moved = move(nestedOwner); }
+ return 0;''', 'cannot move owner'),
+        'named_view_foreach_read': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>(); int sum = 0;
+ SharedBorrow<Children> view = nestedOwner.Borrow();
+ foreach (Child child in view.Get().Data) { sum = sum + child.Value; }
+ return sum == 0 ? 42 : 1;''', None),
+        'temporary_view_foreach': ('''foreach (Child child in FACTORY.Create<Children>().Borrow().Get().Data) {
+ int value = child.Value; } return 0;''', 'temporary receiver'),
         'temporary_foreach': ('''foreach (Child child in FACTORY.Create<Children>().Get().Data) {
  int value = child.Value; } return 0;''', 'borrow'),
         'nested_foreach_break': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();

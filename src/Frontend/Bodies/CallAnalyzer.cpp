@@ -5388,6 +5388,17 @@ void ProjectMethodBodyModel::configureSelectedCallBinding(
             owner->semanticOrdinal < locals_.size() && locals_[owner->semanticOrdinal].isMoveOnly)
             result.ownershipSourceLocalOrdinal = owner->semanticOrdinal;
     }
+    if (result.readonlyBorrowedObject && selectedMember.isReferenceReturn &&
+        !selectedMember.isStatic && selectedMember.returnLifetimeName == "this" &&
+        typeKeyIsViewLike(callee.receiverTypeKey) && callee.receiverSyntax != nullptr)
+    {
+        const auto root = viewRootLocalOfExpression(callee.receiverSyntax, call.scopeOrdinal);
+        const auto owner = root.has_value() ? lookupScopeName(call.scopeOrdinal, *root) : std::nullopt;
+        if (owner.has_value() && owner->kind == ScopeNameKind::Local &&
+            owner->semanticOrdinal < locals_.size() && locals_[owner->semanticOrdinal].isMoveOnly &&
+            !typeKeyIsViewLike(locals_[owner->semanticOrdinal].typeKey))
+            result.ownershipSourceLocalOrdinal = owner->semanticOrdinal;
+    }
     result.ownershipTransfer = selectedMember.declaredOwnership == sema::OwnershipKind::Owned;
     // An owned return crosses the call boundary without a named owner. It is therefore a
     // fresh owner in the caller, just like `new T(...)`, and may participate in the

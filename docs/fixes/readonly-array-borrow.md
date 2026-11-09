@@ -143,6 +143,17 @@ movimiento (`public-direct-foreach-regressions.log`). Los controles de
 referencias y de foreach ordinario pasaron; no se verificó el consumo binario
 ni todos los tipos de receptor.
 
+La variante `owner.Borrow().Get().Data` también se rechazaba porque el receptor
+de `Get` es una vista en lugar del dueño directo
+(`readonly-array-ctest-direct_view_foreach_read.log`, resultado anterior). El
+análisis usa ahora el rastreador de raíz de vistas existente cuando el retorno
+tiene vida `this`, y solo acepta como dueño un local move-only que no sea otra
+vista. La selección dirigida ejecutó las formas con vista temporal y nombrada
+por valor y referencia, y rechazó escape, movimiento y dueño temporal
+(`readonly-array-ctest.log`). La variante pública de `Rc` y `Arc` también pasó
+desde fuentes (`public-direct-view-foreach-regressions.log`). No se demuestra
+con ello la procedencia de vistas arbitrarias ni el consumo binario.
+
 ### Salida incondicional del bucle
 
 Con `break` incondicional, el análisis no producía los enlaces del incremento
