@@ -530,7 +530,7 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 - [x] T08-D17: rechazo de `int const** q = &p` (T08-014-02d1). [Evidencia](registro-commits/t08-d17-puntero-a-puntero-const.md).
 - [x] T08-D18: dirección de función C frente al envoltorio `__c_boundary` (T08-017-04a1). [Evidencia](registro-commits/t08-d18-identidad-funcion-c.md).
 - [x] T08-D19: dependencias privadas de plantillas públicas en NSMeta (T08-018-03c1). [Evidencia](registro-commits/t08-d19-dependencias-privadas.md).
-- [ ] T08-D20: gate histórico en CRLF y caché vigente; carrera del control C de relleno TLS (T08-GATE-03a).
+- [x] T08-D20: gate histórico en CRLF y caché vigente; carrera del control C de relleno TLS (T08-GATE-03a). Validadores actualizados; el «relleno» no era una carrera: Windows no pone en cero `SizeOfZeroFill`. [Evidencia](registro-commits/t08-d20-gate-historico.md).
 - [ ] T08-D21: reagrupación de commits al cerrar la tanda (T08-GATE-05a).
 - [ ] T08-D22: callbacks `__vectorcall` (T08-017-03d1).
 - [ ] T08-D23: arreglos de punteros calificados como campo de record (T08-016-03d1).

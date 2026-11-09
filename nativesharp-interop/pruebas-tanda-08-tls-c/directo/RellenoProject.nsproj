@@ -1,0 +1,4 @@
+<Project><PropertyGroup><Name>CTlsZeroFill</Name></PropertyGroup><ItemGroup>
+  <Compile Include="RellenoNative.ns" />
+  <CppLibraryReference Header="ScalarApi.h" Language="C" Standard="c11" Library="api.lib" Runtime="api.dll" />
+</ItemGroup></Project>

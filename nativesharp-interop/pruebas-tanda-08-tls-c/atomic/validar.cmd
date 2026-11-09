@@ -43,8 +43,14 @@ if errorlevel 1 goto :failure
 python "%~dp0verificar_ir.py" "%DEST%\native.ll" native
 if errorlevel 1 goto :failure
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" --artifact-cache="%DEST%\cache" -O0 -o "%DEST%\cached.exe" > "%DEST%\cache.log" 2>&1
-if not errorlevel 1 goto :failure
-findstr /L /C:"C/C++ project references require --no-artifact-cache until transitive headers are tracked" "%DEST%\cache.log" >nul
+rem T08-D20: since 03bf12e42 a C/C++ project builds with the artifact cache: the cached build runs and the second
+rem one hits the cache. / T08-D20: desde 03bf12e42 un proyecto C/C++ compila con la cache de artefactos.
+if errorlevel 1 goto :failure
+"%DEST%\cached.exe"
+if errorlevel 1 goto :failure
+nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" --artifact-cache="%DEST%\cache" -O0 --time -o "%DEST%\cached.exe" > "%DEST%\cache-hit.log" 2>&1
+if errorlevel 1 goto :failure
+findstr /L /C:"compilation-bundle-cache: hit" "%DEST%\cache-hit.log" >nul
 if errorlevel 1 goto :failure
 for %%O in (0 1 2 3) do (
   nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" --no-artifact-cache -O%%O -o "%DEST%\native-O%%O.exe" > "%DEST%\native-O%%O.log" 2>&1
@@ -221,9 +227,9 @@ findstr /L /C:"left side of assignment is not assignable" "%DEST%\pointer-readon
 if errorlevel 1 goto :failure
 copy /y "%DEST%\Unsupported.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 goto :failure
+rem T08-D07: a thread-local `_Atomic` record is supported now (whole-value atomic access).
+rem T08-D07: un registro `_Atomic` thread-local ya esta soportado (acceso atomico al valor completo).
 nsc.exe --cpp-clang-root=A:\al82dev-clang --dump-project-oop-llvm "%DEST%\Project.nsproj" > "%DEST%\unsupported.log" 2>&1
-if not errorlevel 1 goto :failure
-findstr /L /C:"thread-local C/C++ global is not yet projected" "%DEST%\unsupported.log" >nul
 if errorlevel 1 goto :failure
 copy /y "%DEST%\UnsupportedQualifiedPointer.ns" "%DEST%\Main.ns" >nul
 if errorlevel 1 goto :failure

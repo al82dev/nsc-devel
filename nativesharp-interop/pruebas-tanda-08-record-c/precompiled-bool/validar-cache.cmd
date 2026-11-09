@@ -21,14 +21,14 @@ if errorlevel 1 exit /b 1
 for %%O in (0 1 2 3) do (
   call :run_one %%O
   if errorlevel 1 exit /b 1
-  echo Restriccion de productor y cache de consumidor bool O%%O verificadas.
+  echo Cache de productor y de consumidor bool O%%O verificadas.
 )
 exit /b 0
 
 :run_one
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\Producer.nsproj" -O%~1 --time --artifact-cache="%CACHE%" -o "%DEST%\BoolProducer.lib" > "%DEST%\producer-first-O%~1.log" 2>&1
-if not errorlevel 1 exit /b 1
-findstr /l /c:"C/C++ project references require --no-artifact-cache until transitive headers are tracked" "%DEST%\producer-first-O%~1.log" >nul
+rem T08-D20: since 03bf12e42 the producer with C/C++ references builds with the artifact cache.
+rem T08-D20: desde 03bf12e42 el productor con referencias C/C++ compila con la cache de artefactos.
 if errorlevel 1 (type "%DEST%\producer-first-O%~1.log" & exit /b 1)
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-lib "%DEST%\Producer.nsproj" -O%~1 --no-artifact-cache -o "%DEST%\BoolProducer.lib" > "%DEST%\producer-uncached-O%~1.log" 2>&1
 if errorlevel 1 (type "%DEST%\producer-uncached-O%~1.log" & exit /b 1)

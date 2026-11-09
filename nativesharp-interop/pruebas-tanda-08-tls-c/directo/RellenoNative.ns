@@ -1,0 +1,25 @@
+// T08-D20: TLS of a DLL whose template ends in SizeOfZeroFill bytes. The raw-data values are read as initialized;
+// tls_zero and tls_bool live in the zero-fill bytes (Clang places them last), which the Windows loader does not
+// clear, so they are written before they are read, and the DLL's own code must see what NativeSharp wrote.
+// T08-D20: tls_zero y tls_bool quedan en el relleno TLS; se escriben antes de leerse.
+int Main()
+{
+    if (tls_volatile != 4) return 2;
+    if (tls_const != 19) return 3;
+    if (tls_unsigned != 7) return 4;
+    if (tls_double != 1.5) return 5;
+    if (tls_volatile_unsigned != 5 || tls_volatile_long != 6 || tls_volatile_double != 1.5 || tls_volatile_bool ||
+        tls_const_volatile != 23) return 9;
+    tls_zero = 31;
+    if (tls_zero_read() != 31 || tls_zero != 31) return 8;
+    tls_volatile = 14;
+    tls_unsigned = 17;
+    tls_double = 2.5;
+    tls_bool = true;
+    tls_volatile_unsigned = 15;
+    tls_volatile_long = 16;
+    tls_volatile_double = 2.5;
+    tls_volatile_bool = true;
+    if (tls_scalar_check() != 0) return 7;
+    return 0;
+}
