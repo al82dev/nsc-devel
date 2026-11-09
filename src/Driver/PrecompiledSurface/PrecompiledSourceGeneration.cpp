@@ -1,6 +1,7 @@
 #include "../Internal/DriverInternal.h"
 #include "../../Frontend/Cache/SyntaxProductCacheCodec.h"
 #include "nativesharp/Compilation/PrecompiledProductSidecarCodec.h"
+#include "nativesharp/Frontend/PrecompiledTemplateSources.h"
 
 namespace nativesharp::driver
 {
@@ -8,19 +9,111 @@ using target::BuiltinLayoutKind;
 
 bool buildPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std::string &source, std::string &error)
 {
-    return PublicSurfaceEmitter::build(metadata, source, error);
+    if (!PublicSurfaceEmitter::build(metadata, source, error)) return false;
+    for (const std::string& name : metadata.sourceNamespaces)
+    {
+        // The producer's own declarations define namespace existence even if every contained
+        // type is internal and omitted from the public API. A shell exposes no such type.
+        bool atSegmentStart = true;
+        for (const char c : name)
+        {
+            const bool letter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+            if (c == '.')
+            {
+                if (atSegmentStart) { error = "invalid metadata source namespace"; return false; }
+                atSegmentStart = true;
+            }
+            else if (letter || (!atSegmentStart && c >= '0' && c <= '9')) atSegmentStart = false;
+            else { error = "invalid metadata source namespace"; return false; }
+        }
+        if (atSegmentStart) { error = "invalid metadata source namespace"; return false; }
+        source += "\nnamespace " + name + " { }\n";
+    }
+    return true;
 }
 
 bool verifyPrecompiledPublicSource(const interop::LibraryMetadata &metadata, std::string &error)
 {
-    return PublicSurfaceEmitter::verify(metadata, error);
+    std::string source;
+    return buildPrecompiledPublicSource(metadata, source, error) &&
+        PublicSurfaceEmitter::verify(metadata, std::move(source), error);
+}
+
+namespace
+{
+bool renderTemplateImport(const interop::LibraryMetadataGenericTemplate::SourceImport& directive,
+                          std::string& text, std::string& error)
+{
+    text.clear();
+    if (directive.reexport) text += "export ";
+    switch (directive.importKind)
+    {
+    case 0:
+        text += "using ";
+        if (!directive.alias.empty()) text += directive.alias + " = ";
+        text += directive.target;
+        break;
+    case 1: text += "import module " + directive.target; break;
+    case 2: text += "import symbol " + directive.target; break;
+    case 3: text += "import trait " + directive.target; break;
+    case 4: text += "import extensions " + directive.target; break;
+    case 5: text += "import " + directive.target + ".*"; break;
+    default: error = "invalid template import kind"; return false;
+    }
+    if (directive.importKind != 0U && !directive.alias.empty())
+        text += " as " + directive.alias;
+    text += ";\n";
+
+    // The metadata may be untrusted. Parse the isolated directive and require exactly one
+    // directive of the claimed kind before placing it beside a reusable declaration.
+    source::SourceManager sources;
+    diagnostics::DiagnosticEngine diagnostics;
+    const FileId fileId = sources.addBuffer("template-import.ns", text);
+    const source::SourceFile* file = sources.getFile(fileId);
+    frontend::ProjectSyntaxUnit unit(0, 0, "template-import", fileId, false);
+    if (file == nullptr || !unit.lex(*file, diagnostics) ||
+        !unit.parse(diagnostics, std::span<const std::string>{}) ||
+        unit.syntaxTree() == nullptr || unit.syntaxTree()->children().size() != 1U)
+    {
+        error = "invalid template source import syntax";
+        return false;
+    }
+    const ast::AstNode* node = unit.syntaxTree()->children().front();
+    const bool expectAlias = !directive.alias.empty() || directive.importKind == 2U ||
+        directive.importKind == 3U;
+    if (node == nullptr ||
+        node->kind() != (expectAlias ? ast::AstNodeKind::UsingAliasDirective
+                                     : ast::AstNodeKind::UsingNamespaceDirective) ||
+        node->integerValue() != directive.importKind || node->flag() != directive.reexport)
+    {
+        error = "template source import does not match its declared kind";
+        return false;
+    }
+    return true;
+}
+
+bool appendTemplateImports(std::ostringstream& generated,
+                           const interop::LibraryMetadataGenericTemplate& generic,
+                           std::string_view namespaceName, std::string& error)
+{
+    for (const auto& directive : generic.sourceImports)
+    {
+        if (directive.namespaceName != namespaceName) continue;
+        std::string text;
+        if (!renderTemplateImport(directive, text, error)) return false;
+        generated << text;
+    }
+    return true;
+}
 }
 
 bool buildPrecompiledGenericTemplateSource(const interop::LibraryMetadata &metadata, std::string &source,
                                            std::string &error)
 {
     constexpr std::uint8_t kGenericMethodKind = 3U;
-    std::ostringstream generated;
+    const bool isolated = std::ranges::any_of(metadata.genericTemplates,
+        [](const auto& generic) { return !generic.sourceImports.empty(); });
+    std::vector<std::string> units;
     for (const interop::LibraryMetadataGenericTemplate &generic : metadata.genericTemplates)
     {
         if (generic.sourceText.empty())
@@ -29,15 +122,32 @@ bool buildPrecompiledGenericTemplateSource(const interop::LibraryMetadata &metad
             // body.
             continue;
         }
-        if (!generic.namespaceName.empty())
-            generated << "namespace " << generic.namespaceName << "\n{\n";
+        std::ostringstream generated;
+        if (!appendTemplateImports(generated, generic, {}, error)) return false;
+        std::size_t namespaceCount = 0;
+        std::string namespacePrefix;
+        std::size_t namespaceBegin = 0;
+        while (namespaceBegin < generic.namespaceName.size())
+        {
+            const std::size_t dot = generic.namespaceName.find('.', namespaceBegin);
+            const std::size_t stop = dot == std::string::npos ? generic.namespaceName.size() : dot;
+            const std::string segment = generic.namespaceName.substr(namespaceBegin, stop - namespaceBegin);
+            if (segment.empty()) { error = "empty template namespace segment"; return false; }
+            if (!namespacePrefix.empty()) namespacePrefix.push_back('.');
+            namespacePrefix += segment;
+            generated << "namespace " << segment << "\n{\n";
+            ++namespaceCount;
+            if (!appendTemplateImports(generated, generic, namespacePrefix, error)) return false;
+            if (dot == std::string::npos) break;
+            namespaceBegin = dot + 1U;
+        }
         if (generic.kind == kGenericMethodKind)
         {
             if (generic.ownerName.empty())
             {
                 generated << generic.sourceText << std::endl;
-                if (!generic.namespaceName.empty())
-                    generated << static_cast<char>(125) << std::endl;
+                while (namespaceCount > 0U) { generated << "}\n"; --namespaceCount; }
+                units.push_back(generated.str());
                 continue;
             }
 
@@ -89,10 +199,15 @@ bool buildPrecompiledGenericTemplateSource(const interop::LibraryMetadata &metad
         {
             generated << generic.sourceText << '\n';
         }
-        if (!generic.namespaceName.empty())
-            generated << "}\n";
+        while (namespaceCount > 0U) { generated << "}\n"; --namespaceCount; }
+        units.push_back(generated.str());
     }
-    source = generated.str();
+    if (isolated) source = frontend::encodePrecompiledTemplateSources(units);
+    else
+    {
+        source.clear();
+        for (const std::string& unit : units) source += unit;
+    }
     return true;
 }
 
@@ -107,6 +222,15 @@ bool verifyPrecompiledGenericTemplateSourceText(
     if (syntaxProduct != nullptr) syntaxProduct->clear();
     if (generated.empty())
         return true;
+    if (frontend::isPrecompiledTemplateFrame(generated))
+    {
+        std::vector<std::string> units;
+        if (!frontend::decodePrecompiledTemplateSources(generated, units, error)) return false;
+        for (std::string& source : units)
+            if (!verifyPrecompiledGenericTemplateSourceText(metadata, std::move(source), nullptr, error))
+                return false;
+        return true;
+    }
 
     source::SourceManager sources;
     diagnostics::DiagnosticEngine diagnostics;

@@ -270,6 +270,68 @@ que imports no usados introduzcan referencias no disponibles y publicar las
 dependencias necesarias respetando la accesibilidad. El ejemplo de Core y los
 controles de alias siguen pendientes.
 
+Prototipo posterior, **sin commit y no listo para cerrar**: se reconstruye una
+unidad de fuente por plantilla cuando existen imports, con límites de longitud
+explícitos y validación sintáctica de cada directiva antes de insertarla. Dos
+plantillas con el mismo alias y destinos públicos distintos ejecutan 42 en
+O0/O2, tanto usando el producto auxiliar publicado como reconstruyendo sin él
+(`A:/nsc-fixes-evidencia/generic-owner-alias-isolation-public.cmd` y `.log`).
+El mismo control con propietarios en el namespace global también pasó con y
+sin producto auxiliar en ambos niveles (`generic-owner-alias-global.cmd` y
+`.log`). La prueba dirigida de metadata pasó 15 comprobaciones, incluyendo
+rechazo de una unidad truncada y una directiva que intenta añadir una clase
+(`template-import-metadata-test.log`).
+
+El ejemplo original con helpers internos continúa fallando porque sus tipos no
+están materializados. Además apareció una regresión del prototipo: un `using`
+no utilizado que nombra un namespace interno ausente de la metadata hace fallar
+el consumidor, aunque el proyecto desde fuentes devuelve 42 en O0/O2
+(`A:/nsc-fixes-evidencia/generic-owner-alias-unused.cmd` y `.log`). No se debe
+considerar correcta la reconstrucción hasta preservar ese contexto y sus
+dependencias sin seleccionar tipos por coincidencia de texto ni ocultar fallos.
+
+Iteración posterior, aún sin commit: NSMETA 1.42 conserva candidatos de tipos
+del mismo módulo que aparecen como receptores y los namespaces declarados en
+sus fuentes. Los candidatos solo determinan qué declaraciones deben estar
+disponibles: no se reescribe la expresión, de manera que la búsqueda ordinaria
+conserva la prioridad de locales y campos. Los namespaces se reconstruyen como
+declaraciones vacías; no se hacen públicos sus tipos internos. Se preservan
+también métodos privados candidatos del propietario genérico y las identidades
+físicas presentes en bibliotecas estáticas.
+
+Las reproducciones de dos alias con helpers internos, namespace no utilizado,
+colisión entre imports, sombreado local y sombreado por campo pasaron en O0/O2;
+se rechazaron los accesos directos probados a tipos y miembros internos. El
+control de dos aliases pasó con y sin producto auxiliar de sintaxis y verificó
+un acierto real de `compilation-bundle-cache` en una repetición. La prueba de
+metadata pasó 21 comprobaciones, incluidas lectura de controles 1.40/1.41,
+rechazo de degradación, límites de trama e intentos probados de inyección de
+declaraciones. Comandos y salidas: `generic-owner-alias-isolation.cmd`,
+`generic-owner-alias-unused.cmd`, `generic-owner-static-import-check.cmd`,
+`generic-owner-private-method.cmd`, `generic-owner-field-shadow.cmd`,
+`generic-owner-shadow-check.cmd` y `template-import-metadata-test.log`, todos
+en `A:/nsc-fixes-evidencia`. Estos controles no demuestran todas las reglas de
+importación, alias genéricos, bibliotecas externas o DLL; la publicación de
+candidatos es conservadora y puede incluir declaraciones que una expresión
+finalmente resuelve como valores.
+Se registraron tres regresiones dirigidas en CTest para alias, namespace no
+utilizado y método privado; pasaron 3/3
+(`A:/nsc-fixes-evidencia/generic-binary-reconstruction-ctest.log`).
+
+Core se emitió en `A:/nsc-fixes-evidencia/generic-owner-sdk42` usando el
+compilador aislado con hash `b97508b29effde35` y la caché independiente. La
+emisión procesó 71 fuentes; en la última ejecución registró 9 aciertos de
+artefactos, ningún fallo de artefacto y acierto de archivo estático
+(`generic-owner-sdk42-build.log`). Las copias sin modificar del ejemplo
+original `sdk-01` compilaron y ejecutaron con salida 0 en O0/O2 contra ese
+Core (`generic-owner-original42-run.cmd` y logs por nivel). Una regresión
+distinta creó y promovió `Rc`/`WeakRc` y `Arc`/`WeakArc` con cargas de clase
+y struct, comprobó expiración, contadores y destructores, y rechazó la mutación
+probada de una vista; pasó en O0/O2
+(`shared-binary-public-pointers.cmd` y `.log`). El Core anterior vuelve a
+fallar en su referencia `SharedAtomic`: no se afirma que una biblioteca vieja
+adquiera información que no fue serializada.
+
 Una revisión del parser encontró también imports explícitos de módulo,
 símbolo, trait, extensiones y glob restringido; se está conservando su clase y
 la marca de reexportación, que no son equivalentes a un `using` ordinario.

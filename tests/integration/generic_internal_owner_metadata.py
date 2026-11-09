@@ -33,8 +33,11 @@ def main():
         if os.environ.get('NSC_METADATA_SHADOW_CASE') == '1':
             counter_body = 'Counter Helper = default(Counter); return Helper.Read();'
         field_shadow = os.environ.get('NSC_METADATA_FIELD_SHADOW_CASE') == '1'
+        private_method = os.environ.get('NSC_METADATA_PRIVATE_METHOD_CASE') == '1'
         if field_shadow:
             counter_body = 'return Helper.Read();'
+        if private_method:
+            counter_body = 'return SecretMethod();'
         alias = os.environ.get('NSC_METADATA_ALIAS_STATIC_CASE') == '1'
         imported = os.environ.get('NSC_METADATA_IMPORTED_STATIC_CASE') == '1' or alias
         scoped = os.environ.get('NSC_METADATA_NAMESPACE_IMPORT') == '1'
@@ -47,7 +50,7 @@ def main():
  internal struct Counter { public long Value; public void Set() { Value = 42l; }
   public int Read() { return 42; } }
  internal static class Helper { public static int Value() { return 42; } }
- internal static class Hidden { FIELD_SHADOW public static int Value<T>() where T : new() { COUNTER_BODY } }
+ internal static class Hidden { FIELD_SHADOW PRIVATE_METHOD public static int Value<T>() where T : new() { COUNTER_BODY } }
  internal static class Outer { internal static class Inner {
   public static int Value<T>() where T : new() { return 42; } } }
  public static class Api { public static int Make<T>() where T : new() { return Hidden.Value<T>(); }
@@ -55,11 +58,14 @@ def main():
  PUBLIC_OWNER
 }'''.replace('COUNTER_BODY', counter_body).replace(
     'FIELD_SHADOW', 'private static Counter Helper;' if field_shadow else '').replace(
-    'PUBLIC_OWNER', 'public static class PublicOwner { private static int Secret = 42; '
-    'public static int Value<T>() where T : new() { return Secret; } }' if field_shadow else '').replace(
+    'PRIVATE_METHOD', 'private static int SecretMethod() { return 42; }' if private_method else '').replace(
+    'PUBLIC_OWNER', ('public static class PublicOwner { private static int Secret = 42; '
+    'public static int Value<T>() where T : new() { return Secret; } }' if field_shadow else
+    'public static class PublicOwner { private static int SecretMethod() { return 42; } '
+    'public static int Value<T>() where T : new() { return SecretMethod(); } }' if private_method else '')).replace(
     'IMPORT_HERE', ('using Pick = Sample.Support;' if alias else 'using Sample.Support;') if scoped else '') + suffix,
     encoding='utf-8')
-        if imported or field_shadow:
+        if imported or field_shadow or private_method:
             source_control = root / 'SourceControl.nsproj'
             source_control.write_text('<Project><PropertyGroup><Name>Producer</Name><Language>3</Language>'
                                       '</PropertyGroup><ItemGroup><Compile Include="Producer.ns" />'
@@ -90,7 +96,7 @@ class Program { public static int Main() { return Api.Make<Payload>(); } }
 class Payload { public Payload() { } }
 class Program { public static int Main() {
  return Api.Make<Payload>() == 42 && Api.MakeNested<Payload>() == 42 EXTRA_CHECK ? 42 : 1; } }
-'''.replace('EXTRA_CHECK', '&& PublicOwner.Value<Payload>() == 42' if field_shadow else ''), encoding='utf-8')
+'''.replace('EXTRA_CHECK', '&& PublicOwner.Value<Payload>() == 42' if field_shadow or private_method else ''), encoding='utf-8')
         for level in ('O0', 'O2'):
             exe = root / ('Consumer-' + level + '.exe')
             result = run([compiler, '--emit-project-oop-exe', consumer, '-o', exe, '-' + level], root)
@@ -126,6 +132,15 @@ class Program { public static int Main() { return PublicOwner.Secret; } }
             assert result.returncode != 0 and 'error:' in output and 'Secret' in output, (
                 'private template owner field became accessible', output)
             print('private owner field rejected', flush=True)
+        if private_method:
+            source.write_text('''using Sample;
+class Program { public static int Main() { return PublicOwner.SecretMethod(); } }
+''', encoding='utf-8')
+            result = run([compiler, '--check-project-method-bodies', consumer], root)
+            output = result.stdout + result.stderr
+            assert result.returncode != 0 and 'error:' in output and 'SecretMethod' in output, (
+                'private template owner method became accessible', output)
+            print('private owner method rejected', flush=True)
         if os.environ.get('NSC_METADATA_SHADOW_CASE') == '1':
             source.write_text('''using Sample;
 class Program { public static int Main() { return Helper.Value(); } }

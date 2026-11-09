@@ -162,34 +162,40 @@ bool validateLibraryReferenceSymbols(const compilation::LibraryReference &refere
         constexpr std::uint32_t kStatic = 1U << 0U;
         constexpr std::uint32_t kExternC = 1U << 8U;
         constexpr std::uint32_t kImportedC = 1U << 20U;
+        std::unordered_set<std::string> templateOwners;
+        std::unordered_set<std::string> receiverCandidates;
+        for (const auto& generic : metadata.genericTemplates)
+        {
+            std::string owner = metadata.moduleName + "::";
+            if (!generic.namespaceName.empty()) owner += generic.namespaceName + ".";
+            owner += generic.ownerName;
+            templateOwners.insert(std::move(owner));
+            receiverCandidates.insert(generic.candidateReceiverTypeKeys.begin(),
+                                      generic.candidateReceiverTypeKeys.end());
+        }
+        std::unordered_set<std::string> templateFieldTypes;
+        for (const auto& field : metadata.members)
+            if (field.kind == kField && (field.flags & kStatic) != 0U &&
+                field.declaringTypeKey.starts_with("type:") &&
+                templateOwners.contains(field.declaringTypeKey.substr(5)))
+                templateFieldTypes.insert(field.declaredTypeKey);
         for (const auto &member : metadata.members)
         {
-            const bool method = member.kind == kMethod && member.accessibility == kPublic;
+            if (!member.declaringTypeKey.starts_with("type:")) continue;
+            std::string ownerIdentity = member.declaringTypeKey.substr(5);
+            const bool method = member.kind == kMethod &&
+                (member.accessibility == kPublic || templateOwners.contains(ownerIdentity));
             const bool staticField = member.kind == kField && (member.flags & kStatic) != 0U;
             if ((!method && !staticField) || member.mangledName.empty() ||
                 (member.flags & (kExternC | kImportedC)) != 0U || !archiveSymbols.contains(member.mangledName))
                 continue;
-            if (!member.declaringTypeKey.starts_with("type:")) continue;
-            std::string ownerIdentity = member.declaringTypeKey.substr(5);
             std::string writtenOwner = ownerIdentity;
             std::ranges::replace(writtenOwner, '+', '.');
-            const auto isTemplateOwner = [&](const std::string &identity) {
-                return std::ranges::any_of(metadata.genericTemplates, [&](const auto &generic) {
-                std::string genericOwner = metadata.moduleName + "::";
-                if (!generic.namespaceName.empty()) genericOwner += generic.namespaceName + ".";
-                genericOwner += generic.ownerName;
-                return genericOwner == identity;
-                });
-            };
-            const bool usedByTemplate = isTemplateOwner(ownerIdentity) ||
+            const bool usedByTemplate = templateOwners.contains(ownerIdentity) ||
+                (method && receiverCandidates.contains(member.declaringTypeKey)) ||
                 (method && (std::ranges::any_of(metadata.genericTemplates, [&](const auto &generic) {
                     return generic.sourceText.find(writtenOwner) != std::string::npos;
-                }) || std::ranges::any_of(metadata.members, [&](const auto &field) {
-                    return field.kind == kField && (field.flags & kStatic) != 0U &&
-                        field.declaredTypeKey == member.declaringTypeKey &&
-                        field.declaringTypeKey.starts_with("type:") &&
-                        isTemplateOwner(field.declaringTypeKey.substr(5));
-                })));
+                }) || templateFieldTypes.contains(member.declaringTypeKey)));
             if (!usedByTemplate) continue;
             const auto [owner, inserted] = publishedNativeMethods.emplace(member.mangledName, metadata.moduleName);
             if (!inserted && owner->second != metadata.moduleName)

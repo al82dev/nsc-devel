@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
+#include "nativesharp/Frontend/PrecompiledTemplateSources.h"
 #include "Cache/CachePayloadReader.h"
 #include "Cache/CachePayloadWriter.h"
 #include "Cache/SyntaxProductCacheCodec.h"
@@ -1473,6 +1474,18 @@ bool ProjectCompilation::materializePrecompiledTemplateUnit(
     std::string& loadError)
 {
     if (module.templateSourceText.empty()) return true;
+    if (isPrecompiledTemplateFrame(module.templateSourceText))
+    {
+        std::vector<std::string> sources;
+        if (!decodePrecompiledTemplateSources(module.templateSourceText, sources, loadError)) return false;
+        for (std::size_t index = 0; index < sources.size(); ++index)
+        {
+            const std::string suffix = ".public-template-" + std::to_string(index) + ".ns";
+            if (!materializePrecompiledUnit(module, projectOrdinal, index + 1U, suffix,
+                    sources[index], {}, false, "templates", loadError)) return false;
+        }
+        return true;
+    }
     return materializePrecompiledUnit(
         module, projectOrdinal, 1U, ".public-templates.ns",
         module.templateSourceText, module.publicTemplateSyntaxProduct,
@@ -1510,7 +1523,7 @@ bool ProjectCompilation::materializePrecompiledUnit(
     precompiledSyntaxCacheHitsByUnit_.resize(units_.size());
     std::string& syntaxCacheKey = precompiledSyntaxCacheKeysByUnit_.back();
     syntaxCacheKey = precompiledSyntaxCacheKey(module.productCacheKey, sourceOrdinal);
-    const bool hasPublishedSyntax = !module.productSidecarPath.empty();
+    const bool hasPublishedSyntax = !module.productSidecarPath.empty() && !publishedSyntaxProduct.empty();
     if (hasPublishedSyntax && !restorePublishedPrecompiledSyntaxUnit(
             *units_.back(), publishedSyntaxProduct, productName, loadError))
     {

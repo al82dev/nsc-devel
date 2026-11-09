@@ -325,6 +325,7 @@ void appendSourceGenericTemplates(const LibraryMetadata& metadata, Surface& resu
             field(contract, shorter);
         }
         strings(contract, generic.dependencies, true);
+        strings(contract, generic.candidateReceiverTypeKeys, true);
         number(contract, generic.sourceImports.size());
         for (const auto& directive : generic.sourceImports)
         {

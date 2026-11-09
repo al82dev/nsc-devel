@@ -421,6 +421,11 @@ void ProjectGenericModel::discoverTemplateDependenciesForBuild(
                         left.typeKey == right.typeKey;
                 }),
             state.record.externalTypeReferences.end());
+        std::ranges::sort(state.record.candidateReceiverTypeKeys);
+        state.record.candidateReceiverTypeKeys.erase(
+            std::unique(state.record.candidateReceiverTypeKeys.begin(),
+                state.record.candidateReceiverTypeKeys.end()),
+            state.record.candidateReceiverTypeKeys.end());
     }
 }
 

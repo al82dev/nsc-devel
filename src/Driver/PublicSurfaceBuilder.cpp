@@ -1751,6 +1751,9 @@ bool PublicSurfaceBuilder::run()
 {
     collectGenericMethodOwners();
     collectPublishedTypes();
+    for (const auto &generic : metadata.genericTemplates)
+        for (const std::string &candidate : generic.candidateReceiverTypeKeys)
+            collectMaterializedContractTypes(metadata, candidate, contractTypeIdentities);
     // Same-module nominal references in template bodies are emitted with their
     // complete module-qualified spelling. Materialize matching type records
     // with their original accessibility so those bodies can be analyzed.

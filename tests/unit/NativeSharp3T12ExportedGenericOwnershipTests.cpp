@@ -3,6 +3,8 @@
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Interop/LibraryMetadataMerger.h"
 #include "nativesharp/Interop/LibraryApiDiffer.h"
+#include "nativesharp/Frontend/PrecompiledTemplateSources.h"
+#include "../../src/Driver/Internal/DriverInternal.h"
 
 #include "../support/TestContext.h"
 
@@ -80,6 +82,7 @@ namespace GenericContracts
 {
     using Local = GenericContracts.Pod;
     public copy struct Pod { public int Value; }
+    public static class Counter { public static int Read() { return 42; } }
     public class Api
     {
         public static ref[shorter] int Narrow<lifetime longer, lifetime shorter, T>(
@@ -92,7 +95,7 @@ namespace GenericContracts
         public static int Track<T>(T value)
             where T : class, lifetime, copy, move, new(), notnull
         {
-            return 0;
+            return Counter.Read();
         }
     }
 }
@@ -150,6 +153,13 @@ namespace GenericContracts
             narrow->sourceImports[5].alias == "Local" &&
             narrow->sourceImports[5].target == "GenericContracts.Pod",
         "NSMETA 1.41 round-trips ordered using aliases and explicit imports in both scopes");
+    tests.expect(metadataRead && track != metadata.genericTemplates.end() &&
+            track->candidateReceiverTypeKeys ==
+                std::vector<std::string>({"type:GenericContracts::GenericContracts.Counter"}),
+        "NSMETA 1.42 round-trips same-module expression receiver candidates");
+    tests.expect(metadataRead && metadata.sourceNamespaces ==
+            std::vector<std::string>({"GenericContracts"}),
+        "NSMETA 1.42 round-trips namespaces declared by the producer");
 
     LibraryMetadata downlevel = metadata;
     downlevel.formatMinor = 37;
@@ -159,6 +169,24 @@ namespace GenericContracts
             downlevelError.find("before 1.38") != std::string::npos,
         "generic ownership contracts cannot be mislabeled as NSMETA 1.37 (" + downlevelError + ")");
     downlevel = metadata;
+    downlevel.formatMinor = 41;
+    downlevelError.clear();
+    tests.expect(metadataRead && !codec.writeModel(
+            downlevel, root / "generic-receivers-1.41.nsmeta", downlevelError) &&
+            downlevelError.find("before 1.42") != std::string::npos,
+        "receiver candidates cannot be silently discarded when writing NSMETA 1.41 (" + downlevelError + ")");
+    for (auto& generic : downlevel.genericTemplates) generic.candidateReceiverTypeKeys.clear();
+    downlevel.sourceNamespaces.clear();
+    const auto priorPath = root / "generic-imports-1.41.nsmeta";
+    downlevelError.clear();
+    const bool priorWritten = codec.writeModel(downlevel, priorPath, downlevelError);
+    LibraryMetadata priorDecoded;
+    const bool priorRead = priorWritten && codec.read(priorPath, priorDecoded, downlevelError) &&
+        codec.verifyCurrentCompiler(priorDecoded, downlevelError);
+    tests.expect(priorRead && priorDecoded.formatMinor == 41 &&
+            std::ranges::all_of(priorDecoded.genericTemplates,
+                [](const auto& generic) { return generic.candidateReceiverTypeKeys.empty(); }),
+        "NSMETA 1.41 import catalog remains readable without receiver candidates (" + downlevelError + ")");
     downlevel.formatMinor = 40;
     downlevelError.clear();
     tests.expect(metadataRead && !codec.writeModel(
@@ -215,6 +243,39 @@ namespace GenericContracts
     std::string mergeError;
     tests.expect(metadataRead && !merger.merge(conflicting, combined, mergeError),
         "conflicting template import scopes are not merged as identical (" + mergeError + ")");
+
+    const std::vector<std::string> unitSources = {"using A;\nclass C {}\n", "class D {}\n"};
+    const std::string framed = nativesharp::frontend::encodePrecompiledTemplateSources(unitSources);
+    std::vector<std::string> decodedUnits;
+    std::string frameError;
+    tests.expect(nativesharp::frontend::decodePrecompiledTemplateSources(framed, decodedUnits, frameError) &&
+            decodedUnits == unitSources,
+        "precompiled template source units round-trip separately (" + frameError + ")");
+    const std::string truncatedFrame = framed.substr(0, framed.size() - 1U);
+    tests.expect(!nativesharp::frontend::decodePrecompiledTemplateSources(
+            truncatedFrame, decodedUnits, frameError),
+        "a truncated template source unit frame is rejected");
+    const std::string emptyUnit = std::string(nativesharp::frontend::kPrecompiledTemplateFrame) + "0\n";
+    tests.expect(!nativesharp::frontend::decodePrecompiledTemplateSources(
+            emptyUnit, decodedUnits, frameError),
+        "an empty framed template source unit is rejected");
+
+    LibraryMetadata injectedImport = metadata;
+    const auto injectedTemplate = std::ranges::find_if(injectedImport.genericTemplates,
+        [](const auto& generic) { return generic.name == "Narrow"; });
+    if (injectedTemplate != injectedImport.genericTemplates.end() && !injectedTemplate->sourceImports.empty())
+        injectedTemplate->sourceImports[0].target = "GenericContracts.Pod; class Injected {}";
+    std::string generatedSource;
+    std::string generatedError;
+    tests.expect(metadataRead && !nativesharp::driver::buildPrecompiledGenericTemplateSource(
+            injectedImport, generatedSource, generatedError),
+        "template import metadata cannot inject an extra declaration (" + generatedError + ")");
+    LibraryMetadata injectedNamespace = metadata;
+    injectedNamespace.sourceNamespaces.push_back("Injected {} class Escape");
+    generatedError.clear();
+    tests.expect(metadataRead && !nativesharp::driver::buildPrecompiledPublicSource(
+            injectedNamespace, generatedSource, generatedError),
+        "source namespace metadata cannot inject an extra declaration (" + generatedError + ")");
 
     const std::string reference =
         "<Compile Include=\"**/*.ns\" />"

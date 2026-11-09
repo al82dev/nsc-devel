@@ -34,6 +34,19 @@ namespace Provider.Two { internal static class Helper { public static int Read()
                                         'namespace Provider {\n using Pick = Provider.Two;')
             source_a += source_b
             source_b = ''
+        if os.environ.get('NSC_ALIAS_PUBLIC_HELPERS') == '1':
+            source_a = source_a.replace('internal static class Helper', 'public static class Helper')
+            source_b = source_b.replace('internal static class Helper', 'public static class Helper')
+        if os.environ.get('NSC_ALIAS_GLOBAL_OWNERS') == '1':
+            source_a = source_a.replace('namespace Provider {\n public static class ApiA',
+                                        'public static class ApiA').replace(
+                                            '\n}\nnamespace Provider.One', '\nnamespace Provider.One')
+            source_b = source_b.replace('namespace Provider {\n public static class ApiB',
+                                        'public static class ApiB').replace(
+                                            '\n}\nnamespace Provider.Two', '\nnamespace Provider.Two')
+        if os.environ.get('NSC_ALIAS_UNUSED_IMPORT') == '1':
+            source_a = 'using Provider.Unused;\n' + source_a + (
+                '\nnamespace Provider.Unused { internal class Dummy { } }\n')
         (root / 'A.ns').write_text(source_a, encoding='utf-8')
         (root / 'B.ns').write_text(source_b, encoding='utf-8')
         (root / 'Program.ns').write_text('''using Provider;
@@ -75,6 +88,47 @@ class Program { public static int Main() {
             result = run([exe], root)
             assert result.returncode == 42, ('consumer', level, result.returncode)
             print('consumer', level, 'exit=42', flush=True)
+        sidecar = root / 'Producer.nsproducts'
+        assert sidecar.is_file(), 'producer did not publish the syntax sidecar'
+        sidecar.unlink()
+        for level in ('O0', 'O2'):
+            exe = root / ('consumer-no-sidecar-' + level + '.exe')
+            result = run([compiler, '--emit-project-oop-exe', consumer, '-' + level, '-o', exe], root)
+            assert result.returncode == 0, ('consumer no sidecar', level, result.stdout + result.stderr)
+            result = run([exe], root)
+            assert result.returncode == 42, ('consumer no sidecar', level, result.returncode)
+            print('consumer no sidecar', level, 'exit=42', flush=True)
+        cache = root / 'consumer-cache'
+        exe = root / 'consumer-cache.exe'
+        for phase in ('cold', 'warm'):
+            result = run([compiler, '--emit-project-oop-exe', consumer, '-O0', '-o', exe,
+                          '--artifact-cache=' + str(cache), '--time'], root)
+            output = result.stdout + result.stderr
+            assert result.returncode == 0, ('consumer cache', phase, output)
+            if phase == 'warm':
+                assert 'compilation-bundle-cache: hit' in output, ('consumer cache', phase, output)
+                print('consumer compilation-bundle-cache: hit', flush=True)
+            result = run([exe], root)
+            assert result.returncode == 42, ('consumer cache', phase, result.returncode)
+            print('consumer cache', phase, 'exit=42', flush=True)
+        if os.environ.get('NSC_ALIAS_PUBLIC_HELPERS') != '1':
+            (root / 'Program.ns').write_text('''using Provider.One;
+class Program { public static int Main() { return Helper.Read(); } }
+''', encoding='utf-8')
+            result = run([compiler, '--check-project-method-bodies', consumer], root)
+            output = result.stdout + result.stderr
+            assert result.returncode != 0 and 'error:' in output and 'Helper' in output, (
+                'internal candidate type became accessible', output)
+            print('internal receiver rejected', flush=True)
+        if os.environ.get('NSC_ALIAS_UNUSED_IMPORT') == '1':
+            (root / 'Program.ns').write_text('''using Provider.Unused;
+class Program { public static int Main() { Dummy value; return 0; } }
+''', encoding='utf-8')
+            result = run([compiler, '--check-project-method-bodies', consumer], root)
+            output = result.stdout + result.stderr
+            assert result.returncode != 0 and 'error:' in output and 'Dummy' in output, (
+                'namespace shell exposed its internal type', output)
+            print('namespace shell retains type privacy', flush=True)
         return 0
 
 

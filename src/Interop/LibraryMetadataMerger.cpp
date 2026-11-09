@@ -146,11 +146,11 @@ bool equalTemplate(
     };
     return std::tie(left.kind, left.accessibility, left.canonicalKey, left.moduleName,
                left.namespaceName, left.ownerName, left.name, left.parameters,
-               left.sourceText, left.dependencies, left.sourceImports, left.lifetimeParameters,
+               left.sourceText, left.dependencies, left.sourceImports, left.candidateReceiverTypeKeys, left.lifetimeParameters,
                left.lifetimeOutlivesConstraints) ==
         std::tie(right.kind, right.accessibility, right.canonicalKey, right.moduleName,
             right.namespaceName, right.ownerName, right.name, right.parameters,
-            right.sourceText, right.dependencies, right.sourceImports, right.lifetimeParameters,
+            right.sourceText, right.dependencies, right.sourceImports, right.candidateReceiverTypeKeys, right.lifetimeParameters,
             right.lifetimeOutlivesConstraints) &&
         vectorEqual(left.parameterContracts, right.parameterContracts, equalParameter);
 }
@@ -345,6 +345,7 @@ bool canonicalizeNestedRecords(LibraryMetadata& metadata, std::string& error)
             return false;
     }
     canonicalizeStrings(metadata.externalTypeKeys);
+    canonicalizeStrings(metadata.sourceNamespaces);
     return true;
 }
 
@@ -476,6 +477,7 @@ bool LibraryMetadataMerger::merge(
     candidate.genericTemplates.clear();
     candidate.genericSpecializations.clear();
     candidate.externalTypeKeys.clear();
+    candidate.sourceNamespaces.clear();
     candidate.dispatchTables.clear();
     candidate.exports.clear();
     candidate.binaryDependencies.clear();
@@ -498,6 +500,7 @@ bool LibraryMetadataMerger::merge(
         append(candidate.genericTemplates, fragment.genericTemplates);
         append(candidate.genericSpecializations, fragment.genericSpecializations);
         append(candidate.externalTypeKeys, fragment.externalTypeKeys);
+        append(candidate.sourceNamespaces, fragment.sourceNamespaces);
         append(candidate.dispatchTables, fragment.dispatchTables);
         append(candidate.exports, fragment.exports);
         append(candidate.binaryDependencies, fragment.binaryDependencies);

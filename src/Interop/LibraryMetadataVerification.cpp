@@ -863,6 +863,7 @@ bool verifyGenericTemplateDependencies(
 bool verifyGenericTemplateRecord(
     const LibraryMetadata& metadata,
     const LibraryMetadataGenericTemplate& generic,
+    const std::unordered_set<std::string>& declaredTypeKeys,
     std::unordered_set<std::string>& templateKeys,
     std::unordered_map<std::string, const LibraryMetadataGenericTemplate*>& templateByKey,
     std::string& error)
@@ -899,6 +900,16 @@ bool verifyGenericTemplateRecord(
         {
             error = "metadata generic template '" + generic.canonicalKey +
                 "' has an invalid source import or lexical scope";
+            return false;
+        }
+    }
+    for (const std::string& candidate : generic.candidateReceiverTypeKeys)
+    {
+        if (metadata.formatMinor < 42 || !candidate.starts_with("type:" + metadata.moduleName + "::") ||
+            !declaredTypeKeys.contains(candidate))
+        {
+            error = "metadata generic template '" + generic.canonicalKey +
+                "' has an invalid or missing receiver type candidate";
             return false;
         }
     }
@@ -965,10 +976,13 @@ bool verifyGenericTemplates(
     constexpr std::uint8_t kPublicAccessibility = 3U;
     std::unordered_set<std::string> templateKeys;
     std::unordered_map<std::string, const LibraryMetadataGenericTemplate*> templateByKey;
+    std::unordered_set<std::string> declaredTypeKeys;
+    declaredTypeKeys.reserve(metadata.types.size());
+    for (const auto& type : metadata.types) declaredTypeKeys.insert("type:" + type.identityKey);
     for (const LibraryMetadataGenericTemplate& generic : metadata.genericTemplates)
     {
         if (!verifyGenericTemplateRecord(
-                metadata, generic, templateKeys, templateByKey, error))
+                metadata, generic, declaredTypeKeys, templateKeys, templateByKey, error))
         {
             return false;
         }

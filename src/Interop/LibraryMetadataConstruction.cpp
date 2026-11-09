@@ -1222,6 +1222,7 @@ bool buildGenericTemplateMetadata(
     for (const auto& directive : generic.sourceImports)
         record.sourceImports.push_back({directive.namespaceName, directive.alias, directive.target,
             directive.importKind, directive.reexport});
+    record.candidateReceiverTypeKeys = generic.candidateReceiverTypeKeys;
     return true;
 }
 
@@ -1738,6 +1739,42 @@ void expandPublishedRootType(
         addedPublishedType);
 }
 
+using TemplateOwnerMemberCandidates = std::unordered_map<std::string, std::unordered_set<std::string>>;
+
+TemplateOwnerMemberCandidates templateOwnerMemberCandidates(
+    std::span<const frontend::GenericTemplateRecord> templates,
+    const std::unordered_set<std::string>& includedTemplateKeys,
+    std::size_t rootProjectOrdinal)
+{
+    TemplateOwnerMemberCandidates result;
+    for (const auto& generic : templates)
+    {
+        if (!includedTemplateKeys.contains(generic.canonicalKey) ||
+            generic.kind != frontend::GenericTemplateKind::Method || generic.ownerName.empty() ||
+            generic.projectOrdinal != rootProjectOrdinal || generic.syntax == nullptr) continue;
+        std::string owner = "type:" + generic.moduleName + "::";
+        if (!generic.namespaceName.empty()) owner += generic.namespaceName + ".";
+        owner += generic.ownerName;
+        auto& names = result[owner];
+        std::vector<const ast::AstNode*> pending{generic.syntax};
+        while (!pending.empty())
+        {
+            const ast::AstNode* node = pending.back();
+            pending.pop_back();
+            if (node == nullptr) continue;
+            if ((node->kind() == ast::AstNodeKind::IdentifierExpression ||
+                 node->kind() == ast::AstNodeKind::MemberExpression) && !node->text().empty())
+                names.insert(node->text());
+            if (node->first() != nullptr) pending.push_back(node->first());
+            if (node->second() != nullptr) pending.push_back(node->second());
+            if (node->third() != nullptr) pending.push_back(node->third());
+            for (const ast::AstNode* child : node->children())
+                if (child != nullptr) pending.push_back(child);
+        }
+    }
+    return result;
+}
+
 bool collectPublishedRootTypeOrdinals(
     const frontend::ProjectCompilation& compilation,
     std::span<const frontend::NamedTypeDeclaration> types,
@@ -1768,12 +1805,16 @@ bool collectPublishedRootTypeOrdinals(
     std::unordered_set<std::string> includedTemplateKeys;
     if (!collectIncludedGenericTemplateKeys(
             genericTemplates, rootProjectOrdinal, includedTemplateKeys, error)) return false;
+    const auto ownerMemberCandidates = templateOwnerMemberCandidates(
+        genericTemplates, includedTemplateKeys, rootProjectOrdinal);
     std::unordered_set<std::size_t> genericMethodOwners;
     for (const auto& generic : genericTemplates)
     {
         if (!includedTemplateKeys.contains(generic.canonicalKey)) continue;
         for (const auto& reference : generic.externalTypeReferences)
             publishRootTypeKey(reference.typeKey, rootTypeByKey, publishedRootTypes);
+        for (const std::string& candidate : generic.candidateReceiverTypeKeys)
+            publishRootTypeKey(candidate, rootTypeByKey, publishedRootTypes);
         if (generic.kind != frontend::GenericTemplateKind::Method || generic.ownerName.empty() ||
             generic.projectOrdinal != rootProjectOrdinal) continue;
         std::size_t end = 0;
@@ -1799,6 +1840,13 @@ bool collectPublishedRootTypeOrdinals(
         if (genericMethodOwners.contains(member.declaringTypeOrdinal) && member.isStatic &&
             member.kind == frontend::ClassMemberKind::Field)
             publishRootTypeKey(member.declaredTypeKey, rootTypeByKey, publishedRootTypes);
+        const auto candidates = ownerMemberCandidates.find(typeKeyForOrdinal(types, member.declaringTypeOrdinal));
+        if (member.kind != frontend::ClassMemberKind::Method || candidates == ownerMemberCandidates.end() ||
+            !candidates->second.contains(member.name)) continue;
+        publishRootTypeKey(member.declaredTypeKey, rootTypeByKey, publishedRootTypes);
+        publishRootTypeKey(member.declaredErrorTypeKey, rootTypeByKey, publishedRootTypes);
+        for (const auto& parameter : member.parameters)
+            publishRootTypeKey(parameter.typeKey, rootTypeByKey, publishedRootTypes);
     }
 
     // Public signatures can expose a root-module helper whose declaration has no source-level
@@ -2344,6 +2392,7 @@ void collectMetadataMemberOrdinals(
     std::span<const frontend::ClassMemberSymbol> members,
     const std::unordered_set<std::size_t>& rootTypes,
     const std::unordered_set<std::string>& genericOwnerKeys,
+    const TemplateOwnerMemberCandidates& ownerMemberCandidates,
     std::vector<std::size_t>& memberOrdinals)
 {
     for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
@@ -2354,7 +2403,10 @@ void collectMetadataMemberOrdinals(
             member.accessibility == frontend::ClassMemberAccessibility::Protected;
         const bool templateStaticField = member.kind == frontend::ClassMemberKind::Field &&
             member.isStatic && genericOwnerKeys.contains(typeKeyForOrdinal(types, member.declaringTypeOrdinal));
-        if ((contractAccessibility || templateStaticField) &&
+        const auto candidates = ownerMemberCandidates.find(typeKeyForOrdinal(types, member.declaringTypeOrdinal));
+        const bool templateMethodCandidate = member.kind == frontend::ClassMemberKind::Method &&
+            candidates != ownerMemberCandidates.end() && candidates->second.contains(member.name);
+        if ((contractAccessibility || templateStaticField || templateMethodCandidate) &&
             !member.isControlledSpecializationFamily &&
             rootTypes.contains(member.declaringTypeOrdinal))
         {
@@ -2761,7 +2813,10 @@ bool buildMemberMetadata(
         key += generic.ownerName;
         genericOwnerKeys.insert(std::move(key));
     }
-    collectMetadataMemberOrdinals(types, members, rootTypes, genericOwnerKeys, memberOrdinals);
+    const auto ownerMemberCandidates = templateOwnerMemberCandidates(
+        templates, includedTemplateKeys, rootProjectOrdinal);
+    collectMetadataMemberOrdinals(types, members, rootTypes, genericOwnerKeys,
+        ownerMemberCandidates, memberOrdinals);
     std::vector<std::string> missingPhysicalCallables;
     if (!appendMetadataMembers(
             compilation,
@@ -3034,6 +3089,37 @@ void appendNamespaceStateMetadata(
         namespaceStateMetadataLess);
 }
 
+void collectProducerSourceNamespaces(
+    const frontend::ProjectCompilation& compilation,
+    std::size_t rootProjectOrdinal,
+    LibraryMetadata& metadata)
+{
+    for (const auto& unit : compilation.units())
+    {
+        if (unit == nullptr || unit->projectOrdinal() != rootProjectOrdinal || unit->isPrecompiled() ||
+            unit->syntaxTree() == nullptr) continue;
+        std::vector<std::pair<const ast::AstNode*, std::string>> pending{{unit->syntaxTree(), {}}};
+        while (!pending.empty())
+        {
+            auto [node, parent] = std::move(pending.back());
+            pending.pop_back();
+            if (node->kind() == ast::AstNodeKind::NamespaceDeclaration)
+            {
+                if (!parent.empty()) parent.push_back('.');
+                parent += node->text();
+                if (!parent.empty()) metadata.sourceNamespaces.push_back(parent);
+            }
+            for (const ast::AstNode* child : node->children())
+                if (child != nullptr && child->kind() == ast::AstNodeKind::NamespaceDeclaration)
+                    pending.emplace_back(child, parent);
+        }
+    }
+    std::ranges::sort(metadata.sourceNamespaces);
+    metadata.sourceNamespaces.erase(
+        std::unique(metadata.sourceNamespaces.begin(), metadata.sourceNamespaces.end()),
+        metadata.sourceNamespaces.end());
+}
+
 bool buildMetadataModel(
     const frontend::ProjectCompilation& compilation,
     LibraryMetadata& metadata,
@@ -3045,6 +3131,7 @@ bool buildMetadataModel(
     {
         return false;
     }
+    collectProducerSourceNamespaces(compilation, rootProjectOrdinalValue, metadata);
     constexpr bool publishLifetimeContracts = true;
     const auto types = compilation.nameLookup()->namedTypes();
     const auto members = compilation.memberModel()->members();

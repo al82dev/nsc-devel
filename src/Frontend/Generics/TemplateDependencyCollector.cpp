@@ -434,6 +434,20 @@ void ProjectGenericModel::collectTemplateDependencies(
     }
     collectCallDependency(
         root, unit, node, currentNamespace, ownerName, currentScope);
+    if (node->kind() == ast::AstNodeKind::MemberExpression && node->first() != nullptr)
+    {
+        const std::string written = receiverSourceSpelling(node->first());
+        if (!written.empty())
+        {
+            const ast::TypeSyntax candidate(node->first()->range(), lexer::TokenKind::Identifier, written);
+            const DeclaredTypeIdentity* declaration = resolveDeclaredTypeIdentity(
+                &candidate, unit.projectOrdinal(), currentNamespace, currentScope);
+            // A value can shadow this spelling. Record only a potential dependency and leave the
+            // expression untouched, so the ordinary binding rules decide its meaning later.
+            if (declaration != nullptr && declaration->projectOrdinal == root.record.projectOrdinal)
+                root.record.candidateReceiverTypeKeys.push_back("type:" + declaration->identityKey);
+        }
+    }
 
     const std::string childOwner = node == rootSyntax
         ? ownerName

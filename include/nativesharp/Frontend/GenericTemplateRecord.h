@@ -63,6 +63,9 @@ struct GenericTemplateRecord final
     // These references let NSMETA make the declaration self-contained instead of depending on
     // source-level using directives that are intentionally not transported with a template body.
     std::vector<GenericTemplateExternalTypeReference> externalTypeReferences;
+    // Possible nominal type receivers in expression position. These are publication
+    // candidates only: value lookup may shadow them, so their source is never rewritten.
+    std::vector<std::string> candidateReceiverTypeKeys;
 
     // Declaration-site imports are retained for metadata reconstruction.
     // Aliases are stored as ordered pairs to keep publication deterministic.

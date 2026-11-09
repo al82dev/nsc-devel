@@ -568,6 +568,13 @@ std::vector<std::uint8_t> encodePayload(
     encodeGenericContracts(writer, metadata);
     if (metadata.formatMinor >= 39) writer.u32(metadata.languageFeatureFlags);
     encodeTemplateSourceImports(writer, metadata);
+    if (metadata.formatMinor >= 42)
+    {
+        writer.u32(static_cast<std::uint32_t>(metadata.genericTemplates.size()));
+        for (const auto& generic : metadata.genericTemplates)
+            writeStringVector(writer, generic.candidateReceiverTypeKeys);
+        writeStringVector(writer, metadata.sourceNamespaces);
+    }
     return writer.bytes();
 }
 
@@ -2006,6 +2013,28 @@ bool decodePayload(
         }
     }
     if (!decodeTemplateSourceImports(reader, metadata, error)) return false;
+    if (metadata.formatMinor >= 42)
+    {
+        std::uint32_t count = 0;
+        if (!readCount(reader, count) || count != metadata.genericTemplates.size())
+        {
+            error = "invalid metadata template receiver-candidate catalogue count";
+            return false;
+        }
+        for (auto& generic : metadata.genericTemplates)
+        {
+            if (!readStringVector(reader, generic.candidateReceiverTypeKeys))
+            {
+                error = "truncated metadata template receiver candidates";
+                return false;
+            }
+        }
+        if (!readStringVector(reader, metadata.sourceNamespaces))
+        {
+            error = "truncated metadata source namespaces";
+            return false;
+        }
+    }
     if (!reader.atEnd())
     {
         error = "metadata payload has trailing bytes";

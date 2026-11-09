@@ -248,12 +248,9 @@ bool canMaterializePrecompiledDeclaration(const interop::LibraryMetadata &metada
     const interop::LibraryMetadataType *declaringType = metadataTypeForKey(metadata, member.declaringTypeKey);
     if (declaringType == nullptr)
         return false;
-
-    if (member.kind == kFieldKind)
+    const auto isTemplateOwner = [&]()
     {
-        constexpr std::uint32_t kStatic = 1U << 0U;
-        constexpr std::uint32_t kConst = 1U << 2U;
-        const bool templateOwner = std::ranges::any_of(metadata.genericTemplates, [&](const auto &generic)
+        return std::ranges::any_of(metadata.genericTemplates, [&](const auto &generic)
         {
             constexpr std::uint8_t kGenericMethodKind = 3U;
             if (generic.kind != kGenericMethodKind || generic.ownerName.empty()) return false;
@@ -261,7 +258,13 @@ bool canMaterializePrecompiledDeclaration(const interop::LibraryMetadata &metada
                 ? generic.ownerName : generic.namespaceName + "." + generic.ownerName;
             return "type:" + generic.moduleName + "::" + owner == member.declaringTypeKey;
         });
-        const bool materializable = (hasConsumerCallableAccessibility(member.accessibility) || templateOwner) &&
+    };
+
+    if (member.kind == kFieldKind)
+    {
+        constexpr std::uint32_t kStatic = 1U << 0U;
+        constexpr std::uint32_t kConst = 1U << 2U;
+        const bool materializable = (hasConsumerCallableAccessibility(member.accessibility) || isTemplateOwner()) &&
                                     canMaterializeContractType(metadata, member.declaredTypeKey);
         if ((member.flags & kConst) != 0U)
             return materializable && member.constantKind != 0U;
@@ -294,7 +297,7 @@ bool canMaterializePrecompiledDeclaration(const interop::LibraryMetadata &metada
         return false;
     }
 
-    if (!hasConsumerCallableAccessibility(member.accessibility) &&
+    if (!hasConsumerCallableAccessibility(member.accessibility) && !isTemplateOwner() &&
         declaringType->kind != interop::LibraryMetadataTypeKind::Interface)
     {
         return false;

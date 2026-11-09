@@ -5,6 +5,7 @@
 #include "nativesharp/Compilation/PrecompiledProductCache.h"
 #include "nativesharp/Compilation/PrecompiledProductSidecarCodec.h"
 #include "nativesharp/Compilation/PrecompiledProductSidecarPath.h"
+#include "nativesharp/Frontend/PrecompiledTemplateSources.h"
 
 #include "PrecompiledSurfaceReachability.h"
 
@@ -125,6 +126,13 @@ bool publishedSyntaxProductIsValid(
     std::string_view sourceText,
     std::string_view syntaxProduct)
 {
+    if (frontend::isPrecompiledTemplateFrame(sourceText))
+    {
+        std::vector<std::string> units;
+        std::string error;
+        return syntaxProduct.empty() &&
+            frontend::decodePrecompiledTemplateSources(sourceText, units, error);
+    }
     if (syntaxProduct.empty()) return sourceText.empty();
     source::SourceFile sourceFile(
         FileId{1U}, std::filesystem::path{}, std::string(sourceText));

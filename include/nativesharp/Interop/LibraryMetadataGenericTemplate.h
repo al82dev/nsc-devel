@@ -45,5 +45,7 @@ struct LibraryMetadataGenericTemplate final
     std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
     // NSMETA 1.41: exact lexical directives, in source scope order.
     std::vector<SourceImport> sourceImports;
+    // NSMETA 1.42: candidate nominal receiver types needed for source reconstruction.
+    std::vector<std::string> candidateReceiverTypeKeys;
 };
 }

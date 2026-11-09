@@ -5611,6 +5611,21 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.generics.declaration-import-cache
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_declaration_import_cache.py"
                 "${NSC_TEST_COMPILER}")
+    if(WIN32)
+        add_test(NAME nsc.generics.binary-alias-isolation
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_library_alias_isolation.py"
+                    "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.generics.binary-unused-namespace
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_library_alias_isolation.py"
+                    "${NSC_TEST_COMPILER}")
+        set_tests_properties(nsc.generics.binary-unused-namespace PROPERTIES
+            ENVIRONMENT "NSC_ALIAS_PUBLIC_HELPERS=1;NSC_ALIAS_UNUSED_IMPORT=1")
+        add_test(NAME nsc.generics.binary-private-template-method
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_internal_owner_metadata.py"
+                    "${NSC_TEST_COMPILER}")
+        set_tests_properties(nsc.generics.binary-private-template-method PROPERTIES
+            ENVIRONMENT "NSC_METADATA_PRIVATE_METHOD_CASE=1")
+    endif()
     add_test(NAME nsc.generics.selected-body-constraints
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_selected_body_constraints.py"
                 "${NSC_TEST_COMPILER}")

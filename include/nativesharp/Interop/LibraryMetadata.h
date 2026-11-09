@@ -114,7 +114,8 @@ inline constexpr std::uint16_t kMetadataFormatMajor = 1;
 // MINOR 38 (2026-10-04): extern-C parameters publish buffer-length and callback-lifetime
 // contracts; members publish the explicit unwind-boundary policy.
 // MINOR 41: authored lexical using directives for reusable NativeSharp templates.
-inline constexpr std::uint16_t kMetadataFormatMinor = 41;
+// MINOR 42: possible same-module nominal receiver types used by template expressions.
+inline constexpr std::uint16_t kMetadataFormatMinor = 42;
 
 // NSMETA 1.39. These bits version producer language capabilities that affect private lowering
 // and debug behavior without changing the public NativeSharp ABI projection. Older files decode
@@ -276,6 +277,9 @@ struct LibraryMetadata final
     // already materialized by their provider belong here too; they must not be
     // republished as if this module owned their specialization.
     std::vector<std::string> externalTypeKeys;
+    // NSMETA 1.42: namespaces actually declared in the producer's own source.
+    // Empty namespace shells preserve valid imports without exposing internal types.
+    std::vector<std::string> sourceNamespaces;
     std::vector<LibraryMetadataDispatch> dispatchTables;
     std::vector<LibraryMetadataExport> exports;
     // NSMETA 1.25. These are implementation closure edges of a static archive, not public API.

@@ -632,6 +632,13 @@ bool applyWritableMetadataDowngrade(
     if (!validateMetadataBefore35(metadata, error)) return false;
     if (!validateMetadataBefore38(metadata, error)) return false;
     if (!validateMetadataBefore40(metadata, error)) return false;
+    if (metadata.formatMinor < 42 && (!metadata.sourceNamespaces.empty() || std::ranges::any_of(
+            metadata.genericTemplates, [](const LibraryMetadataGenericTemplate& generic)
+            { return !generic.candidateReceiverTypeKeys.empty(); })))
+    {
+        error = "NativeSharp metadata before 1.42 cannot represent template receiver candidates or source namespaces";
+        return false;
+    }
     if (metadata.formatMinor < 41 && std::ranges::any_of(
             metadata.genericTemplates, [](const LibraryMetadataGenericTemplate& generic)
             { return !generic.sourceImports.empty(); }))

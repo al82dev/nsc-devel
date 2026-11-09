@@ -467,6 +467,7 @@ std::shared_ptr<const interop::LibraryMetadata> PrecompiledSurfaceReachability::
     copyIncluded(metadata.genericTemplates, includedTemplates_[module], pruned->genericTemplates);
     pruned->genericSpecializations = metadata.genericSpecializations;
     pruned->externalTypeKeys = metadata.externalTypeKeys;
+    pruned->sourceNamespaces = metadata.sourceNamespaces;
     pruned->dispatchTables = metadata.dispatchTables;
     pruned->exports = metadata.exports;
     pruned->binaryDependencies = metadata.binaryDependencies;
