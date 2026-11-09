@@ -103,6 +103,12 @@ bool ProjectNameLookup::setCppImportedTypes(std::vector<CppImportedTypeDeclarati
         const auto target = std::find_if(types.begin(), types.end(), [&](const auto& item) {
             return item.identity.key() == targetKey;
         });
+        // EN: T08-D16: a live incomplete C record (the consumer's own `struct Opaque;`) may name the complete record
+        //     that a producer published with the same tag; it has no layout of its own to compare.
+        // ES: T08-D16: un record C incompleto vivo (el `struct Opaque;` propio del consumidor) puede nombrar el record
+        //     completo que publico un productor con la misma etiqueta; no tiene layout propio que comparar.
+        const bool completesLiveRecord = type.isIncomplete && !target->isIncomplete &&
+            type.origin != CppImportedTypeOrigin::CEnum && !type.objectLayout && !type.memberAccessLayout;
         if (target->reconciledIdentityKey || type.projectOrdinal == target->projectOrdinal ||
             (type.origin != CppImportedTypeOrigin::CStruct && type.origin != CppImportedTypeOrigin::CUnion &&
              type.origin != CppImportedTypeOrigin::CEnum) ||
@@ -110,11 +116,11 @@ bool ProjectNameLookup::setCppImportedTypes(std::vector<CppImportedTypeDeclarati
             type.identity.fullyQualifiedName() != target->identity.fullyQualifiedName() ||
             !type.targetTriple || type.targetTriple != target->targetTriple ||
             !type.clangUsr || type.clangUsr->empty() || type.clangUsr != target->clangUsr ||
-            type.isIncomplete != target->isIncomplete || !type.deferredImportError.empty() ||
+            (type.isIncomplete != target->isIncomplete && !completesLiveRecord) || !type.deferredImportError.empty() ||
             !target->deferredImportError.empty() || !sameEnumBase(type.enumBase, target->enumBase) ||
             (type.origin == CppImportedTypeOrigin::CEnum && !type.enumBase) ||
-            !sameLayout(type.objectLayout, target->objectLayout) ||
-            !sameLayout(type.memberAccessLayout, target->memberAccessLayout)) return false;
+            (!completesLiveRecord && (!sameLayout(type.objectLayout, target->objectLayout) ||
+                                      !sameLayout(type.memberAccessLayout, target->memberAccessLayout)))) return false;
     }
     cppImportedTypes_ = std::move(types);
     return true;

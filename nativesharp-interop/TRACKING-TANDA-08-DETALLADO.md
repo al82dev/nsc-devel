@@ -336,7 +336,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-013-02a: Verificar struct adelantado y definición posterior en el mismo encabezado. [Evidencia](registro-commits/t08-incompletos-c.md).
 - [x] T08-013-02b: Verificar union adelantada y definición posterior en otro encabezado visible. [Evidencia](registro-commits/t08-incompletos-c.md).
 - [x] T08-013-02c: Verificar conciliación de tipo opaco entre encabezado y metadata. [Evidencia](registro-commits/t08-incompletos-c.md).
-  - **Decisión pendiente T08-013-02c1:** una copia propia de la declaración adelantada en el consumidor (otro archivo) no se reconcilia con el tipo opaco de la metadata; con el mismo encabezado sí. Opciones: reconciliar records incompletos por etiqueta y USR, o mantenerlos distintos. [Detalle](registro-commits/t08-incompletos-c.md#decisión-pendiente-t08-013-02c1).
+  - Resuelta T08-013-02c1 por T08-D16: la declaración adelantada propia del consumidor se concilia por etiqueta y USR con el record que publicó el productor, opaco o completo. [Evidencia](registro-commits/t08-d16-opaco-consumidor.md).
 - [x] T08-013-02d: Verificar rechazo de definiciones incompatibles con la misma identidad. [Evidencia](registro-commits/t08-incompletos-c.md).
 - **T08-013-03 — Operaciones:**
 - [x] T08-013-03a: Verificar paso, retorno y almacenamiento de `Opaque*` y `Opaque**`. [Evidencia](registro-commits/t08-incompletos-c.md).
@@ -526,7 +526,7 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 - [ ] T08-D13: modo `volatile` del alias NativeSharp a almacenamiento C (T08-010-05a).
 - [x] T08-D14: miembro de tipo struct o union sin etiqueta (T08-011-02c1). [Evidencia](registro-commits/t08-d14-miembro-sin-etiqueta.md).
 - [x] T08-D15: alineación efectiva de Clang, usada solo cuando está garantizada (T08-012-02a). [Evidencia](registro-commits/t08-d15-alineacion-efectiva.md).
-- [ ] T08-D16: declaración opaca propia del consumidor reconciliada con NSMeta (T08-013-02c1).
+- [x] T08-D16: declaración opaca propia del consumidor reconciliada con NSMeta (T08-013-02c1). [Evidencia](registro-commits/t08-d16-opaco-consumidor.md).
 - [ ] T08-D17: rechazo de `int const** q = &p` (T08-014-02d1).
 - [ ] T08-D18: dirección de función C frente al envoltorio `__c_boundary` (T08-017-04a1).
 - [ ] T08-D19: dependencias privadas de plantillas públicas en NSMeta (T08-018-03c1).

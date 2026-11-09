@@ -67,16 +67,20 @@ if errorlevel 1 (echo Falta diagnostico especifico de union incompleta. & exit /
 echo Union por valor rechazada por tipo incompleto.
 copy /y "%DEST%\OpaqueApi.h" "%DEST%\OpaqueOther.h" >nul
 if errorlevel 1 exit /b 1
+rem T08-D16: two incomplete C records with the same tag are the same type, as in C, whatever header declares
+rem them; a copy of the header and a header changed after the producer build are reconciled with NSMETA.
+rem T08-D16: dos records C incompletos con la misma etiqueta son el mismo tipo, como en C, sin importar el
+rem encabezado; una copia del encabezado y un encabezado modificado despues del productor se concilian.
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\OpaqueOther.nsproj" -O0 --no-artifact-cache -o "%DEST%\other.exe" > "%DEST%\other.log" 2>&1
-if not errorlevel 1 (echo Se conciliaron headers de origen distinto. & exit /b 1)
-findstr /i /c:"type alias conflicts with a native type" "%DEST%\other.log" >nul
-if errorlevel 1 (echo El rechazo de origen distinto no corresponde al conflicto esperado. & exit /b 1)
-echo Header con origen distinto rechazado.
+if errorlevel 1 (echo No se concilio la copia del encabezado opaco. & exit /b 1)
+"%DEST%\other.exe"
+if errorlevel 1 exit /b 1
+echo Header con origen distinto conciliado.
 echo /* changed after producer build */>> "%DEST%\OpaqueApi.h"
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\OpaqueShared.nsproj" -O0 --no-artifact-cache -o "%DEST%\changed.exe" > "%DEST%\changed.log" 2>&1
-if not errorlevel 1 (echo Se concilio header modificado. & exit /b 1)
-findstr /i /c:"type alias conflicts with a native type" "%DEST%\changed.log" >nul
-if errorlevel 1 (echo El rechazo del header modificado no corresponde al conflicto esperado. & exit /b 1)
-echo Header modificado rechazado.
+if errorlevel 1 (echo No se concilio el encabezado opaco modificado. & exit /b 1)
+"%DEST%\changed.exe"
+if errorlevel 1 exit /b 1
+echo Header modificado conciliado.
 exit /b 0

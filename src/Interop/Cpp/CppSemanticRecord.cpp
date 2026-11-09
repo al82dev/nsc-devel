@@ -2673,6 +2673,23 @@ static bool collectVisibleCRecordReconciliations(
                 if (owner == graph->projects().end()) continue;
                 const auto ownerOrdinal = static_cast<std::size_t>(owner - graph->projects().begin());
                 if (std::find(visible.begin(), visible.end(), ownerOrdinal) == visible.end()) continue;
+                // EN: T08-D16: the consumer's own forward declaration (`struct Opaque;`) names the record that the
+                //     producer published, complete or not: C makes an incomplete type compatible with the record of
+                //     the same tag in another translation unit.
+                // ES: T08-D16: la declaracion adelantada propia del consumidor (`struct Opaque;`) nombra el record que
+                //     publico el productor, completo o no: C hace compatible un tipo incompleto con el record de la
+                //     misma etiqueta en otra unidad de traduccion.
+                const auto live = std::find_if(closure->records.begin(), closure->records.end(),
+                    [&](const auto& record) { return record.identityKey == group.identity.key(); });
+                if (live != closure->records.end() && !live->complete && candidate.complete &&
+                    live->kind == candidate.kind && live->targetTriple == candidate.targetTriple &&
+                    live->namespaceSegments == candidate.namespaceSegments &&
+                    live->containingRecords == candidate.containingRecords && live->clangUsr &&
+                    !live->clangUsr->empty() && live->clangUsr == candidate.clangUsr)
+                {
+                    matches.insert(candidate.identityKey);
+                    continue;
+                }
                 metadata_detail::CRecordContractComparison verdict{};
                 if (!metadata_detail::compareCRecordClosureEvidence(closure->records, *liveEnums,
                         group.identity.key(), catalog.records, catalog.enums, candidate.identityKey,

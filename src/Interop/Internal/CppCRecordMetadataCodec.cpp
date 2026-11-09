@@ -1204,6 +1204,12 @@ bool compareCRecordSourceEvidence(const CppCRecordSnapshot& left, const CppCReco
         if (!encodeCRecordCatalog(std::span(&left, 1), leftBytes, error) ||
             !encodeCRecordCatalog(std::span(&normalized, 1), rightBytes, error)) return false;
         contract = leftBytes == rightBytes ? CRecordContractComparison::Matching : CRecordContractComparison::Different;
+        // EN: T08-D16: two incomplete C records with the same tag, kind, scope, target and USR are the same type, as
+        //     C makes them compatible across translation units; there is no layout whose source could differ.
+        // ES: T08-D16: dos records C incompletos con la misma etiqueta, clase, ambito, destino y USR son el mismo
+        //     tipo, como C los hace compatibles entre unidades; no hay un layout cuyo origen pueda diferir.
+        if (contract == CRecordContractComparison::Matching)
+        { result = contract; error.clear(); return true; }
     }
     else if (!compareCRecordContracts(left, right, contract, error)) return false;
     if (contract != CRecordContractComparison::Matching)
