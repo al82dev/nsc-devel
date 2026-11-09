@@ -4667,6 +4667,11 @@ private:
         std::string& returnTypeKey,
         std::vector<std::string>& parameterTypeKeys,
         std::size_t& delegateTypeOrdinal) const;
+    // EN: T08-002: the `const`/`volatile` pointees of a callable target, from a structural `fn:`
+    //     identity or from the declaration of a named delegate; nullopt for other targets.
+    // ES: T08-002: datos apuntados `const`/`volatile` de un destino invocable, desde una identidad
+    //     estructural `fn:` o desde la declaración de un delegate con nombre; nullopt en otros casos.
+    std::optional<language::FunctionType> delegatePointeeQualifiers(std::string_view delegateTypeKey) const;
     bool methodGroupExactlyMatchesDelegate(
         const ExpressionResult& methodGroup,
         std::string_view delegateTypeKey) const;

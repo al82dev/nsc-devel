@@ -156,6 +156,44 @@ bool ProjectMethodBodyModel::delegateSignature(
     return !returnTypeKey.empty() && !isErrorType(returnTypeKey);
 }
 
+std::optional<language::FunctionType> ProjectMethodBodyModel::delegatePointeeQualifiers(
+    std::string_view delegateTypeKey) const
+{
+    if (std::optional<language::FunctionType> structural = language::parseFunctionTypeIdentity(delegateTypeKey))
+        return structural;
+    std::string returnType;
+    std::vector<std::string> parameterTypes;
+    std::size_t delegateOrdinal = 0;
+    if (!delegateTypeOrdinalForTypeKey(delegateTypeKey).has_value() ||
+        !delegateSignature(delegateTypeKey, returnType, parameterTypes, delegateOrdinal) ||
+        delegateOrdinal >= nameLookup_->namedTypes().size())
+        return std::nullopt;
+    // EN: A delegate materialized from metadata no longer knows the C alias of its parameters: the
+    //     qualifiers are unknown rather than absent, so the previous rules apply (pending decision,
+    //     the metadata has no field for them).
+    // ES: Un delegate materializado desde metadata ya no conoce el alias C de sus parámetros: los
+    //     calificadores son desconocidos, no ausentes, así que rigen las reglas anteriores (decisión
+    //     pendiente: la metadata no tiene un campo para ellos).
+    if (nameLookup_->namedTypes()[delegateOrdinal].isPrecompiled) return std::nullopt;
+    // EN: delegateSignature resolved every type syntax, which marks C alias pointees on the syntax.
+    // ES: delegateSignature resolvió cada sintaxis de tipo, lo que marca en ella los datos apuntados de alias C.
+    const ast::AstNode* declaration = nameLookup_->namedTypes()[delegateOrdinal].syntax;
+    language::FunctionType qualifiers;
+    qualifiers.parameters = std::move(parameterTypes);
+    qualifiers.result = std::move(returnType);
+    for (const ast::AstNode* parameter : declaration->children())
+    {
+        if (parameter == nullptr || parameter->kind() != ast::AstNodeKind::ParameterDeclaration) continue;
+        const ast::TypeSyntax* syntax = parameter->typeSyntax();
+        qualifiers.parameterPointeeReadonly.push_back(syntax != nullptr && syntax->isPointeeConst());
+        qualifiers.parameterPointeeVolatile.push_back(syntax != nullptr && syntax->isPointeeVolatile());
+    }
+    const ast::TypeSyntax* result = declaration->typeSyntax();
+    qualifiers.resultPointeeReadonly = result != nullptr && result->isPointeeConst();
+    qualifiers.resultPointeeVolatile = result != nullptr && result->isPointeeVolatile();
+    return qualifiers;
+}
+
 bool ProjectMethodBodyModel::methodGroupExactlyMatchesDelegate(
     const ExpressionResult& methodGroup,
     std::string_view delegateTypeKey) const
@@ -179,7 +217,7 @@ bool ProjectMethodBodyModel::methodGroupExactlyMatchesDelegate(
             candidate->declaredErrorTypeKey != expectedErrorType ||
             (candidate->isUnsafe &&
              (!structuralTarget.has_value() || !structuralTarget->isUnsafe)) ||
-            !methodPointeeVolatileMatches(*candidate, structuralTarget))
+            !methodPointeeVolatileMatches(*candidate, delegatePointeeQualifiers(delegateTypeKey)))
             continue;
         bool exact = true;
         for (std::size_t index = 0; index < parameterTypes.size(); ++index)
@@ -1452,8 +1490,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     // ES: T08-002: una lambda convertida a un callback C estructural recibe los datos apuntados `const` y
     //     `volatile` de los parámetros del callback, igual que los parámetros de una función C: el cuerpo
     //     no puede escribir mediante un `const T*` y lee un `volatile T*` con accesos volatile.
-    if (const std::optional<language::FunctionType> structural =
-            language::parseFunctionTypeIdentity(delegateTypeKey))
+    if (const std::optional<language::FunctionType> structural = delegatePointeeQualifiers(delegateTypeKey))
     {
         const std::vector<std::size_t>& parameterLocals = scopes_[lambdaScope].localOrdinals;
         for (std::size_t index = 0; index < parameterLocals.size() && index < parameterTypes.size(); ++index)
@@ -1695,13 +1732,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
     //     signature carries exactly the same qualification may become that callback.
     // ES: T08-002: un tipo de callback C estructural registra datos apuntados volatile; solo un método
     //     cuya firma tenga exactamente la misma calificación puede convertirse en ese callback.
-    const std::optional<language::FunctionType> structuralTarget =
-        language::parseFunctionTypeIdentity(delegateTypeKey);
+    // EN: Named delegates declared with C pointer aliases carry the same flags (T08-002).
+    // ES: Los delegates con nombre declarados con alias de puntero C llevan las mismas marcas (T08-002).
+    const std::optional<language::FunctionType> qualifiedTarget = delegatePointeeQualifiers(delegateTypeKey);
     std::vector<std::size_t> qualified;
     for (const std::size_t ordinal : compatible)
     {
         const ClassMemberSymbol* candidate = methodSymbol(ordinal);
-        if (candidate != nullptr && methodPointeeVolatileMatches(*candidate, structuralTarget))
+        if (candidate != nullptr && methodPointeeVolatileMatches(*candidate, qualifiedTarget))
             qualified.push_back(ordinal);
     }
     compatible = std::move(qualified);

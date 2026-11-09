@@ -3863,6 +3863,9 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         const std::optional<language::FunctionType> structuralFunction =
             language::parseFunctionTypeIdentity(callee.typeKey);
         const bool variadic = structuralFunction.has_value() && structuralFunction->variadic;
+        // EN: T08-002: pointee qualifiers of a structural callback or of a named delegate.
+        // ES: T08-002: calificadores del dato apuntado de un callback estructural o de un delegate con nombre.
+        const std::optional<language::FunctionType> qualifiedFunction = delegatePointeeQualifiers(callee.typeKey);
         // NS304-T04-F04: aplicacion de defaults en el call-site de delegate. Cada parametro
         // omitido debe tener un default consteval en la declaracion del delegate; su sintaxis se
         // guarda para que el HIR lo emita como argumento real.
@@ -3902,9 +3905,9 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         // ES: T08-002: un callback C declarado con retorno `volatile T*` conserva esa calificación en el
         //     resultado, igual que una llamada directa a una función C con el mismo tipo de retorno.
         result.pointerPointeeVolatile =
-            structuralFunction.has_value() && structuralFunction->resultPointeeVolatile;
+            qualifiedFunction.has_value() && qualifiedFunction->resultPointeeVolatile;
         result.pointerPointeeReadonly =
-            structuralFunction.has_value() && structuralFunction->resultPointeeReadonly;
+            qualifiedFunction.has_value() && qualifiedFunction->resultPointeeReadonly;
         result.valid = true;
         // EN: Freeze 3.0 (plan item 135a): the delegate result may alias a lent argument temporary.
         // ES: Congelamiento 3.0 (elemento 135a del plan): el resultado del delegate puede ser alias de un temporal
@@ -4024,7 +4027,7 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
     //     volatile. Un argumento con dato apuntado volatile solo se acepta en uno de esos parámetros; un
     //     parámetro sin la calificación, una posición variádica o un tipo sin esa información la descartaría.
     const std::optional<language::FunctionType> structuralFunction =
-        language::parseFunctionTypeIdentity(binding.delegateTypeKey);
+        delegatePointeeQualifiers(binding.delegateTypeKey);
     for (std::size_t index = 0; index < arguments.size(); ++index)
     {
         if (arguments[index].pointerPointeeVolatile &&
