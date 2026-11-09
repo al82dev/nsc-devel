@@ -9,7 +9,10 @@ namespace NativeSharp.Core.Internal
             {
                 long[] block = SharedControlStorage.AllocateValue<T>();
                 if (block == null) return new SharedLocalHandle<T>(null, null);
-                T* slot = SharedControlStorage.ConstructValue<T>(block);
+                T* slot = null;
+                bool completed = false;
+                try { slot = SharedControlStorage.ConstructValue<T>(block); completed = true; }
+                finally { if (!completed) delete[] block; }
                 if (slot == null) { delete[] block; return new SharedLocalHandle<T>(null, null); }
                 SharedLocalControl.Initialize(block);
                 return new SharedLocalHandle<T>(block, slot);
@@ -22,7 +25,10 @@ namespace NativeSharp.Core.Internal
             {
                 long[] block = SharedControlStorage.Allocate<T>();
                 if (block == null) return new SharedLocalHandle<T>(null, null);
-                T value = SharedControlStorage.Construct<T>(block);
+                T value = null;
+                bool completed = false;
+                try { value = SharedControlStorage.Construct<T>(block); completed = true; }
+                finally { if (!completed) delete[] block; }
                 if (value == null) { delete[] block; return new SharedLocalHandle<T>(null, null); }
                 T* slot = (T*)&block[6];
                 *slot = value;
