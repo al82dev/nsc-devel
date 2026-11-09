@@ -268,6 +268,14 @@ bool ProjectMethodBodyModel::bindCollectionBuilder(
             ExpressionResult elementValue = analyzeExpression(
                 child, methodMemberOrdinal, scopeOrdinal, diagnostics,
                 false, false, true);
+            if (elementValue.valid && elementValue.readonlyBorrowedObject)
+            {
+                diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error, child->range(),
+                    "readonly borrowed object cannot be passed to an unchecked collection builder");
+                elementsValid = false;
+                continue;
+            }
             if (!elementValue.valid ||
                 !classifyImplicit(
                     elementValue.typeKey, addMember.parameters[0].typeKey,
@@ -373,6 +381,16 @@ bool ProjectMethodBodyModel::validateCollectionSpreadSegments(
     bool elementsValid = true;
     for (std::size_t index = 0; index < spreads.size(); ++index)
     {
+        if (values[index].valid && values[index].readonlyBorrowedObject &&
+            (!spreads[index] ||
+             (!ProjectTypeConversion::isNumeric(elementTypes[index]) && elementTypes[index] != "builtin:bool")))
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, syntaxes[index]->range(),
+                "readonly borrowed value cannot be stored in a collection without lifetime tracking");
+            elementsValid = false;
+            continue;
+        }
         if (spreads[index])
         {
             if (elementTypes[index] == element) continue;
@@ -539,6 +557,14 @@ void ProjectMethodBodyModel::analyzeCollectionElements(
     for (std::size_t index = 0; index < elementValues.size(); ++index)
     {
         const ExpressionResult& value = elementValues[index];
+        if (value.readonlyBorrowedObject)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, elementSyntaxes[index]->range(),
+                "readonly borrowed value cannot be stored in a collection without lifetime tracking");
+            elementsValid = false;
+            continue;
+        }
         if (!classifyImplicit(value.typeKey, *element, value.integerConstant).exists())
         {
             diagnostics.report(

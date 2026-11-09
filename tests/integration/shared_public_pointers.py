@@ -1187,6 +1187,44 @@ class Program { public static int Main() { Holder holder = default(Holder);
  class Program { public static int Main() { CastPayload item = new CastPayload(); borrowed CastPayload alias = item;
  string first = null; first ?? alias; string second = "set"; second ?? alias;
  return CastPayload.Calls == 1 ? 42 : 1; } }''', 'run:42'),
+        'implicit_readonly_collection_probe': ('''class CastPayload { public int Data;
+ public static implicit operator int(CastPayload value) { value.Data = 9; return 0; } }
+ class Program { public static int Main() { STRONG<CastPayload> owner = SharedPointers.MAKE<CastPayload>();
+ int[] values = [owner.Get()]; return owner.Get().Data == 9 ? 42 : 1; } }''', 'readonly borrowed'),
+        'readonly_collection_alias_probe': ('''class Program { public static int Main() {
+ STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); Payload[] values = [owner.Get()];
+ values[0].Data = 9l; return owner.Get().Data == 9l ? 42 : 1; } }''', 'readonly borrowed'),
+        'readonly_collection_spread_alias_probe': ('''class Program { public static int Main() {
+ STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); Payload[] existing = new Payload[0];
+ Payload[] values = [..existing, owner.Get()]; values[0].Data = 9l;
+ return owner.Get().Data == 9l ? 42 : 1; } }''', 'readonly borrowed'),
+        'readonly_collection_spread_source_probe': ('''class Program { public static int Main() {
+ STRONG<ChildArrayPayload> owner = SharedPointers.MAKE<ChildArrayPayload>();
+ Child[] values = [..owner.Get().Data]; values[0].Value = 9;
+ return owner.Get().Data[0].Value == 9 ? 42 : 1; } }''', 'readonly borrowed'),
+        'implicit_readonly_collection_spread_probe': ('''class CastPayload { public int Data;
+ public static implicit operator int(CastPayload value) { value.Data = 9; return 0; } }
+ class Program { public static int Main() { STRONG<CastPayload> owner = SharedPointers.MAKE<CastPayload>();
+ int[] existing = [1]; int[] values = [..existing, owner.Get()];
+ return owner.Get().Data == 9 ? 42 : 1; } }''', 'readonly borrowed'),
+        'implicit_readonly_collection_builder_probe': ('''class CastPayload { public int Data;
+ public static implicit operator int(CastPayload value) { value.Data = 9; return 0; } }
+ class Bucket { public static owned Bucket CreateBuilder() { return new Bucket(); }
+ public void Add(int value) { } public Bucket ToCollection() { return this; } }
+ class Program { public static int Main() { STRONG<CastPayload> owner = SharedPointers.MAKE<CastPayload>();
+ Bucket result = [owner.Get()]; return owner.Get().Data == 9 ? 42 : 1; } }''', 'readonly borrowed'),
+        'readonly_collection_numeric_spread_control': ('''class Program { public static int Main() {
+ STRONG<ArrayPayload> owner = SharedPointers.MAKE<ArrayPayload>(); int[] values = [..owner.Get().Data];
+ return values.Length == 1 && values[0] == 0 ? 42 : 1; } }''', 'run:42'),
+        'collection_mutable_conversion_control': ('''class CastPayload { public int Data;
+ public static implicit operator int(CastPayload value) { value.Data = 42; return value.Data; } }
+ class Program { public static int Main() { CastPayload item = new CastPayload(); borrowed CastPayload alias = item;
+ int[] values = [alias]; return values[0] == 42 && item.Data == 42 ? 42 : 1; } }''', 'run:42'),
+        'implicit_readonly_range_probe': ('''class CastPayload { public int Data;
+ public static implicit operator int(CastPayload value) { value.Data = 9; return 0; } }
+ class Program { public static int Main() { STRONG<CastPayload> owner = SharedPointers.MAKE<CastPayload>();
+ int[] values = new int[2]; values[owner.Get()..1]; return owner.Get().Data == 9 ? 42 : 1; } }''',
+                                          'range endpoint requires an integral index'),
         'implicit_mutable_control': ('''class CastPayload { public int Data;
  public static implicit operator int(CastPayload value) { value.Data = 42; return value.Data; } }
  class Program { public static int Main() { CastPayload item = new CastPayload();

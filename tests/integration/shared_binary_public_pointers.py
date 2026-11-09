@@ -151,6 +151,29 @@ class Program { public static int Main() { FAMILY<CastPayload> owner = SharedPoi
                 assert result.returncode != 0 and 'readonly borrowed object cannot invoke' in output, (
                     'binary coalescing readonly conversion accepted or failed for another reason', family, operator, output)
                 print('binary coalescing readonly conversion rejected', family, operator, flush=True)
+            for body in ('Payload[] values = [owner.Get()];',
+                         'Payload[] existing = new Payload[0]; Payload[] values = [..existing, owner.Get()];'):
+                source.write_text(('''using NativeSharp.Core;
+class Payload { public int Data; public Payload() { } }
+class Program { public static int Main() { FAMILY<Payload> owner = SharedPointers.MAKE<Payload>();
+ BODY values[0].Data = 9; return 0; } }
+''').replace('FAMILY', family).replace('MAKE', make).replace('BODY', body), encoding='utf-8')
+                result = run([compiler, '--check-project-method-bodies', project], root)
+                output = result.stdout + result.stderr
+                assert result.returncode != 0 and 'readonly borrowed' in output, (
+                    'binary collection accepted readonly payload', family, body, output)
+                print('binary collection readonly element rejected', family, body, flush=True)
+            source.write_text(('''using NativeSharp.Core;
+class Child { public int Value; public Child() { } }
+class Payload { public Child[] Data; public Payload() { Data = new Child[1]; Data[0] = new Child(); } }
+class Program { public static int Main() { FAMILY<Payload> owner = SharedPointers.MAKE<Payload>();
+ Child[] values = [..owner.Get().Data]; values[0].Value = 9; return 0; } }
+''').replace('FAMILY', family).replace('MAKE', make), encoding='utf-8')
+            result = run([compiler, '--check-project-method-bodies', project], root)
+            output = result.stdout + result.stderr
+            assert result.returncode != 0 and 'readonly borrowed' in output, (
+                'binary readonly object spread accepted', family, output)
+            print('binary readonly object spread rejected', family, flush=True)
     return 0
 
 
