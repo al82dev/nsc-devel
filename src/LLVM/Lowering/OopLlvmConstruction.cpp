@@ -13,6 +13,8 @@ namespace
 struct ReceiverPublicationScan
 {
     bool publishes = false;
+    bool returnsSource = false;
+    std::vector<std::string> returnDependencies;
     std::vector<std::string> directReceiverCallees;
     std::vector<std::size_t> virtualReceiverSlots;
     std::vector<std::pair<std::size_t, std::size_t>> interfaceReceiverSlots;
@@ -22,18 +24,26 @@ struct ReceiverPublicationScan
 };
 
 ReceiverPublicationScan scanReceiverPublication(
-    const frontend::ProjectOopMirNode* body, std::optional<std::size_t> sourceParameter)
+    const frontend::ProjectOopMirNode* body, std::optional<std::size_t> sourceParameter,
+    const std::unordered_set<std::string>& returnsReceiver)
 {
     using Kind = frontend::ProjectOopMirNodeKind;
-    const auto unwrapped = [](const frontend::ProjectOopMirNode* value) {
-        while (value != nullptr && (value->kind == Kind::Convert || value->kind == Kind::BorrowValue) &&
-               value->children.size() == 1U)
-            value = value->children.front().get();
+    const auto unwrapped = [&](const frontend::ProjectOopMirNode* value) {
+        while (value != nullptr && !value->children.empty())
+        {
+            if ((value->kind == Kind::Convert || value->kind == Kind::BorrowValue) &&
+                value->children.size() == 1U)
+                value = value->children.front().get();
+            else if (value->kind == Kind::DirectInstanceCall && returnsReceiver.contains(value->calleeName))
+                value = value->children.front().get();
+            else break;
+        }
         return value;
     };
     std::unordered_map<std::size_t, std::vector<std::size_t>> localCopies;
     std::vector<std::size_t> receiverLocals;
     std::vector<const frontend::ProjectOopMirNode*> globalValues;
+    std::vector<const frontend::ProjectOopMirNode*> returnValues;
     std::vector<const frontend::ProjectOopMirNode*> directCalls;
     const auto isOrigin = [&](const frontend::ProjectOopMirNode* value) {
         return value != nullptr && ((!sourceParameter.has_value() && value->kind == Kind::ThisValue) ||
@@ -59,6 +69,8 @@ ReceiverPublicationScan scanReceiverPublication(
              node->kind == Kind::InterfaceInstanceCall ||
              node->kind == Kind::DirectStaticCall) &&
             !node->children.empty()) directCalls.push_back(node);
+        if (node->kind == Kind::Return && !node->children.empty())
+            returnValues.push_back(node->children.front().get());
         if (node->kind == Kind::Store && node->children.size() >= 2U && node->children[0] != nullptr)
         {
             const auto* target = node->children[0].get();
@@ -86,10 +98,14 @@ ReceiverPublicationScan scanReceiverPublication(
              reached.contains(*value->localOrdinal)));
     };
     ReceiverPublicationScan result;
+    for (const auto* value : returnValues)
+        if (isReceiver(value)) { result.returnsSource = true; break; }
     for (const auto* value : globalValues)
         if (isReceiver(value)) { result.publishes = true; return result; }
     for (const auto* call : directCalls)
     {
+        if (call->kind == Kind::DirectInstanceCall && !call->calleeName.empty())
+            result.returnDependencies.push_back(call->calleeName);
         if (call->kind != Kind::DirectStaticCall && isReceiver(call->children.front().get()))
         {
             if (call->kind == Kind::VirtualInstanceCall && call->virtualSlot.has_value())
@@ -858,15 +874,35 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                         (function.constructor || function.destructor))
                         pending.emplace_back(&function, std::nullopt);
                 std::unordered_map<const frontend::ProjectOopMirFunction*, std::unordered_set<std::size_t>> visited;
+                std::unordered_set<std::string> returnsReceiver;
+                std::unordered_map<std::string,
+                    std::unordered_map<const frontend::ProjectOopMirFunction*, std::unordered_set<std::size_t>>>
+                    returnDependents;
                 while (!pending.empty())
                 {
                     const auto [function, sourceParameter] = pending.back();
                     pending.pop_back();
                     const std::size_t sourceKey = sourceParameter.value_or(static_cast<std::size_t>(-1));
                     if (!visited[function].insert(sourceKey).second) continue;
-                    const ReceiverPublicationScan scan = scanReceiverPublication(function->body.get(), sourceParameter);
+                    const ReceiverPublicationScan scan =
+                        scanReceiverPublication(function->body.get(), sourceParameter, returnsReceiver);
                     if (scan.publishes)
                         return fail(error, "shared payload publishes its receiver during construction or destruction");
+                    for (const auto& callee : scan.returnDependencies)
+                        returnDependents[callee][function].insert(sourceKey);
+                    if (!sourceParameter.has_value() && scan.returnsSource &&
+                        returnsReceiver.insert(function->mangledName).second)
+                    {
+                        const auto dependents = returnDependents.find(function->mangledName);
+                        if (dependents != returnDependents.end())
+                            for (const auto& [dependent, keys] : dependents->second)
+                                for (const auto key : keys)
+                                {
+                                    visited[dependent].erase(key);
+                                    pending.emplace_back(dependent, key == static_cast<std::size_t>(-1)
+                                        ? std::nullopt : std::optional<std::size_t>(key));
+                                }
+                    }
                     for (const auto& callee : scan.directReceiverCallees)
                         if (const auto* target = mirModel_.functionForMangledName(callee); target != nullptr)
                             pending.emplace_back(target, std::nullopt);

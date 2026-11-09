@@ -1396,6 +1396,24 @@ class Program { public static int Main() { Holder holder = default(Holder);
  public static void Forward(IInspector view) { view.Inspect(); } public void Inspect() { Data = 42; } }
  class Program { public static int Main() { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
  return owner.Get().Data == 42 ? 42 : 1; } }''', 'run:42'),
+        'shared_receiver_return': ('''class EscapePayload { public static EscapePayload Alias;
+ public EscapePayload() { Alias = Self(); } public EscapePayload Self() { return this; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_receiver_return_chain': ('''class EscapePayload { public static EscapePayload Alias;
+ public EscapePayload() { EscapePayload local = First(); Alias = local; }
+ public EscapePayload First() { return Second(); } public EscapePayload Second() { return this; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_other_return_control': ('''class SafePayload { public static SafePayload Other; public int Data;
+ public SafePayload() { Other = CreateOther(); Data = 42; } public SafePayload CreateOther() { return null; } }
+ class Program { public static int Main() { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
+ return owner.Get().Data == 42 ? 42 : 1; } }''', 'run:42'),
+        'shared_recursive_return_control': ('''class SafePayload { public static SafePayload Other; public int Data;
+ public SafePayload() { Other = Find(); Data = 42; }
+ public SafePayload Find() { if (Data < 0) return Find(); return null; } }
+ class Program { public static int Main() { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
+ return owner.Get().Data == 42 ? 42 : 1; } }''', 'run:42'),
         'shared_receiver_recursive_helper_control': ('''class SafePayload { public int Data;
  public SafePayload() { Inspect(); } public void Inspect() { if (Data < 0) Inspect(); } }
  class Program { public static int Main() { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
