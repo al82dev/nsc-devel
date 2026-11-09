@@ -4067,7 +4067,7 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
                     diagnostics::DiagnosticSeverity::Error,
                     expression->children()[index]->range(),
                     "variadic function-pointer arguments must be by-value C ABI scalars, "
-                    "raw pointers, enums, or function pointers");
+                    "raw pointers, enums, function pointers, or C records");
                 return false;
             }
             binding.argumentConversions.push_back(std::move(conversion));

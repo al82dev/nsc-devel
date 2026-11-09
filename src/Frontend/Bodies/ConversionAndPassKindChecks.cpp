@@ -127,6 +127,15 @@ bool ProjectMethodBodyModel::reportTupleConversionFailure(
     return false;
 }
 
+bool ProjectMethodBodyModel::isCompleteCRecordTypeKey(std::string_view typeKey) const
+{
+    if (nameLookup_ == nullptr || !typeKey.starts_with("type:") || typeKey.ends_with("*")) return false;
+    const std::optional<std::size_t> ordinal = nameLookup_->typeOrdinalForIdentity(typeKey.substr(5));
+    const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+    return imported != nullptr && !imported->isIncomplete && imported->deferredImportError.empty() &&
+        (imported->origin == CppImportedTypeOrigin::CStruct || imported->origin == CppImportedTypeOrigin::CUnion);
+}
+
 ProjectImplicitConversion ProjectMethodBodyModel::classifyCVariadicPromotion(
     std::string_view sourceTypeKey) const
 {
@@ -177,6 +186,13 @@ ProjectImplicitConversion ProjectMethodBodyModel::classifyCVariadicPromotion(
             // here would make the call-site type depend on a NativeSharp-only identity.
             kind = ProjectConversionKind::IntegralPromotion;
         }
+    }
+    else if (isCompleteCRecordTypeKey(sourceTypeKey))
+    {
+        // EN: T08-002: C passes a struct or union through `...` unchanged; the call lowering already
+        //     gives it the Win64 by-value or by-copy carrier, exactly as for a fixed C parameter.
+        // ES: T08-002: C pasa un struct o union por `...` sin cambios; el lowering de la llamada ya le da el
+        //     portador Win64 por valor o por copia, igual que a un parámetro C fijo.
     }
     else if (sourceTypeKey != "builtin:double" &&
              !isRawPointerTypeKey(sourceTypeKey) &&

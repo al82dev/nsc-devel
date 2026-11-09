@@ -4901,6 +4901,9 @@ private:
         SourceRange range,
         diagnostics::DiagnosticEngine& diagnostics) const;
     ProjectImplicitConversion classifyCVariadicPromotion(std::string_view sourceTypeKey) const;
+    // EN: True for a complete, importable C struct or union passed by value (T08-002).
+    // ES: Verdadero para un struct o union C completo e importable pasado por valor (T08-002).
+    bool isCompleteCRecordTypeKey(std::string_view typeKey) const;
     std::string implicitThisTypeKey(std::size_t methodMemberOrdinal) const;
     // C4 "language references": enforce that a call writes the same `ref`/`out`/`in` keyword the
     // selected member's parameters declare.
