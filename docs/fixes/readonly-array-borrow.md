@@ -99,8 +99,8 @@ las expresiones de origen cuyo dueño no se pueda rastrear. La primera se aborda
 en la continuación siguiente; la segunda sigue pendiente. Una prueba de `break` pasó el análisis pero
 falló en generación con `Stage 34 cannot map identifier/member expression`;
 el mismo diagnóstico se reprodujo con un arreglo ordinario sin punteros en
-O0/O2 (`readonly-array-foreach-break.log`, `foreach-break-control/results.json`).
-No se incluyó ese caso fallido en la selección que pasó.
+O0/O2 (`readonly-array-foreach-break.log`, `foreach-break-control/results-before.json`).
+Ese hallazgo se corrige en la continuación documentada más abajo.
 
 El control existente `nsc.stage52-3.foreach` pasó
 (`readonly-foreach-existing-control.log`); su resultado CTest en Windows no
@@ -122,6 +122,26 @@ rechazaron la escritura, el escape, el movimiento del dueño y `ref mut`. La
 regresión final está en `readonly-array-ctest.log`; los controles de referencias
 locales y de `foreach` ordinario pasaron en
 `readonly-array-reference-tests.log` y `readonly-foreach-existing-control.log`.
-Las rutas sin procedencia rastreada y el fallo de generación con `break` siguen
-abiertos. La prueba que compara con la base para los dos fallos de
+Las rutas sin procedencia rastreada siguen abiertas. La prueba que compara con la base para los dos fallos de
 `foreach-semantic-gaps` no se convierte en aprobada por esta corrección.
+
+### Salida incondicional del bucle
+
+Con `break` incondicional, el análisis no producía los enlaces del incremento
+sintético de `foreach`, aunque HIR todavía lo visita. La comparación de
+`foreach-break-control/sema-before.log` y `foreach-no-break-control/sema-dump.log`
+mostró dos enlaces del índice frente a cuatro; después se observaron cuatro en
+`foreach-break-control/sema-dump.log`. El análisis del incremento
+sintético se ejecuta ahora en un estado descartable si no hay borde de vuelta,
+sin convertir ese borde en alcanzable ni alterar el tratamiento de `for`
+escritos directamente.
+
+La reproducción mínima original, conservada sin cambios, compila y termina con
+42 en O0 y O2 (`foreach-break-control/results.json`). Las pruebas dirigidas
+comprueban `break` y `return` en arreglos prestados, `break` ordinario y los
+controles de `continue` y `break` condicional, para ambas familias y niveles de
+optimización (`readonly-array-ctest-nested_foreach_break,ordinary_foreach_break,nested_foreach_return.log`
+y `readonly-array-ctest-ordinary_foreach_continue,ordinary_foreach_conditional_break.log`).
+El control existente `nsc.stage52-3.foreach` pasó en
+`readonly-foreach-existing-control.log`. Esto no cubre todas las formas de
+salida ni corrige los dos fallos previos de `foreach-semantic-gaps`.

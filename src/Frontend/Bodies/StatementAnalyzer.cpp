@@ -4870,8 +4870,22 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::analyzeForUpdate(
     std::size_t forScope,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (!backEdgeState.reachable || statement->third() == nullptr) return backEdgeState;
-    restoreOwnershipFlow(backEdgeState);
+    if (statement->third() == nullptr) return backEdgeState;
+    const ast::AstNode* initializer = statement->first();
+    const bool unreachableForeachUpdate = !backEdgeState.reachable && initializer != nullptr &&
+        initializer->text().starts_with("$__foreach_") && initializer->text().ends_with("_index");
+    if (!backEdgeState.reachable && !unreachableForeachUpdate) return backEdgeState;
+    std::optional<OwnershipFlowSnapshot> savedFlow;
+    if (unreachableForeachUpdate)
+    {
+        // HIR still lowers the synthetic increment even if the body always exits.
+        // Bind it in a disposable state without introducing a reachable back edge.
+        savedFlow = captureOwnershipFlow();
+        OwnershipFlowSnapshot probe = *savedFlow;
+        probe.reachable = true;
+        restoreOwnershipFlow(probe);
+    }
+    else restoreOwnershipFlow(backEdgeState);
     if (statement->third()->kind() == ast::AstNodeKind::BlockStatement)
     {
         for (const ast::AstNode* expressionStatement : statement->third()->children())
@@ -4886,6 +4900,11 @@ OwnershipFlowSnapshot ProjectMethodBodyModel::analyzeForUpdate(
     else
     {
         analyzeExpression(statement->third(), methodMemberOrdinal, forScope, diagnostics);
+    }
+    if (savedFlow.has_value())
+    {
+        restoreOwnershipFlow(*savedFlow);
+        return backEdgeState;
     }
     return captureOwnershipFlow();
 }

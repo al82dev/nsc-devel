@@ -45,6 +45,22 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
  borrowed Children nested = nestedOwner.Get(); int sum = 0;
  foreach (Child child in nested.Data) { sum = sum + child.Value; }
  return sum == 0 ? 42 : 1;''', None),
+        'nested_foreach_break': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
+ borrowed Children nested = nestedOwner.Get(); int visits = 0;
+ foreach (Child child in nested.Data) { visits = visits + 1; break; }
+ return visits == 1 ? 42 : 1;''', None),
+        'ordinary_foreach_break': ('''Children ordinary = new Children(); int visits = 0;
+ foreach (Child child in ordinary.Data) { visits = visits + 1; break; }
+ return visits == 1 ? 42 : 1;''', None),
+        'ordinary_foreach_continue': ('''int[] values = new int[2]; int visits = 0;
+ foreach (int value in values) { visits = visits + 1; continue; }
+ return visits == 2 ? 42 : 1;''', None),
+        'ordinary_foreach_conditional_break': ('''int[] values = new int[2]; int visits = 0;
+ foreach (int value in values) { if (visits == 1) break; visits = visits + 1; }
+ return visits == 1 ? 42 : 1;''', None),
+        'nested_foreach_return': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
+ borrowed Children nested = nestedOwner.Get();
+ foreach (Child child in nested.Data) { return child.Value == 0 ? 42 : 1; } return 1;''', None),
         'nested_foreach_nested': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
  borrowed Children nested = nestedOwner.Get(); int visits = 0;
  foreach (Child child in nested.Data) { foreach (Child other in nested.Data) {
