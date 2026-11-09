@@ -81,7 +81,9 @@ findstr /i /c:"error: left side of assignment is not assignable" "%DEST%\Invalid
 if errorlevel 1 (echo El rechazo no corresponde a la reasignacion del slot. & exit /b 1)
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidFixedAddress.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidFixedAddress.exe" > "%DEST%\InvalidFixedAddress.log" 2>&1
 if not errorlevel 1 (echo Se acepto escapar la direccion de un puntero constante. & exit /b 1)
-findstr /i /c:"would discard pointee constness" "%DEST%\InvalidFixedAddress.log" >nul
+rem T08-D17: the address of a readonly pointer slot would be an `int* const*`, which NativeSharp does not represent.
+rem T08-D17: la direccion de un slot de puntero de solo lectura seria un `int* const*`, que NativeSharp no representa.
+findstr /i /c:"cannot take the address of a readonly pointer" "%DEST%\InvalidFixedAddress.log" >nul
 if errorlevel 1 (echo El rechazo de direccion no identifica el calificador. & exit /b 1)
 echo Reasignacion y escape del slot constante rechazados.
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidFixedArgument.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidFixedArgument.exe" > "%DEST%\InvalidFixedArgument.log" 2>&1
@@ -106,7 +108,7 @@ if errorlevel 1 (echo El rechazo no identifica const del dato. & exit /b 1)
 echo Matriz fija y doble const comprobados.
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidFixedMatrixAddress.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidFixedMatrixAddress.exe" > "%DEST%\InvalidFixedMatrixAddress.log" 2>&1
 if not errorlevel 1 (echo Se acepto direccion mutable del slot de matriz. & exit /b 1)
-findstr /i /c:"would discard pointee constness" "%DEST%\InvalidFixedMatrixAddress.log" >nul
+findstr /i /c:"cannot take the address of a readonly pointer" "%DEST%\InvalidFixedMatrixAddress.log" >nul
 if errorlevel 1 (echo El rechazo de direccion de matriz no corresponde a const. & exit /b 1)
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\InvalidFixedConstAddress.nsproj" -O0 --no-artifact-cache -o "%DEST%\InvalidFixedConstAddress.exe" > "%DEST%\InvalidFixedConstAddress.log" 2>&1
 if not errorlevel 1 (echo Se acepto direccion mutable del slot de doble const. & exit /b 1)

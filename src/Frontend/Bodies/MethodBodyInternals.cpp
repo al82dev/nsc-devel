@@ -47,4 +47,19 @@ language::PointerContract pointerContract(
         knownAlignment,
         addressSpace};
 }
+
+bool nestedPointerTypeKey(std::string_view typeKey) noexcept
+{
+    return typeKey.size() > 2 && typeKey.ends_with("**");
+}
+
+bool addsNestedPointeeConst(
+    std::string_view sourceTypeKey,
+    bool sourcePointeeReadonly,
+    std::string_view targetTypeKey,
+    bool targetPointeeReadonly) noexcept
+{
+    return targetPointeeReadonly && !sourcePointeeReadonly && nestedPointerTypeKey(targetTypeKey) &&
+        nestedPointerTypeKey(sourceTypeKey);
+}
 }

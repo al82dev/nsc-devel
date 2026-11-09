@@ -1390,9 +1390,28 @@ if (operation == TokenKind::Amp)
                   "not a bit field or temporary value");
         return result;
     }
+    // EN: T08-D17: the address of a pointer is a pointer to pointer, whose qualifier belongs to the base type
+    //     (`&p` with `p` a `T const*` is a `T const**`). A readonly pointer would need `T* const*`, a qualifier on
+    //     an intermediate pointer that NativeSharp does not represent.
+    // ES: T08-D17: la direccion de un puntero es un puntero a puntero, cuyo calificador es del tipo base (`&p` con
+    //     `p` de tipo `T const*` es un `T const**`). Un puntero de solo lectura exigiria `T* const*`, un calificador
+    //     en un puntero intermedio que NativeSharp no representa.
+    const bool pointerOperand = ProjectTypeConversion::isPointer(operand.typeKey);
+    if (pointerOperand && (!operand.assignable || operand.readonlyReceiver))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidAddressOf,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "cannot take the address of a readonly pointer: the result would be a 'T* const*', a qualifier on an "
+            "intermediate pointer that NativeSharp does not represent");
+        return result;
+    }
     result.typeKey = operand.typeKey + '*';
     result.valid = true;
-    result.pointerPointeeReadonly = !operand.assignable || operand.readonlyReceiver;
+    result.pointerPointeeReadonly = pointerOperand
+        ? operand.pointerPointeeReadonly
+        : !operand.assignable || operand.readonlyReceiver;
     result.pointerNullable = false;
     result.pointerHasProvenance = true;
     result.pointerKnownAlignment = 1;
@@ -1456,10 +1475,14 @@ if (operation == TokenKind::Star)
     }
     result.typeKey = operand.typeKey.substr(0, operand.typeKey.size() - 1);
     result.valid = true;
-    result.assignable = !operand.pointerPointeeReadonly;
+    // EN: T08-D17: `*q` with `q` a `T const**` is a mutable `T const*`: the qualifier passes to the result.
+    // ES: T08-D17: `*q` con `q` de tipo `T const**` es un `T const*` modificable: el calificador pasa al resultado.
+    const bool nestedPointee = method_body_detail::nestedPointerTypeKey(operand.typeKey);
+    result.assignable = nestedPointee || !operand.pointerPointeeReadonly;
     result.volatileStorage = operand.pointerPointeeVolatile;
     result.addressable = !result.volatileStorage;
-    result.readonlyReceiver = operand.pointerPointeeReadonly;
+    result.readonlyReceiver = !nestedPointee && operand.pointerPointeeReadonly;
+    result.pointerPointeeReadonly = nestedPointee && operand.pointerPointeeReadonly;
     return result;
 }
     return result;

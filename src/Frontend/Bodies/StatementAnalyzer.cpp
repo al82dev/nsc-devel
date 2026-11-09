@@ -3941,6 +3941,13 @@ void ProjectMethodBodyModel::validateVariableInitializerConversion(
             variable->first()->range(),
             "initialization of mutable-pointee pointer '" + variable->text() +
                 "' would discard pointee constness; declare 'T const*' or use const_cast explicitly");
+    if (!isVarInferred && method_body_detail::addsNestedPointeeConst(
+            initializer.typeKey, initializer.pointerPointeeReadonly, typeKey, declaredPointerPointeeReadonly))
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error,
+            variable->first()->range(),
+            "initialization of '" + variable->text() + "': " + method_body_detail::kNestedPointeeConstMessage);
     if (isVarInferred || !ProjectTypeConversion::isPointer(typeKey)) return;
     const language::PointerContract source{
         initializer.pointerNullable,
@@ -5824,6 +5831,14 @@ bool ProjectMethodBodyModel::validatePointerReturn(
         diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
             diagnostics::DiagnosticSeverity::Error, statement->first()->range(),
             "return would discard pointer pointee volatile qualification");
+        return false;
+    }
+    if (method_body_detail::addsNestedPointeeConst(value.typeKey, value.pointerPointeeReadonly,
+            method.declaredTypeKey, method.declaredPointerPointeeReadonly))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, statement->first()->range(),
+            std::string("return value: ") + method_body_detail::kNestedPointeeConstMessage);
         return false;
     }
     if (!ProjectTypeConversion::isPointer(method.declaredTypeKey) ||

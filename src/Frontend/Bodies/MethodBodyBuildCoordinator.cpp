@@ -624,6 +624,14 @@ bool ProjectMethodBodyModel::validateFieldInitializerConversion(
             "field initializer would discard pointer pointee volatile qualification");
         return false;
     }
+    if (method_body_detail::addsNestedPointeeConst(initializer.typeKey, initializer.pointerPointeeReadonly,
+            field.declaredTypeKey, field.declaredPointerPointeeReadonly))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, field.syntax->first()->range(),
+            std::string("field initializer: ") + method_body_detail::kNestedPointeeConstMessage);
+        return false;
+    }
     if (ProjectTypeConversion::isPointer(field.declaredTypeKey) &&
         !language::pointerContractImplicitlyAssignable(
             pointerContract(

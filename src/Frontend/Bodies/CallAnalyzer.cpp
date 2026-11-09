@@ -573,10 +573,13 @@ ProjectImplicitConversion ProjectMethodBodyModel::evaluateNamespaceFunctionCandi
     //     un lugar readonly (otro parametro `in`, un campo readonly, un resultado `ref readonly`).
     const bool parameterPointeeReadonly =
         parameter.pointerPointeeReadonly || parameter.passKind == ParameterPassKind::In;
+    // EN: T08-D17: a `T**` argument does not bind to a `T const**` parameter.
+    // ES: T08-D17: un argumento `T**` no se enlaza a un parametro `T const**`.
     const bool discardsPointeeConst = !packElement &&
-        arguments[argumentOrdinal].pointerPointeeReadonly &&
-        ProjectTypeConversion::isPointer(parameter.typeKey) &&
-        !parameterPointeeReadonly;
+        ((arguments[argumentOrdinal].pointerPointeeReadonly &&
+          ProjectTypeConversion::isPointer(parameter.typeKey) && !parameterPointeeReadonly) ||
+         method_body_detail::addsNestedPointeeConst(arguments[argumentOrdinal].typeKey,
+             arguments[argumentOrdinal].pointerPointeeReadonly, parameter.typeKey, parameter.pointerPointeeReadonly));
     const bool violatesPointerContract = !packElement &&
         ProjectTypeConversion::isPointer(parameter.typeKey) &&
         !language::pointerContractImplicitlyAssignable(
@@ -4312,8 +4315,11 @@ void ProjectMethodBodyModel::evaluateCallCandidateArgument(
     // ES: Congelamiento 3.0 P3: como arriba, un parametro `in` acepta un lugar readonly.
     const bool parameterPointeeReadonly =
         parameter.pointerPointeeReadonly || parameter.passKind == ParameterPassKind::In;
-    const bool discardsPointeeConst = !packElement && argument.pointerPointeeReadonly &&
-        ProjectTypeConversion::isPointer(parameter.typeKey) && !parameterPointeeReadonly;
+    const bool discardsPointeeConst = !packElement &&
+        ((argument.pointerPointeeReadonly && ProjectTypeConversion::isPointer(parameter.typeKey) &&
+          !parameterPointeeReadonly) ||
+         method_body_detail::addsNestedPointeeConst(argument.typeKey, argument.pointerPointeeReadonly,
+             parameter.typeKey, parameter.pointerPointeeReadonly));
     const bool violatesPointerContract = !packElement &&
         ProjectTypeConversion::isPointer(parameter.typeKey) &&
         !language::pointerContractImplicitlyAssignable(

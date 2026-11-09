@@ -163,6 +163,12 @@ void ProjectConstructionModel::evaluateConstructorArgument(
     {
         candidate.viable = false;
     }
+    // EN: T08-D17: a `T**` argument does not bind to a `T const**` parameter.
+    // ES: T08-D17: un argumento `T**` no se enlaza a un parametro `T const**`.
+    if (!packElement && argumentTypes[argumentOrdinal].typeKey.size() > 2 &&
+        argumentTypes[argumentOrdinal].typeKey.ends_with("**") && parameter.typeKey.ends_with("**") &&
+        !argumentTypes[argumentOrdinal].pointerPointeeReadonly && parameter.pointerPointeeReadonly)
+        candidate.viable = false;
     // NSC-LIMIT-010. PRIMERO LA FISICA, DESPUES EL CONTRATO, y en ese orden.
     //
     // Un candidato fisicamente imposible no llega a tener opinion sobre propiedad: si la

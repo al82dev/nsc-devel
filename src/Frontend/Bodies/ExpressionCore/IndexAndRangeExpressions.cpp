@@ -825,9 +825,12 @@ void ProjectMethodBodyModel::analyzeRawIndex(
         result.valid = true;
         result.volatileStorage = ((validFixedIndices || validFlexibleIndex) && base.volatileStorage) ||
             (validPointerIndex && base.pointerPointeeVolatile);
+        // EN: T08-D17: `q[i]` with `q` a `T const**` selects a mutable `T const*`, as `*q` does.
+        // ES: T08-D17: `q[i]` con `q` de tipo `T const**` selecciona un `T const*` modificable, como `*q`.
+        const bool nestedPointerIndex = validPointerIndex && method_body_detail::nestedPointerTypeKey(base.typeKey);
         const bool readonlyElement = (base.readonlyReceiver &&
             (validFixedIndices || validFlexibleIndex)) ||
-            (validPointerIndex && base.pointerPointeeReadonly);
+            (validPointerIndex && !nestedPointerIndex && base.pointerPointeeReadonly);
         bool unalignedImportedFieldElement = false;
         if ((validFixedIndices || validFlexibleIndex) && memberModel_ != nullptr)
         {
@@ -884,7 +887,7 @@ void ProjectMethodBodyModel::analyzeRawIndex(
             result.valid = false;
             return;
         }
-        result.pointerPointeeReadonly = qualifiedPointerElement;
+        result.pointerPointeeReadonly = qualifiedPointerElement || (nestedPointerIndex && base.pointerPointeeReadonly);
         result.pointerPointeeVolatile = volatilePointerElement;
         result.addressable = !result.volatileStorage && !unalignedImportedFieldElement &&
             !qualifiedPointerElement && !volatilePointerElement;

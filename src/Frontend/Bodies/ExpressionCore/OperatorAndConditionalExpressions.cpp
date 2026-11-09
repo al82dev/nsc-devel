@@ -195,6 +195,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     result.valid = false;
                     break;
                 }
+                // EN: T08-D17: pointers to pointers with different base qualification have no common type.
+                // ES: T08-D17: punteros a puntero con distinta calificacion base no tienen tipo comun.
+                if (method_body_detail::nestedPointerTypeKey(left.typeKey) &&
+                    right.typeKey == left.typeKey && left.pointerPointeeReadonly != right.pointerPointeeReadonly)
+                {
+                    diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error, expression->range(),
+                        "coalescing pointer-to-pointer operands must have the same pointee qualification");
+                    result.valid = false;
+                    break;
+                }
                 result.pointerPointeeReadonly = left.pointerPointeeReadonly || right.pointerPointeeReadonly;
                 result.pointerPointeeVolatile = left.pointerPointeeVolatile || right.pointerPointeeVolatile;
                 result.pointerNullable = right.typeKey == "builtin:null" || right.pointerNullable;
@@ -614,6 +625,18 @@ bool ProjectMethodBodyModel::resolveConditionalMatchingType(
             diagnostics::DiagnosticSeverity::Error,
             expression->range(),
             "conditional pointer branches must use the same address space");
+        return true;
+    }
+    // EN: T08-D17: pointers to pointers with different base qualification have no common type.
+    // ES: T08-D17: punteros a puntero con distinta calificacion base no tienen tipo comun.
+    if (method_body_detail::nestedPointerTypeKey(whenTrue.typeKey) &&
+        whenTrue.pointerPointeeReadonly != whenFalse.pointerPointeeReadonly)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "conditional pointer-to-pointer branches must have the same pointee qualification");
         return true;
     }
     result.typeKey = whenTrue.typeKey;

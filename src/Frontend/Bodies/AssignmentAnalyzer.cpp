@@ -1900,6 +1900,14 @@ bool ProjectMethodBodyModel::validatePlainAssignmentConversion(
             "assignment would discard pointer pointee volatile qualification");
         return false;
     }
+    if (method_body_detail::addsNestedPointeeConst(right.typeKey, right.pointerPointeeReadonly,
+            left.typeKey, left.pointerPointeeReadonly))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, expression->second()->range(),
+            std::string("assignment: ") + method_body_detail::kNestedPointeeConstMessage);
+        return false;
+    }
     if (!ProjectTypeConversion::isPointer(left.typeKey) ||
         language::pointerContractImplicitlyAssignable(
             pointerContract(
