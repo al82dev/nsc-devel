@@ -26,6 +26,7 @@ constexpr std::size_t kExportDirectoryIndex = 0;
 constexpr std::size_t kImportDirectoryIndex = 1;
 constexpr std::size_t kExceptionDirectoryIndex = 3;
 constexpr std::size_t kDebugDirectoryIndex = 6;
+constexpr std::size_t kTlsDirectoryIndex = 9;
 constexpr std::size_t kClrDirectoryIndex = 14;
 constexpr std::size_t kImportDescriptorSize = 20;
 constexpr std::size_t kDebugDirectoryEntrySize = 28;
@@ -222,6 +223,7 @@ void readPeOptionalHeader(
     info.exportDirectoryRva = readU32(bytes, directories + (kExportDirectoryIndex * 8));
     info.exportDirectorySize = readU32(bytes, directories + (kExportDirectoryIndex * 8) + 4);
     info.importDirectoryRva = readU32(bytes, directories + (kImportDirectoryIndex * 8));
+    info.tlsDirectoryRva = readU32(bytes, directories + (kTlsDirectoryIndex * 8));
     info.exceptionDirectoryRva = readU32(bytes, directories + (kExceptionDirectoryIndex * 8));
     info.exceptionDirectorySize = readU32(bytes, directories + (kExceptionDirectoryIndex * 8) + 4);
     info.debugDirectoryRva = readU32(bytes, directories + (kDebugDirectoryIndex * 8));

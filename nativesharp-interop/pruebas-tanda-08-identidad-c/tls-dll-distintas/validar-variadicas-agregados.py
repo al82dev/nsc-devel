@@ -7,10 +7,13 @@ Each DLL (`api.dll` in two folders) exports variadic functions that read with `v
 - C records by value: 8 bytes (Win64 register), 24 bytes and 3 bytes (both passed by copy);
 - the same records through a variadic function-pointer typedef.
 Each function returns a constant of its own DLL (3 or 7) when every argument matches, so a call that
-reaches the other DLL or reads a wrong slot fails; `Access` still writes and reads each DLL's TLS.
+reaches the other DLL or reads a wrong slot fails; `Initial` reads each DLL's initial TLS value and `Access`
+still writes and reads each DLL's TLS.
 Clang controls call the same functions with the same values. The NativeSharp calls live in precompiled
 templates (one producer per DLL), are consumed without the headers in O0-O3, and the consumer is
 restored from the artifact cache.
+Each DLL imports one Win32 function: a DLL with static TLS and no import directory does not get its TLS
+initialized by Windows, and NSC rejects it as a Runtime (T08-D04).
 """
 from pathlib import Path
 import os
@@ -56,6 +59,10 @@ typedef struct Odd {{ char a; char b; char c; }} Odd;
 __declspec(thread) int tls_exported = {initial};
 // Each function answers with a constant of its own DLL ({initial}); the TLS variable is still exported
 // so both DLLs keep the homonymous TLS packaging of the earlier samples.
+// T08-D04: the DLL imports one Win32 function so that it has an import directory; without it Windows does not
+// initialize its static TLS and NSC rejects it as a Runtime.
+__declspec(dllimport) unsigned long __stdcall GetCurrentThreadId(void);
+__declspec(dllexport) unsigned long api_thread_id(void) {{ return GetCurrentThreadId(); }}
 static int cell = {70 + index};
 __declspec(dllexport) int* cell_ptr(void) {{ return &cell; }}
 __declspec(dllexport) int twice(int x) {{ return x * 2; }}
@@ -149,6 +156,7 @@ def build_producers(opt):
             f"return {call.format(index=index)}; }}\n" for name, call in CALLS.items())
         (folder / "Producer.ns").write_text(
             f"namespace Variadic{index}\n{{\n    public class Bridge\n    {{\n"
+            "        public static int Initial<T>(T unused) { return tls_exported; }\n"
             "        public static int Access<T>(T unused, int value) { tls_exported = value; return tls_exported; }\n"
             + methods + "    }\n}\n", encoding="utf-8")
         (folder / "Producer.nsproj").write_text(
@@ -167,6 +175,7 @@ def consume(opt):
         for n, name in enumerate(CALLS))
     (folder / "Consumer.ns").write_text(
         "int Main()\n{\n"
+        "    if (Variadic1.Bridge.Initial<int>(0) != 3 || Variadic2.Bridge.Initial<int>(0) != 7) return 40;\n"
         "    if (Variadic1.Bridge.Access<int>(0, 41) != 41 || Variadic2.Bridge.Access<int>(0, 51) != 51) return 1;\n"
         + checks + "    return 0;\n}\n", encoding="utf-8")
     (folder / "Consumer.nsproj").write_text(

@@ -20,6 +20,9 @@ struct PeExecutableInfo final
     std::uint32_t exportDirectoryRva = 0;
     std::uint32_t exportDirectorySize = 0;
     std::uint32_t importDirectoryRva = 0;
+    // EN: T08-D04: RVA of the TLS directory (data directory 9); zero when the image has no static TLS.
+    // ES: T08-D04: RVA del directorio TLS (directorio de datos 9); cero si la imagen no tiene TLS estatico.
+    std::uint32_t tlsDirectoryRva = 0;
     std::uint32_t exceptionDirectoryRva = 0;
     std::uint32_t exceptionDirectorySize = 0;
     std::uint32_t clrDirectoryRva = 0;

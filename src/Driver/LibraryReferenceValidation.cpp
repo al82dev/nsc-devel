@@ -85,13 +85,44 @@ bool precompiledReferenceRequiresLld(const compilation::LibraryReference &refere
     return false;
 }
 
+// EN: T08-D04. The Windows loader initializes the static TLS of a DLL (assigns _tls_index and copies the
+//     template) only when the image has an import directory; the descriptor table may hold only its null
+//     terminator. Without one, the DLL's own code reads index 0, the TLS block of the executable. NSC cannot
+//     repair a third-party image without changing it, so such a Runtime is rejected with the cause.
+// ES: T08-D04. El cargador de Windows inicializa el TLS estatico de una DLL (asigna _tls_index y copia la
+//     plantilla) solo si la imagen tiene directorio de importacion; basta la tabla con su terminador nulo. Sin
+//     el, el codigo de la DLL lee el indice 0, el bloque TLS del ejecutable. NSC no puede reparar una imagen de
+//     terceros sin modificarla, asi que ese Runtime se rechaza con la causa.
+static bool verifyRuntimeTlsInitialization(
+    const std::filesystem::path &runtime, const linker::PeExecutableInfo &info, std::string &error)
+{
+    if (info.tlsDirectoryRva == 0 || info.importDirectoryRva != 0) return true;
+    error = "runtime DLL '" + pathToUtf8(runtime) + "' has static thread-local storage but no import directory: "
+            "the Windows loader does not initialize the static TLS of such a DLL, so its thread-local variables "
+            "would use another module's storage; rebuild the DLL with an import directory (NSC does not modify "
+            "the DLL)";
+    return false;
+}
+
 bool validateCppImportRuntimes(
     std::span<const std::pair<std::filesystem::path, std::filesystem::path>> references, std::string &error)
 {
     using Reference = std::pair<std::filesystem::path, std::filesystem::path>;
     std::unordered_map<std::string, std::vector<Reference>> groups;
+    std::unordered_set<std::string> inspectedRuntimes;
     for (const auto &[library, runtime] : references)
-        if (!runtime.empty()) groups[foldedPathKey(library)].emplace_back(library, runtime);
+    {
+        if (runtime.empty()) continue;
+        groups[foldedPathKey(library)].emplace_back(library, runtime);
+        // EN: an unreadable or missing Runtime keeps its existing diagnostics; only a valid DLL is inspected.
+        // ES: un Runtime ilegible o ausente conserva sus diagnosticos; solo se inspecciona una DLL valida.
+        if (!inspectedRuntimes.insert(foldedPathKey(runtime)).second) continue;
+        std::error_code status;
+        if (!std::filesystem::is_regular_file(runtime, status)) continue;
+        linker::PeExecutableVerifier verifier;
+        if (verifier.verifyDynamicLibrary(runtime) &&
+            !verifyRuntimeTlsInitialization(runtime, verifier.info(), error)) return false;
+    }
     for (const auto &[key, group] : groups)
     {
         (void)key;
@@ -301,6 +332,7 @@ bool validateLibraryReferenceRuntime(const compilation::LibraryReference &refere
         error = "runtime '" + reference.runtimePath.string() + "' is not a valid DLL: " + peVerifier.error();
         return false;
     }
+    if (!verifyRuntimeTlsInitialization(reference.runtimePath, peVerifier.info(), error)) return false;
     std::vector<std::string> expectedExports;
     expectedExports.reserve(metadata.exports.size() + nativeSymbols.size());
     for (const interop::LibraryMetadataExport &exportRecord : metadata.exports)

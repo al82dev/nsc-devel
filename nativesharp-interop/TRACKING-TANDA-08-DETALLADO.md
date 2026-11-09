@@ -125,7 +125,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
           - [x] Confirmar que `DllMain` se ejecuta y contrastar una DLL que contiene una importación no invocada por la función TLS. [Evidencia](registro-commits/t08-dll-tls-importacion-no-invocada.md).
           - [x] Comparar la DLL sin importaciones con una copia que contiene un descriptor de importación vacío, sin añadir dependencias. [Evidencia](registro-commits/t08-dll-tls-directorio-importacion.md).
           - [x] Reproducir la diferencia en un proceso anfitrión convencional, tanto en el hilo principal como en otro hilo. [Evidencia](registro-commits/t08-tls-sin-import-host-estandar.md).
-          - [ ] Decisión pendiente: causa operativa determinada. El cargador de Windows solo inicializa el TLS estático de una DLL que tiene directorio de importación; también ocurre sin NativeSharp. NSC no puede corregirlo sin modificar la DLL. Opciones: un diagnóstico (error o advertencia) al enlazar o empaquetar, o documentar la limitación. [Evidencia y opciones](registro-commits/t08-tls-sin-import-decision.md).
+          - [x] Decisión tomada (T08-D04): NSC rechaza con la causa un `Runtime` con TLS estático y sin directorio de importación, directo o transportado; el diagnóstico es provisional y la capacidad completa sigue en T08-D04. [Opciones](registro-commits/t08-tls-sin-import-decision.md), [Evidencia](registro-commits/t08-d04-tls-sin-importaciones.md).
       - [ ] T08-002-09m7c1d2c: Resolver las dependencias transitivas de las DLL homónimas y comprobar el consumidor resultante. **Bloqueada:** queda la decisión pendiente listada.
         - [x] Invalidar el bundle al cambiar una DLL transitiva del runtime C y comprobar reconstrucción y restauración en O0 y O3; la resolución de homónimas permanece pendiente. [Evidencia](registro-commits/t08-cache-runtime-transitivo.md).
         - [ ] Decisión pendiente: dos `api.dll` homónimas con dependencias `dep.dll` homónimas y distintas se rechazan al empaquetar («runtime package contains different DLLs named 'dep.dll'»), sin elección arbitraria. Conservar ambas exige reescribir las importaciones de los alias, usar manifiestos side-by-side o mantener el rechazo como contrato. [Evidencia y opciones](registro-commits/t08-dll-homonimas-transitivas-decision.md).
@@ -510,7 +510,9 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 - [x] T08-D01: DLL NativeSharp con nombre no ASCII, cargada por ruta Unicode (T08-002-09m7c0g2d). [Evidencia](registro-commits/t08-d01-dll-unicode.md).
 - [x] T08-D02: NSMeta conserva `const`/`volatile` de alias C en firmas públicas de métodos y delegates. [Evidencia](registro-commits/t08-d02-d03-calificadores-nsmeta.md).
 - [x] T08-D03: firma pública con callback `volatile`, publicada y consumida conservando el calificador. [Evidencia](registro-commits/t08-d02-d03-calificadores-nsmeta.md).
-- [ ] T08-D04: TLS en DLL sin importaciones, con solución reproducible y sin importación artificial.
+- [ ] T08-D04: TLS en DLL sin importaciones, con solución reproducible y sin importación artificial. [Evidencia](registro-commits/t08-d04-tls-sin-importaciones.md).
+  - [x] T08-D04a: diagnóstico al consumir (directo y precompilado) sin modificar la DLL; `validar-variadicas-agregados.py` deja de usar DLL con TLS sin inicializar.
+  - [ ] T08-D04b: copia distribuida con directorio de importación vacío, opt-in por referencia. **Pendiente de aprobación del usuario:** el cambio concreto y sus efectos (identidad, firma, CheckSum, alcance) están presentados en la evidencia.
 - [ ] T08-D05: DLL homónimas con dependencias transitivas.
 - [ ] T08-D06: `&` de global C `const` produce un puntero a dato constante; la escritura se rechaza (T08-004-04a1).
 - [ ] T08-D07: `_Atomic` sobre record, tamaños directos y con biblioteca atómica (T08-004-04d1).

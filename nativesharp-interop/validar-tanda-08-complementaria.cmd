@@ -51,6 +51,7 @@ for %%T in (
   pruebas-tanda-08-identidad-c\tls-dll-producto\validar.py
   pruebas-tanda-08-identidad-c\tls-dll-unicode\validar-mayusculas.py
   pruebas-tanda-08-identidad-c\tls-dll-unicode\validar.py
+  pruebas-tanda-08-identidad-c\tls-sin-import-host\validar-diagnostico.py
   pruebas-tanda-08-identidad-c\tls-sin-import-host\validar.py
   pruebas-tanda-08-identidad-c\typedef-calificadores\validar-callback-const.py
   pruebas-tanda-08-identidad-c\typedef-calificadores\validar-callback-volatile.py
