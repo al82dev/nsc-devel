@@ -485,19 +485,22 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 
 - [x] T08-020-01: Comparar la muestra de 55 valores de layout y lecturas/escrituras cruzadas. [Evidencia](registro-commits/t08-layout-comparacion-clang.md).
 - **T08-020-02 — Comparación de layout:**
-- [ ] T08-020-02a: Comparar tamaño, alineación y offsets de structs naturales y `pack(1/2/4)`.
-- [ ] T08-020-02b: Comparar unions naturales y empaquetadas con miembros superpuestos.
-- [ ] T08-020-02c: Comparar structs y unions anónimos o anidados.
-- [ ] T08-020-02d: Comparar arreglos de records y miembros flexibles.
+- [x] T08-020-02a: Comparar tamaño, alineación y offsets de structs naturales y `pack(1/2/4)`. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
+- [x] T08-020-02b: Comparar unions naturales y empaquetadas con miembros superpuestos. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
+- [x] T08-020-02c: Comparar structs y unions anónimos o anidados. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
+- [x] T08-020-02d: Comparar arreglos de records y miembros flexibles. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
 - **T08-020-03 — Comparación de IR:**
-- [ ] T08-020-03a: Comparar alineación de `load` y `store` de campos escalares.
-- [ ] T08-020-03b: Comparar ventanas de lectura y escritura de bitfields.
+- [x] T08-020-03a: Comparar alineación de `load` y `store` de campos escalares. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
+  - NSC emite `min(alineación de Clang, alineación natural)` y nunca supera a Clang; adoptar la de Clang es la decisión pendiente T08-012-02a.
+- [x] T08-020-03b: Comparar ventanas de lectura y escritura de bitfields. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
 - [ ] T08-020-03c: Comparar accesos `volatile` alineados y empaquetados en modos Microsoft e ISO.
+  - Verificado el acceso directo a campos `volatile` alineados y empaquetados en modos Microsoft e ISO, directo y desde plantilla precompilada: idéntico a Clang. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
+  - **Bloqueada por T08-010-05a** para el acceso por alias NativeSharp (modo volatile del alias o de la unidad consumidora).
 - **T08-020-04 — Tipos desde metadata:**
-- [ ] T08-020-04a: Verificar `sizeof(T)` y `alignof(T)` para un struct C publicado sin encabezado.
-- [ ] T08-020-04b: Verificar declaración y cast de puntero a tipo C publicado sin encabezado.
-- [ ] T08-020-04c: Verificar `offsetof` y acceso a miembro restaurado desde metadata.
-- [ ] T08-020-04d: Repetir los controles para union, enum y typedef publicados.
+- [x] T08-020-04a: Verificar `sizeof(T)` y `alignof(T)` para un struct C publicado sin encabezado. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
+- [x] T08-020-04b: Verificar declaración y cast de puntero a tipo C publicado sin encabezado. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
+- [x] T08-020-04c: Verificar `offsetof` y acceso a miembro restaurado desde metadata. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
+- [x] T08-020-04d: Repetir los controles para union, enum y typedef publicados. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
 
 ## Cierre de la tanda
 
