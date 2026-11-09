@@ -458,15 +458,16 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 
 - [x] T08-018-01: Probar la muestra de sombra local de global y enumerador C en O0.
 - **T08-018-02 — Colisiones y ámbitos:**
-- [ ] T08-018-02a: Verificar colisión entre función C y función NativeSharp en namespace.
-- [ ] T08-018-02b: Verificar global y enumerador C ocultados por local o parámetro NativeSharp.
-- [ ] T08-018-02c: Verificar colisión entre typedef C y tipo NativeSharp.
-- [ ] T08-018-02d: Verificar sombras en bloques, bucles, `catch` y lambdas.
+- [x] T08-018-02a: Verificar colisión entre función C y función NativeSharp en namespace. [Evidencia](registro-commits/t08-colisiones-c.md).
+- [x] T08-018-02b: Verificar global y enumerador C ocultados por local o parámetro NativeSharp. [Evidencia](registro-commits/t08-colisiones-c.md).
+- [x] T08-018-02c: Verificar colisión entre typedef C y tipo NativeSharp. [Evidencia](registro-commits/t08-colisiones-c.md).
+- [x] T08-018-02d: Verificar sombras en bloques, bucles, `catch` y lambdas. [Evidencia](registro-commits/t08-colisiones-c.md).
 - **T08-018-03 — Resolución:**
-- [ ] T08-018-03a: Verificar resolución antes, dentro y después del ámbito de sombra.
-- [ ] T08-018-03b: Verificar diagnóstico de ambigüedad entre dos declaraciones C visibles.
-- [ ] T08-018-03c: Repetir los casos de función y global desde plantilla precompilada.
+- [x] T08-018-03a: Verificar resolución antes, dentro y después del ámbito de sombra. [Evidencia](registro-commits/t08-colisiones-c.md).
+- [x] T08-018-03b: Verificar diagnóstico de ambigüedad entre dos declaraciones C visibles. [Evidencia](registro-commits/t08-colisiones-c.md).
+- [x] T08-018-03c: Repetir los casos de función y global desde plantilla precompilada. [Evidencia](registro-commits/t08-colisiones-c.md).
   - Evidencia previa: un campo estático privado usado por una plantilla pública no viaja con ella; si el encabezado del productor declara una global C homónima importable, la plantilla se une en silencio a la global en vez del campo. [Sonda](registro-commits/t08-global-no-importable.md#observación-para-t08-018-03c).
+  - **Decisión pendiente T08-018-03c1:** los miembros privados usados por una plantilla publicada no se publican; con una declaración C homónima, la plantilla se une a ella en silencio (campos y métodos). [Detalle](registro-commits/t08-colisiones-c.md#decisión-pendiente-t08-018-03c1).
 
 ## T08-019 — Diagnósticos de tipos incompletos
 
