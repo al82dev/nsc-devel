@@ -65,3 +65,16 @@ Regresión dirigida: `regresion-callbacks.cmd`. Todas las pruebas se aprobaron s
    de función (`call_const((p) => …)`) se rechaza con `an unconverted lambda requires an explicit type
    for every parameter`. Funciona asignándola antes a una variable `ConstFn`. Es un modo de consumo
    pendiente, independiente de los calificadores.
+
+## Clasificación posterior del límite 2
+
+La sonda `claude/sondas/lambda1/inline.py` / `typed.py` (O0) muestra que no es un caso de interop:
+
+- `call_const((p) => …)`, `CallNs((p) => …)` con parámetro `ConstFn` y `CallH((p) => …)` con un delegate
+  con nombre se rechazan igual: `an unconverted lambda requires an explicit type for every parameter`.
+- Con tipos explícitos (`(Payload const* p) => …`, `(Payload* p) => …`), las tres formas, incluida una
+  función solo NativeSharp con delegate con nombre, dan `no viable overload … accepts the argument types`.
+
+Una lambda en línea no es un argumento convertible para ninguna función: es una regla general del
+lenguaje, no una diferencia de la interoperabilidad C. Asignarla antes a una variable del tipo destino
+funciona, y está cubierto por las pruebas de esta casilla. La casilla se cierra como fuera de alcance.
