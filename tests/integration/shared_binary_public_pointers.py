@@ -243,6 +243,23 @@ class Program { public static int Main() { FAMILY<EscapePayload> owner = SharedP
                         'binary shared receiver publication accepted or failed for another reason',
                         family, lifecycle, level, output)
                     print('binary shared receiver publication rejected', family, lifecycle, level, flush=True)
+        for family, make in (('Rc', 'MakeRc'), ('Arc', 'MakeArc')):
+            source.write_text(('''using NativeSharp.Core;
+class Holder { public SafePayload Value; }
+class SafePayload { public int Data;
+ public static Holder Identity(Holder input) { return input; }
+ public SafePayload() { Holder fresh = new Holder(); Holder local = Identity(fresh);
+  local.Value = this; Data = 42; } }
+class Program { public static int Main() { FAMILY<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
+ return owner.Get().Data; } }
+''').replace('FAMILY', family).replace('MAKE', make), encoding='utf-8')
+            for level in ('O0', 'O2'):
+                exe = root / ('binary-local-identity-' + family + '-' + level + '.exe')
+                result = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', exe], root)
+                assert result.returncode == 0, ('binary local identity compile', family, level, result.stdout + result.stderr)
+                result = run([exe], root)
+                assert result.returncode == 42, ('binary local identity run', family, level, result.returncode)
+                print('binary local identity', family, level, 'exit=42', flush=True)
         source.write_text('''using NativeSharp.Core;
 class Input { public Input() { } public static implicit operator int(Input value) { return 42; } }
 class Bucket { public static int Sum; public static owned Bucket CreateBuilder() { return new Bucket(); }
