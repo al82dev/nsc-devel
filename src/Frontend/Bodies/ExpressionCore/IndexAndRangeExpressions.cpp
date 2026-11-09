@@ -212,8 +212,11 @@ bool ProjectMethodBodyModel::analyzeNativeArrayIndex(
         result.valid = true;
         result.assignable = !base.readonlyBorrowedObject;
         result.readonlyReceiver = base.readonlyBorrowedObject;
+        const NamedTypeDeclaration* elementType = base.readonlyBorrowedObject
+            ? namedTypeForTypeKey(result.typeKey) : nullptr;
         result.readonlyBorrowedObject = base.readonlyBorrowedObject &&
-            (isReferenceTypeKey(result.typeKey) || ProjectTypeConversion::isNativeArray(result.typeKey));
+            (isReferenceTypeKey(result.typeKey) || ProjectTypeConversion::isNativeArray(result.typeKey) ||
+             (elementType != nullptr && elementType->kind == NamedTypeDeclarationKind::Struct));
         if (result.readonlyBorrowedObject)
         {
             result.ownership = sema::OwnershipKind::Borrowed;

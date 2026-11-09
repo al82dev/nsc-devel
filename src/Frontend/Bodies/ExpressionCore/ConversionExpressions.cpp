@@ -441,8 +441,11 @@ ProjectMethodBodyModel::analyzeExpressionKindCastExpression(
     validateReferenceCast(
         result, operand, expression, classifier,
         methodMemberOrdinal, scopeOrdinal, diagnostics);
+    const NamedTypeDeclaration* targetType = operand.readonlyBorrowedObject
+        ? namedTypeForTypeKey(result.typeKey) : nullptr;
     if (result.valid && operand.readonlyBorrowedObject &&
-        (isReferenceTypeKey(result.typeKey) || ProjectTypeConversion::isNativeArray(result.typeKey)))
+        (isReferenceTypeKey(result.typeKey) || ProjectTypeConversion::isNativeArray(result.typeKey) ||
+         (targetType != nullptr && targetType->kind == NamedTypeDeclarationKind::Struct)))
     {
         result.readonlyBorrowedObject = true;
         result.readonlyReceiver = true;

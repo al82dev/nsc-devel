@@ -18,6 +18,8 @@ namespace NativeSharp.Core { public class Exception { } }
 class Payload { public int[] Data; public Payload() { Data = new int[1]; } }
 class Child { public int Value; }
 class Children { public Child[] Data; public Children() { Data = new Child[1]; Data[0] = new Child(); } }
+struct Box { public Child Item; public int Value; }
+class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Item = new Child(); Data[0].Value = 42; } }
 '''
     cases = {
         'write': ('''alias.Data[0] = 10; return 0;''', 'not assignable'),
@@ -34,6 +36,20 @@ class Children { public Child[] Data; public Children() { Data = new Child[1]; D
         'nested_escape': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
  borrowed Children nested = nestedOwner.Get(); Child saved = nested.Data[0]; return saved.Value;''',
                           'borrowed value cannot'),
+        'struct_nested_escape': ('''HANDLE<Boxes> nestedOwner = FACTORY.Create<Boxes>();
+ borrowed Boxes nested = nestedOwner.Get(); Child saved = nested.Data[0].Item; return saved.Value;''',
+                                 'borrowed value cannot'),
+        'struct_copy_escape': ('''HANDLE<Boxes> nestedOwner = FACTORY.Create<Boxes>();
+ borrowed Boxes nested = nestedOwner.Get(); Box saved = nested.Data[0]; return saved.Item.Value;''',
+                               'borrowed value cannot'),
+        'struct_reassign_escape': ('''HANDLE<Boxes> nestedOwner = FACTORY.Create<Boxes>();
+ borrowed Boxes nested = nestedOwner.Get(); Box saved; saved = nested.Data[0]; return saved.Item.Value;''',
+                                   'borrowed value cannot'),
+        'struct_cast_escape': ('''HANDLE<Boxes> nestedOwner = FACTORY.Create<Boxes>();
+ borrowed Boxes nested = nestedOwner.Get(); Child saved = ((Box)nested.Data[0]).Item; return saved.Value;''',
+                               'borrowed value cannot'),
+        'struct_nested_read': ('''HANDLE<Boxes> nestedOwner = FACTORY.Create<Boxes>();
+ borrowed Boxes nested = nestedOwner.Get(); return nested.Data[0].Value;''', None),
     }
     with tempfile.TemporaryDirectory(prefix='nsc-readonly-array-') as temporary:
         root = Path(temporary)

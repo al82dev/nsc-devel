@@ -1315,9 +1315,12 @@ bool ProjectMethodBodyModel::rejectBorrowedAssignmentEscape(
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
+    const NamedTypeDeclaration* targetType = right.readonlyBorrowedObject
+        ? namedTypeForTypeKey(left.typeKey) : nullptr;
     const bool assignmentTargetOwnable =
         isReferenceTypeKey(left.typeKey) || left.typeKey == "builtin:string" ||
-        (right.readonlyBorrowedObject && ProjectTypeConversion::isNativeArray(left.typeKey));
+        (right.readonlyBorrowedObject && (ProjectTypeConversion::isNativeArray(left.typeKey) ||
+            (targetType != nullptr && targetType->kind == NamedTypeDeclarationKind::Struct)));
     if (borrowedReassignment || right.ownership != sema::OwnershipKind::Borrowed ||
         !assignmentTargetOwnable) return false;
     if (left.assignmentMemberOrdinal.has_value() && memberModel_ != nullptr &&

@@ -34,3 +34,21 @@ de versión, por lo que reconstruyó más objetivos que los cinco archivos de
 frontend modificados. Las pruebas de punteros públicos se hicieron desde
 fuentes; no acreditan consumo binario, seguridad concurrente, todos los caminos
 de conversión ni acceso mediante código `unsafe`.
+
+## Estructuras anidadas
+
+Tras `764137d50`, una regresión con un arreglo de estructuras que contienen un
+campo de clase mostró que `Child saved = alias.Data[0].Item` seguía siendo
+aceptado (`readonly-array-struct-before.log`). La condición de préstamo se
+perdía en el elemento struct antes de llegar al campo de clase. Se propagó al
+elemento y a los campos struct anidados, así como a una conversión explícita;
+los destinos no rastreados rechazan copiar esos valores prestados. Esta regla es
+conservadora: también puede rechazar la copia por valor de una estructura que
+solo contiene escalares. No cambia la lectura de campos escalares: la prueba
+ejecuta una lectura de esa forma en O0/O2 para ambos controles.
+
+La regresión dirigida verifica escape mediante campo, inicialización,
+reasignación y conversión de la estructura, además de las comprobaciones
+anteriores. El resultado final está en `readonly-array-ctest.log`. Los casos
+de referencia a través de otras construcciones de valores no se consideran
+cubiertos por esta prueba.

@@ -3757,9 +3757,12 @@ void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
     // case would make it impossible to write `int x = list.Pop();` for a generic
     // collection. Only enforce the raii-destination / borrowed-local requirement when the
     // local's own declared type actually needs ownership tracking.
+    const NamedTypeDeclaration* localValueType = initializer.readonlyBorrowedObject
+        ? namedTypeForTypeKey(typeKey) : nullptr;
     const bool localTypeOwnable = isReferenceTypeKey(typeKey) || typeKey == "builtin:string" ||
         managedDelegate || raiiOwnsNativeArrayBuffer ||
-        (initializer.readonlyBorrowedObject && ProjectTypeConversion::isNativeArray(typeKey));
+        (initializer.readonlyBorrowedObject && (ProjectTypeConversion::isNativeArray(typeKey) ||
+            (localValueType != nullptr && localValueType->kind == NamedTypeDeclarationKind::Struct)));
     // EN: Freeze 3.0 item 141: a direct local initializer `T x = new T()` is an inferred owner and
     //     reaches this validation as RAII. Assignments after declaration remain non-owning.
     // ES: Congelamiento 3.0 elemento 141: un inicializador local directo `T x = new T()` es un
@@ -4173,9 +4176,12 @@ void ProjectMethodBodyModel::analyzeVariableInitializer(
         validateVariableInitializerConversion(
             initializer, variable, typeKey, diagnostics, declaredPointerContract,
             declaredPointerPointeeReadonly, isVarInferred);
+    const NamedTypeDeclaration* localValueType = initializer.readonlyBorrowedObject
+        ? namedTypeForTypeKey(typeKey) : nullptr;
     const bool localTypeOwnable = isReferenceTypeKey(typeKey) || typeKey == "builtin:string" ||
         managedDelegate || raiiOwnsNativeArrayBuffer ||
-        (initializer.readonlyBorrowedObject && ProjectTypeConversion::isNativeArray(typeKey));
+        (initializer.readonlyBorrowedObject && (ProjectTypeConversion::isNativeArray(typeKey) ||
+            (localValueType != nullptr && localValueType->kind == NamedTypeDeclarationKind::Struct)));
     if (!isBorrowed && !isRaii && initializer.valid &&
         initializer.ownership == sema::OwnershipKind::Borrowed && localTypeOwnable)
         diagnostics.report(
