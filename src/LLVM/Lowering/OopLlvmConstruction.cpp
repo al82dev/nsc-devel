@@ -93,10 +93,14 @@ ReceiverPublicationScan scanReceiverPublication(
             else if (call->kind == Kind::DirectInstanceCall && !call->calleeName.empty())
                 result.directReceiverCallees.push_back(call->calleeName);
         }
-        if (call->kind == Kind::DirectStaticCall && !call->calleeName.empty())
-            for (std::size_t argument = 0; argument < call->children.size(); ++argument)
-                if (isReceiver(call->children[argument].get()))
-                    result.directArgumentCallees.emplace_back(call->calleeName, argument);
+        if ((call->kind == Kind::DirectStaticCall || call->kind == Kind::DirectInstanceCall) &&
+            !call->calleeName.empty())
+        {
+            const std::size_t firstArgument = call->kind == Kind::DirectStaticCall ? 0U : 1U;
+            for (std::size_t child = firstArgument; child < call->children.size(); ++child)
+                if (isReceiver(call->children[child].get()))
+                    result.directArgumentCallees.emplace_back(call->calleeName, child - firstArgument);
+        }
     }
     return result;
 }

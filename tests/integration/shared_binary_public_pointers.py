@@ -185,8 +185,11 @@ class Program { public static int Main() { FAMILY<Payload> owner = SharedPointer
                 ('destructor-virtual', 'public EscapePayload() { } ~EscapePayload() { Publish(); } public virtual void Publish() { Alias = this; }'),
                 ('constructor-static', 'public EscapePayload() { Publish(this); } public static void Publish(EscapePayload value) { Alias = value; }'),
                 ('destructor-static', 'public EscapePayload() { } ~EscapePayload() { Publish(this); } public static void Publish(EscapePayload value) { Alias = value; }'),
+                ('constructor-instance-arg', 'public EscapePayload() { Helper helper = new Helper(); helper.Publish(this); }'),
+                ('destructor-instance-arg', 'public Helper helper; public EscapePayload() { helper = new Helper(); } ~EscapePayload() { helper.Publish(this); }'),
             ):
                 source.write_text(('''using NativeSharp.Core;
+class Helper { public void Publish(EscapePayload value) { EscapePayload.Alias = value; } }
 class EscapePayload { public static EscapePayload Alias; BODY }
 class Program { public static int Main() { FAMILY<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
  return owner.IsEmpty() ? 1 : 42; } }
