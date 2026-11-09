@@ -15,7 +15,12 @@ def main():
     compiler, *sources = map(Path, sys.argv[1:])
     prefix = '''using NativeSharp.Core.Internal; using NativeSharp.Core.Threading;
 namespace NativeSharp.Core { public class Exception { } }
+class NestedPayload { public long Data; }
 class Payload { public static int Drops; public long Data; public Payload() { Data = 20l; }
+ public NestedPayload Nested;
+ public void Mutate() { Data = 100l; }
+ public long Changing { get { Data = 100l; return Data; } }
+ public long this[int index] { get { Data = 100l; return Data; } }
  ~Payload() { Drops = Drops + 1; } }
 struct Value { public static int Drops; public long Data; public Value() { Data = 22l; }
  ~Value() { Drops = Drops + 1; } }
@@ -111,6 +116,77 @@ class DerivedBad : TrivialBase { public owned Resource item;
  SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
  owner.Get().Data = 100l; return 0;
 } }'''
+    mutate_alias = '''class Program { public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ borrowed Payload alias = owner.Get(); alias.Data = 100l; return 0;
+} }'''
+    mutate_alias_chain = '''class Program { public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ borrowed Payload alias = owner.Get(); borrowed Payload second = alias;
+ second.Data = 100l; return 0;
+} }'''
+    mutate_nested_alias = '''class Program { public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ borrowed Payload alias = owner.Get(); alias.Nested.Data = 100l; return 0;
+} }'''
+    escape_nested_alias = '''class Program { public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ borrowed Payload alias = owner.Get(); NestedPayload nested = alias.Nested; return 0;
+} }'''
+    mutate_alias_call = '''class Program { public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ borrowed Payload alias = owner.Get(); alias.Mutate(); return 0;
+} }'''
+    mutate_alias_getter = '''class Program { public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ borrowed Payload alias = owner.Get(); return (int)alias.Changing;
+} }'''
+    mutate_alias_indexer = '''class Program { public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ borrowed Payload alias = owner.Get(); return (int)alias[0];
+} }'''
+    mutate_alias_delegate = '''delegate void Mutation();
+class Program { public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ borrowed Payload alias = owner.Get(); Mutation callback = alias.Mutate; callback(); return 0;
+} }'''
+    mutate_alias_conditional = '''class Program { public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ borrowed Payload alias = owner.Get(); (true ? alias : alias).Data = 100l; return 0;
+} }'''
+    mutate_alias_coalesce = '''class Program { public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ borrowed Payload alias = owner.Get(); (alias ?? alias).Data = 100l; return 0;
+} }'''
+    mutate_alias_cast = '''class Program { public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ borrowed Payload alias = owner.Get(); ((Payload)alias).Data = 100l; return 0;
+} }'''
+    mutate_alias_safe_cast = '''class Program { public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ borrowed Payload alias = owner.Get(); (alias as Payload).Data = 100l; return 0;
+} }'''
+    mutate_alias_argument = '''class Program {
+ public static void MutateBorrow(borrowed Payload value) { value.Data = 100l; }
+ public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ borrowed Payload alias = owner.Get(); MutateBorrow(alias); return 0;
+} }'''
+    mutate_alias_namespace_argument = '''void MutateBorrow(borrowed Payload value) { value.Data = 100l; }
+class Program { public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ borrowed Payload alias = owner.Get(); MutateBorrow(alias); return 0;
+} }'''
+    mutate_alias_constructor = '''class Mutator {
+ public Mutator(borrowed Payload value) { value.Data = 100l; }
+} class Program { public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ borrowed Payload alias = owner.Get(); raii Mutator mutator = new Mutator(alias); return 0;
+} }'''
+    mutate_alias_return = '''class Keeper {
+ private SharedLocalHandle<Payload> owner;
+ public borrowed Payload GetMutableBorrow() { return owner.Get(); }
+} class Program { public static int Main() { return 0; } }'''
     move_direct = '''class Program { public static int Main() {
  SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
  borrowed Payload alias = owner.Get(); SharedLocalHandle<Payload> other = move(owner);
@@ -168,6 +244,23 @@ class DerivedBad : TrivialBase { public owned Resource item;
                                          ('escape_direct_argument', escape_direct_argument, 'borrowed argument requires'),
                                          ('mutate_value', mutate_value, 'not assignable'),
                                          ('mutate_class', mutate_class, 'not assignable'),
+                                         ('mutate_alias', mutate_alias, 'not assignable'),
+                                         ('mutate_alias_chain', mutate_alias_chain, 'not assignable'),
+                                         ('mutate_nested_alias', mutate_nested_alias, 'not assignable'),
+                                         ('escape_nested_alias', escape_nested_alias, 'borrowed value cannot'),
+                                         ('mutate_alias_call', mutate_alias_call, 'readonly borrowed object'),
+                                         ('mutate_alias_getter', mutate_alias_getter, 'readonly borrowed object'),
+                                         ('mutate_alias_indexer', mutate_alias_indexer, 'readonly borrowed object'),
+                                         ('mutate_alias_delegate', mutate_alias_delegate, 'readonly borrowed object'),
+                                         ('mutate_alias_conditional', mutate_alias_conditional, 'not assignable'),
+                                         ('mutate_alias_coalesce', mutate_alias_coalesce, 'not assignable'),
+                                         ('mutate_alias_cast', mutate_alias_cast, 'not assignable'),
+                                         ('mutate_alias_safe_cast', mutate_alias_safe_cast, 'not assignable'),
+                                         ('mutate_alias_argument', mutate_alias_argument, 'readonly borrowed object'),
+                                         ('mutate_alias_namespace_argument', mutate_alias_namespace_argument,
+                                          'readonly borrowed object'),
+                                         ('mutate_alias_constructor', mutate_alias_constructor, 'readonly borrowed object'),
+                                         ('mutate_alias_return', mutate_alias_return, 'readonly borrowed object'),
                                          ('move_direct', move_direct, 'cannot move owner'),
                                          ('move_owner', move_owner, 'cannot move owner')):
                 current_body = body

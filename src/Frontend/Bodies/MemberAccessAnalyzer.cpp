@@ -789,6 +789,16 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
         (!field.isReadonly || readonlyOnThis);
     result.addressable = !field.isBitField;
     result.readonlyReceiver = receiver.readonlyReceiver || field.isReadonly;
+    result.readonlyBorrowedObject = !field.isStatic && receiver.readonlyBorrowedObject &&
+        isReferenceTypeKey(result.typeKey);
+    if (result.readonlyBorrowedObject)
+    {
+        result.ownership = sema::OwnershipKind::Borrowed;
+        result.objectLifetimeOwnership = sema::OwnershipKind::Borrowed;
+        result.storageOwnership = sema::OwnershipKind::Borrowed;
+        result.ownershipSourceLocalOrdinal = receiver.ownershipSourceLocalOrdinal;
+        result.borrowedLocalOrdinal = receiver.borrowedLocalOrdinal;
+    }
     result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;
     result.pointerNullable = field.declaredPointerNullable;
     result.pointerHasProvenance = field.declaredPointerHasProvenance;
@@ -838,6 +848,13 @@ bool ProjectMethodBodyModel::analyzePropertyMember(
         accessingTypeOrdinal, protectedReceiverType);
     if (propertyGetters.empty()) return false;
     const ClassMemberSymbol& getter = memberModel_->members()[propertyGetters.front()];
+    if (!typeReceiver && receiver.readonlyBorrowedObject && !getter.declaringTypeIsStruct)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "readonly borrowed object cannot invoke an unchecked property getter");
+        return true;
+    }
     const std::optional<std::size_t> backing =
         allowConstructorPropertyWrite && propertySetters.empty() && !typeReceiver &&
             !getter.isStatic && caller.kind == ClassMemberKind::Constructor &&
@@ -960,6 +977,7 @@ bool ProjectMethodBodyModel::analyzeMethodGroupMember(
     result.baseReceiver = receiver.baseReceiver;
     result.readonlyReceiver = receiver.readonlyReceiver;
     result.ownership = receiver.ownership;
+    result.readonlyBorrowedObject = receiver.readonlyBorrowedObject;
     result.ownershipFreshOwner = receiver.ownershipFreshOwner;
     result.ownershipSourceLocalOrdinal = receiver.ownershipSourceLocalOrdinal;
     result.ownershipSourceParameterOrdinal = receiver.ownershipSourceParameterOrdinal;

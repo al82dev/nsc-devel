@@ -1260,6 +1260,17 @@ bool ProjectMethodBodyModel::analyzeBorrowedReassignment(
     if (!classifyBorrowedAssignmentDestination(
             borrowedReassignment, targetLocalBorrow, enclosingMethod, expression,
             assignmentTargetLocal, assignmentTargetParameter, methodMemberOrdinal)) return true;
+    // Rebinding a mutable borrow to a readonly object would require a flow-sensitive
+    // capability join, including loop backedges and borrowed parameters.
+    if (right.readonlyBorrowedObject &&
+        (!assignmentTargetLocal.has_value() || *assignmentTargetLocal >= locals_.size() ||
+         !locals_[*assignmentTargetLocal].readonlyBorrowedObject))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error, expression->second()->range(),
+            "readonly borrowed object cannot rebind a mutable borrowed destination");
+        return false;
+    }
     const ProjectImplicitConversion conversion =
         classifyImplicit(right.typeKey, left.typeKey, right.integerConstant);
     if (!conversion.exists())

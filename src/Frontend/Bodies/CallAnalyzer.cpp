@@ -439,6 +439,14 @@ ProjectMethodBodyModel::analyzeNamespaceFunctionArguments(
         receiverArgument.methodGroup = false;
         receiverArgument.extensionMethodGroup = false;
         receiverArgument.valid = true;
+        if (receiverArgument.readonlyBorrowedObject)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "borrowed argument requires a readonly-safe parameter; readonly borrowed object "
+                "cannot be passed to an unchecked function");
+            argumentsValid = false;
+        }
         arguments.push_back(std::move(receiverArgument));
     }
     for (std::size_t argumentOrdinal = 0;
@@ -453,6 +461,14 @@ ProjectMethodBodyModel::analyzeNamespaceFunctionArguments(
             analyzed = bindNamespaceFunctionMethodGroupArgument(
                 argument, std::move(analyzed), reference, argumentSyntaxes, argumentOrdinal,
                 callerCallableOrdinal, scopeOrdinal, forwardedReceiver != nullptr, diagnostics);
+        }
+        if (analyzed.readonlyBorrowedObject)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, argument->range(),
+                "borrowed argument requires a readonly-safe parameter; readonly borrowed object "
+                "cannot be passed to an unchecked function");
+            argumentsValid = false;
         }
         argumentsValid = argumentsValid && analyzed.valid && !analyzed.methodGroup;
         arguments.push_back(std::move(analyzed));
@@ -3573,6 +3589,14 @@ void ProjectMethodBodyModel::analyzeCallArguments(
                 }
             }
         }
+        if (argumentResult.readonlyBorrowedObject)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, argument->range(),
+                "borrowed argument requires a readonly-safe parameter; readonly borrowed object "
+                "cannot be passed to an unchecked function");
+            allArgumentsValid = false;
+        }
         if (!argumentResult.valid || argumentResult.methodGroup) allArgumentsValid = false;
         arguments.push_back(std::move(argumentResult));
     }
@@ -4890,6 +4914,21 @@ bool ProjectMethodBodyModel::validateSelectedCallReceiver(
         recordCallBinding(std::move(call));
         return false;
     }
+    // Class methods do not yet have a checked readonly receiver contract. Do not
+    // let a readonly borrowed object enter a potentially mutating method.
+    if (callee.readonlyBorrowedObject && !selectedMember.declaringTypeIsStruct &&
+        !selectedMember.isStatic)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "readonly borrowed object cannot invoke an unchecked class member '" +
+                selectedMember.name + "'");
+        call.resolution = MethodCallResolutionKind::NoViableCandidate;
+        recordCallBinding(std::move(call));
+        return false;
+    }
     return true;
 }
 
@@ -5292,6 +5331,7 @@ void ProjectMethodBodyModel::configureSelectedCallBinding(
         result.ownership = sema::OwnershipKind::Borrowed;
         result.objectLifetimeOwnership = sema::OwnershipKind::Borrowed;
         result.storageOwnership = sema::OwnershipKind::Borrowed;
+        result.readonlyBorrowedObject = readonlyReference;
     }
     result.ownershipTransfer = selectedMember.declaredOwnership == sema::OwnershipKind::Owned;
     // An owned return crosses the call boundary without a named owner. It is therefore a
@@ -5947,6 +5987,7 @@ bool ProjectMethodBodyModel::evaluateSyntheticCandidates(
                 conversionTarget,
                 arguments[argumentOrdinal].integerConstant);
             if (!conversion.exists() ||
+                arguments[argumentOrdinal].readonlyBorrowedObject ||
                 (implicitOperatorReference && conversion.kind != ProjectConversionKind::Identity) ||
                 (implicitOperatorReference && !arguments[argumentOrdinal].addressable) ||
                 (parameter.passKind == ParameterPassKind::Ref &&

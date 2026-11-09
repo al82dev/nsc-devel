@@ -188,6 +188,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             // ES: Congelamiento 3.0 (elemento 135 del plan): el resultado puede ser cualquier operando, asi que
             //     conserva el prestamo de cualquiera.
             result.borrowsOwnedTemporary = left.borrowsOwnedTemporary || right.borrowsOwnedTemporary;
+            result.readonlyBorrowedObject = left.readonlyBorrowedObject || right.readonlyBorrowedObject;
+            if (result.readonlyBorrowedObject)
+            {
+                result.readonlyReceiver = true;
+                result.ownership = sema::OwnershipKind::Borrowed;
+            }
             break;
         }
         default:
@@ -686,6 +692,13 @@ ProjectMethodBodyModel::analyzeExpressionKindConditionalExpression(
     //     prestamo de cualquiera.
     result.borrowsOwnedTemporary =
         result.valid && (whenTrue.borrowsOwnedTemporary || whenFalse.borrowsOwnedTemporary);
+    result.readonlyBorrowedObject = result.valid &&
+        (whenTrue.readonlyBorrowedObject || whenFalse.readonlyBorrowedObject);
+    if (result.readonlyBorrowedObject)
+    {
+        result.readonlyReceiver = true;
+        result.ownership = sema::OwnershipKind::Borrowed;
+    }
     return result;
 }
 }

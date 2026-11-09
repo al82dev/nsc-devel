@@ -1121,6 +1121,7 @@ private:
         sema::OwnershipKind& pendingObjectLifetimeOwnership,
         sema::OwnershipKind& pendingStorageOwnership,
         std::optional<language::CallableTrait>& pendingCallableTrait,
+        bool& pendingReadonlyBorrowedObject,
         bool& pendingOnePastEndPointer,
         bool& pendingPointerPointeeReadonly,
         bool& pendingPointerNullable,

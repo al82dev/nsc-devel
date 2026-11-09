@@ -18,6 +18,8 @@ struct ExpressionResult final
     // the implicit receiver of a readonly struct member. Reads remain legal; writes and calls
     // to mutating instance members do not.
     bool readonlyReceiver = false;
+    // Read-only restriction follows the object when a class reference is borrowed.
+    bool readonlyBorrowedObject = false;
     // Source qualifier for raw pointers. Kept outside typeKey because LLVM pointers are
     // opaque and the qualifier has no ABI/layout effect; semantic assignment/dereference
     // still observes it.

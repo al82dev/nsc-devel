@@ -138,6 +138,12 @@ ProjectMethodBodyModel::analyzeExpressionKindTypeTestExpressionOrSafeCastExpress
             {
                 result.objectLifetimeOwnership = operand.objectLifetimeOwnership;
                 result.storageOwnership = operand.storageOwnership;
+                if (operand.readonlyBorrowedObject)
+                {
+                    result.readonlyBorrowedObject = true;
+                    result.readonlyReceiver = true;
+                    result.ownership = sema::OwnershipKind::Borrowed;
+                }
             }
             runtimeTypeBindings_.push_back(MethodRuntimeTypeBinding{
                 expression->kind() == ast::AstNodeKind::TypeTestExpression
@@ -228,6 +234,14 @@ bool ProjectMethodBodyModel::applyUserDefinedCast(
     if ((userConversion.kind != ProjectConversionKind::UserDefinedImplicit &&
          userConversion.kind != ProjectConversionKind::UserDefinedExplicit) ||
         !userConversion.userDefinedMemberOrdinal.has_value()) return false;
+    if (operand.readonlyBorrowedObject)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "readonly borrowed object cannot be passed to an unchecked conversion");
+        result.valid = false;
+        return true;
+    }
     const std::vector<ExpressionResult> arguments = {operand};
     ExpressionResult converted = resolveSyntheticCall(
         expression,
@@ -427,6 +441,12 @@ ProjectMethodBodyModel::analyzeExpressionKindCastExpression(
     validateReferenceCast(
         result, operand, expression, classifier,
         methodMemberOrdinal, scopeOrdinal, diagnostics);
+    if (result.valid && operand.readonlyBorrowedObject && isReferenceTypeKey(result.typeKey))
+    {
+        result.readonlyBorrowedObject = true;
+        result.readonlyReceiver = true;
+        result.ownership = sema::OwnershipKind::Borrowed;
+    }
     return result;
 }
 }

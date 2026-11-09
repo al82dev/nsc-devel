@@ -264,7 +264,11 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     const ExpressionResult argumentResult = analyzeExpression(
                         argument, methodMemberOrdinal, scopeOrdinal, diagnostics,
                         /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
-                    const bool argumentValid = argumentResult.valid &&
+                    if (argumentResult.readonlyBorrowedObject)
+                        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                            diagnostics::DiagnosticSeverity::Error, argument->range(),
+                            "readonly borrowed object cannot be passed to an unchecked constructor");
+                    const bool argumentValid = argumentResult.valid && !argumentResult.readonlyBorrowedObject &&
                         !argumentResult.methodGroup && !isErrorType(argumentResult.typeKey);
                     argumentsValid = argumentsValid && argumentValid;
                     site.argumentsTyped = site.argumentsTyped && argumentValid;
@@ -371,7 +375,11 @@ bool ProjectMethodBodyModel::analyzeConstructionArguments(
         const ExpressionResult argumentResult = analyzeExpression(
             argument, methodMemberOrdinal, scopeOrdinal, diagnostics,
             /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
-        const bool argumentValid = argumentResult.valid &&
+        if (argumentResult.readonlyBorrowedObject)
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, argument->range(),
+                "readonly borrowed object cannot be passed to an unchecked constructor");
+        const bool argumentValid = argumentResult.valid && !argumentResult.readonlyBorrowedObject &&
             !argumentResult.methodGroup && !isErrorType(argumentResult.typeKey);
         argumentsValid = argumentsValid && argumentValid;
         site.argumentsTyped = site.argumentsTyped && argumentValid;

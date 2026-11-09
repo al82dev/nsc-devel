@@ -576,6 +576,13 @@ bool ProjectMethodBodyModel::analyzeUserIndexer(
     const std::optional<std::size_t> receiverType = base.valid
         ? accessorReceiverTypeOrdinalForTypeKey(base.typeKey) : std::nullopt;
     if (!receiverType.has_value()) return false;
+    if (base.readonlyBorrowedObject)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "readonly borrowed object cannot invoke an unchecked indexer");
+        return true;
+    }
     const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
     if (caller == nullptr) return true;
     const std::size_t accessingTypeOrdinal = caller->declaringTypeOrdinal;

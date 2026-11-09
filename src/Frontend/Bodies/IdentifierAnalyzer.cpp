@@ -273,7 +273,8 @@ void ProjectMethodBodyModel::completeLocalIdentifier(
     // analyzeAssignment; `const borrowed` remains immutable.
     result.assignable = !local.isConst;
     result.addressable = true;
-    result.readonlyReceiver = local.isConst;
+    result.readonlyReceiver = local.isConst || local.readonlyBorrowedObject;
+    result.readonlyBorrowedObject = local.readonlyBorrowedObject;
     result.pointerPointeeReadonly = local.pointerPointeeReadonly;
     result.pointerNullable = local.pointerNullable;
     result.pointerHasProvenance = local.pointerHasProvenance;

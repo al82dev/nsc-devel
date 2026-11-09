@@ -98,6 +98,8 @@ struct MethodLocalSymbol final
     // source reference while the child reference is live, and preserves the original place.
     std::optional<std::size_t> referenceReborrowSourceLocalOrdinal;
     bool isConst = false;
+    // Read-only capability inherited by a borrowed class alias from its initializer.
+    bool readonlyBorrowedObject = false;
     // T42: volatile local storage uses the same observable-load/store contract as volatile
     // fields. It is not atomic and supplies no inter-thread ordering.
     bool isVolatile = false;

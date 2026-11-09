@@ -4128,6 +4128,7 @@ void ProjectMethodBodyModel::analyzeVariableInitializer(
     sema::OwnershipKind& pendingObjectLifetimeOwnership,
     sema::OwnershipKind& pendingStorageOwnership,
     std::optional<language::CallableTrait>& pendingCallableTrait,
+    bool& pendingReadonlyBorrowedObject,
     bool& pendingOnePastEndPointer,
     bool& pendingPointerPointeeReadonly,
     bool& pendingPointerNullable,
@@ -4158,6 +4159,7 @@ void ProjectMethodBodyModel::analyzeVariableInitializer(
         precomputedVarInitializer, variable, typeKey, methodMemberOrdinal, scopeOrdinal,
         diagnostics, isVarInferred, isRaii, isMoveOnly);
     pendingCallableTrait = initializer.callableTrait;
+    pendingReadonlyBorrowedObject = isBorrowed && initializer.readonlyBorrowedObject;
     validateVariableOwnershipInitializer(
         initializer, variable, typeKey, scopeOrdinal, diagnostics, isMoveOnly, isRaii,
         isBorrowed, isForeachEnumerator, managedDelegate, raiiOwnsNativeArrayBuffer);
@@ -4578,6 +4580,7 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
     sema::OwnershipKind pendingObjectLifetimeOwnership = sema::OwnershipKind::None;
     sema::OwnershipKind pendingStorageOwnership = sema::OwnershipKind::None;
     std::optional<language::CallableTrait> pendingCallableTrait;
+    bool pendingReadonlyBorrowedObject = false;
     bool pendingOnePastEndPointer = false;
     const bool declaredPointerPointeeReadonly = variable->typeSyntax() != nullptr &&
         variable->typeSyntax()->isPointeeConst();
@@ -4591,6 +4594,7 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
         precomputedVarInitializer, pendingLocalBorrow, pendingReferenceEscapeOrigin,
         pendingReferencePlaceKey, pendingReferenceReborrowSourceLocalOrdinal,
         pendingObjectLifetimeOwnership, pendingStorageOwnership, pendingCallableTrait,
+        pendingReadonlyBorrowedObject,
         pendingOnePastEndPointer, pendingPointerPointeeReadonly, pendingPointerNullable,
         pendingPointerHasProvenance, pendingPointerKnownAlignment, pendingPointerAddressSpace,
         variable, typeKey, methodMemberOrdinal, scopeOrdinal, diagnostics,
@@ -4612,6 +4616,7 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
         pendingPointerAddressSpace, isStaticLocal, isReferenceLocal,
         isReadonlyReference, isVariableLengthArray, isVolatile, isRaii, isScope,
         isMoveOnly, isPinnedLocal, isBorrowed, pendingLocalBorrow.has_value());
+    local.readonlyBorrowedObject = pendingReadonlyBorrowedObject;
     recordVariableShadowing(variable, methodMemberOrdinal, scopeOrdinal);
     const std::size_t localOrdinal = registerVariableLocal(
         std::move(local), variable, scopeOrdinal, isVariableLengthArray);
@@ -5908,6 +5913,14 @@ bool ProjectMethodBodyModel::validateBorrowedReturnValue(
     bool returnTypeOwnable,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
+    // A by-value borrowed return has no readonly qualifier for the caller.
+    if (value.readonlyBorrowedObject && !isReadonlyReferenceReturn(method))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidReturn,
+            diagnostics::DiagnosticSeverity::Error, statement->first()->range(),
+            "readonly borrowed object cannot be returned through a mutable borrowed contract");
+        return false;
+    }
     const bool nullBorrow =
         statement->first()->kind() == ast::AstNodeKind::NullLiteralExpression;
     bool matchingBorrowedField = false;

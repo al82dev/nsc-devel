@@ -1619,6 +1619,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
 {
     ExpressionResult result;
     if (!methodGroup.methodGroup || memberModel_ == nullptr) return result;
+    // A delegate would bypass the readonly receiver check at its later invocation.
+    if (methodGroup.readonlyBorrowedObject)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            syntax != nullptr ? syntax->range() : SourceRange{},
+            "readonly borrowed object cannot bind an unchecked class method");
+        return result;
+    }
     std::string returnType;
     std::vector<std::string> parameterTypes;
     std::size_t delegateOrdinal = 0;
