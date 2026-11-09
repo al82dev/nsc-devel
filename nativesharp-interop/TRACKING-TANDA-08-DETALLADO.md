@@ -416,16 +416,18 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-016-01: Probar las muestras de arreglos y matrices empaquetadas registradas en el tracking principal.
 - [x] T08-016-02: Probar las muestras de arreglos de punteros calificados y records indicadas en el tracking principal.
 - **T08-016-03 — Formas de arreglo:**
-- [ ] T08-016-03a: Verificar arreglo fijo de escalares enteros y flotantes.
-- [ ] T08-016-03b: Verificar matriz multidimensional de escalares.
-- [ ] T08-016-03c: Verificar arreglo de structs, unions y enums.
-- [ ] T08-016-03d: Verificar arreglo de punteros `const` y punteros a datos `const` o `volatile`.
-- [ ] T08-016-03e: Verificar arreglos dentro de records empaquetados y anidados.
+- [x] T08-016-03a: Verificar arreglo fijo de escalares enteros y flotantes. [Evidencia](registro-commits/t08-arreglos-c.md).
+- [x] T08-016-03b: Verificar matriz multidimensional de escalares. [Evidencia](registro-commits/t08-arreglos-c.md).
+- [x] T08-016-03c: Verificar arreglo de structs, unions y enums. [Evidencia](registro-commits/t08-arreglos-c.md).
+- [ ] T08-016-03d: Verificar arreglo de punteros `const` y punteros a datos `const` o `volatile`. [Evidencia](registro-commits/t08-arreglos-c.md).
+  - Verificado en globales C (`int *const[]`, `const int *[]`, `volatile int *[]`).
+  - **Pendiente T08-016-03d1:** como campo de record no se importan (falta el miembro en directo; el precompilado no reconstruye el record). [Detalle](registro-commits/t08-arreglos-c.md#pendiente-t08-016-03d1).
+- [x] T08-016-03e: Verificar arreglos dentro de records empaquetados y anidados. [Evidencia](registro-commits/t08-arreglos-c.md).
 - **T08-016-04 — Acceso y consumo:**
-- [ ] T08-016-04a: Comparar tamaño, offsets y alineación de elementos con Clang.
-- [ ] T08-016-04b: Verificar lecturas y escrituras cruzadas de arreglos y matrices.
-- [ ] T08-016-04c: Verificar toma de dirección y diagnóstico cuando el elemento está subalineado.
-- [ ] T08-016-04d: Repetir el acceso con encabezado oculto y metadata precompilada.
+- [x] T08-016-04a: Comparar tamaño, offsets y alineación de elementos con Clang. [Evidencia](registro-commits/t08-arreglos-c.md).
+- [x] T08-016-04b: Verificar lecturas y escrituras cruzadas de arreglos y matrices. [Evidencia](registro-commits/t08-arreglos-c.md).
+- [x] T08-016-04c: Verificar toma de dirección y diagnóstico cuando el elemento está subalineado. [Evidencia](registro-commits/t08-arreglos-c.md).
+- [x] T08-016-04d: Repetir el acceso con encabezado oculto y metadata precompilada. [Evidencia](registro-commits/t08-arreglos-c.md).
 
 ## T08-017 — Punteros a función C
 
