@@ -182,8 +182,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - **T08-004-04 — Globales por tipo y calificador:**
 - [x] T08-004-04a: Verificar globales escalares enteras y flotantes con `const` y `volatile` (todos los anchos, `_Bool`, `float`, `double`, `const volatile`), directo, DLL y precompilado, O0–O3, con control Clang, IR volatile y rechazos. [Evidencia](registro-commits/t08-globales-escalares-calificados.md).
   - [ ] T08-004-04a1: Decisión pendiente (cambia pruebas existentes): permitir `&` de una global C `const` como `T const*`, como en C. Hoy se rechaza («cannot take the address of a qualified C/C++ global») y ese rechazo lo fijan `pruebas-proyecto/ejecutar-cpp.cmd`, `CppClangSessionTests` y `pruebas-tanda-08-record-c`. [Evidencia](registro-commits/t08-globales-escalares-calificados.md#decisión-pendiente-t08-004-04a1).
-- [ ] T08-004-04b: Verificar globales de enum, puntero a enum y record C.
-  - Evidencia previa: una global C record o enum (`Pair g;`, `Pair g[2];`, `Color g;`) usada por una plantilla precompilada falla en el consumidor sin encabezado con «precompiled C global cannot be projected: C/C++ global type is not yet mapped». [Sonda](registro-commits/t08-global-arreglo-incompleto.md#límite-encontrado-para-t08-004-04b).
+- [x] T08-004-04b: Verificar globales de enum, puntero a enum y record C (struct, union, `const`, `volatile`, punteros), directo, DLL y precompilado sin encabezado, O0–O3, con control Clang y rechazos. Corregida la siembra en el catálogo C de los records/enums que solo aparecen como tipo de una global usada por una plantilla. [Evidencia](registro-commits/t08-globales-enum-record.md).
 - [ ] T08-004-04c: Verificar arreglos globales y matrices con punteros calificados.
 - [ ] T08-004-04d: Verificar `_Atomic` en global externa y `static`, con lectura y escritura cruzadas.
 - [ ] T08-004-04e: Verificar `_Thread_local` con y sin `_Atomic` en ejecutable y DLL.
@@ -207,6 +206,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [ ] T08-005-03a: Verificar typedef equivalente entre dos encabezados distintos.
 - [ ] T08-005-03b: Verificar conflicto por tipo subyacente incompatible.
 - [ ] T08-005-03c: Verificar consumo del typedef a través de metadata sin encabezado.
+  - Evidencia previa: un cast a un typedef C en una plantilla pública (`(Color)2`, `(MyInt)2`) impide publicar la biblioteca («generated precompiled public template surface is not valid NativeSharp source»). [Hallazgo](registro-commits/t08-globales-enum-record.md#hallazgos-registrados).
 
 ## T08-006 — Enteros y `_Bool`
 

@@ -1338,6 +1338,20 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         for (const auto& function : projectedFunctions)
             if (function.moduleName == dependency.moduleName && function.mangledName == dependency.linkSymbol &&
                 function.cppClangUsr == dependency.declaration.clangUsr && !visitCallable(function)) return false;
+    // A template may name a C global whose record or enum type appears nowhere else in it: seed that type so
+    // the consumer can project the global without the header. Una plantilla puede nombrar una global C cuyo
+    // tipo record o enum no aparece en otra parte: se siembra para proyectarla sin el encabezado.
+    for (const auto& dependency : dependencies.globals)
+    {
+        const auto owner = std::find_if(graph->projects().begin(), graph->projects().end(),
+            [&](const auto& project) { return project.moduleName() == dependency.moduleName; });
+        if (owner == graph->projects().end()) continue;
+        const auto projected = projectCppPrecompiledCGlobal(dependency,
+            static_cast<std::size_t>(owner - graph->projects().begin()), dependency.moduleName,
+            "x86_64-pc-windows-msvc", *lookup);
+        if (const auto* value = std::get_if<CppSemanticGlobal>(&projected); value && !visit(value->typeKey, 0))
+            return false;
+    }
     if (seeds.empty() && enumSeeds.empty() && dependencies.aliases.empty() && dependencies.functions.empty() &&
         dependencies.globals.empty() && dependencies.enumerators.empty())
     { output.clear(); error.clear(); return true; }
