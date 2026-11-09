@@ -204,6 +204,14 @@ bool ProjectOopMirModel::importTupleLayouts(
             objectLayoutModel.tupleLayoutForTypeKey(nameLookup, field.declaredTypeKey).has_value())
             collectTupleTypeKey(field.declaredTypeKey, tupleKeys);
     }
+    for (const NamespaceStateDeclaration& state : nameLookup.namespaceStates())
+    {
+        if (state.syntax == nullptr || state.syntax->typeSyntax() == nullptr) continue;
+        const std::string key = memberModel.canonicalTypeKey(state.syntax->typeSyntax(), nameLookup);
+        if (ProjectTypeConversion::isTuple(key) &&
+            objectLayoutModel.tupleLayoutForTypeKey(nameLookup, key).has_value())
+            collectTupleTypeKey(key, tupleKeys);
+    }
     for (const ProjectOopHirFunction& function : hirModel.functions())
     {
         collectTupleTypeKey(function.returnTypeKey, tupleKeys);

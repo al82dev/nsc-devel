@@ -203,7 +203,20 @@ bool ProjectGenericModel::applyExpandedAliasSyntax(
     const std::vector<ast::TypeSyntax*> expandedArguments(
         expanded->typeArguments().begin(), expanded->typeArguments().end());
     syntax->clearTypeArguments();
-    for (ast::TypeSyntax* argument : expandedArguments) syntax->addTypeArgument(argument);
+    if (expanded->isTuple())
+    {
+        syntax->setTuple(true);
+        for (std::size_t index = 0; index < expandedArguments.size(); ++index)
+        {
+            const std::string name = index < expanded->tupleElementNames().size()
+                ? expanded->tupleElementNames()[index] : std::string{};
+            syntax->addTupleElement(expandedArguments[index], name);
+        }
+    }
+    else
+    {
+        for (ast::TypeSyntax* argument : expandedArguments) syntax->addTypeArgument(argument);
+    }
     // Target/substituted modifiers are inside modifiers written on the alias use.  For example,
     // `using P<T> = T*; P<int>[]` becomes `int*[]`.
     syntax->prependModifiers(expanded->modifiers());
@@ -302,8 +315,10 @@ bool ProjectGenericModel::expandAliasesForNode(
     for (const ast::AstNode* child : node->children())
     {
         if (child == nullptr || child->kind() != ast::AstNodeKind::UsingAliasDirective ||
-            child->typeSyntax() == nullptr ||
-            (child->genericParameters().empty() && !child->auxiliaryText().empty()))
+            child->typeSyntax() == nullptr)
+            continue;
+        const auto registered = scope.typeAliases.read().find(child->text());
+        if (registered == scope.typeAliases.read().end() || registered->second != child)
             continue;
         GenericLookupScope aliasScope = scope;
         for (const ast::GenericParameterSyntax& parameter : child->genericParameterSyntaxes())
@@ -376,6 +391,8 @@ bool ProjectGenericModel::expandAliasesInNode(
     {
         if (child == nullptr || child->kind() != ast::AstNodeKind::UsingAliasDirective) continue;
         if (!child->genericParameters().empty() || child->auxiliaryText().empty())
+            currentScope.typeAliases.write()[child->text()] = child;
+        else if (currentScope.typeAliases.read().contains(child->auxiliaryText()))
             currentScope.typeAliases.write()[child->text()] = child;
     }
 
