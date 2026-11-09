@@ -328,6 +328,51 @@ class Program { public static int Main() { FAMILY<PAYLOAD> owner = SharedPointer
                         assert result.returncode != 0 and 'shared payload class has no verifiable precompiled lifecycle body' in output, (
                             'unproved root accepted or failed for another reason', family, payload, level, output)
                     print('binary root lifecycle', family, payload, level, 'verified', flush=True)
+        derived_project = root / 'DerivedProducer.nsproj'
+        derived_project.write_text('<Project><PropertyGroup><Name>DerivedProducer</Name><Language>3</Language>'
+            '<OutputType>StaticLibrary</OutputType></PropertyGroup><ItemGroup>'
+            '<Compile Include="DerivedProducer.ns" /><LibraryReference Include="' + root_library.as_posix() +
+            '" Metadata="' + root_library.with_suffix('.nsmeta').as_posix() +
+            '" /></ItemGroup></Project>', encoding='utf-8')
+        (root / 'DerivedProducer.ns').write_text(
+            'public class DerivedSafe : SafeRoot { public DerivedSafe() { } }', encoding='utf-8')
+        derived_library = root / 'DerivedProducer.lib'
+        result = run([compiler, '--emit-project-oop-lib', derived_project, '-O0', '-o', derived_library], root)
+        assert result.returncode == 0, ('derived producer', result.stdout + result.stderr)
+        root_consumer_project = project.read_text(encoding='utf-8')
+        project.write_text(root_consumer_project.replace('</ItemGroup>',
+            '<LibraryReference Include="' + derived_library.as_posix() + '" Metadata="' +
+            derived_library.with_suffix('.nsmeta').as_posix() + '" /></ItemGroup>'), encoding='utf-8')
+        base_cache = '--artifact-cache=' + (root / 'base-lifecycle-cache').as_posix()
+        for family, make in (('Rc', 'MakeRc'), ('Arc', 'MakeArc')):
+            source.write_text(('''using NativeSharp.Core;
+class Program { public static int Main() { FAMILY<DerivedSafe> owner = SharedPointers.MAKE<DerivedSafe>();
+ return owner.Get().Data == 42 ? 42 : 1; } }
+''').replace('FAMILY', family).replace('MAKE', make), encoding='utf-8')
+            exe = root / ('derived-base-cached-' + family + '.exe')
+            result = run([compiler, '--emit-project-oop-exe', project, '-O0', '-o', exe, base_cache], root)
+            assert result.returncode == 0, ('certified binary base compile', family, result.stdout + result.stderr)
+            result = run([exe], root)
+            assert result.returncode == 42, ('certified binary base run', family, result.returncode)
+        (root / 'RootProducer.ns').write_text(root_source.replace('Data = 42;', 'Data = 42; Alias = this;'),
+                                             encoding='utf-8')
+        result = run([compiler, '--emit-project-oop-lib', root_project, '-O0', '-o', root_library], root)
+        assert result.returncode == 0, ('changed binary base producer', result.stdout + result.stderr)
+        for family, make in (('Rc', 'MakeRc'), ('Arc', 'MakeArc')):
+            source.write_text(('''using NativeSharp.Core;
+class Program { public static int Main() { FAMILY<DerivedSafe> owner = SharedPointers.MAKE<DerivedSafe>();
+ return owner.Get().Data == 42 ? 42 : 1; } }
+''').replace('FAMILY', family).replace('MAKE', make), encoding='utf-8')
+            exe = root / ('derived-base-cached-' + family + '.exe')
+            result = run([compiler, '--emit-project-oop-exe', project, '-O0', '-o', exe, base_cache], root)
+            output = result.stdout + result.stderr
+            assert result.returncode != 0 and 'shared payload class has no verifiable precompiled lifecycle body' in output, (
+                'cached consumer failed to observe changed binary base', family, output)
+        print('binary derived lifecycle cache invalidated by base change', flush=True)
+        (root / 'RootProducer.ns').write_text(root_source, encoding='utf-8')
+        result = run([compiler, '--emit-project-oop-lib', root_project, '-O0', '-o', root_library], root)
+        assert result.returncode == 0, ('restored root producer', result.stdout + result.stderr)
+        project.write_text(root_consumer_project, encoding='utf-8')
         source.write_text('''using NativeSharp.Core;
 class Program { public static int Main() { Arc<SafeRoot> owner = SharedPointers.MakeArc<SafeRoot>();
  return owner.Get().Data == 42 ? 42 : 1; } }
