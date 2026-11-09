@@ -733,7 +733,39 @@ bool captureCppTemplateGlobalCandidates(const frontend::ProjectCompilation& comp
                 state.name == compilation.cppTemplateDemands()[candidate.templateDemandIndex].demand.lookupName &&
                 state.cppCGlobal && state.cppImportError.empty();
         });
-        if (selected == states.end()) continue;
+        if (selected == states.end())
+        {
+            // A template that names a C global this producer cannot import still records the declaration it saw.
+            // Without it, the consumer would bind the name in silence to another producer's declaration.
+            // Una plantilla que nombra una global C que este productor no puede importar registra igualmente la
+            // declaración que vio; sin ella el consumidor la uniría en silencio a la declaración de otro productor.
+            if (!candidate.selection.conflict.empty() || candidate.selection.unsupportedIndices.empty() ||
+                candidate.projectOrdinal >= graph->projects().size()) continue;
+            for (const auto index : candidate.selection.unsupportedIndices)
+            {
+                if (index >= inventory.size()) { error = "C global candidate index is invalid"; return false; }
+                const auto& entry = inventory[index];
+                const auto& declaration = entry.declaration;
+                if (!entry.cLanguage || entry.targetTriple != "x86_64-pc-windows-msvc" ||
+                    !declaration.externalLinkage || !declaration.externalSymbol ||
+                    declaration.externalSymbol->empty() || !declaration.clangUsr || declaration.clangUsr->empty() ||
+                    !seen.emplace(entry.projectOrdinal, entry.referenceIndex, *declaration.externalSymbol).second)
+                    continue;
+                metadata_detail::CDependencyGlobalSnapshot snapshot;
+                snapshot.moduleName = graph->projects()[entry.projectOrdinal].moduleName();
+                snapshot.referenceIdentity = "cpp-reference:" + std::to_string(entry.referenceIndex);
+                snapshot.linkSymbol = *declaration.externalSymbol;
+                snapshot.microsoftVolatileSemantics = entry.microsoftVolatileSemantics;
+                snapshot.effectiveDllImport = declaration.dllImport;
+                snapshot.declaration = declaration;
+                snapshot.declaration.location.reset();
+                std::vector<std::uint8_t> encoded;
+                std::string encodeError;
+                if (!metadata_detail::encodeCDependencyGlobal(snapshot, encoded, encodeError)) continue;
+                result.push_back(std::move(snapshot));
+            }
+            continue;
+        }
         auto indices = candidate.selection.declarationIndices;
         indices.insert(indices.end(), candidate.selection.internalIndices.begin(), candidate.selection.internalIndices.end());
         for (const auto index : indices)

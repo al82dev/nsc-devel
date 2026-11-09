@@ -131,7 +131,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
       - [x] Enlazar funciones C de nombre distinto al alias de cada DLL desde el producto DLL NativeSharp y comprobar que comparten la TLS, con hilos y caché en O0–O3. [Evidencia](registro-commits/t08-dll-producto-funciones-alias.md).
 - [x] T08-002-09m7d: Comprobar los demás calificadores y variantes de enlace de la global externa compartida: `const volatile`, `int **`, arreglo fijo, `restrict`, `const int *const`, `_Alignas` y `dllimport` desde DLL, en O0–O3; rechazo de discrepancias de tamaño de arreglo, `volatile` y `restrict`. [Evidencia y límites](registro-commits/t08-global-externa-variantes.md).
   - [x] T08-002-09m7d1: Importar una global C `extern T arr[];` de tamaño desconocido como `T[*]` (indexación, decaimiento calificado, DLL, plantillas precompiladas, tipo compuesto `T a[]`/`T a[N]` entre plantillas), O0–O3, con rechazos. [Evidencia](registro-commits/t08-global-arreglo-incompleto.md).
-  - [ ] T08-002-09m7d2: Rechazar el uso transportado de una global cuya declaración en el productor no se pudo importar (`const int **`). Hoy la plantilla se une en silencio a la declaración `int **` de otro productor. Puede requerir NSMeta (decisión). [Evidencia](registro-commits/t08-global-externa-variantes.md).
+  - [x] T08-002-09m7d2: Rechazar el uso transportado de una global cuya declaración en el productor no se pudo importar (`const int **`): el productor registra la declaración vista y el consumidor la conserva como estado no importable (sin cambio de NSMeta); unión con otro productor rechazada por ambigüedad, uso aislado rechazado con el motivo, sombras y otras globales O0–O3. [Evidencia](registro-commits/t08-global-no-importable.md).
 - [x] T08-002-09n: Enlazar una sola vez una biblioteca C idéntica propagada por dos productores y conservar dos bibliotecas distintas con el mismo nombre, en O0. [Evidencia](registro-commits/t08-dependencia-c-compartida.md).
 - **T08-002-10 — Sombras en plantillas:**
 - [x] T08-002-10a: Verificar una muestra de sombra de función C por parámetro y local en una plantilla precompilada en O0. [Evidencia](registro-commits/t08-sombra-funcion-parametro-local.md).
@@ -418,6 +418,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [ ] T08-018-03a: Verificar resolución antes, dentro y después del ámbito de sombra.
 - [ ] T08-018-03b: Verificar diagnóstico de ambigüedad entre dos declaraciones C visibles.
 - [ ] T08-018-03c: Repetir los casos de función y global desde plantilla precompilada.
+  - Evidencia previa: un campo estático privado usado por una plantilla pública no viaja con ella; si el encabezado del productor declara una global C homónima importable, la plantilla se une en silencio a la global en vez del campo. [Sonda](registro-commits/t08-global-no-importable.md#observación-para-t08-018-03c).
 
 ## T08-019 — Diagnósticos de tipos incompletos
 

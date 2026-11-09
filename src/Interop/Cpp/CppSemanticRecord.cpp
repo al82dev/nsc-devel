@@ -1806,7 +1806,26 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             auto projected = projectCppPrecompiledCGlobal(global, owner->second, global.moduleName,
                                                            "x86_64-pc-windows-msvc", lookup);
             if (const auto* failure = std::get_if<CppSemanticGlobalFailure>(&projected))
-            { error = "precompiled C global cannot be projected: " + failure->message; return false; }
+            {
+                // Keep the producer's unimportable declaration as a state that body analysis reports when it is
+                // used, exactly like a live one: it can no longer be joined in silence with another declaration.
+                // Se conserva la declaración no importable del productor como un estado que el análisis del cuerpo
+                // informa al usarse, igual que uno vivo: ya no puede unirse en silencio con otra declaración.
+                frontend::NamespaceStateSymbol state;
+                state.projectOrdinal = owner->second;
+                state.moduleName = global.moduleName;
+                state.name = global.declaration.name;
+                state.accessibility = frontend::NamespaceFunctionAccessibility::Public;
+                state.isCppExternal = true;
+                state.declaredTypeKey = "builtin:int"; // Never emitted; body analysis reports the reason.
+                state.cppClangUsr = global.declaration.clangUsr;
+                state.cppImportError = failure->message;
+                const Key key{state.projectOrdinal, state.namespaceName, state.name};
+                if (names.contains(key) || global.declaration.qualifiedName != global.declaration.name) continue;
+                names.emplace(key, live.size());
+                live.push_back(std::move(state));
+                continue;
+            }
             const auto& value = std::get<CppSemanticGlobal>(projected);
             frontend::NamespaceStateSymbol state;
             state.projectOrdinal = owner->second;
