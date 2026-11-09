@@ -415,8 +415,13 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
             recordPointee = recordPointee->element.get();
             extraLevels += '*';
         }
-        if (!extraLevels.empty() && (recordPointee->kind != CppTypeKind::Record || recordPointee->isConst ||
-                                     recordPointee->isVolatile)) recordPointee = nullptr;
+        if (!extraLevels.empty() && (recordPointee->isConst || recordPointee->isVolatile)) recordPointee = nullptr;
+        // EN: `T **` over an unqualified scalar base keeps the scalar type key, as parameters already do.
+        // ES: `T **` sobre una base escalar sin calificar conserva la clave escalar, como ya ocurre en parametros.
+        if (!element && !extraLevels.empty() && recordPointee && recordPointee->kind != CppTypeKind::Record)
+            if (auto scalar = mapCppScalarType(*recordPointee))
+                element = CppScalarTypeMapping{scalar->nativeSharpTypeKey + extraLevels,
+                                               field.type.element->canonicalSpelling, false, false};
         if (!element && lookup && recordPointee && recordPointee->kind == CppTypeKind::Record)
         {
             const auto target = projectCppRecordTypeIdentity(*recordPointee, moduleName);

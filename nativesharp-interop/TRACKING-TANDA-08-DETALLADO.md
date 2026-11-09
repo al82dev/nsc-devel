@@ -347,18 +347,20 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 
 - [x] T08-014-01: Probar la muestra `_Bool*` devuelta, almacenada y seleccionada que documenta el tracking principal.
 - **T08-014-02 — Tipos y conversiones:**
-- [ ] T08-014-02a: Verificar punteros a enteros, flotantes y `_Bool`.
-- [ ] T08-014-02b: Verificar punteros a struct, union, enum y `void`.
-- [ ] T08-014-02c: Verificar `T**` y conservación de calificadores en cada nivel representado.
-- [ ] T08-014-02d: Verificar conversiones compatibles y diagnósticos por pérdida de calificadores.
+- [x] T08-014-02a: Verificar punteros a enteros, flotantes y `_Bool`. [Evidencia](registro-commits/t08-punteros-c.md).
+- [x] T08-014-02b: Verificar punteros a struct, union, enum y `void`. [Evidencia](registro-commits/t08-punteros-c.md).
+- [x] T08-014-02c: Verificar `T**` y conservación de calificadores en cada nivel representado. [Evidencia](registro-commits/t08-punteros-c.md).
+  - Límite de representación fijado: un parámetro con calificador en el segundo nivel o en un puntero intermedio se difiere con «parameter 0 is not yet mapped». Corregido: los campos `T **` de base escalar se importan.
+- [x] T08-014-02d: Verificar conversiones compatibles y diagnósticos por pérdida de calificadores. [Evidencia](registro-commits/t08-punteros-c.md).
+  - **Decisión pendiente T08-014-02d1:** `int* p; int const** q = &p;` se acepta (C avisa, C++ rechaza). [Detalle](registro-commits/t08-punteros-c.md#decisión-pendiente-t08-014-02d1).
 - **T08-014-03 — Contextos:**
-- [ ] T08-014-03a: Verificar punteros como parámetros y retornos de funciones C.
-- [ ] T08-014-03b: Verificar punteros en campos y globales C.
-- [ ] T08-014-03c: Verificar uso y restauración de punteros desde biblioteca precompilada.
+- [x] T08-014-03a: Verificar punteros como parámetros y retornos de funciones C. [Evidencia](registro-commits/t08-punteros-c.md).
+- [x] T08-014-03b: Verificar punteros en campos y globales C. [Evidencia](registro-commits/t08-punteros-c.md).
+- [x] T08-014-03c: Verificar uso y restauración de punteros desde biblioteca precompilada. [Evidencia](registro-commits/t08-punteros-c.md).
 - **T08-014-04 — Contratos:**
-- [ ] T08-014-04a: Verificar alineación de puntero a campo natural y empaquetado.
-- [ ] T08-014-04b: Verificar nulabilidad y diagnósticos de desreferencia aplicables.
-- [ ] T08-014-04c: Verificar propagación de `const` y `volatile` en inicialización y reasignación.
+- [x] T08-014-04a: Verificar alineación de puntero a campo natural y empaquetado. [Evidencia](registro-commits/t08-punteros-c.md).
+- [x] T08-014-04b: Verificar nulabilidad y diagnósticos de desreferencia aplicables. [Evidencia](registro-commits/t08-punteros-c.md).
+- [x] T08-014-04c: Verificar propagación de `const` y `volatile` en inicialización y reasignación. [Evidencia](registro-commits/t08-punteros-c.md).
 
 ## T08-015 — Calificadores
 
