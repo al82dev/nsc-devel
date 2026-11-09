@@ -88,19 +88,22 @@ bool precompiledReferenceRequiresLld(const compilation::LibraryReference &refere
 // EN: T08-D04. The Windows loader initializes the static TLS of a DLL (assigns _tls_index and copies the
 //     template) only when the image has an import directory; the descriptor table may hold only its null
 //     terminator. Without one, the DLL's own code reads index 0, the TLS block of the executable. NSC cannot
-//     repair a third-party image without changing it, so such a Runtime is rejected with the cause.
+//     repair a third-party image without changing it, so such a Runtime is rejected with the cause, unless the
+//     reference opts into an adapted copy with RuntimeTls="ImportDirectory" (T08-D04b, ProjectLoader).
 // ES: T08-D04. El cargador de Windows inicializa el TLS estatico de una DLL (asigna _tls_index y copia la
 //     plantilla) solo si la imagen tiene directorio de importacion; basta la tabla con su terminador nulo. Sin
 //     el, el codigo de la DLL lee el indice 0, el bloque TLS del ejecutable. NSC no puede reparar una imagen de
-//     terceros sin modificarla, asi que ese Runtime se rechaza con la causa.
+//     terceros sin modificarla, asi que ese Runtime se rechaza con la causa, salvo que la referencia pida una copia
+//     adaptada con RuntimeTls="ImportDirectory" (T08-D04b, ProjectLoader).
 static bool verifyRuntimeTlsInitialization(
     const std::filesystem::path &runtime, const linker::PeExecutableInfo &info, std::string &error)
 {
     if (info.tlsDirectoryRva == 0 || info.importDirectoryRva != 0) return true;
     error = "runtime DLL '" + pathToUtf8(runtime) + "' has static thread-local storage but no import directory: "
             "the Windows loader does not initialize the static TLS of such a DLL, so its thread-local variables "
-            "would use another module's storage; rebuild the DLL with an import directory (NSC does not modify "
-            "the DLL)";
+            "would use another module's storage; rebuild the DLL with an import directory, or set "
+            "RuntimeTls=\"ImportDirectory\" on the CppLibraryReference to use an adapted copy (NSC does not "
+            "modify the original DLL)";
     return false;
 }
 

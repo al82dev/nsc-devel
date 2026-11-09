@@ -461,10 +461,18 @@ bool readPeImportThunks(
     return true;
 }
 
+// EN: A DLL may carry an import directory that holds only the null terminator: the Windows loader accepts it,
+//     and it is the form that makes the loader initialize the static TLS of a DLL without dependencies
+//     (T08-D04b). An executable built by NSC always imports libraries, so an empty table stays an error there.
+// ES: Una DLL puede tener un directorio de importacion con solo el terminador nulo: el cargador de Windows lo
+//     acepta, y es la forma que hace que el cargador inicialice el TLS estatico de una DLL sin dependencias
+//     (T08-D04b). Un ejecutable construido por NSC siempre importa bibliotecas; ahi la tabla vacia sigue siendo
+//     un error.
 bool readPeImports(
     const std::vector<unsigned char>& bytes,
     const std::vector<SectionView>& sections,
     PeExecutableInfo& info,
+    const bool allowEmptyTable,
     std::string& error)
 {
     if (info.importDirectoryRva == 0) return true;
@@ -507,7 +515,7 @@ bool readPeImports(
         if (!readPeImportThunks(bytes, sections, thunkRva, *libraryName, info, error)) return false;
         descriptorOffset += kImportDescriptorSize;
     }
-    if (info.importedLibraries.empty())
+    if (info.importedLibraries.empty() && !allowEmptyTable)
     {
         error = "PE import directory contains no imported libraries";
         return false;
@@ -543,7 +551,7 @@ bool PeExecutableVerifier::verifyImage(
     if (!readPeSections(bytes, optionalOffset, optionalHeaderSize, info_, sections, error_)) return false;
     if (!readPeExports(bytes, sections, info_, error_)) return false;
     if (!readPeDebugDirectory(bytes, sections, info_, error_)) return false;
-    return readPeImports(bytes, sections, info_, error_);
+    return readPeImports(bytes, sections, info_, dynamicLibrary, error_);
 }
 
 const PeExecutableInfo& PeExecutableVerifier::info() const noexcept

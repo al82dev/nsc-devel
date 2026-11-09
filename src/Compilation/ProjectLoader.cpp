@@ -4,6 +4,7 @@
 #include "Internal/ProjectDescriptor.h"
 #include "Internal/ProjectLoaderCache.h"
 #include "Internal/SourceIncludeRule.h"
+#include "Internal/RuntimeTlsImportDirectory.h"
 
 #include "nativesharp/Compilation/GlobPattern.h"
 #include "nativesharp/Compilation/ImplicitProjectRegistry.h"
@@ -611,10 +612,81 @@ bool parseLibraryReferenceItem(
     return true;
 }
 
+// EN: T08-D04b. Replaces a Runtime declared with RuntimeTls="ImportDirectory" by NSC's adapted copy, written in
+//     `.nsc/runtime-tls/<contents hash>/` next to the project file; the original is only read. The copy is
+//     rewritten only when missing or different, through a temporary file and a rename.
+// ES: T08-D04b. Sustituye un Runtime declarado con RuntimeTls="ImportDirectory" por la copia adaptada de NSC,
+//     escrita en `.nsc/runtime-tls/<hash del contenido>/` junto al archivo de proyecto; el original solo se lee.
+//     La copia solo se reescribe si falta o difiere, mediante un archivo temporal y un renombrado.
+bool adaptRuntimeTlsImportDirectory(const std::filesystem::path& projectDirectory,
+    std::filesystem::path& runtimePath, std::filesystem::path& originalRuntimePath, std::string& error)
+{
+    const auto display = displayPathUtf8(runtimePath);
+    std::ifstream input(runtimePath, std::ios::binary);
+    std::vector<std::uint8_t> original((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    if (!input.good() && !input.eof())
+    {
+        error = "cannot read CppLibraryReference Runtime '" + display + "'";
+        return false;
+    }
+    std::vector<std::uint8_t> adapted;
+    detail::RuntimeTlsAdaptation adaptation;
+    std::string why;
+    if (!detail::deriveRuntimeWithEmptyImportDirectory(original, adapted, adaptation, why))
+    {
+        error = "CppLibraryReference RuntimeTls=\"ImportDirectory\": runtime DLL '" + display + "' " + why;
+        return false;
+    }
+    std::uint64_t hash = 14695981039346656037ull;
+    for (const std::uint8_t value : original)
+    {
+        hash ^= value;
+        hash *= 1099511628211ull;
+    }
+    std::string folder;
+    for (int shift = 60; shift >= 0; shift -= 4) folder.push_back("0123456789abcdef"[(hash >> shift) & 0xFu]);
+    std::error_code ec;
+    const auto directory = projectDirectory / ".nsc" / "runtime-tls" / folder;
+    if ((std::filesystem::create_directories(directory, ec), ec))
+    {
+        error = "cannot create the directory of the adapted runtime DLL for '" + display + "'";
+        return false;
+    }
+    const auto target = directory / runtimePath.filename();
+    std::ifstream existing(target, std::ios::binary);
+    const std::vector<std::uint8_t> current((std::istreambuf_iterator<char>(existing)),
+                                            std::istreambuf_iterator<char>());
+    existing.close();
+    if (current != adapted)
+    {
+        auto staging = target;
+        staging += ".nsc-tmp";
+        {
+            std::ofstream output(staging, std::ios::binary | std::ios::trunc);
+            output.write(reinterpret_cast<const char*>(adapted.data()), static_cast<std::streamsize>(adapted.size()));
+            if (!output)
+            {
+                error = "cannot write the adapted runtime DLL for '" + display + "'";
+                return false;
+            }
+        }
+        std::filesystem::rename(staging, target, ec);
+        if (ec)
+        {
+            error = "cannot publish the adapted runtime DLL for '" + display + "': " + ec.message();
+            return false;
+        }
+    }
+    originalRuntimePath = runtimePath;
+    runtimePath = target;
+    return true;
+}
+
 bool parseCppLibraryReferenceItem(
     const SimpleXmlElement& item, ProjectDescriptor& descriptor, std::string& error)
 {
-    if (!hasOnlyAttributes(item, {"Header", "Language", "Standard", "Library", "Runtime", "VolatileMode"}, error))
+    if (!hasOnlyAttributes(item, {"Header", "Language", "Standard", "Library", "Runtime", "VolatileMode", "RuntimeTls"},
+                           error))
         return false;
     if (!trim(item.text).empty())
     {
@@ -659,6 +731,20 @@ bool parseCppLibraryReferenceItem(
             return false;
         }
         reference.runtime = trim(*runtime);
+    }
+    if (const auto* runtimeTls = attribute(item, "RuntimeTls"))
+    {
+        if (trim(*runtimeTls) != "ImportDirectory")
+        {
+            error = "CppLibraryReference RuntimeTls must be ImportDirectory";
+            return false;
+        }
+        if (!reference.runtime)
+        {
+            error = "CppLibraryReference RuntimeTls requires a Runtime";
+            return false;
+        }
+        reference.runtimeTlsImportDirectory = true;
     }
     for (const auto& child : item.children)
     {
@@ -1295,6 +1381,10 @@ std::optional<std::vector<CppLibraryReference>> loadCppLibraryReferences(
                 return std::nullopt;
             }
         }
+        if (input.runtimeTlsImportDirectory &&
+            !adaptRuntimeTlsImportDirectory(projectDirectory, reference.runtimePath, reference.originalRuntimePath,
+                                            error))
+            return std::nullopt;
         reference.language = input.language;
         reference.languageStandard = input.languageStandard;
         reference.volatileMode = input.volatileMode;
