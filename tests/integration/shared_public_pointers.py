@@ -1450,6 +1450,25 @@ class Program { public static int Main() { Holder holder = default(Holder);
  public virtual SafePayload Find() { if (Data < 0) return Find(); return null; } }
  class Program { public static int Main() { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
  return owner.Get().Data == 42 ? 42 : 1; } }''', 'run:42'),
+        'shared_interface_receiver_return': ('''interface IReturn { EscapePayload Self(); }
+ class EscapePayload : IReturn { public static EscapePayload Alias;
+ public EscapePayload() { Alias = Forward(this); } public static EscapePayload Forward(IReturn value) { return value.Self(); }
+ public EscapePayload Self() { return this; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_interface_parameter_return': ('''interface IReturn { EscapePayload Identity(EscapePayload value); }
+ class Helper : IReturn { public EscapePayload Identity(EscapePayload value) { return value; } }
+ class EscapePayload { public static EscapePayload Alias; public EscapePayload() { Helper helper = new Helper();
+ borrowed IReturn view = helper; Alias = view.Identity(this); } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_interface_return_control': ('''interface IReturn { SafePayload Self(); }
+ interface IOther { SafePayload Self(); } class Other : IOther { public SafePayload Self() { return null; } }
+ class SafePayload : IReturn { public static SafePayload Other; public int Data;
+ public SafePayload() { Other = Forward(this); Data = 42; }
+ public static SafePayload Forward(IReturn value) { return value.Self(); } public SafePayload Self() { return null; } }
+ class Program { public static int Main() { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
+ return owner.Get().Data == 42 ? 42 : 1; } }''', 'run:42'),
         'shared_other_return_control': ('''class SafePayload { public static SafePayload Other; public int Data;
  public SafePayload() { Other = CreateOther(); Data = 42; } public SafePayload CreateOther() { return null; } }
  class Program { public static int Main() { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();

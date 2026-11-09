@@ -192,6 +192,7 @@ class Program { public static int Main() { FAMILY<Payload> owner = SharedPointer
                 ('destructor-virtual-arg', 'public VirtualHelper helper; public EscapePayload() { helper = new VirtualHelper(); } ~EscapePayload() { helper.Publish(this); }'),
                 ('constructor-interface-arg', 'public EscapePayload() { InterfaceHelper helper = new InterfaceHelper(); borrowed IPublisher view = helper; view.Publish(this); }'),
                 ('constructor-interface-receiver', 'public EscapePayload() { Forward(this); } public static void Forward(IReceiver view) { view.Publish(); } public void Publish() { Alias = this; }'),
+                ('constructor-interface-return', 'public EscapePayload() { Alias = Forward(this); } public static EscapePayload Forward(IReturn value) { return value.Self(); } public EscapePayload Self() { return this; }'),
                 ('constructor-return', 'public EscapePayload() { Alias = Self(); } public EscapePayload Self() { return this; }'),
                 ('constructor-virtual-return', 'public EscapePayload() { Alias = Self(); } public virtual EscapePayload Self() { return this; }'),
                 ('destructor-virtual-return', 'public EscapePayload() { } ~EscapePayload() { Alias = Self(); } public virtual EscapePayload Self() { return this; }'),
@@ -201,6 +202,7 @@ class Program { public static int Main() { FAMILY<Payload> owner = SharedPointer
             ):
                 source.write_text(('''using NativeSharp.Core;
 interface IReceiver { void Publish(); }
+interface IReturn { EscapePayload Self(); }
 interface IPublisher { void Publish(EscapePayload value); }
 class InterfaceHelper : IPublisher { public void Publish(EscapePayload value) { EscapePayload.Alias = value; } }
 class Helper { public void Publish(EscapePayload value) { EscapePayload.Alias = value; } }
@@ -209,7 +211,8 @@ class EscapePayload IMPLEMENTS { public static EscapePayload Alias; BODY }
 class Program { public static int Main() { FAMILY<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
  return owner.IsEmpty() ? 1 : 42; } }
 ''').replace('FAMILY', family).replace('MAKE', make).replace('BODY', body)
-                    .replace('IMPLEMENTS', ': IReceiver' if lifecycle == 'constructor-interface-receiver' else ''),
+                    .replace('IMPLEMENTS', ': IReceiver' if lifecycle == 'constructor-interface-receiver'
+                             else ': IReturn' if lifecycle == 'constructor-interface-return' else ''),
                     encoding='utf-8')
                 for level in ('O0', 'O2'):
                     exe = root / ('binary-published-this-' + family + '-' + lifecycle + '-' + level + '.exe')

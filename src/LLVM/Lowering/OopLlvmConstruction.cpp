@@ -29,10 +29,21 @@ ReceiverPublicationScan scanReceiverPublication(
     const frontend::ProjectOopMirModel& mirModel)
 {
     using Kind = frontend::ProjectOopMirNodeKind;
-    std::unordered_map<const frontend::ProjectOopMirNode*, std::vector<std::string>> virtualCallees;
-    const auto virtualTargets = [&](const frontend::ProjectOopMirNode* call) -> const std::vector<std::string>& {
-        auto [entry, inserted] = virtualCallees.try_emplace(call);
-        if (!inserted || !call->virtualSlot.has_value() || call->children.empty()) return entry->second;
+    std::unordered_map<const frontend::ProjectOopMirNode*, std::vector<std::string>> dynamicCallees;
+    const auto dynamicTargets = [&](const frontend::ProjectOopMirNode* call) -> const std::vector<std::string>& {
+        auto [entry, inserted] = dynamicCallees.try_emplace(call);
+        if (!inserted || call->children.empty()) return entry->second;
+        if (call->kind == Kind::InterfaceInstanceCall)
+        {
+            if (!call->interfaceSlot.has_value() || !call->targetTypeOrdinal.has_value()) return entry->second;
+            for (const auto& candidate : mirModel.dispatchTables())
+                for (const auto& binding : candidate.interfaceTables)
+                    if (binding.interfaceTypeOrdinal == *call->targetTypeOrdinal &&
+                        *call->interfaceSlot < binding.calleeNames.size())
+                        entry->second.push_back(binding.calleeNames[*call->interfaceSlot]);
+            return entry->second;
+        }
+        if (!call->virtualSlot.has_value()) return entry->second;
         const auto& receiverType = call->children.front()->typeKey;
         for (const auto& candidate : mirModel.dispatchTables())
         {
@@ -60,11 +71,12 @@ ReceiverPublicationScan scanReceiverPublication(
                 continue;
             }
             if (value->kind == Kind::DirectInstanceCall || value->kind == Kind::DirectStaticCall ||
-                value->kind == Kind::VirtualInstanceCall)
+                value->kind == Kind::VirtualInstanceCall || value->kind == Kind::InterfaceInstanceCall)
             {
                 std::vector<std::string> direct;
                 const std::vector<std::string>* targets = nullptr;
-                if (value->kind == Kind::VirtualInstanceCall) targets = &virtualTargets(value);
+                if (value->kind == Kind::VirtualInstanceCall || value->kind == Kind::InterfaceInstanceCall)
+                    targets = &dynamicTargets(value);
                 else { direct.push_back(value->calleeName); targets = &direct; }
                 bool hasSummary = false;
                 for (const auto& target : *targets)
@@ -158,8 +170,8 @@ ReceiverPublicationScan scanReceiverPublication(
         if ((call->kind == Kind::DirectInstanceCall || call->kind == Kind::DirectStaticCall) &&
             !call->calleeName.empty())
             result.returnDependencies.push_back(call->calleeName);
-        if (call->kind == Kind::VirtualInstanceCall)
-            for (const auto& target : virtualTargets(call))
+        if (call->kind == Kind::VirtualInstanceCall || call->kind == Kind::InterfaceInstanceCall)
+            for (const auto& target : dynamicTargets(call))
                 if (!target.empty()) result.returnDependencies.push_back(target);
         if (call->kind != Kind::DirectStaticCall && isReceiver(call->children.front().get()))
         {
