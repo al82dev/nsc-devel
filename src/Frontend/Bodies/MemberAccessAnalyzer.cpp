@@ -816,9 +816,16 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
     const bool unaddressableValueReceiver = field.isCppExternal && !typeReceiver &&
         !ProjectTypeConversion::isPointer(receiver.typeKey) && !receiver.addressable &&
         !receiver.readonlyReceiver && !receiver.volatileStorage;
+    // EN: T08-D06. As in C, `&` of a member of `const` C storage (or of a `const` member) is a pointer to
+    //     constant data: analyzeAddressOf marks the pointee readonly. A member that is itself a pointer to
+    //     `const` would need a nested qualifier and stays unaddressable.
+    // ES: T08-D06. Como en C, `&` de un miembro de almacenamiento C `const` (o de un miembro `const`) es un
+    //     puntero a dato constante: analyzeAddressOf marca el dato apuntado como de solo lectura. Un miembro
+    //     que ya es puntero a `const` necesitaria un calificador anidado y sigue sin direccion.
     result.addressable = !field.isBitField && !result.volatileStorage &&
         !field.declaredPointerPointeeVolatile && !unalignedImportedField && !unaddressableValueReceiver &&
-        !(field.isCppExternal && (field.isReadonly || receiver.readonlyReceiver));
+        !(field.isCppExternal && (field.isReadonly || receiver.readonlyReceiver) &&
+          field.declaredPointerPointeeReadonly);
     result.readonlyReceiver = receiver.readonlyReceiver || field.isReadonly;
     result.cppFlexibleArrayMember = field.isCppExternal &&
         ProjectMemberModel::flexibleArrayElementTypeKey(field.declaredTypeKey).has_value();

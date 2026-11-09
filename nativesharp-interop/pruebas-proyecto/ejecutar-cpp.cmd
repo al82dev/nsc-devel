@@ -45,7 +45,8 @@ copy /y "%~dp0CppAddrConst.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 "A:\nsc-interop-build\tanda1-ON\bin\nsc.exe" --emit-project-oop-exe "%DEST%\CppProject.nsproj" --no-artifact-cache --cpp-clang-root=A:\al82dev-clang -o "%DEST%\addrconst.exe" > "%DEST%\addrconst-check.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /c:"cannot take the address of a qualified C/C++ global" "%DEST%\addrconst-check.log" >nul
+rem T08-D06: `&` of a const C global is a pointer to const data; storing it in an `int*` drops const.
+findstr /c:"would discard pointee constness" "%DEST%\addrconst-check.log" >nul
 if errorlevel 1 exit /b 1
 copy /y "%~dp0CppRefVolatile.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1

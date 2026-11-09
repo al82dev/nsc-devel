@@ -5,8 +5,8 @@ Globals of every integer width, `_Bool`, `float` and `double`, plain, `const`, `
 reads again after C changes the volatile ones. Checked against a Clang control, directly with a static
 library, with `__declspec(dllimport)` data from a DLL and through a precompiled template consumed without
 the header, O0-O3. The IR keeps volatile loads and stores for the volatile globals. Rejections (O0): writes to
-`const` globals and the address of a `const` or `volatile` global. C allows `const int *p = &g_ci;`; the
-rejection of that case is pinned by existing tests and recorded as a pending decision (T08-004-04a1).
+`const` globals and the address of a `volatile` global. Since T08-D06 the address of a `const` global is a
+pointer to constant data, as in C; validar-direccion-const.py checks it.
 """
 from pathlib import Path
 import os
@@ -82,7 +82,7 @@ WRITES = ("g_sc = 6; g_uc = 7; g_s = 8; g_us = 9; g_i = 10; g_u = 11; g_ll = 12;
           "g_f = 0.5f; g_d = 0.75; g_vi = 14; g_vf = 1.25f; g_vd = 1.75; g_vll = 15;")
 AFTER = ["g_vi == 41", "g_vf == 2.5f", "g_vd == 3.25", "g_vll == 42", "g_cvi == 43", "g_cvuc == 44",
          "*mutable_address() == 10"]
-# `&` of a mutable C global is a plain `T*`. The address of a `const` global is still rejected (see below).
+# `&` of a mutable C global is a plain `T*`; of a `const` global, a `T const*` (T08-D06).
 NS_HELPERS = """    static int* mutable_address() { int* p = &g_i; return p; }
 """
 C_HELPERS = """static int *mutable_address(void) { int *p = &g_i; return p; }
@@ -208,9 +208,8 @@ REJECTIONS = [
     ("escritura-const", "g_ci = 1; return 0;", "not assignable"),
     ("escritura-const-double", "g_cd = 1.0; return 0;", "not assignable"),
     ("escritura-const-volatile", "g_cvi = 1; return 0;", "not assignable"),
-    # C allows `const int *p = &g_ci;`; NativeSharp still rejects it, and existing tests pin that rejection:
-    # recorded as a pending decision (T08-004-04a1).
-    ("direccion-const", "int const* p = &g_ci; return 0;", "cannot take the address of a qualified C/C++ global"),
+    # `int const* p = &g_ci;` is valid since T08-D06 (validar-direccion-const.py); a mutable pointer drops const.
+    ("direccion-const-mutable", "int* p = &g_ci; return 0;", "would discard pointee constness"),
     ("direccion-volatile", "var p = &g_vi; return 0;", "cannot take the address of a qualified C/C++ global"),
 ]
 for name, statements, expected in REJECTIONS:

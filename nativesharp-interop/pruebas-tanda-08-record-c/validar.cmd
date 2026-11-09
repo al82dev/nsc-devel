@@ -213,7 +213,8 @@ copy /y "%~dp0ConstRecordAddress.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-record-address.exe" > "%DEST%\const-record-address.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /c:"cannot take the address of readonly storage until qualified pointers are supported" "%DEST%\const-record-address.log" >nul
+rem T08-D06: `&` of a const C member is a pointer to const data; an `int*` drops const.
+findstr /c:"would discard pointee constness" "%DEST%\const-record-address.log" >nul
 if errorlevel 1 exit /b 1
 copy /y "%~dp0ConstRecordPointerWrite.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
@@ -225,7 +226,8 @@ copy /y "%~dp0ConstRecordPointerAddress.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-record-pointer-address.exe" > "%DEST%\const-record-pointer-address.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /c:"cannot take the address of readonly storage until qualified pointers are supported" "%DEST%\const-record-pointer-address.log" >nul
+rem T08-D06: `&` of a const C member is a pointer to const data; an `int*` drops const.
+findstr /c:"would discard pointee constness" "%DEST%\const-record-pointer-address.log" >nul
 if errorlevel 1 exit /b 1
 copy /y "%~dp0ConstRecordPointerConversion.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
@@ -279,7 +281,8 @@ copy /y "%~dp0ConstRecordMatrixAddress.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1
 nsc.exe --cpp-clang-root=A:\al82dev-clang --emit-project-oop-exe "%DEST%\Project.nsproj" -O0 --no-artifact-cache -o "%DEST%\const-record-matrix-address.exe" > "%DEST%\const-record-matrix-address.log" 2>&1
 if not errorlevel 1 exit /b 1
-findstr /c:"cannot take the address of readonly storage until qualified pointers are supported" "%DEST%\const-record-matrix-address.log" >nul
+rem T08-D06: `&` of a const C member is a pointer to const data; an `int*` drops const.
+findstr /c:"would discard pointee constness" "%DEST%\const-record-matrix-address.log" >nul
 if errorlevel 1 exit /b 1
 copy /y "%~dp0VolatileRecordMatrixAddress.ns.txt" "%DEST%\Main.ns" >nul
 if errorlevel 1 exit /b 1

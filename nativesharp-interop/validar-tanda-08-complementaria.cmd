@@ -29,6 +29,7 @@ for %%T in (
   pruebas-tanda-08-globales-c\validar-arreglos.py
   pruebas-tanda-08-globales-c\validar-atomicas.py
   pruebas-tanda-08-globales-c\validar-consumo.py
+  pruebas-tanda-08-globales-c\validar-direccion-const.py
   pruebas-tanda-08-globales-c\validar-enum-record.py
   pruebas-tanda-08-globales-c\validar-escalares-calificados.py
   pruebas-tanda-08-globales-c\validar-tls.py

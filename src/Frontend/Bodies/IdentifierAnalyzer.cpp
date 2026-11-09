@@ -1108,10 +1108,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     }
     const bool pointeeVolatile = state.cppPointerPointeeVolatile ||
         (state.declaredTypeSyntax != nullptr && state.declaredTypeSyntax->isPointeeVolatile());
-    if (((state.isCppExternal && (state.isVolatile || state.isCppReadonly || state.cppPointerPointeeReadonly ||
-                                 state.cppAtomicStorage)) ||
-         pointeeVolatile) &&
-        formingAddressOperand_ && expression == formingAddressTarget_)
+    // EN: T08-D06. As in C, `&` of a `const` C global yields a pointer to constant data (`T const*`): the
+    //     readonly receiver marks the pointee, so writes through it and conversions that drop `const` are
+    //     rejected. `volatile`, atomic and pointer-to-qualified globals still need a qualified address type.
+    // ES: T08-D06. Como en C, `&` de una global C `const` produce un puntero a dato constante (`T const*`): el
+    //     receptor de solo lectura marca el dato apuntado, asi que se rechazan la escritura y las conversiones
+    //     que pierden `const`. Las globales `volatile`, atomicas y punteros a dato calificado siguen sin admitirlo.
+    const bool qualifiedAddress = (state.isCppExternal &&
+        (state.isVolatile || state.cppPointerPointeeReadonly || state.cppAtomicStorage)) || pointeeVolatile;
+    if (qualifiedAddress && formingAddressOperand_ && expression == formingAddressTarget_)
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
             diagnostics::DiagnosticSeverity::Error,
@@ -1140,8 +1145,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     result.valid = true;
     result.assignable = !state.isConst && !state.isCppReadonly &&
         !(state.isCppExternal && ProjectMemberModel::fixedArrayElementTypeKey(state.declaredTypeKey).has_value());
-    result.addressable = !state.isCppEnumConstant && !pointeeVolatile && !(state.isCppExternal &&
-        (state.isVolatile || state.isCppReadonly || state.cppPointerPointeeReadonly || state.cppAtomicStorage));
+    result.addressable = !state.isCppEnumConstant && !qualifiedAddress;
     result.readonlyReceiver = state.isConst || state.isCppReadonly;
     result.volatileStorage = state.isCppExternal && state.isVolatile;
     result.pointerPointeeReadonly = state.cppPointerPointeeReadonly;

@@ -8977,7 +8977,9 @@ int main(int argc, char** argv)
                     if (path.filename() != "Main.ns") return std::nullopt;
                     switch (scenario)
                     {
-                        case 0: return "int Main() { return tools.cpp_constant + tools.cpp_const_volatile; }\n";
+                        // T08-D06: `&` of a `const` C global is a pointer to constant data, as in C.
+                        case 0: return "int Main() { int const* p = &tools.cpp_constant; "
+                                       "return *p + tools.cpp_constant + tools.cpp_const_volatile; }\n";
                         case 1: return "int Main() { tools.cpp_constant = 1; return 0; }\n";
                         case 2: return "int Main() { int* p = &tools.cpp_constant; return 0; }\n";
                         default: return "int Main() { ref int p = ref tools.cpp_constant; return p; }\n";
@@ -8989,7 +8991,7 @@ int main(int argc, char** argv)
                 const bool ready = configured && compilation.compileProjectOopMir(path, error);
                 bool expectedDiagnostic = false;
                 const char* expected = scenario == 1 ? "left side of assignment is not assignable" :
-                    scenario == 2 ? "cannot take the address of a qualified C/C++ global" :
+                    scenario == 2 ? "would discard pointee constness" :
                     "reference-local initializer must be a mutable addressable storage location";
                 for (const auto& diagnostic : compilation.diagnostics().diagnostics())
                     expectedDiagnostic |= diagnostic.message().find(expected) != std::string::npos;
