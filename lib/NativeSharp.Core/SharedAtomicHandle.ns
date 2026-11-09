@@ -24,6 +24,11 @@ namespace NativeSharp.Core.Internal
             return block == null ? 0l : SharedAtomicControl.StrongCount(block);
         }
 
+        public long WeakCount()
+        {
+            return block == null ? 0l : SharedAtomicControl.WeakCount(block);
+        }
+
         public SharedAtomicHandle<T> Clone()
         {
             if (block == null || !SharedAtomicControl.TryRetainStrong(block))

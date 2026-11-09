@@ -28,18 +28,23 @@ struct BadValue { public owned Resource item;
     safe = '''class Program { public static int Main() {
  SharedLocalWeak<Payload> weak = new SharedLocalWeak<Payload>(null, null);
  { SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
-   if (owner.IsEmpty() || owner.StrongCount() != 1l) return 1;
+   if (owner.IsEmpty() || owner.StrongCount() != 1l || owner.WeakCount() != 0l) return 1;
    weak = owner.Downgrade();
+   if (owner.WeakCount() != 1l || weak.WeakCount() != 1l) return 10;
    { SharedLocalWeak<Payload> weakClone = weak.Clone();
      SharedLocalHandle<Payload> clone = owner.Clone();
      SharedLocalHandle<Payload> upgraded = weak.Upgrade();
      SharedBorrow<Payload> view = clone.Borrow();
      borrowed Payload alias = view.Get();
-     if (clone.StrongCount() != 3l || alias.Data != 20l || weakClone.Expired()) return 2;
+     if (clone.StrongCount() != 3l || clone.WeakCount() != 2l || weakClone.WeakCount() != 2l ||
+         alias.Data != 20l || weakClone.Expired()) return 2;
    }
    if (owner.StrongCount() != 1l || Payload.Drops != 0 || weak.Expired()) return 3;
  }
- if (Payload.Drops != 1 || !weak.Expired()) return 4;
+ if (Payload.Drops != 1 || !weak.Expired() || weak.WeakCount() != 1l) return 4;
+ { SharedLocalWeak<Payload> weakClone = weak.Clone();
+   if (weakClone.WeakCount() != 2l || !weakClone.Expired()) return 11;
+ }
  { SharedLocalHandle<Payload> expired = weak.Upgrade(); if (!expired.IsEmpty()) return 5; }
  { SharedLocalHandle<Value> owner = SharedLocalFactory.Create<Value>();
    SharedLocalWeak<Value> valueWeak = owner.Downgrade();

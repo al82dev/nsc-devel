@@ -22,6 +22,11 @@ namespace NativeSharp.Core.Internal
             return block == null || SharedLocalControl.StrongCount(block) == 0l;
         }
 
+        public long WeakCount()
+        {
+            return block == null ? 0l : SharedLocalControl.WeakCount(block);
+        }
+
         public SharedLocalWeak<T> Clone()
         {
             if (block == null || !SharedLocalControl.TryRetainWeak(block))

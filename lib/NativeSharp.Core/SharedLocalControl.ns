@@ -43,6 +43,17 @@ namespace NativeSharp.Core.Internal
             }
         }
 
+        // Exclude the implicit weak held while at least one strong reference remains.
+        public static long WeakCount(long[] block)
+        {
+            unsafe("shared local control header")
+            {
+                LocalSharedCounts* counts = (LocalSharedCounts*)&block[0];
+                long weak = (*counts).WeakCountRaw();
+                return (*counts).StrongCount() > 0l ? weak - 1l : weak;
+            }
+        }
+
         // The last strong owner destroys the payload once, then releases its implicit weak.
         public static int DropStrong<T>(long[] block, T* payload)
         {

@@ -41,6 +41,17 @@ namespace NativeSharp.Core.Internal
             }
         }
 
+        // Counts are individual atomic snapshots; concurrent destruction may change them.
+        public static long WeakCount(long[] block)
+        {
+            unsafe("shared atomic control header")
+            {
+                AtomicSharedCounts* counts = (AtomicSharedCounts*)&block[0];
+                long weak = (*counts).WeakCountRaw();
+                return (*counts).StrongCount() > 0l ? weak - 1l : weak;
+            }
+        }
+
         // Only the thread observing the final strong release destroys the payload.
         public static int DropStrong<T>(long[] block, T* payload)
         {

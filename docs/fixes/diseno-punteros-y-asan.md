@@ -315,6 +315,14 @@ fixture comparte un puntero crudo al handle vivo para probar el contador; esto
 no acredita que el lenguaje permita transferir un `Arc` seguro entre hilos.
 La selección de cinco pruebas dirigidas pasó (`shared-control-suite.log`); el
 análisis de Core también pasó. No se agotaron todos los intercalados posibles.
+Los handles internos fuertes y débiles exponen ahora `WeakCount`: la prueba
+verifica cero, uno y dos débiles y conserva un débil después de destruir el
+payload. La variante local lee los contadores sin concurrencia; la atómica
+realiza lecturas separadas que pueden observar cambios concurrentes y no se
+ha demostrado como una instantánea linealizable. Esa limitación debe resolverse
+o definir su contrato antes de publicar la API. Las cinco pruebas dirigidas y
+el análisis semántico de Core pasaron de nuevo (`shared-control-suite.log`,
+`shared-core-check.log`).
 
 ## AddressSanitizer
 
