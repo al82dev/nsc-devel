@@ -1361,7 +1361,16 @@ void Parser::ParseContinuationCoordinator::appendMatchGoverningState(
         frame.governing,
         false,
         !frame.hasReferenceBinding && !frame.hasMoveBinding);
-    if (frame.hasReferenceBinding) governing->setAuxiliaryText("local:ref");
+    if (frame.hasReferenceBinding)
+    {
+        bool hasMutableReferenceBinding = false;
+        for (const MatchArm& arm : frame.arms)
+            for (const auto& binding : arm.analysis.bindings)
+                hasMutableReferenceBinding = hasMutableReferenceBinding ||
+                    binding.second == PatternBindingMode::ReferenceMutable;
+        governing->setAuxiliaryText(
+            hasMutableReferenceBinding ? "local:ref" : "local:pattern-ref");
+    }
     lowered.addChild(governing);
     lowered.addChild(makeMatchSelectedDeclaration(frame.keywordRange, temporary));
 }

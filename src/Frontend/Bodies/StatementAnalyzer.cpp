@@ -4054,7 +4054,10 @@ void ProjectMethodBodyModel::analyzeBorrowedVariableInitializer(
         }
     }
     // A class extracted from a checked local view retains the view and owner region.
-    if (initializer.valid && initializer.ownership == sema::OwnershipKind::Borrowed &&
+    if (initializer.valid &&
+        (initializer.ownership == sema::OwnershipKind::Borrowed ||
+         (variable->auxiliaryText() == "local:pattern-ref" &&
+          variable->text().starts_with("$__nsc_match_"))) &&
         variable->first()->kind() == ast::AstNodeKind::CallExpression)
     {
         const MethodCallBinding* call = callBinding(variable->first(), methodMemberOrdinal);
@@ -4249,9 +4252,27 @@ void ProjectMethodBodyModel::analyzeVariableInitializer(
         precomputedVarInitializer, variable, typeKey, methodMemberOrdinal, scopeOrdinal,
         diagnostics, isVarInferred, isRaii, isMoveOnly);
     pendingCallableTrait = initializer.callableTrait;
-    const bool foreachReadonlyReference = isReferenceLocal && isReadonlyReference &&
-        variable->auxiliaryText() == "local:foreach-ref" && initializer.readonlyBorrowedObject;
-    pendingReadonlyBorrowedObject = (isBorrowed || foreachReadonlyReference) &&
+    const bool checkedReadonlyReference = isReferenceLocal && isReadonlyReference &&
+        (variable->auxiliaryText() == "local:foreach-ref" ||
+         variable->auxiliaryText() == "local:pattern-ref") && initializer.readonlyBorrowedObject;
+    bool patternReceiverReference = false;
+    if (isReferenceLocal && isReadonlyReference &&
+        variable->auxiliaryText() == "local:pattern-ref" &&
+        variable->text().starts_with("$__nsc_match_") &&
+        variable->first()->kind() == ast::AstNodeKind::CallExpression)
+    {
+        const MethodCallBinding* call = callBinding(variable->first(), methodMemberOrdinal);
+        if (call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
+            !call->staticCall && call->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
+            (memberModel_->typeIsMoveOnly(call->receiverTypeKey) ||
+             typeKeyIsViewLike(call->receiverTypeKey)) &&
+            *call->selectedMemberOrdinal < memberModel_->members().size())
+        {
+            const ClassMemberSymbol& callee = memberModel_->members()[*call->selectedMemberOrdinal];
+            patternReceiverReference = callee.isReferenceReturn && callee.returnLifetimeName == "this";
+        }
+    }
+    pendingReadonlyBorrowedObject = (isBorrowed || checkedReadonlyReference) &&
         initializer.readonlyBorrowedObject;
     validateVariableOwnershipInitializer(
         initializer, variable, typeKey, scopeOrdinal, diagnostics, isMoveOnly, isRaii,
@@ -4271,7 +4292,7 @@ void ProjectMethodBodyModel::analyzeVariableInitializer(
         managedDelegate || raiiOwnsNativeArrayBuffer ||
         (initializer.readonlyBorrowedObject && (ProjectTypeConversion::isNativeArray(typeKey) ||
             (localValueType != nullptr && localValueType->kind == NamedTypeDeclarationKind::Struct)));
-    if (!isBorrowed && !isRaii && !foreachReadonlyReference && initializer.valid &&
+    if (!isBorrowed && !isRaii && !checkedReadonlyReference && initializer.valid &&
         initializer.ownership == sema::OwnershipKind::Borrowed && localTypeOwnable)
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
@@ -4279,7 +4300,7 @@ void ProjectMethodBodyModel::analyzeVariableInitializer(
             variable->first()->range(),
             "borrowed value cannot be stored in unqualified local '" + variable->text() +
                 "'; declare the local borrowed so its lifetime remains checked");
-    if (isBorrowed || foreachReadonlyReference)
+    if (isBorrowed || checkedReadonlyReference || patternReceiverReference)
         analyzeBorrowedVariableInitializer(
             pendingLocalBorrow, initializer, variable, typeKey, methodMemberOrdinal,
             scopeOrdinal, diagnostics, isRaii, raiiBorrowedElementArray);
@@ -4714,8 +4735,9 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
         isReadonlyReference, isVariableLengthArray, isVolatile, isRaii, isScope,
         isMoveOnly, isPinnedLocal, isBorrowed, pendingLocalBorrow.has_value());
     local.readonlyBorrowedObject = pendingReadonlyBorrowedObject;
-    if (isReferenceLocal && isReadonlyReference && pendingReadonlyBorrowedObject &&
-        variable->auxiliaryText() == "local:foreach-ref" && pendingLocalBorrow.has_value())
+    if (isReferenceLocal && isReadonlyReference &&
+        (variable->auxiliaryText() == "local:foreach-ref" ||
+         variable->auxiliaryText() == "local:pattern-ref") && pendingLocalBorrow.has_value())
         local.ownership = sema::OwnershipKind::Borrowed;
     recordVariableShadowing(variable, methodMemberOrdinal, scopeOrdinal);
     const std::size_t localOrdinal = registerVariableLocal(

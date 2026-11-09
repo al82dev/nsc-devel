@@ -1318,7 +1318,16 @@ void Parser::StructuredControlParser::appendMatchGoverningState(
             state.governing,
             false,
             !state.hasReferenceBinding && !state.hasMoveBinding);
-        if (state.hasReferenceBinding) governing->setAuxiliaryText("local:ref");
+        if (state.hasReferenceBinding)
+        {
+            bool hasMutableReferenceBinding = false;
+            for (const MatchArm& arm : state.arms)
+                for (const auto& binding : arm.analysis.bindings)
+                    hasMutableReferenceBinding = hasMutableReferenceBinding ||
+                        binding.second == PatternBindingMode::ReferenceMutable;
+            governing->setAuxiliaryText(
+                hasMutableReferenceBinding ? "local:ref" : "local:pattern-ref");
+        }
         lowered.addChild(governing);
         lowered.addChild(makeMatchSelectedDeclaration(state.keywordRange, temporary));
     }
