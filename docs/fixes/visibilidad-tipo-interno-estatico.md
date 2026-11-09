@@ -235,3 +235,21 @@ por texto en otros caminos. Falta validar DLL, campos con tipos externos y
 propiedades, y comprobar que no se amplíe indebidamente la superficie. El caso
 de alias y el SDK Core binario siguen sin resolver; este resultado no acredita
 un arreglo general ni un SDK listo para usar.
+
+Un control nuevo coloca dos declaraciones genéricas del mismo módulo en
+archivos distintos: ambas usan `Pick.Helper.Read()`, pero cada archivo asigna
+`Pick` a un namespace diferente y espera 21 o 33, respectivamente. El proyecto
+completo desde fuentes devuelve 42 en O0/O2; la biblioteca se genera, y su
+consumidor falla en O0 con `unknown identifier 'Pick'` en ambas plantillas.
+Fuente y evidencia: `tests/integration/generic_library_alias_isolation.py`,
+`A:/nsc-fixes-evidencia/generic-owner-alias-isolation.cmd` y su `.log`.
+El resultado descarta resolver el problema con un único alias global para todo
+el módulo: cada declaración debe conservar su propio ámbito. La prueba queda
+pendiente de pasar como consumidor binario.
+
+Con el compilador `ddfb806dd332926e` se volvió a analizar el consumidor de
+Core previamente emitido, sin reconstruir Core. Continúa el error de receptor
+`SharedAtomic` desconocido en la plantilla reconstruida
+(`A:/nsc-fixes-evidencia/generic-owner-core-consumer-refresh.cmd` y su `.log`).
+La comprobación usa el binario anterior, por lo que no demuestra cómo se
+emitiría Core con los últimos cambios del productor.
