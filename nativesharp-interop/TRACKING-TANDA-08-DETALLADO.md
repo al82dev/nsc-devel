@@ -518,7 +518,7 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
   - [ ] T08-D05b: alias importado directamente (función exclusiva de una de las DLL homónimas) con dependencias homónimas: requiere enlazar en ejecución esas funciones cuando el alias necesita aislamiento; hoy se rechaza con la causa.
 - [x] T08-D06: `&` de global C `const` produce un puntero a dato constante; la escritura se rechaza (T08-004-04a1). [Evidencia](registro-commits/t08-d06-direccion-global-const.md).
 - [x] T08-D07: `_Atomic` sobre record, tamaños directos y con biblioteca atómica (T08-004-04d1); también TLS, `volatile`, `static` del encabezado y DLL. [Evidencia](registro-commits/t08-d07-atomicas-record.md).
-- [ ] T08-D08: validadores `.cmd` versionados con LF pasan a CRLF.
+- [x] T08-D08: validadores `.cmd` versionados con LF pasan a CRLF: `.gitattributes` fija `eol=crlf` para `.cmd`/`.bat` y los 176 archivos en LF del árbol de trabajo se convirtieron. [Evidencia](registro-commits/t08-d08-cmd-crlf.md).
 - [ ] T08-D09: struct C equivalente en dos encabezados, usado por valor (T08-005-03a1).
 - [ ] T08-D10: typedef C homónimos e incompatibles de productores distintos (T08-005-03b1).
 - [ ] T08-D11: `-` y `~` sobre enteros estrechos: reglas de NativeSharp frente a expresiones C (T08-006-04b1).

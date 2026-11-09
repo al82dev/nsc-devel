@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+# T08-D08: Windows batch files are always checked out with CRLF; cmd.exe mislocates labels in LF files.
+# T08-D08: los archivos por lotes de Windows siempre se extraen con CRLF; cmd.exe pierde etiquetas en archivos LF.
+*.cmd text eol=crlf
+*.bat text eol=crlf
