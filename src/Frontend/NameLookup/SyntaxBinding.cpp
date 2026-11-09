@@ -106,14 +106,13 @@ bool ProjectNameLookup::bindGenericTemplateConstraints(
     // quedaba a medias: el error existia solo si alguien usaba la
     // plantilla.
     //
-    // Solo los tipos de constraint: el argumento sustituido no existe en
-    // una plantilla, y el parser ya rechaza que un constraint nombre otro
-    // parametro generico, de modo que aqui no puede llegar por construccion
-    // un nombre irresoluble.
+    // Bind concrete names now; parameters are resolved after substitution.
+    LookupEnvironment constraintEnvironment = environment;
+    constraintEnvironment.openConstraintParameters = node->genericParameters();
     for (const ast::GenericConstraintClause& clause : node->genericConstraints())
     {
         for (const ast::TypeSyntax* constraint : clause.typeConstraints)
-            bindTypeSyntax(unit, constraint, namespaceSegments, environment, diagnostics, index);
+            bindTypeSyntax(unit, constraint, namespaceSegments, constraintEnvironment, diagnostics, index);
         if (clause.equalityConstraint == nullptr ||
             std::find(
                 node->genericParameters().begin(),
@@ -126,7 +125,7 @@ bool ProjectNameLookup::bindGenericTemplateConstraints(
         if (!language::parseConstGenericArgumentMarker(
                 clause.equalityConstraint->baseName(), constantType, constantValue))
             bindTypeSyntax(
-                unit, clause.equalityConstraint, namespaceSegments, environment, diagnostics, index);
+                unit, clause.equalityConstraint, namespaceSegments, constraintEnvironment, diagnostics, index);
     }
     return true;
 }

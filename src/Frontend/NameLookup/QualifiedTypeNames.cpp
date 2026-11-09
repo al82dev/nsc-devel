@@ -114,6 +114,10 @@ void ProjectNameLookup::bindTypeSyntax(
     UnitBindingIndex& index)
 {
     if (syntax == nullptr || index.bindingBySyntax.contains(syntax)) return;
+    if (syntax->typeArguments().empty() && !syntax->isFunction() && !syntax->isTuple() &&
+        std::find(environment.openConstraintParameters.begin(), environment.openConstraintParameters.end(),
+                  syntax->baseName()) != environment.openConstraintParameters.end())
+        return;
     std::string constType;
     std::string constValue;
     if (language::parseConstGenericArgumentMarker(syntax->baseName(), constType, constValue))
@@ -129,6 +133,13 @@ void ProjectNameLookup::bindTypeSyntax(
     const std::string writtenName = syntax->baseName();
     expandTypeAlias(syntax, environment, diagnostics);
     bindChildTypeSyntaxes(unit, syntax, namespaceSegments, environment, diagnostics, index);
+    // The generic discovery phase checks the template name and arity, but an
+    // open instance has no nominal specialization to bind in this phase.
+    for (const ast::TypeSyntax* argument : syntax->typeArguments())
+        if (argument != nullptr && argument->typeArguments().empty() &&
+            std::find(environment.openConstraintParameters.begin(), environment.openConstraintParameters.end(),
+                      argument->baseName()) != environment.openConstraintParameters.end())
+            return;
     // Stage 52 fix: a generic type argument substituted into a specialization cloned from a
     // referenced project's template (e.g. List<MyOwnClass> where List<T> lives in a shared
     // library) carries an explicit origin-project override -- see TypeSyntax::originProjectOrdinal

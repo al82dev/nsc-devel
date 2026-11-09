@@ -212,11 +212,18 @@ void ProjectGenericModel::processNodeGenericConstraints(
     GenericLookupScope& currentScope,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    GenericLookupScope constraintScope = currentScope;
+    for (const std::string& parameter : node->genericParameters())
+        constraintScope.typeParameters.write().insert(parameter);
+    for (const ast::GenericParameterSyntax& parameter : node->genericParameterSyntaxes())
+        if (parameter.kind == ast::GenericParameterSyntaxKind::Constant ||
+            parameter.kind == ast::GenericParameterSyntaxKind::ConstantPack)
+            constraintScope.constParameters.write().insert(parameter.name);
     for (const ast::GenericConstraintClause& clause : node->genericConstraints())
     {
         for (const ast::TypeSyntax* constraint : clause.typeConstraints)
             processTypeSyntax(
-                unit, const_cast<ast::TypeSyntax*>(constraint), currentNamespace, currentScope,
+                unit, const_cast<ast::TypeSyntax*>(constraint), currentNamespace, constraintScope,
                 diagnostics);
         std::string substitutedConstantType;
         std::string substitutedConstantValue;
@@ -228,7 +235,7 @@ void ProjectGenericModel::processNodeGenericConstraints(
         {
             processTypeSyntax(
                 unit, const_cast<ast::TypeSyntax*>(clause.substitutedArgument), currentNamespace,
-                currentScope, diagnostics);
+                constraintScope, diagnostics);
         }
     }
 }

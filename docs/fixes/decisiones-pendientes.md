@@ -94,6 +94,46 @@ decisiones posteriores indicadas explícitamente abajo.
   intenta resolver también los argumentos anidados de la declaración abierta y
   supone que no pueden nombrar otro parámetro. Estas observaciones identifican
   partes de la ruta, pero no prueban que corregir solo nombres sea suficiente.
+  El usuario autorizó después tomar autónomamente las decisiones recomendadas:
+  se elige admitir la relación dependiente y verificarla al especializar.
+  La reproducción original volvió a rechazar `T` con el compilador aislado
+  (`A:/nsc-fixes-evidencia/generic-dependent-current.cmd` y `.log`). Un ensayo
+  que omitía los parámetros de la declaración únicamente al enlazar restricciones
+  abiertas compiló incrementalmente, pero el mismo diagnóstico permaneció;
+  se retiró el ensayo. El registro de la comprobación se sobrescribió al repetirla,
+  por lo que conserva la última salida y no una comparación independiente entre
+  ambos builds. Falta identificar qué recorrido o clon conserva el argumento
+  abierto; no se considera corregido ni se han validado especializaciones
+  dependientes correctas e incompatibles. Los builds coexistieron con cambios
+  ajenos sin registrar y no acreditan una revisión limpia.
+  Una investigación posterior localizó otra causa: `--dump-project-generics`
+  materializaba `Reducer<T>` antes de cerrar el método. En
+  `processNodeGenericConstraints`, los parámetros del nodo no habían entrado
+  en el ámbito usado para procesar sus restricciones. Un ensayo sin commit
+  incorpora esos parámetros al ámbito y difiere el enlace nominal de la forma
+  abierta: el volcado ya no materializa `Reducer<T>` y la comprobación de
+  nombres del ejemplo original pasa. No obstante, una especialización válida
+  `Keep<int, IntReducer>` se rechaza en la validación de restricciones porque
+  `ProjectGenericConstraintModel` no encuentra una declaración nominal cerrada
+  para `Reducer<T>` (`generic-dependent-controls/good.log`). No se alcanzaron
+  la ejecución ni el control incompatible. El ensayo sigue provisional; falta
+  resolver la validación de la plantilla y demostrar que las restricciones
+  incompatibles y los nombres inválidos siguen rechazándose.
+  El ensayo posterior usa la identidad registrada por la fase genérica para
+  validar si la plantilla abierta es clase o interfaz, sin exigir una instancia
+  nominal abierta. La reproducción original se emitió y ejecutó en O0 con
+  salida 0 (`generic-dependent-controls/original.log`). La prueba dirigida
+  `tests/integration/dependent_generic_constraints.py` ejecutó las relaciones
+  directa y anidada válidas con salida 42 en O0/O2; rechazó las dos relaciones
+  incompatibles, la plantilla inexistente y una estructura como restricción
+  (`generic-dependent-regression.log`). También pasó la prueba existente
+  `nsc.cc1.generic-constraints` (`generic-constraints-existing.log`). Esta prueba
+  nueva aún no está registrada en CMake porque el archivo tiene cambios ajenos;
+  se ejecutó directamente. No acredita el consumo entre proyectos precompilados
+  ni todos los nombres, alias o formas anidadas. Un ejemplo adicional con
+  `Reducer<T>, Reducer<U>` es rechazado por el parser como duplicado antes de
+  llegar a esta validación (`generic-dependent-controls/two-args.log`); permanece
+  pendiente de investigación. No se considera cerrado el caso completo.
 
 ## Temporales en parámetros in y operadores ++/--
 

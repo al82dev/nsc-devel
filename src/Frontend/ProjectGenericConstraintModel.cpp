@@ -57,6 +57,23 @@ std::string writtenSpelling(const ast::TypeSyntax* syntax)
     return text;
 }
 
+std::string openConstraintSpelling(const ast::TypeSyntax* syntax)
+{
+    if (syntax == nullptr) return "?";
+    std::string result = writtenSpelling(syntax);
+    if (!syntax->typeArguments().empty())
+    {
+        result += '<';
+        for (std::size_t i = 0; i < syntax->typeArguments().size(); ++i)
+        {
+            if (i != 0) result += ',';
+            result += openConstraintSpelling(syntax->typeArguments()[i]);
+        }
+        result += '>';
+    }
+    return result;
+}
+
 // La declaracion que una clave de tipo nombra, o null. Se busca por la clave y no por un indice
 // prestado de otro modelo: los ordinales de `namedTypes()` son la identidad que comparten la
 // herencia y las interfaces, asi que resolver aqui una vez evita tener que decidir a cual de los
@@ -313,6 +330,7 @@ bool ProjectGenericConstraintModel::validateTemplateTypeConstraint(
     std::size_t templateOrdinal,
     const ast::GenericConstraintClause& clause,
     const ast::TypeSyntax* constraintSyntax,
+    const ProjectGenericModel& genericModel,
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
     std::unordered_map<std::string, std::string>& seenByKey,
@@ -321,15 +339,22 @@ bool ProjectGenericConstraintModel::validateTemplateTypeConstraint(
     std::vector<std::string>& clauseAtoms,
     diagnostics::DiagnosticEngine& diagnostics)
 {
-    const std::string constraintKey =
-        memberModel.canonicalTypeKey(constraintSyntax, nameLookup);
+    std::string constraintKey = memberModel.canonicalTypeKey(constraintSyntax, nameLookup);
+    const std::string* openIdentity = genericModel.resolvedTypeIdentity(constraintSyntax);
+    const GenericTemplateRecord* openTemplate = openIdentity != nullptr && openIdentity->starts_with("generic:")
+        ? genericModel.templateForCanonicalKey(openIdentity->substr(8)) : nullptr;
+    if (openTemplate != nullptr)
+        constraintKey = *openIdentity + ":" + openConstraintSpelling(constraintSyntax);
     clauseAtoms.push_back("type:" + constraintKey);
     std::size_t constraintOrdinal = 0;
     const NamedTypeDeclaration* constraint =
         declarationForTypeKey(nameLookup, constraintKey, constraintOrdinal);
-    if (constraint == nullptr ||
+    if ((openTemplate == nullptr && constraint == nullptr) ||
+        (openTemplate != nullptr && openTemplate->kind != GenericTemplateKind::Class &&
+         openTemplate->kind != GenericTemplateKind::Interface) ||
+        (openTemplate == nullptr &&
         (constraint->kind != NamedTypeDeclarationKind::Class &&
-         constraint->kind != NamedTypeDeclarationKind::Interface))
+         constraint->kind != NamedTypeDeclarationKind::Interface)))
     {
         violations_.push_back(GenericConstraintViolation{
             GenericConstraintViolationKind::ConstraintIsNotAClassOrInterface,
@@ -359,7 +384,8 @@ bool ProjectGenericConstraintModel::validateTemplateTypeConstraint(
         return false;
     }
     seenByKey.emplace(constraintKey, std::string(constraintSyntax->baseName()));
-    if (constraint->kind == NamedTypeDeclarationKind::Class)
+    if ((openTemplate != nullptr && openTemplate->kind == GenericTemplateKind::Class) ||
+        (openTemplate == nullptr && constraint->kind == NamedTypeDeclarationKind::Class))
         baseClasses.emplace_back(constraintSyntax, acceptedConstraints);
     ++acceptedConstraints;
     return true;
@@ -434,6 +460,7 @@ void ProjectGenericConstraintModel::validateTemplateClause(
     std::size_t templateOrdinal,
     const GenericTemplateRecord& templateRecord,
     const ast::GenericConstraintClause& clause,
+    const ProjectGenericModel& genericModel,
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
     std::vector<std::string>& templateAtoms,
@@ -457,7 +484,7 @@ void ProjectGenericConstraintModel::validateTemplateClause(
     {
         if (constraintSyntax == nullptr) continue;
         validateTemplateTypeConstraint(
-            templateOrdinal, clause, constraintSyntax, nameLookup, memberModel,
+            templateOrdinal, clause, constraintSyntax, genericModel, nameLookup, memberModel,
             seenByKey, baseClasses, acceptedConstraints, clauseAtoms, diagnostics);
     }
     normalizeTemplateClause(
@@ -498,7 +525,7 @@ void ProjectGenericConstraintModel::validateTemplateClauses(
         std::vector<std::string> templateAtoms;
         for (const ast::GenericConstraintClause& clause : templateRecord.constraints)
             validateTemplateClause(
-                templateOrdinal, templateRecord, clause, nameLookup,
+                templateOrdinal, templateRecord, clause, genericModel, nameLookup,
                 memberModel, templateAtoms, diagnostics);
         finalizeTemplateConstraintIdentity(templateOrdinal, templateAtoms);
     }
