@@ -16,6 +16,7 @@ struct ReceiverPublicationScan
     std::vector<std::string> directReceiverCallees;
     std::vector<std::size_t> virtualReceiverSlots;
     std::vector<std::pair<std::string, std::size_t>> directArgumentCallees;
+    std::vector<std::tuple<std::string, std::size_t, std::size_t>> virtualArgumentCallees;
 };
 
 ReceiverPublicationScan scanReceiverPublication(
@@ -101,6 +102,16 @@ ReceiverPublicationScan scanReceiverPublication(
                 if (isReceiver(call->children[child].get()))
                     result.directArgumentCallees.emplace_back(call->calleeName, child - firstArgument);
         }
+        if (call->kind == Kind::VirtualInstanceCall && call->virtualSlot.has_value())
+            for (std::size_t child = 1; child < call->children.size(); ++child)
+                if (isReceiver(call->children[child].get()))
+                {
+                    const std::size_t source = child - 1U;
+                    const std::size_t parameter = call->argumentParameterOrdinals.empty()
+                        ? source : call->argumentParameterOrdinals.at(source);
+                    result.virtualArgumentCallees.emplace_back(
+                        call->children.front()->typeKey, *call->virtualSlot, parameter);
+                }
     }
     return result;
 }
@@ -840,6 +851,18 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                     for (const auto& [callee, argument] : scan.directArgumentCallees)
                         if (const auto* target = mirModel_.functionForMangledName(callee); target != nullptr)
                             pending.emplace_back(target, argument);
+                    for (const auto& [receiverType, slot, argument] : scan.virtualArgumentCallees)
+                        for (const auto& candidate : mirModel_.dispatchTables())
+                        {
+                            const auto* ancestor = &candidate;
+                            while (ancestor != nullptr && ancestor->typeKey != receiverType)
+                                ancestor = ancestor->baseTypeOrdinal.has_value()
+                                    ? mirModel_.dispatchTableForType(*ancestor->baseTypeOrdinal) : nullptr;
+                            if (ancestor != nullptr && slot < candidate.slotCalleeNames.size())
+                                if (const auto* target = mirModel_.functionForMangledName(
+                                        candidate.slotCalleeNames[slot]); target != nullptr)
+                                    pending.emplace_back(target, argument);
+                        }
                     for (const auto slot : scan.virtualReceiverSlots)
                         for (const auto typeOrdinal : lifecycleTypes)
                             if (const auto* table = mirModel_.dispatchTableForType(typeOrdinal);
