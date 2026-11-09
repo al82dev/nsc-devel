@@ -134,7 +134,13 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         }
         if (depth == 0)
         {
-            if (found->second->status != CppRecordGroupStatus::OneDefinition || !lookup || !owner ||
+            // EN: T08-D09: a C record defined equivalently in several headers is passed by value once its imported
+            //     type has a value layout (checked below); otherwise only one definition qualifies.
+            // ES: T08-D09: un record C definido de forma equivalente en varios encabezados se pasa por valor si su
+            //     tipo importado tiene layout de valor (se comprueba abajo); si no, solo vale una definicion.
+            if ((found->second->status != CppRecordGroupStatus::OneDefinition &&
+                 found->second->status != CppRecordGroupStatus::MultipleDefinitionsPointerCompatible) ||
+                !lookup || !owner ||
                 !type.sizeBits || !type.alignmentBits || *type.sizeBits % 8 || *type.alignmentBits % 8)
                 return std::nullopt;
             const auto ordinal = lookup->typeOrdinalForIdentity(identity->key());

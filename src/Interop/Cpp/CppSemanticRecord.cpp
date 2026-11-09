@@ -1008,6 +1008,45 @@ std::optional<std::size_t> selectCppRecordMemberDefinition(
     return first;
 }
 
+namespace
+{
+// EN: T08-D09. A C struct or union defined in several headers (identical text, or one header with guards reached
+//     through two references) is one compatible type across translation units (C11 6.2.7). When the group was
+//     verified (MultipleDefinitionsPointerCompatible: equivalent structure, same ODR hash and dimensions) and its
+//     members were reconciled (selectCppRecordMemberDefinition), every complete observation must also be C with
+//     the chosen definition's byte dimensions; then the record has a value layout, as with one definition.
+// ES: T08-D09. Un struct o union C definido en varios encabezados (texto identico, o un encabezado con guardas
+//     al que llegan dos referencias) es un solo tipo compatible entre unidades de traduccion (C11 6.2.7). Si el
+//     grupo se verifico (MultipleDefinitionsPointerCompatible: estructura equivalente, mismo hash ODR y mismas
+//     dimensiones) y sus miembros se reconciliaron (selectCppRecordMemberDefinition), toda observacion completa
+//     debe ser C con las dimensiones en bytes de la definicion elegida; entonces tiene layout de valor.
+bool equivalentCRecordsHaveValueLayout(std::span<const CppSemanticRecordEntry> inventory, const CppRecordGroup& group,
+                                       std::size_t chosen)
+{
+    if (group.status != CppRecordGroupStatus::MultipleDefinitionsPointerCompatible || chosen >= inventory.size())
+        return false;
+    const auto& selected = inventory[chosen].declaration;
+    if (selected.isCxx || !selected.complete || !selected.sizeBits || !selected.alignmentBits ||
+        *selected.sizeBits == 0 || *selected.alignmentBits == 0 || *selected.sizeBits % 8 != 0 ||
+        *selected.alignmentBits % 8 != 0) return false;
+    const auto size = *selected.sizeBits / 8;
+    const auto alignment = *selected.alignmentBits / 8;
+    if ((alignment & (alignment - 1)) != 0 || size % alignment != 0) return false;
+    std::size_t complete = 0;
+    for (const auto index : group.inventoryIndices)
+    {
+        if (index >= inventory.size()) return false;
+        const auto& record = inventory[index].declaration;
+        if (record.isCxx || (record.kind != CppRecordKind::Struct && record.kind != CppRecordKind::Union) ||
+            record.kind != selected.kind) return false;
+        if (!record.complete) continue;
+        if (record.sizeBits != selected.sizeBits || record.alignmentBits != selected.alignmentBits) return false;
+        ++complete;
+    }
+    return complete >= 2;
+}
+}
+
 CppCRecordSnapshotResult captureCppCRecordSnapshot(
     std::span<const CppSemanticRecordEntry> inventory, const CppRecordGroup& group)
 {
@@ -1085,7 +1124,8 @@ CppCRecordSnapshotResult captureCppCRecordSnapshot(
     if (!record.complete || !record.sizeBits || !record.alignmentBits || !*record.sizeBits || !*record.alignmentBits)
         return fail("complete C record has no usable dimensions");
     snapshot.complete = true;
-    snapshot.valueLayoutUsable = group.status == CppRecordGroupStatus::OneDefinition;
+    snapshot.valueLayoutUsable = group.status == CppRecordGroupStatus::OneDefinition ||
+        equivalentCRecordsHaveValueLayout(inventory, group, *selected);
     snapshot.sizeBits = record.sizeBits;
     snapshot.alignmentBits = record.alignmentBits;
     snapshot.sourceProvenance = record.sourceProvenance;
@@ -2308,12 +2348,15 @@ CppRecordObservationResult prepareCppRecordObservation(
                             other.sourceProvenance->sourcePath, ec) || ec) { sameSource = false; break; }
                 }
                 if (sameSource && memberAccessLayout) objectLayout = memberAccessLayout;
+                if (!objectLayout && memberAccessLayout && equivalentCRecordsHaveValueLayout(inventory, group, *chosen))
+                    objectLayout = memberAccessLayout;
             }
         result.types.push_back({group.identity, frontend::NamedTypeDeclarationKind::Struct,
                                 frontend::NamedTypeAccessibility::Public, group.projectOrdinal,
                                 std::move(sourcePath), objectLayout, memberAccessLayout});
         result.types.back().isIncomplete = group.status == CppRecordGroupStatus::ForwardOnly;
-        if (group.status == CppRecordGroupStatus::OneDefinition)
+        if (group.status == CppRecordGroupStatus::OneDefinition ||
+            (group.status == CppRecordGroupStatus::MultipleDefinitionsPointerCompatible && objectLayout))
             for (const auto entryIndex : group.inventoryIndices)
             {
                 const auto& record = inventory[entryIndex].declaration;

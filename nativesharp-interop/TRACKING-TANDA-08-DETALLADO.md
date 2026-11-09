@@ -208,7 +208,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-005-02e: Verificar typedef de enum nombrado y enum anónimo. [Evidencia](registro-commits/t08-typedef-c.md).
 - **T08-005-03 — Reconciliación:**
 - [x] T08-005-03a: Verificar typedef equivalente entre dos encabezados distintos. [Evidencia](registro-commits/t08-typedef-c.md).
-  - **Decisión pendiente T08-005-03a1:** un struct C definido en dos encabezados (texto idéntico o encabezado común con guardas) solo se usa por puntero; `Pair p;` se rechaza («cannot be created by value until object lifetime is implemented»). La prueba unitaria «repeated C record observations do not claim value layout» fija ese contrato. Relacionado con T08-010-07.
+  - [x] T08-005-03a1: Resuelta por T08-D09: un struct o union C definido de forma equivalente en dos encabezados (texto idéntico o encabezado común con guardas) se usa por valor (locales, copias, globales, campos, argumentos y retornos), directo y precompilado. [Evidencia](registro-commits/t08-d09-record-dos-encabezados.md). Antes: un struct C definido en dos encabezados (texto idéntico o encabezado común con guardas) solo se usa por puntero; `Pair p;` se rechaza («cannot be created by value until object lifetime is implemented»). La prueba unitaria «repeated C record observations do not claim value layout» fija ese contrato. Relacionado con T08-010-07.
 - [x] T08-005-03b: Verificar conflicto por tipo subyacente incompatible. [Evidencia](registro-commits/t08-typedef-c.md).
   - **Decisión pendiente T08-005-03b1:** dos productores con typedef homónimos incompatibles no pueden usarse en un mismo consumidor ni a través de sus plantillas («conflicting C/C++ type alias»); lo fija `typedef-funcion-record/validar.py --incompatible`. Alternativa: resolver cada plantilla en el catálogo de su productor, como las constantes enum y las globales `static`.
 - [x] T08-005-03c: Verificar consumo del typedef a través de metadata sin encabezado. Corregidos el cast a typedef C en plantilla pública y el typedef escalar idéntico entre consumidor y catálogo. [Evidencia](registro-commits/t08-typedef-c.md).
@@ -519,7 +519,7 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 - [x] T08-D06: `&` de global C `const` produce un puntero a dato constante; la escritura se rechaza (T08-004-04a1). [Evidencia](registro-commits/t08-d06-direccion-global-const.md).
 - [x] T08-D07: `_Atomic` sobre record, tamaños directos y con biblioteca atómica (T08-004-04d1); también TLS, `volatile`, `static` del encabezado y DLL. [Evidencia](registro-commits/t08-d07-atomicas-record.md).
 - [x] T08-D08: validadores `.cmd` versionados con LF pasan a CRLF: `.gitattributes` fija `eol=crlf` para `.cmd`/`.bat` y los 176 archivos en LF del árbol de trabajo se convirtieron. [Evidencia](registro-commits/t08-d08-cmd-crlf.md).
-- [ ] T08-D09: struct C equivalente en dos encabezados, usado por valor (T08-005-03a1).
+- [x] T08-D09: struct C equivalente en dos encabezados, usado por valor (T08-005-03a1). [Evidencia](registro-commits/t08-d09-record-dos-encabezados.md).
 - [ ] T08-D10: typedef C homónimos e incompatibles de productores distintos (T08-005-03b1).
 - [ ] T08-D11: `-` y `~` sobre enteros estrechos: reglas de NativeSharp frente a expresiones C (T08-006-04b1).
 - [ ] T08-D12: `int` frente a `unsigned int` en operaciones C (T08-009-03c1).
