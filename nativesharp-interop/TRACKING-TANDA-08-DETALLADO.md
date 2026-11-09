@@ -162,10 +162,11 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
   - La prueba de sesión distingue la incorporación de objetos C++ sin internalización y su rechazo con internalización. [Evidencia](registro-commits/t08-control-thinlto-internalizacion.md).
 - [x] T08-003-03: Probar las muestras de declaraciones sin prototipo y promociones C11 registradas en el tracking principal.
 - **T08-003-04 — Declaraciones y redeclaraciones:**
-- [ ] T08-003-04a: Verificar selección de prototipo compatible entre declaración adelantada y definición.
-- [ ] T08-003-04b: Verificar diagnóstico de redeclaraciones con parámetros o retorno incompatibles.
-- [ ] T08-003-04c: Verificar funciones variádicas y llamadas sin prototipo con promociones por defecto.
-- [ ] T08-003-04d: Verificar captura y símbolo de funciones `static inline` de encabezados distintos.
+- [x] T08-003-04a: Verificar selección de prototipo compatible entre declaración adelantada y definición (repetida, typedef, `const` superior, arreglo y función ajustados, sin prototipo completada, `static inline`), directo y precompilado, O0–O3, con control Clang. [Evidencia](registro-commits/t08-funciones-declaraciones.md).
+- [x] T08-003-04b: Verificar diagnóstico de redeclaraciones con parámetros o retorno incompatibles: mismo encabezado (Clang), dos encabezados, dos productores precompilados y aridad del prototipo compuesto. [Evidencia](registro-commits/t08-funciones-declaraciones.md).
+- [x] T08-003-04c: Verificar funciones variádicas y llamadas sin prototipo con promociones por defecto (enteros estrechos, `bool`, `float`, `long`, puntero y record), directo y precompilado, O0–O3; rechazo de `struct` NativeSharp. [Evidencia](registro-commits/t08-funciones-declaraciones.md).
+- [x] T08-003-04d: Verificar captura y símbolo de funciones `static inline` de encabezados distintos: ayudantes y `static` locales independientes, directo y con plantillas de dos productores sin encabezados, O0–O3. [Evidencia](registro-commits/t08-funciones-declaraciones.md).
+  - [ ] T08-003-04d1: Importar una función C `static` sin `inline` definida en un encabezado (hoy «unknown identifier»). [Hallazgo](registro-commits/t08-funciones-declaraciones.md#hallazgo-registrado).
 - **T08-003-05 — Visibilidad y enlace:**
 - [ ] T08-003-05a: Verificar llamada externa desde namespace y resolución con un local homónimo.
 - [ ] T08-003-05b: Verificar enlace de función C en biblioteca estática y DLL.
