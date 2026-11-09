@@ -2202,6 +2202,14 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
             expression, raiiTargetLocal, scopeOrdinal, diagnostics)) return false;
     if (!raiiTargetLocal.has_value() && rejectUnavailableAssignmentOwner(
             expression, moveOnlyTargetLocal, scopeOrdinal, diagnostics)) return false;
+    if (moveOnlyTargetParameter.has_value() &&
+        hasActiveBorrowOfOwnedParameter(*moveOnlyTargetParameter, scopeOrdinal))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error, expression->first()->range(),
+            "cannot overwrite owner parameter while a borrowed local is alive");
+        return false;
+    }
     delegateTarget = isDelegateTypeKey(left.typeKey);
     right = analyzeAssignmentRight(
         expression, left, raiiTargetLocal, moveOnlyTargetLocal, moveOnlyTargetParameter,

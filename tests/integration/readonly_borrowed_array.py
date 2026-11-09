@@ -95,6 +95,16 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
         'overwrite_after_borrow_scope': ('''HANDLE<Payload> other = FACTORY.Create<Payload>();
  { borrowed Payload temporary = other.Get(); if (temporary.Data[0] != 0) return 1; }
  other = FACTORY.Create<Payload>(); return other.Get().Data[0] == 0 ? 42 : 2;''', None),
+        'overwrite_parameter_view': ('''return Work(FACTORY.Create<Payload>()); }
+ public static int Work(HANDLE<Payload> value) { SharedBorrow<Payload> view = value.Borrow();
+ value = FACTORY.Create<Payload>(); return view.Get().Data[0];''', 'cannot overwrite owner'),
+        'move_parameter_view': ('''return Work(FACTORY.Create<Payload>()); }
+ public static int Work(HANDLE<Payload> value) { SharedBorrow<Payload> view = value.Borrow();
+ HANDLE<Payload> other = move(value); return view.Get().Data[0];''', 'cannot move'),
+        'parameter_view_control': ('''return Work(FACTORY.Create<Payload>()); }
+ public static int Work(HANDLE<Payload> value) {
+ { SharedBorrow<Payload> view = value.Borrow(); if (view.Get().Data[0] != 0) return 1; }
+ value = FACTORY.Create<Payload>(); return value.Get().Data[0] == 0 ? 42 : 2;''', None),
         'nested_write': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
  borrowed Children nested = nestedOwner.Get(); nested.Data[0].Value = 10; return 0;''', 'not assignable'),
         'nested_escape': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();

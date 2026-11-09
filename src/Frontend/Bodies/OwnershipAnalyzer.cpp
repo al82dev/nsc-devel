@@ -122,6 +122,13 @@ std::optional<std::string> ProjectMethodBodyModel::viewRootLocalOfExpression(
                         return typeKeyIsViewLike(local.typeKey) && !local.viewRootLocalName.empty()
                             ? local.viewRootLocalName : local.name;
                 }
+                const ClassMemberSymbol* method = methodSymbol(callable);
+                if (name.has_value() && name->kind == ScopeNameKind::Parameter &&
+                    method != nullptr && name->semanticOrdinal < method->parameters.size() &&
+                    memberModel_ != nullptr &&
+                    method->parameters[name->semanticOrdinal].passKind == ParameterPassKind::Value &&
+                    memberModel_->typeIsMoveOnly(method->parameters[name->semanticOrdinal].typeKey))
+                    return method->parameters[name->semanticOrdinal].name;
             }
         }
 
@@ -885,6 +892,14 @@ bool ProjectMethodBodyModel::hasActiveBorrowOfOwnedParameter(
         {
             return true;
         }
+    }
+    for (const MethodLocalSymbol& local : locals_)
+    {
+        if (local.methodMemberOrdinal != methodMemberOrdinal || local.viewRootLocalName.empty() ||
+            !scopeContains(local.scopeOrdinal, scopeOrdinal)) continue;
+        const auto root = lookupScopeName(local.scopeOrdinal, local.viewRootLocalName);
+        if (root.has_value() && root->kind == ScopeNameKind::Parameter &&
+            root->semanticOrdinal == parameterOrdinal) return true;
     }
     const std::string rootPlace = "P" + std::to_string(parameterOrdinal);
     if (conflictingMutableReference(
