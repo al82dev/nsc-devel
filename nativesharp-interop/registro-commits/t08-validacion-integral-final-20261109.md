@@ -85,7 +85,7 @@ Respaldos verificados en `claude\respaldo\`, que se conservan:
 - `development-cpp-clang-20261109.bundle`;
 - `development-cpp-clang-20261109-noche.bundle`.
 
-Los commits posteriores a `ccbcd2f66`, incluidos los de este bloque, están solo en local; no se hizo push.
+Esta sesión no hizo push. El reflog de `github/development-cpp-clang` registra pushes externos a esta sesión (a las 15:27 y 15:44, hora local) que publicaron la rama hasta `1140e1bd6`; el commit de esta validación y los siguientes quedan en local.
 
 ## Archivo accidental
 
