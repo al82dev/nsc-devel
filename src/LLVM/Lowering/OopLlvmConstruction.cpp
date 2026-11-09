@@ -139,7 +139,11 @@ ReceiverPublicationScan scanReceiverPublication(
             const auto* target = node->children[0].get();
             if (target->kind == Kind::LocalAddress && target->localOrdinal.has_value())
                 recordCopy(*target->localOrdinal, node->children[1].get());
-            else if (target->kind == Kind::StaticFieldAddress || target->kind == Kind::NamespaceStateAddress)
+            else if (target->kind == Kind::StaticFieldAddress || target->kind == Kind::NamespaceStateAddress ||
+                (target->kind == Kind::FieldAddress && target->children.size() == 1U &&
+                 target->children.front() != nullptr &&
+                 (target->children.front()->kind == Kind::StaticFieldLoad ||
+                  target->children.front()->kind == Kind::NamespaceStateLoad)))
                 globalValues.push_back(node->children[1].get());
         }
         for (const auto& child : node->children) pending.push_back(child.get());
