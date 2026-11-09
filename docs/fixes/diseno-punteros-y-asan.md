@@ -308,6 +308,16 @@ Como medida interna, el contenedor de resultado se dejó sin una restricción qu
 no utiliza; la fábrica de clases conserva `where T : class`. La reproducción
 original con el contenedor restringido se conserva y el defecto del compilador
 permanece pendiente, no se considera corregido por ese ajuste.
+Una prueba complementaria encontró el problema inverso: un `Box<Wrong>` que
+incumple su restricción se rechaza directamente, pero se aceptó dentro de un
+candidato elegido (`shared-overload-constraint-probe/results.json`, ensayo
+anterior a la corrección experimental). Transportar el grupo por el recorrido
+y comprobar declaraciones, construcción y arreglos corrigió esas variantes,
+pero `Wrapper<Box<Wrong>>` seguía aceptándose. Se retiró todo el experimento
+del compilador y se recompiló incrementalmente la versión anterior; la solución
+requiere conservar las dependencias de argumentos anidados y demostrar también
+que un diagnóstico válido no desaparezca por diferirse. El ejemplo original
+de la campaña no se alteró.
 Con el contenedor interno sin esa restricción, la regresión de handles ejecuta
 4 000 clones atómicos en cuatro hilos, tanto O0 como O2, y verifica que queda
 un único fuerte y que el payload se destruye una vez después de los joins. El
