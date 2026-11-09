@@ -15,6 +15,7 @@ struct ReceiverPublicationScan
     bool publishes = false;
     std::vector<std::string> directReceiverCallees;
     std::vector<std::size_t> virtualReceiverSlots;
+    std::vector<std::pair<std::size_t, std::size_t>> interfaceReceiverSlots;
     std::vector<std::pair<std::string, std::size_t>> directArgumentCallees;
     std::vector<std::tuple<std::string, std::size_t, std::size_t>> virtualArgumentCallees;
     std::vector<std::tuple<std::size_t, std::size_t, std::size_t>> interfaceArgumentCallees;
@@ -93,6 +94,9 @@ ReceiverPublicationScan scanReceiverPublication(
         {
             if (call->kind == Kind::VirtualInstanceCall && call->virtualSlot.has_value())
                 result.virtualReceiverSlots.push_back(*call->virtualSlot);
+            else if (call->kind == Kind::InterfaceInstanceCall && call->interfaceSlot.has_value() &&
+                     call->targetTypeOrdinal.has_value())
+                result.interfaceReceiverSlots.emplace_back(*call->targetTypeOrdinal, *call->interfaceSlot);
             else if (call->kind == Kind::DirectInstanceCall && !call->calleeName.empty())
                 result.directReceiverCallees.push_back(call->calleeName);
         }
@@ -890,6 +894,14 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                                 if (const auto* target = mirModel_.functionForMangledName(table->slotCalleeNames[slot]);
                                     target != nullptr)
                                     pending.emplace_back(target, std::nullopt);
+                    for (const auto& [interfaceType, slot] : scan.interfaceReceiverSlots)
+                        for (const auto typeOrdinal : lifecycleTypes)
+                            if (const auto* table = mirModel_.dispatchTableForType(typeOrdinal); table != nullptr)
+                                for (const auto& binding : table->interfaceTables)
+                                    if (binding.interfaceTypeOrdinal == interfaceType && slot < binding.calleeNames.size())
+                                        if (const auto* target = mirModel_.functionForMangledName(
+                                                binding.calleeNames[slot]); target != nullptr)
+                                            pending.emplace_back(target, std::nullopt);
                 }
             }
             bool safePartialCleanup = false;

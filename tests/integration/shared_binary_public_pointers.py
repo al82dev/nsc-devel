@@ -190,16 +190,20 @@ class Program { public static int Main() { FAMILY<Payload> owner = SharedPointer
                 ('constructor-virtual-arg', 'public EscapePayload() { VirtualHelper helper = new VirtualHelper(); helper.Publish(this); }'),
                 ('destructor-virtual-arg', 'public VirtualHelper helper; public EscapePayload() { helper = new VirtualHelper(); } ~EscapePayload() { helper.Publish(this); }'),
                 ('constructor-interface-arg', 'public EscapePayload() { InterfaceHelper helper = new InterfaceHelper(); borrowed IPublisher view = helper; view.Publish(this); }'),
+                ('constructor-interface-receiver', 'public EscapePayload() { Forward(this); } public static void Forward(IReceiver view) { view.Publish(); } public void Publish() { Alias = this; }'),
             ):
                 source.write_text(('''using NativeSharp.Core;
+interface IReceiver { void Publish(); }
 interface IPublisher { void Publish(EscapePayload value); }
 class InterfaceHelper : IPublisher { public void Publish(EscapePayload value) { EscapePayload.Alias = value; } }
 class Helper { public void Publish(EscapePayload value) { EscapePayload.Alias = value; } }
 class VirtualHelper { public virtual void Publish(EscapePayload value) { EscapePayload.Alias = value; } }
-class EscapePayload { public static EscapePayload Alias; BODY }
+class EscapePayload IMPLEMENTS { public static EscapePayload Alias; BODY }
 class Program { public static int Main() { FAMILY<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
  return owner.IsEmpty() ? 1 : 42; } }
-''').replace('FAMILY', family).replace('MAKE', make).replace('BODY', body), encoding='utf-8')
+''').replace('FAMILY', family).replace('MAKE', make).replace('BODY', body)
+                    .replace('IMPLEMENTS', ': IReceiver' if lifecycle == 'constructor-interface-receiver' else ''),
+                    encoding='utf-8')
                 for level in ('O0', 'O2'):
                     exe = root / ('binary-published-this-' + family + '-' + lifecycle + '-' + level + '.exe')
                     result = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', exe], root)
