@@ -168,9 +168,9 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-003-04d: Verificar captura y símbolo de funciones `static inline` de encabezados distintos: ayudantes y `static` locales independientes, directo y con plantillas de dos productores sin encabezados, O0–O3. [Evidencia](registro-commits/t08-funciones-declaraciones.md).
   - [x] T08-003-04d1: Importar una función C `static` sin `inline` definida en un encabezado: directo, precompilado y dos productores, O0–O3, con rechazos de homónimas y de declaración sin cuerpo. [Evidencia](registro-commits/t08-funcion-static-encabezado.md).
 - **T08-003-05 — Visibilidad y enlace:**
-- [ ] T08-003-05a: Verificar llamada externa desde namespace y resolución con un local homónimo.
-- [ ] T08-003-05b: Verificar enlace de función C en biblioteca estática y DLL.
-- [ ] T08-003-05c: Verificar función usada por plantilla precompilada con encabezado presente y oculto.
+- [x] T08-003-05a: Verificar llamada externa desde namespace y resolución con un local homónimo (sombra por bloque y rechazo de llamar al local), O0–O3. [Evidencia](registro-commits/t08-funciones-visibilidad-enlace.md).
+- [x] T08-003-05b: Verificar enlace de función C en biblioteca estática y DLL publicada junto al ejecutable, O0–O3, con control Clang y rechazo de símbolo no definido. [Evidencia](registro-commits/t08-funciones-visibilidad-enlace.md).
+- [x] T08-003-05c: Verificar función usada por plantilla precompilada con encabezado presente y oculto, biblioteca estática y DLL, O0–O3. [Evidencia](registro-commits/t08-funciones-visibilidad-enlace.md).
 
 ## T08-004 — Variables globales C
 
