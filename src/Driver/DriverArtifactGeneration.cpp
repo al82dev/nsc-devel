@@ -18,6 +18,7 @@
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/LLVM/CppLifetimeObjectEmitter.h"
 #include "../Interop/Internal/CppCRecordMetadataCodec.h"
+#include "../Interop/Internal/TemplateDependencyMembers.h"
 #endif
 
 namespace nativesharp::driver
@@ -1130,6 +1131,10 @@ void collectDynamicMethodExports(const frontend::ProjectCompilation &compilation
                                  std::span<const frontend::ClassMemberSymbol> members, std::size_t rootProjectOrdinal,
                                  std::vector<std::string> &exportSymbols)
 {
+    // EN: T08-D19: non-public members named by published templates are part of the consumable surface.
+    // ES: T08-D19: los miembros no publicos que nombran las plantillas publicadas son parte de la superficie.
+    const auto templateDependencies =
+        interop::metadata_detail::templateDependencyMemberOrdinals(compilation, rootProjectOrdinal);
     for (const frontend::ProjectOopMirFunction &function : compilation.oopMirModel()->functions())
     {
         if (function.isLambda || function.destructor || function.declaringTypeOrdinal >= types.size())
@@ -1147,7 +1152,8 @@ void collectDynamicMethodExports(const frontend::ProjectCompilation &compilation
         const frontend::ClassMemberSymbol &member = members[function.memberOrdinal];
         if (type.projectOrdinal != rootProjectOrdinal ||
             !isPubliclyReachableNamedType(types, function.declaringTypeOrdinal) ||
-            !hasConsumerCallableAccessibility(member.accessibility))
+            (!hasConsumerCallableAccessibility(member.accessibility) &&
+             !templateDependencies.contains(function.memberOrdinal)))
             continue;
         if (function.constructor)
         {
@@ -1217,6 +1223,8 @@ void collectDynamicStateExports(const frontend::ProjectCompilation &compilation,
                                 std::span<const frontend::ClassMemberSymbol> members, std::size_t rootProjectOrdinal,
                                 std::vector<std::string> &exportSymbols)
 {
+    const auto templateDependencies =
+        interop::metadata_detail::templateDependencyMemberOrdinals(compilation, rootProjectOrdinal);
     for (const frontend::ProjectOopMirStaticField &field : compilation.oopMirModel()->staticFields())
     {
         if (field.isImported || field.isConst || field.declaringTypeOrdinal >= types.size() ||
@@ -1226,7 +1234,8 @@ void collectDynamicStateExports(const frontend::ProjectCompilation &compilation,
         const frontend::ClassMemberSymbol &member = members[field.memberOrdinal];
         if (type.projectOrdinal == rootProjectOrdinal &&
             isPubliclyReachableNamedType(types, field.declaringTypeOrdinal) &&
-            hasConsumerCallableAccessibility(member.accessibility))
+            (hasConsumerCallableAccessibility(member.accessibility) ||
+             templateDependencies.contains(field.memberOrdinal)))
             exportSymbols.push_back(field.accessorName);
     }
     if (compilation.namespaceFunctionModel() == nullptr)

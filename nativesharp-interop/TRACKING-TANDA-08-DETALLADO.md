@@ -468,7 +468,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-018-03b: Verificar diagnóstico de ambigüedad entre dos declaraciones C visibles. [Evidencia](registro-commits/t08-colisiones-c.md).
 - [x] T08-018-03c: Repetir los casos de función y global desde plantilla precompilada. [Evidencia](registro-commits/t08-colisiones-c.md).
   - Evidencia previa: un campo estático privado usado por una plantilla pública no viaja con ella; si el encabezado del productor declara una global C homónima importable, la plantilla se une en silencio a la global en vez del campo. [Sonda](registro-commits/t08-global-no-importable.md#observación-para-t08-018-03c).
-  - **Decisión pendiente T08-018-03c1:** los miembros privados usados por una plantilla publicada no se publican; con una declaración C homónima, la plantilla se une a ella en silencio (campos y métodos). [Detalle](registro-commits/t08-colisiones-c.md#decisión-pendiente-t08-018-03c1).
+  - Resuelta T08-018-03c1 por T08-D19: NSMeta publica, con su accesibilidad, los miembros no públicos que nombra una plantilla publicada; la plantilla los resuelve en el consumidor en vez de unirse a la declaración C. [Evidencia](registro-commits/t08-d19-dependencias-privadas.md).
 
 ## T08-019 — Diagnósticos de tipos incompletos
 
@@ -529,7 +529,7 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 - [x] T08-D16: declaración opaca propia del consumidor reconciliada con NSMeta (T08-013-02c1). [Evidencia](registro-commits/t08-d16-opaco-consumidor.md).
 - [x] T08-D17: rechazo de `int const** q = &p` (T08-014-02d1). [Evidencia](registro-commits/t08-d17-puntero-a-puntero-const.md).
 - [x] T08-D18: dirección de función C frente al envoltorio `__c_boundary` (T08-017-04a1). [Evidencia](registro-commits/t08-d18-identidad-funcion-c.md).
-- [ ] T08-D19: dependencias privadas de plantillas públicas en NSMeta (T08-018-03c1).
+- [x] T08-D19: dependencias privadas de plantillas públicas en NSMeta (T08-018-03c1). [Evidencia](registro-commits/t08-d19-dependencias-privadas.md).
 - [ ] T08-D20: gate histórico en CRLF y caché vigente; carrera del control C de relleno TLS (T08-GATE-03a).
 - [ ] T08-D21: reagrupación de commits al cerrar la tanda (T08-GATE-05a).
 - [ ] T08-D22: callbacks `__vectorcall` (T08-017-03d1).

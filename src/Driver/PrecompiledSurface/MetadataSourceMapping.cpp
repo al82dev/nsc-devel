@@ -306,9 +306,16 @@ std::string ownershipPrefix(interop::LibraryMetadataOwnershipKind ownership, std
 // remain in producer-owned dispatch tables and must not be over-exported.
 bool hasConsumerCallableAccessibility(const std::uint8_t accessibility) noexcept
 {
+    constexpr std::uint8_t kPrivateAccessibility = 0U;
     constexpr std::uint8_t kProtectedAccessibility = 1U;
+    constexpr std::uint8_t kInternalAccessibility = 2U;
     constexpr std::uint8_t kPublicAccessibility = 3U;
-    return accessibility == kProtectedAccessibility || accessibility == kPublicAccessibility;
+    // EN: T08-D19: NSMETA carries a private or internal member only when a published template of its type names it;
+    //     it is materialized with its own accessibility, so only the template (inside the type) can use it.
+    // ES: T08-D19: NSMETA solo lleva un miembro privado o interno cuando una plantilla publicada de su tipo lo nombra;
+    //     se materializa con su accesibilidad, asi que solo la plantilla (dentro del tipo) puede usarlo.
+    return accessibility == kProtectedAccessibility || accessibility == kPublicAccessibility ||
+           accessibility == kPrivateAccessibility || accessibility == kInternalAccessibility;
 }
 
 bool hasConsumerCallableAccessibility(const frontend::ClassMemberAccessibility accessibility) noexcept

@@ -26,6 +26,7 @@
 #include "../Frontend/Internal/IndexShadowCheckSwitch.h"
 #include "../Frontend/Internal/IndexShadowMismatch.h"
 #include "Internal/TemplateSourcePiece.h"
+#include "Internal/TemplateDependencyMembers.h"
 #include "Internal/ByteReader.h"
 #include "Internal/ByteWriter.h"
 
@@ -2358,10 +2359,91 @@ bool metadataMemberOrdinalLess(
     return left < right;
 }
 
+void collectTemplateIdentifiers(std::string_view text, std::unordered_set<std::string>& identifiers)
+{
+    std::size_t index = 0;
+    while (index < text.size())
+    {
+        const unsigned char current = static_cast<unsigned char>(text[index]);
+        if (!(std::isalpha(current) || current == '_'))
+        {
+            ++index;
+            continue;
+        }
+        const std::size_t begin = index;
+        while (index < text.size() &&
+               (std::isalnum(static_cast<unsigned char>(text[index])) || text[index] == '_'))
+            ++index;
+        identifiers.emplace(text.substr(begin, index - begin));
+    }
+}
+
+std::unordered_set<std::size_t> templateDependencyMemberOrdinals(
+    const frontend::ProjectCompilation& compilation,
+    std::size_t rootProjectOrdinal)
+{
+    // EN: T08-D19: a non-public member of a type is published in NSMETA when a template that the library publishes
+    //     is declared inside that type (or inside a type nested in it) and names the member. The consumer then
+    //     resolves the template's name to the member, as the producer does, instead of failing or binding it to a
+    //     C declaration with the same name. Accessibility is kept: only code inside the type can use it.
+    // ES: T08-D19: un miembro no publico de un tipo se publica en NSMETA si una plantilla que publica la
+    //     biblioteca esta declarada dentro de ese tipo (o de un tipo anidado en el) y nombra al miembro. Asi el
+    //     consumidor resuelve el nombre de la plantilla al miembro, como el productor, en vez de fallar o unirlo a
+    //     una declaracion C homonima. Se conserva la accesibilidad: solo el codigo dentro del tipo puede usarlo.
+    std::unordered_set<std::size_t> result;
+    if (compilation.genericModel() == nullptr || compilation.nameLookup() == nullptr ||
+        compilation.memberModel() == nullptr) return result;
+    const auto templates = compilation.genericModel()->templates();
+    std::unordered_set<std::string> included;
+    std::string ignored;
+    if (!collectIncludedGenericTemplateKeys(templates, rootProjectOrdinal, included, ignored)) return result;
+    struct TemplateText
+    {
+        SourceRange range;
+        std::unordered_set<std::string> identifiers;
+    };
+    std::vector<TemplateText> texts;
+    for (const frontend::GenericTemplateRecord& generic : templates)
+    {
+        if (generic.projectOrdinal != rootProjectOrdinal || generic.syntax == nullptr ||
+            !included.contains(generic.canonicalKey)) continue;
+        TemplateText text{generic.syntax->range(), {}};
+        collectTemplateIdentifiers(compilation.sourceManager().getText(text.range), text.identifiers);
+        for (const ast::AstNode* extension : generic.extensionSyntaxes)
+            if (extension != nullptr && extension->range().isValid())
+                collectTemplateIdentifiers(compilation.sourceManager().getText(extension->range()), text.identifiers);
+        texts.push_back(std::move(text));
+    }
+    if (texts.empty()) return result;
+    const auto types = compilation.nameLookup()->namedTypes();
+    const auto members = compilation.memberModel()->members();
+    for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
+    {
+        const frontend::ClassMemberSymbol& member = members[ordinal];
+        if (member.accessibility == frontend::ClassMemberAccessibility::Public ||
+            member.accessibility == frontend::ClassMemberAccessibility::Protected ||
+            member.isControlledSpecializationFamily || member.declaringTypeOrdinal >= types.size() ||
+            (member.kind != frontend::ClassMemberKind::Field && member.kind != frontend::ClassMemberKind::Method))
+            continue;
+        const frontend::NamedTypeDeclaration& type = types[member.declaringTypeOrdinal];
+        if (type.projectOrdinal != rootProjectOrdinal) continue;
+        const bool used = std::ranges::any_of(texts, [&](const TemplateText& text) {
+            if (!text.identifiers.contains(member.name)) return false;
+            if (rangeIsInside(text.range, type.range)) return true;
+            return std::ranges::any_of(type.parts, [&](const frontend::NamedTypeDeclarationPart& part) {
+                return rangeIsInside(text.range, part.range);
+            });
+        });
+        if (used) result.insert(ordinal);
+    }
+    return result;
+}
+
 void collectMetadataMemberOrdinals(
     std::span<const frontend::NamedTypeDeclaration> types,
     std::span<const frontend::ClassMemberSymbol> members,
     const std::unordered_set<std::size_t>& rootTypes,
+    const std::unordered_set<std::size_t>& templateDependencies,
     std::vector<std::size_t>& memberOrdinals)
 {
     for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
@@ -2369,7 +2451,8 @@ void collectMetadataMemberOrdinals(
         const frontend::ClassMemberSymbol& member = members[ordinal];
         const bool contractAccessibility =
             member.accessibility == frontend::ClassMemberAccessibility::Public ||
-            member.accessibility == frontend::ClassMemberAccessibility::Protected;
+            member.accessibility == frontend::ClassMemberAccessibility::Protected ||
+            templateDependencies.contains(ordinal);
         if (contractAccessibility &&
             !member.isControlledSpecializationFamily &&
             rootTypes.contains(member.declaringTypeOrdinal))
@@ -2766,7 +2849,8 @@ bool buildMemberMetadata(
             generatorConstructors.emplace(function.memberOrdinal, &function);
     }
     std::vector<std::size_t> memberOrdinals;
-    collectMetadataMemberOrdinals(types, members, rootTypes, memberOrdinals);
+    collectMetadataMemberOrdinals(types, members, rootTypes,
+        templateDependencyMemberOrdinals(compilation, rootProjectOrdinal), memberOrdinals);
     std::vector<std::string> missingPhysicalCallables;
     if (!appendMetadataMembers(
             compilation,
