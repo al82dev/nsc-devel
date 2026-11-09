@@ -674,7 +674,45 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                         if (layout.typeOrdinal == *node->targetTypeOrdinal)
                         {
                             fields = &layout.fields;
-                            simple = !layout.baseTypeOrdinal.has_value();
+                            simple = true;
+                            // A base needs no unwind action only if its whole chain has no
+                            // destructor, owned field, or value field requiring drop.
+                            std::optional<std::size_t> base = layout.baseTypeOrdinal;
+                            while (base.has_value() && simple)
+                            {
+                                if (*base >= nameLookup_.namedTypes().size() ||
+                                    nameLookup_.namedTypes()[*base].isPrecompiled)
+                                {
+                                    simple = false;
+                                    break;
+                                }
+                                const frontend::ProjectOopMirClassLayout* baseLayout =
+                                    mirModel_.classLayoutForType(*base);
+                                if (baseLayout == nullptr) { simple = false; break; }
+                                if (memberModel_->hasMembersDeclaredByTypeIndex())
+                                {
+                                    for (const std::size_t ordinal : memberModel_->membersDeclaredByType(*base))
+                                        if (memberModel_->members()[ordinal].kind ==
+                                            frontend::ClassMemberKind::Destructor)
+                                            { simple = false; break; }
+                                }
+                                else
+                                {
+                                    for (const auto& member : memberModel_->members())
+                                        if (member.declaringTypeOrdinal == *base &&
+                                            member.kind == frontend::ClassMemberKind::Destructor)
+                                            { simple = false; break; }
+                                }
+                                for (const auto& field : baseLayout->fields)
+                                {
+                                    if (field.memberOrdinal >= memberModel_->members().size() ||
+                                        memberModel_->members()[field.memberOrdinal].declaredOwnership ==
+                                            sema::OwnershipKind::Owned ||
+                                        memberModel_->typeRequiresValueDrop(field.typeKey))
+                                        { simple = false; break; }
+                                }
+                                base = baseLayout->baseTypeOrdinal;
+                            }
                             break;
                         }
                 }

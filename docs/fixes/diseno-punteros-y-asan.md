@@ -143,20 +143,43 @@ rechazó porque el método genérico no declara el efecto
 limpieza durante una excepción. Las variantes internas `CreateThrowing` y
 `CreateValueThrowing` declaran el efecto y liberan el arreglo con `delete[]`
 si la construcción no se transfiere. Para placement inicializado en cero con
-campos owned de referencia, sin base ni campos de valor con drop, el compilador
+campos owned de referencia, sin bases no triviales ni campos de valor con drop, el compilador
 destruye los campos inicializados en orden inverso al fallar el constructor,
 sin llamar el destructor del objeto incompleto. La prueba dirigida verifica
 clases y estructuras, excepción antes y después de inicializar campos, orden,
 constructores correctos y liberación en el cleanup del IR; pasó O0/O2
-(`shared-throwing-tests.log`). Las formas con base, valores no triviales,
-layout explícito o productor precompilado se rechazan en esta ruta interna
-hasta acreditar su cleanup; esto no completa la fábrica pública.
+(`shared-throwing-tests.log`). Ahora se admite una cadena de bases locales sin
+destructor, campos owned ni valores con drop: el fixture verifica dos bases
+triviales y un campo owned del derivado, y comprueba que ese campo se destruye
+al lanzar tanto en placement directo como mediante la fábrica. El recorrido es
+iterativo y consulta los índices de layouts y miembros cuando están disponibles;
+no llama el destructor del objeto incompleto. La prueba también cubre un throw
+del propio constructor base, antes de inicializar el campo del derivado. Bases
+con destructor, campo owned
+o valor con drop se rechazan, así
+como las bases precompiladas; campos propios de valor no trivial y layout
+explícito también permanecen restringidos. La selección dirigida pasó 2/2 en
+O0/O2 (`shared-throwing-tests.log`). El análisis estático dirigido terminó con
+código 0 y nueve advertencias de padding en headers
+(`shared-trivial-base-analysis.log`); no se afirma ausencia de advertencias.
+La prueba `shared-local-handles-test.log` verifica además que las fábricas
+internas local y atómica propagan la excepción y limpian el campo del derivado
+en O0/O2.
+Esto no completa la fábrica pública.
 La construcción ordinaria de los ejemplos `Bad` y `BadValue` también dejó
 vivos los campos en O0/O2 (`shared-throwing-normal-compare/results.json`);
 esta corrección se limita a placement. La prueba histórica TL-LANG-472 no
 distingue destrucción al asignar de destrucción al lanzar: una reproducción
 registra dos drops antes y dos después (`constructor-drop-existing-probe/results.json`),
 por lo que no demuestra por sí sola cleanup durante la excepción.
+Una reproducción independiente de construcción ordinaria con base no trivial
+registró que el constructor de la base terminó, que el derivado lanzó y que
+ninguno de los dos destructores corrió: la base y la rama actual devuelven 101
+en O0 y O2, frente a 42 esperado, con sus runtimes aislados respectivos
+(`throwing-base-probe/results.json`). Esto no demuestra todas las
+rutas de excepciones, pero impide tratar como trivial una base con destructor.
+La limpieza correcta requiere distinguir si la construcción base terminó antes
+del throw; no basta llamar su destructor incondicionalmente. Sigue pendiente.
 Para un payload `struct` con destructor, la construcción placement devuelve
 `Payload*`. En dos pruebas separadas, `delete *slot` y `delete slot[0]`
 compilaron en O0/O2, pero el contador del destructor siguió en cero y el

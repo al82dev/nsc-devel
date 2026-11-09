@@ -24,6 +24,9 @@ class Bad { public owned Resource item;
  public Bad() throws NativeSharp.Core.Exception { item = new Resource(); throw new NativeSharp.Core.Exception(); } }
 struct BadValue { public owned Resource item;
  public BadValue() throws NativeSharp.Core.Exception { item = new Resource(); throw new NativeSharp.Core.Exception(); } }
+class TrivialBase { public int data; }
+class DerivedBad : TrivialBase { public owned Resource item;
+ public DerivedBad() throws NativeSharp.Core.Exception { item = new Resource(); throw new NativeSharp.Core.Exception(); } }
 '''
     safe = '''class Program { public static int Main() {
  SharedLocalWeak<Payload> weak = new SharedLocalWeak<Payload>(null, null);
@@ -58,6 +61,9 @@ struct BadValue { public owned Resource item;
  try { SharedLocalHandle<BadValue> failed = SharedLocalFactory.CreateThrowing<BadValue>(); }
  catch (NativeSharp.Core.Exception problem) { caught = caught + 1; }
  if (caught != 2 || Resource.Drops != 2) return 8;
+ try { SharedLocalHandle<DerivedBad> failed = SharedLocalFactory.CreateThrowing<DerivedBad>(); }
+ catch (NativeSharp.Core.Exception problem) { caught = caught + 1; }
+ if (caught != 3 || Resource.Drops != 3) return 12;
  return 42;
 } }'''
     copy = '''class Program { public static int Main() {

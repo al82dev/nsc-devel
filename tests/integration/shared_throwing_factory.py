@@ -29,6 +29,14 @@ class Early { public static int Drops; public owned Resource first;
  ~Early() { Drops = Drops + 1; } }
 class Good { public static int Drops; public long Data; public Good() { Data = 20l; } ~Good() { Drops = Drops + 1; } }
 struct GoodValue { public static int Drops; public long Data; public GoodValue() { Data = 22l; } ~GoodValue() { Drops = Drops + 1; } }
+class TrivialRoot { public int Root; }
+class TrivialBase : TrivialRoot { public int Id; }
+class DerivedFailure : TrivialBase { public owned Resource item;
+ public DerivedFailure() throws NativeSharp.Core.Exception { item = new Resource(5); throw new NativeSharp.Core.Exception(); } }
+class EarlyBase { public EarlyBase() throws NativeSharp.Core.Exception { throw new NativeSharp.Core.Exception(); } }
+class EarlyDerived : EarlyBase { public static int Drops; public owned Resource item;
+ public EarlyDerived() throws NativeSharp.Core.Exception { item = new Resource(6); }
+ ~EarlyDerived() { Drops = Drops + 1; } }
 '''
     valid = '''class Program { public static int Main() { unsafe("shared factory") {
  int caught = 0;
@@ -46,6 +54,19 @@ struct GoodValue { public static int Drops; public long Data; public GoodValue()
  catch (NativeSharp.Core.Exception problem) { caught = caught + 1; }
  if (caught != 4 || Resource.Trace != 21 || Bad.Drops != 0) return 8;
  words[0] = 99l; if (words[0] != 99l) return 9;
+ Resource.Trace = 0;
+ DerivedFailure* derivedSlot = (DerivedFailure*)words;
+ try { DerivedFailure direct = new (derivedSlot) DerivedFailure(); }
+ catch (NativeSharp.Core.Exception problem) { caught = caught + 1; }
+ if (caught != 5 || Resource.Trace != 5) return 11;
+ Resource.Trace = 0;
+ try { SharedClassCreation<DerivedFailure> bad = SharedControlStorage.CreateThrowing<DerivedFailure>(); }
+ catch (NativeSharp.Core.Exception problem) { caught = caught + 1; }
+ if (caught != 6 || Resource.Trace != 5) return 10;
+ Resource.Trace = 0;
+ try { SharedClassCreation<EarlyDerived> bad = SharedControlStorage.CreateThrowing<EarlyDerived>(); }
+ catch (NativeSharp.Core.Exception problem) { caught = caught + 1; }
+ if (caught != 7 || Resource.Trace != 0 || EarlyDerived.Drops != 0) return 12;
  try {
   SharedClassCreation<Good> a = SharedControlStorage.CreateThrowing<Good>();
   SharedValueCreation<GoodValue> b = SharedControlStorage.CreateValueThrowing<GoodValue>();
@@ -64,7 +85,24 @@ class Program { public static int Main() {
  catch (NativeSharp.Core.Exception problem) { } return 42;
 } }
 '''
-    unsupported_base = '''class Base { }
+    unsupported_base = '''class Base { ~Base() { } }
+class Derived : Base {
+ public Derived() throws NativeSharp.Core.Exception { throw new NativeSharp.Core.Exception(); } }
+class Program { public static int Main() {
+ try { SharedClassCreation<Derived> value = SharedControlStorage.CreateThrowing<Derived>(); }
+ catch (NativeSharp.Core.Exception problem) { } return 42;
+} }
+'''
+    unsupported_base_owned = '''class Base { public owned Resource item; }
+class Derived : Base {
+ public Derived() throws NativeSharp.Core.Exception { throw new NativeSharp.Core.Exception(); } }
+class Program { public static int Main() {
+ try { SharedClassCreation<Derived> value = SharedControlStorage.CreateThrowing<Derived>(); }
+ catch (NativeSharp.Core.Exception problem) { } return 42;
+} }
+'''
+    unsupported_base_value = '''struct BaseField { ~BaseField() { } }
+class Base { public BaseField item; }
 class Derived : Base {
  public Derived() throws NativeSharp.Core.Exception { throw new NativeSharp.Core.Exception(); } }
 class Program { public static int Main() {
@@ -95,7 +133,7 @@ class Program { public static int Main() {
                 assert result.returncode == 0, result.stdout + result.stderr
                 result = run([exe], root)
                 assert result.returncode == 42, (level, result.returncode, result.stdout, result.stderr)
-        for negative in (unsupported, unsupported_base):
+        for negative in (unsupported, unsupported_base, unsupported_base_owned, unsupported_base_value):
             source.write_text(types + negative, encoding='utf-8')
             result = run([compiler, '--dump-project-oop-llvm', project, '--no-banner'], root)
             assert result.returncode != 0 and 'shared throwing construction cannot safely clean this payload shape' in result.stdout + result.stderr
