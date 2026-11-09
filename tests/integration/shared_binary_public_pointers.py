@@ -193,6 +193,8 @@ class Program { public static int Main() { FAMILY<Payload> owner = SharedPointer
                 ('constructor-interface-arg', 'public EscapePayload() { InterfaceHelper helper = new InterfaceHelper(); borrowed IPublisher view = helper; view.Publish(this); }'),
                 ('constructor-interface-receiver', 'public EscapePayload() { Forward(this); } public static void Forward(IReceiver view) { view.Publish(); } public void Publish() { Alias = this; }'),
                 ('constructor-return', 'public EscapePayload() { Alias = Self(); } public EscapePayload Self() { return this; }'),
+                ('constructor-static-return', 'public EscapePayload() { Alias = Identity(this); } public static EscapePayload Identity(EscapePayload value) { return value; }'),
+                ('destructor-static-return', 'public EscapePayload() { } ~EscapePayload() { Alias = Identity(this); } public static EscapePayload Identity(EscapePayload value) { return value; }'),
                 ('destructor-return', 'public EscapePayload() { } ~EscapePayload() { Alias = Self(); } public EscapePayload Self() { return this; }'),
             ):
                 source.write_text(('''using NativeSharp.Core;

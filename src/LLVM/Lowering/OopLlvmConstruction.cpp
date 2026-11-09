@@ -25,20 +25,45 @@ struct ReceiverPublicationScan
 
 ReceiverPublicationScan scanReceiverPublication(
     const frontend::ProjectOopMirNode* body, std::optional<std::size_t> sourceParameter,
-    const std::unordered_set<std::string>& returnsReceiver)
+    const std::unordered_map<std::string, std::unordered_set<std::size_t>>& returnedSources)
 {
     using Kind = frontend::ProjectOopMirNodeKind;
-    const auto unwrapped = [&](const frontend::ProjectOopMirNode* value) {
-        while (value != nullptr && !value->children.empty())
+    const auto origins = [&](const frontend::ProjectOopMirNode* value) {
+        std::vector<const frontend::ProjectOopMirNode*> leaves;
+        std::vector<const frontend::ProjectOopMirNode*> work{value};
+        while (!work.empty())
         {
+            value = work.back();
+            work.pop_back();
+            if (value == nullptr) continue;
             if ((value->kind == Kind::Convert || value->kind == Kind::BorrowValue) &&
                 value->children.size() == 1U)
-                value = value->children.front().get();
-            else if (value->kind == Kind::DirectInstanceCall && returnsReceiver.contains(value->calleeName))
-                value = value->children.front().get();
-            else break;
+            {
+                work.push_back(value->children.front().get());
+                continue;
+            }
+            if (value->kind == Kind::DirectInstanceCall || value->kind == Kind::DirectStaticCall)
+            {
+                const auto found = returnedSources.find(value->calleeName);
+                if (found != returnedSources.end())
+                {
+                    const std::size_t first = value->kind == Kind::DirectInstanceCall ? 1U : 0U;
+                    if (first != 0U && !value->children.empty() &&
+                        found->second.contains(static_cast<std::size_t>(-1)))
+                        work.push_back(value->children.front().get());
+                    for (std::size_t child = first; child < value->children.size(); ++child)
+                    {
+                        const std::size_t source = child - first;
+                        const std::size_t parameter = value->argumentParameterOrdinals.empty()
+                            ? source : value->argumentParameterOrdinals.at(source);
+                        if (found->second.contains(parameter)) work.push_back(value->children[child].get());
+                    }
+                    continue;
+                }
+            }
+            leaves.push_back(value);
         }
-        return value;
+        return leaves;
     };
     std::unordered_map<std::size_t, std::vector<std::size_t>> localCopies;
     std::vector<std::size_t> receiverLocals;
@@ -51,11 +76,12 @@ ReceiverPublicationScan scanReceiverPublication(
              value->parameterOrdinal == sourceParameter));
     };
     const auto recordCopy = [&](std::size_t destination, const frontend::ProjectOopMirNode* value) {
-        value = unwrapped(value);
-        if (value == nullptr) return;
-        if (isOrigin(value)) receiverLocals.push_back(destination);
-        else if (value->kind == Kind::LocalValue && value->localOrdinal.has_value())
-            localCopies[*value->localOrdinal].push_back(destination);
+        for (const auto* origin : origins(value))
+        {
+            if (isOrigin(origin)) receiverLocals.push_back(destination);
+            else if (origin->kind == Kind::LocalValue && origin->localOrdinal.has_value())
+                localCopies[*origin->localOrdinal].push_back(destination);
+        }
     };
     std::vector<const frontend::ProjectOopMirNode*> pending{body};
     while (!pending.empty())
@@ -77,7 +103,7 @@ ReceiverPublicationScan scanReceiverPublication(
             if (target->kind == Kind::LocalAddress && target->localOrdinal.has_value())
                 recordCopy(*target->localOrdinal, node->children[1].get());
             else if (target->kind == Kind::StaticFieldAddress || target->kind == Kind::NamespaceStateAddress)
-                globalValues.push_back(unwrapped(node->children[1].get()));
+                globalValues.push_back(node->children[1].get());
         }
         for (const auto& child : node->children) pending.push_back(child.get());
     }
@@ -92,10 +118,10 @@ ReceiverPublicationScan scanReceiverPublication(
             receiverLocals.insert(receiverLocals.end(), copies->second.begin(), copies->second.end());
     }
     const auto isReceiver = [&](const frontend::ProjectOopMirNode* value) {
-        value = unwrapped(value);
-        return value != nullptr && (isOrigin(value) ||
-            (value->kind == Kind::LocalValue && value->localOrdinal.has_value() &&
-             reached.contains(*value->localOrdinal)));
+        for (const auto* origin : origins(value))
+            if (isOrigin(origin) || (origin->kind == Kind::LocalValue && origin->localOrdinal.has_value() &&
+                reached.contains(*origin->localOrdinal))) return true;
+        return false;
     };
     ReceiverPublicationScan result;
     for (const auto* value : returnValues)
@@ -104,7 +130,8 @@ ReceiverPublicationScan scanReceiverPublication(
         if (isReceiver(value)) { result.publishes = true; return result; }
     for (const auto* call : directCalls)
     {
-        if (call->kind == Kind::DirectInstanceCall && !call->calleeName.empty())
+        if ((call->kind == Kind::DirectInstanceCall || call->kind == Kind::DirectStaticCall) &&
+            !call->calleeName.empty())
             result.returnDependencies.push_back(call->calleeName);
         if (call->kind != Kind::DirectStaticCall && isReceiver(call->children.front().get()))
         {
@@ -874,7 +901,7 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                         (function.constructor || function.destructor))
                         pending.emplace_back(&function, std::nullopt);
                 std::unordered_map<const frontend::ProjectOopMirFunction*, std::unordered_set<std::size_t>> visited;
-                std::unordered_set<std::string> returnsReceiver;
+                std::unordered_map<std::string, std::unordered_set<std::size_t>> returnedSources;
                 std::unordered_map<std::string,
                     std::unordered_map<const frontend::ProjectOopMirFunction*, std::unordered_set<std::size_t>>>
                     returnDependents;
@@ -885,13 +912,12 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                     const std::size_t sourceKey = sourceParameter.value_or(static_cast<std::size_t>(-1));
                     if (!visited[function].insert(sourceKey).second) continue;
                     const ReceiverPublicationScan scan =
-                        scanReceiverPublication(function->body.get(), sourceParameter, returnsReceiver);
+                        scanReceiverPublication(function->body.get(), sourceParameter, returnedSources);
                     if (scan.publishes)
                         return fail(error, "shared payload publishes its receiver during construction or destruction");
                     for (const auto& callee : scan.returnDependencies)
                         returnDependents[callee][function].insert(sourceKey);
-                    if (!sourceParameter.has_value() && scan.returnsSource &&
-                        returnsReceiver.insert(function->mangledName).second)
+                    if (scan.returnsSource && returnedSources[function->mangledName].insert(sourceKey).second)
                     {
                         const auto dependents = returnDependents.find(function->mangledName);
                         if (dependents != returnDependents.end())

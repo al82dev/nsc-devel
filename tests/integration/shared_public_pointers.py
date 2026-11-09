@@ -1405,6 +1405,27 @@ class Program { public static int Main() { Holder holder = default(Holder);
  public EscapePayload First() { return Second(); } public EscapePayload Second() { return this; } }
  class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
  return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_static_return': ('''class EscapePayload { public static EscapePayload Alias;
+ public EscapePayload() { Alias = Identity(this); }
+ public static EscapePayload Identity(EscapePayload value) { return value; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_static_return_named_chain': ('''class EscapePayload { public static EscapePayload Alias;
+ public EscapePayload() { EscapePayload local = First(value: this, ignored: null); Alias = local; }
+ public static EscapePayload First(EscapePayload ignored, EscapePayload value) { return Second(value); }
+ public static EscapePayload Second(EscapePayload value) { return value; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_static_return_multiple': ('''class EscapePayload { public static EscapePayload Alias;
+ public EscapePayload() { Alias = Pick(null, this); }
+ public static EscapePayload Pick(EscapePayload first, EscapePayload second) { if (first == null) return second; return first; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_static_return_control': ('''class SafePayload { public static SafePayload Other; public int Data;
+ public SafePayload() { Other = Ignore(this); Data = 42; }
+ public static SafePayload Ignore(SafePayload value) { return null; } }
+ class Program { public static int Main() { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
+ return owner.Get().Data == 42 ? 42 : 1; } }''', 'run:42'),
         'shared_other_return_control': ('''class SafePayload { public static SafePayload Other; public int Data;
  public SafePayload() { Other = CreateOther(); Data = 42; } public SafePayload CreateOther() { return null; } }
  class Program { public static int Main() { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
