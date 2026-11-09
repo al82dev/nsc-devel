@@ -134,6 +134,23 @@ decisiones posteriores indicadas explícitamente abajo.
   `Reducer<T>, Reducer<U>` es rechazado por el parser como duplicado antes de
   llegar a esta validación (`generic-dependent-controls/two-args.log`); permanece
   pendiente de investigación. No se considera cerrado el caso completo.
+  Una biblioteca y consumidor independientes comprobaron el caso directo:
+  el productor se compiló a `.lib` con metadata en A; el consumidor válido
+  devolvió 42 en O0/O2 y el incompatible se rechazó por no implementar
+  `Reducer<long>`. La prueba reproducible de ambos vive ahora en
+  `dependent_generic_constraints.py`. No demuestra todos los contratos entre
+  módulos ni todas las combinaciones de restricciones.
+
+  El parser comparaba solo el nombre base al detectar duplicados. La corrección
+  distingue argumentos escritos de tipos genéricos: el caso con dos interfaces
+  distintas compila y devuelve 42 en O0/O2; uno que solo implementa la primera
+  rechaza la segunda y el duplicado idéntico conserva su diagnóstico. Pasaron
+  `generic-dependent-regression.cmd` y `generic-constraints-existing.cmd`.
+  La comparación escrita conserva el tratamiento anterior para dimensiones
+  fijas cuyo tamaño no forma parte de esa clave; no acredita todas las formas
+  de argumentos o aliases. Los builds y pruebas coexistieron con cambios ajenos
+  sin registrar; la prueba nueva sigue ejecutándose directamente hasta que se
+  pueda registrar en el archivo CMake compartido.
 
 ## Temporales en parámetros in y operadores ++/--
 

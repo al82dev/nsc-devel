@@ -20,6 +20,26 @@ namespace nativesharp::parser
 namespace
 {
 using lexer::TokenKind;
+
+std::string writtenConstraintType(const ast::TypeSyntax* type)
+{
+    if (type == nullptr) return "?";
+    std::string result = type->baseName();
+    if (!type->typeArguments().empty())
+    {
+        result += '<';
+        for (std::size_t i = 0; i < type->typeArguments().size(); ++i)
+        {
+            if (i != 0) result += ',';
+            result += writtenConstraintType(type->typeArguments()[i]);
+        }
+        result += '>';
+    }
+    for (const ast::TypeModifierSyntax& modifier : type->modifiers())
+        result += '#' + std::to_string(static_cast<int>(modifier.kind)) + ':' +
+            std::to_string(modifier.arrayRank);
+    return result;
+}
 }
 
 bool Parser::supportsConstGenericParameterType(const ast::TypeSyntax* type) noexcept
@@ -526,7 +546,7 @@ bool Parser::parseGenericNominalConstraint(
                 "' for equality instead of a trait/base constraint");
         ok = false;
     }
-    if (!written.insert(constraint->baseName()).second)
+    if (!written.insert(writtenConstraintType(constraint)).second)
     {
         diagnostics_.report(
             diagnostics::DiagnosticId::DuplicateSymbol,
