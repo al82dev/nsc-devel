@@ -45,6 +45,19 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
  borrowed Children nested = nestedOwner.Get(); int sum = 0;
  foreach (Child child in nested.Data) { sum = sum + child.Value; }
  return sum == 0 ? 42 : 1;''', None),
+        'direct_foreach_read': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>(); int sum = 0;
+ foreach (Child child in nestedOwner.Get().Data) { sum = sum + child.Value; }
+ return sum == 0 ? 42 : 1;''', None),
+        'direct_foreach_ref_read': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>(); int sum = 0;
+ foreach (ref Child child in nestedOwner.Get().Data) { sum = sum + child.Value; }
+ return sum == 0 ? 42 : 1;''', None),
+        'direct_foreach_escape': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>(); Child escaped;
+ foreach (Child child in nestedOwner.Get().Data) { escaped = child; } return 0;''', 'borrowed value cannot'),
+        'direct_foreach_move': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
+ foreach (Child child in nestedOwner.Get().Data) { HANDLE<Children> moved = move(nestedOwner); }
+ return 0;''', 'cannot move owner'),
+        'temporary_foreach': ('''foreach (Child child in FACTORY.Create<Children>().Get().Data) {
+ int value = child.Value; } return 0;''', 'borrow'),
         'nested_foreach_break': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
  borrowed Children nested = nestedOwner.Get(); int visits = 0;
  foreach (Child child in nested.Data) { visits = visits + 1; break; }
@@ -160,7 +173,8 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
                 if expected:
                     assert result.returncode != 0 and expected in output, (family, name, output)
                     print(family, name, 'rejected', flush=True)
-                    if name.startswith('nested_foreach_') or name == 'struct_payload_child_mutation':
+                    if (name.startswith('nested_foreach_') or name.startswith('direct_foreach_') or
+                            name in ('temporary_foreach', 'struct_payload_child_mutation')):
                         print(output, flush=True)
                 else:
                     assert result.returncode == 0, (family, name, output)

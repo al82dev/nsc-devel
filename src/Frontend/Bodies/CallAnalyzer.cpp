@@ -5376,6 +5376,18 @@ void ProjectMethodBodyModel::configureSelectedCallBinding(
         result.storageOwnership = sema::OwnershipKind::Borrowed;
         result.readonlyBorrowedObject = true;
     }
+    // A reference-returning instance method with lifetime `this` lends its
+    // named move-only receiver. Preserve that owner for derived field borrows.
+    if (result.readonlyBorrowedObject && selectedMember.isReferenceReturn &&
+        !selectedMember.isStatic && selectedMember.returnLifetimeName == "this" &&
+        callee.receiverSyntax != nullptr &&
+        callee.receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const auto owner = lookupScopeName(call.scopeOrdinal, callee.receiverSyntax->text());
+        if (owner.has_value() && owner->kind == ScopeNameKind::Local &&
+            owner->semanticOrdinal < locals_.size() && locals_[owner->semanticOrdinal].isMoveOnly)
+            result.ownershipSourceLocalOrdinal = owner->semanticOrdinal;
+    }
     result.ownershipTransfer = selectedMember.declaredOwnership == sema::OwnershipKind::Owned;
     // An owned return crosses the call boundary without a named owner. It is therefore a
     // fresh owner in the caller, just like `new T(...)`, and may participate in the

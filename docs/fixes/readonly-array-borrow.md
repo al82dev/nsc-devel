@@ -125,6 +125,24 @@ locales y de `foreach` ordinario pasaron en
 Las rutas sin procedencia rastreada siguen abiertas. La prueba que compara con la base para los dos fallos de
 `foreach-semantic-gaps` no se convierte en aprobada por esta corrección.
 
+### Fuente obtenida directamente del dueño
+
+La forma `foreach (Child child in owner.Get().Data)` aún se rechazaba porque el
+resultado derivado no llevaba el ordinal del dueño local
+(`readonly-array-ctest-direct_foreach_read.log`, resultado anterior). Una
+llamada de instancia que devuelve una referencia de solo lectura con vida
+`this` conserva ahora el dueño si el receptor es un local move-only. La fuente
+sintetizada del bucle utiliza ese origen; las expresiones temporales y otras
+vidas explícitas no reciben esta autorización.
+
+Las regresiones dirigidas aceptaron las lecturas por valor y por referencia en
+O0/O2 para los controles local y atómico, y rechazaron escape, movimiento del
+dueño y dueño temporal (`readonly-array-ctest.log`). La selección con `Rc` y
+`Arc` públicos desde fuentes ejecutó lectura O0/O2 y rechazó escape y
+movimiento (`public-direct-foreach-regressions.log`). Los controles de
+referencias y de foreach ordinario pasaron; no se verificó el consumo binario
+ni todos los tipos de receptor.
+
 ### Salida incondicional del bucle
 
 Con `break` incondicional, el análisis no producía los enlaces del incremento

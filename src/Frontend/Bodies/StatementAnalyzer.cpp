@@ -4019,21 +4019,30 @@ void ProjectMethodBodyModel::analyzeBorrowedVariableInitializer(
         variable->text().ends_with("_source")) ||
         variable->auxiliaryText() == "local:foreach-readonly-borrow" ||
         variable->auxiliaryText() == "local:foreach-ref";
+    const auto foreachSource = initializer.borrowedLocalOrdinal.has_value()
+        ? initializer.borrowedLocalOrdinal : initializer.ownershipSourceLocalOrdinal;
     if (foreachBorrow && initializer.valid && initializer.readonlyBorrowedObject &&
-        initializer.borrowedLocalOrdinal.has_value() &&
-        *initializer.borrowedLocalOrdinal < locals_.size())
+        foreachSource.has_value() && *foreachSource < locals_.size())
     {
-        const auto source = lookupScopeName(scopeOrdinal,
-            locals_[*initializer.borrowedLocalOrdinal].name);
+        const auto source = lookupScopeName(scopeOrdinal, locals_[*foreachSource].name);
         if (source.has_value() && source->kind == ScopeNameKind::Local &&
-            source->semanticOrdinal == *initializer.borrowedLocalOrdinal)
+            source->semanticOrdinal == *foreachSource)
         {
             MethodLocalBorrowBinding borrow;
             borrow.syntax = variable;
             borrow.methodMemberOrdinal = methodMemberOrdinal;
             borrow.creationScopeOrdinal = scopeOrdinal;
             borrow.typeKey = typeKey;
-            configureBorrowedVariableSource(
+            if (locals_[*foreachSource].isMoveOnly &&
+                locals_[*foreachSource].ownership != sema::OwnershipKind::Borrowed)
+            {
+                borrow.sourceKind = MethodLocalBorrowSourceKind::OwnerLocal;
+                borrow.sourceLocalOrdinal = *foreachSource;
+                borrow.sourceOwnerLocalOrdinal = *foreachSource;
+                borrow.possibleSourceOwnerLocalOrdinals.push_back(*foreachSource);
+                borrow.maximumValidScopeOrdinal = locals_[*foreachSource].scopeOrdinal;
+            }
+            else configureBorrowedVariableSource(
                 borrow, *source, variable, methodMemberOrdinal, scopeOrdinal, diagnostics);
             if ((borrow.sourceOwnerLocalOrdinal.has_value() ||
                  borrow.sourceOwnerParameterOrdinal.has_value()) &&
@@ -5117,7 +5126,8 @@ void ProjectMethodBodyModel::configureForeachSourceOwnership(
 
     if (probe.valid && probe.readonlyBorrowedObject &&
         ProjectTypeConversion::isNativeArray(probe.typeKey) &&
-        probe.borrowedLocalOrdinal.has_value() && statement->first()->typeSyntax() != nullptr)
+        (probe.borrowedLocalOrdinal.has_value() || probe.ownershipSourceLocalOrdinal.has_value()) &&
+        statement->first()->typeSyntax() != nullptr)
     {
         statement->first()->typeSyntax()->setOwnershipQualifier(
             ast::OwnershipQualifierSyntaxKind::Borrowed);
