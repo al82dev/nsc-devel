@@ -47,6 +47,9 @@ void configureProjectExecution(frontend::ProjectCompilation &compilation)
     if (artifactCache != nullptr && artifactCache->enabled())
         compilation.setTemplateCacheRoot(artifactCache->root() / "frontend");
     compilation.setCancellationCheck([] { return activeExecutionScope != nullptr && activeExecutionScope->expired(); });
+    // EN: T08-D05b. HIR binds at run time the functions of TLS aliases whose dependencies need isolation.
+    // ES: T08-D05b. HIR enlaza en ejecucion las funciones de alias TLS cuyas dependencias necesitan aislamiento.
+    compilation.setCppRuntimeIsolationResolver(collectCppRuntimesRequiringIsolation);
     if (activeExecutionScope != nullptr && activeExecutionScope->reportTiming)
     {
         DriverExecutionScope *const scope = activeExecutionScope;

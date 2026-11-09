@@ -15,6 +15,7 @@
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 
+#include <unordered_set>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -95,6 +96,10 @@ public:
     std::optional<compilation::CppConsumerVolatileMode> cppConsumerVolatileModeForFile(FileId file) const noexcept;
     std::optional<compilation::CppConsumerVolatileMode> cppConsumerVolatileModeForSyntax(
         const ast::AstNode* syntax) const noexcept;
+    // EN: T08-D05b. DLL identities whose TLS aliases need isolated dependencies (see ProjectCompilation).
+    // ES: T08-D05b. Identidades de DLL cuyos alias TLS necesitan dependencias aisladas (ver ProjectCompilation).
+    void setCppIsolatedDllIdentities(std::unordered_set<std::string> identities);
+    bool cppDllRequiresIsolation(std::string_view identity) const;
 
     bool build(
         const ProjectNameLookup& nameLookup,
@@ -4391,6 +4396,7 @@ private:
     const ProjectMetaprogrammingModel* metaprogrammingModel_ = nullptr;
     const ProjectOopHirModel* lookupSource_ = nullptr;
     std::unordered_map<std::uint32_t, compilation::CppConsumerVolatileMode> cppConsumerVolatileModes_;
+    std::unordered_set<std::string> cppIsolatedDllIdentities_;
     ProjectCompilationIndexes* indexes_ = nullptr;
     driver::CompilationWorkerPool* workerPool_ = nullptr;
     std::vector<ProjectOopHirFunction> functions_;

@@ -32,6 +32,7 @@
 #include "nativesharp/Source/SourceManager.h"
 #include "Internal/ProjectSyntaxSourceRead.h"
 
+#include <unordered_set>
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
@@ -161,6 +162,16 @@ public:
     // ES: Recibe las líneas del reporte de --time que no son tiempos de fase (por ejemplo, las
     //     cuentas de snapshots precompilados). Sin asignar, no se reporta nada.
     void setReportSink(std::function<void(std::string_view)> sink);
+    // EN: T08-D05b. Returns the DLL identities (`name:sha256`) of C runtimes whose dependency closure holds a
+    //     homonymous DLL with other contents in another runtime's closure. HIR binds the functions of a TLS alias
+    //     of such a DLL at run time, so the alias loader can isolate its dependencies. Unset, nothing is isolated.
+    // ES: T08-D05b. Devuelve las identidades (`nombre:sha256`) de los runtimes C cuyo cierre de dependencias tiene
+    //     una DLL homonima con otro contenido en el cierre de otro runtime. HIR enlaza en ejecucion las funciones
+    //     de un alias TLS de esa DLL, para que el cargador de alias aisle sus dependencias. Sin asignar, no se
+    //     aisla nada.
+    using CppRuntimeIsolationResolver = std::function<bool(
+        const ProjectCompilation&, std::unordered_set<std::string>&, std::string&)>;
+    void setCppRuntimeIsolationResolver(CppRuntimeIsolationResolver resolver);
 #if 0 // INSTRUMENTATION CODE: detailed generics trace support.
     // Detailed, high-volume diagnostics are routed separately so normal --progress output keeps
     // its stable concise contract. The driver currently uses this for --generics-trace=<file>.
@@ -411,6 +422,7 @@ private:
     std::function<void(std::string_view, std::chrono::nanoseconds)> phaseTimingSink_;
     std::function<void(const basic::CompilationEvent&)> progressSink_;
     std::function<void(std::string_view)> reportSink_;
+    CppRuntimeIsolationResolver cppRuntimeIsolationResolver_;
 #if 0 // INSTRUMENTATION CODE
     std::function<void(const basic::CompilationEvent&)> detailedProgressSink_;
 #endif // INSTRUMENTATION CODE

@@ -17,8 +17,13 @@ Checks:
    of silently binding the other `dep.dll` (the consumer must not return 0);
 6. a NativeSharp DLL product consuming both producers packages the same isolation next to itself, and a host
    that loads it (Python ctypes) observes 101 and 102 (O0 and O2);
-7. limit kept as an explicit rejection: a function exported by only one of the homonymous DLLs is imported
-   through the import table of the product, which loads that alias before any activation context exists.
+7. T08-D05b: a function exported by only one of the homonymous DLLs (`only_one`) is bound at run time by the
+   alias loader when that alias needs isolated dependencies; before, the import table loaded the alias before any
+   activation context existed and the package was rejected ("is imported directly"). O0-O3 executable and DLL
+   product: the product import table does not name the alias, both dependencies stay isolated, and removing the
+   alias manifest makes the first call fail instead of binding the other `dep.dll`;
+8. T08-D05b control: with equal `dep.dll` contents no isolation is needed and the exclusive function keeps its
+   direct import (the alias stays in the import table).
 """
 from pathlib import Path
 import hashlib
@@ -32,6 +37,7 @@ root = Path(tempfile.mkdtemp(prefix="t08-transitivas-homonimas-", dir=r"A:\nsc-i
 clang = r"A:\al82dev-clang\bin\clang.exe"
 linker = r"A:\al82dev-clang\bin\lld-link.exe"
 nsc = r"A:\nsc-interop-build\tanda1-ON\bin\nsc.exe"
+readobj = r"A:\al82dev-clang\bin\llvm-readobj.exe"
 crt = Path(r"A:\vc2026-runtime\lib\x64\release")
 sdk = Path(r"A:\vc2026-runtime\windows-sdk\10.0.28000.0\lib")
 env = os.environ.copy()
@@ -253,25 +259,102 @@ def check_dll_product():
         print(f"producto DLL NativeSharp con dep.dll aisladas: correcto O{opt}", flush=True)
 
 
-def check_static_alias_rejected():
-    folder = root / "alias-importado"
+def imported_dlls(image):
+    """EN: Names in the import table of a PE image. ES: nombres de la tabla de importacion de una imagen PE."""
+    text = run([readobj, "--coff-imports", image], image.parent).stdout
+    return {line.split(":", 1)[1].strip().lower() for line in text.splitlines() if line.strip().startswith("Name:")}
+
+
+def exclusive_consumer(folder):
+    consumer(folder, 101, 102)
+    text = (folder / "Consumer.ns").read_text(encoding="utf-8")
+    call = "    return Check() + Dep1.Bridge.Only<int>(0) - EXCLUSIVE;"
+    (folder / "Consumer.ns").write_text(text.replace("    return Check();", call), encoding="utf-8")
+
+
+def check_exclusive_alias():
+    folder = root / "alias-exclusivo"
     folder.mkdir()
     producer(folder / "1", 1, 101, unique=True)
     producer(folder / "2", 2, 102)
-    consumer(folder, 101, 102)
+    exclusive_consumer(folder)
     text = (folder / "Consumer.ns").read_text(encoding="utf-8")
-    call = "    return Check() + Dep1.Bridge.Only<int>(0) - 101;"
+    (folder / "Consumer.ns").write_text(text.replace("EXCLUSIVE", "101"), encoding="utf-8")
+    sources = [folder / "1" / "dep.dll", folder / "2" / "dep.dll"]
+    for opt in opts:
+        out = folder / f"out{opt}"
+        result = build(folder, opt, f"out{opt}/C.exe")
+        if result.returncode:
+            raise AssertionError(f"alias exclusivo O{opt}:\n{result.stdout}")
+        isolation_layout(out, sources)
+        aliases = {name for name in imported_dlls(out / "C.exe") if name.startswith("__nsc_tls_")}
+        if aliases:
+            raise AssertionError(f"alias exclusivo O{opt}: la tabla de importacion nombra {sorted(aliases)}")
+        code = subprocess.run([str(out / "C.exe")], cwd=Path("A:/")).returncode
+        if code:
+            raise AssertionError(f"alias exclusivo O{opt}: salida {code}")
+        print(f"funcion exclusiva de un alias aislado, enlazada en ejecucion: correcto O{opt}", flush=True)
+    out = folder / f"out{opts[0]}"
+    (out / sorted(out.glob("*.nsc-isolation.manifest"))[0].name).unlink()
+    code = subprocess.run([str(out / "C.exe")], cwd=Path("A:/")).returncode
+    if code == 0:
+        raise AssertionError("alias exclusivo sin manifiesto: el consumidor no debia terminar correctamente")
+    print(f"alias exclusivo sin manifiesto de aislamiento: el consumidor falla (codigo {code:#x})", flush=True)
+    product = folder / "producto"
+    product.mkdir()
+    for index in ("1", "2"):
+        shutil.copytree(folder / index, product / index)
+    (product / "Product.ns").write_text(
+        "namespace Product\n{\n    public class Api\n    {\n"
+        "        public static export extern C int product_check()\n        {\n"
+        "            if (Dep1.Bridge.Dep<int>(0) != 101 || Dep2.Bridge.Dep<int>(0) != 102) return 8;\n"
+        "            if (Dep1.Bridge.Tls<int>(0) != 1 || Dep2.Bridge.Tls<int>(0) != 2) return 7;\n"
+        "            return Dep1.Bridge.Only<int>(0) == 101 ? 0 : 9;\n        }\n    }\n}\n", encoding="utf-8")
+    (product / "Product.nsproj").write_text(
+        '<Project><PropertyGroup><Name>Product</Name><OutputType>SharedLibrary</OutputType></PropertyGroup>'
+        '<ItemGroup><Compile Include="Product.ns" /><LibraryReference Include="1/Dep1.lib" />'
+        '<LibraryReference Include="2/Dep2.lib" /></ItemGroup></Project>', encoding="utf-8")
+    for opt in ("0", "2"):
+        out = product / f"out{opt}"
+        result = run([nsc, r"--cpp-clang-root=A:\al82dev-clang", "--emit-project-oop-dll", "Product.nsproj",
+                      "-O" + opt, "--no-artifact-cache", "-o", f"out{opt}/Product.dll"], product, check=False)
+        if result.returncode:
+            raise AssertionError(f"producto DLL con alias exclusivo O{opt}:\n{result.stdout}")
+        isolation_layout(out, [product / "1" / "dep.dll", product / "2" / "dep.dll"])
+        if any(name.startswith("__nsc_tls_") for name in imported_dlls(out / "Product.dll")):
+            raise AssertionError(f"producto DLL O{opt}: la tabla de importacion nombra un alias")
+        probe = "import ctypes, sys; d = ctypes.WinDLL(sys.argv[1]); sys.exit(d.product_check())"
+        code = subprocess.run([sys.executable, "-c", probe, str(out / "Product.dll")], cwd=Path("A:/")).returncode
+        if code:
+            raise AssertionError(f"producto DLL con alias exclusivo O{opt}: product_check devolvio {code}")
+        print(f"producto DLL con funcion exclusiva de un alias aislado: correcto O{opt}", flush=True)
+
+
+def check_exclusive_without_isolation():
+    folder = root / "alias-exclusivo-sin-aislamiento"
+    folder.mkdir()
+    producer(folder / "1", 1, 100, unique=True)
+    producer(folder / "2", 2, 100, dep_from=folder / "1")
+    consumer(folder, 100, 100)
+    text = (folder / "Consumer.ns").read_text(encoding="utf-8")
+    call = "    return Check() + Dep1.Bridge.Only<int>(0) - 100;"
     (folder / "Consumer.ns").write_text(text.replace("    return Check();", call), encoding="utf-8")
     result = build(folder, "0", "out/C.exe")
-    expected = "is imported directly, so its dependencies cannot be isolated"
-    if result.returncode == 0 or expected not in result.stdout:
-        raise AssertionError(f"alias importado directamente: se esperaba «{expected}»\n{result.stdout}")
-    print("alias TLS importado por la tabla de importación con dep.dll distinta: rechazo explícito", flush=True)
+    if result.returncode:
+        raise AssertionError(f"alias exclusivo sin aislamiento:\n{result.stdout}")
+    out = folder / "out"
+    aliases = {name for name in imported_dlls(out / "C.exe") if name.startswith("__nsc_tls_")}
+    if len(aliases) != 1 or any(out.glob("*.nsc-isolation.manifest")):
+        raise AssertionError(f"sin aislamiento la funcion exclusiva debia conservar su importacion directa: {aliases}")
+    if subprocess.run([str(out / "C.exe")], cwd=Path("A:/")).returncode:
+        raise AssertionError("alias exclusivo sin aislamiento: ejecucion")
+    print("funcion exclusiva sin dependencias que aislar: conserva la importacion directa", flush=True)
 
 
 check_isolated()
 check_dll_product()
-check_static_alias_rejected()
+check_exclusive_alias()
+check_exclusive_without_isolation()
 check_equal_control()
 check_plain_root_rejected()
 print("DLL TLS homónimas con dependencias transitivas homónimas verificadas;", root)

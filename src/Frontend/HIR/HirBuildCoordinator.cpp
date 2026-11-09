@@ -1824,8 +1824,17 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                         other.cppDllRuntimeIdentity != symbol.cppDllRuntimeIdentity &&
                         interop::cppTlsSameDllName(other.cppDllRuntimeIdentity, symbol.cppDllRuntimeIdentity);
                 });
+            // EN: T08-D05b. A function of a TLS-aliased DLL whose dependencies must be isolated is bound at run time
+            //     too, even when only that DLL exports it: the import table would load the alias before any
+            //     activation context exists. Without that need, an exclusive function keeps its direct import.
+            // ES: T08-D05b. Una funcion de una DLL con alias TLS cuyas dependencias deben aislarse tambien se enlaza
+            //     en ejecucion, aunque solo esa DLL la exporte: la tabla de importacion cargaria el alias antes de
+            //     que exista un contexto de activacion. Sin esa necesidad, una funcion exclusiva conserva su
+            //     importacion directa.
+            const bool isolatedDll = cppDllRequiresIsolation(symbol.cppDllRuntimeIdentity);
             const auto states = namespaceFunctionModel_->states();
-            const bool requiresTlsAliases = distinctDlls && std::any_of(states.begin(), states.end(), [&](const auto& state) {
+            const bool requiresTlsAliases = (distinctDlls || isolatedDll) &&
+                std::any_of(states.begin(), states.end(), [&](const auto& state) {
                 if (!state.cppThreadLocal || !state.cppDllImport ||
                     state.cppTlsRuntimeIdentity != symbol.cppDllRuntimeIdentity) return false;
                 return std::any_of(states.begin(), states.end(), [&](const auto& other) {

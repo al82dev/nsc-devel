@@ -94,6 +94,78 @@ bool collectCppRuntimeCandidates(const frontend::ProjectCompilation &compilation
     return true;
 }
 
+bool collectCppRuntimesRequiringIsolation(const frontend::ProjectCompilation &compilation,
+                                          std::unordered_set<std::string> &identities, std::string &error)
+{
+    // EN: T08-D05b. Same closure as the packaging (a dependency is a sibling DLL that the PE names), evaluated
+    //     before HIR. A root needs isolation when a DLL of its closure, other than the root itself, has a
+    //     homonym with other contents in some closure. An invalid DLL is skipped here: the packaging reports it.
+    // ES: T08-D05b. El mismo cierre que el empaquetado (una dependencia es una DLL hermana que nombra el PE),
+    //     evaluado antes de HIR. Una raiz necesita aislamiento si una DLL de su cierre, distinta de la propia raiz,
+    //     tiene un homonimo con otro contenido en algun cierre. Una DLL invalida se omite aqui: la informa el
+    //     empaquetado.
+    identities.clear();
+    if (!compilation.projectGraph()) return true;
+    std::vector<std::filesystem::path> candidates;
+    if (!collectCppRuntimeCandidates(compilation, candidates, error)) return false;
+    std::vector<std::filesystem::path> files;
+    std::vector<std::vector<std::size_t>> imports;
+    std::unordered_map<std::string, std::size_t> index;
+    const auto addFile = [&](const std::filesystem::path &path) -> std::size_t
+    {
+        const auto [found, inserted] = index.emplace(foldedPathKey(path), files.size());
+        if (inserted)
+        {
+            files.push_back(path);
+            imports.emplace_back();
+        }
+        return found->second;
+    };
+    std::vector<std::size_t> roots;
+    for (const auto &candidate : candidates) roots.push_back(addFile(candidate));
+    if (roots.size() < 2) return true;
+    for (std::size_t position = 0; position < files.size(); ++position)
+    {
+        linker::PeExecutableVerifier verifier;
+        if (!verifier.verifyDynamicLibrary(files[position])) continue;
+        for (const std::string &importedName : verifier.info().importedLibraries)
+        {
+            const std::filesystem::path sibling = files[position].parent_path() / importedName;
+            std::error_code existsError;
+            if (!std::filesystem::is_regular_file(sibling, existsError)) continue;
+            const std::size_t imported = addFile(sibling);
+            imports[position].push_back(imported);
+        }
+    }
+    std::vector<std::string> digests(files.size());
+    std::unordered_map<std::string, std::unordered_set<std::string>> contentsByName;
+    for (std::size_t position = 0; position < files.size(); ++position)
+    {
+        basic::Sha256Digest digest{};
+        std::uintmax_t size = 0;
+        if (!basic::sha256File(files[position], digest, size, error)) return false;
+        digests[position] = basic::sha256Hex(digest);
+        contentsByName[foldedPathKey(files[position].filename())].insert(digests[position]);
+    }
+    for (const std::size_t root : roots)
+    {
+        std::vector<std::size_t> closure{root};
+        std::unordered_set<std::size_t> seen{root};
+        bool conflict = false;
+        for (std::size_t position = 0; position < closure.size(); ++position)
+            for (const std::size_t imported : imports[closure[position]])
+                if (seen.insert(imported).second)
+                {
+                    closure.push_back(imported);
+                    const std::string name = foldedPathKey(files[imported].filename());
+                    if (name != foldedPathKey(files[root].filename()) && contentsByName[name].size() > 1)
+                        conflict = true;
+                }
+        if (conflict) identities.insert(pathToUtf8(files[root].filename()) + ":" + digests[root]);
+    }
+    return true;
+}
+
 bool appendReferencedCppRuntimes(const frontend::ProjectCompilation &compilation,
                                  const linker::PeExecutableInfo &image,
                                  std::vector<std::filesystem::path> &runtimeLibraries,

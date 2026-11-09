@@ -478,6 +478,11 @@ void ProjectCompilation::setProgressSink(
     progressSink_ = std::move(sink);
 }
 
+void ProjectCompilation::setCppRuntimeIsolationResolver(CppRuntimeIsolationResolver resolver)
+{
+    cppRuntimeIsolationResolver_ = std::move(resolver);
+}
+
 #if 0 // INSTRUMENTATION CODE: detailed generics trace support.
 void ProjectCompilation::setDetailedProgressSink(
     std::function<void(const basic::CompilationEvent&)> sink)
@@ -1709,6 +1714,14 @@ bool ProjectCompilation::compileProjectOopHir(
         if (mode) cppConsumerModes.emplace(unit->fileId().value(), *mode);
     }
     oopHirModel_->setCppConsumerVolatileModes(std::move(cppConsumerModes));
+    // EN: T08-D05b. DLLs whose TLS aliases must isolate homonymous dependencies, resolved by the driver.
+    // ES: T08-D05b. DLL cuyos alias TLS deben aislar dependencias homonimas, resueltas por el driver.
+    if (cppRuntimeIsolationResolver_)
+    {
+        std::unordered_set<std::string> isolated;
+        if (!cppRuntimeIsolationResolver_(*this, isolated, loadError)) return false;
+        oopHirModel_->setCppIsolatedDllIdentities(std::move(isolated));
+    }
     if (oopHirModel_->build(
             *nameLookup_, *memberModel_, *inheritanceModel_, *interfaceModel_, *methodBodyModel_,
             *constructionModel_, *objectLayoutModel_, loadError, genericConstraintModel_.get(),

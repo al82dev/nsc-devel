@@ -21,6 +21,17 @@ ProjectOopHirModel::cppConsumerVolatileModeForFile(FileId file) const noexcept
     return found->second;
 }
 
+void ProjectOopHirModel::setCppIsolatedDllIdentities(std::unordered_set<std::string> identities)
+{
+    cppIsolatedDllIdentities_ = std::move(identities);
+}
+
+bool ProjectOopHirModel::cppDllRequiresIsolation(std::string_view identity) const
+{
+    const auto* source = lookupSource_ == nullptr ? this : lookupSource_;
+    return !identity.empty() && source->cppIsolatedDllIdentities_.contains(std::string(identity));
+}
+
 std::optional<compilation::CppConsumerVolatileMode>
 ProjectOopHirModel::cppConsumerVolatileModeForSyntax(const ast::AstNode* syntax) const noexcept
 {

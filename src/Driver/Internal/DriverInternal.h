@@ -197,6 +197,12 @@ bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibrari
                            const CppTlsRuntimeAliases &aliases,
                            const std::filesystem::path &destination, std::vector<std::filesystem::path> &copiedFiles,
                            std::string &error);
+// EN: T08-D05b. Identities (`name:sha256`) of the C runtimes of the compilation whose dependency closure holds a
+//     homonymous DLL with other contents in the closure of another runtime.
+// ES: T08-D05b. Identidades (`nombre:sha256`) de los runtimes C de la compilacion cuyo cierre de dependencias
+//     tiene una DLL homonima con otro contenido en el cierre de otro runtime.
+bool collectCppRuntimesRequiringIsolation(const frontend::ProjectCompilation &compilation,
+                                          std::unordered_set<std::string> &identities, std::string &error);
 bool appendReferencedCppRuntimes(const frontend::ProjectCompilation &compilation,
                                  const linker::PeExecutableInfo &image,
                                  std::vector<std::filesystem::path> &runtimeLibraries,
