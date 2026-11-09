@@ -62,8 +62,8 @@ namespace NativeSharp.Core.Internal
                 LocalSharedCounts* counts = (LocalSharedCounts*)&block[0];
                 int result = (*counts).ReleaseStrong();
                 if (result != 1) return result;
-                Destroy<T>(payload);
-                DropWeak(block);
+                try { Destroy<T>(payload); }
+                finally { DropWeak(block); }
                 return 1;
             }
         }
