@@ -52,3 +52,25 @@ reasignación y conversión de la estructura, además de las comprobaciones
 anteriores. El resultado final está en `readonly-array-ctest.log`. Los casos
 de referencia a través de otras construcciones de valores no se consideran
 cubiertos por esta prueba.
+
+## Carga struct con campo de clase
+
+Un control posterior usó `SharedLocalHandle<Box>.Get()` con retorno
+`ref readonly Box`. La escritura directa `Get().Item.Value = 10` se rechazaba,
+pero `Child saved = Get().Item` se aceptaba, perdiendo el préstamo del dueño
+(`readonly-struct-payload-before.log`). Se conserva ahora el préstamo para un
+retorno struct de instancia por referencia de solo lectura sin vida estática;
+el campo de clase derivado ya no puede guardarse en un local sin préstamo.
+La comprobación recorre los campos de estructuras anidadas; si solo encuentra
+escalares conocidos, permite copiarlas por valor. Para tipos desconocidos,
+precompilados o que pueden contener referencias conserva el préstamo de manera
+conservadora.
+
+La prueba dirigida cubre acceso directo y mediante `SharedBorrow`, tanto con el
+control local como el atómico; además comprueba lectura escalar O0/O2. La
+selección anterior de uso público pasó y las dos pruebas de referencias
+existentes pasaron (`readonly-array-ctest.log`,
+`public-readonly-array-existing-controls.log`, `readonly-array-reference-tests.log`).
+La regresión ejecuta copias de estructuras escalares directas y anidadas en
+O0/O2 y rechaza la copia del struct que contiene una clase. No acredita todos los
+tipos de campos, modos de retorno ni la vida de módulos precompilados.

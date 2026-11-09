@@ -18,7 +18,9 @@ namespace NativeSharp.Core { public class Exception { } }
 class Payload { public int[] Data; public Payload() { Data = new int[1]; } }
 class Child { public int Value; }
 class Children { public Child[] Data; public Children() { Data = new Child[1]; Data[0] = new Child(); } }
-struct Box { public Child Item; public int Value; }
+struct Box { public Child Item; public int Value; public Box() { Item = new Child(); Value = 42; } }
+struct Scalar { public int Value; public Scalar() { Value = 42; } }
+struct ScalarOuter { public Scalar Inner; public ScalarOuter() { Inner = new Scalar(); } }
 class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Item = new Child(); Data[0].Value = 42; } }
 '''
     cases = {
@@ -50,6 +52,21 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
                                'borrowed value cannot'),
         'struct_nested_read': ('''HANDLE<Boxes> nestedOwner = FACTORY.Create<Boxes>();
  borrowed Boxes nested = nestedOwner.Get(); return nested.Data[0].Value;''', None),
+        'struct_payload_child_write': ('''HANDLE<Box> boxOwner = FACTORY.Create<Box>();
+ boxOwner.Get().Item.Value = 10; return 0;''', 'not assignable'),
+        'struct_payload_child_escape': ('''HANDLE<Box> boxOwner = FACTORY.Create<Box>();
+ Child saved = boxOwner.Get().Item; return saved.Value;''', 'borrowed value cannot'),
+        'struct_view_child_escape': ('''HANDLE<Box> boxOwner = FACTORY.Create<Box>();
+ SharedBorrow<Box> view = boxOwner.Borrow(); Child saved = view.Get().Item; return saved.Value;''',
+                                     'borrowed value cannot'),
+        'struct_payload_copy': ('''HANDLE<Box> boxOwner = FACTORY.Create<Box>();
+ Box copied = boxOwner.Get(); return copied.Value;''', 'borrowed value cannot'),
+        'struct_payload_read': ('''HANDLE<Box> boxOwner = FACTORY.Create<Box>();
+ return boxOwner.Get().Value;''', None),
+        'scalar_payload_copy': ('''HANDLE<Scalar> scalarOwner = FACTORY.Create<Scalar>();
+ Scalar copied = scalarOwner.Get(); return copied.Value;''', None),
+        'nested_scalar_payload_copy': ('''HANDLE<ScalarOuter> scalarOwner = FACTORY.Create<ScalarOuter>();
+ ScalarOuter copied = scalarOwner.Get(); return copied.Inner.Value;''', None),
     }
     with tempfile.TemporaryDirectory(prefix='nsc-readonly-array-') as temporary:
         root = Path(temporary)

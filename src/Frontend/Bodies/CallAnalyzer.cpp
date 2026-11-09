@@ -5333,6 +5333,49 @@ void ProjectMethodBodyModel::configureSelectedCallBinding(
         result.storageOwnership = sema::OwnershipKind::Borrowed;
         result.readonlyBorrowedObject = readonlyReference;
     }
+    const NamedTypeDeclaration* returnedType = readonlyReference && !selectedMember.isStatic &&
+        selectedMember.isReferenceReturn && selectedMember.returnLifetimeName != "static"
+        ? namedTypeForTypeKey(selectedMember.declaredTypeKey) : nullptr;
+    bool aggregateMayCarryReferences = false;
+    if (returnedType != nullptr && returnedType->kind == NamedTypeDeclarationKind::Struct)
+    {
+        std::vector<std::string> pending{selectedMember.declaredTypeKey};
+        std::unordered_set<std::size_t> visited;
+        while (!pending.empty() && !aggregateMayCarryReferences)
+        {
+            const std::string current = std::move(pending.back());
+            pending.pop_back();
+            if (ProjectTypeConversion::isNumeric(current) || current == "builtin:bool" ||
+                current == "builtin:char" || isEnumTypeKey(current)) continue;
+            const NamedTypeDeclaration* type = namedTypeForTypeKey(current);
+            const auto ordinal = namedTypeOrdinalForTypeKey(current);
+            if (type == nullptr || type->kind != NamedTypeDeclarationKind::Struct ||
+                !ordinal.has_value() || memberModel_ == nullptr || type->isPrecompiled)
+            {
+                aggregateMayCarryReferences = true;
+                break;
+            }
+            if (!visited.insert(*ordinal).second) continue;
+            for (const std::size_t memberOrdinal : memberModel_->membersOfType(*ordinal))
+            {
+                if (memberOrdinal >= memberModel_->members().size())
+                {
+                    aggregateMayCarryReferences = true;
+                    break;
+                }
+                const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+                if (member.kind == ClassMemberKind::Field && !member.isStatic)
+                    pending.push_back(member.declaredTypeKey);
+            }
+        }
+    }
+    if (aggregateMayCarryReferences)
+    {
+        result.ownership = sema::OwnershipKind::Borrowed;
+        result.objectLifetimeOwnership = sema::OwnershipKind::Borrowed;
+        result.storageOwnership = sema::OwnershipKind::Borrowed;
+        result.readonlyBorrowedObject = true;
+    }
     result.ownershipTransfer = selectedMember.declaredOwnership == sema::OwnershipKind::Owned;
     // An owned return crosses the call boundary without a named owner. It is therefore a
     // fresh owner in the caller, just like `new T(...)`, and may participate in the
