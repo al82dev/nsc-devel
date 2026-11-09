@@ -233,5 +233,28 @@ public class Program
 )NS",
                  "explicit destroy of an owned value is forbidden");
 
+    expectReject(tests, root, "owned_field_parenthesized", R"NS(
+public class Resource { ~Resource() { } }
+public class Holder
+{
+    public owned Resource value;
+    public void Close() { destroy (this.value); }
+}
+public class Program { public static int Main() { return 0; } }
+)NS",
+                 "explicit destroy of an owned value is forbidden");
+
+    expectReject(tests, root, "owned_field_nested", R"NS(
+public class Resource { ~Resource() { } }
+public class Holder { public owned Resource value; }
+public class Outer { public Holder holder; }
+public class Program
+{
+    private static void Close(Outer outer) { destroy outer.holder.value; }
+    public static int Main() { return 0; }
+}
+)NS",
+                 "explicit destroy of an owned value is forbidden");
+
     return tests.resultKeeping(root);
 }

@@ -21,3 +21,10 @@ de `owned-destroy-public-check.cmd` confirmó el rechazo semántico de los dos
 ejemplos originales con las fuentes de Rc y Arc. Es una comprobación estática,
 sin ejecución ni distinción de optimización, y no prueba escapes a través de
 alias que pierden la identidad del campo ni cubre todos los módulos compilados.
+
+Una repetición posterior añadió campos anidados y acceso entre paréntesis a la
+misma prueba; las 27 comprobaciones pasaron (`owned-destroy-expanded.log`).
+La repetición con la compilación incremental posterior volvió a pasar las
+27 comprobaciones (`owned-destroy-current.log`).
+El control sigue sin demostrar que un alias local conserve la identidad del
+campo propietario.
