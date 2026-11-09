@@ -168,6 +168,26 @@ bool ProjectMethodBodyModel::resolveWrittenMemberType(
     {
         typeOrdinal = resolveTypeIdentifier(methodMemberOrdinal, receiverSyntax->text());
         writtenTypeName = receiverSyntax->text();
+        const ClassMemberSymbol* context = methodSymbol(methodMemberOrdinal);
+        const auto types = nameLookup_->namedTypes();
+        if (typeOrdinal.has_value() && *typeOrdinal < types.size() && context != nullptr &&
+            context->declaringTypeOrdinal < types.size())
+        {
+            const NamedTypeDeclaration& candidate = types[*typeOrdinal];
+            const std::size_t projectOrdinal = types[context->declaringTypeOrdinal].projectOrdinal;
+            if (candidate.kind == NamedTypeDeclarationKind::Class &&
+                candidate.accessibility == NamedTypeAccessibility::Internal &&
+                !nameLookup_->typeIsVisibleFromProject(projectOrdinal, *typeOrdinal))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidMemberAccess,
+                    diagnostics::DiagnosticSeverity::Error,
+                    receiverSyntax->range(),
+                    "type '" + candidate.identity.fullyQualifiedName() +
+                        "' is not accessible from this project");
+                return false;
+            }
+        }
     }
     return true;
 }

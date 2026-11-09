@@ -6818,6 +6818,11 @@ if(NSC_BUILD_TESTS)
         nsc.stage36-recovery.object
         PROPERTIES PASS_REGULAR_EXPRESSION "project OOP object emission: ok.*machine=0x8664")
 
+    add_test(NAME nsc.visibility.internal-static-type
+        COMMAND "${Python3_EXECUTABLE}" -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/internal_static_type_visibility.py"
+            "${NSC_TEST_COMPILER}")
+
     add_test(
         NAME nsc.stage38.method-bodies
         COMMAND "${NSC_TEST_COMPILER}" --check-project-method-bodies
