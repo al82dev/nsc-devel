@@ -35,6 +35,18 @@ frontend modificados. Las pruebas de punteros públicos se hicieron desde
 fuentes; no acreditan consumo binario, seguridad concurrente, todos los caminos
 de conversión ni acceso mediante código `unsafe`.
 
+Una selección posterior comprobó `+=`, incremento prefijo y posfijo sobre un
+elemento prestado, y escrituras después de mezclar un arreglo prestado y otro
+ordinario en un condicional o `??`. El compilador rechazó las seis formas para
+los controles local y atómico; un arreglo ordinario ejecutó las tres operaciones
+aritméticas y devolvió 42 en O0/O2. Los resultados están en los archivos
+`readonly-array-ctest-compound_write,postfix_write,prefix_write,ordinary_compound_write.log`
+y `readonly-array-ctest-mixed_*.log` de `A:/nsc-fixes-evidencia`. Las primeras
+ejecuciones individuales de prefijo y posfijo fallaron en la expectativa de la
+prueba: el compilador sí los rechazaba, pero con `requires a modifiable` en vez
+de `not assignable`. Se ajustó la expectativa al diagnóstico observado y la
+selección posterior pasó. No hubo cambio del compilador en esta comprobación.
+
 ## Estructuras anidadas
 
 Tras `764137d50`, una regresión con un arreglo de estructuras que contienen un

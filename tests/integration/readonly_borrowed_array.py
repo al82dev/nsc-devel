@@ -25,11 +25,19 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
 '''
     cases = {
         'write': ('''alias.Data[0] = 10; return 0;''', 'not assignable'),
+        'compound_write': ('''alias.Data[0] += 10; return 0;''', 'not assignable'),
+        'postfix_write': ('''alias.Data[0]++; return 0;''', 'requires a modifiable'),
+        'prefix_write': ('''++alias.Data[0]; return 0;''', 'requires a modifiable'),
+        'ordinary_compound_write': ('''Payload ordinary = new Payload(); ordinary.Data[0] += 40;
+ ordinary.Data[0]++; ++ordinary.Data[0]; return ordinary.Data[0];''', None),
         'escape': ('''int[] saved = alias.Data; return saved[0];''', 'borrowed value cannot'),
         'reassign': ('''int[] saved; saved = alias.Data; return saved[0];''', 'borrowed value cannot'),
         'reference': ('''ref int item = ref alias.Data[0]; item = 10; return 0;''', 'mutable addressable storage'),
         'conditional_write': ('''(true ? alias.Data : alias.Data)[0] = 10; return 0;''', 'not assignable'),
+        'mixed_conditional_write': ('''(true ? new int[1] : alias.Data)[0] = 10; return 0;''', 'not assignable'),
+        'mixed_conditional_reverse': ('''(true ? alias.Data : new int[1])[0] = 10; return 0;''', 'not assignable'),
         'coalesce_write': ('''(alias.Data ?? alias.Data)[0] = 10; return 0;''', 'not assignable'),
+        'mixed_coalesce_write': ('''(alias.Data ?? new int[1])[0] = 10; return 0;''', 'not assignable'),
         'cast_write': ('''((int[])alias.Data)[0] = 10; return 0;''', 'not assignable'),
         'read': ('''Payload ordinary = new Payload(); ordinary.Data[0] = 42;
  return alias.Data[0] == 0 && ordinary.Data[0] == 42 ? 42 : 1;''', None),
