@@ -55,6 +55,191 @@ bool declaredLifetimeOutlives(
     return false;
 }
 }
+void ProjectMethodBodyModel::collectViewSourceFields(
+    MethodLocalSymbol& local, const ast::AstNode* expression, std::size_t scopeOrdinal) const
+{
+    if (expression == nullptr) return;
+    const std::size_t callable = scopeOrdinal < scopes_.size()
+        ? scopes_[scopeOrdinal].methodMemberOrdinal : std::numeric_limits<std::size_t>::max();
+    // Each possible value of a conditional can hold a different field loan.
+    // Traverse only its value branches without growing the native call stack.
+    std::vector<const ast::AstNode*> pending{expression};
+    while (!pending.empty())
+    {
+        expression = pending.back();
+        pending.pop_back();
+        if (expression == nullptr) continue;
+        if (expression->kind() == ast::AstNodeKind::ConditionalExpression)
+        {
+            pending.push_back(expression->third());
+            pending.push_back(expression->second());
+            continue;
+        }
+        const MethodCallBinding* call = callBinding(expression, callable);
+        if (call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
+            !call->staticCall && typeKeyIsViewLike(call->resultTypeKey) &&
+            (call->implicitThis || (call->receiverSyntax != nullptr &&
+             call->receiverSyntax->kind() == ast::AstNodeKind::ThisExpression)))
+        {
+            if (std::ranges::find(local.viewSourceFields, "$this") == local.viewSourceFields.end())
+                local.viewSourceFields.push_back("$this");
+            if (std::ranges::find(local.viewSourceFields, "*") == local.viewSourceFields.end())
+                local.viewSourceFields.push_back("*");
+            continue;
+        }
+        if (call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
+            !call->staticCall && typeKeyIsViewLike(call->resultTypeKey) &&
+            call->receiverSyntax != nullptr &&
+            call->receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const MethodNameBinding* receiver = nameBinding(call->receiverSyntax, callable);
+            if (receiver != nullptr && receiver->kind == MethodNameBindingKind::ImplicitField)
+            {
+                if (std::ranges::find(local.viewSourceFields, "$this") == local.viewSourceFields.end())
+                    local.viewSourceFields.push_back("$this");
+                if (std::ranges::find(local.viewSourceFields, receiver->name) == local.viewSourceFields.end())
+                    local.viewSourceFields.push_back(receiver->name);
+                if ((memberModel_ == nullptr || !memberModel_->typeIsMoveOnly(receiver->typeKey)) &&
+                    std::ranges::find(local.viewSourceFields, "*") == local.viewSourceFields.end())
+                    local.viewSourceFields.push_back("*");
+                continue;
+            }
+        }
+        if (call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
+            !call->staticCall && typeKeyIsViewLike(call->resultTypeKey) &&
+            call->receiverSyntax != nullptr &&
+            call->receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression && memberModel_ != nullptr)
+        {
+            const auto source = lookupScopeName(scopeOrdinal, call->receiverSyntax->text());
+            const ClassMemberSymbol* method = methodSymbol(callable);
+            const bool localOwner = source.has_value() && source->kind == ScopeNameKind::Local &&
+                source->semanticOrdinal < locals_.size() &&
+                memberModel_->typeIsMoveOnly(locals_[source->semanticOrdinal].typeKey);
+            const bool parameterOwner = source.has_value() && source->kind == ScopeNameKind::Parameter &&
+                method != nullptr && source->semanticOrdinal < method->parameters.size() &&
+                method->parameters[source->semanticOrdinal].passKind == ParameterPassKind::Value &&
+                memberModel_->typeIsMoveOnly(method->parameters[source->semanticOrdinal].typeKey);
+            if (localOwner || parameterOwner)
+            {
+                const std::string root = "@" + call->receiverSyntax->text();
+                if (std::ranges::find(local.viewSourceFields, root) == local.viewSourceFields.end())
+                    local.viewSourceFields.push_back(root);
+                continue;
+            }
+            // The returned view borrows an instance receiver even when that receiver is
+            // not move-only. Its implementation may borrow any of the receiver's fields.
+            if (source.has_value() &&
+                (source->kind == ScopeNameKind::Local || source->kind == ScopeNameKind::Parameter))
+            {
+                const std::string root = "@" + call->receiverSyntax->text();
+                if (std::ranges::find(local.viewSourceFields, root) == local.viewSourceFields.end())
+                    local.viewSourceFields.push_back(root);
+                if (std::ranges::find(local.viewSourceFields, "*") == local.viewSourceFields.end())
+                    local.viewSourceFields.push_back("*");
+                continue;
+            }
+        }
+        if (call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
+            !call->staticCall && call->receiverSyntax != nullptr &&
+            (call->receiverSyntax->kind() == ast::AstNodeKind::MemberExpression ||
+             call->receiverSyntax->kind() == ast::AstNodeKind::IndexExpression))
+        {
+            const ast::AstNode* fieldSyntax = call->receiverSyntax;
+            while (fieldSyntax != nullptr && fieldSyntax->kind() == ast::AstNodeKind::IndexExpression)
+                fieldSyntax = fieldSyntax->first();
+            if (fieldSyntax != nullptr && fieldSyntax->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const MethodNameBinding* binding = nameBinding(fieldSyntax, callable);
+                const bool implicitField = binding != nullptr &&
+                    binding->kind == MethodNameBindingKind::ImplicitField;
+                const std::string root = implicitField ? "$this" : "@" + fieldSyntax->text();
+                if (std::ranges::find(local.viewSourceFields, root) == local.viewSourceFields.end())
+                    local.viewSourceFields.push_back(root);
+                if (std::ranges::find(local.viewSourceFields, "*") == local.viewSourceFields.end())
+                    local.viewSourceFields.push_back("*");
+                continue;
+            }
+            if (fieldSyntax == nullptr || fieldSyntax->kind() != ast::AstNodeKind::MemberExpression)
+            {
+                if (std::ranges::find(local.viewSourceFields, "*") == local.viewSourceFields.end())
+                    local.viewSourceFields.push_back("*");
+                continue;
+            }
+            // A method on a field that is not itself the move-only owner can
+            // return a view of any nested field; preserve that uncertainty.
+            if (typeKeyIsViewLike(call->resultTypeKey) &&
+                (memberModel_ == nullptr || !memberModel_->typeIsMoveOnly(
+                    recordedExpressionTypeKey(call->receiverSyntax, callable))) &&
+                std::ranges::find(local.viewSourceFields, "*") == local.viewSourceFields.end())
+                local.viewSourceFields.push_back("*");
+            const ast::AstNode* rootSyntax = fieldSyntax->first();
+            while (rootSyntax != nullptr && (rootSyntax->kind() == ast::AstNodeKind::MemberExpression ||
+                                             rootSyntax->kind() == ast::AstNodeKind::IndexExpression))
+                rootSyntax = rootSyntax->first();
+            if (rootSyntax == nullptr || (rootSyntax->kind() != ast::AstNodeKind::IdentifierExpression &&
+                                          rootSyntax->kind() != ast::AstNodeKind::ThisExpression))
+            {
+                if (std::ranges::find(local.viewSourceFields, "*") == local.viewSourceFields.end())
+                    local.viewSourceFields.push_back("*");
+                continue;
+            }
+            const std::string field = fieldSyntax->text();
+            if (std::ranges::find(local.viewSourceFields, field) == local.viewSourceFields.end())
+                local.viewSourceFields.push_back(field);
+            const std::string_view receiverType = recordedExpressionTypeKey(fieldSyntax->first(), callable);
+            bool overlaps = aggregateIsUnion(receiverType);
+            if (!overlaps && memberModel_ != nullptr)
+            {
+                const auto ordinal = namedTypeOrdinalForTypeKey(receiverType);
+                if (ordinal.has_value())
+                    overlaps = std::ranges::any_of(memberModel_->members(), [&](const ClassMemberSymbol& member)
+                    {
+                        return member.declaringTypeOrdinal == *ordinal && member.kind == ClassMemberKind::Field &&
+                            !member.isStatic && member.explicitFieldOffset.has_value();
+                    });
+            }
+            if (overlaps && std::ranges::find(local.viewSourceFields, "*") == local.viewSourceFields.end())
+                local.viewSourceFields.push_back("*");
+            const ast::AstNode* ancestor = fieldSyntax->first();
+            while (ancestor != nullptr && (ancestor->kind() == ast::AstNodeKind::MemberExpression ||
+                                           ancestor->kind() == ast::AstNodeKind::IndexExpression))
+            {
+                if (ancestor->kind() == ast::AstNodeKind::MemberExpression &&
+                    std::ranges::find(local.viewSourceFields, ancestor->text()) == local.viewSourceFields.end())
+                    local.viewSourceFields.push_back(ancestor->text());
+                ancestor = ancestor->first();
+            }
+            const MethodNameBinding* rootBinding = rootSyntax->kind() == ast::AstNodeKind::IdentifierExpression
+                ? nameBinding(rootSyntax, callable) : nullptr;
+            const bool implicitField = rootBinding != nullptr &&
+                rootBinding->kind == MethodNameBindingKind::ImplicitField;
+            if (implicitField &&
+                std::ranges::find(local.viewSourceFields, rootBinding->name) == local.viewSourceFields.end())
+                local.viewSourceFields.push_back(rootBinding->name);
+            const std::string root = rootSyntax->kind() == ast::AstNodeKind::ThisExpression || implicitField
+                ? "$this" : "@" + rootSyntax->text();
+            if (std::ranges::find(local.viewSourceFields, root) == local.viewSourceFields.end())
+                local.viewSourceFields.push_back(root);
+            continue;
+        }
+        if (expression->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const auto source = lookupScopeName(scopeOrdinal, expression->text());
+            if (source.has_value() && source->kind == ScopeNameKind::Local &&
+                source->semanticOrdinal < locals_.size() &&
+                !locals_[source->semanticOrdinal].viewSourceFields.empty())
+            {
+                for (const std::string& field : locals_[source->semanticOrdinal].viewSourceFields)
+                    if (std::ranges::find(local.viewSourceFields, field) == local.viewSourceFields.end())
+                        local.viewSourceFields.push_back(field);
+                continue;
+            }
+        }
+        if (std::ranges::find(local.viewSourceFields, "*") == local.viewSourceFields.end())
+            local.viewSourceFields.push_back("*");
+    }
+}
+
 std::optional<std::string> ProjectMethodBodyModel::viewRootLocalOfExpression(
     const ast::AstNode* expression,
     std::size_t scopeOrdinal) const
@@ -849,10 +1034,18 @@ bool ProjectMethodBodyModel::hasActiveBorrowOfOwnerLocal(
         const std::string& ownerName = locals_[localOrdinal].name;
         for (const MethodLocalSymbol& local : locals_)
         {
-            if (local.viewRootLocalName == ownerName &&
-                scopeContains(local.scopeOrdinal, scopeOrdinal))
+            if (!scopeContains(local.scopeOrdinal, scopeOrdinal)) continue;
+            if (local.viewRootLocalName == ownerName)
             {
                 const auto root = lookupScopeName(local.scopeOrdinal, local.viewRootLocalName);
+                if (root.has_value() && root->kind == ScopeNameKind::Local &&
+                    root->semanticOrdinal == localOrdinal) return true;
+            }
+            for (const std::string& field : local.viewSourceFields)
+            {
+                if (field.size() <= 1 || field.front() != '@' ||
+                    std::string_view(field).substr(1) != ownerName) continue;
+                const auto root = lookupScopeName(local.scopeOrdinal, std::string_view(field).substr(1));
                 if (root.has_value() && root->kind == ScopeNameKind::Local &&
                     root->semanticOrdinal == localOrdinal) return true;
             }
@@ -897,11 +1090,21 @@ bool ProjectMethodBodyModel::hasActiveBorrowOfOwnedParameter(
     }
     for (const MethodLocalSymbol& local : locals_)
     {
-        if (local.methodMemberOrdinal != methodMemberOrdinal || local.viewRootLocalName.empty() ||
+        if (local.methodMemberOrdinal != methodMemberOrdinal ||
             !scopeContains(local.scopeOrdinal, scopeOrdinal)) continue;
-        const auto root = lookupScopeName(local.scopeOrdinal, local.viewRootLocalName);
-        if (root.has_value() && root->kind == ScopeNameKind::Parameter &&
-            root->semanticOrdinal == parameterOrdinal) return true;
+        if (!local.viewRootLocalName.empty())
+        {
+            const auto root = lookupScopeName(local.scopeOrdinal, local.viewRootLocalName);
+            if (root.has_value() && root->kind == ScopeNameKind::Parameter &&
+                root->semanticOrdinal == parameterOrdinal) return true;
+        }
+        for (const std::string& field : local.viewSourceFields)
+        {
+            if (field.size() <= 1 || field.front() != '@') continue;
+            const auto root = lookupScopeName(local.scopeOrdinal, std::string_view(field).substr(1));
+            if (root.has_value() && root->kind == ScopeNameKind::Parameter &&
+                root->semanticOrdinal == parameterOrdinal) return true;
+        }
     }
     const std::string rootPlace = "P" + std::to_string(parameterOrdinal);
     if (conflictingMutableReference(

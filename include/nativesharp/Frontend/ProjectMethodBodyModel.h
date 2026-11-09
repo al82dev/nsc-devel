@@ -4467,6 +4467,8 @@ private:
         const ExpressionResult& right,
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
+    bool hasActiveViewOfStorage(
+        const ast::AstNode* place, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal) const;
     bool prepareAssignmentTarget(
         ExpressionResult& left,
         std::optional<std::size_t>& raiiTargetLocal,
@@ -5043,6 +5045,8 @@ private:
     std::optional<std::string> viewRootLocalOfExpression(
         const ast::AstNode* expression,
         std::size_t scopeOrdinal) const;
+    void collectViewSourceFields(MethodLocalSymbol& local, const ast::AstNode* expression,
+                                 std::size_t scopeOrdinal) const;
     // T01-F02. An expanded params ReadOnlySpan<T> owns no heap storage: its elements live in an
     // entry-block stack slot in the caller. A view returned by the callee must therefore retain
     // that frame-bound origin instead of looking like an unrooted borrowed-returning call.

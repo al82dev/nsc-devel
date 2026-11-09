@@ -4361,9 +4361,13 @@ void ProjectMethodBodyModel::configureVariableLocalView(
     // y no se recalcula al usarla: la expresion que la creo es la unica que lo sabe, y para
     // cuando alguien la devuelve ya no esta a la vista.
     if (!typeKeyIsViewLike(typeKey)) return;
+    collectViewSourceFields(local, variable->first(), scopeOrdinal);
     const std::optional<std::string> root =
         viewRootLocalOfExpression(variable->first(), scopeOrdinal);
-    if (root.has_value()) local.viewRootLocalName = *root;
+    if (root.has_value())
+    {
+        local.viewRootLocalName = *root;
+    }
     else if (expressionUsesExpandedParameterPack(variable->first(), methodMemberOrdinal))
     {
         // The backing array is an alloca in this method. Naming the view local as its own

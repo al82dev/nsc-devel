@@ -264,6 +264,13 @@ bool ProjectMethodBodyModel::rejectInvalidPartialMove(
     [[maybe_unused]] std::size_t scopeOrdinal,
     [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics) const
 {
+    if (hasActiveViewOfStorage(placeExpression, methodMemberOrdinal, scopeOrdinal))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error, moveExpression->range(),
+            "cannot partially move owner field while a borrowed view is alive");
+        return true;
+    }
     if (!root.has_value()) return false;
     const std::optional<std::string> operationPlace =
         storagePlaceKey(placeExpression, scopeOrdinal);
@@ -343,11 +350,12 @@ bool ProjectMethodBodyModel::analyzeMovedArrayElement(
         expression->first()->kind() != ast::AstNodeKind::IndexExpression) return false;
     const std::optional<ScopeName> partialRoot = partialMoveRoot(
         expression->first(), methodMemberOrdinal, scopeOrdinal);
+    // Bind an implicit array field before checking the provenance of its element.
+    const ExpressionResult element = analyzeExpression(
+        expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
     if (rejectInvalidPartialMove(
             partialRoot, expression->first(), expression,
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return true;
-    const ExpressionResult element = analyzeExpression(
-        expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
     // El analisis de la base se mantiene DENTRO del cortocircuito, igual que antes: si
     // el elemento ya no es valido, volver a analizar la base solo duplicaria sus
     // diagnosticos.
@@ -591,13 +599,15 @@ bool ProjectMethodBodyModel::analyzeMovedMember(
         expression->first()->kind() != ast::AstNodeKind::MemberExpression) return false;
     const std::optional<ScopeName> partialRoot = partialMoveRoot(
         expression->first(), methodMemberOrdinal, scopeOrdinal);
-    if (rejectInvalidPartialMove(
-            partialRoot, expression->first(), expression,
-            methodMemberOrdinal, scopeOrdinal, diagnostics)) return true;
+    // Bind the member path before consulting view provenance: an implicit
+    // field at the root does not have a name binding until it is analyzed.
     ++partialMoveSourceDepth_;
     const ExpressionResult member = analyzeExpression(
         expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
     --partialMoveSourceDepth_;
+    if (rejectInvalidPartialMove(
+            partialRoot, expression->first(), expression,
+            methodMemberOrdinal, scopeOrdinal, diagnostics)) return true;
     if (tryOwnedFieldMoveSource(
             result, member, expression, partialRoot,
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return true;
@@ -966,6 +976,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
         const ExpressionResult implicitField = analyzeExpression(
             expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
         --partialMoveSourceDepth_;
+        if (hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal))
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "cannot partially move owner field while a borrowed view is alive");
+            return result;
+        }
         if (tryOwnedFieldMoveSource(
                 result, implicitField, expression, std::nullopt,
                 methodMemberOrdinal, scopeOrdinal, diagnostics)) return result;

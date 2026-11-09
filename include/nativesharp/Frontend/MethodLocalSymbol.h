@@ -185,5 +185,12 @@ struct MethodLocalSymbol final
     // el de este bloque; este contesta la pregunta que el bloque plantea -- devolver una vista
     // de un local -- y se equivoca siempre del lado de rechazar, nunca del de aceptar.
     std::string viewRootLocalName;
+    // Field names that may back a view from a direct instance receiver.
+    std::vector<std::string> viewSourceFields;
+    // Flow-insensitive possible sources for class reference assignments. Retain edges
+    // rather than replacing them so branches and later assignments stay conservative.
+    bool mayAliasThisField = false;
+    std::vector<std::size_t> possibleReferenceSourceLocals;
+    std::vector<std::size_t> possibleReferenceSourceParameters;
 };
 }

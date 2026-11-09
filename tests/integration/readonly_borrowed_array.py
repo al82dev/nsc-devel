@@ -23,6 +23,7 @@ struct Box { public Child Item; public int Value; public Box() { Item = new Chil
 struct Scalar { public int Value; public Scalar() { Value = 42; } }
 struct ScalarOuter { public Scalar Inner; public ScalarOuter() { Inner = new Scalar(); } }
 class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Item = new Child(); Data[0].Value = 42; } }
+class HandleHolder { public HANDLE<Payload> first; public HANDLE<Payload> second; }
 '''
     cases = {
         'write': ('''alias.Data[0] = 10; return 0;''', 'not assignable'),
@@ -120,6 +121,34 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
         'parameter_view_get_move': ('''return Work(FACTORY.Create<Payload>()); }
  public static int Work(HANDLE<Payload> value) { SharedBorrow<Payload> view = value.Borrow();
  borrowed Payload item = view.Get(); HANDLE<Payload> other = move(value); return item.Data[0];''', 'cannot move'),
+        'field_view_overwrite': ('''HandleHolder holder = new HandleHolder(); holder.first = FACTORY.Create<Payload>();
+ SharedBorrow<Payload> view = holder.first.Borrow(); holder.first = FACTORY.Create<Payload>();
+ return view.Get().Data[0];''', 'cannot overwrite owner field'),
+        'field_view_alias_overwrite': ('''HandleHolder holder = new HandleHolder(); borrowed HandleHolder other = holder;
+ holder.first = FACTORY.Create<Payload>(); SharedBorrow<Payload> view = holder.first.Borrow();
+ other.first = FACTORY.Create<Payload>(); return view.Get().Data[0];''', 'cannot overwrite owner field'),
+        'field_view_reassignment': ('''HandleHolder holder = new HandleHolder();
+ holder.first = FACTORY.Create<Payload>(); holder.second = FACTORY.Create<Payload>();
+ SharedBorrow<Payload> view = holder.first.Borrow(); view = holder.second.Borrow();
+ holder.second = FACTORY.Create<Payload>(); return view.Get().Data[0];''', 'cannot overwrite owner field'),
+        'field_view_other_field': ('''HandleHolder holder = new HandleHolder();
+ holder.first = FACTORY.Create<Payload>(); holder.second = FACTORY.Create<Payload>();
+ SharedBorrow<Payload> view = holder.first.Borrow(); holder.second = FACTORY.Create<Payload>();
+ return view.Get().Data[0] == 0 && holder.second.Get().Data[0] == 0 ? 42 : 1;''', None),
+        'field_view_alias_move': ('''HandleHolder holder = new HandleHolder(); borrowed HandleHolder other = holder;
+ holder.first = FACTORY.Create<Payload>(); SharedBorrow<Payload> view = holder.first.Borrow();
+ { HANDLE<Payload> moved = move(other.first); } return view.Get().Data[0];''', 'cannot partially move'),
+        'field_view_move_after_scope': ('''HandleHolder holder = new HandleHolder();
+ holder.first = FACTORY.Create<Payload>(); { SharedBorrow<Payload> view = holder.first.Borrow();
+ if (view.Get().Data[0] != 0) return 1; } HANDLE<Payload> moved = move(holder.first);
+ return moved.Get().Data[0] == 0 ? 42 : 2;''', None),
+        'array_view_move': ('''HANDLE<Payload>[] values = new HANDLE<Payload>[1];
+ values[0] = FACTORY.Create<Payload>(); SharedBorrow<Payload> view = values[0].Borrow();
+ { HANDLE<Payload> moved = move(values[0]); } return view.Get().Data[0];''', 'cannot partially move'),
+        'array_view_move_after_scope': ('''HANDLE<Payload>[] values = new HANDLE<Payload>[1];
+ values[0] = FACTORY.Create<Payload>(); { SharedBorrow<Payload> view = values[0].Borrow();
+ if (view.Get().Data[0] != 0) return 1; } HANDLE<Payload> moved = move(values[0]);
+ return moved.Get().Data[0] == 0 ? 42 : 2;''', None),
         'nested_write': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
  borrowed Children nested = nestedOwner.Get(); nested.Data[0].Value = 10; return 0;''', 'not assignable'),
         'nested_escape': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
