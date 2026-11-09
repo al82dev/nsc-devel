@@ -5281,9 +5281,12 @@ void ProjectMethodBodyModel::configureSelectedCallBinding(
     result.assignable = selectedMember.isReferenceReturn && !readonlyReference;
     result.addressable = selectedMember.isReferenceReturn;
     result.readonlyReceiver = result.readonlyReceiver || readonlyReference;
-    // A class reference read through a borrowed view must keep the view's lifetime.
+    // Reading a class reference through a borrowed view or a non-static reference
+    // return must preserve the loan rather than create an escaping class alias.
     const auto resultClass = referenceTypeOrdinalForTypeKey(selectedMember.declaredTypeKey);
-    if (!selectedMember.isStatic && typeKeyIsViewLike(call.receiverTypeKey) &&
+    if (!selectedMember.isStatic &&
+        (typeKeyIsViewLike(call.receiverTypeKey) ||
+         (selectedMember.isReferenceReturn && selectedMember.returnLifetimeName != "static")) &&
         resultClass.has_value() && inheritanceModel_ != nullptr && inheritanceModel_->isClass(*resultClass))
     {
         result.ownership = sema::OwnershipKind::Borrowed;

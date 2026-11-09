@@ -40,7 +40,11 @@ decisiones posteriores indicadas explícitamente abajo.
   implementa únicamente estado de contadores y hooks, no esas familias.
 - Decisiones adoptadas: el usuario autorizó las cuatro familias para clases y
   estructuras, y una fábrica adicional que propague excepciones y libere el
-  bloque si falla. El trabajo sigue pendiente: las variantes internas de
+  bloque si falla. Confirmó también que `Arc.WeakCount()` será aproximado
+  durante operaciones concurrentes y exacto en ausencia de ellas, y que
+  `Rc.Get()` y `Arc.Get()` devolverán una referencia prestada de solo lectura
+  vinculada al propietario, incluso para estructuras. Estos contratos todavía
+  requieren implementación pública y validación. El trabajo sigue pendiente: las variantes internas de
   excepción rechazan por ahora formas de payload cuya limpieza no está
   acreditada. Véase `diseno-punteros-y-asan.md`.
 

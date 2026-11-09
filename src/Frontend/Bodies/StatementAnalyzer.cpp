@@ -4045,6 +4045,35 @@ void ProjectMethodBodyModel::analyzeBorrowedVariableInitializer(
                 }
             }
         }
+        // A class read through a reference return tied to a move-only receiver
+        // borrows that receiver for the local's lifetime.
+        if (call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
+            !call->staticCall && call->receiverSyntax != nullptr && memberModel_ != nullptr &&
+            call->receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression &&
+            call->selectedMemberOrdinal.has_value() &&
+            *call->selectedMemberOrdinal < memberModel_->members().size())
+        {
+            const ClassMemberSymbol& callee = memberModel_->members()[*call->selectedMemberOrdinal];
+            const auto owner = lookupScopeName(scopeOrdinal, call->receiverSyntax->text());
+            if (callee.isReferenceReturn && callee.returnLifetimeName == "this" &&
+                owner.has_value() && owner->kind == ScopeNameKind::Local &&
+                owner->semanticOrdinal < locals_.size() && locals_[owner->semanticOrdinal].isMoveOnly &&
+                scopeContains(locals_[owner->semanticOrdinal].scopeOrdinal, scopeOrdinal))
+            {
+                MethodLocalBorrowBinding borrow;
+                borrow.syntax = variable;
+                borrow.methodMemberOrdinal = methodMemberOrdinal;
+                borrow.creationScopeOrdinal = scopeOrdinal;
+                borrow.typeKey = typeKey;
+                borrow.sourceKind = MethodLocalBorrowSourceKind::OwnerLocal;
+                borrow.sourceLocalOrdinal = owner->semanticOrdinal;
+                borrow.sourceOwnerLocalOrdinal = owner->semanticOrdinal;
+                borrow.possibleSourceOwnerLocalOrdinals.push_back(owner->semanticOrdinal);
+                borrow.maximumValidScopeOrdinal = locals_[owner->semanticOrdinal].scopeOrdinal;
+                pendingLocalBorrow = std::move(borrow);
+                return;
+            }
+        }
     }
     if (variable->first()->kind() != ast::AstNodeKind::IdentifierExpression)
     {

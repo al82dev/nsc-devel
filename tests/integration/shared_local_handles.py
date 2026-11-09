@@ -38,9 +38,9 @@ class DerivedBad : TrivialBase { public owned Resource item;
      SharedLocalHandle<Payload> clone = owner.Clone();
      SharedLocalHandle<Payload> upgraded = weak.Upgrade();
      SharedBorrow<Payload> view = clone.Borrow();
-     borrowed Payload alias = view.Get();
+   borrowed Payload alias = view.Get(); borrowed Payload direct = clone.Get();
      if (clone.StrongCount() != 3l || clone.WeakCount() != 2l || weakClone.WeakCount() != 2l ||
-         alias.Data != 20l || weakClone.Expired()) return 2;
+         alias.Data != 20l || direct.Data != 20l || clone.Get().Data != 20l || weakClone.Expired()) return 2;
    }
    if (owner.StrongCount() != 1l || Payload.Drops != 0 || weak.Expired()) return 3;
  }
@@ -52,7 +52,7 @@ class DerivedBad : TrivialBase { public owned Resource item;
  { SharedLocalHandle<Value> owner = SharedLocalFactory.Create<Value>();
    SharedLocalWeak<Value> valueWeak = owner.Downgrade();
    SharedBorrow<Value> view = owner.Borrow();
-   if (view.Get().Data != 22l || valueWeak.Expired()) return 6;
+   if (view.Get().Data != 22l || owner.Get().Data != 22l || valueWeak.Expired()) return 6;
  }
  if (Value.Drops != 1) return 7;
  int caught = 0;
@@ -84,6 +84,38 @@ class DerivedBad : TrivialBase { public owned Resource item;
  SharedBorrow<Payload> view = owner.Borrow(); escaped = view.Get(); }
  return (int)escaped.Data;
 } }'''
+    escape_direct = '''class Program { public static int Main() {
+ Payload escaped; { SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ escaped = owner.Get(); } return (int)escaped.Data;
+} }'''
+    escape_direct_return = '''class Program { public static Payload Leak() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>(); return owner.Get();
+} public static int Main() { return 0; } }'''
+    escape_direct_field = '''class Program { public static Payload Saved; public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>(); Saved = owner.Get(); return 0;
+} }'''
+    escape_direct_initializer = '''class Program { public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ Payload escaped = owner.Get(); SharedLocalHandle<Payload> other = move(owner);
+ return (int)escaped.Data;
+} }'''
+    escape_direct_argument = '''class Program { public static Payload Saved;
+ public static void Store(Payload p) { Saved = p; }
+ public static int Main() { SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ Store(owner.Get()); return 0; } }'''
+    mutate_value = '''class Program { public static int Main() {
+ SharedLocalHandle<Value> owner = SharedLocalFactory.Create<Value>();
+ owner.Get().Data = 100l; return 0;
+} }'''
+    mutate_class = '''class Program { public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ owner.Get().Data = 100l; return 0;
+} }'''
+    move_direct = '''class Program { public static int Main() {
+ SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
+ borrowed Payload alias = owner.Get(); SharedLocalHandle<Payload> other = move(owner);
+ return (int)alias.Data;
+} }'''
     move_owner = '''class Program { public static int Main() {
  SharedLocalHandle<Payload> owner = SharedLocalFactory.Create<Payload>();
  SharedBorrow<Payload> view = owner.Borrow(); SharedLocalHandle<Payload> other = move(owner);
@@ -92,6 +124,10 @@ class DerivedBad : TrivialBase { public owned Resource item;
     empty = '''class Program { public static int Main() {
  SharedLocalHandle<Payload> owner = new SharedLocalHandle<Payload>(null, null);
  SharedBorrow<Payload> view = owner.Borrow(); return (int)view.Get().Data;
+} }'''
+    empty_get = '''class Program { public static int Main() {
+ SharedLocalHandle<Payload> owner = new SharedLocalHandle<Payload>(null, null);
+ return (int)owner.Get().Data;
 } }'''
     concurrency = '''class Concurrent {
  private static SharedAtomicHandle<Payload>* shared; private static long failures;
@@ -121,9 +157,18 @@ class DerivedBad : TrivialBase { public owned Resource item;
                            '<ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>', encoding='utf-8')
         for family in ('Local', 'Atomic'):
             for name, body, expected in (('safe', safe, None), ('empty', empty, None),
+                                         ('empty_get', empty_get, None),
                                          ('copy', copy, 'move'), ('copy_weak', copy_weak, 'move'),
                                          ('escape', escape, 'longer-lived'),
                                          ('escape_class', escape_class, 'borrowed value cannot'),
+                                         ('escape_direct', escape_direct, 'borrowed value cannot'),
+                                         ('escape_direct_return', escape_direct_return, 'borrowed'),
+                                         ('escape_direct_field', escape_direct_field, 'borrowed value cannot'),
+                                         ('escape_direct_initializer', escape_direct_initializer, 'borrowed value cannot'),
+                                         ('escape_direct_argument', escape_direct_argument, 'borrowed argument requires'),
+                                         ('mutate_value', mutate_value, 'not assignable'),
+                                         ('mutate_class', mutate_class, 'not assignable'),
+                                         ('move_direct', move_direct, 'cannot move owner'),
                                          ('move_owner', move_owner, 'cannot move owner')):
                 current_body = body
                 if family == 'Atomic' and name == 'safe':

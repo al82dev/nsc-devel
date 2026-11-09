@@ -47,5 +47,11 @@ namespace NativeSharp.Core.Internal
         {
             return new SharedBorrow<T>(slot);
         }
+
+        public ref readonly T Get()
+        {
+            if (slot == null) panic("shared payload is empty");
+            unsafe("shared payload view") { return ref *slot; }
+        }
     }
 }
