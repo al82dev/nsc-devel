@@ -693,16 +693,22 @@ LLVMValueRef OopLlvmImplementation::compoundUpdatedValue(
         }
         else
         {
+            // An enum target is updated in its underlying integer: shift width, signed right shift and signed
+            // division come from that type.
+            // Un destino enum se actualiza en su entero subyacente: el ancho del desplazamiento, el desplazamiento
+            // a la derecha con signo y la división con signo salen de ese tipo.
+            const auto* enumInfo = findEnumUnderlyingInfo(nameLookup_, node->typeKey);
+            const std::string valueType = enumInfo ? std::string(enumInfo->key) : node->typeKey;
             LLVMValueRef operand = value;
             if (node->operation == lexer::TokenKind::LessLess ||
                 node->operation == lexer::TokenKind::GreaterGreater)
             {
                 operand = normalizeShiftCount(
-                    operand, node->children[1]->typeKey, node->typeKey, error);
+                    operand, node->children[1]->typeKey, valueType, error);
                 if (operand == nullptr) return nullptr;
             }
             updated = applyBinaryOperation(
-                node->operation, previous, operand, node->typeKey, error, false);
+                node->operation, previous, operand, valueType, error, false);
         }
         return updated;
     }

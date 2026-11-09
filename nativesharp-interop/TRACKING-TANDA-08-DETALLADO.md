@@ -256,19 +256,20 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-009-01: Probar las muestras de enum C y conversiones enum/entero registradas en el tracking principal.
 - [x] T08-009-02: Probar el caso corregido de comparación `unsigned int` / `int`. [Evidencia](registro-commits/t08-enum-c-uint-int.md).
 - **T08-009-03 — Valores y operaciones:**
-- [ ] T08-009-03a: Verificar valores negativos y límites del tipo entero subyacente.
-- [ ] T08-009-03b: Verificar conversiones entre enum, `int`, `unsigned int` y enteros de mayor ancho.
-- [ ] T08-009-03c: Verificar comparaciones mixtas con operandos firmados y sin signo.
-- [ ] T08-009-03d: Verificar aritmética, desplazamientos y operaciones bitwise.
+- [x] T08-009-03a: Verificar valores negativos y límites del tipo entero subyacente. [Evidencia](registro-commits/t08-enum-c.md).
+- [x] T08-009-03b: Verificar conversiones entre enum, `int`, `unsigned int` y enteros de mayor ancho. [Evidencia](registro-commits/t08-enum-c.md).
+- [x] T08-009-03c: Verificar comparaciones mixtas con operandos firmados y sin signo. Corregido: un operando enum de base `int` frente a `unsigned int` sigue a C. [Evidencia](registro-commits/t08-enum-c.md).
+  - **Decisión pendiente T08-009-03c1:** los enumeradores son constantes `int`; NativeSharp compara `int` con `unsigned int` ampliando a `long` (`-1 < 1u` verdadero) y C convierte a `unsigned int` (falso). Solo un operando de tipo enum C sigue la regla de C.
+- [x] T08-009-03d: Verificar aritmética, desplazamientos y operaciones bitwise. Corregido: `op=` sobre un objeto enum C. [Evidencia](registro-commits/t08-enum-c.md).
 - **T08-009-04 — Identidad y persistencia:**
-- [ ] T08-009-04a: Verificar reconciliación de enum nombrado en dos encabezados.
-- [ ] T08-009-04b: Verificar colisión de enums anónimos con el mismo primer enumerador.
-- [ ] T08-009-04c: Verificar enum anónimo como campo de record publicado.
-- [ ] T08-009-04d: Verificar identidad y valores de enum anidado restaurado desde metadata.
+- [x] T08-009-04a: Verificar reconciliación de enum nombrado en dos encabezados. [Evidencia](registro-commits/t08-enum-c.md).
+- [x] T08-009-04b: Verificar colisión de enums anónimos con el mismo primer enumerador. [Evidencia](registro-commits/t08-enum-c.md).
+- [x] T08-009-04c: Verificar enum anónimo como campo de record publicado. [Evidencia](registro-commits/t08-enum-c.md).
+- [x] T08-009-04d: Verificar identidad y valores de enum anidado restaurado desde metadata. [Evidencia](registro-commits/t08-enum-c.md).
 - **T08-009-05 — Consumo:**
-- [ ] T08-009-05a: Verificar enum en firma pública con encabezado disponible.
-- [ ] T08-009-05b: Verificar la misma firma y constantes con encabezado oculto.
-- [ ] T08-009-05c: Verificar conflictos entre definición del encabezado y catálogo precompilado.
+- [x] T08-009-05a: Verificar enum en firma pública con encabezado disponible. [Evidencia](registro-commits/t08-enum-c.md).
+- [x] T08-009-05b: Verificar la misma firma y constantes con encabezado oculto. [Evidencia](registro-commits/t08-enum-c.md).
+- [x] T08-009-05c: Verificar conflictos entre definición del encabezado y catálogo precompilado. [Evidencia](registro-commits/t08-enum-c.md).
 
 ## T08-010 — Struct C
 

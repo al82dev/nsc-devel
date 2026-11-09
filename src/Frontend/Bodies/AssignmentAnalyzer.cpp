@@ -2128,8 +2128,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
             narrowCppAtomic = atomic && integerRhs && !cAtomicEnum;
         }
     }
+    // A C enum object takes `op=` like C: the operation runs in the underlying types and the result is stored
+    // back in the enum (C converts integers to enums implicitly).
+    // Un objeto enum C admite `op=` como en C: la operación usa los tipos subyacentes y el resultado se guarda
+    // en el enum (C convierte enteros a enums de forma implícita).
+    const auto leftCEnum = cppImportedCEnumUnderlying(nameLookup_, left.typeKey);
+    const auto rightCEnum = cppImportedCEnumUnderlying(nameLookup_, right.typeKey);
+    const bool cEnumCompound = leftCEnum && !cAtomicEnum && !narrowCppAtomic &&
+        (rightCEnum || (ProjectTypeConversion::isIntegral(right.typeKey) && right.typeKey != "builtin:bool"));
     const std::optional<std::string> common = sameEnumBitwise || shiftAssignment
         ? std::optional<std::string>(left.typeKey)
+        : cEnumCompound
+        ? ProjectTypeConversion::commonNumericType(
+              *leftCEnum, rightCEnum.value_or(right.typeKey), left.integerConstant, right.integerConstant)
         : ProjectTypeConversion::commonNumericType(
               left.typeKey, right.typeKey, left.integerConstant, right.integerConstant);
     if (!common.has_value() && !narrowCppAtomic && !cAtomicEnum && !cVolatileBoolArrayBitwise)
@@ -2143,7 +2154,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
     }
     const ProjectImplicitConversion narrowing =
         classifyImplicit(right.typeKey, left.typeKey, right.integerConstant);
-    if (!shiftAssignment && !narrowing.exists() && !narrowCppAtomic && !cAtomicEnum && !cVolatileBoolArrayBitwise)
+    if (!shiftAssignment && !narrowing.exists() && !narrowCppAtomic && !cAtomicEnum && !cVolatileBoolArrayBitwise &&
+        !cEnumCompound)
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidConversion,
