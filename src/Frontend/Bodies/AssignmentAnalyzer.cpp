@@ -2200,6 +2200,8 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
 {
     if (rejectUnavailableAssignmentOwner(
             expression, raiiTargetLocal, scopeOrdinal, diagnostics)) return false;
+    if (!raiiTargetLocal.has_value() && rejectUnavailableAssignmentOwner(
+            expression, moveOnlyTargetLocal, scopeOrdinal, diagnostics)) return false;
     delegateTarget = isDelegateTypeKey(left.typeKey);
     right = analyzeAssignmentRight(
         expression, left, raiiTargetLocal, moveOnlyTargetLocal, moveOnlyTargetParameter,

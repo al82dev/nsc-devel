@@ -90,6 +90,11 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
         'cast_write': ('''((int[])alias.Data)[0] = 10; return 0;''', 'not assignable'),
         'read': ('''Payload ordinary = new Payload(); ordinary.Data[0] = 42;
  return alias.Data[0] == 0 && ordinary.Data[0] == 42 ? 42 : 1;''', None),
+        'overwrite_borrowed_owner': ('''owner = FACTORY.Create<Payload>(); return alias.Data[0];''',
+                                     'cannot overwrite owner'),
+        'overwrite_after_borrow_scope': ('''HANDLE<Payload> other = FACTORY.Create<Payload>();
+ { borrowed Payload temporary = other.Get(); if (temporary.Data[0] != 0) return 1; }
+ other = FACTORY.Create<Payload>(); return other.Get().Data[0] == 0 ? 42 : 2;''', None),
         'nested_write': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
  borrowed Children nested = nestedOwner.Get(); nested.Data[0].Value = 10; return 0;''', 'not assignable'),
         'nested_escape': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
