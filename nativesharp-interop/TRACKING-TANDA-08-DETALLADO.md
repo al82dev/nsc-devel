@@ -443,7 +443,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
   - **Pendiente T08-017-03d1:** `__vectorcall` no soportado; NSC lo rechaza con diagnóstico explícito, fijado por la prueba. [Detalle](registro-commits/t08-callbacks-c.md#pendiente-t08-017-03d1).
 - **T08-017-04 — Almacenamiento y calificadores:**
 - [x] T08-017-04a: Verificar callback almacenado en campo de struct C. [Evidencia](registro-commits/t08-callbacks-c.md).
-  - **Decisión pendiente T08-017-04a1:** una función C asignada desde NativeSharp se guarda como envoltorio `__c_boundary`; su dirección difiere de la de C. [Detalle](registro-commits/t08-callbacks-c.md#decisión-pendiente-t08-017-04a1).
+  - Resuelta T08-017-04a1 por T08-D18: una función C convertida a puntero C es su propia dirección (`s->op == mul` en C); solo los métodos NativeSharp conservan `__c_boundary`. [Evidencia](registro-commits/t08-d18-identidad-funcion-c.md).
 - [x] T08-017-04b: Verificar callback almacenado en global C. [Evidencia](registro-commits/t08-callbacks-c.md).
 - [x] T08-017-04c: Verificar callback retornado por función C. [Evidencia](registro-commits/t08-callbacks-c.md).
 - [x] T08-017-04d: Verificar lectura/escritura de callback `volatile` alineado y empaquetado. [Evidencia](registro-commits/t08-callbacks-c.md).
@@ -528,7 +528,7 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 - [x] T08-D15: alineación efectiva de Clang, usada solo cuando está garantizada (T08-012-02a). [Evidencia](registro-commits/t08-d15-alineacion-efectiva.md).
 - [x] T08-D16: declaración opaca propia del consumidor reconciliada con NSMeta (T08-013-02c1). [Evidencia](registro-commits/t08-d16-opaco-consumidor.md).
 - [x] T08-D17: rechazo de `int const** q = &p` (T08-014-02d1). [Evidencia](registro-commits/t08-d17-puntero-a-puntero-const.md).
-- [ ] T08-D18: dirección de función C frente al envoltorio `__c_boundary` (T08-017-04a1).
+- [x] T08-D18: dirección de función C frente al envoltorio `__c_boundary` (T08-017-04a1). [Evidencia](registro-commits/t08-d18-identidad-funcion-c.md).
 - [ ] T08-D19: dependencias privadas de plantillas públicas en NSMeta (T08-018-03c1).
 - [ ] T08-D20: gate histórico en CRLF y caché vigente; carrera del control C de relleno TLS (T08-GATE-03a).
 - [ ] T08-D21: reagrupación de commits al cerrar la tanda (T08-GATE-05a).

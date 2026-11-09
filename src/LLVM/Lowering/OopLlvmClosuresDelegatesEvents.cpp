@@ -2,6 +2,7 @@
 #include "../Internal/CppBoolAbi.h"
 #include "../Internal/CppDllExportHelper.h"
 #include "../Internal/DropCase.h"
+#include "../Internal/OopLlvmDirectCFunction.h"
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
@@ -789,14 +790,22 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateCreate(const frontend::ProjectO
                 return failValue(error,
                     "Stage 47 extern C delegate cannot capture a receiver; only static methods convert");
             const auto* imported = found->second.mirFunction;
-            if (imported != nullptr && imported->isVariadic && imported->importRequiresRuntimeBinding &&
+            // EN: T08-D18: a C function keeps its identity, as in C: the pointer is the C symbol's address (or
+            //     the address bound at run time for a TLS alias), so `s->op == mul` holds in C. C code cannot
+            //     raise a NativeSharp exception, so it needs no callback boundary.
+            // ES: T08-D18: una funcion C conserva su identidad, como en C: el puntero es la direccion del simbolo C
+            //     (o la que se enlaza en ejecucion para un alias TLS), asi que `s->op == mul` se cumple en C. El
+            //     codigo C no lanza excepciones NativeSharp, asi que no necesita frontera de callback.
+            if (directCFunctionAddress(imported) && !imported->importRequiresRuntimeBinding)
+                return found->second.function;
+            if (directCFunctionAddress(imported) && imported->importRequiresRuntimeBinding &&
                 imported->mangledName.starts_with("__nsc_cpp_tls_import_"))
             {
                 LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
                 LLVMValueRef library = cStringGlobal(imported->importDllName, "dll");
                 LLVMValueRef symbol = cStringGlobal(imported->cAbiName, "sym");
                 if (library == nullptr || symbol == nullptr)
-                    return failValue(error, "variadic TLS import lost its library or symbol identity");
+                    return failValue(error, "TLS import lost its library or symbol identity");
                 LLVMTypeRef parameters[] = {ptr, ptr};
                 LLVMTypeRef helperType = LLVMFunctionType(ptr, parameters, 2, 0);
                 LLVMValueRef arguments[] = {library, symbol};

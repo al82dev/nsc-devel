@@ -2,6 +2,7 @@
 #include "../Internal/CppBoolAbi.h"
 #include "../Internal/CppDllExportHelper.h"
 #include "../Internal/DropCase.h"
+#include "../Internal/OopLlvmDirectCFunction.h"
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
@@ -62,9 +63,11 @@ bool OopLlvmImplementation::defineCallbackGuardThunks(std::string& error, bool d
                  node->kind == frontend::ProjectOopMirNodeKind::LambdaCreate) &&
                 isExternCDelegateType(node->typeKey) && !node->calleeName.empty())
             {
+                // EN: T08-D18: a C function converted to a C pointer is its own address; it gets no thunk.
+                // ES: T08-D18: una funcion C convertida a puntero C es su propia direccion; no recibe thunk.
                 const auto* imported = findCallbackMirFunction(node->calleeName);
-                if (imported != nullptr && imported->isVariadic && imported->importRequiresRuntimeBinding &&
-                    imported->mangledName.starts_with("__nsc_cpp_tls_import_")) return;
+                if (node->kind == frontend::ProjectOopMirNodeKind::DelegateCreate &&
+                    directCFunctionAddress(imported)) return;
                 const std::pair<std::string, bool> target = {
                     node->calleeName, isVectorCallDelegateType(node->typeKey)};
                 if (std::find(targets.begin(), targets.end(), target) == targets.end())
