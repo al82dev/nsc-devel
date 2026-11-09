@@ -4117,6 +4117,29 @@ void ProjectMethodBodyModel::analyzeBorrowedVariableInitializer(
                 pendingLocalBorrow = std::move(borrow);
                 return;
             }
+            const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
+            if (callee.isReferenceReturn && callee.returnLifetimeName == "this" &&
+                owner.has_value() && owner->kind == ScopeNameKind::Parameter &&
+                method != nullptr && owner->semanticOrdinal < method->parameters.size() &&
+                method->parameters[owner->semanticOrdinal].passKind == ParameterPassKind::Value &&
+                memberModel_->typeIsMoveOnly(method->parameters[owner->semanticOrdinal].typeKey))
+            {
+                MethodLocalBorrowBinding borrow;
+                borrow.syntax = variable;
+                borrow.methodMemberOrdinal = methodMemberOrdinal;
+                borrow.creationScopeOrdinal = scopeOrdinal;
+                borrow.typeKey = typeKey;
+                borrow.sourceKind = MethodLocalBorrowSourceKind::OwnedParameter;
+                borrow.sourceParameterOrdinal = owner->semanticOrdinal;
+                borrow.sourceOwnerParameterOrdinal = owner->semanticOrdinal;
+                borrow.possibleSourceOwnerParameterOrdinals.push_back(owner->semanticOrdinal);
+                std::size_t rootScope = scopeOrdinal;
+                while (scopes_[rootScope].parentScopeOrdinal.has_value())
+                    rootScope = *scopes_[rootScope].parentScopeOrdinal;
+                borrow.maximumValidScopeOrdinal = rootScope;
+                pendingLocalBorrow = std::move(borrow);
+                return;
+            }
         }
     }
     if (variable->first()->kind() != ast::AstNodeKind::IdentifierExpression)
