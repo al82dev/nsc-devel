@@ -440,7 +440,7 @@ bool verifyMetadataTypeDeclarations(
     for (const std::string& key : metadata.nonEscapingLifecycleTypeKeys)
     {
         const auto found = rootTypes.find(key);
-        if (metadata.formatMinor < 44 || !lifecycleTypes.insert(key).second || found == rootTypes.end() ||
+        if (!lifecycleTypes.insert(key).second || found == rootTypes.end() ||
             found->second->kind != LibraryMetadataTypeKind::Class || (found->second->flags & (1U << 3U)) != 0U)
         {
             error = "invalid metadata lifecycle non-escape contract '" + key + "'";

@@ -54,7 +54,8 @@ bool buildMetadataModel(
 std::vector<std::uint8_t> encodePayload(
     const LibraryMetadata& metadata,
     std::uint8_t legacySourceRevision,
-    bool includeTraitImpls);
+    bool includeTraitImpls,
+    bool includeLifecycleCatalogue);
 std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata);
 bool decodePayload(
     std::span<const std::uint8_t> payload,

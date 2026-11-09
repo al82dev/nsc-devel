@@ -549,7 +549,8 @@ void encodeTemplateSourceImports(ByteWriter& writer, const LibraryMetadata& meta
 std::vector<std::uint8_t> encodePayload(
     const LibraryMetadata& metadata,
     std::uint8_t legacySourceRevision,
-    bool includeTraitImpls)
+    bool includeTraitImpls,
+    bool includeLifecycleCatalogue)
 {
     ByteWriter writer;
     encodePayloadPreamble(writer, metadata, legacySourceRevision);
@@ -576,7 +577,7 @@ std::vector<std::uint8_t> encodePayload(
         writeStringVector(writer, metadata.sourceNamespaces);
     }
     if (metadata.formatMinor >= 43) writeStringVector(writer, metadata.trivialCleanupRootTypeKeys);
-    if (metadata.formatMinor >= 44) writeStringVector(writer, metadata.nonEscapingLifecycleTypeKeys);
+    if (includeLifecycleCatalogue) writeStringVector(writer, metadata.nonEscapingLifecycleTypeKeys);
     return writer.bytes();
 }
 
@@ -759,7 +760,7 @@ std::vector<std::uint8_t> encodeAbiProjection(const LibraryMetadata& metadata)
     projected.platformImports.clear();
     if (projected.formatMinor >= 25) projected.formatMinor = 24;
     std::vector<std::uint8_t> projection =
-        encodePayload(projected, kLegacyAbiProjectionSourceRevisionByte, includeTraitImpls);
+        encodePayload(projected, kLegacyAbiProjectionSourceRevisionByte, includeTraitImpls, false);
     appendVariantProjection(metadata, projection);
     appendDropGlueProjection(metadata, projection);
     appendTraitProjection(metadata, projection);
@@ -2042,7 +2043,7 @@ bool decodePayload(
         error = "truncated metadata trivial root cleanup contracts";
         return false;
     }
-    if (metadata.formatMinor >= 44 && !readStringVector(reader, metadata.nonEscapingLifecycleTypeKeys))
+    if (!reader.atEnd() && !readStringVector(reader, metadata.nonEscapingLifecycleTypeKeys))
     {
         error = "truncated metadata lifecycle non-escape contracts";
         return false;

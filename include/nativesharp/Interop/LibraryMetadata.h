@@ -116,8 +116,7 @@ inline constexpr std::uint16_t kMetadataFormatMajor = 1;
 // MINOR 41: authored lexical using directives for reusable NativeSharp templates.
 // MINOR 42: possible same-module nominal receiver types used by template expressions.
 // MINOR 43: producer-proven root classes with no instance cleanup.
-// MINOR 44: producer-proven receiver non-escape for class lifecycle bodies.
-inline constexpr std::uint16_t kMetadataFormatMinor = 44;
+inline constexpr std::uint16_t kMetadataFormatMinor = 43;
 
 // NSMETA 1.39. These bits version producer language capabilities that affect private lowering
 // and debug behavior without changing the public NativeSharp ABI projection. Older files decode
