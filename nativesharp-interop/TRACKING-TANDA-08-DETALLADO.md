@@ -186,7 +186,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-004-04c: Verificar arreglos globales y matrices con punteros calificados (`const char *[]`, `volatile int *[]`, `int *const []`, records y tres dimensiones), directo, DLL y precompilado, O0–O3, con control Clang y seis rechazos. [Evidencia](registro-commits/t08-globales-arreglos.md).
 - [x] T08-004-04d: Verificar `_Atomic` en global externa y `static`, con lectura y escritura cruzadas (once tipos, accesores C `static inline`, IR seq_cst), directo y precompilado, O0–O3, con control Clang. [Evidencia](registro-commits/t08-globales-atomicas.md).
   - [ ] T08-004-04d1: Importar una global `_Atomic` de tipo record (hoy «C/C++ global type is not yet mapped»). [Límite](registro-commits/t08-globales-atomicas.md#límite-registrado-t08-004-04d1).
-- [ ] T08-004-04e: Verificar `_Thread_local` con y sin `_Atomic` en ejecutable y DLL.
+- [x] T08-004-04e: Verificar `_Thread_local` con y sin `_Atomic` en ejecutable y DLL (externas y `static` de encabezado, lectura C en el mismo hilo y aislamiento con un hilo creado por C), directo y precompilado, O0–O3, con control Clang. [Evidencia](registro-commits/t08-globales-tls.md).
 - [ ] T08-004-05: Volver a ejecutar los controles TLS y de DLL dentro del gate integral de la tanda.
 - **T08-004-06 — Consumo y resolución:**
 - [ ] T08-004-06a: Verificar una global externa con encabezado en el consumidor.
