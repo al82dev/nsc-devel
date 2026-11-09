@@ -159,6 +159,9 @@ private:
         // Last member, so the positional initializers of the members above keep their meaning
         // (they pass {} for it).
         std::string qualifiedTypeSpelling;
+        // Lexical imports of a generic method's declaration, not its call site.
+        std::vector<std::string> declarationImports = {};
+        std::unordered_map<std::string, std::string> declarationAliases = {};
     };
 
     // A lightweight predeclaration used only while the generic pass is choosing a cache key.

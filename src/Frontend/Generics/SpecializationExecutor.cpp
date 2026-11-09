@@ -758,9 +758,14 @@ std::string ProjectGenericModel::completeMethodSpecialization(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     commitMethodSpecialization(state, clone, key, specializedName, ordinal);
+    GenericLookupScope declarationScope;
+    if (!state.declarationImports.empty())
+        declarationScope.importedNamespaces.write() = state.declarationImports;
+    if (!state.declarationAliases.empty())
+        declarationScope.aliases.write() = state.declarationAliases;
     processNode(
         *state.unit, clone, state.record.namespaceName, state.record.ownerName,
-        GenericLookupScope{}, false, diagnostics);
+        std::move(declarationScope), false, diagnostics);
     currentInstantiationProjectOrdinal_ = callerContext.projectOrdinal;
     currentInstantiationNamespace_ = callerContext.namespaceName;
     currentInstantiationRange_ = callerContext.range;

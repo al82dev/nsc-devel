@@ -165,6 +165,11 @@ void ProjectGenericModel::discoverTemplateDependencies(
 
     if (TemplateState* root = stateForSyntax(node); root != nullptr)
     {
+        if (root->record.kind == GenericTemplateKind::Method)
+        {
+            root->declarationImports = currentScope.importedNamespaces.read();
+            root->declarationAliases = currentScope.aliases.read();
+        }
         const std::string templateOwner = root->record.kind == GenericTemplateKind::Method
             ? ownerName
             : appendOwner(ownerName, node->text());
