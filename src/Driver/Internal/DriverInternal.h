@@ -193,6 +193,7 @@ bool computeCppTlsRuntimeAliases(const frontend::ProjectCompilation &compilation
                                  const linker::PeExecutableInfo &image,
                                  CppTlsRuntimeAliases &aliases, std::string &error);
 bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibraries,
+                           std::span<const std::filesystem::path> dynamicallyLoadedRuntimes,
                            const CppTlsRuntimeAliases &aliases,
                            const std::filesystem::path &destination, std::vector<std::filesystem::path> &copiedFiles,
                            std::string &error);
@@ -213,6 +214,10 @@ bool validatePackagedCppRuntimeDestinations(const frontend::ProjectCompilation &
                                             bool &protectExisting,
                                             std::string &error);
 void removePackagedFiles(std::span<const std::filesystem::path> copiedFiles);
+// EN: T08-D05: path of a packaged runtime relative to the product directory (a private assembly file keeps its
+//     folder). / ES: T08-D05: ruta de un runtime empaquetado relativa al directorio del producto (un archivo de
+//     ensamblado privado conserva su carpeta).
+std::filesystem::path runtimePackageRelativePath(const std::filesystem::path &stagedRuntime);
 
 ExitCode runCompilerSession(const Driver &driver, std::span<const std::string_view> arguments, std::ostream &output,
                             std::ostream &error,

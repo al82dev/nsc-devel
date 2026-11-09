@@ -179,6 +179,12 @@ auto kernel32FoundationSymbols()
         "LoadLibraryExW",
         "LoadLibraryA",
         "GetProcAddress",
+        // T08-D05: the C TLS alias loader activates the isolation manifest that packaging published for an
+        // alias whose homonymous transitive dependencies live in a private assembly.
+        "CreateActCtxW",
+        "ActivateActCtx",
+        "DeactivateActCtx",
+        "ReleaseActCtx",
         "TlsSetValue",
         "RaiseException",
         // Stage 53.1 "Time" -- NativeClock's three raw wrappers (see

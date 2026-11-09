@@ -71,6 +71,11 @@ public:
     std::string_view bundleProductKind() const noexcept;
     void setBundleOutputPath(std::filesystem::path outputPath);
     void addRequiredBundleOutput(std::filesystem::path outputPath);
+    // EN: T08-D05: an output relative to the bundle output directory, such as a file of a private assembly
+    //     (`NativeSharp.Isolation.x/dep.dll`); at most one subdirectory.
+    // ES: T08-D05: una salida relativa al directorio de salida del bundle, como un archivo de un ensamblado
+    //     privado (`NativeSharp.Isolation.x/dep.dll`); como mucho un subdirectorio.
+    void addRequiredBundleRelativeOutput(const std::filesystem::path& relativePath);
     const std::filesystem::path& bundleOutputDirectory() const noexcept;
     const std::vector<std::string>& requiredBundleOutputNames() const noexcept;
     void setBundleResultOutput(std::string output);

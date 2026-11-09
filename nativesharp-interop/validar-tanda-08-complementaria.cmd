@@ -45,6 +45,7 @@ for %%T in (
   pruebas-tanda-08-identidad-c\tls-dll-distintas\validar-directo-precompilado.py
   pruebas-tanda-08-identidad-c\tls-dll-distintas\validar-dos-origenes.py
   pruebas-tanda-08-identidad-c\tls-dll-distintas\validar-origen-ambiguo.py
+  pruebas-tanda-08-identidad-c\tls-dll-distintas\validar-transitivas-homonimas.py
   pruebas-tanda-08-identidad-c\tls-dll-distintas\validar-variadicas-agregados.py
   pruebas-tanda-08-identidad-c\tls-dll-distintas\validar-variadicas-puntero.py
   pruebas-tanda-08-identidad-c\tls-dll-distintas\validar-variadicas.py

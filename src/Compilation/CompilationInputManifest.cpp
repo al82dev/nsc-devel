@@ -335,6 +335,15 @@ void CompilationInputManifest::addRequiredBundleOutput(
     requiredBundleOutputNames_.push_back(name);
 }
 
+void CompilationInputManifest::addRequiredBundleRelativeOutput(const std::filesystem::path& relativePath)
+{
+    if (relativePath.empty() || relativePath.has_root_path()) return;
+    const std::string name = inputPathUtf8(relativePath);
+    if (name.empty() || std::ranges::find(requiredBundleOutputNames_, name) != requiredBundleOutputNames_.end())
+        return;
+    requiredBundleOutputNames_.push_back(name);
+}
+
 const std::filesystem::path&
 CompilationInputManifest::bundleOutputDirectory() const noexcept
 {

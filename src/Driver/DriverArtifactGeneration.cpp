@@ -491,6 +491,35 @@ bool prepareExecutableBuilder(const frontend::ProjectCompilation &compilation,
     return true;
 }
 
+// EN: The packaged runtimes a cached bundle must restore. A runtime already present with identical contents is
+//     not staged again, but it is still part of the output. A name packaged only inside private assemblies
+//     (T08-D05) has no copy next to the product.
+// ES: Los runtimes empaquetados que un bundle de cache debe restaurar. Un runtime ya presente con el mismo
+//     contenido no se vuelve a preparar, pero sigue formando parte de la salida. Un nombre empaquetado solo
+//     dentro de ensamblados privados (T08-D05) no tiene copia junto al producto.
+static void addRuntimeBundleOutputs(compilation::CompilationInputManifest &manifest,
+                                    std::span<const std::filesystem::path> packagedRuntimes,
+                                    std::span<const std::filesystem::path> runtimeLibraries,
+                                    const CppTlsRuntimeAliases &aliases)
+{
+    std::unordered_set<std::string> rootNames;
+    std::unordered_set<std::string> isolatedNames;
+    for (const std::filesystem::path &runtime : packagedRuntimes)
+    {
+        const std::filesystem::path relative = runtimePackageRelativePath(runtime);
+        manifest.addRequiredBundleRelativeOutput(relative);
+        (relative.has_parent_path() ? isolatedNames : rootNames).insert(foldedPathKey(relative.filename()));
+    }
+    for (const std::filesystem::path &runtime : runtimeLibraries)
+    {
+        const auto alias = aliases.find(foldedPathKey(runtime));
+        const std::filesystem::path name = alias == aliases.end() ? runtime.filename() : pathFromUtf8(alias->second);
+        const std::string key = foldedPathKey(name);
+        if (isolatedNames.contains(key) && !rootNames.contains(key)) continue;
+        manifest.addRequiredBundleOutput(name);
+    }
+}
+
 bool publishExecutableArtifact(std::string_view outputPath, const frontend::ProjectCompilation &compilation,
                                const frontend::ProjectOopMirFunction &entryFunction,
                                const llvm_backend::ProjectOopObjectBundle &objectBundle,
@@ -557,7 +586,8 @@ bool publishExecutableArtifact(std::string_view outputPath, const frontend::Proj
         error << "nsc: error: C/C++ runtime output preflight failed: " << referenceError << '\n';
         return false;
     }
-    if (!packageRuntimeClosure(runtimeLibraries, aliases, publication.stage, packagedRuntimes, referenceError))
+    if (!packageRuntimeClosure(runtimeLibraries, dynamicallyLoadedRuntimes, aliases, publication.stage,
+                               packagedRuntimes, referenceError))
     {
         removePackagedFiles(packagedRuntimes);
         error << "nsc: error: runtime packaging failed: " << referenceError << '\n';
@@ -673,15 +703,7 @@ ExitCode Driver::runProjectOopExecutableGeneration(std::string_view inputPath, s
     if (!publishExecutableArtifact(outputPath, compilation, *entryFunction, *objectBundle, optimizationLevel, debugInformation,
                                    incrementalLink, runtimeLibraries, builder, packagedRuntimes, aliases, error))
         return ExitCode::CompilationError;
-    for (const std::filesystem::path &runtime : packagedRuntimes)
-        manifest->addRequiredBundleOutput(runtime.filename());
-    // A runtime already present with identical contents is not staged again, but it is still
-    // part of the output that a cached bundle must restore.
-    for (const std::filesystem::path &runtime : runtimeLibraries)
-    {
-        const auto alias = aliases.find(foldedPathKey(runtime));
-        manifest->addRequiredBundleOutput(alias == aliases.end() ? runtime.filename() : pathFromUtf8(alias->second));
-    }
+    addRuntimeBundleOutputs(*manifest, packagedRuntimes, runtimeLibraries, aliases);
     std::ostringstream resultOutput;
     printExecutableGenerationResult(*entryFunction, *objectBundle, builder, optimizationLevel, debugInformation,
                                     linkTimeOptimization, incrementalLink, subsystem, linkLibraries.size(),
@@ -1322,7 +1344,8 @@ bool buildDynamicLibraryProduct(const std::filesystem::path &destination,
                                 llvm_backend::LlvmOptimizationLevel optimizationLevel,
                                 llvm_backend::DebugInformationKind debugInformation,
                                 linker::WindowsLibraryBuilder &builder, ArtifactPublisher &artifactPublisher,
-                                DynamicLibraryPublication &publication, std::string &buildError, std::ostream &error)
+                                DynamicLibraryPublication &publication, std::string &buildError,
+                                std::vector<std::filesystem::path> &dynamicallyLoadedRuntimes, std::ostream &error)
 {
     const bool publishPdb = debugInformation != llvm_backend::DebugInformationKind::None;
     if (!artifactPublisher.prepareDynamicLibrary(destination, publishPdb, publication, buildError))
@@ -1343,7 +1366,7 @@ bool buildDynamicLibraryProduct(const std::filesystem::path &destination,
         return false;
     }
     std::string referenceError;
-    std::vector<std::filesystem::path> dynamicallyLoadedRuntimes;
+    dynamicallyLoadedRuntimes.clear();
     if (!appendReferencedCppRuntimes(compilation, builder.dynamicLibraryInfo(), runtimeLibraries, dynamicallyLoadedRuntimes, referenceError))
     {
         error << "nsc: error: C/C++ runtime selection failed: " << referenceError << '\n';
@@ -1390,13 +1413,15 @@ bool buildDynamicLibraryProduct(const std::filesystem::path &destination,
 bool commitDynamicLibraryProduct(const std::filesystem::path &destination,
                                  const frontend::ProjectCompilation &compilation,
                                  std::span<const std::filesystem::path> runtimeLibraries,
+                                 std::span<const std::filesystem::path> dynamicallyLoadedRuntimes,
                                  const CppTlsRuntimeAliases &aliases, bool publishPdb,
                                  ArtifactPublisher &artifactPublisher, DynamicLibraryPublication &publication,
                                  std::string &buildError, std::vector<std::filesystem::path> &packagedRuntimes,
                                  std::ostream &error)
 {
     std::string referenceError;
-    if (!packageRuntimeClosure(runtimeLibraries, aliases, publication.stage, packagedRuntimes, referenceError))
+    if (!packageRuntimeClosure(runtimeLibraries, dynamicallyLoadedRuntimes, aliases, publication.stage,
+                               packagedRuntimes, referenceError))
     {
         removePackagedFiles(packagedRuntimes);
         error << "nsc: error: runtime packaging failed: " << referenceError << '\n';
@@ -1544,23 +1569,18 @@ ExitCode Driver::runProjectOopDynamicLibraryGeneration(std::string_view inputPat
     ArtifactPublisher artifactPublisher;
     DynamicLibraryPublication publication;
     CppTlsRuntimeAliases aliases;
+    std::vector<std::filesystem::path> dynamicallyLoadedRuntimes;
     if (!buildDynamicLibraryProduct(destination, compilation, *objectBundle, exportSymbols, runtimeLibraries,
                                     aliases, optimizationLevel, debugInformation, builder, artifactPublisher, publication,
-                                    buildError, error))
+                                    buildError, dynamicallyLoadedRuntimes, error))
         return ExitCode::CompilationError;
 
     const bool publishPdb = debugInformation != llvm_backend::DebugInformationKind::None;
     std::vector<std::filesystem::path> packagedRuntimes;
-    if (!commitDynamicLibraryProduct(destination, compilation, runtimeLibraries, aliases, publishPdb, artifactPublisher, publication,
-                                     buildError, packagedRuntimes, error))
+    if (!commitDynamicLibraryProduct(destination, compilation, runtimeLibraries, dynamicallyLoadedRuntimes, aliases,
+                                     publishPdb, artifactPublisher, publication, buildError, packagedRuntimes, error))
         return ExitCode::CompilationError;
-    for (const std::filesystem::path &runtime : packagedRuntimes)
-        manifest->addRequiredBundleOutput(runtime.filename());
-    for (const std::filesystem::path &runtime : runtimeLibraries)
-    {
-        const auto alias = aliases.find(foldedPathKey(runtime));
-        manifest->addRequiredBundleOutput(alias == aliases.end() ? runtime.filename() : pathFromUtf8(alias->second));
-    }
+    addRuntimeBundleOutputs(*manifest, packagedRuntimes, runtimeLibraries, aliases);
     std::ostringstream resultOutput;
     printDynamicLibraryGenerationResult(*objectBundle, builder, publication, optimizationLevel, debugInformation,
                                         linkLibraries.size(), packagedRuntimes.size(), resultOutput);

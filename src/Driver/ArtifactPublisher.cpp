@@ -1,4 +1,5 @@
 #include "ArtifactPublisher.h"
+#include "Internal/DriverInternal.h"
 
 #include "nativesharp/Compilation/PrecompiledProductSidecarPath.h"
 #include "nativesharp/LLVM/ThinLtoLibrarySidecarCodec.h"
@@ -181,7 +182,7 @@ bool ArtifactPublisher::addRuntimeArtifacts(
 {
     for (const std::filesystem::path& stagedRuntime : stagedRuntimes)
     {
-        const auto destination = destinationDirectory / stagedRuntime.filename();
+        const auto destination = destinationDirectory / runtimePackageRelativePath(stagedRuntime);
         if (protectExisting)
         {
             std::error_code ec;

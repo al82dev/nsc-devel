@@ -52,6 +52,29 @@ LLVMValueRef cppDllTlsExportHelper(LLVMContextRef context, LLVMModuleRef module)
     auto proc = LLVMGetNamedFunction(module, "GetProcAddress");
     if (!proc) proc = LLVMAddFunction(module, "GetProcAddress", procType);
     LLVMSetDLLStorageClass(proc, LLVMDLLImportStorageClass);
+    // EN: T08-D05: activation-context isolation of the homonymous transitive dependencies of an alias.
+    // ES: T08-D05: aislamiento por contexto de activacion de las dependencias transitivas homonimas de un alias.
+    const auto i64 = LLVMInt64TypeInContext(context);
+    const auto declare = [&](const char* importName, LLVMTypeRef type)
+    {
+        auto function = LLVMGetNamedFunction(module, importName);
+        if (!function) function = LLVMAddFunction(module, importName, type);
+        LLVMSetDLLStorageClass(function, LLVMDLLImportStorageClass);
+        return function;
+    };
+    LLVMTypeRef onePointer[] = {ptr};
+    const auto attributesType = LLVMFunctionType(i32, onePointer, 1, 0);
+    const auto getAttributes = declare("GetFileAttributesW", attributesType);
+    const auto createContextType = LLVMFunctionType(ptr, onePointer, 1, 0);
+    const auto createContext = declare("CreateActCtxW", createContextType);
+    LLVMTypeRef activateArgs[] = {ptr, ptr};
+    const auto activateType = LLVMFunctionType(i32, activateArgs, 2, 0);
+    const auto activateContext = declare("ActivateActCtx", activateType);
+    LLVMTypeRef deactivateArgs[] = {i32, i64};
+    const auto deactivateType = LLVMFunctionType(i32, deactivateArgs, 2, 0);
+    const auto deactivateContext = declare("DeactivateActCtx", deactivateType);
+    const auto releaseType = LLVMFunctionType(LLVMVoidTypeInContext(context), onePointer, 1, 0);
+    const auto releaseContext = declare("ReleaseActCtx", releaseType);
     const auto entry = LLVMAppendBasicBlockInContext(context, helper, "entry");
     const auto pathBlock = LLVMAppendBasicBlockInContext(context, helper, "path");
     const auto scanBlock = LLVMAppendBasicBlockInContext(context, helper, "scan");
@@ -59,6 +82,11 @@ LLVMValueRef cppDllTlsExportHelper(LLVMContextRef context, LLVMModuleRef module)
     const auto convertBlock = LLVMAppendBasicBlockInContext(context, helper, "convert");
     const auto findBlock = LLVMAppendBasicBlockInContext(context, helper, "find");
     const auto loadBlock = LLVMAppendBasicBlockInContext(context, helper, "load");
+    const auto plainBlock = LLVMAppendBasicBlockInContext(context, helper, "load.plain");
+    const auto isolatedBlock = LLVMAppendBasicBlockInContext(context, helper, "load.isolated");
+    const auto activatedBlock = LLVMAppendBasicBlockInContext(context, helper, "load.activated");
+    const auto releaseFailBlock = LLVMAppendBasicBlockInContext(context, helper, "load.release.fail");
+    const auto loadedBlock = LLVMAppendBasicBlockInContext(context, helper, "load.done");
     const auto pinBlock = LLVMAppendBasicBlockInContext(context, helper, "pin");
     const auto lookup = LLVMAppendBasicBlockInContext(context, helper, "lookup");
     const auto fail = LLVMAppendBasicBlockInContext(context, helper, "fail");
@@ -107,10 +135,88 @@ LLVMValueRef cppDllTlsExportHelper(LLVMContextRef context, LLVMModuleRef module)
     LLVMValueRef moduleValues[] = {pin, path, slot};
     const auto found = LLVMBuildCall2(builder, moduleType, getModuleW, moduleValues, 3, "module.pinned");
     LLVMBuildCondBr(builder, LLVMBuildICmp(builder, LLVMIntNE, found, zero, "module.found"), lookup, loadBlock);
+    // EN: T08-D05. When packaging isolated a homonymous transitive dependency of this alias, NSC published
+    //     `<alias>.nsc-isolation.manifest`. The alias is then loaded with that activation context active, so
+    //     its imports resolve to the private assembly copies instead of a module already loaded by name.
+    // ES: T08-D05. Si el empaquetado aislo una dependencia transitiva homonima de este alias, NSC publico
+    //     `<alias>.nsc-isolation.manifest`. El alias se carga con ese contexto de activacion activo, asi que
+    //     sus importaciones se resuelven en las copias del ensamblado privado y no en un modulo ya cargado.
     LLVMPositionBuilderAtEnd(builder, loadBlock);
+    constexpr std::u16string_view manifestSuffix = u".nsc-isolation.manifest";
+    const auto pathEnd = LLVMBuildSub(builder, LLVMBuildAdd(builder, afterSeparator, converted, "path.end.raw"), one,
+                                      "path.end");
+    const auto suffixFits = LLVMBuildICmp(
+        builder, LLVMIntULT,
+        LLVMBuildAdd(builder, pathEnd, LLVMConstInt(i32, manifestSuffix.size() + 1, 0), "suffix.end"), capacity,
+        "suffix.fits");
+    const auto writeSuffix = [&](bool terminateOnly)
+    {
+        for (std::size_t offset = 0; offset <= manifestSuffix.size(); ++offset)
+        {
+            if (terminateOnly && offset != 0) break;
+            const std::uint16_t value = terminateOnly || offset == manifestSuffix.size() ? 0 : manifestSuffix[offset];
+            auto position = LLVMBuildAdd(builder, pathEnd, LLVMConstInt(i32, offset, 0), "suffix.index");
+            const auto target = LLVMBuildGEP2(builder, i16, path, &position, 1, "suffix.ptr");
+            LLVMBuildStore(builder, LLVMConstInt(i16, value, 0), target);
+        }
+    };
+    const auto probeBlock = LLVMAppendBasicBlockInContext(context, helper, "load.probe");
+    LLVMBuildCondBr(builder, suffixFits, probeBlock, plainBlock);
+    LLVMPositionBuilderAtEnd(builder, probeBlock);
+    writeSuffix(false);
+    LLVMValueRef manifestValues[] = {path};
+    const auto attributes = LLVMBuildCall2(builder, attributesType, getAttributes, manifestValues, 1, "manifest.attrs");
+    writeSuffix(true);
+    LLVMBuildCondBr(builder, LLVMBuildICmp(builder, LLVMIntNE, attributes, LLVMConstInt(i32, 0xffffffffULL, 0),
+                                           "manifest.present"), isolatedBlock, plainBlock);
+
+    LLVMPositionBuilderAtEnd(builder, plainBlock);
     LLVMValueRef loadValues[] = {path, LLVMConstNull(ptr), LLVMConstInt(i32, 8, 0)};
     const auto loaded = LLVMBuildCall2(builder, loadType, load, loadValues, 3, "module.loaded");
-    LLVMBuildCondBr(builder, LLVMBuildICmp(builder, LLVMIntNE, loaded, LLVMConstNull(ptr), "load.ok"), pinBlock, fail);
+    LLVMBuildBr(builder, loadedBlock);
+
+    // EN: ACTCTXW on x64 is 56 bytes; only cbSize (offset 0) and lpSource (offset 8) are set.
+    // ES: ACTCTXW ocupa 56 bytes en x64; solo se fijan cbSize (desplazamiento 0) y lpSource (8).
+    LLVMPositionBuilderAtEnd(builder, isolatedBlock);
+    const auto contextType = LLVMArrayType2(i64, 7);
+    const auto contextStorage = LLVMBuildAlloca(builder, contextType, "actctx");
+    LLVMBuildStore(builder, LLVMConstNull(contextType), contextStorage);
+    LLVMBuildStore(builder, LLVMConstInt(i32, 56, 0), contextStorage);
+    auto sourceIndex = LLVMConstInt(i64, 1, 0);
+    LLVMBuildStore(builder, path, LLVMBuildGEP2(builder, i64, contextStorage, &sourceIndex, 1, "actctx.source"));
+    const auto cookie = LLVMBuildAlloca(builder, i64, "actctx.cookie");
+    LLVMBuildStore(builder, LLVMConstInt(i64, 0, 0), cookie);
+    writeSuffix(false);
+    LLVMValueRef createValues[] = {contextStorage};
+    const auto activation = LLVMBuildCall2(builder, createContextType, createContext, createValues, 1, "actctx.handle");
+    writeSuffix(true);
+    const auto activationBits = LLVMBuildPtrToInt(builder, activation, i64, "actctx.bits");
+    const auto activateBlock = LLVMAppendBasicBlockInContext(context, helper, "load.activate");
+    LLVMBuildCondBr(builder, LLVMBuildICmp(builder, LLVMIntNE, activationBits, LLVMConstInt(i64, ~0ULL, 0),
+                                           "actctx.valid"), activateBlock, fail);
+    LLVMPositionBuilderAtEnd(builder, activateBlock);
+    LLVMValueRef activateValues[] = {activation, cookie};
+    const auto activated = LLVMBuildCall2(builder, activateType, activateContext, activateValues, 2, "actctx.active");
+    LLVMBuildCondBr(builder, LLVMBuildICmp(builder, LLVMIntNE, activated, zero, "actctx.activated"), activatedBlock,
+                    releaseFailBlock);
+    LLVMPositionBuilderAtEnd(builder, activatedBlock);
+    const auto isolatedLoaded = LLVMBuildCall2(builder, loadType, load, loadValues, 3, "module.loaded.isolated");
+    LLVMValueRef deactivateValues[] = {zero, LLVMBuildLoad2(builder, i64, cookie, "actctx.cookie.value")};
+    LLVMBuildCall2(builder, deactivateType, deactivateContext, deactivateValues, 2, "");
+    LLVMValueRef releaseValues[] = {activation};
+    LLVMBuildCall2(builder, releaseType, releaseContext, releaseValues, 1, "");
+    LLVMBuildBr(builder, loadedBlock);
+    LLVMPositionBuilderAtEnd(builder, releaseFailBlock);
+    LLVMBuildCall2(builder, releaseType, releaseContext, releaseValues, 1, "");
+    LLVMBuildBr(builder, fail);
+
+    LLVMPositionBuilderAtEnd(builder, loadedBlock);
+    const auto loadedValue = LLVMBuildPhi(builder, ptr, "module.loaded.any");
+    LLVMValueRef incomingValues[] = {loaded, isolatedLoaded};
+    LLVMBasicBlockRef incomingBlocks[] = {plainBlock, activatedBlock};
+    LLVMAddIncoming(loadedValue, incomingValues, incomingBlocks, 2);
+    LLVMBuildCondBr(builder, LLVMBuildICmp(builder, LLVMIntNE, loadedValue, LLVMConstNull(ptr), "load.ok"), pinBlock,
+                    fail);
     LLVMPositionBuilderAtEnd(builder, pinBlock);
     const auto pinned = LLVMBuildCall2(builder, moduleType, getModuleW, moduleValues, 3, "module.pin");
     LLVMBuildCondBr(builder, LLVMBuildICmp(builder, LLVMIntNE, pinned, zero, "pin.ok"), lookup, fail);

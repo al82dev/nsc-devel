@@ -3,6 +3,9 @@
 #include "nativesharp/Basic/Sha256.h"
 #include "../LLVM/Internal/CppTlsDllAlias.h"
 
+#include <fstream>
+#include <unordered_set>
+
 namespace nativesharp::driver
 {
 using target::BuiltinLayoutKind;
@@ -300,7 +303,7 @@ bool validatePackagedCppRuntimeDestinations(const frontend::ProjectCompilation &
     if (!hasCppRuntime) return true;
     for (const auto &source : stagedRuntimes)
     {
-        const auto destination = destinationDirectory / source.filename();
+        const auto destination = destinationDirectory / runtimePackageRelativePath(source);
         std::error_code ec;
         const bool exists = std::filesystem::exists(destination, ec);
         if (ec)
@@ -317,7 +320,56 @@ bool validatePackagedCppRuntimeDestinations(const frontend::ProjectCompilation &
     return true;
 }
 
+namespace
+{
+// EN: T08-D05. Names of the isolation artifacts: one private assembly folder per alias and the activation
+//     context manifest that the alias loader (`__nsc_cpp_dll_tls_export`) activates around LoadLibraryExW.
+// ES: T08-D05. Nombres de los artefactos de aislamiento: una carpeta de ensamblado privado por alias y el
+//     manifiesto de contexto de activacion que el cargador del alias activa alrededor de LoadLibraryExW.
+constexpr std::string_view kIsolationAssemblyPrefix = "NativeSharp.Isolation.";
+constexpr std::string_view kIsolationManifestSuffix = ".nsc-isolation.manifest";
+
+// EN: the last 16 alphanumeric characters of the alias stem (its identity hash). CreateActCtxW rejects long
+//     assembly names with ERROR_SXS_CANT_GEN_ACTCTX; the full 64-digit hash was observed to fail, 16 digits work.
+// ES: los ultimos 16 caracteres alfanumericos del nombre del alias (su hash de identidad). CreateActCtxW rechaza
+//     nombres de ensamblado largos con ERROR_SXS_CANT_GEN_ACTCTX; el hash completo de 64 digitos fallo y 16
+//     digitos funcionan.
+std::string isolationAssemblyName(const std::filesystem::path &aliasName)
+{
+    std::string digits;
+    for (const char character : pathToUtf8(aliasName.stem()))
+    {
+        const auto value = static_cast<unsigned char>(character);
+        if ((value >= '0' && value <= '9') || (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z'))
+            digits.push_back(character);
+    }
+    if (digits.size() > 16) digits.erase(0, digits.size() - 16);
+    return std::string(kIsolationAssemblyPrefix) + digits;
+}
+
+std::string isolationAssemblyIdentity(std::string_view name)
+{
+    return "<assemblyIdentity type=\"win32\" name=\"" + std::string(name) +
+           "\" version=\"1.0.0.0\" processorArchitecture=\"amd64\"/>";
+}
+
+struct PackagedRuntime
+{
+    std::filesystem::path source;
+    std::filesystem::path targetName;
+    std::vector<std::size_t> imports;
+};
+} // namespace
+
+std::filesystem::path runtimePackageRelativePath(const std::filesystem::path &stagedRuntime)
+{
+    const std::filesystem::path folder = stagedRuntime.parent_path().filename();
+    if (pathToUtf8(folder).starts_with(kIsolationAssemblyPrefix)) return folder / stagedRuntime.filename();
+    return stagedRuntime.filename();
+}
+
 bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibraries,
+                           std::span<const std::filesystem::path> dynamicallyLoadedRuntimes,
                            const CppTlsRuntimeAliases &aliases,
                            const std::filesystem::path &destination, std::vector<std::filesystem::path> &copiedFiles,
                            std::string &error)
@@ -325,83 +377,222 @@ bool packageRuntimeClosure(std::span<const std::filesystem::path> runtimeLibrari
     // Packaging is deliberately rooted in explicit LibraryReference runtimes.  A
     // dependency is followed only when the PE names it and a sibling DLL with that
     // exact name exists; no PATH lookup or directory scan is performed.
-    std::vector<std::filesystem::path> closure;
-    std::unordered_map<std::string, std::filesystem::path> owners;
-    auto addRuntime = [&](const std::filesystem::path &runtime)
+    // EN: T08-D05. Each root keeps its own closure. A name packaged with different contents is accepted only
+    //     when every root that reaches it is a C TLS alias loaded by the alias loader and the name is not the
+    //     root itself: each such alias receives a private assembly with its own versions and an activation
+    //     context manifest. Any other homonymous conflict is rejected as before. No DLL is modified.
+    //     A root that the product neither imports nor loads at run time (a Runtime declared only so that it is
+    //     packaged) does not take part in the conflict check.
+    // ES: T08-D05. Cada raiz conserva su propio cierre. Un nombre empaquetado con contenidos distintos solo se
+    //     acepta si todas las raices que lo alcanzan son alias TLS C cargados por el cargador de alias y el
+    //     nombre no es la propia raiz: cada uno de esos alias recibe un ensamblado privado con sus versiones y
+    //     un manifiesto de contexto de activacion. Cualquier otro conflicto homonimo se rechaza como antes. No
+    //     se modifica ninguna DLL. Una raiz que el producto no importa ni carga en ejecucion (un Runtime declarado
+    //     solo para empaquetarlo) no participa en la comprobacion de conflictos.
+    std::vector<PackagedRuntime> files;
+    std::unordered_map<std::string, std::size_t> fileIndex;
+    const auto addFile = [&](const std::filesystem::path &source) -> std::size_t
     {
-        const auto alias = aliases.find(foldedPathKey(runtime));
-        const auto targetName = alias == aliases.end() ? runtime.filename() : pathFromUtf8(alias->second);
-        const std::string name = foldedPathKey(targetName);
-        const auto owner = owners.find(name);
-        if (owner != owners.end())
-        {
-            if (foldedPathKey(owner->second) != foldedPathKey(runtime) &&
-                !filesHaveEqualContents(owner->second, runtime))
-            {
-                error = "runtime package contains different DLLs named '" + pathToUtf8(runtime.filename()) + "': '" +
-                        pathToUtf8(owner->second) + "' and '" + pathToUtf8(runtime) + "'";
-                return false;
-            }
-            return true;
-        }
-        owners.emplace(name, runtime);
-        closure.push_back(runtime);
-        return true;
+        const std::string key = foldedPathKey(source);
+        const auto found = fileIndex.find(key);
+        if (found != fileIndex.end()) return found->second;
+        const auto alias = aliases.find(key);
+        files.push_back({source, alias == aliases.end() ? source.filename() : pathFromUtf8(alias->second), {}});
+        fileIndex.emplace(key, files.size() - 1);
+        return files.size() - 1;
     };
-
-    for (const std::filesystem::path &runtime : runtimeLibraries)
-    {
-        if (!addRuntime(runtime))
-            return false;
-    }
-
-    for (std::size_t index = 0; index < closure.size(); ++index)
+    std::vector<std::size_t> roots;
+    for (const std::filesystem::path &runtime : runtimeLibraries) roots.push_back(addFile(runtime));
+    for (std::size_t index = 0; index < files.size(); ++index)
     {
         linker::PeExecutableVerifier verifier;
-        if (!verifier.verifyDynamicLibrary(closure[index]))
+        if (!verifier.verifyDynamicLibrary(files[index].source))
         {
-            error = "runtime package dependency '" + pathToUtf8(closure[index]) +
+            error = "runtime package dependency '" + pathToUtf8(files[index].source) +
                     "' is not a valid AMD64 DLL: " + verifier.error();
             return false;
         }
         for (const std::string &importedName : verifier.info().importedLibraries)
         {
-            const std::filesystem::path sibling = closure[index].parent_path() / importedName;
+            const std::filesystem::path sibling = files[index].source.parent_path() / importedName;
             std::error_code existsError;
             if (!std::filesystem::is_regular_file(sibling, existsError))
                 continue;
-            if (!addRuntime(sibling))
-                return false;
+            const std::size_t imported = addFile(sibling);
+            files[index].imports.push_back(imported);
+        }
+    }
+
+    // EN: closure of every root, in breadth-first order. / ES: cierre de cada raiz, en anchura.
+    std::vector<std::vector<std::size_t>> closures;
+    for (const std::size_t root : roots)
+    {
+        std::vector<std::size_t> closure{root};
+        std::unordered_set<std::size_t> seen{root};
+        for (std::size_t position = 0; position < closure.size(); ++position)
+            for (const std::size_t imported : files[closure[position]].imports)
+                if (seen.insert(imported).second) closure.push_back(imported);
+        closures.push_back(std::move(closure));
+    }
+
+    // EN: versions of every packaged name; a version is a set of files with equal contents.
+    // ES: versiones de cada nombre empaquetado; una version es un grupo de archivos de igual contenido.
+    std::unordered_map<std::string, std::vector<std::size_t>> versionRepresentatives;
+    std::vector<std::size_t> versionOf(files.size());
+    std::vector<std::string> nameOrder;
+    for (std::size_t index = 0; index < files.size(); ++index)
+    {
+        const std::string name = foldedPathKey(files[index].targetName);
+        auto [position, inserted] = versionRepresentatives.try_emplace(name);
+        if (inserted) nameOrder.push_back(name);
+        auto &representatives = position->second;
+        std::size_t version = representatives.size();
+        for (std::size_t candidate = 0; candidate < representatives.size(); ++candidate)
+        {
+            const auto &other = files[representatives[candidate]].source;
+            if (foldedPathKey(other) == foldedPathKey(files[index].source) ||
+                filesHaveEqualContents(other, files[index].source))
+            {
+                version = candidate;
+                break;
+            }
+        }
+        if (version == representatives.size()) representatives.push_back(index);
+        versionOf[index] = version;
+    }
+    std::unordered_set<std::string> conflicting;
+    for (const auto &[name, representatives] : versionRepresentatives)
+        if (representatives.size() > 1) conflicting.insert(name);
+
+    // EN: names the product image imports, and runtimes the generated code loads by path.
+    // ES: nombres que importa la imagen del producto y runtimes que el codigo generado carga por ruta.
+    std::unordered_set<std::string> imageImports;
+    {
+        linker::PeExecutableVerifier image;
+        if (image.verify(destination) || image.verifyDynamicLibrary(destination))
+            for (const std::string &imported : image.info().importedLibraries)
+                imageImports.insert(foldedName(imported));
+    }
+    std::unordered_set<std::string> dynamicallyLoaded;
+    for (const auto &runtime : dynamicallyLoadedRuntimes) dynamicallyLoaded.insert(foldedPathKey(runtime));
+    std::vector<std::uint8_t> isolatedAlias(roots.size(), 0);
+    for (std::size_t rootPosition = 0; rootPosition < roots.size(); ++rootPosition)
+    {
+        const std::size_t root = roots[rootPosition];
+        const std::string sourceKey = foldedPathKey(files[root].source);
+        const bool imported = imageImports.contains(foldedPathKey(files[root].targetName));
+        const bool aliased = aliases.contains(sourceKey) && !imported;
+        if (!imported && !aliased && !dynamicallyLoaded.contains(sourceKey)) continue;
+        isolatedAlias[rootPosition] = aliased ? 1 : 0;
+        for (const std::size_t member : closures[rootPosition])
+        {
+            const std::string name = foldedPathKey(files[member].targetName);
+            if (!conflicting.contains(name) || (aliased && member != root)) continue;
+            const auto &representatives = versionRepresentatives[name];
+            error = "runtime package contains different DLLs named '" + pathToUtf8(files[member].targetName) +
+                    "': '" + pathToUtf8(files[representatives[0]].source) + "' and '" +
+                    pathToUtf8(files[representatives[1]].source) + "'";
+            // EN: an alias in the import table is loaded before any activation context can be activated.
+            // ES: un alias de la tabla de importacion se carga antes de poder activar un contexto.
+            if (imported && aliases.contains(sourceKey))
+                error += "; C TLS alias '" + pathToUtf8(files[root].targetName) +
+                         "' is imported directly, so its dependencies cannot be isolated";
+            return false;
         }
     }
 
     const std::filesystem::path packageDirectory = destination.parent_path();
-    for (const std::filesystem::path &source : closure)
+    const auto stage = [&](const std::filesystem::path &source, const std::filesystem::path &target) -> bool
     {
-        const auto alias = aliases.find(foldedPathKey(source));
-        const std::filesystem::path target = packageDirectory /
-            (alias == aliases.end() ? source.filename() : pathFromUtf8(alias->second));
         std::error_code equivalentError;
         if (std::filesystem::equivalent(source, target, equivalentError) && !equivalentError)
-            continue;
+            return true;
         std::error_code existsError;
         if (std::filesystem::exists(target, existsError))
         {
             if (!existsError && filesHaveEqualContents(source, target))
-                continue;
-            error = "runtime package destination already contains a different '" + pathToUtf8(target.filename()) + "': '" +
-                    pathToUtf8(target) + "'";
+                return true;
+            error = "runtime package destination already contains a different '" + pathToUtf8(target.filename()) +
+                    "': '" + pathToUtf8(target) + "'";
             return false;
         }
         std::error_code copyError;
         std::filesystem::copy_file(source, target, std::filesystem::copy_options::none, copyError);
         if (copyError)
         {
-            error =
-                "cannot package runtime '" + pathToUtf8(source) + "' as '" + pathToUtf8(target) + "': " + copyError.message();
+            error = "cannot package runtime '" + pathToUtf8(source) + "' as '" + pathToUtf8(target) + "': " +
+                    copyError.message();
             return false;
         }
         copiedFiles.push_back(target);
+        return true;
+    };
+    const auto writeText = [&](const std::filesystem::path &target, const std::string &contents) -> bool
+    {
+        std::ofstream stream(target, std::ios::binary | std::ios::trunc);
+        stream << contents;
+        stream.close();
+        if (!stream)
+        {
+            error = "cannot write runtime isolation manifest '" + pathToUtf8(target) + "'";
+            return false;
+        }
+        copiedFiles.push_back(target);
+        return true;
+    };
+
+    std::unordered_set<std::string> packagedNames;
+    for (const std::vector<std::size_t> &closure : closures)
+        for (const std::size_t member : closure)
+        {
+            const std::string name = foldedPathKey(files[member].targetName);
+            if (conflicting.contains(name) || !packagedNames.insert(name).second) continue;
+            if (!stage(files[member].source, packageDirectory / files[member].targetName)) return false;
+        }
+
+    std::unordered_set<std::string> assemblyNames;
+    for (std::size_t rootPosition = 0; rootPosition < roots.size(); ++rootPosition)
+    {
+        if (isolatedAlias[rootPosition] == 0) continue;
+        std::vector<std::size_t> isolated;
+        for (const std::size_t member : closures[rootPosition])
+            if (conflicting.contains(foldedPathKey(files[member].targetName))) isolated.push_back(member);
+        if (isolated.empty()) continue;
+        const std::filesystem::path &aliasName = files[roots[rootPosition]].targetName;
+        const std::string assembly = isolationAssemblyName(aliasName);
+        if (!assemblyNames.insert(assembly).second)
+        {
+            error = "runtime isolation assembly name collision: '" + assembly + "'";
+            return false;
+        }
+        const std::filesystem::path assemblyDirectory = packageDirectory / pathFromUtf8(assembly);
+        std::error_code directoryError;
+        std::filesystem::create_directories(assemblyDirectory, directoryError);
+        if (directoryError)
+        {
+            error = "cannot create runtime isolation directory '" + pathToUtf8(assemblyDirectory) +
+                    "': " + directoryError.message();
+            return false;
+        }
+        std::string assemblyManifest =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n"
+            "<assembly xmlns=\"urn:schemas-microsoft-com:asm.v1\" manifestVersion=\"1.0\">\r\n  " +
+            isolationAssemblyIdentity(assembly) + "\r\n";
+        for (const std::size_t member : isolated)
+        {
+            if (!stage(files[member].source, assemblyDirectory / files[member].targetName)) return false;
+            assemblyManifest += "  <file name=\"" + pathToUtf8(files[member].targetName) + "\"/>\r\n";
+        }
+        assemblyManifest += "</assembly>\r\n";
+        if (!writeText(assemblyDirectory / pathFromUtf8(assembly + ".manifest"), assemblyManifest)) return false;
+        const std::string contextManifest =
+            "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\r\n"
+            "<assembly xmlns=\"urn:schemas-microsoft-com:asm.v1\" manifestVersion=\"1.0\">\r\n"
+            "  <dependency><dependentAssembly>" + isolationAssemblyIdentity(assembly) +
+            "</dependentAssembly></dependency>\r\n</assembly>\r\n";
+        std::filesystem::path contextPath = packageDirectory / aliasName;
+        contextPath += pathFromUtf8(kIsolationManifestSuffix);
+        if (!writeText(contextPath, contextManifest)) return false;
     }
     return true;
 }
@@ -412,6 +603,10 @@ void removePackagedFiles(std::span<const std::filesystem::path> copiedFiles)
     for (auto iterator = copiedFiles.rbegin(); iterator != copiedFiles.rend(); ++iterator)
     {
         std::filesystem::remove(*iterator, removeError);
+        removeError.clear();
+        // EN: an isolation folder is removed once empty (T08-D05). / ES: una carpeta de aislamiento vacia se borra.
+        if (runtimePackageRelativePath(*iterator).has_parent_path())
+            std::filesystem::remove(iterator->parent_path(), removeError);
         removeError.clear();
     }
 }

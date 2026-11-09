@@ -63,14 +63,31 @@ bool parseSize(std::string_view text, std::uintmax_t& result)
     return parsed.ec == std::errc{} && parsed.ptr == end;
 }
 
+// EN: A bundle artifact is a file name or, since T08-D05, one subdirectory and a file name (the files of a
+//     private assembly next to an executable). Absolute paths, `.`, `..` and deeper paths are rejected.
+// ES: Un artefacto del bundle es un nombre de archivo o, desde T08-D05, un subdirectorio y un nombre de archivo
+//     (los archivos de un ensamblado privado junto al ejecutable). Se rechazan rutas absolutas, `.`, `..` y
+//     rutas mas profundas.
 bool validArtifactName(const std::filesystem::path& name)
 {
-    return !name.empty() && name == name.filename() && name != "." && name != "..";
+    if (name.empty() || name.has_root_path()) return false;
+    std::size_t components = 0;
+    for (const std::filesystem::path& component : name)
+    {
+        if (component.empty() || component == "." || component == "..") return false;
+        if (++components > 2) return false;
+    }
+    return components != 0;
 }
 
 std::filesystem::path artifactPathFromUtf8(std::string_view text)
 {
-    return std::filesystem::path(std::u8string(text.begin(), text.end()));
+    // EN: native separators: a nested artifact name (T08-D05) may be joined to a long `\\?\` path, which does
+    //     not accept `/`. / ES: separadores nativos: un nombre anidado (T08-D05) puede unirse a una ruta larga
+    //     `\\?\`, que no admite `/`.
+    std::filesystem::path path(std::u8string(text.begin(), text.end()));
+    path.make_preferred();
+    return path;
 }
 
 std::string artifactPathToUtf8(const std::filesystem::path& path)
@@ -177,7 +194,7 @@ bool readArtifactRecords(
             return false;
         }
         std::filesystem::path name;
-        try { name = artifactPathFromUtf8(decodedName).filename(); }
+        try { name = artifactPathFromUtf8(decodedName); }
         catch (const std::exception&)
         {
             detail = "artifact-name-encoding";
@@ -558,6 +575,18 @@ bool CompilationBundleCache::store(
             error = hashErrors[index];
             std::filesystem::remove_all(staging, filesystemError);
             return false;
+        }
+        if (name.has_parent_path())
+        {
+            std::filesystem::create_directories(artifacts / name.parent_path(), filesystemError);
+            if (filesystemError)
+            {
+                const std::string directoryError = filesystemError.message();
+                std::error_code ignored;
+                std::filesystem::remove_all(staging, ignored);
+                error = "cannot stage compilation bundle directory for '" + outputName + "': " + directoryError;
+                return false;
+            }
         }
         std::filesystem::copy_file(
             source,
