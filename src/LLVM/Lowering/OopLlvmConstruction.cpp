@@ -106,7 +106,12 @@ ReceiverPublicationScan scanReceiverPublication(
             const std::size_t firstArgument = call->kind == Kind::DirectStaticCall ? 0U : 1U;
             for (std::size_t child = firstArgument; child < call->children.size(); ++child)
                 if (isReceiver(call->children[child].get()))
-                    result.directArgumentCallees.emplace_back(call->calleeName, child - firstArgument);
+                {
+                    const std::size_t source = child - firstArgument;
+                    const std::size_t parameter = call->argumentParameterOrdinals.empty()
+                        ? source : call->argumentParameterOrdinals.at(source);
+                    result.directArgumentCallees.emplace_back(call->calleeName, parameter);
+                }
         }
         if (call->kind == Kind::VirtualInstanceCall && call->virtualSlot.has_value())
             for (std::size_t child = 1; child < call->children.size(); ++child)

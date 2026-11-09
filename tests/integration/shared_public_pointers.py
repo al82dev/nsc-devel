@@ -1326,9 +1326,24 @@ class Program { public static int Main() { Holder holder = default(Holder);
  public SafePayload() { Inspect(this); } public static void Inspect(SafePayload value) { value.Data = 42; } }
  class Program { public static int Main() { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
  return owner.Get().Data == 42 ? 42 : 1; } }''', 'run:42'),
+        'shared_named_static_argument': ('''class EscapePayload { public static EscapePayload Alias;
+ public EscapePayload() { Publish(value: this, ignored: 1); }
+ public static void Publish(int ignored, EscapePayload value) { Alias = value; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_named_static_control': ('''class SafePayload { public int Data;
+ public SafePayload() { Inspect(value: this, ignored: 1); }
+ public static void Inspect(int ignored, SafePayload value) { value.Data = 42; } }
+ class Program { public static int Main() { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
+ return owner.Get().Data == 42 ? 42 : 1; } }''', 'run:42'),
         'shared_constructor_instance_argument': ('''class Helper { public void Publish(EscapePayload value) { EscapePayload.Alias = value; } }
  class EscapePayload { public static EscapePayload Alias;
  public EscapePayload() { Helper helper = new Helper(); helper.Publish(this); } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_named_instance_argument': ('''class Helper { public void Publish(int ignored, EscapePayload value) { EscapePayload.Alias = value; } }
+ class EscapePayload { public static EscapePayload Alias; public EscapePayload() { Helper helper = new Helper();
+ helper.Publish(value: this, ignored: 1); } }
  class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
  return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
         'shared_destructor_instance_argument': ('''class Helper { public void Publish(int ignored, EscapePayload value) { EscapePayload.Alias = value; } }
