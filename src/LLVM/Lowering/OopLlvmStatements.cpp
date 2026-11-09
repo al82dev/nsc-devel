@@ -120,6 +120,56 @@ bool OopLlvmImplementation::lowerBlockStatement(
                     const auto& segments = identity.namespaceSegments();
                     if (segments.size() != 2 || segments[0] != "NativeSharp" || segments[1] != "Core" ||
                         !identity.containingTypes().empty()) return false;
+                    // A matching generic name alone is not evidence that its zero state may be
+                    // destroyed: user code can define a homonym with an observable destructor.
+                    // Accept only the proven wrapper shape and an inner destructor whose sole
+                    // action is guarded by a null check of its non-owned array field.
+                    if (layout->fields.size() != 1U) return false;
+                    for (const auto& member : memberModel_->members())
+                        if (member.declaringTypeOrdinal == layout->typeOrdinal &&
+                            member.kind == frontend::ClassMemberKind::Destructor &&
+                            !member.isCompilerGenerated) return false;
+                    const auto& innerField = layout->fields.front();
+                    if (innerField.memberOrdinal >= memberModel_->members().size()) return false;
+                    const auto& innerMember = memberModel_->members()[innerField.memberOrdinal];
+                    if (innerMember.name != "inner" || innerMember.isVolatile ||
+                        innerMember.declaredOwnership != sema::OwnershipKind::None) return false;
+                    const auto* innerLayout = mirModel_.structLayoutForTypeKey(innerField.typeKey);
+                    if (innerLayout == nullptr || innerLayout->isImported || innerLayout->isUnion ||
+                        innerLayout->hasExplicitFieldOffsets || innerLayout->fields.size() != 2U) return false;
+                    bool hasBlock = false;
+                    bool hasSlot = false;
+                    for (const auto& field : innerLayout->fields)
+                    {
+                        if (field.memberOrdinal >= memberModel_->members().size()) return false;
+                        const auto& symbol = memberModel_->members()[field.memberOrdinal];
+                        if (symbol.isVolatile || symbol.declaredOwnership != sema::OwnershipKind::None) return false;
+                        if (symbol.name == "block" && field.typeKey == "builtin:long[]") hasBlock = true;
+                        else if (symbol.name == "slot" && field.typeKey.ends_with('*')) hasSlot = true;
+                        else return false;
+                    }
+                    if (!hasBlock || !hasSlot) return false;
+                    const ast::AstNode* destructor = nullptr;
+                    for (const auto& member : memberModel_->members())
+                    {
+                        if (member.declaringTypeOrdinal != innerLayout->typeOrdinal ||
+                            member.kind != frontend::ClassMemberKind::Destructor) continue;
+                        if (destructor != nullptr || member.syntax == nullptr || member.isCompilerGenerated) return false;
+                        destructor = member.syntax;
+                    }
+                    if (destructor == nullptr || destructor->first() == nullptr ||
+                        destructor->first()->kind() != ast::AstNodeKind::BlockStatement ||
+                        destructor->first()->children().size() != 1U) return false;
+                    const ast::AstNode* guard = destructor->first()->children().front();
+                    if (guard == nullptr || guard->kind() != ast::AstNodeKind::IfStatement ||
+                        guard->third() != nullptr || guard->first() == nullptr ||
+                        guard->first()->kind() != ast::AstNodeKind::BinaryExpression ||
+                        guard->first()->tokenKind() != lexer::TokenKind::BangEqual) return false;
+                    const ast::AstNode* left = guard->first()->first();
+                    const ast::AstNode* right = guard->first()->second();
+                    if (left == nullptr || right == nullptr ||
+                        left->kind() != ast::AstNodeKind::IdentifierExpression || left->text() != "block" ||
+                        right->kind() != ast::AstNodeKind::NullLiteralExpression) return false;
                     for (const auto& function : mirModel_.functions())
                     {
                         if (function.declaringTypeOrdinal != layout->typeOrdinal) continue;

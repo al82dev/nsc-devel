@@ -64,6 +64,25 @@ class Program { public static int Main() {
             result = run([exe], root)
             assert result.returncode == 42, ('run', level, result.returncode, result.stdout, result.stderr)
             print('binary shared owners', level, 'exit=42', flush=True)
+        for family, weak, make in (('Rc', 'WeakRc', 'MakeRc'), ('Arc', 'WeakArc', 'MakeArc')):
+            source.write_text(('''using NativeSharp.Core;
+class Payload { public Payload() { } }
+class Gate { static Gate() throws Exception { throw new Exception(); }
+ public static int Read() { return 7; } }
+class Holder { public WEAK<Payload> value; public int number;
+ public void Initialize(WEAK<Payload> weak) { value = move(weak); }
+ public Holder(WEAK<Payload> weak) { Initialize(move(weak)); number = Gate.Read(); } }
+class Program { public static int Main() { STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
+ int caught = 0; try { Holder holder = new Holder(owner.Downgrade()); } catch (Exception error) { caught = 1; }
+ return caught == 1 && owner.WeakCount() == 0l ? 42 : (int)owner.WeakCount() + 10 * caught; } }
+''').replace('WEAK', weak).replace('STRONG', family).replace('MAKE', make), encoding='utf-8')
+            for level in ('O0', 'O2'):
+                exe = root / ('binary-constructor-' + family + '-' + level + '.exe')
+                result = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', exe], root)
+                assert result.returncode == 0, ('constructor compile', family, level, result.stdout + result.stderr)
+                result = run([exe], root)
+                print('binary constructor cleanup', family, level, 'exit=' + str(result.returncode), flush=True)
+                assert result.returncode == 42, ('constructor cleanup', family, level, result.returncode)
         source.write_text('''using NativeSharp.Core;
 class Payload { public long Data; }
 class Program { public static int Main() {
