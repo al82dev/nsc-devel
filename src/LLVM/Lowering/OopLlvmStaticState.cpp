@@ -60,6 +60,10 @@ bool OopLlvmImplementation::declareStaticFields(std::string& error, bool defineS
                     count <= std::numeric_limits<std::uint64_t>::max() / imported->objectLayout->sizeBytes)
                     type = LLVMArrayType2(LLVMInt8TypeInContext(context_),
                                           count * imported->objectLayout->sizeBytes);
+                // `extern T name[];` (T[*]) only names an address: declare zero-length storage.
+                // `extern T name[];` (T[*]) solo nombra una dirección: se declara almacenamiento de longitud cero.
+                if (frontend::ProjectMemberModel::flexibleArrayElementTypeKey(field.typeKey))
+                    type = LLVMArrayType2(LLVMInt8TypeInContext(context_), 0);
             }
             if (type == nullptr && field.cppCBoolStorage)
             {

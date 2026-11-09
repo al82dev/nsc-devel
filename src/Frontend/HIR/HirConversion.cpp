@@ -32,6 +32,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::wrapImplicitConversion(
         address->children.push_back(std::move(value));
         return address;
     }
+    // A C global `extern T name[];` (T[*]) decays to the address of its first element.
+    // Una global C `extern T name[];` (T[*]) decae a la dirección de su primer elemento.
+    if (conversion.kind == ProjectConversionKind::CFlexibleArrayToPointer &&
+        value->kind == ProjectOopHirNodeKind::NamespaceStateValue)
+    {
+        value->kind = ProjectOopHirNodeKind::NamespaceStateAddress;
+        auto address = makeNode(ProjectOopHirNodeKind::AddressValue, syntax, conversion.targetTypeKey);
+        address->children.push_back(std::move(value));
+        return address;
+    }
     if ((conversion.kind == ProjectConversionKind::UserDefinedImplicit ||
          conversion.kind == ProjectConversionKind::UserDefinedExplicit) &&
         conversion.userDefinedMemberOrdinal.has_value())

@@ -1008,7 +1008,35 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     if (candidates.size() > 1 && candidates.front() < states.size())
     {
         const auto& first = states[candidates.front()];
-        const auto equivalentExternalC = [&](std::size_t ordinal) {
+        // Same C object except, possibly, its bound: `extern T a[];` (T[*]) and `extern T a[N];` (T[N]).
+        // Mismo objeto C salvo, quizá, su límite: `extern T a[];` (T[*]) y `extern T a[N];` (T[N]).
+        const auto sameElementAndBound = [](const NamespaceStateSymbol& left, const NamespaceStateSymbol& right,
+                                            bool allowUnknownBound) {
+            if (left.declaredTypeKey == right.declaredTypeKey)
+                return !left.cppCanonicalCType.empty() && left.cppCanonicalCType == right.cppCanonicalCType &&
+                    left.cppStorageSizeBits == right.cppStorageSizeBits;
+            if (!allowUnknownBound) return false;
+            const auto unknown = [](const NamespaceStateSymbol& state) {
+                return ProjectMemberModel::flexibleArrayElementTypeKey(state.declaredTypeKey);
+            };
+            const auto known = [](const NamespaceStateSymbol& state) {
+                return ProjectMemberModel::fixedArrayElementTypeKey(state.declaredTypeKey);
+            };
+            const auto leftUnknown = unknown(left);
+            const auto rightUnknown = unknown(right);
+            return (leftUnknown && !rightUnknown && known(right) == leftUnknown) ||
+                (rightUnknown && !leftUnknown && known(left) == rightUnknown);
+        };
+        // Clang reports no declaration alignment for `extern T a[];`; an explicit one must still match.
+        // Clang no informa alineación de declaración para `extern T a[];`; una explícita debe coincidir.
+        const auto unboundedWithoutAlignment = [](const NamespaceStateSymbol& left, const NamespaceStateSymbol& right) {
+            const auto unbounded = [](const NamespaceStateSymbol& state) {
+                return ProjectMemberModel::flexibleArrayElementTypeKey(state.declaredTypeKey).has_value() &&
+                    !state.cppDeclarationAlignmentBits;
+            };
+            return unbounded(left) != unbounded(right);
+        };
+        const auto compatibleExternalC = [&](std::size_t ordinal, bool allowUnknownBound) {
             if (ordinal >= states.size()) return false;
             const auto& other = states[ordinal];
             return first.cppCGlobal && other.cppCGlobal && first.isCppExternal && other.isCppExternal &&
@@ -1016,22 +1044,39 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
                 !other.cppCInternalLinkage && first.cppImportError.empty() && other.cppImportError.empty() &&
                 first.cppClangUsr && !first.cppClangUsr->empty() && first.cppClangUsr == other.cppClangUsr &&
                 !first.storageName.empty() && first.storageName == other.storageName &&
-                !first.cppCanonicalCType.empty() && first.cppCanonicalCType == other.cppCanonicalCType &&
-                first.declaredTypeKey == other.declaredTypeKey && first.isVolatile == other.isVolatile &&
+                sameElementAndBound(first, other, allowUnknownBound) && first.isVolatile == other.isVolatile &&
                 first.isCppReadonly == other.isCppReadonly &&
                 first.cppPointerPointeeReadonly == other.cppPointerPointeeReadonly &&
                 first.cppPointerPointeeVolatile == other.cppPointerPointeeVolatile &&
                 first.cppMicrosoftVolatileSemantics == other.cppMicrosoftVolatileSemantics &&
-                first.cppStorageSizeBits == other.cppStorageSizeBits &&
-                first.cppDeclarationAlignmentBits == other.cppDeclarationAlignmentBits &&
+                (first.cppDeclarationAlignmentBits == other.cppDeclarationAlignmentBits ||
+                 (allowUnknownBound && unboundedWithoutAlignment(first, other))) &&
                 first.cppDllImport == other.cppDllImport && first.cppThreadLocal == other.cppThreadLocal &&
                 (!(first.cppDllImport && first.cppThreadLocal) ||
                     (!first.cppTlsRuntimeIdentity.empty() &&
                      first.cppTlsRuntimeIdentity == other.cppTlsRuntimeIdentity)) &&
                 first.cppAtomicStorage == other.cppAtomicStorage;
         };
-        if (std::all_of(candidates.begin(), candidates.end(), equivalentExternalC))
+        if (std::all_of(candidates.begin(), candidates.end(),
+                        [&](std::size_t ordinal) { return compatibleExternalC(ordinal, false); }))
             candidates.resize(1);
+        else if (std::all_of(candidates.begin(), candidates.end(),
+                             [&](std::size_t ordinal) { return compatibleExternalC(ordinal, true); }))
+        {
+            // C forms the composite type: the declaration with a bound completes the one without it. All bounded
+            // declarations must agree with each other; they keep a single storage declaration in the consumer.
+            // C forma el tipo compuesto: la declaración con límite completa la que no lo tiene. Todas las que
+            // tienen límite deben coincidir entre sí; el consumidor conserva una sola declaración de almacenamiento.
+            std::optional<std::size_t> bounded;
+            bool consistent = true;
+            for (const auto ordinal : candidates)
+            {
+                if (ProjectMemberModel::flexibleArrayElementTypeKey(states[ordinal].declaredTypeKey)) continue;
+                if (!bounded) bounded = ordinal;
+                else if (!sameElementAndBound(states[*bounded], states[ordinal], false)) consistent = false;
+            }
+            if (consistent && bounded) candidates.assign(1, *bounded);
+        }
     }
     if (candidates.size() != 1)
     {
@@ -1071,6 +1116,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
                 : "cannot take the address of this global until nested pointer qualifiers are supported");
         return result;
     }
+    const bool unknownBoundArray = state.isCppExternal &&
+        ProjectMemberModel::flexibleArrayElementTypeKey(state.declaredTypeKey).has_value();
+    if (unknownBoundArray && formingAddressOperand_ && expression == formingAddressTarget_)
+    {
+        // C gives `&name` the type `T (*)[]`; NativeSharp has no pointer to an array of unknown size yet.
+        // C da a `&name` el tipo `T (*)[]`; NativeSharp aún no tiene puntero a arreglo de tamaño desconocido.
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error,
+            expression != nullptr ? expression->range() : SourceRange{},
+            "cannot take the address of C array '" + reference.writtenName +
+                "' of unknown size; use the array itself, which decays to a pointer to its first element");
+        return result;
+    }
     result.typeKey = state.declaredTypeKey;
     result.valid = true;
     result.assignable = !state.isConst && !state.isCppReadonly &&
@@ -1081,6 +1139,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     result.volatileStorage = state.isCppExternal && state.isVolatile;
     result.pointerPointeeReadonly = state.cppPointerPointeeReadonly;
     result.pointerPointeeVolatile = pointeeVolatile;
+    // `extern T name[];` is projected as T[*]: like a C flexible array member it cannot be assigned or copied
+    // as a whole, and decays to T* carrying the element's const/volatile qualifiers.
+    // `extern T name[];` se proyecta como T[*]: igual que un miembro flexible C no se asigna ni copia entero y
+    // decae a T* con los calificadores const/volatile de su elemento.
+    if (unknownBoundArray)
+    {
+        result.assignable = false;
+        result.cppFlexibleArrayMember = true;
+        result.cppFlexibleArrayDecaySafe = !state.cppPointerPointeeReadonly && !pointeeVolatile;
+        result.pointerPointeeReadonly = result.readonlyReceiver;
+        result.pointerPointeeVolatile = result.volatileStorage;
+    }
     recordNameBinding(MethodNameBinding{
         MethodNameBindingKind::NamespaceState,
         expression,

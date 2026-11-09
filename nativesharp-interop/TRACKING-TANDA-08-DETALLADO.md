@@ -130,7 +130,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
     - [x] T08-002-09m7c1d3: Comprobar dos DLL TLS homónimas cuando el consumidor es una DLL NativeSharp, con hilos y caché en O0–O3. [Evidencia y límites](registro-commits/t08-dll-producto-tls-homonimas.md). Las importaciones transitivas ambiguas siguen pendientes en T08-002-09m7c1d2c.
       - [x] Enlazar funciones C de nombre distinto al alias de cada DLL desde el producto DLL NativeSharp y comprobar que comparten la TLS, con hilos y caché en O0–O3. [Evidencia](registro-commits/t08-dll-producto-funciones-alias.md).
 - [x] T08-002-09m7d: Comprobar los demás calificadores y variantes de enlace de la global externa compartida: `const volatile`, `int **`, arreglo fijo, `restrict`, `const int *const`, `_Alignas` y `dllimport` desde DLL, en O0–O3; rechazo de discrepancias de tamaño de arreglo, `volatile` y `restrict`. [Evidencia y límites](registro-commits/t08-global-externa-variantes.md).
-  - [ ] T08-002-09m7d1: Importar una global C `extern T arr[];` de tamaño desconocido (hoy «C/C++ global type is not yet mapped»).
+  - [x] T08-002-09m7d1: Importar una global C `extern T arr[];` de tamaño desconocido como `T[*]` (indexación, decaimiento calificado, DLL, plantillas precompiladas, tipo compuesto `T a[]`/`T a[N]` entre plantillas), O0–O3, con rechazos. [Evidencia](registro-commits/t08-global-arreglo-incompleto.md).
   - [ ] T08-002-09m7d2: Rechazar el uso transportado de una global cuya declaración en el productor no se pudo importar (`const int **`). Hoy la plantilla se une en silencio a la declaración `int **` de otro productor. Puede requerir NSMeta (decisión). [Evidencia](registro-commits/t08-global-externa-variantes.md).
 - [x] T08-002-09n: Enlazar una sola vez una biblioteca C idéntica propagada por dos productores y conservar dos bibliotecas distintas con el mismo nombre, en O0. [Evidencia](registro-commits/t08-dependencia-c-compartida.md).
 - **T08-002-10 — Sombras en plantillas:**
@@ -177,6 +177,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - **T08-004-04 — Globales por tipo y calificador:**
 - [ ] T08-004-04a: Verificar globales escalares enteras y flotantes con `const` y `volatile`.
 - [ ] T08-004-04b: Verificar globales de enum, puntero a enum y record C.
+  - Evidencia previa: una global C record o enum (`Pair g;`, `Pair g[2];`, `Color g;`) usada por una plantilla precompilada falla en el consumidor sin encabezado con «precompiled C global cannot be projected: C/C++ global type is not yet mapped». [Sonda](registro-commits/t08-global-arreglo-incompleto.md#límite-encontrado-para-t08-004-04b).
 - [ ] T08-004-04c: Verificar arreglos globales y matrices con punteros calificados.
 - [ ] T08-004-04d: Verificar `_Atomic` en global externa y `static`, con lectura y escritura cruzadas.
 - [ ] T08-004-04e: Verificar `_Thread_local` con y sin `_Atomic` en ejecutable y DLL.

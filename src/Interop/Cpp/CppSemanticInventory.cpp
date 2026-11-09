@@ -165,6 +165,31 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
 {
     if (cLanguage)
         if (auto callback = projectCppStoredFunctionPointer(type, projectOrdinal, moduleName, lookup)) return callback;
+    if (cLanguage && type.kind == CppTypeKind::Array && type.isIncompleteArray)
+    {
+        // `extern T name[];` has no storage of known size: project it as the zero-storage T[*] already used
+        // for C flexible array members, so indexing and decay keep C's meaning without inventing a bound.
+        // `extern T name[];` no tiene almacenamiento de tamaño conocido: se proyecta como el T[*] sin
+        // almacenamiento de los miembros flexibles C; indexar y decaer conservan el significado de C.
+        const CppType* element = type.element.get();
+        if (!element || element->kind == CppTypeKind::Array || element->kind == CppTypeKind::Void ||
+            element->kind == CppTypeKind::Atomic || !element->sizeBits || *element->sizeBits == 0 ||
+            *element->sizeBits % 8 != 0) return std::nullopt;
+        if (element->kind == CppTypeKind::Pointer &&
+            (!element->element || element->element->isConst || element->element->isVolatile))
+            return std::nullopt;
+        CppType unqualified = *element;
+        unqualified.isConst = false;
+        unqualified.isVolatile = false;
+        auto mapped = mapGlobalType(unqualified, projectOrdinal, moduleName, lookup, cLanguage);
+        if (!mapped || mapped->isConst || mapped->isVolatile ||
+            mapped->nativeSharpTypeKey.starts_with("fn:")) return std::nullopt;
+        mapped->nativeSharpTypeKey += "[*]";
+        mapped->canonicalCppType = type.canonicalSpelling;
+        mapped->isConst = type.isConst || element->isConst;
+        mapped->isVolatile = type.isVolatile || element->isVolatile;
+        return mapped;
+    }
     if (type.kind == CppTypeKind::Array)
     {
         const CppType* base = &type;

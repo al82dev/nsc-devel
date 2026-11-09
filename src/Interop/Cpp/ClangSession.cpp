@@ -456,6 +456,10 @@ void collectGlobals(const clang::DeclContext& context, clang::ASTContext& astCon
         if (!variable->getType()->isIncompleteType())
             value.declarationAlignmentBits =
                 astContext.getDeclAlign(variable).getQuantity() * astContext.getCharWidth();
+        // `extern T a[];` has no layout, but an explicit `_Alignas` is still part of its contract.
+        // `extern T a[];` no tiene layout, pero un `_Alignas` explícito sigue siendo parte de su contrato.
+        else if (variable->getType()->isIncompleteArrayType() && variable->getMaxAlignment() != 0)
+            value.declarationAlignmentBits = variable->getMaxAlignment();
         value.externalLinkage = variable->isExternallyVisible();
         value.threadLocal = variable->getTLSKind() != clang::VarDecl::TLS_None;
         value.dllImport = variable->hasAttr<clang::DLLImportAttr>();
