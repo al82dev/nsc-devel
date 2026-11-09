@@ -305,14 +305,15 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 
 - [x] T08-011-01: Probar muestras de miembros superpuestos, campos de bits y unions empaquetadas indicadas en el tracking principal.
 - **T08-011-02 — Formas de union:**
-- [ ] T08-011-02a: Verificar union natural con miembros enteros, flotantes y puntero.
-- [ ] T08-011-02b: Verificar union empaquetada con miembros desalineados.
-- [ ] T08-011-02c: Verificar union dentro de struct y struct dentro de union.
-- [ ] T08-011-02d: Verificar union anónima con miembros promovidos y campos de bits superpuestos.
+- [x] T08-011-02a: Verificar union natural con miembros enteros, flotantes y puntero. [Evidencia](registro-commits/t08-union-c.md).
+- [x] T08-011-02b: Verificar union empaquetada con miembros desalineados. [Evidencia](registro-commits/t08-union-c.md).
+- [x] T08-011-02c: Verificar union dentro de struct y struct dentro de union. [Evidencia](registro-commits/t08-union-c.md).
+  - **Decisión pendiente T08-011-02c1:** un miembro con nombre cuyo tipo es un struct o union sin etiqueta no se importa (falta en el camino directo; en el precompilado hace fallar la generación de la biblioteca). Opciones: identidad sintetizada en metadata, omisión coherente o rechazo explícito. [Detalle](registro-commits/t08-union-c.md#decisión-pendiente-t08-011-02c1).
+- [x] T08-011-02d: Verificar union anónima con miembros promovidos y campos de bits superpuestos. [Evidencia](registro-commits/t08-union-c.md).
 - **T08-011-03 — Validación:**
-- [ ] T08-011-03a: Comparar tamaño, alineación y offsets con Clang.
-- [ ] T08-011-03b: Comparar bytes tras escribir por cada miembro y leer por otro.
-- [ ] T08-011-03c: Repetir el control con productor precompilado y sin encabezado en el consumidor.
+- [x] T08-011-03a: Comparar tamaño, alineación y offsets con Clang. [Evidencia](registro-commits/t08-union-c.md).
+- [x] T08-011-03b: Comparar bytes tras escribir por cada miembro y leer por otro. [Evidencia](registro-commits/t08-union-c.md).
+- [x] T08-011-03c: Repetir el control con productor precompilado y sin encabezado en el consumidor. [Evidencia](registro-commits/t08-union-c.md).
 
 ## T08-012 — Layout obtenido de Clang
 
