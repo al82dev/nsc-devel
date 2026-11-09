@@ -194,6 +194,10 @@ class Program { public static int Main() { FAMILY<Payload> owner = SharedPointer
                 ('destructor-global-array-local', 'public EscapePayload() { } ~EscapePayload() { EscapePayload[] local = ArrayBox; local[0] = this; }'),
                 ('constructor-called-holder', 'public EscapePayload() { GetBox().Value = this; }'),
                 ('destructor-called-holder-local', 'public EscapePayload() { } ~EscapePayload() { Holder local = GetBox(); local.Value = this; }'),
+                ('constructor-identity-global', 'public EscapePayload() { Holder local = Identity(Box); local.Value = this; }'),
+                ('constructor-identity-published', 'public EscapePayload() { Holder fresh = new Holder(); Holder alias = Identity(fresh); Box = Identity(alias); Holder local = Identity(fresh); local.Value = this; }'),
+                ('constructor-identity-impure', 'public EscapePayload() { Holder fresh = new Holder(); Holder local = PublishHolder(fresh); local.Value = this; }'),
+                ('constructor-identity-prior-call', 'public EscapePayload() { Holder fresh = new Holder(); PublishOnly(fresh); Holder local = Identity(fresh); local.Value = this; }'),
                 ('constructor-named-static', 'public EscapePayload() { Publish(value: this, ignored: 1); } public static void Publish(int ignored, EscapePayload value) { Alias = value; }'),
                 ('destructor-static', 'public EscapePayload() { } ~EscapePayload() { Publish(this); } public static void Publish(EscapePayload value) { Alias = value; }'),
                 ('constructor-instance-arg', 'public EscapePayload() { Helper helper = new Helper(); helper.Publish(this); }'),
@@ -221,7 +225,10 @@ class VirtualHelper { public virtual void Publish(EscapePayload value) { EscapeP
 class Inner { public EscapePayload Value; }
 class Holder { public EscapePayload Value; public Inner Child; }
 class EscapePayload IMPLEMENTS { public static EscapePayload Alias; public static Holder Box;
- public static EscapePayload[] ArrayBox; public static Holder GetBox() { return Box; } BODY }
+ public static EscapePayload[] ArrayBox; public static Holder GetBox() { return Box; }
+ public static Holder Identity(Holder input) { return input; }
+ public static Holder PublishHolder(Holder input) { Box = input; return input; }
+ public static void PublishOnly(Holder input) { Box = input; } BODY }
 class Program { public static int Main() { FAMILY<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
  return owner.IsEmpty() ? 1 : 42; } }
 ''').replace('FAMILY', family).replace('MAKE', make).replace('BODY', body)

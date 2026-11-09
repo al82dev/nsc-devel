@@ -23,6 +23,33 @@ struct ReceiverPublicationScan
     std::vector<std::tuple<std::size_t, std::size_t, std::size_t>> interfaceArgumentCallees;
 };
 
+// A body consisting solely of returning a parameter cannot publish its input.
+// Missing bodies, cleanup, side effects and non-direct calls remain unknown.
+const frontend::ProjectOopMirNode* pureIdentityArgument(
+    const frontend::ProjectOopMirNode* call, const frontend::ProjectOopMirModel& mirModel)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    if (call == nullptr || call->kind != Kind::DirectStaticCall) return nullptr;
+    const auto* function = mirModel.functionForMangledName(call->calleeName);
+    if (function == nullptr || !function->isStatic || !function->cleanupRegions.empty() ||
+        function->body == nullptr || function->body->kind != Kind::Block ||
+        function->body->children.size() != 1U || function->body->children.front() == nullptr) return nullptr;
+    const auto* result = function->body->children.front().get();
+    if (result->kind != Kind::Return || result->children.size() != 1U || result->children.front() == nullptr ||
+        result->children.front()->kind != Kind::ParameterValue ||
+        !result->children.front()->parameterOrdinal.has_value()) return nullptr;
+    const std::size_t parameter = *result->children.front()->parameterOrdinal;
+    for (std::size_t index = 0; index < call->children.size(); ++index)
+    {
+        if (!call->argumentParameterOrdinals.empty() && index >= call->argumentParameterOrdinals.size())
+            return nullptr;
+        const std::size_t ordinal = call->argumentParameterOrdinals.empty()
+            ? index : call->argumentParameterOrdinals[index];
+        if (ordinal == parameter) return call->children[index].get();
+    }
+    return nullptr;
+}
+
 ReceiverPublicationScan scanReceiverPublication(
     const frontend::ProjectOopMirNode* body, std::optional<std::size_t> sourceParameter,
     const std::unordered_map<std::string, std::unordered_set<std::size_t>>& returnedSources,
@@ -116,11 +143,17 @@ ReceiverPublicationScan scanReceiverPublication(
              value->parameterOrdinal == sourceParameter));
     };
     const auto containerRoot = [&](const frontend::ProjectOopMirNode* value) {
-        while (value != nullptr && !value->children.empty() &&
-            ((value->children.size() == 1U &&
-              (value->kind == Kind::FieldLoad || value->kind == Kind::Convert || value->kind == Kind::BorrowValue)) ||
-             value->kind == Kind::ArrayElementLoad || value->kind == Kind::RangeArrayElementLoad))
-            value = value->children.front().get();
+        while (value != nullptr)
+        {
+            if (!value->children.empty() &&
+                ((value->children.size() == 1U &&
+                  (value->kind == Kind::FieldLoad || value->kind == Kind::Convert || value->kind == Kind::BorrowValue)) ||
+                 value->kind == Kind::ArrayElementLoad || value->kind == Kind::RangeArrayElementLoad))
+                value = value->children.front().get();
+            else if (const auto* argument = pureIdentityArgument(value, mirModel); argument != nullptr)
+                value = argument;
+            else break;
+        }
         return value;
     };
     const auto mayBeGlobalContainer = [&](const frontend::ProjectOopMirNode* root) {
@@ -139,7 +172,10 @@ ReceiverPublicationScan scanReceiverPublication(
         if (mayBeGlobalContainer(root))
             globalLocals.push_back(destination);
         else if (root != nullptr && root->kind == Kind::LocalValue && root->localOrdinal.has_value())
+        {
             globalCopies[*root->localOrdinal].push_back(destination);
+            globalCopies[destination].push_back(*root->localOrdinal);
+        }
     };
     std::vector<const frontend::ProjectOopMirNode*> pending{body};
     while (!pending.empty())
@@ -178,6 +214,24 @@ ReceiverPublicationScan scanReceiverPublication(
         const auto copies = localCopies.find(local);
         if (copies != localCopies.end())
             receiverLocals.insert(receiverLocals.end(), copies->second.begin(), copies->second.end());
+    }
+    // A local container published into global state is also globally reachable.
+    for (const auto* value : globalValues)
+    {
+        const auto* root = containerRoot(value);
+        if (root != nullptr && root->kind == Kind::LocalValue && root->localOrdinal.has_value())
+            globalLocals.push_back(*root->localOrdinal);
+    }
+    // Calls without the proven identity body may publish a container argument or receiver.
+    for (const auto* call : directCalls)
+    {
+        if (pureIdentityArgument(call, mirModel) != nullptr) continue;
+        for (const auto& argument : call->children)
+        {
+            const auto* root = containerRoot(argument.get());
+            if (root != nullptr && root->kind == Kind::LocalValue && root->localOrdinal.has_value())
+                globalLocals.push_back(*root->localOrdinal);
+        }
     }
     std::unordered_set<std::size_t> globalReached;
     while (!globalLocals.empty())
