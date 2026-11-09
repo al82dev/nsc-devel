@@ -347,6 +347,7 @@ bool canonicalizeNestedRecords(LibraryMetadata& metadata, std::string& error)
     canonicalizeStrings(metadata.externalTypeKeys);
     canonicalizeStrings(metadata.sourceNamespaces);
     canonicalizeStrings(metadata.trivialCleanupRootTypeKeys);
+    canonicalizeStrings(metadata.nonEscapingLifecycleTypeKeys);
     return true;
 }
 
@@ -480,6 +481,7 @@ bool LibraryMetadataMerger::merge(
     candidate.externalTypeKeys.clear();
     candidate.sourceNamespaces.clear();
     candidate.trivialCleanupRootTypeKeys.clear();
+    candidate.nonEscapingLifecycleTypeKeys.clear();
     candidate.dispatchTables.clear();
     candidate.exports.clear();
     candidate.binaryDependencies.clear();
@@ -504,6 +506,7 @@ bool LibraryMetadataMerger::merge(
         append(candidate.externalTypeKeys, fragment.externalTypeKeys);
         append(candidate.sourceNamespaces, fragment.sourceNamespaces);
         append(candidate.trivialCleanupRootTypeKeys, fragment.trivialCleanupRootTypeKeys);
+        append(candidate.nonEscapingLifecycleTypeKeys, fragment.nonEscapingLifecycleTypeKeys);
         append(candidate.dispatchTables, fragment.dispatchTables);
         append(candidate.exports, fragment.exports);
         append(candidate.binaryDependencies, fragment.binaryDependencies);

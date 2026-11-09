@@ -576,6 +576,7 @@ std::vector<std::uint8_t> encodePayload(
         writeStringVector(writer, metadata.sourceNamespaces);
     }
     if (metadata.formatMinor >= 43) writeStringVector(writer, metadata.trivialCleanupRootTypeKeys);
+    if (metadata.formatMinor >= 44) writeStringVector(writer, metadata.nonEscapingLifecycleTypeKeys);
     return writer.bytes();
 }
 
@@ -2039,6 +2040,11 @@ bool decodePayload(
     if (metadata.formatMinor >= 43 && !readStringVector(reader, metadata.trivialCleanupRootTypeKeys))
     {
         error = "truncated metadata trivial root cleanup contracts";
+        return false;
+    }
+    if (metadata.formatMinor >= 44 && !readStringVector(reader, metadata.nonEscapingLifecycleTypeKeys))
+    {
+        error = "truncated metadata lifecycle non-escape contracts";
         return false;
     }
     if (!reader.atEnd())

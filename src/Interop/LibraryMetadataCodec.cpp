@@ -632,6 +632,11 @@ bool applyWritableMetadataDowngrade(
     if (!validateMetadataBefore35(metadata, error)) return false;
     if (!validateMetadataBefore38(metadata, error)) return false;
     if (!validateMetadataBefore40(metadata, error)) return false;
+    if (metadata.formatMinor < 44 && !metadata.nonEscapingLifecycleTypeKeys.empty())
+    {
+        error = "NativeSharp metadata before 1.44 cannot represent lifecycle non-escape contracts";
+        return false;
+    }
     if (metadata.formatMinor < 43 && !metadata.trivialCleanupRootTypeKeys.empty())
     {
         error = "NativeSharp metadata before 1.43 cannot represent trivial root cleanup contracts";

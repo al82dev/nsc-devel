@@ -413,7 +413,7 @@ bool verifyMetadataTypeDeclarations(
             return false;
         }
     }
-    if (metadata.trivialCleanupRootTypeKeys.empty()) return true;
+    if (metadata.trivialCleanupRootTypeKeys.empty() && metadata.nonEscapingLifecycleTypeKeys.empty()) return true;
     std::unordered_map<std::string, const LibraryMetadataType*> rootTypes;
     for (const LibraryMetadataType& type : metadata.types)
         rootTypes.emplace("type:" + type.identityKey, &type);
@@ -436,6 +436,17 @@ bool verifyMetadataTypeDeclarations(
             error = "metadata trivial root cleanup contract has a destructor";
             return false;
         }
+    std::unordered_set<std::string> lifecycleTypes;
+    for (const std::string& key : metadata.nonEscapingLifecycleTypeKeys)
+    {
+        const auto found = rootTypes.find(key);
+        if (metadata.formatMinor < 44 || !lifecycleTypes.insert(key).second || found == rootTypes.end() ||
+            found->second->kind != LibraryMetadataTypeKind::Class || (found->second->flags & (1U << 3U)) != 0U)
+        {
+            error = "invalid metadata lifecycle non-escape contract '" + key + "'";
+            return false;
+        }
+    }
     return true;
 }
 

@@ -191,6 +191,44 @@ namespace GenericContracts
             downlevel, root / "root-contracts-1.42.nsmeta", downlevelError) &&
             downlevelError.find("before 1.43") != std::string::npos,
         "root cleanup contracts cannot be mislabeled as NSMETA 1.42 (" + downlevelError + ")");
+    LibraryMetadata lifecycle = metadata;
+    lifecycle.nonEscapingLifecycleTypeKeys.push_back("type:GenericContracts::GenericContracts.Api");
+    const auto lifecyclePath = root / "lifecycle-contracts-1.44.nsmeta";
+    std::string lifecycleError;
+    const bool lifecycleWritten = codec.writeModel(lifecycle, lifecyclePath, lifecycleError);
+    LibraryMetadata lifecycleDecoded;
+    const bool lifecycleRead = lifecycleWritten && codec.read(lifecyclePath, lifecycleDecoded, lifecycleError) &&
+        codec.verifyCurrentCompiler(lifecycleDecoded, lifecycleError);
+    tests.expect(lifecycleRead && lifecycleDecoded.nonEscapingLifecycleTypeKeys ==
+            lifecycle.nonEscapingLifecycleTypeKeys,
+        "NSMETA 1.44 preserves lifecycle non-escape contracts (" + lifecycleError + ")");
+    LibraryMetadata lifecycleOld = lifecycle;
+    lifecycleOld.formatMinor = 43;
+    lifecycleError.clear();
+    tests.expect(!codec.writeModel(lifecycleOld, root / "lifecycle-invalid-1.43.nsmeta", lifecycleError) &&
+            lifecycleError.find("before 1.44") != std::string::npos,
+        "NSMETA 1.43 cannot silently discard lifecycle contracts (" + lifecycleError + ")");
+    lifecycleOld.nonEscapingLifecycleTypeKeys.clear();
+    lifecycleError.clear();
+    const auto oldPath = root / "lifecycle-absent-1.43.nsmeta";
+    const bool oldWritten = codec.writeModel(lifecycleOld, oldPath, lifecycleError);
+    LibraryMetadata oldDecoded;
+    const bool oldRead = oldWritten && codec.read(oldPath, oldDecoded, lifecycleError) &&
+        codec.verifyCurrentCompiler(oldDecoded, lifecycleError);
+    tests.expect(oldRead && oldDecoded.nonEscapingLifecycleTypeKeys.empty(),
+        "older metadata keeps the lifecycle contract unknown (" + lifecycleError + ")");
+    LibraryMetadata invalidLifecycle = lifecycle;
+    invalidLifecycle.nonEscapingLifecycleTypeKeys.push_back("type:Missing::Unknown");
+    lifecycleError.clear();
+    tests.expect(!codec.verifyCurrentCompiler(invalidLifecycle, lifecycleError) &&
+            lifecycleError.find("lifecycle non-escape") != std::string::npos,
+        "metadata rejects a lifecycle contract for an unknown type (" + lifecycleError + ")");
+    const std::array<LibraryMetadata, 2> lifecycleFragments = {lifecycle, lifecycle};
+    LibraryMetadata lifecycleMerged;
+    lifecycleError.clear();
+    tests.expect(rootMerger.merge(lifecycleFragments, lifecycleMerged, lifecycleError) &&
+            lifecycleMerged.nonEscapingLifecycleTypeKeys == lifecycle.nonEscapingLifecycleTypeKeys,
+        "metadata merger preserves and deduplicates lifecycle contracts (" + lifecycleError + ")");
     metadata.trivialCleanupRootTypeKeys.clear();
     downlevel = metadata;
     downlevel.formatMinor = 37;
