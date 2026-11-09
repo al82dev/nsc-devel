@@ -1010,7 +1010,7 @@ bool OopLlvmImplementation::appendExternCDelegateParameterTypes(
         const std::vector<std::string>& argumentTypeKeys,
         std::size_t fixedParameterCount,
         bool sretReturn,
-        bool vectorCall,
+        const std::vector<VectorCallPassing>& passing,
         std::vector<LLVMTypeRef>& parameterTypes,
         std::string& error)
 {
@@ -1019,8 +1019,12 @@ bool OopLlvmImplementation::appendExternCDelegateParameterTypes(
         for (std::size_t index = 0; index < fixedParameterCount; ++index)
         {
             const std::string& typeKey = argumentTypeKeys[index];
-            LLVMTypeRef type = vectorCall ? vectorCallAbiType(typeKey) : nullptr;
-            if (type == nullptr) type = abiParameterType(typeKey, error);
+            const VectorCallPassing kind = index < passing.size() ? passing[index] : VectorCallPassing::Ordinary;
+            LLVMTypeRef type = nullptr;
+            if (kind == VectorCallPassing::Vector || kind == VectorCallPassing::HvaInReg)
+                type = vectorCallAbiType(typeKey);
+            else if (kind == VectorCallPassing::HvaIndirect) type = LLVMPointerTypeInContext(context_, 0);
+            else type = abiParameterType(typeKey, error);
             if (type == nullptr || type == LLVMVoidTypeInContext(context_))
             {
                 failValue(error, "Stage 47 extern C delegate has invalid parameter type '" + typeKey + "'");
@@ -1048,6 +1052,8 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         // Ordinary extern-C delegates use the normal Win64 aggregate ABI.  Item 345 specializes
         // the vectorcall boundary: Float32x4 and HVAs are direct vector-shaped values, including
         // returns, while every other aggregate keeps the established pointer/sret contract.
+        // EN: T08-D22: HVAs follow Clang's register count (vectorCallPassing), HFAs of float/double included.
+        // ES: T08-D22: las HVA siguen el conteo de registros de Clang, incluidas las HFA de float/double.
         LLVMTypeRef vectorReturnType = vectorCall ? vectorCallAbiType(returnTypeKey) : nullptr;
         const bool sretReturn = isIndirectStructTypeKey(returnTypeKey) && vectorReturnType == nullptr;
         LLVMValueRef sretSlot = nullptr;
@@ -1068,9 +1074,11 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             ? structuralFunction->parameters.size() : argumentTypeKeys.size();
         if (fixedParameterCount > argumentTypeKeys.size())
             return failValue(error, "variadic function pointer invocation lost a fixed argument");
+        const std::vector<VectorCallPassing> passing = vectorCall
+            ? vectorCallPassing(argumentTypeKeys, fixedParameterCount) : std::vector<VectorCallPassing>{};
         std::vector<LLVMTypeRef> parameterTypes;
         if (!appendExternCDelegateParameterTypes(
-                argumentTypeKeys, fixedParameterCount, sretReturn, vectorCall, parameterTypes, error))
+                argumentTypeKeys, fixedParameterCount, sretReturn, passing, parameterTypes, error))
             return nullptr;
         LLVMTypeRef functionType = LLVMFunctionType(
             returnType, parameterTypes.empty() ? nullptr : parameterTypes.data(),
@@ -1081,9 +1089,11 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         for (std::size_t index = 0; index < argumentValues.size(); ++index)
         {
             LLVMValueRef value = argumentValues[index];
-            if (vectorCall && vectorCallAbiType(argumentTypeKeys[index]) != nullptr)
+            // EN: the caller left vectors and HVAs as carriers; their passing decides the physical value.
+            // ES: el llamador dejo los vectores y las HVA como portadores; su paso decide el valor fisico.
+            if (vectorCall && index < passing.size() && vectorCallAbiType(argumentTypeKeys[index]) != nullptr)
             {
-                value = carrierToVectorCallAbi(value, argumentTypeKeys[index], error);
+                value = vectorCallArgument(value, argumentTypeKeys[index], passing[index], error);
                 if (value == nullptr) return nullptr;
             }
             callArguments.push_back(value);
@@ -1105,7 +1115,13 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
                 applyBoolZeroExtension(context_, static_cast<unsigned>(position + 1), addBoolAttribute);
         }
         if (vectorCall) LLVMSetInstructionCallConv(call, LLVMX86VectorCallCallConv);
-        if (vectorCall) applyVectorCallArgumentAttributes(call, sretReturn, argumentTypeKeys);
+        if (vectorCall)
+        {
+            applyVectorCallInRegAttributes(
+                [&](LLVMAttributeIndex attributeIndex, LLVMAttributeRef attribute)
+                { LLVMAddCallSiteAttribute(call, attributeIndex, attribute); },
+                sretReturn ? 1U : 0U, passing);
+        }
         if (sretSlot != nullptr)
         {
             applySretAttributes(
@@ -1119,25 +1135,6 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         if (vectorReturnType != nullptr)
             return vectorCallAbiToCarrier(call, returnTypeKey, error);
         return call;
-    }
-
-void OopLlvmImplementation::applyVectorCallArgumentAttributes(
-        LLVMValueRef call,
-        bool sretReturn,
-        const std::vector<std::string>& argumentTypeKeys)
-{
-        unsigned callPosition = sretReturn ? 1U : 0U;
-        for (const std::string& typeKey : argumentTypeKeys)
-        {
-            if (vectorCallHvaArity(typeKey) != 0U)
-            {
-                applyInRegAttribute(
-                    [&](LLVMAttributeIndex attributeIndex, LLVMAttributeRef attribute)
-                    { LLVMAddCallSiteAttribute(call, attributeIndex, attribute); },
-                    callPosition);
-            }
-            ++callPosition;
-        }
     }
 
 LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(

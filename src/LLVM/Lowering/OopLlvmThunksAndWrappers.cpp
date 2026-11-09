@@ -181,17 +181,14 @@ LLVMTypeRef OopLlvmImplementation::createCallbackGuardThunkType(
             parameterTypes.push_back(LLVMPointerTypeInContext(context_, 0));
         if (!function.isStatic)
             parameterTypes.push_back(LLVMPointerTypeInContext(context_, 0));
-        for (const std::string& typeKey : function.parameterTypeKeys)
-        {
-            LLVMTypeRef type = vectorCall ? vectorCallAbiType(typeKey) : nullptr;
-            if (type == nullptr) type = abiParameterType(typeKey, error);
-            if (type == nullptr || type == LLVMVoidTypeInContext(context_))
-            {
-                fail(error, "C1.3 callback boundary has invalid parameter type '" + typeKey + "'");
-                return nullptr;
-            }
-            parameterTypes.push_back(type);
-        }
+        // EN: T08-D22: the same classification as a call through the pointer (vectorCallPassing).
+        // ES: T08-D22: la misma clasificacion que una llamada por el puntero.
+        const std::vector<VectorCallPassing> passing = vectorCall
+            ? vectorCallPassing(function.parameterTypeKeys, function.parameterTypeKeys.size())
+            : std::vector<VectorCallPassing>{};
+        if (!appendExternCDelegateParameterTypes(
+                function.parameterTypeKeys, function.parameterTypeKeys.size(), false, passing, parameterTypes,
+                error)) return nullptr;
         return LLVMFunctionType(
             externalReturnType, parameterTypes.empty() ? nullptr : parameterTypes.data(),
             static_cast<unsigned>(parameterTypes.size()), 0);
@@ -225,17 +222,10 @@ void OopLlvmImplementation::applyCallbackGuardThunkAttributes(
         if (!vectorCall) return;
         unsigned externalPosition = externalSretReturn ? 1U : 0U;
         if (!function.isStatic) ++externalPosition;
-        for (const std::string& typeKey : function.parameterTypeKeys)
-        {
-            if (vectorCallHvaArity(typeKey) != 0U)
-            {
-                applyInRegAttribute(
-                    [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
-                    { LLVMAddAttributeAtIndex(thunk, index, attribute); },
-                    externalPosition);
-            }
-            ++externalPosition;
-        }
+        applyVectorCallInRegAttributes(
+            [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+            { LLVMAddAttributeAtIndex(thunk, index, attribute); },
+            externalPosition, vectorCallPassing(function.parameterTypeKeys, function.parameterTypeKeys.size()));
     }
 
 bool OopLlvmImplementation::prepareCallbackGuardArguments(
@@ -264,13 +254,29 @@ bool OopLlvmImplementation::prepareCallbackGuardArguments(
             forwarded.push_back(internalSretSlot);
         }
         if (!function.isStatic) forwarded.push_back(LLVMGetParam(thunk, externalIndex++));
-        for (const std::string& typeKey : function.parameterTypeKeys)
+        const std::vector<VectorCallPassing> passing = vectorCall
+            ? vectorCallPassing(function.parameterTypeKeys, function.parameterTypeKeys.size())
+            : std::vector<VectorCallPassing>{};
+        for (std::size_t index = 0; index < function.parameterTypeKeys.size(); ++index)
         {
+            const std::string& typeKey = function.parameterTypeKeys[index];
             LLVMValueRef value = LLVMGetParam(thunk, externalIndex++);
-            if (vectorCall && vectorCallAbiType(typeKey) != nullptr)
-            {
+            const VectorCallPassing kind = index < passing.size() ? passing[index] : VectorCallPassing::Ordinary;
+            if (kind == VectorCallPassing::Vector || kind == VectorCallPassing::HvaInReg)
                 value = vectorCallAbiToCarrier(value, typeKey, error);
-                if (value == nullptr) return false;
+            else if (kind == VectorCallPassing::HvaIndirect)
+            {
+                // EN: T08-D22: the caller's copy is read and rewrapped with NativeSharp's own convention.
+                // ES: T08-D22: se lee la copia del llamador y se vuelve a envolver con la convencion propia.
+                LLVMTypeRef carrier = llvmType(typeKey, error);
+                if (carrier == nullptr) return false;
+                LLVMValueRef load = LLVMBuildLoad2(builder_, carrier, value, "vectorcall.hva.load");
+                LLVMSetAlignment(load, structAlignmentFor(typeKey));
+                value = load;
+            }
+            if (value == nullptr) return false;
+            if (kind != VectorCallPassing::Ordinary)
+            {
                 value = wrapIndirectArgument(value, typeKey, error);
                 if (value == nullptr) return false;
             }
@@ -332,8 +338,16 @@ bool OopLlvmImplementation::defineCallbackGuardThunkBody(
         enterBlock(returnBlock);
         if (vectorReturnType != nullptr)
         {
-            LLVMValueRef externalResult = LLVMBuildLoad2(
-                builder_, vectorReturnType, internalSretSlot, "vectorcall.return.bridge");
+            // EN: T08-D22: an 8-byte HFA returns directly inside NativeSharp; it is reshaped, not reloaded.
+            // ES: T08-D22: una HFA de 8 bytes vuelve directa dentro de NativeSharp; se transforma.
+            LLVMValueRef externalResult = internalSretSlot != nullptr
+                ? LLVMBuildLoad2(builder_, vectorReturnType, internalSretSlot, "vectorcall.return.bridge")
+                : carrierToVectorCallAbi(result, function.returnTypeKey, error);
+            if (externalResult == nullptr)
+            {
+                restore();
+                return false;
+            }
             LLVMBuildRet(builder_, externalResult);
         }
         else if (externalSretReturn || function.returnTypeKey == "builtin:void")

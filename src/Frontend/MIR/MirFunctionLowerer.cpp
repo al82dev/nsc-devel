@@ -223,6 +223,7 @@ void copyFunctionMetadata(
     function.isVariadic = source.isVariadic;
     function.isImportedNative = source.isImportedNative;
     function.isCppExternal = source.isCppExternal;
+    function.cppVectorCall = source.cppVectorCall;
     function.isTransportedInlineBody = source.isTransportedInlineBody;
     function.isSyntheticImplicitConstructor = source.isSyntheticImplicitConstructor;
     function.importDllName = source.importDllName;

@@ -4,6 +4,8 @@
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
 
+#include <algorithm>
+
 namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
@@ -353,36 +355,165 @@ unsigned OopLlvmImplementation::integerSimd256LaneBits(std::string_view typeKey)
         return 0U;
     }
 
-unsigned OopLlvmImplementation::vectorCallHvaArity(std::string_view typeKey) const noexcept
+std::optional<OopLlvmImplementation::VectorCallAggregate> OopLlvmImplementation::vectorCallAggregate(
+        std::string_view typeKey) const
 {
-        if (isFloat32x4TypeKey(typeKey)) return 0U;
-        const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, typeKey);
-        if (layout == nullptr || layout->isUnion || layout->hasExplicitFieldOffsets ||
-            layout->pack != 0U || layout->fields.empty() || layout->fields.size() > 4U ||
-            layout->size != layout->fields.size() * 16U)
+        // EN: An iterative walk over nested records: each frame sums (struct) or maximizes (union) its members.
+        // ES: Un recorrido iterativo por registros anidados: cada marco suma (struct) o maximiza (union).
+        struct Frame
         {
-            return 0U;
-        }
-        for (std::size_t index = 0; index < layout->fields.size(); ++index)
+            const frontend::ProjectOopMirStructLayout* layout = nullptr;
+            std::size_t next = 0;
+            std::uint64_t members = 0;
+            std::uint64_t multiplier = 1;
+            std::uint64_t end = 0;
+        };
+        VectorCallAggregate result;
+        const auto sameBase = [&](unsigned bytes, bool vector)
         {
-            const frontend::ObjectFieldLayout& field = layout->fields[index];
-            if (!isFloat32x4TypeKey(field.typeKey) || field.offset != index * 16U ||
-                field.size != 16U || field.bitOffset.has_value() || field.bitWidth.has_value())
+            if (result.baseBytes == 0U)
             {
-                return 0U;
+                result.baseBytes = bytes;
+                result.vector = vector;
+                return true;
             }
+            return result.baseBytes == bytes && result.vector == vector;
+        };
+        const frontend::ProjectOopMirStructLayout* root = findStructLayout(mirModel_, typeKey);
+        if (root == nullptr || isFloat32x4TypeKey(typeKey) || isEnumTypeKey(nameLookup_, typeKey))
+            return std::nullopt;
+        std::vector<Frame> frames;
+        frames.push_back(Frame{root, 0, 0, 1, 0});
+        std::uint64_t rootMembers = 0;
+        while (!frames.empty())
+        {
+            Frame& frame = frames.back();
+            if (frame.next == frame.layout->fields.size())
+            {
+                if (frame.members == 0U) return std::nullopt;
+                const std::uint64_t members = frame.members * frame.multiplier;
+                frames.pop_back();
+                if (frames.empty()) rootMembers = members;
+                else if (frames.back().layout->isUnion)
+                    frames.back().members = std::max(frames.back().members, members);
+                else frames.back().members += members;
+                if (members > 4U || (!frames.empty() && frames.back().members > 4U)) return std::nullopt;
+                continue;
+            }
+            const frontend::ObjectFieldLayout& field = frame.layout->fields[frame.next++];
+            if (field.bitOffset.has_value() || field.bitWidth.has_value()) return std::nullopt;
+            // EN: struct members may not overlap; together with the size check this rules out padding.
+            // ES: los miembros de un struct no se solapan; con la comprobacion de tamano, no hay relleno.
+            if (!frame.layout->isUnion)
+            {
+                if (field.offset < frame.end) return std::nullopt;
+                frame.end = field.offset + field.size;
+            }
+            std::string element = field.typeKey;
+            std::uint64_t count = 1;
+            while (const auto inner = frontend::ProjectMemberModel::fixedArrayElementTypeKey(element))
+            {
+                const auto extent = frontend::ProjectMemberModel::fixedArrayCount(element);
+                if (!extent || *extent == 0U || *extent > 4U || count * *extent > 4U) return std::nullopt;
+                count *= *extent;
+                element = *inner;
+            }
+            bool base = false;
+            if (isFloat32x4TypeKey(element)) base = sameBase(16U, true);
+            else if (element == "builtin:float") base = sameBase(4U, false);
+            else if (element == "builtin:double") base = sameBase(8U, false);
+            else
+            {
+                const frontend::ProjectOopMirStructLayout* nested = findStructLayout(mirModel_, element);
+                if (nested == nullptr || isEnumTypeKey(nameLookup_, element)) return std::nullopt;
+                frames.push_back(Frame{nested, 0, 0, count, 0});
+                continue;
+            }
+            if (!base) return std::nullopt;
+            if (frame.layout->isUnion) frame.members = std::max(frame.members, count);
+            else frame.members += count;
+            if (frame.members > 4U) return std::nullopt;
         }
-        return static_cast<unsigned>(layout->fields.size());
+        if (rootMembers == 0U || rootMembers > 4U || root->size != rootMembers * result.baseBytes)
+            return std::nullopt;
+        result.members = static_cast<unsigned>(rootMembers);
+        return result;
     }
 
-LLVMTypeRef OopLlvmImplementation::vectorCallAbiType(std::string_view typeKey) const noexcept
+unsigned OopLlvmImplementation::vectorCallHvaArity(std::string_view typeKey) const
+{
+        const std::optional<VectorCallAggregate> aggregate = vectorCallAggregate(typeKey);
+        return aggregate.has_value() ? aggregate->members : 0U;
+    }
+
+LLVMTypeRef OopLlvmImplementation::vectorCallAbiType(std::string_view typeKey) const
 {
         LLVMTypeRef vectorType = LLVMVectorType(LLVMFloatTypeInContext(context_), 4U);
         if (isFloat32x4TypeKey(typeKey)) return vectorType;
-        const unsigned arity = vectorCallHvaArity(typeKey);
-        if (arity == 0U) return nullptr;
-        std::vector<LLVMTypeRef> elements(arity, vectorType);
-        return LLVMStructTypeInContext(context_, elements.data(), arity, 0);
+        const std::optional<VectorCallAggregate> aggregate = vectorCallAggregate(typeKey);
+        if (!aggregate.has_value()) return nullptr;
+        LLVMTypeRef base = aggregate->vector ? vectorType
+            : aggregate->baseBytes == 4U ? LLVMFloatTypeInContext(context_) : LLVMDoubleTypeInContext(context_);
+        std::vector<LLVMTypeRef> elements(aggregate->members, base);
+        return LLVMStructTypeInContext(context_, elements.data(), aggregate->members, 0);
+    }
+
+std::vector<OopLlvmImplementation::VectorCallPassing> OopLlvmImplementation::vectorCallPassing(
+        const std::vector<std::string>& argumentTypeKeys, std::size_t fixedParameterCount) const
+{
+        // EN: Clang, WinX86_64ABIInfo::computeVectorCallArgs: six XMM registers. First pass: among the first six
+        //     arguments, each float, double or vector takes one while any is left (a vector without one goes by
+        //     reference, the ordinary rule); aggregates wait. Second pass: each aggregate, in order, takes as
+        //     many as it has members while enough are left, else it goes by reference.
+        // ES: Clang: seis registros XMM. Primera pasada: entre los seis primeros argumentos, cada float, double
+        //     o vector toma uno mientras quede; los agregados esperan. Segunda pasada: cada agregado, en orden,
+        //     toma tantos como miembros tenga si alcanzan; si no, va por referencia.
+        std::vector<VectorCallPassing> passing(fixedParameterCount, VectorCallPassing::Ordinary);
+        std::vector<unsigned> arity(fixedParameterCount, 0U);
+        unsigned freeRegisters = 6U;
+        for (std::size_t index = 0; index < fixedParameterCount; ++index)
+        {
+            const std::string& typeKey = argumentTypeKeys[index];
+            arity[index] = vectorCallHvaArity(typeKey);
+            if (arity[index] != 0U)
+            {
+                passing[index] = VectorCallPassing::HvaIndirect;
+                continue;
+            }
+            const bool vector = isFloat32x4TypeKey(typeKey);
+            const bool floating = typeKey == "builtin:float" || typeKey == "builtin:double";
+            if (index < 6U && (vector || floating) && freeRegisters > 0U)
+            {
+                --freeRegisters;
+                if (vector) passing[index] = VectorCallPassing::Vector;
+            }
+        }
+        for (std::size_t index = 0; index < fixedParameterCount; ++index)
+        {
+            if (passing[index] != VectorCallPassing::HvaIndirect || freeRegisters < arity[index]) continue;
+            freeRegisters -= arity[index];
+            passing[index] = VectorCallPassing::HvaInReg;
+        }
+        return passing;
+    }
+
+LLVMValueRef OopLlvmImplementation::vectorCallArgument(
+        LLVMValueRef carrier, std::string_view typeKey, VectorCallPassing passing, std::string& error)
+{
+        if (passing == VectorCallPassing::Vector || passing == VectorCallPassing::HvaInReg)
+            return carrierToVectorCallAbi(carrier, typeKey, error);
+        if (passing == VectorCallPassing::HvaIndirect)
+        {
+            // EN: always a pointer to a per-call copy, even for an 8-byte aggregate (Clang: indirect, not byval).
+            // ES: siempre un puntero a una copia por llamada, aun para un agregado de 8 bytes.
+            LLVMTypeRef type = llvmType(typeKey, error);
+            if (type == nullptr) return nullptr;
+            LLVMValueRef slot = entryBlockAlloca(
+                type, std::max(16U, structAlignmentFor(typeKey)), "vectorcall.hva.copy");
+            LLVMBuildStore(builder_, carrier, slot);
+            return slot;
+        }
+        return wrapIndirectArgument(carrier, typeKey, error);
     }
 
 LLVMValueRef OopLlvmImplementation::carrierToVectorCallAbi(

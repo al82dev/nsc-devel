@@ -1802,7 +1802,10 @@ bool ProjectOopHirModel::buildNamespaceFunction(
     {
         if (!symbol.cppCanonicalIdentity.empty())
         {
-            if (symbol.cppCallingConvention != "cdecl")
+            // EN: T08-D22: `__vectorcall` C functions are imported with their convention.
+            // ES: T08-D22: las funciones C `__vectorcall` se importan con su convencion.
+            function.cppVectorCall = symbol.cppCallingConvention == "vectorcall";
+            if (symbol.cppCallingConvention != "cdecl" && !function.cppVectorCall)
             {
                 error = "C/C++ calling convention '" + symbol.cppCallingConvention +
                     "' is not yet supported in HIR for " + symbol.mangledName;

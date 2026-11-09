@@ -53,6 +53,9 @@ struct ProjectOopHirFunction final
     // in ordinary overload resolution, but its body and symbol live in the referenced library.
     bool isImportedNative = false;
     bool isCppExternal = false;
+    // EN: T08-D22: an imported C function declared `__vectorcall`; declaration and calls use that convention.
+    // ES: T08-D22: una funcion C importada declarada `__vectorcall`; declaracion y llamadas usan esa convencion.
+    bool cppVectorCall = false;
     bool isTransportedInlineBody = false;
     // Producer-owned callable synthesized for a source class that declares no constructor.
     // It freezes base chaining plus instance field initializers behind the ordinary ctor ABI.

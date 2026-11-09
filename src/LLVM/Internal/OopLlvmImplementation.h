@@ -1944,18 +1944,58 @@ private:
         bool vectorCall,
         std::string& error);
 
+    // EN: T08-D22: the x64 vectorcall homogeneous aggregate, as Clang classifies it (WinX86_64ABIInfo):
+    //     one base type -- float, double or a 128-bit vector (Float32x4) -- one to four times, with no
+    //     padding. Nested records, unions (their largest member) and fixed arrays count.
+    // ES: T08-D22: el agregado homogeneo de vectorcall x64 como lo clasifica Clang: un solo tipo base
+    //     (float, double o un vector de 128 bits) de una a cuatro veces y sin relleno.
+    struct VectorCallAggregate
+    {
+        unsigned baseBytes = 0;
+        bool vector = false;
+        unsigned members = 0;
+    };
+
+    // EN: T08-D22: how one vectorcall argument travels, after Clang's two passes (computeVectorCallArgs):
+    //     scalars and vectors among the first six arguments take the six XMM registers first; homogeneous
+    //     aggregates then take what is left, in order, or go by reference.
+    // ES: T08-D22: como viaja cada argumento vectorcall, segun las dos pasadas de Clang.
+    enum class VectorCallPassing : std::uint8_t
+    {
+        Ordinary,    // the ordinary Win64 rule / la regla Win64 ordinaria
+        Vector,      // a Float32x4 in an XMM register / un Float32x4 en un registro XMM
+        HvaInReg,    // a homogeneous aggregate in XMM registers (inreg) / un agregado en registros XMM
+        HvaIndirect  // a homogeneous aggregate by reference to a copy / un agregado por referencia a una copia
+    };
+
+    // EN: `passing` is empty for the ordinary C convention (T08-D22).
+    // ES: `passing` esta vacio para la convencion C ordinaria (T08-D22).
     bool appendExternCDelegateParameterTypes(
         const std::vector<std::string>& argumentTypeKeys,
         std::size_t fixedParameterCount,
         bool sretReturn,
-        bool vectorCall,
+        const std::vector<VectorCallPassing>& passing,
         std::vector<LLVMTypeRef>& parameterTypes,
         std::string& error);
 
-    void applyVectorCallArgumentAttributes(
-        LLVMValueRef call,
-        bool sretReturn,
-        const std::vector<std::string>& argumentTypeKeys);
+    // EN: T08-D22: the physical type of a `__vectorcall` C import, shared by its declaration and its calls.
+    // ES: T08-D22: el tipo fisico de una importacion C `__vectorcall`, comun a su declaracion y sus llamadas.
+    LLVMTypeRef vectorCallImportType(
+        const frontend::ProjectOopMirFunction& function,
+        bool& sretReturn,
+        std::vector<VectorCallPassing>& passing,
+        std::string& error);
+
+    template <typename AddAttribute>
+    void applyVectorCallInRegAttributes(
+        AddAttribute&& addAttribute, unsigned firstPosition, const std::vector<VectorCallPassing>& passing)
+    {
+        for (std::size_t index = 0; index < passing.size(); ++index)
+        {
+            if (passing[index] == VectorCallPassing::HvaInReg)
+                applyInRegAttribute(addAttribute, firstPosition + static_cast<unsigned>(index));
+        }
+    }
 
     LLVMValueRef lowerDelegateInvoke(
         const frontend::ProjectOopMirNode* node,
@@ -3009,14 +3049,24 @@ private:
 
     unsigned integerSimd256LaneBits(std::string_view typeKey) const noexcept;
 
-    // Microsoft x64 vectorcall recognizes an HVA only when the complete value is one to four
-    // consecutive, identical vector members.  NativeSharp's first calculation vector is
-    // Float32x4, so this deliberately does not promote an arbitrary 16-byte storage struct merely
-    // because it happens to contain four floats.  Union/explicit/packed layouts are also excluded:
-    // their byte compatibility does not make them homogeneous vector aggregates.
-    unsigned vectorCallHvaArity(std::string_view typeKey) const noexcept;
+    std::optional<VectorCallAggregate> vectorCallAggregate(std::string_view typeKey) const;
 
-    LLVMTypeRef vectorCallAbiType(std::string_view typeKey) const noexcept;
+    // EN: The member count of a record that is a vectorcall homogeneous aggregate, or 0 (scalars and Float32x4
+    //     itself are not records).
+    // ES: El numero de miembros de un registro que es un agregado homogeneo de vectorcall, o 0.
+    unsigned vectorCallHvaArity(std::string_view typeKey) const;
+
+    // EN: The direct vectorcall type of Float32x4 or of a homogeneous aggregate record; null otherwise.
+    // ES: El tipo directo de vectorcall de Float32x4 o de un registro agregado homogeneo; nulo en otro caso.
+    LLVMTypeRef vectorCallAbiType(std::string_view typeKey) const;
+
+    std::vector<VectorCallPassing> vectorCallPassing(
+        const std::vector<std::string>& argumentTypeKeys, std::size_t fixedParameterCount) const;
+
+    // EN: The parameter value of one vectorcall argument whose carrier is still unwrapped.
+    // ES: El valor de parametro de un argumento vectorcall cuyo portador sigue sin envolver.
+    LLVMValueRef vectorCallArgument(
+        LLVMValueRef carrier, std::string_view typeKey, VectorCallPassing passing, std::string& error);
 
     LLVMValueRef carrierToVectorCallAbi(
         LLVMValueRef value, std::string_view typeKey, std::string& error);

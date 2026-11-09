@@ -3,8 +3,8 @@
 03a) A callback with scalar parameters and result, called from NativeSharp and passed to C.
 03b) A callback with a record pointer and an enum in its signature.
 03c) A variadic C callback: its identity survives a NativeSharp variable and C calls it.
-03d) A `__vectorcall` callback is not supported yet: NSC rejects it with an explicit diagnostic (pending item
-     T08-017-03d1).
+03d) A `__vectorcall` callback: called directly, through a NativeSharp variable and by C (T08-D22; the full
+     vectorcall ABI is in validar-vectorcall.py).
 04a) Callbacks stored in C struct fields. C checks a callback written by NativeSharp by calling it: a C function
      assigned in NativeSharp is stored as a boundary thunk, so its address differs from C's (pending decision
      T08-017-04a1).
@@ -113,6 +113,9 @@ BODY = """    // 03a: scalar callback, called directly and passed to C.
     VarFn vf = sum_var;
     VarFn again = vf;
     if (apply_var(vf) != 6 || apply_var(again) != 6) return 3;
+    // 03d: __vectorcall callback (T08-D22).
+    VecFn vc = vec_add;
+    if (vc(1.0, 2.0) != 3.0 || apply_vec(vc, 1.5, 2.0) != 3.5 || vec_add(2.0, 3.0) != 5.0) return 4;
     // 04a/04d/04e: callbacks in fields, volatile aligned and packed.
     Slots s;
     fill_slots(&s);
@@ -143,8 +146,6 @@ BODY = """    // 03a: scalar callback, called directly and passed to C.
 REJECTIONS = [
     ("04e-escribir-callback-const", "Slots s; fill_slots(&s); s.cop = mul; return 0;", "not assignable"),
     ("03a-firma-incompatible", "BinOp op = item_fn; return 0;", ""),
-    ("03d-vectorcall-no-soportado", "VecFn v = vec_add; return v(1.0, 2.0) == 3.0 ? 0 : 1;",
-     "calling convention 'vectorcall' is not yet supported"),
 ]
 
 

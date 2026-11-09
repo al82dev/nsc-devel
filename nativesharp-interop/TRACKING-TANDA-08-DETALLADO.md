@@ -439,8 +439,8 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-017-03a: Verificar callback con parámetros y retorno escalares. [Evidencia](registro-commits/t08-callbacks-c.md).
 - [x] T08-017-03b: Verificar callback con parámetros o retorno de puntero a record y enum. [Evidencia](registro-commits/t08-callbacks-c.md).
 - [x] T08-017-03c: Verificar callback variádico C y su identidad. [Evidencia](registro-commits/t08-callbacks-c.md).
-- [ ] T08-017-03d: Verificar callback `vectorcall` y su convención de llamada.
-  - **Pendiente T08-017-03d1:** `__vectorcall` no soportado; NSC lo rechaza con diagnóstico explícito, fijado por la prueba. [Detalle](registro-commits/t08-callbacks-c.md#pendiente-t08-017-03d1).
+- [x] T08-017-03d: Verificar callback `vectorcall` y su convención de llamada. [Evidencia](registro-commits/t08-d22-vectorcall.md).
+  - Resuelta T08-017-03d1 por T08-D22: funciones y callbacks C `__vectorcall` con la clasificación de Clang (HFA/HVA en registros o por referencia), directo, DLL y precompilado; una función C con la otra convención se rechaza. [Evidencia](registro-commits/t08-d22-vectorcall.md). Antes: `__vectorcall` no soportado; NSC lo rechazaba con diagnóstico explícito.
 - **T08-017-04 — Almacenamiento y calificadores:**
 - [x] T08-017-04a: Verificar callback almacenado en campo de struct C. [Evidencia](registro-commits/t08-callbacks-c.md).
   - Resuelta T08-017-04a1 por T08-D18: una función C convertida a puntero C es su propia dirección (`s->op == mul` en C); solo los métodos NativeSharp conservan `__c_boundary`. [Evidencia](registro-commits/t08-d18-identidad-funcion-c.md).
@@ -532,7 +532,7 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 - [x] T08-D19: dependencias privadas de plantillas públicas en NSMeta (T08-018-03c1). [Evidencia](registro-commits/t08-d19-dependencias-privadas.md).
 - [x] T08-D20: gate histórico en CRLF y caché vigente; carrera del control C de relleno TLS (T08-GATE-03a). Validadores actualizados; el «relleno» no era una carrera: Windows no pone en cero `SizeOfZeroFill`. [Evidencia](registro-commits/t08-d20-gate-historico.md).
 - [ ] T08-D21: reagrupación de commits al cerrar la tanda (T08-GATE-05a).
-- [ ] T08-D22: callbacks `__vectorcall` (T08-017-03d1).
+- [x] T08-D22: callbacks `__vectorcall` (T08-017-03d1). [Evidencia](registro-commits/t08-d22-vectorcall.md).
 - [ ] T08-D23: arreglos de punteros calificados como campo de record (T08-016-03d1).
 - [ ] T08-D24: el productor NSMeta escribe un minor mínimo según su catálogo (lógica del 2026-11-06 al 08). Revisarlo frente al contrato único vigente; hoy fallan por ello `nsc_namespace_function_metadata_tests` y `nsc_stage50_9_metadata_host_compatibility_tests`. Observado en T08-D02. [Evidencia](registro-commits/t08-d02-d03-calificadores-nsmeta.md).
 

@@ -69,6 +69,29 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                 function.isVariadic ? 1 : 0);
     }
 
+LLVMTypeRef OopLlvmImplementation::vectorCallImportType(
+        const frontend::ProjectOopMirFunction& function,
+        bool& sretReturn,
+        std::vector<VectorCallPassing>& passing,
+        std::string& error)
+{
+        // EN: T08-D22: the same rules as emitExternCDelegateCall, so the declaration and its calls agree.
+        // ES: T08-D22: las mismas reglas que emitExternCDelegateCall: la declaracion y sus llamadas coinciden.
+        LLVMTypeRef vectorReturnType = vectorCallAbiType(function.returnTypeKey);
+        sretReturn = vectorReturnType == nullptr &&
+            function.abi.returnPassing == frontend::ProjectOopMirAbiPassing::Indirect;
+        LLVMTypeRef returnType = sretReturn ? LLVMVoidTypeInContext(context_)
+            : vectorReturnType != nullptr ? vectorReturnType : llvmType(function.returnTypeKey, error);
+        if (returnType == nullptr) return nullptr;
+        passing = vectorCallPassing(function.parameterTypeKeys, function.parameterTypeKeys.size());
+        std::vector<LLVMTypeRef> parameterTypes;
+        if (!appendExternCDelegateParameterTypes(
+                function.parameterTypeKeys, function.parameterTypeKeys.size(), sretReturn, passing, parameterTypes,
+                error)) return nullptr;
+        return LLVMFunctionType(returnType, parameterTypes.empty() ? nullptr : parameterTypes.data(),
+                                static_cast<unsigned>(parameterTypes.size()), 0);
+    }
+
 bool OopLlvmImplementation::declareFunction(
         const frontend::ProjectOopMirFunction& function,
         std::size_t functionOrdinal,
@@ -82,9 +105,12 @@ bool OopLlvmImplementation::declareFunction(
             if (partitioned_ && restrictFunctionDeclarations_ &&
                 !functionDeclarations_[functionOrdinal] &&
                 !(ownsModuleGlobals_ && function.importRequiresRuntimeBinding)) return true;
-            const bool sretReturn = function.abi.returnPassing ==
+            bool sretReturn = function.abi.returnPassing ==
                 frontend::ProjectOopMirAbiPassing::Indirect;
-            LLVMTypeRef functionType = createDeclaredFunctionType(function, sretReturn, error);
+            std::vector<VectorCallPassing> vectorCallPlan;
+            LLVMTypeRef functionType = function.cppVectorCall
+                ? vectorCallImportType(function, sretReturn, vectorCallPlan, error)
+                : createDeclaredFunctionType(function, sretReturn, error);
             if (functionType == nullptr) return false;
             // C1.2 "import identity": the same triple (library, symbol, signature) may be
             // DECLARED more than once -- two classes may each wrap `kernel32!GetCurrentProcessId`,
@@ -105,6 +131,16 @@ bool OopLlvmImplementation::declareFunction(
                 return false;
             }
             if (function.cppDllImport) LLVMSetDLLStorageClass(llvmFunction, LLVMDLLImportStorageClass);
+            // EN: T08-D22: a `__vectorcall` C import keeps its convention on the declaration as well as on calls.
+            // ES: T08-D22: una importacion C `__vectorcall` conserva su convencion en la declaracion y en las llamadas.
+            if (function.cppVectorCall)
+            {
+                LLVMSetFunctionCallConv(llvmFunction, LLVMX86VectorCallCallConv);
+                applyVectorCallInRegAttributes(
+                    [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                    { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); },
+                    sretReturn ? 1U : 0U, vectorCallPlan);
+            }
             const bool ownsDefinition = !function.isImportedC && !function.isImportedNative &&
                 (!partitioned_ || (!ownsModuleGlobals_ && functionDefinitions_[functionOrdinal]));
             if (!function.isImportedC && !function.isImportedNative)

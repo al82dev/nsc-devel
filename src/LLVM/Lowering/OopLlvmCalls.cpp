@@ -843,6 +843,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         }
         std::vector<LLVMValueRef> sourceArguments;
         sourceArguments.reserve(node->children.size());
+        // EN: T08-D22: the unwrapped values, for vector/HVA arguments of a `__vectorcall` C import.
+        // ES: T08-D22: los valores sin envolver, para argumentos vector/HVA de una importacion C `__vectorcall`.
+        std::vector<LLVMValueRef> rawVectorCallArguments;
         LLVMValueRef assignedValue = nullptr;
         if (argumentOverrides != nullptr &&
             argumentOverrides->size() != node->children.size())
@@ -862,6 +865,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             if (terminated()) return value;
             if (node->returnsAssignedValue && index + 1U == node->children.size())
                 assignedValue = value;
+            rawVectorCallArguments.push_back(value);
             value = wrapIndirectArgument(value, child->typeKey, error);
             if (value == nullptr) return nullptr;
             sourceArguments.push_back(value);
@@ -887,6 +891,27 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 helperArgs, 2, "import.address");
             if (!emitGuard(LLVMBuildICmp(builder_, LLVMIntNE, target, LLVMConstNull(ptr), "import.bound"),
                            LlvmTrapReason::ImportBindingFailure, "import.binding", error)) return nullptr;
+        }
+        // EN: T08-D22: a `__vectorcall` C import is called through the extern-C function-pointer path with the
+        //     vectorcall convention, which already maps Float32x4 and HVAs to the vectorcall ABI.
+        // ES: T08-D22: una importacion C `__vectorcall` se llama por el camino de punteros a funcion C con la
+        //     convencion vectorcall, que ya traduce Float32x4 y las HVA al ABI vectorcall.
+        if (imported != nullptr && imported->cppVectorCall && !imported->isVariadic)
+        {
+            std::vector<LLVMValueRef> vectorArguments;
+            std::vector<std::string> argumentTypeKeys;
+            for (const std::size_t source : parameterToSource)
+            {
+                const std::string& typeKey = node->children[source]->typeKey;
+                argumentTypeKeys.push_back(typeKey);
+                // EN: vectors and HVAs travel unwrapped; every other aggregate keeps its per-call pointer copy.
+                // ES: los vectores y las HVA viajan sin envolver; los demas agregados conservan su copia por puntero.
+                vectorArguments.push_back(vectorCallAbiType(typeKey) != nullptr
+                    ? rawVectorCallArguments.at(source)
+                    : sourceArguments.at(source));
+            }
+            return emitExternCDelegateCall(target, vectorArguments, argumentTypeKeys, node->typeKey, "", true,
+                                           error);
         }
         LLVMValueRef call = buildPotentiallyThrowingCall(
             found->second.functionType, target,

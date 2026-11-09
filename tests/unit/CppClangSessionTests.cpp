@@ -9878,8 +9878,9 @@ int main(int argc, char** argv)
             const auto path = std::filesystem::path(argv[2]) / "cpp-fixtures/semantic/Semantic.nsproj";
             const bool ready = symbol && symbol->cppCallingConvention == "vectorcall" &&
                 hir.setCppImportedFunctions({*symbol}, error) && hir.compileProjectOopHir(path, error);
-            ok &= expect(!ready && error.find("vectorcall") != std::string::npos,
-                         "unimplemented vectorcall is rejected before incorrect HIR emission");
+            // EN: T08-D22: a `__vectorcall` import keeps its convention through HIR instead of being rejected.
+            // ES: T08-D22: una importacion `__vectorcall` conserva su convencion en el HIR en lugar de rechazarse.
+            ok &= expect(ready && error.empty(), "vectorcall import compiles to HIR with its convention");
         }
         else ok &= expect(false, "vectorcall declaration is available from Clang");
         if (nestedFunction)

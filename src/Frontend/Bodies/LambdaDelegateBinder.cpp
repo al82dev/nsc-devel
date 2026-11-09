@@ -1591,6 +1591,39 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
                     "' is used as a delegate target but has no definition");
             return false;
         }
+        // EN: T08-D22: a C function keeps its own address (T08-D18), so a C callback type must use the same
+        //     calling convention: cdecl and `__vectorcall` never stand in for each other.
+        // ES: T08-D22: una funcion C conserva su direccion (T08-D18), asi que el tipo de callback C debe usar
+        //     la misma convencion: cdecl y `__vectorcall` nunca se sustituyen.
+        if (!function.cppCanonicalIdentity.empty() && isExternCDelegateTypeKey(delegateTypeKey))
+        {
+            std::optional<language::CallingConvention> convention;
+            if (const auto structural = language::parseFunctionTypeIdentity(delegateTypeKey))
+                convention = structural->callingConvention;
+            else if (nameLookup_ != nullptr && delegateTypeKey.starts_with("type:"))
+            {
+                const std::optional<std::size_t> ordinal =
+                    nameLookup_->typeOrdinalForIdentity(delegateTypeKey.substr(5));
+                const NamedTypeDeclaration* type = ordinal ? nameLookup_->typeForOrdinal(*ordinal) : nullptr;
+                if (type != nullptr && type->syntax != nullptr)
+                    convention = type->syntax->hasModifier(lexer::TokenKind::KwVectorCall)
+                        ? language::CallingConvention::VectorCall : language::CallingConvention::C;
+            }
+            const bool sourceVectorCall = function.cppCallingConvention == "vectorcall";
+            if (convention && (*convention == language::CallingConvention::C ||
+                               *convention == language::CallingConvention::VectorCall) &&
+                sourceVectorCall != (*convention == language::CallingConvention::VectorCall))
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidConversion,
+                    diagnostics::DiagnosticSeverity::Error,
+                    syntax != nullptr ? syntax->range() : SourceRange{},
+                    "C function '" + function.name + "' uses the '" + function.cppCallingConvention +
+                        "' calling convention, which the callback type '" + std::string(delegateTypeKey) +
+                        "' does not use");
+                return false;
+            }
+        }
     }
     // Interop Foundation (callbacks C -> NativeSharp): an extern C delegate value IS a raw C
     // function pointer -- no cell, no receiver channel, no closure environment. Only a STATIC
