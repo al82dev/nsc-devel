@@ -180,7 +180,8 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-004-02: Comprobar la matriz dirigida de escalares y punteros atómicos no TLS indicada en el tracking principal.
 - [x] T08-004-03: Comprobar las muestras dirigidas de TLS estático, atómico y DLL registradas en el tracking principal.
 - **T08-004-04 — Globales por tipo y calificador:**
-- [ ] T08-004-04a: Verificar globales escalares enteras y flotantes con `const` y `volatile`.
+- [x] T08-004-04a: Verificar globales escalares enteras y flotantes con `const` y `volatile` (todos los anchos, `_Bool`, `float`, `double`, `const volatile`), directo, DLL y precompilado, O0–O3, con control Clang, IR volatile y rechazos. [Evidencia](registro-commits/t08-globales-escalares-calificados.md).
+  - [ ] T08-004-04a1: Decisión pendiente (cambia pruebas existentes): permitir `&` de una global C `const` como `T const*`, como en C. Hoy se rechaza («cannot take the address of a qualified C/C++ global») y ese rechazo lo fijan `pruebas-proyecto/ejecutar-cpp.cmd`, `CppClangSessionTests` y `pruebas-tanda-08-record-c`. [Evidencia](registro-commits/t08-globales-escalares-calificados.md#decisión-pendiente-t08-004-04a1).
 - [ ] T08-004-04b: Verificar globales de enum, puntero a enum y record C.
   - Evidencia previa: una global C record o enum (`Pair g;`, `Pair g[2];`, `Color g;`) usada por una plantilla precompilada falla en el consumidor sin encabezado con «precompiled C global cannot be projected: C/C++ global type is not yet mapped». [Sonda](registro-commits/t08-global-arreglo-incompleto.md#límite-encontrado-para-t08-004-04b).
 - [ ] T08-004-04c: Verificar arreglos globales y matrices con punteros calificados.
