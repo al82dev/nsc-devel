@@ -21,6 +21,20 @@ namespace
 {
 using lexer::TokenKind;
 
+std::string writtenConstraintCount(const ast::AstNode* node)
+{
+    if (node == nullptr) return "_";
+    std::string result = "(" + std::to_string(static_cast<int>(node->kind())) + ":" +
+        std::to_string(static_cast<int>(node->tokenKind())) + ":" +
+        std::to_string(node->text().size()) + ":" + node->text();
+    result += writtenConstraintCount(node->first());
+    result += writtenConstraintCount(node->second());
+    result += writtenConstraintCount(node->third());
+    for (const ast::AstNode* child : node->children())
+        result += writtenConstraintCount(child);
+    return result + ')';
+}
+
 std::string writtenConstraintType(const ast::TypeSyntax* type)
 {
     if (type == nullptr) return "?";
@@ -36,8 +50,12 @@ std::string writtenConstraintType(const ast::TypeSyntax* type)
         result += '>';
     }
     for (const ast::TypeModifierSyntax& modifier : type->modifiers())
+    {
         result += '#' + std::to_string(static_cast<int>(modifier.kind)) + ':' +
             std::to_string(modifier.arrayRank);
+        if (modifier.arrayCount != nullptr)
+            result += writtenConstraintCount(modifier.arrayCount);
+    }
     return result;
 }
 }

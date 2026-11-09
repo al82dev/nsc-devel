@@ -93,6 +93,24 @@ public class Program {
                 assert result.returncode == 42, (name, level, result.returncode, result.stdout)
                 print(name, level, 'exit=42', flush=True)
 
+        for name, second, expected_duplicate in (
+                ('array-distinct', '3', False),
+                ('array-duplicate', '2', True),
+                ('array-expression-distinct', '1+2', False),
+                ('array-expression-duplicate', '1+1', True)):
+            first = '1+1' if 'expression' in name else '2'
+            source.write_text('''public trait Reducer<T> { }
+public class Program {
+ private static void Keep<TOp>(TOp op) where TOp : Reducer<int[FIRST]>, Reducer<int[SECOND]> { }
+ public static int Main() { return 42; }
+}'''.replace('FIRST', first).replace('SECOND', second), encoding='utf-8')
+            result = run([compiler, '--check-project-syntax', project], root)
+            if expected_duplicate:
+                assert result.returncode != 0 and 'duplicate constraint' in result.stdout, (name, result.stdout)
+            else:
+                assert result.returncode == 0, (name, result.stdout)
+            print(name, 'verified at syntax phase', flush=True)
+
         producer_source = root / 'Producer.ns'
         producer_source.write_text('''public trait Reducer<T> { T Combine(T left, T right); }
 public class Library {

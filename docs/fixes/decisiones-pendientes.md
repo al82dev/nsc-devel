@@ -152,6 +152,17 @@ decisiones posteriores indicadas explícitamente abajo.
   sin registrar; la prueba nueva sigue ejecutándose directamente hasta que se
   pueda registrar en el archivo CMake compartido.
 
+  La reproducción `generic-dependent-controls/array-args.log` confirmó que
+  `Reducer<int[2]>, Reducer<int[3]>` se rechazaba como duplicado en el parser:
+  la clave omitía la expresión del tamaño. La clave incluye ahora la estructura
+  escrita de esa expresión. `generic-dependent-regression.cmd` acepta las
+  dimensiones distintas y expresiones distintas, y conserva el rechazo de
+  dimensiones y expresiones escritas idénticamente; también pasó de nuevo
+  `generic-constraints-existing.cmd`. Esas cuatro comprobaciones son de
+  sintaxis, no verifican equivalencia semántica de expresiones de tamaño ni
+  especializaciones completas de arreglos. El build incremental aislado
+  coexistió con los cambios ajenos previamente descritos.
+
 ## Temporales en parámetros in y operadores ++/--
 
 - Evidencia: `cases/70-temporary` rechaza el temporal; `cases/39-increment`
