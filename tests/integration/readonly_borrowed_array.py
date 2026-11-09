@@ -74,6 +74,14 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
  if (owner.StrongCount() != 2l) return 1; } return owner.StrongCount() == 1l ? 42 : 2;''', None),
         'tuple_owner_aggregate_clone': ('''{ (HANDLE<Payload>, int) pair = { owner.Clone(), 42 };
  if (owner.StrongCount() != 2l) return 1; } return owner.StrongCount() == 1l ? 42 : 2;''', None),
+        'conditional_owner_copy': ('''HANDLE<Payload> copy = true ? owner : owner; return 0;''',
+                                   'move-only value cannot be copied by a conditional'),
+        'tuple_owner_conditional_copy': ('''(HANDLE<Payload>, int) pair = (true ? owner : owner, 42);
+ return 0;''', 'move-only value cannot be copied by a conditional'),
+        'conditional_owner_clone': ('''{ HANDLE<Payload> copy = true ? owner.Clone() : owner.Clone();
+ if (owner.StrongCount() != 2l) return 1; } return owner.StrongCount() == 1l ? 42 : 2;''', None),
+        'conditional_owner_never': ('''{ HANDLE<Payload> copy = true ? owner.Clone() : panic("unexpected");
+ if (owner.StrongCount() != 2l) return 1; } return owner.StrongCount() == 1l ? 42 : 2;''', None),
         'conditional_write': ('''(true ? alias.Data : alias.Data)[0] = 10; return 0;''', 'not assignable'),
         'mixed_conditional_write': ('''(true ? new int[1] : alias.Data)[0] = 10; return 0;''', 'not assignable'),
         'mixed_conditional_reverse': ('''(true ? alias.Data : new int[1])[0] = 10; return 0;''', 'not assignable'),

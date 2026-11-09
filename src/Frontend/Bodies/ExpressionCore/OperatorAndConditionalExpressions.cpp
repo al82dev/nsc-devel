@@ -707,6 +707,17 @@ ProjectMethodBodyModel::analyzeExpressionKindConditionalExpression(
     if (!resolveConditionalDivergence(result, whenTrue, whenFalse) &&
         !resolveConditionalMatchingType(result, expression, whenTrue, whenFalse, diagnostics))
         resolveConditionalSpecialType(result, expression, whenTrue, whenFalse, diagnostics);
+    if (result.valid && memberModel_ != nullptr && memberModel_->typeIsMoveOnly(result.typeKey) &&
+        (whenTrue.addressable || whenFalse.addressable))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "move-only value cannot be copied by a conditional expression");
+        result.valid = false;
+        return result;
+    }
     // EN: Freeze 3.0 (plan item 135): the result is one branch or the other, so it keeps a borrow of either.
     // ES: Congelamiento 3.0 (elemento 135 del plan): el resultado es una rama o la otra, asi que conserva el
     //     prestamo de cualquiera.
