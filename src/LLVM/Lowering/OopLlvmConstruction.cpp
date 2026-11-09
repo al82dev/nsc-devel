@@ -116,10 +116,17 @@ ReceiverPublicationScan scanReceiverPublication(
              value->parameterOrdinal == sourceParameter));
     };
     const auto containerRoot = [&](const frontend::ProjectOopMirNode* value) {
-        while (value != nullptr && value->children.size() == 1U &&
-            (value->kind == Kind::FieldLoad || value->kind == Kind::Convert || value->kind == Kind::BorrowValue))
+        while (value != nullptr && !value->children.empty() &&
+            ((value->children.size() == 1U &&
+              (value->kind == Kind::FieldLoad || value->kind == Kind::Convert || value->kind == Kind::BorrowValue)) ||
+             value->kind == Kind::ArrayElementLoad || value->kind == Kind::RangeArrayElementLoad))
             value = value->children.front().get();
         return value;
+    };
+    const auto mayBeGlobalContainer = [&](const frontend::ProjectOopMirNode* root) {
+        return root != nullptr && (root->kind == Kind::StaticFieldLoad || root->kind == Kind::NamespaceStateLoad ||
+            root->kind == Kind::DirectStaticCall || root->kind == Kind::DirectInstanceCall ||
+            root->kind == Kind::VirtualInstanceCall || root->kind == Kind::InterfaceInstanceCall);
     };
     const auto recordCopy = [&](std::size_t destination, const frontend::ProjectOopMirNode* value) {
         for (const auto* origin : origins(value))
@@ -129,7 +136,7 @@ ReceiverPublicationScan scanReceiverPublication(
                 localCopies[*origin->localOrdinal].push_back(destination);
         }
         const auto* root = containerRoot(value);
-        if (root != nullptr && (root->kind == Kind::StaticFieldLoad || root->kind == Kind::NamespaceStateLoad))
+        if (mayBeGlobalContainer(root))
             globalLocals.push_back(destination);
         else if (root != nullptr && root->kind == Kind::LocalValue && root->localOrdinal.has_value())
             globalCopies[*root->localOrdinal].push_back(destination);
@@ -155,7 +162,8 @@ ReceiverPublicationScan scanReceiverPublication(
                 recordCopy(*target->localOrdinal, node->children[1].get());
             else if (target->kind == Kind::StaticFieldAddress || target->kind == Kind::NamespaceStateAddress)
                 globalValues.push_back(node->children[1].get());
-            else if (target->kind == Kind::FieldAddress && target->children.size() == 1U &&
+            else if ((target->kind == Kind::FieldAddress || target->kind == Kind::ArrayElementAddress ||
+                target->kind == Kind::RangeArrayElementAddress) && !target->children.empty() &&
                 target->children.front() != nullptr)
                 fieldStores.emplace_back(target->children.front().get(), node->children[1].get());
         }
@@ -195,7 +203,7 @@ ReceiverPublicationScan scanReceiverPublication(
     for (const auto& [object, value] : fieldStores)
     {
         const auto* root = containerRoot(object);
-        if (root != nullptr && (root->kind == Kind::StaticFieldLoad || root->kind == Kind::NamespaceStateLoad ||
+        if (root != nullptr && (mayBeGlobalContainer(root) ||
             (root->kind == Kind::LocalValue && root->localOrdinal.has_value() &&
              globalReached.contains(*root->localOrdinal))) && isReceiver(value))
         { result.publishes = true; return result; }
