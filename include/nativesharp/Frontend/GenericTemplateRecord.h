@@ -7,6 +7,7 @@
 #include "nativesharp/AST/AstNode.h"
 
 #include <cstddef>
+#include <cstdint>
 #include <string>
 #include <utility>
 #include <vector>
@@ -17,9 +18,11 @@ struct GenericTemplateSourceImport final
 {
     // Empty namespace means the compilation unit's outermost scope.
     std::string namespaceName;
-    // Empty alias denotes a namespace import; otherwise this is a using alias.
+    // Empty alias denotes a namespace import; otherwise this includes any generic parameters.
     std::string alias;
     std::string target;
+    std::uint8_t importKind = 0; // 0 = using; 1..5 = explicit import kinds.
+    bool reexport = false;
 };
 
 struct GenericTemplateRecord final

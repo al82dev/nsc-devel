@@ -236,6 +236,54 @@ propiedades, y comprobar que no se amplíe indebidamente la superficie. El caso
 de alias y el SDK Core binario siguen sin resolver; este resultado no acredita
 un arreglo general ni un SDK listo para usar.
 
+Decisión en implementación: transportar los ámbitos por una extensión
+versionada de metadata, en vez de depender únicamente de la reescritura de
+referencias elegida inicialmente. La evidencia de dos alias iguales con
+destinos diferentes, receptores que pueden ser valores y directivas en ámbitos
+anidados hace necesario preservar información por declaración antes de poder
+reconstruir el contexto sin adivinar por texto. Se propone NSMETA 1.41 con un
+catálogo ordenado de directivas; los registros antiguos deben seguir siendo
+legibles y una escritura deliberada en 1.40 debe rechazar la pérdida de ese
+contexto. Esto modifica infraestructura de metadata compartida y será un
+posible conflicto de integración con interoperabilidad; los cambios se limitan
+al contrato de plantillas NativeSharp. La extensión, reconstrucción, versiones
+anteriores y seguridad de validación todavía están en desarrollo y no se dan
+por probadas ni terminadas.
+
+Prototipo de transporte 1.41: el productor graba por plantilla las directivas
+de archivo y namespace en orden; el lector recupera su alcance y rechaza un
+ámbito no perteneciente a la declaración. Una escritura deliberada como 1.40
+rechaza omitirlas. La prueba dirigida
+`nsc.ns3.t12.exported-generic-ownership` pasó 12 comprobaciones, entre ellas
+la ida y vuelta de alias simple, alias a tipo primitivo y alias genérico, el
+rechazo de degradación, lectura de un 1.40 generado como control, detección de
+conflicto en el combinador y cambio de huella de fuente sin cambiar la huella
+ABI (`A:/nsc-fixes-evidencia/template-import-metadata-test.log`). Esto no
+demuestra que lectores anteriores entiendan 1.41 ni que todas las formas de
+alias, caché o metadata malformada estén cubiertas. El formato es compartido
+con otras capacidades y requiere revisión de integración.
+
+Las directivas recuperadas aún no se usan al reconstruir la fuente; por eso
+esta etapa no arregla el consumidor binario. Antes de emitirlas como texto
+deben validarse sus tokens, preservar ámbitos globales por separado, evitar
+que imports no usados introduzcan referencias no disponibles y publicar las
+dependencias necesarias respetando la accesibilidad. El ejemplo de Core y los
+controles de alias siguen pendientes.
+
+Una revisión del parser encontró también imports explícitos de módulo,
+símbolo, trait, extensiones y glob restringido; se está conservando su clase y
+la marca de reexportación, que no son equivalentes a un `using` ordinario.
+Los alias genéricos se conservan como tokens normalizados, no con sus espacios
+o comentarios originales. Estas formas necesitan validación y reconstrucción
+propias antes de considerar completo el catálogo.
+
+El transporte provisional ya conserva la clase y la marca de reexportación;
+la prueba de ida y vuelta pasó incluyendo `import module` e `import symbol` no
+reexportados; tanto el lector como el escritor rechazan la clase desconocida
+probada. Las otras clases y la reexportación todavía no cuentan con pruebas de ida y
+vuelta específicas. Las pruebas de alias y visibilidad del consumidor todavía
+deben repetirse una vez que se use el catálogo para reconstruir las fuentes.
+
 Un control nuevo coloca dos declaraciones genéricas del mismo módulo en
 archivos distintos: ambas usan `Pick.Helper.Read()`, pero cada archivo asigna
 `Pick` a un namespace diferente y espera 21 o 33, respectivamente. El proyecto

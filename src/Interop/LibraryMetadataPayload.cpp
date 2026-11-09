@@ -528,6 +528,24 @@ void encodeGenericContracts(ByteWriter& writer, const LibraryMetadata& metadata)
     }
 }
 
+void encodeTemplateSourceImports(ByteWriter& writer, const LibraryMetadata& metadata)
+{
+    if (metadata.formatMinor < 41) return;
+    writer.u32(static_cast<std::uint32_t>(metadata.genericTemplates.size()));
+    for (const LibraryMetadataGenericTemplate& generic : metadata.genericTemplates)
+    {
+        writer.u32(static_cast<std::uint32_t>(generic.sourceImports.size()));
+        for (const auto& directive : generic.sourceImports)
+        {
+            writer.text(directive.namespaceName);
+            writer.text(directive.alias);
+            writer.text(directive.target);
+            writer.u8(directive.importKind);
+            writer.u8(directive.reexport ? 1U : 0U);
+        }
+    }
+}
+
 std::vector<std::uint8_t> encodePayload(
     const LibraryMetadata& metadata,
     std::uint8_t legacySourceRevision,
@@ -549,6 +567,7 @@ std::vector<std::uint8_t> encodePayload(
     encodeErrorContracts(writer, metadata);
     encodeGenericContracts(writer, metadata);
     if (metadata.formatMinor >= 39) writer.u32(metadata.languageFeatureFlags);
+    encodeTemplateSourceImports(writer, metadata);
     return writer.bytes();
 }
 
@@ -1923,6 +1942,42 @@ bool decodeGenericContracts(
     return decodeFfiMemberContracts(reader, metadata, error);
 }
 
+bool decodeTemplateSourceImports(ByteReader& reader, LibraryMetadata& metadata, std::string& error)
+{
+    if (metadata.formatMinor < 41) return true;
+    std::uint32_t count = 0;
+    if (!readCount(reader, count) || count != metadata.genericTemplates.size())
+    {
+        error = "invalid metadata template source-import catalogue count";
+        return false;
+    }
+    for (auto& generic : metadata.genericTemplates)
+    {
+        std::uint32_t directives = 0;
+        if (!readCount(reader, directives))
+        {
+            error = "invalid metadata template source-import count";
+            return false;
+        }
+        generic.sourceImports.reserve(directives);
+        for (std::uint32_t index = 0; index < directives; ++index)
+        {
+            LibraryMetadataGenericTemplate::SourceImport directive;
+            std::uint8_t reexport = 0;
+            if (!reader.text(directive.namespaceName) || !reader.text(directive.alias) ||
+                !reader.text(directive.target) || !reader.u8(directive.importKind) ||
+                !reader.u8(reexport) || directive.target.empty() || directive.importKind > 5U || reexport > 1U)
+            {
+                error = "truncated or invalid metadata template source-import";
+                return false;
+            }
+            directive.reexport = reexport != 0U;
+            generic.sourceImports.push_back(std::move(directive));
+        }
+    }
+    return true;
+}
+
 bool decodePayload(
     std::span<const std::uint8_t> payload,
     LibraryMetadata& metadata,
@@ -1950,6 +2005,7 @@ bool decodePayload(
             return false;
         }
     }
+    if (!decodeTemplateSourceImports(reader, metadata, error)) return false;
     if (!reader.atEnd())
     {
         error = "metadata payload has trailing bytes";

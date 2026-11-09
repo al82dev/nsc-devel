@@ -1219,6 +1219,9 @@ bool buildGenericTemplateMetadata(
         return false;
     }
     record.dependencies = generic.dependencies;
+    for (const auto& directive : generic.sourceImports)
+        record.sourceImports.push_back({directive.namespaceName, directive.alias, directive.target,
+            directive.importKind, directive.reexport});
     return true;
 }
 

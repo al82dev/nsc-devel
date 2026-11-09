@@ -887,6 +887,21 @@ bool verifyGenericTemplateRecord(
     {
         return false;
     }
+    for (const auto& directive : generic.sourceImports)
+    {
+        const bool enclosingScope = directive.namespaceName.empty() ||
+            directive.namespaceName == generic.namespaceName ||
+            (generic.namespaceName.starts_with(directive.namespaceName) &&
+             generic.namespaceName.size() > directive.namespaceName.size() &&
+             generic.namespaceName[directive.namespaceName.size()] == '.');
+        if (metadata.formatMinor < 41 || directive.target.empty() || !enclosingScope ||
+            directive.importKind > 5U || (directive.importKind == 0U && directive.reexport))
+        {
+            error = "metadata generic template '" + generic.canonicalKey +
+                "' has an invalid source import or lexical scope";
+            return false;
+        }
+    }
     templateByKey.emplace(generic.canonicalKey, &generic);
     return metadata.formatMinor < 11 ||
         verifyGenericTemplateDependencies(generic, error);

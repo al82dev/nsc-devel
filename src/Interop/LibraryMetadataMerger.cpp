@@ -146,11 +146,11 @@ bool equalTemplate(
     };
     return std::tie(left.kind, left.accessibility, left.canonicalKey, left.moduleName,
                left.namespaceName, left.ownerName, left.name, left.parameters,
-               left.sourceText, left.dependencies, left.lifetimeParameters,
+               left.sourceText, left.dependencies, left.sourceImports, left.lifetimeParameters,
                left.lifetimeOutlivesConstraints) ==
         std::tie(right.kind, right.accessibility, right.canonicalKey, right.moduleName,
             right.namespaceName, right.ownerName, right.name, right.parameters,
-            right.sourceText, right.dependencies, right.lifetimeParameters,
+            right.sourceText, right.dependencies, right.sourceImports, right.lifetimeParameters,
             right.lifetimeOutlivesConstraints) &&
         vectorEqual(left.parameterContracts, right.parameterContracts, equalParameter);
 }

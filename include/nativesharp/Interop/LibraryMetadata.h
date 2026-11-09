@@ -113,7 +113,8 @@ inline constexpr std::uint16_t kMetadataFormatMajor = 1;
 // binders/outlives edges as an explicit semantic catalogue in addition to materializable source.
 // MINOR 38 (2026-10-04): extern-C parameters publish buffer-length and callback-lifetime
 // contracts; members publish the explicit unwind-boundary policy.
-inline constexpr std::uint16_t kMetadataFormatMinor = 40;
+// MINOR 41: authored lexical using directives for reusable NativeSharp templates.
+inline constexpr std::uint16_t kMetadataFormatMinor = 41;
 
 // NSMETA 1.39. These bits version producer language capabilities that affect private lowering
 // and debug behavior without changing the public NativeSharp ABI projection. Older files decode

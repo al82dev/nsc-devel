@@ -12,6 +12,16 @@ namespace nativesharp::interop
 struct LibraryMetadataGenericTemplate final
 {
     using ParameterContract = LibraryMetadataGenericParameterContract;
+    struct SourceImport final
+    {
+        std::string namespaceName;
+        // Empty for a namespace import; generic aliases retain their parameter list.
+        std::string alias;
+        std::string target;
+        std::uint8_t importKind = 0;
+        bool reexport = false;
+        bool operator==(const SourceImport&) const = default;
+    };
 
     std::uint8_t kind = 0;
     std::uint8_t accessibility = 0;
@@ -33,5 +43,7 @@ struct LibraryMetadataGenericTemplate final
     std::vector<ParameterContract> parameterContracts;
     std::vector<std::string> lifetimeParameters;
     std::vector<std::pair<std::string, std::string>> lifetimeOutlivesConstraints;
+    // NSMETA 1.41: exact lexical directives, in source scope order.
+    std::vector<SourceImport> sourceImports;
 };
 }

@@ -1,6 +1,8 @@
 #include "nativesharp/Basic/ExitCode.h"
 #include "nativesharp/Driver/Driver.h"
 #include "nativesharp/Interop/LibraryMetadata.h"
+#include "nativesharp/Interop/LibraryMetadataMerger.h"
+#include "nativesharp/Interop/LibraryApiDiffer.h"
 
 #include "../support/TestContext.h"
 
@@ -69,8 +71,14 @@ int main()
     const std::filesystem::path producer = root / "Producer";
     const std::filesystem::path producerProject = writeProject(
         producer, "GenericContracts", "Library", R"NS(
+using Pick = GenericContracts.Pod;
+using Number = int;
+using Marker<T> = T;
+import module GenericContracts;
+import symbol GenericContracts.Pod as ImportedPod;
 namespace GenericContracts
 {
+    using Local = GenericContracts.Pod;
     public copy struct Pod { public int Value; }
     public class Api
     {
@@ -121,6 +129,27 @@ namespace GenericContracts
             (track->parameterContracts[0].flags & kMetadataGenericRequiresDrop) != 0U,
         "NSMETA 1.38 publishes move/copy/drop capabilities and erased lifetime constraints (" +
             error + output + metadataError + ")");
+    tests.expect(metadataRead && narrow != metadata.genericTemplates.end() &&
+            narrow->sourceImports.size() == 6 &&
+            narrow->sourceImports[0].namespaceName.empty() &&
+            narrow->sourceImports[0].alias == "Pick" &&
+            narrow->sourceImports[0].target == "GenericContracts.Pod" &&
+            narrow->sourceImports[1].namespaceName.empty() &&
+            narrow->sourceImports[1].alias == "Number" && narrow->sourceImports[1].target == "int" &&
+            narrow->sourceImports[2].namespaceName.empty() &&
+            narrow->sourceImports[2].alias == "Marker < T >" && narrow->sourceImports[2].target == "T" &&
+            narrow->sourceImports[3].namespaceName.empty() &&
+            narrow->sourceImports[3].alias.empty() &&
+            narrow->sourceImports[3].target == "GenericContracts" &&
+            narrow->sourceImports[3].importKind == 1U && !narrow->sourceImports[3].reexport &&
+            narrow->sourceImports[4].namespaceName.empty() &&
+            narrow->sourceImports[4].alias == "ImportedPod" &&
+            narrow->sourceImports[4].target == "GenericContracts.Pod" &&
+            narrow->sourceImports[4].importKind == 2U && !narrow->sourceImports[4].reexport &&
+            narrow->sourceImports[5].namespaceName == "GenericContracts" &&
+            narrow->sourceImports[5].alias == "Local" &&
+            narrow->sourceImports[5].target == "GenericContracts.Pod",
+        "NSMETA 1.41 round-trips ordered using aliases and explicit imports in both scopes");
 
     LibraryMetadata downlevel = metadata;
     downlevel.formatMinor = 37;
@@ -129,6 +158,63 @@ namespace GenericContracts
             downlevel, root / "generic-contracts-1.37.nsmeta", downlevelError) &&
             downlevelError.find("before 1.38") != std::string::npos,
         "generic ownership contracts cannot be mislabeled as NSMETA 1.37 (" + downlevelError + ")");
+    downlevel = metadata;
+    downlevel.formatMinor = 40;
+    downlevelError.clear();
+    tests.expect(metadataRead && !codec.writeModel(
+            downlevel, root / "generic-imports-1.40.nsmeta", downlevelError) &&
+            downlevelError.find("before 1.41") != std::string::npos,
+        "source imports cannot be silently discarded when writing NSMETA 1.40 (" + downlevelError + ")");
+    for (auto& generic : downlevel.genericTemplates) generic.sourceImports.clear();
+    downlevelError.clear();
+    const auto legacyPath = root / "generic-contracts-1.40.nsmeta";
+    const bool legacyWritten = codec.writeModel(downlevel, legacyPath, downlevelError);
+    LibraryMetadata legacyDecoded;
+    const bool legacyRead = legacyWritten && codec.read(legacyPath, legacyDecoded, downlevelError) &&
+        codec.verifyCurrentCompiler(legacyDecoded, downlevelError);
+    tests.expect(legacyRead && legacyDecoded.formatMinor == 40 &&
+            legacyDecoded.genericTemplates.size() == metadata.genericTemplates.size() &&
+            std::ranges::all_of(legacyDecoded.genericTemplates,
+                [](const auto& generic) { return generic.sourceImports.empty(); }),
+        "NSMETA 1.40 generic contracts remain readable without source imports (" + downlevelError + ")");
+    LibraryMetadata invalidScope = metadata;
+    const auto invalidTemplate = std::ranges::find_if(invalidScope.genericTemplates,
+        [](const auto& generic) { return generic.name == "Narrow"; });
+    if (invalidTemplate != invalidScope.genericTemplates.end() && !invalidTemplate->sourceImports.empty())
+        invalidTemplate->sourceImports[0].namespaceName = "Unrelated";
+    std::string invalidError;
+    tests.expect(metadataRead && !codec.verifyCurrentCompiler(invalidScope, invalidError) &&
+            invalidError.find("source import or lexical scope") != std::string::npos,
+        "unrelated template import scopes are rejected (" + invalidError + ")");
+    invalidScope = metadata;
+    const auto invalidKindTemplate = std::ranges::find_if(invalidScope.genericTemplates,
+        [](const auto& generic) { return generic.name == "Narrow"; });
+    if (invalidKindTemplate != invalidScope.genericTemplates.end() && !invalidKindTemplate->sourceImports.empty())
+        invalidKindTemplate->sourceImports[0].importKind = 6U;
+    invalidError.clear();
+    tests.expect(metadataRead && !codec.verifyCurrentCompiler(invalidScope, invalidError) &&
+            invalidError.find("source import or lexical scope") != std::string::npos,
+        "unknown template import kinds are rejected (" + invalidError + ")");
+    invalidError.clear();
+    tests.expect(metadataRead && !codec.writeModel(invalidScope, root / "invalid-import.nsmeta", invalidError) &&
+            invalidError.find("source import or lexical scope") != std::string::npos,
+        "writer rejects unknown template import kinds (" + invalidError + ")");
+    LibraryMetadata changedImport = metadata;
+    const auto changedTemplate = std::ranges::find_if(changedImport.genericTemplates,
+        [](const auto& generic) { return generic.name == "Narrow"; });
+    if (changedTemplate != changedImport.genericTemplates.end() && !changedTemplate->sourceImports.empty())
+        changedTemplate->sourceImports[0].target = "GenericContracts.Other";
+    tests.expect(metadataRead && LibraryApiDiffer::sourceFingerprint(metadata) !=
+            LibraryApiDiffer::sourceFingerprint(changedImport) &&
+            LibraryApiDiffer::abiSurfaceFingerprint(metadata) ==
+            LibraryApiDiffer::abiSurfaceFingerprint(changedImport),
+        "changing a reusable template import changes its source contract but not its ABI");
+    const std::array<LibraryMetadata, 2> conflicting = {metadata, changedImport};
+    LibraryMetadata combined;
+    LibraryMetadataMerger merger;
+    std::string mergeError;
+    tests.expect(metadataRead && !merger.merge(conflicting, combined, mergeError),
+        "conflicting template import scopes are not merged as identical (" + mergeError + ")");
 
     const std::string reference =
         "<Compile Include=\"**/*.ns\" />"

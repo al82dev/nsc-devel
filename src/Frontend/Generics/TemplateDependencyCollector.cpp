@@ -82,6 +82,43 @@ using internal::trailingPackIndex;
 using internal::valueParameterCount;
 using internal::CachePayloadReader;
 using internal::EnumConstResolver;
+
+namespace
+{
+GenericTemplateSourceImport sourceAliasImport(
+    const ProjectSyntaxUnit& unit, const ast::AstNode& node, const std::string& namespaceName)
+{
+    GenericTemplateSourceImport result{namespaceName, {}, {}};
+    bool afterUsing = false;
+    bool afterEqual = false;
+    const auto tokens = unit.tokens();
+    const auto begin = std::lower_bound(tokens.begin(), tokens.end(), node.range().begin().offset(),
+        [](const lexer::Token& token, auto offset) { return token.range().begin().offset() < offset; });
+    for (auto current = begin; current != tokens.end(); ++current)
+    {
+        const lexer::Token& token = *current;
+        const SourceRange range = token.range();
+        if (!range.isValid() || range.begin().fileId() != node.range().begin().fileId() ||
+            range.begin().offset() < node.range().begin().offset()) continue;
+        if (range.end().offset() > node.range().end().offset()) break;
+        if (!afterUsing)
+        {
+            if (token.kind() == lexer::TokenKind::KwUsing) afterUsing = true;
+            continue;
+        }
+        if (token.kind() == lexer::TokenKind::Semicolon) break;
+        if (!afterEqual && token.kind() == lexer::TokenKind::Equal)
+        {
+            afterEqual = true;
+            continue;
+        }
+        std::string& destination = afterEqual ? result.target : result.alias;
+        if (!destination.empty()) destination.push_back(' ');
+        destination += token.lexeme();
+    }
+    return result;
+}
+}
 using internal::MirCacheRecord;
 using internal::SpecializationWaveTimer;
 #if 0 // INSTRUMENTATION CODE
@@ -168,11 +205,21 @@ void ProjectGenericModel::discoverTemplateDependencies(
         for (const ast::AstNode* child : node->children())
         {
             if (child == nullptr) continue;
+            const std::size_t importsBefore = frame.sourceImports.size();
             if (child->kind() == ast::AstNodeKind::UsingNamespaceDirective && !child->text().empty())
                 frame.sourceImports.push_back({currentNamespace, {}, child->text()});
-            else if (child->kind() == ast::AstNodeKind::UsingAliasDirective &&
-                     !child->text().empty() && !child->auxiliaryText().empty())
-                frame.sourceImports.push_back({currentNamespace, child->text(), child->auxiliaryText()});
+            else if (child->kind() == ast::AstNodeKind::UsingAliasDirective)
+            {
+                if (!child->text().empty() && !child->auxiliaryText().empty())
+                    frame.sourceImports.push_back({currentNamespace, child->text(), child->auxiliaryText()});
+                else
+                    frame.sourceImports.push_back(sourceAliasImport(unit, *child, currentNamespace));
+            }
+            if (frame.sourceImports.size() != importsBefore)
+            {
+                frame.sourceImports.back().importKind = static_cast<std::uint8_t>(child->integerValue());
+                frame.sourceImports.back().reexport = child->flag();
+            }
         }
     }
 

@@ -325,6 +325,15 @@ void appendSourceGenericTemplates(const LibraryMetadata& metadata, Surface& resu
             field(contract, shorter);
         }
         strings(contract, generic.dependencies, true);
+        number(contract, generic.sourceImports.size());
+        for (const auto& directive : generic.sourceImports)
+        {
+            field(contract, directive.namespaceName);
+            field(contract, directive.alias);
+            field(contract, directive.target);
+            number(contract, directive.importKind);
+            number(contract, directive.reexport ? 1U : 0U);
+        }
         // A reusable generic is compiled in the consumer. Its declaration/body is therefore a
         // public compilation input, not a private producer implementation detail.
         field(contract, canonicalGenericSource(generic.sourceText));

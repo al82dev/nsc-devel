@@ -631,7 +631,32 @@ bool applyWritableMetadataDowngrade(
     if (!validateDynamicMetadataBefore31(metadata, error)) return false;
     if (!validateMetadataBefore35(metadata, error)) return false;
     if (!validateMetadataBefore38(metadata, error)) return false;
-    return validateMetadataBefore40(metadata, error);
+    if (!validateMetadataBefore40(metadata, error)) return false;
+    if (metadata.formatMinor < 41 && std::ranges::any_of(
+            metadata.genericTemplates, [](const LibraryMetadataGenericTemplate& generic)
+            { return !generic.sourceImports.empty(); }))
+    {
+        error = "NativeSharp metadata before 1.41 cannot represent template declaration imports";
+        return false;
+    }
+    for (const auto& generic : metadata.genericTemplates)
+    {
+        for (const auto& directive : generic.sourceImports)
+        {
+            const bool enclosingScope = directive.namespaceName.empty() ||
+                directive.namespaceName == generic.namespaceName ||
+                (generic.namespaceName.starts_with(directive.namespaceName) &&
+                 generic.namespaceName.size() > directive.namespaceName.size() &&
+                 generic.namespaceName[directive.namespaceName.size()] == '.');
+            if (directive.target.empty() || !enclosingScope || directive.importKind > 5U ||
+                (directive.importKind == 0U && directive.reexport))
+            {
+                error = "invalid template source import or lexical scope";
+                return false;
+            }
+        }
+    }
+    return true;
 }
 
 bool writeMetadataFile(
