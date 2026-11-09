@@ -103,6 +103,7 @@ ReceiverPublicationScan scanReceiverPublication(
         return leaves;
     };
     std::unordered_map<std::size_t, std::vector<std::size_t>> localCopies;
+    std::unordered_map<std::size_t, std::vector<std::size_t>> globalCopies;
     std::vector<std::size_t> receiverLocals;
     std::vector<std::size_t> globalLocals;
     std::vector<const frontend::ProjectOopMirNode*> globalValues;
@@ -114,15 +115,24 @@ ReceiverPublicationScan scanReceiverPublication(
             (sourceParameter.has_value() && value->kind == Kind::ParameterValue &&
              value->parameterOrdinal == sourceParameter));
     };
+    const auto containerRoot = [&](const frontend::ProjectOopMirNode* value) {
+        while (value != nullptr && value->children.size() == 1U &&
+            (value->kind == Kind::FieldLoad || value->kind == Kind::Convert || value->kind == Kind::BorrowValue))
+            value = value->children.front().get();
+        return value;
+    };
     const auto recordCopy = [&](std::size_t destination, const frontend::ProjectOopMirNode* value) {
         for (const auto* origin : origins(value))
         {
             if (isOrigin(origin)) receiverLocals.push_back(destination);
-            else if (origin->kind == Kind::StaticFieldLoad || origin->kind == Kind::NamespaceStateLoad)
-                globalLocals.push_back(destination);
             else if (origin->kind == Kind::LocalValue && origin->localOrdinal.has_value())
                 localCopies[*origin->localOrdinal].push_back(destination);
         }
+        const auto* root = containerRoot(value);
+        if (root != nullptr && (root->kind == Kind::StaticFieldLoad || root->kind == Kind::NamespaceStateLoad))
+            globalLocals.push_back(destination);
+        else if (root != nullptr && root->kind == Kind::LocalValue && root->localOrdinal.has_value())
+            globalCopies[*root->localOrdinal].push_back(destination);
     };
     std::vector<const frontend::ProjectOopMirNode*> pending{body};
     while (!pending.empty())
@@ -143,11 +153,7 @@ ReceiverPublicationScan scanReceiverPublication(
             const auto* target = node->children[0].get();
             if (target->kind == Kind::LocalAddress && target->localOrdinal.has_value())
                 recordCopy(*target->localOrdinal, node->children[1].get());
-            else if (target->kind == Kind::StaticFieldAddress || target->kind == Kind::NamespaceStateAddress ||
-                (target->kind == Kind::FieldAddress && target->children.size() == 1U &&
-                 target->children.front() != nullptr &&
-                 (target->children.front()->kind == Kind::StaticFieldLoad ||
-                  target->children.front()->kind == Kind::NamespaceStateLoad)))
+            else if (target->kind == Kind::StaticFieldAddress || target->kind == Kind::NamespaceStateAddress)
                 globalValues.push_back(node->children[1].get());
             else if (target->kind == Kind::FieldAddress && target->children.size() == 1U &&
                 target->children.front() != nullptr)
@@ -171,8 +177,8 @@ ReceiverPublicationScan scanReceiverPublication(
         const std::size_t local = globalLocals.back();
         globalLocals.pop_back();
         if (!globalReached.insert(local).second) continue;
-        const auto copies = localCopies.find(local);
-        if (copies != localCopies.end())
+        const auto copies = globalCopies.find(local);
+        if (copies != globalCopies.end())
             globalLocals.insert(globalLocals.end(), copies->second.begin(), copies->second.end());
     }
     const auto isReceiver = [&](const frontend::ProjectOopMirNode* value) {
@@ -187,10 +193,13 @@ ReceiverPublicationScan scanReceiverPublication(
     for (const auto* value : globalValues)
         if (isReceiver(value)) { result.publishes = true; return result; }
     for (const auto& [object, value] : fieldStores)
-        for (const auto* origin : origins(object))
-            if (origin->kind == Kind::LocalValue && origin->localOrdinal.has_value() &&
-                globalReached.contains(*origin->localOrdinal) && isReceiver(value))
-            { result.publishes = true; return result; }
+    {
+        const auto* root = containerRoot(object);
+        if (root != nullptr && (root->kind == Kind::StaticFieldLoad || root->kind == Kind::NamespaceStateLoad ||
+            (root->kind == Kind::LocalValue && root->localOrdinal.has_value() &&
+             globalReached.contains(*root->localOrdinal))) && isReceiver(value))
+        { result.publishes = true; return result; }
+    }
     for (const auto* call : directCalls)
     {
         if ((call->kind == Kind::DirectInstanceCall || call->kind == Kind::DirectStaticCall) &&

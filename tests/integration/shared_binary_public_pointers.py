@@ -188,6 +188,8 @@ class Program { public static int Main() { FAMILY<Payload> owner = SharedPointer
                 ('destructor-global-field', 'public EscapePayload() { } ~EscapePayload() { Box.Value = this; }'),
                 ('constructor-global-field-local', 'public EscapePayload() { Holder local = Box; local.Value = this; }'),
                 ('destructor-global-field-local', 'public EscapePayload() { } ~EscapePayload() { Holder first = Box; Holder second = first; second.Value = this; }'),
+                ('constructor-global-field-nested', 'public EscapePayload() { Box.Child.Value = this; }'),
+                ('destructor-global-field-nested', 'public EscapePayload() { } ~EscapePayload() { Holder local = Box; Inner child = local.Child; child.Value = this; }'),
                 ('constructor-named-static', 'public EscapePayload() { Publish(value: this, ignored: 1); } public static void Publish(int ignored, EscapePayload value) { Alias = value; }'),
                 ('destructor-static', 'public EscapePayload() { } ~EscapePayload() { Publish(this); } public static void Publish(EscapePayload value) { Alias = value; }'),
                 ('constructor-instance-arg', 'public EscapePayload() { Helper helper = new Helper(); helper.Publish(this); }'),
@@ -212,7 +214,8 @@ interface IPublisher { void Publish(EscapePayload value); }
 class InterfaceHelper : IPublisher { public void Publish(EscapePayload value) { EscapePayload.Alias = value; } }
 class Helper { public void Publish(EscapePayload value) { EscapePayload.Alias = value; } }
 class VirtualHelper { public virtual void Publish(EscapePayload value) { EscapePayload.Alias = value; } }
-class Holder { public EscapePayload Value; }
+class Inner { public EscapePayload Value; }
+class Holder { public EscapePayload Value; public Inner Child; }
 class EscapePayload IMPLEMENTS { public static EscapePayload Alias; public static Holder Box; BODY }
 class Program { public static int Main() { FAMILY<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
  return owner.IsEmpty() ? 1 : 42; } }
