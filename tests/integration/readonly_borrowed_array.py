@@ -38,6 +38,34 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
         'nested_escape': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
  borrowed Children nested = nestedOwner.Get(); Child saved = nested.Data[0]; return saved.Value;''',
                           'borrowed value cannot'),
+        'nested_foreach_write': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
+ borrowed Children nested = nestedOwner.Get(); foreach (Child child in nested.Data) { child.Value = 10; }
+ return 0;''', 'not assignable'),
+        'nested_foreach_read': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
+ borrowed Children nested = nestedOwner.Get(); int sum = 0;
+ foreach (Child child in nested.Data) { sum = sum + child.Value; }
+ return sum == 0 ? 42 : 1;''', None),
+        'nested_foreach_nested': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
+ borrowed Children nested = nestedOwner.Get(); int visits = 0;
+ foreach (Child child in nested.Data) { foreach (Child other in nested.Data) {
+ visits = visits + 1 + child.Value + other.Value; } } return visits == 1 ? 42 : 1;''', None),
+        'ordinary_foreach_read': ('''Children ordinary = new Children(); int visits = 0;
+ foreach (Child child in ordinary.Data) { visits = visits + 1 + child.Value; }
+ return visits == 1 ? 42 : 1;''', None),
+        'scalar_foreach_read': ('''int sum = 0; foreach (int item in alias.Data) { sum = sum + item; }
+ return sum == 0 ? 42 : 1;''', None),
+        'nested_foreach_escape': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
+ borrowed Children nested = nestedOwner.Get(); Child escaped;
+ foreach (Child child in nested.Data) { escaped = child; } return 0;''', 'borrowed value cannot'),
+        'nested_foreach_move': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
+ borrowed Children nested = nestedOwner.Get(); foreach (Child child in nested.Data) {
+ HANDLE<Children> moved = move(nestedOwner); } return 0;''', 'cannot move owner'),
+        'nested_foreach_ref_escape': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
+ borrowed Children nested = nestedOwner.Get(); Child escaped;
+ foreach (ref Child child in nested.Data) { escaped = child; } return 0;''', 'borrow'),
+        'nested_foreach_ref_mut': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
+ borrowed Children nested = nestedOwner.Get();
+ foreach (ref mut Child child in nested.Data) { child.Value = 10; } return 0;''', 'mutable'),
         'struct_nested_escape': ('''HANDLE<Boxes> nestedOwner = FACTORY.Create<Boxes>();
  borrowed Boxes nested = nestedOwner.Get(); Child saved = nested.Data[0].Item; return saved.Value;''',
                                  'borrowed value cannot'),
@@ -59,6 +87,9 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
         'struct_view_child_escape': ('''HANDLE<Box> boxOwner = FACTORY.Create<Box>();
  SharedBorrow<Box> view = boxOwner.Borrow(); Child saved = view.Get().Item; return saved.Value;''',
                                      'borrowed value cannot'),
+        'struct_payload_child_mutation': ('''HANDLE<Box> boxOwner = FACTORY.Create<Box>();
+ borrowed Child saved = boxOwner.Get().Item; saved.Value = 10; return 0;''',
+                                          'borrowed local requires a direct live owner'),
         'struct_payload_copy': ('''HANDLE<Box> boxOwner = FACTORY.Create<Box>();
  Box copied = boxOwner.Get(); return copied.Value;''', 'borrowed value cannot'),
         'struct_payload_read': ('''HANDLE<Box> boxOwner = FACTORY.Create<Box>();
@@ -68,6 +99,12 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
         'nested_scalar_payload_copy': ('''HANDLE<ScalarOuter> scalarOwner = FACTORY.Create<ScalarOuter>();
  ScalarOuter copied = scalarOwner.Get(); return copied.Inner.Value;''', None),
     }
+    selected = os.environ.get('NSC_READONLY_ARRAY_CASES')
+    if selected:
+        requested = set(selected.split(','))
+        if requested.difference(cases):
+            raise ValueError('unknown readonly array case')
+        cases = {name: case for name, case in cases.items() if name in requested}
     with tempfile.TemporaryDirectory(prefix='nsc-readonly-array-') as temporary:
         root = Path(temporary)
         for source in sources:
@@ -88,6 +125,8 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
                 if expected:
                     assert result.returncode != 0 and expected in output, (family, name, output)
                     print(family, name, 'rejected', flush=True)
+                    if name.startswith('nested_foreach_') or name == 'struct_payload_child_mutation':
+                        print(output, flush=True)
                 else:
                     assert result.returncode == 0, (family, name, output)
                     if os.name == 'nt':

@@ -4013,6 +4013,36 @@ void ProjectMethodBodyModel::analyzeBorrowedVariableInitializer(
             "a borrowed local cannot also be declared raii");
         return;
     }
+    // Foreach synthesizes a source snapshot and an element binding. Preserve the
+    // already-checked owner when either is derived from a readonly borrowed array.
+    const bool foreachBorrow = (variable->text().starts_with("$__foreach_") &&
+        variable->text().ends_with("_source")) ||
+        variable->auxiliaryText() == "local:foreach-readonly-borrow";
+    if (foreachBorrow && initializer.valid && initializer.readonlyBorrowedObject &&
+        initializer.borrowedLocalOrdinal.has_value() &&
+        *initializer.borrowedLocalOrdinal < locals_.size())
+    {
+        const auto source = lookupScopeName(scopeOrdinal,
+            locals_[*initializer.borrowedLocalOrdinal].name);
+        if (source.has_value() && source->kind == ScopeNameKind::Local &&
+            source->semanticOrdinal == *initializer.borrowedLocalOrdinal)
+        {
+            MethodLocalBorrowBinding borrow;
+            borrow.syntax = variable;
+            borrow.methodMemberOrdinal = methodMemberOrdinal;
+            borrow.creationScopeOrdinal = scopeOrdinal;
+            borrow.typeKey = typeKey;
+            configureBorrowedVariableSource(
+                borrow, *source, variable, methodMemberOrdinal, scopeOrdinal, diagnostics);
+            if ((borrow.sourceOwnerLocalOrdinal.has_value() ||
+                 borrow.sourceOwnerParameterOrdinal.has_value()) &&
+                scopeContains(borrow.maximumValidScopeOrdinal, scopeOrdinal))
+            {
+                pendingLocalBorrow = std::move(borrow);
+                return;
+            }
+        }
+    }
     // A class extracted from a checked local view retains the view and owner region.
     if (initializer.valid && initializer.ownership == sema::OwnershipKind::Borrowed &&
         variable->first()->kind() == ast::AstNodeKind::CallExpression)
@@ -5059,6 +5089,15 @@ void ProjectMethodBodyModel::configureForeachSourceOwnership(
     const ExpressionResult probe = analyzeExpression(
         collectionProbe, methodMemberOrdinal, foreachScope, scratchDiagnostics);
 
+    if (probe.valid && probe.readonlyBorrowedObject &&
+        ProjectTypeConversion::isNativeArray(probe.typeKey) &&
+        probe.borrowedLocalOrdinal.has_value() && statement->first()->typeSyntax() != nullptr)
+    {
+        statement->first()->typeSyntax()->setOwnershipQualifier(
+            ast::OwnershipQualifierSyntaxKind::Borrowed);
+        return;
+    }
+
     // Arrays can never be raii (analyzeVariable rejects `raii` on anything but a class/
     // interface reference type or native string), so an owned-returning expression of
     // array type must stay a plain `var` -- it simply forgoes the extra owned-destructor
@@ -5171,6 +5210,31 @@ ProjectMethodBodyModel::beginForeach(
 
     ast::AstNode* chosenCandidate = chooseForeachCandidate(
         statement, locals_.back().typeKey, diagnostics);
+    if (locals_.back().readonlyBorrowedObject &&
+        ProjectTypeConversion::isNativeArray(locals_.back().typeKey) &&
+        chosenCandidate != nullptr && chosenCandidate == statement->second() &&
+        statement->auxiliaryText() != "foreach:ref" &&
+        statement->auxiliaryText() != "foreach:ref-mut" &&
+        !chosenCandidate->children().empty())
+    {
+        const auto elementType = ProjectTypeConversion::nativeArrayElementType(locals_.back().typeKey);
+        const NamedTypeDeclaration* namedElement = elementType.has_value()
+            ? namedTypeForTypeKey(*elementType) : nullptr;
+        const bool borrowedElement = elementType.has_value() &&
+            (isReferenceTypeKey(*elementType) || ProjectTypeConversion::isNativeArray(*elementType) ||
+             (namedElement != nullptr && namedElement->kind == NamedTypeDeclarationKind::Struct));
+        ast::AstNode* loop = chosenCandidate->children().front();
+        if (borrowedElement && loop != nullptr && !loop->children().empty() &&
+            loop->children().front() != nullptr && !loop->children().front()->children().empty())
+        {
+            ast::AstNode* element = loop->children().front()->children().front();
+            if (element != nullptr && element->typeSyntax() != nullptr)
+            {
+                element->typeSyntax()->setOwnershipQualifier(ast::OwnershipQualifierSyntaxKind::Borrowed);
+                element->setAuxiliaryText("local:foreach-readonly-borrow");
+            }
+        }
+    }
     const bool iterationBorrowActive = beginForeachIterationBorrow(
         statement, chosenCandidate, foreachScope);
     // Everything past this point is ordinary VariableDeclarationStatement/WhileStatement

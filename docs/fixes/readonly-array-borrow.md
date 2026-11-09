@@ -74,3 +74,39 @@ existentes pasaron (`readonly-array-ctest.log`,
 La regresión ejecuta copias de estructuras escalares directas y anidadas en
 O0/O2 y rechaza la copia del struct que contiene una clase. No acredita todos los
 tipos de campos, modos de retorno ni la vida de módulos precompilados.
+
+## Iteración sobre arreglo prestado
+
+La prueba dirigida posterior encontró una limitación de las restricciones de
+esta tanda: `foreach (Child child in nested.Data)` se rechaza incluso si el
+cuerpo solo lee `child.Value`. El local sintético `$__foreach_0_source` se
+declara sin calificador y la validación impide almacenar allí el arreglo
+prestado (`A:/nsc-fixes-evidencia/readonly-array-foreach-before.log`). En el
+caso que intenta escribir, también se diagnostica que el elemento no es
+asignable. Esta observación es anterior a la corrección siguiente.
+
+Para la iteración por valor con origen local rastreado, el análisis conserva
+ahora el vínculo al dueño en el origen sintetizado y en el elemento cuando este
+puede contener referencias. La regresión ejecuta lectura de clase, lectura
+escalar, bucles anidados y un control con arreglo ordinario en O0/O2; rechaza
+mutación, escape y movimiento del dueño. Resultados en
+`readonly-array-ctest.log`, `readonly-array-ctest-nested_foreach_nested.log`,
+`readonly-array-ctest-scalar_foreach_read.log` y
+`readonly-array-ctest-ordinary_foreach_read.log`.
+
+Siguen pendientes los modos `foreach ref` de lectura y las expresiones de
+origen cuyo dueño no se pueda rastrear. La prueba que intenta escapar por `ref`
+se rechaza antes de entrar al cuerpo, y `ref mut` se rechaza; esto no acredita
+que la lectura por `ref` funcione. Una prueba de `break` pasó el análisis pero
+falló en generación con `Stage 34 cannot map identifier/member expression`;
+el mismo diagnóstico se reprodujo con un arreglo ordinario sin punteros en
+O0/O2 (`readonly-array-foreach-break.log`, `foreach-break-control/results.json`).
+No se incluyó ese caso fallido en la selección que pasó.
+
+El control existente `nsc.stage52-3.foreach` pasó
+(`readonly-foreach-existing-control.log`); su resultado CTest en Windows no
+garantiza por sí solo ejecución de todos sus programas. La prueba existente
+`nsc.stage52-5.foreach-semantic-gaps` falló dos de 24 comprobaciones
+(`readonly-foreach-existing-test.log`); los mismos dos mensajes aparecen en la
+base y en la pasada anterior de la rama. Ninguna de estas observaciones demuestra
+que todas las rutas de foreach estén cubiertas.
