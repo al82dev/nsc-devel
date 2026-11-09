@@ -17,6 +17,7 @@ struct ReceiverPublicationScan
     std::vector<std::size_t> virtualReceiverSlots;
     std::vector<std::pair<std::string, std::size_t>> directArgumentCallees;
     std::vector<std::tuple<std::string, std::size_t, std::size_t>> virtualArgumentCallees;
+    std::vector<std::tuple<std::size_t, std::size_t, std::size_t>> interfaceArgumentCallees;
 };
 
 ReceiverPublicationScan scanReceiverPublication(
@@ -54,6 +55,7 @@ ReceiverPublicationScan scanReceiverPublication(
         if (node->kind == Kind::LocalDeclaration && node->localOrdinal.has_value() && !node->children.empty())
             recordCopy(*node->localOrdinal, node->children.front().get());
         if ((node->kind == Kind::DirectInstanceCall || node->kind == Kind::VirtualInstanceCall ||
+             node->kind == Kind::InterfaceInstanceCall ||
              node->kind == Kind::DirectStaticCall) &&
             !node->children.empty()) directCalls.push_back(node);
         if (node->kind == Kind::Store && node->children.size() >= 2U && node->children[0] != nullptr)
@@ -111,6 +113,17 @@ ReceiverPublicationScan scanReceiverPublication(
                         ? source : call->argumentParameterOrdinals.at(source);
                     result.virtualArgumentCallees.emplace_back(
                         call->children.front()->typeKey, *call->virtualSlot, parameter);
+                }
+        if (call->kind == Kind::InterfaceInstanceCall && call->interfaceSlot.has_value() &&
+            call->targetTypeOrdinal.has_value())
+            for (std::size_t child = 1; child < call->children.size(); ++child)
+                if (isReceiver(call->children[child].get()))
+                {
+                    const std::size_t source = child - 1U;
+                    const std::size_t parameter = call->argumentParameterOrdinals.empty()
+                        ? source : call->argumentParameterOrdinals.at(source);
+                    result.interfaceArgumentCallees.emplace_back(
+                        *call->targetTypeOrdinal, *call->interfaceSlot, parameter);
                 }
     }
     return result;
@@ -863,6 +876,13 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                                         candidate.slotCalleeNames[slot]); target != nullptr)
                                     pending.emplace_back(target, argument);
                         }
+                    for (const auto& [interfaceType, slot, argument] : scan.interfaceArgumentCallees)
+                        for (const auto& candidate : mirModel_.dispatchTables())
+                            for (const auto& binding : candidate.interfaceTables)
+                                if (binding.interfaceTypeOrdinal == interfaceType && slot < binding.calleeNames.size())
+                                    if (const auto* target = mirModel_.functionForMangledName(
+                                            binding.calleeNames[slot]); target != nullptr)
+                                        pending.emplace_back(target, argument);
                     for (const auto slot : scan.virtualReceiverSlots)
                         for (const auto typeOrdinal : lifecycleTypes)
                             if (const auto* table = mirModel_.dispatchTableForType(typeOrdinal);

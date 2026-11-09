@@ -189,8 +189,11 @@ class Program { public static int Main() { FAMILY<Payload> owner = SharedPointer
                 ('destructor-instance-arg', 'public Helper helper; public EscapePayload() { helper = new Helper(); } ~EscapePayload() { helper.Publish(this); }'),
                 ('constructor-virtual-arg', 'public EscapePayload() { VirtualHelper helper = new VirtualHelper(); helper.Publish(this); }'),
                 ('destructor-virtual-arg', 'public VirtualHelper helper; public EscapePayload() { helper = new VirtualHelper(); } ~EscapePayload() { helper.Publish(this); }'),
+                ('constructor-interface-arg', 'public EscapePayload() { InterfaceHelper helper = new InterfaceHelper(); borrowed IPublisher view = helper; view.Publish(this); }'),
             ):
                 source.write_text(('''using NativeSharp.Core;
+interface IPublisher { void Publish(EscapePayload value); }
+class InterfaceHelper : IPublisher { public void Publish(EscapePayload value) { EscapePayload.Alias = value; } }
 class Helper { public void Publish(EscapePayload value) { EscapePayload.Alias = value; } }
 class VirtualHelper { public virtual void Publish(EscapePayload value) { EscapePayload.Alias = value; } }
 class EscapePayload { public static EscapePayload Alias; BODY }

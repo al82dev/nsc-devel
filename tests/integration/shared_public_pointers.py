@@ -1356,6 +1356,20 @@ class Program { public static int Main() { Holder holder = default(Holder);
  class SafePayload { public int Data; public SafePayload() { Helper helper = new Helper(); helper.Inspect(this); } }
  class Program { public static int Main() { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
  return owner.Get().Data == 42 ? 42 : 1; } }''', 'run:42'),
+        'shared_interface_argument': ('''interface IPublisher { void Publish(EscapePayload value); }
+ class Helper : IPublisher { public void Publish(EscapePayload value) { EscapePayload.Alias = value; } }
+ class EscapePayload { public static EscapePayload Alias;
+ public EscapePayload() { Helper helper = new Helper(); borrowed IPublisher view = helper; view.Publish(this); } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_interface_argument_control': ('''interface IInspector { void Inspect(SafePayload value); }
+ interface IUnrelated { void Inspect(SafePayload value); }
+ class Helper : IInspector { public void Inspect(SafePayload value) { value.Data = 42; } }
+ class Other : IUnrelated { public static SafePayload Alias; public void Inspect(SafePayload value) { Alias = value; } }
+ class SafePayload { public int Data; public SafePayload() { Helper helper = new Helper();
+ borrowed IInspector view = helper; view.Inspect(this); } }
+ class Program { public static int Main() { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
+ return owner.Get().Data == 42 ? 42 : 1; } }''', 'run:42'),
         'shared_receiver_recursive_helper_control': ('''class SafePayload { public int Data;
  public SafePayload() { Inspect(); } public void Inspect() { if (Data < 0) Inspect(); } }
  class Program { public static int Main() { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
