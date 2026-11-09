@@ -810,7 +810,7 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
     result.addressable = !field.isBitField;
     result.readonlyReceiver = receiver.readonlyReceiver || field.isReadonly;
     result.readonlyBorrowedObject = !field.isStatic && receiver.readonlyBorrowedObject &&
-        isReferenceTypeKey(result.typeKey);
+        (isReferenceTypeKey(result.typeKey) || ProjectTypeConversion::isNativeArray(result.typeKey));
     if (result.readonlyBorrowedObject)
     {
         result.ownership = sema::OwnershipKind::Borrowed;

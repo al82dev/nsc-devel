@@ -3758,7 +3758,8 @@ void ProjectMethodBodyModel::validateVariableOwnershipInitializer(
     // collection. Only enforce the raii-destination / borrowed-local requirement when the
     // local's own declared type actually needs ownership tracking.
     const bool localTypeOwnable = isReferenceTypeKey(typeKey) || typeKey == "builtin:string" ||
-        managedDelegate || raiiOwnsNativeArrayBuffer;
+        managedDelegate || raiiOwnsNativeArrayBuffer ||
+        (initializer.readonlyBorrowedObject && ProjectTypeConversion::isNativeArray(typeKey));
     // EN: Freeze 3.0 item 141: a direct local initializer `T x = new T()` is an inferred owner and
     //     reaches this validation as RAII. Assignments after declaration remain non-owning.
     // ES: Congelamiento 3.0 elemento 141: un inicializador local directo `T x = new T()` es un
@@ -4173,7 +4174,8 @@ void ProjectMethodBodyModel::analyzeVariableInitializer(
             initializer, variable, typeKey, diagnostics, declaredPointerContract,
             declaredPointerPointeeReadonly, isVarInferred);
     const bool localTypeOwnable = isReferenceTypeKey(typeKey) || typeKey == "builtin:string" ||
-        managedDelegate || raiiOwnsNativeArrayBuffer;
+        managedDelegate || raiiOwnsNativeArrayBuffer ||
+        (initializer.readonlyBorrowedObject && ProjectTypeConversion::isNativeArray(typeKey));
     if (!isBorrowed && !isRaii && initializer.valid &&
         initializer.ownership == sema::OwnershipKind::Borrowed && localTypeOwnable)
         diagnostics.report(

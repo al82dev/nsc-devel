@@ -441,7 +441,8 @@ ProjectMethodBodyModel::analyzeExpressionKindCastExpression(
     validateReferenceCast(
         result, operand, expression, classifier,
         methodMemberOrdinal, scopeOrdinal, diagnostics);
-    if (result.valid && operand.readonlyBorrowedObject && isReferenceTypeKey(result.typeKey))
+    if (result.valid && operand.readonlyBorrowedObject &&
+        (isReferenceTypeKey(result.typeKey) || ProjectTypeConversion::isNativeArray(result.typeKey)))
     {
         result.readonlyBorrowedObject = true;
         result.readonlyReceiver = true;

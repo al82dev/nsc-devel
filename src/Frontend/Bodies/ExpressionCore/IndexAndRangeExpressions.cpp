@@ -210,16 +210,26 @@ bool ProjectMethodBodyModel::analyzeNativeArrayIndex(
     {
         result.typeKey = *element;
         result.valid = true;
-        result.assignable = true;
-        // An array element is real mutable storage. Item 329 made addressability
-        // explicit so bit fields could reject `&field`; preserve the long-standing
-        // `&array[index]` raw-pointer boundary as a separate property.
+        result.assignable = !base.readonlyBorrowedObject;
+        result.readonlyReceiver = base.readonlyBorrowedObject;
+        result.readonlyBorrowedObject = base.readonlyBorrowedObject &&
+            (isReferenceTypeKey(result.typeKey) || ProjectTypeConversion::isNativeArray(result.typeKey));
+        if (result.readonlyBorrowedObject)
+        {
+            result.ownership = sema::OwnershipKind::Borrowed;
+            result.objectLifetimeOwnership = sema::OwnershipKind::Borrowed;
+            result.storageOwnership = sema::OwnershipKind::Borrowed;
+            result.ownershipSourceLocalOrdinal = base.ownershipSourceLocalOrdinal;
+            result.borrowedLocalOrdinal = base.borrowedLocalOrdinal;
+        }
+        // Elements remain addressable even when this particular borrow forbids mutation;
+        // addressability and permission to write are separate properties.
         result.addressable = true;
         coreBindings_.push_back(MethodCoreBinding{
             arrayRank > 1 ? MethodCoreOperationKind::RangeArrayElement
                           : MethodCoreOperationKind::ArrayElement,
             expression, methodMemberOrdinal, scopeOrdinal, result.typeKey,
-            result.typeKey, true, std::nullopt, std::nullopt});
+            result.typeKey, result.assignable, std::nullopt, std::nullopt});
     }
     if (!result.valid)
     {

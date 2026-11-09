@@ -1316,7 +1316,8 @@ bool ProjectMethodBodyModel::rejectBorrowedAssignmentEscape(
     diagnostics::DiagnosticEngine& diagnostics) const
 {
     const bool assignmentTargetOwnable =
-        isReferenceTypeKey(left.typeKey) || left.typeKey == "builtin:string";
+        isReferenceTypeKey(left.typeKey) || left.typeKey == "builtin:string" ||
+        (right.readonlyBorrowedObject && ProjectTypeConversion::isNativeArray(left.typeKey));
     if (borrowedReassignment || right.ownership != sema::OwnershipKind::Borrowed ||
         !assignmentTargetOwnable) return false;
     if (left.assignmentMemberOrdinal.has_value() && memberModel_ != nullptr &&
