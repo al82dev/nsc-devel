@@ -211,6 +211,13 @@ bool ProjectMemberModel::setExperimentalCppInstanceFields(
 {
     if (built_) { error = "C++ instance fields must be configured before building members"; return false; }
     std::set<std::pair<std::string, std::string>> identities;
+    // EN: T08-D23: pointee flags belong to a pointer, or to the pointer elements of a fixed array.
+    // ES: T08-D23: las marcas del dato apuntado son de un puntero o de los elementos puntero de un arreglo fijo.
+    const auto pointerCarrier = [](std::string key)
+    {
+        while (const auto element = fixedArrayElementTypeKey(key)) key = *element;
+        return key.ends_with('*');
+    };
     for (const auto& field : fields)
     {
         // Un miembro de arreglo flexible C (`T[*]`) no tiene almacenamiento propio: tamano cero y la
@@ -222,7 +229,7 @@ bool ProjectMemberModel::setExperimentalCppInstanceFields(
                           field.pointeeReadonly)) ||
             (!flexible && !experimentalCppFieldBytes(field.typeKey) && (!field.byteSize || !field.byteAlignment)) ||
             (!flexible && (field.byteSize == 0) != (field.byteAlignment == 0)) ||
-            ((field.pointeeReadonly || field.pointeeVolatile) && !field.typeKey.ends_with('*')))
+            ((field.pointeeReadonly || field.pointeeVolatile) && !pointerCarrier(field.typeKey)))
         { error = "invalid experimental C++ instance field"; return false; }
         if (!identities.emplace(field.ownerIdentityKey, field.name).second)
         { error = "duplicate C++ instance field"; return false; }

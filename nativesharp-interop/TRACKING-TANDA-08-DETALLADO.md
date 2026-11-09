@@ -420,9 +420,9 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-016-03a: Verificar arreglo fijo de escalares enteros y flotantes. [Evidencia](registro-commits/t08-arreglos-c.md).
 - [x] T08-016-03b: Verificar matriz multidimensional de escalares. [Evidencia](registro-commits/t08-arreglos-c.md).
 - [x] T08-016-03c: Verificar arreglo de structs, unions y enums. [Evidencia](registro-commits/t08-arreglos-c.md).
-- [ ] T08-016-03d: Verificar arreglo de punteros `const` y punteros a datos `const` o `volatile`. [Evidencia](registro-commits/t08-arreglos-c.md).
+- [x] T08-016-03d: Verificar arreglo de punteros `const` y punteros a datos `const` o `volatile`. [Evidencia](registro-commits/t08-arreglos-c.md), [campos](registro-commits/t08-d23-arreglos-punteros-campo.md).
   - Verificado en globales C (`int *const[]`, `const int *[]`, `volatile int *[]`).
-  - **Pendiente T08-016-03d1:** como campo de record no se importan (falta el miembro en directo; el precompilado no reconstruye el record). [Detalle](registro-commits/t08-arreglos-c.md#pendiente-t08-016-03d1).
+  - Resuelta T08-016-03d1 por T08-D23: como campo de record C se importan, directo y precompilado, con las mismas reglas que las globales (incluido `pack(1)`, matrices y datos escalares, enum, record y `char`). [Evidencia](registro-commits/t08-d23-arreglos-punteros-campo.md). Antes: como campo de record no se importaban (faltaba el miembro en directo; el precompilado no reconstruía el record).
 - [x] T08-016-03e: Verificar arreglos dentro de records empaquetados y anidados. [Evidencia](registro-commits/t08-arreglos-c.md).
 - **T08-016-04 — Acceso y consumo:**
 - [x] T08-016-04a: Comparar tamaño, offsets y alineación de elementos con Clang. [Evidencia](registro-commits/t08-arreglos-c.md).
@@ -533,7 +533,7 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 - [x] T08-D20: gate histórico en CRLF y caché vigente; carrera del control C de relleno TLS (T08-GATE-03a). Validadores actualizados; el «relleno» no era una carrera: Windows no pone en cero `SizeOfZeroFill`. [Evidencia](registro-commits/t08-d20-gate-historico.md).
 - [ ] T08-D21: reagrupación de commits al cerrar la tanda (T08-GATE-05a).
 - [x] T08-D22: callbacks `__vectorcall` (T08-017-03d1). [Evidencia](registro-commits/t08-d22-vectorcall.md).
-- [ ] T08-D23: arreglos de punteros calificados como campo de record (T08-016-03d1).
+- [x] T08-D23: arreglos de punteros calificados como campo de record (T08-016-03d1). [Evidencia](registro-commits/t08-d23-arreglos-punteros-campo.md).
 - [ ] T08-D24: el productor NSMeta escribe un minor mínimo según su catálogo (lógica del 2026-11-06 al 08). Revisarlo frente al contrato único vigente; hoy fallan por ello `nsc_namespace_function_metadata_tests` y `nsc_stage50_9_metadata_host_compatibility_tests`. Observado en T08-D02. [Evidencia](registro-commits/t08-d02-d03-calificadores-nsmeta.md).
 
 ## Cierre de la tanda

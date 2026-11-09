@@ -352,12 +352,17 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     const auto pointerArray = frontend::cppAliasArrayType(field.type);
     const bool representablePointerArray = pointerArray && pointerArray->element.pointerDepth > 0 &&
         !pointerArray->element.pointeeConst && pointerArray->element.token != lexer::TokenKind::KwVoid;
+    // EN: T08-D23: an array of pointers whose element or pointee is qualified (projected below).
+    // ES: T08-D23: un arreglo de punteros con el elemento o el dato apuntado calificado (se proyecta abajo).
+    const bool qualifiedPointerArray = field.type.kind == CppTypeKind::Array && arrayElement &&
+        arrayElement->kind == CppTypeKind::Pointer && !representablePointerArray;
     if (effectiveAlignment < naturalAlignment &&
         (record.isCxx || (field.type.kind != CppTypeKind::Boolean &&
          field.type.kind != CppTypeKind::SignedInteger && field.type.kind != CppTypeKind::UnsignedInteger &&
          field.type.kind != CppTypeKind::Floating && field.type.kind != CppTypeKind::Pointer &&
          field.type.kind != CppTypeKind::Record && field.type.kind != CppTypeKind::Enumeration &&
-         !scalarArray && !recordArray && !enumArray && !representablePointerArray))) return std::nullopt;
+         !scalarArray && !recordArray && !enumArray && !representablePointerArray &&
+         !qualifiedPointerArray))) return std::nullopt;
     auto mapped = mapCppScalarType(field.type);
     if (!mapped && !record.isCxx)
         mapped = projectCppStoredFunctionPointer(field.type, projectOrdinal, moduleName, lookup);
@@ -452,6 +457,64 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
                                           field.type.isConst, field.type.isVolatile};
             pointeeReadonly = field.type.element->isConst;
             pointeeVolatile = field.type.element->isVolatile;
+        }
+    }
+    // EN: T08-D23: an array of pointers to `const` and/or `volatile` data, or of `const` pointers, as a C record
+    //     field: the carrier is the array of unqualified pointers; the pointee qualifiers become the field's
+    //     pointee flags (each element keeps them when indexed), and a `const` element makes the field readonly,
+    //     as for C globals. Only one pointer level and scalar, enum or record pointees.
+    // ES: T08-D23: un arreglo de punteros a datos `const` y/o `volatile`, o de punteros `const`, como campo de
+    //     record C: el portador es el arreglo de punteros sin calificar; los calificadores del dato apuntado son
+    //     marcas del campo (cada elemento las conserva al indexarse) y un elemento `const` hace el campo de solo
+    //     lectura, como en las globales C. Un solo nivel de puntero y datos escalares, enum o record.
+    if (!mapped && !record.isCxx && qualifiedPointerArray)
+    {
+        const CppType* element = &field.type;
+        std::vector<std::uint64_t> dimensions;
+        bool readonly = false;
+        bool isVolatile = false;
+        while (element && element->kind == CppTypeKind::Array && dimensions.size() < 64)
+        {
+            if (!element->arrayCount || *element->arrayCount == 0) { element = nullptr; break; }
+            readonly |= element->isConst;
+            isVolatile |= element->isVolatile;
+            dimensions.push_back(*element->arrayCount);
+            element = element->element.get();
+        }
+        const CppType* pointee = element && element->kind == CppTypeKind::Pointer && element->sizeBits == 64
+            ? element->element.get() : nullptr;
+        std::optional<CppScalarTypeMapping> target;
+        if (pointee && pointee->kind != CppTypeKind::Pointer && pointee->kind != CppTypeKind::Array &&
+            pointee->kind != CppTypeKind::Function && pointee->kind != CppTypeKind::Void)
+        {
+            CppType unqualified = *pointee;
+            unqualified.isConst = false;
+            unqualified.isVolatile = false;
+            target = mapCppScalarType(unqualified);
+            if (!target && unqualified.kind == CppTypeKind::Enumeration)
+                target = projectCppSemanticEnumType(unqualified, projectOrdinal, moduleName, lookup);
+            if (!target && lookup && unqualified.kind == CppTypeKind::Record)
+            {
+                const auto pointeeIdentity = projectCppRecordTypeIdentity(unqualified, moduleName);
+                const auto ordinal = pointeeIdentity ? lookup->typeOrdinalForIdentity(pointeeIdentity->key())
+                                                     : std::nullopt;
+                const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+                if (pointeeIdentity && imported && imported->projectOrdinal == projectOrdinal &&
+                    (!unqualified.recordIdentity || !unqualified.recordIdentity->clangUsr || !imported->clangUsr ||
+                     unqualified.recordIdentity->clangUsr == imported->clangUsr))
+                    target = CppScalarTypeMapping{"type:" + pointeeIdentity->key(), unqualified.canonicalSpelling,
+                                                  false, false};
+            }
+        }
+        if (target && !target->isConst && !target->isVolatile)
+        {
+            std::string key = target->nativeSharpTypeKey + "*";
+            for (auto dimension = dimensions.rbegin(); dimension != dimensions.rend(); ++dimension)
+                key += "[" + std::to_string(*dimension) + "]";
+            mapped = CppScalarTypeMapping{std::move(key), field.type.canonicalSpelling,
+                                          readonly || element->isConst, isVolatile || element->isVolatile};
+            pointeeReadonly = pointee->isConst;
+            pointeeVolatile = pointee->isVolatile;
         }
     }
     if (!mapped || field.type.kind == CppTypeKind::Void) return std::nullopt;
