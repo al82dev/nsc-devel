@@ -5559,6 +5559,9 @@ if(NSC_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicHandle.ns"
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicWeak.ns"
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicFactory.ns")
+    add_test(NAME nsc.sdk.shared-static-binary-reference
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_static_binary.py"
+                "${NSC_TEST_COMPILER}")
     add_test(NAME nsc.generics.declaration-imports
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_declaration_imports.py"
                 "${NSC_TEST_COMPILER}")
