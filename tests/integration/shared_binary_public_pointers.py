@@ -184,6 +184,7 @@ class Program { public static int Main() { FAMILY<Payload> owner = SharedPointer
                 ('constructor-virtual', 'public EscapePayload() { Publish(); } public virtual void Publish() { Alias = this; }'),
                 ('destructor-virtual', 'public EscapePayload() { } ~EscapePayload() { Publish(); } public virtual void Publish() { Alias = this; }'),
                 ('constructor-static', 'public EscapePayload() { Publish(this); } public static void Publish(EscapePayload value) { Alias = value; }'),
+                ('constructor-static-property', 'public static EscapePayload Published { get { return Alias; } set { Alias = value; } } public EscapePayload() { Published = this; }'),
                 ('constructor-global-field', 'public EscapePayload() { Box.Value = this; }'),
                 ('destructor-global-field', 'public EscapePayload() { } ~EscapePayload() { Box.Value = this; }'),
                 ('constructor-global-field-local', 'public EscapePayload() { Holder local = Box; local.Value = this; }'),

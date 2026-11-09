@@ -1405,6 +1405,11 @@ class Program { public static int Main() { Holder holder = default(Holder);
  public EscapePayload() { Holder fresh = new Holder(); Publish(fresh); Holder local = Identity(fresh); local.Value = this; } }
  class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
  return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_static_property_publication': ('''class EscapePayload { public static EscapePayload Alias;
+ public static EscapePayload Published { get { return Alias; } set { Alias = value; } }
+ public EscapePayload() { Published = this; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
         'shared_destructor_static_chain': ('''class EscapePayload { public static EscapePayload Alias;
  public EscapePayload() { } ~EscapePayload() { Forward(1, this); }
  public static void Forward(int ignored, EscapePayload value) { EscapePayload local = value; Publish(local); }
