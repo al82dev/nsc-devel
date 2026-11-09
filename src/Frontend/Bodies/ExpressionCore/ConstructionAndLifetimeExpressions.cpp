@@ -1238,8 +1238,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                     "object lifetime");
             }
 
-            const bool destroysOwnedValue = operand.valid &&
-                operand.ownership == sema::OwnershipKind::Owned && !destroysRaiiLocal;
+            // Field reads can be non-owning expressions even when their slot
+            // retains ownership. Destruction through the slot would leave its
+            // owner responsible for an object whose lifetime has already ended.
+            bool ownedField = false;
+            if (operand.valid && operand.assignmentMemberOrdinal.has_value() && memberModel_ != nullptr &&
+                *operand.assignmentMemberOrdinal < memberModel_->members().size())
+            {
+                const ClassMemberSymbol& member = memberModel_->members()[*operand.assignmentMemberOrdinal];
+                ownedField = member.kind == ClassMemberKind::Field &&
+                    member.declaredOwnership == sema::OwnershipKind::Owned;
+            }
+            const bool destroysOwnedValue = operand.valid && !destroysRaiiLocal &&
+                (operand.ownership == sema::OwnershipKind::Owned || ownedField);
             if (destroysOwnedValue)
             {
                 diagnostics.report(
