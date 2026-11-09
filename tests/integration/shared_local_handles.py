@@ -13,7 +13,7 @@ def run(command, cwd):
 
 def main():
     compiler, *sources = map(Path, sys.argv[1:])
-    prefix = '''using NativeSharp.Core.Internal;
+    prefix = '''using NativeSharp.Core.Internal; using NativeSharp.Core.Threading;
 namespace NativeSharp.Core { public class Exception { } }
 class Payload { public static int Drops; public long Data; public Payload() { Data = 20l; }
  ~Payload() { Drops = Drops + 1; } }
@@ -82,6 +82,25 @@ struct BadValue { public owned Resource item;
  SharedLocalHandle<Payload> owner = new SharedLocalHandle<Payload>(null, null);
  SharedBorrow<Payload> view = owner.Borrow(); return (int)view.Get().Data;
 } }'''
+    concurrency = '''class Concurrent {
+ private static SharedAtomicHandle<Payload>* shared; private static long failures;
+ public static void Work() { unsafe("atomic handle concurrency test") {
+  int i = 0; while (i < 1000) {
+   SharedAtomicHandle<Payload> clone = (*shared).Clone();
+   if (clone.IsEmpty()) SharedAtomic.CompareExchange(ref failures, 1l, 0l);
+   i = i + 1;
+  }
+ } }
+ public static int Run() { unsafe("atomic handle concurrency test") {
+  int before = Payload.Drops; failures = 0l;
+  { SharedAtomicHandle<Payload> owner = SharedAtomicFactory.Create<Payload>(); shared = &owner;
+    ThreadStart start = Work; raii Thread a = new Thread(start); raii Thread b = new Thread(start);
+    raii Thread c = new Thread(start); Work(); a.Join(); b.Join(); c.Join();
+    if (SharedAtomic.Load(ref failures) != 0l || owner.StrongCount() != 1l || Payload.Drops != before) return 1;
+  }
+  return Payload.Drops == before + 1 ? 42 : 2;
+ } }
+}'''
     with tempfile.TemporaryDirectory(prefix='nsc-shared-local-handles-') as temporary:
         root = Path(temporary)
         for source in sources:
@@ -95,7 +114,11 @@ struct BadValue { public owned Resource item;
                                          ('escape', escape, 'longer-lived'),
                                          ('escape_class', escape_class, 'borrowed value cannot'),
                                          ('move_owner', move_owner, 'cannot move owner')):
-                text = (prefix + body).replace('SharedLocal', 'Shared' + family)
+                current_body = body
+                if family == 'Atomic' and name == 'safe':
+                    current_body = body.replace('return 42;', 'if (Concurrent.Run() != 42) return 9; return 42;')
+                extra = concurrency if family == 'Atomic' and name == 'safe' else ''
+                text = (prefix + extra + current_body).replace('SharedLocal', 'Shared' + family)
                 (root / 'Main.ns').write_text(text, encoding='utf-8')
                 result = run([compiler, '--check-project-method-bodies', project], root)
                 output = result.stdout + result.stderr

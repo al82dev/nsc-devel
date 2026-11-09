@@ -297,6 +297,24 @@ contienen un puntero crudo (`shared-handle-send-probe/results.json`). El rechazo
 es deseable para los locales; para los atómicos falta un mecanismo que acredite
 las garantías del payload sin tratar como seguro un puntero arbitrario. La ruta
 del executor es distinta de la de restricciones y también debe comprobarse.
+Una prueba concurrente de los handles activó un diagnóstico espurio: el
+candidato especializado para clase materializó `SharedClassCreation<BadValue>`
+aunque el payload era estructura y correspondía la alternativa de valor
+(`shared-handles-failure/`). La traza temporal de genéricos muestra que los
+métodos candidatos llevan grupo 5, pero la especialización de tipo anidada
+llega con grupo 0 (`shared-handles-failure/generics.log`). Restaurar el grupo
+de sobrecarga exterior en el punto ensayado no resolvió el caso y se retiró.
+Como medida interna, el contenedor de resultado se dejó sin una restricción que
+no utiliza; la fábrica de clases conserva `where T : class`. La reproducción
+original con el contenedor restringido se conserva y el defecto del compilador
+permanece pendiente, no se considera corregido por ese ajuste.
+Con el contenedor interno sin esa restricción, la regresión de handles ejecuta
+4 000 clones atómicos en cuatro hilos, tanto O0 como O2, y verifica que queda
+un único fuerte y que el payload se destruye una vez después de los joins. El
+fixture comparte un puntero crudo al handle vivo para probar el contador; esto
+no acredita que el lenguaje permita transferir un `Arc` seguro entre hilos.
+La selección de cinco pruebas dirigidas pasó (`shared-control-suite.log`); el
+análisis de Core también pasó. No se agotaron todos los intercalados posibles.
 
 ## AddressSanitizer
 

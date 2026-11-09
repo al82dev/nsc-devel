@@ -1,6 +1,9 @@
 namespace NativeSharp.Core.Internal
 {
-    internal struct SharedClassCreation<T> where T : class
+    // The factory remains class-constrained. This result container has no operation that
+    // requires that constraint; keeping it unconstrained also avoids a spurious diagnostic
+    // when an unused specialized factory candidate is materialized for a value type.
+    internal struct SharedClassCreation<T>
     {
         public long[] Block;
         public T Value;
