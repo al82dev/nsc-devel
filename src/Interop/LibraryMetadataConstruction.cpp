@@ -2344,6 +2344,50 @@ bool buildMetadataType(
     return true;
 }
 
+// Proves only scalar-field initialization with no calls or receiver publication.
+// Unrecognized MIR remains unknown. The explicit stack bounds call-stack usage
+// and visits each node once; the result does not cover other lifecycle shapes.
+bool isSimpleNonEscapingLifecycle(const frontend::ProjectOopMirNode* body)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    if (body == nullptr) return false;
+    using Item = std::pair<const frontend::ProjectOopMirNode*, const frontend::ProjectOopMirNode*>;
+    std::vector<Item> pending{{body, nullptr}};
+    while (!pending.empty())
+    {
+        const auto [node, parent] = pending.back();
+        pending.pop_back();
+        if (node == nullptr) return false;
+        switch (node->kind)
+        {
+            case Kind::Block:
+            case Kind::ExpressionStatement:
+            case Kind::Return:
+            case Kind::IntegerConstant:
+            case Kind::FloatingConstant:
+            case Kind::BooleanConstant:
+                break;
+            case Kind::ThisValue:
+                if (parent == nullptr || parent->kind != Kind::FieldAddress) return false;
+                break;
+            case Kind::FieldAddress:
+                if (parent == nullptr || parent->kind != Kind::Store || parent->children.empty() ||
+                    parent->children.front().get() != node || node->children.size() != 1U ||
+                    node->children.front() == nullptr ||
+                    node->children.front()->kind != Kind::ThisValue) return false;
+                break;
+            case Kind::Store:
+                if (node->children.size() != 2U || node->children.front() == nullptr ||
+                    node->children.front()->kind != Kind::FieldAddress) return false;
+                break;
+            default:
+                return false;
+        }
+        for (const auto& child : node->children) pending.emplace_back(child.get(), node);
+    }
+    return true;
+}
+
 bool appendMetadataTypes(
     const frontend::ProjectCompilation& compilation,
     std::span<const frontend::NamedTypeDeclaration> types,
@@ -2354,10 +2398,24 @@ bool appendMetadataTypes(
     std::string& error)
 {
     std::unordered_set<std::size_t> typesWithInstanceCleanup;
+    std::unordered_set<std::size_t> typesWithMissingLifecycle;
+    std::unordered_map<std::size_t, std::vector<const frontend::ProjectOopMirFunction*>> lifecycleBodies;
+    for (const auto& function : compilation.oopMirModel()->functions())
+        if (!function.isStatic && (function.constructor || function.destructor))
+            lifecycleBodies[function.declaringTypeOrdinal].push_back(&function);
     for (const auto& member : members)
         if (member.kind == frontend::ClassMemberKind::Destructor ||
             (member.kind == frontend::ClassMemberKind::Field && !member.isStatic))
             typesWithInstanceCleanup.insert(member.declaringTypeOrdinal);
+    for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
+        if (!members[ordinal].isStatic &&
+            (members[ordinal].kind == frontend::ClassMemberKind::Constructor ||
+             members[ordinal].kind == frontend::ClassMemberKind::Destructor))
+        {
+            const auto* body = compilation.oopMirModel()->functionForMember(ordinal);
+            if (body == nullptr || body->body == nullptr)
+                typesWithMissingLifecycle.insert(members[ordinal].declaringTypeOrdinal);
+        }
     for (const std::size_t typeOrdinal : rootTypeOrdinals)
     {
         LibraryMetadataType record;
@@ -2379,6 +2437,24 @@ bool appendMetadataTypes(
             !types[typeOrdinal].isStatic && record.baseTypeKey.empty() && layout != nullptr &&
             layout->fields.empty() && !typesWithInstanceCleanup.contains(typeOrdinal))
             metadata.trivialCleanupRootTypeKeys.push_back("type:" + record.identityKey);
+        bool noEscape = types[typeOrdinal].kind == frontend::NamedTypeDeclarationKind::Class &&
+            !types[typeOrdinal].isStatic && !types[typeOrdinal].isPrecompiled &&
+            record.baseTypeKey.empty() && layout != nullptr && !typesWithMissingLifecycle.contains(typeOrdinal);
+        if (noEscape)
+            for (const auto& field : layout->fields)
+                if (field.typeKey != "builtin:int" && field.typeKey != "builtin:bool" &&
+                    field.typeKey != "builtin:long" && field.typeKey != "builtin:float" &&
+                    field.typeKey != "builtin:double") { noEscape = false; break; }
+        bool constructorSeen = false;
+        const auto foundBodies = lifecycleBodies.find(typeOrdinal);
+        if (foundBodies != lifecycleBodies.end())
+            for (const auto* function : foundBodies->second)
+            {
+                constructorSeen = constructorSeen || function->constructor;
+                if (!isSimpleNonEscapingLifecycle(function->body.get())) { noEscape = false; break; }
+            }
+        if (noEscape && constructorSeen)
+            metadata.nonEscapingLifecycleTypeKeys.push_back("type:" + record.identityKey);
         metadata.types.push_back(std::move(record));
     }
     return true;

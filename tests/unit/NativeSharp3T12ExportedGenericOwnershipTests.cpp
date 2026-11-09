@@ -85,6 +85,12 @@ namespace GenericContracts
     public static class Counter { public static int Read() { return 42; } }
     public class UnsafeRoot { ~UnsafeRoot() { } }
     public class FieldRoot { private int value; }
+    public class SafeFieldRoot { public int Value; public SafeFieldRoot() { Value = 42; } }
+    public class PublisherRoot { public static PublisherRoot Alias; public PublisherRoot() { Alias = this; } }
+    public class DestructorPublisher { public static DestructorPublisher Alias; ~DestructorPublisher() { Alias = this; } }
+    public class CallRoot { public CallRoot() { Touch(); } public void Touch() { } }
+    public class DerivedRoot : SafeFieldRoot { public DerivedRoot() { } }
+    public class ReferenceFieldRoot { public PublisherRoot Value; }
     public class Api
     {
         public static ref[shorter] int Narrow<lifetime longer, lifetime shorter, T>(
@@ -162,6 +168,20 @@ namespace GenericContracts
     tests.expect(metadataRead && metadata.sourceNamespaces ==
             std::vector<std::string>({"GenericContracts"}),
         "NSMETA 1.42 round-trips namespaces declared by the producer");
+
+    const auto hasLifecycleProof = [&](std::string_view key) {
+        return std::ranges::find(metadata.nonEscapingLifecycleTypeKeys, key) !=
+            metadata.nonEscapingLifecycleTypeKeys.end();
+    };
+    tests.expect(metadataRead && hasLifecycleProof("type:GenericContracts::GenericContracts.Api") &&
+            hasLifecycleProof("type:GenericContracts::GenericContracts.SafeFieldRoot") &&
+            !hasLifecycleProof("type:GenericContracts::GenericContracts.PublisherRoot") &&
+            !hasLifecycleProof("type:GenericContracts::GenericContracts.DestructorPublisher") &&
+            !hasLifecycleProof("type:GenericContracts::GenericContracts.CallRoot") &&
+            !hasLifecycleProof("type:GenericContracts::GenericContracts.DerivedRoot") &&
+            !hasLifecycleProof("type:GenericContracts::GenericContracts.ReferenceFieldRoot"),
+        "producer certifies simple root lifecycle bodies but not publication or opaque calls");
+    metadata.nonEscapingLifecycleTypeKeys.clear();
 
     const auto containsRoot = [&](std::string_view key) {
         return std::ranges::find(metadata.trivialCleanupRootTypeKeys, key) !=
