@@ -1220,6 +1220,30 @@ class Program { public static int Main() { Holder holder = default(Holder);
  public static implicit operator int(CastPayload value) { value.Data = 42; return value.Data; } }
  class Program { public static int Main() { CastPayload item = new CastPayload(); borrowed CastPayload alias = item;
  int[] values = [alias]; return values[0] == 42 && item.Data == 42 ? 42 : 1; } }''', 'run:42'),
+        'collection_builder_plain_probe': ('''class Bucket { public static int Sum;
+ public static owned Bucket CreateBuilder() { return new Bucket(); }
+ public void Add(int value) { Sum = Sum + value; } public Bucket ToCollection() { return this; } }
+ class Program { public static int Main() { Bucket result = [42]; return Bucket.Sum; } }''', 'run:42'),
+        'collection_builder_numeric_probe': ('''class Bucket { public static int Sum;
+ public static owned Bucket CreateBuilder() { return new Bucket(); }
+ public void Add(int value) { Sum = Sum + value; } public Bucket ToCollection() { return this; } }
+ class Program { public static int Main() { short item = 21; Bucket result = [item, 21]; return Bucket.Sum; } }''',
+                                            'run:42'),
+        'collection_builder_conversion_probe': ('''class CastPayload { public int Data;
+ public static implicit operator int(CastPayload value) { value.Data = 42; return value.Data; } }
+ class Bucket { public static int Sum; public static owned Bucket CreateBuilder() { return new Bucket(); }
+ public void Add(int value) { Sum = Sum + value; } public Bucket ToCollection() { return this; } }
+ class Program { public static int Main() { CastPayload item = new CastPayload(); borrowed CastPayload alias = item;
+ Bucket result = [alias]; return item.Data == 42 ? Bucket.Sum : 1; } }''', 'run:42'),
+        'collection_builder_conversion_order': ('''class Trace { public static int Value; }
+ class Input { public int Id; public Input(int id) { Id = id; }
+ public static implicit operator int(Input value) { Trace.Value = Trace.Value * 10 + value.Id; return value.Id; } }
+ class Bucket { public static owned Bucket CreateBuilder() { return new Bucket(); }
+ public void Add(int value) { Trace.Value = Trace.Value * 10 + value + 2; }
+ public Bucket ToCollection() { return this; } }
+ class Program { public static int Main() { Input first = new Input(1); Input second = new Input(2);
+ borrowed Input a = first; borrowed Input b = second; Bucket result = [a, b];
+ return Trace.Value == 1324 ? 42 : 1; } }''', 'run:42'),
         'implicit_readonly_range_probe': ('''class CastPayload { public int Data;
  public static implicit operator int(CastPayload value) { value.Data = 9; return 0; } }
  class Program { public static int Main() { STRONG<CastPayload> owner = SharedPointers.MAKE<CastPayload>();

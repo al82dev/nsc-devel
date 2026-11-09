@@ -174,6 +174,20 @@ class Program { public static int Main() { FAMILY<Payload> owner = SharedPointer
             assert result.returncode != 0 and 'readonly borrowed' in output, (
                 'binary readonly object spread accepted', family, output)
             print('binary readonly object spread rejected', family, flush=True)
+        source.write_text('''using NativeSharp.Core;
+class Input { public Input() { } public static implicit operator int(Input value) { return 42; } }
+class Bucket { public static int Sum; public static owned Bucket CreateBuilder() { return new Bucket(); }
+ public void Add(int value) { Sum = Sum + value; } public Bucket ToCollection() { return this; } }
+class Program { public static int Main() { Input item = new Input(); borrowed Input alias = item;
+ Bucket result = [alias]; return Bucket.Sum; } }
+''', encoding='utf-8')
+        for level in ('O0', 'O2'):
+            exe = root / ('binary-builder-' + level + '.exe')
+            result = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', exe], root)
+            assert result.returncode == 0, ('binary collection builder compile', level, result.stdout + result.stderr)
+            result = run([exe], root)
+            assert result.returncode == 42, ('binary collection builder run', level, result.returncode)
+            print('binary collection builder conversion', level, 'exit=42', flush=True)
     return 0
 
 

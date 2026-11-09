@@ -411,6 +411,19 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishCollectionBuilderEx
             ProjectOopHirNodeKind::LocalAddress, expression, temporaryTypeKey + "*");
         receiver->localOrdinal = temporaryOrdinal;
         add->children.push_back(std::move(receiver));
+        if (memberModel_ != nullptr && core.builderMemberOrdinals[1] < memberModel_->members().size())
+        {
+            const auto& addMember = memberModel_->members()[core.builderMemberOrdinals[1]];
+            if (addMember.parameters.size() == 1U)
+            {
+                const auto* source = expressionType(child);
+                const ProjectImplicitConversion conversion = classifyImplicit(
+                    elements[index]->typeKey, addMember.parameters[0].typeKey,
+                    source != nullptr ? source->integerConstant : std::nullopt);
+                if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
+                    elements[index] = wrapImplicitConversion(std::move(elements[index]), conversion, child);
+            }
+        }
         add->children.push_back(std::move(elements[index]));
         auto statement = makeNode(
             ProjectOopHirNodeKind::ExpressionStatement, child, "builtin:void");
