@@ -194,6 +194,7 @@ class Program { public static int Main() { FAMILY<Payload> owner = SharedPointer
                 ('constructor-interface-receiver', 'public EscapePayload() { Forward(this); } public static void Forward(IReceiver view) { view.Publish(); } public void Publish() { Alias = this; }'),
                 ('constructor-interface-return', 'public EscapePayload() { Alias = Forward(this); } public static EscapePayload Forward(IReturn value) { return value.Self(); } public EscapePayload Self() { return this; }'),
                 ('constructor-return', 'public EscapePayload() { Alias = Self(); } public EscapePayload Self() { return this; }'),
+                ('constructor-property-return', 'public EscapePayload() { Alias = Self; } public EscapePayload Self { get { return this; } }'),
                 ('constructor-virtual-return', 'public EscapePayload() { Alias = Self(); } public virtual EscapePayload Self() { return this; }'),
                 ('destructor-virtual-return', 'public EscapePayload() { } ~EscapePayload() { Alias = Self(); } public virtual EscapePayload Self() { return this; }'),
                 ('constructor-static-return', 'public EscapePayload() { Alias = Identity(this); } public static EscapePayload Identity(EscapePayload value) { return value; }'),

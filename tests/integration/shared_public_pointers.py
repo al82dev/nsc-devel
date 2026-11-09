@@ -1400,6 +1400,10 @@ class Program { public static int Main() { Holder holder = default(Holder);
  public EscapePayload() { Alias = Self(); } public EscapePayload Self() { return this; } }
  class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
  return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_property_receiver_return': ('''class EscapePayload { public static EscapePayload Alias;
+ public EscapePayload() { Alias = Self; } public EscapePayload Self { get { return this; } } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
         'shared_receiver_return_chain': ('''class EscapePayload { public static EscapePayload Alias;
  public EscapePayload() { EscapePayload local = First(); Alias = local; }
  public EscapePayload First() { return Second(); } public EscapePayload Second() { return this; } }
