@@ -67,6 +67,20 @@ La prueba quedó registrada como `nsc.sdk.shared-static-binary-reference`; tras
 actualizar la configuración existente, esa selección de CTest pasó 1/1
 (`A:/nsc-fixes-evidencia/shared-static-binary-ctest.log`).
 
+Una prueba adicional utiliza el SDK público binario aislado
+`A:/nsc-fixes-evidencia/generic-owner-sdk-current/NativeSharpCore.lib` y su
+metadata, junto con `A:/nsc-fixes-evidencia/build/bin/nsc.exe`. El análisis
+rechazó `Rc` y `WeakRc` estáticos, un contenedor de `Rc`, un arreglo de
+`WeakRc` y un `Arc` estático que contiene `WeakRc`; aceptó un `Rc` local y
+los controles estáticos `Arc`/`WeakArc`. Los siete casos pasaron en
+`shared-static-real-sdk-regression.log`, con el comando reproducible
+`A:/nsc-fixes-evidencia/shared-static-real-sdk-regression.cmd`. La prueba
+`tests/integration/shared_static_real_sdk.py` se ejecutó directamente y aún
+no está registrada en CMake, que contiene cambios ajenos. El compilador usado
+se construyó con cambios ajenos sin registrar; esta verificación es semántica,
+no ejecuta carreras ni acredita clases cargadas dinámicamente o la revisión
+integrada con la laptop.
+
 La selección se amplió a 16 casos: 14 rechazos y dos controles aceptados. La
 biblioteca productora añade contenedores genéricos y anidados; una segunda
 biblioteca precompilada referencia a la primera y contiene un campo privado
