@@ -924,6 +924,22 @@ bool ProjectGenericConstraintModel::satisfiesThreadSafetyConstraint(
                 memberFacts.kind = language::ThreadSafetyMemberKind::MutableReference;
                 memberFacts.send = true;
                 memberFacts.sync = false;
+                if (sendMarker)
+                {
+                    std::string referredTypeKey = member.declaredTypeKey.substr(7);
+                    while (true)
+                    {
+                        auto element = ProjectMemberModel::fixedArrayElementTypeKey(referredTypeKey);
+                        if (!element.has_value())
+                            element = ProjectTypeConversion::nativeArrayElementType(referredTypeKey);
+                        if (!element.has_value()) break;
+                        referredTypeKey = std::move(*element);
+                    }
+                    if (referredTypeKey.ends_with("*")) return false;
+                    std::size_t referredOrdinal = 0;
+                    if (declarationForTypeKey(nameLookup, referredTypeKey, referredOrdinal) != nullptr)
+                        pending.push_back(referredOrdinal);
+                }
             }
             else if (member.declaredTypeKey.starts_with("ref:"))
             {
