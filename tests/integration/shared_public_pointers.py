@@ -1169,6 +1169,24 @@ class Program { public static int Main() { Holder holder = default(Holder);
  public static implicit operator bool(CastPayload value) { value.Data = 9; return true; } }
  class Program { public static int Main() { STRONG<CastPayload> owner = SharedPointers.MAKE<CastPayload>();
  if (owner.Get()) return 1; return 0; } }''', 'condition'),
+        'implicit_readonly_null_coalesce_assign': ('''class CastPayload { public int Data;
+ public static implicit operator string(CastPayload value) { value.Data = 9; return "ok"; } }
+ class Program { public static int Main() { STRONG<CastPayload> owner = SharedPointers.MAKE<CastPayload>();
+ string result = null; result ??= owner.Get(); return owner.Get().Data == 9 ? 42 : 1; } }''', 'readonly borrowed'),
+        'implicit_null_coalesce_mutable_control': ('''class CastPayload { public static int Calls;
+ public static implicit operator string(CastPayload value) { Calls = Calls + 1; return "ok"; } }
+ class Program { public static int Main() { CastPayload item = new CastPayload(); borrowed CastPayload alias = item;
+ string first = null; first ??= alias; string second = "set"; second ??= alias;
+ return CastPayload.Calls == 1 ? 42 : 1; } }''', 'run:42'),
+        'implicit_readonly_null_coalesce': ('''class CastPayload { public int Data;
+ public static implicit operator string(CastPayload value) { value.Data = 9; return "ok"; } }
+ class Program { public static int Main() { STRONG<CastPayload> owner = SharedPointers.MAKE<CastPayload>();
+ string value = null; value ?? owner.Get(); return owner.Get().Data == 9 ? 42 : 1; } }''', 'readonly borrowed'),
+        'implicit_null_coalesce_expression_mutable_control': ('''class CastPayload { public static int Calls;
+ public static implicit operator string(CastPayload value) { Calls = Calls + 1; return "ok"; } }
+ class Program { public static int Main() { CastPayload item = new CastPayload(); borrowed CastPayload alias = item;
+ string first = null; first ?? alias; string second = "set"; second ?? alias;
+ return CastPayload.Calls == 1 ? 42 : 1; } }''', 'run:42'),
         'implicit_mutable_control': ('''class CastPayload { public int Data;
  public static implicit operator int(CastPayload value) { value.Data = 42; return value.Data; } }
  class Program { public static int Main() { CastPayload item = new CastPayload();

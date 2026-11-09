@@ -139,6 +139,18 @@ class Program { public static int Main() { FAMILY<CastPayload> owner = SharedPoi
                 assert result.returncode != 0 and 'readonly borrowed object cannot invoke' in output, (
                     'binary implicit readonly conversion accepted or failed for another reason', family, body, output)
                 print('binary implicit readonly conversion rejected', family, body, flush=True)
+            for operator in ('??=', '??'):
+                source.write_text(('''using NativeSharp.Core;
+class CastPayload { public int Data; public CastPayload() { }
+ public static implicit operator string(CastPayload value) { value.Data = 9; return "ok"; } }
+class Program { public static int Main() { FAMILY<CastPayload> owner = SharedPointers.MAKE<CastPayload>();
+ string value = null; value OPERATOR owner.Get(); return 0; } }
+''').replace('FAMILY', family).replace('MAKE', make).replace('OPERATOR', operator), encoding='utf-8')
+                result = run([compiler, '--check-project-method-bodies', project], root)
+                output = result.stdout + result.stderr
+                assert result.returncode != 0 and 'readonly borrowed object cannot invoke' in output, (
+                    'binary coalescing readonly conversion accepted or failed for another reason', family, operator, output)
+                print('binary coalescing readonly conversion rejected', family, operator, flush=True)
     return 0
 
 

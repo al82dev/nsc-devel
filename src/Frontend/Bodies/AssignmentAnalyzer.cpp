@@ -261,7 +261,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNullCoal
         {
             const ProjectImplicitConversion conversion = classifyImplicit(
                 fallback.typeKey, target.typeKey, fallback.integerConstant);
-            if (!conversion.exists())
+            if (fallback.readonlyBorrowedObject && conversion.userDefinedMemberOrdinal.has_value())
+            {
+                diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+                    diagnostics::DiagnosticSeverity::Error, expression->second()->range(),
+                    "readonly borrowed object cannot invoke an unchecked implicit conversion");
+                valid = false;
+            }
+            else if (!conversion.exists())
             {
                 diagnostics.report(
                     diagnostics::DiagnosticId::InvalidConversion,

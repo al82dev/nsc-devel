@@ -31,3 +31,22 @@ rechazó las dos formas nuevas para Rc y Arc, además de pasar sus controles de
 propiedad y fábricas (`shared-binary-sdk43-check.log`). Estos controles no
 demuestran todos los contextos posibles de conversión implícita, la seguridad
 de alias escapados desde constructores ni el contrato Send/Sync de Arc.
+
+## Operadores de coalescencia
+
+Después del primer cambio se comprobó que tanto `result ??= owner.Get()` como
+`value ?? owner.Get()` podían invocar un operador implícito a `string` que
+escribía la carga. En ambos patrones, Rc y Arc en O0/O2 devolvieron 42 al
+observar el campo modificado. La reproducción previa de `??` se conserva en
+`A:/nsc-fixes-evidencia/shared-null-coalesce-before.log`; para `??=` el
+resultado previo y las cuatro combinaciones quedaron registrados en el
+`SCOPE-LOCK.md` de esa carpeta antes de sustituir el log de la ejecución.
+
+Las dos rutas rechazan ahora el operador de usuario si recibe la vista de solo
+lectura. Con el compilador aislado build `61eb40a7fe07dbe5`, ambas variantes
+se rechazaron para Rc y Arc. Controles con alias mutable terminaron con 42 en
+O0/O2 y verificaron que el operador se ejecuta solo cuando el lado izquierdo es
+nulo. El consumidor del SDK binario rechazó ambas variantes para Rc y Arc.
+Los resultados están en los registros `shared-implicit-implicit_readonly_null_coalesce*.log`,
+`shared-implicit-implicit_null_coalesce*control.log` y
+`shared-binary-sdk43-check.log`, en `A:/nsc-fixes-evidencia/`.

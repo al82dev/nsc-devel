@@ -164,6 +164,13 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 ? optionalCarrier->valueTypeKey : left.typeKey;
             const ProjectImplicitConversion conversion = classifyImplicit(
                 right.typeKey, resultType, right.integerConstant);
+            if (right.readonlyBorrowedObject && conversion.userDefinedMemberOrdinal.has_value())
+            {
+                diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+                    diagnostics::DiagnosticSeverity::Error, expression->second()->range(),
+                    "readonly borrowed object cannot invoke an unchecked implicit conversion");
+                break;
+            }
             if (!conversion.exists())
             {
                 diagnostics.report(
