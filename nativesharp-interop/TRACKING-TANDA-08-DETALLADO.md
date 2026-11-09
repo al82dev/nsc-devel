@@ -61,14 +61,14 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
   - [x] T08-002-09m7c0d: Instrumentar la entrada a `LoadLibraryExW` y comprobar que dos hilos coinciden antes de permitir la carga inicial. [Evidencia](registro-commits/t08-tls-dll-concurrencia-instrumentada.md).
   - [x] T08-002-09m7c0e: Resolver la DLL TLS por la ruta del módulo cuando otra DLL con el mismo nombre ya está cargada, en O0–O3. [Evidencia](registro-commits/t08-tls-dll-preexistente.md).
   - [x] T08-002-09m7c0f: Comprobar una DLL y una salida con U+6F22, incluyendo restauración desde caché. [Evidencia](registro-commits/t08-tls-dll-unicode.md).
-  - [ ] T08-002-09m7c0g: Ampliar la cobertura Unicode a otras formas de ruta, nombres de fuentes y equivalencia de mayúsculas/minúsculas. **Bloqueada:** solo queda la decisión pendiente T08-002-09m7c0g2d.
+  - [x] T08-002-09m7c0g: Ampliar la cobertura Unicode a otras formas de ruta, nombres de fuentes y equivalencia de mayúsculas/minúsculas. [Evidencia](registro-commits/t08-d01-dll-unicode.md).
     - [x] T08-002-09m7c0g1: Proyecto, fuente y salida con U+6F22, ejecución en O0, restauración desde caché y diagnóstico sin sobrescribir una DLL diferente. [Evidencia](registro-commits/t08-proyecto-fuente-unicode.md).
-    - [ ] T08-002-09m7c0g2: Otras formas de ruta y equivalencia de mayúsculas/minúsculas Unicode; no quedan cubiertas por el caso anterior. **Bloqueada:** solo queda la decisión pendiente T08-002-09m7c0g2d.
+    - [x] T08-002-09m7c0g2: Otras formas de ruta y equivalencia de mayúsculas/minúsculas Unicode; no quedan cubiertas por el caso anterior. [Evidencia](registro-commits/t08-d01-dll-unicode.md).
       - [x] T08-002-09m7c0g2a: Referencias `.lib` al mismo archivo con `É`/`é`, control de archivo distinto con `Ê` y archivo de proyecto con U+6F22 y `Name` explícito. [Evidencia](registro-commits/t08-rutas-unicode-mayusculas.md).
       - [x] T08-002-09m7c0g2b: Otras equivalencias Unicode y otras entradas de ruta; no están demostradas por el caso `É`/`é`.
         - [x] Corregir rutas UTF-8 de referencias de proyecto y encabezados C; comprobar bibliotecas, fuentes, proyectos y directorios de inclusión con Δ/δ, Ж/ж y Ā/ā, incluida ejecución C en O0. [Evidencia](registro-commits/t08-referencias-rutas-unicode.md).
         - [x] Seguir a Windows (`os.path.samefile`) con NFC/NFD, İ/i, ı/I, ß/ẞ, ǅ/ǆ, Σ/ς, K (Kelvin)/k y el control É/é en fuentes, referencias de proyecto, encabezados C, salida y caché; corregir los nombres de producto, el directorio temporal y la caché que la página de códigos activa no puede escribir (identidad del paquete, raíz de bibliotecas, emisión LLVM, ThinLTO, candados de caché y enlace con NSLink), con ejecutables O0–O3 y PDB. [Evidencia](registro-commits/t08-rutas-unicode-nombres-salida.md).
-      - [ ] T08-002-09m7c0g2d: Decisión pendiente: DLL NativeSharp con nombre de archivo no ASCII. NSLink no puede enlazarlas (ahora hay un diagnóstico en vez de 0xC0000409) y, aun enlazadas con lld-link, el cargador de Windows no resuelve la importación por nombre (`STATUS_DLL_NOT_FOUND`); solo `LoadLibraryW` las carga. Opciones: rechazarlas siempre, o cargarlas con carga diferida UTF-8 como las DLL C. [Evidencia](registro-commits/t08-rutas-unicode-nombres-salida.md).
+      - [x] T08-002-09m7c0g2d: DLL NativeSharp con nombre de archivo no ASCII: se enlazan con NSLink y lld-link y se cargan por ruta UTF-16 con la biblioteca cargadora Unicode (decisión del usuario T08-D01). [Evidencia](registro-commits/t08-d01-dll-unicode.md).
       - [x] T08-002-09m7c0g2c: Compilar un productor que importa C desde proyecto, fuente y encabezado ubicados en ruta U+6F22, y consumir su biblioteca sin el encabezado en O0. [Evidencia](registro-commits/t08-productor-c-unicode.md).
   - [ ] T08-002-09m7c1: Admitir dos DLL diferentes con el mismo nombre de archivo procedentes de directorios diferentes; requieren una identidad y carga por ruta que preserven ambas bibliotecas. **Bloqueada:** solo quedan las decisiones pendientes de sus subcasillas (TLS sin importaciones y dependencias transitivas homónimas).
     - [x] T08-002-09m7c1a: Verificar que Windows carga las dos DLL bajo nombres independientes y conserva sus valores TLS. [Evidencia](registro-commits/t08-dll-homonimas-alias-control.md).
@@ -502,6 +502,34 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-020-04b: Verificar declaración y cast de puntero a tipo C publicado sin encabezado. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
 - [x] T08-020-04c: Verificar `offsetof` y acceso a miembro restaurado desde metadata. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
 - [x] T08-020-04d: Repetir los controles para union, enum y typedef publicados. [Evidencia](registro-commits/t08-layout-comparacion-c.md).
+
+## T08-D — Resolución de las decisiones del usuario (2026-11-09)
+
+Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad implementada y probada; un diagnóstico es provisional mientras falte la capacidad.
+
+- [x] T08-D01: DLL NativeSharp con nombre no ASCII, cargada por ruta Unicode (T08-002-09m7c0g2d). [Evidencia](registro-commits/t08-d01-dll-unicode.md).
+- [ ] T08-D02: NSMeta conserva `const`/`volatile` de alias C en firmas públicas de métodos y delegates.
+- [ ] T08-D03: firma pública con callback `volatile`, publicada y consumida conservando el calificador.
+- [ ] T08-D04: TLS en DLL sin importaciones, con solución reproducible y sin importación artificial.
+- [ ] T08-D05: DLL homónimas con dependencias transitivas.
+- [ ] T08-D06: `&` de global C `const` produce un puntero a dato constante; la escritura se rechaza (T08-004-04a1).
+- [ ] T08-D07: `_Atomic` sobre record, tamaños directos y con biblioteca atómica (T08-004-04d1).
+- [ ] T08-D08: validadores `.cmd` versionados con LF pasan a CRLF.
+- [ ] T08-D09: struct C equivalente en dos encabezados, usado por valor (T08-005-03a1).
+- [ ] T08-D10: typedef C homónimos e incompatibles de productores distintos (T08-005-03b1).
+- [ ] T08-D11: `-` y `~` sobre enteros estrechos: reglas de NativeSharp frente a expresiones C (T08-006-04b1).
+- [ ] T08-D12: `int` frente a `unsigned int` en operaciones C (T08-009-03c1).
+- [ ] T08-D13: modo `volatile` del alias NativeSharp a almacenamiento C (T08-010-05a).
+- [ ] T08-D14: miembro de tipo struct o union sin etiqueta (T08-011-02c1).
+- [ ] T08-D15: alineación efectiva de Clang en NSMeta, usada solo cuando está garantizada (T08-012-02a).
+- [ ] T08-D16: declaración opaca propia del consumidor reconciliada con NSMeta (T08-013-02c1).
+- [ ] T08-D17: rechazo de `int const** q = &p` (T08-014-02d1).
+- [ ] T08-D18: dirección de función C frente al envoltorio `__c_boundary` (T08-017-04a1).
+- [ ] T08-D19: dependencias privadas de plantillas públicas en NSMeta (T08-018-03c1).
+- [ ] T08-D20: gate histórico en CRLF y caché vigente; carrera del control C de relleno TLS (T08-GATE-03a).
+- [ ] T08-D21: reagrupación de commits al cerrar la tanda (T08-GATE-05a).
+- [ ] T08-D22: callbacks `__vectorcall` (T08-017-03d1).
+- [ ] T08-D23: arreglos de punteros calificados como campo de record (T08-016-03d1).
 
 ## Cierre de la tanda
 

@@ -545,7 +545,8 @@ bool publishExecutableArtifact(std::string_view outputPath, const frontend::Proj
         error << "nsc: error: C/C++ runtime alias selection failed: " << referenceError << '\n';
         return false;
     }
-    if (!verifyLinkedRuntimeLibraries(runtimeLibraries, builder.info(), dynamicallyLoadedRuntimes, referenceError))
+    if (!verifyLinkedRuntimeLibraries(runtimeLibraries, builder.info(), publication.stage, dynamicallyLoadedRuntimes,
+                                      referenceError))
     {
         error << "nsc: error: precompiled DLL/import-library mismatch: " << referenceError << '\n';
         return false;
@@ -1360,7 +1361,8 @@ bool buildDynamicLibraryProduct(const std::filesystem::path &destination,
         error << "nsc: error: C/C++ runtime output preflight failed: " << referenceError << '\n';
         return false;
     }
-    if (!verifyLinkedRuntimeLibraries(runtimeLibraries, builder.dynamicLibraryInfo(), dynamicallyLoadedRuntimes, referenceError))
+    if (!verifyLinkedRuntimeLibraries(runtimeLibraries, builder.dynamicLibraryInfo(), publication.stage,
+                                      dynamicallyLoadedRuntimes, referenceError))
     {
         error << "nsc: error: precompiled DLL/import-library mismatch: " << referenceError << '\n';
         return false;

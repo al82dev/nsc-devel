@@ -1,6 +1,7 @@
 #include "nativesharp/Linker/WindowsLibraryBuilder.h"
 #include "Internal/LinkToolIdentity.h"
 #include "Internal/ScopedTemporaryDirectory.h"
+#include "Internal/UnicodeDllLoader.h"
 
 #include "nativesharp/Linker/WindowsRuntimeImports.h"
 
@@ -367,6 +368,32 @@ std::filesystem::path dynamicLibraryPdbPath(
     return pdbPath;
 }
 
+// EN: A DLL whose file name is not ASCII cannot be imported by name: its import library is replaced by the
+//     Unicode loader library (T08-D01). The DLL, its PDB and the replaced library are removed on failure.
+// ES: Una DLL cuyo nombre de archivo no es ASCII no se puede importar por nombre: su biblioteca de importacion
+//     se sustituye por la biblioteca cargadora Unicode (T08-D01). Si falla, se borran la DLL, su PDB y la
+//     biblioteca.
+bool publishUnicodeDllLoader(
+    const LldLinker& linker,
+    const llvm_backend::LlvmTargetMachine& targetMachine,
+    const std::filesystem::path& directory,
+    const std::filesystem::path& outputPath,
+    std::span<const std::string> exportSymbols,
+    const std::filesystem::path& importLibraryPath,
+    const std::filesystem::path& pdbPath,
+    std::string& error)
+{
+    if (!needsUnicodeDllLoader(outputPath)) return true;
+    if (writeUnicodeDllLoaderLibrary(
+            linker, targetMachine, directory, outputPath, exportSymbols, importLibraryPath, error))
+        return true;
+    std::error_code cleanupError;
+    std::filesystem::remove(outputPath, cleanupError);
+    std::filesystem::remove(importLibraryPath, cleanupError);
+    if (!pdbPath.empty()) std::filesystem::remove(pdbPath, cleanupError);
+    return false;
+}
+
 bool verifyDynamicLibraryWithNestedExports(
     const std::filesystem::path& outputPath,
     const std::filesystem::path& importLibraryPath,
@@ -473,6 +500,9 @@ bool WindowsLibraryBuilder::buildDynamic(
     const std::filesystem::path pdbPath = dynamicLibraryPdbPath(outputPath, debugInformation);
     if (!linker->linkDynamicLibrary(
             objects, importLibraries, exportSymbols, outputPath,
+            importLibraryPath, pdbPath, error)) return false;
+    if (!publishUnicodeDllLoader(
+            *linker, *targetMachine, temporaryDirectory->path(), outputPath, exportSymbols,
             importLibraryPath, pdbPath, error)) return false;
     return verifyDynamicLibraryWithNestedExports(
         outputPath, importLibraryPath, exportSymbols, dynamicLibraryInfo_, error);
@@ -837,6 +867,9 @@ bool WindowsLibraryBuilder::buildDynamicObjects(
     }
     const std::filesystem::path pdbPath = dynamicLibraryPdbPath(outputPath, debugInformation);
     if (!linker->linkDynamicLibrary(objects, importLibraries, exportSymbols, outputPath,
+            importLibraryPath, pdbPath, error)) return false;
+    if (!publishUnicodeDllLoader(
+            *linker, *targetMachine, temporaryDirectory->path(), outputPath, exportSymbols,
             importLibraryPath, pdbPath, error)) return false;
     return verifyDynamicLibraryWithFindExports(
         outputPath, importLibraryPath, exportSymbols, dynamicLibraryInfo_, error);

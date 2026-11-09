@@ -10,11 +10,12 @@
    product under a mangled name.
 3. A temporary directory and an artifact cache whose names have a CJK character (a user profile the code
    page cannot spell): the build succeeds, the second build restores from the cache, both run.
-4. DLLs (O0 and O2, -g; the export directory and the RSDS record must carry the requested names and an
-   importing executable must run). With NSLink: an ASCII DLL linked from a CJK temporary directory works,
-   and a non-ASCII DLL name is rejected with a diagnostic (negative): NSLink cannot spell it and a DLL keeps
-   the name it was linked under. With lld-link, which reads UTF-8, the non-ASCII names link with the right
-   exported name and LoadLibraryW loads them (an ASCII lld-link DLL is also imported by an executable).
+4. DLLs (O0 and O2, -g; the RSDS record must name the published PDB and an importing executable must run).
+   With NSLink: an ASCII DLL linked from a CJK temporary directory works, and the non-ASCII names link under an
+   ASCII export-directory name and are bound by the Unicode loader library (T08-D01). With lld-link, which
+   reads UTF-8, the non-ASCII names keep their exported name. In both cases an executable that references
+   the DLL runs (until T08-D01 NSLink rejected these names and the import by name ended with
+   STATUS_DLL_NOT_FOUND).
 """
 from pathlib import Path
 import ctypes
@@ -150,19 +151,17 @@ def export_name(dll):
     return data[name:data.index(b"\0", name)].decode("utf-8")
 
 
-def build_dll_and_consumer(folder, label, name, level, environment, consume=True):
+def build_dll_and_consumer(folder, label, name, level, environment, exported=None):
     dll = folder / f"{label}{level}" / (name + ".dll")
     result = run(["--emit-project-oop-dll", "L.nsproj", level, "--no-artifact-cache", "-g", "-o", str(dll)], folder,
                  environment)
     if result.returncode or not dll.is_file():
         raise AssertionError(f"DLL {label} {level}:\n" + result.stdout)
-    if export_name(dll) != dll.name or rsds_name(dll) != dll.with_suffix(".pdb").name:
+    if export_name(dll) != (exported or dll.name) or rsds_name(dll) != dll.with_suffix(".pdb").name:
         raise AssertionError(f"DLL {label} {level}: {export_name(dll)!r} {rsds_name(dll)!r}")
     if not dll.with_suffix(".lib").is_file() or not dll.with_suffix(".pdb").is_file():
         raise AssertionError(f"DLL {label} {level}: falta la biblioteca de importación o el PDB")
-    if not consume:
-        ctypes.WinDLL(str(dll))
-        return
+    ctypes.WinDLL(str(dll))
     relative = f"{label}{level}/{name}"
     (folder / "C.nsproj").write_text(
         '<Project><PropertyGroup><Name>C</Name></PropertyGroup><ItemGroup><Compile Include="C.ns" />'
@@ -184,30 +183,22 @@ def check_dynamic_libraries():
                                      '</OutputType></PropertyGroup><ItemGroup><Compile Include="L.ns" />'
                                      '</ItemGroup></Project>', encoding="utf-8")
     (folder / "C.ns").write_text("int Main() { return Dl.V.Get() == 3 ? 0 : 1; }\n", encoding="utf-8")
-    # NSLink: an ASCII DLL linked from a CJK temporary directory works; a non-ASCII DLL name is rejected
-    # with a diagnostic, because NSLink cannot spell it and a DLL keeps the name it was linked under.
+    # NSLink: an ASCII DLL linked from a CJK temporary directory works; a non-ASCII DLL name is linked under
+    # an ASCII export-directory name and bound by the Unicode loader library (T08-D01).
     temporary = folder / "temp-\u6f22"
     temporary.mkdir()
     for level in ("-O0", "-O2"):
         build_dll_and_consumer(folder, "nslink-ascii", "Dl", level, dict(env, TMP=str(temporary), TEMP=str(temporary)))
     for label, name in NAMES:
-        result = run(["--emit-project-oop-dll", "L.nsproj", "-O0", "--no-artifact-cache", "-o",
-                      f"nslink-{label}/{name}.dll"], folder)
-        if result.returncode == 0 or "NSLink cannot link a DLL whose file name has characters outside ASCII" \
-                not in result.stdout or "internal error" in result.stdout:
-            raise AssertionError(f"DLL {label} con NSLink no rechazada con el diagnóstico:\n" + result.stdout)
-        if (folder / f"nslink-{label}" / (name + ".dll")).exists():
-            raise AssertionError(f"DLL {label} con NSLink: quedó un producto")
-    # lld-link reads UTF-8: the same names link and keep their exported name, and LoadLibraryW loads them.
-    # An importing executable is not checked: the Windows loader does not resolve a non-ASCII import name
-    # and the program stops with STATUS_DLL_NOT_FOUND (pending decision T08-002-09m7c0g2d).
+        for level in ("-O0", "-O2"):
+            build_dll_and_consumer(folder, "nslink-" + label, name, level, env, "__nsc_output.dll")
+    # lld-link reads UTF-8: the same names link and keep their exported name.
     lld = dict(env, NSC_LINKER=r"A:\al82dev-clang\bin\lld-link.exe")
     build_dll_and_consumer(folder, "lld-ascii", "Dl", "-O0", lld)
     for label, name in NAMES:
         for level in ("-O0", "-O2"):
-            build_dll_and_consumer(folder, "lld-" + label, name, level, lld, consume=False)
-    print("DLL: ASCII con NSLink y temporal CJK, rechazo no ASCII con NSLink, nombres Unicode con lld-link",
-          flush=True)
+            build_dll_and_consumer(folder, "lld-" + label, name, level, lld)
+    print("DLL: ASCII con NSLink y temporal CJK, nombres Unicode con NSLink y lld-link consumidos", flush=True)
 
 
 check_libraries()

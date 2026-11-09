@@ -1107,6 +1107,7 @@ add_library(nsc_linker STATIC
     src/Linker/PdbVerifier.cpp
     src/Linker/WindowsExecutableBuilder.cpp
     src/Linker/WindowsLibraryBuilder.cpp
+    src/Linker/UnicodeDllLoader.cpp
     src/Linker/WindowsRuntimeLibrary.cpp
     src/Linker/WindowsRuntimeImports.cpp)
 

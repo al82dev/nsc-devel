@@ -1380,19 +1380,16 @@ bool LldLinker::linkDynamicLibrary(
     if (!validateDynamicLibraryRequest(
             objectFiles, importLibraries, exportSymbols,
             outputPath, importLibraryPath, pdbPath, error)) return false;
-    // EN: NSLink opens the paths of its response file through the ANSI code page, and a DLL keeps the name
-    //     it was linked under (export directory, import library): it cannot be linked under an ASCII name and
-    //     renamed, as an executable is. lld-link reads UTF-8 and needs none of this (T08-002-09m7c0g2b).
-    // ES: NSLink abre las rutas de su archivo de respuesta con la pagina ANSI, y una DLL conserva el nombre con
-    //     que se enlazo (exportaciones, biblioteca de importacion): no se puede enlazar con un nombre ASCII y
-    //     renombrar, como un ejecutable. lld-link lee UTF-8 y no necesita nada de esto (T08-002-09m7c0g2b).
+    // EN: NSLink opens the paths of its response file through the ANSI code page. A DLL whose name is not ASCII
+    //     is linked under an ASCII name and published under the requested one; the export directory keeps the
+    //     ASCII name, and the builder replaces the import library with the Unicode loader (T08-D01), because
+    //     the Windows loader cannot import such a name. lld-link reads UTF-8 and links under the real name.
+    // ES: NSLink abre las rutas de su archivo de respuesta con la pagina ANSI. Una DLL cuyo nombre no es ASCII
+    //     se enlaza con un nombre ASCII y se publica con el pedido; el directorio de exportaciones conserva el
+    //     nombre ASCII, y el constructor sustituye la biblioteca de importacion por la cargadora Unicode
+    //     (T08-D01), porque el cargador de Windows no puede importar ese nombre. lld-link lee UTF-8 y enlaza
+    //     con el nombre real.
     const bool nsLink = isNsLinkExecutable(executablePath_);
-    if (nsLink && hasNonAsciiSpelling(outputPath.filename()))
-    {
-        error = "NSLink cannot link a DLL whose file name has characters outside ASCII ('" +
-            utf8Path(outputPath.filename()) + "'); use an ASCII name or link with lld-link";
-        return false;
-    }
     std::filesystem::path responsePath = outputPath;
     std::filesystem::path logPath = outputPath;
     responsePath += ".dll.rsp";

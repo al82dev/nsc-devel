@@ -39,6 +39,7 @@ for %%T in (
   pruebas-tanda-08-identidad-c\global-externa-variantes\validar-global-no-importable.py
   pruebas-tanda-08-identidad-c\global-externa-variantes\validar.py
   pruebas-tanda-08-identidad-c\rutas-unicode\validar-equivalencias.py
+  pruebas-tanda-08-identidad-c\rutas-unicode\validar-dll-unicode.py
   pruebas-tanda-08-identidad-c\rutas-unicode\validar-nombre-salida.py
   pruebas-tanda-08-identidad-c\rutas-unicode\validar.py
   pruebas-tanda-08-identidad-c\tls-dll-distintas\validar-directo-precompilado.py

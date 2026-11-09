@@ -147,8 +147,15 @@ bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compil
 // Conservative early inspection; normal metadata validation still runs during linking.
 bool precompiledReferenceRequiresLld(const compilation::LibraryReference &reference,
                                      const compilation::ProjectLoadOptions &options);
+// EN: `imagePath` is the linked PE described by `image`. A runtime DLL whose file name is not ASCII is bound by
+//     the Unicode loader instead of the import table (T08-D01); it counts as reached when the PE carries its
+//     UTF-16 file name.
+// ES: `imagePath` es el PE enlazado que describe `image`. Una DLL de runtime cuyo nombre no es ASCII se enlaza
+//     con el cargador Unicode y no con la tabla de importacion (T08-D01); cuenta como alcanzada cuando el PE
+//     lleva su nombre de archivo en UTF-16.
 bool verifyLinkedRuntimeLibraries(std::span<const std::filesystem::path> runtimeLibraries,
                                   const linker::PeExecutableInfo &image,
+                                  const std::filesystem::path &imagePath,
                                   std::span<const std::filesystem::path> dynamicallyLoadedRuntimes,
                                   std::string &error);
 std::filesystem::path pathFromUtf8(std::string_view value);

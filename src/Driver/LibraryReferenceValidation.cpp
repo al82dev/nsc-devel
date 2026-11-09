@@ -3,6 +3,8 @@
 #include "../Frontend/Internal/IndexShadowCheckSwitch.h"
 #include "../Frontend/Internal/IndexShadowMismatch.h"
 
+#include <fstream>
+#include <iterator>
 #include <memory>
 
 namespace nativesharp::driver
@@ -634,8 +636,43 @@ bool appendValidatedLibraryReferences(const frontend::ProjectCompilation &compil
                                             runtimeByModule, runtimeLibraries, error);
 }
 
+namespace
+{
+bool hasNonAsciiFileName(const std::filesystem::path &path)
+{
+    const std::u8string encoded = path.filename().u8string();
+    for (const char8_t character : encoded)
+    {
+        if (static_cast<unsigned char>(character) >= 0x80U)
+            return true;
+    }
+    return false;
+}
+
+// EN: True when the bytes of `imagePath` contain the NUL-terminated UTF-16LE file name of `runtime`, the
+//     constant the Unicode loader passes to LoadLibraryExW (T08-D01).
+// ES: Verdadero cuando los bytes de `imagePath` contienen el nombre de archivo UTF-16LE terminado en NUL de
+//     `runtime`, la constante que el cargador Unicode pasa a LoadLibraryExW (T08-D01).
+bool imageCarriesUnicodeLoader(const std::filesystem::path &imagePath, const std::filesystem::path &runtime)
+{
+    std::ifstream input(imagePath, std::ios::binary);
+    if (!input)
+        return false;
+    const std::string bytes((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    std::string needle;
+    for (const char16_t unit : runtime.filename().u16string())
+    {
+        needle.push_back(static_cast<char>(unit & 0xFFU));
+        needle.push_back(static_cast<char>((unit >> 8U) & 0xFFU));
+    }
+    needle.append(2, '\0');
+    return bytes.find(needle) != std::string::npos;
+}
+} // namespace
+
 bool verifyLinkedRuntimeLibraries(std::span<const std::filesystem::path> runtimeLibraries,
                                   const linker::PeExecutableInfo &image,
+                                  const std::filesystem::path &imagePath,
                                   std::span<const std::filesystem::path> dynamicallyLoadedRuntimes,
                                   std::string &error)
 {
@@ -644,6 +681,11 @@ bool verifyLinkedRuntimeLibraries(std::span<const std::filesystem::path> runtime
         reachable.insert(foldedName(imported));
     for (const auto &runtime : dynamicallyLoadedRuntimes)
         reachable.insert(foldedPathKey(runtime.filename()));
+    for (const std::filesystem::path &runtime : runtimeLibraries)
+    {
+        if (hasNonAsciiFileName(runtime) && imageCarriesUnicodeLoader(imagePath, runtime))
+            reachable.insert(foldedPathKey(runtime.filename()));
+    }
 
     // An import archive is lazy: a runtime whose types are used only in another DLL's public
     // signature need not contribute a direct EXE import. Follow the declared runtime DLLs so a
