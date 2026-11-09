@@ -176,6 +176,8 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 
 ## T08-004 — Variables globales C
 
+- Validación del bloque (2026-11-08): aprobada; quedan dos decisiones pendientes y T08-004-05 para la validación integral. [Evidencia](registro-commits/t08-004-validacion-bloque.md).
+
 - [x] T08-004-01: Comprobar las muestras de globales externas y `static` registradas en el tracking principal.
 - [x] T08-004-02: Comprobar la matriz dirigida de escalares y punteros atómicos no TLS indicada en el tracking principal.
 - [x] T08-004-03: Comprobar las muestras dirigidas de TLS estático, atómico y DLL registradas en el tracking principal.
