@@ -5562,6 +5562,9 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.generics.declaration-imports
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_declaration_imports.py"
                 "${NSC_TEST_COMPILER}")
+    add_test(NAME nsc.generics.declaration-import-cache
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_declaration_import_cache.py"
+                "${NSC_TEST_COMPILER}")
     add_test(NAME nsc.generics.selected-body-constraints
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_selected_body_constraints.py"
                 "${NSC_TEST_COMPILER}")

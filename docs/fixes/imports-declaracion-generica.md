@@ -1,5 +1,16 @@
 # Imports en cuerpos de métodos genéricos
 
+La regresión dirigida `nsc.generics.declaration-import-cache` usa una caché
+aislada en A y un alias de namespace en el archivo donde se declara el método
+genérico. El ejecutable eligió `ProducerA` (salida 21), luego se cambió el alias
+a `ProducerB` y eligió ese destino (salida 33). Ambas repeticiones sin cambios
+registraron `compilation-bundle-cache: hit` y conservaron sus resultados.
+Pasó 1/1 en O0 (`A:/nsc-fixes-evidencia/generic-declaration-import-cache-ctest.log`).
+El resultado tras cambiar el alias demuestra la selección correcta, pero no se
+afirma qué entradas parciales de caché se reutilizaron en esa compilación.
+La prueba usa fuentes del proyecto y no resuelve la publicación de ámbitos o
+referencias en bibliotecas precompiladas.
+
 En el prototipo de la fábrica pública `RcFactory.MakeRc<T>`, una llamada a
 `SharedLocalFactory.Create<T>()` fallaba con `no visible Stage 44 generic
 method template` aunque la clase era visible mediante un `using` de su archivo.
