@@ -52,8 +52,11 @@ def main():
   public static int Value<T>() where T : new() { return 42; } } }
  public static class Api { public static int Make<T>() where T : new() { return Hidden.Value<T>(); }
   public static int MakeNested<T>() where T : new() { return Outer.Inner.Value<T>(); } }
+ PUBLIC_OWNER
 }'''.replace('COUNTER_BODY', counter_body).replace(
     'FIELD_SHADOW', 'private static Counter Helper;' if field_shadow else '').replace(
+    'PUBLIC_OWNER', 'public static class PublicOwner { private static int Secret = 42; '
+    'public static int Value<T>() where T : new() { return Secret; } }' if field_shadow else '').replace(
     'IMPORT_HERE', ('using Pick = Sample.Support;' if alias else 'using Sample.Support;') if scoped else '') + suffix,
     encoding='utf-8')
         if imported or field_shadow:
@@ -86,8 +89,8 @@ class Program { public static int Main() { return Api.Make<Payload>(); } }
         source.write_text('''using Sample;
 class Payload { public Payload() { } }
 class Program { public static int Main() {
- return Api.Make<Payload>() == 42 && Api.MakeNested<Payload>() == 42 ? 42 : 1; } }
-''', encoding='utf-8')
+ return Api.Make<Payload>() == 42 && Api.MakeNested<Payload>() == 42 EXTRA_CHECK ? 42 : 1; } }
+'''.replace('EXTRA_CHECK', '&& PublicOwner.Value<Payload>() == 42' if field_shadow else ''), encoding='utf-8')
         for level in ('O0', 'O2'):
             exe = root / ('Consumer-' + level + '.exe')
             result = run([compiler, '--emit-project-oop-exe', consumer, '-o', exe, '-' + level], root)
@@ -114,6 +117,15 @@ class Program { public static int Main() { return Outer.Inner.Value<Payload>(); 
         assert result.returncode != 0 and 'error:' in output and 'Outer' in output, (
             'nested internal helper became accessible or failed for an unrelated reason', output)
         print('nested internal helper rejected', flush=True)
+        if field_shadow:
+            source.write_text('''using Sample;
+class Program { public static int Main() { return PublicOwner.Secret; } }
+''', encoding='utf-8')
+            result = run([compiler, '--check-project-method-bodies', consumer], root)
+            output = result.stdout + result.stderr
+            assert result.returncode != 0 and 'error:' in output and 'Secret' in output, (
+                'private template owner field became accessible', output)
+            print('private owner field rejected', flush=True)
         if os.environ.get('NSC_METADATA_SHADOW_CASE') == '1':
             source.write_text('''using Sample;
 class Program { public static int Main() { return Helper.Value(); } }

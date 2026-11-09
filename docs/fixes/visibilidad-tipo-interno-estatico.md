@@ -215,3 +215,23 @@ necesarios del propietario y sus reglas de acceso. El filtro
 por lo que el campo privado de este control queda fuera de la publicación. No
 se ha comprobado todavía si corregir esa selección bastaría: también deben
 validarse la materialización, el enlace y la inaccesibilidad para consumidores.
+
+Continuación experimental sobre el respaldo `57c47c297`: se incluyeron campos
+estáticos de propietarios de métodos genéricos y sus tipos al construir la
+metadata, se reconstruyeron con su accesibilidad original y se admitieron sus
+símbolos presentes en una biblioteca estática. También se consideran métodos
+públicos del tipo de esos campos como dependencias para validación del enlace.
+El consumidor del control de `Helper` ejecutó 42 en O0 y O2; otro propietario
+público leyó su campo privado desde la plantilla y el consumidor directo fue
+rechazado. Fuente, comando y salida: `tests/integration/generic_internal_owner_metadata.py`,
+`A:/nsc-fixes-evidencia/generic-owner-field-shadow.cmd` y
+`generic-owner-field-shadow.log`. El compilador incremental reportó hash
+`ddfb806dd332926e`; las pruebas dirigidas de puntero, sombreado local y
+visibilidad previa pasaron en la misma construcción.
+
+Es un prototipo: publica todos los campos estáticos de esos propietarios, no
+solo los usados, y la selección provisional de símbolos aún utiliza referencias
+por texto en otros caminos. Falta validar DLL, campos con tipos externos y
+propiedades, y comprobar que no se amplíe indebidamente la superficie. El caso
+de alias y el SDK Core binario siguen sin resolver; este resultado no acredita
+un arreglo general ni un SDK listo para usar.
