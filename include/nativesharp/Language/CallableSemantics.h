@@ -26,6 +26,8 @@ bool isFunctionTypeIdentity(std::string_view identity) noexcept;
 bool functionTypesAssignable(const FunctionType& source, const FunctionType& target) noexcept;
 bool functionParameterPointeeVolatile(const FunctionType& type, std::size_t parameterIndex) noexcept;
 bool functionHasPointeeVolatile(const FunctionType& type) noexcept;
+bool functionParameterPointeeReadonly(const FunctionType& type, std::size_t parameterIndex) noexcept;
+bool functionHasPointeeReadonly(const FunctionType& type) noexcept;
 std::string_view functionCarrierName(FunctionCarrier carrier) noexcept;
 std::string_view callingConventionName(CallingConvention convention) noexcept;
 

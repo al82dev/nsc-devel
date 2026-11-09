@@ -144,6 +144,20 @@ bool sourceFutureTypeForMetadataKey(std::string_view typeKey, std::string &sourc
     return true;
 }
 
+// EN: T08-002: spells a `const` pointee in a callback parameter or result as NativeSharp writes it,
+//     `T const*`, so the materialized signature keeps the readonly identity flag. Returns false when
+//     the spelling has no pointer to qualify.
+// ES: T08-002: escribe un dato apuntado `const` de un parámetro o resultado de callback como lo escribe
+//     NativeSharp, `T const*`, para que la firma materializada conserve la marca readonly de la identidad.
+//     Devuelve false cuando la escritura no tiene un puntero que calificar.
+bool spellReadonlyPointee(std::string &sourceType)
+{
+    const std::size_t star = sourceType.find('*');
+    if (star == std::string::npos || star == 0) return false;
+    sourceType.insert(star, " const");
+    return true;
+}
+
 bool sourceCoreTypeForMetadataKey(const std::string &typeKey, std::string &sourceType, std::string &error)
 {
     if (typeKey.starts_with("fn:"))
@@ -173,12 +187,22 @@ bool sourceCoreTypeForMetadataKey(const std::string &typeKey, std::string &sourc
         {
             std::string parameter;
             if (!sourceTypeForMetadataKey(function->parameters[i], parameter, error)) return false;
+            if (language::functionParameterPointeeReadonly(*function, i) && !spellReadonlyPointee(parameter))
+            {
+                error = "metadata-backed source import cannot materialize this function type";
+                return false;
+            }
             if (i != 0) sourceType += ", ";
             sourceType += parameter;
         }
         if (function->variadic) sourceType += ", ...";
         std::string result;
         if (!sourceTypeForMetadataKey(function->result, result, error)) return false;
+        if (function->resultPointeeReadonly && !spellReadonlyPointee(result))
+        {
+            error = "metadata-backed source import cannot materialize this function type";
+            return false;
+        }
         sourceType += ") -> " + result;
         return true;
     }

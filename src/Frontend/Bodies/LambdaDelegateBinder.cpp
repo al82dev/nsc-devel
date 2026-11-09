@@ -58,7 +58,7 @@ using method_body_detail::writeMethodBodyTrace;
 
 namespace
 {
-// EN: T08-002: true when `method` has exactly the volatile pointees recorded by a structural callback
+// EN: T08-002: true when `method` has exactly the volatile and `const` pointees recorded by a structural callback
 //     type: each parameter and the result must match, because C treats `T*` and `volatile T*` as
 //     different callback signatures. A non-structural target (named delegate or lambda identity)
 //     records no such flags and is not filtered here. Complexity: O(parameter count).
@@ -72,7 +72,8 @@ bool methodPointeeVolatileMatches(
     const std::optional<language::FunctionType>& target) noexcept
 {
     if (!target.has_value()) return true;
-    if (method.declaredPointerPointeeVolatile != target->resultPointeeVolatile) return false;
+    if (method.declaredPointerPointeeVolatile != target->resultPointeeVolatile ||
+        method.declaredPointerPointeeReadonly != target->resultPointeeReadonly) return false;
     // EN: A natural `fn*` of an instance method starts with the unqualified `abi:this` slot.
     // ES: El `fn*` natural de un método de instancia empieza con la ranura `abi:this` sin calificar.
     const std::size_t offset = method.hasImplicitThis && !target->parameters.empty() &&
@@ -80,7 +81,9 @@ bool methodPointeeVolatileMatches(
     for (std::size_t index = 0; index < method.parameters.size(); ++index)
     {
         if (method.parameters[index].pointerPointeeVolatile !=
-            language::functionParameterPointeeVolatile(*target, index + offset))
+            language::functionParameterPointeeVolatile(*target, index + offset) ||
+            method.parameters[index].pointerPointeeReadonly !=
+            language::functionParameterPointeeReadonly(*target, index + offset))
             return false;
     }
     return true;

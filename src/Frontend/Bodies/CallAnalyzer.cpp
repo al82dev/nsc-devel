@@ -3903,6 +3903,8 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         //     resultado, igual que una llamada directa a una función C con el mismo tipo de retorno.
         result.pointerPointeeVolatile =
             structuralFunction.has_value() && structuralFunction->resultPointeeVolatile;
+        result.pointerPointeeReadonly =
+            structuralFunction.has_value() && structuralFunction->resultPointeeReadonly;
         result.valid = true;
         // EN: Freeze 3.0 (plan item 135a): the delegate result may alias a lent argument temporary.
         // ES: Congelamiento 3.0 (elemento 135a del plan): el resultado del delegate puede ser alias de un temporal
@@ -4032,6 +4034,21 @@ bool ProjectMethodBodyModel::bindDelegateInvocationArguments(
             diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
                 diagnostics::DiagnosticSeverity::Error, expression->children()[index]->range(),
                 "indirect call argument would discard pointer pointee volatile qualification");
+            return false;
+        }
+        // EN: A `const` pointee passed to a pointer parameter of a structural callback without `const`
+        //     would let the callee write it; a direct call rejects the same argument. A variadic slot
+        //     takes it unchanged, as in C (T08-002).
+        // ES: Un dato apuntado `const` pasado a un parámetro puntero sin `const` de un callback estructural
+        //     permitiría que el llamado lo escriba; una llamada directa rechaza el mismo argumento. Una
+        //     posición variádica lo recibe sin cambios, como en C (T08-002).
+        if (arguments[index].pointerPointeeReadonly && structuralFunction.has_value() &&
+            index < parameterTypes.size() && ProjectTypeConversion::isPointer(parameterTypes[index]) &&
+            !language::functionParameterPointeeReadonly(*structuralFunction, index))
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error, expression->children()[index]->range(),
+                "indirect call argument would discard pointer pointee const qualification");
             return false;
         }
         if (index >= parameterTypes.size())

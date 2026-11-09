@@ -59,91 +59,117 @@ std::optional<CallingConvention> parseConvention(std::string_view value) noexcep
     return std::nullopt;
 }
 
-// EN: Tag of the optional identity suffix that records volatile pointees of a C signature.
-// ES: Etiqueta del sufijo opcional de la identidad que registra datos apuntados volatile de una firma C.
-constexpr std::string_view kPointeeVolatileTag = ":volatile-pointee:";
-
-// EN: Appends the volatile-pointee suffix: one '0'/'1' per parameter followed by one for the
-//     result. Called only when at least one flag is set, so identities without the qualifier keep
-//     their exact historical bytes. Complexity: O(parameter count).
-// ES: Agrega el sufijo de datos apuntados volatile: un '0'/'1' por parámetro y uno final para el
-//     resultado. Solo se llama cuando hay al menos una marca, por lo que las identidades sin el
-//     calificador conservan exactamente sus bytes anteriores. Complejidad: O(número de parámetros).
-void appendPointeeVolatileSuffix(std::string& identity, const FunctionType& type)
+// EN: A pointee qualifier of a C signature kept in the identity (T08-002): `const` (readonly) and
+//     `volatile`. Each one is an optional suffix `<tag><mask>` with one '0'/'1' per parameter and a
+//     last one for the result, written only when some flag is set (readonly first, then volatile),
+//     so identities without qualifiers keep their exact bytes.
+// ES: Un calificador del dato apuntado de una firma C conservado en la identidad (T08-002): `const`
+//     (readonly) y `volatile`. Cada uno es un sufijo opcional `<etiqueta><máscara>` con un '0'/'1' por
+//     parámetro y uno final para el resultado, escrito solo si hay alguna marca (primero readonly,
+//     luego volatile), así las identidades sin calificadores conservan exactamente sus bytes.
+struct PointeeQualifier
 {
-    identity += kPointeeVolatileTag;
-    for (std::size_t index = 0; index < type.parameters.size(); ++index)
-        identity.push_back(functionParameterPointeeVolatile(type, index) ? '1' : '0');
-    identity.push_back(type.resultPointeeVolatile ? '1' : '0');
+    std::string_view tag;
+    std::vector<bool> FunctionType::* parameters;
+    bool FunctionType::* result;
+};
+
+constexpr PointeeQualifier kPointeeReadonly{
+    ":readonly-pointee:", &FunctionType::parameterPointeeReadonly, &FunctionType::resultPointeeReadonly};
+constexpr PointeeQualifier kPointeeVolatile{
+    ":volatile-pointee:", &FunctionType::parameterPointeeVolatile, &FunctionType::resultPointeeVolatile};
+
+// EN: Flag of parameter `index`; an empty vector or an index outside it reads as false.
+// ES: Marca del parámetro `index`; un vector vacío o un índice fuera de él se leen como falso.
+bool qualifierParameter(const FunctionType& type, const PointeeQualifier& qualifier, std::size_t index) noexcept
+{
+    const std::vector<bool>& flags = type.*qualifier.parameters;
+    return index < flags.size() && flags[index];
 }
 
-// EN: Decodes the optional suffix written by appendPointeeVolatileSuffix. `cursor` points just after
-//     the error type. Returns false for any other trailing text, a mask of the wrong length, a
-//     character other than '0'/'1', or an all-zero mask (which is never written, so the canonical
-//     identity stays unique).
-// ES: Decodifica el sufijo opcional escrito por appendPointeeVolatileSuffix. `cursor` apunta justo
-//     después del tipo de error. Devuelve false ante cualquier otro texto final, una máscara de
-//     longitud incorrecta, un carácter distinto de '0'/'1' o una máscara sin marcas (nunca se
-//     escribe, así la identidad canónica sigue siendo única).
-bool consumePointeeVolatileSuffix(std::string_view identity, std::size_t cursor, FunctionType& type)
+bool hasQualifier(const FunctionType& type, const PointeeQualifier& qualifier) noexcept
 {
-    if (cursor == identity.size()) return true;
-    if (!consumeLiteral(identity, cursor, kPointeeVolatileTag)) return false;
-    const std::string_view mask = identity.substr(cursor);
-    if (mask.size() != type.parameters.size() + 1U) return false;
-    bool anyParameter = false;
+    if (type.*qualifier.result) return true;
+    for (std::size_t index = 0; index < type.parameters.size(); ++index)
+        if (qualifierParameter(type, qualifier, index)) return true;
+    return false;
+}
+
+void appendQualifierSuffix(std::string& identity, const FunctionType& type, const PointeeQualifier& qualifier)
+{
+    if (!hasQualifier(type, qualifier)) return;
+    identity += qualifier.tag;
+    for (std::size_t index = 0; index < type.parameters.size(); ++index)
+        identity.push_back(qualifierParameter(type, qualifier, index) ? '1' : '0');
+    identity.push_back(type.*qualifier.result ? '1' : '0');
+}
+
+// EN: Decodes one optional suffix written by appendQualifierSuffix at `cursor` and advances past it.
+//     Returns false for a mask of the wrong length, a character other than '0'/'1', or an all-zero
+//     mask (never written, so the canonical identity stays unique).
+// ES: Decodifica en `cursor` un sufijo opcional escrito por appendQualifierSuffix y avanza tras él.
+//     Devuelve false ante una máscara de longitud incorrecta, un carácter distinto de '0'/'1' o una
+//     máscara sin marcas (nunca se escribe, así la identidad canónica sigue siendo única).
+bool consumeQualifierSuffix(
+    std::string_view identity, std::size_t& cursor, FunctionType& type, const PointeeQualifier& qualifier)
+{
+    if (!identity.substr(cursor).starts_with(qualifier.tag)) return true;
+    const std::size_t width = type.parameters.size() + 1U;
+    const std::string_view mask = identity.substr(cursor + qualifier.tag.size(), width);
+    if (mask.size() != width) return false;
     for (const char value : mask)
         if (value != '0' && value != '1') return false;
+    bool anyParameter = false;
     for (std::size_t index = 0; index < type.parameters.size(); ++index)
         anyParameter = anyParameter || mask[index] == '1';
-    type.resultPointeeVolatile = mask.back() == '1';
-    if (!anyParameter && !type.resultPointeeVolatile) return false;
+    type.*qualifier.result = mask.back() == '1';
+    if (!anyParameter && !(type.*qualifier.result)) return false;
     if (anyParameter)
     {
-        type.parameterPointeeVolatile.reserve(type.parameters.size());
+        std::vector<bool>& flags = type.*qualifier.parameters;
+        flags.reserve(type.parameters.size());
         for (std::size_t index = 0; index < type.parameters.size(); ++index)
-            type.parameterPointeeVolatile.push_back(mask[index] == '1');
+            flags.push_back(mask[index] == '1');
     }
+    cursor += qualifier.tag.size() + width;
     return true;
 }
 
-// EN: Exact comparison of the volatile-pointee flags of two signatures. C treats `T*` and
+// EN: Exact comparison of one qualifier in two signatures. C treats `T*`, `const T*` and
 //     `volatile T*` parameters (and results) as different function types, so no direction widens.
-// ES: Comparación exacta de las marcas volatile de dos firmas. C considera tipos de función
-//     distintos a parámetros (y resultados) `T*` y `volatile T*`, por lo que ninguna dirección amplía.
-bool samePointeeVolatile(const FunctionType& source, const FunctionType& target) noexcept
+// ES: Comparación exacta de un calificador en dos firmas. C considera tipos de función distintos a
+//     parámetros (y resultados) `T*`, `const T*` y `volatile T*`, por lo que ninguna dirección amplía.
+bool sameQualifier(const FunctionType& source, const FunctionType& target, const PointeeQualifier& qualifier) noexcept
 {
-    if (source.resultPointeeVolatile != target.resultPointeeVolatile ||
-        source.parameters.size() != target.parameters.size())
+    if (source.*qualifier.result != target.*qualifier.result || source.parameters.size() != target.parameters.size())
         return false;
     for (std::size_t index = 0; index < source.parameters.size(); ++index)
     {
-        if (functionParameterPointeeVolatile(source, index) !=
-            functionParameterPointeeVolatile(target, index))
+        if (qualifierParameter(source, qualifier, index) != qualifierParameter(target, qualifier, index))
             return false;
     }
     return true;
 }
 }
 
-// EN: True when parameter `parameterIndex` is a pointer whose pointee is volatile. An empty flag
-//     vector or an index outside it reads as false.
-// ES: Verdadero cuando el parámetro `parameterIndex` es un puntero cuyo dato apuntado es volatile.
-//     Un vector de marcas vacío o un índice fuera de él se leen como falso.
 bool functionParameterPointeeVolatile(const FunctionType& type, std::size_t parameterIndex) noexcept
 {
-    return parameterIndex < type.parameterPointeeVolatile.size() &&
-        type.parameterPointeeVolatile[parameterIndex];
+    return qualifierParameter(type, kPointeeVolatile, parameterIndex);
 }
 
-// EN: True when any parameter or the result carries a volatile pointee.
-// ES: Verdadero cuando algún parámetro o el resultado tiene un dato apuntado volatile.
 bool functionHasPointeeVolatile(const FunctionType& type) noexcept
 {
-    if (type.resultPointeeVolatile) return true;
-    for (std::size_t index = 0; index < type.parameters.size(); ++index)
-        if (functionParameterPointeeVolatile(type, index)) return true;
-    return false;
+    return hasQualifier(type, kPointeeVolatile);
+}
+
+bool functionParameterPointeeReadonly(const FunctionType& type, std::size_t parameterIndex) noexcept
+{
+    return qualifierParameter(type, kPointeeReadonly, parameterIndex);
+}
+
+bool functionHasPointeeReadonly(const FunctionType& type) noexcept
+{
+    return hasQualifier(type, kPointeeReadonly);
 }
 
 std::string_view functionCarrierName(FunctionCarrier carrier) noexcept
@@ -195,7 +221,8 @@ std::string functionTypeIdentity(const FunctionType& type)
     appendLengthPrefixed(identity, type.result);
     identity.push_back(':');
     appendLengthPrefixed(identity, type.errorType);
-    if (functionHasPointeeVolatile(type)) appendPointeeVolatileSuffix(identity, type);
+    appendQualifierSuffix(identity, type, kPointeeReadonly);
+    appendQualifierSuffix(identity, type, kPointeeVolatile);
     return identity;
 }
 
@@ -255,7 +282,9 @@ std::optional<FunctionType> parseFunctionTypeIdentity(std::string_view identity)
     if (!consumeLengthPrefixed(identity, cursor, type.result) ||
         !consumeLiteral(identity, cursor, ":") ||
         !consumeLengthPrefixed(identity, cursor, type.errorType) ||
-        !consumePointeeVolatileSuffix(identity, cursor, type) || type.result.empty())
+        !consumeQualifierSuffix(identity, cursor, type, kPointeeReadonly) ||
+        !consumeQualifierSuffix(identity, cursor, type, kPointeeVolatile) || cursor != identity.size() ||
+        type.result.empty())
         return std::nullopt;
     return type;
 }
@@ -328,7 +357,7 @@ bool functionTypesAssignable(const FunctionType& source, const FunctionType& tar
         (!target.isNoHeap || source.isNoHeap) &&
         source.isAsync == target.isAsync &&
         (!source.nullable || target.nullable) &&
-        samePointeeVolatile(source, target);
+        sameQualifier(source, target, kPointeeReadonly) && sameQualifier(source, target, kPointeeVolatile);
 }
 
 bool computeClosureLayout(

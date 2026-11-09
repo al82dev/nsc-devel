@@ -29,5 +29,9 @@ struct FunctionType final
     //     parámetro la lleva; en otro caso tiene exactamente una entrada por parámetro.
     std::vector<bool> parameterPointeeVolatile;
     bool resultPointeeVolatile = false;
+    // EN: The same for a `const` (readonly) pointee, with the same layout rules (T08-002).
+    // ES: Lo mismo para un dato apuntado `const` (readonly), con las mismas reglas (T08-002).
+    std::vector<bool> parameterPointeeReadonly;
+    bool resultPointeeReadonly = false;
 };
 }

@@ -124,6 +124,11 @@ std::string ProjectGenericModel::functionTypeSpelling(const ast::TypeSyntax* syn
         function.parameterPointeeVolatile.push_back(parameter != nullptr && parameter->isPointeeVolatile());
     function.resultPointeeVolatile = syntax->functionReturnType() != nullptr &&
         syntax->functionReturnType()->isPointeeVolatile();
+    // EN: `const` pointees are kept the same way (T08-002). ES: Los datos apuntados `const` se conservan igual.
+    for (const ast::TypeSyntax* parameter : syntax->typeArguments())
+        function.parameterPointeeReadonly.push_back(parameter != nullptr && parameter->isPointeeConst());
+    function.resultPointeeReadonly = syntax->functionReturnType() != nullptr &&
+        syntax->functionReturnType()->isPointeeConst();
     function.result = typeSpelling(syntax->functionReturnType());
     function.errorType = syntax->functionErrorType() == nullptr
         ? std::string{} : typeSpelling(syntax->functionErrorType());

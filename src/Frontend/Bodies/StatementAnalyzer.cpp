@@ -3075,6 +3075,11 @@ void appendMethodPointeeVolatileFlags(language::FunctionType& signature, const C
     for (const MethodParameterSymbol& parameter : method.parameters)
         signature.parameterPointeeVolatile.push_back(parameter.pointerPointeeVolatile);
     signature.resultPointeeVolatile = method.declaredPointerPointeeVolatile;
+    // EN: `const` pointees are copied the same way (T08-002). ES: Los `const` se copian igual (T08-002).
+    if (method.hasImplicitThis) signature.parameterPointeeReadonly.push_back(false);
+    for (const MethodParameterSymbol& parameter : method.parameters)
+        signature.parameterPointeeReadonly.push_back(parameter.pointerPointeeReadonly);
+    signature.resultPointeeReadonly = method.declaredPointerPointeeReadonly;
 }
 }
 
