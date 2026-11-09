@@ -78,5 +78,8 @@ struct NamespaceStateSymbol final
     std::optional<std::string> cppReconciledStateKey;
     bool cppThreadLocal = false;
     bool cppAtomicStorage = false;
+    // Rebuilt from a precompiled library's C dependency catalogue instead of a header parsed here.
+    // Reconstruida desde el catálogo de dependencias C de una biblioteca precompilada, no de un encabezado.
+    bool cppFromPrecompiledCatalog = false;
 };
 }

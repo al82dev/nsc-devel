@@ -1898,8 +1898,10 @@ bool provideCppValuesWithPrecompiledCatalogs(const compilation::ProjectGraph& gr
             constants.push_back(std::move(state));
         }
     }
+    for (std::size_t index = liveCount; index < live.size(); ++index) live[index].cppFromPrecompiledCatalog = true;
     for (auto& constant : constants)
     {
+        constant.cppFromPrecompiledCatalog = true;
         const bool demanded = std::any_of(demands.begin(), demands.end(), [&](const auto& demand) {
             return demand.lookupName == constant.name &&
                 std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), constant.projectOrdinal) != demand.visibleProjects.end() &&

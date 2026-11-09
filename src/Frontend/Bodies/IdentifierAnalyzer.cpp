@@ -994,13 +994,20 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
             });
     }
     // Each transported template retains the C enum constants of its producer.
-    // A consumer without such an owner must still diagnose ambiguous constants.
+    // A consumer without such an owner must still diagnose ambiguous constants, and so must the consumer's
+    // own code even when its headers declare one of them: only a producer's catalogue identifies the owner.
+    // Cada plantilla transportada conserva las constantes enum C de su productor. El código propio del
+    // consumidor sigue diagnosticando la ambigüedad aunque sus encabezados declaren una de ellas.
+    const auto producerOwned = [&](std::size_t ordinal) {
+        return states[ordinal].projectOrdinal == reference.projectOrdinal;
+    };
     if (candidates.size() > 1 &&
         std::all_of(candidates.begin(), candidates.end(), [&](const auto ordinal) {
             return ordinal < states.size() && states[ordinal].isCppEnumConstant;
         }) &&
-        std::any_of(candidates.begin(), candidates.end(), [&](const auto ordinal) {
-            return states[ordinal].projectOrdinal == reference.projectOrdinal;
+        std::any_of(candidates.begin(), candidates.end(), producerOwned) &&
+        std::all_of(candidates.begin(), candidates.end(), [&](const auto ordinal) {
+            return !producerOwned(ordinal) || states[ordinal].cppFromPrecompiledCatalog;
         }))
         std::erase_if(candidates, [&](const auto ordinal) {
             return states[ordinal].projectOrdinal != reference.projectOrdinal;
