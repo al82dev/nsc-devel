@@ -190,6 +190,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
   - [ ] T08-004-04d1: Decisión pendiente (dos diseños): importar una global `_Atomic` de tipo record (hoy «C/C++ global type is not yet mapped»). Opciones: solo records sin bloqueo (1, 2, 4 u 8 bytes alineados, rechazando los demás) o también los demás mediante la biblioteca atómica (`__atomic_load`/`__atomic_store`), que el usuario debe enlazar. [Límite](registro-commits/t08-globales-atomicas.md#límite-registrado-t08-004-04d1).
 - [x] T08-004-04e: Verificar `_Thread_local` con y sin `_Atomic` en ejecutable y DLL (externas y `static` de encabezado, lectura C en el mismo hilo y aislamiento con un hilo creado por C), directo y precompilado, O0–O3, con control Clang. [Evidencia](registro-commits/t08-globales-tls.md).
 - [ ] T08-004-05: Volver a ejecutar los controles TLS y de DLL dentro del gate integral de la tanda. Se ejecuta en la validación integral de la tanda 8.
+  - Ejecutados en el gate integral del 2026-11-09: pasan salvo `directo\validar-relleno-cero.cmd` (carrera del control C, sin NSC) y `atomic\validar.cmd` (expectativa de caché retirada; pasa en ejecución derivada). [Evidencia](registro-commits/t08-validacion-integral-20261109.md).
 - **T08-004-06 — Consumo y resolución:**
 - [x] T08-004-06a: Verificar una global externa con encabezado en el consumidor: plantilla y código propio comparten el objeto, O0–O3. [Evidencia](registro-commits/t08-globales-consumo.md).
 - [x] T08-004-06b: Verificar una global requerida por plantilla con encabezado oculto y metadata, O0–O3. [Evidencia](registro-commits/t08-globales-consumo.md).
@@ -505,7 +506,10 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 ## Cierre de la tanda
 
 - [ ] T08-GATE-01: Completar la implementación y las comprobaciones pendientes de T08-002 a T08-020.
-- [ ] T08-GATE-02: Resolver o clasificar con evidencia el fallo de la prueba de topología de ondas paralelas.
+  - Todas las casillas de T08-002 a T08-020 están terminadas o bloqueadas con evidencia; las bloqueadas dependen de decisiones pendientes (sobre todo T08-010-05a) o son características nuevas registradas (T08-016-03d1, T08-017-03d1). [Evidencia](registro-commits/t08-validacion-integral-20261109.md).
+- [x] T08-GATE-02: Resolver o clasificar con evidencia el fallo de la prueba de topología de ondas paralelas. [Evidencia](registro-commits/t08-gate-ondas-paralelas.md).
 - [ ] T08-GATE-03: Ejecutar la validación integral agrupada de la tanda 8 y corregir sus fallos hasta que pase.
-- [ ] T08-GATE-04: Actualizar estados y evidencias contra la revisión validada, sin cerrar por muestras parciales.
+  - Ejecutada el 2026-11-09: el gate complementario pasa; el histórico falla en cuatro validadores ajenos al compilador (LF, restricción de caché retirada por `03bf12e42` en dos pruebas y carrera del control C de relleno TLS). Las tres primeras pasan en ejecución derivada. **Decisión pendiente T08-GATE-03a:** autorizar la actualización de esos validadores o aceptar las ejecuciones derivadas. [Evidencia](registro-commits/t08-validacion-integral-20261109.md).
+- [x] T08-GATE-04: Actualizar estados y evidencias contra la revisión validada, sin cerrar por muestras parciales. [Evidencia](registro-commits/t08-validacion-integral-20261109.md).
 - [ ] T08-GATE-05: Revisar la agrupación de commits relacionados y preservar un respaldo del historial, conforme a lo acordado.
+  - Respaldo creado sin reescribir el historial (bundle de la rama en `A:\nsc-interop-build\claude\respaldo\`). **Decisión pendiente T08-GATE-05a:** el criterio de reagrupación acordado no está en el repositorio; no se reescribió ningún commit. [Evidencia](registro-commits/t08-validacion-integral-20261109.md).

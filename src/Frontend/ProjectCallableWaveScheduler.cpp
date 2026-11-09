@@ -58,6 +58,17 @@ bool cancellationRequested(
     return check && check();
 }
 
+// EN: A wave is parallel only when the pool has more than one worker. The compilation always lends its shared
+//     pool, also with one job; dispatching a wave to that single worker and waiting for it is serial work that
+//     was reported as a parallel wave, so `-j1` must analyze on the calling thread, as without a pool.
+// ES: Una ola es paralela solo si el pool tiene mas de un trabajador. La compilacion siempre presta su pool
+//     compartido, tambien con un solo job; mandar la ola a ese unico trabajador y esperarlo es trabajo serial que
+//     se informaba como ola paralela, asi que `-j1` debe analizar en el hilo llamador, como sin pool.
+bool hasParallelWorkers(const driver::CompilationWorkerPool* pool) noexcept
+{
+    return pool != nullptr && pool->workerCount() > 1;
+}
+
 bool publishCompletedSlots(
     std::vector<ResultSlot>& slots,
     std::vector<ProjectCallableAnalysisResult>& results,
@@ -304,7 +315,7 @@ bool ProjectCallableWaveScheduler::runExclusive(
         error = "callable analysis cancelled before starting the wave";
         return false;
     }
-    if (pool_ == nullptr || callables.size() < 2 ||
+    if (!hasParallelWorkers(pool_) || callables.size() < 2 ||
         driver::currentCompilationWorkerIndex() != driver::kNoCompilationWorker)
         return runSynchronousWave(
             callables, waveOrdinal, analyze, cancellationCheck, results, error);
@@ -327,7 +338,7 @@ std::size_t ProjectCallableWaveScheduler::effectiveWorkerCount() const noexcept
 bool ProjectCallableWaveScheduler::usesParallelWave(
     std::size_t callableCount) const noexcept
 {
-    return pool_ != nullptr && callableCount >= 2 &&
+    return hasParallelWorkers(pool_) && callableCount >= 2 &&
         driver::currentCompilationWorkerIndex() == driver::kNoCompilationWorker;
 }
 }
