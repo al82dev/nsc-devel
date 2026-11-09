@@ -129,6 +129,8 @@ directo por el elemento, por el alias `var` y por el campo del struct empaquetad
 
 ### T08-015-05a: alias que llega por el retorno de una función C
 
+**Resuelto después por [T08-D13b](t08-d13b-retorno-funcion-c.md).** Lo que sigue es el diagnóstico original.
+
 **Síntoma.** `var r = vp_get(); *r = 2;` con `volatile int *vp_get(void);`, en modo Microsoft, emite `volatile`
 simple. Clang emite acquire/release.
 

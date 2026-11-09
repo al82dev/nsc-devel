@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 
 #include "MethodBodyInternals.h"
+#include "CppVolatileAliasContract.h"
 #include "Internal/NamedArgumentMap.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
@@ -966,6 +967,22 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
     result.pointerHasProvenance = callable.declaredPointerHasProvenance;
     result.pointerKnownAlignment = callable.declaredPointerKnownAlignment;
     result.pointerAddressSpace = callable.declaredPointerAddressSpace;
+    // EN: T08-D13b. A `volatile T*` (T a scalar) returned by a C function starts the C alias contract with the
+    //     volatile mode of the function's reference and C's natural alignment of the pointee.
+    // ES: T08-D13b. Un `volatile T*` (T escalar) devuelto por una funcion C inicia el contrato de alias C con el
+    //     modo volatile de la referencia de la funcion y la alineacion natural del apuntado que supone C.
+    if (namespaceFunctionModel_ != nullptr && functionOrdinal < namespaceFunctionModel_->functions().size() &&
+        callable.declaredPointerPointeeVolatile)
+    {
+        const NamespaceFunctionSymbol& function = namespaceFunctionModel_->functions()[functionOrdinal];
+        if (!function.cppCanonicalIdentity.empty() && function.definitionSyntax == nullptr)
+            if (const std::size_t width = method_body_detail::cVolatilePointeeScalarWidth(callable.declaredTypeKey))
+            {
+                result.cppVolatilePointeeContract = true;
+                result.cppVolatilePointeeMicrosoft = function.cppMicrosoftVolatileSemantics;
+                result.cppVolatilePointeeAlignment = width;
+            }
+    }
     result.valid = true;
     result.assignable = callable.isReferenceReturn;
     result.addressable = callable.isReferenceReturn;

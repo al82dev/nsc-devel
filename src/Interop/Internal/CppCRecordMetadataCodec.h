@@ -27,6 +27,11 @@ struct CDependencyFunctionSnapshot
     std::string referenceIdentity;
     std::string linkSymbol;
     CppFunctionDeclaration declaration;
+    // EN: T08-D13b. Volatile mode of the producer's reference; it orders accesses through a returned
+    //     `volatile T*` in the consumer.
+    // ES: T08-D13b. Modo volatile de la referencia del productor; ordena en el consumidor los accesos por un
+    //     `volatile T*` devuelto.
+    std::optional<bool> microsoftVolatileSemantics;
 };
 bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     std::vector<std::uint8_t>& output, std::string& error);

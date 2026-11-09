@@ -1647,12 +1647,17 @@ CppSemanticInventoryResult collectCppSemanticFunctions(
             if (!declarations)
                 return CppSemanticInventoryFailure{group.projectFile, index, "C/C++ session is not available"};
             const auto options = session->optionsSnapshot();
+            const auto microsoftVolatileSemantics = session->microsoftVolatileSemantics();
             for (auto& declaration : *declarations)
             {
                 if (declaration.isCStaticInlineDefinition && !declaration.externalLinkage)
                     declaration.externalSymbol = cppCInlineLinkSymbol(group.projectFile, index, declaration.name);
                 auto projection = projectCppSemanticFunction(
                     declaration, *owner, graph.projects()[*owner].moduleName());
+                // EN: T08-D13b. The function keeps its reference's volatile mode.
+                // ES: T08-D13b. La funcion conserva el modo volatile de su referencia.
+                if (auto* symbol = std::get_if<frontend::NamespaceFunctionSymbol>(&projection))
+                    symbol->cppMicrosoftVolatileSemantics = microsoftVolatileSemantics;
                 result.push_back({group.projectFile, index, *owner, options.targetTriple,
                                   std::move(declaration), std::move(projection)});
             }

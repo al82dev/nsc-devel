@@ -396,6 +396,8 @@ bool captureCDependencyFunction(std::span<const CppSemanticInventoryEntry> inven
     value.linkSymbol = selected.mangledName;
     value.declaration = match->declaration;
     value.declaration.location.reset();
+    if (const auto* projection = std::get_if<frontend::NamespaceFunctionSymbol>(&match->projection))
+        value.microsoftVolatileSemantics = projection->cppMicrosoftVolatileSemantics;
     output = std::move(value);
     error.clear();
     return true;
@@ -421,6 +423,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     { error = "invalid C dependency function text"; return false; }
     writer.u8(f.variadic); writer.u8(f.externalLinkage); writer.u8(f.isNonThrowing);
     writer.u8(f.dllImport); writer.u8(f.hasPrototype); writer.u8(f.isCStaticInlineDefinition);
+    // EN: T08-D13b. Volatile mode of the reference: 0 unknown, 1 ISO, 2 Microsoft.
+    // ES: T08-D13b. Modo volatile de la referencia: 0 desconocido, 1 ISO, 2 Microsoft.
+    writer.u8(!value.microsoftVolatileSemantics ? 0 : *value.microsoftVolatileSemantics ? 2 : 1);
     const auto putDependencyType = [&](const CppType& type) {
         std::vector<std::uint8_t> encoded;
         if (!encodeCDependencyType(type, encoded, error) ||
@@ -460,6 +465,10 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
         !getFlag(reader, f.dllImport) || !getFlag(reader, f.hasPrototype) ||
         !getFlag(reader, f.isCStaticInlineDefinition))
     { error = "invalid C dependency function"; return false; }
+    std::uint8_t volatileMode = 0;
+    if (!reader.u8(volatileMode) || volatileMode > 2)
+    { error = "invalid C dependency function volatile mode"; return false; }
+    if (volatileMode != 0) value.microsoftVolatileSemantics = volatileMode == 2;
     f.languageLinkage = f.isCStaticInlineDefinition ? CppLanguageLinkage::None : CppLanguageLinkage::C;
     const auto getDependencyType = [&](CppType& type) {
         std::uint32_t size = 0;

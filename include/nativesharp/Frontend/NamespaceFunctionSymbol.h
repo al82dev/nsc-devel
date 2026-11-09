@@ -78,5 +78,12 @@ struct NamespaceFunctionSymbol final
     lexer::TokenKind operatorToken = lexer::TokenKind::Invalid;
     // The DLL identity of a restored C declaration, when its producer recorded one.
     std::string cppDllRuntimeIdentity;
+    // EN: T08-D13b. Volatile mode (VolatileMode) of the C reference that declares the function; absent when its
+    //     references disagree or the session does not report one. A returned `volatile T*` starts the C alias
+    //     contract with this mode.
+    // ES: T08-D13b. Modo volatile (VolatileMode) de la referencia C que declara la funcion; ausente si sus
+    //     referencias discrepan o la sesion no lo informa. Un `volatile T*` devuelto inicia el contrato de alias
+    //     C con este modo.
+    std::optional<bool> cppMicrosoftVolatileSemantics;
 };
 }

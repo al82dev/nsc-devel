@@ -132,6 +132,10 @@ CppSemanticFunctionGroupsResult groupCppSemanticFunctions(
                 return CppSemanticFunctionGroupFailure{first, index, "conflicting Clang USRs for one function"};
             group.symbol.cppClangUsr = declaration.clangUsr;
         }
+        // EN: T08-D13b. References that declare the function with different volatile modes leave it unknown.
+        // ES: T08-D13b. Referencias que declaran la funcion con modos volatile distintos lo dejan desconocido.
+        if (group.symbol.cppMicrosoftVolatileSemantics != symbol->cppMicrosoftVolatileSemantics)
+            group.symbol.cppMicrosoftVolatileSemantics.reset();
         group.inventoryIndices.push_back(index);
     }
     return result;
@@ -556,6 +560,7 @@ bool provideCppFunctionsWithPrecompiledCatalogs(
             const auto* failure = std::get_if<CppSemanticFunctionFailure>(&restored);
             if (failure) { error = "precompiled C function cannot be projected: " + failure->message; return false; }
             auto value = std::move(std::get<frontend::NamespaceFunctionSymbol>(restored));
+            value.cppMicrosoftVolatileSemantics = function.microsoftVolatileSemantics;
             const auto dllMarker = function.referenceIdentity.rfind("#dll:");
             if (dllMarker != std::string::npos)
                 value.cppDllRuntimeIdentity = function.referenceIdentity.substr(dllMarker + 5);
@@ -577,6 +582,10 @@ bool provideCppFunctionsWithPrecompiledCatalogs(
                 if (existing->cppCanonicalIdentity != value.cppCanonicalIdentity ||
                     existing->cppClangUsr != value.cppClangUsr)
                 { error = "conflicting precompiled C function: " + value.name; return false; }
+                // EN: T08-D13b. Two producer references with different volatile modes leave the mode unknown.
+                // ES: T08-D13b. Dos referencias del productor con modos volatile distintos dejan el modo desconocido.
+                if (existing->cppMicrosoftVolatileSemantics != value.cppMicrosoftVolatileSemantics)
+                    existing->cppMicrosoftVolatileSemantics.reset();
                 continue;
             }
             result.push_back(std::move(value));

@@ -382,9 +382,8 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-015-04e: Verificar que un campo empaquetado o subalineado no reciba alineación atómica no demostrada. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
   - Un miembro flexible empaquetado no tiene alias (`var p = v->items` se rechaza); el alias de un miembro flexible alineado toma la alineación del campo, como C y el acceso directo.
 - **T08-015-05 — Transporte del contrato:**
-- [ ] T08-015-05a: Verificar alias `volatile` pasado como parámetro y retornado por función. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
-  - Verificado: el alias pasado a un parámetro C conserva el orden (lo aplica C); un parámetro NativeSharp `int*` no lo recibe («no viable overload»), porque NativeSharp no escribe `T volatile*` en firmas propias.
-  - **Pendiente funcional:** un puntero `volatile T*` devuelto por una función C no inicia el contrato. En modo Microsoft NSC emite `volatile` simple y Clang, acquire/release: los símbolos de función C no llevan el modo de su referencia. Alternativas en la evidencia.
+- [x] T08-015-05a: Verificar alias `volatile` pasado como parámetro y retornado por función. [Evidencia](registro-commits/t08-d13b-retorno-funcion-c.md).
+  - El alias pasado a un parámetro C conserva el orden (lo aplica C). Desde T08-D13b, un `volatile T*` devuelto por una función C inicia el contrato con el modo de su referencia, también desde una plantilla precompilada (NSMeta guarda el modo en la instantánea de la función). Un parámetro NativeSharp `int*` no recibe el alias («no viable overload»), porque NativeSharp no escribe `T volatile*` en firmas propias.
 - [x] T08-015-05b: Verificar alias reasignado en ramas de control con modos compatibles. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
   - Corregido: reasignar desde un miembro flexible (`p = b->items`) borraba el modo.
 - [x] T08-015-05c: Verificar propagación entre proyectos y biblioteca precompilada. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
@@ -519,9 +518,9 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
   - Sin cambio de reglas, por instrucción del usuario. La sonda `enteros-c/sonda-semantica-c.py` fija 38 casos C/NSC. La investigación muestra que el tipo no distingue un entero de C y compara cinco delimitaciones del «operando C» (origen directo con regla A o B, tipos C distintos, diagnóstico, contexto explícito) con sus efectos en expresiones mixtas. **Pendiente de la elección del usuario.**
 - [ ] T08-D12: `int` frente a `unsigned int` en operaciones C (T08-009-03c1). [Investigación](registro-commits/t08-d11-d12-semantica-c-investigacion.md).
   - Igual que T08-D11: el mismo análisis y la misma sonda. **Pendiente de la elección del usuario.**
-- [ ] T08-D13: modo `volatile` del alias NativeSharp a almacenamiento C (T08-010-05a). [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+- [x] T08-D13: modo `volatile` del alias NativeSharp a almacenamiento C (T08-010-05a). [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
   - [x] T08-D13a: el alias sigue el modo del record, la global o la referencia de origen, verificado frente al acceso directo y a Clang (directo O0–O3, precompilado, referencias mixtas, grafo, caché y ejecución). La propiedad `CppConsumerVolatileMode` se rechaza.
-  - [ ] T08-D13b: puntero `volatile T*` devuelto por una función C (T08-015-05a). Pendiente funcional, con diagnóstico y alternativas.
+  - [x] T08-D13b: el `volatile T*` devuelto por una función C usa el modo de su referencia, directo y precompilado; NSMeta guarda ese modo en la instantánea de la función, en el contrato vigente. [Evidencia](registro-commits/t08-d13b-retorno-funcion-c.md).
 - [x] T08-D14: miembro de tipo struct o union sin etiqueta (T08-011-02c1). [Evidencia](registro-commits/t08-d14-miembro-sin-etiqueta.md).
 - [x] T08-D15: alineación efectiva de Clang, usada solo cuando está garantizada (T08-012-02a). [Evidencia](registro-commits/t08-d15-alineacion-efectiva.md).
 - [x] T08-D16: declaración opaca propia del consumidor reconciliada con NSMeta (T08-013-02c1). [Evidencia](registro-commits/t08-d16-opaco-consumidor.md).

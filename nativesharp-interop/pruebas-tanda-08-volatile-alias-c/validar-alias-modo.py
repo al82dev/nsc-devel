@@ -11,7 +11,8 @@ Cases: alias of a volatile flexible member and an alias of that alias, indexing,
 in a branch, a conditional between two aliases, between two flexible members, a flexible member and an alias, and a
 flexible global and a flexible member (T08-015-11), compound assignment, alias of a C field `volatile int *` and of an
 element of a field array of such pointers (and the direct access to that element), C globals `volatile int *`, an
-array of them and `extern volatile int g_flex[]`, and the direct access to the flexible member as a baseline.
+array of them and `extern volatile int g_flex[]`, a `volatile int *` returned by a C function, through an alias and
+directly (T08-D13b), and the direct access to the flexible member as a baseline.
 Also checked:
 - two references to the same header with Microsoft and ISO in one project: the record and globals have no single
   mode, and the alias is plain volatile like the direct access (T08-010-07, T08-015-03d);
@@ -60,6 +61,7 @@ VFlex *flex_a(void);
 VFlex *flex_b(void);
 PFlex *flex_packed(void);
 Ptrs *ptrs(void);
+volatile int *vp_get(void);
 int sample(int which);
 """
 TAG_HEADER = (HEADER.replace("typedef struct VFlex {", "struct VFlex {").replace("} VFlex;", "};")
@@ -83,6 +85,7 @@ VFlex *flex_a(void) { return (VFlex *)&flex_storage_a; }
 VFlex *flex_b(void) { return (VFlex *)&flex_storage_b; }
 PFlex *flex_packed(void) { return (PFlex *)packed_storage; }
 Ptrs *ptrs(void) { return &pointers; }
+volatile int *vp_get(void) { return &pointees[2]; }
 int sample(int which) { return which < 4 ? pointees[which] : flex_storage_a.items[which - 4]; }
 """
 # Name, parameters and body; the same text is NativeSharp and C (`var` becomes `volatile int*` in C).
@@ -109,6 +112,8 @@ CASES = [
     ("Kgarray", "", "var g = g_pvs[0]; *g = 9; return *g_pvs[1];"),
     ("Kgflex", "", "var f = g_flex; f[0] = 1; return f[2];"),
     ("Kdirect", "VFlex* v", "v->items[0] = 1; return v->items[1];"),
+    ("Kreturn", "", "var r = vp_get(); *r = 2; r[0] += 1; return *r;"),
+    ("Kreturndirect", "", "*vp_get() = 4; return vp_get()[0];"),
 ]
 DRIVE = """    VFlex* a = flex_a();
     VFlex* b = flex_b();
@@ -135,6 +140,8 @@ DRIVE = """    VFlex* a = flex_a();
     total += Kgarray();
     total += Kgflex();
     total += Kdirect(b);
+    total += Kreturn();
+    total += Kreturndirect();
     total += sample(0) + sample(1) + sample(2) + sample(3) + sample(4) + sample(5);
     return total;
 """
