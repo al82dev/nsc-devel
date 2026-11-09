@@ -927,12 +927,19 @@ bool OopLlvmImplementation::invokePlacementConstructor(
             if ((sharedThrowingConstruction || sharedNonthrowingConstruction) &&
                 targetType.kind == frontend::NamedTypeDeclarationKind::Class)
             {
-                if (targetType.isPrecompiled)
+                if (targetType.isPrecompiled && (memberModel_ == nullptr ||
+                    !memberModel_->isNonEscapingLifecycleTypeKey("type:" + targetType.identity.key())))
                     return fail(error, "shared payload class has no verifiable precompiled lifecycle body");
                 std::unordered_set<std::size_t> lifecycleTypes;
                 std::optional<std::size_t> type = *node->targetTypeOrdinal;
                 while (type.has_value() && lifecycleTypes.insert(*type).second)
                 {
+                    if (*type >= nameLookup_.namedTypes().size())
+                        return fail(error, "shared payload lifecycle type is unavailable");
+                    const auto& currentType = nameLookup_.namedTypes()[*type];
+                    if (currentType.isPrecompiled && (memberModel_ == nullptr ||
+                        !memberModel_->isNonEscapingLifecycleTypeKey("type:" + currentType.identity.key())))
+                        return fail(error, "shared payload class has no verifiable precompiled lifecycle body");
                     const auto* layout = mirModel_.classLayoutForType(*type);
                     type = layout == nullptr ? std::nullopt : layout->baseTypeOrdinal;
                 }

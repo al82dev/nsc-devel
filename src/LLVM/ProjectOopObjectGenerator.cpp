@@ -929,6 +929,21 @@ void composeModuleCacheKeys(
         debugModelIdentity = fullDebugModelIdentity(nameLookup, memberModel);
     const std::vector<std::size_t> allFunctions =
         collectCacheFunctionOrdinals(mirModel, reachableDefinitions);
+    std::vector<std::string> lifecycleKeys;
+    for (const auto& type : nameLookup.namedTypes())
+        if (type.isPrecompiled)
+        {
+            std::string key = "type:" + type.identity.key();
+            if (memberModel.isNonEscapingLifecycleTypeKey(key)) lifecycleKeys.push_back(std::move(key));
+        }
+    std::ranges::sort(lifecycleKeys);
+    std::string lifecycleEvidence;
+    for (const auto& key : lifecycleKeys)
+        lifecycleEvidence += std::to_string(key.size()) + ":" + key;
+    const auto lifecycleBytes = std::span(
+        reinterpret_cast<const std::uint8_t*>(lifecycleEvidence.data()), lifecycleEvidence.size());
+    const std::string lifecycleDigest = basic::sha256Hex(basic::sha256(lifecycleBytes));
+    std::string sharedLifecycleMirDigest;
     const PhaseClock moduleKeyComposeClock;
     for (std::size_t ordinal = 0; ordinal < cacheKeys.size(); ++ordinal)
     {
@@ -951,6 +966,35 @@ void composeModuleCacheKeys(
         }
         const PhaseClock fingerprint;
         std::string identity = identityIndex.identity(definitions, declarations);
+        bool checksSharedLifecycle = false;
+        for (const auto functionOrdinal : definitions)
+        {
+            const auto& function = mirModel.functions()[functionOrdinal];
+            if (function.memberOrdinal >= memberModel.members().size() ||
+                function.declaringTypeOrdinal >= nameLookup.namedTypes().size()) continue;
+            const auto& member = memberModel.members()[function.memberOrdinal];
+            const auto& type = nameLookup.namedTypes()[function.declaringTypeOrdinal];
+            if (type.identity.fullyQualifiedName() == "NativeSharp.Core.Internal.SharedControlStorage" &&
+                (member.name.starts_with("Construct__g") || member.name.starts_with("ConstructValue__g") ||
+                 member.name.starts_with("ConstructThrowing__g") ||
+                 member.name.starts_with("ConstructValueThrowing__g")))
+            {
+                checksSharedLifecycle = true;
+                break;
+            }
+        }
+        if (checksSharedLifecycle)
+        {
+            if (sharedLifecycleMirDigest.empty())
+            {
+                std::vector<std::size_t> allMirFunctions;
+                allMirFunctions.reserve(mirModel.functions().size());
+                for (std::size_t index = 0; index < mirModel.functions().size(); ++index)
+                    allMirFunctions.push_back(index);
+                sharedLifecycleMirDigest = identityIndex.identity(allMirFunctions, allMirFunctions);
+            }
+            identity += lifecycleDigest + sharedLifecycleMirDigest;
+        }
         if (debugInformation == DebugInformationKind::LineTablesOnly)
             identity = combineLineTableCacheIdentity(
                 std::move(identity), lineTableSourceIdentity);

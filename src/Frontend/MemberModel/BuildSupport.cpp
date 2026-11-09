@@ -341,6 +341,16 @@ bool ProjectMemberModel::isTrivialCleanupRootTypeKey(const std::string& key) con
     return trivialCleanupRootTypeKeys_.contains(key);
 }
 
+void ProjectMemberModel::addNonEscapingLifecycleTypeKey(std::string key)
+{
+    nonEscapingLifecycleTypeKeys_.insert(std::move(key));
+}
+
+bool ProjectMemberModel::isNonEscapingLifecycleTypeKey(const std::string& key) const noexcept
+{
+    return nonEscapingLifecycleTypeKeys_.contains(key);
+}
+
 bool ProjectMemberModel::bindPrecompiledPhysicalNames(
     std::span<const PrecompiledMemberIdentity> identities,
     std::span<const std::pair<std::string, std::string>> typeKeyAliases,

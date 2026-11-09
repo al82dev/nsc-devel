@@ -81,6 +81,8 @@ public:
     bool hasMembersDeclaredByTypeIndex() const noexcept;
     void addTrivialCleanupRootTypeKey(std::string key);
     bool isTrivialCleanupRootTypeKey(const std::string& key) const noexcept;
+    void addNonEscapingLifecycleTypeKey(std::string key);
+    bool isNonEscapingLifecycleTypeKey(const std::string& key) const noexcept;
     // EN: Ordinals of membersOfType(typeOrdinal) whose symbol is a user conversion, in the same
     //     order. Only meaningful when hasUserConversionIndex() is true (after build()).
     // ES: Ordinales de membersOfType(typeOrdinal) cuyo símbolo es una conversión de usuario, en
@@ -177,6 +179,7 @@ public:
 
 private:
     std::unordered_set<std::string> trivialCleanupRootTypeKeys_;
+    std::unordered_set<std::string> nonEscapingLifecycleTypeKeys_;
     friend struct ProjectOopHirModelTestAccess;
 
     const std::string* resolvedGenericTypeIdentity(

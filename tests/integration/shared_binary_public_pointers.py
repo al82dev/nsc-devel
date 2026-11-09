@@ -278,6 +278,91 @@ BODY } }
                         assert result.returncode != 0 and 'shared payload class has no verifiable precompiled lifecycle body' in output, (
                             'binary class payload accepted or failed for another reason', family, payload, level, output)
                     print('binary precompiled payload', family, payload, level, 'verified', flush=True)
+            source.write_text(('''using NativeSharp.Core;
+class DerivedPayload : EscapingPayload { public DerivedPayload() { } }
+class Program { public static int Main() { FAMILY<DerivedPayload> owner = SharedPointers.MAKE<DerivedPayload>();
+ return 42; } }
+''').replace('FAMILY', family).replace('MAKE', make), encoding='utf-8')
+            for level in ('O0', 'O2'):
+                exe = root / ('binary-base-' + family + '-' + level + '.exe')
+                result = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', exe], root)
+                output = result.stdout + result.stderr
+                assert result.returncode != 0 and 'shared payload class has no verifiable precompiled lifecycle body' in output, (
+                    'binary base accepted or failed for another reason', family, level, output)
+                print('binary precompiled base rejected', family, level, flush=True)
+        root_project = root / 'RootProducer.nsproj'
+        root_project.write_text('<Project><PropertyGroup><Name>RootProducer</Name><Language>3</Language>'
+                                '<OutputType>StaticLibrary</OutputType></PropertyGroup><ItemGroup>'
+                                '<Compile Include="RootProducer.ns" /></ItemGroup></Project>', encoding='utf-8')
+        root_source = '''public class SafeRoot { public static SafeRoot Alias; public int Data;
+ public SafeRoot() { Data = 42; } }
+public class UnsafeRoot { public static UnsafeRoot Alias; public UnsafeRoot() { Alias = this; } }
+public class UnknownRoot { public UnknownRoot() { Touch(); } public void Touch() { } }
+'''
+        (root / 'RootProducer.ns').write_text(root_source, encoding='utf-8')
+        root_library = root / 'RootProducer.lib'
+        result = run([compiler, '--emit-project-oop-lib', root_project, '-O0', '-o', root_library], root)
+        assert result.returncode == 0, ('root producer', result.stdout + result.stderr)
+        project.write_text('<Project><PropertyGroup><Name>BinarySharedConsumer</Name><Language>3</Language>'
+                           '</PropertyGroup><ItemGroup><Compile Include="Program.ns" />'
+                           '<LibraryReference Include="' + library.as_posix() + '" Metadata="' +
+                           metadata.as_posix() + '" /><LibraryReference Include="' + root_library.as_posix() +
+                           '" Metadata="' + root_library.with_suffix('.nsmeta').as_posix() +
+                           '" /></ItemGroup></Project>', encoding='utf-8')
+        for family, make in (('Rc', 'MakeRc'), ('Arc', 'MakeArc')):
+            for payload in ('SafeRoot', 'UnsafeRoot', 'UnknownRoot'):
+                source.write_text(('''using NativeSharp.Core;
+class Program { public static int Main() { FAMILY<PAYLOAD> owner = SharedPointers.MAKE<PAYLOAD>(); BODY } }
+''').replace('FAMILY', family).replace('MAKE', make).replace('PAYLOAD', payload).replace('BODY',
+                    'return owner.Get().Data == 42 ? 42 : 1;' if payload == 'SafeRoot' else 'return 42;'),
+                    encoding='utf-8')
+                for level in ('O0', 'O2'):
+                    exe = root / ('certified-root-' + family + '-' + payload + '-' + level + '.exe')
+                    result = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', exe], root)
+                    output = result.stdout + result.stderr
+                    if payload == 'SafeRoot':
+                        assert result.returncode == 0, ('certified root compile', family, level, output)
+                        result = run([exe], root)
+                        assert result.returncode == 42, ('certified root run', family, level, result.returncode)
+                    else:
+                        assert result.returncode != 0 and 'shared payload class has no verifiable precompiled lifecycle body' in output, (
+                            'unproved root accepted or failed for another reason', family, payload, level, output)
+                    print('binary root lifecycle', family, payload, level, 'verified', flush=True)
+        source.write_text('''using NativeSharp.Core;
+class Program { public static int Main() { Arc<SafeRoot> owner = SharedPointers.MakeArc<SafeRoot>();
+ return owner.Get().Data == 42 ? 42 : 1; } }
+''', encoding='utf-8')
+        cache_option = '--artifact-cache=' + (root / 'lifecycle-cache').as_posix()
+        cached_exe = root / 'certified-root-cached.exe'
+        result = run([compiler, '--emit-project-oop-exe', project, '-O0', '-o', cached_exe, cache_option], root)
+        assert result.returncode == 0, ('certified root cached compile', result.stdout + result.stderr)
+        result = run([cached_exe], root)
+        assert result.returncode == 42, ('certified root cached run', result.returncode)
+        (root / 'RootProducer.ns').write_text(root_source.replace('Data = 42;', 'Data = 42; Alias = this;'),
+                                             encoding='utf-8')
+        result = run([compiler, '--emit-project-oop-lib', root_project, '-O0', '-o', root_library], root)
+        assert result.returncode == 0, ('changed root producer', result.stdout + result.stderr)
+        result = run([compiler, '--emit-project-oop-exe', project, '-O0', '-o', cached_exe, cache_option], root)
+        output = result.stdout + result.stderr
+        assert result.returncode != 0 and 'shared payload class has no verifiable precompiled lifecycle body' in output, (
+            'cached consumer failed to observe changed producer proof', output)
+        print('binary lifecycle cache invalidated by producer change', flush=True)
+        source_program = '''using NativeSharp.Core;
+class Payload { public static Payload Alias; public int Data; public Payload() { BODY } }
+class Program { public static int Main() { Arc<Payload> owner = SharedPointers.MakeArc<Payload>();
+ return owner.Get().Data == 42 ? 42 : 1; } }
+'''
+        source.write_text(source_program.replace('BODY', 'Data = 42;'), encoding='utf-8')
+        result = run([compiler, '--emit-project-oop-exe', project, '-O0', '-o', cached_exe, cache_option], root)
+        assert result.returncode == 0, ('source payload cached compile', result.stdout + result.stderr)
+        result = run([cached_exe], root)
+        assert result.returncode == 42, ('source payload cached run', result.returncode)
+        source.write_text(source_program.replace('BODY', 'Data = 42; Alias = this;'), encoding='utf-8')
+        result = run([compiler, '--emit-project-oop-exe', project, '-O0', '-o', cached_exe, cache_option], root)
+        output = result.stdout + result.stderr
+        assert result.returncode != 0 and 'shared payload publishes its receiver' in output, (
+            'cached consumer failed to observe changed source lifecycle', output)
+        print('source lifecycle cache invalidated by constructor change', flush=True)
     return 0
 
 

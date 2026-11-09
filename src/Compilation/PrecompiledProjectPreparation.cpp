@@ -463,7 +463,8 @@ bool materializeModules(
             moduleMetadataDigest(entry, repository),
             std::move(publicApiSnapshot),
             pruned,
-            entry.metadata->trivialCleanupRootTypeKeys});
+            entry.metadata->trivialCleanupRootTypeKeys,
+            entry.metadata->nonEscapingLifecycleTypeKeys});
     }
     return true;
 }

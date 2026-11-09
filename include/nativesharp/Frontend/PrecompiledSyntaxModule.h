@@ -42,5 +42,6 @@ struct PrecompiledSyntaxModule final
     //     aplica.
     bool surfacePruned = false;
     std::vector<std::string> trivialCleanupRootTypeKeys;
+    std::vector<std::string> nonEscapingLifecycleTypeKeys;
 };
 }
