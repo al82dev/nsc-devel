@@ -25,9 +25,26 @@ struct ReceiverPublicationScan
 
 ReceiverPublicationScan scanReceiverPublication(
     const frontend::ProjectOopMirNode* body, std::optional<std::size_t> sourceParameter,
-    const std::unordered_map<std::string, std::unordered_set<std::size_t>>& returnedSources)
+    const std::unordered_map<std::string, std::unordered_set<std::size_t>>& returnedSources,
+    const frontend::ProjectOopMirModel& mirModel)
 {
     using Kind = frontend::ProjectOopMirNodeKind;
+    std::unordered_map<const frontend::ProjectOopMirNode*, std::vector<std::string>> virtualCallees;
+    const auto virtualTargets = [&](const frontend::ProjectOopMirNode* call) -> const std::vector<std::string>& {
+        auto [entry, inserted] = virtualCallees.try_emplace(call);
+        if (!inserted || !call->virtualSlot.has_value() || call->children.empty()) return entry->second;
+        const auto& receiverType = call->children.front()->typeKey;
+        for (const auto& candidate : mirModel.dispatchTables())
+        {
+            const auto* ancestor = &candidate;
+            while (ancestor != nullptr && ancestor->typeKey != receiverType)
+                ancestor = ancestor->baseTypeOrdinal.has_value()
+                    ? mirModel.dispatchTableForType(*ancestor->baseTypeOrdinal) : nullptr;
+            if (ancestor != nullptr && *call->virtualSlot < candidate.slotCalleeNames.size())
+                entry->second.push_back(candidate.slotCalleeNames[*call->virtualSlot]);
+        }
+        return entry->second;
+    };
     const auto origins = [&](const frontend::ProjectOopMirNode* value) {
         std::vector<const frontend::ProjectOopMirNode*> leaves;
         std::vector<const frontend::ProjectOopMirNode*> work{value};
@@ -42,12 +59,20 @@ ReceiverPublicationScan scanReceiverPublication(
                 work.push_back(value->children.front().get());
                 continue;
             }
-            if (value->kind == Kind::DirectInstanceCall || value->kind == Kind::DirectStaticCall)
+            if (value->kind == Kind::DirectInstanceCall || value->kind == Kind::DirectStaticCall ||
+                value->kind == Kind::VirtualInstanceCall)
             {
-                const auto found = returnedSources.find(value->calleeName);
-                if (found != returnedSources.end())
+                std::vector<std::string> direct;
+                const std::vector<std::string>* targets = nullptr;
+                if (value->kind == Kind::VirtualInstanceCall) targets = &virtualTargets(value);
+                else { direct.push_back(value->calleeName); targets = &direct; }
+                bool hasSummary = false;
+                for (const auto& target : *targets)
                 {
-                    const std::size_t first = value->kind == Kind::DirectInstanceCall ? 1U : 0U;
+                    const auto found = returnedSources.find(target);
+                    if (found == returnedSources.end()) continue;
+                    hasSummary = true;
+                    const std::size_t first = value->kind == Kind::DirectStaticCall ? 0U : 1U;
                     if (first != 0U && !value->children.empty() &&
                         found->second.contains(static_cast<std::size_t>(-1)))
                         work.push_back(value->children.front().get());
@@ -58,8 +83,8 @@ ReceiverPublicationScan scanReceiverPublication(
                             ? source : value->argumentParameterOrdinals.at(source);
                         if (found->second.contains(parameter)) work.push_back(value->children[child].get());
                     }
-                    continue;
                 }
+                if (hasSummary) continue;
             }
             leaves.push_back(value);
         }
@@ -133,6 +158,9 @@ ReceiverPublicationScan scanReceiverPublication(
         if ((call->kind == Kind::DirectInstanceCall || call->kind == Kind::DirectStaticCall) &&
             !call->calleeName.empty())
             result.returnDependencies.push_back(call->calleeName);
+        if (call->kind == Kind::VirtualInstanceCall)
+            for (const auto& target : virtualTargets(call))
+                if (!target.empty()) result.returnDependencies.push_back(target);
         if (call->kind != Kind::DirectStaticCall && isReceiver(call->children.front().get()))
         {
             if (call->kind == Kind::VirtualInstanceCall && call->virtualSlot.has_value())
@@ -912,7 +940,7 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                     const std::size_t sourceKey = sourceParameter.value_or(static_cast<std::size_t>(-1));
                     if (!visited[function].insert(sourceKey).second) continue;
                     const ReceiverPublicationScan scan =
-                        scanReceiverPublication(function->body.get(), sourceParameter, returnedSources);
+                        scanReceiverPublication(function->body.get(), sourceParameter, returnedSources, mirModel_);
                     if (scan.publishes)
                         return fail(error, "shared payload publishes its receiver during construction or destruction");
                     for (const auto& callee : scan.returnDependencies)
