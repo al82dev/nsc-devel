@@ -218,16 +218,17 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-006-01: Probar la muestra mixta de campo, arreglo y llamada `_Bool` O0–O3.
 - [x] T08-006-02: Comparar campos C volátiles con Clang en los caminos directo y precompilado. [Resultado](registro-commits/t08-volatile-campos-revalidacion-alias-pendiente.md).
 - **T08-006-03 — Anchuras y signo:**
-- [ ] T08-006-03a: Verificar `char`, `signed char` y `unsigned char` contra Clang en el target fijado.
-- [ ] T08-006-03b: Verificar `short` y `unsigned short` en parámetros, retorno y campo.
-- [ ] T08-006-03c: Verificar `int` y `unsigned int` en parámetros, retorno y campo.
-- [ ] T08-006-03d: Verificar `long`, `unsigned long`, `long long` y `unsigned long long` con los anchos reales de Clang.
-- [ ] T08-006-03e: Verificar representación `_Bool` en memoria y en firmas C.
+- [x] T08-006-03a: Verificar `char`, `signed char` y `unsigned char` contra Clang en el target fijado. [Evidencia](registro-commits/t08-enteros-c.md).
+- [x] T08-006-03b: Verificar `short` y `unsigned short` en parámetros, retorno y campo. [Evidencia](registro-commits/t08-enteros-c.md).
+- [x] T08-006-03c: Verificar `int` y `unsigned int` en parámetros, retorno y campo. [Evidencia](registro-commits/t08-enteros-c.md).
+- [x] T08-006-03d: Verificar `long`, `unsigned long`, `long long` y `unsigned long long` con los anchos reales de Clang. [Evidencia](registro-commits/t08-enteros-c.md).
+- [x] T08-006-03e: Verificar representación `_Bool` en memoria y en firmas C. [Evidencia](registro-commits/t08-enteros-c.md).
 - **T08-006-04 — Conversiones y ABI:**
-- [ ] T08-006-04a: Verificar extensión de signo o cero de parámetros y retornos estrechos.
-- [ ] T08-006-04b: Verificar promociones de enteros estrechos y `_Bool` en operaciones aritméticas y bitwise.
-- [ ] T08-006-04c: Verificar almacenamiento y lectura cruzada de escalares en globales, campos y arreglos.
-- [ ] T08-006-04d: Verificar límites representables y conversiones entre firmado y sin signo.
+- [x] T08-006-04a: Verificar extensión de signo o cero de parámetros y retornos estrechos. [Evidencia](registro-commits/t08-enteros-c.md).
+- [x] T08-006-04b: Verificar promociones de enteros estrechos y `_Bool` en operaciones aritméticas y bitwise. [Evidencia](registro-commits/t08-enteros-c.md).
+  - **Decisión pendiente T08-006-04b1:** `-` y `~` unarios sobre enteros estrechos conservan el tipo del operando en NativeSharp (`~ub == 0`, `-sb == -128`); C y C# promueven a `int` (-256, 128). Las constantes enum C sí se promueven.
+- [x] T08-006-04c: Verificar almacenamiento y lectura cruzada de escalares en globales, campos y arreglos. [Evidencia](registro-commits/t08-enteros-c.md).
+- [x] T08-006-04d: Verificar límites representables y conversiones entre firmado y sin signo. [Evidencia](registro-commits/t08-enteros-c.md).
 
 ## T08-007 — Punto flotante
 
