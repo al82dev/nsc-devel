@@ -11,6 +11,7 @@ namespace NativeSharp.Core.Internal
             {
                 AtomicSharedCounts* counts = (AtomicSharedCounts*)&block[0];
                 *counts = new AtomicSharedCounts(1l, 1l);
+                block[2] = 1l;
             }
         }
 
@@ -41,14 +42,16 @@ namespace NativeSharp.Core.Internal
             }
         }
 
-        // Counts are individual atomic snapshots; concurrent destruction may change them.
+        // Counts and the implicit-weak flag are atomic snapshots; concurrent changes may
+        // affect their combined observation. Without concurrency the count is exact.
         public static long WeakCount(long[] block)
         {
             unsafe("shared atomic control header")
             {
                 AtomicSharedCounts* counts = (AtomicSharedCounts*)&block[0];
                 long weak = (*counts).WeakCountRaw();
-                return (*counts).StrongCount() > 0l ? weak - 1l : weak;
+                long implicitWeak = SharedAtomic.Load(ref block[2]);
+                return weak - implicitWeak;
             }
         }
 
@@ -61,7 +64,7 @@ namespace NativeSharp.Core.Internal
                 int result = (*counts).ReleaseStrong();
                 if (result != 1) return result;
                 try { Destroy<T>(payload); }
-                finally { DropWeak(block); }
+                finally { SharedAtomic.CompareExchange(ref block[2], 0l, 1l); DropWeak(block); }
                 return 1;
             }
         }
