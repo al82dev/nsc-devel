@@ -247,6 +247,32 @@ El resultado descarta resolver el problema con un único alias global para todo
 el módulo: cada declaración debe conservar su propio ámbito. La prueba queda
 pendiente de pasar como consumidor binario.
 
+Se repitió ese control desde fuentes con los dos alias dentro de dos bloques
+separados que reabren el mismo namespace en un solo archivo. También devolvió
+42 en O0/O2; el consumidor binario siguió fallando por pérdida de ambos alias
+(`A:/nsc-fixes-evidencia/generic-owner-alias-namespace-blocks.cmd` y su `.log`).
+Esto demuestra que bloques de namespace separados pueden conservar ambos
+ámbitos en esa forma concreta. No resuelve declaraciones en el namespace
+global: el parser exige un nombre después de `namespace`, y aún debe verificarse
+su reconstrucción sin mezclar los imports de plantillas diferentes.
+
+El recolector conserva ahora en memoria las directivas escritas exactamente
+por el usuario, con el namespace léxico de cada una, por separado de las
+variantes sintéticas que usa la búsqueda de nombres. La prueba dirigida
+`nsc.stage44.generics-monomorphization` pasó 92 comprobaciones, incluidas
+directivas de archivo, namespaces hermanos y anidados
+(`A:/nsc-fixes-evidencia/generic-original-directives-test.log`). Pasó además el
+control existente de caché de imports y las reproducciones dirigidas de
+puntero y campo privado. El control de caché verifica el comportamiento previo,
+no la serialización del nuevo campo; aún no se transporta por NSMETA ni se ha
+probado su persistencia en todos los productos de caché. En consecuencia, los
+consumidores binarios con alias siguen fallando.
+
+Por cambiar un encabezado compartido, la compilación incremental del compilador
+y la prueba seleccionada programó 159 acciones. Entre las dependencias se
+recompiló `CHeaderGenerator.cpp` en el build aislado de A; no se modificó esa
+fuente ni se ejecutaron pruebas de interoperabilidad C/C++.
+
 Con el compilador `ddfb806dd332926e` se volvió a analizar el consumidor de
 Core previamente emitido, sin reconstruir Core. Continúa el error de receptor
 `SharedAtomic` desconocido en la plantilla reconstruida

@@ -379,6 +379,8 @@ using Pick = Provider.Item;
 namespace Demo { public class Api { public static int F<T>() { return 42; } } }
 namespace ScopedA { using Local = Provider.Item; public class One { public static int G<T>() { return 1; } } }
 namespace ScopedB { using Local = Alternative.Item; public class Two { public static int H<T>() { return 2; } } }
+namespace Outer { using Provider; namespace Inner { using Local = Alternative.Item;
+ public class Three { public static int J<T>() { return 3; } } } }
 )NS");
         ProjectCompilation compilation;
         std::string error;
@@ -396,6 +398,12 @@ namespace ScopedB { using Local = Alternative.Item; public class Two { public st
                 tests.expect(std::ranges::find(found->declarationAliases,
                     std::pair<std::string, std::string>{"Pick", "Provider.Item"}) != found->declarationAliases.end(),
                     "generic record retains its declaration alias");
+                tests.expect(found->sourceImports.size() == 2 &&
+                    found->sourceImports[0].namespaceName.empty() &&
+                    found->sourceImports[0].alias.empty() && found->sourceImports[0].target == "Provider" &&
+                    found->sourceImports[1].namespaceName.empty() &&
+                    found->sourceImports[1].alias == "Pick" && found->sourceImports[1].target == "Provider.Item",
+                    "generic record retains exact file-level directives without synthetic imports");
             }
             const auto first = std::ranges::find_if(records, [](const auto& item) { return item.name == "G"; });
             const auto second = std::ranges::find_if(records, [](const auto& item) { return item.name == "H"; });
@@ -408,7 +416,25 @@ namespace ScopedB { using Local = Alternative.Item; public class Two { public st
                 tests.expect(std::ranges::find(second->declarationAliases,
                     std::pair<std::string, std::string>{"Local", "Alternative.Item"}) != second->declarationAliases.end(),
                     "second generic record retains its distinct scoped alias");
+                tests.expect(first->sourceImports.size() == 3 &&
+                    first->sourceImports.back().namespaceName == "ScopedA" &&
+                    first->sourceImports.back().alias == "Local" &&
+                    first->sourceImports.back().target == "Provider.Item",
+                    "first record retains its exact scoped alias");
+                tests.expect(second->sourceImports.size() == 3 &&
+                    second->sourceImports.back().namespaceName == "ScopedB" &&
+                    second->sourceImports.back().alias == "Local" &&
+                    second->sourceImports.back().target == "Alternative.Item",
+                    "second record retains its exact scoped alias without leaking the first");
             }
+            const auto nested = std::ranges::find_if(records, [](const auto& item) { return item.name == "J"; });
+            tests.expect(nested != records.end() && nested->sourceImports.size() == 4 &&
+                nested->sourceImports[2].namespaceName == "Outer" &&
+                nested->sourceImports[2].alias.empty() && nested->sourceImports[2].target == "Provider" &&
+                nested->sourceImports[3].namespaceName == "Outer.Inner" &&
+                nested->sourceImports[3].alias == "Local" &&
+                nested->sourceImports[3].target == "Alternative.Item",
+                "nested record retains both authored lexical scopes in order");
         }
     }
 

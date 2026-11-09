@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -13,18 +14,28 @@ def main():
     compiler = Path(sys.argv[1])
     with tempfile.TemporaryDirectory(prefix='nsc-generic-alias-isolation-') as temporary:
         root = Path(temporary)
-        (root / 'A.ns').write_text('''using Pick = Provider.One;
+        source_a = '''using Pick = Provider.One;
 namespace Provider {
  public static class ApiA { public static int Value<T>() where T : new() { return Pick.Helper.Read(); } }
 }
 namespace Provider.One { internal static class Helper { public static int Read() { return 21; } } }
-''', encoding='utf-8')
-        (root / 'B.ns').write_text('''using Pick = Provider.Two;
+'''
+        source_b = '''using Pick = Provider.Two;
 namespace Provider {
  public static class ApiB { public static int Value<T>() where T : new() { return Pick.Helper.Read(); } }
 }
 namespace Provider.Two { internal static class Helper { public static int Read() { return 33; } } }
-''', encoding='utf-8')
+'''
+        if os.environ.get('NSC_ALIAS_NAMESPACE_BLOCKS') == '1':
+            # Reopened namespace blocks in one unit are the shape the metadata emitter uses.
+            source_a = source_a.replace('using Pick = Provider.One;\nnamespace Provider {',
+                                        'namespace Provider {\n using Pick = Provider.One;')
+            source_b = source_b.replace('using Pick = Provider.Two;\nnamespace Provider {',
+                                        'namespace Provider {\n using Pick = Provider.Two;')
+            source_a += source_b
+            source_b = ''
+        (root / 'A.ns').write_text(source_a, encoding='utf-8')
+        (root / 'B.ns').write_text(source_b, encoding='utf-8')
         (root / 'Program.ns').write_text('''using Provider;
 class Payload { public Payload() { } }
 class Program { public static int Main() {

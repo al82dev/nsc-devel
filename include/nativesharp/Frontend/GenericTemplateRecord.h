@@ -13,6 +13,15 @@
 
 namespace nativesharp::frontend
 {
+struct GenericTemplateSourceImport final
+{
+    // Empty namespace means the compilation unit's outermost scope.
+    std::string namespaceName;
+    // Empty alias denotes a namespace import; otherwise this is a using alias.
+    std::string alias;
+    std::string target;
+};
+
 struct GenericTemplateRecord final
 {
     GenericTemplateKind kind = GenericTemplateKind::Class;
@@ -56,6 +65,9 @@ struct GenericTemplateRecord final
     // Aliases are stored as ordered pairs to keep publication deterministic.
     std::vector<std::string> declarationImports;
     std::vector<std::pair<std::string, std::string>> declarationAliases;
+    // Exact authored directives, grouped by lexical namespace in traversal order.
+    // Unlike declarationImports, this does not contain synthesized lookup candidates.
+    std::vector<GenericTemplateSourceImport> sourceImports;
 
     // T05-F02. Source-level impl blocks merged into this template. They are retained separately
     // so NSMETA can publish the original class declaration followed by its coherence extensions;

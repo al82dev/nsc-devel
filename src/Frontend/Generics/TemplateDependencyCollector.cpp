@@ -145,7 +145,7 @@ void ProjectGenericModel::discoverTemplateDependencies(
     // unchanged, only the recursion is removed.
     std::vector<DependencyFrame> stack;
     stack.push_back(DependencyFrame{node, std::move(namespaceName), std::move(ownerName),
-        std::move(scope)});
+        std::move(scope), {}});
     while (!stack.empty())
     {
         DependencyFrame frame = std::move(stack.back());
@@ -162,6 +162,19 @@ void ProjectGenericModel::discoverTemplateDependencies(
 
     GenericLookupScope currentScope = scope;
     collectDependencyImports(node, currentNamespace, currentScope);
+    if (node->kind() == ast::AstNodeKind::CompilationUnit ||
+        node->kind() == ast::AstNodeKind::NamespaceDeclaration)
+    {
+        for (const ast::AstNode* child : node->children())
+        {
+            if (child == nullptr) continue;
+            if (child->kind() == ast::AstNodeKind::UsingNamespaceDirective && !child->text().empty())
+                frame.sourceImports.push_back({currentNamespace, {}, child->text()});
+            else if (child->kind() == ast::AstNodeKind::UsingAliasDirective &&
+                     !child->text().empty() && !child->auxiliaryText().empty())
+                frame.sourceImports.push_back({currentNamespace, child->text(), child->auxiliaryText()});
+        }
+    }
 
     if (TemplateState* root = stateForSyntax(node); root != nullptr)
     {
@@ -169,6 +182,7 @@ void ProjectGenericModel::discoverTemplateDependencies(
         root->record.declarationAliases.assign(
             currentScope.aliases.read().begin(), currentScope.aliases.read().end());
         std::ranges::sort(root->record.declarationAliases);
+        root->record.sourceImports = frame.sourceImports;
         if (root->record.kind == GenericTemplateKind::Method)
         {
             root->declarationImports = currentScope.importedNamespaces.read();
@@ -193,7 +207,8 @@ void ProjectGenericModel::discoverTemplateDependencies(
     //     nada modifica la lista de hijos de `node`.
     const std::vector<ast::AstNode*>& children = node->children();
     for (auto iterator = children.rbegin(); iterator != children.rend(); ++iterator)
-        stack.push_back(DependencyFrame{*iterator, currentNamespace, childOwner, currentScope});
+        stack.push_back(DependencyFrame{*iterator, currentNamespace, childOwner, currentScope,
+            frame.sourceImports});
     }
 }
 
