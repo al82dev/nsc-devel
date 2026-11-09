@@ -108,7 +108,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
                 - [x] Conservar el calificador al invocar indirectamente callbacks C que reciben punteros volátiles: identidad `fn:` con calificación por parámetro y retorno, conversión de métodos, invocación, retorno y `var`; directo y precompilado sin encabezado, O0–O3, con rechazos de pérdida. [Reproducción](registro-commits/t08-callback-volatile-invocacion.md), [corrección](registro-commits/t08-callback-volatile-identidad.md).
                 - [ ] Comprobar otras variantes de enums, calificadores y tipos de retorno.
                   - [x] Conservar `const` del dato apuntado en la identidad de callbacks C: conversión, invocación, resultado, `var` y superficie pública materializada desde metadata; directo y precompilado sin encabezado, O0–O3, con seis rechazos y control Clang. [Evidencia](registro-commits/t08-callback-const-identidad.md).
-                  - [ ] Importar funciones, campos y globales C cuyo tipo es un puntero a función con parámetros `volatile T*` o `const T*` (`CppSemanticFunction` rechaza el mapeo; solo el typedef conserva la calificación).
+                  - [x] Importar funciones, campos y globales C cuyo tipo es un puntero a función con parámetros o resultado `volatile T*` o `const T*`, sin typedef; directo y precompilado sin encabezado, O0–O3, con cinco rechazos y control Clang. [Evidencia](registro-commits/t08-puntero-funcion-calificado.md).
                   - [ ] Verificar el parámetro `volatile T*` o `const T*` de una lambda o método NativeSharp convertido a callback C (la lambda compila; no se verificó si el cuerpo recibe la calificación).
                   - [ ] Llevar la calificación `volatile` a la firma de un `delegate` con nombre declarado con alias C.
                   - [ ] Representar en la superficie pública materializada desde metadata una firma de callback con `volatile` (hoy se rechaza explícitamente).
@@ -273,6 +273,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [ ] T08-010-07: Validar los modos Microsoft e ISO con dos referencias al mismo encabezado en la misma compilación.
 - [ ] T08-010-08: Verificar el alias volátil reasignado en los cuatro niveles de optimización después de la corrección.
 - [ ] T08-010-09: Verificar lectura y escritura `*(data + index)` frente a Clang después de la corrección.
+- [ ] T08-010-10: Publicar en metadata un struct C declarado solo con etiqueta (`struct Holder { … };`, sin typedef): el consumidor precompilado sin encabezado informa `unknown type name 'Holder'`, mientras el camino directo funciona. [Origen](registro-commits/t08-puntero-funcion-calificado.md).
 
 ## T08-011 — Union C
 

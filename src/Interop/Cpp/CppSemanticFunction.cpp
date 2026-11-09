@@ -169,19 +169,52 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         else if (signature.callingConvention == "ms_abi") function.callingConvention = language::CallingConvention::Win64;
         else return std::nullopt;
         if (signature.returnType.kind == CppTypeKind::Record) return std::nullopt;
-        const auto result = mapFunctionType(signature.returnType, false, records, moduleName, depth + 1, lookup, owner,
-                                            false, allowCStoredRecordPointer);
+        // EN: T08-002: the structural identity records `const` and `volatile` pointees per parameter and for
+        //     the result, so a pointer to such data is mapped like a direct C call maps it (the carrier
+        //     without the qualifier) and the qualifier becomes an identity flag instead of a rejection.
+        // ES: T08-002: la identidad estructural registra datos apuntados `const` y `volatile` por parámetro y
+        //     para el resultado, así que un puntero a esos datos se mapea como lo hace una llamada C directa
+        //     (el portador sin calificador) y el calificador pasa a ser una marca de la identidad en lugar
+        //     de un rechazo.
+        const auto qualifiable = [](const CppType& slot)
+        {
+            return slot.kind == CppTypeKind::Pointer && slot.element &&
+                slot.element->kind != CppTypeKind::Pointer && slot.element->kind != CppTypeKind::Function &&
+                slot.element->kind != CppTypeKind::Array;
+        };
+        const auto pointeeConst = [&](const CppType& slot) { return qualifiable(slot) && slot.element->isConst; };
+        const auto pointeeVolatile = [&](const CppType& slot)
+        {
+            return qualifiable(slot) && slot.element->isVolatile;
+        };
+        // EN: The carrier is mapped without the pointee qualifiers, which become identity flags below.
+        // ES: El portador se mapea sin los calificadores del dato apuntado, que abajo pasan a ser marcas.
+        const auto carrier = [&](const CppType& slot)
+        {
+            if (!pointeeConst(slot) && !pointeeVolatile(slot)) return slot;
+            CppType unqualified = slot;
+            auto element = std::make_shared<CppType>(*slot.element);
+            element->isConst = false;
+            element->isVolatile = false;
+            unqualified.element = std::move(element);
+            return unqualified;
+        };
+        const auto result = mapFunctionType(carrier(signature.returnType), false, records, moduleName, depth + 1,
+                                            lookup, owner, false, allowCStoredRecordPointer);
         if (!result || result->isConst || result->isVolatile) return std::nullopt;
         function.result = result->nativeSharpTypeKey;
+        function.resultPointeeReadonly = pointeeConst(signature.returnType);
+        function.resultPointeeVolatile = pointeeVolatile(signature.returnType);
         for (const auto& parameter : signature.parameterTypes)
         {
-            // The structural function key does not encode pointee const.
             if (parameter.kind == CppTypeKind::Record) return std::nullopt;
-            const auto mapped = mapFunctionType(parameter, true, records, moduleName, depth + 1, lookup, owner,
-                                                false, allowCStoredRecordPointer);
+            const auto mapped = mapFunctionType(carrier(parameter), true, records, moduleName, depth + 1, lookup,
+                                                owner, false, allowCStoredRecordPointer);
             if (!mapped || mapped->isConst || mapped->isVolatile || parameter.kind == CppTypeKind::Void)
                 return std::nullopt;
             function.parameters.push_back(mapped->nativeSharpTypeKey);
+            function.parameterPointeeReadonly.push_back(pointeeConst(parameter));
+            function.parameterPointeeVolatile.push_back(pointeeVolatile(parameter));
         }
         function.variadic = signature.variadic;
         return CppScalarTypeMapping{language::functionTypeIdentity(function), type.canonicalSpelling, false, false};
