@@ -735,6 +735,19 @@ bool ProjectMethodBodyModel::bindAggregateValueEntry(
         valid = false;
         return false;
     }
+    if (value.addressable && memberModel_ != nullptr &&
+        ProjectTypeConversion::tupleElementTypeKeys(targetTypeKey).has_value() &&
+        memberModel_->typeIsMoveOnly(value.typeKey) &&
+        element->kind() != ast::AstNodeKind::MoveExpression)
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+            diagnostics::DiagnosticSeverity::Error,
+            element->range(),
+            "move-only value cannot be copied into a tuple element");
+        valid = false;
+        return true;
+    }
     if (value.readonlyBorrowedObject)
     {
         const NamedTypeDeclaration* aggregate = namedTypeForTypeKey(targetTypeKey);

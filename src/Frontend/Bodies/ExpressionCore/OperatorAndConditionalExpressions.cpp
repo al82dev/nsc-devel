@@ -228,6 +228,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 const ExpressionResult value = analyzeExpression(
                     element, methodMemberOrdinal, scopeOrdinal, diagnostics);
                 valid = valid && value.valid;
+                if (value.valid && value.addressable && memberModel_ != nullptr &&
+                    memberModel_->typeIsMoveOnly(value.typeKey) &&
+                    element->kind() != ast::AstNodeKind::MoveExpression)
+                {
+                    diagnostics.report(
+                        diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error,
+                        element->range(),
+                        "move-only value cannot be copied into a tuple element");
+                    valid = false;
+                }
                 if (value.valid && value.readonlyBorrowedObject)
                 {
                     diagnostics.report(

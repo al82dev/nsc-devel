@@ -221,7 +221,9 @@ class Program
     const ExitCode moveOnly = runDriver(checkArguments, output, error);
     tests.expect(
         moveOnly != ExitCode::Success &&
-            (error + output).find("drop flags") != std::string::npos,
+            ((error + output).find("drop flags") != std::string::npos ||
+             (error + output).find("move-only value cannot be copied into a tuple element") !=
+                 std::string::npos),
         "move-only tuple deconstruction fails before partial-drop lowering is required (" +
             error + output + ")");
 

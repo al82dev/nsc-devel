@@ -67,6 +67,13 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
         'tuple_scalar': ('''var (item, number) = (alias.Data[0], 42); return item + number;''', None),
         'tuple_ordinary': ('''Payload ordinary = new Payload();
  (Payload, int) saved = (ordinary, 42); return 42;''', None),
+        'tuple_owner_copy': ('''(HANDLE<Payload>, int) pair = (owner, 42); return 0;''', 'move-only'),
+        'tuple_owner_aggregate_copy': ('''(HANDLE<Payload>, int) pair = { owner, 42 }; return 0;''',
+                                       'move-only'),
+        'tuple_owner_clone': ('''{ (HANDLE<Payload>, int) pair = (owner.Clone(), 42);
+ if (owner.StrongCount() != 2l) return 1; } return owner.StrongCount() == 1l ? 42 : 2;''', None),
+        'tuple_owner_aggregate_clone': ('''{ (HANDLE<Payload>, int) pair = { owner.Clone(), 42 };
+ if (owner.StrongCount() != 2l) return 1; } return owner.StrongCount() == 1l ? 42 : 2;''', None),
         'conditional_write': ('''(true ? alias.Data : alias.Data)[0] = 10; return 0;''', 'not assignable'),
         'mixed_conditional_write': ('''(true ? new int[1] : alias.Data)[0] = 10; return 0;''', 'not assignable'),
         'mixed_conditional_reverse': ('''(true ? alias.Data : new int[1])[0] = 10; return 0;''', 'not assignable'),
