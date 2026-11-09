@@ -21,5 +21,10 @@ struct CppImportedTypeAlias
     interop::CppTypeAliasDeclaration declaration;
     // Pairs established from complete precompiled C record closures in this compilation.
     std::vector<std::pair<std::size_t, std::size_t>> equivalentRecordFunctionAliases;
+    // EN: T08-D10: restored from a precompiled library's C dependency catalogue (internal, not NSMETA). A template
+    //     transported from that producer resolves its C typedefs in this catalogue.
+    // ES: T08-D10: restaurado del catalogo de dependencias C de una biblioteca precompilada (interno, no NSMETA).
+    //     Una plantilla transportada de ese productor resuelve sus typedef C en este catalogo.
+    bool fromPrecompiledCatalog = false;
 };
 }

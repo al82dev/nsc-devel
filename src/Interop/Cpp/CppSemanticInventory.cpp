@@ -1411,6 +1411,7 @@ bool provideCppTypeAliasesWithPrecompiledCatalogs(const compilation::ProjectGrap
             frontend::CppImportedTypeAlias restored;
             if (!reconstructCppPrecompiledCAlias(alias, graph, owner->second, reference->second,
                     "x86_64-pc-windows-msvc", restored, error)) return false;
+            restored.fromPrecompiledCatalog = true;
             result.push_back(std::move(restored));
         }
     }

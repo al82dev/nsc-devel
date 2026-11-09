@@ -203,8 +203,35 @@ bool ProjectNameLookup::expandCppTypeAlias(
         diagnostics.report(id, diagnostics::DiagnosticSeverity::Error, syntax->range(), message);
         return false;
     };
+    const auto aliasMatches = [&](const CppImportedTypeAlias& alias, const std::string& spelling) {
+        if (alias.declaration.insideAnonymousNamespace ||
+            (alias.projectOrdinal != owner &&
+             std::find(visible.begin(), visible.end(), alias.projectOrdinal) == visible.end())) return false;
+        auto qualified = alias.declaration.qualifiedName;
+        std::size_t pos = 0;
+        while ((pos = qualified.find("::", pos)) != std::string::npos) qualified.replace(pos, 2, ".");
+        return qualified == spelling;
+    };
     for (const auto& rung : qualifiedNameLadder(site, syntax->baseName()))
     {
+        // EN: T08-D10. A template transported from a precompiled producer resolves C typedefs in that producer's
+        //     catalogue: when every candidate of the owning project comes from its precompiled C catalogue, the
+        //     homonymous typedefs of other libraries are not candidates. Code of a live project (with or without
+        //     its own headers) keeps the ambiguity, as with C enum constants and `static` globals.
+        // ES: T08-D10. Una plantilla transportada de un productor precompilado resuelve los typedef C en el catalogo
+        //     de ese productor: si todas las candidatas del proyecto duenio vienen de su catalogo C precompilado,
+        //     los typedef homonimos de otras bibliotecas no son candidatos. El codigo de un proyecto vivo (con o
+        //     sin encabezados propios) conserva la ambiguedad, como las constantes enum C y las globales `static`.
+        bool ownerCatalogOnly = false;
+        bool ownerLive = false;
+        for (const auto& spelling : rung.spellings)
+            for (const auto& alias : cppImportedTypeAliases_)
+                if (alias.projectOrdinal == owner && aliasMatches(alias, spelling))
+                {
+                    if (alias.fromPrecompiledCatalog) ownerCatalogOnly = true;
+                    else ownerLive = true;
+                }
+        if (ownerLive) ownerCatalogOnly = false;
         const CppImportedTypeAlias* selected = nullptr;
         std::string selectedName;
         std::optional<std::string> knownAliasUsr;
@@ -224,6 +251,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
                 if (alias.declaration.insideAnonymousNamespace ||
                     (alias.projectOrdinal != owner &&
                      std::find(visible.begin(), visible.end(), alias.projectOrdinal) == visible.end())) continue;
+                if (ownerCatalogOnly && alias.projectOrdinal != owner) continue;
                 auto qualified = alias.declaration.qualifiedName;
                 std::size_t pos = 0;
                 while ((pos = qualified.find("::", pos)) != std::string::npos) qualified.replace(pos, 2, ".");
@@ -428,6 +456,19 @@ bool ProjectNameLookup::expandCppTypeAlias(
                 }
             }
         }
+        // EN: T08-D10: in the producer's catalogue, the C records imported by other libraries (for example the
+        //     homonymous anonymous struct named by the other producer's typedef) are not candidates either.
+        // ES: T08-D10: en el catalogo del productor, los records C importados por otras bibliotecas (por ejemplo el
+        //     struct anonimo homonimo que nombra el typedef del otro productor) tampoco son candidatos.
+        if (ownerCatalogOnly)
+            std::erase_if(nativeCandidates, [&](const auto ordinal) {
+                const auto* declaration = typeForOrdinal(ordinal);
+                return declaration && declaration->projectOrdinal != owner &&
+                    std::any_of(cppImportedTypes_.begin(), cppImportedTypes_.end(), [&](const auto& imported) {
+                        return imported.projectOrdinal == declaration->projectOrdinal &&
+                            imported.identity.key() == declaration->identity.key();
+                    });
+            });
         if (!selected)
         {
             if (!nativeCandidates.empty()) return true;

@@ -1,14 +1,15 @@
 """T08-005-03: reconciliation of C typedefs.
 
-a) Two headers of one project declare the same typedefs with equivalent spellings (`int` and a chain that ends in
-   `int`; the same anonymous-free struct typedef). The names resolve to one type, directly and through a template of
-   a precompiled producer consumed without the headers.
+a) Two headers of one project declare `score_t` with equivalent spellings (`int` and a chain that ends in `int`);
+   the name resolves to one type, directly and through a template of a precompiled producer consumed without the
+   headers. `Pair` comes from one header (by-value use of a struct defined in two headers: decision T08-005-03a1).
 b) Two headers declare `score_t` and `Box` with incompatible underlying types: the project still compiles while the
    names are unused, and every use is rejected. Two producers that each see one of the headers publish
-   templates with them; one consumer that uses both is ambiguous (current contract, decision T08-005-03b1).
+   templates with them; one consumer that uses both runs, because each template resolves the typedefs in its
+   producer's catalogue (T08-D10; it was ambiguous before, decision T08-005-03b1).
 c) Consumption through metadata: a consumer without the header calls templates and non-generic public methods
-   whose signatures use the typedefs; a consumer with the header mixes its own values of the typedef types with
-   those of the producer.
+   whose signatures use the typedefs; a consumer with the headers mixes its own values of the typedef types with
+   those of the producer; a consumer whose own header gives `score_t` another type is ambiguous.
 Clang controls: the equivalent pair compiles in one translation unit and the incompatible pair is rejected.
 Positive cases run in O0-O3; rejections in O0.
 """
@@ -218,14 +219,13 @@ def conflict(opt):
     project(unused, "Unused", ["Main.ns"], refs((("x.h", "cx"), ("y.h", "cy"))))
     expect_run(f"b sin-uso O{opt}", unused, "Unused", opt)
 
-    # One producer per header; one consumer uses both templates without headers. Current contract (decision
-    # T08-005-03b1): the homonymous typedefs of the two catalogues are ambiguous, as in
-    # typedef-funcion-record/validar.py --incompatible.
-    if opt != "0":
-        return
+    # One producer per header; one consumer uses both templates without headers. T08-D10: each template resolves
+    # `score_t` and `Box` in its producer's catalogue (before, decision T08-005-03b1, they were ambiguous, as in
+    # typedef-funcion-record/validar.py --incompatible).
     for side, header, source, body in (
             ("X", "x.h", "cx", "score_t s = (score_t)2147483647; Box b; b.a = 5; return x_box(b) == 7 ? 0 : 1;"),
-            ("Y", "y.h", "cy", "score_t s = (score_t)4294967296; Box b; b.a = s; return y_box(b) == 4294967300 ? 0 : 1;")):
+            ("Y", "y.h", "cy", "score_t s = (score_t)4294967296; Box b; b.a = s; "
+                               "return y_box(b) == 4294967300 ? 0 : 1;")):
         folder = base / side
         folder.mkdir()
         c_sources(folder, {header: CONFLICT[header]}, {source: CONFLICT_SOURCES[source]})
@@ -239,8 +239,7 @@ def conflict(opt):
         "int Main() { return SideX.Bridge.Run<int>(0) + SideY.Bridge.Run<int>(0); }\n", encoding="utf-8")
     project(base, "Consumer", ["Consumer.ns"], '<LibraryReference Include="X/SideX.lib" />'
             '<LibraryReference Include="Y/SideY.lib" />')
-    expect_reject("rechazo b productores separados", nsc_build(base, "Consumer", opt, "exe", "out/Consumer.exe"),
-                  "conflicting C/C++ type alias 'score_t'")
+    expect_run(f"b productores separados O{opt}", base, "Consumer", opt)
 
 
 def conflict_rejections():

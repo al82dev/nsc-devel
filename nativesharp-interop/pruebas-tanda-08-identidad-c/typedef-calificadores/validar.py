@@ -63,10 +63,11 @@ for name, first, second, compatible in cases:
     exe = folder / "Consumer.exe"
     result = execute([nsc, r"--cpp-clang-root=A:\al82dev-clang", "--emit-project-oop-exe", "Consumer.nsproj",
                       "-O" + opt, "--no-artifact-cache", "-o", exe], folder)
-    if compatible:
-        if result.returncode: raise AssertionError("NSC rechazó " + name + ":\n" + result.stdout)
-        if subprocess.run([exe], cwd=folder, env=env).returncode: raise AssertionError("ejecución falló: " + name)
-    elif result.returncode == 0 or exe.exists() or "conflicting C/C++ type alias 'Callback'" not in result.stdout:
-        raise AssertionError("NSC aceptó una firma incompatible " + name + ":\n" + result.stdout)
-    print(name, "compatible" if compatible else "rechazado", flush=True)
+    # T08-D10: each producer's template resolves `Callback` in its own catalogue, so the consumer composes both
+    # producers whether or not Clang would accept the two typedefs in one translation unit (control above).
+    # T08-D10: cada plantilla resuelve `Callback` en el catalogo de su productor; el consumidor compone los dos
+    # productores tanto si Clang acepta los dos typedef en una unidad (control de arriba) como si no.
+    if result.returncode: raise AssertionError("NSC rechazó " + name + ":\n" + result.stdout)
+    if subprocess.run([exe], cwd=folder, env=env).returncode: raise AssertionError("ejecución falló: " + name)
+    print(name, "compatible" if compatible else "incompatible en C, compuesto por productor", flush=True)
 print("Calificadores de firmas C verificados contra Clang en O" + opt + ";", root)

@@ -29,7 +29,12 @@ script.write_text(source, encoding="utf-8")
 args = [arg for arg in sys.argv[1:] if arg not in ("--same-alias", "--mismatch")]
 result = subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True, errors="replace")
 if mismatch:
-    if result.returncode == 0 or "conflicting C/C++ type alias 'VarFn'" not in result.stdout + result.stderr:
+    # T08-D10: each producer's template resolves VarFn in its own catalogue, so the homonymous typedefs no longer
+    # conflict; producer 2's own `VarFn fn = var_read;` (long long vs int) is the type error that remains.
+    # T08-D10: cada plantilla resuelve VarFn en el catalogo de su productor; los typedef homonimos ya no chocan y
+    # queda el error de tipos propio del productor 2 (`VarFn fn = var_read;`, long long frente a int).
+    expected = "no method in the method group exactly matches delegate signature"
+    if result.returncode == 0 or expected not in result.stdout + result.stderr:
         print(result.stdout + result.stderr)
         sys.exit("ERROR: se esperaba rechazar el typedef de firma incompatible")
     print("Typedefs de firma incompatible: rechazo correcto")

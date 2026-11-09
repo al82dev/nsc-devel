@@ -18,7 +18,14 @@ nested = "--nested" in sys.argv
 changed_header = "--header-changed" in sys.argv
 const_pointer = "--const-pointer" in sys.argv
 const_mismatch = "--const-mismatch" in sys.argv
-expected_rejection = incompatible or changed_header or const_mismatch
+# T08-D10: each producer's template resolves `Callback` (and `CRecord`) in its own precompiled catalogue, so the
+# incompatible, const-mismatch and changed-header variants, which were rejected with "conflicting C/C++ type alias
+# 'Callback'", now compile and run like the compatible ones.
+# T08-D10: la plantilla de cada productor resuelve `Callback` (y `CRecord`) en su propio catalogo precompilado; las
+# variantes incompatible, de calificador distinto y de encabezado modificado, antes rechazadas, ahora compilan y
+# se ejecutan como las compatibles.
+variant = ("records incompatibles" if incompatible else "calificadores incompatibles" if const_mismatch else
+           "encabezado modificado" if changed_header else "compatibles")
 
 def run(args, folder):
     result = subprocess.run(args, cwd=folder, env=env, capture_output=True, text=True, errors="replace")
@@ -73,16 +80,8 @@ exe.unlink(missing_ok=True)
 command = [nsc, "--cpp-clang-root=A:\\al82dev-clang", "--emit-project-oop-exe", "Consumer.nsproj",
            "-O" + opt, "--no-artifact-cache", "-o", str(exe)]
 result = subprocess.run(command, cwd=root, env=env, capture_output=True, text=True, errors="replace")
-if expected_rejection:
-    log = result.stdout + result.stderr
-    if result.returncode == 0 or exe.exists() or "conflicting C/C++ type alias 'Callback'" not in log:
-        print(log)
-        sys.exit("ERROR: el resultado no coincide con el conflicto esperado")
-    print("Conflicto reproducido; " + ("records incompatibles" if incompatible else
-          "calificadores incompatibles" if const_mismatch else "encabezado modificado"))
-    sys.exit(0)
 if result.returncode:
     print(result.stdout + result.stderr)
     sys.exit(result.returncode)
 run([str(exe)], root)
-print("Typedefs con puntero a record: correcto O" + opt)
+print("Typedefs con puntero a record (" + variant + "): correcto O" + opt)
