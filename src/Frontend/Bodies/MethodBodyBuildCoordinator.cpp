@@ -894,6 +894,7 @@ bool ProjectMethodBodyModel::build(
     validateConstantFieldInitializers(memberModel, diagnostics);
     writeMethodBodyTrace("POST-ANALYSIS-BEGIN");
     verifyOutParameterAssignments(diagnostics);
+    verifyIncompleteCValueSignatures(diagnostics);
     verifyRequiredFieldAssignments(diagnostics);
     verifySynchronousAwaits(diagnostics);
     validateRequiredInliningCycles(memberModel, diagnostics);

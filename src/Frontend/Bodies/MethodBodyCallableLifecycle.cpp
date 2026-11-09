@@ -382,6 +382,72 @@ void ProjectMethodBodyModel::verifyOutParameterAssignments(
     }
 }
 
+// EN: T08-019-03e. A C struct or union without a definition has no object layout, so a source callable cannot
+//     take it or return it by value. Locals get the same rule in the statement analyzer. Without this check the
+//     signature reached LLVM lowering, which stopped without a source location. By-reference parameters carry a
+//     pointer type key and are not affected; C declarations and precompiled members are validated where they
+//     were declared.
+// ES: T08-019-03e. Un struct o union C sin definicion no tiene layout de objeto, asi que un callable fuente no
+//     puede recibirlo ni devolverlo por valor. Los locales tienen la misma regla en el analizador de sentencias.
+//     Sin esta comprobacion la firma llegaba a la bajada LLVM, que se detenia sin ubicacion en el fuente. Los
+//     parametros por referencia llevan una clave de puntero y no se ven afectados; las declaraciones C y los
+//     miembros precompilados se validan donde se declararon.
+void ProjectMethodBodyModel::verifyIncompleteCValueSignatures(
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    if (memberModel_ == nullptr || nameLookup_ == nullptr) return;
+    const auto incompleteCRecordName = [this](const std::string& typeKey) -> std::string
+    {
+        if (!typeKey.starts_with("type:")) return {};
+        const std::string_view identity = std::string_view(typeKey).substr(5);
+        const auto ordinal = nameLookup_->typeOrdinalForIdentity(identity);
+        const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+        if (imported == nullptr || !imported->isIncomplete ||
+            (imported->origin != CppImportedTypeOrigin::CStruct && imported->origin != CppImportedTypeOrigin::CUnion))
+            return {};
+        const std::size_t separator = identity.rfind("::");
+        return std::string(separator == std::string_view::npos ? identity : identity.substr(separator + 2));
+    };
+    const auto verify = [&](const std::string& callableName, const std::vector<MethodParameterSymbol>& parameters,
+                            const std::string& returnTypeKey, const SourceRange& range)
+    {
+        for (const MethodParameterSymbol& parameter : parameters)
+        {
+            if (parameter.passKind != ParameterPassKind::Value) continue;
+            const std::string typeName = incompleteCRecordName(parameter.typeKey);
+            if (typeName.empty()) continue;
+            diagnostics.report(
+                diagnostics::DiagnosticId::IncompleteType,
+                diagnostics::DiagnosticSeverity::Error,
+                parameter.range,
+                "parameter '" + parameter.name + "' of '" + callableName + "' cannot be passed by value because " +
+                    "C/C++ type '" + typeName + "' is incomplete");
+        }
+        const std::string returnName = incompleteCRecordName(returnTypeKey);
+        if (returnName.empty()) return;
+        diagnostics.report(
+            diagnostics::DiagnosticId::IncompleteType,
+            diagnostics::DiagnosticSeverity::Error,
+            range,
+            "'" + callableName + "' cannot return C/C++ type '" + returnName + "' by value because it is incomplete");
+    };
+    for (const ClassMemberSymbol& member : memberModel_->members())
+    {
+        if (member.kind != ClassMemberKind::Method || member.syntax == nullptr) continue;
+        if (member.isPrecompiled || member.isCppExternal) continue;
+        verify(member.name, member.parameters, member.declaredTypeKey, member.range);
+    }
+    if (namespaceFunctionModel_ == nullptr) return;
+    for (const NamespaceFunctionSymbol& function : namespaceFunctionModel_->functions())
+    {
+        // EN: Only source functions with a body; C imports keep their own deferred-import diagnostics.
+        // ES: Solo funciones fuente con cuerpo; las importaciones C conservan sus diagnosticos diferidos.
+        if (function.isPrecompiled || !function.cppCanonicalIdentity.empty() || function.definitionSyntax == nullptr)
+            continue;
+        verify(function.name, function.parameters, function.declaredTypeKey, function.range);
+    }
+}
+
 namespace
 {
 // EN: Collects the await expressions and reports whether a bare `yield;` appears in `root`,

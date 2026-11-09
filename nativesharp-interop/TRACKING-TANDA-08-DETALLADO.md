@@ -474,12 +474,12 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-019-01: Probar diagnósticos para aritmética, incremento e índice de records C incompletos. [Evidencia](registro-commits/aritmetica-puntero-incompleto-c.md).
 - [x] T08-019-02: Probar el diagnóstico de local incompleto por valor y la muestra de `sizeof`. [Evidencia](registro-commits/diagnostico-local-incompleto-c.md).
 - **T08-019-03 — Operaciones inválidas:**
-- [ ] T08-019-03a: Verificar diagnóstico de `sizeof` y `alignof` sobre struct y union incompletos.
-- [ ] T08-019-03b: Verificar diagnóstico de campo o variable local incompleta por valor.
-- [ ] T08-019-03c: Verificar diagnóstico de acceso a miembro no disponible.
-- [ ] T08-019-03d: Verificar diagnóstico de aritmética, incremento e índice sobre puntero a incompleto.
-- [ ] T08-019-03e: Verificar diagnóstico de parámetro o retorno incompleto por valor.
-- [ ] T08-019-04: Verificar que los diagnósticos identifican la declaración y la operación inválida también con metadata.
+- [x] T08-019-03a: Verificar diagnóstico de `sizeof` y `alignof` sobre struct y union incompletos. [Evidencia](registro-commits/t08-incompletos-diag-c.md).
+- [x] T08-019-03b: Verificar diagnóstico de campo o variable local incompleta por valor. [Evidencia](registro-commits/t08-incompletos-diag-c.md).
+- [x] T08-019-03c: Verificar diagnóstico de acceso a miembro no disponible. [Evidencia](registro-commits/t08-incompletos-diag-c.md).
+- [x] T08-019-03d: Verificar diagnóstico de aritmética, incremento e índice sobre puntero a incompleto. [Evidencia](registro-commits/t08-incompletos-diag-c.md).
+- [x] T08-019-03e: Verificar diagnóstico de parámetro o retorno incompleto por valor. [Evidencia](registro-commits/t08-incompletos-diag-c.md).
+- [x] T08-019-04: Verificar que los diagnósticos identifican la declaración y la operación inválida también con metadata. [Evidencia](registro-commits/t08-incompletos-diag-c.md).
 
 ## T08-020 — Comparación de layout con Clang
 

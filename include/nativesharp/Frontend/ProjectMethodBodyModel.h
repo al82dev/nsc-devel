@@ -4967,6 +4967,9 @@ private:
     bool activeNullConditionalWrite_ = false;
     std::unordered_set<std::size_t> analyzedCallableMembers_;
     void verifyOutParameterAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
+    // EN: T08-019-03e. Rejects a source callable that takes or returns an incomplete C struct or union by value.
+    // ES: T08-019-03e. Rechaza un callable fuente que recibe o devuelve por valor un struct o union C incompleto.
+    void verifyIncompleteCValueSignatures(diagnostics::DiagnosticEngine& diagnostics) const;
     void verifyRequiredFieldAssignments(diagnostics::DiagnosticEngine& diagnostics) const;
     // EN: Freeze 3.0 C-02 and D-04. A synchronous `await` (outside an async callable) polls its
     //     future once, so a producer known to suspend is a compile error. A source async producer
