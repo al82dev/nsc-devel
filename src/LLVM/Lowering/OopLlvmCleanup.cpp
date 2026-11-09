@@ -1034,6 +1034,23 @@ bool OopLlvmImplementation::emitValueDropAddress(
         if (fixedArrayHandled) return true;
         const frontend::ProjectOopMirStructLayout* layout = findStructLayout(mirModel_, typeKey);
         if (layout == nullptr) return true;
+        if (const auto elements = frontend::ProjectTypeConversion::tupleElementTypeKeys(typeKey))
+        {
+            if (elements->size() != layout->fields.size())
+                return fail(error, "NativeSharp 3.0 tuple drop has an inconsistent layout");
+            for (std::size_t index = elements->size(); index-- > 0;)
+            {
+                const std::string& elementType = (*elements)[index];
+                if (!memberModel_->typeRequiresValueDrop(elementType)) continue;
+                LLVMValueRef elementAddress = byteOffset(
+                    address, layout->fields[index].offset,
+                    (std::string(stem) + ".tuple.element.addr").c_str());
+                if (!emitValueDropAddress(
+                        elementAddress, elementType,
+                        std::string(stem) + ".tuple.element", error)) return false;
+            }
+            return true;
+        }
         if (allowNamedThunk && !layout->dropGlueEntryName.empty())
         {
             const auto entry = valueDropEntries_.find(layout->typeKey);
