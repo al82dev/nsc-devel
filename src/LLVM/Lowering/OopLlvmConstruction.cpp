@@ -8,6 +8,86 @@ namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
 
+namespace
+{
+struct ReceiverPublicationScan
+{
+    bool publishes = false;
+    std::vector<std::string> directReceiverCallees;
+    std::vector<std::size_t> virtualReceiverSlots;
+};
+
+ReceiverPublicationScan scanReceiverPublication(const frontend::ProjectOopMirNode* body)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    const auto unwrapped = [](const frontend::ProjectOopMirNode* value) {
+        while (value != nullptr && (value->kind == Kind::Convert || value->kind == Kind::BorrowValue) &&
+               value->children.size() == 1U)
+            value = value->children.front().get();
+        return value;
+    };
+    std::unordered_map<std::size_t, std::vector<std::size_t>> localCopies;
+    std::vector<std::size_t> receiverLocals;
+    std::vector<const frontend::ProjectOopMirNode*> globalValues;
+    std::vector<const frontend::ProjectOopMirNode*> directCalls;
+    const auto recordCopy = [&](std::size_t destination, const frontend::ProjectOopMirNode* value) {
+        value = unwrapped(value);
+        if (value == nullptr) return;
+        if (value->kind == Kind::ThisValue) receiverLocals.push_back(destination);
+        else if (value->kind == Kind::LocalValue && value->localOrdinal.has_value())
+            localCopies[*value->localOrdinal].push_back(destination);
+    };
+    std::vector<const frontend::ProjectOopMirNode*> pending{body};
+    while (!pending.empty())
+    {
+        const auto* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr) continue;
+        if (node->kind == Kind::LocalDeclaration && node->localOrdinal.has_value() && !node->children.empty())
+            recordCopy(*node->localOrdinal, node->children.front().get());
+        if ((node->kind == Kind::DirectInstanceCall || node->kind == Kind::VirtualInstanceCall) &&
+            !node->children.empty()) directCalls.push_back(node);
+        if (node->kind == Kind::Store && node->children.size() >= 2U && node->children[0] != nullptr)
+        {
+            const auto* target = node->children[0].get();
+            if (target->kind == Kind::LocalAddress && target->localOrdinal.has_value())
+                recordCopy(*target->localOrdinal, node->children[1].get());
+            else if (target->kind == Kind::StaticFieldAddress || target->kind == Kind::NamespaceStateAddress)
+                globalValues.push_back(unwrapped(node->children[1].get()));
+        }
+        for (const auto& child : node->children) pending.push_back(child.get());
+    }
+    std::unordered_set<std::size_t> reached;
+    while (!receiverLocals.empty())
+    {
+        const std::size_t local = receiverLocals.back();
+        receiverLocals.pop_back();
+        if (!reached.insert(local).second) continue;
+        const auto copies = localCopies.find(local);
+        if (copies != localCopies.end())
+            receiverLocals.insert(receiverLocals.end(), copies->second.begin(), copies->second.end());
+    }
+    const auto isReceiver = [&](const frontend::ProjectOopMirNode* value) {
+        value = unwrapped(value);
+        return value != nullptr && (value->kind == Kind::ThisValue ||
+            (value->kind == Kind::LocalValue && value->localOrdinal.has_value() &&
+             reached.contains(*value->localOrdinal)));
+    };
+    ReceiverPublicationScan result;
+    for (const auto* value : globalValues)
+        if (isReceiver(value)) { result.publishes = true; return result; }
+    for (const auto* call : directCalls)
+        if (isReceiver(call->children.front().get()))
+        {
+            if (call->kind == Kind::VirtualInstanceCall && call->virtualSlot.has_value())
+                result.virtualReceiverSlots.push_back(*call->virtualSlot);
+            else if (call->kind == Kind::DirectInstanceCall && !call->calleeName.empty())
+                result.directReceiverCallees.push_back(call->calleeName);
+        }
+    return result;
+}
+}
+
 LLVMValueRef OopLlvmImplementation::lowerValueConstruction(
         const frontend::ProjectOopMirNode* node,
         std::string& error,
@@ -709,6 +789,42 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                     currentType.identity.fullyQualifiedName() == "NativeSharp.Core.Internal.SharedControlStorage" &&
                     (currentMember.name.starts_with("Construct__g") ||
                      currentMember.name.starts_with("ConstructValue__g"));
+            }
+            if ((sharedThrowingConstruction || sharedNonthrowingConstruction) &&
+                targetType.kind == frontend::NamedTypeDeclarationKind::Class)
+            {
+                std::unordered_set<std::size_t> lifecycleTypes;
+                std::optional<std::size_t> type = *node->targetTypeOrdinal;
+                while (type.has_value() && lifecycleTypes.insert(*type).second)
+                {
+                    const auto* layout = mirModel_.classLayoutForType(*type);
+                    type = layout == nullptr ? std::nullopt : layout->baseTypeOrdinal;
+                }
+                std::vector<const frontend::ProjectOopMirFunction*> pending;
+                for (const auto& function : mirModel_.functions())
+                    if (lifecycleTypes.contains(function.declaringTypeOrdinal) &&
+                        (function.constructor || function.destructor))
+                        pending.push_back(&function);
+                std::unordered_set<const frontend::ProjectOopMirFunction*> visited;
+                while (!pending.empty())
+                {
+                    const auto* function = pending.back();
+                    pending.pop_back();
+                    if (!visited.insert(function).second) continue;
+                    const ReceiverPublicationScan scan = scanReceiverPublication(function->body.get());
+                    if (scan.publishes)
+                        return fail(error, "shared payload publishes its receiver during construction or destruction");
+                    for (const auto& callee : scan.directReceiverCallees)
+                        if (const auto* target = mirModel_.functionForMangledName(callee); target != nullptr)
+                            pending.push_back(target);
+                    for (const auto slot : scan.virtualReceiverSlots)
+                        for (const auto typeOrdinal : lifecycleTypes)
+                            if (const auto* table = mirModel_.dispatchTableForType(typeOrdinal);
+                                table != nullptr && slot < table->slotCalleeNames.size())
+                                if (const auto* target = mirModel_.functionForMangledName(table->slotCalleeNames[slot]);
+                                    target != nullptr)
+                                    pending.push_back(target);
+                }
             }
             bool safePartialCleanup = false;
             if ((constructorThrows || sharedNonthrowingConstruction) &&

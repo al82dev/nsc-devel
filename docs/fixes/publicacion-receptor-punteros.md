@@ -1,0 +1,21 @@
+# Publicación del receptor de una carga compartida
+
+## Defecto y alcance del cambio
+
+Una clase construida dentro de `Rc` o `Arc` podía publicar `this` en un campo global desde su constructor o destructor. Ese alias mutable elude la vista de solo lectura de `Get()` y puede sobrevivir al bloque compartido. Las reproducciones aisladas `A:\nsc-fixes-evidencia\arc-constructor-alias-probe` y `A:\nsc-fixes-evidencia\shared-this-helper` modificaron la carga mediante un alias global mientras el propietario seguía vivo. En `A:\nsc-fixes-evidencia\shared-this-virtual`, una llamada virtual desde el constructor produjo también el código de salida 42 antes de esta corrección. No se ejecutó acceso alguno después de destruir el propietario.
+
+Al generar las fábricas compartidas para una clase, el compilador examina constructores y destructores disponibles de la clase y sus bases. Detecta escrituras de `this` o de cadenas de alias locales en campos estáticos o estado de espacio de nombres; sigue métodos de instancia directos y ranuras virtuales de la jerarquía cuando sus cuerpos están disponibles. Si encuentra una publicación, rechaza la emisión con `shared payload publishes its receiver during construction or destruction`. El análisis es conservador: considera constructores y destructores disponibles, incluso si no se usan, y no distingue reasignaciones posteriores de un alias local. Esto puede rechazar programas que no publicarían el objeto durante la ejecución. Las clases construidas fuera de las fábricas compartidas mantienen el comportamiento anterior.
+
+## Verificación dirigida
+
+La compilación incremental `A:\nsc-fixes-evidencia\build-owned-destroy-check.cmd` terminó correctamente. El compilador usado fue `A:\nsc-fixes-evidencia\build\bin\nsc.exe`, identidad `3.0.0+build.20261109T203757Z.9ff2d14009404dcd`.
+
+Los casos seleccionados de `nsc.sdk.shared-public-pointers` rechazaron la publicación directa, en una base, mediante alias locales y a través de métodos de instancia, tanto para `Rc` como para `Arc`, incluyendo fábricas que propagan excepciones. Tras agregar el análisis virtual, se ejecutaron `shared_constructor_virtual_helper`, `shared_destructor_virtual_helper` y `shared_base_virtual_override`: los tres rechazaron ambas familias. `shared_virtual_helper_control` aceptó y ejecutó un método virtual sin escape en O0 y O2. Los controles anteriores incluyen clases ordinarias, otro receptor, recursión y uso legítimo de campos. Los registros están en `A:\nsc-fixes-evidencia\shared-implicit-*.log`.
+
+`A:\nsc-fixes-evidencia\shared-field-default-controls.cmd` pasó después de la compilación incremental. `A:\nsc-fixes-evidencia\shared-binary-sdk43-check.cmd` pasó usando `A:\nsc-fixes-evidencia\generic-owner-sdk43\NativeSharpCore.lib`; rechazó las variantes directas, locales, directas mediante métodos y virtuales en Rc y Arc, tanto en O0 como en O2. Su salida está en `A:\nsc-fixes-evidencia\shared-binary-sdk43-check.log`.
+
+Durante la compilación había cambios ajenos sin registrar en esta copia compartida, incluidos HIR, MIR, llamadas LLVM y `DeterministicMath.ns`. Por ello, los resultados corresponden al estado de trabajo conjunto, no certifican este commit aislado; repetir las pruebas dirigidas sobre la revisión integrada.
+
+## Límites y trabajo pendiente
+
+Esto es una protección parcial, no una demostración de seguridad de `Arc`. No se ha cubierto la publicación al pasar `this` como argumento a métodos estáticos, retornos de métodos o propiedades, capturas, almacenamiento indirecto en objetos o arreglos, ni el despacho de interfaces. Tampoco se ha acreditado la ausencia de publicaciones en cuerpos precompilados no disponibles. Deben reproducirse y resolverse esos caminos antes de habilitar o declarar seguros los contratos de concurrencia de las familias. Los ejemplos originales del informe no se modificaron.

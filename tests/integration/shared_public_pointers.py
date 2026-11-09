@@ -1255,6 +1255,80 @@ class Program { public static int Main() { Holder holder = default(Holder);
  borrowed CastPayload alias = item; int first = alias; int second = 0; second = alias;
  STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); int data = (int)owner.Get().Data;
  return first == 42 && second == 42 && data == 42 ? 42 : 1; } }''', 'run:42'),
+        'shared_constructor_publishes_this': ('''class EscapePayload { public static EscapePayload Alias;
+ public EscapePayload() { Alias = this; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_destructor_publishes_this': ('''class EscapePayload { public static EscapePayload Alias;
+ public EscapePayload() { } ~EscapePayload() { Alias = this; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_throwing_constructor_publishes_this': ('''class EscapePayload { public static EscapePayload Alias;
+ public EscapePayload() throws Exception { Alias = this; } }
+ class Program { public static int Main() { try {
+ STRONG<EscapePayload> owner = SharedPointers.MAKE_THROWING<EscapePayload>(); return 42;
+ } catch (Exception error) { return 1; } } }''', 'emit:shared payload publishes its receiver'),
+        'shared_base_constructor_publishes_this': ('''class BasePayload { public static BasePayload Alias;
+ public BasePayload() { Alias = this; } }
+ class EscapePayload : BasePayload { public EscapePayload() { } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_constructor_local_alias_probe': ('''class EscapePayload { public static EscapePayload Alias;
+ public int Data; public EscapePayload() { EscapePayload local = this; Alias = local; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ EscapePayload.Alias.Data = 9; return owner.Get().Data == 9 ? 42 : 1; } }''',
+                                                'emit:shared payload publishes its receiver'),
+        'shared_destructor_local_alias': ('''class EscapePayload { public static EscapePayload Alias;
+ public EscapePayload() { } ~EscapePayload() { EscapePayload local = this; Alias = local; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_constructor_alias_chain': ('''class EscapePayload { public static EscapePayload Alias;
+ public EscapePayload() { EscapePayload first = null; first = this; EscapePayload second = first; Alias = second; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_constructor_receiver_helper': ('''class EscapePayload { public static EscapePayload Alias;
+ public EscapePayload() { Publish(); } public void Publish() { Alias = this; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_destructor_receiver_helper': ('''class EscapePayload { public static EscapePayload Alias;
+ public EscapePayload() { } ~EscapePayload() { Publish(); } public void Publish() { Alias = this; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_constructor_virtual_helper': ('''class EscapePayload { public static EscapePayload Alias;
+ public EscapePayload() { Publish(); } public virtual void Publish() { Alias = this; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_destructor_virtual_helper': ('''class EscapePayload { public static EscapePayload Alias;
+ public EscapePayload() { } ~EscapePayload() { Publish(); } public virtual void Publish() { Alias = this; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_base_virtual_override': ('''class BasePayload { public BasePayload() { Publish(); }
+ public virtual void Publish() { } }
+ class EscapePayload : BasePayload { public static BasePayload Alias; public EscapePayload() { }
+ public override void Publish() { Alias = this; } }
+ class Program { public static int Main() { STRONG<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'emit:shared payload publishes its receiver'),
+        'shared_virtual_helper_control': ('''class SafePayload { public int Data;
+ public SafePayload() { Inspect(); } public virtual void Inspect() { Data = 42; } }
+ class Program { public static int Main() { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
+ return owner.Get().Data == 42 ? 42 : 1; } }''', 'run:42'),
+        'shared_receiver_recursive_helper_control': ('''class SafePayload { public int Data;
+ public SafePayload() { Inspect(); } public void Inspect() { if (Data < 0) Inspect(); } }
+ class Program { public static int Main() { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'run:42'),
+        'shared_other_receiver_control': ('''class Helper { public static Helper Alias;
+ public void Publish() { Alias = this; } }
+ class SafePayload { public SafePayload() { Helper other = new Helper(); other.Publish(); } }
+ class Program { public static int Main() { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }''', 'run:42'),
+        'shared_receiver_field_control': ('''class SafePayload { public static int Drops; public int Data;
+ public SafePayload() { this.Data = 42; } ~SafePayload() { Drops = Drops + 1; } }
+ class Program { public static int Main() { { STRONG<SafePayload> owner = SharedPointers.MAKE<SafePayload>();
+ if (owner.Get().Data != 42) return 1; } return SafePayload.Drops == 1 ? 42 : 2; } }''', 'run:42'),
+        'ordinary_receiver_publication_control': ('''class PayloadControl { public static PayloadControl Alias;
+ public int Data; public PayloadControl() { Alias = this; Data = 42; } }
+ class Program { public static int Main() { PayloadControl value = new PayloadControl();
+ return PayloadControl.Alias.Data == 42 ? 42 : 1; } }''', 'run:42'),
         'async_mutate_after_await': ('''class Program { public static async int Slow() { yield; return 7; }
  public static async int Main() { STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
  borrowed Payload alias = owner.Get(); int value = await Slow(); alias.Data = 10l; return value; } }''',

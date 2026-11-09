@@ -174,6 +174,29 @@ class Program { public static int Main() { FAMILY<Payload> owner = SharedPointer
             assert result.returncode != 0 and 'readonly borrowed' in output, (
                 'binary readonly object spread accepted', family, output)
             print('binary readonly object spread rejected', family, flush=True)
+            for lifecycle, body in (
+                ('constructor', 'public EscapePayload() { Alias = this; }'),
+                ('destructor', 'public EscapePayload() { } ~EscapePayload() { Alias = this; }'),
+                ('constructor-local', 'public EscapePayload() { EscapePayload local = this; Alias = local; }'),
+                ('destructor-local', 'public EscapePayload() { } ~EscapePayload() { EscapePayload local = this; Alias = local; }'),
+                ('constructor-helper', 'public EscapePayload() { Publish(); } public void Publish() { Alias = this; }'),
+                ('destructor-helper', 'public EscapePayload() { } ~EscapePayload() { Publish(); } public void Publish() { Alias = this; }'),
+                ('constructor-virtual', 'public EscapePayload() { Publish(); } public virtual void Publish() { Alias = this; }'),
+                ('destructor-virtual', 'public EscapePayload() { } ~EscapePayload() { Publish(); } public virtual void Publish() { Alias = this; }'),
+            ):
+                source.write_text(('''using NativeSharp.Core;
+class EscapePayload { public static EscapePayload Alias; BODY }
+class Program { public static int Main() { FAMILY<EscapePayload> owner = SharedPointers.MAKE<EscapePayload>();
+ return owner.IsEmpty() ? 1 : 42; } }
+''').replace('FAMILY', family).replace('MAKE', make).replace('BODY', body), encoding='utf-8')
+                for level in ('O0', 'O2'):
+                    exe = root / ('binary-published-this-' + family + '-' + lifecycle + '-' + level + '.exe')
+                    result = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', exe], root)
+                    output = result.stdout + result.stderr
+                    assert result.returncode != 0 and 'shared payload publishes its receiver' in output, (
+                        'binary shared receiver publication accepted or failed for another reason',
+                        family, lifecycle, level, output)
+                    print('binary shared receiver publication rejected', family, lifecycle, level, flush=True)
         source.write_text('''using NativeSharp.Core;
 class Input { public Input() { } public static implicit operator int(Input value) { return 42; } }
 class Bucket { public static int Sum; public static owned Bucket CreateBuilder() { return new Bucket(); }
