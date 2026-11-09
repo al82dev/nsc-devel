@@ -25,5 +25,7 @@ struct CppImportedInstanceField final
     std::optional<std::uint64_t> bitOffset;
     std::optional<std::uint64_t> bitWidth;
     bool isAnonymousCarrier = false;
+    // The field is a pointer whose pointee is `volatile` in C. / El campo es un puntero a un apuntado `volatile` en C.
+    bool pointeeVolatile = false;
 };
 }

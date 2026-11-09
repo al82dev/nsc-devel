@@ -110,6 +110,15 @@ LLVMValueRef OopLlvmImplementation::insertBitField(
             ? ~std::uint64_t{0}
             : (std::uint64_t{1} << bitWidth) - 1U;
         const std::uint64_t fieldMask = lowMask << bitOffset;
+        // EN: The preserve mask must stay inside the allocation unit. LLVMConstInt does not truncate a value
+        //     wider than its type, and the stray high bits make a non-canonical constant that the backend
+        //     cannot lower (a `MOV8mi` with an `i8` constant operand at -O1, T08-010-04d).
+        // ES: La mascara de preservacion debe quedar dentro de la unidad de asignacion. LLVMConstInt no trunca un
+        //     valor mas ancho que su tipo, y los bits altos sobrantes forman una constante no canonica que el
+        //     backend no sabe bajar (un `MOV8mi` con operando constante `i8` en -O1, T08-010-04d).
+        const std::uint64_t storageMask = storageBits == 64U
+            ? ~std::uint64_t{0}
+            : (std::uint64_t{1} << storageBits) - 1U;
 
         LLVMValueRef widened = value;
         if (node->typeKey == "builtin:bool")
@@ -138,7 +147,7 @@ LLVMValueRef OopLlvmImplementation::insertBitField(
                 builder_, bits, LLVMConstInt(storageType, bitOffset, 0), "bitfield.value.shift");
         }
         LLVMValueRef preserved = LLVMBuildAnd(
-            builder_, previousStorage, LLVMConstInt(storageType, ~fieldMask, 0),
+            builder_, previousStorage, LLVMConstInt(storageType, ~fieldMask & storageMask, 0),
             "bitfield.storage.preserve");
         return LLVMBuildOr(builder_, preserved, bits, "bitfield.storage.merge");
     }

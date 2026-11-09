@@ -40,6 +40,7 @@ struct CppSemanticInstanceField
     std::optional<std::string> clangUsr;
     std::optional<std::uint64_t> bitOffset;
     std::optional<std::uint64_t> bitWidth;
+    bool pointeeVolatile = false;
 };
 std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     const CppRecordDeclaration& record, std::size_t fieldIndex, std::size_t projectOrdinal,

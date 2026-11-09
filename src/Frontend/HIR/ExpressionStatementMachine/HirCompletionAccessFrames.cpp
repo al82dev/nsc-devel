@@ -474,6 +474,15 @@ void ProjectOopHirModel::finishArrayRawIndex(
                     (elementType == "builtin:long" || elementType == "builtin:ulong" || elementType == "builtin:double") ? 8 : 4;
             }
         }
+        // EN: Indexing a C record field that points to volatile scalars follows the record's volatile mode.
+        // ES: Indexar un campo de record C que apunta a escalares volatile sigue el modo volatile del record.
+        if (dimension == 0 && !frame.baseIsFixedArray && !frame.baseIsFlexibleArray && address->volatileAccess &&
+            base && base->kind == ProjectOopHirNodeKind::FieldValue)
+            if (const auto mode = internal::cFieldVolatilePointeeMode(memberModel_, *base, elementType))
+            {
+                address->cppMicrosoftVolatileSemantics = mode;
+                address->cppAtomicAlignmentBytes = internal::cVolatileScalarWidth(elementType);
+            }
         if ((frame.baseIsFixedArray || frame.baseIsFlexibleArray) && base &&
             (base->kind == ProjectOopHirNodeKind::FieldAddress ||
              base->kind == ProjectOopHirNodeKind::RawElementAddress))

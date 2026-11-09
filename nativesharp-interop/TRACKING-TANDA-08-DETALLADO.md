@@ -277,22 +277,27 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-010-02: Probar muestras de miembros anónimos y anidados en los caminos indicados en el tracking principal.
 - [x] T08-010-03: Probar muestras de miembro flexible, lectura/escritura y conversión a puntero O0–O3 indicadas en el tracking principal.
 - **T08-010-04 — Miembros de struct:**
-- [ ] T08-010-04a: Verificar campos escalares enteros, flotantes, enum y `_Bool`.
-- [ ] T08-010-04b: Verificar campos puntero y puntero a función, incluidos calificadores.
-  - Evidencia previa: un campo `volatile void *` no se importa («has no compatible member named», «C record field cannot be reconstructed»); `projectCppSemanticInstanceField` excluye apuntados `volatile`. [Hallazgo](registro-commits/t08-void-c.md#hallazgo-para-t08-010-04b).
-- [ ] T08-010-04c: Verificar arreglos fijos y miembro flexible al final del struct.
-- [ ] T08-010-04d: Verificar campos de bits con y sin signo, anónimos y de ancho cero.
-- [ ] T08-010-04e: Verificar promoción de miembros de struct y union anónimos en varios niveles.
-- [ ] T08-010-04f: Verificar struct anidado en `pack(1)`, `pack(2)` y `pack(4)`.
+- [x] T08-010-04a: Verificar campos escalares enteros, flotantes, enum y `_Bool`. [Evidencia](registro-commits/t08-record-miembros.md).
+- [x] T08-010-04b: Verificar campos puntero y puntero a función, incluidos calificadores. [Evidencia](registro-commits/t08-record-miembros.md).
+  - Corregido: los campos C `volatile T *` (incluido `volatile void *`) se importan con la calificación del apuntado, y el acceso por el puntero leído sigue el modo volatile del record (acquire/release en Microsoft, simple en ISO). [Hallazgo previo](registro-commits/t08-void-c.md#hallazgo-para-t08-010-04b).
+- [x] T08-010-04c: Verificar arreglos fijos y miembro flexible al final del struct. [Evidencia](registro-commits/t08-record-miembros.md).
+- [x] T08-010-04d: Verificar campos de bits con y sin signo, anónimos y de ancho cero. [Evidencia](registro-commits/t08-record-miembros.md).
+  - Corregidos: la máscara de preservación se creaba con bits fuera de la unidad de asignación y detenía el backend en -O1; los campos cuya ventana mínima cruzaba el final del record no se importaban.
+- [x] T08-010-04e: Verificar promoción de miembros de struct y union anónimos en varios niveles. [Evidencia](registro-commits/t08-record-miembros.md).
+- [x] T08-010-04f: Verificar struct anidado en `pack(1)`, `pack(2)` y `pack(4)`. [Evidencia](registro-commits/t08-record-miembros.md).
 - [ ] T08-010-05: Resolver el orden de acceso mediante alias a miembro flexible `volatile` en modo Microsoft e ISO.
+  - **Bloqueada — decisión pendiente T08-010-05a:** el modo que rige un alias NativeSharp de almacenamiento C `volatile` puede ser el del record o encabezado de origen (como el acceso directo) o un modo propio de la unidad consumidora (`CppConsumerVolatileMode`, modelado pero bloqueado en HIR). Las dos opciones generan IR distinto. [Detalle](registro-commits/t08-record-miembros.md#decisión-pendiente-t08-010-05a).
 - **T08-010-06 — Caminos de consumo:**
-- [ ] T08-010-06a: Verificar lectura y escritura cruzadas para miembros anónimos por encabezado directo.
-- [ ] T08-010-06b: Verificar los mismos miembros con biblioteca precompilada y encabezado.
-- [ ] T08-010-06c: Verificar los mismos miembros con biblioteca precompilada y solo metadata.
-- [ ] T08-010-06d: Verificar campos flexibles calificados en esos tres caminos.
+- [x] T08-010-06a: Verificar lectura y escritura cruzadas para miembros anónimos por encabezado directo. [Evidencia](registro-commits/t08-record-miembros.md).
+- [x] T08-010-06b: Verificar los mismos miembros con biblioteca precompilada y encabezado. [Evidencia](registro-commits/t08-record-miembros.md).
+- [x] T08-010-06c: Verificar los mismos miembros con biblioteca precompilada y solo metadata. [Evidencia](registro-commits/t08-record-miembros.md).
+- [x] T08-010-06d: Verificar campos flexibles calificados en esos tres caminos. [Evidencia](registro-commits/t08-record-miembros.md).
 - [ ] T08-010-07: Validar los modos Microsoft e ISO con dos referencias al mismo encabezado en la misma compilación.
+  - **Bloqueada por T08-010-05a.**
 - [ ] T08-010-08: Verificar el alias volátil reasignado en los cuatro niveles de optimización después de la corrección.
+  - **Bloqueada por T08-010-05a.**
 - [ ] T08-010-09: Verificar lectura y escritura `*(data + index)` frente a Clang después de la corrección.
+  - **Bloqueada por T08-010-05a.**
 - [ ] T08-010-10: Publicar en metadata un struct C declarado solo con etiqueta (`struct Holder { … };`, sin typedef): el consumidor precompilado sin encabezado informa `unknown type name 'Holder'`, mientras el camino directo funciona. [Origen](registro-commits/t08-puntero-funcion-calificado.md).
 
 ## T08-011 — Union C

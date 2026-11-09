@@ -222,7 +222,7 @@ bool ProjectMemberModel::setExperimentalCppInstanceFields(
                           field.pointeeReadonly)) ||
             (!flexible && !experimentalCppFieldBytes(field.typeKey) && (!field.byteSize || !field.byteAlignment)) ||
             (!flexible && (field.byteSize == 0) != (field.byteAlignment == 0)) ||
-            (field.pointeeReadonly && !field.typeKey.ends_with('*')))
+            ((field.pointeeReadonly || field.pointeeVolatile) && !field.typeKey.ends_with('*')))
         { error = "invalid experimental C++ instance field"; return false; }
         if (!identities.emplace(field.ownerIdentityKey, field.name).second)
         { error = "duplicate C++ instance field"; return false; }
@@ -459,6 +459,7 @@ bool ProjectMemberModel::build(
         member.name = imported.name;
         member.declaredTypeKey = imported.typeKey;
         member.declaredPointerPointeeReadonly = imported.pointeeReadonly;
+        member.declaredPointerPointeeVolatile = imported.pointeeVolatile;
         member.isReadonly = imported.isConst;
         member.isVolatile = imported.isVolatile;
         member.isCppExternal = true;

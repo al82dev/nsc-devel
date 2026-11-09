@@ -404,6 +404,14 @@ void ProjectOopHirModel::finishStorageUnaryFrame(
             state.cppMicrosoftVolatileSemantics.has_value();
         if (directCVolatileInt) directCVolatileMode = state.cppMicrosoftVolatileSemantics;
     }
+    // EN: A C record field holding a pointer to a volatile scalar follows the record's volatile mode.
+    // ES: Un campo de record C con puntero a escalar volatile sigue el modo volatile del record.
+    if (!directCVolatileInt && lowered && lowered->kind == ProjectOopHirNodeKind::FieldValue)
+        if (const auto mode = internal::cFieldVolatilePointeeMode(memberModel_, *lowered, resultType))
+        {
+            directCVolatileInt = true;
+            directCVolatileMode = mode;
+        }
         if (frame.syntax->tokenKind() == lexer::TokenKind::PlusPlus ||
             frame.syntax->tokenKind() == lexer::TokenKind::MinusMinus)
         {

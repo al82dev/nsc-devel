@@ -249,7 +249,29 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
             if (bytes > 8 || (bytes & (bytes - 1)) != 0) return std::nullopt;
             neededBits = bitOffset + *field.bitWidth;
         }
-        else while (bytes < 8 && bytes * 8 < neededBits) bytes *= 2;
+        else
+        {
+            while (bytes < 8 && bytes * 8 < neededBits) bytes *= 2;
+            // EN: The smallest window starting at the field's first byte can cross the end of the record (an
+            //     `unsigned hi : 24` after one byte of bit fields in a 32-bit unit). Clang reads such a field
+            //     through its allocation unit, so fall back to the smallest naturally aligned window that holds it.
+            // ES: La ventana minima que empieza en el primer byte del campo puede cruzar el final del record (un
+            //     `unsigned hi : 24` tras un byte de campos de bits en una unidad de 32 bits). Clang lee ese campo
+            //     por su unidad de asignacion; se usa la ventana alineada naturalmente mas pequena que lo contiene.
+            const auto availableBytes = *record.sizeBits / 8;
+            if (bytes * 8 < neededBits || byteOffset > availableBytes || bytes > availableBytes - byteOffset)
+                for (std::uint64_t width = 1; width <= 8; width *= 2)
+                {
+                    const std::uint64_t start = *field.offsetBits / (width * 8) * (width * 8);
+                    if (*field.offsetBits + *field.bitWidth > start + width * 8 || start / 8 > availableBytes ||
+                        width > availableBytes - start / 8) continue;
+                    byteOffset = start / 8;
+                    bitOffset = *field.offsetBits - start;
+                    bytes = width;
+                    neededBits = bitOffset + *field.bitWidth;
+                    break;
+                }
+        }
         const auto recordBytes = *record.sizeBits / 8;
         if (bytes * 8 < neededBits || byteOffset > recordBytes || bytes > recordBytes - byteOffset)
             return std::nullopt;
@@ -369,10 +391,15 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
                                           field.type.isConst, field.type.isVolatile};
     }
     bool pointeeReadonly = false;
+    bool pointeeVolatile = false;
+    // A C pointee may be `volatile`: the field keeps that qualification (C++ fields keep the previous rule).
+    // Un apuntado C puede ser `volatile`: el campo conserva esa calificación (los campos C++ siguen la regla previa).
     if (field.type.kind == CppTypeKind::Pointer && field.type.sizeBits == 64 &&
-        field.type.element && !field.type.element->isVolatile)
+        field.type.element && (!field.type.element->isVolatile || !record.isCxx))
     {
-        auto element = mapCppScalarType(*field.type.element);
+        auto pointee = *field.type.element;
+        pointee.isVolatile = false;
+        auto element = mapCppScalarType(pointee);
         if (!element && !record.isCxx)
             element = projectCppSemanticEnumType(*field.type.element, projectOrdinal, moduleName, lookup);
         if (!element && lookup && field.type.element->kind == CppTypeKind::Record)
@@ -390,19 +417,25 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
             mapped = CppScalarTypeMapping{element->nativeSharpTypeKey + "*", field.type.canonicalSpelling,
                                           field.type.isConst, field.type.isVolatile};
             pointeeReadonly = field.type.element->isConst;
+            pointeeVolatile = field.type.element->isVolatile;
         }
     }
     if (!mapped || field.type.kind == CppTypeKind::Void) return std::nullopt;
-    return CppSemanticInstanceField{projectOrdinal, identity->key(), field.name,
+    CppSemanticInstanceField result{projectOrdinal, identity->key(), field.name,
                                     std::move(*mapped), *field.offsetBits / 8, pointeeReadonly,
                                     *field.type.sizeBits / 8, effectiveAlignment, field.clangUsr};
+    result.pointeeVolatile = pointeeVolatile;
+    return result;
 }
 
 frontend::CppImportedInstanceField toCppImportedInstanceField(const CppSemanticInstanceField& field)
 {
-    return {field.projectOrdinal, field.ownerIdentityKey, field.name, field.type.nativeSharpTypeKey,
-            field.byteOffset, field.type.isConst, field.type.isVolatile, field.pointeeReadonly,
-            field.byteSize, field.byteAlignment, std::nullopt, field.clangUsr, field.bitOffset, field.bitWidth};
+    frontend::CppImportedInstanceField result{field.projectOrdinal, field.ownerIdentityKey, field.name,
+        field.type.nativeSharpTypeKey, field.byteOffset, field.type.isConst, field.type.isVolatile,
+        field.pointeeReadonly, field.byteSize, field.byteAlignment, std::nullopt, field.clangUsr,
+        field.bitOffset, field.bitWidth};
+    result.pointeeVolatile = field.pointeeVolatile;
+    return result;
 }
 
 std::optional<CppSemanticStaticField> projectCppSemanticStaticField(
