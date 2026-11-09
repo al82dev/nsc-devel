@@ -827,6 +827,8 @@ bool ProjectCompilation::compileProjectMembers(
     for (const PrecompiledSyntaxModule& module : precompiledModules_)
     {
         precompiledMembers.insert(precompiledMembers.end(), module.members.begin(), module.members.end());
+        for (const std::string& key : module.trivialCleanupRootTypeKeys)
+            memberModel_->addTrivialCleanupRootTypeKey(key);
         std::error_code metadataPathError;
         const std::filesystem::path canonicalMetadata =
             std::filesystem::weakly_canonical(module.metadataPath, metadataPathError);

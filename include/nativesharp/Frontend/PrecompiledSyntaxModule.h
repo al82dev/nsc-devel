@@ -41,5 +41,6 @@ struct PrecompiledSyntaxModule final
     //     unidad de API se genera desde la metadata podada, así que ningún snapshot publicado le
     //     aplica.
     bool surfacePruned = false;
+    std::vector<std::string> trivialCleanupRootTypeKeys;
 };
 }

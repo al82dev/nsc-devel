@@ -413,6 +413,29 @@ bool verifyMetadataTypeDeclarations(
             return false;
         }
     }
+    if (metadata.trivialCleanupRootTypeKeys.empty()) return true;
+    std::unordered_map<std::string, const LibraryMetadataType*> rootTypes;
+    for (const LibraryMetadataType& type : metadata.types)
+        rootTypes.emplace("type:" + type.identityKey, &type);
+    std::unordered_set<std::string> trivialRoots;
+    for (const std::string& key : metadata.trivialCleanupRootTypeKeys)
+    {
+        const auto found = rootTypes.find(key);
+        if (metadata.formatMinor < 43 || !trivialRoots.insert(key).second || found == rootTypes.end() ||
+            found->second->kind != LibraryMetadataTypeKind::Class ||
+            (found->second->flags & (1U << 3U)) != 0U ||
+            !found->second->baseTypeKey.empty() || !found->second->fields.empty())
+        {
+            error = "invalid metadata trivial root cleanup contract '" + key + "'";
+            return false;
+        }
+    }
+    for (const auto& member : metadata.members)
+        if (member.kind == 4U && trivialRoots.contains(member.declaringTypeKey))
+        {
+            error = "metadata trivial root cleanup contract has a destructor";
+            return false;
+        }
     return true;
 }
 

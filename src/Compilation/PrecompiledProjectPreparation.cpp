@@ -462,7 +462,8 @@ bool materializeModules(
                 : std::filesystem::path{},
             moduleMetadataDigest(entry, repository),
             std::move(publicApiSnapshot),
-            pruned});
+            pruned,
+            entry.metadata->trivialCleanupRootTypeKeys});
     }
     return true;
 }

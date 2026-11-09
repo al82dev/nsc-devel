@@ -2353,6 +2353,11 @@ bool appendMetadataTypes(
     LibraryMetadata& metadata,
     std::string& error)
 {
+    std::unordered_set<std::size_t> typesWithInstanceCleanup;
+    for (const auto& member : members)
+        if (member.kind == frontend::ClassMemberKind::Destructor ||
+            (member.kind == frontend::ClassMemberKind::Field && !member.isStatic))
+            typesWithInstanceCleanup.insert(member.declaringTypeOrdinal);
     for (const std::size_t typeOrdinal : rootTypeOrdinals)
     {
         LibraryMetadataType record;
@@ -2367,6 +2372,13 @@ bool appendMetadataTypes(
         {
             return false;
         }
+        // The full producer model includes private members that the public member catalogue omits.
+        // A root without fields or any destructor has no base or instance cleanup to run.
+        const auto* layout = compilation.objectLayoutModel()->layoutForType(typeOrdinal);
+        if (types[typeOrdinal].kind == frontend::NamedTypeDeclarationKind::Class &&
+            !types[typeOrdinal].isStatic && record.baseTypeKey.empty() && layout != nullptr &&
+            layout->fields.empty() && !typesWithInstanceCleanup.contains(typeOrdinal))
+            metadata.trivialCleanupRootTypeKeys.push_back("type:" + record.identityKey);
         metadata.types.push_back(std::move(record));
     }
     return true;

@@ -729,10 +729,16 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                             std::optional<std::size_t> base = layout.baseTypeOrdinal;
                             while (base.has_value() && simple)
                             {
-                                if (*base >= nameLookup_.namedTypes().size() ||
-                                    nameLookup_.namedTypes()[*base].isPrecompiled)
+                                if (*base >= nameLookup_.namedTypes().size())
                                 {
                                     simple = false;
+                                    break;
+                                }
+                                const auto& baseType = nameLookup_.namedTypes()[*base];
+                                if (baseType.isPrecompiled)
+                                {
+                                    simple = memberModel_->isTrivialCleanupRootTypeKey(
+                                        "type:" + baseType.identity.key());
                                     break;
                                 }
                                 const frontend::ProjectOopMirClassLayout* baseLayout =

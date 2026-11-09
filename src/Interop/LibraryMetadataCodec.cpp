@@ -632,6 +632,11 @@ bool applyWritableMetadataDowngrade(
     if (!validateMetadataBefore35(metadata, error)) return false;
     if (!validateMetadataBefore38(metadata, error)) return false;
     if (!validateMetadataBefore40(metadata, error)) return false;
+    if (metadata.formatMinor < 43 && !metadata.trivialCleanupRootTypeKeys.empty())
+    {
+        error = "NativeSharp metadata before 1.43 cannot represent trivial root cleanup contracts";
+        return false;
+    }
     if (metadata.formatMinor < 42 && (!metadata.sourceNamespaces.empty() || std::ranges::any_of(
             metadata.genericTemplates, [](const LibraryMetadataGenericTemplate& generic)
             { return !generic.candidateReceiverTypeKeys.empty(); })))

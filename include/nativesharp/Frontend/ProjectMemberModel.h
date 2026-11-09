@@ -9,6 +9,7 @@
 #include "nativesharp/Frontend/ClassMemberSymbol.h"
 #include "nativesharp/Frontend/ModuleInitializationRecord.h"
 #include "nativesharp/Frontend/PrecompiledMemberIdentity.h"
+#include <unordered_set>
 #include "nativesharp/Frontend/MemberBodyBindingKind.h"
 #include "nativesharp/Frontend/MemberBodyBinding.h"
 #include "nativesharp/AST/TypeSyntax.h"
@@ -78,6 +79,8 @@ public:
     std::span<const std::size_t> membersDeclaredByType(
         std::size_t typeOrdinal) const noexcept;
     bool hasMembersDeclaredByTypeIndex() const noexcept;
+    void addTrivialCleanupRootTypeKey(std::string key);
+    bool isTrivialCleanupRootTypeKey(const std::string& key) const noexcept;
     // EN: Ordinals of membersOfType(typeOrdinal) whose symbol is a user conversion, in the same
     //     order. Only meaningful when hasUserConversionIndex() is true (after build()).
     // ES: Ordinales de membersOfType(typeOrdinal) cuyo símbolo es una conversión de usuario, en
@@ -173,6 +176,7 @@ public:
         std::string& error) const;
 
 private:
+    std::unordered_set<std::string> trivialCleanupRootTypeKeys_;
     friend struct ProjectOopHirModelTestAccess;
 
     const std::string* resolvedGenericTypeIdentity(

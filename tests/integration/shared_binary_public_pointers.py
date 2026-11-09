@@ -98,7 +98,7 @@ class Program { public static int Main() { int caught = 0;
  try { STRONG<BadValue> failed = SharedPointers.MAKE<BadValue>(); } catch (Exception error) { caught = caught + 1; }
  return caught == EXPECTED && Resource.Drops == EXPECTED ? 42 : 1; } }
 '''
-            class_case = os.environ.get('NSC_SHARED_BINARY_THROWING_CLASS') == '1'
+            class_case = os.environ.get('NSC_SHARED_BINARY_THROWING_CLASS', '1') != '0'
             throwing_source = throwing_source.replace('CLASS_CASE',
                 'try { STRONG<Bad> failed = SharedPointers.MAKE<Bad>(); } '
                 'catch (Exception error) { caught = caught + 1; }' if class_case else '')

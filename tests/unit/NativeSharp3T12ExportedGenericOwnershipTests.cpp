@@ -83,6 +83,8 @@ namespace GenericContracts
     using Local = GenericContracts.Pod;
     public copy struct Pod { public int Value; }
     public static class Counter { public static int Read() { return 42; } }
+    public class UnsafeRoot { ~UnsafeRoot() { } }
+    public class FieldRoot { private int value; }
     public class Api
     {
         public static ref[shorter] int Narrow<lifetime longer, lifetime shorter, T>(
@@ -161,9 +163,38 @@ namespace GenericContracts
             std::vector<std::string>({"GenericContracts"}),
         "NSMETA 1.42 round-trips namespaces declared by the producer");
 
+    const auto containsRoot = [&](std::string_view key) {
+        return std::ranges::find(metadata.trivialCleanupRootTypeKeys, key) !=
+            metadata.trivialCleanupRootTypeKeys.end();
+    };
+    tests.expect(metadataRead && containsRoot("type:GenericContracts::GenericContracts.Api") &&
+            !containsRoot("type:GenericContracts::GenericContracts.UnsafeRoot") &&
+            !containsRoot("type:GenericContracts::GenericContracts.FieldRoot"),
+        "NSMETA 1.43 preserves only proven roots without instance cleanup");
+    LibraryMetadata inconsistentRoot = metadata;
+    inconsistentRoot.trivialCleanupRootTypeKeys.push_back("type:GenericContracts::GenericContracts.FieldRoot");
+    std::string rootError;
+    tests.expect(metadataRead && !codec.verifyCurrentCompiler(inconsistentRoot, rootError) &&
+            rootError.find("trivial root cleanup") != std::string::npos,
+        "metadata rejects a cleanup contract on a root with fields (" + rootError + ")");
+    const std::array<LibraryMetadata, 2> rootFragments = {metadata, metadata};
+    LibraryMetadata mergedRoots;
+    LibraryMetadataMerger rootMerger;
+    rootError.clear();
+    tests.expect(metadataRead && rootMerger.merge(rootFragments, mergedRoots, rootError) &&
+            mergedRoots.trivialCleanupRootTypeKeys == metadata.trivialCleanupRootTypeKeys,
+        "metadata merger preserves and deduplicates root cleanup contracts (" + rootError + ")");
     LibraryMetadata downlevel = metadata;
-    downlevel.formatMinor = 37;
+    downlevel.formatMinor = 42;
     std::string downlevelError;
+    tests.expect(metadataRead && !codec.writeModel(
+            downlevel, root / "root-contracts-1.42.nsmeta", downlevelError) &&
+            downlevelError.find("before 1.43") != std::string::npos,
+        "root cleanup contracts cannot be mislabeled as NSMETA 1.42 (" + downlevelError + ")");
+    metadata.trivialCleanupRootTypeKeys.clear();
+    downlevel = metadata;
+    downlevel.formatMinor = 37;
+    downlevelError.clear();
     tests.expect(metadataRead && !codec.writeModel(
             downlevel, root / "generic-contracts-1.37.nsmeta", downlevelError) &&
             downlevelError.find("before 1.38") != std::string::npos,

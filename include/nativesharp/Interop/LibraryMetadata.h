@@ -115,7 +115,8 @@ inline constexpr std::uint16_t kMetadataFormatMajor = 1;
 // contracts; members publish the explicit unwind-boundary policy.
 // MINOR 41: authored lexical using directives for reusable NativeSharp templates.
 // MINOR 42: possible same-module nominal receiver types used by template expressions.
-inline constexpr std::uint16_t kMetadataFormatMinor = 42;
+// MINOR 43: producer-proven root classes with no instance cleanup.
+inline constexpr std::uint16_t kMetadataFormatMinor = 43;
 
 // NSMETA 1.39. These bits version producer language capabilities that affect private lowering
 // and debug behavior without changing the public NativeSharp ABI projection. Older files decode
@@ -280,6 +281,8 @@ struct LibraryMetadata final
     // NSMETA 1.42: namespaces actually declared in the producer's own source.
     // Empty namespace shells preserve valid imports without exposing internal types.
     std::vector<std::string> sourceNamespaces;
+    // Complete producer evidence for root classes without instance fields or destructors.
+    std::vector<std::string> trivialCleanupRootTypeKeys;
     std::vector<LibraryMetadataDispatch> dispatchTables;
     std::vector<LibraryMetadataExport> exports;
     // NSMETA 1.25. These are implementation closure edges of a static archive, not public API.

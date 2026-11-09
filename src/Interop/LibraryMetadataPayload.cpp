@@ -575,6 +575,7 @@ std::vector<std::uint8_t> encodePayload(
             writeStringVector(writer, generic.candidateReceiverTypeKeys);
         writeStringVector(writer, metadata.sourceNamespaces);
     }
+    if (metadata.formatMinor >= 43) writeStringVector(writer, metadata.trivialCleanupRootTypeKeys);
     return writer.bytes();
 }
 
@@ -2034,6 +2035,11 @@ bool decodePayload(
             error = "truncated metadata source namespaces";
             return false;
         }
+    }
+    if (metadata.formatMinor >= 43 && !readStringVector(reader, metadata.trivialCleanupRootTypeKeys))
+    {
+        error = "truncated metadata trivial root cleanup contracts";
+        return false;
     }
     if (!reader.atEnd())
     {

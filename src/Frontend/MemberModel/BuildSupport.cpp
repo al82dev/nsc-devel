@@ -331,6 +331,16 @@ void ProjectMemberModel::scanCompilationUnits(
 }
 
 
+void ProjectMemberModel::addTrivialCleanupRootTypeKey(std::string key)
+{
+    trivialCleanupRootTypeKeys_.insert(std::move(key));
+}
+
+bool ProjectMemberModel::isTrivialCleanupRootTypeKey(const std::string& key) const noexcept
+{
+    return trivialCleanupRootTypeKeys_.contains(key);
+}
+
 bool ProjectMemberModel::bindPrecompiledPhysicalNames(
     std::span<const PrecompiledMemberIdentity> identities,
     std::span<const std::pair<std::string, std::string>> typeKeyAliases,
