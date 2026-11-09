@@ -54,6 +54,8 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
  return visits == 1 ? 42 : 1;''', None),
         'scalar_foreach_read': ('''int sum = 0; foreach (int item in alias.Data) { sum = sum + item; }
  return sum == 0 ? 42 : 1;''', None),
+        'scalar_foreach_ref_read': ('''int sum = 0; foreach (ref int item in alias.Data) { sum = sum + item; }
+ return sum == 0 ? 42 : 1;''', None),
         'nested_foreach_escape': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
  borrowed Children nested = nestedOwner.Get(); Child escaped;
  foreach (Child child in nested.Data) { escaped = child; } return 0;''', 'borrowed value cannot'),
@@ -63,6 +65,23 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
         'nested_foreach_ref_escape': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
  borrowed Children nested = nestedOwner.Get(); Child escaped;
  foreach (ref Child child in nested.Data) { escaped = child; } return 0;''', 'borrow'),
+        'nested_foreach_ref_read': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
+ borrowed Children nested = nestedOwner.Get(); int sum = 0;
+ foreach (ref Child child in nested.Data) { sum = sum + child.Value; }
+ return sum == 0 ? 42 : 1;''', None),
+        'nested_foreach_ref_write': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
+ borrowed Children nested = nestedOwner.Get();
+ foreach (ref Child child in nested.Data) { child.Value = 10; } return 0;''', 'not assignable'),
+        'nested_foreach_ref_move': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
+ borrowed Children nested = nestedOwner.Get(); foreach (ref Child child in nested.Data) {
+ HANDLE<Children> moved = move(nestedOwner); } return 0;''', 'cannot move owner'),
+        'struct_foreach_ref_read': ('''HANDLE<Boxes> boxOwner = FACTORY.Create<Boxes>();
+ borrowed Boxes boxes = boxOwner.Get(); int sum = 0;
+ foreach (ref Box box in boxes.Data) { sum = sum + box.Value; }
+ return sum == 42 ? 42 : 1;''', None),
+        'struct_foreach_ref_escape': ('''HANDLE<Boxes> boxOwner = FACTORY.Create<Boxes>();
+ borrowed Boxes boxes = boxOwner.Get(); Child escaped;
+ foreach (ref Box box in boxes.Data) { escaped = box.Item; } return 0;''', 'borrowed value cannot'),
         'nested_foreach_ref_mut': ('''HANDLE<Children> nestedOwner = FACTORY.Create<Children>();
  borrowed Children nested = nestedOwner.Get();
  foreach (ref mut Child child in nested.Data) { child.Value = 10; } return 0;''', 'mutable'),

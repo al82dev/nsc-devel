@@ -4017,7 +4017,8 @@ void ProjectMethodBodyModel::analyzeBorrowedVariableInitializer(
     // already-checked owner when either is derived from a readonly borrowed array.
     const bool foreachBorrow = (variable->text().starts_with("$__foreach_") &&
         variable->text().ends_with("_source")) ||
-        variable->auxiliaryText() == "local:foreach-readonly-borrow";
+        variable->auxiliaryText() == "local:foreach-readonly-borrow" ||
+        variable->auxiliaryText() == "local:foreach-ref";
     if (foreachBorrow && initializer.valid && initializer.readonlyBorrowedObject &&
         initializer.borrowedLocalOrdinal.has_value() &&
         *initializer.borrowedLocalOrdinal < locals_.size())
@@ -4193,7 +4194,10 @@ void ProjectMethodBodyModel::analyzeVariableInitializer(
         precomputedVarInitializer, variable, typeKey, methodMemberOrdinal, scopeOrdinal,
         diagnostics, isVarInferred, isRaii, isMoveOnly);
     pendingCallableTrait = initializer.callableTrait;
-    pendingReadonlyBorrowedObject = isBorrowed && initializer.readonlyBorrowedObject;
+    const bool foreachReadonlyReference = isReferenceLocal && isReadonlyReference &&
+        variable->auxiliaryText() == "local:foreach-ref" && initializer.readonlyBorrowedObject;
+    pendingReadonlyBorrowedObject = (isBorrowed || foreachReadonlyReference) &&
+        initializer.readonlyBorrowedObject;
     validateVariableOwnershipInitializer(
         initializer, variable, typeKey, scopeOrdinal, diagnostics, isMoveOnly, isRaii,
         isBorrowed, isForeachEnumerator, managedDelegate, raiiOwnsNativeArrayBuffer);
@@ -4212,7 +4216,7 @@ void ProjectMethodBodyModel::analyzeVariableInitializer(
         managedDelegate || raiiOwnsNativeArrayBuffer ||
         (initializer.readonlyBorrowedObject && (ProjectTypeConversion::isNativeArray(typeKey) ||
             (localValueType != nullptr && localValueType->kind == NamedTypeDeclarationKind::Struct)));
-    if (!isBorrowed && !isRaii && initializer.valid &&
+    if (!isBorrowed && !isRaii && !foreachReadonlyReference && initializer.valid &&
         initializer.ownership == sema::OwnershipKind::Borrowed && localTypeOwnable)
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
@@ -4220,7 +4224,7 @@ void ProjectMethodBodyModel::analyzeVariableInitializer(
             variable->first()->range(),
             "borrowed value cannot be stored in unqualified local '" + variable->text() +
                 "'; declare the local borrowed so its lifetime remains checked");
-    if (isBorrowed)
+    if (isBorrowed || foreachReadonlyReference)
         analyzeBorrowedVariableInitializer(
             pendingLocalBorrow, initializer, variable, typeKey, methodMemberOrdinal,
             scopeOrdinal, diagnostics, isRaii, raiiBorrowedElementArray);
@@ -4655,6 +4659,9 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
         isReadonlyReference, isVariableLengthArray, isVolatile, isRaii, isScope,
         isMoveOnly, isPinnedLocal, isBorrowed, pendingLocalBorrow.has_value());
     local.readonlyBorrowedObject = pendingReadonlyBorrowedObject;
+    if (isReferenceLocal && isReadonlyReference && pendingReadonlyBorrowedObject &&
+        variable->auxiliaryText() == "local:foreach-ref" && pendingLocalBorrow.has_value())
+        local.ownership = sema::OwnershipKind::Borrowed;
     recordVariableShadowing(variable, methodMemberOrdinal, scopeOrdinal);
     const std::size_t localOrdinal = registerVariableLocal(
         std::move(local), variable, scopeOrdinal, isVariableLengthArray);

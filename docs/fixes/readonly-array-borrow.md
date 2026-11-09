@@ -94,10 +94,9 @@ mutación, escape y movimiento del dueño. Resultados en
 `readonly-array-ctest-scalar_foreach_read.log` y
 `readonly-array-ctest-ordinary_foreach_read.log`.
 
-Siguen pendientes los modos `foreach ref` de lectura y las expresiones de
-origen cuyo dueño no se pueda rastrear. La prueba que intenta escapar por `ref`
-se rechaza antes de entrar al cuerpo, y `ref mut` se rechaza; esto no acredita
-que la lectura por `ref` funcione. Una prueba de `break` pasó el análisis pero
+Al concluir esa tanda seguían pendientes la lectura mediante `foreach ref` y
+las expresiones de origen cuyo dueño no se pueda rastrear. La primera se aborda
+en la continuación siguiente; la segunda sigue pendiente. Una prueba de `break` pasó el análisis pero
 falló en generación con `Stage 34 cannot map identifier/member expression`;
 el mismo diagnóstico se reprodujo con un arreglo ordinario sin punteros en
 O0/O2 (`readonly-array-foreach-break.log`, `foreach-break-control/results.json`).
@@ -110,3 +109,19 @@ garantiza por sí solo ejecución de todos sus programas. La prueba existente
 (`readonly-foreach-existing-test.log`); los mismos dos mensajes aparecen en la
 base y en la pasada anterior de la rama. Ninguna de estas observaciones demuestra
 que todas las rutas de foreach estén cubiertas.
+
+### Lectura por referencia
+
+En la revisión anterior, `foreach (ref Child child in nested.Data)` se
+rechazaba antes de analizar el cuerpo por intentar guardar el elemento en un
+local sin calificador (`readonly-array-ctest-nested_foreach_ref_read.log`,
+salida inicial). El local de referencia sintetizado conserva ahora el préstamo
+ya rastreado y su dueño, sin cambiar las demás referencias locales. La lectura
+de clases, estructuras y escalares pasó para ambos controles en O0/O2; se
+rechazaron la escritura, el escape, el movimiento del dueño y `ref mut`. La
+regresión final está en `readonly-array-ctest.log`; los controles de referencias
+locales y de `foreach` ordinario pasaron en
+`readonly-array-reference-tests.log` y `readonly-foreach-existing-control.log`.
+Las rutas sin procedencia rastreada y el fallo de generación con `break` siguen
+abiertos. La prueba que compara con la base para los dos fallos de
+`foreach-semantic-gaps` no se convierte en aprobada por esta corrección.
