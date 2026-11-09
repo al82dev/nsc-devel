@@ -154,13 +154,11 @@ el alias no cruza funciones NativeSharp. Ese paso se rechaza con «no viable ove
    de dependencias de la plantilla precompilada. Esto cambia el contenido del contrato NSMeta, no su versión.
 2. Admitir `T volatile*` en firmas NativeSharp con el contrato C. Es un cambio de lenguaje.
 
-### Condicional entre dos miembros flexibles
+### Condicional entre dos miembros flexibles (T08-015-11, corregido después)
 
-**Síntoma.** `var p = c ? a->items : b->items;` se rechaza con «operand of * must be a non-void pointer». C lo
-acepta.
-
-**Causa.** El condicional no hace decaer los dos arreglos. Es independiente del modo. Con alias intermedios
-(`c ? pa : pb`) funciona.
+`var p = c ? a->items : b->items;` se rechazaba con «operand of * must be a non-void pointer», aunque C lo acepta:
+el condicional no hacía decaer los dos arreglos. Se corrigió en un commit posterior; ver
+[T08-015-11](t08-015-11-condicional-flexible.md).
 
 ## Validación
 

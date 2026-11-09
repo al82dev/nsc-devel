@@ -459,10 +459,18 @@ void ProjectOopHirModel::convertConditionalBranch(
 {
     if (branch->typeKey == resultType) return;
     const MethodExpressionTypeBinding* binding = expressionType(syntax);
-    const ProjectImplicitConversion conversion = ProjectTypeConversion::classifyImplicit(
-        branch->typeKey,
-        resultType,
-        binding != nullptr ? binding->integerConstant : std::nullopt);
+    // EN: T08-015-11. A C flexible member (or `extern T a[]`) decays in the branch, as in C.
+    // ES: T08-015-11. Un miembro flexible C (o `extern T a[]`) decae en la rama, como en C.
+    const auto element = ProjectMemberModel::flexibleArrayElementTypeKey(branch->typeKey);
+    const ProjectImplicitConversion conversion =
+        binding != nullptr && binding->cppFlexibleArrayMember && binding->cppFlexibleArrayDecaySafe && element &&
+            resultType == *element + "*"
+        ? ProjectImplicitConversion{ProjectConversionKind::CFlexibleArrayToPointer, 1, branch->typeKey, resultType,
+                                    std::nullopt}
+        : ProjectTypeConversion::classifyImplicit(
+            branch->typeKey,
+            resultType,
+            binding != nullptr ? binding->integerConstant : std::nullopt);
     if (conversion.exists() && conversion.kind != ProjectConversionKind::Identity)
         branch = wrapImplicitConversion(std::move(branch), conversion, syntax);
 }

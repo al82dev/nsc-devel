@@ -403,8 +403,8 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-015-09: Repetir la comparación de IR de alias directo, reasignado y con aritmética en Microsoft e ISO O0–O3. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
   - `flexible-c/diagnosticar-var-volatile.cmd` da ahora `IGUAL` en todos los casos de Microsoft e ISO en O0–O3.
 - [x] T08-015-10: Verificar el comportamiento con referencias mixtas y con biblioteca precompilada. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
-- [ ] T08-015-11: Condicional entre dos miembros flexibles C (`var p = c ? a->items : b->items;`). [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
-  - **Pendiente funcional** (hallado en T08-D13): se rechaza con «operand of * must be a non-void pointer» porque el condicional no hace decaer los arreglos; C lo acepta. Con alias intermedios (`c ? pa : pb`) funciona.
+- [x] T08-015-11: Condicional entre dos miembros flexibles C (`var p = c ? a->items : b->items;`). [Evidencia](registro-commits/t08-015-11-condicional-flexible.md).
+  - Corregido (hallado en T08-D13): cada rama miembro flexible o `extern T a[]` decae a `T*` frente a otro arreglo igual o a un `T*`, con el contrato volatile de origen; IR igual a Clang en los dos modos. Antes: «operand of * must be a non-void pointer».
 
 ## T08-016 — Arreglos fijos
 
@@ -540,7 +540,7 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 - [ ] T08-GATE-01: Completar la implementación y las comprobaciones pendientes de T08-002 a T08-020.
   - Todas las casillas de T08-002 a T08-020 están terminadas o bloqueadas con evidencia; las bloqueadas dependen de decisiones pendientes (sobre todo T08-010-05a) o son características nuevas registradas (T08-016-03d1, T08-017-03d1). [Evidencia](registro-commits/t08-validacion-integral-20261109.md).
   - 2026-11-09, tarde: T08-016-03d1 (D23) y T08-017-03d1 (D22) cerradas. Siguen bloqueadas las casillas de T08-010-05a (D13), además de D11, D12, D04b y D05b. [Evidencia](registro-commits/t08-validacion-integral-cierre-20261109.md).
-  - 2026-11-09, noche: T08-D13a resuelve T08-010-05a y cierra T08-010-05/07/08/09, T08-015-03, 04, 05b, 05c, 06a, 08, 09, 10 y T08-020-03c. Quedan pendientes funcionales T08-015-05a (D13b) y T08-015-11; siguen esperando decisión D11, D12, D04b y D05b. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
+  - 2026-11-09, noche: T08-D13a resuelve T08-010-05a y cierra T08-010-05/07/08/09, T08-015-03, 04, 05b, 05c, 06a, 08, 09, 10 y T08-020-03c. Queda pendiente funcional T08-015-05a (D13b); T08-015-11 se corrigió después; siguen esperando decisión D11, D12, D04b y D05b. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
 - [x] T08-GATE-02: Resolver o clasificar con evidencia el fallo de la prueba de topología de ondas paralelas. [Evidencia](registro-commits/t08-gate-ondas-paralelas.md).
 - [x] T08-GATE-03: Ejecutar la validación integral agrupada de la tanda 8 y corregir sus fallos hasta que pase. [Evidencia](registro-commits/t08-validacion-integral-cierre-20261109.md).
   - Ejecutada el 2026-11-09: el gate complementario pasa; el histórico falla en cuatro validadores ajenos al compilador (LF, restricción de caché retirada por `03bf12e42` en dos pruebas y carrera del control C de relleno TLS). Las tres primeras pasan en ejecución derivada. T08-GATE-03a resuelta por T08-D20 (validadores actualizados). [Evidencia](registro-commits/t08-validacion-integral-20261109.md).

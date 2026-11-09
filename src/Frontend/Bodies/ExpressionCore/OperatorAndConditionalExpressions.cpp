@@ -741,6 +741,28 @@ ProjectMethodBodyModel::analyzeExpressionKindConditionalExpression(
     analyzeConditionalBranches(
         expression, methodMemberOrdinal, scopeOrdinal, diagnostics, whenTrue, whenFalse);
     if (!whenTrue.valid || !whenFalse.valid) return result;
+    // EN: T08-015-11. As in C, a C flexible member (or `extern T a[]`) branch decays to `T*` when the other branch
+    //     is the same kind of array or a `T*`; a volatile one starts the C alias contract, as in its initializer.
+    //     HIR applies the decay to the branch (convertConditionalBranch).
+    // ES: T08-015-11. Como en C, una rama miembro flexible C (o `extern T a[]`) decae a `T*` si la otra rama es un
+    //     arreglo del mismo tipo o un `T*`; si es volatile inicia el contrato de alias C, como en su inicializador.
+    //     HIR aplica el decaimiento a la rama (convertConditionalBranch).
+    const auto decayedType = [](const ExpressionResult& branch) -> std::optional<std::string> {
+        const auto element = ProjectMemberModel::flexibleArrayElementTypeKey(branch.typeKey);
+        if (!branch.cppFlexibleArrayMember || !branch.cppFlexibleArrayDecaySafe || !element) return std::nullopt;
+        return *element + "*";
+    };
+    const auto trueDecay = decayedType(whenTrue);
+    const auto falseDecay = decayedType(whenFalse);
+    if ((trueDecay || falseDecay) &&
+        trueDecay.value_or(whenTrue.typeKey) == falseDecay.value_or(whenFalse.typeKey))
+        for (auto* branch : {&whenTrue, &whenFalse})
+            if (const auto decayed = decayedType(*branch))
+            {
+                branch->typeKey = *decayed;
+                branch->cppFlexibleArrayMember = false;
+                branch->cppVolatilePointeeContract = branch->pointerPointeeVolatile;
+            }
     if (!resolveConditionalDivergence(result, whenTrue, whenFalse) &&
         !resolveConditionalMatchingType(result, expression, whenTrue, whenFalse, diagnostics))
         resolveConditionalSpecialType(result, expression, whenTrue, whenFalse, diagnostics);

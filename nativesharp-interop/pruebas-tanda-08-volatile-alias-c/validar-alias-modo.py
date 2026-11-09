@@ -8,7 +8,8 @@ Clang per function, at O1 on every path and at O0-O3 on the direct path:
   acquire` and every store `store atomic volatile ... release`;
 - with VolatileMode ISO, as Clang -fno-ms-volatile: plain volatile accesses.
 Cases: alias of a volatile flexible member and an alias of that alias, indexing, `*(p + i)`, reassignment, assignment
-in a branch, a conditional between two aliases, compound assignment, alias of a C field `volatile int *` and of an
+in a branch, a conditional between two aliases, between two flexible members, a flexible member and an alias, and a
+flexible global and a flexible member (T08-015-11), compound assignment, alias of a C field `volatile int *` and of an
 element of a field array of such pointers (and the direct access to that element), C globals `volatile int *`, an
 array of them and `extern volatile int g_flex[]`, and the direct access to the flexible member as a baseline.
 Also checked:
@@ -95,6 +96,10 @@ CASES = [
      "var p = a->items; p[0] = 6; p = b->items; p[0] = 7; return *p;"),
     ("Kconditional", "VFlex* a, VFlex* b, int c",
      "var pa = a->items; var pb = b->items; var p = c != 0 ? pa : pb; *p = 8; return *p;"),
+    ("Kflexcond", "VFlex* a, VFlex* b, int c", "var p = c != 0 ? a->items : b->items; *p = 8; return p[1];"),
+    ("Kflexmix", "VFlex* a, VFlex* b, int c",
+     "var pb = b->items; var p = c != 0 ? a->items : pb; p[1] = 9; return *p;"),
+    ("Kflexglobal", "VFlex* a, int c", "var p = c != 0 ? g_flex : a->items; p[2] = 3; return p[0];"),
     ("Kbranches", "VFlex* a, VFlex* b, int c",
      "var p = a->items; if (c != 0) { p = b->items; } p[1] = 4; return *p;"),
     ("Kcompound", "VFlex* v", "var p = v->items; *p += 3; p[1] -= 1; return *p;"),
@@ -115,6 +120,12 @@ DRIVE = """    VFlex* a = flex_a();
     total += Kreassigned(a, b);
     total += Kconditional(a, b, 1);
     total += Kconditional(a, b, 0);
+    total += Kflexcond(a, b, 1);
+    total += Kflexcond(a, b, 0);
+    total += Kflexmix(a, b, 1);
+    total += Kflexmix(a, b, 0);
+    total += Kflexglobal(a, 1);
+    total += Kflexglobal(a, 0);
     total += Kbranches(a, b, 1);
     total += Kbranches(a, b, 0);
     total += Kcompound(a);
