@@ -200,15 +200,17 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 
 - [x] T08-005-01: Probar las muestras de alias escalares encadenados y punteros registradas en el tracking principal.
 - **T08-005-02 — Formas de typedef:**
-- [ ] T08-005-02a: Verificar cadenas de typedefs escalares con signos y anchos distintos.
-- [ ] T08-005-02b: Verificar typedef de puntero con `const` y `volatile` en el apuntado.
-- [ ] T08-005-02c: Verificar typedef de arreglo fijo y de puntero a función C.
-- [ ] T08-005-02d: Verificar typedef de struct y union, incluidos records anónimos.
-- [ ] T08-005-02e: Verificar typedef de enum nombrado y enum anónimo.
+- [x] T08-005-02a: Verificar cadenas de typedefs escalares con signos y anchos distintos. [Evidencia](registro-commits/t08-typedef-c.md).
+- [x] T08-005-02b: Verificar typedef de puntero con `const` y `volatile` en el apuntado. [Evidencia](registro-commits/t08-typedef-c.md).
+- [x] T08-005-02c: Verificar typedef de arreglo fijo y de puntero a función C. [Evidencia](registro-commits/t08-typedef-c.md).
+- [x] T08-005-02d: Verificar typedef de struct y union, incluidos records anónimos. [Evidencia](registro-commits/t08-typedef-c.md).
+- [x] T08-005-02e: Verificar typedef de enum nombrado y enum anónimo. [Evidencia](registro-commits/t08-typedef-c.md).
 - **T08-005-03 — Reconciliación:**
-- [ ] T08-005-03a: Verificar typedef equivalente entre dos encabezados distintos.
-- [ ] T08-005-03b: Verificar conflicto por tipo subyacente incompatible.
-- [ ] T08-005-03c: Verificar consumo del typedef a través de metadata sin encabezado.
+- [x] T08-005-03a: Verificar typedef equivalente entre dos encabezados distintos. [Evidencia](registro-commits/t08-typedef-c.md).
+  - **Decisión pendiente T08-005-03a1:** un struct C definido en dos encabezados (texto idéntico o encabezado común con guardas) solo se usa por puntero; `Pair p;` se rechaza («cannot be created by value until object lifetime is implemented»). La prueba unitaria «repeated C record observations do not claim value layout» fija ese contrato. Relacionado con T08-010-07.
+- [x] T08-005-03b: Verificar conflicto por tipo subyacente incompatible. [Evidencia](registro-commits/t08-typedef-c.md).
+  - **Decisión pendiente T08-005-03b1:** dos productores con typedef homónimos incompatibles no pueden usarse en un mismo consumidor ni a través de sus plantillas («conflicting C/C++ type alias»); lo fija `typedef-funcion-record/validar.py --incompatible`. Alternativa: resolver cada plantilla en el catálogo de su productor, como las constantes enum y las globales `static`.
+- [x] T08-005-03c: Verificar consumo del typedef a través de metadata sin encabezado. Corregidos el cast a typedef C en plantilla pública y el typedef escalar idéntico entre consumidor y catálogo. [Evidencia](registro-commits/t08-typedef-c.md).
   - Evidencia previa: un cast a un typedef C en una plantilla pública (`(Color)2`, `(MyInt)2`) impide publicar la biblioteca («generated precompiled public template surface is not valid NativeSharp source»). [Hallazgo](registro-commits/t08-globales-enum-record.md#hallazgos-registrados).
 
 ## T08-006 — Enteros y `_Bool`

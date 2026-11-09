@@ -296,9 +296,27 @@ bool ProjectNameLookup::expandCppTypeAlias(
                         if (!same(a->parameters[i], b->parameters[i])) return false;
                     return true;
                 };
+                // Same C file-scope typedef of a builtin scalar (or pointer to one) in two projects: the canonical
+                // spelling compared below is its whole identity; Clang's USR differs only in the header's name.
+                // Mismo typedef C de ámbito de archivo de un escalar predefinido (o puntero a él) en dos proyectos:
+                // el tipo canónico comparado abajo es toda su identidad; el USR solo difiere en el encabezado.
+                const auto compatibleScalarAlias = [&]() {
+                    if (!selected || qualified != alias.declaration.name ||
+                        selected->declaration.name != alias.declaration.name ||
+                        !selected->declaration.clangUsr || !alias.declaration.clangUsr) return false;
+                    if (!cppAliasBuiltinType(selected->declaration.underlyingType) ||
+                        !cppAliasBuiltinType(alias.declaration.underlyingType)) return false;
+                    const std::string suffix = "@T@" + alias.declaration.name;
+                    const auto fileTypedef = [&](const std::string& value) {
+                        return value.size() > suffix.size() + 2 && value.compare(0, 2, "c:") == 0 &&
+                            value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+                    };
+                    return *selected->declaration.clangUsr == *alias.declaration.clangUsr ||
+                        (fileTypedef(*selected->declaration.clangUsr) && fileTypedef(*alias.declaration.clangUsr));
+                };
                 if (selected && (selectedName != qualified ||
                     (selected->projectOrdinal != alias.projectOrdinal && !reconciledRecordAlias() &&
-                     !compatibleFunctionAlias()) ||
+                     !compatibleFunctionAlias() && !compatibleScalarAlias()) ||
                     selected->targetTriple != alias.targetTriple ||
                     selected->declaration.underlyingType.canonicalSpelling != alias.declaration.underlyingType.canonicalSpelling))
                     return report(diagnostics::DiagnosticId::AmbiguousTypeName,

@@ -1,6 +1,9 @@
 #include "../Internal/DriverInternal.h"
 #include "../../Frontend/Cache/SyntaxProductCacheCodec.h"
 #include "nativesharp/Compilation/PrecompiledProductSidecarCodec.h"
+#include "nativesharp/Interop/CppSemanticInventory.h"
+#include "nativesharp/Interop/CppSemanticRecord.h"
+#include "../../Interop/Internal/CppCRecordMetadataCodec.h"
 
 namespace nativesharp::driver
 {
@@ -131,6 +134,29 @@ bool verifyPrecompiledGenericTemplateSourceText(
             appendKnownType("type:" + generic.canonicalKey);
     for (const std::string &typeKey : metadata.externalTypeKeys)
         appendKnownType(typeKey);
+    if (!metadata.cppCRecordCatalog.empty())
+    {
+        // C names used by template bodies (typedefs, tags) only classify casts and declarations.
+        // Los nombres C usados por plantillas (typedef, etiquetas) solo clasifican casts y declaraciones.
+        std::vector<interop::CppCRecordSnapshot> records;
+        std::vector<interop::CppCEnumSnapshot> enums;
+        interop::metadata_detail::CDependencyCatalog dependencies;
+        if (!interop::metadata_detail::decodeCTypeCatalogAndDependencies(
+                metadata.cppCRecordCatalog, metadata.formatMinor, records, enums, dependencies, error))
+        {
+            error = "generated precompiled template surface has an unreadable C type catalogue: " + error;
+            return false;
+        }
+        for (const interop::metadata_detail::CDependencyAliasSnapshot &alias : dependencies.aliases)
+            if (!alias.declaration.name.empty())
+                knownTypeNames.push_back(alias.declaration.name);
+        for (const interop::CppCRecordSnapshot &record : records)
+            if (!record.name.empty())
+                knownTypeNames.push_back(record.name);
+        for (const interop::CppCEnumSnapshot &value : enums)
+            if (!value.declaration.name.empty())
+                knownTypeNames.push_back(value.declaration.name);
+    }
     std::sort(knownTypeNames.begin(), knownTypeNames.end());
     knownTypeNames.erase(std::unique(knownTypeNames.begin(), knownTypeNames.end()), knownTypeNames.end());
 
