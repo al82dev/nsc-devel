@@ -651,6 +651,7 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                     break;
                 }
             bool sharedThrowingConstruction = false;
+            bool sharedNonthrowingConstruction = false;
             if (currentMirFunction_ != nullptr && memberModel_ != nullptr &&
                 currentMirFunction_->memberOrdinal < memberModel_->members().size() &&
                 currentMirFunction_->declaringTypeOrdinal < nameLookup_.namedTypes().size())
@@ -661,9 +662,14 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                     currentType.identity.fullyQualifiedName() == "NativeSharp.Core.Internal.SharedControlStorage" &&
                     (currentMember.name.starts_with("ConstructThrowing__g") ||
                      currentMember.name.starts_with("ConstructValueThrowing__g"));
+                sharedNonthrowingConstruction =
+                    currentType.identity.fullyQualifiedName() == "NativeSharp.Core.Internal.SharedControlStorage" &&
+                    (currentMember.name.starts_with("Construct__g") ||
+                     currentMember.name.starts_with("ConstructValue__g"));
             }
             bool safePartialCleanup = false;
-            if (constructorThrows && node->zeroInitialize && memberModel_ != nullptr && !targetType.isPrecompiled &&
+            if ((constructorThrows || sharedNonthrowingConstruction) &&
+                node->zeroInitialize && memberModel_ != nullptr && !targetType.isPrecompiled &&
                 !node->allocatorContextLocalOrdinal.has_value())
             {
                 const std::vector<frontend::ObjectFieldLayout>* fields = nullptr;
