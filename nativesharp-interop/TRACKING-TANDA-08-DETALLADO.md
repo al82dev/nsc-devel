@@ -166,7 +166,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-003-04b: Verificar diagnóstico de redeclaraciones con parámetros o retorno incompatibles: mismo encabezado (Clang), dos encabezados, dos productores precompilados y aridad del prototipo compuesto. [Evidencia](registro-commits/t08-funciones-declaraciones.md).
 - [x] T08-003-04c: Verificar funciones variádicas y llamadas sin prototipo con promociones por defecto (enteros estrechos, `bool`, `float`, `long`, puntero y record), directo y precompilado, O0–O3; rechazo de `struct` NativeSharp. [Evidencia](registro-commits/t08-funciones-declaraciones.md).
 - [x] T08-003-04d: Verificar captura y símbolo de funciones `static inline` de encabezados distintos: ayudantes y `static` locales independientes, directo y con plantillas de dos productores sin encabezados, O0–O3. [Evidencia](registro-commits/t08-funciones-declaraciones.md).
-  - [ ] T08-003-04d1: Importar una función C `static` sin `inline` definida en un encabezado (hoy «unknown identifier»). [Hallazgo](registro-commits/t08-funciones-declaraciones.md#hallazgo-registrado).
+  - [x] T08-003-04d1: Importar una función C `static` sin `inline` definida en un encabezado: directo, precompilado y dos productores, O0–O3, con rechazos de homónimas y de declaración sin cuerpo. [Evidencia](registro-commits/t08-funcion-static-encabezado.md).
 - **T08-003-05 — Visibilidad y enlace:**
 - [ ] T08-003-05a: Verificar llamada externa desde namespace y resolución con un local homónimo.
 - [ ] T08-003-05b: Verificar enlace de función C en biblioteca estática y DLL.

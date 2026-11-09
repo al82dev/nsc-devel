@@ -393,9 +393,12 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
         value.hasPrototype = function->getType()->getAs<clang::FunctionProtoType>() != nullptr;
         value.externalLinkage = function->isExternallyVisible();
         const auto* definition = function->getDefinition();
+        // A C `static` definition in a header gives every translation unit its own copy, with or without
+        // `inline`; both are imported the same way. Una definición C `static` en un encabezado da a cada
+        // unidad de traducción su propia copia, con o sin `inline`; ambas se importan igual.
         value.isCStaticInlineDefinition = !astContext.getLangOpts().CPlusPlus &&
             !value.externalLinkage && definition && definition->getStorageClass() == clang::SC_Static &&
-            definition->isInlineSpecified() && definition->hasBody();
+            definition->hasBody();
         value.dllImport = function->hasAttr<clang::DLLImportAttr>();
         if (const auto* prototype = function->getType()->getAs<clang::FunctionProtoType>())
             if (!clang::isUnresolvedExceptionSpec(prototype->getExceptionSpecType()))
@@ -1041,7 +1044,7 @@ public:
             {
                 const auto* candidate = llvm::dyn_cast<clang::FunctionDecl>(declaration);
                 if (!candidate || candidate->getNameAsString() != request.name ||
-                    candidate->getStorageClass() != clang::SC_Static || !candidate->isInlineSpecified()) continue;
+                    candidate->getStorageClass() != clang::SC_Static) continue;
                 const auto* definition = candidate->getDefinition();
                 if (!definition || !definition->hasBody() || (match && match != definition)) return std::nullopt;
                 match = definition;
