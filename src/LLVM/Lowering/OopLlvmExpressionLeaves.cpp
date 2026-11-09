@@ -237,6 +237,10 @@ LLVMValueRef OopLlvmImplementation::lowerAddressExpression(const frontend::Proje
                             LLVMValueRef self = LLVMBuildLoad2(
                                 builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],
                                 "paramaddr.self");
+                            if (currentMirFunction_->mangledName.ends_with("$moveNext$poll"))
+                                self = LLVMBuildLoad2(
+                                    builder_, LLVMPointerTypeInContext(context_, 0),
+                                    byteOffset(self, 8, "paramaddr.iter.addr"), "paramaddr.iter");
                             LLVMValueRef frame = LLVMBuildLoad2(
                                 builder_, LLVMPointerTypeInContext(context_, 0),
                                 byteOffset(self, 8, "paramaddr.frame.addr"), "paramaddr.frame");
