@@ -237,6 +237,47 @@ class Program { public static int Main() { Input item = new Input(); borrowed In
             result = run([exe], root)
             assert result.returncode == 42, ('binary collection builder run', level, result.returncode)
             print('binary collection builder conversion', level, 'exit=42', flush=True)
+        producer = root / 'PayloadProducer.nsproj'
+        producer.write_text('<Project><PropertyGroup><Name>PayloadProducer</Name><Language>3</Language>'
+                            '<OutputType>StaticLibrary</OutputType></PropertyGroup><ItemGroup>'
+                            '<Compile Include="PayloadProducer.ns" /><LibraryReference Include="' +
+                            library.as_posix() + '" Metadata="' + metadata.as_posix() +
+                            '" /></ItemGroup></Project>', encoding='utf-8')
+        (root / 'PayloadProducer.ns').write_text('''public class EscapingPayload {
+ public static EscapingPayload Alias; public EscapingPayload() { Alias = this; } }
+public class SafePayload { public int Data; public SafePayload() { Data = 42; } }
+public struct BinaryValue { public int Data; public BinaryValue() { Data = 42; } }
+''', encoding='utf-8')
+        payload_library = root / 'PayloadProducer.lib'
+        result = run([compiler, '--emit-project-oop-lib', producer, '-O0', '-o', payload_library], root)
+        assert result.returncode == 0, ('binary payload producer', result.stdout + result.stderr)
+        project.write_text('<Project><PropertyGroup><Name>BinarySharedConsumer</Name><Language>3</Language>'
+                           '</PropertyGroup><ItemGroup><Compile Include="Program.ns" />'
+                           '<LibraryReference Include="' + library.as_posix() + '" Metadata="' +
+                           metadata.as_posix() + '" /><LibraryReference Include="' +
+                           payload_library.as_posix() + '" Metadata="' +
+                           payload_library.with_suffix('.nsmeta').as_posix() +
+                           '" /></ItemGroup></Project>', encoding='utf-8')
+        for family, make in (('Rc', 'MakeRc'), ('Arc', 'MakeArc')):
+            for payload in ('EscapingPayload', 'SafePayload', 'BinaryValue'):
+                source.write_text(('''using NativeSharp.Core;
+class Program { public static int Main() { FAMILY<PAYLOAD> owner = SharedPointers.MAKE<PAYLOAD>();
+BODY } }
+''').replace('FAMILY', family).replace('MAKE', make).replace('PAYLOAD', payload).replace('BODY',
+                    'return owner.Get().Data == 42 ? 42 : 1;' if payload == 'BinaryValue' else 'return 42;'),
+                    encoding='utf-8')
+                for level in ('O0', 'O2'):
+                    exe = root / ('binary-payload-' + family + '-' + payload + '-' + level + '.exe')
+                    result = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', exe], root)
+                    output = result.stdout + result.stderr
+                    if payload == 'BinaryValue':
+                        assert result.returncode == 0, ('binary value payload compile', family, level, output)
+                        result = run([exe], root)
+                        assert result.returncode == 42, ('binary value payload run', family, level, result.returncode)
+                    else:
+                        assert result.returncode != 0 and 'shared payload class has no verifiable precompiled lifecycle body' in output, (
+                            'binary class payload accepted or failed for another reason', family, payload, level, output)
+                    print('binary precompiled payload', family, payload, level, 'verified', flush=True)
     return 0
 
 

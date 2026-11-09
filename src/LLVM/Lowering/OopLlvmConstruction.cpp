@@ -927,6 +927,8 @@ bool OopLlvmImplementation::invokePlacementConstructor(
             if ((sharedThrowingConstruction || sharedNonthrowingConstruction) &&
                 targetType.kind == frontend::NamedTypeDeclarationKind::Class)
             {
+                if (targetType.isPrecompiled)
+                    return fail(error, "shared payload class has no verifiable precompiled lifecycle body");
                 std::unordered_set<std::size_t> lifecycleTypes;
                 std::optional<std::size_t> type = *node->targetTypeOrdinal;
                 while (type.has_value() && lifecycleTypes.insert(*type).second)
