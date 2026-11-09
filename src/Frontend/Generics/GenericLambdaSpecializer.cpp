@@ -415,6 +415,7 @@ bool ProjectGenericModel::rewriteGenericLambdaCall(
         call->setSecond(specialized);
         call->setAuxiliaryText("generic-lambda-specialized-call");
     }
+    preserveCallTypeArguments(call);
     call->clearTypeSyntaxes();
     call->setFlag(false);
     return true;

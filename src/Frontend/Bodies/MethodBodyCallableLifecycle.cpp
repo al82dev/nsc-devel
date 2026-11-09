@@ -10,6 +10,7 @@
 
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
 
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 
@@ -55,6 +56,64 @@ using method_body_detail::pointerContract;
 using method_body_detail::Stage37ConstantKind;
 using method_body_detail::Stage37ConstantValue;
 using method_body_detail::writeMethodBodyTrace;
+
+namespace
+{
+// Inspect rewritten type arguments as well as the outer type of a selected callable body.
+void validateSelectedBodyTypeConstraints(
+    const ast::AstNode* body,
+    const ProjectNameLookup& names,
+    const ProjectMemberModel& members,
+    const ProjectGenericModel& generics,
+    const ProjectGenericConstraintModel& constraints,
+    diagnostics::DiagnosticEngine& diagnostics)
+{
+    std::vector<const ast::AstNode*> pending;
+    std::unordered_set<const ast::AstNode*> visited;
+    std::unordered_set<const ast::AstNode*> reported;
+    std::unordered_set<const ast::TypeSyntax*> visitedTypes;
+    if (body != nullptr) pending.push_back(body);
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || !visited.insert(node).second) continue;
+        std::vector<const ast::TypeSyntax*> types;
+        if (node->typeSyntax() != nullptr) types.push_back(node->typeSyntax());
+        for (const auto* type : node->typeSyntaxes()) if (type != nullptr) types.push_back(type);
+        for (const auto* type : generics.rewrittenCallTypeArguments(node))
+            if (type != nullptr) types.push_back(type);
+        while (!types.empty())
+        {
+            const ast::TypeSyntax* syntax = types.back();
+            types.pop_back();
+            if (!visitedTypes.insert(syntax).second) continue;
+            for (const auto* argument : syntax->typeArguments()) if (argument != nullptr) types.push_back(argument);
+            for (const auto* argument : generics.rewrittenTypeArguments(syntax))
+                if (argument != nullptr) types.push_back(argument);
+            std::string type = members.canonicalTypeKey(syntax, names);
+            while (true)
+            {
+                auto element = ProjectMemberModel::fixedArrayElementTypeKey(type);
+                if (!element.has_value()) element = ProjectTypeConversion::nativeArrayElementType(type);
+                if (!element.has_value()) break;
+                type = std::move(*element);
+            }
+            while (type.ends_with('*')) type.pop_back();
+            const GenericSpecializationRecord* specialization = generics.specializationForTypeKey(type);
+            if (specialization != nullptr && specialization->specializedSyntax != nullptr &&
+                !constraints.specializationSatisfiesConstraints(specialization->specializedSyntax) &&
+                reported.insert(specialization->specializedSyntax).second)
+                constraints.reportSpecializationConstraintViolations(
+                    specialization->specializedSyntax, node->range(), diagnostics);
+        }
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+}
+}
 
 bool ProjectMethodBodyModel::callableCanBeAnalyzed(
     const ProjectCallableAnalysisContext& context) const
@@ -213,6 +272,12 @@ void ProjectMethodBodyModel::analyzeCallable(
     if (!callableCanBeAnalyzed(context)) return;
     const std::size_t callableOrdinal = context.callableOrdinal();
     const ClassMemberSymbol& callable = *methodSymbol(callableOrdinal);
+    if (genericModel_ != nullptr && genericConstraintModel_ != nullptr &&
+        genericConstraintModel_->hasDeferredSpecializationViolations() &&
+        memberModel_ != nullptr && nameLookup_ != nullptr)
+        validateSelectedBodyTypeConstraints(
+            callable.syntax->first(), *nameLookup_, *memberModel_, *genericModel_,
+            *genericConstraintModel_, diagnostics);
     analyzedCallableMembers_.insert(callableOrdinal);
     resetCallableScratch(callable);
     const MethodScopeKind rootKind = callable.kind == ClassMemberKind::Constructor

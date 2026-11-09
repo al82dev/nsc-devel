@@ -517,10 +517,11 @@ void ProjectGenericModel::processNode(
     // unchanged, only the recursion into first/second/third/children is removed. The sequential
     // local accumulation is preserved by computing each child's scope snapshot before the walk.
     std::vector<ProcessFrame> frames;
+    const std::size_t enclosingGroup = currentOverloadGroup_;
     frames.push_back(
         ProcessFrame{
             node, std::move(namespaceName), std::move(ownerName),
-            std::move(scope), insideTemplate});
+            std::move(scope), insideTemplate, enclosingGroup});
     while (!frames.empty())
     {
         ProcessFrame frame = std::move(frames.back());
@@ -531,6 +532,12 @@ void ProjectGenericModel::processNode(
         scope = std::move(frame.scope);
         insideTemplate = frame.insideTemplate;
         if (node == nullptr) continue;
+        currentOverloadGroup_ = frame.overloadGroup;
+        const auto specialization = specializationBySyntax_.find(node);
+        if (specialization != specializationBySyntax_.end() &&
+            specialization->second < specializations_.size())
+            currentOverloadGroup_ = specializations_[specialization->second].overloadGroup;
+        const std::size_t nodeGroup = currentOverloadGroup_;
 
 #if 0 // INSTRUMENTATION CODE
         const GenericWorkProgress nodeProgress(
@@ -545,8 +552,13 @@ void ProjectGenericModel::processNode(
             unit, node, currentNamespace, ownerName, currentScope, insideTemplate, diagnostics))
         continue;
 
+    currentOverloadGroup_ = nodeGroup;
+    const std::size_t priorFrameCount = frames.size();
     scheduleProcessedNodeChildren(
         unit, node, currentNamespace, ownerName, currentScope, frames);
+    for (std::size_t i = priorFrameCount; i < frames.size(); ++i)
+        frames[i].overloadGroup = nodeGroup;
     }
+    currentOverloadGroup_ = enclosingGroup;
 }
 }

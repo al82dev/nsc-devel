@@ -672,6 +672,31 @@ const GenericSpecializationRecord* ProjectGenericModel::specializationForTypeKey
     return nullptr;
 }
 
+std::span<const ast::TypeSyntax* const> ProjectGenericModel::rewrittenTypeArguments(
+    const ast::TypeSyntax* syntax) const noexcept
+{
+    const auto found = rewrittenTypeArgumentsBySyntax_.find(syntax);
+    return found == rewrittenTypeArgumentsBySyntax_.end()
+        ? std::span<const ast::TypeSyntax* const>{}
+        : std::span<const ast::TypeSyntax* const>(found->second);
+}
+
+std::span<const ast::TypeSyntax* const> ProjectGenericModel::rewrittenCallTypeArguments(
+    const ast::AstNode* call) const noexcept
+{
+    const auto found = rewrittenCallTypeArgumentsBySyntax_.find(call);
+    return found == rewrittenCallTypeArgumentsBySyntax_.end()
+        ? std::span<const ast::TypeSyntax* const>{}
+        : std::span<const ast::TypeSyntax* const>(found->second);
+}
+
+void ProjectGenericModel::preserveCallTypeArguments(const ast::AstNode* call)
+{
+    if (call == nullptr || call->typeSyntaxes().empty()) return;
+    auto& arguments = rewrittenCallTypeArgumentsBySyntax_[call];
+    arguments.assign(call->typeSyntaxes().begin(), call->typeSyntaxes().end());
+}
+
 std::string ProjectGenericModel::closedTypeKeyForTemplate(
     std::string_view templateName,
     std::string_view elementTypeKey) const

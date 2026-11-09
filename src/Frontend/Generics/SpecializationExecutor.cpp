@@ -364,6 +364,12 @@ void ProjectGenericModel::rewriteSpecializedSyntax(
         syntax->setOriginProjectOrdinal(record.projectOrdinal);
         syntax->setOriginNamespace(record.namespaceName);
     }
+    if (!syntax->typeArguments().empty())
+    {
+        auto& arguments = rewrittenTypeArgumentsBySyntax_[syntax];
+        if (arguments.empty())
+            arguments.assign(syntax->typeArguments().begin(), syntax->typeArguments().end());
+    }
     const std::string originalBaseName = syntax->baseName();
     if (const std::size_t separator = originalBaseName.find_last_of('.');
         separator != std::string::npos)

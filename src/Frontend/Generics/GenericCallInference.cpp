@@ -580,6 +580,7 @@ bool ProjectGenericModel::materializeSharedOverloads(
     }
     currentOverloadGroup_ = 0;
     if (callee != nullptr) callee->setText(sharedName);
+    preserveCallTypeArguments(call);
     call->clearTypeSyntaxes();
     call->setFlag(false);
     return true;
@@ -605,6 +606,7 @@ bool ProjectGenericModel::materializeUniqueMethod(
         state, call->typeSyntaxes(), diagnostics);
     if (specialized.empty()) return false;
     if (callee != nullptr) callee->setText(specialized);
+    preserveCallTypeArguments(call);
     call->clearTypeSyntaxes();
     call->setFlag(false);
     return true;

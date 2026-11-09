@@ -56,6 +56,10 @@ public:
         diagnostics::DiagnosticEngine& diagnostics);
 
     std::span<const GenericConstraintViolation> violations() const noexcept;
+    bool hasDeferredSpecializationViolations() const noexcept
+    {
+        return !deferredBySpecialization_.empty();
+    }
     bool isBuilt() const noexcept;
     std::string_view normalizedConstraintIdentity(std::size_t templateOrdinal) const noexcept;
     std::span<const std::string> normalizedConstraintAtoms(

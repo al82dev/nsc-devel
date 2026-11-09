@@ -91,6 +91,11 @@ public:
         std::string_view elementTypeKey) const;
     // The recorded resolved identity for an open generic reference (`Box<T>`), or null when absent.
     const std::string* resolvedTypeIdentity(const ast::TypeSyntax* syntax) const noexcept;
+    // Arguments retained when a closed generic use is rewritten to its specialization name.
+    std::span<const ast::TypeSyntax* const> rewrittenTypeArguments(
+        const ast::TypeSyntax* syntax) const noexcept;
+    std::span<const ast::TypeSyntax* const> rewrittenCallTypeArguments(
+        const ast::AstNode* call) const noexcept;
     GenericInstantiationReport instantiationReport() const noexcept;
     // NSC305-P01. Sub-phase and counter telemetry for the generic pass. Always available; the
     // data is populated only when the compilation wired a timing sink (see compileProjectGenerics).
@@ -897,6 +902,7 @@ private:
         TemplateState& state,
         const std::string& namespaceName,
         diagnostics::DiagnosticEngine& diagnostics);
+    void preserveCallTypeArguments(const ast::AstNode* call);
 
     bool inferGenericCall(
         ProjectSyntaxUnit& unit,
@@ -1683,6 +1689,10 @@ private:
     SpecializationPlanner specializationPlanner_;
     std::unordered_map<const ast::AstNode*, std::size_t> specializationBySyntax_;
     std::unordered_map<const ast::TypeSyntax*, std::string> resolvedTypeIdentityBySyntax_;
+    std::unordered_map<const ast::TypeSyntax*, std::vector<const ast::TypeSyntax*>>
+        rewrittenTypeArgumentsBySyntax_;
+    std::unordered_map<const ast::AstNode*, std::vector<const ast::TypeSyntax*>>
+        rewrittenCallTypeArgumentsBySyntax_;
     std::unordered_map<const ast::TypeSyntax*, DeclaredTypeOrigin> resolvedTypeOriginBySyntax_;
     std::unordered_map<const ast::AstNode*, ast::TypeSyntax*> inferredCallReturnTypes_;
     // Body-only syntax may request a closed type whose concrete receiver is known by the generic
