@@ -1163,6 +1163,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     }
     result.typeKey = state.declaredTypeKey;
     result.valid = true;
+    // EN: T08-D11/D12. A C/C++ global or enumerator is a C operand for the integer divergence diagnostic.
+    // ES: T08-D11/D12. Una global o enumerador C/C++ es operando C para el diagnostico de divergencia entera.
+    result.cppCOrigin = state.isCppExternal;
     result.assignable = !state.isConst && !state.isCppReadonly &&
         !(state.isCppExternal && ProjectMemberModel::fixedArrayElementTypeKey(state.declaredTypeKey).has_value());
     result.addressable = !state.isCppEnumConstant && !qualifiedAddress;
@@ -1519,6 +1522,9 @@ if (operation == TokenKind::Star)
     result.addressable = !result.volatileStorage;
     result.readonlyReceiver = !nestedPointee && operand.pointerPointeeReadonly;
     result.pointerPointeeReadonly = nestedPointee && operand.pointerPointeeReadonly;
+    // EN: T08-D11/D12. The pointee of a C pointer value is C storage.
+    // ES: T08-D11/D12. El dato apuntado por un puntero C es almacenamiento C.
+    result.cppCOrigin = operand.cppCOrigin;
     return result;
 }
     return result;

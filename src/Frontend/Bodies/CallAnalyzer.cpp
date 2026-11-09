@@ -968,14 +968,17 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
     result.pointerKnownAlignment = callable.declaredPointerKnownAlignment;
     result.pointerAddressSpace = callable.declaredPointerAddressSpace;
     // EN: T08-D13b. A `volatile T*` (T a scalar) returned by a C function starts the C alias contract with the
-    //     volatile mode of the function's reference and C's natural alignment of the pointee.
+    //     volatile mode of the function's reference and C's natural alignment of the pointee. T08-D11/D12: the
+    //     result of a C function is a C operand for the integer divergence diagnostic.
     // ES: T08-D13b. Un `volatile T*` (T escalar) devuelto por una funcion C inicia el contrato de alias C con el
     //     modo volatile de la referencia de la funcion y la alineacion natural del apuntado que supone C.
-    if (namespaceFunctionModel_ != nullptr && functionOrdinal < namespaceFunctionModel_->functions().size() &&
-        callable.declaredPointerPointeeVolatile)
+    //     T08-D11/D12: el resultado de una funcion C es operando C para el diagnostico de divergencia entera.
+    if (namespaceFunctionModel_ != nullptr && functionOrdinal < namespaceFunctionModel_->functions().size())
     {
         const NamespaceFunctionSymbol& function = namespaceFunctionModel_->functions()[functionOrdinal];
-        if (!function.cppCanonicalIdentity.empty() && function.definitionSyntax == nullptr)
+        const bool cFunction = !function.cppCanonicalIdentity.empty() && function.definitionSyntax == nullptr;
+        result.cppCOrigin = cFunction;
+        if (cFunction && callable.declaredPointerPointeeVolatile)
             if (const std::size_t width = method_body_detail::cVolatilePointeeScalarWidth(callable.declaredTypeKey))
             {
                 result.cppVolatilePointeeContract = true;

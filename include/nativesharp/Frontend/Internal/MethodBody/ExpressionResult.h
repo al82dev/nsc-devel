@@ -109,6 +109,13 @@ struct ExpressionResult final
     // ES: T08-D13. Con el contrato C: el modo volatile del origen C (true Microsoft, false ISO, ninguno si se
     //     desconoce o se mezcla) y la alineacion que el contrato demuestra o C supone para el apuntado (0 si no).
     std::optional<bool> cppVolatilePointeeMicrosoft;
+    // EN: T08-D11/D12. The value is read directly from C: a C/C++ global or enumerator, a C record field, the
+    //     result of a C function, or an element or pointee reached from one of them. It only drives the
+    //     diagnostic of integer operations whose NativeSharp result differs from C; it never changes their type.
+    // ES: T08-D11/D12. El valor se lee directamente de C: una global o enumerador C/C++, un campo de record C, el
+    //     resultado de una funcion C, o un elemento o dato apuntado alcanzado desde ellos. Solo activa el
+    //     diagnostico de las operaciones enteras cuyo resultado NativeSharp difiere del de C; nunca cambia su tipo.
+    bool cppCOrigin = false;
     std::size_t cppVolatilePointeeAlignment = 0;
     // T08-D07: this expression denotes C `_Atomic` record storage, accessed only as a whole value.
     bool cppAtomicRecordStorage = false;

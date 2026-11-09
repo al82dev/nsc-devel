@@ -889,6 +889,9 @@ void ProjectMethodBodyModel::analyzeRawIndex(
         }
         result.pointerPointeeReadonly = qualifiedPointerElement || (nestedPointerIndex && base.pointerPointeeReadonly);
         result.pointerPointeeVolatile = volatilePointerElement;
+        // EN: T08-D11/D12. An element of C storage is C storage.
+        // ES: T08-D11/D12. Un elemento de almacenamiento C es almacenamiento C.
+        result.cppCOrigin = base.cppCOrigin;
         // EN: T08-D13. A pointer element of a C array of pointers to volatile scalars keeps its C contract.
         // ES: T08-D13. Un elemento puntero de un arreglo C de punteros a escalares volatile conserva su contrato C.
         if (volatilePointerElement && base.cppVolatilePointeeContract &&

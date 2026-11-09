@@ -227,7 +227,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - **T08-006-04 — Conversiones y ABI:**
 - [x] T08-006-04a: Verificar extensión de signo o cero de parámetros y retornos estrechos. [Evidencia](registro-commits/t08-enteros-c.md).
 - [x] T08-006-04b: Verificar promociones de enteros estrechos y `_Bool` en operaciones aritméticas y bitwise. [Evidencia](registro-commits/t08-enteros-c.md).
-  - **Decisión pendiente T08-006-04b1:** `-` y `~` unarios sobre enteros estrechos conservan el tipo del operando en NativeSharp (`~ub == 0`, `-sb == -128`); C y C# promueven a `int` (-256, 128). Las constantes enum C sí se promueven.
+  - **Decisión resuelta T08-006-04b1 (T08-D11, alternativa 4):** `-` y `~` unarios sobre enteros estrechos conservan el tipo del operando en NativeSharp (`~ub == 0`, `-sb == -128`); C y C# promueven a `int` (-256, 128). Las constantes enum C sí se promueven. La regla de NativeSharp se conserva; con un operando leído directamente de C, NSC avisa y propone `~(int)x`. No es interoperabilidad transparente. [Evidencia](registro-commits/t08-d11-d12-aviso-divergencia-c.md).
 - [x] T08-006-04c: Verificar almacenamiento y lectura cruzada de escalares en globales, campos y arreglos. [Evidencia](registro-commits/t08-enteros-c.md).
 - [x] T08-006-04d: Verificar límites representables y conversiones entre firmado y sin signo. [Evidencia](registro-commits/t08-enteros-c.md).
 
@@ -260,7 +260,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-009-03a: Verificar valores negativos y límites del tipo entero subyacente. [Evidencia](registro-commits/t08-enum-c.md).
 - [x] T08-009-03b: Verificar conversiones entre enum, `int`, `unsigned int` y enteros de mayor ancho. [Evidencia](registro-commits/t08-enum-c.md).
 - [x] T08-009-03c: Verificar comparaciones mixtas con operandos firmados y sin signo. Corregido: un operando enum de base `int` frente a `unsigned int` sigue a C. [Evidencia](registro-commits/t08-enum-c.md).
-  - **Decisión pendiente T08-009-03c1:** los enumeradores son constantes `int`; NativeSharp compara `int` con `unsigned int` ampliando a `long` (`-1 < 1u` verdadero) y C convierte a `unsigned int` (falso). Solo un operando de tipo enum C sigue la regla de C.
+  - **Decisión resuelta T08-009-03c1 (T08-D12, alternativa 4):** los enumeradores son constantes `int`; NativeSharp compara `int` con `unsigned int` ampliando a `long` (`-1 < 1u` verdadero) y C convierte a `unsigned int` (falso). Solo un operando de tipo enum C sigue la regla de C. La regla de NativeSharp se conserva; con un operando C, NSC avisa y propone `(uint)` delante del operando `int`. [Evidencia](registro-commits/t08-d11-d12-aviso-divergencia-c.md).
 - [x] T08-009-03d: Verificar aritmética, desplazamientos y operaciones bitwise. Corregido: `op=` sobre un objeto enum C. [Evidencia](registro-commits/t08-enum-c.md).
 - **T08-009-04 — Identidad y persistencia:**
 - [x] T08-009-04a: Verificar reconciliación de enum nombrado en dos encabezados. [Evidencia](registro-commits/t08-enum-c.md).
@@ -514,10 +514,11 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 - [x] T08-D08: validadores `.cmd` versionados con LF pasan a CRLF: `.gitattributes` fija `eol=crlf` para `.cmd`/`.bat` y los 176 archivos en LF del árbol de trabajo se convirtieron. [Evidencia](registro-commits/t08-d08-cmd-crlf.md).
 - [x] T08-D09: struct C equivalente en dos encabezados, usado por valor (T08-005-03a1). [Evidencia](registro-commits/t08-d09-record-dos-encabezados.md).
 - [x] T08-D10: typedef C homónimos e incompatibles de productores distintos (T08-005-03b1). [Evidencia](registro-commits/t08-d10-typedef-productores.md).
-- [ ] T08-D11: `-` y `~` sobre enteros estrechos: reglas de NativeSharp frente a expresiones C (T08-006-04b1). [Investigación](registro-commits/t08-d11-d12-semantica-c-investigacion.md).
-  - Sin cambio de reglas, por instrucción del usuario. La sonda `enteros-c/sonda-semantica-c.py` fija 38 casos C/NSC. La investigación muestra que el tipo no distingue un entero de C y compara cinco delimitaciones del «operando C» (origen directo con regla A o B, tipos C distintos, diagnóstico, contexto explícito) con sus efectos en expresiones mixtas. **Pendiente de la elección del usuario.**
-- [ ] T08-D12: `int` frente a `unsigned int` en operaciones C (T08-009-03c1). [Investigación](registro-commits/t08-d11-d12-semantica-c-investigacion.md).
-  - Igual que T08-D11: el mismo análisis y la misma sonda. **Pendiente de la elección del usuario.**
+- [x] T08-D11: `-` y `~` sobre enteros estrechos: reglas de NativeSharp frente a expresiones C (T08-006-04b1). [Investigación](registro-commits/t08-d11-d12-semantica-c-investigacion.md), [Evidencia](registro-commits/t08-d11-d12-aviso-divergencia-c.md).
+  - Decisión del usuario: alternativa 4. Las expresiones escritas en NativeSharp conservan sus reglas, sin cambio de semántica según el origen del valor. Un `-` o `~` sobre un operando C estrecho (global, enumerador, campo, llamada, elemento o desreferencia C) produce un aviso con la corrección `~(int)x`. Directo O0–O3, biblioteca precompilada y plantilla consumida sin encabezado; la sonda de 38 valores no cambia.
+  - **No es interoperabilidad transparente:** la expresión C copiada tal cual da el valor de NativeSharp hasta que se corrige. Limitaciones registradas: copia a un local, asignación compuesta e incremento, resultados intermedios, acierto de caché. Los tipos enteros C diferenciados quedan como investigación futura.
+- [x] T08-D12: `int` frente a `unsigned int` en operaciones C (T08-009-03c1). [Investigación](registro-commits/t08-d11-d12-semantica-c-investigacion.md), [Evidencia](registro-commits/t08-d11-d12-aviso-divergencia-c.md).
+  - Igual que T08-D11: una comparación o aritmética `int`/`uint` que NativeSharp amplía a `long`, con un operando C, produce un aviso con la corrección `(uint)` delante del operando `int`. Mismas pruebas y limitaciones.
 - [x] T08-D13: modo `volatile` del alias NativeSharp a almacenamiento C (T08-010-05a). [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
   - [x] T08-D13a: el alias sigue el modo del record, la global o la referencia de origen, verificado frente al acceso directo y a Clang (directo O0–O3, precompilado, referencias mixtas, grafo, caché y ejecución). La propiedad `CppConsumerVolatileMode` se rechaza.
   - [x] T08-D13b: el `volatile T*` devuelto por una función C usa el modo de su referencia, directo y precompilado; NSMeta guarda ese modo en la instantánea de la función, en el contrato vigente. [Evidencia](registro-commits/t08-d13b-retorno-funcion-c.md).

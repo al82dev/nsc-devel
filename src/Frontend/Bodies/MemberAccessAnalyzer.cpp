@@ -870,6 +870,9 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
     //     que usa el acceso directo `v->items[i]`; `pointerKnownAlignment` conserva la demostrada por el receptor.
     //     Un puntero a escalares volatile (o un arreglo de ellos) lleva la alineacion natural del apuntado que
     //     supone C.
+    // EN: T08-D11/D12. A C/C++ record field is a C operand for the integer divergence diagnostic.
+    // ES: T08-D11/D12. Un campo de record C/C++ es operando C para el diagnostico de divergencia entera.
+    result.cppCOrigin = field.isCppExternal;
     if (field.isCppExternal && !field.isBitField)
     {
         if (result.cppFlexibleArrayMember && result.volatileStorage)

@@ -8,6 +8,7 @@
 
 #include "MethodBodyInternals.h"
 #include "CppFlexiblePointerAlignment.h"
+#include "CIntegerDivergence.h"
 #include "../Internal/Stage37ConstantValue.h"
 
 #include "nativesharp/Frontend/ProjectGenericConstraintModel.h"
@@ -79,6 +80,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeUnary(
         return analyzeDereference(expression, *operand, diagnostics);
     if (operation == TokenKind::PlusPlus || operation == TokenKind::MinusMinus)
         return analyzeIncrementOrDecrement(expression, *operand, diagnostics);
+    // EN: T08-D11. NativeSharp's rule stays: the result keeps the narrow type. A C operand gets the explicit
+    //     correction, because C promotes it to `int`.
+    // ES: T08-D11. Se conserva la regla de NativeSharp: el resultado mantiene el tipo estrecho. Un operando C
+    //     recibe la correccion explicita, porque C lo promueve a `int`.
+    if ((operation == TokenKind::Minus || operation == TokenKind::Tilde) && operand->cppCOrigin &&
+        method_body_detail::cPromotedNarrowInteger(operand->typeKey))
+        diagnostics.report(
+            diagnostics::DiagnosticId::CppInteropDiagnostic,
+            diagnostics::DiagnosticSeverity::Warning,
+            expression->range(),
+            method_body_detail::cUnaryDivergenceMessage(operation == TokenKind::Minus ? '-' : '~',
+                                                        operand->typeKey));
     return analyzeUnaryNumeric(expression, *operand, diagnostics);
 }
 // ¿ESTE DIVISOR ES UN CERO QUE EL COMPILADOR YA CONOCE?
@@ -691,6 +704,18 @@ bool ProjectMethodBodyModel::analyzeBinaryComparison(
     }
     result.typeKey = "builtin:bool";
     result.valid = true;
+    // EN: T08-D12. NativeSharp's comparison stays; a C operand in an `int`/`uint` comparison widened to `long`
+    //     gets the explicit correction.
+    // ES: T08-D12. Se conserva la comparacion de NativeSharp; un operando C en una comparacion `int`/`uint`
+    //     ampliada a `long` recibe la correccion explicita.
+    if ((left.cppCOrigin || right.cppCOrigin) && method_body_detail::cIntUintWidensToLong(
+            left.typeKey, right.typeKey, ProjectTypeConversion::commonNumericType(
+                left.typeKey, right.typeKey, left.integerConstant, right.integerConstant)))
+        diagnostics.report(
+            diagnostics::DiagnosticId::CppInteropDiagnostic,
+            diagnostics::DiagnosticSeverity::Warning,
+            expression->range(),
+            method_body_detail::cIntUintDivergenceMessage(true, left.typeKey == "builtin:int"));
     // T03-F05. Publish facts on both truth edges. These are deliberately limited to
     // named locals/parameters: fields and properties can be changed through aliases or
     // calls, while a named value has a stable storage key that joins can reason about.
@@ -904,6 +929,17 @@ bool ProjectMethodBodyModel::analyzeArithmeticBinary(
     }
     result.typeKey = *common;
     result.valid = true;
+    // EN: T08-D12. NativeSharp's arithmetic stays; a C operand in `int`/`uint` arithmetic widened to `long` gets
+    //     the explicit correction.
+    // ES: T08-D12. Se conserva la aritmetica de NativeSharp; un operando C en aritmetica `int`/`uint` ampliada a
+    //     `long` recibe la correccion explicita.
+    if ((left.cppCOrigin || right.cppCOrigin) &&
+        method_body_detail::cIntUintWidensToLong(left.typeKey, right.typeKey, common))
+        diagnostics.report(
+            diagnostics::DiagnosticId::CppInteropDiagnostic,
+            diagnostics::DiagnosticSeverity::Warning,
+            expression->range(),
+            method_body_detail::cIntUintDivergenceMessage(false, left.typeKey == "builtin:int"));
     // DIVISION POR CERO CON UNA CONSTANTE: se rechaza AQUI, en compilacion.
     //
     // POR QUE, y es la mitad que faltaba del arreglo de la division (doc 113). El contrato

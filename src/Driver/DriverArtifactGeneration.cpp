@@ -207,6 +207,20 @@ std::vector<linker::ExternalImportModule> collectExternalImports(const frontend:
     return modules;
 }
 
+// EN: T08-D11/D12. A successful compilation still reports the C interop warnings: the integer operations whose
+//     NativeSharp result differs from C carry the explicit correction. Other warnings keep their current behavior.
+// ES: T08-D11/D12. Una compilacion correcta informa igual los avisos de interoperabilidad C: las operaciones
+//     enteras cuyo resultado NativeSharp difiere del de C llevan la correccion explicita. Los demas avisos
+//     conservan su comportamiento actual.
+static void renderCppInteropWarnings(const frontend::ProjectCompilation &compilation, std::ostream &output)
+{
+    const diagnostics::DiagnosticRenderer renderer(compilation.sourceManager());
+    for (const auto &diagnostic : compilation.diagnostics().diagnostics())
+        if (diagnostic.severity() == diagnostics::DiagnosticSeverity::Warning &&
+            diagnostic.id() == diagnostics::DiagnosticId::CppInteropDiagnostic)
+            renderer.render(diagnostic, output);
+}
+
 // An import library for the packaged name must precede the original import archive.
 // Only declarations with an unambiguous Clang origin are added here; other cases
 // retain the existing post-link diagnostic instead of selecting an arbitrary DLL.
@@ -365,6 +379,7 @@ bool prepareExecutableProject(std::string_view inputPath,
         }
         return false;
     }
+    renderCppInteropWarnings(compilation, error);
     if (compilation.nameLookup() == nullptr || compilation.memberModel() == nullptr ||
         compilation.oopMirModel() == nullptr)
     {
@@ -753,6 +768,7 @@ bool prepareStaticLibraryProject(std::string_view inputPath,
         }
         return false;
     }
+    renderCppInteropWarnings(compilation, error);
     if (compilation.projectGraph() == nullptr || compilation.nameLookup() == nullptr ||
         compilation.memberModel() == nullptr || compilation.oopMirModel() == nullptr)
     {
@@ -1111,6 +1127,7 @@ bool prepareDynamicLibraryProject(std::string_view inputPath,
         }
         return false;
     }
+    renderCppInteropWarnings(compilation, error);
     if (compilation.projectGraph() == nullptr || compilation.nameLookup() == nullptr ||
         compilation.memberModel() == nullptr || compilation.oopMirModel() == nullptr)
     {
