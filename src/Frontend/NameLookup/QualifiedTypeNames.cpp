@@ -296,6 +296,59 @@ bool ProjectNameLookup::expandCppTypeAlias(
                         if (!same(a->parameters[i], b->parameters[i])) return false;
                     return true;
                 };
+                // EN: The same C function-pointer typedef in a live project and in a precompiled one, whose record
+                //     parameters or result are the live records already reconciled with the precompiled ones.
+                // ES: El mismo typedef C de puntero a funcion en un proyecto vivo y en uno precompilado, cuyos records
+                //     de parametros o resultado son records vivos ya conciliados con los precompilados.
+                const auto reconciledFunctionRecordAlias = [&]() {
+                    if (!selected || selected->projectOrdinal == alias.projectOrdinal ||
+                        !selected->declaration.clangUsr || !alias.declaration.clangUsr ||
+                        selected->declaration.clangUsr->empty() ||
+                        *selected->declaration.clangUsr != *alias.declaration.clangUsr ||
+                        selected->declaration.underlyingType.canonicalSpelling !=
+                            alias.declaration.underlyingType.canonicalSpelling) return false;
+                    const auto& root = alias.declaration.underlyingType;
+                    if (root.kind != interop::CppTypeKind::Pointer || !root.element ||
+                        root.element->kind != interop::CppTypeKind::Function) return false;
+                    std::vector<const interop::CppType*> pending{&root};
+                    std::size_t records = 0;
+                    while (!pending.empty())
+                    {
+                        const interop::CppType* type = pending.back();
+                        pending.pop_back();
+                        if (!type || pending.size() > 256) return false;
+                        if (type->kind == interop::CppTypeKind::Record)
+                        {
+                            if (!type->recordIdentity || !type->recordIdentity->clangUsr ||
+                                type->recordIdentity->clangUsr->empty()) return false;
+                            const auto& usr = *type->recordIdentity->clangUsr;
+                            const bool reconciled = std::any_of(cppImportedTypes_.begin(), cppImportedTypes_.end(),
+                                [&](const auto& live) {
+                                    if (!live.reconciledIdentityKey || !live.clangUsr || *live.clangUsr != usr ||
+                                        (live.projectOrdinal != selected->projectOrdinal &&
+                                         live.projectOrdinal != alias.projectOrdinal)) return false;
+                                    return std::any_of(cppImportedTypes_.begin(), cppImportedTypes_.end(),
+                                        [&](const auto& precompiled) {
+                                            return precompiled.identity.key() == *live.reconciledIdentityKey &&
+                                                precompiled.projectOrdinal != live.projectOrdinal &&
+                                                (precompiled.projectOrdinal == selected->projectOrdinal ||
+                                                 precompiled.projectOrdinal == alias.projectOrdinal) &&
+                                                precompiled.clangUsr == live.clangUsr;
+                                        });
+                                });
+                            if (!reconciled) return false;
+                            ++records;
+                            continue;
+                        }
+                        if (type->element) pending.push_back(type->element.get());
+                        if (type->function)
+                        {
+                            pending.push_back(&type->function->returnType);
+                            for (const auto& parameter : type->function->parameterTypes) pending.push_back(&parameter);
+                        }
+                    }
+                    return records != 0;
+                };
                 // Same C file-scope typedef of a builtin scalar (or pointer to one) in two projects: the canonical
                 // spelling compared below is its whole identity; Clang's USR differs only in the header's name.
                 // Mismo typedef C de ámbito de archivo de un escalar predefinido (o puntero a él) en dos proyectos:
@@ -316,7 +369,8 @@ bool ProjectNameLookup::expandCppTypeAlias(
                 };
                 if (selected && (selectedName != qualified ||
                     (selected->projectOrdinal != alias.projectOrdinal && !reconciledRecordAlias() &&
-                     !compatibleFunctionAlias() && !compatibleScalarAlias()) ||
+                     !compatibleFunctionAlias() && !compatibleScalarAlias() &&
+                     !reconciledFunctionRecordAlias()) ||
                     selected->targetTriple != alias.targetTriple ||
                     selected->declaration.underlyingType.canonicalSpelling != alias.declaration.underlyingType.canonicalSpelling))
                     return report(diagnostics::DiagnosticId::AmbiguousTypeName,

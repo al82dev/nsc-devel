@@ -433,24 +433,26 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 
 - [x] T08-017-01: Probar las muestras registradas de callbacks escalares y callbacks con record o enum.
 - [x] T08-017-02: Probar las muestras precompiladas de callbacks con y sin encabezado indicadas en el tracking principal.
-  - [ ] T08-017-02a: `pruebas-tanda-08-callback/validar-record-precompilado.cmd` falla con `conflicting C/C++ type alias 'RecordCallback'` (tipos idénticos, `reconciled=no`); observado el 2026-11-08 durante la regresión de [t08-callback-volatile-identidad.md](registro-commits/t08-callback-volatile-identidad.md). Causa no determinada.
+  - [x] T08-017-02a: `pruebas-tanda-08-callback/validar-record-precompilado.cmd` falla con `conflicting C/C++ type alias 'RecordCallback'` (tipos idénticos, `reconciled=no`); observado el 2026-11-08 durante la regresión de [t08-callback-volatile-identidad.md](registro-commits/t08-callback-volatile-identidad.md). Causa no determinada. Corregido: reconciliación de typedef de puntero a función con records conciliados entre proyecto vivo y precompilado. [Evidencia](registro-commits/t08-callbacks-c.md).
 - **T08-017-03 — Firmas y convenciones:**
-- [ ] T08-017-03a: Verificar callback con parámetros y retorno escalares.
-- [ ] T08-017-03b: Verificar callback con parámetros o retorno de puntero a record y enum.
-- [ ] T08-017-03c: Verificar callback variádico C y su identidad.
+- [x] T08-017-03a: Verificar callback con parámetros y retorno escalares. [Evidencia](registro-commits/t08-callbacks-c.md).
+- [x] T08-017-03b: Verificar callback con parámetros o retorno de puntero a record y enum. [Evidencia](registro-commits/t08-callbacks-c.md).
+- [x] T08-017-03c: Verificar callback variádico C y su identidad. [Evidencia](registro-commits/t08-callbacks-c.md).
 - [ ] T08-017-03d: Verificar callback `vectorcall` y su convención de llamada.
+  - **Pendiente T08-017-03d1:** `__vectorcall` no soportado; NSC lo rechaza con diagnóstico explícito, fijado por la prueba. [Detalle](registro-commits/t08-callbacks-c.md#pendiente-t08-017-03d1).
 - **T08-017-04 — Almacenamiento y calificadores:**
-- [ ] T08-017-04a: Verificar callback almacenado en campo de struct C.
-- [ ] T08-017-04b: Verificar callback almacenado en global C.
-- [ ] T08-017-04c: Verificar callback retornado por función C.
-- [ ] T08-017-04d: Verificar lectura/escritura de callback `volatile` alineado y empaquetado.
-- [ ] T08-017-04e: Verificar rechazo de escritura sobre un callback almacenado `const`.
+- [x] T08-017-04a: Verificar callback almacenado en campo de struct C. [Evidencia](registro-commits/t08-callbacks-c.md).
+  - **Decisión pendiente T08-017-04a1:** una función C asignada desde NativeSharp se guarda como envoltorio `__c_boundary`; su dirección difiere de la de C. [Detalle](registro-commits/t08-callbacks-c.md#decisión-pendiente-t08-017-04a1).
+- [x] T08-017-04b: Verificar callback almacenado en global C. [Evidencia](registro-commits/t08-callbacks-c.md).
+- [x] T08-017-04c: Verificar callback retornado por función C. [Evidencia](registro-commits/t08-callbacks-c.md).
+- [x] T08-017-04d: Verificar lectura/escritura de callback `volatile` alineado y empaquetado. [Evidencia](registro-commits/t08-callbacks-c.md).
+- [x] T08-017-04e: Verificar rechazo de escritura sobre un callback almacenado `const`. [Evidencia](registro-commits/t08-callbacks-c.md).
 - **T08-017-05 — Metadata:**
-- [ ] T08-017-05a: Verificar publicación de firma y convención del callback en metadata.
-- [ ] T08-017-05b: Verificar invocación del callback restaurado con encabezado visible.
-- [ ] T08-017-05c: Verificar invocación del callback restaurado con encabezado oculto.
-- [ ] T08-017-06: Conciliar las notas históricas contradictorias sobre callbacks volátiles almacenados con el comportamiento y las pruebas actuales.
-- [ ] T08-017-07: Conciliar el rechazo histórico del método que retorna callback precompilado con la validación posterior del mismo camino.
+- [x] T08-017-05a: Verificar publicación de firma y convención del callback en metadata. [Evidencia](registro-commits/t08-callbacks-c.md).
+- [x] T08-017-05b: Verificar invocación del callback restaurado con encabezado visible. [Evidencia](registro-commits/t08-callbacks-c.md).
+- [x] T08-017-05c: Verificar invocación del callback restaurado con encabezado oculto. [Evidencia](registro-commits/t08-callbacks-c.md).
+- [x] T08-017-06: Conciliar las notas históricas contradictorias sobre callbacks volátiles almacenados con el comportamiento y las pruebas actuales. [Evidencia](registro-commits/t08-callbacks-c.md).
+- [x] T08-017-07: Conciliar el rechazo histórico del método que retorna callback precompilado con la validación posterior del mismo camino. [Evidencia](registro-commits/t08-callbacks-c.md).
 
 ## T08-018 — Colisiones de nombres
 
