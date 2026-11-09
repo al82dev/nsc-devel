@@ -121,6 +121,8 @@ public:
     // capability, so constraints, calls and method-body flow all ask one canonical service.
     bool typeIsImplicitlyCopyable(std::string_view typeKey) const;
     bool typeIsMoveOnly(std::string_view typeKey) const;
+    // Whether shared static storage can transitively expose an Rc or WeakRc value.
+    bool typeContainsThreadLocalSharedPointer(std::string_view typeKey) const;
     // EN: Freeze 3.0 (receiver temporaries): plain data -- scalars, enums, and tuples, fixed
     //     arrays and structs built only of plain data, with nothing to destroy. A copy of plain
     //     data can never refer into the value it was read from.
@@ -577,6 +579,8 @@ private:
     std::vector<ModuleInitializationRecord> moduleInitializers_;
     std::vector<MemberBodyBinding> bodyBindings_;
     std::vector<std::vector<std::size_t>> membersByType_;
+    // Reverse declared inheritance edges for the shared-static safety query.
+    std::vector<std::vector<std::size_t>> sharedStaticDerivedByType_;
     std::vector<std::vector<std::size_t>> membersDeclaredByType_;
     bool membersDeclaredByTypeIndexBuilt_ = false;
     std::vector<std::vector<std::size_t>> userConversionsByType_;

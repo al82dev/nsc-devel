@@ -4732,6 +4732,12 @@ void ProjectMethodBodyModel::analyzeVariable(
         : (isVariableLengthArray
             ? variableLengthArrayElementTypeKey + '*'
             : memberModel_->canonicalTypeKey(variable->typeSyntax(), *nameLookup_));
+    if (isStaticLocal && memberModel_->typeContainsThreadLocalSharedPointer(typeKey))
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            variable->range(),
+            "shared static storage cannot contain a thread-local shared pointer (Rc or WeakRc)");
     const sema::OwnershipKind declaredOwnership = ownershipKindFromSyntax(variable->typeSyntax());
     const bool isBorrowed = declaredOwnership == sema::OwnershipKind::Borrowed;
     // EN: Freeze 3.0 P3: a `ref` local aliases its place; it neither copies nor owns a move-only value

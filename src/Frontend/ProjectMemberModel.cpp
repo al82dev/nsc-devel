@@ -63,6 +63,54 @@ bool ProjectMemberModel::build(
 
     collectDeclaredTypeMembers(nameLookup, diagnostics);
     collectExternalTraitImplMembers(nameLookup, diagnostics);
+    sharedStaticDerivedByType_.assign(nameLookup.namedTypes().size(), {});
+    std::optional<std::size_t> objectRoot;
+    for (std::size_t ordinal = 0; ordinal < nameLookup.namedTypes().size(); ++ordinal)
+    {
+        const auto& type = nameLookup.namedTypes()[ordinal];
+        if (type.kind == NamedTypeDeclarationKind::Class &&
+            type.identity.fullyQualifiedName() == "NativeSharp.Core.Object")
+        {
+            objectRoot = ordinal;
+            break;
+        }
+    }
+    for (std::size_t ordinal = 0; ordinal < nameLookup.namedTypes().size(); ++ordinal)
+    {
+        const auto& type = nameLookup.namedTypes()[ordinal];
+        if (type.kind != NamedTypeDeclarationKind::Class &&
+            type.kind != NamedTypeDeclarationKind::Interface) continue;
+        bool hasClassBase = false;
+        const auto addBase = [&](const ast::TypeSyntax* syntax)
+        {
+            const auto base = typeOrdinalForKey(canonicalTypeKey(syntax, nameLookup));
+            if (!base.has_value() || *base == ordinal || *base >= sharedStaticDerivedByType_.size()) return;
+            const auto kind = nameLookup.namedTypes()[*base].kind;
+            if (kind != NamedTypeDeclarationKind::Class && kind != NamedTypeDeclarationKind::Interface) return;
+            sharedStaticDerivedByType_[*base].push_back(ordinal);
+            hasClassBase = hasClassBase || kind == NamedTypeDeclarationKind::Class;
+        };
+        for (const auto& part : type.parts)
+        {
+            if (part.syntax == nullptr) continue;
+            if (!part.syntax->typeSyntaxes().empty())
+                for (const ast::TypeSyntax* base : part.syntax->typeSyntaxes()) addBase(base);
+            else if (part.syntax->typeSyntax() != nullptr) addBase(part.syntax->typeSyntax());
+        }
+        if (type.kind == NamedTypeDeclarationKind::Class && !hasClassBase && objectRoot.has_value() &&
+            *objectRoot != ordinal)
+            sharedStaticDerivedByType_[*objectRoot].push_back(ordinal);
+    }
+    for (const ClassMemberSymbol& member : members_)
+    {
+        if (member.kind != ClassMemberKind::Field || !member.isStatic ||
+            !typeContainsThreadLocalSharedPointer(member.declaredTypeKey)) continue;
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            member.range,
+            "shared static storage cannot contain a thread-local shared pointer (Rc or WeakRc)");
+    }
     // Method-body shards share this model. Complete the ownership closure while build() is still
     // single-threaded so every later query is a read-only lookup instead of a lazy cache write.
     buildTransitiveOwnershipCache();

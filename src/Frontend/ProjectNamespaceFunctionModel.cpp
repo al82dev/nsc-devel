@@ -918,6 +918,13 @@ void ProjectNamespaceFunctionModel::collectNamespaceState(
     const bool installed = installSnapshotState(declaration, state);
     if (!installed) initializeNamespaceState(state, declaration, nameLookup, memberModel);
 
+    if (memberModel.typeContainsThreadLocalSharedPointer(state.declaredTypeKey))
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidType,
+            diagnostics::DiagnosticSeverity::Error,
+            state.range,
+            "shared static storage cannot contain a thread-local shared pointer (Rc or WeakRc)");
+
     const std::string lookupKey =
         nameLookupKey(state.projectOrdinal, state.namespaceName, state.name);
     const auto previous = stateByName_.find(lookupKey);

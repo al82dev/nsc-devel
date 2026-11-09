@@ -253,6 +253,92 @@ bool ProjectMemberModel::typeIsPlainData(std::string_view typeKey) const
     return true;
 }
 
+bool ProjectMemberModel::typeContainsThreadLocalSharedPointer(std::string_view typeKey) const
+{
+    struct PendingType { std::string key; bool includeDerived; };
+    std::vector<PendingType> pending{{std::string(typeKey), true}};
+    std::vector<unsigned char> visited(nameLookup_ != nullptr ? nameLookup_->namedTypes().size() : 0, 0);
+    while (!pending.empty())
+    {
+        PendingType item = std::move(pending.back());
+        pending.pop_back();
+        std::string& candidate = item.key;
+        if (candidate.starts_with("ref:") || candidate.starts_with("refmut:"))
+        {
+            pending.push_back({candidate.substr(candidate.find(':') + 1), item.includeDerived});
+            continue;
+        }
+        if (candidate.ends_with('*'))
+        {
+            pending.push_back({candidate.substr(0, candidate.size() - 1), item.includeDerived});
+            continue;
+        }
+        if (const auto element = ProjectTypeConversion::nativeArrayElementType(candidate))
+        {
+            pending.push_back({*element, item.includeDerived});
+            continue;
+        }
+        if (const auto element = fixedArrayElementTypeKey(candidate))
+        {
+            pending.push_back({*element, item.includeDerived});
+            continue;
+        }
+        if (const auto elements = ProjectTypeConversion::tupleElementTypeKeys(candidate))
+        {
+            for (const auto& element : *elements) pending.push_back({element, item.includeDerived});
+            continue;
+        }
+        const auto ordinal = typeOrdinalForKey(candidate);
+        if (!ordinal.has_value() || nameLookup_ == nullptr ||
+            *ordinal >= nameLookup_->namedTypes().size()) continue;
+        const unsigned char bit = item.includeDerived ? 2 : 1;
+        if ((visited[*ordinal] & bit) != 0) continue;
+        visited[*ordinal] |= bit;
+        const auto& declaration = nameLookup_->namedTypes()[*ordinal];
+        if (genericModel_ != nullptr)
+        {
+            const auto* specialization = genericModel_->specializationForTypeKey(candidate);
+            if (specialization != nullptr && specialization->templateOrdinal < genericModel_->templates().size())
+            {
+                const auto& original = genericModel_->templates()[specialization->templateOrdinal];
+                const std::string expected = original.moduleName + "::" + original.namespaceName + "." +
+                    specialization->specializedName;
+                if (original.namespaceName == "NativeSharp.Core" && original.ownerName.empty() &&
+                    (original.name == "Rc" || original.name == "WeakRc") &&
+                    specialization->specializedName == declaration.identity.name() &&
+                    declaration.identity.key() == expected && specialization->templateKey == original.canonicalKey)
+                    return true;
+            }
+        }
+        if (item.includeDerived && *ordinal < sharedStaticDerivedByType_.size())
+            for (const std::size_t derived : sharedStaticDerivedByType_[*ordinal])
+                if (derived < nameLookup_->namedTypes().size())
+                    pending.push_back({"type:" + nameLookup_->namedTypes()[derived].identity.key(), true});
+        if (declaration.kind == NamedTypeDeclarationKind::Class)
+        {
+            for (const auto& part : declaration.parts)
+            {
+                if (part.syntax == nullptr) continue;
+                if (!part.syntax->typeSyntaxes().empty())
+                {
+                    for (const ast::TypeSyntax* base : part.syntax->typeSyntaxes())
+                        pending.push_back({canonicalTypeKey(base, *nameLookup_), false});
+                }
+                else if (part.syntax->typeSyntax() != nullptr)
+                    pending.push_back({canonicalTypeKey(part.syntax->typeSyntax(), *nameLookup_), false});
+            }
+        }
+        for (const std::size_t memberOrdinal : membersByType_[*ordinal])
+        {
+            if (memberOrdinal >= members_.size()) continue;
+            const auto& field = members_[memberOrdinal];
+            if (field.kind == ClassMemberKind::Field && !field.isStatic)
+                pending.push_back({field.declaredTypeKey, true});
+        }
+    }
+    return false;
+}
+
 bool ProjectMemberModel::typeIsMoveOnly(std::string_view typeKey) const
 {
     std::vector<std::string> pending{std::string(typeKey)};

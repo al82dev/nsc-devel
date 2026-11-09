@@ -5483,6 +5483,9 @@ if(NSC_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns")
+    add_test(NAME nsc.compiler.shared-static-semantics
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_static_semantics.py"
+                "${NSC_TEST_COMPILER}")
     add_test(NAME nsc.sdk.shared-destructor-weak-cleanup
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_destructor_weak_cleanup.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
