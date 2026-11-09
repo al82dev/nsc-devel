@@ -185,14 +185,14 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-004-04b: Verificar globales de enum, puntero a enum y record C (struct, union, `const`, `volatile`, punteros), directo, DLL y precompilado sin encabezado, O0–O3, con control Clang y rechazos. Corregida la siembra en el catálogo C de los records/enums que solo aparecen como tipo de una global usada por una plantilla. [Evidencia](registro-commits/t08-globales-enum-record.md).
 - [x] T08-004-04c: Verificar arreglos globales y matrices con punteros calificados (`const char *[]`, `volatile int *[]`, `int *const []`, records y tres dimensiones), directo, DLL y precompilado, O0–O3, con control Clang y seis rechazos. [Evidencia](registro-commits/t08-globales-arreglos.md).
 - [x] T08-004-04d: Verificar `_Atomic` en global externa y `static`, con lectura y escritura cruzadas (once tipos, accesores C `static inline`, IR seq_cst), directo y precompilado, O0–O3, con control Clang. [Evidencia](registro-commits/t08-globales-atomicas.md).
-  - [ ] T08-004-04d1: Importar una global `_Atomic` de tipo record (hoy «C/C++ global type is not yet mapped»). [Límite](registro-commits/t08-globales-atomicas.md#límite-registrado-t08-004-04d1).
+  - [ ] T08-004-04d1: Decisión pendiente (dos diseños): importar una global `_Atomic` de tipo record (hoy «C/C++ global type is not yet mapped»). Opciones: solo records sin bloqueo (1, 2, 4 u 8 bytes alineados, rechazando los demás) o también los demás mediante la biblioteca atómica (`__atomic_load`/`__atomic_store`), que el usuario debe enlazar. [Límite](registro-commits/t08-globales-atomicas.md#límite-registrado-t08-004-04d1).
 - [x] T08-004-04e: Verificar `_Thread_local` con y sin `_Atomic` en ejecutable y DLL (externas y `static` de encabezado, lectura C en el mismo hilo y aislamiento con un hilo creado por C), directo y precompilado, O0–O3, con control Clang. [Evidencia](registro-commits/t08-globales-tls.md).
-- [ ] T08-004-05: Volver a ejecutar los controles TLS y de DLL dentro del gate integral de la tanda.
+- [ ] T08-004-05: Volver a ejecutar los controles TLS y de DLL dentro del gate integral de la tanda. Se ejecuta en la validación integral de la tanda 8.
 - **T08-004-06 — Consumo y resolución:**
-- [ ] T08-004-06a: Verificar una global externa con encabezado en el consumidor.
-- [ ] T08-004-06b: Verificar una global requerida por plantilla con encabezado oculto y metadata.
-- [ ] T08-004-06c: Verificar ambigüedad de globales C homónimas y sombra por local NativeSharp.
-- [ ] T08-004-06d: Verificar identidad y separación de globales `static` con encabezados homónimos.
+- [x] T08-004-06a: Verificar una global externa con encabezado en el consumidor: plantilla y código propio comparten el objeto, O0–O3. [Evidencia](registro-commits/t08-globales-consumo.md).
+- [x] T08-004-06b: Verificar una global requerida por plantilla con encabezado oculto y metadata, O0–O3. [Evidencia](registro-commits/t08-globales-consumo.md).
+- [x] T08-004-06c: Verificar ambigüedad de globales C homónimas y sombra por local, parámetro y variable de `for`, O0–O3, con rechazo de declaraciones incompatibles. [Evidencia](registro-commits/t08-globales-consumo.md).
+- [x] T08-004-06d: Verificar identidad y separación de globales `static` con encabezados homónimos en dos productores, O0–O3, y rechazo de ambas vistas en un proyecto. [Evidencia](registro-commits/t08-globales-consumo.md).
 
 ## T08-005 — Typedef
 
