@@ -68,6 +68,27 @@ La prueba pública desde fuentes rechazó ambas formas para `Rc` y `Arc`
 incremental y cuatro controles de tuplas y referencias pasaron
 (`readonly-tuple-existing-controls.log`). No se verificó el SDK binario.
 
+### Inicializadores con llaves
+
+La tupla `(Payload, int) saved = { alias, 42 }` y una estructura con un campo
+`Payload` sin calificador también aceptaban el alias prestado en `Rc` y `Arc`.
+El análisis de entradas agregadas ahora rechaza esa pérdida en tuplas y en
+campos sin ownership de estructuras. No modifica otros destinos ni implementa
+seguimiento de vida por campo. Un intento separado de declarar el campo como
+`borrowed` ya era rechazado en su declaración por Stage 50; no demuestra que
+ese tipo de campo esté soportado (`public-tuple-borrow-borrowed_field_aggregate.log`).
+
+Las regresiones dirigidas rechazaron ambas formas y una tupla anidada para los
+controles local y atómico; los controles con un campo ordinario y lectura escalar
+ejecutaron con 42 en O0/O2. Las cuatro reproducciones públicas de tuplas y
+estructuras pasaron después de la corrección. El build fue incremental y tres
+controles existentes de agregados y tuplas pasaron 3/3. Los comandos y salidas
+están en `readonly-array-ctest-tuple_aggregate_alias,struct_aggregate_alias,tuple_aggregate_nested,tuple_aggregate_scalar,struct_aggregate_ordinary.log`,
+`public-tuple-borrow-tuple_alias_escape,tuple_direct_escape,tuple_aggregate_escape,struct_aggregate_escape.log`
+y `readonly-aggregate-existing-controls.log`, todos en `A:/nsc-fixes-evidencia`.
+El caso público de uso normal de `Rc` y `Arc` también pasó desde fuentes
+(`public-tuple-borrow-safe.log`).
+
 ## Estructuras anidadas
 
 Tras `764137d50`, una regresión con un arreglo de estructuras que contienen un

@@ -735,6 +735,25 @@ bool ProjectMethodBodyModel::bindAggregateValueEntry(
         valid = false;
         return false;
     }
+    if (value.readonlyBorrowedObject)
+    {
+        const NamedTypeDeclaration* aggregate = namedTypeForTypeKey(targetTypeKey);
+        const bool unqualifiedStructField = aggregate != nullptr &&
+            aggregate->kind == NamedTypeDeclarationKind::Struct &&
+            target < elementMemberOrdinals.size() && elementMemberOrdinals[target].has_value() &&
+            memberModel_ != nullptr && *elementMemberOrdinals[target] < memberModel_->members().size() &&
+            memberModel_->members()[*elementMemberOrdinals[target]].declaredOwnership == sema::OwnershipKind::None;
+        if (unqualifiedStructField || ProjectTypeConversion::tupleElementTypeKeys(targetTypeKey).has_value())
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                element->range(),
+                "readonly borrowed value cannot be stored in an aggregate without lifetime tracking");
+            valid = false;
+            return true;
+        }
+    }
     const ProjectImplicitConversion conversion = classifyImplicit(
         value.typeKey, elementTypeKey, value.integerConstant);
     if (!conversion.exists())

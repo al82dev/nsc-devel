@@ -16,6 +16,7 @@ def main():
     prefix = '''using NativeSharp.Core.Internal;
 namespace NativeSharp.Core { public class Exception { } }
 class Payload { public int[] Data; public Payload() { Data = new int[1]; } }
+struct Carrier { public Payload Item; }
 class Child { public int Value; }
 class Children { public Child[] Data; public Children() { Data = new Child[1]; Data[0] = new Child(); } }
 struct Box { public Child Item; public int Value; public Box() { Item = new Child(); Value = 42; } }
@@ -38,6 +39,15 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
         'tuple_nested': ('''((int, Payload), int) saved = ((1, alias), 42); return 0;''',
                          'readonly borrowed value'),
         'tuple_array': ('''(int[], int) saved = (alias.Data, 42); return 0;''', 'readonly borrowed value'),
+        'tuple_aggregate_alias': ('''(Payload, int) saved = { alias, 42 }; return 0;''',
+                                  'readonly borrowed value'),
+        'struct_aggregate_alias': ('''Carrier saved = { alias }; return 0;''', 'readonly borrowed value'),
+        'tuple_aggregate_nested': ('''((Payload, int), int) saved = { { alias, 1 }, 42 }; return 0;''',
+                                   'readonly borrowed value'),
+        'tuple_aggregate_scalar': ('''(int, int) saved = { alias.Data[0], 42 };
+ var (item, number) = saved; return item + number;''', None),
+        'struct_aggregate_ordinary': ('''Payload ordinary = new Payload(); Carrier saved = { ordinary };
+ return saved.Item.Data[0] == 0 ? 42 : 1;''', None),
         'tuple_scalar': ('''var (item, number) = (alias.Data[0], 42); return item + number;''', None),
         'tuple_ordinary': ('''Payload ordinary = new Payload();
  (Payload, int) saved = (ordinary, 42); return 42;''', None),
