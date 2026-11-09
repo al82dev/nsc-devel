@@ -341,6 +341,13 @@ del compilador y se recompiló incrementalmente la versión anterior; la soluci�
 requiere conservar las dependencias de argumentos anidados y demostrar también
 que un diagnóstico válido no desaparezca por diferirse. El ejemplo original
 de la campaña no se alteró.
+En la revisión actual, `ProjectGenericModel::rewriteSpecializedSyntax` guarda
+la identidad de la especialización y después ejecuta `clearTypeArguments()`;
+una comprobación tardía que solo inspeccione el tipo externo ya no puede recorrer
+directamente `Box<Wrong>` dentro de `Wrapper<Box<Wrong>>`. Una solución debe
+preservar esa relación por uso, incluidos caché y metadata precompilada, y
+asociar cada diagnóstico al candidato realmente seleccionado. Esto es una
+dirección de investigación, no una corrección implementada.
 Con el contenedor interno sin esa restricción, la regresión de handles ejecuta
 4 000 clones atómicos en cuatro hilos, tanto O0 como O2, y verifica que queda
 un único fuerte y que el payload se destruye una vez después de los joins. El
@@ -356,6 +363,12 @@ ha demostrado como una instantánea linealizable. Esa limitación debe resolvers
 o definir su contrato antes de publicar la API. Las cinco pruebas dirigidas y
 el análisis semántico de Core pasaron de nuevo (`shared-control-suite.log`,
 `shared-core-check.log`).
+Una prueba controlada mantuvo bloqueado el destructor del último fuerte mientras
+quedaba un débil explícito: `WeakCount` devolvió 2 durante el destructor y 1
+después, en O0/O2 (`shared-weak-count-race-probe/results.json`). Esto confirma
+que la lectura puede incluir el débil implícito transitorio. La elección entre
+exponer ese conteo aproximado bajo concurrencia o exigir una observación exacta
+está pendiente de la respuesta del usuario.
 
 ## AddressSanitizer
 
