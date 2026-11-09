@@ -66,6 +66,8 @@ class Program { public static int Main() {
             assert result.returncode == 42, ('run', level, result.returncode, result.stdout, result.stderr)
             print('binary shared owners', level, 'exit=42', flush=True)
         for family, weak, make in (('Rc', 'WeakRc', 'MakeRc'), ('Arc', 'WeakArc', 'MakeArc')):
+            if os.environ.get('NSC_SHARED_BINARY_FAMILY') not in (None, family):
+                continue
             source.write_text(('''using NativeSharp.Core;
 class Payload { public Payload() { } }
 class Gate { static Gate() throws Exception { throw new Exception(); }
@@ -104,6 +106,8 @@ class Program { public static int Main() { int caught = 0;
                               .replace('STRONG', family).replace('MAKE', make + 'Throwing'), encoding='utf-8')
             for level in ('O0', 'O2'):
                 exe = root / ('binary-throwing-' + family + '-' + level + '.exe')
+                if os.environ.get('NSC_SHARED_BINARY_LEVEL') not in (None, level):
+                    continue
                 result = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', exe], root)
                 assert result.returncode == 0, ('throwing compile', family, level, result.stdout + result.stderr)
                 result = run([exe], root)
