@@ -15,6 +15,31 @@ namespace nativesharp::driver
 {
 using namespace public_surface_support;
 
+namespace
+{
+// EN: T08-D02. Writes the pointee qualifiers NSMETA keeps for a pointer-typed signature slot as `T const*`,
+//     `T volatile*` or `T const volatile*`. `volatile` is the metadata-source spelling the parser accepts only in
+//     materialized public-API sources; NativeSharp source has no pointee-volatile syntax (T08-D03).
+// ES: T08-D02. Escribe los calificadores del dato apuntado que NSMETA conserva para una posicion de firma de
+//     tipo puntero como `T const*`, `T volatile*` o `T const volatile*`. `volatile` es la escritura de fuente
+//     de metadata que el parser acepta solo en fuentes de API publica materializadas; el codigo NativeSharp no
+//     tiene sintaxis de dato apuntado volatile (T08-D03).
+void spellPointeeQualifiers(std::string &sourceType, std::uint8_t qualifiers)
+{
+    if (qualifiers == 0U || sourceType.starts_with("fn*"))
+        return;
+    const std::size_t star = sourceType.find('*');
+    if (star == std::string::npos || star == 0)
+        return;
+    std::string spelling;
+    if ((qualifiers & interop::kMetadataPointeeConst) != 0U)
+        spelling += " const";
+    if ((qualifiers & interop::kMetadataPointeeVolatile) != 0U)
+        spelling += " volatile";
+    sourceType.insert(star, spelling);
+}
+} // namespace
+
 constexpr std::uint8_t kPublicAccessibility = 3U;
 constexpr std::uint8_t kGenericMethodKind = 3U;
 constexpr std::uint32_t kAccessorStatic = 1U << 0U;
@@ -114,6 +139,7 @@ bool PublicSurfaceBuilder::emitParameter(const interop::LibraryMetadataParameter
     }
     if (!sourceTypeForMetadataKey(metadata, sourceTypeKey, parameterType, error))
         return false;
+    spellPointeeQualifiers(parameterType, parameter.pointeeQualifiers);
     (*generated) << (parameter.isParameterPack ? "params " : "")
                  << parameterPassPrefix(parameter.passKind, parameter.lifetimeName)
                  << ownershipPrefix(parameter.ownership) << (parameter.isDynamicTrait ? "dyn " : "") << parameterType
@@ -391,6 +417,7 @@ bool PublicSurfaceBuilder::emitAccessorContract(const AccessorContract &contract
     std::string declaredType;
     if (!sourceTypeForMetadataKey(metadata, shape.declaredTypeKey, declaredType, error))
         return false;
+    spellPointeeQualifiers(declaredType, shape.declaredPointeeQualifiers);
     auto declaredOwnership = shape.declaredOwnership;
     if (contract.setter != nullptr &&
         contract.setter->parameters.back().ownership != interop::LibraryMetadataOwnershipKind::None)
@@ -445,6 +472,7 @@ bool PublicSurfaceBuilder::emitDelegateType(const interop::LibraryMetadataType &
     std::string returnType;
     if (!sourceTypeForMetadataKey(metadata, type.delegateReturnTypeKey, returnType, error))
         return false;
+    spellPointeeQualifiers(returnType, type.delegateReturnPointeeQualifiers);
     (*generated) << typeAccessibility << ' ';
     if ((type.delegateFlags & 1U) != 0U)
         (*generated) << (((type.delegateFlags & 2U) != 0U) ? "extern vectorcall " : "extern C ");
@@ -476,6 +504,8 @@ bool PublicSurfaceBuilder::emitDelegateType(const interop::LibraryMetadataType &
         }
         if (!sourceTypeForMetadataKey(metadata, parameterTypeKey, parameterType, error))
             return false;
+        if (parameterIndex < type.delegateParameterPointeeQualifiers.size())
+            spellPointeeQualifiers(parameterType, type.delegateParameterPointeeQualifiers[parameterIndex]);
         (*generated) << parameterPassPrefix(passKind,
                                             parameterIndex < type.delegateParameterLifetimeNames.size()
                                                 ? std::string_view(type.delegateParameterLifetimeNames[parameterIndex])
@@ -541,6 +571,7 @@ bool PublicSurfaceBuilder::emitInterfaceMethod(
     std::string returnType;
     if (!sourceTypeForMetadataKey(metadata, member.declaredTypeKey, returnType, error))
         return false;
+    spellPointeeQualifiers(returnType, member.declaredPointeeQualifiers);
     (*generated) << "    public ";
     if (isTrait && (member.flags & kUserOperator) != 0U)
     {
@@ -842,6 +873,7 @@ bool PublicSurfaceBuilder::emitNominalField(const interop::LibraryMetadataType &
     std::string fieldType;
     if (!sourceTypeForMetadataKey(metadata, field.typeKey, fieldType, error))
         return false;
+    spellPointeeQualifiers(fieldType, field.pointeeQualifiers);
     if (const interop::LibraryMetadataMember *event = metadataEventForBacking(metadata, owner, field); event != nullptr)
     {
         (*generated) << "    " << sourceAccessibility(event->accessibility) << ' ';
@@ -888,6 +920,7 @@ bool PublicSurfaceBuilder::emitStaticFieldMember(const interop::LibraryMetadataM
     std::string fieldType;
     if (!sourceTypeForMetadataKey(metadata, member.declaredTypeKey, fieldType, error))
         return false;
+    spellPointeeQualifiers(fieldType, member.declaredPointeeQualifiers);
     if ((member.flags & (1U << 2U)) != 0U)
     {
         std::string value;
@@ -1061,6 +1094,7 @@ bool PublicSurfaceBuilder::emitMethodMember(const interop::LibraryMetadataMember
         return false;
     constexpr std::uint32_t kUserOperator = 1U << 16U;
     constexpr std::uint32_t kUserConversion = 1U << 17U;
+    spellPointeeQualifiers(returnType, member.declaredPointeeQualifiers);
     constexpr std::uint32_t kImportedC = 1U << 20U;
     if ((member.flags & kImportedC) != 0U)
         return emitImportedMethod(member, returnType);
@@ -1614,6 +1648,7 @@ bool PublicSurfaceBuilder::emitNamespaceFunction(const interop::LibraryMetadataN
     {
         return false;
     }
+    spellPointeeQualifiers(returnType, function.declaredPointeeQualifiers);
     if (!function.namespaceName.empty())
         (*generated) << "namespace " << function.namespaceName << std::endl << '{' << std::endl;
     if (staticExtension && !emitStaticNamespaceExtension(function))
@@ -1651,6 +1686,7 @@ bool PublicSurfaceBuilder::emitNamespaceState(const interop::LibraryMetadataName
     {
         return false;
     }
+    spellPointeeQualifiers(typeSource, state.declaredPointeeQualifiers);
     if (!state.namespaceName.empty())
         (*generated) << "namespace " << state.namespaceName << std::endl << '{' << std::endl;
     (*generated) << "public ";

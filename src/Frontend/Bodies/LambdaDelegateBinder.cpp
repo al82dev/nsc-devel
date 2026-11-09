@@ -168,15 +168,12 @@ std::optional<language::FunctionType> ProjectMethodBodyModel::delegatePointeeQua
         !delegateSignature(delegateTypeKey, returnType, parameterTypes, delegateOrdinal) ||
         delegateOrdinal >= nameLookup_->namedTypes().size())
         return std::nullopt;
-    // EN: A delegate materialized from metadata no longer knows the C alias of its parameters: the
-    //     qualifiers are unknown rather than absent, so the previous rules apply (pending decision,
-    //     the metadata has no field for them).
-    // ES: Un delegate materializado desde metadata ya no conoce el alias C de sus parámetros: los
-    //     calificadores son desconocidos, no ausentes, así que rigen las reglas anteriores (decisión
-    //     pendiente: la metadata no tiene un campo para ellos).
-    if (nameLookup_->namedTypes()[delegateOrdinal].isPrecompiled) return std::nullopt;
-    // EN: delegateSignature resolved every type syntax, which marks C alias pointees on the syntax.
+    // EN: delegateSignature resolved every type syntax, which marks C alias pointees on the syntax. A delegate
+    //     materialized from metadata carries the same marks: NSMETA keeps the pointee qualifiers and the
+    //     metadata source spells them (T08-D02).
     // ES: delegateSignature resolvió cada sintaxis de tipo, lo que marca en ella los datos apuntados de alias C.
+    //     Un delegate materializado desde metadata lleva las mismas marcas: NSMETA conserva los calificadores y
+    //     la fuente de metadata los escribe (T08-D02).
     const ast::AstNode* declaration = nameLookup_->namedTypes()[delegateOrdinal].syntax;
     language::FunctionType qualifiers;
     qualifiers.parameters = std::move(parameterTypes);

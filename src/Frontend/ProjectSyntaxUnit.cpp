@@ -51,6 +51,9 @@ bool ProjectSyntaxUnit::parse(
 
     const std::size_t errorsBefore = diagnostics.errorCount();
     parser::Parser parser(tokens_, *arena_, diagnostics, knownTypeNames);
+    // EN: T08-D03: a precompiled unit is a materialized public API; it may carry `T volatile*`.
+    // ES: T08-D03: una unidad precompilada es una API publica materializada; puede llevar `T volatile*`.
+    if (precompiled_) parser.allowMetadataSpellings();
     syntaxTree_ = parser.parseCompilationUnit();
     syntaxValid_ = syntaxTree_ != nullptr && diagnostics.errorCount() == errorsBefore;
     return syntaxValid_;
@@ -68,6 +71,7 @@ bool ProjectSyntaxUnit::parse(
 
     const std::size_t errorsBefore = diagnostics.errorCount();
     parser::Parser parser(tokens_, *arena_, diagnostics, sharedKnownTypeNames, scopedKnownTypeNames);
+    if (precompiled_) parser.allowMetadataSpellings();
     syntaxTree_ = parser.parseCompilationUnit();
     syntaxValid_ = syntaxTree_ != nullptr && diagnostics.errorCount() == errorsBefore;
     return syntaxValid_;

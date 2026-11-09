@@ -55,6 +55,7 @@ for %%T in (
   pruebas-tanda-08-identidad-c\typedef-calificadores\validar-callback-const.py
   pruebas-tanda-08-identidad-c\typedef-calificadores\validar-callback-volatile.py
   pruebas-tanda-08-identidad-c\typedef-calificadores\validar-delegate-alias-calificado.py
+  pruebas-tanda-08-identidad-c\typedef-calificadores\validar-firma-publica-calificada.py
   pruebas-tanda-08-identidad-c\typedef-calificadores\validar-invocacion.py
   pruebas-tanda-08-identidad-c\typedef-calificadores\validar-lambda-calificada.py
   pruebas-tanda-08-identidad-c\typedef-calificadores\validar-puntero-funcion-calificado.py

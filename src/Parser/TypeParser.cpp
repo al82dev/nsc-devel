@@ -1167,10 +1167,25 @@ void Parser::parsePointeeConst(
     SourceRange& pointeeConstRange)
 {
     pointeeConst = at(TokenKind::KwConst);
-    if (!pointeeConst) return;
-    pointeeConstRange = consume().range();
-    type->setPointeeConst();
-    completeRange = join(completeRange, pointeeConstRange);
+    if (pointeeConst)
+    {
+        pointeeConstRange = consume().range();
+        type->setPointeeConst();
+        completeRange = join(completeRange, pointeeConstRange);
+    }
+    // EN: T08-D03: `volatile` before `*` exists only in materialized metadata sources.
+    // ES: T08-D03: `volatile` antes de `*` existe solo en fuentes de metadata materializadas.
+    if (!metadataSpellings_ || !at(TokenKind::KwVolatile)) return;
+    const SourceRange volatileRange = consume().range();
+    type->setPointeeVolatile();
+    if (!pointeeConst) pointeeConstRange = volatileRange;
+    pointeeConst = true;
+    completeRange = join(completeRange, volatileRange);
+}
+
+void Parser::allowMetadataSpellings() noexcept
+{
+    metadataSpellings_ = true;
 }
 
 void Parser::parsePointerProvenanceQualifier(ast::TypeModifierSyntax& pointer)

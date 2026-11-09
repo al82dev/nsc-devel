@@ -417,6 +417,13 @@ LLVMValueRef OopLlvmImplementation::callbackGuardThunk(
         if (!defineCallbackGuardThunkBody(
                 thunk, found->second, *mirFunction, vectorCall, internalSretReturn,
                 externalSretReturn, vectorReturnType, subprogram, error)) return nullptr;
+        // EN: T08-D02: the thunk name depends only on the target, so a precompiled library and its consumer
+        //     may both define it (a published method converted to a C callback on each side). weak_odr plus
+        //     a symbol COMDAT keeps one copy at final link, which also keeps a single callback address.
+        // ES: T08-D02: el nombre del thunk depende solo del destino, así que una biblioteca precompilada y su
+        //     consumidor pueden definirlo ambos (un método publicado convertido a callback C en cada lado).
+        //     weak_odr con un COMDAT por símbolo conserva una copia al enlazar y una sola dirección de callback.
+        applyOdrDefinition(thunk);
         callbackGuardThunks_[cacheKey] = FunctionInfo{thunk, thunkType, subprogram};
         return thunk;
     }

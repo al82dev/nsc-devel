@@ -64,6 +64,7 @@ void parameterSourceContract(std::string& output, const LibraryMetadataParameter
     number(output, parameter.ffiLengthParameter);
     field(output, parameter.ffiLengthParameterName);
     number(output, parameter.ffiCallbackLifetime);
+    number(output, parameter.pointeeQualifiers);
 }
 
 template <typename Callable>
@@ -181,6 +182,10 @@ void appendSourceTypes(const LibraryMetadata& metadata, Surface& result)
         number(contract, type.delegateParameterDynamicTraits.size());
         for (const std::uint8_t dynamicTrait : type.delegateParameterDynamicTraits)
             number(contract, dynamicTrait);
+        number(contract, type.delegateReturnPointeeQualifiers);
+        number(contract, type.delegateParameterPointeeQualifiers.size());
+        for (const std::uint8_t qualifiers : type.delegateParameterPointeeQualifiers)
+            number(contract, qualifiers);
         strings(contract, type.lifetimeParameters, false);
         number(contract, type.lifetimeOutlivesConstraints.size());
         for (const auto& [longer, shorter] : type.lifetimeOutlivesConstraints)
@@ -238,6 +243,7 @@ void appendSourceMembers(const LibraryMetadata& metadata, Surface& result)
         number(contract, member.flags);
         field(contract, member.name);
         field(contract, member.declaredTypeKey);
+        number(contract, member.declaredPointeeQualifiers);
         field(contract, member.declaredErrorTypeKey);
         number(contract, member.declaredOwnership);
         number(contract, member.constantKind);
@@ -264,6 +270,7 @@ void appendSourceNamespaceFunctions(const LibraryMetadata& metadata, Surface& re
         number(contract, function.flags);
         field(contract, function.name);
         field(contract, function.declaredTypeKey);
+        number(contract, function.declaredPointeeQualifiers);
         field(contract, function.declaredErrorTypeKey);
         number(contract, function.declaredOwnership);
         number(contract, function.parameters.size());
@@ -284,6 +291,7 @@ void appendSourceNamespaceStates(const LibraryMetadata& metadata, Surface& resul
         std::string contract;
         number(contract, state.flags);
         field(contract, state.declaredTypeKey);
+        number(contract, state.declaredPointeeQualifiers);
         number(contract, state.initializerKind);
         number(contract, state.initializerBits);
         field(contract, state.initializerText);

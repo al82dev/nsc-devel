@@ -158,6 +158,18 @@ bool spellReadonlyPointee(std::string &sourceType)
     return true;
 }
 
+// EN: T08-D03: spells a `volatile` pointee as `T volatile*` (after `const` when both apply). Only materialized
+//     public-API sources accept this spelling; the identity keeps the `:volatile-pointee:` flag.
+// ES: T08-D03: escribe un dato apuntado `volatile` como `T volatile*` (despues de `const` si van los dos). Solo
+//     las fuentes de API publica materializadas aceptan esta escritura; la identidad conserva la marca.
+bool spellVolatilePointee(std::string &sourceType)
+{
+    const std::size_t star = sourceType.find('*');
+    if (star == std::string::npos || star == 0) return false;
+    sourceType.insert(star, " volatile");
+    return true;
+}
+
 bool sourceCoreTypeForMetadataKey(const std::string &typeKey, std::string &sourceType, std::string &error)
 {
     if (typeKey.starts_with("fn:"))
@@ -169,13 +181,8 @@ bool sourceCoreTypeForMetadataKey(const std::string &typeKey, std::string &sourc
                 (function->callingConvention != language::CallingConvention::C &&
                  function->callingConvention != language::CallingConvention::Win64))) ||
             function->isUnsafe || function->isNoHeap || function->isAsync || function->nullable ||
-            !function->lifetime.empty() || !function->errorType.empty() ||
-            language::functionHasPointeeVolatile(*function))
+            !function->lifetime.empty() || !function->errorType.empty())
         {
-            // EN: T08-002: NativeSharp source cannot spell a volatile pointee in a callback
-            //     signature; materializing it would silently discard the qualification.
-            // ES: T08-002: el código NativeSharp no puede escribir un dato apuntado volatile en una
-            //     firma de callback; materializarla descartaría la calificación en silencio.
             error = "metadata-backed source import cannot materialize this function type";
             return false;
         }
@@ -187,7 +194,8 @@ bool sourceCoreTypeForMetadataKey(const std::string &typeKey, std::string &sourc
         {
             std::string parameter;
             if (!sourceTypeForMetadataKey(function->parameters[i], parameter, error)) return false;
-            if (language::functionParameterPointeeReadonly(*function, i) && !spellReadonlyPointee(parameter))
+            if ((language::functionParameterPointeeReadonly(*function, i) && !spellReadonlyPointee(parameter)) ||
+                (language::functionParameterPointeeVolatile(*function, i) && !spellVolatilePointee(parameter)))
             {
                 error = "metadata-backed source import cannot materialize this function type";
                 return false;
@@ -198,7 +206,8 @@ bool sourceCoreTypeForMetadataKey(const std::string &typeKey, std::string &sourc
         if (function->variadic) sourceType += ", ...";
         std::string result;
         if (!sourceTypeForMetadataKey(function->result, result, error)) return false;
-        if (function->resultPointeeReadonly && !spellReadonlyPointee(result))
+        if ((function->resultPointeeReadonly && !spellReadonlyPointee(result)) ||
+            (function->resultPointeeVolatile && !spellVolatilePointee(result)))
         {
             error = "metadata-backed source import cannot materialize this function type";
             return false;

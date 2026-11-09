@@ -85,6 +85,18 @@ const char* memberConvention(const LibraryMetadataMember& member) noexcept
     return (member.flags & kExternC) != 0U ? "win64-c" : "native-win64";
 }
 
+// EN: T08-D02. Spelling of the pointee qualifiers in the report; empty when there are none.
+// ES: T08-D02. Escritura de los calificadores del dato apuntado en el informe; vacia si no hay.
+std::string pointeeQualifierText(std::uint8_t qualifiers)
+{
+    if (qualifiers == 0U) return {};
+    std::string text = " pointee=";
+    if ((qualifiers & kMetadataPointeeConst) != 0U) text += "const";
+    if ((qualifiers & kMetadataPointeeVolatile) != 0U)
+        text += (qualifiers & kMetadataPointeeConst) != 0U ? "+volatile" : "volatile";
+    return text;
+}
+
 void writeParameters(
     std::span<const LibraryMetadataParameter> parameters,
     std::ostream& output)
@@ -98,7 +110,8 @@ void writeParameters(
                << " pass=" << passName(parameter.passKind)
                << " ownership=" << ownershipName(parameter.ownership)
                << " pack=" << (parameter.isParameterPack ? "yes" : "no")
-               << " dyn=" << (parameter.isDynamicTrait ? "yes" : "no");
+               << " dyn=" << (parameter.isDynamicTrait ? "yes" : "no")
+               << pointeeQualifierText(parameter.pointeeQualifiers);
         if (parameter.ffiLengthParameter != UINT32_MAX)
             output << " length=#" << parameter.ffiLengthParameter
                    << '(' << parameter.ffiLengthParameterName << ')';
@@ -270,7 +283,7 @@ void writeMembers(const LibraryMetadata& metadata, std::ostream& output)
                << " calling-convention=" << memberConvention(*member)
                << " return="
                << ((member->flags & kMetadataMemberDynamicTrait) != 0U ? "dyn:" : "")
-               << member->declaredTypeKey
+               << member->declaredTypeKey << pointeeQualifierText(member->declaredPointeeQualifiers)
                << " return-ownership=" << ownershipName(member->declaredOwnership)
                << " mangled=" << member->mangledName;
         if (member->ffiUnwindPolicy != 0U)

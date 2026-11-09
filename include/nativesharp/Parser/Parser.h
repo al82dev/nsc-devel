@@ -45,6 +45,12 @@ public:
         const ScopedKnownTypeNames* scopedKnownTypeNames = nullptr);
 
     ast::AstNode* parseCompilationUnit();
+    // EN: T08-D03. Accepts the metadata-source spelling `T volatile*` (and `T const volatile*`), which only
+    //     materialized public-API sources use to carry a C pointee qualification NativeSharp cannot write.
+    // ES: T08-D03. Acepta la escritura de fuente de metadata `T volatile*` (y `T const volatile*`), que solo
+    //     usan las fuentes de API publica materializadas para llevar una calificacion C que NativeSharp no
+    //     puede escribir.
+    void allowMetadataSpellings() noexcept;
 
 private:
     Parser(
@@ -1707,5 +1713,6 @@ private:
     const KnownTypeNameSet* sharedKnownTypeNames_ = nullptr;
     const ScopedKnownTypeNames* scopedKnownTypeNames_ = nullptr;
     const Parser* knownTypeNameParent_ = nullptr;
+    bool metadataSpellings_ = false;
 };
 }

@@ -75,5 +75,12 @@ struct LibraryMetadataType final
     std::string delegateReturnLifetimeName;
     std::vector<LibraryMetadataParameterPassKind> delegateParameterPassKinds;
     std::vector<std::string> delegateParameterLifetimeNames;
+    // EN: T08-D02. Qualifiers of the pointee of a pointer-typed delegate result and of each parameter, which the
+    //     type key does not carry: kMetadataPointeeConst and kMetadataPointeeVolatile. Zero for other types.
+    // ES: T08-D02. Calificadores del dato apuntado del resultado y de cada parametro de un delegate de tipo
+    //     puntero, que la clave de tipo no lleva: kMetadataPointeeConst y kMetadataPointeeVolatile. Cero para
+    //     los demas tipos.
+    std::uint8_t delegateReturnPointeeQualifiers = 0;
+    std::vector<std::uint8_t> delegateParameterPointeeQualifiers;
 };
 }

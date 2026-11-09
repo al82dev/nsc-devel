@@ -529,6 +529,51 @@ void encodeGenericContracts(ByteWriter& writer, const LibraryMetadata& metadata)
     }
 }
 
+void writeQualifierList(ByteWriter& writer, const std::vector<std::uint8_t>& qualifiers)
+{
+    writer.u32(static_cast<std::uint32_t>(qualifiers.size()));
+    for (const std::uint8_t qualifier : qualifiers) writer.u8(qualifier);
+}
+
+void writeParameterQualifiers(ByteWriter& writer, const std::vector<LibraryMetadataParameter>& parameters)
+{
+    writer.u32(static_cast<std::uint32_t>(parameters.size()));
+    for (const LibraryMetadataParameter& parameter : parameters) writer.u8(parameter.pointeeQualifiers);
+}
+
+// EN: T08-D02. Pointee qualifiers of every pointer-typed signature slot, in catalogue order: delegate result,
+//     delegate parameters and fields of each type; declared type and parameters of each member and namespace
+//     function; declared type of each namespace state.
+// ES: T08-D02. Calificadores del dato apuntado de cada posicion de firma de tipo puntero, en el orden de los
+//     catalogos: resultado y parametros de delegate y campos de cada tipo; tipo declarado y parametros de cada
+//     miembro y funcion de namespace; tipo declarado de cada estado de namespace.
+void encodePointeeQualifierContracts(ByteWriter& writer, const LibraryMetadata& metadata)
+{
+    writer.u32(static_cast<std::uint32_t>(metadata.types.size()));
+    for (const LibraryMetadataType& type : metadata.types)
+    {
+        writer.u8(type.delegateReturnPointeeQualifiers);
+        writeQualifierList(writer, type.delegateParameterPointeeQualifiers);
+        writer.u32(static_cast<std::uint32_t>(type.fields.size()));
+        for (const LibraryMetadataField& field : type.fields) writer.u8(field.pointeeQualifiers);
+    }
+    writer.u32(static_cast<std::uint32_t>(metadata.members.size()));
+    for (const LibraryMetadataMember& member : metadata.members)
+    {
+        writer.u8(member.declaredPointeeQualifiers);
+        writeParameterQualifiers(writer, member.parameters);
+    }
+    writer.u32(static_cast<std::uint32_t>(metadata.namespaceFunctions.size()));
+    for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+    {
+        writer.u8(function.declaredPointeeQualifiers);
+        writeParameterQualifiers(writer, function.parameters);
+    }
+    writer.u32(static_cast<std::uint32_t>(metadata.namespaceStates.size()));
+    for (const LibraryMetadataNamespaceState& state : metadata.namespaceStates)
+        writer.u8(state.declaredPointeeQualifiers);
+}
+
 std::vector<std::uint8_t> encodePayload(
     const LibraryMetadata& metadata,
     std::uint8_t legacySourceRevision,
@@ -568,6 +613,9 @@ std::vector<std::uint8_t> encodePayload(
         writer.u64(static_cast<std::uint64_t>(metadata.cppCRecordCatalog.size()));
         writer.raw(metadata.cppCRecordCatalog);
     }
+    // EN: Part of the current contract (1.49); there is no older form to read.
+    // ES: Parte del contrato vigente (1.49); no hay una forma anterior que leer.
+    if (metadata.formatMinor >= 49) encodePointeeQualifierContracts(writer, metadata);
     return writer.bytes();
 }
 
@@ -1910,6 +1958,78 @@ bool decodeGenericTemplateContracts(
     return true;
 }
 
+bool readQualifier(ByteReader& reader, std::uint8_t& qualifier)
+{
+    return reader.u8(qualifier) && (qualifier & ~kMetadataPointeeQualifierMask) == 0U;
+}
+
+bool readQualifierCount(ByteReader& reader, std::size_t expected)
+{
+    std::uint32_t count = 0;
+    return readCount(reader, count) && count == expected;
+}
+
+bool decodeParameterQualifiers(ByteReader& reader, std::vector<LibraryMetadataParameter>& parameters)
+{
+    if (!readQualifierCount(reader, parameters.size())) return false;
+    for (LibraryMetadataParameter& parameter : parameters)
+    {
+        if (!readQualifier(reader, parameter.pointeeQualifiers)) return false;
+    }
+    return true;
+}
+
+bool decodeTypePointeeQualifiers(ByteReader& reader, LibraryMetadataType& type)
+{
+    std::uint32_t count = 0;
+    if (!readQualifier(reader, type.delegateReturnPointeeQualifiers) || !readCount(reader, count) ||
+        count > type.delegateParameterTypeKeys.size()) return false;
+    type.delegateParameterPointeeQualifiers.assign(count, 0U);
+    for (std::uint8_t& qualifier : type.delegateParameterPointeeQualifiers)
+    {
+        if (!readQualifier(reader, qualifier)) return false;
+    }
+    if (!readQualifierCount(reader, type.fields.size())) return false;
+    for (LibraryMetadataField& field : type.fields)
+    {
+        if (!readQualifier(reader, field.pointeeQualifiers)) return false;
+    }
+    return true;
+}
+
+// EN: T08-D02. Reads the catalogue written by encodePointeeQualifierContracts; every count must match its
+//     catalogue and every value must use only the defined bits.
+// ES: T08-D02. Lee el catalogo que escribe encodePointeeQualifierContracts; cada cuenta debe coincidir con
+//     su catalogo y cada valor solo puede usar los bits definidos.
+bool decodePointeeQualifierContracts(ByteReader& reader, LibraryMetadata& metadata, std::string& error)
+{
+    error = "truncated or invalid metadata pointee-qualifier catalogue";
+    if (!readQualifierCount(reader, metadata.types.size())) return false;
+    for (LibraryMetadataType& type : metadata.types)
+    {
+        if (!decodeTypePointeeQualifiers(reader, type)) return false;
+    }
+    if (!readQualifierCount(reader, metadata.members.size())) return false;
+    for (LibraryMetadataMember& member : metadata.members)
+    {
+        if (!readQualifier(reader, member.declaredPointeeQualifiers) ||
+            !decodeParameterQualifiers(reader, member.parameters)) return false;
+    }
+    if (!readQualifierCount(reader, metadata.namespaceFunctions.size())) return false;
+    for (LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+    {
+        if (!readQualifier(reader, function.declaredPointeeQualifiers) ||
+            !decodeParameterQualifiers(reader, function.parameters)) return false;
+    }
+    if (!readQualifierCount(reader, metadata.namespaceStates.size())) return false;
+    for (LibraryMetadataNamespaceState& state : metadata.namespaceStates)
+    {
+        if (!readQualifier(reader, state.declaredPointeeQualifiers)) return false;
+    }
+    error.clear();
+    return true;
+}
+
 bool decodeFfiMemberContract(
     ByteReader& reader,
     LibraryMetadataMember& member,
@@ -2019,6 +2139,7 @@ bool decodePayload(
         if (!reader.raw(metadata.cppCRecordCatalog))
         { error = "truncated C record catalogue"; return false; }
     }
+    if (metadata.formatMinor >= 49 && !decodePointeeQualifierContracts(reader, metadata, error)) return false;
     if (!reader.atEnd())
     {
         error = "metadata payload has trailing bytes";

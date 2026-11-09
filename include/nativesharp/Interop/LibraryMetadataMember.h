@@ -44,5 +44,12 @@ struct LibraryMetadataMember final
     std::string inlineSourceText;
     // NSMETA 1.38: 0 implicit/default, 1 forbidden, 2 abort-on-violation.
     std::uint8_t ffiUnwindPolicy = 0;
+    // EN: T08-D02. Qualifiers of the pointee of a pointer-typed declared type (result, field or property),
+    //     which the type key does not carry: kMetadataPointeeConst and kMetadataPointeeVolatile. Zero for every
+    //     other type.
+    // ES: T08-D02. Calificadores del dato apuntado de un tipo declarado puntero (resultado, campo o propiedad),
+    //     que la clave de tipo no lleva: kMetadataPointeeConst y kMetadataPointeeVolatile. Cero para cualquier
+    //     otro tipo.
+    std::uint8_t declaredPointeeQualifiers = 0;
 };
 }

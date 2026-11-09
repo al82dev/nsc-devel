@@ -7,8 +7,8 @@ plain `Payload*` parameter, a lambda could write through a `CPayload`, and the v
 `VGetter` was read with ordinary loads. Positive cases compile and run with the header (direct path)
 and through a precompiled template library consumed without the header, in O0-O3; negative cases are
 rejected; the IR checks the volatile reads. A C control documents the equivalent function-pointer
-contract. The precompiled path only runs the cases that do not depend on the qualifiers of a delegate
-materialized from metadata (see POSITIVE_PRECOMPILED).
+contract. Since T08-D02 NSMETA keeps the pointee qualifiers of the public delegates, so the precompiled
+path runs every positive and negative case (before, only the cases that did not depend on them).
 """
 from pathlib import Path
 import os
@@ -83,12 +83,10 @@ NEGATIVE = [
      "initialization would discard pointer pointee volatile qualification"),
 ]
 
-# Precompiled path. The consumer materializes the public delegates from metadata, which keeps the
-# pointer type but not the C alias, so their pointee qualifiers are unknown and the previous rules apply
-# (pending decision T08-002, it needs NSMeta). Only the cases that do not depend on them run there.
-POSITIVE_PRECOMPILED = [case for case in POSITIVE
-                        if case[0] in ("CaseConstMethod", "CaseConstLambda", "CasePlain")]
-NEGATIVE_PRECOMPILED = ("RejectPlainVolatileArgument",)
+# Precompiled path. The consumer materializes the public delegates from metadata; since T08-D02 NSMETA keeps
+# the pointee qualifiers of their parameters and result, so every case runs there too.
+POSITIVE_PRECOMPILED = POSITIVE
+NEGATIVE_PRECOMPILED = tuple(name for name, _, _ in NEGATIVE)
 
 # C control: the same contract written with function pointers.
 C_TYPES = """typedef int (*VHandler)(VPayload);

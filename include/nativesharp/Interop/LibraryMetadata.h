@@ -192,6 +192,15 @@ inline constexpr std::uint32_t kMetadataMemberDynamicTrait = 1U << 30U;
 //     `ref readonly`.
 inline constexpr std::uint32_t kMetadataMemberReadonlyReferenceReturn = 1U << 31U;
 
+// EN: T08-D02. Pointee qualifiers of a pointer-typed signature slot (`T const*`, or a C alias such as
+//     `typedef volatile Payload* VPayload`). The type key keeps the carrier; these bits keep the contract.
+// ES: T08-D02. Calificadores del dato apuntado de una posicion de firma de tipo puntero (`T const*`, o un
+//     alias C como `typedef volatile Payload* VPayload`). La clave de tipo conserva el portador; estos bits,
+//     el contrato.
+inline constexpr std::uint8_t kMetadataPointeeConst = 1U << 0U;
+inline constexpr std::uint8_t kMetadataPointeeVolatile = 1U << 1U;
+inline constexpr std::uint8_t kMetadataPointeeQualifierMask = kMetadataPointeeConst | kMetadataPointeeVolatile;
+
 // NSMETA 1.32. LibraryMetadataNamespaceFunction::flags bit 5 marks the declaration as an
 // extension method. Its first parameter is the implicit receiver and retains Value/ref/in in the
 // normal parameter record; consumers must reconstruct an extension block rather than publishing

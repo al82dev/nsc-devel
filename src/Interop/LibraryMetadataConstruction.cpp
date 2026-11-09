@@ -1983,6 +1983,58 @@ bool appendAssociatedItemMetadata(
     return true;
 }
 
+// EN: T08-D02. True when some signature slot of the library keeps a pointee qualifier.
+// ES: T08-D02. Verdadero cuando alguna posicion de firma de la biblioteca conserva un calificador.
+bool hasParameterQualifiers(const std::vector<LibraryMetadataParameter>& parameters)
+{
+    for (const LibraryMetadataParameter& parameter : parameters)
+    {
+        if (parameter.pointeeQualifiers != 0U) return true;
+    }
+    return false;
+}
+
+bool hasPointeeQualifiers(const LibraryMetadata& metadata)
+{
+    for (const LibraryMetadataType& type : metadata.types)
+    {
+        if (type.delegateReturnPointeeQualifiers != 0U) return true;
+        for (const std::uint8_t qualifiers : type.delegateParameterPointeeQualifiers)
+        {
+            if (qualifiers != 0U) return true;
+        }
+        for (const LibraryMetadataField& field : type.fields)
+        {
+            if (field.pointeeQualifiers != 0U) return true;
+        }
+    }
+    for (const LibraryMetadataMember& member : metadata.members)
+    {
+        if (member.declaredPointeeQualifiers != 0U || hasParameterQualifiers(member.parameters)) return true;
+    }
+    for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
+    {
+        if (function.declaredPointeeQualifiers != 0U || hasParameterQualifiers(function.parameters)) return true;
+    }
+    for (const LibraryMetadataNamespaceState& state : metadata.namespaceStates)
+    {
+        if (state.declaredPointeeQualifiers != 0U) return true;
+    }
+    return false;
+}
+
+// EN: T08-D02. Pointee qualifiers of a signature slot: the flags its syntax received from `T const*` or from
+//     a C alias, together with the flags the member model recorded for the symbol.
+// ES: T08-D02. Calificadores del dato apuntado de una posicion de firma: las marcas que su sintaxis recibio de
+//     `T const*` o de un alias C, junto con las que el modelo de miembros registro para el simbolo.
+std::uint8_t pointeeQualifiers(const ast::TypeSyntax* syntax, bool readonly = false, bool isVolatile = false)
+{
+    std::uint8_t qualifiers = 0;
+    if (readonly || (syntax != nullptr && syntax->isPointeeConst())) qualifiers |= kMetadataPointeeConst;
+    if (isVolatile || (syntax != nullptr && syntax->isPointeeVolatile())) qualifiers |= kMetadataPointeeVolatile;
+    return qualifiers;
+}
+
 LibraryMetadataField buildFieldMetadata(
     std::span<const frontend::ClassMemberSymbol> members,
     const frontend::ObjectFieldLayout& fieldLayout,
@@ -1997,6 +2049,9 @@ LibraryMetadataField buildFieldMetadata(
         if (publishLifetimeContracts && member.declaredTypeSyntax != nullptr)
             field.lifetimeName = member.declaredTypeSyntax->lifetimeName();
         field.ownership = metadataOwnership(member.declaredOwnership);
+        if (fieldLayout.typeKey.ends_with('*'))
+            field.pointeeQualifiers = pointeeQualifiers(member.declaredTypeSyntax,
+                member.declaredPointerPointeeReadonly, member.declaredPointerPointeeVolatile);
     }
     field.typeKey = fieldLayout.typeKey;
     field.offset = fieldLayout.offset;
@@ -2088,6 +2143,7 @@ void appendDelegateParameterMetadata(
         parameter.typeSyntax() != nullptr && parameter.typeSyntax()->isDynamicTrait()
             ? 1U
             : 0U);
+    record.delegateParameterPointeeQualifiers.push_back(pointeeQualifiers(parameter.typeSyntax()));
     if (!publishLifetimeContracts) return;
     LibraryMetadataParameterPassKind passKind = LibraryMetadataParameterPassKind::Value;
     if (parameter.auxiliaryText() == "pass:ref")
@@ -2124,6 +2180,7 @@ void appendDelegateMetadata(
             type.syntax->throwsTypeSyntax(), *compilation.nameLookup());
     record.delegateReturnDynamicTrait =
         type.syntax->typeSyntax() != nullptr && type.syntax->typeSyntax()->isDynamicTrait();
+    record.delegateReturnPointeeQualifiers = pointeeQualifiers(type.syntax->typeSyntax());
     if (publishLifetimeContracts)
     {
         record.delegateReferenceReturn = type.syntax->isReference();
@@ -2344,6 +2401,8 @@ void initializeMetadataMemberRecord(
     record.declaredTypeKey = member.declaredTypeKey;
     record.declaredErrorTypeKey = member.declaredErrorTypeKey;
     record.declaredOwnership = metadataOwnership(member.declaredOwnership);
+    record.declaredPointeeQualifiers = pointeeQualifiers(member.declaredTypeSyntax,
+        member.declaredPointerPointeeReadonly, member.declaredPointerPointeeVolatile);
     if (publishLifetimeContracts)
     {
         record.returnLifetimeName = member.returnLifetimeName;
@@ -2462,6 +2521,8 @@ bool buildMemberParameterMetadata(
     parameterRecord.ffiCallbackLifetime = parameter.ffiCallback
         ? static_cast<std::uint8_t>(parameter.ffiCallbackMayEscape ? 2U : 1U)
         : 0U;
+    parameterRecord.pointeeQualifiers = pointeeQualifiers(parameter.typeSyntax,
+        parameter.pointerPointeeReadonly, parameter.pointerPointeeVolatile);
     if (publishLifetimeContracts)
         parameterRecord.lifetimeName = parameter.lifetimeName;
     if (metadataDefaultValue(parameter.defaultValueSyntax, parameterRecord, error))
@@ -2792,6 +2853,8 @@ bool buildNamespaceFunctionParameterMetadata(
     parameterRecord.isParameterPack = parameter.isParameterPack;
     parameterRecord.isDynamicTrait =
         parameter.typeSyntax != nullptr && parameter.typeSyntax->isDynamicTrait();
+    parameterRecord.pointeeQualifiers = pointeeQualifiers(parameter.typeSyntax,
+        parameter.pointerPointeeReadonly, parameter.pointerPointeeVolatile);
     if (publishLifetimeContracts)
         parameterRecord.lifetimeName = parameter.lifetimeName;
     if (metadataDefaultValue(parameter.defaultValueSyntax, parameterRecord, error))
@@ -2825,6 +2888,7 @@ void initializeNamespaceFunctionMetadata(
     record.declaredTypeKey = function.declaredTypeKey;
     record.declaredErrorTypeKey = function.declaredErrorTypeKey;
     record.declaredOwnership = metadataOwnership(function.declaredOwnership);
+    record.declaredPointeeQualifiers = pointeeQualifiers(function.declaredTypeSyntax);
     record.mangledName = function.mangledName;
     if (publishLifetimeContracts)
     {
@@ -2937,6 +3001,7 @@ LibraryMetadataNamespaceState buildNamespaceStateMetadata(
     record.namespaceName = state.namespaceName;
     record.name = state.name;
     record.declaredTypeKey = state.declaredTypeKey;
+    record.declaredPointeeQualifiers = pointeeQualifiers(state.declaredTypeSyntax);
     record.storageName = state.storageName;
     record.accessorName = "__nsc_get_" + state.storageName;
     if (state.initializerKind == frontend::NamespaceStateInitializerKind::Integer)
@@ -3074,6 +3139,9 @@ bool buildMetadataModel(
             (metadata.cppCRecordCatalog[0] == 2 ? 44 : 43);
         metadata.formatMinor = previousMinor < minimum ? minimum : previousMinor;
     }
+    // EN: T08-D02. The pointee-qualifier catalogue belongs to the current contract (1.49).
+    // ES: T08-D02. El catalogo de calificadores del dato apuntado pertenece al contrato vigente (1.49).
+    if (hasPointeeQualifiers(metadata) && metadata.formatMinor < 49) metadata.formatMinor = 49;
     return true;
 }
 

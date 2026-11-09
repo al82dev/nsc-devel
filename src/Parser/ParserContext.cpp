@@ -81,7 +81,8 @@ Parser::Parser(
     : tokens_(tokens),
       arena_(arena),
       diagnostics_(diagnostics),
-      knownTypeNameParent_(&knownTypeNameParent)
+      knownTypeNameParent_(&knownTypeNameParent),
+      metadataSpellings_(knownTypeNameParent.metadataSpellings_)
 {
     buildConditionalQuestionIndex();
     buildComprehensionDelimiterIndex();

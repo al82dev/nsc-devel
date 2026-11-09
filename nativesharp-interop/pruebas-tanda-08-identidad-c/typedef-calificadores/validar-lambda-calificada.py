@@ -5,8 +5,8 @@ Before, a lambda parameter of a `ConstFn` callback could be written through, and
 a `VolatileFn` callback was read with ordinary loads. Positive cases compile and run with the header
 (direct path) and through a precompiled template library consumed without the header, in O0-O3.
 Negative cases must be rejected in both paths. The IR check requires a volatile read in the lambda
-body. A C control built with Clang documents the method conversions. The precompiled path omits the
-conversion of a public NativeSharp method with a `T const*` parameter (see POSITIVE_PRECOMPILED).
+body. A C control built with Clang documents the method conversions. Since T08-D02 NSMETA keeps the `const`
+of a public `T const*` parameter, so the precompiled path also converts the materialized ReadConst to ConstFn.
 """
 from pathlib import Path
 import os
@@ -56,10 +56,9 @@ POSITIVE = [
     ("CaseMethodConst", "return call_const(ReadConst);", 41),
 ]
 
-# The precompiled path omits CaseMethodConst: the metadata of a public NativeSharp method does not carry
-# the `const` of a `T const*` parameter, so the materialized ReadConst no longer matches ConstFn (pending
-# T08-002 decision: it needs a field in NSMeta).
-POSITIVE_PRECOMPILED = [case for case in POSITIVE if case[0] != "CaseMethodConst"]
+# Since T08-D02 the metadata of a public NativeSharp method carries the `const` of a `T const*` parameter, so
+# the materialized ReadConst matches ConstFn and every positive case also runs in the precompiled path.
+POSITIVE_PRECOMPILED = POSITIVE
 
 NOT_ASSIGNABLE = "left side of assignment is not assignable"
 NO_MATCH = "method group does not match a delegate parameter of namespace function"
