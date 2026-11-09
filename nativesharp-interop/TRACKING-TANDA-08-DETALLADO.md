@@ -534,7 +534,7 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 - [ ] T08-D21: reagrupación de commits al cerrar la tanda (T08-GATE-05a).
 - [x] T08-D22: callbacks `__vectorcall` (T08-017-03d1). [Evidencia](registro-commits/t08-d22-vectorcall.md).
 - [x] T08-D23: arreglos de punteros calificados como campo de record (T08-016-03d1). [Evidencia](registro-commits/t08-d23-arreglos-punteros-campo.md).
-- [ ] T08-D24: el productor NSMeta escribe un minor mínimo según su catálogo (lógica del 2026-11-06 al 08). Revisarlo frente al contrato único vigente; hoy fallan por ello `nsc_namespace_function_metadata_tests` y `nsc_stage50_9_metadata_host_compatibility_tests`. Observado en T08-D02. [Evidencia](registro-commits/t08-d02-d03-calificadores-nsmeta.md).
+- [x] T08-D24: el productor NSMeta escribía un minor mínimo según su catálogo (lógica del 2026-11-06 al 08). Ahora escribe siempre el contrato vigente (`kMetadataFormatMinor`); pasan `nsc_namespace_function_metadata_tests`, `nsc_stage50_9_metadata_host_compatibility_tests` e `item344`. [Evidencia](registro-commits/t08-d24-minor-vigente.md).
 
 ## Cierre de la tanda
 

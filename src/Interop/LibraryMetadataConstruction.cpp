@@ -806,7 +806,6 @@ bool appendBinaryDependencies(
     if (!collectCppGraphBinaryMetadataDependencies(
             *compilation.projectGraph(), metadata.cppBinaryDependencies, error))
         return false;
-    if (!metadata.cppBinaryDependencies.empty()) metadata.formatMinor = 41;
     return true;
 }
 
@@ -1984,46 +1983,6 @@ bool appendAssociatedItemMetadata(
     return true;
 }
 
-// EN: T08-D02. True when some signature slot of the library keeps a pointee qualifier.
-// ES: T08-D02. Verdadero cuando alguna posicion de firma de la biblioteca conserva un calificador.
-bool hasParameterQualifiers(const std::vector<LibraryMetadataParameter>& parameters)
-{
-    for (const LibraryMetadataParameter& parameter : parameters)
-    {
-        if (parameter.pointeeQualifiers != 0U) return true;
-    }
-    return false;
-}
-
-bool hasPointeeQualifiers(const LibraryMetadata& metadata)
-{
-    for (const LibraryMetadataType& type : metadata.types)
-    {
-        if (type.delegateReturnPointeeQualifiers != 0U) return true;
-        for (const std::uint8_t qualifiers : type.delegateParameterPointeeQualifiers)
-        {
-            if (qualifiers != 0U) return true;
-        }
-        for (const LibraryMetadataField& field : type.fields)
-        {
-            if (field.pointeeQualifiers != 0U) return true;
-        }
-    }
-    for (const LibraryMetadataMember& member : metadata.members)
-    {
-        if (member.declaredPointeeQualifiers != 0U || hasParameterQualifiers(member.parameters)) return true;
-    }
-    for (const LibraryMetadataNamespaceFunction& function : metadata.namespaceFunctions)
-    {
-        if (function.declaredPointeeQualifiers != 0U || hasParameterQualifiers(function.parameters)) return true;
-    }
-    for (const LibraryMetadataNamespaceState& state : metadata.namespaceStates)
-    {
-        if (state.declaredPointeeQualifiers != 0U) return true;
-    }
-    return false;
-}
-
 // EN: T08-D02. Pointee qualifiers of a signature slot: the flags its syntax received from `T const*` or from
 //     a C alias, together with the flags the member model recorded for the symbol.
 // ES: T08-D02. Calificadores del dato apuntado de una posicion de firma: las marcas que su sintaxis recibio de
@@ -2910,9 +2869,9 @@ bool initializeMetadataModel(
     rootProjectOrdinalValue = *rootOrdinal;
     metadata = {};
     metadata.formatMajor = kFormatMajor;
-    // The ordinary producer does not yet publish the private C++ binary catalogue.
-    // Keep its files readable by 1.40 readers until that catalogue is actually used.
-    metadata.formatMinor = 40;
+    // EN: T08-D24: NSMETA has one current contract; the producer always writes it (kMetadataFormatMinor).
+    // ES: T08-D24: NSMETA tiene un solo contrato vigente; el productor siempre lo escribe (kMetadataFormatMinor).
+    metadata.formatMinor = kMetadataFormatMinor;
     metadata.targetId = kWindowsX64Target;
     metadata.pointerSize = kPointerSize;
     metadata.pointerAlignment = kPointerAlignment;
@@ -3208,24 +3167,12 @@ bool buildMetadataModel(
         metadata, declaredTypeKeys, emittedSpecializedTypeKeys, externalTypeKeys);
     if (!appendBinaryDependencies(compilation, metadata, error)) return false;
     appendPlatformImports(compilation, metadata);
-    const auto previousMinor = metadata.formatMinor;
-    if (metadata.formatMinor < 49) metadata.formatMinor = 49;
+    // EN: T08-D24: the catalogue and every other section are written in the current contract; the minor is not
+    //     lowered to the smallest one that could hold the library's content.
+    // ES: T08-D24: el catalogo y las demas secciones se escriben en el contrato vigente; el minor no se baja al
+    //     menor que podria contener el contenido de la biblioteca.
+    metadata.formatMinor = kMetadataFormatMinor;
     if (!compilation.collectCppMetadataCatalog(metadata, metadata.cppCRecordCatalog, error)) return false;
-    if (metadata.cppCRecordCatalog.empty()) metadata.formatMinor = previousMinor;
-    else if (metadata.cppCRecordCatalog[0] == 7)
-        metadata.formatMinor = 49;
-    else if (metadata.cppCRecordCatalog[0] != 6 &&
-             (metadata.cppCRecordCatalog[0] == 5 || previousMinor >= 46))
-        metadata.formatMinor = previousMinor < 47 ? 47 : previousMinor;
-    else if (metadata.cppCRecordCatalog[0] != 6)
-    {
-        const std::uint16_t minimum = metadata.cppCRecordCatalog[0] >= 3 ? 45 :
-            (metadata.cppCRecordCatalog[0] == 2 ? 44 : 43);
-        metadata.formatMinor = previousMinor < minimum ? minimum : previousMinor;
-    }
-    // EN: T08-D02. The pointee-qualifier catalogue belongs to the current contract (1.49).
-    // ES: T08-D02. El catalogo de calificadores del dato apuntado pertenece al contrato vigente (1.49).
-    if (hasPointeeQualifiers(metadata) && metadata.formatMinor < 49) metadata.formatMinor = 49;
     return true;
 }
 

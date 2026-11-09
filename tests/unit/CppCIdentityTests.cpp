@@ -2608,16 +2608,15 @@ bool checkCatalogueVariant(const LibraryMetadata& metadata, const std::string& s
     return ok;
 }
 
-// EN: Compatibility controls for one real producer NSMETA. The current writer uses the lowest minor
-//     that represents the envelope (1.43 for version 1, 1.44 for 2, 1.45 for 3 and 4). Rewrites the
-//     catalogue for every minor that can represent it: 1.42 (legacy) only for envelope version 1,
-//     1.43 only for version 1, 1.44 up to version 2 and 1.45 for every version. The current reader
-//     must fail exactly for the 1.42 catalogue without records (H8).
-// ES: Controles de compatibilidad para el NSMETA real de un productor. El escritor actual usa el
-//     minor más bajo que representa la envoltura (1.43 para la versión 1, 1.44 para la 2, 1.45 para
-//     la 3 y la 4). Reescribe el catálogo en cada minor que pueda representarlo: 1.42 (heredado)
-//     solo para la envoltura versión 1, 1.43 solo para la versión 1, 1.44 hasta la versión 2 y 1.45
-//     para todas. El lector actual debe fallar exactamente con el catálogo 1.42 sin records (H8).
+// EN: Compatibility controls for one real producer NSMETA. T08-D24: the writer always uses the current contract
+//     (kMetadataFormatMinor), whatever the envelope. Rewrites the catalogue for every minor that can represent
+//     it: 1.42 (legacy) only for envelope version 1, 1.43 only for version 1, 1.44 up to version 2 and 1.45 for
+//     every version. The current reader must fail exactly for the 1.42 catalogue without records (H8).
+// ES: Controles de compatibilidad para el NSMETA real de un productor. T08-D24: el escritor siempre usa el
+//     contrato vigente (kMetadataFormatMinor), sea cual sea la envoltura. Reescribe el catalogo en cada minor que
+//     pueda representarlo: 1.42 (heredado) solo para la envoltura version 1, 1.43 solo para la version 1, 1.44
+//     hasta la version 2 y 1.45 para todas. El lector actual debe fallar exactamente con el catalogo 1.42 sin
+//     records (H8).
 bool checkCatalogueVersions(const std::filesystem::path& nsmeta, const std::filesystem::path& directory)
 {
     LibraryMetadata metadata;
@@ -2629,10 +2628,9 @@ bool checkCatalogueVersions(const std::filesystem::path& nsmeta, const std::file
     std::cout << "PRODUCER " << stem << ": NSMETA 1." << metadata.formatMinor << " envelope=" << version
               << " records=" << records.size() << " enums=" << enums.size() << '\n';
     std::string error;
-    const std::uint16_t written = version == 7 ? 49 : version == 1 ? 43 : version == 2 ? 44 : 45;
-    bool ok = expect(metadata.formatMinor == written && (version == 7 ||
+    bool ok = expect(metadata.formatMinor == kMetadataFormatMinor && (version == 7 ||
         metadata_detail::isCTypeCatalogWithProvenance(metadata.cppCRecordCatalog)),
-        stem + " uses the lowest minor that represents its envelope");
+        stem + " uses the current NSMETA contract (T08-D24)");
     std::vector<std::uint8_t> historical = metadata.cppCRecordCatalog;
     if (version == 7 && !metadata_detail::encodeCTypeCatalogWithProvenance(records, enums, historical, error))
         return expect(false, stem + " historical catalogue encoding");
