@@ -368,31 +368,48 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-015-02: Comparar los campos volátiles C contra Clang en los casos del fixture. [Resultado](registro-commits/t08-volatile-campos-revalidacion-alias-pendiente.md).
 - **T08-015-03 — Modo de la unidad consumidora:**
 - [ ] T08-015-03a: Definir el modo predeterminado del consumidor cuando no se especifica uno explícito.
+  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
 - [ ] T08-015-03b: Verificar selección explícita de Microsoft e ISO por proyecto.
+  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
 - [ ] T08-015-03c: Conservar la selección por archivo en un grafo con múltiples proyectos.
+  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
 - [ ] T08-015-03d: Resolver el modo del consumidor cuando dos referencias usan modos distintos.
+  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
 - **T08-015-04 — Alias y alineación:** [Diagnóstico](registro-commits/t08-volatile-alias-aritmetica-diagnostico.md).
 - [ ] T08-015-04a: Conservar el contrato C volátil al inferir un alias local.
+  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
 - [ ] T08-015-04b: Conservar el orden y la alineación al leer y escribir mediante el alias.
+  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
 - [ ] T08-015-04c: Verificar el contrato después de reasignar el alias.
+  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
 - [ ] T08-015-04d: Verificar el contrato después de aritmética e indexación de punteros.
+  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
 - [ ] T08-015-04e: Verificar que un campo empaquetado o subalineado no reciba alineación atómica no demostrada.
+  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
 - **T08-015-05 — Transporte del contrato:**
 - [ ] T08-015-05a: Verificar alias `volatile` pasado como parámetro y retornado por función.
+  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
 - [ ] T08-015-05b: Verificar alias reasignado en ramas de control con modos compatibles.
+  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
 - [ ] T08-015-05c: Verificar propagación entre proyectos y biblioteca precompilada.
+  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
 - **T08-015-06 — Caché y aislamiento:**
 - [ ] T08-015-06a: Verificar invalidación o identidad de caché al cambiar Microsoft/ISO.
-- [ ] T08-015-06b: Verificar que `volatile` nativo conserve su contrato sin importar un header C.
-- [ ] T08-015-06c: Verificar el mismo comportamiento nativo al importar un header C.
+  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
+- [x] T08-015-06b: Verificar que `volatile` nativo conserve su contrato sin importar un header C. [Evidencia](registro-commits/t08-calificadores-c.md).
+- [x] T08-015-06c: Verificar el mismo comportamiento nativo al importar un header C. [Evidencia](registro-commits/t08-calificadores-c.md).
 - **T08-015-07 — Calificadores de puntero:**
-- [ ] T08-015-07a: Verificar rechazo de escritura mediante `const T*` importado.
-- [ ] T08-015-07b: Verificar acceso `volatile T*` en lectura, escritura e índice.
-- [ ] T08-015-07c: Verificar `const volatile T*` en campos, globales y parámetros.
-- [ ] T08-015-07d: Verificar calificadores del apuntado y del puntero en `T* const` y `T**`.
+- [x] T08-015-07a: Verificar rechazo de escritura mediante `const T*` importado. [Evidencia](registro-commits/t08-calificadores-c.md).
+- [x] T08-015-07b: Verificar acceso `volatile T*` en lectura, escritura e índice. [Evidencia](registro-commits/t08-calificadores-c.md).
+  - El orden acquire/release a través del alias `var` en modo Microsoft depende de T08-010-05a.
+- [x] T08-015-07c: Verificar `const volatile T*` en campos, globales y parámetros. [Evidencia](registro-commits/t08-calificadores-c.md).
+- [x] T08-015-07d: Verificar calificadores del apuntado y del puntero en `T* const` y `T**`. [Evidencia](registro-commits/t08-calificadores-c.md).
 - [ ] T08-015-08: Habilitar la generación con modo explícito únicamente después de completar su contrato y retirar la protección temporal con pruebas.
+  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
 - [ ] T08-015-09: Repetir la comparación de IR de alias directo, reasignado y con aritmética en Microsoft e ISO O0–O3.
+  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
 - [ ] T08-015-10: Verificar el comportamiento con referencias mixtas y con biblioteca precompilada.
+  - **Bloqueada por T08-010-05a** (modo volatile del alias o de la unidad consumidora).
 
 ## T08-016 — Arreglos fijos
 
