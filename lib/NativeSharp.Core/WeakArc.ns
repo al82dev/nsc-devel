@@ -1,0 +1,27 @@
+using NativeSharp.Core.Internal;
+
+namespace NativeSharp.Core
+{
+    // A move-only atomic weak reference retains the block without retaining the payload.
+    public struct WeakArc<T>
+    {
+        private SharedAtomicWeak<T> inner;
+
+        internal WeakArc(SharedAtomicWeak<T> value) { inner = move(value); }
+        public bool Expired() { return inner.Expired(); }
+        // An observation during concurrent changes; exact without concurrent operations.
+        public long WeakCount() { return inner.WeakCount(); }
+
+        public WeakArc<T> Clone()
+        {
+            SharedAtomicWeak<T> value = inner.Clone();
+            return new WeakArc<T>(move(value));
+        }
+
+        public Arc<T> Upgrade()
+        {
+            SharedAtomicHandle<T> value = inner.Upgrade();
+            return new Arc<T>(move(value));
+        }
+    }
+}

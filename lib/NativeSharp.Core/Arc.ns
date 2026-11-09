@@ -1,0 +1,30 @@
+using NativeSharp.Core.Internal;
+
+namespace NativeSharp.Core
+{
+    // A move-only strong reference backed by atomic reference counts.
+    public struct Arc<T>
+    {
+        private SharedAtomicHandle<T> inner;
+
+        internal Arc(SharedAtomicHandle<T> value) { inner = move(value); }
+        public bool IsEmpty() { return inner.IsEmpty(); }
+        public long StrongCount() { return inner.StrongCount(); }
+        // An observation during concurrent changes; exact without concurrent operations.
+        public long WeakCount() { return inner.WeakCount(); }
+        public ref readonly T Get() { return ref inner.Get(); }
+        public SharedView<T> Borrow() { return new SharedView<T>(inner.Borrow()); }
+
+        public Arc<T> Clone()
+        {
+            SharedAtomicHandle<T> value = inner.Clone();
+            return new Arc<T>(move(value));
+        }
+
+        public WeakArc<T> Downgrade()
+        {
+            SharedAtomicWeak<T> value = inner.Downgrade();
+            return new WeakArc<T>(move(value));
+        }
+    }
+}

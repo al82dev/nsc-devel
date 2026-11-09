@@ -1751,6 +1751,48 @@ bool PublicSurfaceBuilder::run()
 {
     collectGenericMethodOwners();
     collectPublishedTypes();
+    // Same-module nominal references in template bodies are emitted with their
+    // complete module-qualified spelling. Materialize matching type records
+    // with their original accessibility so those bodies can be analyzed.
+    for (const auto &type : metadata.types)
+    {
+        if (type.accessibility == kPublicAccessibility) continue;
+        if (genericMethodOwners.contains(type.fullyQualifiedName))
+            collectMaterializedContractTypes(metadata, "type:" + type.identityKey, contractTypeIdentities);
+        std::string spelling = type.identityKey;
+        std::ranges::replace(spelling, '+', '.');
+        for (const auto &generic : metadata.genericTemplates)
+        {
+            const auto nameByte = [](char c) {
+                return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                    (c >= '0' && c <= '9') || c == '_';
+            };
+            std::size_t pos = 0;
+            while ((pos = generic.sourceText.find(spelling, pos)) != std::string::npos)
+            {
+                const std::size_t end = pos + spelling.size();
+                if ((pos == 0 || !nameByte(generic.sourceText[pos - 1])) &&
+                    (end == generic.sourceText.size() || !nameByte(generic.sourceText[end])))
+                {
+                    collectMaterializedContractTypes(metadata, "type:" + type.identityKey, contractTypeIdentities);
+                    break;
+                }
+                pos = end;
+            }
+            if (pos != std::string::npos) break;
+        }
+    }
+    // Seed field value types before walking members: the type's own members may precede the
+    // generic owner in metadata order, so discovering this edge during that walk is too late.
+    for (const auto &member : metadata.members)
+    {
+        constexpr std::uint8_t kFieldKind = 0U;
+        constexpr std::uint32_t kStatic = 1U << 0U;
+        if (member.kind != kFieldKind || (member.flags & kStatic) == 0U) continue;
+        const auto *owner = metadataTypeForKey(metadata, member.declaringTypeKey);
+        if (owner != nullptr && genericMethodOwners.contains(owner->fullyQualifiedName))
+            collectMaterializedContractTypes(metadata, member.declaredTypeKey, contractTypeIdentities);
+    }
     if (!collectPublishedMembers())
         return false;
     collectNamespaceContractTypes();

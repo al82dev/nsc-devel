@@ -292,6 +292,7 @@ bool OopLlvmImplementation::lowerExceptionalTransfer(
         if (terminated()) return true;
         LLVMBasicBlockRef finalTarget = nullptr;
         bool targetIsLocalToCurrentFunclet = false;
+        std::size_t retainedCleanupDepth = 0;
         if (node->exceptionTargetRegionOrdinal.has_value())
         {
             const auto found = exceptionDispatchBlocks_.find(*node->exceptionTargetRegionOrdinal);
@@ -305,12 +306,30 @@ bool OopLlvmImplementation::lowerExceptionalTransfer(
                 {
                     targetIsLocalToCurrentFunclet =
                         handler->funcletDepthAtEntry == funcletStack_.size();
+                    retainedCleanupDepth = handler->retainedCleanupDepth;
                     break;
                 }
             }
         }
 
         std::vector<std::size_t> cleanupPath = node->cleanupRegionOrdinals;
+        for (std::size_t depth = activeCleanupRegions_.size(); depth > retainedCleanupDepth; --depth)
+        {
+            const std::size_t ordinal = activeCleanupRegions_[depth - 1];
+            const auto temporary = cleanupRegions_.find(ordinal);
+            if (temporary == cleanupRegions_.end() || temporary->second == nullptr ||
+                (temporary->second->stringValue != "tuple.partial.element.cleanup" &&
+                 temporary->second->stringValue != "constructor.completed.base.cleanup" &&
+                 temporary->second->stringValue != "constructor.owned.field.cleanup" &&
+                 temporary->second->stringValue != "constructor.shared.field.cleanup")) continue;
+            const auto position = std::find_if(cleanupPath.begin(), cleanupPath.end(),
+                [&](std::size_t existing)
+                {
+                    const auto index = activeCleanupIndex(existing, activeCleanupRegions_);
+                    return index.has_value() && *index < depth - 1;
+                });
+            cleanupPath.insert(position, ordinal);
+        }
         if (!funcletStack_.empty() && !targetIsLocalToCurrentFunclet)
         {
             const std::size_t boundaryDepth = funcletStack_.back().cleanupDepthAtEntry;

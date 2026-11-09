@@ -1,0 +1,20 @@
+using NativeSharp.Core.Internal;
+
+namespace NativeSharp.Core
+{
+    // Read-only view whose lifetime is bounded by the shared owner that produced it.
+    public borrowed struct SharedView<T>
+    {
+        private SharedBorrow<T> inner;
+
+        internal SharedView(SharedBorrow<T> value)
+        {
+            inner = value;
+        }
+
+        public ref readonly T Get()
+        {
+            return ref inner.Get();
+        }
+    }
+}

@@ -43,10 +43,20 @@ decisiones posteriores indicadas explícitamente abajo.
   bloque si falla. Confirmó también que `Arc.WeakCount()` será aproximado
   durante operaciones concurrentes y exacto en ausencia de ellas, y que
   `Rc.Get()` y `Arc.Get()` devolverán una referencia prestada de solo lectura
-  vinculada al propietario, incluso para estructuras. Estos contratos todavía
-  requieren implementación pública y validación. El trabajo sigue pendiente: las variantes internas de
-  excepción rechazan por ahora formas de payload cuya limpieza no está
-  acreditada. Véase `diseno-punteros-y-asan.md`.
+  vinculada al propietario, incluso para estructuras. Existe una primera
+  implementación pública en el árbol de trabajo, aún sin commit y sin
+  validación de consumo binario. Las variantes internas de excepción rechazan
+  por ahora formas de payload cuya limpieza no está acreditada; la vida del
+  módulo, la seguridad de alias y la transferencia entre hilos siguen abiertas.
+  Véanse `diseno-punteros-y-asan.md` y `prestamo-get-punteros.md`.
+- Al probar la API pública atómica desde un método de hilo, una variante con
+  `WeakRc` almacenado en un campo estático fue aceptada semánticamente, aunque
+  `WeakRc` es local al hilo. No se ejecutó la variante con contadores locales.
+  La evidencia está en `public-local-thread-negative.log`. El usuario eligió
+  prohibir almacenamiento estático compartido de `Rc`/`WeakRc`, incluidos
+  contenedores; esa medida conservadora también rechazará casos estáticos
+  usados por un solo hilo. La validación y sus límites para módulos
+  precompilados están documentados en `shared-static-storage.md`.
 
 ## impl para struct y métodos genéricos en tipos genéricos
 
@@ -69,12 +79,38 @@ decisiones posteriores indicadas explícitamente abajo.
 - Decisión: especificar si un constraint de un parámetro puede depender de
   otro y cómo se comprueba después de especializar. No basta omitir el error de
   nombres: debe existir una comprobación de satisfacción del tipo construido.
+- Control adicional: una restricción cerrada `TOp : Reducer<int>` acepta una
+  implementación `Reducer<int>` y su programa termina con 42 en O0/O2; la
+  restricción `Reducer<long>` rechaza esa misma implementación en ambas
+  emisiones. Comandos y diagnósticos: `generic-trait-concrete-control/results.json`
+  y `generic-trait-mismatch-control/results.json` en `A:/nsc-fixes-evidencia`.
+  Esto demuestra la distinción de dos tipos cerrados, no el soporte para
+  `Reducer<T>` ni la sustitución de parámetros entre restricciones. Se consultó
+  al usuario si debe admitirse la relación dependiente con verificación después
+  de especializar; sigue pendiente su respuesta.
+  En el código actual `cloneGenericConstraints` clona cada tipo de restricción
+  con el mapa de sustituciones y `appendTypeConstraintViolation` verifica la
+  relación sobre tipos ya resueltos. `bindGenericTemplateConstraints`, en cambio,
+  intenta resolver también los argumentos anidados de la declaración abierta y
+  supone que no pueden nombrar otro parámetro. Estas observaciones identifican
+  partes de la ruta, pero no prueban que corregir solo nombres sea suficiente.
 
 ## Temporales en parámetros in y operadores ++/--
 
 - Evidencia: `cases/70-temporary` rechaza el temporal; `cases/39-increment`
   explica que la sobrecarga podría evaluar dos veces el operando al almacenar
   el resultado. El caso decremento también es rechazado.
+- Reproducción actual: el análisis con el compilador aislado sigue rechazando
+  `value == new Rational(1, 1)` sin modificar los archivos originales
+  (`A:/nsc-fixes-evidencia/temporary-in-current-result.json`). En
+  `ProjectMethodBodyModel::evaluateSyntheticCandidates`, la condición
+  `implicitOperatorReference && !addressable` descarta el operando temporal;
+  esa observación no demuestra por sí sola que las fases posteriores puedan
+  materializarlo ni que su vida y destrucción sean correctas. En HIR,
+  `boundCallArgumentNeedsAddress` solicita dirección para todo parámetro que
+  no es por valor, de modo que quitar solo el rechazo semántico no acredita una
+  solución completa. La propuesta consultada conserva el temporal hasta el
+  fin de la expresión, evalúa una sola vez y prohíbe el escape de la referencia.
 - Decisión: definir si el temporal se materializa y por cuánto tiempo vive;
   por separado, si se admiten `++`/`--` definidos por el usuario y cómo se
   garantiza una sola evaluación para receptores con efectos laterales.

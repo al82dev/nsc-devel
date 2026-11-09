@@ -1,0 +1,26 @@
+using NativeSharp.Core.Internal;
+
+namespace NativeSharp.Core
+{
+    // A move-only local weak reference retains the block without retaining the payload.
+    public struct WeakRc<T>
+    {
+        private SharedLocalWeak<T> inner;
+
+        internal WeakRc(SharedLocalWeak<T> value) { inner = move(value); }
+        public bool Expired() { return inner.Expired(); }
+        public long WeakCount() { return inner.WeakCount(); }
+
+        public WeakRc<T> Clone()
+        {
+            SharedLocalWeak<T> value = inner.Clone();
+            return new WeakRc<T>(move(value));
+        }
+
+        public Rc<T> Upgrade()
+        {
+            SharedLocalHandle<T> value = inner.Upgrade();
+            return new Rc<T>(move(value));
+        }
+    }
+}

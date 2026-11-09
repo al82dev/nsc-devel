@@ -891,7 +891,17 @@ void assignReplaySpillSlotsBeside(
 {
     std::vector<ProjectOopMirNode*> pending;
     for (const auto& child : ancestor->children)
-        if (child != nullptr && child.get() != onPath) pending.push_back(child.get());
+    {
+        if (child == nullptr || child.get() == onPath) continue;
+        if (ancestor->kind == ProjectOopMirNodeKind::AggregateInitialize &&
+            ProjectTypeConversion::tupleElementTypeKeys(ancestor->typeKey).has_value() &&
+            child->kind == ProjectOopMirNodeKind::AggregateElementStore)
+        {
+            for (const auto& operand : child->children)
+                if (operand != nullptr) pending.push_back(operand.get());
+        }
+        else pending.push_back(child.get());
+    }
     assignReplaySpillSlotsTo(std::move(pending), objectLayoutModel, nameLookup, indexes, layouts, frameSize);
 }
 

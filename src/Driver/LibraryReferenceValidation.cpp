@@ -153,6 +153,52 @@ bool validateLibraryReferenceSymbols(const compilation::LibraryReference &refere
             return false;
         }
     }
+    // Provisional static-archive support for NativeSharp template helpers.
+    if (reference.runtimePath.empty() && !metadata.genericTemplates.empty())
+    {
+        constexpr std::uint8_t kMethod = 2U;
+        constexpr std::uint8_t kField = 0U;
+        constexpr std::uint8_t kPublic = 3U;
+        constexpr std::uint32_t kStatic = 1U << 0U;
+        constexpr std::uint32_t kExternC = 1U << 8U;
+        constexpr std::uint32_t kImportedC = 1U << 20U;
+        for (const auto &member : metadata.members)
+        {
+            const bool method = member.kind == kMethod && member.accessibility == kPublic;
+            const bool staticField = member.kind == kField && (member.flags & kStatic) != 0U;
+            if ((!method && !staticField) || member.mangledName.empty() ||
+                (member.flags & (kExternC | kImportedC)) != 0U || !archiveSymbols.contains(member.mangledName))
+                continue;
+            if (!member.declaringTypeKey.starts_with("type:")) continue;
+            std::string ownerIdentity = member.declaringTypeKey.substr(5);
+            std::string writtenOwner = ownerIdentity;
+            std::ranges::replace(writtenOwner, '+', '.');
+            const auto isTemplateOwner = [&](const std::string &identity) {
+                return std::ranges::any_of(metadata.genericTemplates, [&](const auto &generic) {
+                std::string genericOwner = metadata.moduleName + "::";
+                if (!generic.namespaceName.empty()) genericOwner += generic.namespaceName + ".";
+                genericOwner += generic.ownerName;
+                return genericOwner == identity;
+                });
+            };
+            const bool usedByTemplate = isTemplateOwner(ownerIdentity) ||
+                (method && (std::ranges::any_of(metadata.genericTemplates, [&](const auto &generic) {
+                    return generic.sourceText.find(writtenOwner) != std::string::npos;
+                }) || std::ranges::any_of(metadata.members, [&](const auto &field) {
+                    return field.kind == kField && (field.flags & kStatic) != 0U &&
+                        field.declaredTypeKey == member.declaringTypeKey &&
+                        field.declaringTypeKey.starts_with("type:") &&
+                        isTemplateOwner(field.declaringTypeKey.substr(5));
+                })));
+            if (!usedByTemplate) continue;
+            const auto [owner, inserted] = publishedNativeMethods.emplace(member.mangledName, metadata.moduleName);
+            if (!inserted && owner->second != metadata.moduleName)
+            {
+                error = "NativeSharp symbol '" + member.mangledName + "' is published by more than one module";
+                return false;
+            }
+        }
+    }
     return true;
 }
 

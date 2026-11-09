@@ -35,7 +35,7 @@ rechazó el escape probado. Pasaron también `nsc.generics.selected-body-constra
 las dos pruebas unitarias dirigidas de genéricos y las cinco de controles
 internos de punteros. Los comandos y salidas están en
 `A:/nsc-fixes-evidencia/declaration-imports-test.log`, `generic-unit-tests.log`,
-`shared-control-suite.log` y `public-rc-wrapper-probe/results.json`.
+`shared-control-suite.log` y `public-rc-wrapper-probe/results-after-import-fix.json`.
 
 `clang-tidy --checks=clang-analyzer-*` en los dos archivos C++ modificados retornó
 0; sus logs registran avisos de padding en encabezados. No se acreditan todas

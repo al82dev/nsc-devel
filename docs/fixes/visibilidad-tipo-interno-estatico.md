@@ -42,3 +42,176 @@ escenarios de metadata precompilada. La regresión
 `generic_internal_owner_metadata.py` sigue fallando antes de consumir el
 binario porque falta el propietario interno en la metadata; no se ha
 modificado el productor de metadata compartido.
+
+La reproducción se repitió con el compilador incremental posterior al cambio
+de destrucción de campos. Continúa fallando al emitir el productor: la
+verificación de lectura no encuentra el propietario materializable
+`Sample.Hidden` del método genérico. Comando y salida:
+`A:/nsc-fixes-evidencia/generic-internal-owner-refresh.cmd` y su archivo `.log`.
+No se alcanzó el consumidor ni se modificó la ruta compartida de metadata.
+
+Un ajuste posterior, aún sin commit, incorpora a la metadata los tipos que
+contienen métodos genéricos incluidos en la clausura de plantillas. Conserva su
+accesibilidad declarada, incluidos tipos anidados. La reproducción aislada ya
+genera productor y metadata; el consumidor ejecuta 42 en O0/O2 y el análisis
+rechaza el acceso directo a ambos helpers internos
+(`A:/nsc-fixes-evidencia/generic-owner-nested.log`). La prueba dirigida previa
+de visibilidad también pasó (`generic-owner-visibility-check.log`).
+
+El cambio está en `src/Interop/LibraryMetadataConstruction.cpp`, un archivo
+compartido con infraestructura de interoperabilidad: la modificación se limita
+a la clausura de tipos de plantillas NativeSharp y no cambia las rutas C/C++.
+Debe revisarse ese archivo durante la integración; no se han probado las rutas
+de interoperabilidad, por estar fuera del alcance solicitado.
+
+Al intentar emitir Core con este ajuste y una caché aislada nueva, el error de
+propietario ausente desapareció, pero la validación del código genérico generado
+falló al analizar conversiones a `AtomicSharedCounts*` y `LocalSharedCounts*`
+(`generic-owner-core-build.log`). Esa primera ejecución procesó 71 archivos de
+Core; la caché se conserva en `generic-owner-sdk-cache` para usos incrementales.
+No se generó un SDK binario utilizable y no se considera resuelto su consumo.
+
+Una reproducción mínima adicional usa un struct interno `Counter` en el cuerpo
+de un método genérico e intenta convertir la dirección de un arreglo a
+`Counter*`. La emisión falla con el mismo diagnóstico sintáctico que Core
+(`generic-owner-pointer-check.cmd` y `generic-owner-pointer-reverted.log`).
+El recolector actual excluye las referencias a tipos nominales del propio
+módulo de `externalTypeReferences`; el parser que valida las plantillas solo
+recibe los tipos publicados en metadata y las referencias externas.
+
+Un experimento temporal registró también esa dependencia local y publicó el
+tipo en metadata: la biblioteca se generó, pero el consumidor rechazó el tipo
+interno ausente de su superficie materializada (`generic-owner-pointer-after.log`).
+El experimento fue retirado y se recompiló incrementalmente. La reproducción
+simple sin el puntero vuelve a pasar en O0/O2 (`generic-owner-after-revert.log`).
+Por tanto, la solución debe conservar y materializar las dependencias locales
+de las plantillas manteniendo sus reglas de accesibilidad; no basta eliminar el
+error sintáctico ni publicar indiscriminadamente todos los tipos internos.
+
+Un segundo prototipo conserva referencias nominales locales en el recolector y
+materializa los tipos internos mencionados en el código de plantillas. Con un
+fixture que solo accede a un campo, el productor y consumidor ejecutaron 42 en
+O0/O2 y el acceso directo al tipo interno se rechazó
+(`generic-owner-materialize-test.log`). Es un experimento sin commit: el
+reconocimiento de nombres en el materializador todavía requiere endurecimiento.
+Al añadir una llamada a un método ordinario del struct interno, el consumidor
+rechazó su símbolo por no estar publicado (`generic-owner-internal-method.log`).
+
+Core llegó a emitir `.lib` y metadata (`generic-owner-materialize-core.log`),
+pero el análisis de la reproducción original de los cuatro punteros contra
+ese binario falla por miembros internos que no aparecen en la superficie
+reconstruida (`generic-owner-binary-consumer.log`). No se alcanzó la ejecución
+de operaciones. Aunque se indicó una caché aislada, esa emisión procesó los 71
+archivos de Core; hay que aclarar la invalidación antes de repetirla. La emisión
+también creó automáticamente un encabezado de host en el directorio de evidencia
+en A; no se usó ni modificó un build de interoperabilidad C/C++.
+
+Un ensayo posterior también reconstruye como precompilado el propietario de
+una plantilla y admite en bibliotecas estáticas métodos internos registrados
+en metadata y presentes físicamente cuando su tipo aparece como propietario o
+referencia de una plantilla. La reproducción del struct interno con método ya
+enlaza y ejecuta 42 en O0/O2; se rechazan los accesos directos a los tipos
+internos (`generic-owner-narrow-test.log`). La prueba de visibilidad anterior
+también pasó (`generic-owner-precompiled-visibility.log`). El ensayo anterior
+sin reconstruir el propietario alcanzaba el enlace pero duplicaba una entrada
+de destrucción (`generic-owner-static-symbol-test.log`).
+
+Este código sigue provisional y sin commit: la detección de referencias en
+texto requiere una representación semántica más precisa, no se ha validado
+el caso con DLL y el consumidor de Core existente todavía rechaza el receptor
+estático `SharedAtomic` no registrado como dependencia
+(`generic-owner-precompiled-core-consumer.log`). No se volvió a emitir Core en
+esta continuación porque la caché anterior no evitó procesar todos sus archivos.
+
+La variante mínima `NSC_METADATA_STATIC_CASE=1` reproduce la llamada a una
+clase estática interna desde el cuerpo de la plantilla: se genera la biblioteca
+pero el consumidor rechaza `Helper` como identificador desconocido
+(`generic-owner-static-check.cmd` y `generic-owner-static-before.log`). Un
+control distinto declara una variable local llamada `Helper` cuando también
+existe un tipo interno con ese nombre; la llamada debe resolver al valor local.
+Ese control ejecutó 42 en O0/O2 y el acceso directo al tipo interno fue rechazado
+(`generic-owner-shadow-check.cmd` y `generic-owner-shadow.log`). Esto impide
+tratar todo receptor de igual nombre como tipo estático por mera coincidencia de
+texto. El camino de puntero con método también volvió a pasar
+(`generic-owner-pointer-current.log`).
+
+Se probó registrar candidatos por nombre corto sin reescribir la expresión.
+Pasaron el ejemplo estático simple y el control con variable sombreada, pero
+una reproducción con dos `ImportedHelper` en distintos namespaces y un
+`using` que selecciona uno falló al consumir la biblioteca: la plantilla
+reconstruida perdió esa selección (`generic-owner-static-collision.log`). La
+búsqueda por nombre corto se retiró y se recompiló incrementalmente; el control
+de puntero con método volvió a pasar (`generic-owner-pointer-after-static-revert.log`).
+La reproducción con colisión se conserva. Se necesita vincular el receptor al
+tipo elegido en el ámbito original, además de respetar los valores que lo
+sombreen; conservar ambos candidatos por sí solo no implementa ese contrato.
+
+Se agregó un control del mismo ejemplo de colisión como proyecto íntegro desde
+fuentes: eligió el tipo importado y ejecutó 42 en O0/O2. La biblioteca se generó,
+pero su consumidor volvió a rechazar el identificador en O0, antes de llegar a
+O2 (`generic-owner-collision-source-control.log`). Esto separa la resolución
+original correcta de la pérdida de contexto durante la reconstrucción binaria.
+El recolector guarda imports y alias en `TemplateState` para especializaciones
+locales; `GenericTemplateRecord` y la reconstrucción de metadata no transportan
+ese ámbito, porque el diseño actual espera referencias autocontenidas. No se ha
+decidido cambiar el formato de metadata ni se ha implementado esa conservación.
+
+Un control adicional puso el `using Sample.Support` dentro del namespace de
+declaración: desde fuentes ejecuta 42 en O0/O2 y la biblioteca se genera, pero
+el consumidor binario sigue fallando en O0
+(`generic-owner-namespace-import.log`). Una prueba distinta intentó situar el
+`using` dentro del cuerpo del método y fue rechazada por el parser, que espera
+la forma de gestión de recursos (`generic-owner-body-import.log`). Por tanto,
+insertar indiscriminadamente imports en el cuerpo no conserva la gramática.
+Estos controles no acreditan una solución ni prueban todas las interacciones
+entre namespaces, alias y declaraciones parciales.
+
+Preparación provisional: el registro interno `GenericTemplateRecord` conserva
+ahora los imports y alias del ámbito de declaración, con los alias ordenados
+para publicación determinista. La prueba dirigida de generics aprobó 85
+comprobaciones, incluidas las nuevas para un import y un alias
+(`generic-declaration-scope-test.log`). Es información en memoria: todavía no
+se transporta en metadata ni cambia la reconstrucción, por lo que la colisión
+binaria sigue abierta. Al afectar un encabezado compartido, la compilación
+incremental de los dos objetivos seleccionados programó 159 acciones
+(`generic-declaration-scope-build.log`); no se ejecutó una batería completa.
+Entre las acciones se recompiló `CHeaderGenerator.cpp` como dependencia del
+objetivo del compilador en el build aislado de A. No se modificó esa fuente ni
+se ejecutaron pruebas de interoperabilidad; la acción debe considerarse al
+evaluar el alcance de esta compilación.
+
+La prueba dirigida se amplió con dos namespaces cuyas plantillas usan el mismo
+alias para tipos diferentes. Ambos registros conservaron su propio destino y
+pasaron las 88 comprobaciones (`generic-scope-isolation-test.log`). Esto prueba
+el registro en memoria, no su transporte por metadata ni la reconstrucción.
+Para esa repetición se recompiló únicamente el ejecutable de prueba afectado.
+
+La decisión adoptada para esta tarea es conservar la identidad seleccionada en
+el ámbito original de la plantilla y reconstruir referencias autocontenidas,
+sin introducir una versión nueva del formato NSMETA. La autorización general
+del usuario permite adoptar la opción recomendada sin detener la campaña. La
+consecuencia es que el recolector debe distinguir una expresión que realmente
+designa un tipo de otra que designa un valor con el mismo nombre: una búsqueda
+por texto no es suficiente. Esta decisión no acredita aún una implementación
+correcta ni excluye revisarla si aparece evidencia contraria.
+
+Se añadió una reproducción con `using Pick = Sample.Support` y la llamada
+`Pick.ImportedHelper.Value()`, manteniendo otro `ImportedHelper` en `Other`.
+Desde fuentes devuelve 42 en O0 y O2; el productor binario se genera, pero el
+consumidor falla en O0 con `unknown identifier 'Pick'`. Los comandos y la salida
+están en `A:/nsc-fixes-evidencia/generic-owner-alias-static.cmd` y
+`generic-owner-alias-static-before.log`. El ejemplo evidencia pérdida del alias;
+no prueba una solución ni permite ignorar el caso de valores que sombrean tipos.
+
+Un control adicional declara un campo estático privado `Helper` en el
+propietario de la plantilla, junto a un tipo `Helper` en el namespace. Desde
+fuentes, `Helper.Read()` elige el campo y devuelve 42 en O0 y O2; la biblioteca
+se genera, pero el consumidor binario rechaza `Helper` en O0. Evidencia:
+`A:/nsc-fixes-evidencia/generic-owner-field-shadow.cmd` y
+`generic-owner-field-shadow.log`. Este caso muestra que conservar solo el
+ámbito de imports tampoco basta: la reconstrucción debe preservar los miembros
+necesarios del propietario y sus reglas de acceso. El filtro
+`collectMetadataMemberOrdinals` solo selecciona miembros públicos o protegidos,
+por lo que el campo privado de este control queda fuera de la publicación. No
+se ha comprobado todavía si corregir esa selección bastaría: también deben
+validarse la materialización, el enlace y la inaccesibilidad para consumidores.

@@ -165,6 +165,10 @@ void ProjectGenericModel::discoverTemplateDependencies(
 
     if (TemplateState* root = stateForSyntax(node); root != nullptr)
     {
+        root->record.declarationImports = currentScope.importedNamespaces.read();
+        root->record.declarationAliases.assign(
+            currentScope.aliases.read().begin(), currentScope.aliases.read().end());
+        std::ranges::sort(root->record.declarationAliases);
         if (root->record.kind == GenericTemplateKind::Method)
         {
             root->declarationImports = currentScope.importedNamespaces.read();
@@ -221,8 +225,7 @@ void ProjectGenericModel::collectTypeDependency(
         {
             if (const DeclaredTypeIdentity* declaration = resolveDeclaredTypeIdentity(
                     current, unit.projectOrdinal(), namespaceName, scope);
-                declaration != nullptr &&
-                !declaration->identityKey.starts_with(root.record.moduleName + "::"))
+                declaration != nullptr)
             {
                 root.record.externalTypeReferences.push_back(
                     {current->range(), "type:" + declaration->identityKey});

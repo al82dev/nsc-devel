@@ -337,8 +337,49 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             {
                 if (!dropReplacedArrayElement(address, node->typeKey, *liveness, error)) return nullptr;
             }
-            else if (!emitValueDropAddress(address, node->typeKey, "value.replace", error))
-                return nullptr;
+            else
+            {
+                // Constructors keep a live bit for value fields that can need
+                // exceptional cleanup. A moved-from field is no longer alive and
+                // must not be destroyed when its slot is initialized again.
+                LLVMValueRef fieldFlag = nullptr;
+                const auto* field = node->children[0].get();
+                if (currentMirFunction_ != nullptr && currentMirFunction_->constructor &&
+                    field != nullptr && field->kind == frontend::ProjectOopMirNodeKind::FieldAddress &&
+                    field->memberOrdinal.has_value() && !field->children.empty() &&
+                    field->children.front() != nullptr &&
+                    field->children.front()->kind == frontend::ProjectOopMirNodeKind::ThisValue)
+                {
+                    for (const std::size_t ordinal : activeCleanupRegions_)
+                    {
+                        const auto action = cleanupRegions_.find(ordinal);
+                        const auto flag = localStorage_.find(ordinal);
+                        if (action != cleanupRegions_.end() && action->second != nullptr &&
+                            action->second->stringValue == "constructor.owned.field.cleanup" &&
+                            action->second->memberOrdinal == field->memberOrdinal && flag != localStorage_.end())
+                        {
+                            fieldFlag = flag->second;
+                            break;
+                        }
+                    }
+                }
+                if (fieldFlag == nullptr)
+                {
+                    if (!emitValueDropAddress(address, node->typeKey, "value.replace", error)) return nullptr;
+                }
+                else
+                {
+                    LLVMValueRef live = LLVMBuildLoad2(
+                        builder_, LLVMInt1TypeInContext(context_), fieldFlag, "value.replace.live");
+                    LLVMBasicBlockRef drop = appendBlock("value.replace.drop");
+                    LLVMBasicBlockRef ready = appendBlock("value.replace.ready");
+                    LLVMBuildCondBr(builder_, live, drop, ready);
+                    enterBlock(drop);
+                    if (!emitValueDropAddress(address, node->typeKey, "value.replace", error)) return nullptr;
+                    if (!terminated()) LLVMBuildBr(builder_, ready);
+                    enterBlock(ready);
+                }
+            }
         }
         else if (node->booleanValue && requiresOwnedDestruction(node->typeKey))
         {

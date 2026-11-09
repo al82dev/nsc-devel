@@ -564,7 +564,8 @@ bool collectTemplateSourceReplacements(
                 "' records malformed external type key '" + reference.typeKey + "'";
             return false;
         }
-        if (typeKey.find(static_cast<char>(0x60), moduleSeparator + 2U) == std::string::npos)
+        if (!typeKey.starts_with("type:" + generic.moduleName + "::") &&
+            typeKey.find(static_cast<char>(0x60), moduleSeparator + 2U) == std::string::npos)
             externalTypeKeys.insert(typeKey);
 
         const SourceRange typeRange = reference.range;
@@ -1734,12 +1735,13 @@ void expandPublishedRootType(
         addedPublishedType);
 }
 
-void collectPublishedRootTypeOrdinals(
+bool collectPublishedRootTypeOrdinals(
     const frontend::ProjectCompilation& compilation,
     std::span<const frontend::NamedTypeDeclaration> types,
     std::span<const frontend::ClassMemberSymbol> members,
     std::size_t rootProjectOrdinal,
-    std::vector<std::size_t>& rootTypeOrdinals)
+    std::vector<std::size_t>& rootTypeOrdinals,
+    std::string& error)
 {
     std::unordered_set<std::size_t> rootProjectTypes;
     std::unordered_map<std::string, std::size_t> rootTypeByKey;
@@ -1754,6 +1756,46 @@ void collectPublishedRootTypeOrdinals(
     {
         if (isPubliclyReachableRootType(types, rootProjectOrdinal, ordinal))
             publishedRootTypes.insert(ordinal);
+    }
+
+    // A reusable generic method needs the declaration of each enclosing type
+    // when its source is materialized by a NativeSharp library consumer.
+    // Preserve accessibility; including a type record does not make it public.
+    const auto genericTemplates = compilation.genericModel()->templates();
+    std::unordered_set<std::string> includedTemplateKeys;
+    if (!collectIncludedGenericTemplateKeys(
+            genericTemplates, rootProjectOrdinal, includedTemplateKeys, error)) return false;
+    std::unordered_set<std::size_t> genericMethodOwners;
+    for (const auto& generic : genericTemplates)
+    {
+        if (!includedTemplateKeys.contains(generic.canonicalKey)) continue;
+        for (const auto& reference : generic.externalTypeReferences)
+            publishRootTypeKey(reference.typeKey, rootTypeByKey, publishedRootTypes);
+        if (generic.kind != frontend::GenericTemplateKind::Method || generic.ownerName.empty() ||
+            generic.projectOrdinal != rootProjectOrdinal) continue;
+        std::size_t end = 0;
+        while (end < generic.ownerName.size())
+        {
+            const std::size_t separator = generic.ownerName.find('+', end);
+            const std::size_t length = separator == std::string::npos ? generic.ownerName.size() : separator;
+            std::string key = "type:" + generic.moduleName + "::";
+            if (!generic.namespaceName.empty()) key += generic.namespaceName + ".";
+            key += generic.ownerName.substr(0, length);
+            if (const auto owner = rootTypeByKey.find(key); owner != rootTypeByKey.end())
+                genericMethodOwners.insert(owner->second);
+            publishRootTypeKey(std::move(key), rootTypeByKey, publishedRootTypes);
+            if (separator == std::string::npos) break;
+            end = separator + 1;
+        }
+    }
+
+    // A generic method is reconstructed in its original owner and may use private static
+    // fields there. Their types must be present even though they are not public API.
+    for (const frontend::ClassMemberSymbol& member : members)
+    {
+        if (genericMethodOwners.contains(member.declaringTypeOrdinal) && member.isStatic &&
+            member.kind == frontend::ClassMemberKind::Field)
+            publishRootTypeKey(member.declaredTypeKey, rootTypeByKey, publishedRootTypes);
     }
 
     // Public signatures can expose a root-module helper whose declaration has no source-level
@@ -1782,6 +1824,7 @@ void collectPublishedRootTypeOrdinals(
         rootTypeOrdinals.begin(),
         rootTypeOrdinals.end(),
         std::bind_front(metadataTypeOrdinalLess, types));
+    return true;
 }
 
 void initializeMetadataTypeRecord(
@@ -2297,6 +2340,7 @@ void collectMetadataMemberOrdinals(
     std::span<const frontend::NamedTypeDeclaration> types,
     std::span<const frontend::ClassMemberSymbol> members,
     const std::unordered_set<std::size_t>& rootTypes,
+    const std::unordered_set<std::string>& genericOwnerKeys,
     std::vector<std::size_t>& memberOrdinals)
 {
     for (std::size_t ordinal = 0; ordinal < members.size(); ++ordinal)
@@ -2305,7 +2349,9 @@ void collectMetadataMemberOrdinals(
         const bool contractAccessibility =
             member.accessibility == frontend::ClassMemberAccessibility::Public ||
             member.accessibility == frontend::ClassMemberAccessibility::Protected;
-        if (contractAccessibility &&
+        const bool templateStaticField = member.kind == frontend::ClassMemberKind::Field &&
+            member.isStatic && genericOwnerKeys.contains(typeKeyForOrdinal(types, member.declaringTypeOrdinal));
+        if ((contractAccessibility || templateStaticField) &&
             !member.isControlledSpecializationFamily &&
             rootTypes.contains(member.declaringTypeOrdinal))
         {
@@ -2697,7 +2743,22 @@ bool buildMemberMetadata(
             generatorConstructors.emplace(function.memberOrdinal, &function);
     }
     std::vector<std::size_t> memberOrdinals;
-    collectMetadataMemberOrdinals(types, members, rootTypes, memberOrdinals);
+    std::unordered_set<std::string> genericOwnerKeys;
+    const auto templates = compilation.genericModel()->templates();
+    std::unordered_set<std::string> includedTemplateKeys;
+    if (!collectIncludedGenericTemplateKeys(
+            templates, rootProjectOrdinal, includedTemplateKeys, error)) return false;
+    for (const auto& generic : templates)
+    {
+        if (!includedTemplateKeys.contains(generic.canonicalKey) ||
+            generic.kind != frontend::GenericTemplateKind::Method || generic.ownerName.empty() ||
+            generic.projectOrdinal != rootProjectOrdinal) continue;
+        std::string key = "type:" + generic.moduleName + "::";
+        if (!generic.namespaceName.empty()) key += generic.namespaceName + ".";
+        key += generic.ownerName;
+        genericOwnerKeys.insert(std::move(key));
+    }
+    collectMetadataMemberOrdinals(types, members, rootTypes, genericOwnerKeys, memberOrdinals);
     std::vector<std::string> missingPhysicalCallables;
     if (!appendMetadataMembers(
             compilation,
@@ -2985,8 +3046,8 @@ bool buildMetadataModel(
     const auto types = compilation.nameLookup()->namedTypes();
     const auto members = compilation.memberModel()->members();
     std::vector<std::size_t> rootTypeOrdinals;
-    collectPublishedRootTypeOrdinals(
-        compilation, types, members, rootProjectOrdinalValue, rootTypeOrdinals);
+    if (!collectPublishedRootTypeOrdinals(
+            compilation, types, members, rootProjectOrdinalValue, rootTypeOrdinals, error)) return false;
     if (!appendMetadataTypes(
             compilation,
             types,

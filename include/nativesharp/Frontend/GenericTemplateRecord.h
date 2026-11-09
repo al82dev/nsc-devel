@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace nativesharp::frontend
@@ -50,6 +51,11 @@ struct GenericTemplateRecord final
     // These references let NSMETA make the declaration self-contained instead of depending on
     // source-level using directives that are intentionally not transported with a template body.
     std::vector<GenericTemplateExternalTypeReference> externalTypeReferences;
+
+    // Declaration-site imports are retained for metadata reconstruction.
+    // Aliases are stored as ordered pairs to keep publication deterministic.
+    std::vector<std::string> declarationImports;
+    std::vector<std::pair<std::string, std::string>> declarationAliases;
 
     // T05-F02. Source-level impl blocks merged into this template. They are retained separately
     // so NSMETA can publish the original class declaration followed by its coherence extensions;

@@ -1411,6 +1411,46 @@ bool OopLlvmImplementation::emitCleanupAction(std::size_t ordinal, std::string& 
             return fail(error, "Stage 45.10 cannot resolve MIR cleanup action");
         }
         const frontend::ProjectOopMirNode* cleanup = found->second;
+        if (cleanup->stringValue == "constructor.owned.field.cleanup" ||
+            cleanup->stringValue == "constructor.shared.field.cleanup")
+        {
+            if (thisValue_ == nullptr) return fail(error, "constructor field cleanup has no receiver");
+            const auto flag = localStorage_.find(ordinal);
+            if (flag == localStorage_.end()) return fail(error, "constructor field cleanup has no live flag");
+            LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
+            LLVMValueRef alive = LLVMBuildLoad2(builder_, flagType, flag->second, "constructor.field.live");
+            LLVMBasicBlockRef destroy = appendBlock("constructor.field.destroy");
+            LLVMBasicBlockRef done = appendBlock("constructor.field.done");
+            LLVMBuildCondBr(builder_, alive, destroy, done);
+            enterBlock(destroy);
+            LLVMBuildStore(builder_, LLVMConstInt(flagType, 0, 0), flag->second);
+            LLVMValueRef address = byteOffset(thisValue_, cleanup->immediate, "constructor.field.cleanup.addr");
+            if (memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(cleanup->typeKey))
+            {
+                if (!emitValueDropAddress(address, cleanup->typeKey, "constructor.field.cleanup", error)) return false;
+            }
+            else
+            {
+                LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+                LLVMValueRef value = LLVMBuildLoad2(builder_, ptr, address, "constructor.field.cleanup.value");
+                LLVMBuildStore(builder_, LLVMConstNull(ptr), address);
+                if (!emitOwnedPointerDestroy(value, cleanup->typeKey, "constructor.field.cleanup", error)) return false;
+            }
+            if (!terminated()) LLVMBuildBr(builder_, done);
+            enterBlock(done);
+            return true;
+        }
+        if (cleanup->stringValue == "constructor.completed.base.cleanup")
+        {
+            if (!cleanup->targetTypeOrdinal.has_value() || thisValue_ == nullptr)
+                return fail(error, "constructor base cleanup has no completed receiver");
+            const auto entry = objectDestructionFunctions_.find(*cleanup->targetTypeOrdinal);
+            if (entry == objectDestructionFunctions_.end())
+                return fail(error, "constructor base cleanup has no object destruction entry");
+            LLVMValueRef arguments[] = {thisValue_};
+            buildNoUnwindCall(entry->second.functionType, entry->second.function, arguments, 1, "");
+            return true;
+        }
         if (cleanup->kind == frontend::ProjectOopMirNodeKind::UsingRegion)
         {
             return emitUsingDispose(cleanup, error);

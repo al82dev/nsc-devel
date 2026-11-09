@@ -5,6 +5,630 @@ siguen pendientes; ASan cuenta con la ruta limitada descrita más abajo.
 
 ## Rc, WeakRc, Arc y WeakArc
 
+La prueba dirigida `move_assign_distinct_blocks` transfiere un fuerte entre dos
+bloques distintos para las familias local y atómica. Comprueba la destrucción
+de la carga sustituida, la expiración de su débil, la conservación y upgrade
+del bloque transferido, y la destrucción posterior de su carga. Ejecutó 42 en
+O0/O2 con Rc/WeakRc y Arc/WeakArc; los controles de fuertes vacíos y clonación
+de un débil expirado también pasaron. Evidencia:
+`A:/nsc-fixes-evidencia/shared-move-assignment-lifecycle.log`. La prueba usa
+fuentes del SDK en un solo hilo; no mide directamente la liberación del bloque
+de control ni acredita el consumo binario o la seguridad concurrente pública.
+
+La inspección `A:/nsc-fixes-evidencia/allocation-inspect` usa copias de las
+fuentes públicas actuales y crea Rc y Arc para una clase y un struct con
+constructores triviales. El IR contiene una llamada a `__nativesharp_alloc`,
+en `SharedControlStorage.AllocateLayout`; las cuatro especializaciones de
+fábrica llaman a su ruta de reserva y después a la construcción placement.
+La construcción de clase escribe el descriptor y llama al constructor sobre
+la dirección del bloque; la de struct inicializa y construye esa misma región.
+El runtime Windows observado implementa `__nativesharp_alloc` con una llamada
+a `HeapAlloc`. El programa terminó con 42 en O0/O2 (`results.txt` y logs de
+build). Esta evidencia estática es compatible con una sola reserva del bloque
+para esas cargas, pero no cuenta reservas dinámicas, no cubre constructores que
+reservan otros recursos ni acredita todas las rutas excepcionales o el consumo
+binario. Los volcados solicitados sin nivel y con `-O2` son idénticos; no se
+afirma haber inspeccionado IR optimizado distinto ni mediciones de heap.
+
+### Investigación de limpieza de bases durante construcción fallida
+
+La selección `shared-constructor-regression-current.cmd` verificó el prototipo
+actual en 17 casos para Rc y Arc en O0/O2: las 68 ejecuciones terminaron con 42
+(`shared-constructor-regression-current.log`). Incluye transferencia y orden
+de campos owned, fallo durante reasignación, bases implícitas completas e
+incompletas y campos struct con drop. Esta evidencia procede de las fuentes del
+SDK y del compilador incremental, y no cubre las fábricas throwing, el inicio
+de vida de campos predeterminados ni todas las formas de construcción. Los
+cambios de cleanup permanecen sin commit.
+
+Cinco regresiones dirigidas combinan los punteros compartidos con tuplas:
+inicialización completa, excepción al construir un elemento posterior, tupla
+anidada con dos propietarios y destrucción en orden inverso, y éxito o fallo
+de un `await` que se suspende después de crear el propietario. En la ruta async
+exitosa se comprueba que no se recrea ni destruye prematuramente el payload.
+Las 20 ejecuciones de Rc/Arc O0/O2 pasaron
+(`shared-tuple-owner-async-expanded.log`). Usan SDK desde fuentes y el backend
+provisional; no cubren cancelación ni el fallo separado de `await` en finally.
+
+El control `tuple_shared_owner_cancel` avanza un iterador async hasta entregar
+un valor, después de construir una tupla con Rc o Arc y completar un await que
+se suspende. Comprueba que `Cancel()` no destruye inmediatamente el payload y
+que el siguiente `MoveNextAsync()` lo destruye una vez. Pasó en O0/O2 para
+ambas familias junto a los controles de await exitoso y fallido
+(`shared-tuple-owner-cancel.log`). No cancela mientras el await hijo sigue
+pendiente ni cubre abandono del iterador o el fallo de await dentro de finally.
+
+Dos controles posteriores ejercen `Drop()` explícito del iterador: antes de
+iniciarlo no construye ni destruye el payload; después del primer valor destruye
+una vez el propietario contenido en la tupla. Ambos y el control de cancelación
+pasaron para Rc/Arc O0/O2 (`shared-tuple-owner-drop-final.log`). No cubren un
+abandono mientras el future hijo está suspendido, `Drop` repetido ni liberación
+física del bloque compartido.
+
+Para investigar abandono durante un await hijo pendiente se probó invocar
+`Poll()` sobre el future obtenido de `MoveNextAsync()`: el análisis lo rechaza
+porque ese tipo no admite acceso a miembros (`manual-poll-probe/inferred.log`).
+Un control con el mismo future y `await` pasó el análisis
+(`manual-poll-control/check.log`). El backend documenta que el código fuente
+usa await para avanzar futures, pero estas comprobaciones no demuestran que no
+exista ninguna otra forma de programar una suspensión parcial. No se ejecutó
+código con acceso manual al frame ni se modificó el contrato de cancelación.
+
+`normal_factory_partial_owned_order` compara el orden de limpieza excepcional
+de dos campos owned de una clase `partial` con el observado al destruir
+normalmente una clase equivalente. Los dos fragmentos de cada clase están en
+un mismo archivo; no acredita el orden de partes distribuidas entre archivos.
+El caso y el control no parcial pasaron para Rc y Arc en O0/O2
+(`shared-partial-order-check.cmd` y `.log`).
+El control `normal_factory_partial_files_owned_order` distribuye los campos
+entre `Main.ns` y `PartialFields.ns` y compara también con la destrucción
+normal de una clase equivalente. Pasó junto a los controles anteriores para
+Rc y Arc en O0/O2 (`shared-partial-files-check.cmd` y `.log`); la prueba cubre
+esa combinación de archivos y orden de proyecto, no todos los órdenes posibles.
+
+La selección `shared-delegating-control.cmd` comprueba una fábrica normal con
+un constructor `this(...)`: fallo dentro del constructor delegado, fallo en
+el cuerpo que delega después de regresar aquel, excepción capturada localmente
+y salida normal. En la primera forma comprueba que el recurso se destruye una
+vez y que el objeto incompleto no ejecuta su destructor; en las demás comprueba
+la vida y destrucción del recurso. Las 16 ejecuciones de Rc/Arc O0/O2 pasaron
+(`shared-delegating-control-outer.log`). El caso que falla después de delegar
+no declara destructor propio: no decide si corresponde ejecutarlo, ni cubre
+bases, fábricas throwing, construcción ordinaria o todas las cadenas delegadas.
+
+El MIR de `A:/nsc-fixes-evidencia/throwing-base-probe/current-mir.log`
+representa el constructor derivado como una llamada directa a la base seguida
+del `throw`, sin región de limpieza para la base (`cleanup-contract=0`). El LLVM
+correspondiente confirma que la llamada de base retorna antes de propagarse la
+excepción y que no se llama al destructor de la base en esa ruta.
+
+Con el prototipo posterior sin commit y el compilador incremental con hash
+`bc4d89b727068dcb`, las reproducciones ordinarias existentes de base explícita
+y de base intermedia implícita pasaron en O0 y O2, con salida 42 en las cuatro
+ejecuciones (`A:/nsc-fixes-evidencia/constructor-explicit-current.log`). La
+segunda comprueba la traza 53421. Se conservó una regresión reproducible en
+`tests/integration/constructor_throwing_base_cleanup.py`; la selección
+`nsc.compiler.constructor-throwing-base-cleanup` pasó 1/1, con las cuatro
+ejecuciones registradas en `constructor-throwing-base-ctest.log`. Asimismo, la
+selección `safe` de la API pública pasó Rc y Arc en O0/O2, incluidos los casos
+throwing simples (`shared-throwing-basic-current.log`). Estas verificaciones no
+habilitan las fábricas throwing para bases no triviales: su protección continúa
+activa y el prototipo conserva los límites de construcción parcial documentados
+en este archivo.
+
+Ensayo diagnóstico posterior: se desactivó temporalmente el rechazo de
+`sharedThrowingConstruction && constructorThrows && !safePartialCleanup`, se
+compiló incrementalmente `nsc` en el build aislado y se ejecutó la reproducción
+`tests/integration/shared_nontrivial_base_throw.py` por separado para Rc y Arc.
+Las dos familias pasaron análisis y ejecutaron 42 en O0 y O2, incluyendo las
+formas preparadas de bases explícitas e implícitas, fallo en la base, excepción
+capturada, construcción satisfactoria y delegación
+(`A:/nsc-fixes-evidencia/throwing-guard-experiment.log`). Este resultado solo
+acredita los casos del fixture: no demuestra campos de valor con vida parcial,
+layouts explícitos, bases precompiladas ni segundas excepciones al limpiar.
+Después se restauró la condición original, se recompiló incrementalmente `nsc`
+y se confirmó que Rc y Arc vuelven a rechazarse en O0 con el diagnóstico de
+protección (`throwing-guard-restored-check.log`, hash `f7706addf7b7bfb9`). No
+quedó habilitado el rechazo desactivado y no se guardó un binario experimental
+aparte. El siguiente paso es delimitar y demostrar qué formas puede limpiar el
+constructor antes de sustituir ese rechazo por un criterio más preciso.
+
+Un control posterior mostró por qué el ensayo positivo no basta para hacerlo:
+`helper_owned` inicializa un campo `owned` llamando a un método de instancia y
+después lanza desde el constructor derivado. La construcción ordinaria con el
+compilador de trabajo ejecutó 20 en O0 y O2: el código del fixture representa
+base destruida una vez y recurso no destruido; se esperaba 42 para ambos drops.
+La base compilada por separado ejecutó 10 en ambos niveles, es decir, ninguno
+de los dos drops (`A:/nsc-fixes-evidencia/constructor-helper-baseline.log`).
+El selector `nsc.compiler.constructor-throwing-base-cleanup` ahora incluye la
+reproducción con expectativa de éxito y falla deliberadamente en ese caso;
+los casos explícito e implícito anteriores aún ejecutan 42 en ambos niveles
+(`constructor-throwing-base-ctest.log`). En `prepareFields`, el prototipo
+recorre stores del cuerpo MIR del constructor y no inspecciona el cuerpo del
+método llamado; esto explica que no registre ese campo, pero aún debe
+contrastarse con la generación LLVM antes de elegir la corrección. La prueba
+ordinaria no demuestra por sí sola el comportamiento de la fábrica que sigue
+protegida. No se modificó el backend en esta comprobación.
+
+La variante `normal_factory_base_owned_helper` prueba directamente las fuentes
+públicas: un método inicializa el campo owned de la base y el siguiente acceso
+a una clase estática lanza antes de completar el constructor base. Rc y Arc
+capturaron la excepción sin destruir el recurso: las cuatro combinaciones O0/O2
+devolvieron 10 y esperaban 42 (`A:/nsc-fixes-evidencia/shared-owned-helper-run.log`).
+La selección conserva la expectativa correcta y falla. `prepareFields` solo
+encuentra asignaciones presentes en el MIR del constructor; la escritura en
+`Initialize` está en otro cuerpo. El almacenamiento placement se limpia a cero
+cuando `node->zeroInitialize` está activo, pero el constructor también puede
+llamarse en otros contextos: ese dato por sí solo no permite tratar todas las
+ranuras como inicializadas ni ejecutar después el destructor de una base ya
+destruida. Se mantiene la protección throwing y aún falta una solución que
+distinga esos estados sin duplicar drops.
+
+El ensayo posterior registra para constructores de clase los campos de
+referencia `owned` del layout, incluidos los que solo se escriben desde otro
+método. El almacenamiento de las construcciones placement se pone a cero en
+MIR; el plan de asignación ordinaria también indica inicialización a cero. Por
+eso esos campos se registran como activos desde el comienzo y una ranura nula
+no destruye ningún objeto. Los campos de valor con drop conservan su indicador
+de vida anterior; los indicadores de una base implícita se desactivan al
+completarla, como en el prototipo existente. El cambio está en
+`src/LLVM/Lowering/OopLlvmStatements.cpp` y continúa sin commit.
+
+Con el compilador incremental `87dc014b74d83e90`, la reproducción pública y
+dos controles nuevos (excepción dentro del método y salida normal) pasaron en
+Rc y Arc O0/O2. También pasaron el campo no escrito, la rama omitida, el bucle
+y el caso público básico: 28 ejecuciones en total
+(`A:/nsc-fixes-evidencia/shared-owned-helper-controls.log`). La selección previa
+de 17 casos de reasignación, orden, transferencia y bases implícitas pasó sus
+68 ejecuciones (`shared-owned-helper-regression.log`); la regresión ordinaria
+pasó sus seis ejecuciones (`constructor-throwing-base-ctest.log`). Las salidas
+anteriores de `shared-owned-helper-run.log` y `constructor-throwing-base-ctest.log`
+fueron reemplazadas al repetirlas; los resultados previos quedan descritos en
+los párrafos anteriores, pero esos dos archivos muestran la pasada posterior.
+Esto no acredita campos de valor inicializados indirectamente, constructores
+precompilados, layouts explícitos ni las fábricas throwing con bases no
+triviales, cuyo rechazo permanece activo.
+
+La selección `shared-owned-helper-controls.log` se amplió posteriormente con
+transferencia y reemplazo del campo desde métodos. Ambos casos pasaron para Rc
+y Arc en O0/O2; la selección ampliada contiene 36 ejecuciones, todas con salida
+42. La repetición sustituyó el contenido anterior de ese mismo log. El control
+`nsc.item319.explicit-object-destruction` pasó sus 27 comprobaciones
+(`A:/nsc-fixes-evidencia/constructor-destruction-control.log`). Estos controles
+no demuestran aún todas las formas de alias del campo ni el contrato de las
+fábricas throwing con bases no triviales.
+
+Una reproducción posterior cambió el constructor de un campo struct `Part`
+para inicializar su campo owned llamando a `Initialize()` y fallar después.
+Antes del ajuste, la selección se detuvo en Rc O0 con salida 3: se capturó la
+excepción pero `Resource.Drops` seguía en cero. El registro de aquella primera
+ejecución fue sustituido al repetir el comando; el resultado se observó
+directamente. Se amplió el registro de campos de referencia owned al layout de
+estructuras ordinarias, excluyendo expresamente uniones y offsets explícitos.
+El indicador inicialmente activo para referencias nulas se limita también a
+clases y estructuras sin solapamiento; los valores con drop mantienen su
+indicador anterior.
+
+Después de compilar incrementalmente el compilador con hash
+`7c969cf811f592e3`, los cinco casos dirigidos de estructura —fallo después y
+dentro del método, salida normal, fallo parcial y orden de cleanup— pasaron para
+Rc y Arc en O0/O2: 20 ejecuciones (`struct-owned-helper-controls.log`). La
+selección de nueve controles de clases volvió a pasar sus 36 ejecuciones
+(`shared-owned-helper-controls.log`), ambos en `A:/nsc-fixes-evidencia`.
+No se ha acreditado el tratamiento de uniones, offsets explícitos ni campos
+de valor con drop inicializados indirectamente. El ajuste sigue sin commit.
+
+También se probó `Part` como carga directa de `Rc` y `Arc`, con un campo owned
+asignado desde un método. Se comprobaron excepción implícita, constructor que
+declara y propaga `throws` mediante la fábrica correspondiente y salida normal.
+Los fallos destruyeron el recurso una vez y no llamaron al destructor del struct
+incompleto; la salida normal destruyó ambos una vez. Pasaron las 12 ejecuciones
+de las dos familias en O0/O2 (`A:/nsc-fixes-evidencia/struct-payload-helper-controls.log`).
+El contador demuestra llamadas a destructores, no la liberación directa del
+bloque de control. No se modificó la protección de formas throwing no triviales.
+
+Dos controles adicionales modifican por un método el campo owned de una base
+ya terminada y después disparan una excepción en el constructor derivado. El
+primero exige traza 21; el segundo añade un campo owned al derivado y exige
+traza 321, por la destrucción del campo derivado, el destructor de base y el
+campo base. Ambos pasaron para Rc y Arc en O0/O2; también pasaron en la misma
+selección los controles anteriores de base implícita completa e incompleta
+(`A:/nsc-fixes-evidencia/implicit-helper-controls.log`, 16 ejecuciones).
+Se intentó además llamar un método de instancia desde el inicializador de un
+campo de base implícita: la forma sin receptor produjo `unknown identifier` y
+la forma `this.Initialize()` produjo `'this' is available only inside an
+instance method`. Ninguna de las dos llegó a ejecución y no demuestra limpieza
+de esa forma; los diagnósticos se observaron en la salida del ensayo, cuyo log
+fue sustituido por el control válido posterior.
+
+La distinción entre una llamada de inicializador y una llamada de instancia
+ordinaria existe en HIR, pero `MirNodeMachine::lowerGroup19` convierte ambas en
+`DirectInstanceCall`; conserva `baseReceiver`, que distingue la delegación a
+`this` del receptor base en el caso de inicializador. Esa marca por sí sola no
+demuestra que toda la base inmediata esté construida: en
+`appendConstructorFieldInitializerWork`, cuando se omite el constructor de una
+base implícita, el compilador llama al ancestro explícito y agrega por separado
+los inicializadores de las bases omitidas. Un fallo entre ambas operaciones no
+debe ejecutar el destructor de la base implícita como si estuviera completa.
+
+Por tanto, quitar el rechazo de `invokePlacementConstructor` o activar un único
+indicador al regresar la llamada no resuelve los casos de base implícita,
+delegación y fallos de inicialización. La regresión en preparación
+`tests/integration/shared_nontrivial_base_throw.py` conserva esos casos; no se
+ha ejecutado una corrección ni se declara resuelto el problema. La siguiente
+investigación debe identificar puntos de finalización de cada subobjeto y de
+sus campos, y conservar la limpieza de un constructor que captura localmente
+una excepción. La semántica de una segunda excepción durante limpieza sigue
+separada y pendiente de decisión.
+
+Se añadió a la regresión una base implícita que construye un campo propietario
+y falla al inicializar el siguiente. El resultado esperado es destruir ese campo
+y después la base ya completa, sin llamar al destructor de la base incompleta
+ni al de la derivada. Los análisis semánticos de `Rc` y `Arc` pasan; la emisión
+O0 sigue detenida por `shared throwing construction cannot safely clean this
+payload shape`, como se registra en
+`A:/nsc-fixes-evidencia/shared-implicit-base-failure-{Rc,Arc}.log`. Como la
+prueba contiene varias construcciones y la emisión se detiene en la primera
+forma rechazada, todavía no ejecuta ni aísla ese nuevo caso; tampoco se alcanzó
+O2. Se conserva como requisito de la corrección, no como resultado aprobado.
+
+Una revisión más precisa de `implicit-base-initializer-probe/mir.log` muestra
+que la llamada selecciona el constructor de `Base` mediante `member=#1`, pero
+su operando `this` figura con el tipo de `FailingImplicitMiddle`. Por tanto, el
+tipo del operando por sí solo no identifica el subobjeto cuyo constructor
+acaba de retornar; hay que conservar el tipo declarado por el miembro llamado
+y los pasos de inicialización posteriores. La tabla MIR ofrece para cada tipo
+una entrada `destroy-object`; `emitObjectDestructionSteps` usa el orden de
+destrucción asociado a esa tabla y la entrada sin liberación no debe sustituirse
+por el descriptor dinámico del objeto incompleto. Para bases precompiladas
+existe además una ruta delegada por descriptor. Esta inspección identifica
+piezas para un diseño; no demuestra que sea seguro invocarlas desde un cleanup
+de construcción parcial ni resuelve campos a medio inicializar o excepciones
+durante la propia limpieza.
+
+Una reproducción aislada con construcción ordinaria, sin fábrica ni tipos
+compartidos, permitió ejecutar esa misma secuencia: base explícita completa,
+campo propietario de base implícita completado y fallo de inicialización
+estática en el siguiente campo. Tanto la base de referencia como el compilador
+de trabajo compilaron en O0/O2 y devolvieron traza 0, frente a la secuencia 421
+esperada (`A:/nsc-fixes-evidencia/implicit-base-initializer-probe/results.json`).
+El MIR del constructor derivado incluye la llamada al ancestro y los dos
+almacenamientos, pero registra `cleanup-contract=0` y `personality=false`;
+el LLVM ejecuta la llamada que falla sin un destino de limpieza. La reproducción
+acredita el problema de la construcción ordinaria en esa forma, no demuestra
+todavía el comportamiento de la fábrica compartida, cuya emisión se rechaza.
+
+La fábrica normal tiene una vía distinta que sí se emite: en
+`normal_factory_base_static_throw` una base con destructor termina de
+construirse, y después el constructor derivado sin `throws` dispara una
+excepción al inicializar una clase estática. Las reproducciones desde fuentes
+de Rc y Arc compilan y ejecutan en O0 y O2; las cuatro combinaciones devuelven 3, que el ejemplo
+reserva para excepción capturada, base construida una vez y destructor de base
+no ejecutado. El resultado esperado es 42. O2 se comprobó por separado mediante
+el selector `NSC_SHARED_POINTER_LEVELS`, porque el runner se detiene ante el
+primer fallo. La prueba permanece en
+`tests/integration/shared_public_pointers.py`; la salida se observó
+directamente, sin log independiente. Esto demuestra una falta de destrucción
+en ese caso concreto, no mide directamente la liberación del bloque ni prueba
+otras formas de constructor. La condición de rechazo actual se aplica a la
+fábrica que declara `throws`; no debe retirarse esa protección ni simular una
+limpieza completa de la base mientras no se conozca qué subobjetos terminaron.
+El control `normal_factory_base_success` construye y destruye la misma forma de
+base sin excepción; ejecutó 42 para Rc y Arc en O0/O2, con una construcción y
+una destrucción. Esto contrasta la salida normal, pero no identifica por sí solo
+la ruta exacta que falta durante la propagación de la excepción.
+El control `normal_factory_base_incomplete` hace que falle el propio
+constructor de la base antes de completarse: Rc y Arc ejecutaron 42 en O0/O2,
+con la excepción capturada y sin llamar al destructor de esa base incompleta.
+Por tanto, destruir siempre la base desde la fábrica solucionaría de forma
+incorrecta el caso anterior. Este control no cubre campos que la base pudiera
+haber terminado antes de fallar, ni demuestra que tales campos se limpien.
+El caso `normal_factory_base_incomplete_owned` añade un recurso owned a esa
+base: verifica que se construyó antes de la excepción, que la base incompleta
+no ejecuta su destructor y que la excepción se capturó. Rc y Arc devolvieron 3
+en O0 y O2, que significa que el destructor del recurso no se ejecutó; el
+resultado esperado es 42. Esto requiere limpiar el campo ya inicializado sin
+ejecutar el destructor de la base incompleta. La prueba permanece fallida y
+solo acredita esta forma concreta; no mide directamente la liberación del
+bloque ni la semántica de una segunda excepción.
+
+Ensayo provisional de base explícita completada: el backend activa una región
+excepcional después de retornar la llamada al constructor base, identifica su
+tipo por el miembro llamado e invoca la entrada de destrucción sin liberar su
+almacenamiento. Con este ensayo, `normal_factory_base_static_throw`, el
+control normal y el de base incompleta ejecutaron 42 para Rc y Arc en O0/O2;
+una excepción capturada dentro del constructor también preservó la base y
+terminó correctamente en ambas configuraciones. El ensayo conserva el rechazo
+existente de fábricas throwing para formas no acreditadas.
+
+No está listo para commit: `normal_factory_implicit_base_throw` espera la
+traza 21 (destructor de la base intermedia y luego de la base explícita), pero
+en O0 produce 1 con Rc y Arc: solo se destruye la base explícita. El runner se
+detuvo en O0. La limpieza del campo owned de una base incompleta sigue abierta,
+así como inicializadores envueltos, delegación, bases precompiladas y el
+comportamiento de una segunda excepción en cleanup. El ensayo reutiliza
+`buildNoUnwindCall` para la entrada de destrucción como el descenso existente;
+eso no resuelve ni decide el contrato pendiente de doble excepción. Las salidas
+se observaron directamente sin log independiente. Los cambios de backend
+permanecen sin commit y no se consideran una corrección general.
+
+La ampliación provisional registra un campo owned de la propia instancia tras
+una asignación directa exitosa; al propagarse una excepción limpia la ranura
+antes de destruir el recurso, para coordinarse con la limpieza placement ya
+existente. Inicialmente destruyó dos campos en orden de asignación (12) y no en
+orden inverso de declaración (21). Se ajustó la posición de sus regiones bajo
+los locales activos: las pruebas de orden de campo y de local antes de campos,
+reasignación, captura local y base incompleta pasaron para Rc y Arc en O0/O2.
+La regresión existente `nsc.sdk.shared-implicit-constructor-cleanup` pasó para
+clase y struct en ambas familias y niveles, sin detectar doble destrucción en
+esas formas. Los resultados se observaron directamente, sin log independiente.
+
+El caso `normal_factory_base_owned_branch`, que inicializa el campo en una
+rama y después lanza, todavía falla para Rc en O0; no se alcanzaron las otras
+combinaciones en esa selección. El ensayo solo registra asignaciones directas
+del bloque raíz y no cubre ramas, bucles, inicializadores envueltos, campos de
+valor ni delegación. No se ha demostrado que los ordinales de miembro preserven
+el orden de declaración en todas las configuraciones. La base intermedia
+implícita y la doble excepción siguen abiertas. Todo este código continúa
+provisional, sin commit y sin sustituir los controles de seguridad existentes.
+
+La siguiente versión provisional prepara indicadores para campos owned
+asignados en sentencias del constructor y los activa después de cada asignación
+observada; el cleanup consulta el indicador antes de leer la ranura. Con este
+ensayo, la rama tomada pasó y también los controles de rama no tomada, excepción
+antes de asignar y asignación en un bucle: Rc y Arc ejecutaron 42 en O0/O2.
+Pasaron los nueve casos previos de base y orden y volvió a pasar
+`nsc.sdk.shared-implicit-constructor-cleanup`. Las salidas se observaron
+directamente y no se conservaron logs independientes.
+
+Los indicadores aún no cubren asignaciones anidadas dentro de expresiones ni
+sentencias no envueltas en un bloque; tampoco prueban transferencia de campos,
+bases implícitas, campos de valor, inicializadores envueltos, delegación ni la
+doble excepción. El orden se deriva de ordinales de miembro y sigue sin
+acreditarse para todas las configuraciones. Esta versión permanece provisional y
+sin commit; no se considera resuelto el contrato completo de construcción.
+
+Una ampliación posterior añade en HIR una marca al terminar los inicializadores
+de cada base implícita dentro de un constructor. El ensayo registra los campos
+owned de esas bases mientras se construyen y, al completar cada base, transfiere
+la limpieza a su entrada de destrucción sin liberar almacenamiento. Se invalida
+la caché local de la cadena de cleanup al cambiar el tipo de la base completa.
+
+En Rc y Arc pasaron en O0/O2 los casos dirigidos de base implícita completa e
+incompleta, campo owned transferido sin doble destrucción, dos bases implícitas
+y salida normal sin destrucción prematura. La selección conjunta de 17 casos
+de construcción y limpieza pasó en ambas familias y niveles; el control de
+salida normal se ejecutó aparte. Las salidas se observaron directamente sin
+log independiente.
+
+Esto no habilita todavía las fábricas throwing: siguen sin acreditarse las
+construcciones sin constructor ejecutable, inicializadores de otras rutas,
+asignaciones embebidas en expresiones, campos de valor, delegación,
+precompilados y el contrato de doble excepción. Los ordinales de miembros como
+orden de declaración y los efectos de las marcas sobre cachés requieren
+verificación adicional. Los cambios siguen provisionales y sin commit.
+
+Actualización del ensayo: `normal_factory_base_owned_expression` reproduce una
+asignación de campo owned dentro de una condición; antes del ajuste, Rc en O0
+no destruía ese recurso al fallar después el constructor. El marcador se activa
+ahora tras la escritura exitosa en `lowerExpressionFrame044Store`. Con el
+compilador incremental aislado, `shared-struct-pattern-check.cmd` ejecutó 19
+casos seleccionados para Rc y Arc en O0 y O2: las 76 ejecuciones devolvieron
+42 y CTest pasó. La prueba dirigida `constructor-field-control.cmd` pasó para
+clases y estructuras, controles locales y atómicos, en ambos niveles. También
+pasó `tuple-partial-regression.cmd`, incluyendo sus 14 casos en O0/O2. La salida
+se observó directamente; no se conservó un log independiente. Estos resultados
+acreditan solamente las formas probadas: no resuelven los demás límites
+enumerados arriba ni autorizan retirar la protección de fábricas throwing.
+
+La prueba dirigida `tuple-await-replay-test.cmd` terminó con fallo en
+`await_in_unwind_finally` O0: devolvió 7 en lugar de 42; se detuvo antes de O2
+para ese caso. Los ocho casos anteriores pasaron en O0/O2. La evidencia previa
+`A:/nsc-fixes-evidencia/tuple-unwind-finally-probe/results.json` reproduce la
+pérdida de la excepción tanto en la base como en el prototipo; por ello no se
+atribuye este resultado al último ajuste sin evidencia adicional. La
+continuación suspendida en finally sigue pendiente.
+
+La prueba diagnóstica `async-finally-value-diagnostic.cmd` separa el resultado
+del retorno y la ejecución del finally: en O0/O2 el finally sí registra su
+marca, pero el valor recibido es 0 en lugar de 5 (salida 20). En la ruta de
+excepción también se registra la marca, pero el catch no recibe la excepción
+(salida 11). Los controles correspondientes con un await ya listo devuelven
+42. Una repetición con el compilador y runtime de la base independiente dio
+los mismos resultados (`async-finally-value-baseline.cmd` y `.log`); por tanto,
+estos casos no son una regresión introducida por el prototipo actual.
+
+En el LLVM de `async-finally-return-ir/llvm.log`, la ruta de return guarda 5 y
+marca el future terminado antes de ejecutar la limpieza; al suspender, el await
+sobrescribe el estado con su identificador de reanudación. La ruta que termina
+esa instancia del finally retorna del poll sin volver a marcarlo terminado.
+Otra instancia generada del finally continúa hacia un retorno predeterminado
+de 0. Esto evidencia estados y continuaciones distintos para ese ejemplo, pero
+no demuestra por sí solo el recorrido dinámico completo ni proporciona una
+solución segura para excepciones, finally anidados o cleanuppads de Windows.
+Se conserva la prueba fallida y no se cambia el comportamiento hasta resolver
+conjuntamente esas rutas. Como control adicional, cuando el `finally` lanza
+una excepción nueva después del await, el catch la recibe y el retorno anterior
+no prevalece: tanto con suspensión como con el await ya listo se obtuvo 42 en
+O0/O2 (`async-finally-throw-replacement.cmd` y `.log`). Ese control no cubre
+una segunda excepción mientras otra excepción sigue propagándose.
+
+`normal_factory_base_owned_transfer` mueve el campo owned a un local antes de
+la excepción y observa una sola destrucción: pasó con Rc y Arc en O0/O2.
+`normal_factory_base_owned_clear` libera el campo asignándole null antes de la
+excepción y también observa una sola destrucción en las cuatro combinaciones;
+la ejecución conjunta está en
+`A:/nsc-fixes-evidencia/shared-constructor-field-transfer-clear.log`.
+Los controles `normal_factory_base_owned_parameter` y
+`normal_factory_base_owned_parameter_field_order` también pasaron en Rc/Arc
+O0/O2: al fallar el constructor base, se destruyó su parámetro owned, y con un
+campo adicional la traza fue 21 (campo primero y parámetro después). Evidencia:
+`A:/nsc-fixes-evidencia/shared-constructor-parameter-order.log`. Estas pruebas
+no abarcan fallos en argumentos. El caso separado
+`normal_factory_base_owned_parameter_to_field` transfiere el parámetro al campo
+y verifica una sola destrucción tras la excepción; pasó en Rc/Arc O0/O2
+(`A:/nsc-fixes-evidencia/shared-constructor-parameter-transfer.log`).
+Los controles `normal_factory_base_argument_failure` y
+`normal_factory_base_argument_failure_order` fallan al evaluar un argumento
+posterior del inicializador base: verifican que la base no comience y que uno
+o dos argumentos propietarios ya evaluados se destruyan en orden inverso.
+Pasaron con Rc/Arc O0/O2; evidencia en
+`A:/nsc-fixes-evidencia/shared-constructor-argument-failure.log`. Solo cubren
+esta forma de argumento y la excepción implícita de inicialización estática.
+
+Se añadieron controles del caso en que falla la evaluación del reemplazo de
+un campo `owned` ya inicializado. Con la excepción propagada, el recurso
+anterior se destruyó una vez; con captura local permaneció vivo hasta la
+destrucción normal. Un control con dos campos observó el orden inverso 21,
+y otro colocó la asignación dentro de la condición de un `if`. Estas cuatro
+formas ejecutaron 42 para Rc y Arc en O0/O2, junto a los controles anteriores
+de reasignación y fallo antes del almacenamiento
+(`A:/nsc-fixes-evidencia/constructor-failed-replacement-expression.log`).
+El fallo se induce al inicializar una clase estática desde una función que
+retorna un recurso owned; esto no demuestra otras fuentes de excepción ni
+contabiliza directamente la liberación del bloque compartido.
+
+La variante que usa una expresión condicional como valor de la asignación se
+rechazó en análisis para ambas familias porque no se reconoce como expresión
+de transferencia de ownership. Se conserva el ejemplo y el diagnóstico en el
+mismo log; no se ejecutó ni se ha determinado aquí si el contrato del lenguaje
+debe admitir esa forma. Los cambios de cleanup siguen provisionales y no se
+retiró la protección de las fábricas que declaran `throws`.
+`normal_factory_base_argument_completed` mostró otra ruta: después de completar
+una base que recibe un argumento owned, la excepción de la derivada dejó la
+traza 0 en Rc O0, en vez de 21. El MIR del proyecto aislado
+`A:/nsc-fixes-evidencia/base-argument-completed-probe/Probe.nsproj` muestra que
+`FullExpressionCleanup` envuelve la llamada directa a la base. El ensayo en
+`lowerBlockStatement` reconoce esa forma de un solo hijo y activa la limpieza
+tras retornar la envoltura. Tras compilar incrementalmente, pasaron 12 casos
+dirigidos para Rc/Arc O0/O2, incluidos éxito y fallo antes, durante y después
+de la base (`shared-constructor-wrapped-base-controls.log` en evidencia). El
+resultado no cubre una excepción lanzada por la limpieza de un temporal después
+de retornar el constructor base; la región aún se activa después de esa limpieza.
+Se intentó reproducir esa situación con un temporal devuelto por una fábrica.
+Rc O0 devolvió traza 1, pero el MIR de
+`A:/nsc-fixes-evidencia/base-temporary-receiver-probe/Probe.nsproj` muestra que
+la limpieza del temporal está dentro del argumento y ocurre antes de la llamada
+base. Por tanto, esa salida no demuestra una base completada sin limpiar. Se
+retiró el ensayo de activación anticipada que intentaba corregirla. El contrato
+de vida de temporales hasta el final de la expresión completa y su aplicación
+específica a este inicializador requieren investigación separada. Las variantes
+rechazadas y sus diagnósticos se conservan en
+`A:/nsc-fixes-evidencia/base-argument-completed-probe/temporary-cleanup-variants.txt`.
+Tras retirar el ensayo adicional se recompiló incrementalmente y volvieron a
+pasar los 12 controles dirigidos en Rc/Arc O0/O2; salida conservada en
+`A:/nsc-fixes-evidencia/shared-constructor-wrapped-base-restored.log`.
+
+El caso `normal_factory_base_value_field_failure` confirma que un campo struct
+con destructor terminó de construirse antes de una excepción que abortó el
+constructor base. Antes del ensayo, Rc O0 devolvió 5: excepción capturada y
+una construcción, sin destrucción del campo. El MIR de
+`A:/nsc-fixes-evidencia/base-value-field-probe/Probe.nsproj` contiene un `Store`
+directo a ese campo `requires-drop=true`. El registro de cleanup provisional
+solo reconocía referencias owned. El ensayo registra también los valores que
+requieren drop y destruye su dirección mediante `emitValueDropAddress`.
+Después de compilar incrementalmente pasaron 10 casos dirigidos para Rc/Arc en
+O0/O2: el fallo reproducido, fallo antes del campo, salida normal, mezcla de
+campos de referencia y valor, bases implícitas completas e incompletas y cuatro
+controles previos. Evidencia:
+`A:/nsc-fixes-evidencia/shared-constructor-value-field-controls.log`. También
+pasó `nsc.sdk.shared-implicit-constructor-cleanup` en sus ocho configuraciones.
+El ensayo sigue sin commit y no acredita la inicialización parcial del propio
+struct, valores predeterminados sin `Store`, uniones, alias, ni segunda excepción;
+la protección de fábricas throwing permanece activa.
+
+El control `normal_factory_base_value_field_move` detectó una regresión del
+ensayo: mover el campo struct y fallar después destruía dos veces; Rc O0
+devolvió 5. El MIR de `base-value-move-probe/Probe.nsproj` usa
+`MoveOwnedField(FieldAddress(ThisValue))`. El ensayo desactiva el indicador
+excepcional después del movimiento; el control pasó en Rc/Arc O0/O2. Sin
+embargo, `normal_factory_base_value_field_move_replace` fallaba en Rc O0: el
+contador cambiaba durante la reasignación, antes de la excepción (salida 4;
+`constructor-value-replace-before.log`). El cambio provisional en
+`storeFromParts` consulta el indicador de vida ya existente para campos directos
+del constructor: solo destruye el valor anterior si sigue vivo. La instrucción
+original de corregir el compilador autoriza este archivo del backend; la
+restricción anterior de presupuesto era autoimpuesta. El caso original y siete
+controles pasaron para Rc y Arc en O0/O2 (32 ejecuciones,
+`constructor-value-replace-expanded.log`). También pasaron ocho controles de
+limpieza de constructores y 28 de inicialización parcial de tuplas
+(`constructor-value-replace-field-controls.log` y
+`constructor-value-replace-tuple-controls.log`). El cambio depende de los demás
+cambios de limpieza aún sin registrar. El control adicional
+`value_field_replace_in_method` verifica la sustitución y destrucción de un campo
+de valor desde un método ordinario en O0/O2
+(`value-field-method-check.log`); el runner lo ejecuta dos veces por familia,
+pero el ejemplo usa un objeto owned ordinario, no las API de punteros. Esto
+comprueba esa ruta fuera del constructor, no todas las formas de asignación.
+El cambio
+no acredita el inicio de vida predeterminado,
+destructores que lanzan durante otra excepción ni las fábricas que propagan
+excepciones. El caso
+`normal_factory_base_value_default_failure` también falla en Rc O0: el campo
+sin inicializador no se destruye al fallar el constructor, aunque el control
+de salida normal pasó en Rc O0/O2. No se probaron Arc ni O2 para ese fallo.
+Ninguno de estos resultados acredita una solución completa del ensayo.
+
+La selección posterior ejecutó por separado el caso de fallo del campo
+predeterminado con Arc en O0 y O2 y con Rc en O2: las tres ejecuciones
+devolvieron 3, que en ese fixture significa excepción capturada y cero llamadas
+al destructor de `Part`. Los registros son `shared-default-field-Arc-O0.log`,
+`shared-default-field-Arc-O2.log` y `shared-default-field-Rc-O2.log`. El control
+de construcción normal ejecutó 42 para Rc y Arc en O0/O2
+(`shared-default-field-success.log`). Los logs están en
+`A:/nsc-fixes-evidencia`. La expectativa de destrucción durante construcción
+fallida depende todavía de la decisión consultada sobre el comienzo de vida de
+campos predeterminados; no se modificó la implementación en esta tanda.
+
+Los controles `normal_factory_base_value_partial_failure` y
+`normal_factory_base_value_partial_order` prueban un campo struct cuyo propio
+constructor inicializa un recurso y luego falla por inicialización estática.
+En Rc/Arc O0/O2 se limpió el recurso, se omitió el destructor del struct
+incompleto y, cuando había un campo owned anterior, la traza fue 21: recurso
+interno primero y campo anterior después. Evidencia:
+`A:/nsc-fixes-evidencia/shared-value-partial-construction.log`. Esto cubre esa
+forma concreta, no todos los inicializadores parciales ni los campos de valor
+predeterminados.
+
+Para el campo struct sin inicializador, `appendInstanceFieldInitializers` en
+`src/Frontend/HIR/HirFunctionLowerer.cpp` omite los campos cuya sintaxis no
+tiene inicializador: no hay `Store` que active el indicador del ensayo. La
+construcción normal destruye ese campo; al fallar el cuerpo, la reproducción
+registró cero drops. La lectura del HIR explica la ausencia del indicador, pero
+no determina en qué punto de la secuencia de campos debe comenzar su vida,
+especialmente si falla un inicializador anterior. Antes de corregirlo hay que
+establecer ese contrato y su interacción con bases implícitas; no se ha
+modificado `HirFunctionLowerer.cpp`.
+En cambio, `normal_factory_base_owned_destroy` ejecuta `destroy resource` y
+después provoca una excepción: Rc O0 capturó la excepción y observó más de una
+destrucción (salida 4). El control `normal_factory_base_owned_destroy_success`,
+sin excepción, también observó más de una destrucción en Rc O0. Ambos ensayos
+se detuvieron al fallar ese primer resultado; no se han comprobado Arc ni O2.
+`lowerExpressionFrame021ObjectDestroy` destruye el objeto, pero no modifica la
+ranura propietaria. El contrato `NSC-PLACEMENT-003` en
+`docs/1.0.1/compiler/NativeSharp_Compiler_Contract_1_0_1.md` exige rechazar
+`destroy` aplicado a un valor owned; la implementación ya tiene ese rechazo
+para `operand.ownership == Owned`, pero no lo aplicó a este acceso de campo.
+Las reproducciones se conservan con la expectativa de rechazo semántico, sin
+volver a ejecutar código que destruye el objeto más de una vez. La corrección
+del análisis semántico ya rechaza el campo owned por su declaración, tanto con
+receptor implícito como explícito. Pasaron la prueba dirigida de destrucción y
+las dos reproducciones para Rc y Arc; detalles y límites en
+`destroy-owned-field.md`. Este hallazgo no prueba que el cleanup excepcional
+fuera la causa del rechazo ausente.
+
+La opción dirigida `NSC_SHARED_POINTER_REPEAT_CACHE=1` de la prueba pública usa
+una caché de artefactos dentro del proyecto temporal, recompila cada caso y
+exige `compilation-bundle-cache: hit` antes de volver a ejecutar el resultado.
+Para `normal_factory_implicit_base_incomplete` y
+`normal_factory_implicit_base_completed_owned`, las compilaciones iniciales y
+repetidas dieron salida 42 en Rc y Arc, tanto O0 como O2; el segundo build
+informó el acierto en las ocho combinaciones. La salida está en
+`A:/nsc-fixes-evidencia/shared-constructor-cache-repeat.log`. Esto verifica
+reutilización del bundle para esos proyectos,
+no demuestra por separado el round-trip de todos los nodos HIR/MIR ni cubre
+cambios de fuentes o invalidación de caché.
+
 El contrato `NSSMARTPTR` publicado por el compilador exige clonación explícita,
 ausencia de copia implícita, upgrade sin resurrección, rechazo de overflow del
 contador y mantenimiento de las funciones de destrucción y liberación del
@@ -22,6 +646,32 @@ libera al desaparecer el último débil. Upgrade incrementa el fuerte solo si
 es distinto de cero, mediante compare-exchange en Arc. Las operaciones que
 no puedan incrementar deben fallar antes de desbordar. Clone y Downgrade son
 explícitos; un valor expirado nunca vuelve a poseer el payload.
+
+La regresión `nsc.sdk.shared-public-counter-limits` verifica desde fuentes las
+cuatro API públicas con contadores establecidos artificialmente en el máximo:
+`Clone` fuerte, `Upgrade`, `Clone` débil y `Downgrade` devuelven una referencia
+vacía sin incrementar el contador. Después restaura los contadores y comprueba
+un payload válido y una destrucción. Pasó para Rc/WeakRc y Arc/WeakArc en
+O0/O2 (`A:/nsc-fixes-evidencia/shared-public-counter-limits.log`). El fixture
+accede al bloque interno en un solo hilo para preparar el límite; no equivale a
+alcanzarlo mediante operaciones reales ni verifica overflow concurrente.
+La prueba `nsc.sdk.shared-public-counter-race` complementa ese control para
+Arc/WeakArc: establece un contador en máximo menos uno antes de iniciar dos
+hilos, que compiten por `Upgrade` o `Clone` débil y conservan sus resultados
+hasta que ambos terminan el intento. En 32 rondas exige un éxito y un rechazo,
+valor máximo sin wrap y decremento correcto antes de restaurar el contador;
+el payload se destruye una vez al finalizar cada ronda. Pasó en O0/O2
+(`A:/nsc-fixes-evidencia/shared-public-counter-race.log`). El límite se prepara
+artificialmente y la prueba no mide la liberación del bloque ni demuestra todos
+los intercalados o Send/Sync.
+
+Tras los cambios provisionales de metadata se repitieron cuatro pruebas
+dirigidas desde fuentes: carrera de upgrade, clonación débil concurrente,
+último fuerte con débil retenido y límites concurrentes de ambos contadores.
+Las cuatro pasaron en O0/O2 (`shared-atomic-directed-current.log`); la última
+incluye por separado los contadores fuerte y débil. Son ensayos con un número
+finito de intercalados y usan el estado estático del fixture; no acreditan la
+transferencia pública de Arc entre hilos ni la liberación física del bloque.
 
 La implementación debe acreditar además la fábrica de una sola asignación
 exigida por el manifiesto, el movimiento sin doble liberación, el pin del módulo
@@ -64,6 +714,26 @@ puede descargarlo al llegar a cero. Estos hechos identifican piezas posibles,
 pero no demuestran una solución segura para liberar el último control block
 mientras todavía se ejecuta código del módulo. No se ha implementado ni
 validado esa integración.
+
+La revisión posterior del código en curso precisa esa limitación estructural:
+`SharedControlStorage` reserva ocho palabras iniciales; `SharedLocalControl` y
+`SharedAtomicControl` usan las dos primeras para contadores y `block[2]` para
+el débil implícito. En esas rutas no se guarda una referencia al módulo ni un
+thunk de liberación del módulo. En el último fuerte, las cargas de clase se
+destruyen mediante `SharedStorage.DestroyObject<T>`; HIR marca destrucción
+dinámica y LLVM obtiene la entrada desde el descriptor del objeto. El último
+débil ejecuta `delete[] block`. Para valores, `Destroy<T>` invoca `destroy`
+sobre la ranura. El registro `ModuleLifetimeRegistry` hallado pertenece al
+compilador; su presencia no conecta esas operaciones a la vida de un módulo
+en el programa generado. Esta inspección no constituye una prueba de descarga
+real ni demuestra qué imágenes específicas contienen los thunks generados.
+
+Se consultó si retener el módulo hasta el último débil o hasta terminar el
+proceso. La primera opción mantiene la duración necesaria sin retenerlo toda
+la ejecución, pero necesita un mecanismo seguro para que el código que libera
+la retención no regrese a una imagen ya descargada. No se modificó el runtime,
+la interoperabilidad ni el SDK al registrar esta evidencia; la decisión y la
+integración permanecen pendientes.
 
 En `A:/nsc-fixes-evidencia/smart-pointer-probe/` un prototipo descartable de
 struct genérico con destructor poseyó un payload y ejecutó con salida 42; una
@@ -180,6 +850,107 @@ en O0 y O2, frente a 42 esperado, con sus runtimes aislados respectivos
 rutas de excepciones, pero impide tratar como trivial una base con destructor.
 La limpieza correcta requiere distinguir si la construcción base terminó antes
 del throw; no basta llamar su destructor incondicionalmente. Sigue pendiente.
+La regresión preparada `shared_nontrivial_base_throw.py` exige ese caso para
+ambas familias, distingue el fallo en la base del fallo posterior y verifica
+el orden de limpieza de campos y destructores. El análisis semántico pasó para
+`Rc` y `Arc`, pero la emisión O0 falla en ambas por el rechazo deliberado
+(`shared-nontrivial-base-throw-Rc.log` y `shared-nontrivial-base-throw-Arc.log`);
+las ejecuciones y la emisión O2 de esta regresión no se han alcanzado.
+La regresión en preparación incluye ahora una excepción propagada por una
+llamada y otra capturada dentro del constructor. Ambas familias pasan el
+análisis semántico con esos casos incluidos, pero la emisión O0 sigue detenida
+por la protección anterior; no se ejecutaron los nuevos casos ni O2
+(`shared-nontrivial-base-call-Rc.log`, `shared-nontrivial-base-call-Arc.log`).
+Esto obliga a comprobar tanto `buildCurrentUnwindDestination` como
+`lowerExceptionalTransfer` al implementar la limpieza, además de conservar los
+catch locales que permiten continuar la construcción.
+En la ruta observada, `ProjectOopHirModel::appendConstructorInitializerCall`
+marca el receptor de la llamada base y
+`ProjectOopMirModel::MirNodeMachine::lowerGroup19` convierte la llamada en
+`DirectInstanceCall`, como una llamada de instancia ordinaria. La copia general
+del nodo conserva `baseReceiver` y el nombre del constructor seleccionado; el
+backend no usa hoy esa marca como estado de construcción. Para bases implícitas
+el HIR puede invocar un ancestro y ejecutar luego inicializadores de tipos
+intermedios en el constructor derivado. Por ello, marcar como completa toda la
+base inmediata en cuanto retorna esa llamada no cubre ese caso. Esta lectura
+de código no implementa ni verifica aún el seguimiento de subobjetos vivos.
+Una reproducción adicional con `PanicProfile=unwind-native` y constructor
+estático que llama a `panic` genera la llamada al inicializador de `Derived`
+antes de llamar al constructor de `Base`; el inicializador propaga su fallo
+mediante `cleanupret ... unwind to caller`. Fuente, proyecto, comando e IR:
+`A:/nsc-fixes-evidencia/static-init-before-base/`. Solo se inspeccionó el IR:
+no se ejecutó el programa ni se acreditó cómo lo capturaría el llamador. Este
+orden descarta suponer que la base terminó únicamente porque su constructor
+no declara `throws`: una salida excepcional puede ocurrir antes de invocarla.
+Un segundo control usó una excepción NativeSharp declarada en el constructor
+estático, en vez de `panic`: la construcción ordinaria se compiló y ejecutó en
+O0 y O2, y ambas ejecuciones devolvieron 42 al capturar la excepción y observar
+que la base no se construyó ni se destruyó
+(`A:/nsc-fixes-evidencia/static-throws-before-base/run.log`). El caso equivalente
+se añadió a la regresión pendiente de las fábricas: el análisis semántico pasa
+para `Rc` y `Arc`, pero la emisión O0 sigue detenida por la protección de bases
+no triviales (`shared-static-before-base-Rc.log` y
+`shared-static-before-base-Arc.log`). No se ejecutó todavía ese caso mediante
+las fábricas ni se alcanzó su emisión O2.
+Un control separado de destrucción normal con campos propietarios confirmó
+el orden derivado, campo derivado, base y campo base en O0/O2
+(`destruction-order-control/results.json` y `current-ir.log`). En el IR de la
+reproducción que lanza, la llamada a la base termina antes del throw pero no
+hay una ruta de limpieza de la base (`throwing-base-probe/current-ir.log`).
+El cleanup actual de placement destruye campos al regresar al llamador; una
+destrucción de la base introducida antes de esa limpieza podría invertir el
+orden. Se necesita preservar tanto el estado de construcción como la secuencia,
+no basta retirar el rechazo ni añadir una llamada incondicional.
+El layout de cada clase contiene únicamente los campos declarados por ella;
+la base ocupa un prefijo con layout propio. Esto permite localizar los campos
+por subobjeto, pero no demuestra que estén vivos. La regresión preparada
+incluye ahora una base intermedia implícita con campo propietario y destructor,
+y espera la traza `53421` si falla la derivada. El análisis de `Rc` acepta el
+programa ampliado; la emisión O0 sigue rechazada antes de poder ejecutarlo
+(`shared-nontrivial-base-throw-Rc.log`). La traza aún no está verificada.
+Un control separado de construcción y destrucción completas de esa misma cadena
+implícita obtuvo `653421` en O0 y O2, con salida 42 en ambos casos
+(`implicit-base-order/results.json`). Esto comprueba el orden normal, no la
+limpieza parcial cuando falla el constructor derivado.
+Un segundo proyecto aislado usa la misma jerarquía con `new Derived()` y un
+constructor derivado que lanza después de crear su campo. En O0 y O2 compiló y
+terminó con código 10, que identifica traza cero; se esperaba código 42 para
+la traza `53421` (`implicit-base-throw/results.json`). Este control confirma
+que en esa ruta ordinaria tampoco corren los destructores de las bases ni los
+de los campos ya creados. No ejecuta las fábricas de punteros, cuya protección
+sigue impidiendo emitir la reproducción correspondiente.
+La inspección de HIR muestra que `prependConstructorWork` antepone la llamada
+al constructor base y después los inicializadores de campos. En el backend,
+las llamadas potencialmente excepcionales y el `throw` explícito construyen
+sus rutas de unwind por funciones distintas (`buildCurrentUnwindDestination`
+y `lowerExceptionalTransfer`). Una implementación debe conservar los cleanups
+de scopes y los `catch` locales: solo una excepción que abandone el constructor
+debe iniciar la destrucción parcial. Para la cadena de bases necesita saber qué
+subobjetos terminaron; para el derivado debe destruir antes sus campos ya vivos
+y omitir su propio destructor. La evidencia actual no cubre delegación
+`this(...)`, todos los inicializadores, campos de valor con drop, bases
+precompiladas ni todos los perfiles de panic.
+
+Como siguiente paso de implementación, el HIR marca la llamada de
+inicialización de constructor y MIR conserva `baseReceiver` y el miembro
+seleccionado. Eso permite identificar una llamada base explícita, pero una
+cadena con constructores implícitos puede saltar directamente a un ancestro y
+ejecutar después inicializadores de las bases intermedias; todavía no hay
+evidencia de que una sola bandera después de la llamada represente esa cadena.
+La limpieza actual de campos propietarios vive en el llamador de placement.
+Si se mueve parte del trabajo al constructor, debe retirarse o coordinarse esa
+limpieza para evitar orden inverso o doble destrucción. La regresión preparada
+incluye también una excepción capturada dentro del constructor y una cadena
+con dos bases, además de un constructor delegado cuyo destino lanza; su
+análisis pasó, pero aún no se han ejecutado. Debe ampliarse con fallos de
+inicializadores antes de dar por resuelta la ruta. Este párrafo es un plan
+técnico, no implementación.
+Una reproducción directa de inicializador de campo que llama a un método
+`throws` fue rechazada por el análisis, incluso cuando el constructor declara
+`throws` (`throwing-field-initializer-probe/results.json`); no se generó ni
+ejecutó ese programa. Por tanto, esa reproducción no demuestra una ruta de
+unwind válida de inicializador ni autoriza considerar todas las formas de
+fallo de inicialización cubiertas.
 Para un payload `struct` con destructor, la construcción placement devuelve
 `Payload*`. En dos pruebas separadas, `delete *slot` y `delete slot[0]`
 compilaron en O0/O2, pero el contador del destructor siguió en cero y el
@@ -348,6 +1119,12 @@ directamente `Box<Wrong>` dentro de `Wrapper<Box<Wrong>>`. Una solución debe
 preservar esa relación por uso, incluidos caché y metadata precompilada, y
 asociar cada diagnóstico al candidato realmente seleccionado. Esto es una
 dirección de investigación, no una corrección implementada.
+Actualización posterior: `1cedb1269` corrigió las variantes reproducidas de
+restricciones anidadas en cuerpos de sobrecargas y restituyó `where T : class`
+en `SharedClassCreation`. La investigación y el experimento retirado anteriores
+permanecen como historia; la corrección y sus límites se detallan en
+`restricciones-en-cuerpos-genericos.md`. No se ha demostrado cobertura de todas
+las rutas de caché ni de módulos genéricos precompilados.
 Con el contenedor interno sin esa restricción, la regresión de handles ejecuta
 4 000 clones atómicos en cuatro hilos, tanto O0 como O2, y verifica que queda
 un único fuerte y que el payload se destruye una vez después de los joins. El
@@ -368,7 +1145,11 @@ quedaba un débil explícito: `WeakCount` devolvió 2 durante el destructor y 1
 después, en O0/O2 (`shared-weak-count-race-probe/results.json`). Esto confirma
 que la lectura puede incluir el débil implícito transitorio. La elección entre
 exponer ese conteo aproximado bajo concurrencia o exigir una observación exacta
-está pendiente de la respuesta del usuario.
+estaba pendiente de la respuesta del usuario cuando se registró la prueba.
+Decisión posterior: el usuario eligió un conteo aproximado durante operaciones
+concurrentes y exacto en ausencia de ellas. La observación de 2 durante el
+destructor sigue formando parte de la evidencia del comportamiento permitido;
+no es una instantánea linealizable.
 
 ## AddressSanitizer
 
@@ -378,6 +1159,15 @@ bibliotecas de runtime compatibles suministradas externamente; su ubicación
 debe ser configurable y validarse sin alterar `C:/native-sharp` ni Clang.
 El entorno contiene Clang 23 y los artefactos Windows `clang_rt.asan_dynamic`
 en `C:/clang-llvm/lib/clang/23/lib/windows`, únicamente como referencia.
+
+Tras los cambios provisionales de construcción se repitió únicamente
+`nsc.driver-address-sanitizer` con el compilador aislado de hash
+`7c969cf811f592e3`, Clang 23 y su runtime externo de referencia. Pasó 1/1 sin
+omisión (`A:/nsc-fixes-evidencia/asan-driver-latest.log`): el fixture comprueba
+la ejecución válida y el diagnóstico de acceso fuera de límites en O0/O2, la
+publicación local de la DLL y el rechazo de opciones incompatibles. Esta
+repetición no amplía la cobertura al heap propio de NativeSharp ni al código de
+bibliotecas precompiladas que se describen abajo.
 
 Prueba exploratoria posterior: se volcó IR de un programa NativeSharp con
 escritura fuera de los límites de un `stackalloc`, se añadió el atributo de

@@ -96,9 +96,152 @@ bool OopLlvmImplementation::lowerBlockStatement(
                     createDebugLexicalScope(node, currentDebugScope_);
                 ScopedDebugScope scopedDebugScope(currentDebugScope_, lexicalScope);
                 const std::size_t cleanupDepthAtEntry = activeCleanupRegions_.size();
+                std::vector<std::pair<std::size_t, std::unique_ptr<frontend::ProjectOopMirNode>>>
+                    completedBases;
+                const auto forgetCompletedBases = [&]()
+                {
+                    for (const auto& base : completedBases)
+                    {
+                        cleanupRegions_.erase(base.first);
+                        cleanupChainCache_.erase(base.first);
+                        localStorage_.erase(base.first);
+                    }
+                };
+                const bool constructorRoot = currentMirFunction_ != nullptr &&
+                    currentMirFunction_->constructor && node == currentMirFunction_->body.get() &&
+                    memberModel_ != nullptr;
+                const auto sharedEmptyDefault = [&](const std::string& typeKey)
+                {
+                    const auto* layout = mirModel_.structLayoutForTypeKey(typeKey);
+                    if (layout == nullptr || layout->isImported || layout->isUnion ||
+                        layout->hasExplicitFieldOffsets || layout->typeOrdinal >= nameLookup_.namedTypes().size())
+                        return false;
+                    const auto& identity = nameLookup_.namedTypes()[layout->typeOrdinal].identity;
+                    const auto& segments = identity.namespaceSegments();
+                    if (segments.size() != 2 || segments[0] != "NativeSharp" || segments[1] != "Core" ||
+                        !identity.containingTypes().empty()) return false;
+                    for (const auto& function : mirModel_.functions())
+                    {
+                        if (function.declaringTypeOrdinal != layout->typeOrdinal) continue;
+                        for (const char* family : {"Rc", "WeakRc", "Arc", "WeakArc"})
+                        {
+                            const std::string prefix = identity.moduleName() + "::NativeSharp.Core." + family + "`1<";
+                            if (function.genericSpecializationKey.starts_with(prefix) &&
+                                function.genericSpecializationKey.ends_with('>')) return true;
+                        }
+                    }
+                    return false;
+                };
+                bool fieldsPrepared = false;
+                const auto prepareFields = [&]()
+                {
+                    std::unordered_set<std::size_t> trackedTypes{currentMirFunction_->declaringTypeOrdinal};
+                    for (const auto& child : node->children)
+                        if (child != nullptr && child->stringValue == "constructor.implicit.base.completed" &&
+                            child->targetTypeOrdinal.has_value()) trackedTypes.insert(*child->targetTypeOrdinal);
+                    std::vector<const frontend::ProjectOopMirNode*> pending{node};
+                    std::vector<const frontend::ProjectOopMirNode*> addresses;
+                    std::vector<std::unique_ptr<frontend::ProjectOopMirNode>> implicitAddresses;
+                    while (!pending.empty())
+                    {
+                        const auto* item = pending.back();
+                        pending.pop_back();
+                        if (item == nullptr) continue;
+                        if (item->kind == frontend::ProjectOopMirNodeKind::Store && !item->children.empty() &&
+                            item->children.front() != nullptr)
+                        {
+                            const auto* address = item->children.front().get();
+                            if (address->kind == frontend::ProjectOopMirNodeKind::FieldAddress &&
+                                address->memberOrdinal.has_value() &&
+                                *address->memberOrdinal < memberModel_->members().size() &&
+                                !address->children.empty() && address->children.front() != nullptr &&
+                                address->children.front()->kind == frontend::ProjectOopMirNodeKind::ThisValue)
+                            {
+                                const auto& field = memberModel_->members()[*address->memberOrdinal];
+                                if (trackedTypes.contains(field.declaringTypeOrdinal) &&
+                                    ((field.declaredOwnership == sema::OwnershipKind::Owned &&
+                                      requiresOwnedDestruction(address->typeKey)) ||
+                                     memberModel_->typeRequiresValueDrop(address->typeKey)))
+                                    addresses.push_back(address);
+                            }
+                        }
+                        for (const auto& child : item->children) pending.push_back(child.get());
+                    }
+                    for (const std::size_t type : trackedTypes)
+                    {
+                        const std::vector<frontend::ObjectFieldLayout>* fields = nullptr;
+                        if (const auto* layout = mirModel_.classLayoutForType(type); layout != nullptr)
+                            fields = &layout->fields;
+                        else if (const auto* layout = mirModel_.structLayoutForType(type);
+                                 layout != nullptr && !layout->isUnion && !layout->hasExplicitFieldOffsets)
+                            fields = &layout->fields;
+                        if (fields == nullptr) continue;
+                        for (const auto& field : *fields)
+                        {
+                            if (field.memberOrdinal >= memberModel_->members().size()) continue;
+                            const auto& symbol = memberModel_->members()[field.memberOrdinal];
+                            const bool nullablePointer = symbol.declaredOwnership == sema::OwnershipKind::Owned &&
+                                requiresOwnedDestruction(field.typeKey) &&
+                                !memberModel_->typeRequiresValueDrop(field.typeKey);
+                            if (symbol.declaringTypeOrdinal != type ||
+                                (!nullablePointer && !sharedEmptyDefault(field.typeKey))) continue;
+                            auto address = std::make_unique<frontend::ProjectOopMirNode>();
+                            address->memberOrdinal = field.memberOrdinal;
+                            address->typeKey = field.typeKey;
+                            address->immediate = field.offset;
+                            addresses.push_back(address.get());
+                            implicitAddresses.push_back(std::move(address));
+                        }
+                    }
+                    std::ranges::sort(addresses, {}, [](const auto* address) { return *address->memberOrdinal; });
+                    std::optional<std::size_t> previous;
+                    for (const auto* address : addresses)
+                    {
+                        if (previous == address->memberOrdinal) continue;
+                        previous = address->memberOrdinal;
+                        std::size_t ordinal = std::numeric_limits<std::size_t>::max();
+                        while (cleanupRegions_.contains(ordinal) || localStorage_.contains(ordinal)) --ordinal;
+                        auto cleanup = std::make_unique<frontend::ProjectOopMirNode>();
+                        cleanup->memberOrdinal = address->memberOrdinal;
+                        cleanup->typeKey = address->typeKey;
+                        cleanup->immediate = address->immediate;
+                        LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
+                        LLVMValueRef flag = entryBlockAlloca(flagType, 0, "constructor.field.live");
+                        const auto& field = memberModel_->members()[*address->memberOrdinal];
+                        const auto* valueLayout = mirModel_.structLayoutForType(field.declaringTypeOrdinal);
+                        const bool nonOverlapping = mirModel_.classLayoutForType(field.declaringTypeOrdinal) != nullptr ||
+                            (valueLayout != nullptr && !valueLayout->isUnion && !valueLayout->hasExplicitFieldOffsets);
+                        const bool sharedEmpty = nonOverlapping && sharedEmptyDefault(address->typeKey);
+                        cleanup->stringValue = sharedEmpty ? "constructor.shared.field.cleanup" :
+                            "constructor.owned.field.cleanup";
+                        const bool nullableOwned = field.declaredOwnership == sema::OwnershipKind::Owned &&
+                            requiresOwnedDestruction(address->typeKey) &&
+                            !memberModel_->typeRequiresValueDrop(address->typeKey) && nonOverlapping;
+                        LLVMBuildStore(builder_, LLVMConstInt(flagType, (nullableOwned || sharedEmpty) ? 1 : 0, 0), flag);
+                        cleanupRegions_.emplace(ordinal, cleanup.get());
+                        localStorage_.emplace(ordinal, flag);
+                        cleanupChainCache_.erase(ordinal);
+                        activeCleanupRegions_.push_back(ordinal);
+                        completedBases.emplace_back(ordinal, std::move(cleanup));
+                    }
+                    if (!addresses.empty()) LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+                    fieldsPrepared = true;
+                };
                 for (const auto& child : node->children)
                 {
                     if (terminated()) break;
+                    const auto* baseCandidate = child.get();
+                    if (baseCandidate != nullptr &&
+                        baseCandidate->kind == frontend::ProjectOopMirNodeKind::FullExpressionCleanup &&
+                        baseCandidate->children.size() == 1)
+                        baseCandidate = baseCandidate->children.front().get();
+                    const bool baseCall = constructorRoot && baseCandidate != nullptr &&
+                        baseCandidate->kind == frontend::ProjectOopMirNodeKind::DirectInstanceCall &&
+                        baseCandidate->baseReceiver && baseCandidate->memberOrdinal.has_value() &&
+                        *baseCandidate->memberOrdinal < memberModel_->members().size() &&
+                        memberModel_->members()[*baseCandidate->memberOrdinal].kind == frontend::ClassMemberKind::Constructor;
+                    if (constructorRoot && !fieldsPrepared && !baseCall && child != nullptr &&
+                        child->kind != frontend::ProjectOopMirNodeKind::OwnedParameterCleanup) prepareFields();
                     // A source block alone is too broad for a local: CodeView treats the
                     // variable's lexical parent as its visibility range, so assigning every
                     // declaration to the brace scope makes a local visible before its own line.
@@ -130,7 +273,75 @@ bool OopLlvmImplementation::lowerBlockStatement(
                     if (!lowered)
                     {
                         activeCleanupRegions_.resize(cleanupDepthAtEntry);
+                        forgetCompletedBases();
                         return false;
+                    }
+                    if (constructorRoot && !terminated() && child != nullptr &&
+                        child->stringValue == "constructor.implicit.base.completed" &&
+                        child->targetTypeOrdinal.has_value() &&
+                        objectDestructionFunctions_.contains(*child->targetTypeOrdinal))
+                    {
+                        for (const auto& item : completedBases)
+                        {
+                            const auto* action = item.second.get();
+                            if ((action->stringValue != "constructor.owned.field.cleanup" &&
+                                 action->stringValue != "constructor.shared.field.cleanup") ||
+                                !action->memberOrdinal.has_value() ||
+                                *action->memberOrdinal >= memberModel_->members().size() ||
+                                memberModel_->members()[*action->memberOrdinal].declaringTypeOrdinal !=
+                                    *child->targetTypeOrdinal) continue;
+                            const auto flag = localStorage_.find(item.first);
+                            if (flag != localStorage_.end())
+                                LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0), flag->second);
+                        }
+                        bool updated = false;
+                        for (auto& item : completedBases)
+                        {
+                            if (item.second->stringValue != "constructor.completed.base.cleanup") continue;
+                            item.second->targetTypeOrdinal = child->targetTypeOrdinal;
+                            cleanupChainCache_.erase(item.first);
+                            updated = true;
+                            break;
+                        }
+                        if (!updated)
+                        {
+                            std::size_t ordinal = std::numeric_limits<std::size_t>::max();
+                            while (cleanupRegions_.contains(ordinal) || localStorage_.contains(ordinal)) --ordinal;
+                            auto cleanup = std::make_unique<frontend::ProjectOopMirNode>();
+                            cleanup->stringValue = "constructor.completed.base.cleanup";
+                            cleanup->targetTypeOrdinal = child->targetTypeOrdinal;
+                            cleanupRegions_.emplace(ordinal, cleanup.get());
+                            cleanupChainCache_.erase(ordinal);
+                            auto position = activeCleanupRegions_.begin() + cleanupDepthAtEntry;
+                            while (position != activeCleanupRegions_.end())
+                            {
+                                const auto action = cleanupRegions_.find(*position);
+                                if (action == cleanupRegions_.end() || action->second == nullptr ||
+                                    action->second->kind != frontend::ProjectOopMirNodeKind::OwnedParameterCleanup) break;
+                                ++position;
+                            }
+                            activeCleanupRegions_.insert(position, ordinal);
+                            completedBases.emplace_back(ordinal, std::move(cleanup));
+                            LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+                        }
+                    }
+                    if (!terminated() && baseCall)
+                    {
+                        const auto& constructor = memberModel_->members()[*baseCandidate->memberOrdinal];
+                        if (constructor.kind == frontend::ClassMemberKind::Constructor &&
+                            objectDestructionFunctions_.contains(constructor.declaringTypeOrdinal))
+                        {
+                            std::size_t ordinal = std::numeric_limits<std::size_t>::max();
+                            while (cleanupRegions_.contains(ordinal) || localStorage_.contains(ordinal)) --ordinal;
+                            auto cleanup = std::make_unique<frontend::ProjectOopMirNode>();
+                            cleanup->stringValue = "constructor.completed.base.cleanup";
+                            cleanup->targetTypeOrdinal = constructor.declaringTypeOrdinal;
+                            cleanupRegions_.emplace(ordinal, cleanup.get());
+                            cleanupChainCache_.erase(ordinal);
+                            activeCleanupRegions_.push_back(ordinal);
+                            completedBases.emplace_back(ordinal, std::move(cleanup));
+                            LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+                        }
                     }
                     if (child != nullptr &&
                         (child->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration ||
@@ -146,15 +357,22 @@ bool OopLlvmImplementation::lowerBlockStatement(
                     {
                         const std::size_t ordinal = activeCleanupRegions_.back();
                         activeCleanupRegions_.pop_back();
+                        const auto entry = cleanupRegions_.find(ordinal);
+                        if (entry != cleanupRegions_.end() && entry->second != nullptr &&
+                            (entry->second->stringValue == "constructor.completed.base.cleanup" ||
+                             entry->second->stringValue == "constructor.owned.field.cleanup" ||
+                             entry->second->stringValue == "constructor.shared.field.cleanup")) continue;
                         if (!emitCleanupAction(ordinal, error))
                         {
                             activeCleanupRegions_.resize(cleanupDepthAtEntry);
+                            forgetCompletedBases();
                             return false;
                         }
                         if (terminated()) break;
                     }
                 }
                 activeCleanupRegions_.resize(cleanupDepthAtEntry);
+                forgetCompletedBases();
                 return true;
 }
 

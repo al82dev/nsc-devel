@@ -253,7 +253,15 @@ bool canMaterializePrecompiledDeclaration(const interop::LibraryMetadata &metada
     {
         constexpr std::uint32_t kStatic = 1U << 0U;
         constexpr std::uint32_t kConst = 1U << 2U;
-        const bool materializable = hasConsumerCallableAccessibility(member.accessibility) &&
+        const bool templateOwner = std::ranges::any_of(metadata.genericTemplates, [&](const auto &generic)
+        {
+            constexpr std::uint8_t kGenericMethodKind = 3U;
+            if (generic.kind != kGenericMethodKind || generic.ownerName.empty()) return false;
+            const std::string owner = generic.namespaceName.empty()
+                ? generic.ownerName : generic.namespaceName + "." + generic.ownerName;
+            return "type:" + generic.moduleName + "::" + owner == member.declaringTypeKey;
+        });
+        const bool materializable = (hasConsumerCallableAccessibility(member.accessibility) || templateOwner) &&
                                     canMaterializeContractType(metadata, member.declaredTypeKey);
         if ((member.flags & kConst) != 0U)
             return materializable && member.constantKind != 0U;

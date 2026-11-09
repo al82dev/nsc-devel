@@ -1,0 +1,32 @@
+using NativeSharp.Core.Internal;
+
+namespace NativeSharp.Core
+{
+    // Creates shared owners and their payload in one allocation.
+    public static class SharedPointers
+    {
+        public static Rc<T> MakeRc<T>() where T : new()
+        {
+            SharedLocalHandle<T> value = SharedLocalFactory.Create<T>();
+            return new Rc<T>(move(value));
+        }
+
+        public static Rc<T> MakeRcThrowing<T>() throws Exception where T : new()
+        {
+            SharedLocalHandle<T> value = SharedLocalFactory.CreateThrowing<T>();
+            return new Rc<T>(move(value));
+        }
+
+        public static Arc<T> MakeArc<T>() where T : new()
+        {
+            SharedAtomicHandle<T> value = SharedAtomicFactory.Create<T>();
+            return new Arc<T>(move(value));
+        }
+
+        public static Arc<T> MakeArcThrowing<T>() throws Exception where T : new()
+        {
+            SharedAtomicHandle<T> value = SharedAtomicFactory.CreateThrowing<T>();
+            return new Arc<T>(move(value));
+        }
+    }
+}

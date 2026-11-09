@@ -1378,6 +1378,18 @@ bool OopLlvmImplementation::lowerExpressionFrame027AggregateInitialize(
 {
     const frontend::ProjectOopMirNode* current = frame.node;
     if (!(current->kind == frontend::ProjectOopMirNodeKind::AggregateInitialize)) return false;
+    if (frame.phase == 0 && memberModel_ != nullptr &&
+        frontend::ProjectTypeConversion::tupleElementTypeKeys(current->typeKey).has_value() &&
+        memberModel_->typeTransitivelyHasCustomDestructor(current->typeKey) &&
+        std::ranges::all_of(current->children, [](const auto& child)
+        {
+            return child != nullptr &&
+                child->kind == frontend::ProjectOopMirNodeKind::AggregateElementStore;
+        }))
+    {
+        values.push_back(lowerAggregateInitializer(current, error));
+        return true;
+    }
     if (frame.phase < current->children.size())
     {
         const std::size_t index = frame.phase;
@@ -1510,6 +1522,23 @@ bool OopLlvmImplementation::lowerExpressionFrame031MoveOwnedField(
     if (current->booleanValue)
     {
         LLVMBuildStore(builder_, LLVMConstNull(fieldType), address);
+    }
+    const auto* field = current->children.front().get();
+    if (currentMirFunction_ != nullptr && currentMirFunction_->constructor && memberModel_ != nullptr &&
+        memberModel_->typeRequiresValueDrop(current->typeKey) &&
+        field->kind == frontend::ProjectOopMirNodeKind::FieldAddress && field->memberOrdinal.has_value() &&
+        !field->children.empty() && field->children.front() != nullptr &&
+        field->children.front()->kind == frontend::ProjectOopMirNodeKind::ThisValue)
+    {
+        for (const std::size_t ordinal : activeCleanupRegions_)
+        {
+            const auto action = cleanupRegions_.find(ordinal);
+            const auto flag = localStorage_.find(ordinal);
+            if (action != cleanupRegions_.end() && action->second != nullptr &&
+                action->second->stringValue == "constructor.owned.field.cleanup" &&
+                action->second->memberOrdinal == field->memberOrdinal && flag != localStorage_.end())
+                LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0), flag->second);
+        }
     }
     values.push_back(value);
     return true;
@@ -2007,6 +2036,22 @@ bool OopLlvmImplementation::lowerExpressionFrame044Store(
     LLVMValueRef stored = storeFromParts(current, frame.lhs, value, error);
     if (stored != nullptr)
     {
+        const auto* address = current->children[0].get();
+        if (currentMirFunction_ != nullptr && currentMirFunction_->constructor && address != nullptr &&
+            address->kind == frontend::ProjectOopMirNodeKind::FieldAddress && address->memberOrdinal.has_value() &&
+            !address->children.empty() && address->children.front() != nullptr &&
+            address->children.front()->kind == frontend::ProjectOopMirNodeKind::ThisValue)
+        {
+            for (const std::size_t ordinal : activeCleanupRegions_)
+            {
+                const auto action = cleanupRegions_.find(ordinal);
+                const auto flag = localStorage_.find(ordinal);
+                if (action != cleanupRegions_.end() && action->second != nullptr &&
+                    action->second->stringValue == "constructor.owned.field.cleanup" &&
+                    action->second->memberOrdinal == address->memberOrdinal && flag != localStorage_.end())
+                    LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0), flag->second);
+            }
+        }
         const std::string fieldRecord =
             runtimeDebugFieldStoreRecord(*current, "FIELD-STORE-END");
         if (!fieldRecord.empty() &&

@@ -1,0 +1,29 @@
+using NativeSharp.Core.Internal;
+
+namespace NativeSharp.Core
+{
+    // A move-only local strong reference. Clone explicitly retains the same payload.
+    public struct Rc<T>
+    {
+        private SharedLocalHandle<T> inner;
+
+        internal Rc(SharedLocalHandle<T> value) { inner = move(value); }
+        public bool IsEmpty() { return inner.IsEmpty(); }
+        public long StrongCount() { return inner.StrongCount(); }
+        public long WeakCount() { return inner.WeakCount(); }
+        public ref readonly T Get() { return ref inner.Get(); }
+        public SharedView<T> Borrow() { return new SharedView<T>(inner.Borrow()); }
+
+        public Rc<T> Clone()
+        {
+            SharedLocalHandle<T> value = inner.Clone();
+            return new Rc<T>(move(value));
+        }
+
+        public WeakRc<T> Downgrade()
+        {
+            SharedLocalWeak<T> value = inner.Downgrade();
+            return new WeakRc<T>(move(value));
+        }
+    }
+}

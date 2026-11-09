@@ -21,7 +21,7 @@ se detallan en los documentos de `docs/fixes` y registros de la misma carpeta.
 
 | Caso | Resultado inicial y situación |
 | --- | --- |
-| Rc / WeakRc; Arc / WeakArc | `sdk-01`: nombres no encontrados. Hay controles y handles **internos** para clase y estructura con pruebas dirigidas, incluidas excepciones y concurrencia parcial. El acceso interno `Get()` presta el valor con retorno de solo lectura; se conserva esa restricción en las rutas de alias probadas, con rechazos conservadores y límites documentados. Las cuatro APIs públicas siguen pendientes, así como la vida del módulo y la admisión condicionada de los handles atómicos como `Send`/`Sync`. Véanse `prestamo-get-punteros.md` y `diseno-punteros-y-asan.md`. El rechazo genérico espurio observado durante este trabajo se corrigió de forma acotada, con límites en `restricciones-en-cuerpos-genericos.md`. |
+| Rc / WeakRc; Arc / WeakArc | `sdk-01`: nombres no encontrados en la base. Hay una primera superficie pública en fuentes y pruebas dirigidas de uso y excepciones; la reproducción original pasa análisis con Core desde fuentes. El SDK binario falla al generar metadata para un helper interno. Siguen pendientes la vida del módulo, la admisión condicionada de `Arc`/`WeakArc` como `Send`/`Sync` y la validación binaria. La limitación de las familias atómicas se reprodujo tanto en restricciones genéricas como en capturas enviadas a un ejecutor de hilos; los controles de cargas `Send` sin `Sync` muestran por qué hacen falta ambas condiciones. La restricción de solo lectura cubre las rutas de alias probadas con límites documentados. Véase `prestamo-get-punteros.md`. |
 | Dictionary string AddOrUpdate | `sdk-02`: termina 3221226356; doble liberación. Corregido en `5127e4d07`, con ejecución de regresión. |
 | SortWith | `sdk-03`: nombre no encontrado. Por decisión del usuario, `SortWith<T>(Span<T>, Comparison<T>)` delega en la sobrecarga existente de `Sort`. La reproducción original compiló y ejecutó con salida 0 en O0/O2 (`sortwith-original/results.json`); `nsc.sdk.sort-with-alias` verifica orden descendente, duplicados, vacío y un elemento, con ejecución 42 en O0/O2 (`sortwith-test.log`). El span vacío requiere tipo explícito en esta prueba. |
 | Saturación: suma y conversiones a short y byte | `comp-01`: `-2147483648`, `-25536`, `34`; corregido para esas operaciones en `a7436961d` y `bb4c18900`. No se afirma cobertura de todas las operaciones saturadas. |
@@ -47,6 +47,107 @@ se detallan en los documentos de `docs/fixes` y registros de la misma carpeta.
 | NativeSharp.Text | `text-namespace`: namespace no encontrado. El usuario decidió mantenerlo pendiente hasta definir su superficie. |
 | Compile con .. | `102-outside`: proyecto rechaza rutas fuera de su raíz. Pendiente decisión de resolución de proyectos. |
 | Ejemplo 66 | Antecedente ya resuelto en el ejemplo; no se atribuye un defecto vigente al compilador. |
+
+Durante la preparación del consumo binario de las familias se reprodujo una
+limitación adicional de accesibilidad: un consumidor con `ProjectReference`
+podía invocar un método público de una clase `internal` de otro proyecto,
+incluso sin importar su namespace. La declaración local del mismo tipo se
+rechazaba. `2aca52fb1` corrigió la vía alternativa de receptor estático para
+esa forma y pasaron sus regresiones de fuentes; véase
+`visibilidad-tipo-interno-estatico.md`. Aún no hay evidencia de ese acceso con
+el binario del helper interno porque su generación falla antes.
+
+Un ajuste provisional conserva los propietarios internos de métodos genéricos
+en metadata. Una biblioteca mínima y su consumidor pasan O0/O2 y se conserva
+el rechazo del acceso externo, pero Core continúa fallando en otra validación
+de plantillas. El archivo tocado es compartido con infraestructura de
+interoperabilidad; alcance y evidencia en `visibilidad-tipo-interno-estatico.md`.
+
+La comprobación posterior de `Get()` reprodujo mutación y escape de arreglos
+alcanzados por un alias de clase de solo lectura. `764137d50` conserva el
+préstamo a través del arreglo; `6271b2d83` corrige la pérdida adicional al
+atravesar un elemento struct que contiene una clase. La regresión dirigida y
+sus controles pasaron para los controles local y atómico; el segundo cambio
+restringe conservadoramente algunas copias por valor. Evidencia y límites en
+`readonly-array-borrow.md`. Las familias públicas y los demás pendientes no se
+consideran terminados por estas correcciones.
+`5ac98b1b9` conserva además el préstamo al extraer una clase de una carga
+struct devuelta por referencia de solo lectura; mantiene copias de estructuras
+con campos escalares conocidos y conserva un tratamiento prudente para tipos no
+demostrados. Sus regresiones y límites están en el mismo documento.
+`058e2b622` permite la iteración por valor de arreglos prestados con origen
+local rastreado y conserva las restricciones del préstamo; `4e9d0b4da` cubre la
+lectura mediante `foreach ref` para ese mismo origen. Siguen pendientes las
+fuentes sin procedencia rastreada. `d41121bbe` corrige el fallo de generación
+con `break` que también se reprodujo con arreglos ordinarios; pruebas y alcance
+en ese documento.
+`79ebe0d7e` conserva el dueño al iterar directamente un campo de arreglo de
+`owner.Get()` con vida `this`; pasó controles dirigidos por valor y referencia
+para los controles internos y las API públicas desde fuentes. No acredita la
+procedencia de temporales ni de todas las formas de receptor.
+`e38863ba3` extiende ese seguimiento a `owner.Borrow().Get()` cuando la vista
+conserva una raíz local comprobada; las fuentes con dueño temporal se rechazan.
+`892d4cc81` añade una prueba de liberación del último débil explícito mientras
+se ejecuta el destructor del último fuerte: pasó en O0/O2 y en su CTest dirigido.
+Es evidencia del control interno, no de la transferencia pública entre hilos;
+sus límites están en `shared-atomic-last-weak.md`.
+`fd25c9df8` añade controles dirigidos de operaciones compuestas y ramas mezcladas
+de arreglos prestados; ya se rechazaban y no se modificó el compilador. La
+evidencia está en `readonly-array-borrow.md`.
+`b106c3f6e` libera la reserva de las fábricas si falla la inicialización
+estática de la carga. `023a7bc0a` limpia también campos propietarios cuando una
+excepción implícita interrumpe la construcción placement en los casos de
+estructura segura ya reconocidos. Reproducciones O0/O2 y regresiones dirigidas
+en `shared-static-factory-cleanup.md` y `shared-implicit-constructor-cleanup.md`;
+las bases no triviales y los campos de valor con drop siguen pendientes.
+`a60eb0b64` libera el débil implícito cuando la destrucción del último fuerte
+sale por una excepción implícita; pruebas de clases y structs y límites en
+`shared-destructor-weak-cleanup.md`.
+`49bf24d2a` corrige el conteo débil local consultado reentrantemente durante
+la destrucción, con pruebas O0/O2 y controles descritos en
+`shared-local-reentrant-weak-count.md`.
+`2351dc123` impide que una tupla descarte la marca de un valor prestado de solo
+lectura; se rechazaron las reproducciones públicas de `Rc`/`Arc` y pasaron los
+controles dirigidos de tuplas y referencias. La regla conservadora y sus límites
+están en `readonly-array-borrow.md`.
+`eb9f80488` cubre además inicializadores con llaves para tuplas y campos sin
+ownership de structs; pasaron las reproducciones dirigidas y los controles de
+agregados, con los mismos límites de vida documentados.
+`96cbfa053` aplica la decisión del usuario de rechazar `Rc` y `WeakRc` en
+almacenamiento estático compartido, incluidos contenedores y derivados
+conocidos. Los controles dirigidos y las limitaciones de módulos precompilados
+están en `shared-static-storage.md`; no acredita todo el contrato de hilos.
+`3ddf6b3c9` rechaza el reemplazo de un propietario local move-only cuando una
+vista derivada sigue viva; las pruebas dirigidas y sus límites están en
+`move-only-owner-overwrite-borrow.md`.
+`7f69e7643` extiende el seguimiento a vistas de parámetros move-only por valor;
+sus controles y límites están en `move-only-parameter-view.md`.
+`3257699cf` registra la vida de la clase prestada por `Get()` desde un
+parámetro move-only por valor; pruebas y límites en
+`move-only-parameter-get-borrow.md`.
+`ec83e2c35` conserva la vida de la clase obtenida a través de una vista local
+de un parámetro move-only; evidencia en `move-only-parameter-view-get.md`.
+
+Las fábricas que propagan excepciones siguen rechazando bases con destructor o
+campos que requieren limpieza. La regresión preparada cubre ambas familias,
+fallos antes y después de completar la base, recuperación local, herencia de
+dos niveles y delegación; pasa análisis semántico y falla en la emisión por
+esa restricción. La evidencia y los casos aún no ejecutados están en
+`diseno-punteros-y-asan.md`.
+
+La fábrica normal también tiene una ruta de limpieza incompleta: si una
+inicialización estática falla después de construir una base con destructor,
+Rc y Arc capturan la excepción pero no destruyen esa base en O0 ni O2. El
+control sin excepción sí la destruye. La reproducción y sus límites están en
+`diseno-punteros-y-asan.md`; este caso sigue abierto.
+
+**Actualización del prototipo:** con cambios de construcción todavía sin
+commit, 17 casos seleccionados de campos y bases pasan para Rc y Arc en O0/O2
+(68 ejecuciones; `shared-constructor-regression-current.log` en la carpeta de
+evidencia). El párrafo anterior describe la reproducción anterior al prototipo;
+no demuestra que todas las rutas estén corregidas ni habilita las fábricas que
+propagan excepciones. Los límites actuales constan en
+`diseno-punteros-y-asan.md`.
 
 La prueba `nsc.stage41.arrays-strings-core` inicialmente no enlazó por el codec
 de snapshots; `2d6dd44ac` corrige su dependencia, y `ae22f5cdf` hace lo mismo

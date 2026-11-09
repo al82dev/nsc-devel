@@ -323,18 +323,61 @@ bool OopLlvmImplementation::initializeAggregateIntoSlot(
             LLVMConstInt(LLVMInt64TypeInContext(context_), node->immediate, 0),
             LLVMConstInt(LLVMInt1TypeInContext(context_), 0, 0)};
         buildNoUnwindCall(memsetFunctionType_, memsetFunction_, memsetArgs, 4, "");
+        const bool trackTupleElements = fieldValues == nullptr && memberModel_ != nullptr &&
+            frontend::ProjectTypeConversion::tupleElementTypeKeys(node->typeKey).has_value() &&
+            memberModel_->typeTransitivelyHasCustomDestructor(node->typeKey) &&
+            std::ranges::all_of(node->children, [](const auto& child)
+            {
+                return child != nullptr &&
+                    child->kind == frontend::ProjectOopMirNodeKind::AggregateElementStore;
+            });
+        std::vector<std::pair<std::size_t, std::unique_ptr<frontend::ProjectOopMirNode>>> partial;
+        const auto releasePartial = [&]()
+        {
+            for (auto it = partial.rbegin(); it != partial.rend(); ++it)
+            {
+                activeCleanupRegions_.pop_back();
+                cleanupRegions_.erase(it->first);
+                localStorage_.erase(it->first);
+                cleanupChainCache_.erase(it->first);
+            }
+        };
         for (const auto& child : node->children)
         {
             if (child != nullptr &&
                 child->kind == frontend::ProjectOopMirNodeKind::AggregateSpreadStore)
             {
                 if (!initializeAggregateSpread(child.get(), slot, fieldValues, fieldIndex, error))
+                {
+                    releasePartial();
                     return false;
+                }
                 continue;
             }
             if (!initializeAggregateField(child.get(), slot, fieldValues, fieldIndex, error))
+            {
+                releasePartial();
                 return false;
+            }
+            if (trackTupleElements && memberModel_->typeRequiresValueDrop(child->typeKey))
+            {
+                std::size_t ordinal = ~std::size_t{0};
+                while (cleanupRegions_.contains(ordinal) || localStorage_.contains(ordinal))
+                    --ordinal;
+                auto cleanup = std::make_unique<frontend::ProjectOopMirNode>();
+                cleanup->kind = frontend::ProjectOopMirNodeKind::LocalDeclaration;
+                cleanup->typeKey = child->typeKey;
+                cleanup->stringValue = "tuple.partial.element.cleanup";
+                cleanup->localOrdinal = ordinal;
+                cleanup->cleanupRegionOrdinal = ordinal;
+                cleanupChainCache_.erase(ordinal);
+                cleanupRegions_.emplace(ordinal, cleanup.get());
+                localStorage_.emplace(ordinal, byteOffset(slot, child->immediate, "tuple.partial.addr"));
+                activeCleanupRegions_.push_back(ordinal);
+                partial.emplace_back(ordinal, std::move(cleanup));
+            }
         }
+        releasePartial();
         return true;
     }
 

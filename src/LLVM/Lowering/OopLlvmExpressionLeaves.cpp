@@ -1143,8 +1143,26 @@ bool OopLlvmImplementation::emitSuspendingAwaitErrorPath(
         //     de cleanup que el recorrido cambia se restaura, como en la cancelacion de un yield.
         const std::vector<std::size_t> savedActive = activeCleanupRegions_;
         const std::vector<FuncletContext> savedFunclets = funcletStack_;
+        frontend::ProjectOopMirNode cleanupPath;
+        cleanupPath.cleanupRegionOrdinals = node->cleanupRegionOrdinals;
+        for (std::size_t depth = activeCleanupRegions_.size(); depth > 0; --depth)
+        {
+            const std::size_t ordinal = activeCleanupRegions_[depth - 1];
+            const auto temporary = cleanupRegions_.find(ordinal);
+            if (temporary == cleanupRegions_.end() || temporary->second == nullptr ||
+                temporary->second->stringValue != "tuple.partial.element.cleanup") continue;
+            const auto position = std::find_if(
+                cleanupPath.cleanupRegionOrdinals.begin(), cleanupPath.cleanupRegionOrdinals.end(),
+                [&](std::size_t existing)
+                {
+                    const auto index = activeCleanupIndex(existing, activeCleanupRegions_);
+                    return index.has_value() && *index < depth - 1;
+                });
+            cleanupPath.cleanupRegionOrdinals.insert(position, ordinal);
+        }
         std::size_t pathIndex = 0;
-        const bool cleaned = !funcletStack_.empty() || emitRemainingStructuredCleanups(node, pathIndex, error);
+        const bool cleaned = !funcletStack_.empty() ||
+            emitRemainingStructuredCleanups(&cleanupPath, pathIndex, error);
         activeCleanupRegions_ = savedActive;
         funcletStack_ = savedFunclets;
         if (!cleaned) return false;

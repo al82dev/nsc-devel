@@ -369,6 +369,50 @@ class H
     }
 
     {
+        const auto directory = root / "TemplateDeclarationScope";
+        writeProject(directory, "TemplateDeclarationScope");
+        writeFile(directory / "Main.ns", R"NS(
+namespace Provider { public class Item { } }
+namespace Alternative { public class Item { } }
+using Provider;
+using Pick = Provider.Item;
+namespace Demo { public class Api { public static int F<T>() { return 42; } } }
+namespace ScopedA { using Local = Provider.Item; public class One { public static int G<T>() { return 1; } } }
+namespace ScopedB { using Local = Alternative.Item; public class Two { public static int H<T>() { return 2; } } }
+)NS");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectGenerics(directory / "TemplateDeclarationScope.nsproj", error);
+        tests.expect(ok && error.empty(), "generic declaration scope fixture builds");
+        if (ok && compilation.genericModel() != nullptr)
+        {
+            const auto records = compilation.genericModel()->templates();
+            const auto found = std::ranges::find_if(records, [](const auto& item) { return item.name == "F"; });
+            tests.expect(found != records.end(), "generic method declaration is present");
+            if (found != records.end())
+            {
+                tests.expect(std::ranges::find(found->declarationImports, "Provider") != found->declarationImports.end(),
+                    "generic record retains its declaration import");
+                tests.expect(std::ranges::find(found->declarationAliases,
+                    std::pair<std::string, std::string>{"Pick", "Provider.Item"}) != found->declarationAliases.end(),
+                    "generic record retains its declaration alias");
+            }
+            const auto first = std::ranges::find_if(records, [](const auto& item) { return item.name == "G"; });
+            const auto second = std::ranges::find_if(records, [](const auto& item) { return item.name == "H"; });
+            tests.expect(first != records.end() && second != records.end(), "both scoped generic methods are present");
+            if (first != records.end() && second != records.end())
+            {
+                tests.expect(std::ranges::find(first->declarationAliases,
+                    std::pair<std::string, std::string>{"Local", "Provider.Item"}) != first->declarationAliases.end(),
+                    "first generic record retains its own scoped alias");
+                tests.expect(std::ranges::find(second->declarationAliases,
+                    std::pair<std::string, std::string>{"Local", "Alternative.Item"}) != second->declarationAliases.end(),
+                    "second generic record retains its distinct scoped alias");
+            }
+        }
+    }
+
+    {
         const auto core = root / "Reference" / "Core";
         const auto app = root / "Reference" / "App";
         writeProject(core, "GenericCore");

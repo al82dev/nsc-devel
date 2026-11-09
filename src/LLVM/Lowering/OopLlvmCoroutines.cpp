@@ -397,7 +397,17 @@ void OopLlvmImplementation::markCoroutineReplayOperands(
         //     elemento de arreglo no tiene slot; sus operandos si, asi que el recorrido entra en ella.
         std::vector<const frontend::ProjectOopMirNode*> pending;
         for (const auto& child : ancestor->children)
-            if (child != nullptr && child.get() != onPath) pending.push_back(child.get());
+        {
+            if (child == nullptr || child.get() == onPath) continue;
+            if (ancestor->kind == frontend::ProjectOopMirNodeKind::AggregateInitialize &&
+                frontend::ProjectTypeConversion::tupleElementTypeKeys(ancestor->typeKey).has_value() &&
+                child->kind == frontend::ProjectOopMirNodeKind::AggregateElementStore)
+            {
+                for (const auto& operand : child->children)
+                    if (operand != nullptr) pending.push_back(operand.get());
+            }
+            else pending.push_back(child.get());
+        }
         while (!pending.empty())
         {
             const frontend::ProjectOopMirNode* operand = pending.back();

@@ -1425,6 +1425,10 @@ bool ProjectOopHirModel::appendConstructorFieldInitializerWork(
             {
                 appendInstanceFieldInitializers(typeOrdinal, prefix, error, memberOrdinal);
                 if (!error.empty()) return false;
+                auto completed = makeNode(ProjectOopHirNodeKind::Block, nullptr, "builtin:void");
+                completed->stringValue = "constructor.implicit.base.completed";
+                completed->targetTypeOrdinal = typeOrdinal;
+                prefix.push_back(std::move(completed));
             }
         }
         appendInstanceFieldInitializers(
@@ -2203,6 +2207,10 @@ bool ProjectOopHirModel::buildImplicitConstructor(
         {
             appendInstanceFieldInitializers(initializerType, function.body->children, error);
             if (!error.empty()) return false;
+            auto completed = makeNode(ProjectOopHirNodeKind::Block, nullptr, "builtin:void");
+            completed->stringValue = "constructor.implicit.base.completed";
+            completed->targetTypeOrdinal = initializerType;
+            function.body->children.push_back(std::move(completed));
         }
     }
     appendInstanceFieldInitializers(typeOrdinal, function.body->children, error);
