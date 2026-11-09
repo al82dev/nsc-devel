@@ -497,19 +497,60 @@ CppAccess describeAccess(clang::AccessSpecifier access)
 }
 
 // Capture nested C11 aggregates separately until their identities can be projected and persisted.
+// EN: T08-D14: besides anonymous carriers, also the unnamed struct or union type of a named member, once per type.
+// ES: T08-D14: ademas de los portadores anonimos, tambien el tipo struct o union sin nombre de un miembro con
+//     nombre, una vez por tipo.
 void collectAnonymousCRecords(const clang::RecordDecl& owner, clang::ASTContext& context,
                               std::vector<CppAnonymousCRecord>& output)
 {
-    struct Pending { const clang::RecordDecl* record; std::vector<std::size_t> path; };
-    std::vector<Pending> pending;
-    const auto enqueue = [&pending](const clang::FieldDecl* field, std::vector<std::size_t> path) {
-        if (!field->isAnonymousStructOrUnion()) return;
-        const auto* type = field->getType()->getAs<clang::RecordType>();
-        const auto* definition = type ? type->getDecl()->getDefinition() : nullptr;
-        if (definition) pending.push_back({definition, std::move(path)});
+    struct Pending
+    {
+        const clang::RecordDecl* record;
+        std::vector<std::size_t> path;
+        std::string memberName;
+        std::vector<std::size_t> siblings;
     };
-    std::size_t ownerIndex = 0;
-    for (const auto* field : owner.fields()) enqueue(field, {ownerIndex++});
+    std::vector<Pending> pending;
+    const auto enqueueFields = [&pending, &context](const clang::RecordDecl& parent,
+                                                    const std::vector<std::size_t>& base) {
+        std::map<const clang::RecordDecl*, std::size_t> namedTypes;
+        std::size_t index = 0;
+        for (const auto* field : parent.fields())
+        {
+            auto path = base;
+            path.push_back(index++);
+            if (field->isAnonymousStructOrUnion())
+            {
+                const auto* type = field->getType()->getAs<clang::RecordType>();
+                const auto* definition = type ? type->getDecl()->getDefinition() : nullptr;
+                if (definition) pending.push_back({definition, std::move(path), {}, {}});
+                continue;
+            }
+            // EN: the unnamed record may be the member's type or the element of its arrays and pointers.
+            // ES: el record sin nombre puede ser el tipo del miembro o el elemento de sus arreglos y punteros.
+            clang::QualType element = field->getType();
+            for (unsigned depth = 0; depth < 64; ++depth)
+            {
+                if (const auto* array = context.getAsArrayType(element)) element = array->getElementType();
+                else if (element->isPointerType()) element = element->getPointeeType();
+                else break;
+            }
+            const auto* type = element->getAs<clang::RecordType>();
+            const auto* definition = type ? type->getDecl()->getDefinition() : nullptr;
+            if (!definition) continue;
+            if (field->getName().empty() || !definition->getName().empty() ||
+                definition->getTypedefNameForAnonDecl()) continue;
+            const auto known = namedTypes.find(definition);
+            if (known != namedTypes.end())
+            {
+                pending[known->second].siblings.push_back(path.back());
+                continue;
+            }
+            namedTypes.emplace(definition, pending.size());
+            pending.push_back({definition, std::move(path), field->getNameAsString(), {}});
+        }
+    };
+    enqueueFields(owner, {});
     while (!pending.empty())
     {
         auto item = std::move(pending.back());
@@ -517,6 +558,8 @@ void collectAnonymousCRecords(const clang::RecordDecl& owner, clang::ASTContext&
         const auto& layout = context.getASTRecordLayout(item.record);
         CppAnonymousCRecord result;
         result.carrierPath = item.path;
+        result.memberName = item.memberName;
+        result.siblingMemberIndices = item.siblings;
         result.kind = item.record->isUnion() ? CppRecordKind::Union : CppRecordKind::Struct;
         result.sizeBits = layout.getSize().getQuantity() * context.getCharWidth();
         result.alignmentBits = layout.getAlignment().getQuantity() * context.getCharWidth();
@@ -531,11 +574,10 @@ void collectAnonymousCRecords(const clang::RecordDecl& owner, clang::ASTContext&
             projected.offsetBits = layout.getFieldOffset(index);
             projected.isAnonymousCarrier = field->isAnonymousStructOrUnion();
             if (field->isBitField()) projected.bitWidth = field->getBitWidthValue();
-            auto childPath = item.path;
-            childPath.push_back(index++);
-            enqueue(field, std::move(childPath));
+            ++index;
             result.fields.push_back(std::move(projected));
         }
+        enqueueFields(*item.record, item.path);
         output.push_back(std::move(result));
     }
 }

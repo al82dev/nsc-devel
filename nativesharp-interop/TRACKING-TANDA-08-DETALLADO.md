@@ -309,7 +309,7 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 - [x] T08-011-02a: Verificar union natural con miembros enteros, flotantes y puntero. [Evidencia](registro-commits/t08-union-c.md).
 - [x] T08-011-02b: Verificar union empaquetada con miembros desalineados. [Evidencia](registro-commits/t08-union-c.md).
 - [x] T08-011-02c: Verificar union dentro de struct y struct dentro de union. [Evidencia](registro-commits/t08-union-c.md).
-  - **Decisión pendiente T08-011-02c1:** un miembro con nombre cuyo tipo es un struct o union sin etiqueta no se importa (falta en el camino directo; en el precompilado hace fallar la generación de la biblioteca). Opciones: identidad sintetizada en metadata, omisión coherente o rechazo explícito. [Detalle](registro-commits/t08-union-c.md#decisión-pendiente-t08-011-02c1).
+  - [x] T08-011-02c1: Resuelta por T08-D14: el tipo sin etiqueta de un miembro con nombre (también como elemento de arreglos y punteros, y compartido por varios miembros) recibe la identidad sintetizada `Owner::__nsc_c_member_<miembro>`, directo y precompilado. [Evidencia](registro-commits/t08-d14-miembro-sin-etiqueta.md). Antes: un miembro con nombre cuyo tipo es un struct o union sin etiqueta no se importa (falta en el camino directo; en el precompilado hace fallar la generación de la biblioteca). Opciones: identidad sintetizada en metadata, omisión coherente o rechazo explícito. [Detalle](registro-commits/t08-union-c.md#decisión-pendiente-t08-011-02c1).
 - [x] T08-011-02d: Verificar union anónima con miembros promovidos y campos de bits superpuestos. [Evidencia](registro-commits/t08-union-c.md).
 - **T08-011-03 — Validación:**
 - [x] T08-011-03a: Comparar tamaño, alineación y offsets con Clang. [Evidencia](registro-commits/t08-union-c.md).
@@ -524,7 +524,7 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 - [ ] T08-D11: `-` y `~` sobre enteros estrechos: reglas de NativeSharp frente a expresiones C (T08-006-04b1).
 - [ ] T08-D12: `int` frente a `unsigned int` en operaciones C (T08-009-03c1).
 - [ ] T08-D13: modo `volatile` del alias NativeSharp a almacenamiento C (T08-010-05a).
-- [ ] T08-D14: miembro de tipo struct o union sin etiqueta (T08-011-02c1).
+- [x] T08-D14: miembro de tipo struct o union sin etiqueta (T08-011-02c1). [Evidencia](registro-commits/t08-d14-miembro-sin-etiqueta.md).
 - [ ] T08-D15: alineación efectiva de Clang en NSMeta, usada solo cuando está garantizada (T08-012-02a).
 - [ ] T08-D16: declaración opaca propia del consumidor reconciliada con NSMeta (T08-013-02c1).
 - [ ] T08-D17: rechazo de `int const** q = &p` (T08-014-02d1).

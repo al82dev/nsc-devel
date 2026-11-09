@@ -631,10 +631,39 @@ std::variant<std::vector<CppRecordDeclaration>, std::string> materializeCppAnony
         if (parent == ordinalByPath.end() || ordinalByPath.contains(nested->carrierPath))
             return std::string("anonymous C record path is missing a parent or duplicated");
         auto& containing = result[parent->second];
-        if (index >= containing.fields.size() || !containing.fields[index].isAnonymousCarrier ||
-            containing.fields[index].type.kind != CppTypeKind::Record || !nested->sizeBits || !nested->alignmentBits)
+        // EN: T08-D14: a named member of unnamed record type keeps its name; its type gets a synthesized identity
+        //     nested in the owner, and its members are not promoted (it is not a carrier).
+        // ES: T08-D14: un miembro con nombre de tipo record sin nombre conserva su nombre; su tipo recibe una
+        //     identidad sintetizada anidada en el propietario y sus miembros no se promueven (no es portador).
+        const bool namedMember = !nested->memberName.empty();
+        // EN: for a named member the unnamed record may be the element of arrays and pointers; the chain is
+        //     copied before it is changed because CppType shares its elements.
+        // ES: para un miembro con nombre el record sin nombre puede ser el elemento de arreglos y punteros; la
+        //     cadena se copia antes de cambiarla porque CppType comparte sus elementos.
+        const auto innermostRecord = [](CppType& type) -> CppType* {
+            CppType* current = &type;
+            for (unsigned depth = 0; depth < 64 && current; ++depth)
+            {
+                if (current->kind == CppTypeKind::Record) return current;
+                if ((current->kind != CppTypeKind::Array && current->kind != CppTypeKind::Pointer) ||
+                    !current->element) return nullptr;
+                auto copy = std::make_shared<CppType>(*current->element);
+                CppType* next = copy.get();
+                current->element = std::move(copy);
+                current = next;
+            }
+            return nullptr;
+        };
+        if (index >= containing.fields.size() ||
+            (namedMember ? innermostRecord(containing.fields[index].type) == nullptr
+                         : containing.fields[index].type.kind != CppTypeKind::Record) ||
+            (namedMember ? containing.fields[index].isAnonymousCarrier ||
+                           containing.fields[index].name != nested->memberName
+                         : !containing.fields[index].isAnonymousCarrier || !nested->siblingMemberIndices.empty()) ||
+            !nested->sizeBits || !nested->alignmentBits)
             return std::string("anonymous C record carrier or dimensions are invalid");
-        const auto name = "__nsc_c_anonymous_" + std::to_string(index);
+        const auto name = namedMember ? "__nsc_c_member_" + nested->memberName
+                                      : "__nsc_c_anonymous_" + std::to_string(index);
         if (std::any_of(containing.fields.begin(), containing.fields.end(), [&](const auto& field) {
                 return field.name == name;
             })) return std::string("anonymous C carrier name conflicts with a source field");
@@ -655,10 +684,21 @@ std::variant<std::vector<CppRecordDeclaration>, std::string> materializeCppAnony
         child.isCxx = false;
         child.isAnonymousCInternal = true;
         auto& carrier = containing.fields[index];
-        child.clangUsr = carrier.type.recordIdentity ? carrier.type.recordIdentity->clangUsr : std::nullopt;
-        carrier.name = name;
-        carrier.type.recordIdentity = CppRecordTypeIdentity{name, child.namespaceSegments,
+        auto* carrierRecord = innermostRecord(carrier.type);
+        child.clangUsr = carrierRecord->recordIdentity ? carrierRecord->recordIdentity->clangUsr : std::nullopt;
+        if (!namedMember) carrier.name = name;
+        carrierRecord->recordIdentity = CppRecordTypeIdentity{name, child.namespaceSegments,
             child.containingRecords, false, false, child.clangUsr};
+        for (const auto sibling : nested->siblingMemberIndices)
+        {
+            auto* siblingRecord = sibling < containing.fields.size() && sibling != index &&
+                !containing.fields[sibling].isAnonymousCarrier ? innermostRecord(containing.fields[sibling].type)
+                                                                : nullptr;
+            if (!siblingRecord || !siblingRecord->recordIdentity ||
+                siblingRecord->recordIdentity->clangUsr != child.clangUsr)
+                return std::string("C member sharing an unnamed record type is invalid");
+            siblingRecord->recordIdentity = carrierRecord->recordIdentity;
+        }
         ordinalByPath.emplace(nested->carrierPath, result.size());
         result.push_back(std::move(child));
     }
@@ -899,7 +939,8 @@ bool sameCapturedMembers(const CppRecordDeclaration& a, const CppRecordDeclarati
     {
         const auto& x = a.anonymousCRecords[i]; const auto& y = b.anonymousCRecords[i];
         if (x.carrierPath != y.carrierPath || x.kind != y.kind || x.sizeBits != y.sizeBits ||
-            x.alignmentBits != y.alignmentBits || x.fields.size() != y.fields.size()) return false;
+            x.alignmentBits != y.alignmentBits || x.fields.size() != y.fields.size() ||
+            x.memberName != y.memberName || x.siblingMemberIndices != y.siblingMemberIndices) return false;
         for (std::size_t j = 0; j < x.fields.size(); ++j)
         {
             const auto& left = x.fields[j]; const auto& right = y.fields[j];

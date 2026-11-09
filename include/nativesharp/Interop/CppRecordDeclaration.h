@@ -34,6 +34,14 @@ struct CppAnonymousCRecord
     std::uint64_t sizeBits = 0;
     std::uint64_t alignmentBits = 0;
     std::vector<CppRecordField> fields;
+    // EN: T08-D14: non-empty when the aggregate is the unnamed type of a named member (`struct { ... } pair;`)
+    //     instead of an anonymous carrier; its members are not promoted. Other members of the same parent declared
+    //     with that same unnamed type (`struct { ... } a, b;`) share it.
+    // ES: T08-D14: no vacio cuando el agregado es el tipo sin nombre de un miembro con nombre (`struct { ... }
+    //     pair;`) en lugar de un portador anonimo; sus miembros no se promueven. Otros miembros del mismo padre
+    //     declarados con ese mismo tipo sin nombre (`struct { ... } a, b;`) lo comparten.
+    std::string memberName;
+    std::vector<std::size_t> siblingMemberIndices;
 };
 
 struct CppMethodDeclaration
