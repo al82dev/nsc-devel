@@ -195,6 +195,15 @@ bool ProjectOopMirModel::importTupleLayouts(
     // HIR (including nested element tuples), sort the keys for reproducible dumps, and publish
     // synthetic physical layouts in the ordinary struct-layout catalogue.
     std::vector<std::string> tupleKeys;
+    // Static fields are emitted even when no function mentions their types. Open generic
+    // fields without a concrete layout remain deferred until their type is specialized.
+    for (const ClassMemberSymbol& field : memberModel.members())
+    {
+        if (field.kind == ClassMemberKind::Field && field.isStatic &&
+            ProjectTypeConversion::isTuple(field.declaredTypeKey) &&
+            objectLayoutModel.tupleLayoutForTypeKey(nameLookup, field.declaredTypeKey).has_value())
+            collectTupleTypeKey(field.declaredTypeKey, tupleKeys);
+    }
     for (const ProjectOopHirFunction& function : hirModel.functions())
     {
         collectTupleTypeKey(function.returnTypeKey, tupleKeys);
