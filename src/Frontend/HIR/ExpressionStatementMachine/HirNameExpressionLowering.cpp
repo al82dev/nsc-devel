@@ -278,6 +278,12 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerNamespaceStateNameBi
          *state.cppStorageSizeBits == 32 || *state.cppStorageSizeBits == 64) &&
         *state.cppDeclarationAlignmentBits >= *state.cppStorageSizeBits)
         node->cppAtomicAlignmentBytes = static_cast<std::size_t>(*state.cppStorageSizeBits / 8);
+    // EN: T08-D07: an atomic record of any width carries that width (1, 2, 4 and 8 bytes are lock-free).
+    // ES: T08-D07: un record atomico de cualquier ancho lleva ese ancho (1, 2, 4 y 8 bytes sin bloqueo).
+    if (node->cppAtomicAccess && !node->cppAtomicAlignmentBytes && state.declaredTypeKey.starts_with("type:") &&
+        !state.declaredTypeKey.ends_with('*') && state.cppStorageSizeBits && *state.cppStorageSizeBits != 0 &&
+        *state.cppStorageSizeBits % 8 == 0 && state.cppDeclarationAlignmentBits)
+        node->cppAtomicAlignmentBytes = static_cast<std::size_t>(*state.cppStorageSizeBits / 8);
     node->cppCBoolStorage = state.isCppExternal && state.cppCGlobal &&
         !state.cppAtomicStorage && (state.declaredTypeKey == "builtin:bool" ||
         state.declaredTypeKey.starts_with("builtin:bool["));

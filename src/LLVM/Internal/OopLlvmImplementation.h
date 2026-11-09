@@ -3048,6 +3048,17 @@ private:
     // stack without bound, which is why clang hoists the same temporaries into the entry block.
     LLVMValueRef entryBlockAlloca(LLVMTypeRef type, unsigned alignment, const char* name);
 
+    // EN: T08-D07: loads (value == nullptr) or stores a C `_Atomic` record of `width` bytes the way Clang does
+    //     for x86-64: `load/store atomic iN seq_cst` for 1, 2, 4 and 8 bytes, otherwise the generic
+    //     `__atomic_load`/`__atomic_store` libcalls on a zero-padded buffer of the full width. A volatile
+    //     lock-free access is also volatile, as in Clang.
+    // ES: T08-D07: lee (value == nullptr) o escribe un record C `_Atomic` de `width` bytes como lo hace Clang en
+    //     x86-64: `load/store atomic iN seq_cst` para 1, 2, 4 y 8 bytes y, si no, las llamadas genericas
+    //     `__atomic_load`/`__atomic_store` sobre un bufer del ancho completo con relleno a cero. Un acceso volatile
+    //     sin bloqueo tambien es volatile, como en Clang.
+    LLVMValueRef lowerCAtomicRecord(LLVMValueRef address, LLVMTypeRef recordType, std::size_t width,
+                                    LLVMValueRef value, bool volatileAccess, std::string& error);
+
     // The parameter type a signature actually carries for `typeKey`: indirect aggregates travel
     // as an untyped pointer (clang emits a PLAIN `ptr` here -- no byval on Win64), everything
     // else as its direct carrier.

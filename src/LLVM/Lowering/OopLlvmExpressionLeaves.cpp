@@ -3,6 +3,7 @@
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
+#include "CRecordBoolStorage.h"
 
 namespace nativesharp::llvm_backend
 {
@@ -229,6 +230,16 @@ LLVMValueRef OopLlvmImplementation::lowerLoadExpression(const frontend::ProjectO
                 LLVMValueRef address = staticFieldAddress(node, error);
                 LLVMTypeRef type = llvmType(node->typeKey, error);
                 if (address == nullptr || type == nullptr) return nullptr;
+                // EN: T08-D07: a C `_Atomic` record is loaded as a whole value.
+                // ES: T08-D07: un record C `_Atomic` se lee como valor entero.
+                if (node->cppAtomicAccess && !node->typeKey.ends_with('*') &&
+                    isImportedCRecordTypeKey(nameLookup_, node->typeKey))
+                {
+                    if (!node->cppAtomicAlignmentBytes)
+                        return failValue(error, "C atomic record load lacks its atomic width");
+                    return lowerCAtomicRecord(address, type, *node->cppAtomicAlignmentBytes, nullptr,
+                                              node->volatileAccess, error);
+                }
                 const bool atomicFloat = node->cppAtomicAccess &&
                     (node->typeKey == "builtin:float" || node->typeKey == "builtin:double");
                 const bool atomicBool = node->cppAtomicAccess && node->typeKey == "builtin:bool";

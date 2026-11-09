@@ -887,6 +887,17 @@ LLVMValueRef OopLlvmImplementation::storeFromParts(
             storedValue = LLVMBuildBitCast(builder_, value,
                 storageTypeKey == "builtin:float" ? LLVMInt32TypeInContext(context_) : LLVMInt64TypeInContext(context_),
                 "atomic.float.bits");
+        if (node->children[0]->cppAtomicAccess && !storageTypeKey.ends_with('*') &&
+            isImportedCRecordTypeKey(nameLookup_, storageTypeKey))
+        {
+            if (!node->children[0]->cppAtomicAlignmentBytes)
+                return failValue(error, "C atomic record store lacks its atomic width");
+            LLVMTypeRef recordType = llvmType(storageTypeKey, error);
+            if (recordType == nullptr ||
+                lowerCAtomicRecord(address, recordType, *node->children[0]->cppAtomicAlignmentBytes, value,
+                                   node->children[0]->volatileAccess, error) == nullptr) return nullptr;
+            return value;
+        }
         LLVMValueRef store = LLVMBuildStore(builder_, storedValue, address);
         if (node->children[0]->cppAtomicAccess)
         {
@@ -1675,6 +1686,62 @@ bool OopLlvmImplementation::dropReplacedArrayElement(
         if (!terminated()) LLVMBuildBr(builder_, readyBlock);
         enterBlock(readyBlock);
         return true;
+}
+
+LLVMValueRef OopLlvmImplementation::lowerCAtomicRecord(LLVMValueRef address, LLVMTypeRef recordType,
+                                                      std::size_t width, LLVMValueRef value, bool volatileAccess,
+                                                      std::string& error)
+{
+    if (address == nullptr || recordType == nullptr || width == 0 || width > (std::size_t{1} << 30))
+        return failValue(error, "C atomic record access has an invalid width");
+    LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
+    LLVMTypeRef i32 = LLVMInt32TypeInContext(context_);
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+    const bool lockFree = width == 1 || width == 2 || width == 4 || width == 8;
+    LLVMTypeRef bufferType = LLVMArrayType2(i8, width);
+    LLVMValueRef buffer = entryBlockAlloca(bufferType, 16, "c.atomic.record.buffer");
+    if (buffer == nullptr) return failValue(error, "C atomic record buffer could not be allocated");
+    // EN: generic libcall `void __atomic_load/__atomic_store(size_t size, void* object, void* value, int order)`,
+    //     order 5 = seq_cst, resolved at link time like the calls Clang emits in the C code.
+    // ES: llamada generica `void __atomic_load/__atomic_store(size_t size, void* object, void* value, int order)`,
+    //     orden 5 = seq_cst, resuelta al enlazar como las llamadas que Clang emite en el codigo C.
+    const auto libcall = [&](const char* name) -> bool
+    {
+        LLVMTypeRef parameters[] = {i64, ptr, ptr, i32};
+        LLVMTypeRef functionType = LLVMFunctionType(LLVMVoidTypeInContext(context_), parameters, 4, 0);
+        LLVMValueRef function = LLVMGetNamedFunction(module_, name);
+        if (function == nullptr) function = LLVMAddFunction(module_, name, functionType);
+        if (function == nullptr) return false;
+        LLVMValueRef arguments[] = {LLVMConstInt(i64, width, 0), address, buffer, LLVMConstInt(i32, 5, 0)};
+        buildNoUnwindCall(functionType, function, arguments, 4, "");
+        return true;
+    };
+    if (value != nullptr)
+    {
+        LLVMBuildStore(builder_, LLVMConstNull(bufferType), buffer);
+        LLVMBuildStore(builder_, value, buffer);
+        if (!lockFree)
+            return libcall("__atomic_store") ? value : failValue(error, "cannot declare __atomic_store");
+        LLVMTypeRef bits = LLVMIntTypeInContext(context_, static_cast<unsigned>(width * 8));
+        LLVMValueRef raw = LLVMBuildLoad2(builder_, bits, buffer, "c.atomic.record.bits");
+        LLVMValueRef store = LLVMBuildStore(builder_, raw, address);
+        LLVMSetOrdering(store, LLVMAtomicOrderingSequentiallyConsistent);
+        LLVMSetAlignment(store, static_cast<unsigned>(width));
+        if (volatileAccess) LLVMSetVolatile(store, 1);
+        return value;
+    }
+    if (lockFree)
+    {
+        LLVMTypeRef bits = LLVMIntTypeInContext(context_, static_cast<unsigned>(width * 8));
+        LLVMValueRef load = LLVMBuildLoad2(builder_, bits, address, "c.atomic.record.load");
+        LLVMSetOrdering(load, LLVMAtomicOrderingSequentiallyConsistent);
+        LLVMSetAlignment(load, static_cast<unsigned>(width));
+        if (volatileAccess) LLVMSetVolatile(load, 1);
+        LLVMBuildStore(builder_, load, buffer);
+    }
+    else if (!libcall("__atomic_load")) return failValue(error, "cannot declare __atomic_load");
+    return LLVMBuildLoad2(builder_, recordType, buffer, "c.atomic.record.value");
 }
 
 }

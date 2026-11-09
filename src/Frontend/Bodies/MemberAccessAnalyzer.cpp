@@ -758,6 +758,20 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
 {
     if (fields.empty()) return false;
     const ClassMemberSymbol& field = memberModel_->members()[fields.front()];
+    if (!typeReceiver && receiver.cppAtomicRecordStorage)
+    {
+        // EN: T08-D07. As in C, a member of an `_Atomic` record is not accessed in place: the whole value is
+        //     loaded or stored atomically. / ES: T08-D07. Como en C, un miembro de un record `_Atomic` no se
+        //     accede en su sitio: el valor entero se lee o se escribe de forma atomica.
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidMemberAccess,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "cannot access member '" + expression->text() + "' of C atomic record storage; copy the whole "
+                "value into a local first");
+        result.valid = false;
+        return true;
+    }
     result.typeKey = field.declaredTypeKey;
     result.valid = true;
     result.assignmentMemberOrdinal = fields.front();

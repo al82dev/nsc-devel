@@ -444,7 +444,20 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
         (*global.type.sizeBits == 8 || *global.type.sizeBits == 16 ||
          *global.type.sizeBits == 32 || *global.type.sizeBits == 64) &&
         *global.declarationAlignmentBits >= *global.type.sizeBits;
-    const bool supportedAtomicTls = atomicIntTls || atomicLongTls || atomicUIntTls || atomicULongTls || atomicNarrowTls || atomicFloatTls || atomicBoolTls || atomicPointerTls || atomicEnumTls;
+    // EN: T08-D07. `_Atomic` over a C struct or union, also thread-local or volatile. Clang widens an atomic
+    //     record of up to 16 bytes to the next power of two and aligns it to that width; larger ones keep their
+    //     size and alignment. The width travels as the storage size; accesses copy the whole value.
+    // ES: T08-D07. `_Atomic` sobre un struct o union C, tambien thread-local o volatile. Clang amplia un record
+    //     atomico de hasta 16 bytes a la siguiente potencia de dos y lo alinea a ese ancho; los mayores conservan
+    //     tamano y alineacion. El ancho viaja como tamano de almacenamiento; los accesos copian el valor entero.
+    const bool atomicRecord = cLanguage && lookup && kind == CppTypeKind::Atomic && global.type.element &&
+        global.type.element->kind == CppTypeKind::Record &&
+        !global.type.element->isVolatile && global.type.sizeBits && global.type.element->sizeBits &&
+        *global.type.sizeBits >= *global.type.element->sizeBits && *global.type.sizeBits % 8 == 0 &&
+        *global.type.sizeBits > 0 && global.declarationAlignmentBits &&
+        (*global.type.sizeBits > 128 || *global.declarationAlignmentBits >= *global.type.sizeBits);
+    const bool supportedAtomicTls = atomicIntTls || atomicLongTls || atomicUIntTls || atomicULongTls ||
+        atomicNarrowTls || atomicFloatTls || atomicBoolTls || atomicPointerTls || atomicEnumTls || atomicRecord;
     const CppType* arrayElement = &global.type;
     std::size_t arrayDepth = 0;
     bool fixedArray = kind == CppTypeKind::Array;
@@ -479,8 +492,9 @@ static CppSemanticGlobalResult projectGlobalWithLookup(
             global.type.element->sizeBits == std::optional<std::uint64_t>{8}
                 ? (global.type.element->kind == CppTypeKind::SignedInteger ? "builtin:sbyte" : "builtin:byte")
                 : (global.type.element->kind == CppTypeKind::SignedInteger ? "builtin:short" : "builtin:ushort");
-        if ((!atomicPointerTls && !atomicEnumTls && type->nativeSharpTypeKey != expected) ||
-            (atomicEnumTls && !type->nativeSharpTypeKey.starts_with("type:")) ||
+        if ((!atomicPointerTls && !atomicEnumTls && !atomicRecord && type->nativeSharpTypeKey != expected) ||
+            ((atomicEnumTls || atomicRecord) && !type->nativeSharpTypeKey.starts_with("type:")) ||
+            (atomicRecord && type->nativeSharpTypeKey.ends_with("*")) ||
             (atomicPointerTls && !type->nativeSharpTypeKey.ends_with("*")))
             return failure("C atomic integer mapping is inconsistent");
         type->canonicalCppType = global.type.canonicalSpelling;

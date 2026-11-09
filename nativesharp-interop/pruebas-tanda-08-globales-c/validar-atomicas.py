@@ -6,7 +6,8 @@ External atomics of every supported kind (`int`, `long long`, `unsigned`, `unsig
 writes and C reads with `__c11_atomic_load`; C writes with `__c11_atomic_store`/`fetch_add` and NativeSharp
 reads. The IR uses atomic loads and stores (seq_cst) for every access. Checked against a Clang control,
 directly, and through a precompiled template consumed without the header, O0-O3. Rejections (O0): taking the
-address of an atomic global, and an atomic `struct` global (not supported yet).
+address of an atomic global, and reading a member of an atomic `struct` global in place (T08-D07: atomic records
+are accessed as whole values; see validar-atomicas-record.py).
 """
 from pathlib import Path
 import os
@@ -201,7 +202,7 @@ for opt in opts:
 
 REJECTIONS = [
     ("direccion", "var p = &a_int; return 0;", "cannot take the address of C atomic storage"),
-    ("record-atomico", "return a_pair.a;", "cannot import C/C++ global 'a_pair': C/C++ global type is not yet mapped"),
+    ("record-atomico", "return a_pair.a;", "cannot access member 'a' of C atomic record storage"),
 ]
 for name, statements, expected in REJECTIONS:
     folder = root / "rechazos" / name

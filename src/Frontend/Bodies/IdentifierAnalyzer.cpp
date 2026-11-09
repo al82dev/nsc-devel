@@ -1146,6 +1146,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeNamespac
     result.assignable = !state.isConst && !state.isCppReadonly &&
         !(state.isCppExternal && ProjectMemberModel::fixedArrayElementTypeKey(state.declaredTypeKey).has_value());
     result.addressable = !state.isCppEnumConstant && !qualifiedAddress;
+    result.cppAtomicRecordStorage = state.isCppExternal && state.cppAtomicStorage &&
+        state.declaredTypeKey.starts_with("type:") && !state.declaredTypeKey.ends_with('*');
     result.readonlyReceiver = state.isConst || state.isCppReadonly;
     result.volatileStorage = state.isCppExternal && state.isVolatile;
     result.pointerPointeeReadonly = state.cppPointerPointeeReadonly;
