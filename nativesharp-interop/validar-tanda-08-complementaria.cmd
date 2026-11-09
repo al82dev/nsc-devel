@@ -26,6 +26,7 @@ for %%T in (
   pruebas-tanda-08-colisiones-c\validar-dependencias-privadas.py
   pruebas-tanda-08-enteros-c\validar-anchos.py
   pruebas-tanda-08-enteros-c\sonda-semantica-c.py
+  pruebas-tanda-08-enteros-c\validar-divergencia-c.py
   pruebas-tanda-08-enum-c\validar-identidad.py
   pruebas-tanda-08-enum-c\validar-valores.py
   pruebas-tanda-08-flotante-c\validar-formatos.py
@@ -60,6 +61,7 @@ for %%T in (
   pruebas-tanda-08-identidad-c\tls-dll-producto\validar.py
   pruebas-tanda-08-identidad-c\tls-dll-unicode\validar-mayusculas.py
   pruebas-tanda-08-identidad-c\tls-dll-unicode\validar.py
+  pruebas-tanda-08-identidad-c\tls-sin-import-host\validar-copia-adaptada.py
   pruebas-tanda-08-identidad-c\tls-sin-import-host\validar-diagnostico.py
   pruebas-tanda-08-identidad-c\tls-sin-import-host\validar.py
   pruebas-tanda-08-identidad-c\typedef-calificadores\validar-callback-const.py
