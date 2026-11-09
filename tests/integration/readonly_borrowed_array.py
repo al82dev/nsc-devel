@@ -56,6 +56,14 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
  return saved[0] + saved[1];''', None),
         'array_initializer_ordinary': ('''Payload ordinary = new Payload();
  Payload[] saved = new Payload[] { ordinary }; return saved[0].Data[0] == 0 ? 42 : 1;''', None),
+        'array_assignment_alias': ('''Payload[] saved = new Payload[1]; saved[0] = alias; return 0;''',
+                                   'readonly borrowed value'),
+        'array_assignment_direct': ('''Payload[] saved = new Payload[1]; saved[0] = owner.Get(); return 0;''',
+                                    'readonly borrowed value'),
+        'array_assignment_scalar': ('''int[] saved = new int[1]; saved[0] = alias.Data[0] + 42;
+ return saved[0];''', None),
+        'array_assignment_ordinary': ('''Payload[] saved = new Payload[1];
+ saved[0] = new Payload(); return saved[0].Data[0] == 0 ? 42 : 1;''', None),
         'tuple_scalar': ('''var (item, number) = (alias.Data[0], 42); return item + number;''', None),
         'tuple_ordinary': ('''Payload ordinary = new Payload();
  (Payload, int) saved = (ordinary, 42); return 42;''', None),

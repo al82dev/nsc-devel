@@ -115,6 +115,25 @@ por error: el directorio de build fue el aislado de A, pero no se verificó si s
 crearon archivos temporales en C. La compilación posterior del control usó
 variables temporales explícitas en A mediante `build-array-initializer-controls.cmd`.
 
+La asignación posterior `saved[0] = alias` presentaba el mismo escape. Se observó
+que ambas familias lo aceptaban; el registro previo de Arc se conserva en
+`public-tuple-borrow-array_element_assignment_escape-Arc.log`, pero el de Rc se
+sobrescribió al repetir la prueba. `rejectBorrowedAssignmentEscape` ahora reconoce
+el binding de elemento de arreglo nativo y rechaza el préstamo de solo lectura;
+no cambia los indexadores de usuario ni los punteros. La restricción es también
+conservadora por carecer de seguimiento de vida por elemento.
+
+Con build incremental y temporales en A, la prueba dirigida rechazó la asignación
+del alias y de `owner.Get()` para los controles local y atómico, y ejecutó las
+asignaciones escalares y ordinarias en O0/O2. El primer control ordinario intentó
+copiar un propietario y fue rechazado por esa regla previa; se corrigió para
+asignar una construcción válida y pasó. La prueba pública de ambas familias pasó
+desde fuentes, y el control existente de arreglos pasó 1/1 tras reenlazarse.
+Los registros posteriores son
+`readonly-array-ctest-array_assignment_alias,array_assignment_direct,array_assignment_scalar,array_assignment_ordinary.log`
+y `public-tuple-borrow-array_element_assignment_escape.log` en
+`A:/nsc-fixes-evidencia`.
+
 ## Estructuras anidadas
 
 Tras `764137d50`, una regresión con un arreglo de estructuras que contienen un

@@ -1323,6 +1323,22 @@ bool ProjectMethodBodyModel::rejectBorrowedAssignmentEscape(
             (targetType != nullptr && targetType->kind == NamedTypeDeclarationKind::Struct)));
     if (borrowedReassignment || right.ownership != sema::OwnershipKind::Borrowed ||
         !assignmentTargetOwnable) return false;
+    if (right.readonlyBorrowedObject && expression->first() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::IndexExpression)
+    {
+        for (const MethodCoreBinding& binding : coreBindings_)
+        {
+            if (binding.syntax != expression->first() || binding.methodMemberOrdinal != methodMemberOrdinal ||
+                (binding.kind != MethodCoreOperationKind::ArrayElement &&
+                 binding.kind != MethodCoreOperationKind::RangeArrayElement)) continue;
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error,
+                expression->second()->range(),
+                "readonly borrowed value cannot be stored in an array without lifetime tracking");
+            return true;
+        }
+    }
     if (left.assignmentMemberOrdinal.has_value() && memberModel_ != nullptr &&
         *left.assignmentMemberOrdinal < memberModel_->members().size())
     {
