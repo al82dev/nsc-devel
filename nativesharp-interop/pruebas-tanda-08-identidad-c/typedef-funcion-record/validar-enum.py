@@ -75,10 +75,13 @@ script.write_text(source, encoding="utf-8")
 args = [arg for arg in sys.argv[1:] if arg not in ("--mismatch", "--consumer-ambiguous", "--returns")]
 result = subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True, errors="replace")
 if mismatch:
-    if result.returncode == 0 or "conflicting C/C++ type alias 'VarFn'" not in result.stdout + result.stderr:
+    # T08-D10: each precompiled producer resolves its own `VarFn` and `CKind` from its catalogue, so a consumer
+    # composes two producers whose enums differ, as with the incompatible typedef variants of validar.py.
+    # T08-D10: cada productor precompilado resuelve su `VarFn` y su `CKind` desde su catalogo.
+    if result.returncode != 0:
         print(result.stdout + result.stderr)
-        sys.exit("ERROR: se esperaba rechazar enums incompatibles")
-    print("Enums con valores incompatibles: rechazo correcto")
+        sys.exit("ERROR: el consumidor de dos productores con enums incompatibles fallo")
+    print("Enums con valores incompatibles en productores distintos: consumidor correcto (T08-D10)")
     sys.exit(0)
 if ambiguous:
     if result.returncode == 0 or "ambiguous namespace state reference 'KValue'" not in result.stdout + result.stderr:

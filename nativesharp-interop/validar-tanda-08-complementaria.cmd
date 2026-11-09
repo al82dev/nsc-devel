@@ -1,10 +1,11 @@
 @echo off
-rem EN: Complementary tanda 08 gate. Runs the suites added while closing T08-002 to T08-020 that
-rem     validar-tanda-08.cmd does not run, and the derived runs of validar-tanda-08-derivados.py. Helper scripts
-rem     that need arguments are run by their own .cmd validators. Use it after validar-tanda-08.cmd.
-rem ES: Gate complementario de la tanda 08. Ejecuta las suites agregadas al cerrar T08-002 a T08-020 que
-rem     validar-tanda-08.cmd no ejecuta, y las ejecuciones derivadas de validar-tanda-08-derivados.py. Los auxiliares
-rem     que necesitan argumentos los ejecutan sus propios .cmd. Se usa despues de validar-tanda-08.cmd.
+rem EN: Complementary tanda 08 gate. Runs the suites added while closing T08-002 to T08-020 and the T08-D
+rem     decisions that validar-tanda-08.cmd does not run, and the derived runs of validar-tanda-08-derivados.py.
+rem     Helper scripts that need arguments are run by their own .cmd validators. Use it after validar-tanda-08.cmd.
+rem ES: Gate complementario de la tanda 08. Ejecuta las suites agregadas al cerrar T08-002 a T08-020 y las
+rem     decisiones T08-D que validar-tanda-08.cmd no ejecuta, y las ejecuciones derivadas de
+rem     validar-tanda-08-derivados.py. Los auxiliares que necesitan argumentos los ejecutan sus propios .cmd. Se usa
+rem     despues de validar-tanda-08.cmd.
 setlocal
 set "PATH=A:\al82dev-clang\bin;A:\nsc-interop-build\tanda1-ON\bin;%PATH%"
 set "TMP=A:\nsc-interop-build\temp"
@@ -16,9 +17,13 @@ set "TASK_FAILED=0"
 pushd "%~dp0.."
 for %%T in (
   pruebas-tanda-08-arreglos-c\validar-arreglos.py
+  pruebas-tanda-08-arreglos-c\validar-arreglos-punteros-campo.py
   pruebas-tanda-08-calificadores-c\validar-calificadores.py
   pruebas-tanda-08-callbacks-c\validar-callbacks.py
+  pruebas-tanda-08-callbacks-c\validar-identidad-funcion-c.py
+  pruebas-tanda-08-callbacks-c\validar-vectorcall.py
   pruebas-tanda-08-colisiones-c\validar-colisiones.py
+  pruebas-tanda-08-colisiones-c\validar-dependencias-privadas.py
   pruebas-tanda-08-enteros-c\validar-anchos.py
   pruebas-tanda-08-enum-c\validar-identidad.py
   pruebas-tanda-08-enum-c\validar-valores.py
@@ -28,6 +33,7 @@ for %%T in (
   pruebas-tanda-08-funciones-c\validar-visibilidad-enlace.py
   pruebas-tanda-08-globales-c\validar-arreglos.py
   pruebas-tanda-08-globales-c\validar-atomicas.py
+  pruebas-tanda-08-globales-c\validar-atomicas-record.py
   pruebas-tanda-08-globales-c\validar-consumo.py
   pruebas-tanda-08-globales-c\validar-direccion-const.py
   pruebas-tanda-08-globales-c\validar-enum-record.py
@@ -68,16 +74,23 @@ for %%T in (
   pruebas-tanda-08-identidad-c\typedef-funcion-record\validar-retorno.py
   pruebas-tanda-08-identidad-c\typedef-funcion-record\validar.py
   pruebas-tanda-08-incompletos-c\validar-incompletos.py
+  pruebas-tanda-08-incompletos-c\validar-opaco-consumidor.py
   pruebas-tanda-08-incompletos-diag-c\validar-diagnosticos.py
+  pruebas-tanda-08-infraestructura\validar-finales-cmd.py
   pruebas-tanda-08-layout-c\validar-layout.py
+  pruebas-tanda-08-layout-c\validar-alineacion-efectiva.py
   pruebas-tanda-08-layout-comparacion-c\validar-comparacion.py
   pruebas-tanda-08-punteros-c\validar-punteros.py
+  pruebas-tanda-08-punteros-c\validar-puntero-a-puntero-const.py
   pruebas-tanda-08-record-c\validar-etiqueta.py
   pruebas-tanda-08-record-c\validar-mascara-bits.py
   pruebas-tanda-08-record-c\validar-miembros.py
   pruebas-tanda-08-typedef-c\validar-formas.py
   pruebas-tanda-08-typedef-c\validar-reconciliacion.py
+  pruebas-tanda-08-typedef-c\validar-record-dos-encabezados.py
+  pruebas-tanda-08-typedef-c\validar-typedef-productores.py
   pruebas-tanda-08-union-c\validar-uniones.py
+  pruebas-tanda-08-union-c\validar-miembro-sin-etiqueta.py
   pruebas-tanda-08-void-c\validar-void.py
   validar-tanda-08-derivados.py
 ) do call :run_python %%T
