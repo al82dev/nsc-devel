@@ -12,9 +12,11 @@ def run(command, cwd):
 
 def main():
     compiler = Path(sys.argv[1])
-    prefix = '''struct Value { public int Data; public Value() { Data = 42; } }
+    prefix = '''borrowed struct View { public int Data; public View() { Data = 42; } }
+struct Value { public int Data; public Value() { Data = 42; } }
 struct Owner { public Value data; public Owner() { data = new Value(); }
- ~Owner() { } public ref readonly Value Get() { return ref data; } }
+ ~Owner() { } public ref readonly Value Get() { return ref data; }
+ public View Borrow() { return new View(); } }
 '''
     cases = {
         'read': ('''class Program { public static int Work(Owner owner) {
@@ -45,6 +47,18 @@ struct Owner { public Value data; public Owner() { data = new Value(); }
  public static int Main() { match (Make().Get()) { ref item => { return item.Data; } }
  return 1; } }''',
                       'borrowed local requires'),
+        'shadow_unrelated_overwrite': ('''class Program { public static int Main() {
+ Owner owner = new Owner(); View view = owner.Borrow();
+ { Owner owner = new Owner(); owner = new Owner(); } return view.Data; } }''', None),
+        'shadow_unrelated_move': ('''class Program { public static int Main() {
+ Owner owner = new Owner(); View view = owner.Borrow();
+ { Owner owner = new Owner(); Owner moved = move(owner); } return view.Data; } }''', None),
+        'shadow_inner_borrowed': ('''class Program { public static int Main() {
+ Owner owner = new Owner(); { Owner owner = new Owner(); View view = owner.Borrow();
+ owner = new Owner(); return view.Data; } } }''', 'cannot overwrite owner'),
+        'shadow_outer_borrowed': ('''class Program { public static int Main() {
+ Owner owner = new Owner(); View view = owner.Borrow(); { Owner owner = new Owner(); }
+ owner = new Owner(); return view.Data; } }''', 'cannot overwrite owner'),
     }
     with tempfile.TemporaryDirectory(prefix='nsc-readonly-pattern-') as temporary:
         root = Path(temporary)

@@ -852,7 +852,9 @@ bool ProjectMethodBodyModel::hasActiveBorrowOfOwnerLocal(
             if (local.viewRootLocalName == ownerName &&
                 scopeContains(local.scopeOrdinal, scopeOrdinal))
             {
-                return true;
+                const auto root = lookupScopeName(local.scopeOrdinal, local.viewRootLocalName);
+                if (root.has_value() && root->kind == ScopeNameKind::Local &&
+                    root->semanticOrdinal == localOrdinal) return true;
             }
         }
     }
