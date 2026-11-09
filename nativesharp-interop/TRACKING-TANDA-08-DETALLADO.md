@@ -298,7 +298,8 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
   - **Bloqueada por T08-010-05a.**
 - [ ] T08-010-09: Verificar lectura y escritura `*(data + index)` frente a Clang después de la corrección.
   - **Bloqueada por T08-010-05a.**
-- [ ] T08-010-10: Publicar en metadata un struct C declarado solo con etiqueta (`struct Holder { … };`, sin typedef): el consumidor precompilado sin encabezado informa `unknown type name 'Holder'`, mientras el camino directo funciona. [Origen](registro-commits/t08-puntero-funcion-calificado.md).
+- [x] T08-010-10: Publicar en metadata un struct C declarado solo con etiqueta (`struct Holder { … };`, sin typedef): el consumidor precompilado sin encabezado informa `unknown type name 'Holder'`, mientras el camino directo funciona. [Origen](registro-commits/t08-puntero-funcion-calificado.md). [Evidencia](registro-commits/t08-record-etiqueta.md).
+  - Corregido: las plantillas publicadas siembran en el catálogo C los records, unions y enums nombrados solo por su etiqueta.
 
 ## T08-011 — Union C
 

@@ -8,6 +8,7 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
+#include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Interop/CppNamespaceInventory.h"
 #include "nativesharp/Interop/CppSemanticInventory.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
@@ -1384,6 +1385,44 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
             "x86_64-pc-windows-msvc", *lookup);
         if (const auto* value = std::get_if<CppSemanticGlobal>(&projected); value && !visit(value->typeKey, 0))
             return false;
+    }
+    // EN: A published template may name a C record or enum by its tag alone (`struct Holder { ... };` without a
+    //     typedef). No alias or signature carries that type and template bodies are not bound in the producer,
+    //     so seed the C types whose tag matches a written type name visible from the template's project.
+    // ES: Una plantilla publicada puede nombrar un record o enum C solo por su etiqueta (`struct Holder { ... };`
+    //     sin typedef). Ningun alias ni firma lleva ese tipo y los cuerpos de plantilla no se ligan en el
+    //     productor: se siembran los tipos C cuya etiqueta coincide con un nombre escrito visible desde el proyecto.
+    if (const auto* model = compilation.genericModel(); model && !metadata.genericTemplates.empty())
+    {
+        std::set<std::string> published;
+        for (const auto& item : metadata.genericTemplates) published.insert(item.canonicalKey);
+        const auto types = lookup->namedTypes();
+        for (const auto& record : model->templates())
+        {
+            if (!published.contains(record.canonicalKey)) continue;
+            for (const auto& candidate : record.foreignReferenceCandidates)
+            {
+                if (!candidate.typeSyntax || candidate.writtenTypeName.empty() ||
+                    candidate.writtenTypeName.find('.') != std::string::npos) continue;
+                const auto owner = candidate.typeSyntax->originProjectOrdinal().value_or(record.projectOrdinal);
+                if (owner >= lookup->modules().size() || !lookup->modules()[owner]) continue;
+                const auto visible = lookup->modules()[owner]->visibleProjectOrdinals();
+                for (std::size_t ordinal = 0; ordinal < types.size(); ++ordinal)
+                {
+                    const auto* imported = lookup->cppImportedType(ordinal);
+                    if (!imported || imported->identity.name() != candidate.writtenTypeName ||
+                        !imported->identity.containingTypes().empty() ||
+                        (imported->projectOrdinal != owner &&
+                         std::find(visible.begin(), visible.end(), imported->projectOrdinal) == visible.end()))
+                        continue;
+                    if (imported->origin == frontend::CppImportedTypeOrigin::CEnum)
+                        enumSeeds[imported->projectOrdinal].insert(imported->identity.key());
+                    else if (imported->origin == frontend::CppImportedTypeOrigin::CStruct ||
+                             imported->origin == frontend::CppImportedTypeOrigin::CUnion)
+                        seeds[imported->projectOrdinal].insert(imported->identity.key());
+                }
+            }
+        }
     }
     if (seeds.empty() && enumSeeds.empty() && dependencies.aliases.empty() && dependencies.functions.empty() &&
         dependencies.globals.empty() && dependencies.enumerators.empty())
