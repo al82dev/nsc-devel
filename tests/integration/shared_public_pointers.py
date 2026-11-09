@@ -1126,6 +1126,55 @@ class Program { public static int Main() { Holder holder = default(Holder);
         'mutate': ('''class Program { public static int Main() {
  STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); borrowed Payload alias = owner.Get();
  alias.Data = 10l; return 0; } }''', 'not assignable'),
+        'cast_readonly_get': ('''class Program { public static int Main() {
+ STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); borrowed Payload alias = owner.Get();
+ borrowed Payload converted = (Payload)alias; converted.Data = 10l; return 0; } }''', 'borrowed local requires'),
+        'cast_readonly_direct': ('''class Program { public static int Main() {
+ STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
+ ((Payload)owner.Get()).Data = 10l; return 0; } }''', 'not assignable'),
+        'cast_readonly_user_operator': ('''class CastPayload { public int Data;
+ public static explicit operator int(CastPayload value) { value.Data = 9; return 0; } }
+ class Program { public static int Main() {
+ STRONG<CastPayload> owner = SharedPointers.MAKE<CastPayload>();
+ return (int)owner.Get(); } }''', 'readonly borrowed'),
+        'implicit_readonly_user_operator': ('''class CastPayload { public int Data;
+ public static implicit operator int(CastPayload value) { value.Data = 9; return 0; } }
+ class Program { public static int Main() {
+ STRONG<CastPayload> owner = SharedPointers.MAKE<CastPayload>();
+ int result = owner.Get(); return owner.Get().Data == 9 ? 42 : 1; } }''', 'readonly borrowed'),
+        'implicit_readonly_assignment': ('''class CastPayload { public int Data;
+ public static implicit operator int(CastPayload value) { value.Data = 9; return 0; } }
+ class Program { public static int Main() {
+ STRONG<CastPayload> owner = SharedPointers.MAKE<CastPayload>(); int result = 0;
+ result = owner.Get(); return result; } }''', 'readonly borrowed'),
+        'implicit_readonly_return': ('''class CastPayload { public int Data;
+ public static implicit operator int(CastPayload value) { value.Data = 9; return 0; } }
+ class Program { public static int Work(STRONG<CastPayload> owner) { return owner.Get(); }
+ public static int Main() { return Work(SharedPointers.MAKE<CastPayload>()); } }''', 'borrowed value cannot escape'),
+        'implicit_readonly_argument': ('''class CastPayload { public int Data;
+ public static implicit operator int(CastPayload value) { value.Data = 9; return 0; } }
+ class Program { public static int Use(int value) { return value; } public static int Main() {
+ STRONG<CastPayload> owner = SharedPointers.MAKE<CastPayload>(); return Use(owner.Get()); } }''',
+                                       'readonly borrowed'),
+        'implicit_readonly_property': ('''class CastPayload { public int Data;
+ public static implicit operator int(CastPayload value) { value.Data = 9; return 0; } }
+ class Sink { public int Value { get; set; } }
+ class Program { public static int Main() { STRONG<CastPayload> owner = SharedPointers.MAKE<CastPayload>();
+ Sink sink = new Sink(); sink.Value = owner.Get(); return sink.Value; } }''', 'borrowed value cannot be stored'),
+        'implicit_readonly_array': ('''class CastPayload { public int Data;
+ public static implicit operator int(CastPayload value) { value.Data = 9; return 0; } }
+ class Program { public static int Main() { STRONG<CastPayload> owner = SharedPointers.MAKE<CastPayload>();
+ int[] values = new int[1]; values[0] = owner.Get(); return values[0]; } }''', 'readonly borrowed'),
+        'implicit_readonly_condition': ('''class CastPayload { public int Data;
+ public static implicit operator bool(CastPayload value) { value.Data = 9; return true; } }
+ class Program { public static int Main() { STRONG<CastPayload> owner = SharedPointers.MAKE<CastPayload>();
+ if (owner.Get()) return 1; return 0; } }''', 'condition'),
+        'implicit_mutable_control': ('''class CastPayload { public int Data;
+ public static implicit operator int(CastPayload value) { value.Data = 42; return value.Data; } }
+ class Program { public static int Main() { CastPayload item = new CastPayload();
+ borrowed CastPayload alias = item; int first = alias; int second = 0; second = alias;
+ STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); int data = (int)owner.Get().Data;
+ return first == 42 && second == 42 && data == 42 ? 42 : 1; } }''', 'run:42'),
         'async_mutate_after_await': ('''class Program { public static async int Slow() { yield; return 7; }
  public static async int Main() { STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
  borrowed Payload alias = owner.Get(); int value = await Slow(); alias.Data = 10l; return value; } }''',

@@ -3890,6 +3890,13 @@ void ProjectMethodBodyModel::validateVariableInitializerConversion(
 {
     const ProjectImplicitConversion conversion = classifyImplicit(
         initializer.typeKey, typeKey, initializer.integerConstant);
+    if (initializer.readonlyBorrowedObject && conversion.userDefinedMemberOrdinal.has_value())
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, variable->first()->range(),
+            "readonly borrowed object cannot invoke an unchecked implicit conversion");
+        return;
+    }
     if (!conversion.exists() && !reportTupleConversionFailure(
             initializer.typeKey, typeKey, variable->first()->range(), diagnostics))
         diagnostics.report(

@@ -126,6 +126,19 @@ class Program { public static int Main() {
             'readonly' in output or 'not assignable' in output), (
             'readonly mutation accepted or failed for another reason', output)
         print('binary readonly mutation rejected', flush=True)
+        for family, make in (('Rc', 'MakeRc'), ('Arc', 'MakeArc')):
+            for body in ('int result = owner.Get();', 'int result = 0; result = owner.Get();'):
+                source.write_text(('''using NativeSharp.Core;
+class CastPayload { public int Data; public CastPayload() { }
+ public static implicit operator int(CastPayload value) { value.Data = 9; return 0; } }
+class Program { public static int Main() { FAMILY<CastPayload> owner = SharedPointers.MAKE<CastPayload>();
+ BODY return result; } }
+''').replace('FAMILY', family).replace('MAKE', make).replace('BODY', body), encoding='utf-8')
+                result = run([compiler, '--check-project-method-bodies', project], root)
+                output = result.stdout + result.stderr
+                assert result.returncode != 0 and 'readonly borrowed object cannot invoke' in output, (
+                    'binary implicit readonly conversion accepted or failed for another reason', family, body, output)
+                print('binary implicit readonly conversion rejected', family, body, flush=True)
     return 0
 
 

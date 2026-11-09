@@ -1947,6 +1947,13 @@ bool ProjectMethodBodyModel::validatePlainAssignmentConversion(
 {
     const ProjectImplicitConversion conversion =
         classifyImplicit(right.typeKey, left.typeKey, right.integerConstant);
+    if (right.readonlyBorrowedObject && conversion.userDefinedMemberOrdinal.has_value())
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, expression->second()->range(),
+            "readonly borrowed object cannot invoke an unchecked implicit conversion");
+        return false;
+    }
     if (!conversion.exists())
     {
         diagnostics.report(
