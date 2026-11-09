@@ -264,16 +264,16 @@ public struct BinaryValue { public int Data; public BinaryValue() { Data = 42; }
 class Program { public static int Main() { FAMILY<PAYLOAD> owner = SharedPointers.MAKE<PAYLOAD>();
 BODY } }
 ''').replace('FAMILY', family).replace('MAKE', make).replace('PAYLOAD', payload).replace('BODY',
-                    'return owner.Get().Data == 42 ? 42 : 1;' if payload == 'BinaryValue' else 'return 42;'),
+                    'return owner.Get().Data == 42 ? 42 : 1;' if payload != 'EscapingPayload' else 'return 42;'),
                     encoding='utf-8')
                 for level in ('O0', 'O2'):
                     exe = root / ('binary-payload-' + family + '-' + payload + '-' + level + '.exe')
                     result = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', exe], root)
                     output = result.stdout + result.stderr
-                    if payload == 'BinaryValue':
-                        assert result.returncode == 0, ('binary value payload compile', family, level, output)
+                    if payload != 'EscapingPayload':
+                        assert result.returncode == 0, ('binary safe payload compile', family, level, output)
                         result = run([exe], root)
-                        assert result.returncode == 42, ('binary value payload run', family, level, result.returncode)
+                        assert result.returncode == 42, ('binary safe payload run', family, level, result.returncode)
                     else:
                         assert result.returncode != 0 and 'shared payload class has no verifiable precompiled lifecycle body' in output, (
                             'binary class payload accepted or failed for another reason', family, payload, level, output)

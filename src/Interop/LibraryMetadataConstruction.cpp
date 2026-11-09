@@ -2344,10 +2344,13 @@ bool buildMetadataType(
     return true;
 }
 
-// Proves only scalar-field initialization with no calls or receiver publication.
+// Proves scalar-field initialization and a certified parameterless base constructor call.
 // Unrecognized MIR remains unknown. The explicit stack bounds call-stack usage
 // and visits each node once; the result does not cover other lifecycle shapes.
-bool isSimpleNonEscapingLifecycle(const frontend::ProjectOopMirNode* body)
+bool isSimpleNonEscapingLifecycle(
+    const frontend::ProjectOopMirNode* body,
+    std::span<const frontend::ClassMemberSymbol> members,
+    std::optional<std::size_t> certifiedBase)
 {
     using Kind = frontend::ProjectOopMirNodeKind;
     if (body == nullptr) return false;
@@ -2368,7 +2371,15 @@ bool isSimpleNonEscapingLifecycle(const frontend::ProjectOopMirNode* body)
             case Kind::BooleanConstant:
                 break;
             case Kind::ThisValue:
-                if (parent == nullptr || parent->kind != Kind::FieldAddress) return false;
+                if (parent == nullptr || (parent->kind != Kind::FieldAddress &&
+                    parent->kind != Kind::DirectInstanceCall)) return false;
+                break;
+            case Kind::DirectInstanceCall:
+                if (!certifiedBase.has_value() || !node->memberOrdinal.has_value() ||
+                    *node->memberOrdinal >= members.size() || node->children.size() != 1U ||
+                    node->children.front() == nullptr || node->children.front()->kind != Kind::ThisValue ||
+                    members[*node->memberOrdinal].declaringTypeOrdinal != *certifiedBase ||
+                    members[*node->memberOrdinal].kind != frontend::ClassMemberKind::Constructor) return false;
                 break;
             case Kind::FieldAddress:
                 if (parent == nullptr || parent->kind != Kind::Store || parent->children.empty() ||
@@ -2400,6 +2411,10 @@ bool appendMetadataTypes(
     std::unordered_set<std::size_t> typesWithInstanceCleanup;
     std::unordered_set<std::size_t> typesWithMissingLifecycle;
     std::unordered_map<std::size_t, std::vector<const frontend::ProjectOopMirFunction*>> lifecycleBodies;
+    std::unordered_map<std::string, std::size_t> precompiledTypes;
+    for (std::size_t ordinal = 0; ordinal < types.size(); ++ordinal)
+        if (types[ordinal].isPrecompiled)
+            precompiledTypes.emplace("type:" + types[ordinal].identity.key(), ordinal);
     for (const auto& function : compilation.oopMirModel()->functions())
         if (!function.isStatic && (function.constructor || function.destructor))
             lifecycleBodies[function.declaringTypeOrdinal].push_back(&function);
@@ -2437,9 +2452,18 @@ bool appendMetadataTypes(
             !types[typeOrdinal].isStatic && record.baseTypeKey.empty() && layout != nullptr &&
             layout->fields.empty() && !typesWithInstanceCleanup.contains(typeOrdinal))
             metadata.trivialCleanupRootTypeKeys.push_back("type:" + record.identityKey);
+        std::optional<std::size_t> certifiedBase;
+        if (!record.baseTypeKey.empty())
+        {
+            const auto base = precompiledTypes.find(record.baseTypeKey);
+            if (base != precompiledTypes.end() &&
+                compilation.memberModel()->isNonEscapingLifecycleTypeKey(record.baseTypeKey))
+                certifiedBase = base->second;
+        }
         bool noEscape = types[typeOrdinal].kind == frontend::NamedTypeDeclarationKind::Class &&
             !types[typeOrdinal].isStatic && !types[typeOrdinal].isPrecompiled &&
-            record.baseTypeKey.empty() && layout != nullptr && !typesWithMissingLifecycle.contains(typeOrdinal);
+            (record.baseTypeKey.empty() || certifiedBase.has_value()) && layout != nullptr &&
+            !typesWithMissingLifecycle.contains(typeOrdinal);
         if (noEscape)
             for (const auto& field : layout->fields)
                 if (field.typeKey != "builtin:int" && field.typeKey != "builtin:bool" &&
@@ -2451,7 +2475,8 @@ bool appendMetadataTypes(
             for (const auto* function : foundBodies->second)
             {
                 constructorSeen = constructorSeen || function->constructor;
-                if (!isSimpleNonEscapingLifecycle(function->body.get())) { noEscape = false; break; }
+                if (!isSimpleNonEscapingLifecycle(function->body.get(), members, certifiedBase))
+                { noEscape = false; break; }
             }
         if (noEscape && constructorSeen)
             metadata.nonEscapingLifecycleTypeKeys.push_back("type:" + record.identityKey);
