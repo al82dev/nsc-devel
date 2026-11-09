@@ -3071,6 +3071,7 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                         }
             }
             if (!shadowed)
+            {
                 for (const auto& deferred : namespaceFunctionModel_->cppDeferredFunctions())
                     if (deferred.directCall && deferred.syntax == expression &&
                         !deferred.conflictingOrigins.empty())
@@ -3079,6 +3080,22 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                             diagnostics::DiagnosticSeverity::Error, expression->range(), deferred.reason);
                         return ExpressionResult{};
                     }
+                // A C/C++ function the header declares but whose signature has no NativeSharp mapping (for
+                // example a floating format without a carrier) is still unknown here; say why.
+                // Una función C/C++ que el encabezado declara pero cuya firma no tiene correspondencia en
+                // NativeSharp (por ejemplo, un formato flotante sin portador) sigue siendo desconocida;
+                // se dice por qué.
+                for (const auto& deferred : namespaceFunctionModel_->cppDeferredFunctions())
+                    if (deferred.directCall && deferred.syntax == expression && deferred.conflictingOrigins.empty() &&
+                        !deferred.reason.empty() && deferred.declaration.name == name)
+                    {
+                        diagnostics.report(diagnostics::DiagnosticId::UnknownIdentifier,
+                            diagnostics::DiagnosticSeverity::Error, expression->first()->range(),
+                            "unknown identifier '" + name + "' in callable/initializer context: C/C++ function '" +
+                                deferred.declaration.qualifiedName + "' cannot be imported: " + deferred.reason);
+                        return ExpressionResult{};
+                    }
+            }
         }
     }
     return std::nullopt;

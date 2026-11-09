@@ -234,13 +234,13 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 
 - [x] T08-007-01: Probar `long double` IEEE binary64 de la muestra directa y precompilada O0–O3.
 - **T08-007-02 — Tipos y formatos:**
-- [ ] T08-007-02a: Verificar tamaño y representación de `float` contra Clang.
-- [ ] T08-007-02b: Verificar tamaño y representación de `double` contra Clang.
-- [ ] T08-007-02c: Verificar `long double` y diagnóstico cuando su formato no sea representable.
+- [x] T08-007-02a: Verificar tamaño y representación de `float` contra Clang. [Evidencia](registro-commits/t08-flotantes-c.md).
+- [x] T08-007-02b: Verificar tamaño y representación de `double` contra Clang. [Evidencia](registro-commits/t08-flotantes-c.md).
+- [x] T08-007-02c: Verificar `long double` y diagnóstico cuando su formato no sea representable. Corregido: una función C con un tipo flotante sin portador ya informa el motivo. [Evidencia](registro-commits/t08-flotantes-c.md).
 - **T08-007-03 — Contextos:**
-- [ ] T08-007-03a: Verificar parámetros y retornos de cada tipo flotante.
-- [ ] T08-007-03b: Verificar lectura y escritura de campos y globales flotantes.
-- [ ] T08-007-03c: Verificar persistencia del formato y uso desde metadata precompilada.
+- [x] T08-007-03a: Verificar parámetros y retornos de cada tipo flotante. [Evidencia](registro-commits/t08-flotantes-c.md).
+- [x] T08-007-03b: Verificar lectura y escritura de campos y globales flotantes. [Evidencia](registro-commits/t08-flotantes-c.md).
+- [x] T08-007-03c: Verificar persistencia del formato y uso desde metadata precompilada. [Evidencia](registro-commits/t08-flotantes-c.md).
 
 ## T08-008 — `void`
 
