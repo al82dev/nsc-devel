@@ -11,6 +11,7 @@ namespace NativeSharp.Core.Internal
             {
                 LocalSharedCounts* counts = (LocalSharedCounts*)&block[0];
                 *counts = new LocalSharedCounts(1l, 1l);
+                block[2] = 1l;
             }
         }
 
@@ -43,14 +44,14 @@ namespace NativeSharp.Core.Internal
             }
         }
 
-        // Exclude the implicit weak held while at least one strong reference remains.
+        // Exclude the implicit weak, including while the final destructor is running.
         public static long WeakCount(long[] block)
         {
             unsafe("shared local control header")
             {
                 LocalSharedCounts* counts = (LocalSharedCounts*)&block[0];
                 long weak = (*counts).WeakCountRaw();
-                return (*counts).StrongCount() > 0l ? weak - 1l : weak;
+                return weak - block[2];
             }
         }
 
@@ -63,7 +64,7 @@ namespace NativeSharp.Core.Internal
                 int result = (*counts).ReleaseStrong();
                 if (result != 1) return result;
                 try { Destroy<T>(payload); }
-                finally { DropWeak(block); }
+                finally { block[2] = 0l; DropWeak(block); }
                 return 1;
             }
         }
