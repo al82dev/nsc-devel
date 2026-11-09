@@ -89,6 +89,32 @@ y `readonly-aggregate-existing-controls.log`, todos en `A:/nsc-fixes-evidencia`.
 El caso público de uso normal de `Rc` y `Arc` también pasó desde fuentes
 (`public-tuple-borrow-safe.log`).
 
+## Elementos de un arreglo nuevo
+
+`new Payload[] { alias }` aceptaba un alias de clase procedente de `Get()`;
+el arreglo no conserva la vida ni la restricción del elemento. Los análisis
+semánticos para `Rc` y `Arc` lo aceptaban antes del cambio, según
+`public-tuple-borrow-array_element_initializer_escape-Rc.log` y
+`public-tuple-borrow-array_element_initializer_escape-Arc.log`. No se ejecutó
+el acceso potencialmente inválido.
+
+`analyzeNativeArrayAllocation` rechaza el elemento cuando ya está marcado como
+préstamo de solo lectura. Es conservador: puede rechazar un arreglo local seguro,
+pues no implementa seguimiento de vida por elemento. La prueba dirigida con
+los controles internos rechazó el alias y la llamada directa para ambas familias;
+los controles de elementos escalares y objetos ordinarios se ejecutaron en O0/O2.
+La prueba pública dirigida rechazó el caso para `Rc` y `Arc`, desde fuentes.
+El control existente `nsc.stage41.arrays-strings-core` pasó 1/1 tras compilar su
+objetivo incrementalmente. La evidencia se encuentra en
+`readonly-array-ctest-array_initializer_alias,array_initializer_direct,array_initializer_scalar,array_initializer_ordinary.log`
+y `public-tuple-borrow-array_element_initializer_escape.log`, en
+`A:/nsc-fixes-evidencia`.
+
+La primera compilación incremental del compilador heredó `TEMP=C:\WINDOWS\TEMP`
+por error: el directorio de build fue el aislado de A, pero no se verificó si se
+crearon archivos temporales en C. La compilación posterior del control usó
+variables temporales explícitas en A mediante `build-array-initializer-controls.cmd`.
+
 ## Estructuras anidadas
 
 Tras `764137d50`, una regresión con un arreglo de estructuras que contienen un

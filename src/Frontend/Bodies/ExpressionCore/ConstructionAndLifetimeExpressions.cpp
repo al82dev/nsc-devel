@@ -644,6 +644,16 @@ void ProjectMethodBodyModel::analyzeNativeArrayAllocation(
             const ExpressionResult value = analyzeExpression(
                 initializer, methodMemberOrdinal, scopeOrdinal, diagnostics,
                 /*allowMethodGroup=*/false, /*allowEvent=*/false, /*allowMove=*/true);
+            if (value.valid && value.readonlyBorrowedObject)
+            {
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    initializer->range(),
+                    "readonly borrowed value cannot be stored in an array without lifetime tracking");
+                elementsValid = false;
+                continue;
+            }
             if (!value.valid || !classifyImplicit(
                     value.typeKey, element, value.integerConstant).exists())
             {

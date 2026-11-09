@@ -48,6 +48,14 @@ class Boxes { public Box[] Data; public Boxes() { Data = new Box[1]; Data[0].Ite
  var (item, number) = saved; return item + number;''', None),
         'struct_aggregate_ordinary': ('''Payload ordinary = new Payload(); Carrier saved = { ordinary };
  return saved.Item.Data[0] == 0 ? 42 : 1;''', None),
+        'array_initializer_alias': ('''Payload[] saved = new Payload[] { alias }; return 0;''',
+                                    'readonly borrowed value'),
+        'array_initializer_direct': ('''Payload[] saved = new Payload[] { owner.Get() }; return 0;''',
+                                     'readonly borrowed value'),
+        'array_initializer_scalar': ('''int[] saved = new int[] { alias.Data[0], 42 };
+ return saved[0] + saved[1];''', None),
+        'array_initializer_ordinary': ('''Payload ordinary = new Payload();
+ Payload[] saved = new Payload[] { ordinary }; return saved[0].Data[0] == 0 ? 42 : 1;''', None),
         'tuple_scalar': ('''var (item, number) = (alias.Data[0], 42); return item + number;''', None),
         'tuple_ordinary': ('''Payload ordinary = new Payload();
  (Payload, int) saved = (ordinary, 42); return 42;''', None),
