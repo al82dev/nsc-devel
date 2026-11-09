@@ -319,12 +319,14 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 
 - [x] T08-012-01: Comparar los tamaños, alineaciones de record y offsets de la muestra de layout. [Evidencia](registro-commits/t08-layout-comparacion-clang.md).
 - [ ] T08-012-02: Resolver y verificar el contrato de alineación efectiva de cada campo frente a Clang.
+  - Verificado el contrato vigente: en 56 accesos ordinarios NSC = min(alineación de Clang, natural) y nunca la excede; los campos de bits usan ventanas más estrechas con alineación no mayor. [Evidencia](registro-commits/t08-layout-c.md).
+  - **Bloqueada — decisión pendiente T08-012-02a:** mantener la alineación derivada o adoptar la declarada por Clang, lo que exige guardarla en NSMeta. [Detalle](registro-commits/t08-layout-c.md#decisión-pendiente-t08-012-02a).
 - **T08-012-03 — Cobertura de layout:**
-- [ ] T08-012-03a: Comparar offset y alineación de campos escalares naturales y bajo `pack(1/2/4)`.
-- [ ] T08-012-03b: Comparar layout de arreglos de records y records anidados.
-- [ ] T08-012-03c: Comparar ventanas y alineación de campos de bits con y sin nombre.
-- [ ] T08-012-03d: Comparar `_Alignas` y typedefs con alineación explícita.
-- [ ] T08-012-03e: Repetir las comparaciones con información restaurada de metadata.
+- [x] T08-012-03a: Comparar offset y alineación de campos escalares naturales y bajo `pack(1/2/4)`. [Evidencia](registro-commits/t08-layout-c.md).
+- [x] T08-012-03b: Comparar layout de arreglos de records y records anidados. [Evidencia](registro-commits/t08-layout-c.md).
+- [x] T08-012-03c: Comparar ventanas y alineación de campos de bits con y sin nombre. [Evidencia](registro-commits/t08-layout-c.md).
+- [x] T08-012-03d: Comparar `_Alignas` y typedefs con alineación explícita. [Evidencia](registro-commits/t08-layout-c.md).
+- [x] T08-012-03e: Repetir las comparaciones con información restaurada de metadata. [Evidencia](registro-commits/t08-layout-c.md).
 
 ## T08-013 — Tipos incompletos
 
