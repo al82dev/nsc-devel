@@ -1,0 +1,56 @@
+namespace NativeSharp.Core.Internal
+{
+    // Builds the control block and payload in one array allocation.
+    internal static class SharedLocalFactory
+    {
+        public static SharedLocalHandle<T> Create<T>() where T : new()
+        {
+            unsafe("shared value construction")
+            {
+                long[] block = SharedControlStorage.AllocateValue<T>();
+                if (block == null) return new SharedLocalHandle<T>(null, null);
+                T* slot = SharedControlStorage.ConstructValue<T>(block);
+                if (slot == null) { delete[] block; return new SharedLocalHandle<T>(null, null); }
+                SharedLocalControl.Initialize(block);
+                return new SharedLocalHandle<T>(block, slot);
+            }
+        }
+
+        public specialize static SharedLocalHandle<T> Create<T>() where T : class, new()
+        {
+            unsafe("shared class construction")
+            {
+                long[] block = SharedControlStorage.Allocate<T>();
+                if (block == null) return new SharedLocalHandle<T>(null, null);
+                T value = SharedControlStorage.Construct<T>(block);
+                if (value == null) { delete[] block; return new SharedLocalHandle<T>(null, null); }
+                T* slot = (T*)&block[6];
+                *slot = value;
+                SharedLocalControl.Initialize(block);
+                return new SharedLocalHandle<T>(block, slot);
+            }
+        }
+
+        public static SharedLocalHandle<T> CreateThrowing<T>() throws NativeSharp.Core.Exception where T : new()
+        {
+            SharedValueCreation<T> created = SharedControlStorage.CreateValueThrowing<T>();
+            if (created.Block == null) return new SharedLocalHandle<T>(null, null);
+            SharedLocalControl.Initialize(created.Block);
+            return new SharedLocalHandle<T>(created.Block, created.Value);
+        }
+
+        public specialize static SharedLocalHandle<T> CreateThrowing<T>() throws NativeSharp.Core.Exception
+            where T : class, new()
+        {
+            unsafe("shared class construction")
+            {
+                SharedClassCreation<T> created = SharedControlStorage.CreateThrowing<T>();
+                if (created.Block == null) return new SharedLocalHandle<T>(null, null);
+                T* slot = (T*)&created.Block[6];
+                *slot = created.Value;
+                SharedLocalControl.Initialize(created.Block);
+                return new SharedLocalHandle<T>(created.Block, slot);
+            }
+        }
+    }
+}

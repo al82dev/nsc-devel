@@ -1,0 +1,39 @@
+namespace NativeSharp.Core.Internal
+{
+    // Move-only weak handle. A weak reference retains the block, not the payload.
+    internal struct SharedLocalWeak<T>
+    {
+        private long[] block;
+        private T* slot;
+
+        public SharedLocalWeak(long[] control, T* payload)
+        {
+            block = control;
+            slot = payload;
+        }
+
+        ~SharedLocalWeak()
+        {
+            if (block != null) SharedLocalControl.DropWeak(block);
+        }
+
+        public bool Expired()
+        {
+            return block == null || SharedLocalControl.StrongCount(block) == 0l;
+        }
+
+        public SharedLocalWeak<T> Clone()
+        {
+            if (block == null || !SharedLocalControl.TryRetainWeak(block))
+                return new SharedLocalWeak<T>(null, null);
+            return new SharedLocalWeak<T>(block, slot);
+        }
+
+        public SharedLocalHandle<T> Upgrade()
+        {
+            if (block == null || !SharedLocalControl.TryRetainStrong(block))
+                return new SharedLocalHandle<T>(null, null);
+            return new SharedLocalHandle<T>(block, slot);
+        }
+    }
+}

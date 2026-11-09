@@ -278,6 +278,26 @@ pruebas no agotan los intercalados ni prueban el pin del módulo o la seguridad
 de las futuras APIs públicas; el análisis del proyecto Core pasó por separado
 (`shared-core-check.log`).
 
+La implementación interna incluye ahora `SharedLocalHandle`, `SharedLocalWeak`,
+`SharedAtomicHandle` y `SharedAtomicWeak`, con fábricas para clase y estructura
+y variantes que propagan excepciones. Son estructuras move-only y utilizan la
+vista interna `SharedBorrow`, cuyo acceso a una ranura nula hace `panic`.
+La prueba `nsc.sdk.shared-internal-handles` comprueba clonación, upgrade,
+expiración, drops, constructores que lanzan, alias prestado, copia implícita,
+escape y movimiento durante el préstamo; ejecuta los casos válidos y vacíos
+en O0/O2 (`shared-control-suite.log`). El caso vacío devuelve 142 en ambos
+niveles, el código del `panic` con perfil abort (`LlvmTrapReason.h`); la salida
+explícita se conserva en `shared-local-handles-test.log`.
+El proyecto Core pasó su comprobación semántica (`shared-core-check.log`).
+La superficie pública solicitada sigue sin publicarse y faltan pruebas de
+concurrencia sobre los handles, vida del módulo y garantías completas del payload.
+Una reproducción adicional muestra que tanto los handles locales como los
+atómicos se rechazan como `Send`, incluso con payload seguro, porque ambos
+contienen un puntero crudo (`shared-handle-send-probe/results.json`). El rechazo
+es deseable para los locales; para los atómicos falta un mecanismo que acredite
+las garantías del payload sin tratar como seguro un puntero arbitrario. La ruta
+del executor es distinta de la de restricciones y también debe comprobarse.
+
 ## AddressSanitizer
 
 El usuario aprobó exposición explícita y desactivada por defecto. La opción

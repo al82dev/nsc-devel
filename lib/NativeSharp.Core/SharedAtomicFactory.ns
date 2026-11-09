@@ -1,0 +1,56 @@
+namespace NativeSharp.Core.Internal
+{
+    // Builds the control block and payload in one array allocation.
+    internal static class SharedAtomicFactory
+    {
+        public static SharedAtomicHandle<T> Create<T>() where T : new()
+        {
+            unsafe("shared value construction")
+            {
+                long[] block = SharedControlStorage.AllocateValue<T>();
+                if (block == null) return new SharedAtomicHandle<T>(null, null);
+                T* slot = SharedControlStorage.ConstructValue<T>(block);
+                if (slot == null) { delete[] block; return new SharedAtomicHandle<T>(null, null); }
+                SharedAtomicControl.Initialize(block);
+                return new SharedAtomicHandle<T>(block, slot);
+            }
+        }
+
+        public specialize static SharedAtomicHandle<T> Create<T>() where T : class, new()
+        {
+            unsafe("shared class construction")
+            {
+                long[] block = SharedControlStorage.Allocate<T>();
+                if (block == null) return new SharedAtomicHandle<T>(null, null);
+                T value = SharedControlStorage.Construct<T>(block);
+                if (value == null) { delete[] block; return new SharedAtomicHandle<T>(null, null); }
+                T* slot = (T*)&block[6];
+                *slot = value;
+                SharedAtomicControl.Initialize(block);
+                return new SharedAtomicHandle<T>(block, slot);
+            }
+        }
+
+        public static SharedAtomicHandle<T> CreateThrowing<T>() throws NativeSharp.Core.Exception where T : new()
+        {
+            SharedValueCreation<T> created = SharedControlStorage.CreateValueThrowing<T>();
+            if (created.Block == null) return new SharedAtomicHandle<T>(null, null);
+            SharedAtomicControl.Initialize(created.Block);
+            return new SharedAtomicHandle<T>(created.Block, created.Value);
+        }
+
+        public specialize static SharedAtomicHandle<T> CreateThrowing<T>() throws NativeSharp.Core.Exception
+            where T : class, new()
+        {
+            unsafe("shared class construction")
+            {
+                SharedClassCreation<T> created = SharedControlStorage.CreateThrowing<T>();
+                if (created.Block == null) return new SharedAtomicHandle<T>(null, null);
+                T* slot = (T*)&created.Block[6];
+                *slot = created.Value;
+                SharedAtomicControl.Initialize(created.Block);
+                return new SharedAtomicHandle<T>(created.Block, slot);
+            }
+        }
+    }
+}

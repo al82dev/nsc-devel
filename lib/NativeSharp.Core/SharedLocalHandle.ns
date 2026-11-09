@@ -1,0 +1,46 @@
+namespace NativeSharp.Core.Internal
+{
+    // Move-only owner of one strong reference to a local shared block.
+    internal struct SharedLocalHandle<T>
+    {
+        private long[] block;
+        private T* slot;
+
+        public SharedLocalHandle(long[] control, T* payload)
+        {
+            block = control;
+            slot = payload;
+        }
+
+        ~SharedLocalHandle()
+        {
+            if (block != null) SharedLocalControl.DropStrong<T>(block, slot);
+        }
+
+        public bool IsEmpty() { return block == null; }
+
+        public long StrongCount()
+        {
+            return block == null ? 0l : SharedLocalControl.StrongCount(block);
+        }
+
+        public SharedLocalHandle<T> Clone()
+        {
+            if (block == null || !SharedLocalControl.TryRetainStrong(block))
+                return new SharedLocalHandle<T>(null, null);
+            return new SharedLocalHandle<T>(block, slot);
+        }
+
+        public SharedLocalWeak<T> Downgrade()
+        {
+            if (block == null || !SharedLocalControl.TryRetainWeak(block))
+                return new SharedLocalWeak<T>(null, null);
+            return new SharedLocalWeak<T>(block, slot);
+        }
+
+        public SharedBorrow<T> Borrow()
+        {
+            return new SharedBorrow<T>(slot);
+        }
+    }
+}

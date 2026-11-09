@@ -1,0 +1,46 @@
+namespace NativeSharp.Core.Internal
+{
+    // Move-only owner of one strong reference to a atomic shared block.
+    internal struct SharedAtomicHandle<T>
+    {
+        private long[] block;
+        private T* slot;
+
+        public SharedAtomicHandle(long[] control, T* payload)
+        {
+            block = control;
+            slot = payload;
+        }
+
+        ~SharedAtomicHandle()
+        {
+            if (block != null) SharedAtomicControl.DropStrong<T>(block, slot);
+        }
+
+        public bool IsEmpty() { return block == null; }
+
+        public long StrongCount()
+        {
+            return block == null ? 0l : SharedAtomicControl.StrongCount(block);
+        }
+
+        public SharedAtomicHandle<T> Clone()
+        {
+            if (block == null || !SharedAtomicControl.TryRetainStrong(block))
+                return new SharedAtomicHandle<T>(null, null);
+            return new SharedAtomicHandle<T>(block, slot);
+        }
+
+        public SharedAtomicWeak<T> Downgrade()
+        {
+            if (block == null || !SharedAtomicControl.TryRetainWeak(block))
+                return new SharedAtomicWeak<T>(null, null);
+            return new SharedAtomicWeak<T>(block, slot);
+        }
+
+        public SharedBorrow<T> Borrow()
+        {
+            return new SharedBorrow<T>(slot);
+        }
+    }
+}
