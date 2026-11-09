@@ -403,15 +403,30 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         auto element = mapCppScalarType(pointee);
         if (!element && !record.isCxx)
             element = projectCppSemanticEnumType(*field.type.element, projectOrdinal, moduleName, lookup);
-        if (!element && lookup && field.type.element->kind == CppTypeKind::Record)
+        // EN: `Record **` (and deeper) with unqualified intermediate pointers keeps the record pointee; each
+        //     intermediate level only adds `*` to the type key.
+        // ES: `Record **` (y mas niveles) con punteros intermedios sin calificar conserva el record apuntado;
+        //     cada nivel intermedio solo agrega `*` a la clave del tipo.
+        const CppType* recordPointee = field.type.element.get();
+        std::string extraLevels;
+        while (!record.isCxx && recordPointee->kind == CppTypeKind::Pointer && recordPointee->element &&
+               !recordPointee->isConst && !recordPointee->isVolatile && extraLevels.size() < 8)
         {
-            const auto target = projectCppRecordTypeIdentity(*field.type.element, moduleName);
+            recordPointee = recordPointee->element.get();
+            extraLevels += '*';
+        }
+        if (!extraLevels.empty() && (recordPointee->kind != CppTypeKind::Record || recordPointee->isConst ||
+                                     recordPointee->isVolatile)) recordPointee = nullptr;
+        if (!element && lookup && recordPointee && recordPointee->kind == CppTypeKind::Record)
+        {
+            const auto target = projectCppRecordTypeIdentity(*recordPointee, moduleName);
             const auto ordinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
             const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
             if (target && imported && imported->projectOrdinal == projectOrdinal &&
-                (!field.type.element->recordIdentity || !field.type.element->recordIdentity->clangUsr ||
-                 !imported->clangUsr || field.type.element->recordIdentity->clangUsr == imported->clangUsr))
-                element = CppScalarTypeMapping{"type:" + target->key(), field.type.element->canonicalSpelling, false, false};
+                (!recordPointee->recordIdentity || !recordPointee->recordIdentity->clangUsr ||
+                 !imported->clangUsr || recordPointee->recordIdentity->clangUsr == imported->clangUsr))
+                element = CppScalarTypeMapping{"type:" + target->key() + extraLevels,
+                                               field.type.element->canonicalSpelling, false, false};
         }
         if (element)
         {

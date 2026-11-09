@@ -332,14 +332,16 @@ Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del m
 
 - [x] T08-013-01: Probar las muestras de punteros a structs y unions opacos en uso directo y precompilado.
 - **T08-013-02 — Declaración y definición:**
-- [ ] T08-013-02a: Verificar struct adelantado y definición posterior en el mismo encabezado.
-- [ ] T08-013-02b: Verificar union adelantada y definición posterior en otro encabezado visible.
-- [ ] T08-013-02c: Verificar conciliación de tipo opaco entre encabezado y metadata.
-- [ ] T08-013-02d: Verificar rechazo de definiciones incompatibles con la misma identidad.
+- [x] T08-013-02a: Verificar struct adelantado y definición posterior en el mismo encabezado. [Evidencia](registro-commits/t08-incompletos-c.md).
+- [x] T08-013-02b: Verificar union adelantada y definición posterior en otro encabezado visible. [Evidencia](registro-commits/t08-incompletos-c.md).
+- [x] T08-013-02c: Verificar conciliación de tipo opaco entre encabezado y metadata. [Evidencia](registro-commits/t08-incompletos-c.md).
+  - **Decisión pendiente T08-013-02c1:** una copia propia de la declaración adelantada en el consumidor (otro archivo) no se reconcilia con el tipo opaco de la metadata; con el mismo encabezado sí. Opciones: reconciliar records incompletos por etiqueta y USR, o mantenerlos distintos. [Detalle](registro-commits/t08-incompletos-c.md#decisión-pendiente-t08-013-02c1).
+- [x] T08-013-02d: Verificar rechazo de definiciones incompatibles con la misma identidad. [Evidencia](registro-commits/t08-incompletos-c.md).
 - **T08-013-03 — Operaciones:**
-- [ ] T08-013-03a: Verificar paso, retorno y almacenamiento de `Opaque*` y `Opaque**`.
-- [ ] T08-013-03b: Verificar rechazo de `sizeof`, variable por valor y acceso a miembro de tipo incompleto.
-- [ ] T08-013-03c: Verificar rechazo de aritmética e indexación de `Opaque*` y admisión aplicable a `Opaque**`.
+- [x] T08-013-03a: Verificar paso, retorno y almacenamiento de `Opaque*` y `Opaque**`. [Evidencia](registro-commits/t08-incompletos-c.md).
+  - Corregido: los campos C `Record **` (punteros intermedios sin calificar) se importan.
+- [x] T08-013-03b: Verificar rechazo de `sizeof`, variable por valor y acceso a miembro de tipo incompleto. [Evidencia](registro-commits/t08-incompletos-c.md).
+- [x] T08-013-03c: Verificar rechazo de aritmética e indexación de `Opaque*` y admisión aplicable a `Opaque**`. [Evidencia](registro-commits/t08-incompletos-c.md).
 
 ## T08-014 — Punteros
 
