@@ -2411,6 +2411,13 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
         assignmentTargetLocal, assignmentTargetParameter, expression, scopeOrdinal);
     if (!validateAssignmentTargetStorage(
             expression, right, assignmentTargetLocal, scopeOrdinal, diagnostics)) return false;
+    if (delegateTarget && assignmentTargetLocal.has_value() &&
+        *assignmentTargetLocal < locals_.size() && expression->second() != nullptr)
+    {
+        auto& sources = locals_[*assignmentTargetLocal].possibleDelegateSources;
+        if (std::ranges::find(sources, expression->second()) == sources.end())
+            sources.push_back(expression->second());
+    }
     if (assignmentTargetLocal.has_value() && *assignmentTargetLocal < locals_.size() &&
         (isReferenceTypeKey(locals_[*assignmentTargetLocal].typeKey) ||
          locals_[*assignmentTargetLocal].typeKey.ends_with("[]")) && expression->second() != nullptr)

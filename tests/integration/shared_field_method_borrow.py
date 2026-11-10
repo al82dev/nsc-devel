@@ -102,6 +102,19 @@ class OuterValue { public InlineHolder child; }
                 'bound-shadowed': '''Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
  BoundAction action = holder.Replace; SharedView<Payload> view = holder.value.Borrow();
  { Holder holder = new Holder(); action(); } return (int)view.Get().Data;''',
+                'bound-reassigned': '''Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
+ BoundAction action = null; action = holder.Replace; SharedView<Payload> view = holder.value.Borrow();
+ action(); return (int)view.Get().Data;''',
+                'bound-copied': '''Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
+ BoundAction original = holder.Replace; BoundAction action = original; SharedView<Payload> view = holder.value.Borrow();
+ action(); return (int)view.Get().Data;''',
+                'bound-reassigned-independent': '''Holder first = new Holder(); Holder second = new Holder();
+ first.value = SharedPointers.MAKE<Payload>(); BoundAction action = null; action = second.Replace;
+ SharedView<Payload> view = first.value.Borrow(); action(); return view.Get().Data == 42l ? 42 : 1;''',
+                'bound-copied-finished': '''Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
+ BoundAction original = holder.Replace; BoundAction action = original;
+ { SharedView<Payload> view = holder.value.Borrow(); if (view.Get().Data != 42l) return 1; }
+ action(); return holder.value.Get().Data == 42l ? 42 : 2;''',
                 'bound-independent': '''Holder first = new Holder(); Holder second = new Holder();
  first.value = SharedPointers.MAKE<Payload>(); BoundAction action = second.Replace;
  SharedView<Payload> view = first.value.Borrow(); action(); return view.Get().Data == 42l ? 42 : 1;''',
@@ -122,7 +135,7 @@ class OuterValue { public InlineHolder child; }
                 output = result.stdout + result.stderr
                 if name in ('unsafe', 'alias', 'nested-unsafe', 'nested-struct-unsafe', 'indexed-unsafe',
                             'arg-borrowed', 'arg-value', 'arg-alias', 'arg-named', 'delegate-unsafe', 'bound-unsafe',
-                            'bound-shadowed'):
+                            'bound-shadowed', 'bound-reassigned', 'bound-copied'):
                     assert result.returncode != 0 and 'borrow' in output, (family, name, output)
                     print(family, name, 'rejected', flush=True)
                     continue

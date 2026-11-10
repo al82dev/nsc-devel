@@ -187,6 +187,8 @@ struct MethodLocalSymbol final
     std::string viewRootLocalName;
     // Field names that may back a view from a direct instance receiver.
     std::vector<std::string> viewSourceFields;
+    // Possible expressions assigned to a local managed delegate; retain branch sources.
+    std::vector<const ast::AstNode*> possibleDelegateSources;
     // Flow-insensitive possible sources for class reference assignments. Retain edges
     // rather than replacing them so branches and later assignments stay conservative.
     bool mayAliasThisField = false;

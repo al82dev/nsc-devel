@@ -3906,11 +3906,41 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                 if (local.has_value() && local->kind == ScopeNameKind::Local &&
                     local->semanticOrdinal < locals_.size() && locals_[local->semanticOrdinal].syntax != nullptr)
                 {
-                    const ast::AstNode* initializer = locals_[local->semanticOrdinal].syntax->first();
+                    std::vector<std::size_t> pendingLocals{local->semanticOrdinal};
+                    std::unordered_set<std::size_t> visitedLocals;
+                    std::vector<const ast::AstNode*> possibleSources;
+                    while (!pendingLocals.empty())
+                    {
+                        const std::size_t ordinal = pendingLocals.back();
+                        pendingLocals.pop_back();
+                        if (ordinal >= locals_.size() || !visitedLocals.insert(ordinal).second) continue;
+                        const MethodLocalSymbol& delegateLocal = locals_[ordinal];
+                        std::vector<const ast::AstNode*> sources = delegateLocal.possibleDelegateSources;
+                        if (delegateLocal.syntax != nullptr) sources.push_back(delegateLocal.syntax->first());
+                        while (!sources.empty())
+                        {
+                            const ast::AstNode* source = sources.back();
+                            sources.pop_back();
+                            if (source == nullptr) continue;
+                            if (source->kind() == ast::AstNodeKind::ConditionalExpression)
+                            {
+                                sources.push_back(source->second());
+                                sources.push_back(source->third());
+                                continue;
+                            }
+                            possibleSources.push_back(source);
+                            if (source->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+                            const MethodNameBinding* sourceBinding = nameBinding(source, methodMemberOrdinal);
+                            if (sourceBinding != nullptr && sourceBinding->kind == MethodNameBindingKind::Local &&
+                                sourceBinding->localOrdinal.has_value())
+                                pendingLocals.push_back(*sourceBinding->localOrdinal);
+                        }
+                    }
                     for (const MethodDelegateBinding& created : delegateBindings_)
                     {
                         if (created.kind != MethodDelegateOperationKind::Create ||
-                            created.methodMemberOrdinal != methodMemberOrdinal || created.syntax != initializer ||
+                            created.methodMemberOrdinal != methodMemberOrdinal ||
+                            std::ranges::find(possibleSources, created.syntax) == possibleSources.end() ||
                             created.staticTarget || created.receiverSyntax == nullptr)
                             continue;
                         bool activeView = hasActiveViewOfStorage(

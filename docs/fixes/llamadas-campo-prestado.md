@@ -173,6 +173,29 @@ copias, uniones de flujo y delegados recibidos como parámetros no quedan
 acreditados por este cambio. El SDK binario reutilizado contiene cambios
 concurrentes sin registrar y no certifica un árbol limpio.
 
+### Copias y reasignaciones locales
+
+Los logs `delegate-flow-before-*` muestran que el análisis aceptaba invocar el
+delegado después de asignar el método a un local inicialmente vacío o copiar
+el delegado a otro local. El compilador conserva ahora las fuentes posibles
+asignadas a locales delegados y recorre sus copias con un conjunto visitado.
+Conserva fuentes de distintas ramas, por lo que puede rechazar un delegado cuyo
+valor actual seguro fue reasignado después de un valor previo inseguro.
+
+Para Rc y Arc se rechazaron las variantes reasignadas y copiadas; los controles
+de objeto independiente y fin de ámbito ejecutaron 42 en O0/O2 desde fuentes
+y SDK binario (`shared-delegate-flow-source.log`,
+`shared-delegate-flow-binary.log`). Desde fuentes también se verificaron una
+rama condicional y un ciclo de copias (`shared-delegate-flow-cycle.log`). Los
+casos inseguros solo se analizaron. Delegados devueltos, parámetros, campos,
+capturas y fuentes desconocidas no quedan acreditados. El SDK reutilizado
+incluye cambios concurrentes sin registrar y no acredita un árbol limpio.
+
+La compilación incremental de `nsc` actualizó 206 pasos por el encabezado
+compartido; incluyó objetos de metadata y `src/Interop/CHeaderGenerator.cpp`
+como dependencias en el build aislado. No se modificaron esas fuentes ni se
+usaron carpetas de build de interoperabilidad.
+
 ## Argumento de evento administrado
 
 `shared-event-before.log` registra que la invocación `Changed(holder)` era
