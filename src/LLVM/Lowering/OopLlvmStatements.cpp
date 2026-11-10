@@ -170,6 +170,19 @@ bool OopLlvmImplementation::lowerBlockStatement(
                     if (left == nullptr || right == nullptr ||
                         left->kind() != ast::AstNodeKind::IdentifierExpression || left->text() != "block" ||
                         right->kind() != ast::AstNodeKind::NullLiteralExpression) return false;
+                    const ast::AstNode* declaration = nameLookup_.namedTypes()[layout->typeOrdinal].syntax;
+                    constexpr std::string_view specializationMarker = "stage44-specialization:";
+                    if (declaration != nullptr && declaration->auxiliaryText().starts_with(specializationMarker))
+                    {
+                        std::string key = declaration->auxiliaryText().substr(specializationMarker.size());
+                        if (const auto metadata = key.find(";nsc-meta:"); metadata != std::string::npos)
+                            key.resize(metadata);
+                        for (const char* family : {"Rc", "WeakRc", "Arc", "WeakArc"})
+                        {
+                            const std::string prefix = identity.moduleName() + "::NativeSharp.Core." + family + "`1<";
+                            if (key.starts_with(prefix) && key.ends_with('>')) return true;
+                        }
+                    }
                     for (const auto& function : mirModel_.functions())
                     {
                         if (function.declaringTypeOrdinal != layout->typeOrdinal) continue;
