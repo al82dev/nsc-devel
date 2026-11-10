@@ -418,6 +418,7 @@ void ProjectOopHirModel::applyParallelOrdinalOffsets(
     case ProjectOopHirNodeKind::RangeArrayAllocation: return "range-array-allocation"; \
     case ProjectOopHirNodeKind::ArrayLength: return "array-length"; \
     case ProjectOopHirNodeKind::ArrayElementValue: return "array-element-value"; \
+    case ProjectOopHirNodeKind::SimdMaskElementValue: return "simd-mask-element-value"; \
     case ProjectOopHirNodeKind::ArrayElementAddress: return "array-element-address"; \
     case ProjectOopHirNodeKind::RangeArrayElementValue: return "range-array-element-value"; \
     case ProjectOopHirNodeKind::RangeArrayElementAddress: return "range-array-element-address"; \

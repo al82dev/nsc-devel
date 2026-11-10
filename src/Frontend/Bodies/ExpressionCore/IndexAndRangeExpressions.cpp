@@ -833,6 +833,36 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
     std::vector<ExpressionResult> indices;
     analyzeIndexOperands(
         base, indices, expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
+    const auto simd = language::parsePortableSimdType(base.typeKey);
+    if (base.valid && simd.has_value() && simd->mask)
+    {
+        const ast::AstNode* indexSyntax = expression->children().empty()
+            ? expression->second() : expression->children().front();
+        if (indices.size() != 1 || !indices.front().valid ||
+            !ProjectTypeConversion::isIntegral(indices.front().typeKey) ||
+            indices.front().typeKey == "builtin:bool" || indexSyntax == nullptr ||
+            indexSyntax->kind() == ast::AstNodeKind::FromEndExpression)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidIndex,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "SIMD mask indexing requires one integral index");
+            return result;
+        }
+        const auto& constant = indices.front().integerConstant;
+        if (constant.has_value() && (constant->isNegative || constant->value >= simd->laneCount))
+        {
+            diagnostics.report(diagnostics::DiagnosticId::ConstantIndexOutOfBounds,
+                diagnostics::DiagnosticSeverity::Error, indexSyntax->range(),
+                "constant SIMD mask index is outside [0, " + std::to_string(simd->laneCount) + ")");
+            return result;
+        }
+        result.valid = true;
+        result.typeKey = "builtin:bool";
+        coreBindings_.push_back(MethodCoreBinding{
+            MethodCoreOperationKind::SimdMaskElement, expression, methodMemberOrdinal,
+            scopeOrdinal, result.typeKey, result.typeKey, false, std::nullopt, std::nullopt});
+        return result;
+    }
     if (analyzeNativeArrayIndex(
             result, expression, base, indices,
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return result;

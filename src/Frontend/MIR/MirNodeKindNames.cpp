@@ -172,6 +172,7 @@ const char* projectOopMirNodeKindNameGroup03(ProjectOopMirNodeKind kind) noexcep
         case ProjectOopMirNodeKind::RangeArrayAllocate: return "range-array-allocate";
         case ProjectOopMirNodeKind::ArrayLength: return "array-length";
         case ProjectOopMirNodeKind::ArrayElementLoad: return "array-element-load";
+        case ProjectOopMirNodeKind::SimdMaskElementLoad: return "simd-mask-element-load";
         case ProjectOopMirNodeKind::ArrayElementAddress: return "array-element-address";
         case ProjectOopMirNodeKind::RangeArrayElementLoad: return "range-array-element-load";
         case ProjectOopMirNodeKind::RangeArrayElementAddress: return "range-array-element-address";

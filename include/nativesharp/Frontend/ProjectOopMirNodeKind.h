@@ -400,6 +400,7 @@ enum class ProjectOopMirNodeKind
     MatchArm,
     MatchValue,
     // NS304-T15-F05. `checked(expr)`/`saturating(expr)`; one operand and the policy string.
-    OverflowPolicy
+    OverflowPolicy,
+    SimdMaskElementLoad
 };
 }

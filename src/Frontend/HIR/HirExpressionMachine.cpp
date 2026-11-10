@@ -1278,7 +1278,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerArrayOrStringIndexEx
         indexSyntaxes.assign(expression->children().begin(), expression->children().end());
     else indexSyntaxes.push_back(expression->second());
     ProjectOopHirNodeKind kind = ProjectOopHirNodeKind::StringElementValue;
-    if (core->kind == MethodCoreOperationKind::ArrayElement)
+    if (core->kind == MethodCoreOperationKind::SimdMaskElement)
+    {
+        if (addressContext)
+        {
+            error = "SIMD mask lanes are not addressable";
+            return nullptr;
+        }
+        kind = ProjectOopHirNodeKind::SimdMaskElementValue;
+    }
+    else if (core->kind == MethodCoreOperationKind::ArrayElement)
     {
         kind = addressContext
             ? ProjectOopHirNodeKind::ArrayElementAddress
@@ -1664,7 +1673,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerIndexExpressionImplC
     }
     const MethodCoreBinding* core = coreBinding(expression);
     if (core != nullptr &&
-        (core->kind == MethodCoreOperationKind::ArrayElement ||
+        (core->kind == MethodCoreOperationKind::SimdMaskElement ||
+         core->kind == MethodCoreOperationKind::ArrayElement ||
          core->kind == MethodCoreOperationKind::RangeArrayElement ||
          core->kind == MethodCoreOperationKind::StringElement))
     {

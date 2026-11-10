@@ -971,6 +971,11 @@ LLVMValueRef LLVMBuildExtractValue(
     LLVMValueRef aggregate,
     unsigned index,
     const char* name);
+LLVMValueRef LLVMBuildExtractElement(
+    LLVMBuilderRef builder,
+    LLVMValueRef vector,
+    LLVMValueRef index,
+    const char* name);
 
 // Stage 54.2 "Atomics". LLVMBuildAtomicRMW emits a real hardware atomic read-modify-write
 // instruction (lowers to `lock xadd`/`lock xchg` on x86-64) -- used for Interlocked.Increment/

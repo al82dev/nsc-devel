@@ -291,6 +291,7 @@ LLVMValueRef OopLlvmImplementation::lowerLoadExpression(const frontend::ProjectO
                 return load;
             }
             case frontend::ProjectOopMirNodeKind::ArrayElementLoad:
+            case frontend::ProjectOopMirNodeKind::SimdMaskElementLoad:
             case frontend::ProjectOopMirNodeKind::StringElementLoad:
                 return lowerExpressionIterative(node, error);
             case frontend::ProjectOopMirNodeKind::RangeArrayElementLoad:

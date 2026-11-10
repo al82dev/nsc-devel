@@ -649,13 +649,15 @@ std::optional<IterativeExpressionKind> ProjectOopHirModel::iterativeIndexKind(
 
     const MethodCoreBinding* core = coreBinding(syntax);
     const bool ordinaryElement = core != nullptr &&
-        (core->kind == MethodCoreOperationKind::ArrayElement ||
+        (core->kind == MethodCoreOperationKind::SimdMaskElement ||
+         core->kind == MethodCoreOperationKind::ArrayElement ||
          core->kind == MethodCoreOperationKind::RangeArrayElement ||
          core->kind == MethodCoreOperationKind::StringElement);
     const bool nullConditionalElement = core != nullptr &&
         core->kind == MethodCoreOperationKind::NullConditionalArrayElement;
     const bool validAddress =
-        !(core != nullptr && core->kind == MethodCoreOperationKind::StringElement && address) &&
+        !(core != nullptr && (core->kind == MethodCoreOperationKind::StringElement ||
+                              core->kind == MethodCoreOperationKind::SimdMaskElement) && address) &&
         !(nullConditionalElement && address);
     const ast::AstNode* firstIndex = !syntax->children().empty()
         ? syntax->children().front()

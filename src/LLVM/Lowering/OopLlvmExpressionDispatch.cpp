@@ -32,6 +32,7 @@ using namespace llvm_api;
     case frontend::ProjectOopMirNodeKind::StaticFieldLoad: \
     case frontend::ProjectOopMirNodeKind::NamespaceStateLoad: \
     case frontend::ProjectOopMirNodeKind::ArrayElementLoad: \
+    case frontend::ProjectOopMirNodeKind::SimdMaskElementLoad: \
     case frontend::ProjectOopMirNodeKind::RangeArrayElementLoad: \
     case frontend::ProjectOopMirNodeKind::StringElementLoad: \
     case frontend::ProjectOopMirNodeKind::Throw: \
@@ -416,6 +417,7 @@ LLVMValueRef OopLlvmImplementation::lowerExpressionGroup01(
             case frontend::ProjectOopMirNodeKind::StaticFieldLoad:
             case frontend::ProjectOopMirNodeKind::NamespaceStateLoad:
             case frontend::ProjectOopMirNodeKind::ArrayElementLoad:
+            case frontend::ProjectOopMirNodeKind::SimdMaskElementLoad:
             case frontend::ProjectOopMirNodeKind::RangeArrayElementLoad:
             case frontend::ProjectOopMirNodeKind::StringElementLoad:
                 return lowerLoadExpression(node, error);

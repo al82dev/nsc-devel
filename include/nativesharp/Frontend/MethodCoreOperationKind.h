@@ -568,6 +568,7 @@ enum class MethodCoreOperationKind
     // NS304-T10-F05: a null-conditional index over a USER indexer (`obj?[i]`). The receiver is
     // null-checked and get_Item runs only on the non-null path (lowered via lowerResolvedCall with
     // nullConditional=true).
-    NullConditionalUserIndex
+    NullConditionalUserIndex,
+    SimdMaskElement
 };
 }

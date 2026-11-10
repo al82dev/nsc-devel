@@ -229,7 +229,11 @@ void ProjectOopHirModel::finishCoreIndexFrame(
         return;
     }
     ProjectOopHirNodeKind nodeKind = ProjectOopHirNodeKind::StringElementValue;
-    if (core.kind == MethodCoreOperationKind::ArrayElement)
+    if (core.kind == MethodCoreOperationKind::SimdMaskElement)
+    {
+        nodeKind = ProjectOopHirNodeKind::SimdMaskElementValue;
+    }
+    else if (core.kind == MethodCoreOperationKind::ArrayElement)
     {
         nodeKind = frame.addressContext
             ? ProjectOopHirNodeKind::ArrayElementAddress

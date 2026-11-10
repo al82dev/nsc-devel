@@ -1333,6 +1333,9 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup13(
         case ProjectOopHirNodeKind::EventInvoke:
             result->kind = ProjectOopMirNodeKind::EventInvoke;
             break;
+        case ProjectOopHirNodeKind::SimdMaskElementValue:
+            result->kind = ProjectOopMirNodeKind::SimdMaskElementLoad;
+            break;
         case ProjectOopHirNodeKind::ArrayAllocation:
         case ProjectOopHirNodeKind::RangeArrayAllocation:
         case ProjectOopHirNodeKind::ArrayElementValue:

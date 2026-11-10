@@ -533,6 +533,7 @@ enum class ProjectOopHirNodeKind
     MatchValue,
     // NS304-T15-F05. `checked(expr)`/`saturating(expr)`. One operand; stringValue is the policy
     // ("checked"/"saturating"). The backend applies the policy to the decimal operations inside.
-    OverflowPolicy
+    OverflowPolicy,
+    SimdMaskElementValue
 };
 }

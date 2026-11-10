@@ -3,6 +3,7 @@
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
+#include "nativesharp/Language/AbiSemantics.h"
 
 namespace nativesharp::llvm_backend
 {
@@ -526,6 +527,7 @@ bool OopLlvmImplementation::lowerExpressionFrame006ArrayElementAddress(
     const frontend::ProjectOopMirNode* current = frame.node;
     if (!(current->kind == frontend::ProjectOopMirNodeKind::ArrayElementAddress ||
         current->kind == frontend::ProjectOopMirNodeKind::ArrayElementLoad ||
+        current->kind == frontend::ProjectOopMirNodeKind::SimdMaskElementLoad ||
         current->kind == frontend::ProjectOopMirNodeKind::StringElementLoad ||
         current->kind == frontend::ProjectOopMirNodeKind::StringCharacterPointer)) return false;
     const bool stringValue =
@@ -554,7 +556,8 @@ bool OopLlvmImplementation::lowerExpressionFrame006ArrayElementAddress(
         LLVMValueRef object = values.back();
         values.pop_back();
         if (object == nullptr) { values.push_back(nullptr); return true; }
-        object = checkedReceiver(object, error);
+        if (current->kind != frontend::ProjectOopMirNodeKind::SimdMaskElementLoad)
+            object = checkedReceiver(object, error);
         if (object == nullptr) { values.push_back(nullptr); return true; }
         frames.push_back({current, 2, object});
         frames.push_back({current->children[1].get(), 0, nullptr});
@@ -563,6 +566,26 @@ bool OopLlvmImplementation::lowerExpressionFrame006ArrayElementAddress(
     LLVMValueRef index = values.back();
     values.pop_back();
     if (index == nullptr) { values.push_back(nullptr); return true; }
+    if (current->kind == frontend::ProjectOopMirNodeKind::SimdMaskElementLoad)
+    {
+        const auto mask = language::parsePortableSimdType(current->children[0]->typeKey);
+        if (!mask.has_value() || !mask->mask)
+        {
+            values.push_back(failValue(error, "SIMD mask index lost its receiver type"));
+            return true;
+        }
+        LLVMValueRef length = LLVMConstInt(LLVMTypeOf(index), mask->laneCount, 0);
+        LLVMValueRef inRange = LLVMBuildICmp(builder_, LLVMIntULT, index, length, "mask.index.inrange");
+        if (!emitGuard(inRange, LlvmTrapReason::BoundsViolation, "mask.index", error))
+        {
+            values.push_back(nullptr);
+            return true;
+        }
+        index = convert(index, current->children[1]->typeKey, "builtin:nuint", error);
+        if (index == nullptr) { values.push_back(nullptr); return true; }
+        values.push_back(LLVMBuildExtractElement(builder_, frame.lhs, index, "mask.lane"));
+        return true;
+    }
     index = convert(index, current->children[1]->typeKey, "builtin:nuint", error);
     if (index == nullptr) { values.push_back(nullptr); return true; }
     finishArrayElementFrame(current, frame.lhs, index, stringValue, values, error);

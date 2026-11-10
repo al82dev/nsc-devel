@@ -471,6 +471,7 @@ std::optional<HirCoreOperandCallPlan> hirCoreOperandCallPlanGroup04(
     case MethodCoreOperationKind::ArrayLength:
     case MethodCoreOperationKind::FixedArrayLength:
     case MethodCoreOperationKind::ArrayElement:
+    case MethodCoreOperationKind::SimdMaskElement:
     case MethodCoreOperationKind::RangeArrayElement:
     case MethodCoreOperationKind::NullConditionalArrayElement:
     case MethodCoreOperationKind::RawElement:
