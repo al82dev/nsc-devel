@@ -114,6 +114,7 @@ namespace EscapeContracts
             return () => { unsafe { return *value; } };
         }
     }
+    public void RetainFunction(int* value) { EscapeApi.Stored = value; }
 }
 )NS";
     ProjectCompilation producer;
@@ -214,6 +215,90 @@ namespace EscapeContracts
 
     constexpr std::string_view producerReference =
         "<LibraryReference Include=\"../EscapeProducer.lib\" />";
+
+    // A present but unknown contract is not proof that a frame address is safe.
+    nativesharp::interop::LibraryMetadata unknown = roundTrip;
+    if (auto member = std::ranges::find_if(unknown.members, [](const auto& candidate)
+        { return candidate.name == "Retain"; }); member != unknown.members.end())
+        member->parameterEscapeSummary.assign(1, nativesharp::interop::LibraryMetadataEscapeClass::Unknown);
+    if (auto function = std::ranges::find_if(unknown.namespaceFunctions, [](const auto& candidate)
+        { return candidate.name == "RetainFunction"; }); function != unknown.namespaceFunctions.end())
+        function->parameterEscapeSummary.assign(1, nativesharp::interop::LibraryMetadataEscapeClass::Unknown);
+    const std::filesystem::path unknownPath = root / "EscapeProducer.unknown.nsmeta";
+    const bool unknownWritten = codec.writeModel(unknown, unknownPath, metadataError);
+    tests.expect(unknownWritten, "write explicit unknown escape contract (" + metadataError + ")");
+    const std::filesystem::path unknownProject = writeProject(
+        root / "unknown", "EscapeUnknown", R"NS(
+using EscapeContracts;
+public class Program { public static int Main() { int local = 42; EscapeApi.Retain(&local); return local; } }
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownProjectText = unknownProject.string();
+    const std::array<std::string_view, 3> unknownArguments = {
+        "--dump-project-method-bodies", unknownProjectText, "-O0"};
+    std::string unknownOutput;
+    std::string unknownError;
+    const nativesharp::ExitCode unknownResult = runDriver(unknownArguments, unknownOutput, unknownError);
+    tests.expect(unknownWritten && unknownResult != nativesharp::ExitCode::Success &&
+            (unknownError + unknownOutput).find("escape contract") != std::string::npos,
+        "an unknown native escape contract rejects current-frame storage (" + unknownError + unknownOutput + ")");
+    const std::filesystem::path unknownAliasProject = writeProject(
+        root / "unknown-alias", "EscapeUnknownAlias", R"NS(
+using EscapeContracts;
+public class Program { public static int Main() { int local = 42; int* alias = &local; EscapeApi.Retain(alias); return local; } }
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownAliasProjectText = unknownAliasProject.string();
+    const std::array<std::string_view, 3> unknownAliasArguments = {
+        "--dump-project-method-bodies", unknownAliasProjectText, "-O0"};
+    std::string unknownAliasOutput;
+    std::string unknownAliasError;
+    const nativesharp::ExitCode unknownAliasResult = runDriver(unknownAliasArguments, unknownAliasOutput, unknownAliasError);
+    tests.expect(unknownWritten && unknownAliasResult != nativesharp::ExitCode::Success &&
+            (unknownAliasError + unknownAliasOutput).find("escape contract") != std::string::npos,
+        "an unknown native escape contract rejects an alias to frame storage (" +
+            unknownAliasError + unknownAliasOutput + ")");
+    const std::filesystem::path unknownFunctionProject = writeProject(
+        root / "unknown-function", "EscapeUnknownFunction", R"NS(
+using EscapeContracts;
+public class Program { public static int Main() { int local = 42; RetainFunction(&local); return local; } }
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownFunctionProjectText = unknownFunctionProject.string();
+    const std::array<std::string_view, 3> unknownFunctionArguments = {
+        "--dump-project-method-bodies", unknownFunctionProjectText, "-O0"};
+    std::string unknownFunctionOutput;
+    std::string unknownFunctionError;
+    const nativesharp::ExitCode unknownFunctionResult =
+        runDriver(unknownFunctionArguments, unknownFunctionOutput, unknownFunctionError);
+    tests.expect(unknownWritten && unknownFunctionResult != nativesharp::ExitCode::Success &&
+            (unknownFunctionError + unknownFunctionOutput).find("escape contract") != std::string::npos,
+        "an unknown native function escape contract rejects current-frame storage (" +
+            unknownFunctionError + unknownFunctionOutput + ")");
+    const std::filesystem::path unknownGlobalProject = writeProject(
+        root / "unknown-global", "EscapeUnknownGlobal", R"NS(
+using EscapeContracts;
+public class Program { public static int Data; public static int Main() { EscapeApi.Retain(&Data); return 42; } }
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownGlobalProjectText = unknownGlobalProject.string();
+    const std::array<std::string_view, 3> unknownGlobalArguments = {
+        "--dump-project-method-bodies", unknownGlobalProjectText, "-O0"};
+    std::string unknownGlobalOutput;
+    std::string unknownGlobalError;
+    tests.expect(unknownWritten && runDriver(unknownGlobalArguments, unknownGlobalOutput, unknownGlobalError) ==
+            nativesharp::ExitCode::Success,
+        "an unknown native escape contract permits global storage (" + unknownGlobalError + unknownGlobalOutput + ")");
+    const std::filesystem::path unknownFunctionGlobalProject = writeProject(
+        root / "unknown-function-global", "EscapeUnknownFunctionGlobal", R"NS(
+using EscapeContracts;
+public class Program { public static int Data; public static int Main() { RetainFunction(&Data); return 42; } }
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownFunctionGlobalProjectText = unknownFunctionGlobalProject.string();
+    const std::array<std::string_view, 3> unknownFunctionGlobalArguments = {
+        "--dump-project-method-bodies", unknownFunctionGlobalProjectText, "-O0"};
+    std::string unknownFunctionGlobalOutput;
+    std::string unknownFunctionGlobalError;
+    tests.expect(unknownWritten && runDriver(unknownFunctionGlobalArguments, unknownFunctionGlobalOutput,
+            unknownFunctionGlobalError) == nativesharp::ExitCode::Success,
+        "an unknown native function escape contract permits global storage (" +
+            unknownFunctionGlobalError + unknownFunctionGlobalOutput + ")");
 
     const std::filesystem::path safeProject = writeProject(
         root / "safe", "EscapeSafe", R"NS(

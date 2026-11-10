@@ -344,8 +344,20 @@ void ProjectMethodBodyModel::validateEscapeCall(
         if (targetParameter >= callee.size() || argumentSyntaxes[argumentOrdinal] == nullptr)
             continue;
         const language::EscapeClass contract = callee[targetParameter];
-        if (contract != language::EscapeClass::Global) continue;
         const ClassMemberSymbol* calleeSymbol = methodSymbol(calleeOrdinal);
+        bool precompiledNative = calleeSymbol != nullptr && calleeSymbol->isPrecompiled &&
+            !calleeSymbol->isImportedC && !calleeSymbol->isExternC;
+        if (calleeOrdinal >= namespaceCallableBase_ && namespaceFunctionModel_ != nullptr)
+        {
+            const std::size_t functionOrdinal = calleeOrdinal - namespaceCallableBase_;
+            if (functionOrdinal < namespaceFunctionModel_->functions().size())
+            {
+                const auto& function = namespaceFunctionModel_->functions()[functionOrdinal];
+                precompiledNative = function.isPrecompiled && !function.isExternC;
+            }
+        }
+        const bool unknownNativeContract = contract == language::EscapeClass::Unknown && precompiledNative;
+        if (contract != language::EscapeClass::Global && !unknownNativeContract) continue;
         const bool pointerValue = calleeSymbol != nullptr &&
             targetParameter < calleeSymbol->parameters.size() &&
             calleeSymbol->parameters[targetParameter].passKind == ParameterPassKind::Value &&
@@ -362,7 +374,8 @@ void ProjectMethodBodyModel::validateEscapeCall(
             "argument " + std::to_string(argumentOrdinal + 1U) + " of '" +
                 std::string(calleeName) + "' refers to current-frame storage, but parameter " +
                 std::to_string(targetParameter + 1U) +
-                " is retained by the callee's published escape contract");
+                (unknownNativeContract ? " has an unknown escape contract" :
+                    " is retained by the callee's published escape contract"));
     }
 }
 
