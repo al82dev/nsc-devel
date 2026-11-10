@@ -1738,6 +1738,29 @@ class Holder { public Inner child; }
 class Program { public static int Main() { Holder holder = new Holder();
  holder.child.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = holder.child.value.Borrow();
  holder.child.Replace(); return (int)view.Get().Data; } }''', 'borrow'),
+        'overwrite_indexed_receiver_via_method': ('''class Holder { public STRONG<Payload> value;
+ public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
+class Program { public static int Main() { Holder[] holders = new Holder[1]; holders[0] = new Holder();
+ holders[0].value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = holders[0].value.Borrow();
+ holders[0].Replace(); return (int)view.Get().Data; } }''', 'borrow'),
+        'method_on_independent_indexed_receiver': ('''class Holder { public STRONG<Payload> value;
+ public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
+class Program { public static int Main() { Holder[] first = new Holder[1]; Holder[] second = new Holder[1];
+ first[0] = new Holder(); second[0] = new Holder(); first[0].value = SharedPointers.MAKE<Payload>();
+ SharedView<Payload> view = first[0].value.Borrow(); second[0].Replace();
+ return view.Get().Data == 42l ? 42 : 1; } }''', 'run:42'),
+        'method_on_other_index_conservative': ('''class Holder { public STRONG<Payload> value;
+ public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
+class Program { public static int Main() { Holder[] holders = new Holder[2];
+ holders[0] = new Holder(); holders[1] = new Holder(); holders[0].value = SharedPointers.MAKE<Payload>();
+ SharedView<Payload> view = holders[0].value.Borrow(); holders[1].Replace();
+ return (int)view.Get().Data; } }''', 'borrow'),
+        'indexed_method_after_view_scope': ('''class Holder { public STRONG<Payload> value;
+ public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
+class Program { public static int Main() { Holder[] holders = new Holder[1]; holders[0] = new Holder();
+ holders[0].value = SharedPointers.MAKE<Payload>(); { SharedView<Payload> view = holders[0].value.Borrow();
+ if (view.Get().Data != 42l) return 1; } holders[0].Replace();
+ return holders[0].value.Get().Data == 42l ? 42 : 2; } }''', 'run:42'),
         'method_on_independent_nested_struct': ('''struct Inner { public STRONG<Payload> value;
  public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
 class Holder { public Inner child; }

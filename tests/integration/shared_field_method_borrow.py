@@ -46,6 +46,17 @@ class OuterValue { public InlineHolder child; }
                 'nested-struct-independent': '''OuterValue first = new OuterValue(); OuterValue second = new OuterValue();
  first.child.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.child.value.Borrow();
  second.child.Replace(); return view.Get().Data == 42l ? 42 : 1;''',
+                'indexed-unsafe': '''Holder[] holders = new Holder[1]; holders[0] = new Holder();
+ holders[0].value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = holders[0].value.Borrow();
+ holders[0].Replace(); return (int)view.Get().Data;''',
+                'indexed-independent': '''Holder[] first = new Holder[1]; Holder[] second = new Holder[1];
+ first[0] = new Holder(); second[0] = new Holder(); first[0].value = SharedPointers.MAKE<Payload>();
+ SharedView<Payload> view = first[0].value.Borrow(); second[0].Replace();
+ return view.Get().Data == 42l ? 42 : 1;''',
+                'indexed-after-scope': '''Holder[] holders = new Holder[1]; holders[0] = new Holder();
+ holders[0].value = SharedPointers.MAKE<Payload>(); { SharedView<Payload> view = holders[0].value.Borrow();
+ if (view.Get().Data != 42l) return 1; } holders[0].Replace();
+ return holders[0].value.Get().Data == 42l ? 42 : 2;''',
                 'nested-independent': '''Outer first = new Outer(); Outer second = new Outer();
  first.child.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.child.value.Borrow();
  second.child.Replace(); return view.Get().Data == 42l ? 42 : 1;''',
@@ -64,7 +75,7 @@ class OuterValue { public InlineHolder child; }
                                   body.replace('MAKE', 'Make' + family) + ' } }', encoding='utf-8')
                 result = run([compiler, '--check-project-method-bodies', project], root)
                 output = result.stdout + result.stderr
-                if name in ('unsafe', 'alias', 'nested-unsafe', 'nested-struct-unsafe'):
+                if name in ('unsafe', 'alias', 'nested-unsafe', 'nested-struct-unsafe', 'indexed-unsafe'):
                     assert result.returncode != 0 and 'borrow' in output, (family, name, output)
                     print(family, name, 'rejected', flush=True)
                     continue

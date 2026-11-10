@@ -80,3 +80,21 @@ encontró en caché y compiló 71 fuentes; el log incluye
 `lib/NativeSharp.Core/DeterministicMath.ns`, con cambios concurrentes ajenos.
 El resultado no acredita una revisión limpia ni seguridad de índices, receptores
 calculados o llamadas indirectas.
+
+## Receptor indexado
+
+`shared-index-method-before.log` reproduce que `holders[0].Replace()` era
+aceptado durante una vista de `holders[0].value`. La comprobación de llamadas
+consulta ahora la raíz del receptor indexado usando el seguimiento de vistas
+existente. Se aproxima el arreglo completo como una unidad: el control
+`method_on_other_index_conservative` confirma que también se rechaza una
+llamada a `holders[1]` mientras existe una vista de `holders[0]`
+(`shared-index-conservative.log`).
+
+Para Rc y Arc, las pruebas dirigidas desde fuentes y SDK binario rechazaron el
+reemplazo inseguro y ejecutaron 42 en O0/O2 con un arreglo independiente o tras
+el fin del préstamo (`shared-index-method-source.log` y
+`shared-index-method-binary.log`). No se ejecutó el programa inseguro. El SDK
+binario es el generado para la tanda anterior, que incluyó un archivo ajeno
+con cambios sin registrar. La evidencia no acredita indexadores de usuario,
+receptores calculados sin raíz, llamadas indirectas ni mutaciones por argumentos.
