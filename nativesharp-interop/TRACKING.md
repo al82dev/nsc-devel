@@ -197,18 +197,18 @@ esa compatibilidad quedan como historial y no son requisitos activos.
 detallada conserva los ítems originales y distingue muestras verificadas de
 trabajo y validación pendientes.
 
-**Actualización 2026-11-09 (cierre técnico).** El estado vigente es el del seguimiento detallado. T08-002 a
-T08-019 y las decisiones T08-D01 a T08-D24 están resueltas allí. Los gates histórico y complementario dan
-código 0. Las notas de esta sección anteriores a esta fecha quedan como historial.
+**Actualización 2026-11-09 (cierre técnico y D25).** El estado vigente es el del seguimiento detallado. T08-002 a
+T08-020 y las decisiones T08-D01 a T08-D25 están resueltas. T08-D25 publica los tipos C de la interfaz con
+`PublicTypes="Header"`. Los gates histórico y complementario dan código 0. Las notas de esta sección anteriores a
+esta fecha quedan como historial.
 
 La tanda 8 no está cerrada del todo; quedan:
 
-- T08-D25: tipos C que la superficie del productor no referencia (`NAlias` y `NMood` de `nombres-metadata`), en un
-  consumidor sin encabezado. Pendiente de decisión, dentro de T08-020.
-- T08-D21 / T08-GATE-05: agrupación del historial, con la propuesta presentada.
+- T08-D26: identidad del mismo tipo C publicado por dos productores. Pendiente de decisión.
+- T08-D21 / T08-GATE-05: agrupación del historial, con la propuesta presentada y verificada.
 - El fixture NSMeta 1.46 ausente (`nsc.stage48_2`, 2 de 444), conservado sin cambios.
 
-[Validación](registro-commits/t08-validacion-cierre-tecnico-20261109.md).
+[D25](registro-commits/t08-d25-tipos-c-publicos.md), [validación](registro-commits/t08-validacion-cierre-tecnico-20261109.md).
 
 El validador integral incluye los scripts de la tanda inventariados. La última
 ejecución integral registrada terminó con cuatro fallos en controles TLS de DLL
@@ -1635,7 +1635,7 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - El local C incompleto por valor produce un diagnóstico específico; la
     prueba anterior de `sizeof` también pasó. Faltan otras operaciones y
     combinaciones. [Evidencia](registro-commits/diagnostico-local-incompleto-c.md).
-- [ ] T08-020. Comparar tamaño, alineación y offsets importados con los calculados por Clang.
+- [x] T08-020. Comparar tamaño, alineación y offsets importados con los calculados por Clang.
   - El consumidor con alias a record y enum en firmas públicas pasó O0–O3 con
     el mismo header y con el header oculto; un alias incompatible se rechazó.
     La conciliación del enum independiente usa contrato serializado y USR;

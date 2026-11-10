@@ -80,3 +80,40 @@ imprime la lista completa.
      rebasarse.
 
 Mientras no se decida, no se publica nada y `development-cpp-clang` no se toca.
+
+## Verificación de la propuesta local (2026-11-09, cierre de D25)
+
+**Contenido final.**
+
+- La rama local `propuesta/t08-agrupado` (`fa4104cb4`) tiene 70 commits sobre `97911ad25`.
+- Su árbol final es `1821402789ea…`, el mismo que el de `48ca47aef`, el `HEAD` desde el que se creó
+  (`git rev-parse propuesta/t08-agrupado^{tree} HEAD^{tree}`).
+- Cada commit agrupado reutiliza el árbol exacto del último commit original de su rango, así que cada frontera es
+  idéntica al historial original.
+- Los commits posteriores a `48ca47aef` (D25 y esta validación) no están en la rama. Al regenerarla se añaden uno a
+  uno, con el script y un nombre de rama nuevo; la rama actual no se reemplaza.
+
+**¿Sirven los grupos para revisar?** Cambios de cada grupo de la parte 1, contados entre fronteras:
+
+| # | Archivos | `src/` e `include/` | Pruebas | Documentos | Zonas de `src/` con más cambios |
+|---|---|---|---|---|---|
+| 1 | 479 | 96 | 95 | 285 | Frontend/Bodies, Frontend/Generics, LLVM/Lowering |
+| 2 | 493 | 54 | 62 | 376 | LLVM/Lowering, Interop/Cpp, Frontend/HIR |
+| 3 | 620 | 57 | 285 | 277 | LLVM/Lowering, Interop/Cpp, Frontend/HIR |
+| 4 | 365 | 32 | 152 | 180 | LLVM/Lowering, LLVM/Internal, Driver/Internal |
+| 5 | 212 | 30 | 82 | 99 | Frontend/HIR, LLVM/Lowering, Frontend/MIR |
+| 6 | 949 | 42 | 592 | 312 | LLVM/Lowering, Interop/Cpp, Frontend/HIR |
+| 7 | 796 | 85 | 343 | 366 | Frontend/Bodies, Frontend/HIR, Interop/Cpp |
+| 8 | 361 | 73 | 190 | 97 | Interop/Cpp, LLVM/Internal, Frontend/Bodies |
+
+**Valoración.**
+
+- En código cada grupo es revisable: de 30 a 96 archivos de `src/` e `include/`.
+- Los grupos son cronológicos. Las mismas zonas (LLVM/Lowering, Interop/Cpp, Frontend/HIR) aparecen en varios,
+  porque el trabajo de esos días alternaba familias de tipos C.
+- Los grupos 3, 6 y 7 son grandes por las pruebas y los documentos.
+- **Variante más fina, para revisar los cambios:** partir esos tres grupos en sus commits de validación intermedios
+  (en el grupo 3, por ejemplo, en `294347178` campos de bits, `6ad07431a` TLS en DLL y `7ce79da8f` `volatile`). Se
+  llega a unos 16 grupos sin reordenar nada y con el mismo método.
+
+No se reemplazó `development-cpp-clang` ni se hizo push. Los tres bundles de `claude\respaldo` se conservan.

@@ -48,13 +48,11 @@ extremo a extremo con pruebas de la tanda 8, aunque no se cerraron como ítems T
 
 ## Dependencias y pendientes que entran desde la tanda 8
 
-- **Pendiente funcional sin resolver (T08-020, nombres sólo por metadata).** Un consumidor sin encabezado no
-  puede nombrar un `typedef` ni un `enum` C que el productor no usa en su superficie (`NAlias`, `NMood` en
-  `pruebas-tanda-08-nombres-metadata`). NSMeta solo publica los tipos C que la superficie del productor
-  referencia. `validar.cmd` termina con 1. Las cuatro sondas por posición (declaración, `sizeof`, cast y valor)
-  ya pasan. Es una decisión de contenido de NSMeta y necesita autorización:
-  - publicar el catálogo C completo del encabezado;
-  - o exigir el encabezado al consumidor y mantener el rechazo.
+- **T08-D25 resuelta después de esta propuesta.** `PublicTypes="Header"` publica los tipos C de la interfaz
+  ([detalle](t08-d25-tipos-c-publicos.md)).
+- **Queda T08-D26, pendiente de decisión.** Dos productores precompilados que publican la misma declaración C no
+  comparten la identidad del tipo, y el consumidor que lo nombra recibe un conflicto. Afecta a la tanda 9 cuando dos
+  bibliotecas exponen la misma API C.
 - **D21 / T08-GATE-05:** la agrupación del historial espera la decisión del usuario
   ([propuesta](t08-d21-propuesta-agrupacion.md)).
 - **Fixture NSMeta 1.46 ausente:** `nsc.stage48_2.library-metadata`, 2 de 444. Se deja intacto por decisión
