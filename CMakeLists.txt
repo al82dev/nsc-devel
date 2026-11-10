@@ -5579,6 +5579,9 @@ if(NSC_BUILD_TESTS)
         add_test(NAME nsc.sdk.binary-tuple-primitive-roundtrip
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/binary_tuple_primitive_roundtrip.py"
                     "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_BINARY_DIR}/binary-tuple-primitive-roundtrip")
+        add_test(NAME nsc.sdk.binary-value-drop
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/binary_value_drop.py"
+                    "${NSC_TEST_COMPILER}")
     endif()
     add_test(NAME nsc.sdk.shared-public-pointers
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_public_pointers.py"

@@ -1132,6 +1132,15 @@ bool PublicSurfaceBuilder::emitNominalType(const interop::LibraryMetadataType &t
             return false;
     }
 
+    // A producer-owned value drop entry is the lifetime contract even when the
+    // private destructor itself is not part of the published member surface.
+    // Reconstruct its marker so consumers schedule the producer's drop glue.
+    constexpr std::uint8_t destructorKind = 4U;
+    if (type.kind == interop::LibraryMetadataTypeKind::Struct && !type.dropGlueEntryName.empty() &&
+        std::ranges::none_of(orderedMethods, [](const auto *member)
+                             { return member != nullptr && member->kind == destructorKind; }))
+        (*generated) << "    ~" << typeName << "() { }\n";
+
     if (!emitAccessorContracts(orderedMethods, false, false, materializedAccessors))
         return false;
 
