@@ -197,6 +197,19 @@ esa compatibilidad quedan como historial y no son requisitos activos.
 detallada conserva los ítems originales y distingue muestras verificadas de
 trabajo y validación pendientes.
 
+**Actualización 2026-11-09 (cierre técnico).** El estado vigente es el del seguimiento detallado. T08-002 a
+T08-019 y las decisiones T08-D01 a T08-D24 están resueltas allí. Los gates histórico y complementario dan
+código 0. Las notas de esta sección anteriores a esta fecha quedan como historial.
+
+La tanda 8 no está cerrada del todo; quedan:
+
+- T08-D25: tipos C que la superficie del productor no referencia (`NAlias` y `NMood` de `nombres-metadata`), en un
+  consumidor sin encabezado. Pendiente de decisión, dentro de T08-020.
+- T08-D21 / T08-GATE-05: agrupación del historial, con la propuesta presentada.
+- El fixture NSMeta 1.46 ausente (`nsc.stage48_2`, 2 de 444), conservado sin cambios.
+
+[Validación](registro-commits/t08-validacion-cierre-tecnico-20261109.md).
+
 El validador integral incluye los scripts de la tanda inventariados. La última
 ejecución integral registrada terminó con cuatro fallos en controles TLS de DLL
 C; desde entonces se añadieron controles dirigidos sin repetir el gate. La tanda
@@ -213,7 +226,7 @@ pasó su control dirigido O0–O3; falta repetir el gate integral tras agrupar
 las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md).
 
 - [x] T08-001. Auditar la representación y búsqueda de nombres actual de NSC. Evidencia: [auditoría de tipos C](TANDA-08-TIPOS-C.md).
-- [ ] T08-002. Definir una identidad estable para cada declaración C importada.
+- [x] T08-002. Definir una identidad estable para cada declaración C importada.
   - Validación agrupada vigente: pasaron los controles dirigidos de identidad,
     los consumidores de la matriz actual y la restauración de cinco variantes
     de productor en O0–O3. La evidencia y las exclusiones están en
@@ -581,7 +594,7 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     la sesión Clang y comprobó los mismos USR en los campos reconstruidos.
     No demuestra todavía el ciclo completo entre productor y consumidor
     independientes ni la identidad de otras declaraciones. [Prueba](registro-commits/t08-usr-campos-nsmeta-ruta.md).
-- [ ] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
+- [x] T08-003. Importar declaraciones de funciones C desde el AST de Clang.
   - La opción ThinLTO con funciones C `static inline` pasó en O0–O3 tanto
     directamente como con dos productores precompilados. En O0 NSC usa código
     normal; en O1–O3 ThinLTO consume bitcode entre bibliotecas. Los sidecars v3
@@ -624,7 +637,7 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Matriz `96de93e42`: llamadas escalares y con puntero pasan en ámbito
     global y fallan dentro de namespace por nombre desconocido. Es necesario
     resolver visibilidad sin romper sombras. [Evidencia](TANDA-08-TIPOS-C.md#tipo-c-en-api-de-biblioteca-diagnóstico-dirigido).
-- [ ] T08-004. Importar declaraciones de variables globales C.
+- [x] T08-004. Importar declaraciones de variables globales C.
   - **Precisión sobre validadores:** la ejecución directa desde la herramienta
     informó salida cero en varios fallos, pero al invocar los scripts
     anteriores con CALL, como hace el gate, tres muestras propagaron el error.
@@ -1026,7 +1039,7 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Preparados `1753aa723` y `0cb1b4300`: búsqueda de valores C globales
     desde namespaces como último recurso y controles de acceso y sombras;
     pendientes de construcción y ejecución agrupadas.
-- [ ] T08-005. Importar alias de tipos declarados con `typedef`.
+- [x] T08-005. Importar alias de tipos declarados con `typedef`.
   - El puntero `const CMatrix*` y su variante mutable llegaron a funciones C y
     ejecutaron O0–O3; se rechazaron `const` y dimensiones incompatibles.
     La suite de sesión pasó. Otras clases de matrices siguen pendientes.
@@ -1034,7 +1047,7 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Un proyecto real pasó de O0 a O3 con alias escalares encadenados, matriz
     local, enum, struct y callback. Una función `const CMatrix*` sigue sin
     importarse y tiene prueba separada. [Evidencia](registro-commits/proyecto-typedef-c.md).
-- [ ] T08-006. Mapear los tipos enteros C con su tamaño y signo efectivos.
+- [x] T08-006. Mapear los tipos enteros C con su tamaño y signo efectivos.
   - Preparada la proyección de campos C `volatile` de enum con identidad
     nominal preservada. Se agregaron controles directo y precompilado para
     struct, struct empaquetado y union, con comparación de IR frente a Clang.
@@ -1076,7 +1089,7 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     dirigidas pasaron. Enum y record volátiles siguen sin importarse.
     [Diagnóstico](registro-commits/t08-volatile-campos-c-diagnostico.md).
     [Integración](registro-commits/t08-volatile-campos-c-integracion.md).
-- [ ] T08-007. Mapear los tipos de punto flotante según el objetivo.
+- [x] T08-007. Mapear los tipos de punto flotante según el objetivo.
   - `long double` IEEE binary64 pasó en uso directo y biblioteca precompilada
     O0–O3. La suite pasó controles de catálogo, versión y fingerprint. Otras
     representaciones y contratos siguen pendientes.
@@ -1092,14 +1105,14 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     Windows x64; NSC rechazó el typedef. Se preparó captura explícita y mapeo
     condicionado, con construcción en curso. La metadata aún no persiste el
     dato. [Evidencia](registro-commits/prueba-long-double-c.md).
-- [ ] T08-008. Mapear el tipo `void` en parámetros y resultados donde corresponda.
+- [x] T08-008. Mapear el tipo `void` en parámetros y resultados donde corresponda.
   - La validación agrupada del fixture de records pasó los casos preparados de
     globales y arreglos C `volatile void*`, con los controles negativos incluidos.
     [Detalle](registro-commits/validacion-agrupada-volatile-08.md).
   - La muestra C11 pasó retorno `void`, parámetro y retorno `void*` y prototipo
     de cero argumentos en O0–O3, con rechazo de argumento extra. No cubre
     todas las posiciones o combinaciones. [Evidencia](registro-commits/prueba-prototipos-c.md).
-- [ ] T08-009. Mapear enumeraciones y sus valores representables.
+- [x] T08-009. Mapear enumeraciones y sus valores representables.
   - Enum C atómico: lectura, escritura, operaciones compuestas e incremento
     se contrastaron con Clang O0–O3 en muestras de 8, 16, 32 y 64 bits,
     incluyendo global y TLS. También pasaron casos de enlace interno,
@@ -1152,7 +1165,7 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Actualización: la construcción incremental y layout finalizaron con código
     0 en O0–O3; el fixture verificó campo y arreglo enum, IR y sus rechazos de
     dirección. Es una comprobación dirigida, no el cierre de T08-009.
-- [ ] T08-010. Importar la declaración y campos de un `struct` C.
+- [x] T08-010. Importar la declaración y campos de un `struct` C.
   - `var` sobre miembros flexibles C ahora infiere puntero: pasaron lectura y
     escritura en directo, Shared y solo metadata O0–O3, y rechazos de escritura
     const y miembro subalineado. El IR del alias volatile conserva `volatile`,
@@ -1243,7 +1256,7 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     [Evidencia](registro-commits/t08-flexible-c-packed.md).
   - Miembros anónimos C11: diseño con carriers y aliases del punto 326 y catálogo C versión 5; no
     implementado porque requiere NSMETA. [Diseño](registro-commits/t08-anonimos-c-diseno.md).
-- [ ] T08-011. Importar la declaración y campos de una `union` C.
+- [x] T08-011. Importar la declaración y campos de una `union` C.
   - Campos de bits con y sin signo superpuestos a entero y bytes pasaron
     lectura y escritura cruzada con C en O0–O3. Es una muestra dirigida;
     otros layouts siguen pendientes. El caso volatile y la publicación
@@ -1268,8 +1281,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     [formas pendientes](registro-commits/t08-layout-formas-pendientes.md).
   - Unions anónimas dentro de structs: cubiertas por el mismo diseño, no implementado.
     [Diseño](registro-commits/t08-anonimos-c-diseno.md).
-- [ ] T08-012. Obtener de Clang tamaño, alineación y desplazamiento de cada campo.
-- [ ] T08-013. Representar tipos declarados pero incompletos sin inventar su tamaño.
+- [x] T08-012. Obtener de Clang tamaño, alineación y desplazamiento de cada campo.
+- [x] T08-013. Representar tipos declarados pero incompletos sin inventar su tamaño.
   - Un puntero a struct C incompleto se usó en retorno, parámetros y global
     con biblioteca separada O0–O3. El local por valor se rechaza con un
     diagnóstico específico de tipo incompleto; faltan otros usos.
@@ -1282,12 +1295,12 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
     consumidor con o sin el mismo header los usó en O0–O3; otros casos de
     identidad y calificación siguen pendientes.
     [Evidencia](registro-commits/prueba-opacos-header-compartido.md).
-- [ ] T08-014. Mapear punteros y su tipo apuntado.
+- [x] T08-014. Mapear punteros y su tipo apuntado.
   - Una muestra `_Bool*` devuelta por C, almacenada en una global y elegida
     junto a un `bool*` nativo pasó O0–O3 con acceso de byte en IR; hubo acceso
     cruzado desde ambos lenguajes. Otras formas y calificadores siguen abiertos.
     [Resultado](registro-commits/t08-bool-puntero-c-implementacion.md).
-- [ ] T08-015. Conservar los calificadores de tipo que afecten al acceso.
+- [x] T08-015. Conservar los calificadores de tipo que afecten al acceso.
   - Los campos C de enum y de record declarados `volatile` se proyectan con su
     calificador. Una muestra de record anidado se comprobó directa y con solo
     metadata O0–O3, con comprobación de accesos `volatile` en el IR. No cubre
@@ -1534,7 +1547,7 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Validación dirigida posterior a `831f998d3` y `db2a2a352`: el caso record C
     pasó IR y ejecución O0–O3 con globales flotantes y `??=`. La batería
     completa y las demás formas de volatile siguen pendientes.
-- [ ] T08-016. Mapear arreglos de tamaño conocido.
+- [x] T08-016. Mapear arreglos de tamaño conocido.
   - Punteros C a arreglos fijos de struct y enum pasaron lectura y mutación
     O0–O3; se rechazaron argumentos const e identidades distintas. El enum se
     inicializó desde C por otra limitación pendiente. [Evidencia](registro-commits/proyeccion-arreglo-agregado-c.md).
@@ -1568,7 +1581,7 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Actualización: la construcción incremental y layout pasaron en O0–O3 para
     el arreglo y la matriz de records empaquetados, con comprobación de IR O0
     y rechazo de direcciones subalineadas. T08-016 sigue abierto.
-- [ ] T08-017. Definir la representación de punteros a función C.
+- [x] T08-017. Definir la representación de punteros a función C.
   - Un callback con `volatile` heredado del record usa accesos volátiles simples;
     el declarado `volatile` mantiene acquire/release cuando está alineado. Se
     comprobó ejecución O0–O3 y el IR optimizado contra el control de Clang.
@@ -1615,9 +1628,9 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
   - Un callback C `int(int)` retornado, llamado desde NativeSharp y pasado de
     vuelta a C compiló y ejecutó O0–O3. No cubre todas las firmas ni
     convenciones. [Evidencia](registro-commits/callback-c-retornado.md).
-- [ ] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.
+- [x] T08-018. Resolver colisiones entre nombres importados y nombres NativeSharp.
   - Un caso real de sombra local de global y enumerador C pasó O0, con comprobación de resolución después del bloque y del valor de C. [Detalle](registro-commits/sombra-local-valores-c.md).
-- [ ] T08-019. Presentar diagnósticos útiles al usar una declaración incompleta de forma inválida.
+- [x] T08-019. Presentar diagnósticos útiles al usar una declaración incompleta de forma inválida.
   - Los diagnósticos para `+`, `-`, `+=`, incremento e índice sobre records C incompletos pasaron sus casos negativos; el control `Opaque**` pasó O0–O3. [Detalle](registro-commits/aritmetica-puntero-incompleto-c.md).
   - El local C incompleto por valor produce un diagnóstico específico; la
     prueba anterior de `sizeof` también pasó. Faltan otras operaciones y
