@@ -845,6 +845,8 @@ bool PublicSurfaceBuilder::emitNominalField(const interop::LibraryMetadataType &
     if (!sourceTypeForMetadataKey(metadata, fieldValueKey, fieldType, error))
         return false;
     if (mutableReference) fieldType.insert(0, "ref mut ");
+    else if ((field.flags & interop::kMetadataMemberReferenceReturn) != 0U)
+        fieldType.insert(0, "ref ");
     if (const interop::LibraryMetadataMember *event = metadataEventForBacking(metadata, owner, field); event != nullptr)
     {
         (*generated) << "    " << sourceAccessibility(event->accessibility) << ' ';

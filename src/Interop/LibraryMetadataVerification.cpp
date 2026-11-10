@@ -1535,6 +1535,7 @@ bool verifyReferenceReturnMemberMetadata(
     std::string& error)
 {
     if (metadata.formatMinor < 15) return true;
+    constexpr std::uint8_t kFieldKind = 0U;
     constexpr std::uint8_t kMethodKind = 2U;
     constexpr std::uint32_t kPropertyAccessor = 1U << 12U;
     constexpr std::uint32_t kIndexerAccessor = 1U << 13U;
@@ -1549,7 +1550,7 @@ bool verifyReferenceReturnMemberMetadata(
         //     `ref T Name { get; }`.
         const bool accessor = (member.flags & (kPropertyAccessor | kIndexerAccessor)) != 0U;
         if ((member.flags & kMetadataMemberReferenceReturn) != 0U &&
-            (member.kind != kMethodKind ||
+            ((member.kind != kMethodKind && member.kind != kFieldKind) ||
              (member.flags & kSetter) != 0U ||
              (accessor && (member.flags & kGetter) == 0U)))
         {
