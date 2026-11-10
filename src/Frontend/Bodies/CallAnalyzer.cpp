@@ -5207,6 +5207,11 @@ bool ProjectMethodBodyModel::callTypeIsSend(const std::string& typeKey) const
             pending.push_back(std::move(*element));
             continue;
         }
+        if (auto elements = ProjectTypeConversion::tupleElementTypeKeys(current); elements.has_value())
+        {
+            pending.insert(pending.end(), elements->begin(), elements->end());
+            continue;
+        }
         const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(current);
         if (!typeOrdinal.has_value() || !walkedTypes.insert(*typeOrdinal).second) continue;
         std::span<const std::size_t> memberOrdinals =
@@ -5264,6 +5269,11 @@ bool ProjectMethodBodyModel::callTypeIsSync(const std::string& typeKey) const
         if (auto element = ProjectTypeConversion::nativeArrayElementType(current); element.has_value())
         {
             pending.push_back(std::move(*element));
+            continue;
+        }
+        if (auto elements = ProjectTypeConversion::tupleElementTypeKeys(current); elements.has_value())
+        {
+            pending.insert(pending.end(), elements->begin(), elements->end());
             continue;
         }
         const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(current);
