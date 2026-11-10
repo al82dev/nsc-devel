@@ -1739,6 +1739,24 @@ class Program { public static void Replace(int ignored, borrowed Holder item) { 
  public static int Main() { Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
  SharedView<Payload> view = holder.value.Borrow(); Replace(item: holder, ignored: 1);
  return (int)view.Get().Data; } }''', 'borrow'),
+        'overwrite_field_via_delegate_argument': ('''class Holder { public STRONG<Payload> value; }
+delegate void Action(Holder item);
+class Program { public static void Replace(Holder item) { item.value = SharedPointers.MAKE<Payload>(); }
+ public static int Main() { Action action = Replace; Holder holder = new Holder();
+ holder.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = holder.value.Borrow();
+ action(holder); return (int)view.Get().Data; } }''', 'borrow'),
+        'delegate_argument_independent_holder': ('''class Holder { public STRONG<Payload> value; }
+delegate void Action(Holder item);
+class Program { public static void Replace(Holder item) { item.value = SharedPointers.MAKE<Payload>(); }
+ public static int Main() { Action action = Replace; Holder first = new Holder(); Holder second = new Holder();
+ first.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.value.Borrow();
+ action(second); return view.Get().Data == 42l ? 42 : 1; } }''', 'run:42'),
+        'delegate_argument_after_view_scope': ('''class Holder { public STRONG<Payload> value; }
+delegate void Action(Holder item);
+class Program { public static void Replace(Holder item) { item.value = SharedPointers.MAKE<Payload>(); }
+ public static int Main() { Action action = Replace; Holder holder = new Holder();
+ holder.value = SharedPointers.MAKE<Payload>(); { SharedView<Payload> view = holder.value.Borrow();
+ if (view.Get().Data != 42l) return 1; } action(holder); return holder.value.Get().Data == 42l ? 42 : 2; } }''', 'run:42'),
         'argument_independent_holder': ('''class Holder { public STRONG<Payload> value; }
 class Program { public static void Replace(borrowed Holder item) { item.value = SharedPointers.MAKE<Payload>(); }
  public static int Main() { Holder first = new Holder(); Holder second = new Holder();

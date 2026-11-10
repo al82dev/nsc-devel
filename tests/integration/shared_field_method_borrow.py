@@ -27,6 +27,7 @@ def main():
 class Payload { public long Data; public Payload() { Data = 42l; } }
 class Holder { public STRONG<Payload> value;
  public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
+delegate void Action(Holder item);
 class Outer { public Holder child; public Outer() { child = new Holder(); } }
 struct InlineHolder { public STRONG<Payload> value;
  public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
@@ -85,6 +86,15 @@ class OuterValue { public InlineHolder child; }
                 'arg-after-scope': '''Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
  { SharedView<Payload> view = holder.value.Borrow(); if (view.Get().Data != 42l) return 1; }
  ReplaceBorrowed(holder); return holder.value.Get().Data == 42l ? 42 : 2;''',
+                'delegate-unsafe': '''Action action = ReplaceValue; Holder holder = new Holder();
+ holder.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = holder.value.Borrow();
+ action(holder); return (int)view.Get().Data;''',
+                'delegate-independent': '''Action action = ReplaceValue; Holder first = new Holder(); Holder second = new Holder();
+ first.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.value.Borrow();
+ action(second); return view.Get().Data == 42l ? 42 : 1;''',
+                'delegate-after-scope': '''Action action = ReplaceValue; Holder holder = new Holder();
+ holder.value = SharedPointers.MAKE<Payload>(); { SharedView<Payload> view = holder.value.Borrow();
+ if (view.Get().Data != 42l) return 1; } action(holder); return holder.value.Get().Data == 42l ? 42 : 2;''',
             }
             for name, body in bodies.items():
                 helpers = ('class Program { public static void ReplaceBorrowed(borrowed Holder item) '
@@ -98,7 +108,7 @@ class OuterValue { public InlineHolder child; }
                 result = run([compiler, '--check-project-method-bodies', project], root)
                 output = result.stdout + result.stderr
                 if name in ('unsafe', 'alias', 'nested-unsafe', 'nested-struct-unsafe', 'indexed-unsafe',
-                            'arg-borrowed', 'arg-value', 'arg-alias', 'arg-named'):
+                            'arg-borrowed', 'arg-value', 'arg-alias', 'arg-named', 'delegate-unsafe'):
                     assert result.returncode != 0 and 'borrow' in output, (family, name, output)
                     print(family, name, 'rejected', flush=True)
                     continue

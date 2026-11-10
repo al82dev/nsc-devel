@@ -135,3 +135,20 @@ inseguros solo se analizaron. El SDK binario reutilizado incluye cambios ajenos
 sin registrar y no acredita un árbol limpio. No se demuestra la seguridad de
 delegados, parámetros de estructuras, estado global ni fuentes calculadas sin
 raíz rastreada; las llamadas de extensión no tienen una prueba específica.
+
+## Argumento de delegado administrado
+
+La invocación `action(holder)` se analizaba por una ruta distinta de las
+llamadas seleccionadas y aceptaba el objeto con una vista viva, aunque el
+delegado pudiera reemplazar el campo (`shared-delegate-before.log`). La ruta de
+delegados administrados aplica ahora la misma comparación conservadora de
+raíces a argumentos de referencia. Puede rechazar delegados que solo leen.
+
+Para Rc y Arc, desde fuentes y SDK binario, la reproducción se rechaza y los
+controles con otro objeto o después del préstamo ejecutan 42 en O0/O2
+(`shared-delegate-source.log` y `shared-delegate-binary.log`). También pasó el
+control público `safe`; los programas inseguros no se ejecutaron. El SDK
+reutilizado contiene un archivo concurrente sin registrar, por lo que la
+evidencia no certifica un árbol limpio. Los eventos, punteros de función,
+delegados externos y argumentos calculados sin raíz no quedan acreditados por
+esta corrección; la ruta de interoperabilidad no se modificó.
