@@ -104,7 +104,8 @@ void ProjectGenericModel::collectTraitImplementationNodes(
     if (node->kind() == ast::AstNodeKind::ClassDeclaration &&
         node->auxiliaryText() == "ns3-trait-impl" && !node->genericParameters().empty())
         implementations.push_back(LocatedNode{&unit, node, currentNamespace, {}});
-    else if (node->kind() == ast::AstNodeKind::ClassDeclaration &&
+    else if ((node->kind() == ast::AstNodeKind::ClassDeclaration ||
+              node->kind() == ast::AstNodeKind::StructDeclaration) &&
              !node->genericParameters().empty())
         templates.push_back(LocatedNode{&unit, node, currentNamespace, {}});
     for (ast::AstNode* child : node->children())
