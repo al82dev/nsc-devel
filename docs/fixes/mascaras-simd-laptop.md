@@ -1,0 +1,67 @@
+# Investigación de máscaras SIMD en la laptop
+
+Estado: reproducción completada; implementación pendiente de coordinación y de definir el contrato público. No se modificaron los archivos de implementación SIMD.
+
+## Base y procedencia
+
+- Rama `development-fixes-limitaciones-laptop`, commit de partida `48834e5d1ff16c6c42f63bb35fe3f2c780cf2be1`.
+- Compilador aislado `A:/temp/nsc-fixes-laptop-build/bin/nsc.exe`, build `ff27013311179dd8`. Se emplearon copias nuevas bajo `A:/temp/nsc-fixes-89`; los fixtures originales `cases/89-mask-*` y sus logs no están disponibles en esta laptop. Las reproducciones siguientes son independientes y no afirman identidad textual con los originales.
+- En cada proyecto se declara `simd<int, 4> a = default(simd<int, 4>); mask<int, 4> m = a == a;`. Cada expresión se compiló separadamente mediante `--emit-project-oop-exe`, con caché desactivada y `-O0` o `-O2`. Registro completo `A:/temp/nsc-fixes-89-reproduction.log`.
+
+## Resultados reproducidos
+
+| Caso | Expresión adicional | O0 | O2 |
+| --- | --- | --- | --- |
+| Conversión | `simd<int, 4> v = (simd<int, 4>)m;` | Rechazo en generación LLVM: conversión no soportada de `mask<builtin:int,4>` a `simd<builtin:int,4>` | Mismo rechazo |
+| Índice | `bool value = m[0];` | Rechazo semántico: diagnóstico de índice de arreglo fijo o puntero | Mismo rechazo |
+| Selección | `simd<int, 4> v = m ? a : a;` | Rechazo semántico: la condición debe ser `bool` | Mismo rechazo |
+
+Estos son resultados negativos de compilación. No se ejecutaron programas de conversión, índice ni selección con lanes verdaderos y falsos; no se declaran implementadas ni verificadas esas operaciones.
+
+## Representación y fronteras observadas
+
+- `src/Frontend/Bodies/OperatorExpressionAnalyzer.cpp`, `analyzePortableSimdBinary`, identifica comparaciones SIMD y produce un tipo `mask` con las mismas características de lane.
+- `src/LLVM/Lowering/Support/LlvmTypeMapping.cpp`, `mapNonBuiltinLlvmType`, representa actualmente `mask<T,N>` como vector LLVM de `N` lanes `i1`. La comparación se genera en `src/LLVM/Lowering/OopLlvmOperators.cpp`.
+- `src/Language/AbiSemantics.cpp`, `simdMaskLane`, calcula todos los bits a uno para verdadero y cero para falso en un ancho de hasta 64; la prueba `tests/unit/NativeSharp3T13PortableSimdTests.cpp` comprueba ese helper para 32 bits. Esto no demuestra una conversión pública ni que el almacenamiento LLVM de la máscara tenga ese ancho: allí el lane observado es `i1`.
+- Conversión: el diagnóstico procede de `OopLlvmImplementation::convertScalar` en `src/LLVM/Lowering/OopLlvmFieldsAndConversions.cpp`. Hay que definir y verificar tipos y conteos compatibles y la representación de destino; para enteros, extender con signo un lane `i1` es una posible implementación de todos-unos/cero, pero no se ha demostrado el contrato de lanes flotantes, ABI ni conversiones inversas.
+- Índice: el rechazo procede de `src/Frontend/Bodies/ExpressionCore/IndexAndRangeExpressions.cpp`; una operación real requiere definir tipo del resultado, índices válidos, límites y generación por lane. No se ha demostrado todavía el conjunto completo de archivos de HIR, MIR y LLVM necesarios.
+- Selección: `src/Frontend/Bodies/ExpressionCore/OperatorAndConditionalExpressions.cpp` exige una condición escalar `bool` y analiza las ramas con estados de ownership separados. Una selección vectorial evalúa lanes y puede diferir del condicional perezoso en evaluación y efectos; una API explícita con reglas de evaluación definidas es una alternativa para investigar, no una API existente ni una decisión implementada.
+
+## Coordinación y archivos posiblemente compartidos
+
+- `docs/fixes/plan-trabajo-paralelo.md` identifica cambios sin commit de la otra máquina en `src/LLVM/Lowering/OopLlvmArraysAndStores.cpp` y `src/LLVM/Lowering/OopLlvmExpressionMachine.cpp`; la necesidad exacta de esos archivos para indexación todavía no se ha demostrado. Permanecen protegidos hasta coordinación.
+- `docs/fixes/campaign-status.md`, lista histórica de coincidencias con `development-cpp-clang`, incluye `src/LLVM/Lowering/OopLlvmFieldsAndConversions.cpp` y `src/LLVM/Internal/OopLlvmImplementation.h`. Es solapamiento por archivo, no prueba de conflicto de líneas ni del estado actual de la otra máquina. La conversión reproducida llega al primero; permanece protegido hasta coordinación.
+- La comparación de nombres contra la referencia local `origin/development-fixes-limitaciones` desde `23508249e` no mostró cambios en los archivos inspeccionados para esta investigación. Esta observación no incluye cambios sin publicar ni verifica el servidor actual y no invalida la evidencia histórica anterior.
+- Actualización posterior: el usuario informó que la otra máquina publicó tres commits. Se consultó el servidor y se descargó únicamente la referencia `origin/development-fixes-limitaciones`, sin integrar cambios. La rama avanzó de `3f497ce7e` a `af60093b7`; los commits nuevos son `5609ba3ea`, `1669f9471` y `af60093b7`. La comparación desde `23508249e` identifica `src/Frontend/Bodies/ExpressionCore/OperatorAndConditionalExpressions.cpp` entre los candidatos SIMD. El diff `3f497ce7e..af60093b7` agrega una comprobación de préstamo de solo lectura en `??`; el rechazo de selección SIMD está en el análisis de `?:`, otra parte del mismo archivo. Es un solapamiento real por archivo, no evidencia de conflicto de líneas ni de que el colega haya terminado los cambios locales. Continúa protegido hasta coordinación.
+- Las rutas de análisis de indexación y selección también interaccionan con ownership y seguridad; no se modifican mientras sean propiedad de la otra instancia. Antes de implementar, acordar archivos, contratos y pruebas con su responsable, y verificar el estado actual de ambas ramas.
+
+## Control y diseño recomendado, no implementado
+
+- En `A:/temp/nsc-fixes-89/mask-control` se reconstruyó un control que calcula `a == a`, `a != a` y la conjunción de ambas máscaras. El build `ff27013311179dd8` lo compiló y el ejecutable devolvió 42 tanto en O0 como en O2; las salidas de compilación son `A:/temp/nsc-fixes-89-control-O0.log` y `A:/temp/nsc-fixes-89-control-O2.log`. El programa no observa el valor de ningún lane, por lo que no prueba los bits verdadero/falso ni las tres operaciones solicitadas.
+- Recomendación para conversión: exigir el mismo tipo y número de lanes; para enteros, representar verdadero con todos los bits activos y falso con cero, coherente con `simdMaskLane`. El tratamiento de `float` y `double` necesita especificar si se interpreta como patrón de bits o valor numérico antes de implementar; no inferirlo del helper.
+- Recomendación para índice: lectura de un lane como `bool`, con límites explícitos y pruebas tanto de índices constantes como dinámicos. Antes de implementarlo debe acordarse el comportamiento de índice inválido con el contrato de límites de NativeSharp; no se propone desactivar comprobaciones de seguridad.
+- Recomendación para selección: operación explícita por lane con evaluación de operandos y efectos bien definidos. Conservar el operador escalar `?:` y su semántica perezosa hasta demostrar cómo encaja la selección vectorial con ownership, préstamos y flujo. La forma concreta de API aún no está implementada.
+- Revisión estática adicional de la base de laptop: `OopLlvmImplementation::convert` calcula el tipo LLVM de destino y, tras atender tuplas y vistas, delega en `convertScalar`; esta última produce el rechazo reproducido. Ambas funciones están en `OopLlvmFieldsAndConversions.cpp`, archivo señalado como compartido en el registro histórico. Esto identifica la frontera de la conversión, pero no demuestra que una edición allí sea la única alternativa.
+- `ProjectOopHirModel::lowerIndexExpressionImplCase` despacha según la clasificación semántica entre arreglos, texto, elementos sin comprobación e indexadores de usuario; no se observó una rama específica para máscaras en ese despacho. `MirNodeMachine::lowerRawElementAddress` representa el camino actual de elementos sin comprobación, no evidencia de una operación de lane segura. `HirExpressionMachine.cpp` y `MirNodeMachine.cpp` aparecen en la lista histórica de archivos compartidos de `campaign-status.md`; no se concluye que tengan que modificarse sin completar el diseño.
+- `OopLlvmImplementation::lowerConditional` emite una rama condicional y baja cada operando en un bloque distinto, con `phi` al reunirse. Esto confirma en el código actual la evaluación por rama para `?:` y refuerza la necesidad de diseñar por separado cualquier selección vectorial que evalúe ambos valores. Es inspección estática, no prueba de ejecución de la futura operación SIMD.
+
+## Pendiente para una corrección
+
+Definir conversión para cada tipo y número de lanes, indexación y límites, y selección por lane con evaluación y efectos explícitos; inventariar todos los archivos implicados y coordinar los compartidos. Solo después implementar lotes separados según la causa, con verdaderos y falsos en varios lanes, casos inválidos y ejecución real O0/O2. No se ha efectuado esta coordinación ni existe evidencia de esas pruebas.
+
+## Reanudación autorizada y alcance de conversión
+
+El usuario confirmó que su colega publicó los cambios y pidió continuar SIMD cuidando su trabajo. Se verificó `origin/development-fixes-limitaciones` en `581d0bb74`: desde la base `23508249e` no cambia `src/LLVM/Lowering/OopLlvmFieldsAndConversions.cpp` ni `src/LLVM/Internal/OopLlvmImplementation.h`. Los cambios publicados no se han integrado en esta rama; no se modifican sus áreas de préstamos, seguridad, SDK ni sus archivos. La autorización permite abordar SIMD en esta rama aun cuando un archivo tenga solapamiento histórico, preservando el trabajo ajeno.
+
+SCOPE LOCK del primer lote: corrección de la conversión explícita reproducida `mask<T,N>` a `simd<T,N>` para lanes enteros del mismo tipo y cantidad, extendiendo cada `i1` con signo para producir todos unos o cero. Base de la reproducción y build: `ff27013311179dd8`; rama de trabajo `development-fixes-limitaciones-laptop`. Símbolo candidato: `OopLlvmImplementation::convert`, en `src/LLVM/Lowering/OopLlvmFieldsAndConversions.cpp`, sin modificar la conversión escalar de otros tipos. Archivos adicionales autorizados: prueba dirigida nueva y este registro. Se preservan otras conversiones y no se amplía a máscaras flotantes sin demostrar su contrato de bits. Índice y selección se abordan separadamente; no se modifican archivos de la otra instancia ni se integran sus commits. Prohibidos merge, push, deploy, modificación de instalación, interoperabilidad y builds no incrementales. Cierre del lote: evidencia del patrón de todos unos/cero para varios lanes, pruebas válidas e inválidas, compilación incremental y pruebas dirigidas O0/O2, más commit propio. Estado: pendiente.
+
+Enmienda de diseño para cubrir todos los tipos de lane admitidos: la conversión explícita de `mask<T,N>` a `simd<T,N>` conserva el patrón todos-unos/cero también para `float` y `double`, mediante extensión a un vector entero del mismo ancho y reinterpretación de bits al vector flotante. Un lane verdadero flotante tiene así patrón NaN de todos unos, no el valor numérico `1.0`; no se usa una conversión numérica. Esta decisión deriva del contrato de bits de `simdMaskLane` y se verificará observando los bits en ejecución. Siguen rechazados tipo o cantidad distintos y las conversiones inversas no se amplían. La enmienda afecta al mismo símbolo y prueba, sin cambiar archivos protegidos.
+
+### Resultado del lote de conversión
+
+- `OopLlvmImplementation::convert` reconoce exclusivamente máscara a vector con igual tipo y cantidad de lanes. Extiende cada `i1` a un entero de su ancho; para `float` y `double` reinterpreta esos bits en el tipo flotante de destino. Otras conversiones siguen su ruta anterior.
+- `tests/integration/simd_mask_conversion.py`, invocada con `A:/temp/nsc-fixes-laptop-build/bin/nsc.exe`, terminó con código 0 en `A:/temp/nsc-fixes-89-convert-directed-5.log`, build `8d062031234b2968`. Para cada uno de `sbyte`, `byte`, `short`, `ushort`, `int`, `uint`, `long`, `ulong`, `float` y `double`, compila en O0/O2 y ejecuta una comparación con cuatro lanes alternados, inspeccionando sus bits: `[-1, 0, -1, 0]`; los 20 ejecutables devolvieron 42. Las pruebas usan acceso inseguro local a la representación para inspección, no una API pública de indexación ni interoperabilidad.
+- Tres controles de tipo o cantidad incompatibles se rechazaron en O0/O2 con el diagnóstico de conversión LLVM existente. No se afirma que ese diagnóstico sea el definitivo ni que se hayan probado todos los números de lanes, arquitecturas o conversiones inversas.
+- La prueba existente `nsc.ns3.t13.portable-simd` pasó sobre el cambio previo de conversión entera (`A:/temp/nsc-fixes-89-portable-test.log`); la prueba dirigida anterior cubre la versión final con flotantes. El primer build incremental falló por faltar una cabecera; se corrigió y el build final pasó (`A:/temp/nsc-fixes-89-convert-build-4.log`).
+- El usuario informó de nuevos commits; se comprobó `08d5e3069` de la otra máquina. No modifica `OopLlvmFieldsAndConversions.cpp`; sus cambios de seguridad de punteros no se integraron ni alteraron aquí. La interacción con ellos queda pendiente de validación al integrar.
+- Metodología confirmada por el usuario: builds incrementales y pruebas puntuales por cambio; después de terminar los demás lotes, realizar una validación más robusta y planificada. No se ejecutó toda la batería por este ajuste.

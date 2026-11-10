@@ -3,6 +3,7 @@
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
+#include "nativesharp/Language/AbiSemantics.h"
 
 namespace nativesharp::llvm_backend
 {
@@ -183,6 +184,25 @@ LLVMValueRef OopLlvmImplementation::convert(
         if (source == target || source == "builtin:null") return value;
         LLVMTypeRef destination = llvmType(target, error);
         if (destination == nullptr) return nullptr;
+        if (source.starts_with("mask<") && target.starts_with("simd<"))
+        {
+            const auto sourceSimd = language::parsePortableSimdType(source);
+            const auto targetSimd = language::parsePortableSimdType(target);
+            if (sourceSimd.has_value() && targetSimd.has_value() &&
+                (sourceSimd->laneTypeKey == targetSimd->laneTypeKey ||
+                 (sourceSimd->laneTypeKey == "builtin:float" && targetSimd->laneTypeKey == "builtin:uint") ||
+                 (sourceSimd->laneTypeKey == "builtin:double" && targetSimd->laneTypeKey == "builtin:ulong")) &&
+                sourceSimd->laneCount == targetSimd->laneCount)
+            {
+                const bool floating = targetSimd->laneKind == language::SimdLaneKind::FloatingPoint;
+                LLVMTypeRef integerDestination = floating
+                    ? LLVMVectorType(LLVMIntTypeInContext(context_, static_cast<unsigned>(targetSimd->laneBits)),
+                                     static_cast<unsigned>(targetSimd->laneCount))
+                    : destination;
+                LLVMValueRef bits = LLVMBuildSExt(builder_, value, integerDestination, "mask.to.integer.lanes");
+                return floating ? LLVMBuildBitCast(builder_, bits, destination, "mask.to.float.lanes") : bits;
+            }
+        }
         if (const std::optional<language::AnonymousLambdaType> lambdaType =
                 language::parseAnonymousLambdaTypeIdentity(source))
         {
