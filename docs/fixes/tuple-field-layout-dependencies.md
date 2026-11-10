@@ -25,9 +25,21 @@ de diagnósticos para estructuras recursivas y arreglos inválidos. Se retiró
 temporalmente solo este cambio, se reconstruyó esa prueba y se repitió: los
 mismos tres fallos persistieron (`tuple-field-layout-unit.log` y
 `tuple-field-layout-unit-without.log`). Después se restauró el cambio, se
-reconstruyó incrementalmente y se repitieron los controles citados. Los fallos
-unitarios siguen abiertos; no se presenta la prueba como aprobada. El build
+reconstruyó incrementalmente y se repitieron los controles citados. En ese
+momento los fallos unitarios permanecían abiertos. El build
 incluye otros cambios locales sin registrar y no certifica un árbol limpio.
+
+La investigación posterior identificó la causa: cada fixture devolvía un
+objeto recién creado mediante un retorno sin `owned`, por lo que el análisis
+de propiedad detectaba la fuga antes del cálculo de layout. La comparación con
+retorno `owned` o sin el método está en
+`A:/nsc-fixes-evidencia/layout-unit-diagnostic-probe.log`: las variantes válidas
+llegan al diagnóstico de recursión o conteo de arreglo esperado. Se añadió
+`owned` a las tres cadenas de fixture sin cambiar sus aserciones ni los ejemplos
+del reporte. La prueba unitaria pasó sus 47 comprobaciones
+(`layout-unit-fixture-check.log`); también pasaron la regresión de tuplas y los
+controles dirigidos de layout (`tuple-field-layout-test-fixture.log`,
+`layout-unit-fixture-stage29.log` y `layout-unit-fixture-stage40.log`).
 
 El archivo de layout es compartido por HIR, MIR y metadata y puede coincidir
 con cambios de la rama de interoperabilidad. Esta tanda no modifica código ni
