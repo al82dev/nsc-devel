@@ -57,9 +57,19 @@ std::string writtenSpelling(const ast::TypeSyntax* syntax)
     return text;
 }
 
-std::string openConstraintSpelling(const ast::TypeSyntax* syntax)
+std::string openConstraintSpelling(
+    const ast::TypeSyntax* syntax,
+    std::span<const std::string> parameters,
+    std::size_t depth = 0)
 {
     if (syntax == nullptr) return "?";
+    if (depth == 1U && syntax->typeArguments().empty() && syntax->modifiers().empty() &&
+        !syntax->isFunction() && !syntax->isTuple())
+    {
+        const auto parameter = std::ranges::find(parameters, syntax->baseName());
+        if (parameter != parameters.end())
+            return "parameter:" + std::to_string(parameter - parameters.begin());
+    }
     std::string result = writtenSpelling(syntax);
     if (!syntax->typeArguments().empty())
     {
@@ -67,7 +77,7 @@ std::string openConstraintSpelling(const ast::TypeSyntax* syntax)
         for (std::size_t i = 0; i < syntax->typeArguments().size(); ++i)
         {
             if (i != 0) result += ',';
-            result += openConstraintSpelling(syntax->typeArguments()[i]);
+            result += openConstraintSpelling(syntax->typeArguments()[i], parameters, depth + 1U);
         }
         result += '>';
     }
@@ -344,7 +354,8 @@ bool ProjectGenericConstraintModel::validateTemplateTypeConstraint(
     const GenericTemplateRecord* openTemplate = openIdentity != nullptr && openIdentity->starts_with("generic:")
         ? genericModel.templateForCanonicalKey(openIdentity->substr(8)) : nullptr;
     if (openTemplate != nullptr)
-        constraintKey = *openIdentity + ":" + openConstraintSpelling(constraintSyntax);
+        constraintKey = *openIdentity + ":" +
+            openConstraintSpelling(constraintSyntax, genericModel.templates()[templateOrdinal].parameters);
     clauseAtoms.push_back("type:" + constraintKey);
     std::size_t constraintOrdinal = 0;
     const NamedTypeDeclaration* constraint =
