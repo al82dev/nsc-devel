@@ -5833,9 +5833,18 @@ void ProjectMethodBodyModel::finalizeSelectedCallResult(
     result.typeKey = call.resultTypeKey;
     result.valid = !isErrorType(result.typeKey);
     result.flowActiveVariantCase = provenVariantCase;
+    bool defaultValueReceiver = false;
+    if (call.receiverSyntax != nullptr &&
+        call.receiverSyntax->kind() == ast::AstNodeKind::DefaultValueExpression)
+    {
+        const auto ordinal = namedTypeOrdinalForTypeKey(call.receiverTypeKey);
+        const NamedTypeDeclaration* receiver = ordinal.has_value() && nameLookup_ != nullptr
+            ? nameLookup_->typeForOrdinal(*ordinal) : nullptr;
+        defaultValueReceiver = receiver != nullptr && receiver->kind == NamedTypeDeclarationKind::Struct;
+    }
     if (result.valid && !call.staticCall && call.receiverSyntax != nullptr &&
         typeKeyIsViewLike(result.typeKey) &&
-        (call.receiverSyntax->kind() == ast::AstNodeKind::NewExpression ||
+        (defaultValueReceiver || call.receiverSyntax->kind() == ast::AstNodeKind::NewExpression ||
          call.receiverSyntax->kind() == ast::AstNodeKind::ObjectCreationExpression ||
          (call.receiverSyntax->kind() == ast::AstNodeKind::CallExpression &&
           !typeKeyIsViewLike(call.receiverTypeKey))))
