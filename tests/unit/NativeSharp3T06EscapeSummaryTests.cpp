@@ -425,6 +425,59 @@ public class Program { public static int Data;
             (unknownForwardConditionalError + unknownForwardConditionalOutput).find("escape contract") != std::string::npos,
         "pointer aliases preserve conditional parameter sources (" +
             unknownForwardConditionalError + unknownForwardConditionalOutput + ")");
+    const std::filesystem::path unknownDirectConditionalProject = writeProject(
+        root / "unknown-direct-conditional", "EscapeUnknownDirectConditional", R"NS(
+using EscapeContracts;
+public class Program { public static int Data;
+    static void Forward(int* first, int* second) { EscapeApi.Retain(false ? first : second); }
+    public static int Main() { int local = 42; Forward(&Data, &local); return local; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownDirectConditionalProjectText = unknownDirectConditionalProject.string();
+    const std::array<std::string_view, 3> unknownDirectConditionalArguments = {
+        "--dump-project-method-bodies", unknownDirectConditionalProjectText, "-O0"};
+    std::string unknownDirectConditionalOutput;
+    std::string unknownDirectConditionalError;
+    const nativesharp::ExitCode unknownDirectConditionalResult =
+        runDriver(unknownDirectConditionalArguments, unknownDirectConditionalOutput, unknownDirectConditionalError);
+    tests.expect(unknownWritten && unknownDirectConditionalResult != nativesharp::ExitCode::Success &&
+            (unknownDirectConditionalError + unknownDirectConditionalOutput).find("escape contract") != std::string::npos,
+        "a direct conditional pointer preserves both parameter origins (" +
+            unknownDirectConditionalError + unknownDirectConditionalOutput + ")");
+    const std::filesystem::path directConditionalControlsProject = writeProject(
+        root / "direct-conditional-controls", "EscapeDirectConditionalControls", R"NS(
+using EscapeContracts;
+public class Program { public static int Data;
+    static void Forward(int* ignored) { EscapeApi.Retain(false ? &Data : &Data); }
+    public static int Main() { int local = 42; Forward(&local); return local; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string directConditionalControlsText = directConditionalControlsProject.string();
+    const std::array<std::string_view, 3> directConditionalControlsArguments = {
+        "--dump-project-method-bodies", directConditionalControlsText, "-O0"};
+    std::string directConditionalControlsOutput;
+    std::string directConditionalControlsError;
+    tests.expect(unknownWritten && runDriver(directConditionalControlsArguments, directConditionalControlsOutput,
+            directConditionalControlsError) == nativesharp::ExitCode::Success,
+        "a conditional of global pointers does not retain an unrelated parameter (" +
+            directConditionalControlsError + directConditionalControlsOutput + ")");
+    const std::filesystem::path directConditionalLocalProject = writeProject(
+        root / "direct-conditional-local", "EscapeDirectConditionalLocal", R"NS(
+using EscapeContracts;
+public class Program { public static int Data;
+    public static int Main() { int local = 42; EscapeApi.Retain(false ? &Data : &local); return local; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string directConditionalLocalText = directConditionalLocalProject.string();
+    const std::array<std::string_view, 3> directConditionalLocalArguments = {
+        "--dump-project-method-bodies", directConditionalLocalText, "-O0"};
+    std::string directConditionalLocalOutput;
+    std::string directConditionalLocalError;
+    const nativesharp::ExitCode directConditionalLocalResult =
+        runDriver(directConditionalLocalArguments, directConditionalLocalOutput, directConditionalLocalError);
+    tests.expect(unknownWritten && directConditionalLocalResult != nativesharp::ExitCode::Success &&
+            (directConditionalLocalError + directConditionalLocalOutput).find("escape contract") != std::string::npos,
+        "a direct conditional cannot retain local storage (" + directConditionalLocalError + directConditionalLocalOutput + ")");
     const std::filesystem::path unknownForwardIgnoredProject = writeProject(
         root / "unknown-forward-ignored", "EscapeUnknownForwardIgnored", R"NS(
 using EscapeContracts;

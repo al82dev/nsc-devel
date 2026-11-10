@@ -80,6 +80,27 @@ MethodEscapeOrigin ProjectMethodBodyModel::pointerValueEscapeOriginOfExpression(
     const ast::AstNode* expression,
     std::size_t scopeOrdinal) const
 {
+    if (expression != nullptr && expression->kind() == ast::AstNodeKind::ConditionalExpression)
+    {
+        MethodEscapeOrigin result;
+        std::vector<const ast::AstNode*> pending{expression};
+        while (!pending.empty())
+        {
+            const ast::AstNode* branch = pending.back();
+            pending.pop_back();
+            if (branch == nullptr) continue;
+            if (branch->kind() == ast::AstNodeKind::ConditionalExpression)
+            {
+                pending.push_back(branch->second());
+                pending.push_back(branch->third());
+            }
+            else
+            {
+                joinPointerValueOrigin(result, pointerValueEscapeOriginOfExpression(branch, scopeOrdinal));
+            }
+        }
+        return result;
+    }
     if (expression != nullptr && expression->kind() == ast::AstNodeKind::IdentifierExpression)
     {
         const std::optional<ScopeName> name = lookupScopeName(scopeOrdinal, expression->text());
@@ -280,52 +301,48 @@ void ProjectMethodBodyModel::addEscapeDependencies(
         const bool pointerValue = callee != nullptr && calleeParameter < callee->parameters.size() &&
             callee->parameters[calleeParameter].passKind == ParameterPassKind::Value &&
             callee->parameters[calleeParameter].typeKey.ends_with("*");
-        if (pointerValue && argumentSyntaxes[argumentOrdinal]->kind() == ast::AstNodeKind::IdentifierExpression)
+        if (pointerValue)
         {
-            const auto name = lookupScopeName(scopeOrdinal, argumentSyntaxes[argumentOrdinal]->text());
-            if (name.has_value() && name->kind == ScopeNameKind::Local && name->semanticOrdinal < locals_.size() &&
-                locals_[name->semanticOrdinal].typeKey.ends_with("*"))
+            std::vector<std::size_t> pending;
+            std::vector<const ast::AstNode*> expressions{argumentSyntaxes[argumentOrdinal]};
+            std::unordered_set<std::size_t> visited;
+            std::unordered_set<const ast::AstNode*> seenExpressions;
+            while (!pending.empty() || !expressions.empty())
             {
-                std::vector<std::size_t> pending{name->semanticOrdinal};
-                std::unordered_set<std::size_t> visited;
-                while (!pending.empty())
+                if (!expressions.empty())
                 {
-                    const std::size_t localOrdinal = pending.back();
-                    pending.pop_back();
-                    if (localOrdinal >= locals_.size() || !visited.insert(localOrdinal).second) continue;
-                    const MethodLocalSymbol& local = locals_[localOrdinal];
-                    for (const std::size_t parameter : local.possibleReferenceSourceParameters)
-                        if (parameter < caller->parameters.size() && caller->parameters[parameter].typeKey.ends_with("*"))
-                            dependents[callableCellOffsets[calleeOrdinal] + calleeParameter].push_back(
-                                callableCellOffsets[callerOrdinal] + parameter);
-                    pending.insert(pending.end(), local.possibleReferenceSourceLocals.begin(),
-                                   local.possibleReferenceSourceLocals.end());
-                    std::vector<const ast::AstNode*> expressions;
-                    std::unordered_set<const ast::AstNode*> seenExpressions;
-                    if (local.syntax != nullptr && local.syntax->first() != nullptr)
-                        expressions.push_back(local.syntax->first());
-                    while (!expressions.empty())
-                    {
-                        const ast::AstNode* expression = expressions.back();
-                        expressions.pop_back();
-                        if (expression == nullptr || !seenExpressions.insert(expression).second) continue;
-                        const MethodNameBinding* binding = nameBinding(expression, callerOrdinal);
-                        if (binding != nullptr && binding->kind == MethodNameBindingKind::Parameter &&
-                            binding->parameterOrdinal.has_value() && *binding->parameterOrdinal < caller->parameters.size() &&
-                            caller->parameters[*binding->parameterOrdinal].typeKey.ends_with("*"))
-                            dependents[callableCellOffsets[calleeOrdinal] + calleeParameter].push_back(
-                                callableCellOffsets[callerOrdinal] + *binding->parameterOrdinal);
-                        else if (binding != nullptr && binding->kind == MethodNameBindingKind::Local &&
-                            binding->localOrdinal.has_value() && *binding->localOrdinal < locals_.size() &&
-                            locals_[*binding->localOrdinal].typeKey.ends_with("*"))
-                            pending.push_back(*binding->localOrdinal);
-                        if (expression->first() != nullptr) expressions.push_back(expression->first());
-                        if (expression->second() != nullptr) expressions.push_back(expression->second());
-                        if (expression->third() != nullptr) expressions.push_back(expression->third());
-                        for (const ast::AstNode* child : expression->children())
-                            if (child != nullptr) expressions.push_back(child);
-                    }
+                    const ast::AstNode* expression = expressions.back();
+                    expressions.pop_back();
+                    if (expression == nullptr || !seenExpressions.insert(expression).second) continue;
+                    const MethodNameBinding* binding = nameBinding(expression, callerOrdinal);
+                    if (binding != nullptr && binding->kind == MethodNameBindingKind::Parameter &&
+                        binding->parameterOrdinal.has_value() && *binding->parameterOrdinal < caller->parameters.size() &&
+                        caller->parameters[*binding->parameterOrdinal].typeKey.ends_with("*"))
+                        dependents[callableCellOffsets[calleeOrdinal] + calleeParameter].push_back(
+                            callableCellOffsets[callerOrdinal] + *binding->parameterOrdinal);
+                    else if (binding != nullptr && binding->kind == MethodNameBindingKind::Local &&
+                        binding->localOrdinal.has_value() && *binding->localOrdinal < locals_.size() &&
+                        locals_[*binding->localOrdinal].typeKey.ends_with("*"))
+                        pending.push_back(*binding->localOrdinal);
+                    if (expression->first() != nullptr) expressions.push_back(expression->first());
+                    if (expression->second() != nullptr) expressions.push_back(expression->second());
+                    if (expression->third() != nullptr) expressions.push_back(expression->third());
+                    for (const ast::AstNode* child : expression->children())
+                        if (child != nullptr) expressions.push_back(child);
+                    continue;
                 }
+                const std::size_t localOrdinal = pending.back();
+                pending.pop_back();
+                if (localOrdinal >= locals_.size() || !visited.insert(localOrdinal).second) continue;
+                const MethodLocalSymbol& local = locals_[localOrdinal];
+                for (const std::size_t parameter : local.possibleReferenceSourceParameters)
+                    if (parameter < caller->parameters.size() && caller->parameters[parameter].typeKey.ends_with("*"))
+                        dependents[callableCellOffsets[calleeOrdinal] + calleeParameter].push_back(
+                            callableCellOffsets[callerOrdinal] + parameter);
+                pending.insert(pending.end(), local.possibleReferenceSourceLocals.begin(),
+                               local.possibleReferenceSourceLocals.end());
+                if (local.syntax != nullptr && local.syntax->first() != nullptr)
+                    expressions.push_back(local.syntax->first());
             }
         }
         const MethodEscapeOrigin origin = pointerValue
