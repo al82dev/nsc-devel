@@ -22,5 +22,8 @@ struct CppLibraryReference final
     std::vector<interop::CppIncludePath> includePaths;
     std::vector<interop::CppMacroOption> macros;
     interop::CppVolatileMode volatileMode = interop::CppVolatileMode::Default;
+    // EN: T08-D25. PublicTypes="Header": the library publishes this header's own C types in its NSMeta catalog.
+    // ES: T08-D25. PublicTypes="Header": la biblioteca publica en su catalogo NSMeta los tipos C de este encabezado.
+    bool publicTypes = false;
 };
 }

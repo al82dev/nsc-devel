@@ -62,6 +62,7 @@ for %%T in (
   pruebas-tanda-08-identidad-c\tls-dll-unicode\validar-mayusculas.py
   pruebas-tanda-08-identidad-c\tls-dll-unicode\validar.py
   pruebas-tanda-08-identidad-c\tls-sin-import-host\validar-copia-adaptada.py
+  pruebas-tanda-08-nombres-metadata\validar-tipos-publicos.py
   pruebas-tanda-08-identidad-c\tls-sin-import-host\validar-diagnostico.py
   pruebas-tanda-08-identidad-c\tls-sin-import-host\validar.py
   pruebas-tanda-08-identidad-c\typedef-calificadores\validar-callback-const.py
@@ -100,6 +101,8 @@ for %%T in (
 ) do call :run_python %%T
 for %%T in (
   pruebas-tanda-08-layout-clang\validar.cmd
+  pruebas-tanda-08-nombres-metadata\validar.cmd
+  pruebas-tanda-08-nombres-metadata\validar-referenciados.cmd
   pruebas-tanda-08-record-template\validar.cmd
   pruebas-tanda-08-global-template\validar.cmd
   pruebas-tanda-08-alias-template\validar.cmd

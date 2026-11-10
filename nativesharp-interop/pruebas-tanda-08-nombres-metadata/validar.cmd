@@ -2,7 +2,8 @@
 setlocal
 rem Acceptance test for C type names imported only through precompiled metadata: the same consumer
 rem source must compile and run with the C header (Shared) and without it (Metadata), O0-O3.
-rem The Metadata half is expected to fail until the parser receives those names (see the Markdown).
+rem The producer declares its header with PublicTypes="Header" (T08-D25), so the library publishes NAlias and
+rem NMood although no public signature uses them.
 if not defined NSC_T08_BUILD set "NSC_T08_BUILD=A:\nsc-interop-build\tanda1-ON"
 if not defined NSC_T08_OUT set "NSC_T08_OUT=A:\nsc-interop-build\tanda08-nombres-metadata"
 if not defined NSC_T08_NSLINK set "NSC_T08_NSLINK=A:\nsc-interop-build\cpp-fixtures\command-cpp\nslink.exe"

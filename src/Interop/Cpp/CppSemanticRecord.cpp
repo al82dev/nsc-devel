@@ -18,6 +18,7 @@
 #include "nativesharp/Language/CallableSemantics.h"
 #include "../Internal/CppCRecordMetadataCodec.h"
 #include "../Internal/LibraryMetadataCodecSupport.h"
+#include "CppPublicHeaderTypes.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include <algorithm>
 #include <functional>
@@ -1599,6 +1600,34 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                         seeds[imported->projectOrdinal].insert(imported->identity.key());
                 }
             }
+        }
+    }
+    // EN: T08-D25. References declared with PublicTypes="Header" add their header's own C types to the catalog,
+    //     even when no published signature uses them (CppPublicHeaderTypes.h states the surface rule).
+    // ES: T08-D25. Las referencias declaradas con PublicTypes="Header" agregan al catalogo los tipos C propios de
+    //     su encabezado, aunque ninguna firma publicada los use (la regla esta en CppPublicHeaderTypes.h).
+    detail::PublicHeaderSelection publicTypes;
+    if (!detail::selectPublicHeaderTypes(*graph, compilation.cppProjectSessions(), publicTypes, error)) return false;
+    for (const auto& [project, keys] : publicTypes.recordIdentities) seeds[project].insert(keys.begin(), keys.end());
+    for (const auto& [project, keys] : publicTypes.enumIdentities) enumSeeds[project].insert(keys.begin(), keys.end());
+    if (!publicTypes.aliasCandidates.empty())
+    {
+        std::vector<metadata_detail::CDependencyAliasSnapshot> captured;
+        if (!captureCppTemplateAliasCandidates(*graph, publicTypes.aliasCandidates, publicTypes.aliasInventory,
+                captured, error)) return false;
+        for (auto& snapshot : captured)
+        {
+            bool duplicate = false;
+            for (const auto& existing : dependencies.aliases)
+            {
+                if (existing.moduleName == snapshot.moduleName &&
+                    existing.declaration.qualifiedName == snapshot.declaration.qualifiedName)
+                {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (!duplicate) dependencies.aliases.push_back(std::move(snapshot));
         }
     }
     if (seeds.empty() && enumSeeds.empty() && dependencies.aliases.empty() && dependencies.functions.empty() &&

@@ -685,8 +685,8 @@ bool adaptRuntimeTlsImportDirectory(const std::filesystem::path& projectDirector
 bool parseCppLibraryReferenceItem(
     const SimpleXmlElement& item, ProjectDescriptor& descriptor, std::string& error)
 {
-    if (!hasOnlyAttributes(item, {"Header", "Language", "Standard", "Library", "Runtime", "VolatileMode", "RuntimeTls"},
-                           error))
+    if (!hasOnlyAttributes(item, {"Header", "Language", "Standard", "Library", "Runtime", "VolatileMode", "RuntimeTls",
+                                  "PublicTypes"}, error))
         return false;
     if (!trim(item.text).empty())
     {
@@ -745,6 +745,15 @@ bool parseCppLibraryReferenceItem(
             return false;
         }
         reference.runtimeTlsImportDirectory = true;
+    }
+    if (const auto* publicTypes = attribute(item, "PublicTypes"))
+    {
+        if (trim(*publicTypes) != "Header")
+        {
+            error = "CppLibraryReference PublicTypes must be Header";
+            return false;
+        }
+        reference.publicTypes = true;
     }
     for (const auto& child : item.children)
     {
@@ -1385,6 +1394,20 @@ std::optional<std::vector<CppLibraryReference>> loadCppLibraryReferences(
             !adaptRuntimeTlsImportDirectory(projectDirectory, reference.runtimePath, reference.originalRuntimePath,
                                             error))
             return std::nullopt;
+        // EN: T08-D25. Only a library publishes NSMeta, and the public C type catalog only carries C declarations.
+        // ES: T08-D25. Solo una biblioteca publica NSMeta, y el catalogo publico de tipos C solo lleva declaraciones C.
+        if (input.publicTypes &&
+            descriptor.outputKind.value_or(ProjectOutputKind::Executable) == ProjectOutputKind::Executable)
+        {
+            error = "CppLibraryReference PublicTypes requires a Library or SharedLibrary project";
+            return std::nullopt;
+        }
+        if (input.publicTypes && input.language != interop::CppLanguageMode::C)
+        {
+            error = "CppLibraryReference PublicTypes requires Language=\"C\"";
+            return std::nullopt;
+        }
+        reference.publicTypes = input.publicTypes;
         reference.language = input.language;
         reference.languageStandard = input.languageStandard;
         reference.volatileMode = input.volatileMode;

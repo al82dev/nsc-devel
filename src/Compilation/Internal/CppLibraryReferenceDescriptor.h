@@ -16,6 +16,9 @@ struct CppLibraryReferenceDescriptor final
     // EN: T08-D04b. RuntimeTls="ImportDirectory": distribute an adapted copy with an empty import directory.
     // ES: T08-D04b. RuntimeTls="ImportDirectory": distribuir una copia adaptada con directorio de importacion vacio.
     bool runtimeTlsImportDirectory = false;
+    // EN: T08-D25. PublicTypes="Header": publish the header's own C types with the library.
+    // ES: T08-D25. PublicTypes="Header": publicar con la biblioteca los tipos C propios del encabezado.
+    bool publicTypes = false;
     interop::CppLanguageMode language = interop::CppLanguageMode::Cpp;
     std::string languageStandard;
     std::vector<interop::CppIncludePath> includePaths;

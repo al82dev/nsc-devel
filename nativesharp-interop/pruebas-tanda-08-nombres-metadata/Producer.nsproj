@@ -2,6 +2,6 @@
   <PropertyGroup><Name>CNamesProducer</Name><OutputType>Library</OutputType></PropertyGroup>
   <ItemGroup>
     <Compile Include="Producer.ns" />
-    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" />
+    <CppLibraryReference Header="Api.h" Language="C" Standard="c11" Library="api.lib" PublicTypes="Header" />
   </ItemGroup>
 </Project>
