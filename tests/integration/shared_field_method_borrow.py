@@ -28,6 +28,9 @@ class Payload { public long Data; public Payload() { Data = 42l; } }
 class Holder { public STRONG<Payload> value;
  public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
 class Outer { public Holder child; public Outer() { child = new Holder(); } }
+struct InlineHolder { public STRONG<Payload> value;
+ public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
+class OuterValue { public InlineHolder child; }
 '''.replace('STRONG', family).replace('MAKE', 'Make' + family)
             bodies = {
                 'unsafe': '''Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
@@ -37,6 +40,12 @@ class Outer { public Holder child; public Outer() { child = new Holder(); } }
  alias.Replace(); return (int)view.Get().Data;''',
                 'nested-unsafe': '''Outer holder = new Outer(); holder.child.value = SharedPointers.MAKE<Payload>();
  SharedView<Payload> view = holder.child.value.Borrow(); holder.child.Replace(); return (int)view.Get().Data;''',
+                'nested-struct-unsafe': '''OuterValue holder = new OuterValue();
+ holder.child.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = holder.child.value.Borrow();
+ holder.child.Replace(); return (int)view.Get().Data;''',
+                'nested-struct-independent': '''OuterValue first = new OuterValue(); OuterValue second = new OuterValue();
+ first.child.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.child.value.Borrow();
+ second.child.Replace(); return view.Get().Data == 42l ? 42 : 1;''',
                 'nested-independent': '''Outer first = new Outer(); Outer second = new Outer();
  first.child.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.child.value.Borrow();
  second.child.Replace(); return view.Get().Data == 42l ? 42 : 1;''',
@@ -55,7 +64,7 @@ class Outer { public Holder child; public Outer() { child = new Holder(); } }
                                   body.replace('MAKE', 'Make' + family) + ' } }', encoding='utf-8')
                 result = run([compiler, '--check-project-method-bodies', project], root)
                 output = result.stdout + result.stderr
-                if name in ('unsafe', 'alias', 'nested-unsafe'):
+                if name in ('unsafe', 'alias', 'nested-unsafe', 'nested-struct-unsafe'):
                     assert result.returncode != 0 and 'borrow' in output, (family, name, output)
                     print(family, name, 'rejected', flush=True)
                     continue

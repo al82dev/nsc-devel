@@ -53,3 +53,30 @@ objeto y con `Get()` en O0/O2 para Rc y Arc, desde fuentes y con el SDK binario.
 También pasaron los controles del receptor directo y de fin de ámbito. Las
 llamadas mediante índices, receptores calculados, métodos de estructuras
 anidadas y llamadas indirectas no quedan acreditadas por esta corrección.
+
+## Receptor de estructura anidada
+
+En la revisión posterior, `shared-nested-struct-before.log` muestra que el
+análisis aceptaba un método mutable de estructura que reemplaza el dueño de
+una vista viva. Se aplicó la misma comprobación a receptores de estructura;
+un método declarado readonly queda permitido conforme a la regla existente.
+
+Los métodos `Get()` de `Rc` y `Arc` y los de sus ayudas internas declaran ahora
+readonly sobre el receptor, además del retorno `ref readonly`. La comprobación
+`readonly-receiver-contract/results.json` rechazó una escritura directa dentro
+de un método readonly; esta evidencia no demuestra ausencia de mutación
+indirecta a través de referencias arbitrarias. Los cuerpos de Get modificados
+leen el estado y no asignan al receptor. La prueba en copias temporales precedió
+al cambio real (`readonly-shared-get-probe/result.log`).
+
+Con fuentes y con un SDK binario generado en A, los casos dirigidos rechazaron
+el reemplazo por método de estructura anidada para Rc y Arc y ejecutaron 42 en
+O0/O2 para objetos independientes y lecturas `Get()` con vista viva. También
+pasaron los controles de métodos de clase, fin de ámbito, lectura y escritura
+readonly (`shared-nested-struct-source.log`, `shared-nested-struct-binary.log`,
+`shared-nested-struct-controls.log`). Los programas inseguros se analizaron sin
+ejecutarlos. El SDK se compiló con caché incremental, pero el conjunto no se
+encontró en caché y compiló 71 fuentes; el log incluye
+`lib/NativeSharp.Core/DeterministicMath.ns`, con cambios concurrentes ajenos.
+El resultado no acredita una revisión limpia ni seguridad de índices, receptores
+calculados o llamadas indirectas.

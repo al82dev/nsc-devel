@@ -4885,8 +4885,7 @@ bool ProjectMethodBodyModel::validateSelectedCallReceiver(
         (!selectedMember.declaringTypeIsStruct || !selectedMember.isReadonly) &&
         callee.receiverSyntax != nullptr &&
         (callee.receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression ||
-         (callee.receiverSyntax->kind() == ast::AstNodeKind::MemberExpression &&
-          !selectedMember.declaringTypeIsStruct)) &&
+         callee.receiverSyntax->kind() == ast::AstNodeKind::MemberExpression) &&
         hasActiveViewOfStorage(callee.receiverSyntax, call.callerMethodMemberOrdinal, scopeOrdinal, true))
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidCall,

@@ -11,7 +11,7 @@ namespace NativeSharp.Core
         public bool IsEmpty() { return inner.IsEmpty(); }
         public long StrongCount() { return inner.StrongCount(); }
         public long WeakCount() { return inner.WeakCount(); }
-        public ref readonly T Get() { return ref inner.Get(); }
+        public readonly ref readonly T Get() { return ref inner.Get(); }
         public SharedView<T> Borrow() { return new SharedView<T>(inner.Borrow()); }
 
         public Rc<T> Clone()

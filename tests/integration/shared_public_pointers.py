@@ -1732,6 +1732,18 @@ class Holder { public Inner child; public Holder() { child = new Inner(); } }
 class Program { public static int Main() { Holder holder = new Holder();
  holder.child.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = holder.child.value.Borrow();
  holder.child.Replace(); return (int)view.Get().Data; } }''', 'borrow'),
+        'overwrite_nested_struct_via_method': ('''struct Inner { public STRONG<Payload> value;
+ public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
+class Holder { public Inner child; }
+class Program { public static int Main() { Holder holder = new Holder();
+ holder.child.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = holder.child.value.Borrow();
+ holder.child.Replace(); return (int)view.Get().Data; } }''', 'borrow'),
+        'method_on_independent_nested_struct': ('''struct Inner { public STRONG<Payload> value;
+ public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
+class Holder { public Inner child; }
+class Program { public static int Main() { Holder first = new Holder(); Holder second = new Holder();
+ first.child.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.child.value.Borrow();
+ second.child.Replace(); return view.Get().Data == 42l ? 42 : 1; } }''', 'run:42'),
         'method_on_independent_nested_holder': ('''class Inner { public STRONG<Payload> value;
  public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
 class Holder { public Inner child; public Holder() { child = new Inner(); } }
