@@ -310,10 +310,16 @@ std::optional<std::string> ProjectMethodBodyModel::viewRootLocalOfExpression(
                 const ClassMemberSymbol* method = methodSymbol(callable);
                 if (name.has_value() && name->kind == ScopeNameKind::Parameter &&
                     method != nullptr && name->semanticOrdinal < method->parameters.size() &&
-                    memberModel_ != nullptr &&
-                    method->parameters[name->semanticOrdinal].passKind == ParameterPassKind::Value &&
-                    memberModel_->typeIsMoveOnly(method->parameters[name->semanticOrdinal].typeKey))
-                    return method->parameters[name->semanticOrdinal].name;
+                    method->parameters[name->semanticOrdinal].passKind == ParameterPassKind::Value)
+                {
+                    const MethodParameterSymbol& parameter = method->parameters[name->semanticOrdinal];
+                    const auto ordinal = namedTypeOrdinalForTypeKey(parameter.typeKey);
+                    const NamedTypeDeclaration* type = ordinal.has_value() && nameLookup_ != nullptr
+                        ? nameLookup_->typeForOrdinal(*ordinal) : nullptr;
+                    if ((type != nullptr && type->kind == NamedTypeDeclarationKind::Struct) ||
+                        (memberModel_ != nullptr && memberModel_->typeIsMoveOnly(parameter.typeKey)))
+                        return parameter.name;
+                }
             }
         }
 
