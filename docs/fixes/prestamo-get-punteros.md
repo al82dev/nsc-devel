@@ -1101,6 +1101,24 @@ hasta liberar el último débil. Tampoco se encontró `FreeLibrary` en
 una descarga externa sea imposible. La verificación de retención sigue abierta.
 ### Alcance observado de la limpieza de tuplas (investigación)
 
+Actualización de contraste en `3e3d83d30`: el prototipo mencionado a
+continuación ya está incluido en el punto de control `57c47c297`; la descripción
+histórica «sin commit» corresponde al momento del ensayo. Tras compilar de
+forma incremental el objetivo `nsc`, la regresión dirigida
+`tests/integration/tuple_partial_initialization.py` devolvió 42 en sus 28
+ejecuciones O0/O2. Con las fuentes actuales de Rc y Arc, el control de
+construcción interrumpida después del clon y el de salida normal devolvieron
+contador 1 en O0 para ambas familias. Los comandos y resultados de estos cuatro
+controles están en `A:/nsc-fixes-evidencia/tuple-partial-cleanup-counts-current/`.
+El compilador de integración produjo los mismos cuatro resultados tras configurar
+la ruta de bibliotecas de importación en A; sus registros están en
+`tuple-partial-cleanup-counts-integration/`.
+
+Estos controles no resuelven los casos de suspensión, cancelación, transferencia
+o doble excepción descritos más abajo. El build de trabajo incluye archivos de
+otro trabajo local y el de integración reutiliza objetos anteriores; los
+resultados no constituyen certificación de un árbol limpio ni del SDK binario.
+
 En la revisión `cbedd8f04`, `A:/nsc-fixes-evidencia/tuple-partial-cleanup-boundaries.cmd`
 compiló desde fuentes las familias `Rc` y `Arc` con O0 y O2. El programa observa el
 contador fuerte después del ámbito de la tupla. Si el primer elemento lanza antes de
