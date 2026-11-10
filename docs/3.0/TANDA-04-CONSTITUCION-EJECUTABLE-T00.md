@@ -199,7 +199,7 @@ solamente porque Python sea capaz de ejecutar Python.
 - `tests/unit/NativeSharp3T00ConstitutionTests.cpp`
   - prueba etapas productivas, NSMETA 1.23 y metadata precompilada cross-edition.
 - `tests/unit/LanguageServiceIdentityTests.cpp`
-  - prueba Analysis ABI 2 y ediciones publicadas.
+  - prueba de la interfaz histórica de análisis y sus ediciones publicadas, no de otra ABI del lenguaje.
 - `tests/unit/LanguageServiceSnapshotTests.cpp`
   - prueba snapshot edición 3 y aislamiento del fallback al cambiar a edición 2.
 - `tests/unit/Item321NoHeapContextTests.cpp`

@@ -25,7 +25,8 @@ regenera sus conteos; el verificador rechaza diferencias entre el resumen, §24 
 - NSLink: tandas 35–37, matriz de pruebas y cierres recientes de C++ estático/telemetría.
 - NSASM: promoción 3.0 con runtime estático y evidencia de handoff T38.
 - NSDBG: auditoría de 78 pruebas registradas, 11 regresiones ejecutadas, DAP y promoción 3.0 autocontenida.
-- NSC-LSP: tandas 09–18 y cierres 38/39 contra `LanguageService` ABI 2.
+- NSC-LSP: tandas 09–18 y cierres 38/39 contra su interfaz histórica `LanguageService`;
+  esta interfaz de herramienta no define otra ABI del lenguaje.
 - VS Code: históricos 063–067 y cierre 3.0 con contratos focalizados.
 
 ## Archivos

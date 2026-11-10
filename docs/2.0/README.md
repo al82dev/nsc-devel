@@ -1,8 +1,8 @@
 # NativeSharp 2.0
 
-NativeSharp 2.0 es la edición estable vigente del compilador y del lenguaje nativo AOT. La versión
-visible del compilador es `2.0.0+build.<UTC>.<id>`; los metadatos de build identifican el binario
-exacto sin cambiar la precedencia SemVer.
+Esta carpeta conserva la documentación histórica de la etapa 2.0. No es una edición alternativa que deba
+elegirse para trabajar hoy. Consultar primero el [contrato vigente](../CONTRATO-VIGENTE.md), que fija la
+instalación congelada y el lenguaje acumulativo único.
 
 Documentos de entrada:
 
@@ -18,7 +18,6 @@ Documentos de entrada:
 
 # NativeSharp 2.0
 
-NativeSharp 2.0 is the current stable edition of the native AOT language and compiler. The visible
-compiler version is `2.0.0+build.<UTC>.<id>`; build metadata identifies the exact binary without
-changing SemVer precedence. Use the documents above for migration, compatibility, baseline,
-release evidence, and the self-hosting engineering roadmap.
+This folder preserves the historical 2.0 development stage. It is not an alternative current compiler
+or language edition. Read [the current working contract](../CONTRATO-VIGENTE.md) first. The links above
+are historical migration, compatibility, release, and self-hosting records.
