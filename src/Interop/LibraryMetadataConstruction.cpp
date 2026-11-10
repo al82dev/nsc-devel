@@ -2357,6 +2357,42 @@ bool buildMetadataType(
     return true;
 }
 
+bool isNonEscapingIntegerExpression(
+    const frontend::ProjectOopMirNode& expression,
+    std::span<const frontend::ClassMemberSymbol> members)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    std::vector<const frontend::ProjectOopMirNode*> pending{&expression};
+    while (!pending.empty())
+    {
+        const auto* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || node->typeKey != "builtin:int") return false;
+        if (node->kind == Kind::IntegerConstant)
+        {
+            if (!node->children.empty()) return false;
+        }
+        else if (node->kind == Kind::FieldLoad)
+        {
+            if (!node->memberOrdinal.has_value() || *node->memberOrdinal >= members.size() ||
+                members[*node->memberOrdinal].kind != frontend::ClassMemberKind::Field ||
+                members[*node->memberOrdinal].isStatic ||
+                members[*node->memberOrdinal].declaredTypeKey != "builtin:int" ||
+                node->children.size() != 1U || node->children[0] == nullptr ||
+                node->children[0]->kind != Kind::ThisValue || !node->children[0]->children.empty()) return false;
+        }
+        else if (node->kind == Kind::Binary &&
+                 (node->operation == lexer::TokenKind::Plus || node->operation == lexer::TokenKind::Minus ||
+                  node->operation == lexer::TokenKind::Star) && node->children.size() == 2U)
+        {
+            pending.push_back(node->children[0].get());
+            pending.push_back(node->children[1].get());
+        }
+        else return false;
+    }
+    return true;
+}
+
 bool isDirectIntegerFieldUpdate(
     const frontend::ProjectOopMirNode& node,
     std::span<const frontend::ClassMemberSymbol> members)
@@ -2366,25 +2402,15 @@ bool isDirectIntegerFieldUpdate(
         node.children.size() != 2U || node.children[0] == nullptr || node.children[1] == nullptr)
         return false;
     const auto& address = *node.children[0];
-    const auto& operation = *node.children[1];
     if (address.kind != Kind::FieldAddress || address.typeKey != "builtin:int" ||
         !address.memberOrdinal.has_value() || *address.memberOrdinal >= members.size() ||
         members[*address.memberOrdinal].kind != frontend::ClassMemberKind::Field ||
         members[*address.memberOrdinal].isStatic ||
         members[*address.memberOrdinal].declaredTypeKey != "builtin:int" ||
         address.children.size() != 1U || address.children[0] == nullptr ||
-        address.children[0]->kind != Kind::ThisValue || !address.children[0]->children.empty() ||
-        operation.kind != Kind::Binary || operation.typeKey != "builtin:int" ||
-        (operation.operation != lexer::TokenKind::Plus && operation.operation != lexer::TokenKind::Minus) ||
-        operation.children.size() != 2U || operation.children[0] == nullptr || operation.children[1] == nullptr)
+        address.children[0]->kind != Kind::ThisValue || !address.children[0]->children.empty())
         return false;
-    const auto& load = *operation.children[0];
-    const auto& literal = *operation.children[1];
-    return load.kind == Kind::FieldLoad && load.typeKey == "builtin:int" &&
-        load.memberOrdinal == address.memberOrdinal && load.children.size() == 1U &&
-        load.children[0] != nullptr && load.children[0]->kind == Kind::ThisValue &&
-        load.children[0]->children.empty() && literal.kind == Kind::IntegerConstant &&
-        literal.typeKey == "builtin:int" && literal.children.empty();
+    return isNonEscapingIntegerExpression(*node.children[1], members);
 }
 
 // Proves scalar-field initialization and a certified parameterless base constructor call.

@@ -60,8 +60,13 @@ public class EscapingFieldArithmetic { public static EscapingFieldArithmetic Ali
  public EscapingFieldArithmetic() { Value = 41; Value = Value + 1; Alias = this; } }
 public class OpaqueFieldArithmetic { public int Value;
  public OpaqueFieldArithmetic() { Value = Compute(); } public static int Compute() { return 42; } }
-public class OtherFieldArithmetic { public int Value; public int Other;
- public OtherFieldArithmetic() { Other = 41; Value = Other + 1; } }
+public class ForeignFieldArithmetic { public static ForeignFieldArithmetic Other; public int Value;
+ public ForeignFieldArithmetic() { Value = Other.Value + 1; } }
+public class OtherFieldArithmetic { public static int Drops; public int Value; public int Other;
+ public OtherFieldArithmetic() { Other = 41; Value = Other + 1; } ~OtherFieldArithmetic() { Drops = Drops + 1; } }
+public class NestedFieldArithmetic { public static int Drops; public int Value; public int First; public int Second;
+ public NestedFieldArithmetic() { First = 20; Second = 2; Value = (First + Second) * 2 - 2; }
+ ~NestedFieldArithmetic() { Drops = Drops + 1; } }
 ''', encoding='utf-8')
         producer_project = producer / 'Producer.nsproj'
         producer_project.write_text('<Project><PropertyGroup><Name>PayloadProducer</Name>'
@@ -74,6 +79,11 @@ public class OtherFieldArithmetic { public int Value; public int Other;
                       producer_project, '-O0', '-o', output,
                       '--no-artifact-cache'], producer)
         print('producer compile=' + str(result.returncode), flush=True)
+        if result.returncode != 0:
+            print(result.stdout + result.stderr, file=sys.stderr)
+            return 1
+        result = run([compiler, '--verify-library-metadata', payload_lib.with_suffix('.nsmeta')], producer)
+        print('producer metadata verification=' + str(result.returncode), flush=True)
         if result.returncode != 0:
             print(result.stdout + result.stderr, file=sys.stderr)
             return 1
@@ -116,6 +126,8 @@ class Program { public static int Main() { WeakArc<SafeIntegerFields> weak;
         decimal_field = unsigned.replace('SafeUnsigned', 'SafeDecimalField').replace('42u', '42').replace(
             'return 1; }', 'return 1; if (owner.Get().Amount != 0m) return 3; }')
         arithmetic = unsigned.replace('SafeUnsigned', 'SafeFieldArithmetic').replace('42u', '42')
+        other_arithmetic = unsigned.replace('SafeUnsigned', 'OtherFieldArithmetic').replace('42u', '42')
+        nested_arithmetic = unsigned.replace('SafeUnsigned', 'NestedFieldArithmetic').replace('42u', '42')
         local = valid.replace('using NativeSharp.Core;', '''using NativeSharp.Core;
 class LocalPayload { public static int Drops; public int Value; public LocalPayload() { Value = 42; }
  ~LocalPayload() { Drops = Drops + 1; } }''').replace('SafePayload', 'LocalPayload')
@@ -137,6 +149,10 @@ class Program { public static int Main() {
                                  ('decimal-field-rc', decimal_field.replace('Arc', 'Rc')),
                                  ('field-arithmetic-arc', arithmetic),
                                  ('field-arithmetic-rc', arithmetic.replace('Arc', 'Rc')),
+                                 ('other-field-arithmetic-arc', other_arithmetic),
+                                 ('other-field-arithmetic-rc', other_arithmetic.replace('Arc', 'Rc')),
+                                 ('nested-field-arithmetic-arc', nested_arithmetic),
+                                 ('nested-field-arithmetic-rc', nested_arithmetic.replace('Arc', 'Rc')),
                                  ('local-counting-destructor', local),
                                  ('counting-destructor-arc', valid),
                                  ('counting-destructor-rc', valid_rc)):
@@ -162,7 +178,7 @@ class Program { public static int Main() {
                                       ('decimal-constructor', 'EscapingDecimal'),
                                       ('arithmetic-constructor', 'EscapingFieldArithmetic'),
                                       ('arithmetic-opaque-call', 'OpaqueFieldArithmetic'),
-                                      ('arithmetic-other-field', 'OtherFieldArithmetic')):
+                                      ('arithmetic-foreign-field', 'ForeignFieldArithmetic')):
                     main_source.write_text(invalid.replace('Arc', family).replace('EscapingPayload', payload),
                                            encoding='utf-8')
                     result = run([compiler, '--emit-project-oop-exe', project, '-' + level,
