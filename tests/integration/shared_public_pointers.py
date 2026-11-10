@@ -1726,6 +1726,23 @@ class Program { public static int Main() { Holder holder = new Holder();
 class Program { public static int Main() { Holder holder = new Holder();
  holder.value = SharedPointers.MAKE<Payload>(); borrowed Holder alias = holder;
  SharedView<Payload> view = holder.value.Borrow(); alias.Replace(); return (int)view.Get().Data; } }''', 'borrow'),
+        'overwrite_nested_field_via_method': ('''class Inner { public STRONG<Payload> value;
+ public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
+class Holder { public Inner child; public Holder() { child = new Inner(); } }
+class Program { public static int Main() { Holder holder = new Holder();
+ holder.child.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = holder.child.value.Borrow();
+ holder.child.Replace(); return (int)view.Get().Data; } }''', 'borrow'),
+        'method_on_independent_nested_holder': ('''class Inner { public STRONG<Payload> value;
+ public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
+class Holder { public Inner child; public Holder() { child = new Inner(); } }
+class Program { public static int Main() { Holder first = new Holder(); Holder second = new Holder();
+ first.child.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.child.value.Borrow();
+ second.child.Replace(); return view.Get().Data == 42l ? 42 : 1; } }''', 'run:42'),
+        'readonly_nested_owner_with_view': ('''class Inner { public STRONG<Payload> value; }
+class Holder { public Inner child; public Holder() { child = new Inner(); } }
+class Program { public static int Main() { Holder holder = new Holder();
+ holder.child.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = holder.child.value.Borrow();
+ return holder.child.value.Get().Data == 42l && view.Get().Data == 42l ? 42 : 1; } }''', 'run:42'),
         'method_on_independent_holder': ('''class Holder { public STRONG<Payload> value;
  public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
 class Program { public static int Main() { Holder first = new Holder(); Holder second = new Holder();

@@ -27,6 +27,7 @@ def main():
 class Payload { public long Data; public Payload() { Data = 42l; } }
 class Holder { public STRONG<Payload> value;
  public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
+class Outer { public Holder child; public Outer() { child = new Holder(); } }
 '''.replace('STRONG', family).replace('MAKE', 'Make' + family)
             bodies = {
                 'unsafe': '''Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
@@ -34,6 +35,14 @@ class Holder { public STRONG<Payload> value;
                 'alias': '''Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
  borrowed Holder alias = holder; SharedView<Payload> view = holder.value.Borrow();
  alias.Replace(); return (int)view.Get().Data;''',
+                'nested-unsafe': '''Outer holder = new Outer(); holder.child.value = SharedPointers.MAKE<Payload>();
+ SharedView<Payload> view = holder.child.value.Borrow(); holder.child.Replace(); return (int)view.Get().Data;''',
+                'nested-independent': '''Outer first = new Outer(); Outer second = new Outer();
+ first.child.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.child.value.Borrow();
+ second.child.Replace(); return view.Get().Data == 42l ? 42 : 1;''',
+                'nested-readonly': '''Outer holder = new Outer();
+ holder.child.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = holder.child.value.Borrow();
+ return holder.child.value.Get().Data == 42l && view.Get().Data == 42l ? 42 : 1;''',
                 'independent': '''Holder first = new Holder(); Holder second = new Holder();
  first.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.value.Borrow();
  second.Replace(); return view.Get().Data == 42l ? 42 : 1;''',
@@ -46,7 +55,7 @@ class Holder { public STRONG<Payload> value;
                                   body.replace('MAKE', 'Make' + family) + ' } }', encoding='utf-8')
                 result = run([compiler, '--check-project-method-bodies', project], root)
                 output = result.stdout + result.stderr
-                if name in ('unsafe', 'alias'):
+                if name in ('unsafe', 'alias', 'nested-unsafe'):
                     assert result.returncode != 0 and 'borrow' in output, (family, name, output)
                     print(family, name, 'rejected', flush=True)
                     continue

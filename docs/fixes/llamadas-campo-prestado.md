@@ -31,3 +31,25 @@ como dependencia del propio compilador, compiló también
 `src/Interop/CHeaderGenerator.cpp` en el build aislado. No se modificó ese
 archivo ni se utilizaron carpetas de build de interoperabilidad. La evidencia
 no acredita el árbol limpio: coexistieron cambios concurrentes sin registrar.
+
+## Receptor de clase anidado
+
+`shared-nested-method-before.log` muestra que `holder.child.Replace()` se
+aceptaba mientras una vista de `holder.child.value` seguía viva. Se amplió la
+comprobación de raíces existente a receptores de clase expresados mediante
+miembros. Es conservadora: puede rechazar métodos de ramas independientes del
+mismo objeto cuando el análisis solo identifica una raíz común.
+
+Un primer ensayo incluyó receptores de estructura y rechazó erróneamente la
+lectura `holder.child.value.Get()`; los diagnósticos se conservan en
+`shared-nested-method-readonly.log` y `shared-nested-method-binary.log`. El
+retorno `ref readonly` no demuestra que cualquier método sea readonly sobre su
+receptor, por lo que no se usa como excepción general. El cambio final deja
+pendientes los métodos de estructuras en receptores anidados.
+
+`shared-nested-method-final.log` y `shared-nested-method-binary-final.log`
+registran el rechazo del reemplazo inseguro y la ejecución de controles con otro
+objeto y con `Get()` en O0/O2 para Rc y Arc, desde fuentes y con el SDK binario.
+También pasaron los controles del receptor directo y de fin de ámbito. Las
+llamadas mediante índices, receptores calculados, métodos de estructuras
+anidadas y llamadas indirectas no quedan acreditadas por esta corrección.
