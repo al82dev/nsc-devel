@@ -13,6 +13,10 @@ def main():
         ('Send', 'SendOnly', True), ('Sync', 'SendOnly', False),
         ('Send', 'RefMutRaw', False), ('Sync', 'RefMutRaw', False),
         ('Send', 'Indirect', False), ('Sync', 'Indirect', False),
+        ('Send', 'WrappedRaw', False), ('Sync', 'WrappedRaw', False),
+        ('Send', 'WrappedSafe', True), ('Sync', 'WrappedSafe', True),
+        ('Send', 'WrappedSendOnly', True), ('Sync', 'WrappedSendOnly', False),
+        ('Send', 'WrappedNested', False), ('Sync', 'WrappedNested', False),
     )
     program = '''using NativeSharp.Core;
 struct Safe { public int value; }
@@ -20,6 +24,10 @@ struct Raw { public int* value; }
 struct SendOnly { public ref mut int value; }
 struct RefMutRaw { public ref mut Raw value; }
 struct Indirect { public RefMutRaw nested; }
+struct WrappedRaw { public (Raw, int) value; }
+struct WrappedSafe { public (Safe, int) value; }
+struct WrappedSendOnly { public (SendOnly, int) value; }
+struct WrappedNested { public ((Raw, int), int) value; }
 class Program { public static int Require<T>() where T : MARKER { return 42; }
  public static int Main() { return Require<TYPE>(); } }
 '''

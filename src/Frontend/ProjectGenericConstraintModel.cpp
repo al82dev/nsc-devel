@@ -889,6 +889,40 @@ bool ProjectGenericConstraintModel::satisfiesThreadSafetyConstraint(
     // cuando sus campos lo son y no contiene raw pointers. No se exige `: Send`.
     std::vector<std::size_t> pending{argumentOrdinal};
     std::unordered_set<std::size_t> visited;
+    const auto enqueueStructuralTypes = [&](std::string typeKey) {
+        std::vector<std::string> types{std::move(typeKey)};
+        while (!types.empty())
+        {
+            std::string current = std::move(types.back());
+            types.pop_back();
+            if (current.ends_with("*")) return false;
+            if (current.starts_with("refmut:"))
+            {
+                if (!sendMarker) return false;
+                types.push_back(current.substr(7));
+                continue;
+            }
+            // A shared reference needs the referent's Sync, not its Send.
+            // Until this traversal carries both modes, do not assume it safe.
+            if (current.starts_with("ref:")) return false;
+            auto element = ProjectMemberModel::fixedArrayElementTypeKey(current);
+            if (!element.has_value()) element = ProjectTypeConversion::nativeArrayElementType(current);
+            if (element.has_value())
+            {
+                types.push_back(std::move(*element));
+                continue;
+            }
+            if (auto tuple = ProjectTypeConversion::tupleElementTypeKeys(current); tuple.has_value())
+            {
+                types.insert(types.end(), tuple->begin(), tuple->end());
+                continue;
+            }
+            std::size_t ordinal = 0;
+            if (declarationForTypeKey(nameLookup, current, ordinal) != nullptr)
+                pending.push_back(ordinal);
+        }
+        return true;
+    };
     while (!pending.empty())
     {
         const std::size_t currentOrdinal = pending.back();
@@ -924,22 +958,7 @@ bool ProjectGenericConstraintModel::satisfiesThreadSafetyConstraint(
                 memberFacts.kind = language::ThreadSafetyMemberKind::MutableReference;
                 memberFacts.send = true;
                 memberFacts.sync = false;
-                if (sendMarker)
-                {
-                    std::string referredTypeKey = member.declaredTypeKey.substr(7);
-                    while (true)
-                    {
-                        auto element = ProjectMemberModel::fixedArrayElementTypeKey(referredTypeKey);
-                        if (!element.has_value())
-                            element = ProjectTypeConversion::nativeArrayElementType(referredTypeKey);
-                        if (!element.has_value()) break;
-                        referredTypeKey = std::move(*element);
-                    }
-                    if (referredTypeKey.ends_with("*")) return false;
-                    std::size_t referredOrdinal = 0;
-                    if (declarationForTypeKey(nameLookup, referredTypeKey, referredOrdinal) != nullptr)
-                        pending.push_back(referredOrdinal);
-                }
+                if (sendMarker && !enqueueStructuralTypes(member.declaredTypeKey.substr(7))) return false;
             }
             else if (member.declaredTypeKey.starts_with("ref:"))
             {
@@ -958,19 +977,7 @@ bool ProjectGenericConstraintModel::satisfiesThreadSafetyConstraint(
                 memberFacts.kind = language::ThreadSafetyMemberKind::Value;
                 memberFacts.send = true;
                 memberFacts.sync = true;
-                std::string nestedTypeKey = member.declaredTypeKey;
-                while (true)
-                {
-                    auto element = ProjectMemberModel::fixedArrayElementTypeKey(nestedTypeKey);
-                    if (!element.has_value())
-                        element = ProjectTypeConversion::nativeArrayElementType(nestedTypeKey);
-                    if (!element.has_value()) break;
-                    nestedTypeKey = std::move(*element);
-                }
-                if (nestedTypeKey.ends_with("*")) return false;
-                std::size_t nestedOrdinal = 0;
-                if (declarationForTypeKey(nameLookup, nestedTypeKey, nestedOrdinal) != nullptr)
-                    pending.push_back(nestedOrdinal);
+                if (!enqueueStructuralTypes(member.declaredTypeKey)) return false;
             }
             facts.members.push_back(std::move(memberFacts));
         }
