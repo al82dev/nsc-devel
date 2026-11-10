@@ -434,6 +434,23 @@ std::optional<TypeLayout> ProjectObjectLayoutModel::layoutBaseType(
     if (syntax->isTuple())
     {
         if (nameLookup_ == nullptr || memberModel_ == nullptr) return std::nullopt;
+        // The tuple query reads already-built value layouts. Build its by-value
+        // element dependencies first, just as a direct named field does.
+        std::vector<const ast::TypeSyntax*> pending(syntax->typeArguments().begin(),
+                                                     syntax->typeArguments().end());
+        while (!pending.empty())
+        {
+            const ast::TypeSyntax* element = pending.back();
+            pending.pop_back();
+            if (element == nullptr) return std::nullopt;
+            if (element->referenceQualifier() != ast::ReferenceQualifierSyntaxKind::None) continue;
+            if (element->isTuple() && element->modifiers().empty())
+            {
+                pending.insert(pending.end(), element->typeArguments().begin(), element->typeArguments().end());
+                continue;
+            }
+            if (!layoutTypeSyntax(element, diagnostics, useRange).has_value()) return std::nullopt;
+        }
         const std::string key = memberModel_->canonicalTypeKey(syntax, *nameLookup_);
         const std::optional<language::AggregateLayout> layout =
             tupleLayoutForTypeKey(*nameLookup_, key);
