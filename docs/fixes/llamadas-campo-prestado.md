@@ -98,3 +98,21 @@ el fin del préstamo (`shared-index-method-source.log` y
 binario es el generado para la tanda anterior, que incluyó un archivo ajeno
 con cambios sin registrar. La evidencia no acredita indexadores de usuario,
 receptores calculados sin raíz, llamadas indirectas ni mutaciones por argumentos.
+
+## Llamada implícita o explícita en this
+
+Los controles `this-method-before-*` confirman que `Replace()` y
+`this.Replace()` eran aceptados dentro del objeto que tenía una vista viva de
+su campo, aunque el método reemplazara el dueño. El análisis de llamadas
+considera ahora la raíz del receptor actual y rechaza esas llamadas de instancia
+potencialmente mutadoras. La aproximación es conservadora y puede rechazar un
+método de clase que no modifica el campo prestado.
+
+Las pruebas dirigidas rechazaron ambas reproducciones para Rc y Arc y
+ejecutaron 42 en O0/O2 después de terminar la vista, tanto desde fuentes como
+con el SDK binario (`shared-this-method-source.log`,
+`shared-this-method-binary.log`). Una llamada estática independiente también
+ejecutó 42 (`shared-this-method-static.log`). Los programas inseguros solo se
+analizaron. El SDK binario es el generado para una tanda anterior y contiene un
+archivo ajeno con cambios sin registrar; la evidencia no certifica árbol limpio
+ni cubre llamadas indirectas, argumentos mutables o alias arbitrarios.

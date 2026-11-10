@@ -88,6 +88,34 @@ class OuterValue { public InlineHolder child; }
                     result = run([executable], root)
                     assert result.returncode == 42, (family, name, level, result.returncode)
                     print(family, name, level, 'exit=42', flush=True)
+            for name, invocation in (('implicit', 'Replace();'), ('explicit', 'this.Replace();'),
+                                     ('finished', 'if (view.Get().Data != 42l) return 1; } Replace();')):
+                opening = '{ ' if name == 'finished' else ''
+                work = ('value = SharedPointers.MAKE<Payload>(); ' + opening +
+                        'SharedView<Payload> view = value.Borrow(); ' + invocation +
+                        (' return value.Get().Data == 42l ? 42 : 2;' if name == 'finished'
+                         else ' return (int)view.Get().Data;'))
+                source.write_text((common + 'class SelfHolder { public STRONG<Payload> value; '
+                    'public void Replace() { value = SharedPointers.MAKE<Payload>(); } '
+                    'public int Work() { ' + work + ' } } class Program { public static int Main() { '
+                    + ('SelfHolder holder = new SelfHolder(); return holder.Work();' if name == 'finished'
+                       else 'return 0;') + ' } }').replace('STRONG', family).replace('MAKE', 'Make' + family),
+                    encoding='utf-8')
+                result = run([compiler, '--check-project-method-bodies', project], root)
+                output = result.stdout + result.stderr
+                if name != 'finished':
+                    assert result.returncode != 0 and 'borrow' in output, (family, name, output)
+                    print(family, 'this-' + name, 'rejected', flush=True)
+                    continue
+                assert result.returncode == 0, (family, name, output)
+                for level in ('O0', 'O2'):
+                    executable = root / (family + '-this-finished-' + level + '.exe')
+                    result = run([compiler, '--emit-project-oop-exe', project, '-' + level,
+                                  '-o', executable, '--no-artifact-cache'], root)
+                    assert result.returncode == 0, (family, name, level, result.stdout + result.stderr)
+                    result = run([executable], root)
+                    assert result.returncode == 42, (family, name, level, result.returncode)
+                    print(family, 'this-finished', level, 'exit=42', flush=True)
 
 
 if __name__ == '__main__':

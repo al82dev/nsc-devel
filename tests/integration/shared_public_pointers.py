@@ -1721,6 +1721,26 @@ class Program { public static int Work(borrowed Holder first, borrowed Holder se
 class Program { public static int Main() { Holder holder = new Holder();
  holder.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = holder.value.Borrow();
  holder.Replace(); return (int)view.Get().Data; } }''', 'borrow'),
+        'overwrite_this_field_via_implicit_method': ('''class Holder { public STRONG<Payload> value;
+ public void Replace() { value = SharedPointers.MAKE<Payload>(); }
+ public int Work() { value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = value.Borrow();
+ Replace(); return (int)view.Get().Data; } }
+class Program { public static int Main() { return 0; } }''', 'borrow'),
+        'overwrite_this_field_via_explicit_method': ('''class Holder { public STRONG<Payload> value;
+ public void Replace() { value = SharedPointers.MAKE<Payload>(); }
+ public int Work() { value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = this.value.Borrow();
+ this.Replace(); return (int)view.Get().Data; } }
+class Program { public static int Main() { return 0; } }''', 'borrow'),
+        'implicit_method_after_this_view_scope': ('''class Holder { public STRONG<Payload> value;
+ public void Replace() { value = SharedPointers.MAKE<Payload>(); }
+ public int Work() { value = SharedPointers.MAKE<Payload>(); { SharedView<Payload> view = value.Borrow();
+ if (view.Get().Data != 42l) return 1; } Replace(); return value.Get().Data == 42l ? 42 : 2; } }
+class Program { public static int Main() { Holder holder = new Holder(); return holder.Work(); } }''', 'run:42'),
+        'static_method_during_this_view': ('''class Holder { public STRONG<Payload> value;
+ public static int Read() { return 42; }
+ public int Work() { value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = value.Borrow();
+ return Read() == 42 && view.Get().Data == 42l ? 42 : 1; } }
+class Program { public static int Main() { Holder holder = new Holder(); return holder.Work(); } }''', 'run:42'),
         'overwrite_field_via_alias_method': ('''class Holder { public STRONG<Payload> value;
  public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
 class Program { public static int Main() { Holder holder = new Holder();

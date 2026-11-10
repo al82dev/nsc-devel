@@ -2164,7 +2164,7 @@ bool ProjectMethodBodyModel::hasActiveViewOfStorage(
     const ast::AstNode* place, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal,
     bool anyField) const
 {
-    if (place == nullptr) return false;
+    if (place == nullptr && !anyField) return false;
     const auto roots = [&](const ScopeName& name)
     {
         std::vector<std::string> result;
@@ -2250,7 +2250,8 @@ bool ProjectMethodBodyModel::hasActiveViewOfStorage(
     const bool targetIsImplicitField = binding != nullptr &&
         binding->kind == MethodNameBindingKind::ImplicitField;
     const ast::AstNode* targetRoot = targetField != nullptr &&
-        targetField->kind() == ast::AstNodeKind::IdentifierExpression
+        (targetField->kind() == ast::AstNodeKind::IdentifierExpression ||
+         targetField->kind() == ast::AstNodeKind::ThisExpression)
         ? targetField : (targetField != nullptr ? targetField->first() : nullptr);
     while (targetRoot != nullptr && (targetRoot->kind() == ast::AstNodeKind::MemberExpression ||
                                      targetRoot->kind() == ast::AstNodeKind::IndexExpression))
@@ -2261,7 +2262,7 @@ bool ProjectMethodBodyModel::hasActiveViewOfStorage(
     const MethodNameBinding* rootBinding = targetRoot != nullptr &&
         targetRoot->kind() == ast::AstNodeKind::IdentifierExpression
         ? nameBinding(targetRoot, methodMemberOrdinal) : nullptr;
-    const bool targetIsThis = targetIsImplicitField || (rootBinding != nullptr &&
+    const bool targetIsThis = (place == nullptr && anyField) || targetIsImplicitField || (rootBinding != nullptr &&
         rootBinding->kind == MethodNameBindingKind::ImplicitField) || (targetRoot != nullptr &&
         targetRoot->kind() == ast::AstNodeKind::ThisExpression);
     if (targetName.has_value() || targetIsThis)
@@ -2271,7 +2272,7 @@ bool ProjectMethodBodyModel::hasActiveViewOfStorage(
         {
             if (view.methodMemberOrdinal != methodMemberOrdinal ||
                 !scopeContains(view.scopeOrdinal, scopeOrdinal) ||
-                (targetField == nullptr ||
+                ((targetField == nullptr && !anyField) ||
                  (!anyField && ((targetField->kind() != ast::AstNodeKind::MemberExpression && !targetIsImplicitField) ||
                    std::ranges::find(view.viewSourceFields, targetField->text()) == view.viewSourceFields.end()) &&
                   std::ranges::find(view.viewSourceFields, "*") == view.viewSourceFields.end()))) continue;
