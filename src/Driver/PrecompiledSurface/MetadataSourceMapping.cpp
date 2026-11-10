@@ -1,4 +1,5 @@
 #include "../Internal/DriverInternal.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
 
 namespace nativesharp::driver
 {
@@ -446,6 +447,48 @@ bool sourceTypeForGenericSpecialization(const interop::LibraryMetadata &metadata
 bool sourceTypeForMetadataKey(const interop::LibraryMetadata &metadata, const std::string &typeKey,
                               std::string &sourceType, std::string &error)
 {
+    if (frontend::ProjectTypeConversion::isTuple(typeKey))
+    {
+        struct Item { std::string value; bool literal; };
+        std::vector<Item> pending{{typeKey, false}};
+        std::string converted;
+        while (!pending.empty())
+        {
+            Item item = std::move(pending.back());
+            pending.pop_back();
+            if (item.literal)
+            {
+                converted += item.value;
+                continue;
+            }
+            if (frontend::ProjectTypeConversion::isTuple(item.value))
+            {
+                const auto elements = frontend::ProjectTypeConversion::tupleElementTypeKeys(item.value);
+                if (!elements.has_value())
+                {
+                    error = "metadata contains malformed tuple type key '" + item.value + "'";
+                    return false;
+                }
+                converted += '(';
+                pending.push_back({elements->size() == 1U ? ",)" : ")", true});
+                for (std::size_t i = elements->size(); i > 0; --i)
+                {
+                    pending.push_back({(*elements)[i - 1U], false});
+                    if (i > 1U) pending.push_back({", ", true});
+                }
+                continue;
+            }
+            if (frontend::ProjectTypeConversion::isNumeric(item.value) || item.value == "builtin:bool")
+            {
+                converted += item.value.substr(8U);
+                continue;
+            }
+            error = "metadata-backed tuple source import cannot yet materialize element '" + item.value + "'";
+            return false;
+        }
+        sourceType = std::move(converted);
+        return true;
+    }
     const std::string baseTypeKey = metadataBaseTypeKey(typeKey);
     if (metadataTypeForKey(metadata, baseTypeKey) == nullptr)
     {
