@@ -39,6 +39,21 @@ Lo que no se exige ni basta:
 (`reconciledIdentityKey`), igual que un tipo vivo conciliado. La regla es por tipo: si en B solo difiere `NRecord`,
 `NInner` y `NMood` siguen siendo un tipo con los de A.
 
+## Límites de la implementación
+
+Lo que D26 deja fuera a propósito y sigue rechazándose al nombrarse:
+
+- **Un record completo frente a uno opaco** de la misma etiqueta, publicados por dos productores. C los considera
+  compatibles entre unidades de traducción, pero unirlos cambiaría el layout de un tipo que un productor publicó
+  como opaco. El consumidor que nombra el tipo recibe «conflicting C/C++ type alias 'NOpaque'»; las bibliotecas
+  coexisten si no lo nombra. Es el caso `opaco` de la prueba. La declaración opaca propia de un consumidor vivo
+  frente al record completo de NSMeta sigue la regla de T08-D16, que no cambia.
+- **Records sin USR o con contexto anónimo** (por ejemplo un campo cuyo tipo es un struct anónimo). La clausura no
+  los puede identificar, así que el record que los contiene no se une. Comprobado en el código
+  (`compareCRecordClosureEvidence` da «Insufficient»); no tiene prueba dirigida.
+- **Un tipo canónico por declaración:** el del primer productor en el orden de proyectos. Los demás lo nombran;
+  ningún productor cambia su propio catálogo ni su NSMeta.
+
 ## Cambios
 
 - **`CppCRecordMetadataCodec`:**
