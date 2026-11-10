@@ -90,6 +90,43 @@ using internal::genericTypeDetail;
 using internal::genericUnitDetail;
 using internal::GenericWorkProgress;
 #endif // INSTRUMENTATION CODE
+
+namespace
+{
+std::string_view threadMarkerName(const ast::TypeSyntax* syntax)
+{
+    if (syntax == nullptr || !syntax->typeArguments().empty() || !syntax->modifiers().empty())
+        return {};
+    const std::string_view name = syntax->baseName();
+    const std::size_t separator = name.find_last_of(".:");
+    const std::string_view terminal = separator == std::string_view::npos
+        ? name : name.substr(separator + 1U);
+    return terminal == "Send" || terminal == "Sync" ? terminal : std::string_view{};
+}
+
+// This only preserves the narrowly shaped conditional contract. It does not
+// make the specialized type implement either marker; that requires checking
+// the actual marker identities and both guarantees of the concrete argument.
+bool isConditionalThreadMarkerImpl(const ast::AstNode& impl, const ast::AstNode& owner)
+{
+    if (!impl.isUnsafe() || !impl.children().empty() || threadMarkerName(impl.typeSyntax()).empty() ||
+        owner.genericParameters().size() != 1U || !owner.genericConstraints().empty() ||
+        impl.genericConstraints().size() != 1U || impl.genericParameterSyntaxes().size() != 1U ||
+        impl.genericParameterSyntaxes().front().kind != ast::GenericParameterSyntaxKind::Type)
+        return false;
+    const ast::GenericConstraintClause& clause = impl.genericConstraints().front();
+    if (clause.parameterName != owner.genericParameters().front() || clause.requiresClass ||
+        clause.requiresValueType || clause.requiresDefaultConstructor || clause.requiresCopy ||
+        clause.requiresMove || clause.requiresTrackedLifetime || clause.requiresUnmanaged ||
+        clause.requiresNotNull || clause.requiresRefLike || clause.equalityConstraint != nullptr ||
+        clause.associatedProjection != nullptr || clause.typeConstraints.size() != 2U)
+        return false;
+    const std::string_view first = threadMarkerName(clause.typeConstraints[0]);
+    const std::string_view second = threadMarkerName(clause.typeConstraints[1]);
+    return (first == "Send" && second == "Sync") || (first == "Sync" && second == "Send");
+}
+}
+
 void ProjectGenericModel::collectTraitImplementationNodes(
     ProjectSyntaxUnit& unit,
     ast::AstNode* node,
@@ -204,9 +241,10 @@ bool ProjectGenericModel::mergeTraitImplementation(
                 impl->text() + "' is not declared by this module and namespace");
         return false;
     }
+    const bool conditionalThreadMarker = isConditionalThreadMarkerImpl(*impl, *owner);
     if (!traitImplementationHasDirectTarget(impl, target) ||
         genericParameterShape(owner) != genericParameterShape(impl) ||
-        genericConstraintShape(owner) != genericConstraintShape(impl))
+        (!conditionalThreadMarker && genericConstraintShape(owner) != genericConstraintShape(impl)))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidBaseType,
@@ -220,7 +258,7 @@ bool ProjectGenericModel::mergeTraitImplementation(
     const std::string trait = typeSpelling(impl->typeSyntax());
     const ast::TypeSyntax* duplicate = nullptr;
     for (const ast::TypeSyntax* base : owner->typeSyntaxes())
-        if (typeSpelling(base) == trait)
+        if (!conditionalThreadMarker && typeSpelling(base) == trait)
         {
             duplicate = base;
             break;
@@ -238,6 +276,14 @@ bool ProjectGenericModel::mergeTraitImplementation(
             duplicate->range(),
             "previous trait implementation is here");
         return false;
+    }
+    if (conditionalThreadMarker)
+    {
+        // The type may be written identically in different lexical imports, or
+        // differently through aliases. Compare resolved identities after the
+        // dependency pass instead of guessing from terminal names here.
+        traitImplExtensions_[owner].push_back(impl);
+        return true;
     }
     owner->addTypeSyntax(impl->typeSyntax());
     if (owner->typeSyntax() == nullptr) owner->setTypeSyntax(impl->typeSyntax());

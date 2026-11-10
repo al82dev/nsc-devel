@@ -462,6 +462,98 @@ void ProjectGenericModel::publishTemplateRecordsForBuild(
                     "'; two generic types in the same namespace cannot share a name and an "
                     "arity -- rename one, or declare it 'partial' at namespace scope");
         }
+        if (state.syntax == nullptr || state.record.extensionSyntaxes.empty()) continue;
+        const auto deferred = [&](const ast::AstNode* extension) {
+            return extension != nullptr && extension->isUnsafe() &&
+                std::ranges::find(state.syntax->typeSyntaxes(), extension->typeSyntax()) ==
+                    state.syntax->typeSyntaxes().end();
+        };
+        if (!std::ranges::any_of(state.record.extensionSyntaxes, deferred)) continue;
+
+        const auto isInterfaceIdentity = [&](const std::string& key) {
+            const auto separator = key.find("::");
+            if (!key.starts_with("type:") || separator == std::string::npos) return false;
+            std::string sourceName = key.substr(separator + 2U);
+            std::ranges::replace(sourceName, '+', '.');
+            const auto candidates = declaredTypeIdentitiesBySourceName_.find(sourceName);
+            if (candidates == declaredTypeIdentitiesBySourceName_.end()) return false;
+            bool found = false;
+            for (const std::size_t index : candidates->second)
+            {
+                const DeclaredTypeIdentity& declaration = declaredTypeIdentities_[index];
+                if ("type:" + declaration.identityKey != key) continue;
+                if (declaration.syntax == nullptr ||
+                    declaration.syntax->kind() != ast::AstNodeKind::InterfaceDeclaration) return false;
+                found = true;
+            }
+            return found;
+        };
+
+        // Deferred unsafe marker impls do not become unconditional bases.
+        // Compare identities resolved in each impl's own scope, not their
+        // textual spelling or terminal name.
+        std::unordered_map<std::string, std::pair<const ast::AstNode*, bool>> seenTraits;
+        for (const ast::AstNode* extension : state.record.extensionSyntaxes)
+        {
+            if (extension == nullptr || extension->typeSyntax() == nullptr) continue;
+            const SourceRange range = extension->typeSyntax()->range();
+            std::string identity;
+            bool ambiguous = !range.isValid();
+            for (const GenericTemplateExternalTypeReference& reference : state.record.externalTypeReferences)
+            {
+                if (reference.range.begin() != range.begin() || reference.range.end() != range.end()) continue;
+                if (!identity.empty() && identity != reference.typeKey) ambiguous = true;
+                identity = reference.typeKey;
+            }
+            if (ambiguous || identity.empty())
+            {
+                diagnostics.report(diagnostics::DiagnosticId::InvalidType,
+                    diagnostics::DiagnosticSeverity::Error, range,
+                    "cannot resolve a unique trait identity for conditional thread-safety coherence");
+                continue;
+            }
+            const bool isDeferred = deferred(extension);
+            if (isDeferred)
+            {
+                if (!isInterfaceIdentity(identity))
+                    diagnostics.report(diagnostics::DiagnosticId::InvalidType,
+                        diagnostics::DiagnosticSeverity::Error, range,
+                        "conditional thread-safety impl must name a trait or interface");
+                for (const ast::GenericConstraintClause& clause : extension->genericConstraints())
+                    for (const ast::TypeSyntax* constraint : clause.typeConstraints)
+                    {
+                        if (constraint == nullptr) continue;
+                        const SourceRange constraintRange = constraint->range();
+                        std::string resolved;
+                        bool ambiguousConstraint = !constraintRange.isValid();
+                        for (const GenericTemplateExternalTypeReference& reference : state.record.externalTypeReferences)
+                        {
+                            if (reference.range.begin() != constraintRange.begin() ||
+                                reference.range.end() != constraintRange.end()) continue;
+                            if (!resolved.empty() && resolved != reference.typeKey) ambiguousConstraint = true;
+                            resolved = reference.typeKey;
+                        }
+                        if (ambiguousConstraint || resolved.empty())
+                            diagnostics.report(diagnostics::DiagnosticId::InvalidType,
+                                diagnostics::DiagnosticSeverity::Error, constraintRange,
+                                "cannot resolve a unique trait identity for conditional thread-safety constraint");
+                        else if (!isInterfaceIdentity(resolved))
+                            diagnostics.report(diagnostics::DiagnosticId::InvalidType,
+                                diagnostics::DiagnosticSeverity::Error, constraintRange,
+                                "conditional thread-safety constraint must name a trait or interface");
+                    }
+            }
+            const auto [previous, inserted] = seenTraits.emplace(identity, std::pair{extension, isDeferred});
+            if (!inserted && (isDeferred || previous->second.second))
+            {
+                diagnostics.report(diagnostics::DiagnosticId::DuplicateSymbol,
+                    diagnostics::DiagnosticSeverity::Error, range,
+                    "duplicate trait impl for '" + identity + "' on generic type '" + state.record.name + "'");
+                diagnostics.report(diagnostics::DiagnosticId::PreviousDeclaration,
+                    diagnostics::DiagnosticSeverity::Note, previous->second.first->range(),
+                    "previous trait implementation is here");
+            }
+        }
     }
 
     templateRecords_.reserve(templateStates_.size());

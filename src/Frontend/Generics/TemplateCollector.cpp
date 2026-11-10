@@ -167,7 +167,7 @@ void ProjectGenericModel::collectDeclaredTypeIdentity(
         unit.projectOrdinal(), currentNamespace, std::move(sourceName),
         std::string(unit.moduleName()) + "::" +
             qualifiedName(currentNamespace, qualifiedTypeName),
-        node->tokenKind() == lexer::TokenKind::KwPublic});
+        node->tokenKind() == lexer::TokenKind::KwPublic, node});
 }
 
 // EN: Sets the C1 cache identity of a template record: the fingerprint of the template's source tokens and the

@@ -38,6 +38,114 @@
 
 namespace nativesharp::frontend
 {
+std::optional<std::string> ProjectMemberModel::conditionalUnsafeThreadArgument(
+    const NamedTypeDeclaration& declaration, std::string_view markerTypeKey,
+    const ProjectNameLookup& nameLookup) const
+{
+    if (genericModel_ == nullptr || declaration.syntax == nullptr) return std::nullopt;
+    const GenericSpecializationRecord* specialization =
+        genericModel_->specializationForSyntax(declaration.syntax);
+    if (specialization == nullptr || specialization->specializedSyntax != declaration.syntax ||
+        specialization->typeArguments.size() != 1U ||
+        specialization->templateOrdinal >= genericModel_->templates().size())
+        return std::nullopt;
+    const GenericTemplateRecord& original = genericModel_->templates()[specialization->templateOrdinal];
+    if (specialization->templateSyntax != original.syntax ||
+        specialization->templateKey != original.canonicalKey)
+        return std::nullopt;
+
+    const auto identityFor = [&](const ast::TypeSyntax* syntax) -> std::optional<std::string_view> {
+        if (syntax == nullptr || !syntax->range().isValid()) return std::nullopt;
+        std::optional<std::string_view> found;
+        for (const GenericTemplateExternalTypeReference& reference : original.externalTypeReferences)
+        {
+            if (reference.range.begin() != syntax->range().begin() ||
+                reference.range.end() != syntax->range().end())
+                continue;
+            if (found.has_value() && *found != reference.typeKey) return std::nullopt;
+            found = reference.typeKey;
+        }
+        return found;
+    };
+    if (!markerTypeKey.starts_with("type:")) return std::nullopt;
+    const bool send = markerTypeKey.ends_with("::Send") || markerTypeKey.ends_with(".Send");
+    const bool sync = markerTypeKey.ends_with("::Sync") || markerTypeKey.ends_with(".Sync");
+    if (!send && !sync) return std::nullopt;
+    const std::string prefix(markerTypeKey.substr(0, markerTypeKey.size() - 4U));
+    const std::string sendKey = prefix + "Send";
+    const std::string syncKey = prefix + "Sync";
+    for (const ast::AstNode* extension : original.extensionSyntaxes)
+    {
+        if (extension == nullptr || !extension->isUnsafe() || !extension->children().empty() ||
+            extension->genericConstraints().size() != 1U ||
+            original.parameters.size() != 1U)
+            continue;
+        const auto implemented = identityFor(extension->typeSyntax());
+        if (!implemented.has_value() || *implemented != markerTypeKey) continue;
+        const ast::GenericConstraintClause& clause = extension->genericConstraints().front();
+        if (clause.parameterName != original.parameters.front() || clause.typeConstraints.size() != 2U ||
+            clause.requiresClass || clause.requiresValueType || clause.requiresDefaultConstructor ||
+            clause.requiresCopy || clause.requiresMove || clause.requiresTrackedLifetime ||
+            clause.requiresUnmanaged || clause.requiresNotNull || clause.requiresRefLike ||
+            clause.equalityConstraint != nullptr || clause.associatedProjection != nullptr)
+            continue;
+        const auto first = identityFor(clause.typeConstraints[0]);
+        const auto second = identityFor(clause.typeConstraints[1]);
+        if (!first.has_value() || !second.has_value() ||
+            !((*first == sendKey && *second == syncKey) || (*first == syncKey && *second == sendKey)))
+            continue;
+        const std::string& argument = specialization->typeArguments.front();
+        if (argument.starts_with("type:") || argument.starts_with("builtin:")) return argument;
+
+        // A nested generic argument can be stored as its original spelling.
+        // Resolve it only through a binding to this exact specialization and
+        // the original TypeSyntax preserved by rewriteSpecializedSyntax.
+        std::optional<std::string> resolved;
+        for (const TypeNameBinding& binding : nameLookup.bindings())
+        {
+            if (!binding.targetTypeOrdinal.has_value() || binding.syntax == nullptr ||
+                nameLookup.typeForOrdinal(*binding.targetTypeOrdinal) != &declaration ||
+                !specialization->instantiationRange.isValid() ||
+                binding.syntax->range().begin() != specialization->instantiationRange.begin() ||
+                binding.syntax->range().end() != specialization->instantiationRange.end())
+                continue;
+            const auto arguments = genericModel_->rewrittenTypeArguments(binding.syntax);
+            if (arguments.size() != 1U || arguments.front() == nullptr) continue;
+            const ast::TypeSyntax* argumentSyntax = arguments.front();
+            std::string key;
+            if (const NamedTypeDeclaration* bound = nameLookup.resolvedDeclaration(argumentSyntax);
+                bound != nullptr)
+                key = "type:" + bound->identity.key();
+            else if (lexer::isBuiltinTypeKeyword(argumentSyntax->baseTokenKind()) &&
+                     argumentSyntax->modifiers().empty())
+                key = "builtin:" + argumentSyntax->baseName();
+            else if (const std::string* identity = genericModel_->resolvedTypeIdentity(argumentSyntax);
+                     identity != nullptr && identity->starts_with("generic:") &&
+                     argumentSyntax->modifiers().empty())
+            {
+                const std::string_view specializationKey = std::string_view(*identity).substr(8U);
+                const auto inner = std::ranges::find_if(genericModel_->specializations(),
+                    [&](const GenericSpecializationRecord& record) {
+                        return record.specializationKey == specializationKey;
+                    });
+                if (inner == genericModel_->specializations().end() || inner->specializedSyntax == nullptr)
+                    continue;
+                const auto named = std::ranges::find_if(nameLookup.namedTypes(),
+                    [&](const NamedTypeDeclaration& candidate) {
+                        return candidate.syntax == inner->specializedSyntax;
+                    });
+                if (named == nameLookup.namedTypes().end()) continue;
+                key = "type:" + named->identity.key();
+            }
+            else continue;
+            if (resolved.has_value() && *resolved != key) return std::nullopt;
+            resolved = std::move(key);
+        }
+        return resolved;
+    }
+    return std::nullopt;
+}
+
 const std::string* ProjectMemberModel::resolvedGenericTypeIdentity(
     const ast::TypeSyntax* syntax) const
 {

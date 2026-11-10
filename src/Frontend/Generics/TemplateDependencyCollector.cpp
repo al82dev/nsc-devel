@@ -240,6 +240,18 @@ void ProjectGenericModel::discoverTemplateDependencies(
                 if (extensions == traitImplExtensions_.end() ||
                     std::ranges::find(extensions->second, node) == extensions->second.end())
                     continue;
+                // Resolve all impl markers in their own lexical scope when
+                // this owner has a deferred conditional marker. Coherence
+                // compares these identities after dependency discovery.
+                const bool hasDeferred = std::ranges::any_of(extensions->second,
+                    [&](const ast::AstNode* extension) {
+                        return extension != nullptr && extension->isUnsafe() &&
+                            std::ranges::find(candidate->syntax->typeSyntaxes(), extension->typeSyntax()) ==
+                                candidate->syntax->typeSyntaxes().end();
+                    });
+                if (hasDeferred)
+                    collectTypeDependency(*candidate, unit, node->typeSyntax(),
+                                          currentNamespace, currentScope);
                 for (const ast::GenericConstraintClause& clause : node->genericConstraints())
                 {
                     for (const ast::TypeSyntax* constraint : clause.typeConstraints)

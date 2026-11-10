@@ -11,6 +11,7 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
+#include <array>
 #include <map>
 #include <unordered_map>
 #include <utility>
@@ -893,58 +894,81 @@ bool ProjectGenericConstraintModel::satisfiesThreadSafetyConstraint(
     const NamedTypeDeclaration& argument,
     std::size_t argumentOrdinal,
     bool sendMarker,
+    std::string_view markerTypeKey,
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
     const ProjectInheritanceModel& inheritanceModel)
 {
     // NS304-T07-F07: Send/Sync derivan estructuralmente — un tipo es Send/Sync
     // cuando sus campos lo son y no contiene raw pointers. No se exige `: Send`.
-    std::vector<std::size_t> pending{argumentOrdinal};
-    std::unordered_set<std::size_t> visited;
-    const auto enqueueStructuralTypes = [&](std::string typeKey) {
-        std::vector<std::string> types{std::move(typeKey)};
+    struct PendingType { std::size_t ordinal; bool send; bool strict; };
+    std::vector<PendingType> pending{{argumentOrdinal, sendMarker, false}};
+    std::array<std::unordered_set<std::size_t>, 4> visited;
+    const auto enqueueStructuralTypes = [&](std::string typeKey, bool send, bool strict) {
+        std::vector<std::pair<std::string, bool>> types;
+        types.emplace_back(std::move(typeKey), send);
         while (!types.empty())
         {
-            std::string current = std::move(types.back());
+            auto [current, currentMode] = std::move(types.back());
             types.pop_back();
             if (current.ends_with("*")) return false;
             if (current.starts_with("refmut:"))
             {
-                if (!sendMarker) return false;
-                types.push_back(current.substr(7));
+                if (!currentMode) return false;
+                types.emplace_back(current.substr(7), true);
                 continue;
             }
             // A shared reference needs the referent's Sync, not its Send.
-            // Until this traversal carries both modes, do not assume it safe.
-            if (current.starts_with("ref:")) return false;
+            // Preserve the conservative legacy rule outside conditional contracts.
+            if (current.starts_with("ref:"))
+            {
+                if (!strict) return false;
+                types.emplace_back(current.substr(4), false);
+                continue;
+            }
             auto element = ProjectMemberModel::fixedArrayElementTypeKey(current);
             if (!element.has_value()) element = ProjectTypeConversion::nativeArrayElementType(current);
             if (element.has_value())
             {
-                types.push_back(std::move(*element));
+                types.emplace_back(std::move(*element), currentMode);
                 continue;
             }
             if (auto tuple = ProjectTypeConversion::tupleElementTypeKeys(current); tuple.has_value())
             {
-                types.insert(types.end(), tuple->begin(), tuple->end());
+                for (std::string& element : *tuple)
+                    types.emplace_back(std::move(element), currentMode);
                 continue;
             }
             std::size_t ordinal = 0;
             if (declarationForTypeKey(nameLookup, current, ordinal) != nullptr)
-                pending.push_back(ordinal);
+                pending.push_back({ordinal, currentMode, strict});
+            else if (strict && !current.starts_with("builtin:"))
+                return false;
         }
         return true;
     };
     while (!pending.empty())
     {
-        const std::size_t currentOrdinal = pending.back();
+        const PendingType item = pending.back();
         pending.pop_back();
-        if (!visited.insert(currentOrdinal).second) continue;
+        const std::size_t currentOrdinal = item.ordinal;
+        const bool currentSend = item.send;
+        if (!visited[(item.strict ? 2U : 0U) + (currentSend ? 1U : 0U)].insert(currentOrdinal).second)
+            continue;
         const NamedTypeDeclaration* current = currentOrdinal == argumentOrdinal
             ? &argument : nameLookup.typeForOrdinal(currentOrdinal);
         if (current == nullptr) return false;
+        const std::string currentMarker = std::string(markerTypeKey.substr(0, markerTypeKey.size() - 4U)) +
+            (currentSend ? "Send" : "Sync");
+        if (const auto payload = memberModel.conditionalUnsafeThreadArgument(*current, currentMarker, nameLookup);
+            payload.has_value())
+        {
+            if (!enqueueStructuralTypes(*payload, true, true) ||
+                !enqueueStructuralTypes(*payload, false, true)) return false;
+            continue;
+        }
         if (const auto base = inheritanceModel.baseTypeOrdinal(currentOrdinal); base.has_value())
-            pending.push_back(*base);
+            pending.push_back({*base, currentSend, item.strict});
         language::ThreadSafetyTypeFacts facts;
         facts.typeName = current->identity.name();
         std::vector<std::size_t> fallbackMemberOrdinals;
@@ -972,13 +996,15 @@ bool ProjectGenericConstraintModel::satisfiesThreadSafetyConstraint(
                 memberFacts.kind = language::ThreadSafetyMemberKind::MutableReference;
                 memberFacts.send = true;
                 memberFacts.sync = false;
-                if (sendMarker && !enqueueStructuralTypes(member.declaredTypeKey.substr(7))) return false;
+                if (currentSend && !enqueueStructuralTypes(member.declaredTypeKey.substr(7), true, item.strict)) return false;
             }
             else if (member.declaredTypeKey.starts_with("ref:"))
             {
                 memberFacts.kind = language::ThreadSafetyMemberKind::SharedReference;
                 memberFacts.send = true;
                 memberFacts.sync = true;
+                if (item.strict && !enqueueStructuralTypes(member.declaredTypeKey.substr(4), false, true))
+                    return false;
             }
             else if (member.declaredTypeKey.ends_with("*"))
             {
@@ -991,12 +1017,12 @@ bool ProjectGenericConstraintModel::satisfiesThreadSafetyConstraint(
                 memberFacts.kind = language::ThreadSafetyMemberKind::Value;
                 memberFacts.send = true;
                 memberFacts.sync = true;
-                if (!enqueueStructuralTypes(member.declaredTypeKey)) return false;
+                if (!enqueueStructuralTypes(member.declaredTypeKey, currentSend, item.strict)) return false;
             }
             facts.members.push_back(std::move(memberFacts));
         }
         const language::ThreadSafetyDecision decision = language::evaluateThreadSafety(facts);
-        if (!(sendMarker ? decision.send : decision.sync)) return false;
+        if (!(currentSend ? decision.send : decision.sync)) return false;
     }
     return true;
 }
@@ -1017,7 +1043,8 @@ bool ProjectGenericConstraintModel::satisfiesTypeConstraint(
         (argument.kind == NamedTypeDeclarationKind::Class ||
          argument.kind == NamedTypeDeclarationKind::Struct))
         return satisfiesThreadSafetyConstraint(
-            argument, argumentOrdinal, sendMarker, nameLookup, memberModel, inheritanceModel);
+            argument, argumentOrdinal, sendMarker, "type:" + constraint.identity.key(),
+            nameLookup, memberModel, inheritanceModel);
     if (constraint.kind == NamedTypeDeclarationKind::Interface)
     {
         // Dos caminos, y hacen falta los dos: una CLASE la implementa, y una INTERFAZ

@@ -238,6 +238,7 @@ private:
         const NamedTypeDeclaration& argument,
         std::size_t argumentOrdinal,
         bool sendMarker,
+        std::string_view markerTypeKey,
         const ProjectNameLookup& nameLookup,
         const ProjectMemberModel& memberModel,
         const ProjectInheritanceModel& inheritanceModel);

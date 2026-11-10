@@ -5636,6 +5636,24 @@ if(NSC_BUILD_TESTS)
         add_test(NAME nsc.generics.dependent-constraints
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/dependent_generic_constraints.py"
                     "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.concurrency.conditional-traits
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/conditional_unsafe_thread_traits.py"
+                    "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.concurrency.conditional-traits-split
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/conditional_unsafe_thread_traits.py"
+                    "${NSC_TEST_COMPILER}" --split-impl)
+        add_test(NAME nsc.concurrency.conditional-trait-coherence
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/conditional_unsafe_trait_coherence.py"
+                    "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.concurrency.conditional-capture
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/conditional_unsafe_thread_capture.py"
+                    "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.concurrency.arc-constraints
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_arc_thread_constraints.py"
+                    "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.concurrency.arc-capture
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_arc_thread_capture.py"
+                    "${NSC_TEST_COMPILER}")
         add_test(NAME nsc.generics.tuple-metadata-specialization
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tuple_metadata_specialization.py"
                     "${NSC_TEST_COMPILER}")

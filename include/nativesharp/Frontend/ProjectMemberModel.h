@@ -104,6 +104,11 @@ public:
     std::string canonicalTypeKey(
         const ast::TypeSyntax* syntax,
         const ProjectNameLookup& nameLookup) const;
+    // Returns the single argument of a deferred unsafe thread-marker impl only
+    // when its declaration and all three marker identities are exact.
+    std::optional<std::string> conditionalUnsafeThreadArgument(
+        const NamedTypeDeclaration& declaration, std::string_view markerTypeKey,
+        const ProjectNameLookup& nameLookup) const;
     static std::string canonicalGenericArgumentKey(
         std::string_view spelling,
         const ProjectNameLookup& nameLookup);

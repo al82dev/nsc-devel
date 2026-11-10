@@ -24,4 +24,7 @@ namespace NativeSharp.Core
             return new Arc<T>(move(value));
         }
     }
+
+    unsafe impl<T> Send for WeakArc<T> where T : Send, Sync {}
+    unsafe impl<T> Sync for WeakArc<T> where T : Send, Sync {}
 }

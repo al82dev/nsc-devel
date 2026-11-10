@@ -23,6 +23,7 @@
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <charconv>
 #include <cmath>
@@ -5317,6 +5318,124 @@ void ProjectMethodBodyModel::validateThreadExecutorCaptures(
     }
 }
 
+namespace
+{
+// The ordinary capture walk remains unchanged. This context is only used for
+// an explicit conditional unsafe impl and checks both payload guarantees with
+// a bounded worklist, including nested wrappers and cyclic named types.
+class ConditionalCaptureThreadSafety final
+{
+public:
+    ConditionalCaptureThreadSafety(const ProjectNameLookup* lookup, const ProjectMemberModel* members,
+                                   const ProjectInheritanceModel* inheritance)
+        : lookup_(lookup), members_(members), inheritance_(inheritance)
+    {
+        if (lookup_ == nullptr) return;
+        bool ambiguous = false;
+        for (const NamedTypeDeclaration& declaration : lookup_->namedTypes())
+        {
+            if (declaration.kind != NamedTypeDeclarationKind::Interface) continue;
+            const std::string_view name = declaration.identity.fullyQualifiedNameView();
+            std::string* key = name == "NativeSharp.Core.Send" ? &sendKey_
+                : name == "NativeSharp.Core.Sync" ? &syncKey_ : nullptr;
+            if (key == nullptr) continue;
+            if (!key->empty()) { ambiguous = true; break; }
+            *key = "type:" + declaration.identity.key();
+        }
+        if (ambiguous || sendKey_.size() < 4U || syncKey_.size() < 4U ||
+            sendKey_.substr(0, sendKey_.size() - 4U) != syncKey_.substr(0, syncKey_.size() - 4U))
+        {
+            sendKey_.clear();
+            syncKey_.clear();
+        }
+    }
+
+    std::optional<std::string> payload(std::size_t ordinal, bool send) const
+    {
+        if (lookup_ == nullptr || members_ == nullptr || sendKey_.empty() || syncKey_.empty())
+            return std::nullopt;
+        const NamedTypeDeclaration* declaration = lookup_->typeForOrdinal(ordinal);
+        return declaration == nullptr ? std::nullopt : members_->conditionalUnsafeThreadArgument(
+            *declaration, send ? sendKey_ : syncKey_, *lookup_);
+    }
+
+    bool payloadIsSafe(const std::string& typeKey) const
+    {
+        if (inheritance_ == nullptr || members_ == nullptr) return false;
+        struct Item { std::string key; bool send; };
+        std::vector<Item> pending{{typeKey, true}, {typeKey, false}};
+        std::array<std::unordered_set<std::size_t>, 2> visited;
+        std::vector<std::size_t> fallback;
+        while (!pending.empty())
+        {
+            Item item = std::move(pending.back());
+            pending.pop_back();
+            while (true)
+            {
+                if (item.key.ends_with("*")) return false;
+                if (item.key.starts_with("refmut:"))
+                {
+                    if (!item.send) return false;
+                    item.key = item.key.substr(7);
+                }
+                else if (item.key.starts_with("ref:"))
+                {
+                    item.send = false;
+                    item.key = item.key.substr(4);
+                }
+                else break;
+            }
+            auto element = ProjectMemberModel::fixedArrayElementTypeKey(item.key);
+            if (!element.has_value()) element = ProjectTypeConversion::nativeArrayElementType(item.key);
+            if (element.has_value())
+            {
+                pending.push_back({std::move(*element), item.send});
+                continue;
+            }
+            if (auto elements = ProjectTypeConversion::tupleElementTypeKeys(item.key); elements.has_value())
+            {
+                for (std::string& part : *elements) pending.push_back({std::move(part), item.send});
+                continue;
+            }
+            const auto ordinal = inheritance_->typeOrdinalForTypeKey(item.key);
+            if (!ordinal.has_value())
+            {
+                if (!item.key.starts_with("builtin:")) return false;
+                continue;
+            }
+            if (!visited[item.send ? 1U : 0U].insert(*ordinal).second) continue;
+            if (const auto nested = payload(*ordinal, item.send); nested.has_value())
+            {
+                pending.push_back({*nested, true});
+                pending.push_back({*nested, false});
+                continue;
+            }
+            if (const auto base = inheritance_->baseTypeOrdinal(*ordinal); base.has_value())
+                pending.push_back({inheritance_->typeKeyForOrdinal(*base), item.send});
+            std::span<const std::size_t> ordinals = members_->membersDeclaredByType(*ordinal);
+            if (!members_->hasMembersDeclaredByTypeIndex())
+            {
+                fallback.clear();
+                for (std::size_t index = 0; index < members_->members().size(); ++index)
+                    if (members_->members()[index].declaringTypeOrdinal == *ordinal) fallback.push_back(index);
+                ordinals = fallback;
+            }
+            for (const std::size_t index : ordinals)
+                if (index < members_->members().size() && members_->members()[index].kind == ClassMemberKind::Field)
+                    pending.push_back({members_->members()[index].declaredTypeKey, item.send});
+        }
+        return true;
+    }
+
+private:
+    const ProjectNameLookup* lookup_;
+    const ProjectMemberModel* members_;
+    const ProjectInheritanceModel* inheritance_;
+    std::string sendKey_;
+    std::string syncKey_;
+};
+}
+
 bool ProjectMethodBodyModel::callTypeIsSend(const std::string& typeKey) const
 {
     // Depth-first walk over the field types with an explicit stack instead of recursion. The
@@ -5326,6 +5445,7 @@ bool ProjectMethodBodyModel::callTypeIsSend(const std::string& typeKey) const
     std::vector<std::string> pending{typeKey};
     std::unordered_set<std::size_t> walkedTypes;
     std::vector<std::size_t> fallbackMemberOrdinals;
+    const ConditionalCaptureThreadSafety conditional(nameLookup_, memberModel_, inheritanceModel_);
     while (!pending.empty())
     {
         std::string current = std::move(pending.back());
@@ -5355,6 +5475,11 @@ bool ProjectMethodBodyModel::callTypeIsSend(const std::string& typeKey) const
         }
         const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(current);
         if (!typeOrdinal.has_value() || !walkedTypes.insert(*typeOrdinal).second) continue;
+        if (const auto payload = conditional.payload(*typeOrdinal, true); payload.has_value())
+        {
+            if (!conditional.payloadIsSafe(*payload)) return false;
+            continue;
+        }
         if (inheritanceModel_ != nullptr)
             if (const auto base = inheritanceModel_->baseTypeOrdinal(*typeOrdinal); base.has_value())
                 pending.push_back(inheritanceModel_->typeKeyForOrdinal(*base));
@@ -5392,6 +5517,7 @@ bool ProjectMethodBodyModel::callTypeIsSync(const std::string& typeKey) const
     std::vector<std::string> pending{typeKey};
     std::unordered_set<std::size_t> walkedTypes;
     std::vector<std::size_t> fallbackMemberOrdinals;
+    const ConditionalCaptureThreadSafety conditional(nameLookup_, memberModel_, inheritanceModel_);
     while (!pending.empty())
     {
         std::string current = std::move(pending.back());
@@ -5422,6 +5548,11 @@ bool ProjectMethodBodyModel::callTypeIsSync(const std::string& typeKey) const
         }
         const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(current);
         if (!typeOrdinal.has_value() || !walkedTypes.insert(*typeOrdinal).second) continue;
+        if (const auto payload = conditional.payload(*typeOrdinal, false); payload.has_value())
+        {
+            if (!conditional.payloadIsSafe(*payload)) return false;
+            continue;
+        }
         if (inheritanceModel_ != nullptr)
             if (const auto base = inheritanceModel_->baseTypeOrdinal(*typeOrdinal); base.has_value())
                 pending.push_back(inheritanceModel_->typeKeyForOrdinal(*base));

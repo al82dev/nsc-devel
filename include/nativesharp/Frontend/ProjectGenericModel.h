@@ -175,6 +175,7 @@ private:
         std::string sourceName;
         std::string identityKey;
         bool isPublic = false;
+        const ast::AstNode* syntax = nullptr;
     };
 
     struct DeclaredTypeOrigin final
