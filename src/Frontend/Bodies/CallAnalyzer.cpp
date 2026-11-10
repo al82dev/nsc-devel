@@ -5564,17 +5564,40 @@ void ProjectMethodBodyModel::configureSelectedCallBinding(
         if (owner.has_value() && owner->kind == ScopeNameKind::Local &&
             owner->semanticOrdinal < locals_.size() && locals_[owner->semanticOrdinal].isMoveOnly)
             result.ownershipSourceLocalOrdinal = owner->semanticOrdinal;
+        const ClassMemberSymbol* caller = call.scopeOrdinal < scopes_.size()
+            ? methodSymbol(scopes_[call.scopeOrdinal].methodMemberOrdinal) : nullptr;
+        if (owner.has_value() && owner->kind == ScopeNameKind::Parameter && caller != nullptr &&
+            owner->semanticOrdinal < caller->parameters.size() && memberModel_ != nullptr &&
+            caller->parameters[owner->semanticOrdinal].passKind == ParameterPassKind::Value &&
+            memberModel_->typeIsMoveOnly(caller->parameters[owner->semanticOrdinal].typeKey))
+            result.ownershipSourceParameterOrdinal = owner->semanticOrdinal;
     }
     if (result.readonlyBorrowedObject && selectedMember.isReferenceReturn &&
         !selectedMember.isStatic && selectedMember.returnLifetimeName == "this" &&
         typeKeyIsViewLike(callee.receiverTypeKey) && callee.receiverSyntax != nullptr)
     {
         const auto root = viewRootLocalOfExpression(callee.receiverSyntax, call.scopeOrdinal);
-        const auto owner = root.has_value() ? lookupScopeName(call.scopeOrdinal, *root) : std::nullopt;
+        std::size_t rootScope = call.scopeOrdinal;
+        if (callee.receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const auto receiver = lookupScopeName(call.scopeOrdinal, callee.receiverSyntax->text());
+            if (receiver.has_value() && receiver->kind == ScopeNameKind::Local &&
+                receiver->semanticOrdinal < locals_.size() && root.has_value() &&
+                locals_[receiver->semanticOrdinal].viewRootLocalName == *root)
+                rootScope = locals_[receiver->semanticOrdinal].scopeOrdinal;
+        }
+        const auto owner = root.has_value() ? lookupScopeName(rootScope, *root) : std::nullopt;
         if (owner.has_value() && owner->kind == ScopeNameKind::Local &&
             owner->semanticOrdinal < locals_.size() && locals_[owner->semanticOrdinal].isMoveOnly &&
             !typeKeyIsViewLike(locals_[owner->semanticOrdinal].typeKey))
             result.ownershipSourceLocalOrdinal = owner->semanticOrdinal;
+        const ClassMemberSymbol* caller = call.scopeOrdinal < scopes_.size()
+            ? methodSymbol(scopes_[call.scopeOrdinal].methodMemberOrdinal) : nullptr;
+        if (owner.has_value() && owner->kind == ScopeNameKind::Parameter && caller != nullptr &&
+            owner->semanticOrdinal < caller->parameters.size() && memberModel_ != nullptr &&
+            caller->parameters[owner->semanticOrdinal].passKind == ParameterPassKind::Value &&
+            memberModel_->typeIsMoveOnly(caller->parameters[owner->semanticOrdinal].typeKey))
+            result.ownershipSourceParameterOrdinal = owner->semanticOrdinal;
     }
     result.ownershipTransfer = selectedMember.declaredOwnership == sema::OwnershipKind::Owned;
     // An owned return crosses the call boundary without a named owner. It is therefore a

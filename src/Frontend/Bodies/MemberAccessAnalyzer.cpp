@@ -820,6 +820,7 @@ bool ProjectMethodBodyModel::analyzeFieldMember(
         result.objectLifetimeOwnership = sema::OwnershipKind::Borrowed;
         result.storageOwnership = sema::OwnershipKind::Borrowed;
         result.ownershipSourceLocalOrdinal = receiver.ownershipSourceLocalOrdinal;
+        result.ownershipSourceParameterOrdinal = receiver.ownershipSourceParameterOrdinal;
         result.borrowedLocalOrdinal = receiver.borrowedLocalOrdinal;
     }
     result.pointerPointeeReadonly = field.declaredPointerPointeeReadonly;

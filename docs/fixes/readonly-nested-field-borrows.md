@@ -1,0 +1,9 @@
+# Préstamos de campos de solo lectura
+
+Un campo de clase extraído de un objeto prestado por `Rc.Get()` o `Arc.Get()` se rechazaba al declararse como `borrowed`, incluso cuando el dueño seguía vivo. La reproducción y los ensayos previos están en `docs/fixes/readonly-nested-borrowed-field.md` y en los registros con prefijo `readonly-nested-` de `A:/nsc-fixes-evidencia`.
+
+El análisis admite el campo real de un préstamo local comprobado o de un método de instancia cuyo retorno por referencia está ligado al receptor. Propaga el dueño local o el parámetro move-only por valor hasta el campo y conserva el solo lectura. Para una vista local con varios orígenes identificables conserva todos los dueños; los orígenes desconocidos y los receptores temporales permanecen rechazados. Al resolver una vista local, el nombre de su raíz se interpreta en el ámbito donde se declaró la vista para no confundirlo con otro dueño homónimo.
+
+La selección `readonly-nested-all-directed.cmd` ejecutó 58 escenarios para cada una de las familias Rc y Arc: lecturas válidas en O0/O2; controles de parámetros, varios dueños, copias, reasignación y nombres sombreados; y rechazos de mutación, reemplazo, escape o procedencia desconocida. `readonly-view-reassignment-controls.cmd` pasó las pruebas dirigidas de resúmenes de escape y vida de préstamos. `readonly-view-reassignment-binary.cmd` comprobó lecturas válidas y rechazos con el Core binario aislado. No se ejecutaron los programas que representan accesos inválidos.
+
+El compilador y el Core empleados incluyen otros cambios locales todavía provisionales; la evidencia no certifica una compilación de este commit en un árbol limpio. La cobertura no demuestra todas las formas posibles de alias ni resuelve las vistas dentro de tuplas de bibliotecas binarias. Los casos que no se pueden relacionar con un dueño permanecen conservadores.

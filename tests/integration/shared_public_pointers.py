@@ -1150,6 +1150,307 @@ class Program { public static int Main() { Holder holder = default(Holder);
  STRONG<Payload> first = SharedPointers.MAKE<Payload>(); STRONG<Payload> second = SharedPointers.MAKE<Payload>();
  SharedView<Payload> view = first.Borrow(); { STRONG<Payload> first = SharedPointers.MAKE<Payload>();
  view = second.Borrow(); } return (int)view.Get().Data; } }''', 'view reassignment has a different local owner'),
+        'readonly_nested_local_live': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ borrowed NestedPayload parent = owner.Get(); borrowed NestedChild child = parent.Item; return child.Data; } }''', 'run:42'),
+        'readonly_nested_direct_live': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ borrowed NestedChild child = owner.Get().Item; return child.Data; } }''', 'run:42'),
+        'readonly_nested_view_live': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = owner.Borrow(); borrowed NestedChild child = view.Get().Item;
+ return child.Data; } }''', 'run:42'),
+        'readonly_nested_parameter_direct_live': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static int Read(STRONG<NestedPayload> owner) {
+ borrowed NestedChild child = owner.Get().Item; return child.Data; }
+ public static int Main() { return Read(SharedPointers.MAKE<NestedPayload>()); } }''', 'run:42'),
+        'readonly_nested_parameter_view_live': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static int Read(STRONG<NestedPayload> owner) {
+ SharedView<NestedPayload> view = owner.Borrow(); borrowed NestedChild child = view.Get().Item; return child.Data; }
+ public static int Main() { return Read(SharedPointers.MAKE<NestedPayload>()); } }''', 'run:42'),
+        'readonly_nested_mixed_parameter_first': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static int Read(STRONG<NestedPayload> owner) { STRONG<NestedPayload> local = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = true ? owner.Borrow() : local.Borrow();
+ borrowed NestedChild child = view.Get().Item; return child.Data; }
+ public static int Main() { return Read(SharedPointers.MAKE<NestedPayload>()); } }''', 'run:42'),
+        'readonly_nested_mixed_local_first': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static int Read(STRONG<NestedPayload> owner) { STRONG<NestedPayload> local = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = true ? local.Borrow() : owner.Borrow();
+ borrowed NestedChild child = view.Get().Item; return child.Data; }
+ public static int Main() { return Read(SharedPointers.MAKE<NestedPayload>()); } }''', 'run:42'),
+        'readonly_nested_mixed_second_branch': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static int Read(STRONG<NestedPayload> owner) { STRONG<NestedPayload> local = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = false ? owner.Borrow() : local.Borrow();
+ borrowed NestedChild child = view.Get().Item; return child.Data; }
+ public static int Main() { return Read(SharedPointers.MAKE<NestedPayload>()); } }''', 'run:42'),
+        'readonly_nested_two_parameters_live': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static int Read(STRONG<NestedPayload> first, STRONG<NestedPayload> second) {
+ SharedView<NestedPayload> view = false ? first.Borrow() : second.Borrow();
+ borrowed NestedChild child = view.Get().Item; return child.Data; }
+ public static int Main() { return Read(SharedPointers.MAKE<NestedPayload>(), SharedPointers.MAKE<NestedPayload>()); } }''', 'run:42'),
+        'readonly_nested_two_parameters_replace': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static int Read(STRONG<NestedPayload> first, STRONG<NestedPayload> second) {
+ SharedView<NestedPayload> view = true ? first.Borrow() : second.Borrow(); borrowed NestedChild child = view.Get().Item;
+ second = default(STRONG<NestedPayload>); return child.Data; } public static int Main() { return 0; } }''', 'borrow'),
+        'readonly_nested_mixed_replace_parameter': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static int Read(STRONG<NestedPayload> owner) { STRONG<NestedPayload> local = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = true ? local.Borrow() : owner.Borrow();
+ borrowed NestedChild child = view.Get().Item; owner = default(STRONG<NestedPayload>); return child.Data; }
+ public static int Main() { return 0; } }''', 'borrow'),
+        'readonly_nested_mixed_replace_local': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static int Read(STRONG<NestedPayload> owner) { STRONG<NestedPayload> local = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = true ? owner.Borrow() : local.Borrow();
+ borrowed NestedChild child = view.Get().Item; local = default(STRONG<NestedPayload>); return child.Data; }
+ public static int Main() { return 0; } }''', 'borrow'),
+        'readonly_nested_mixed_return': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static borrowed NestedChild Leak(STRONG<NestedPayload> owner) {
+ STRONG<NestedPayload> local = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = true ? owner.Borrow() : local.Borrow();
+ borrowed NestedChild child = view.Get().Item; return child; } public static int Main() { return 0; } }''', 'borrow'),
+        'readonly_nested_mixed_alias_live': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static int Read(STRONG<NestedPayload> owner) { STRONG<NestedPayload> local = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = false ? owner.Borrow() : local.Borrow();
+ borrowed NestedChild child = view.Get().Item; borrowed NestedChild alias = child; return alias.Data; }
+ public static int Main() { return Read(SharedPointers.MAKE<NestedPayload>()); } }''', 'run:42'),
+        'readonly_nested_mixed_alias_replace_param': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static int Read(STRONG<NestedPayload> owner) { STRONG<NestedPayload> local = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = false ? owner.Borrow() : local.Borrow();
+ borrowed NestedChild child = view.Get().Item; borrowed NestedChild alias = child;
+ owner = default(STRONG<NestedPayload>); return alias.Data; } public static int Main() { return 0; } }''', 'borrow'),
+        'readonly_nested_mixed_alias_replace_local': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static int Read(STRONG<NestedPayload> owner) { STRONG<NestedPayload> local = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = true ? owner.Borrow() : local.Borrow();
+ borrowed NestedChild child = view.Get().Item; borrowed NestedChild alias = child;
+ local = default(STRONG<NestedPayload>); return alias.Data; } public static int Main() { return 0; } }''', 'borrow'),
+        'readonly_nested_mixed_alias_escape': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static borrowed NestedChild Leak(STRONG<NestedPayload> owner) {
+ STRONG<NestedPayload> local = SharedPointers.MAKE<NestedPayload>(); SharedView<NestedPayload> view = true ? owner.Borrow() : local.Borrow();
+ borrowed NestedChild child = view.Get().Item; borrowed NestedChild alias = child; return alias; }
+ public static int Main() { return 0; } }''', 'borrow'),
+        'readonly_nested_alias_outer_escape': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ borrowed NestedChild saved = owner.Get().Item;
+ { STRONG<NestedPayload> local = SharedPointers.MAKE<NestedPayload>(); SharedView<NestedPayload> view = local.Borrow();
+ borrowed NestedChild child = view.Get().Item; saved = child; } return saved.Data; } }''', 'borrow'),
+        'readonly_nested_alias_outer_live': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ borrowed NestedChild saved = owner.Get().Item; { borrowed NestedChild child = saved; int value = child.Data; }
+ return saved.Data; } }''', 'run:42'),
+        'readonly_nested_parameter_direct_mutate': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static int Read(STRONG<NestedPayload> owner) {
+ borrowed NestedChild child = owner.Get().Item; child.Data = 9; return 0; }
+ public static int Main() { return 0; } }''', 'not assignable'),
+        'readonly_nested_parameter_view_mutate': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static int Read(STRONG<NestedPayload> owner) { SharedView<NestedPayload> view = owner.Borrow();
+ borrowed NestedChild child = view.Get().Item; child.Data = 9; return 0; }
+ public static int Main() { return 0; } }''', 'not assignable'),
+        'readonly_nested_parameter_direct_return': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static borrowed NestedChild Leak(STRONG<NestedPayload> owner) {
+ borrowed NestedChild child = owner.Get().Item; return child; } public static int Main() { return 0; } }''', 'borrow'),
+        'readonly_nested_parameter_direct_replace': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static int Read(STRONG<NestedPayload> owner) {
+ borrowed NestedChild child = owner.Get().Item; owner = default(STRONG<NestedPayload>); return child.Data; }
+ public static int Main() { return 0; } }''', 'borrow'),
+        'readonly_nested_parameter_return': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static borrowed NestedChild Leak(STRONG<NestedPayload> owner) {
+ SharedView<NestedPayload> view = owner.Borrow(); borrowed NestedChild child = view.Get().Item; return child; }
+ public static int Main() { return 0; } }''', 'borrow'),
+        'readonly_nested_parameter_replace': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static int Read(STRONG<NestedPayload> owner) {
+ SharedView<NestedPayload> view = owner.Borrow(); borrowed NestedChild child = view.Get().Item;
+ owner = default(STRONG<NestedPayload>); return child.Data; } public static int Main() { return 0; } }''', 'borrow'),
+        'readonly_nested_view_reassigned_live': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> first = SharedPointers.MAKE<NestedPayload>();
+ STRONG<NestedPayload> second = SharedPointers.MAKE<NestedPayload>(); SharedView<NestedPayload> view = first.Borrow();
+ borrowed NestedChild child = view.Get().Item; view = second.Borrow(); return child.Data; } }''', 'run:42'),
+        'readonly_nested_view_reassigned_owner_replace': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> first = SharedPointers.MAKE<NestedPayload>();
+ STRONG<NestedPayload> second = SharedPointers.MAKE<NestedPayload>(); SharedView<NestedPayload> view = first.Borrow();
+ borrowed NestedChild child = view.Get().Item; view = second.Borrow(); first = default(STRONG<NestedPayload>);
+ return child.Data; } }''', 'borrow'),
+        'readonly_nested_view_reassigned_after_live': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> first = SharedPointers.MAKE<NestedPayload>();
+ STRONG<NestedPayload> second = SharedPointers.MAKE<NestedPayload>(); SharedView<NestedPayload> view = first.Borrow();
+ view = second.Borrow(); borrowed NestedChild child = view.Get().Item; return child.Data; } }''', 'run:42'),
+        'readonly_nested_view_reassigned_new_owner_replace': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> first = SharedPointers.MAKE<NestedPayload>();
+ STRONG<NestedPayload> second = SharedPointers.MAKE<NestedPayload>(); SharedView<NestedPayload> view = first.Borrow();
+ view = second.Borrow(); borrowed NestedChild child = view.Get().Item; second = default(STRONG<NestedPayload>);
+ return child.Data; } }''', 'borrow'),
+        'readonly_nested_view_reassigned_inner_escape': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> first = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = first.Borrow(); { STRONG<NestedPayload> second = SharedPointers.MAKE<NestedPayload>();
+ view = second.Borrow(); } borrowed NestedChild child = view.Get().Item; return child.Data; } }''', 'borrow'),
+        'readonly_nested_view_reassigned_direct_replace': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> first = SharedPointers.MAKE<NestedPayload>();
+ STRONG<NestedPayload> second = SharedPointers.MAKE<NestedPayload>(); SharedView<NestedPayload> view = first.Borrow();
+ view = second.Borrow(); second = default(STRONG<NestedPayload>); return view.Get().Item.Data; } }''', 'borrow'),
+        'readonly_nested_view_reassigned_parameter_live': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static int Read(STRONG<NestedPayload> first) { STRONG<NestedPayload> second = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = first.Borrow(); view = second.Borrow(); borrowed NestedChild child = view.Get().Item;
+ return child.Data; } public static int Main() { return Read(SharedPointers.MAKE<NestedPayload>()); } }''', 'run:42'),
+        'readonly_nested_view_reassigned_parameter_replace': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static int Read(STRONG<NestedPayload> first) { STRONG<NestedPayload> second = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = first.Borrow(); view = second.Borrow(); borrowed NestedChild child = view.Get().Item;
+ second = default(STRONG<NestedPayload>); return child.Data; } public static int Main() { return 0; } }''', 'borrow'),
+        'readonly_nested_view_reassigned_conditional_live': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> first = SharedPointers.MAKE<NestedPayload>();
+ STRONG<NestedPayload> second = SharedPointers.MAKE<NestedPayload>(); STRONG<NestedPayload> third = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = first.Borrow(); view = false ? second.Borrow() : third.Borrow();
+ borrowed NestedChild child = view.Get().Item; return child.Data; } }''', 'run:42'),
+        'readonly_nested_view_reassigned_conditional_replace': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> first = SharedPointers.MAKE<NestedPayload>();
+ STRONG<NestedPayload> second = SharedPointers.MAKE<NestedPayload>(); STRONG<NestedPayload> third = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = first.Borrow(); view = false ? second.Borrow() : third.Borrow();
+ borrowed NestedChild child = view.Get().Item; third = default(STRONG<NestedPayload>); return child.Data; } }''', 'borrow'),
+        'readonly_nested_view_shadow_live': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = owner.Borrow(); { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ borrowed NestedChild child = view.Get().Item; owner = default(STRONG<NestedPayload>); return child.Data; } } }''', 'run:42'),
+        'readonly_nested_view_shadow_owner_replace': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>(); SharedView<NestedPayload> view = owner.Borrow();
+ borrowed NestedChild child = view.Get().Item; owner = default(STRONG<NestedPayload>); return child.Data; } } }''', 'borrow'),
+        'readonly_nested_view_mutate': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = owner.Borrow(); borrowed NestedChild child = view.Get().Item;
+ child.Data = 9; return 0; } }''', 'not assignable'),
+        'readonly_nested_view_owner_replace': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = owner.Borrow(); borrowed NestedChild child = view.Get().Item;
+ owner = default(STRONG<NestedPayload>); return child.Data; } }''', 'borrow'),
+        'readonly_nested_view_global': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static NestedChild saved; public static int Main() {
+ STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>(); SharedView<NestedPayload> view = owner.Borrow();
+ borrowed NestedChild child = view.Get().Item; saved = child; return 0; } }''', 'borrow'),
+        'readonly_nested_view_ambiguous': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> first = SharedPointers.MAKE<NestedPayload>();
+ STRONG<NestedPayload> second = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = true ? first.Borrow() : second.Borrow();
+ borrowed NestedChild child = view.Get().Item; second = default(STRONG<NestedPayload>); return child.Data; } }''', 'borrow'),
+        'readonly_nested_view_multiple_live_true': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> first = SharedPointers.MAKE<NestedPayload>();
+ STRONG<NestedPayload> second = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = true ? first.Borrow() : second.Borrow();
+ borrowed NestedChild child = view.Get().Item; return child.Data; } }''', 'run:42'),
+        'readonly_nested_view_multiple_live_false': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> first = SharedPointers.MAKE<NestedPayload>();
+ STRONG<NestedPayload> second = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = false ? first.Borrow() : second.Borrow();
+ borrowed NestedChild child = view.Get().Item; return child.Data; } }''', 'run:42'),
+        'readonly_nested_view_multiple_first_replace': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> first = SharedPointers.MAKE<NestedPayload>();
+ STRONG<NestedPayload> second = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = false ? first.Borrow() : second.Borrow();
+ borrowed NestedChild child = view.Get().Item; first = default(STRONG<NestedPayload>); return child.Data; } }''', 'borrow'),
+        'readonly_nested_view_unknown': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { SharedView<NestedPayload> view = default(SharedView<NestedPayload>);
+ borrowed NestedChild child = view.Get().Item; return child.Data; } }''', 'borrow'),
+        'readonly_nested_view_return': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static borrowed NestedChild Leak() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ SharedView<NestedPayload> view = owner.Borrow(); borrowed NestedChild child = view.Get().Item; return child; }
+ public static int Main() { return 0; } }''', 'borrow'),
+        'readonly_nested_direct_mutate': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ borrowed NestedChild child = owner.Get().Item; child.Data = 9; return 0; } }''', 'not assignable'),
+        'readonly_nested_direct_call': ('''class NestedChild { public void Change() {} }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ borrowed NestedChild child = owner.Get().Item; child.Change(); return 0; } }''', 'readonly borrowed'),
+        'readonly_nested_direct_temporary': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { borrowed NestedChild child =
+ SharedPointers.MAKE<NestedPayload>().Get().Item; return child.Data; } }''', 'borrow'),
+        'readonly_nested_direct_owner_replace': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ borrowed NestedChild child = owner.Get().Item; owner = default(STRONG<NestedPayload>); return child.Data; } }''', 'borrow'),
+        'readonly_nested_direct_global': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static NestedChild saved; public static int Main() {
+ STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ borrowed NestedChild child = owner.Get().Item; saved = child; return 0; } }''', 'borrow'),
+        'readonly_nested_direct_return': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static borrowed NestedChild Leak() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ borrowed NestedChild child = owner.Get().Item; return child; } public static int Main() { return 0; } }''', 'borrow'),
+        'readonly_nested_local_mutate': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ borrowed NestedPayload parent = owner.Get(); borrowed NestedChild child = parent.Item; child.Data = 9; return 0; } }''', 'not assignable'),
+        'readonly_nested_local_call': ('''class NestedChild { public void Change() {} }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ borrowed NestedPayload parent = owner.Get(); borrowed NestedChild child = parent.Item; child.Change(); return 0; } }''', 'readonly borrowed'),
+        'readonly_nested_local_owner_replace': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ borrowed NestedPayload parent = owner.Get(); borrowed NestedChild child = parent.Item;
+ owner = default(STRONG<NestedPayload>); return child.Data; } }''', 'borrow'),
+        'readonly_nested_local_parent_reassign': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static int Main() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ STRONG<NestedPayload> other = SharedPointers.MAKE<NestedPayload>();
+ borrowed NestedPayload parent = owner.Get(); borrowed NestedChild child = parent.Item;
+ parent = other.Get(); owner = default(STRONG<NestedPayload>); return child.Data; } }''', 'borrow'),
+        'readonly_nested_local_global_escape': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { public static NestedChild saved; public static int Main() {
+ STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ borrowed NestedPayload parent = owner.Get(); borrowed NestedChild child = parent.Item;
+ saved = child; return 0; } }''', 'borrow'),
+        'readonly_nested_local_return': ('''class NestedChild { public int Data; }
+ class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
+ class Program { static borrowed NestedChild Leak() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
+ borrowed NestedPayload parent = owner.Get(); borrowed NestedChild child = parent.Item; return child; }
+ public static int Main() { return 0; } }''', 'borrow'),
         'view_array_escape': ('''class Program { public static int Main() {
  SharedView<Payload>[] saved = new SharedView<Payload>[1];
  { STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); saved[0] = owner.Borrow(); }

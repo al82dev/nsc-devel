@@ -4060,6 +4060,196 @@ void ProjectMethodBodyModel::analyzeBorrowedVariableInitializer(
             }
         }
     }
+    // A readonly field of a checked borrowed local retains that local's region
+    // and the owner's region. Restrict this to an actual field of an identifier;
+    // arbitrary calls, properties and temporaries need their own lifetime proof.
+    if (initializer.valid && initializer.readonlyBorrowedObject && variable->first() != nullptr &&
+        variable->first()->kind() == ast::AstNodeKind::MemberExpression &&
+        variable->first()->first() != nullptr &&
+        variable->first()->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const MethodNameBinding* field = nameBinding(variable->first(), methodMemberOrdinal);
+        const auto source = lookupScopeName(scopeOrdinal, variable->first()->first()->text());
+        if (field != nullptr && field->kind == MethodNameBindingKind::ExplicitObjectField &&
+            source.has_value() && source->kind == ScopeNameKind::Local &&
+            source->semanticOrdinal < locals_.size())
+        {
+            const MethodLocalSymbol& local = locals_[source->semanticOrdinal];
+            if (local.ownership == sema::OwnershipKind::Borrowed &&
+                local.localBorrowBindingOrdinal.has_value() &&
+                *local.localBorrowBindingOrdinal < localBorrowBindings_.size() &&
+                scopeContains(local.scopeOrdinal, scopeOrdinal))
+            {
+                MethodLocalBorrowBinding borrow;
+                borrow.syntax = variable;
+                borrow.methodMemberOrdinal = methodMemberOrdinal;
+                borrow.creationScopeOrdinal = scopeOrdinal;
+                borrow.typeKey = typeKey;
+                configureBorrowedVariableSource(
+                    borrow, *source, variable, methodMemberOrdinal, scopeOrdinal, diagnostics);
+                if ((borrow.sourceOwnerLocalOrdinal.has_value() ||
+                     borrow.sourceOwnerParameterOrdinal.has_value()) &&
+                    scopeContains(borrow.maximumValidScopeOrdinal, local.scopeOrdinal))
+                {
+                    borrow.maximumValidScopeOrdinal = local.scopeOrdinal;
+                    pendingLocalBorrow = std::move(borrow);
+                    return;
+                }
+            }
+        }
+    }
+    // The same field may be read directly from a reference-returning method of
+    // a move-only local, when its declared result lifetime is tied to `this`.
+    if (initializer.valid && initializer.readonlyBorrowedObject && variable->first() != nullptr &&
+        variable->first()->kind() == ast::AstNodeKind::MemberExpression &&
+        variable->first()->first() != nullptr &&
+        variable->first()->first()->kind() == ast::AstNodeKind::CallExpression &&
+        (initializer.ownershipSourceLocalOrdinal.has_value() ||
+         initializer.ownershipSourceParameterOrdinal.has_value()) && memberModel_ != nullptr)
+    {
+        const MethodNameBinding* field = nameBinding(variable->first(), methodMemberOrdinal);
+        const MethodCallBinding* call = callBinding(variable->first()->first(), methodMemberOrdinal);
+        if (field != nullptr && field->kind == MethodNameBindingKind::ExplicitObjectField &&
+            call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
+            !call->staticCall && call->receiverSyntax != nullptr &&
+            call->receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression &&
+            call->selectedMemberOrdinal.has_value() &&
+            *call->selectedMemberOrdinal < memberModel_->members().size())
+        {
+            const ClassMemberSymbol& callee = memberModel_->members()[*call->selectedMemberOrdinal];
+            const auto owner = lookupScopeName(scopeOrdinal, call->receiverSyntax->text());
+            if (callee.isReferenceReturn && callee.returnLifetimeName == "this" &&
+                owner.has_value() && owner->kind == ScopeNameKind::Local &&
+                initializer.ownershipSourceLocalOrdinal.has_value() &&
+                owner->semanticOrdinal == *initializer.ownershipSourceLocalOrdinal &&
+                owner->semanticOrdinal < locals_.size() && locals_[owner->semanticOrdinal].isMoveOnly &&
+                scopeContains(locals_[owner->semanticOrdinal].scopeOrdinal, scopeOrdinal))
+            {
+                MethodLocalBorrowBinding borrow;
+                borrow.syntax = variable;
+                borrow.methodMemberOrdinal = methodMemberOrdinal;
+                borrow.creationScopeOrdinal = scopeOrdinal;
+                borrow.typeKey = typeKey;
+                borrow.sourceKind = MethodLocalBorrowSourceKind::OwnerLocal;
+                borrow.sourceLocalOrdinal = owner->semanticOrdinal;
+                borrow.sourceOwnerLocalOrdinal = owner->semanticOrdinal;
+                borrow.possibleSourceOwnerLocalOrdinals.push_back(owner->semanticOrdinal);
+                borrow.maximumValidScopeOrdinal = locals_[owner->semanticOrdinal].scopeOrdinal;
+                pendingLocalBorrow = std::move(borrow);
+                return;
+            }
+            const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+            if (callee.isReferenceReturn && callee.returnLifetimeName == "this" &&
+                owner.has_value() && owner->kind == ScopeNameKind::Parameter && caller != nullptr &&
+                initializer.ownershipSourceParameterOrdinal.has_value() &&
+                owner->semanticOrdinal == *initializer.ownershipSourceParameterOrdinal &&
+                owner->semanticOrdinal < caller->parameters.size() &&
+                caller->parameters[owner->semanticOrdinal].passKind == ParameterPassKind::Value &&
+                memberModel_->typeIsMoveOnly(caller->parameters[owner->semanticOrdinal].typeKey))
+            {
+                MethodLocalBorrowBinding borrow;
+                borrow.syntax = variable;
+                borrow.methodMemberOrdinal = methodMemberOrdinal;
+                borrow.creationScopeOrdinal = scopeOrdinal;
+                borrow.typeKey = typeKey;
+                borrow.sourceKind = MethodLocalBorrowSourceKind::OwnedParameter;
+                borrow.sourceParameterOrdinal = owner->semanticOrdinal;
+                borrow.sourceOwnerParameterOrdinal = owner->semanticOrdinal;
+                borrow.possibleSourceOwnerParameterOrdinals.push_back(owner->semanticOrdinal);
+                std::size_t rootScope = scopeOrdinal;
+                while (scopes_[rootScope].parentScopeOrdinal.has_value())
+                    rootScope = *scopes_[rootScope].parentScopeOrdinal;
+                borrow.maximumValidScopeOrdinal = rootScope;
+                pendingLocalBorrow = std::move(borrow);
+                return;
+            }
+            if (callee.isReferenceReturn && callee.returnLifetimeName == "this" &&
+                typeKeyIsViewLike(call->receiverTypeKey) && owner.has_value() &&
+                owner->kind == ScopeNameKind::Local && owner->semanticOrdinal < locals_.size())
+            {
+                const MethodLocalSymbol& view = locals_[owner->semanticOrdinal];
+                if (!view.viewRootLocalName.empty() && !view.viewSourceFields.empty() &&
+                    scopeContains(view.scopeOrdinal, scopeOrdinal))
+                {
+                    const auto root = lookupScopeName(view.scopeOrdinal, view.viewRootLocalName);
+                    const bool rootMatches = root.has_value() &&
+                        ((root->kind == ScopeNameKind::Local &&
+                          initializer.ownershipSourceLocalOrdinal == root->semanticOrdinal) ||
+                         (root->kind == ScopeNameKind::Parameter &&
+                          initializer.ownershipSourceParameterOrdinal == root->semanticOrdinal));
+                    if (rootMatches)
+                    {
+                        std::vector<std::size_t> possibleLocals;
+                        std::vector<std::size_t> possibleParameters;
+                        bool complete = true;
+                        bool sawRoot = false;
+                        for (const std::string& source : view.viewSourceFields)
+                        {
+                            if (source.size() <= 1U || source.front() != '@')
+                            {
+                                complete = false;
+                                break;
+                            }
+                            const auto candidate = lookupScopeName(view.scopeOrdinal,
+                                std::string_view(source).substr(1U));
+                            if (!candidate.has_value())
+                            {
+                                complete = false;
+                                break;
+                            }
+                            if (candidate->kind == root->kind && candidate->semanticOrdinal == root->semanticOrdinal)
+                                sawRoot = true;
+                            if (candidate->kind == ScopeNameKind::Local && candidate->semanticOrdinal < locals_.size() &&
+                                locals_[candidate->semanticOrdinal].isMoveOnly &&
+                                scopeContains(locals_[candidate->semanticOrdinal].scopeOrdinal, view.scopeOrdinal))
+                            {
+                                if (std::ranges::find(possibleLocals, candidate->semanticOrdinal) == possibleLocals.end())
+                                    possibleLocals.push_back(candidate->semanticOrdinal);
+                            }
+                            else if (candidate->kind == ScopeNameKind::Parameter && caller != nullptr &&
+                                candidate->semanticOrdinal < caller->parameters.size() &&
+                                caller->parameters[candidate->semanticOrdinal].passKind == ParameterPassKind::Value &&
+                                memberModel_->typeIsMoveOnly(caller->parameters[candidate->semanticOrdinal].typeKey))
+                            {
+                                if (std::ranges::find(possibleParameters, candidate->semanticOrdinal) == possibleParameters.end())
+                                    possibleParameters.push_back(candidate->semanticOrdinal);
+                            }
+                            else
+                            {
+                                complete = false;
+                                break;
+                            }
+                        }
+                        if (complete && sawRoot)
+                        {
+                            MethodLocalBorrowBinding borrow;
+                            borrow.syntax = variable;
+                            borrow.methodMemberOrdinal = methodMemberOrdinal;
+                            borrow.creationScopeOrdinal = scopeOrdinal;
+                            borrow.typeKey = typeKey;
+                            borrow.sourceLocalOrdinal = owner->semanticOrdinal;
+                            if (root->kind == ScopeNameKind::Local)
+                            {
+                                borrow.sourceKind = MethodLocalBorrowSourceKind::OwnerLocal;
+                                borrow.sourceOwnerLocalOrdinal = root->semanticOrdinal;
+                            }
+                            else
+                            {
+                                borrow.sourceKind = MethodLocalBorrowSourceKind::OwnedParameter;
+                                borrow.sourceParameterOrdinal = root->semanticOrdinal;
+                                borrow.sourceOwnerParameterOrdinal = root->semanticOrdinal;
+                            }
+                            borrow.possibleSourceOwnerLocalOrdinals = std::move(possibleLocals);
+                            borrow.possibleSourceOwnerParameterOrdinals = std::move(possibleParameters);
+                            borrow.maximumValidScopeOrdinal = view.scopeOrdinal;
+                            pendingLocalBorrow = std::move(borrow);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
     // A class extracted from a checked local view retains the view and owner region.
     if (initializer.valid &&
         (initializer.ownership == sema::OwnershipKind::Borrowed ||
