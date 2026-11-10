@@ -1332,7 +1332,7 @@ bool LldLinker::validateAddressSanitizerRuntime(
     const LldLinker clangDriver(clang);
     if (!clangDriver.runResponseFile(responsePath, logPath, error)) return false;
     const std::string reported = trimTrailingWhitespace(readText(logPath));
-    const std::filesystem::path expected = std::filesystem::u8path(reported);
+    const std::filesystem::path expected(std::u8string(reported.begin(), reported.end()));
     if (!expected.is_absolute() || !std::filesystem::is_regular_file(expected))
     {
         error = "Clang could not locate its AddressSanitizer runtime DLL";
