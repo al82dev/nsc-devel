@@ -19,7 +19,7 @@ namespace NativeSharp.Core.Internal
 
         public bool IsEmpty() { return block == null; }
 
-        public long StrongCount()
+        public readonly long StrongCount()
         {
             return block == null ? 0l : SharedAtomicControl.StrongCount(block);
         }

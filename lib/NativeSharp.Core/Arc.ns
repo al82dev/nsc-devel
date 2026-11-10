@@ -9,7 +9,7 @@ namespace NativeSharp.Core
 
         internal Arc(SharedAtomicHandle<T> value) { inner = move(value); }
         public bool IsEmpty() { return inner.IsEmpty(); }
-        public long StrongCount() { return inner.StrongCount(); }
+        public readonly long StrongCount() { return inner.StrongCount(); }
         // An observation during concurrent changes; exact without concurrent operations.
         public long WeakCount() { return inner.WeakCount(); }
         public readonly ref readonly T Get() { return ref inner.Get(); }
