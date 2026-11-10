@@ -269,6 +269,7 @@ void ProjectMethodBodyModel::addEscapeDependencies(
         calleeOrdinal >= parameterEscapeSummaries_.size()) return;
     const ClassMemberSymbol* caller = methodSymbol(callerOrdinal);
     if (caller == nullptr) return;
+    const ClassMemberSymbol* callee = methodSymbol(calleeOrdinal);
     for (std::size_t argumentOrdinal = 0;
          argumentOrdinal < parameterOrdinals.size() &&
          argumentOrdinal < argumentSyntaxes.size(); ++argumentOrdinal)
@@ -276,8 +277,12 @@ void ProjectMethodBodyModel::addEscapeDependencies(
         const std::size_t calleeParameter = parameterOrdinals[argumentOrdinal];
         if (calleeParameter >= parameterEscapeSummaries_[calleeOrdinal].size() ||
             argumentSyntaxes[argumentOrdinal] == nullptr) continue;
-        const MethodEscapeOrigin origin = referenceEscapeOriginOfExpression(
-            argumentSyntaxes[argumentOrdinal], scopeOrdinal);
+        const bool pointerValue = callee != nullptr && calleeParameter < callee->parameters.size() &&
+            callee->parameters[calleeParameter].passKind == ParameterPassKind::Value &&
+            callee->parameters[calleeParameter].typeKey.ends_with("*");
+        const MethodEscapeOrigin origin = pointerValue
+            ? pointerValueEscapeOriginOfExpression(argumentSyntaxes[argumentOrdinal], scopeOrdinal)
+            : referenceEscapeOriginOfExpression(argumentSyntaxes[argumentOrdinal], scopeOrdinal);
         ++escapePropagationStatistics_.argumentOriginsClassified;
         if (!origin.ordinal.has_value() ||
             (origin.kind != MethodEscapeOriginKind::ExternalStorage &&

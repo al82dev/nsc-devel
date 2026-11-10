@@ -311,6 +311,59 @@ public class Forwarder { public static void Forward(int* value) { EscapeApi.Reta
             (unknownForwardError + unknownForwardOutput).find("escape contract") != std::string::npos,
         "a forwarded unknown native contract rejects current-frame storage (" +
             unknownForwardError + unknownForwardOutput + ")");
+    const std::filesystem::path unknownForwardAliasProject = writeProject(
+        root / "unknown-forward-alias", "EscapeUnknownForwardAlias", R"NS(
+using EscapeContracts;
+public class Program {
+    static void Forward(int* value) { int* alias = value; EscapeApi.Retain(alias); }
+    public static int Main() { int local = 42; Forward(&local); return local; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownForwardAliasProjectText = unknownForwardAliasProject.string();
+    const std::array<std::string_view, 3> unknownForwardAliasArguments = {
+        "--dump-project-method-bodies", unknownForwardAliasProjectText, "-O0"};
+    std::string unknownForwardAliasOutput;
+    std::string unknownForwardAliasError;
+    const nativesharp::ExitCode unknownForwardAliasResult =
+        runDriver(unknownForwardAliasArguments, unknownForwardAliasOutput, unknownForwardAliasError);
+    tests.expect(unknownWritten && unknownForwardAliasResult != nativesharp::ExitCode::Success &&
+            (unknownForwardAliasError + unknownForwardAliasOutput).find("escape contract") != std::string::npos,
+        "a local pointer alias preserves a forwarded unknown native contract (" +
+            unknownForwardAliasError + unknownForwardAliasOutput + ")");
+    const std::filesystem::path unknownForwardAliasGlobalProject = writeProject(
+        root / "unknown-forward-alias-global", "EscapeUnknownForwardAliasGlobal", R"NS(
+using EscapeContracts;
+public class Program { public static int Data;
+    static void Forward(int* value) { int* alias = value; EscapeApi.Retain(alias); }
+    public static int Main() { Forward(&Data); return 42; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownForwardAliasGlobalProjectText = unknownForwardAliasGlobalProject.string();
+    const std::array<std::string_view, 3> unknownForwardAliasGlobalArguments = {
+        "--dump-project-method-bodies", unknownForwardAliasGlobalProjectText, "-O0"};
+    std::string unknownForwardAliasGlobalOutput;
+    std::string unknownForwardAliasGlobalError;
+    tests.expect(unknownWritten && runDriver(unknownForwardAliasGlobalArguments, unknownForwardAliasGlobalOutput,
+            unknownForwardAliasGlobalError) == nativesharp::ExitCode::Success,
+        "a forwarded pointer alias permits global storage (" +
+            unknownForwardAliasGlobalError + unknownForwardAliasGlobalOutput + ")");
+    const std::filesystem::path safeForwardAliasProject = writeProject(
+        root / "safe-forward-alias", "EscapeSafeForwardAlias", R"NS(
+using EscapeContracts;
+public class Program {
+    static int Forward(int* value) { int* alias = value; return EscapeApi.Read(alias); }
+    public static int Main() { int local = 42; return Forward(&local); }
+}
+)NS", "Exe", producerReference);
+    const std::string safeForwardAliasProjectText = safeForwardAliasProject.string();
+    const std::array<std::string_view, 3> safeForwardAliasArguments = {
+        "--dump-project-method-bodies", safeForwardAliasProjectText, "-O0"};
+    std::string safeForwardAliasOutput;
+    std::string safeForwardAliasError;
+    tests.expect(runDriver(safeForwardAliasArguments, safeForwardAliasOutput, safeForwardAliasError) ==
+            nativesharp::ExitCode::Success,
+        "a forwarded pointer alias preserves a known nonescaping contract (" +
+            safeForwardAliasError + safeForwardAliasOutput + ")");
     const std::filesystem::path unknownForwardFunctionProject = writeProject(
         root / "unknown-forward-function", "EscapeUnknownForwardFunction", R"NS(
 using EscapeContracts;
