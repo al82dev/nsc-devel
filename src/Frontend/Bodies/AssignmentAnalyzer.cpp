@@ -2161,7 +2161,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::finishNumericCo
 }
 
 bool ProjectMethodBodyModel::hasActiveViewOfStorage(
-    const ast::AstNode* place, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal) const
+    const ast::AstNode* place, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal,
+    bool anyField) const
 {
     if (place == nullptr) return false;
     const auto roots = [&](const ScopeName& name)
@@ -2271,7 +2272,7 @@ bool ProjectMethodBodyModel::hasActiveViewOfStorage(
             if (view.methodMemberOrdinal != methodMemberOrdinal ||
                 !scopeContains(view.scopeOrdinal, scopeOrdinal) ||
                 (targetField == nullptr ||
-                 (((targetField->kind() != ast::AstNodeKind::MemberExpression && !targetIsImplicitField) ||
+                 (!anyField && ((targetField->kind() != ast::AstNodeKind::MemberExpression && !targetIsImplicitField) ||
                    std::ranges::find(view.viewSourceFields, targetField->text()) == view.viewSourceFields.end()) &&
                   std::ranges::find(view.viewSourceFields, "*") == view.viewSourceFields.end()))) continue;
             std::vector<std::string> viewRoots;

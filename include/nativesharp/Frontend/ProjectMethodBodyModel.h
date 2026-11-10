@@ -4468,7 +4468,8 @@ private:
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics);
     bool hasActiveViewOfStorage(
-        const ast::AstNode* place, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal) const;
+        const ast::AstNode* place, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal,
+        bool anyField = false) const;
     bool prepareAssignmentTarget(
         ExpressionResult& left,
         std::optional<std::size_t>& raiiTargetLocal,

@@ -1721,6 +1721,22 @@ class Program { public static int Work(borrowed Holder first, borrowed Holder se
 class Program { public static int Main() { Holder holder = new Holder();
  holder.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = holder.value.Borrow();
  holder.Replace(); return (int)view.Get().Data; } }''', 'borrow'),
+        'overwrite_field_via_alias_method': ('''class Holder { public STRONG<Payload> value;
+ public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
+class Program { public static int Main() { Holder holder = new Holder();
+ holder.value = SharedPointers.MAKE<Payload>(); borrowed Holder alias = holder;
+ SharedView<Payload> view = holder.value.Borrow(); alias.Replace(); return (int)view.Get().Data; } }''', 'borrow'),
+        'method_on_independent_holder': ('''class Holder { public STRONG<Payload> value;
+ public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
+class Program { public static int Main() { Holder first = new Holder(); Holder second = new Holder();
+ first.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.value.Borrow();
+ second.Replace(); return view.Get().Data == 42l ? 42 : 1; } }''', 'run:42'),
+        'method_after_field_view_scope': ('''class Holder { public STRONG<Payload> value;
+ public void Replace() { value = SharedPointers.MAKE<Payload>(); } }
+class Program { public static int Main() { Holder holder = new Holder();
+ holder.value = SharedPointers.MAKE<Payload>(); { SharedView<Payload> view = holder.value.Borrow();
+ if (view.Get().Data != 42l) return 1; } holder.Replace();
+ return holder.value.Get().Data == 42l ? 42 : 2; } }''', 'run:42'),
         'overwrite_union_view': ('''union Holder { public STRONG<Payload> first; public STRONG<Payload> second; }
 class Program { public static int Main() { Holder holder; holder.first = SharedPointers.MAKE<Payload>();
  SharedView<Payload> view = holder.first.Borrow(); holder.second = SharedPointers.MAKE<Payload>();

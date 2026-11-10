@@ -4881,6 +4881,19 @@ bool ProjectMethodBodyModel::validateSelectedCallReceiver(
     const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
     if (!validateActiveIterationCallReceiver(
             expression, callee, selectedMember, call, scopeOrdinal, diagnostics)) return false;
+    if (!selectedMember.isStatic &&
+        (!selectedMember.declaringTypeIsStruct || !selectedMember.isReadonly) &&
+        callee.receiverSyntax != nullptr &&
+        callee.receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression &&
+        hasActiveViewOfStorage(callee.receiverSyntax, call.callerMethodMemberOrdinal, scopeOrdinal, true))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "cannot call potentially mutating method while a borrowed field view is alive");
+        call.resolution = MethodCallResolutionKind::NoViableCandidate;
+        recordCallBinding(std::move(call));
+        return false;
+    }
     updateSelectedVariantFlow(
         provenVariantCase, expression, callee, selectedMember, scopeOrdinal);
     // NativeSharp 3.0 T03. Variant payload extractors have to be public so a match in a
