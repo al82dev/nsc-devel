@@ -261,9 +261,13 @@ bool ProjectGenericModel::commitTypeSpecializationProduct(
     // processNode itself, as this path does, instead of processing an already processed tree.
     std::string specializationPayload;
     if (templateCache_.enabled()) specializationPayload = serializeAstNodeTree(product.clone);
+    GenericLookupScope declarationScope;
+    declarationScope.importedNamespaces.write() = state.record.declarationImports;
+    declarationScope.aliases.write().insert(
+        state.record.declarationAliases.begin(), state.record.declarationAliases.end());
     processNode(
         *state.unit, product.clone, state.record.namespaceName, specializedName,
-        GenericLookupScope{}, false, diagnostics);
+        std::move(declarationScope), false, diagnostics);
     // NSC305-C03. Persist the specialized clone (the C3 cache payload) under the specialization key.
     // Nothing is stored once the compilation has reported an error.
     if (templateCache_.enabled() && !diagnostics.hasErrors())
@@ -416,9 +420,13 @@ std::string ProjectGenericModel::executeTypeDemand(
             {
                 commitTypeSpecialization(
                     state, clone, key, specializedName, ordinal, diagnostics);
+                GenericLookupScope declarationScope;
+                declarationScope.importedNamespaces.write() = state.record.declarationImports;
+                declarationScope.aliases.write().insert(
+                    state.record.declarationAliases.begin(), state.record.declarationAliases.end());
                 processNode(
                     *state.unit, clone, state.record.namespaceName, specializedName,
-                    GenericLookupScope{}, false, diagnostics);
+                    std::move(declarationScope), false, diagnostics);
                 currentInstantiationProjectOrdinal_ = callerContext.projectOrdinal;
                 currentInstantiationNamespace_ = callerContext.namespaceName;
                 currentInstantiationRange_ = callerContext.range;
@@ -487,9 +495,13 @@ bool ProjectGenericModel::restoreTypeSpecializationFromCache(
         state, clone, key, specializedName, ordinal, diagnostics);
     // The clone body still needs its child demands (types/calls) resolved; those recurse
     // through the same C3 restore, so this is a walk + cache hits, not a re-clone.
+    GenericLookupScope declarationScope;
+    declarationScope.importedNamespaces.write() = state.record.declarationImports;
+    declarationScope.aliases.write().insert(
+        state.record.declarationAliases.begin(), state.record.declarationAliases.end());
     processNode(
         *state.unit, clone, state.record.namespaceName, specializedName,
-        GenericLookupScope{}, false, diagnostics);
+        std::move(declarationScope), false, diagnostics);
     currentInstantiationProjectOrdinal_ = callerContext.projectOrdinal;
     currentInstantiationNamespace_ = callerContext.namespaceName;
     currentInstantiationRange_ = callerContext.range;

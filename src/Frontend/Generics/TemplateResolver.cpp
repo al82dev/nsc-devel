@@ -94,7 +94,8 @@ ProjectGenericModel::TypeResolution ProjectGenericModel::resolveTypeTemplate(
     const ProjectSyntaxUnit& unit,
     std::string_view namespaceName,
     std::string_view writtenName,
-    std::size_t arity)
+    std::size_t arity,
+    const GenericLookupScope& scope)
 {
     const auto sinFiltro = std::numeric_limits<std::size_t>::max();
     const std::size_t moduleSeparator = writtenName.find("::");
@@ -128,12 +129,8 @@ ProjectGenericModel::TypeResolution ProjectGenericModel::resolveTypeTemplate(
             exact != nullptr ? TypeResolutionKind::Unique : TypeResolutionKind::Missing, exact};
     }
 
-    // NSC305-G02. Bucket by terminal name; the original scan tested every catalog entry for
-    // visibility, arity and candidate spelling. The bucket keeps source order, so the first-match
-    // and ambiguity semantics are unchanged.
-    // The namespace-qualified spelling is only compared for a visible candidate of an
-    // undotted name; it is built at that first comparison instead of for every query.
-    std::optional<std::string> qualified;
+    // Resolve names using the same lexical ladder used for ordinary types and generic calls.
+    // The terminal-name bucket bounds the candidates without changing the winning rung.
     const std::string_view terminalName = [&]() -> std::string_view
     {
         const std::size_t dot = writtenName.rfind('.');
@@ -146,33 +143,22 @@ ProjectGenericModel::TypeResolution ProjectGenericModel::resolveTypeTemplate(
         return TypeResolution{TypeResolutionKind::Missing, nullptr};
     }
     telemetry_.noteResolutionQuery(bucket->second.size());
-    TemplateState* fallback = nullptr;
-    for (TemplateState* state : bucket->second)
+    const QualifiedNameSiteContext context = makeQualifiedNameSite(namespaceName, {}, scope);
+    for (const QualifiedNameRung& rung : qualifiedNameLadder(context.site, writtenName))
     {
-        if (!templateVisible(unit.projectOrdinal(), state->record)) continue;
-        if (arity != sinFiltro && !genericArityAccepts(state->record, arity)) continue;
-        // Built once per type template in buildTemplateIndexes (the buckets only hold type
-        // templates, and their records do not change after the buckets are built).
-        const std::string& candidate = state->qualifiedTypeSpelling;
-        if (writtenName.find('.') != std::string_view::npos)
+        TemplateState* found = nullptr;
+        for (TemplateState* state : bucket->second)
         {
-            if (candidate == writtenName)
-            {
-                if (fallback != nullptr) return TypeResolution{TypeResolutionKind::Ambiguous, nullptr};
-                fallback = state;
-            }
-            continue;
+            if (!templateVisible(unit.projectOrdinal(), state->record)) continue;
+            if (arity != sinFiltro && !genericArityAccepts(state->record, arity)) continue;
+            if (std::ranges::find(rung.spellings, state->qualifiedTypeSpelling) == rung.spellings.end())
+                continue;
+            if (found != nullptr) return TypeResolution{TypeResolutionKind::Ambiguous, nullptr};
+            found = state;
         }
-        if (!qualified.has_value()) qualified = qualifiedName(namespaceName, writtenName);
-        if (candidate == *qualified) return TypeResolution{TypeResolutionKind::Unique, state};
-        if (state->record.name == writtenName)
-        {
-            if (fallback != nullptr) return TypeResolution{TypeResolutionKind::Ambiguous, nullptr};
-            fallback = state;
-        }
+        if (found != nullptr) return TypeResolution{TypeResolutionKind::Unique, found};
     }
-    return TypeResolution{
-        fallback != nullptr ? TypeResolutionKind::Unique : TypeResolutionKind::Missing, fallback};
+    return TypeResolution{TypeResolutionKind::Missing, nullptr};
 }
 
 // NSC-LIMIT-007. QUE PLANTILLAS NOMBRA UNA LLAMADA -- con la escala del modelo de nombres, no

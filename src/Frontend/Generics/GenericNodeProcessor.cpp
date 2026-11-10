@@ -307,12 +307,12 @@ void ProjectGenericModel::processNodePrimaryTypeSyntax(
     {
         ast::TypeSyntax* candidate = node->typeSyntax();
         TypeResolution typeResolution = resolveTypeTemplate(
-            unit, currentNamespace, candidate->baseName(), candidate->typeArguments().size());
+            unit, currentNamespace, candidate->baseName(), candidate->typeArguments().size(), currentScope);
         if (typeResolution.kind != TypeResolutionKind::Unique)
         {
             typeResolution = resolveTypeTemplate(
                 unit, currentNamespace, candidate->baseName(),
-                std::numeric_limits<std::size_t>::max());
+                std::numeric_limits<std::size_t>::max(), currentScope);
         }
         if (typeResolution.kind == TypeResolutionKind::Unique)
         {

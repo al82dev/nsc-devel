@@ -1199,7 +1199,8 @@ private:
         const ProjectSyntaxUnit& unit,
         std::string_view namespaceName,
         std::string_view writtenName,
-        std::size_t arity);
+        std::size_t arity,
+        const GenericLookupScope& scope);
     // LAS PLANTILLAS QUE UNA LLAMADA NOMBRA, y solo esas.
     //
     // Los tres filtros baratos --nombre, aridad generica y cuenta de argumentos de VALOR-- se

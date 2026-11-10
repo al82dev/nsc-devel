@@ -179,12 +179,12 @@ bool ProjectGenericModel::processBodyTypeDemandWave(
         // it directly (do not re-collect) so the rest-capture Sema sees a materialized Span.
         TypeResolution resolution = resolveTypeTemplate(
             *demand.unit, demand.namespaceName, demand.syntax->baseName(),
-            demand.syntax->typeArguments().size());
+            demand.syntax->typeArguments().size(), demand.scope);
         if (resolution.kind != TypeResolutionKind::Unique)
         {
             resolution = resolveTypeTemplate(
                 *demand.unit, demand.namespaceName, demand.syntax->baseName(),
-                std::numeric_limits<std::size_t>::max());
+                std::numeric_limits<std::size_t>::max(), demand.scope);
         }
         if (resolution.kind != TypeResolutionKind::Unique || resolution.state == nullptr)
             continue;
@@ -574,7 +574,7 @@ bool ProjectGenericModel::processTypeSyntax(
         processNestedTypeSyntax(unit, syntax, namespaceName, scope, diagnostics);
     if (nestedResult.has_value()) return *nestedResult;
     TypeResolution resolution = resolveTypeTemplate(
-        unit, namespaceName, syntax->baseName(), syntax->typeArguments().size());
+        unit, namespaceName, syntax->baseName(), syntax->typeArguments().size(), scope);
     // EN: A bare nominal type in the lexical namespace wins before the arity-diagnostic fallback
     //     considers a visible generic template with the same terminal name. Otherwise
     //     `OpenXR.Raw.Result` binds to imported `Core.Result<T, E>` instead of `OpenXR.Result`.
@@ -590,7 +590,7 @@ bool ProjectGenericModel::processTypeSyntax(
     if (resolution.kind != TypeResolutionKind::Unique)
     {
         resolution = resolveTypeTemplate(
-            unit, namespaceName, syntax->baseName(), std::numeric_limits<std::size_t>::max());
+            unit, namespaceName, syntax->baseName(), std::numeric_limits<std::size_t>::max(), scope);
     }
     TemplateState* state = resolution.kind == TypeResolutionKind::Unique ? resolution.state : nullptr;
     if (state == nullptr)

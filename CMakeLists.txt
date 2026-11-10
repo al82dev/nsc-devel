@@ -5642,6 +5642,18 @@ if(NSC_BUILD_TESTS)
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_declaration_import_cache.py"
                 "${NSC_TEST_COMPILER}")
     if(WIN32)
+        add_test(NAME nsc.generics.type-lexical-resolution
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_type_lexical_resolution.py"
+                    "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.generics.type-lexical-projects
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_type_lexical_projects.py"
+                    "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.generics.type-declaration-import-cache
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_type_declaration_import_cache.py"
+                    "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.generics.type-declaration-import-binary
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_type_declaration_import_binary.py"
+                    "${NSC_TEST_COMPILER}")
         add_test(NAME nsc.generics.dependent-constraints
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/dependent_generic_constraints.py"
                     "${NSC_TEST_COMPILER}")

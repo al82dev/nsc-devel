@@ -337,11 +337,11 @@ void ProjectGenericModel::collectTypeDependency(
         }
 
         TypeResolution resolution = resolveTypeTemplate(
-            unit, namespaceName, current->baseName(), current->typeArguments().size());
+            unit, namespaceName, current->baseName(), current->typeArguments().size(), scope);
         if (resolution.kind != TypeResolutionKind::Unique)
             resolution = resolveTypeTemplate(
                 unit, namespaceName, current->baseName(),
-                std::numeric_limits<std::size_t>::max());
+                std::numeric_limits<std::size_t>::max(), scope);
         TemplateState* target =
             resolution.kind == TypeResolutionKind::Unique ? resolution.state : nullptr;
         if (target == nullptr)
