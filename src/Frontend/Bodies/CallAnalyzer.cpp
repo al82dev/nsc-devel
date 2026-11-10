@@ -3798,6 +3798,19 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         binding.resultTypeKey = returnType;
         if (!bindEventInvocationArguments(
                 expression, arguments, parameterTypes, binding, diagnostics)) return result;
+        for (std::size_t index = 0;
+             index < arguments.size() && index < expression->children().size(); ++index)
+        {
+            if (!isReferenceTypeKey(arguments[index].typeKey) &&
+                !arguments[index].typeKey.ends_with("[]")) continue;
+            const ast::AstNode* argument = expression->children()[index];
+            if (argument == nullptr ||
+                !hasActiveViewOfStorage(argument, methodMemberOrdinal, scopeOrdinal, true)) continue;
+            diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+                diagnostics::DiagnosticSeverity::Error, argument->range(),
+                "cannot pass object with a borrowed field view to a potentially mutating event");
+            return result;
+        }
         eventBindings_.push_back(std::move(binding));
         result.typeKey = returnType;
         result.valid = true;

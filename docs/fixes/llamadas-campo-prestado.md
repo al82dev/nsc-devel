@@ -152,3 +152,19 @@ reutilizado contiene un archivo concurrente sin registrar, por lo que la
 evidencia no certifica un árbol limpio. Los eventos, punteros de función,
 delegados externos y argumentos calculados sin raíz no quedan acreditados por
 esta corrección; la ruta de interoperabilidad no se modificó.
+
+## Argumento de evento administrado
+
+`shared-event-before.log` registra que la invocación `Changed(holder)` era
+aceptada mientras una vista de un campo del objeto seguía activa, aunque un
+manejador pudiera reemplazar el dueño. La ruta de eventos compara ahora las
+raíces rastreadas de argumentos de referencia contra las vistas vivas. La
+regla es conservadora y puede rechazar manejadores que solamente leen el objeto.
+
+Las pruebas dirigidas rechazaron la reproducción para Rc y Arc, y ejecutaron
+42 en O0/O2 para un objeto independiente y tras terminar la vista, desde
+fuentes y con SDK binario (`shared-event-source.log` y
+`shared-event-binary.log`). Pasaron también los controles de delegado y el caso
+público `safe`. Los programas inseguros se analizaron sin ejecutarlos. El SDK
+reutilizado contiene un archivo concurrente sin registrar; no se acredita árbol
+limpio ni cobertura de fuentes calculadas o alias no rastreados.

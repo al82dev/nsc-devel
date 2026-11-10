@@ -149,6 +149,38 @@ class OuterValue { public InlineHolder child; }
                     result = run([executable], root)
                     assert result.returncode == 42, (family, name, level, result.returncode)
                     print(family, 'this-finished', level, 'exit=42', flush=True)
+            event_bodies = {
+                'unsafe': '''Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
+ SharedView<Payload> view = holder.value.Borrow(); Changed(holder); return (int)view.Get().Data;''',
+                'independent': '''Holder first = new Holder(); Holder second = new Holder();
+ first.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.value.Borrow();
+ Changed(second); return view.Get().Data == 42l ? 42 : 1;''',
+                'finished': '''Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
+ { SharedView<Payload> view = holder.value.Borrow(); if (view.Get().Data != 42l) return 1; }
+ Changed(holder); return holder.value.Get().Data == 42l ? 42 : 2;''',
+            }
+            for name, body in event_bodies.items():
+                source.write_text((common + '''class Publisher { public event Action Changed;
+ public static void Replace(Holder item) { item.value = SharedPointers.MAKE<Payload>(); }
+ public int Work() { Changed += Replace; ''' + body + ''' } }
+class Program { public static int Main() { ''' +
+                    ('return 0;' if name == 'unsafe' else 'Publisher publisher = new Publisher(); return publisher.Work();') +
+                    ' } }').replace('MAKE', 'Make' + family), encoding='utf-8')
+                result = run([compiler, '--check-project-method-bodies', project], root)
+                output = result.stdout + result.stderr
+                if name == 'unsafe':
+                    assert result.returncode != 0 and 'borrow' in output, (family, name, output)
+                    print(family, 'event-unsafe rejected', flush=True)
+                    continue
+                assert result.returncode == 0, (family, name, output)
+                for level in ('O0', 'O2'):
+                    executable = root / (family + '-event-' + name + '-' + level + '.exe')
+                    result = run([compiler, '--emit-project-oop-exe', project, '-' + level,
+                                  '-o', executable, '--no-artifact-cache'], root)
+                    assert result.returncode == 0, (family, name, level, result.stdout + result.stderr)
+                    result = run([executable], root)
+                    assert result.returncode == 42, (family, name, level, result.returncode)
+                    print(family, 'event-' + name, level, 'exit=42', flush=True)
 
 
 if __name__ == '__main__':
