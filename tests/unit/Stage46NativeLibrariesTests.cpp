@@ -1662,7 +1662,7 @@ public class Program
         raii Base value = new Derived();
     }
 
-    private static void Exceptional()
+    private static void Exceptional() throws Problem
     {
         raii Base value = new Derived();
         raii Problem problem = new Problem();

@@ -92,6 +92,7 @@ struct ProjectOopHirModelTestAccess final
             typeKeys.push_back(
                 "type:" + nameLookup.namedTypes_.back().identity.key());
         }
+        nameLookup.indexes_->rebuildTypes(nameLookup.namedTypes_);
         nameLookup.built_ = true;
 
         diagnostics::DiagnosticEngine diagnostics;
@@ -189,6 +190,7 @@ struct ProjectOopHirModelTestAccess final
         ProjectNameLookup& nameLookup,
         ProjectObjectLayoutModel& objectLayoutModel)
     {
+        nameLookup.indexes_->rebuildTypes(nameLookup.namedTypes_);
         nameLookup.built_ = true;
         objectLayoutModel.built_ = true;
     }
@@ -221,6 +223,7 @@ struct ProjectOopHirModelTestAccess final
         };
         classTypeKey = append("ClassSource", NamedTypeDeclarationKind::Class);
         structTypeKey = append("StructSource", NamedTypeDeclarationKind::Struct);
+        nameLookup.indexes_->rebuildTypes(nameLookup.namedTypes_);
         nameLookup.built_ = true;
     }
 
@@ -638,6 +641,7 @@ struct ProjectOopHirModelTestAccess final
             typeKeys.push_back(
                 "type:" + nameLookup.namedTypes_.back().identity.key());
         }
+        nameLookup.indexes_->rebuildTypes(nameLookup.namedTypes_);
         nameLookup.built_ = true;
         inheritanceModel.nameLookup_ = &nameLookup;
         inheritanceModel.classes_ = {
@@ -742,6 +746,7 @@ struct ProjectOopHirModelTestAccess final
             exceptionTypeOrdinal = nameLookup.namedTypes_.size();
             nameLookup.namedTypes_.push_back(std::move(exception));
         }
+        nameLookup.indexes_->rebuildTypes(nameLookup.namedTypes_);
         nameLookup.built_ = true;
         diagnostics::DiagnosticEngine diagnostics;
         return inheritanceModel.build(nameLookup, diagnostics);
@@ -845,6 +850,7 @@ struct ProjectOopHirModelTestAccess final
             {}};
         const std::string typeKey = "type:" + declaration.identity.key();
         nameLookup.namedTypes_.push_back(std::move(declaration));
+        nameLookup.indexes_->rebuildTypes(nameLookup.namedTypes_);
         nameLookup.built_ = true;
         for (auto& [value, name] : enumerators)
         {
@@ -4057,6 +4063,7 @@ public trait IAdd<T> {
     public static T operator +(in T left, in T right);
 }
 public struct Node : IAdd<Node> {
+    public static Node operator +(in Node left, in Node right) { return left; }
     public static Node operator -(Node value) { return value; }
     public Node Run() { return -this; }
 }
@@ -7424,12 +7431,14 @@ void testDeepAllocatorConstructionLowering(TestContext& tests)
             allocation->stringValue == "allocator.bytes" &&
             allocation->localOrdinal == temporaryOrdinal && allocate != nullptr &&
             allocate->kind == HirKind::InstanceCall && allocate->memberOrdinal == 101U &&
-            allocate->children.size() == 2U &&
+            allocate->children.size() == 3U &&
             allocate->children[0]->kind == HirKind::LocalValue &&
             allocate->children[0]->localOrdinal == contextOrdinal &&
             allocate->children[0]->typeKey == context->typeKey &&
             allocate->children[1]->kind == HirKind::IntegerConstant &&
-            allocate->children[1]->integerValue == 48U && placement != nullptr &&
+            allocate->children[1]->integerValue == 48U &&
+            allocate->children[2]->kind == HirKind::IntegerConstant &&
+            allocate->children[2]->typeKey == "builtin:int" && placement != nullptr &&
             placement->kind == HirKind::PlacementConstruction &&
             placement->typeKey == nodeType.typeKey && placement->constructionOrdinal == 0U &&
             placement->targetTypeOrdinal == 0U && placement->memberOrdinal == 201U &&
@@ -20855,9 +20864,11 @@ void testMirFutureLayoutPublication(TestContext& tests)
             layouts[1].typeKey == "future:builtin:long",
         "iterative future discovery preserves preorder inputs and deterministic "
         "sort/deduplication");
-    tests.expect(layouts.size() == 2U && layouts[0].fields.size() == 4U &&
-            layouts[1].fields.size() == 4U && layouts[0].fields[2].typeKey == "builtin:int" &&
-            layouts[1].fields[2].typeKey == "builtin:long",
+    tests.expect(layouts.size() == 2U && layouts[0].fields.size() == 5U &&
+            layouts[1].fields.size() == 5U && layouts[0].fields[2].typeKey == "builtin:int" &&
+            layouts[1].fields[2].typeKey == "builtin:long" &&
+            layouts[0].fields[4].typeKey == "builtin:void*" &&
+            layouts[1].fields[4].typeKey == "builtin:void*",
         "iterative future discovery preserves the canonical physical result-field layouts");
     auto retainedBody =
         nativesharp::frontend::ProjectOopHirModelTestAccess::takeDumperBody(hirModel);
