@@ -330,6 +330,118 @@ public class Program {
             (unknownForwardAliasError + unknownForwardAliasOutput).find("escape contract") != std::string::npos,
         "a local pointer alias preserves a forwarded unknown native contract (" +
             unknownForwardAliasError + unknownForwardAliasOutput + ")");
+    const std::filesystem::path unknownForwardMultipleProject = writeProject(
+        root / "unknown-forward-multiple", "EscapeUnknownForwardMultiple", R"NS(
+using EscapeContracts;
+public class Program { public static int Data;
+    static void Forward(int* first, int* second) { int* alias = first; alias = second; EscapeApi.Retain(alias); }
+    public static int Main() { int local = 42; Forward(&Data, &local); return local; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownForwardMultipleProjectText = unknownForwardMultipleProject.string();
+    const std::array<std::string_view, 3> unknownForwardMultipleArguments = {
+        "--dump-project-method-bodies", unknownForwardMultipleProjectText, "-O0"};
+    std::string unknownForwardMultipleOutput;
+    std::string unknownForwardMultipleError;
+    const nativesharp::ExitCode unknownForwardMultipleResult =
+        runDriver(unknownForwardMultipleArguments, unknownForwardMultipleOutput, unknownForwardMultipleError);
+    tests.expect(unknownWritten && unknownForwardMultipleResult != nativesharp::ExitCode::Success &&
+            (unknownForwardMultipleError + unknownForwardMultipleOutput).find("escape contract") != std::string::npos,
+        "a reassigned pointer alias preserves every possible parameter origin (" +
+            unknownForwardMultipleError + unknownForwardMultipleOutput + ")");
+    const std::filesystem::path unknownForwardChainProject = writeProject(
+        root / "unknown-forward-chain", "EscapeUnknownForwardChain", R"NS(
+using EscapeContracts;
+public class Program { public static int Data;
+    static void Forward(int* first, int* second) { int* one = first; one = second; int* two = one; EscapeApi.Retain(two); }
+    public static int Main() { int local = 42; Forward(&Data, &local); return local; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownForwardChainProjectText = unknownForwardChainProject.string();
+    const std::array<std::string_view, 3> unknownForwardChainArguments = {
+        "--dump-project-method-bodies", unknownForwardChainProjectText, "-O0"};
+    std::string unknownForwardChainOutput;
+    std::string unknownForwardChainError;
+    const nativesharp::ExitCode unknownForwardChainResult =
+        runDriver(unknownForwardChainArguments, unknownForwardChainOutput, unknownForwardChainError);
+    tests.expect(unknownWritten && unknownForwardChainResult != nativesharp::ExitCode::Success &&
+            (unknownForwardChainError + unknownForwardChainOutput).find("escape contract") != std::string::npos,
+        "pointer alias chains conservatively preserve parameter sources (" +
+            unknownForwardChainError + unknownForwardChainOutput + ")");
+    const std::filesystem::path unknownForwardBranchProject = writeProject(
+        root / "unknown-forward-branch", "EscapeUnknownForwardBranch", R"NS(
+using EscapeContracts;
+public class Program { public static int Data;
+    static void Forward(int* first, int* second) { int* alias = first; if (true) { alias = second; } EscapeApi.Retain(alias); }
+    public static int Main() { int local = 42; Forward(&Data, &local); return local; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownForwardBranchProjectText = unknownForwardBranchProject.string();
+    const std::array<std::string_view, 3> unknownForwardBranchArguments = {
+        "--dump-project-method-bodies", unknownForwardBranchProjectText, "-O0"};
+    std::string unknownForwardBranchOutput;
+    std::string unknownForwardBranchError;
+    const nativesharp::ExitCode unknownForwardBranchResult =
+        runDriver(unknownForwardBranchArguments, unknownForwardBranchOutput, unknownForwardBranchError);
+    tests.expect(unknownWritten && unknownForwardBranchResult != nativesharp::ExitCode::Success &&
+            (unknownForwardBranchError + unknownForwardBranchOutput).find("escape contract") != std::string::npos,
+        "pointer aliases preserve branch parameter sources (" +
+            unknownForwardBranchError + unknownForwardBranchOutput + ")");
+    const std::filesystem::path unknownForwardArithmeticProject = writeProject(
+        root / "unknown-forward-arithmetic", "EscapeUnknownForwardArithmetic", R"NS(
+using EscapeContracts;
+public class Program { public static int Data;
+    static void Forward(int* first, int* second) { int* alias = first; alias = second + 0; EscapeApi.Retain(alias); }
+    public static int Main() { int local = 42; Forward(&Data, &local); return local; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownForwardArithmeticProjectText = unknownForwardArithmeticProject.string();
+    const std::array<std::string_view, 3> unknownForwardArithmeticArguments = {
+        "--dump-project-method-bodies", unknownForwardArithmeticProjectText, "-O0"};
+    std::string unknownForwardArithmeticOutput;
+    std::string unknownForwardArithmeticError;
+    const nativesharp::ExitCode unknownForwardArithmeticResult =
+        runDriver(unknownForwardArithmeticArguments, unknownForwardArithmeticOutput, unknownForwardArithmeticError);
+    tests.expect(unknownWritten && unknownForwardArithmeticResult != nativesharp::ExitCode::Success &&
+            (unknownForwardArithmeticError + unknownForwardArithmeticOutput).find("escape contract") != std::string::npos,
+        "pointer aliases preserve arithmetic parameter sources (" +
+            unknownForwardArithmeticError + unknownForwardArithmeticOutput + ")");
+    const std::filesystem::path unknownForwardConditionalProject = writeProject(
+        root / "unknown-forward-conditional", "EscapeUnknownForwardConditional", R"NS(
+using EscapeContracts;
+public class Program { public static int Data;
+    static void Forward(int* first, int* second) { int* alias = false ? first : second; EscapeApi.Retain(alias); }
+    public static int Main() { int local = 42; Forward(&Data, &local); return local; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownForwardConditionalProjectText = unknownForwardConditionalProject.string();
+    const std::array<std::string_view, 3> unknownForwardConditionalArguments = {
+        "--dump-project-method-bodies", unknownForwardConditionalProjectText, "-O0"};
+    std::string unknownForwardConditionalOutput;
+    std::string unknownForwardConditionalError;
+    const nativesharp::ExitCode unknownForwardConditionalResult =
+        runDriver(unknownForwardConditionalArguments, unknownForwardConditionalOutput, unknownForwardConditionalError);
+    tests.expect(unknownWritten && unknownForwardConditionalResult != nativesharp::ExitCode::Success &&
+            (unknownForwardConditionalError + unknownForwardConditionalOutput).find("escape contract") != std::string::npos,
+        "pointer aliases preserve conditional parameter sources (" +
+            unknownForwardConditionalError + unknownForwardConditionalOutput + ")");
+    const std::filesystem::path unknownForwardIgnoredProject = writeProject(
+        root / "unknown-forward-ignored", "EscapeUnknownForwardIgnored", R"NS(
+using EscapeContracts;
+public class Program { public static int Data;
+    static void Forward(int* ignored) { int* alias = &Data; EscapeApi.Retain(alias); }
+    public static int Main() { int local = 42; Forward(&local); return local; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownForwardIgnoredProjectText = unknownForwardIgnoredProject.string();
+    const std::array<std::string_view, 3> unknownForwardIgnoredArguments = {
+        "--dump-project-method-bodies", unknownForwardIgnoredProjectText, "-O0"};
+    std::string unknownForwardIgnoredOutput;
+    std::string unknownForwardIgnoredError;
+    tests.expect(unknownWritten && runDriver(unknownForwardIgnoredArguments, unknownForwardIgnoredOutput,
+            unknownForwardIgnoredError) == nativesharp::ExitCode::Success,
+        "an ignored pointer parameter does not taint a global alias (" +
+            unknownForwardIgnoredError + unknownForwardIgnoredOutput + ")");
     const std::filesystem::path unknownForwardAliasGlobalProject = writeProject(
         root / "unknown-forward-alias-global", "EscapeUnknownForwardAliasGlobal", R"NS(
 using EscapeContracts;

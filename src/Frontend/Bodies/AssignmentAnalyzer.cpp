@@ -2420,14 +2420,17 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
     }
     if (assignmentTargetLocal.has_value() && *assignmentTargetLocal < locals_.size() &&
         (isReferenceTypeKey(locals_[*assignmentTargetLocal].typeKey) ||
-         locals_[*assignmentTargetLocal].typeKey.ends_with("[]")) && expression->second() != nullptr)
+         locals_[*assignmentTargetLocal].typeKey.ends_with("[]") ||
+         locals_[*assignmentTargetLocal].typeKey.ends_with("*")) && expression->second() != nullptr)
     {
         std::vector<const ast::AstNode*> sourcesToInspect{expression->second()};
+        std::unordered_set<const ast::AstNode*> seenSources;
+        const bool pointerTarget = locals_[*assignmentTargetLocal].typeKey.ends_with("*");
         while (!sourcesToInspect.empty())
         {
             const ast::AstNode* current = sourcesToInspect.back();
             sourcesToInspect.pop_back();
-            if (current == nullptr) continue;
+            if (current == nullptr || (pointerTarget && !seenSources.insert(current).second)) continue;
             if (current->kind() == ast::AstNodeKind::ConditionalExpression)
             {
                 sourcesToInspect.push_back(current->second());
@@ -2460,6 +2463,14 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
             else if (source != nullptr && source->kind == MethodNameBindingKind::ExplicitObjectField &&
                      source->receiverSyntax != nullptr)
                 sourcesToInspect.push_back(source->receiverSyntax);
+            if (pointerTarget)
+            {
+                if (current->first() != nullptr) sourcesToInspect.push_back(current->first());
+                if (current->second() != nullptr) sourcesToInspect.push_back(current->second());
+                if (current->third() != nullptr) sourcesToInspect.push_back(current->third());
+                for (const ast::AstNode* child : current->children())
+                    if (child != nullptr) sourcesToInspect.push_back(child);
+            }
         }
     }
     if (!recordViewAssignmentRoot(expression, scopeOrdinal, diagnostics)) return false;
