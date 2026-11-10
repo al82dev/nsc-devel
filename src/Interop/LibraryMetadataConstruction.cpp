@@ -17,6 +17,7 @@
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
+#include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Frontend/ReadonlyReferenceReturn.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Lexer/TokenKind.h"
@@ -1259,17 +1260,28 @@ void rememberReferencedMetadataType(
     const std::string& typeKey,
     std::unordered_set<std::string>& referencedTypeKeys)
 {
-    if (const std::optional<language::FunctionType> functionType =
-            language::parseFunctionTypeIdentity(typeKey))
+    std::vector<std::string> pending{typeKey};
+    while (!pending.empty())
     {
-        for (const std::string& parameter : functionType->parameters)
-            rememberReferencedMetadataType(parameter, referencedTypeKeys);
-        rememberReferencedMetadataType(functionType->result, referencedTypeKeys);
-        rememberReferencedMetadataType(functionType->errorType, referencedTypeKeys);
-        return;
+        std::string current = std::move(pending.back());
+        pending.pop_back();
+        if (const std::optional<language::FunctionType> functionType =
+                language::parseFunctionTypeIdentity(current))
+        {
+            for (const std::string& parameter : functionType->parameters)
+                pending.push_back(parameter);
+            pending.push_back(functionType->result);
+            pending.push_back(functionType->errorType);
+            continue;
+        }
+        const std::string base = metadataBaseTypeKey(current);
+        if (auto elements = frontend::ProjectTypeConversion::tupleElementTypeKeys(base))
+        {
+            for (std::string& element : *elements) pending.push_back(std::move(element));
+            continue;
+        }
+        if (base.starts_with("type:")) referencedTypeKeys.insert(base);
     }
-    const std::string base = metadataBaseTypeKey(typeKey);
-    if (base.starts_with("type:")) referencedTypeKeys.insert(base);
 }
 
 void collectReferencedMetadataTypes(

@@ -5622,6 +5622,9 @@ if(NSC_BUILD_TESTS)
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_declaration_import_cache.py"
                 "${NSC_TEST_COMPILER}")
     if(WIN32)
+        add_test(NAME nsc.generics.tuple-metadata-specialization
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tuple_metadata_specialization.py"
+                    "${NSC_TEST_COMPILER}")
         add_test(NAME nsc.generics.binary-alias-isolation
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_library_alias_isolation.py"
                     "${NSC_TEST_COMPILER}")
