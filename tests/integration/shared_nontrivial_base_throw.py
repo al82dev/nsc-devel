@@ -72,6 +72,22 @@ class FailingBase { public owned Resource baseField;
 class FailsInBase : FailingBase { public owned Resource derivedField;
  public FailsInBase() throws Exception { derivedField = new Resource(3); }
  ~FailsInBase() { Resource.Trace = Resource.Trace * 10 + 4; } }
+class HelperFailingBase { public owned Resource baseField;
+ private void Initialize() { baseField = new Resource(1); }
+ public HelperFailingBase() throws Exception { Initialize(); throw new Exception(); }
+ ~HelperFailingBase() { Resource.Trace = Resource.Trace * 10 + 2; } }
+class FailsInBaseHelper : HelperFailingBase { public FailsInBaseHelper() throws Exception { } }
+class FailsAfterBaseHelper : Base { public owned Resource derivedField;
+ private void Initialize() { derivedField = new Resource(3); }
+ public FailsAfterBaseHelper() throws Exception { Initialize(); throw new Exception(); } }
+class HelperThrowsBase { public owned Resource baseField;
+ private void Initialize() throws Exception { baseField = new Resource(1); throw new Exception(); }
+ public HelperThrowsBase() throws Exception { Initialize(); }
+ ~HelperThrowsBase() { Resource.Trace = Resource.Trace * 10 + 2; } }
+class FailsDuringBaseHelper : HelperThrowsBase { public FailsDuringBaseHelper() throws Exception { } }
+class FailsDuringDerivedHelper : Base { public owned Resource derivedField;
+ private void Initialize() throws Exception { derivedField = new Resource(3); throw new Exception(); }
+ public FailsDuringDerivedHelper() throws Exception { Initialize(); } }
 class Program { public static int Main() {
  int caught = 0; Resource.Trace = 0;
  try { STRONG<FailsAfterBase> owner = SharedPointers.MAKE_THROWING<FailsAfterBase>(); }
@@ -116,16 +132,43 @@ class Program { public static int Main() {
  Resource.Trace = 0;
  try { STRONG<FailsDuringImplicitBase> owner = SharedPointers.MAKE_THROWING<FailsDuringImplicitBase>(); }
  catch (Exception error) { caught = caught + 1; }
- return caught == 8 && Resource.Trace == 421 ? 42 : 14;
+ if (caught != 8 || Resource.Trace != 421) return 14;
+ Resource.Trace = 0;
+ try { STRONG<FailsInBaseHelper> owner = SharedPointers.MAKE_THROWING<FailsInBaseHelper>(); }
+ catch (Exception error) { caught = caught + 1; }
+ if (caught != 9 || Resource.Trace != 1) return 15;
+ Resource.Trace = 0;
+ try { STRONG<FailsAfterBaseHelper> owner = SharedPointers.MAKE_THROWING<FailsAfterBaseHelper>(); }
+ catch (Exception error) { caught = caught + 1; }
+ if (caught != 10 || Resource.Trace != 321) return 16;
+ Resource.Trace = 0;
+ try { STRONG<FailsDuringBaseHelper> owner = SharedPointers.MAKE_THROWING<FailsDuringBaseHelper>(); }
+ catch (Exception error) { caught = caught + 1; }
+ if (caught != 11 || Resource.Trace != 1) return 17;
+ Resource.Trace = 0;
+ try { STRONG<FailsDuringDerivedHelper> owner = SharedPointers.MAKE_THROWING<FailsDuringDerivedHelper>(); }
+ catch (Exception error) { caught = caught + 1; }
+ return caught == 12 && Resource.Trace == 321 ? 42 : 18;
 } }
 '''
     with tempfile.TemporaryDirectory(prefix='nsc-shared-throwing-base-') as temporary:
         root = Path(temporary)
-        for source in sources:
-            shutil.copyfile(source, root / source.name)
+        library = os.environ.get('NSC_SHARED_BINARY_SDK')
+        if library:
+            path = Path(library).resolve()
+            metadata = path.with_suffix('.nsmeta')
+            assert path.is_file() and metadata.is_file()
+            references = ('<LibraryReference Include="' + path.as_posix() + '" Metadata="' +
+                          metadata.as_posix() + '" />')
+            program = program.replace('namespace NativeSharp.Core { public class Exception { } }\n', '')
+        else:
+            for source in sources:
+                shutil.copyfile(source, root / source.name)
+            references = ''
         project = root / 'Probe.nsproj'
         project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
-                           '<ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>', encoding='utf-8')
+                           '<ItemGroup><Compile Include="*.ns" />' + references +
+                           '</ItemGroup></Project>', encoding='utf-8')
         selected = os.environ.get('NSC_SHARED_BASE_FAMILY')
         families = (selected,) if selected else ('Rc', 'Arc')
         if any(strong not in ('Rc', 'Arc') for strong in families):

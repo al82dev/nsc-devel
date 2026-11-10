@@ -1131,8 +1131,10 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                         {
                             fields = &layout.fields;
                             simple = true;
-                            // A base needs no unwind action only if its whole chain has no
-                            // destructor, owned field, or value field requiring drop.
+                            // Throwing shared construction uses the source constructor's cleanup
+                            // regions for completed bases and owned fields. The nonthrowing path
+                            // retains its earlier conservative test. Value fields needing drop
+                            // remain unsupported until their partial lifetimes are established.
                             std::optional<std::size_t> base = layout.baseTypeOrdinal;
                             while (base.has_value() && simple)
                             {
@@ -1151,14 +1153,14 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                                 const frontend::ProjectOopMirClassLayout* baseLayout =
                                     mirModel_.classLayoutForType(*base);
                                 if (baseLayout == nullptr) { simple = false; break; }
-                                if (memberModel_->hasMembersDeclaredByTypeIndex())
+                                if (!sharedThrowingConstruction && memberModel_->hasMembersDeclaredByTypeIndex())
                                 {
                                     for (const std::size_t ordinal : memberModel_->membersDeclaredByType(*base))
                                         if (memberModel_->members()[ordinal].kind ==
                                             frontend::ClassMemberKind::Destructor)
                                             { simple = false; break; }
                                 }
-                                else
+                                else if (!sharedThrowingConstruction)
                                 {
                                     for (const auto& member : memberModel_->members())
                                         if (member.declaringTypeOrdinal == *base &&
@@ -1167,9 +1169,12 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                                 }
                                 for (const auto& field : baseLayout->fields)
                                 {
-                                    if (field.memberOrdinal >= memberModel_->members().size() ||
-                                        memberModel_->members()[field.memberOrdinal].declaredOwnership ==
-                                            sema::OwnershipKind::Owned ||
+                                    if (field.memberOrdinal >= memberModel_->members().size())
+                                        { simple = false; break; }
+                                    const bool owned = memberModel_->members()[field.memberOrdinal].declaredOwnership ==
+                                        sema::OwnershipKind::Owned;
+                                    if ((owned && (!sharedThrowingConstruction ||
+                                                   !requiresOwnedDestruction(field.typeKey))) ||
                                         memberModel_->typeRequiresValueDrop(field.typeKey))
                                         { simple = false; break; }
                                 }

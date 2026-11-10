@@ -133,7 +133,11 @@ class Program { public static int Main() {
                 assert result.returncode == 0, result.stdout + result.stderr
                 result = run([exe], root)
                 assert result.returncode == 42, (level, result.returncode, result.stdout, result.stderr)
-        for negative in (unsupported, unsupported_base, unsupported_base_owned, unsupported_base_value):
+        for supported in (unsupported_base, unsupported_base_owned):
+            source.write_text(types + supported, encoding='utf-8')
+            result = run([compiler, '--dump-project-oop-llvm', project, '--no-banner'], root)
+            assert result.returncode == 0, result.stdout + result.stderr
+        for negative in (unsupported, unsupported_base_value):
             source.write_text(types + negative, encoding='utf-8')
             result = run([compiler, '--dump-project-oop-llvm', project, '--no-banner'], root)
             assert result.returncode != 0 and 'shared throwing construction cannot safely clean this payload shape' in result.stdout + result.stderr
