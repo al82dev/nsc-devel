@@ -1844,9 +1844,12 @@ int ProjectOopMirModel::MirNodeMachine::lowerGroup19(
             const std::optional<std::size_t> slot = model_.virtualDispatchModel_ != nullptr
                 ? model_.virtualDispatchModel_->slotForMember(*node->memberOrdinal)
                 : std::nullopt;
-            const bool dynamicDispatch =
-                node->kind == ProjectOopHirNodeKind::InstanceCall && !node->baseReceiver && slot.has_value();
             const ProjectOopHirFunction* target = model_.hirModel_->functionForMember(*node->memberOrdinal);
+            const bool sealedTarget = target != nullptr && model_.memberModel_ != nullptr &&
+                *node->memberOrdinal < model_.memberModel_->members().size() &&
+                model_.memberModel_->members()[*node->memberOrdinal].isSealed;
+            const bool dynamicDispatch = node->kind == ProjectOopHirNodeKind::InstanceCall &&
+                !node->baseReceiver && slot.has_value() && !sealedTarget;
             if (!dynamicDispatch && target == nullptr)
             {
                 error = "Stage 35 direct/base call cannot target an abstract method";
