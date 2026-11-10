@@ -2,7 +2,7 @@
 
 Esta vista desglosa los 20 ítems de la [tanda 08](TRACKING.md#08-declaraciones-nombres-y-tipos-c). Los identificadores originales permanecen vigentes. Cada casilla marcada describe **únicamente el caso y la validación indicados**, no la cobertura completa de su categoría. Las casillas vacías son trabajo o validación pendientes; no equivalen necesariamente a código inexistente.
 
-La evidencia histórica y sus revisiones se conserva en [TRACKING.md](TRACKING.md). Un resultado antiguo puede haber sido ampliado después; ante discrepancias debe contrastarse con el código, el registro enlazado y el gate actual. La validación integral de la tanda sigue pendiente. Esta lista no debe interpretarse como un inventario cerrado de todas las variantes de C: las combinaciones aún no inventariadas siguen incluidas en los ítems originales.
+La evidencia histórica y sus revisiones se conserva en [TRACKING.md](TRACKING.md). Un resultado antiguo puede haber sido ampliado después; ante discrepancias debe contrastarse con el código, el registro enlazado y el gate actual. La tanda se cerró el 2026-11-10 con las limitaciones de [Estado de cierre](#estado-de-cierre-2026-11-10). Esta lista no debe interpretarse como un inventario cerrado de todas las variantes de C: las combinaciones aún no inventariadas siguen incluidas en los ítems originales.
 
 Los identificadores con sufijo (`a`, `b`...) desglosan la casilla anterior del mismo número; su estado anterior se conserva como encabezado, sin contar una segunda tarea. Una casilla pendiente de comprobación no afirma que la capacidad esté ausente: indica que falta cotejar la evidencia o completar su implementación si la comprobación falla.
 
@@ -529,10 +529,11 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 - [x] T08-D18: dirección de función C frente al envoltorio `__c_boundary` (T08-017-04a1). [Evidencia](registro-commits/t08-d18-identidad-funcion-c.md).
 - [x] T08-D19: dependencias privadas de plantillas públicas en NSMeta (T08-018-03c1). [Evidencia](registro-commits/t08-d19-dependencias-privadas.md).
 - [x] T08-D20: gate histórico en CRLF y caché vigente; carrera del control C de relleno TLS (T08-GATE-03a). Validadores actualizados; el «relleno» no era una carrera: Windows no pone en cero `SizeOfZeroFill`. [Evidencia](registro-commits/t08-d20-gate-historico.md).
-- [ ] T08-D21: reagrupación de commits al cerrar la tanda (T08-GATE-05a). [Estado](registro-commits/t08-validacion-integral-noche-20261109.md#t08-d21-reagrupación-de-commits).
+- [x] T08-D21: reagrupación de commits al cerrar la tanda (T08-GATE-05a). [Estado](registro-commits/t08-validacion-integral-noche-20261109.md#t08-d21-reagrupación-de-commits).
   - No reagrupado todavía: el historial de la tanda (1881 commits `t08`) está publicado en `github/development-cpp-clang` hasta `ccbcd2f66`, y la tanda no está terminada (quedan D04b, D05b, D11, D12, D13b y el fixture de D24). Reagrupar lo publicado exige un push forzado y la autorización del usuario. Respaldo nuevo: `claude\respaldo\development-cpp-clang-20261109-noche.bundle`, verificado.
   - 2026-11-09, cierre funcional: por decisión del usuario se conserva el historial actual y los respaldos; no se hace squash, reescritura ni push forzado hasta revisarlo después de terminar la tanda. [Evidencia](registro-commits/t08-validacion-integral-final-20261109.md).
   - 2026-11-09, cierre técnico: propuesta concreta presentada. Son 68 commits en lugar de 2399, en rangos contiguos con el árbol exacto de cada frontera (`git commit-tree`) y árbol final idéntico a `HEAD`. La rama local `propuesta/t08-agrupado` y un bundle nuevo están preparados; no se publica nada sin la decisión del usuario. [Propuesta](registro-commits/t08-d21-propuesta-agrupacion.md).
+  - 2026-11-10, cierre: resuelta por decisión del usuario. Se conservan la rama original, las dos propuestas y los respaldos; la rama agrupada de cierre `propuesta/t08-agrupado-cierre` incorpora `d6b1a0e34` y este cierre como commits separados. No se reescribe la rama publicada ni se hace push. [Rama de cierre](registro-commits/t08-d21-propuesta-agrupacion.md#rama-agrupada-de-cierre-2026-11-10).
   - 2026-11-10, revisión: verificación independiente de las 90 fronteras, de los mensajes y de la unión acordada, con control negativo. El bundle se verificó, se restauró y pasó `git fsck --full --strict`. Falta la decisión del usuario: conservar la rama separada o sustituir el historial publicado. [Revisión](registro-commits/t08-cierre-tecnico-20261110.md#d21-revisión-de-la-propuesta-propuestat08-agrupado-2).
   - 2026-11-10: propuesta revisada con todos los commits nuevos (D25, `item341`/`item347`, D26 y esta validación). Tiene 23 grupos por familia y luego los bloques y decisiones uno a uno. Se crea en una rama local nueva, `propuesta/t08-agrupado-2`, con árbol final idéntico a `HEAD`, y se guarda un bundle nuevo. La rama publicada no se reemplaza; queda pendiente la revisión del usuario. [Propuesta revisada](registro-commits/t08-d21-propuesta-agrupacion.md#propuesta-revisada-2026-11-10-después-de-t08-d26).
 - [x] T08-D22: callbacks `__vectorcall` (T08-017-03d1). [Evidencia](registro-commits/t08-d22-vectorcall.md).
@@ -545,6 +546,49 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
 
 ## Cierre de la tanda
 
+### Estado de cierre (2026-11-10)
+
+**La tanda 8 queda cerrada con las limitaciones siguientes**, por decisión del usuario.
+
+- **Validación.** Los gates histórico y complementario se ejecutaron en secuencia sobre el código de `0ead9a1f6`,
+  los dos con código 0. Los commits posteriores (`d6b1a0e34` y el de este cierre) solo cambian documentación.
+- **ctest seleccionado (29 pruebas):** 28 aprobadas. La familia SIMD pasa 15 de 15.
+- **`nsc.stage48_2.library-metadata` sigue sin aprobar.** Dos de sus 444 comprobaciones dependen del fixture
+  histórico `tests/fixtures/nsmeta/historical-1.46.nsmeta`, que no existe.
+  - La prueba se conserva intacta.
+  - No se introduce un requisito nuevo de compatibilidad histórica de NSMeta ni se reconstruye un compilador
+    antiguo.
+  - Los demás resultados de metadata se interpretan con ese límite: ninguno sustituye la lectura de una biblioteca
+    1.46.
+- **ctest ampliado (696 pruebas):** 131 aprobadas, 457 no ejecutadas (sin ejecutable construido) y 108 fallidas.
+  - No se presenta como aprobado.
+  - Los controles de causa y de comparación con `97911ad25` son parciales: 16 fallos se repiten igual antes de la
+    tanda; en `parser` solo se comprobó el comportamiento del compilador; de los 90 de entorno se comprobaron tres
+    muestras.
+  - No todos los fallos tienen una causa demostrada.
+  - [Detalle](registro-commits/t08-cierre-tecnico-20261110.md#ctest-completo-696-pruebas).
+- **Limitaciones aceptadas:**
+  - **D23:** se rechaza tomar la dirección de un elemento de un arreglo de punteros cuyo dato apuntado es `const` o
+    `volatile` («cannot take the address of an array element with a … pointee»), y la de un elemento puntero
+    `const`. [D23](registro-commits/t08-d23-arreglos-punteros-campo.md).
+  - **D26:** un record opaco y uno completo de la misma etiqueta, publicados por dos productores, no se concilian;
+    el consumidor que nombra el tipo recibe el conflicto. Se conservan los demás límites de su registro.
+    [Límites de D26](registro-commits/t08-d26-identidad-tipos-c-productores.md#límites-de-la-implementación).
+  - **D11/D12:** se mantienen las reglas de NativeSharp y los avisos documentados. Los avisos no cubren todas las
+    formas de expresión (copia a un local, asignación compuesta e incremento, resultados intermedios, aciertos de
+    caché). [Limitaciones](registro-commits/t08-d11-d12-aviso-divergencia-c.md#limitaciones).
+- **Historial (D21 / GATE-05).** Se conservan sin cambios:
+  - `development-cpp-clang`;
+  - `propuesta/t08-agrupado` y `propuesta/t08-agrupado-2`;
+  - los respaldos de `claude\respaldo`.
+
+  La rama agrupada de cierre `propuesta/t08-agrupado-cierre` añade a `propuesta/t08-agrupado-2` el commit de
+  documentación `d6b1a0e34` y este cierre como commits separados. No se reescribe la rama publicada ni se hace push.
+  [Rama de cierre](registro-commits/t08-d21-propuesta-agrupacion.md#rama-agrupada-de-cierre-2026-11-10).
+- **Fuera de alcance:** la tanda 9 no se empezó.
+
+### Casillas de cierre
+
 - [x] T08-GATE-01: Completar la implementación y las comprobaciones pendientes de T08-002 a T08-020.
   - 2026-11-10, D26: T08-D26 implementada y validada; no quedan decisiones T08-D abiertas salvo D21. [Evidencia](registro-commits/t08-d26-identidad-tipos-c-productores.md).
   - 2026-11-09, D25: vuelve a cerrarse. T08-D25 está implementada y sus controles pasan. Los gates histórico y complementario dan código 0. T08-D26 queda como decisión nueva y documentada; no es un control fallido. [Evidencia](registro-commits/t08-d25-tipos-c-publicos.md).
@@ -555,7 +599,7 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
   - 2026-11-09, noche: T08-D13a resuelve T08-010-05a y cierra T08-010-05/07/08/09, T08-015-03, 04, 05b, 05c, 06a, 08, 09, 10 y T08-020-03c. Queda pendiente funcional T08-015-05a (D13b); T08-015-11 se corrigió después; siguen esperando decisión D11, D12, D04b y D05b. [Evidencia](registro-commits/t08-d13-alias-volatile-modo-origen.md).
 - [x] T08-GATE-02: Resolver o clasificar con evidencia el fallo de la prueba de topología de ondas paralelas. [Evidencia](registro-commits/t08-gate-ondas-paralelas.md).
 - [x] T08-GATE-03: Ejecutar la validación integral agrupada de la tanda 8 y corregir sus fallos hasta que pase. [Evidencia](registro-commits/t08-validacion-integral-cierre-20261109.md).
-  - 2026-11-10, cierre técnico sobre `0ead9a1f6`: histórico y complementario en secuencia, los dos con código 0. ctest acordado, 28 de 29 (`stage48_2` pendiente). SIMD, 15 de 15. En el ctest completo, 131 pasan, 457 no se ejecutaron y 108 fallan; ningún fallo es atribuible a la tanda 8: 90 de entorno, 17 iguales con el compilador de `97911ad25` y el fixture 1.46. [Evidencia](registro-commits/t08-cierre-tecnico-20261110.md).
+  - 2026-11-10, cierre técnico sobre `0ead9a1f6`: histórico y complementario en secuencia, los dos con código 0. ctest acordado, 28 de 29 (`stage48_2` pendiente). SIMD, 15 de 15. En el ctest completo, 131 pasan, 457 no se ejecutaron y 108 fallan. No se presenta como aprobado y no todos los fallos tienen una causa demostrada: 16 se repiten igual con el compilador de `97911ad25`, `parser` y 90 de entorno se comprobaron solo en parte, y `stage48_2` es el fixture 1.46. [Evidencia](registro-commits/t08-cierre-tecnico-20261110.md).
   - 2026-11-10, tras T08-D26 e `item341`/`item347`: el complementario dio código 0. El histórico falló una vez en una expectativa anterior a D26 (`validar-enum.py --consumer-ambiguous`); se actualizó y la repetición dio código 0. ctest, 28 de 29: `item341` e `item347` pasan. Queda pendiente el fixture 1.46 (`stage48_2`, 2 de 444), sin contarlo como aprobado. La familia SIMD pasa (15 de 15). [Evidencia](registro-commits/t08-d26-identidad-tipos-c-productores.md#validación), [pruebas generales](registro-commits/t08-pruebas-generales-item341-item347.md#resolución-2026-11-10).
   - Repetida tras T08-D25: histórico y complementario dan código 0. ctest, 26 de 29: los tres fallos son pruebas generales fuera de la interoperabilidad C (fixture 1.46, `item341`, `item347`). [Evidencia](registro-commits/t08-d25-tipos-c-publicos.md), [pruebas generales](registro-commits/t08-pruebas-generales-item341-item347.md).
   - Repetida en el cierre funcional (`1140e1bd6` y el gate complementario ampliado): histórico y complementario dan código 0. [Evidencia](registro-commits/t08-validacion-integral-final-20261109.md).
@@ -563,7 +607,8 @@ Decisiones recibidas el 2026-11-09. Cada casilla se cierra solo con la capacidad
   - Ejecutada el 2026-11-09: el gate complementario pasa; el histórico falla en cuatro validadores ajenos al compilador (LF, restricción de caché retirada por `03bf12e42` en dos pruebas y carrera del control C de relleno TLS). Las tres primeras pasan en ejecución derivada. T08-GATE-03a resuelta por T08-D20 (validadores actualizados). [Evidencia](registro-commits/t08-validacion-integral-20261109.md).
   - Reejecutada tras las decisiones T08-D: el gate complementario incluye las suites T08-D. La primera vez, el histórico falló en `typedef-funcion-record\validar-enum.py --mismatch`, una expectativa que T08-D10 dejó superada y que se actualizó. La segunda ejecución da código 0 en los dos gates. [Evidencia](registro-commits/t08-validacion-integral-cierre-20261109.md).
 - [x] T08-GATE-04: Actualizar estados y evidencias contra la revisión validada, sin cerrar por muestras parciales. [Evidencia](registro-commits/t08-validacion-integral-20261109.md).
-- [ ] T08-GATE-05: Revisar la agrupación de commits relacionados y preservar un respaldo del historial, conforme a lo acordado.
+- [x] T08-GATE-05: Revisar la agrupación de commits relacionados y preservar un respaldo del historial, conforme a lo acordado.
+  - 2026-11-10, cierre: agrupación revisada y respaldos conservados; rama agrupada de cierre `propuesta/t08-agrupado-cierre` (ver T08-D21). [Rama de cierre](registro-commits/t08-d21-propuesta-agrupacion.md#rama-agrupada-de-cierre-2026-11-10).
   - Respaldo creado sin reescribir el historial (bundle de la rama en `A:\nsc-interop-build\claude\respaldo\`). **Decisión pendiente T08-GATE-05a:** el criterio de reagrupación acordado no está en el repositorio; no se reescribió ningún commit. [Evidencia](registro-commits/t08-validacion-integral-20261109.md).
   - 2026-11-09, noche: el historial está publicado; reagruparlo requiere la autorización del usuario y que la tanda esté terminada. [Estado](registro-commits/t08-validacion-integral-noche-20261109.md#t08-d21-reagrupación-de-commits).
   - 2026-11-09, cierre funcional: se mantiene abierta por decisión del usuario; el historial y los respaldos se conservan y la agrupación se revisará después. [Estado](registro-commits/t08-validacion-integral-final-20261109.md#t08-d21-historial).

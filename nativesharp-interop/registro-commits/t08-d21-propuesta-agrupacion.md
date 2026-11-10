@@ -177,3 +177,21 @@ cuatro bundles anteriores.
 **Hashes.** La rama se crea desde el último commit de la tanda, que es el que contiene este documento. Los hashes
 de la rama, de su árbol y del bundle se informan al presentar la propuesta, porque escribirlos aquí cambiaría ese
 commit.
+
+## Rama agrupada de cierre (2026-11-10)
+
+Decisión del usuario: conservar `development-cpp-clang`, `propuesta/t08-agrupado`, `propuesta/t08-agrupado-2` y los
+respaldos tal como están, sin reescribir la rama publicada ni hacer push.
+
+La rama local `propuesta/t08-agrupado-cierre` parte de `propuesta/t08-agrupado-2` (`0876836b5`) y añade dos
+commits separados:
+
+1. el commit de documentación `d6b1a0e34` (cierre técnico del 2026-11-10), con su árbol, su mensaje y su autor;
+2. el commit de cierre de la tanda, que actualiza el tracking y estos documentos.
+
+Los dos se crean con `git commit-tree` y un índice temporal propio, sin tocar el árbol de trabajo ni el índice de
+`A:\nsc-devel`, que tienen cambios locales ajenos. El commit de cierre solo está en esta rama; `development-cpp-clang`
+sigue en `d6b1a0e34`.
+
+La verificación del contenido final, de las ramas y del respaldo se informa al entregar la rama, porque escribir sus
+hashes aquí cambiaría el propio commit de cierre.

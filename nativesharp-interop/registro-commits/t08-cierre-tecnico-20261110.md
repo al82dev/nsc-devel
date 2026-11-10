@@ -93,20 +93,28 @@ ni como fallidas.
 |---|---|---|
 | El compilador está fuera del árbol del repositorio y no encuentra `lib/NativeSharp.Core/NativeSharp.Core.nsproj` (`integration.*`, `dump-*`, `verify-*`, `emit-exe*`) | 42 | falla igual (`dump-tokens` y `integration.full` comprobados) |
 | `selfhost.*`: faltan requisitos que esta construcción no genera ni configura (`NativeSharpCore.lib` precompilado en 23, imágenes e import libraries de `selfhost-sh41` en 12, `NS_ROOT`, `nsc0` y raíces en 13) | 48 | falla igual (`selfhost.frontend` comprobado) |
-| `stage30`, `stage34`, `stage35-recovery` (2), `stage36-recovery` y `stage37` a `stage44`: esperan una salida de driver anterior | 12 | fallan igual las 12 |
-| `debug.codeview-pdb`, `debug.extreme-o0`, `ns3.t36-debug-scopes`, `ns3.t37-debug-values` | 4 | fallan igual las 4, en la misma línea del script |
-| `parser`: espera que `true ? 1 : 0` se rechace | 1 | el compilador de `97911ad25` ya acepta el ternario; expectativa anterior a la tanda |
+| `stage30`, `stage34`, `stage35-recovery` (2), `stage36-recovery` y `stage37` a `stage44`: no producen la salida que esperan (`project OOP object emission: ok`, `destruction=dynamic-descriptor`); la causa no se investigó | 12 | fallan igual las 12 |
+| `debug.codeview-pdb`, `debug.extreme-o0`, `ns3.t36-debug-scopes`, `ns3.t37-debug-values`; la causa no se investigó | 4 | fallan igual las 4, en la misma línea del script |
+| `parser`: espera que `true ? 1 : 0` se rechace | 1 | no se ejecutó la prueba con ese código; el compilador de `97911ad25` ya acepta el ternario |
 | `stage48_2`: fixture 1.46 ausente | 1 | pendiente, ver arriba |
 
-**Conclusión.** Ninguno de los 108 fallos es atribuible a la tanda 8:
+**Conclusión.** La suite completa no pasa y no todos sus fallos tienen una causa demostrada. Lo comprobado es:
 
-- las 17 que no dependen del entorno (12 de stages, 4 de depuración y `parser`) fallan igual antes de la tanda,
-  comprobado con el compilador construido en `97911ad25` (`claude\bisect`, script `claude\comparar-base.py`);
-- las 90 de entorno nombran un archivo, producto o variable que esta construcción no tiene. Se comprobaron muestras
-  de cada causa con el compilador de `97911ad25`, con el mismo mensaje;
-- `stage48_2` es el fixture ausente.
+- **16 fallos** (12 de stages y 4 de depuración) se repiten igual con el compilador construido en `97911ad25`, antes
+  de la tanda (`claude\bisect`, script `claude\comparar-base.py`). No son regresiones de la tanda 8, pero su causa
+  no se investigó;
+- **`parser`:** la prueba no se ejecutó con el código de `97911ad25`. Solo se comprobó que ese compilador ya aceptaba
+  el ternario que la prueba espera rechazado;
+- **90 fallos de entorno:** nombran un archivo, producto o variable que esta construcción no tiene. Se comprobaron
+  tres muestras con el compilador de `97911ad25`, que dan el mismo mensaje (`dump-tokens`, `integration.full`,
+  `selfhost.frontend`). En las demás, la causa se infiere del mensaje y no está demostrada prueba por prueba;
+- **`stage48_2`:** es el fixture ausente.
 
-No se corrigió ninguno porque ninguno es un fallo funcional de la tanda 8.
+No se encontró ningún fallo demostrado como regresión de la tanda 8, así que no se corrigió ninguno. Eso no prueba
+que ninguno de los fallos no comparados lo sea.
+
+**Corrección del 2026-11-10 (cierre de la tanda).** La primera redacción decía que ninguno de los 108 fallos era
+atribuible a la tanda 8. Era más de lo comprobado; queda sustituida por la conclusión anterior.
 
 ## D21: revisión de la propuesta `propuesta/t08-agrupado-2`
 

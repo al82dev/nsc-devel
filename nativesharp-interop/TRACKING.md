@@ -197,27 +197,27 @@ esa compatibilidad quedan como historial y no son requisitos activos.
 detallada conserva los ítems originales y distingue muestras verificadas de
 trabajo y validación pendientes.
 
-**Actualización 2026-11-10 (D26).** El estado vigente es el del seguimiento detallado. T08-002 a T08-020 y las
-decisiones T08-D01 a T08-D26 están resueltas, salvo D21.
+**Cierre 2026-11-10.** La tanda 8 queda cerrada con limitaciones. El estado vigente es el del
+[seguimiento detallado](TRACKING-TANDA-08-DETALLADO.md#estado-de-cierre-2026-11-10).
 
-- T08-D26: el mismo tipo C publicado por dos productores precompilados es un solo tipo cuando coinciden la
-  identidad C y el contrato de toda su clausura. Las declaraciones incompatibles se siguen rechazando.
-- `item341` e `item347` pasan.
-- Los gates histórico y complementario dan código 0.
+- T08-002 a T08-020 y las decisiones T08-D01 a T08-D26 están resueltas, con D21 y T08-GATE-05 cerradas por
+  decisión del usuario.
+- Los gates histórico y complementario dieron código 0 sobre el código de `0ead9a1f6`. El ctest seleccionado dio
+  28 de 29.
+- `nsc.stage48_2.library-metadata` sigue sin aprobar: dos de sus 444 comprobaciones dependen del fixture histórico
+  1.46 ausente. La prueba se conserva intacta y no se introduce compatibilidad histórica de NSMeta.
+- El ctest ampliado (696 pruebas: 131 aprobadas, 457 no ejecutadas y 108 fallidas) no se presenta como aprobado y
+  no todos sus fallos tienen una causa demostrada.
+- Límites aceptados: D23 (dirección de elementos de arreglos de punteros calificados), D26 (record opaco frente a
+  completo) y D11/D12 (avisos que no cubren todas las formas de expresión).
+- Historial: se conservan `development-cpp-clang`, las dos propuestas agrupadas y los respaldos. La rama agrupada
+  de cierre es `propuesta/t08-agrupado-cierre`.
+- La tanda 9 no se empezó.
 
 Las notas de esta sección anteriores a esta fecha quedan como historial.
 
-La tanda 8 no está cerrada del todo; quedan:
-
-- T08-D21 / T08-GATE-05: agrupación del historial, con la propuesta revisada pendiente de la revisión del usuario.
-- El fixture NSMeta 1.46 ausente (`nsc.stage48_2`, 2 de 444), conservado sin cambios y pendiente, sin contarlo como
-  aprobado. Los demás resultados de metadata se interpretan con ese límite.
-
-Cierre técnico del 2026-11-10 sobre `0ead9a1f6`: gates en secuencia con código 0, ctest acordado 28 de 29, y en el
-ctest completo ningún fallo atribuible a la tanda 8
-([detalle](registro-commits/t08-cierre-tecnico-20261110.md)).
-
-[D26](registro-commits/t08-d26-identidad-tipos-c-productores.md), [D25](registro-commits/t08-d25-tipos-c-publicos.md),
+[Cierre técnico](registro-commits/t08-cierre-tecnico-20261110.md),
+[D26](registro-commits/t08-d26-identidad-tipos-c-productores.md),
 [propuesta D21](registro-commits/t08-d21-propuesta-agrupacion.md).
 
 El validador integral incluye los scripts de la tanda inventariados. La última
