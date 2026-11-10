@@ -20,6 +20,10 @@ impl Reducer<int> for IntReducer { int Combine(int left, int right) { return lef
  private static T Keep<T, TOp>(T value, TOp op) where TOp : Reducer<T> { return value; }
  public static int Main() { IntReducer op; return Keep<int, IntReducer>(42, op); }
 }''', None),
+        'invoke': (common + '''public class Program {
+ private static T Apply<T, TOp>(T value, TOp op) where TOp : Reducer<T> { return op.Combine(value, value); }
+ public static int Main() { IntReducer op; return Apply<int, IntReducer>(21, op); }
+}''', None),
         'bad': (common + '''public class Program {
  private static T Keep<T, TOp>(T value, TOp op) where TOp : Reducer<T> { return value; }
  public static int Main() { IntReducer op; return (int)Keep<long, IntReducer>(42, op); }

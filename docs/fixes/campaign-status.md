@@ -32,7 +32,7 @@ se detallan en los documentos de `docs/fixes` y registros de la misma carpeta.
 | Cancelación async | `comp-06`: traza 0 y salida 5. Con un avance adicional de `MoveNextAsync`, `comp-06-deferred` da traza 7 y salida 0. El usuario confirmó limpieza en el siguiente avance, conforme al contrato existente. |
 | impl externo para struct | `68-struct` se rechazaba. El usuario autorizó despacho estático sin boxing; `f3b0314c0` lo implementa y añade regresión. |
 | Delegado genérico con retorno T | `69-delegate`: rechazo de T. `3c03a4440` corrige el patrón reportado; otras formas de retorno genérico no están demostradas. |
-| Restricción entre parámetros genéricos | `69-constraint`: resolución no encuentra T. Pendiente investigación y decisión del contrato de restricciones. |
+| Restricción entre parámetros genéricos | `69-constraint`: la base rechazaba T. `6022fe794` implementó las restricciones dependientes; la reproducción original volvió a compilar y ejecutar en el árbol actual. La regresión dirigida comprueba relaciones válidas e incompatibles, llamadas al trait y consumo binario; véase `dependent-trait-dispatch.md`. La validación usó un árbol con otros cambios locales y no certifica una revisión limpia. |
 | Lambda sin captura en Main global | `69-lambda`: falla en HIR por ordinal de owner. `f8a05890f` corrige función global sin captura; cierres con captura no están cubiertos. |
 | Matriz dinámica genérica decimal | `70-decimal`: falta layout del elemento. `de6415700` añade el layout en operaciones de arreglo; reproducción y regresión pasan. |
 | Método genérico en matriz genérica | `70-method`: se rechaza deliberadamente como no implementado. Pendiente diseño. |
