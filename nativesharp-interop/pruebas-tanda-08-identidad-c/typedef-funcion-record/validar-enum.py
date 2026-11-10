@@ -33,7 +33,9 @@ for old, new in changes:
         sys.exit("ERROR: el control base cambio: " + old)
     source = source.replace(old, new)
 mismatch = "--mismatch" in sys.argv
-ambiguous = "--consumer-ambiguous" in sys.argv
+# EN: T08-D26: the consumer names the enumerator KValue of the C enum that both producers publish.
+# ES: T08-D26: el consumidor nombra el enumerador KValue del enum C que publican los dos productores.
+consumer_enumerator = "--consumer-enumerator" in sys.argv
 returns_enum = "--returns" in sys.argv
 work = Path(r"A:\nsc-interop-build\t08-typedef-enum-invocacion")
 if returns_enum:
@@ -62,18 +64,27 @@ if mismatch:
                             'typedef enum CKind {{ KValue = 7, KOther = {index} }} CKind;')
     source = source.replace(str(work), str(work) + "-incompatible")
     work = Path(str(work) + "-incompatible")
-if ambiguous:
+if consumer_enumerator:
     old = 'if (Variadic1.Bridge.Access<int>(0, 41) != 41 || Variadic2.Bridge.Access<int>(0, 51) != 51) return 1;'
     if old not in source:
-        sys.exit("ERROR: no se puede preparar la referencia ambigua")
-    source = source.replace(old, 'if (KValue != 7) return 1;')
-    source = source.replace(str(work), str(work) + "-ambiguo")
-    work = Path(str(work) + "-ambiguo")
+        sys.exit("ERROR: no se puede preparar el enumerador del consumidor")
+    source = source.replace(old, 'if (KValue != 7 || Variadic1.Bridge.Access<int>(0, 41) != 41 || '
+                                 'Variadic2.Bridge.Access<int>(0, 51) != 51) return 1;')
+    source = source.replace(str(work), str(work) + "-enumerador")
+    work = Path(str(work) + "-enumerador")
 work.mkdir(parents=True, exist_ok=True)
 script = work / "control-generado.py"
 script.write_text(source, encoding="utf-8")
-args = [arg for arg in sys.argv[1:] if arg not in ("--mismatch", "--consumer-ambiguous", "--returns")]
+args = [arg for arg in sys.argv[1:] if arg not in ("--mismatch", "--consumer-enumerator", "--returns")]
 result = subprocess.run([sys.executable, str(script), *args], capture_output=True, text=True, errors="replace")
+if mismatch and consumer_enumerator:
+    # EN: the enums differ (KOther), so they are two C types and KValue has no single producer.
+    # ES: los enums difieren (KOther), asi que son dos tipos C y KValue no tiene un productor unico.
+    if result.returncode == 0 or "ambiguous namespace state reference 'KValue'" not in result.stdout + result.stderr:
+        print(result.stdout + result.stderr)
+        sys.exit("ERROR: se esperaba diagnosticar la referencia ambigua")
+    print("Enumerador de enums C distintos en dos productores: ambiguedad correcta")
+    sys.exit(0)
 if mismatch:
     # T08-D10: each precompiled producer resolves its own `VarFn` and `CKind` from its catalogue, so a consumer
     # composes two producers whose enums differ, as with the incompatible typedef variants of validar.py.
@@ -83,11 +94,13 @@ if mismatch:
         sys.exit("ERROR: el consumidor de dos productores con enums incompatibles fallo")
     print("Enums con valores incompatibles en productores distintos: consumidor correcto (T08-D10)")
     sys.exit(0)
-if ambiguous:
-    if result.returncode == 0 or "ambiguous namespace state reference 'KValue'" not in result.stdout + result.stderr:
+if consumer_enumerator:
+    # EN: T08-D26: the same enum declaration in both producers is one C type, so KValue is not ambiguous.
+    # ES: T08-D26: la misma declaracion del enum en los dos productores es un tipo C; KValue no es ambiguo.
+    if result.returncode != 0:
         print(result.stdout + result.stderr)
-        sys.exit("ERROR: se esperaba diagnosticar la referencia ambigua")
-    print("Enumerador sin productor identificado: ambiguedad correcta")
+        sys.exit("ERROR: el enumerador del enum C comun de dos productores fallo")
+    print("Enumerador del mismo enum C en dos productores: un tipo, consumidor correcto (T08-D26)")
     sys.exit(0)
 print(result.stdout + result.stderr, end="")
 sys.exit(result.returncode)

@@ -197,18 +197,24 @@ esa compatibilidad quedan como historial y no son requisitos activos.
 detallada conserva los ítems originales y distingue muestras verificadas de
 trabajo y validación pendientes.
 
-**Actualización 2026-11-09 (cierre técnico y D25).** El estado vigente es el del seguimiento detallado. T08-002 a
-T08-020 y las decisiones T08-D01 a T08-D25 están resueltas. T08-D25 publica los tipos C de la interfaz con
-`PublicTypes="Header"`. Los gates histórico y complementario dan código 0. Las notas de esta sección anteriores a
-esta fecha quedan como historial.
+**Actualización 2026-11-10 (D26).** El estado vigente es el del seguimiento detallado. T08-002 a T08-020 y las
+decisiones T08-D01 a T08-D26 están resueltas, salvo D21.
+
+- T08-D26: el mismo tipo C publicado por dos productores precompilados es un solo tipo cuando coinciden la
+  identidad C y el contrato de toda su clausura. Las declaraciones incompatibles se siguen rechazando.
+- `item341` e `item347` pasan.
+- Los gates histórico y complementario dan código 0.
+
+Las notas de esta sección anteriores a esta fecha quedan como historial.
 
 La tanda 8 no está cerrada del todo; quedan:
 
-- T08-D26: identidad del mismo tipo C publicado por dos productores. Pendiente de decisión.
-- T08-D21 / T08-GATE-05: agrupación del historial, con la propuesta presentada y verificada.
-- El fixture NSMeta 1.46 ausente (`nsc.stage48_2`, 2 de 444), conservado sin cambios.
+- T08-D21 / T08-GATE-05: agrupación del historial, con la propuesta revisada pendiente de la revisión del usuario.
+- El fixture NSMeta 1.46 ausente (`nsc.stage48_2`, 2 de 444), conservado sin cambios y pendiente, sin contarlo como
+  aprobado.
 
-[D25](registro-commits/t08-d25-tipos-c-publicos.md), [validación](registro-commits/t08-validacion-cierre-tecnico-20261109.md).
+[D26](registro-commits/t08-d26-identidad-tipos-c-productores.md), [D25](registro-commits/t08-d25-tipos-c-publicos.md),
+[propuesta D21](registro-commits/t08-d21-propuesta-agrupacion.md).
 
 El validador integral incluye los scripts de la tanda inventariados. La última
 ejecución integral registrada terminó con cuatro fallos en controles TLS de DLL

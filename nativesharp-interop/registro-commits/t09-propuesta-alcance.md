@@ -50,16 +50,18 @@ extremo a extremo con pruebas de la tanda 8, aunque no se cerraron como ítems T
 
 - **T08-D25 resuelta después de esta propuesta.** `PublicTypes="Header"` publica los tipos C de la interfaz
   ([detalle](t08-d25-tipos-c-publicos.md)).
-- **Queda T08-D26, pendiente de decisión.** Dos productores precompilados que publican la misma declaración C no
-  comparten la identidad del tipo, y el consumidor que lo nombra recibe un conflicto. Afecta a la tanda 9 cuando dos
-  bibliotecas exponen la misma API C.
+- **T08-D26 resuelta el 2026-11-10.** Dos productores precompilados que publican la misma declaración C comparten
+  el tipo cuando coinciden la identidad C y el contrato de su clausura; las incompatibles se siguen rechazando
+  ([detalle](t08-d26-identidad-tipos-c-productores.md)). La matriz ABI de la tanda 9 puede pasar records entre dos
+  bibliotecas que exponen la misma API C.
 - **D21 / T08-GATE-05:** la agrupación del historial espera la decisión del usuario
   ([propuesta](t08-d21-propuesta-agrupacion.md)).
 - **Fixture NSMeta 1.46 ausente:** `nsc.stage48_2.library-metadata`, 2 de 444. Se deja intacto por decisión
   del usuario.
-- **`item341` (excepción que escapa por un thunk COM):** el fixture choca con el `throw` chequeado del congelamiento
-  3.0. La frontera de excepciones C es una decisión de lenguaje previa a la tanda 9; si no se toma, la tanda 9
-  la deja fuera de su alcance.
+- **`item341` (excepción que escapa por un thunk COM):** resuelto el 2026-11-10 sin cambiar el lenguaje. La prueba
+  valida las reglas vigentes: un método con `throws` no se convierte en callback C, el thunk conserva la frontera y
+  un `panic` termina con el perfil abort ([detalle](t08-pruebas-generales-item341-item347.md#resolución-2026-11-10)).
+  Permitir que una excepción cruce la frontera C sigue siendo una regla de lenguaje que la tanda 9 no incluye.
 - **Configuración:** ctest de `tanda1-ON` mide ahora `A:\nsc-interop-build\tanda1-ON\bin\nsc.exe`
   (`NSC_TEST_COMPILER`). La tanda 9 debe mantenerlo así.
 - **Restricciones vigentes:**

@@ -32,6 +32,8 @@ python "%~dp0validar-enum.py" 0 --mismatch
 if errorlevel 1 exit /b 1
 python "%~dp0validar-enum.py" 0 --returns --mismatch
 if errorlevel 1 exit /b 1
-python "%~dp0validar-enum.py" 0 --consumer-ambiguous
+python "%~dp0validar-enum.py" 0 --consumer-enumerator
+if errorlevel 1 exit /b 1
+python "%~dp0validar-enum.py" 0 --mismatch --consumer-enumerator
 if errorlevel 1 exit /b 1
 exit /b 0

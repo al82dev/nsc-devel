@@ -96,8 +96,8 @@ El consumidor comprueba:
 | `NOpaque` opaco frente a completo | «conflicting C/C++ type alias 'NOpaque'»; coexisten |
 | Encabezado propio del consumidor con otro `NRecord` | «conflicting C/C++ type alias 'NAlias'» |
 
-**Expectativas actualizadas.** Las dos esperaban el rechazo que D26 resuelve. En los dos casos se ajustó el
-montaje para que las bibliotecas C se puedan enlazar juntas.
+**Expectativas actualizadas.** Las tres esperaban el rechazo que D26 resuelve. En las dos primeras se ajustó
+además el montaje para que las bibliotecas C se puedan enlazar juntas.
 
 - **`validar-tipos-publicos.py` (D25), caso «dos-iguales».** Dos bibliotecas con la misma declaración: ahora
   compila y se ejecuta. La segunda biblioteca C usa otras funciones (`same_*`), para no duplicar símbolos.
@@ -105,6 +105,17 @@ montaje para que las bibliotecas C se puedan enlazar juntas.
   consumidor con su propia declaración adelantada. Antes se rechazaba como ambiguo; ahora es un tipo, y el opaco
   de un productor se pasa al otro y a las funciones C del consumidor. Lo valida C: dos tipos incompletos con la
   misma etiqueta son compatibles. Los otros tres rechazos de la prueba no cambian.
+- **`typedef-funcion-record/validar-enum.py` (gate histórico), caso `--consumer-ambiguous`.** Dos productores con
+  DLL homónimas publican el mismo `typedef enum CKind { KValue = 7 }`, desde dos copias del encabezado. Antes, un
+  consumidor que nombraba `KValue` recibía «ambiguous namespace state reference 'KValue'».
+  - El caso pasa a ser `--consumer-enumerator`: es un solo enum, el consumidor usa `KValue` y llama a las dos
+    bibliotecas, y el programa se ejecuta.
+  - El rechazo se conserva donde corresponde: el nuevo `--mismatch --consumer-enumerator` usa enums que difieren
+    (`KOther`) y sigue dando la ambigüedad.
+  - El consumidor conserva las llamadas `Access` de la prueba base. Sin ellas, el empaquetado rechaza las dos
+    `api.dll` homónimas («runtime package contains different DLLs named 'api.dll'»). Es la regla vigente de
+    empaquetado: dos DLL homónimas y distintas solo conviven como alias TLS cargados por ruta (T08-D05). Ese
+    rechazo no depende de D26.
 
 **Sin cambios y pasan:** `validar-typedef-productores.py` (D10, typedef incompatibles de dos productores, que siguen
 rechazados) y las pruebas de conciliación, colisiones, incompletos, enum y plantillas
@@ -114,4 +125,22 @@ La nueva prueba entra en el gate complementario.
 
 ## Validación
 
-Ver la sección «Validación» al final, con los resultados de los gates y de ctest.
+Compilador `A:\nsc-interop-build\tanda1-ON`; ctest mide ese mismo compilador (`NSC_TEST_COMPILER`). Las
+ejecuciones fueron sucesivas, nunca simultáneas.
+
+1. **Pruebas dirigidas** (`claude\scripts\dirigidas-d26.cmd`): la prueba nueva y 13 suites de conciliación,
+   colisiones, incompletos, enum, plantillas y D25.
+   - Primera pasada: fallaron `validar-tipos-publicos.py` y `validar-opaco-consumidor.py`, que esperaban el rechazo
+     anterior.
+   - Con las expectativas actualizadas, las dos pasan.
+2. **Gates de interoperabilidad.** Reconstruyen el compilador y los 444 ejecutables de prueba antes de ejecutarse.
+   - Primera pasada: el histórico falló en `typedef-funcion-record\validar.cmd` por la expectativa de
+     `--consumer-ambiguous`, actualizada como se describe arriba. El complementario dio código 0, con la prueba
+     nueva incluida.
+   - El histórico se repitió completo y dio código 0. Las dos variantes nuevas de `validar-enum.py` se
+     ejecutaron dentro del gate.
+3. **ctest:**
+   - conjunto final de la tanda, 29 pruebas: pasan 28. Falla `nsc.stage48_2.library-metadata`, 2 de 444
+     comprobaciones: es el fixture NSMeta 1.46 ausente, que se deja intacto por decisión del usuario. **Queda
+     pendiente, no se cuenta como aprobada.** `item341` e `item347` pasan;
+   - familia SIMD, 15 pruebas (`t14.floating-point-semantics`, `item345`, `item347` a `item359`): pasan todas.

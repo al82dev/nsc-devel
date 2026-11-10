@@ -40,7 +40,7 @@ Primero se fijó la regla, y después se implementó.
 | El consumidor incluye un encabezado propio que declara el tipo de otra forma | Lo rechaza la regla existente: «conflicting C/C++ type alias 'NAlias' … reconciled=no». |
 | El consumidor incluye el mismo encabezado y además usa la biblioteca | La reconciliación existente funciona y el programa se ejecuta. |
 | Dos bibliotecas publican `NMood` con valores distintos | El consumidor que lo usa se rechaza («ambiguous namespace state reference 'NHappy'»). |
-| Dos bibliotecas publican la misma declaración | El consumidor que la usa se rechaza («conflicting C/C++ type alias 'NAlias'»). Es una limitación anterior a D25, ver abajo. |
+| Dos bibliotecas publican la misma declaración | El 2026-11-09 el consumidor que la usaba se rechazaba («conflicting C/C++ type alias 'NAlias'»). Desde T08-D26 es un solo tipo y el consumidor la usa. |
 
 ## Cambios
 
@@ -88,6 +88,9 @@ encabezado (`Shared` y `Metadata`) en O0–O3, y las cuatro sondas por posición
 Las tres pruebas forman parte del gate complementario.
 
 ## Limitación que queda: dos productores con la misma declaración
+
+**Resuelta el 2026-11-10 por T08-D26** ([detalle](t08-d26-identidad-tipos-c-productores.md)). Lo que sigue
+describe el estado del 2026-11-09.
 
 Cada biblioteca precompilada conserva su propia identidad para sus tipos C. Si dos bibliotecas publican el mismo
 `NAlias` del mismo encabezado, el consumidor que lo nombra recibe «conflicting C/C++ type alias».
