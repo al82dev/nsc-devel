@@ -69,6 +69,18 @@ std::string dumpIr(const std::filesystem::path& project, std::string& diagnostic
 }
 }
 
+// EN: Rules checked here (NativeSharp 3.0). A method that declares `throws` does not convert to an `extern C delegate`,
+//     whose signature declares no error (checked throw C-13 plus the delegate error type match). A callback without
+//     `throws` gets the foreign-boundary thunk with its catchswitch, both catchpads and the CallbackExceptionEscape
+//     trap 13 kept as a guard. A `panic()` inside the callback follows the abort profile: exit 128 + 14 = 142 before
+//     any unwinding reaches the boundary. Source code cannot make an exception reach the boundary, so exit 141 is no
+//     longer an observable result.
+// ES: Reglas que se comprueban (NativeSharp 3.0). Un metodo que declara `throws` no se convierte en un `extern C
+//     delegate`, cuya firma no declara error (throw chequeado C-13 y coincidencia del tipo de error del delegate).
+//     Un callback sin `throws` recibe el thunk de frontera con su catchswitch, las dos catchpads y el trap 13
+//     CallbackExceptionEscape como guarda. Un `panic()` dentro del callback sigue el perfil abort: salida
+//     128 + 14 = 142 antes de que ningun desenrollado llegue a la frontera. El codigo fuente no puede hacer llegar
+//     una excepcion a la frontera, asi que la salida 141 ya no es un resultado observable.
 int main()
 {
     TestContext tests;
@@ -77,15 +89,16 @@ int main()
     std::error_code filesystemError;
     std::filesystem::remove_all(root, filesystemError);
     std::filesystem::create_directories(root, filesystemError);
-    writeFile(root / "ComThunk.nsproj",
+    const std::string project =
         "<Project><PropertyGroup><Name>ComThunk</Name></PropertyGroup>"
-        "<ItemGroup><Compile Include=\"**/*.ns\"/></ItemGroup></Project>");
-    writeFile(root / "Main.ns", R"NS(
+        "<ItemGroup><Compile Include=\"**/*.ns\"/></ItemGroup></Project>";
+
+    writeFile(root / "rejected" / "ComThunk.nsproj", project);
+    writeFile(root / "rejected" / "Main.ns", R"NS(
 namespace NativeSharp.Core { public class Exception { } }
 using NativeSharp.Core;
 
 public extern C delegate int ComMethod(void* self, int value);
-public struct ComObject { public nint* VTable; }
 public class Boom : Exception { }
 
 public class Program
@@ -98,6 +111,32 @@ public class Program
     public static int Main()
     {
         ComMethod guarded = Throws;
+        return guarded(null, 42);
+    }
+}
+)NS");
+    std::string diagnostic;
+    const std::string rejectedIr = dumpIr(root / "rejected" / "ComThunk.nsproj", diagnostic);
+    tests.expect(rejectedIr.empty() &&
+            diagnostic.find("no method in the method group exactly matches delegate signature") !=
+                std::string::npos,
+        "a method that declares throws does not convert to an extern C delegate (" + diagnostic + ")");
+
+    writeFile(root / "panic" / "ComThunk.nsproj", project);
+    writeFile(root / "panic" / "Main.ns", R"NS(
+public extern C delegate int ComMethod(void* self, int value);
+public struct ComObject { public nint* VTable; }
+
+public class Program
+{
+    public static int Panics(void* self, int value)
+    {
+        panic("boom");
+    }
+
+    public static int Main()
+    {
+        ComMethod guarded = Panics;
         nint* table = stackalloc nint[1];
         table[0] = (nint)guarded;
         ComObject instance;
@@ -107,26 +146,23 @@ public class Program
     }
 }
 )NS");
-
-    std::string diagnostic;
-    const std::string ir = dumpIr(root / "ComThunk.nsproj", diagnostic);
+    diagnostic.clear();
+    const std::string ir = dumpIr(root / "panic" / "ComThunk.nsproj", diagnostic);
     tests.expect(!ir.empty(), "COM thunk fixture lowers to LLVM (" + diagnostic + ")");
     tests.expect(ir.find("boundary.catchswitch") != std::string::npos &&
             ir.find("boundary.exception.catchpad") != std::string::npos &&
             ir.find("boundary.panic.catchpad") != std::string::npos,
         "COM thunk contains the foreign-boundary catchswitch and both NativeSharp catchpads");
     tests.expect(ir.find("call void @__nativesharp_trap(i32 13)") != std::string::npos,
-        "COM thunk maps an escaping exception to CallbackExceptionEscape");
+        "COM thunk keeps the CallbackExceptionEscape trap as the boundary guard");
     diagnostic.clear();
     const bool o0Passed = compileAndRun(
-        root / "ComThunk.nsproj", root / "ComThunkO0.exe", "-O0", 141, diagnostic);
-    tests.expect(o0Passed,
-        "COM thunk contains an exception at O0 (" + diagnostic + ")");
+        root / "panic" / "ComThunk.nsproj", root / "ComThunkO0.exe", "-O0", 142, diagnostic);
+    tests.expect(o0Passed, "a panic inside the COM callback exits with the abort profile at O0 (" + diagnostic + ")");
     diagnostic.clear();
     const bool o2Passed = compileAndRun(
-        root / "ComThunk.nsproj", root / "ComThunkO2.exe", "-O2", 141, diagnostic);
-    tests.expect(o2Passed,
-        "COM thunk contains an exception at O2 (" + diagnostic + ")");
+        root / "panic" / "ComThunk.nsproj", root / "ComThunkO2.exe", "-O2", 142, diagnostic);
+    tests.expect(o2Passed, "a panic inside the COM callback exits with the abort profile at O2 (" + diagnostic + ")");
 
     std::filesystem::remove_all(root, filesystemError);
     return tests.result();

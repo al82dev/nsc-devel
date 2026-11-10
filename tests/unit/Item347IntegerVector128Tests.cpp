@@ -95,7 +95,11 @@ public class Program
         Int64x2 wideRight;
         wideRight.X = (long)9; wideRight.Y = (long)4;
         Int64x2 product = Int64x2.Multiply(wideLeft, wideRight);
-        return sum.X + (int)product.Y;
+        Int32x4 difference = Int32x4.Subtract(right, left);
+        Int64x2 wideSum = Int64x2.Add(wideLeft, wideRight);
+        Int64x2 wideDifference = Int64x2.Subtract(wideRight, wideLeft);
+        return sum.X + (int)product.Y + (difference.W - 3) + (int)(wideSum.Y - (long)7) +
+            (int)(wideDifference.X - (long)1);
     }
 }
 )NS");
@@ -121,6 +125,11 @@ public class Program
         "Int32x4.Add lowers to one four-lane LLVM instruction (" + err + ")");
     tests.expect(dumped && out.find("mul <2 x i64>") != std::string::npos,
         "Int64x2.Multiply lowers to one two-lane LLVM instruction");
+    // EN: item347. Add and Subtract of both carriers used to overflow the compiler stack in the iterative lowering.
+    // ES: item347. Add y Subtract de ambos carriers desbordaban la pila del compilador en la bajada iterativa.
+    tests.expect(dumped && out.find("sub <4 x i32>") != std::string::npos &&
+            out.find("add <2 x i64>") != std::string::npos && out.find("sub <2 x i64>") != std::string::npos,
+        "Int32x4.Subtract, Int64x2.Add and Int64x2.Subtract lower to one LLVM vector instruction each");
     tests.expect(dumped && out.find("simd.int.result") != std::string::npos,
         "integer SIMD preserves the public aggregate carrier through an explicit bridge");
 

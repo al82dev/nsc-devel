@@ -4008,7 +4008,13 @@ bool OopLlvmImplementation::lowerExpressionFrame088CoreSimdFloat32x4Multiply(
         std::vector<LLVMValueRef>& values, std::string& error)
 {
     const frontend::ProjectOopMirNode* current = frame.node;
-    if (!(current->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat32x4Multiply)) return false;
+    // EN: item347. Same omission as the 128-bit integer frame: Float32x4/x3/x2 Add and Subtract are lowered here too,
+    //     as before the L04 iterative rewrite (0a5a78f99), instead of recursing without end.
+    // ES: item347. Misma omision que en el frame entero de 128 bits: Add y Subtract de Float32x4/x3/x2 tambien se
+    //     bajan aqui, como antes de la reescritura iterativa L04 (0a5a78f99), en lugar de recursar sin fin.
+    if (!(current->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat32x4Add ||
+        current->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat32x4Subtract ||
+        current->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat32x4Multiply)) return false;
     if (current->children.size() != 2)
     {
         values.push_back(failValue(error, "Float32x4 SIMD operation requires two operands"));
@@ -4052,7 +4058,13 @@ bool OopLlvmImplementation::lowerExpressionFrame088CoreSimdFloat32x4Multiply(
     LLVMValueRef rightVector = LLVMBuildLoad2(builder_, vectorType, rightSlot, "simd.right");
     LLVMSetAlignment(leftVector, alignment);
     LLVMSetAlignment(rightVector, alignment);
-    LLVMValueRef vectorResult = LLVMBuildFMul(builder_, leftVector, rightVector, "simd.multiply");
+    LLVMValueRef vectorResult = nullptr;
+    if (current->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat32x4Add)
+        vectorResult = LLVMBuildFAdd(builder_, leftVector, rightVector, "simd.add");
+    else if (current->kind == frontend::ProjectOopMirNodeKind::CoreSimdFloat32x4Subtract)
+        vectorResult = LLVMBuildFSub(builder_, leftVector, rightVector, "simd.subtract");
+    else
+        vectorResult = LLVMBuildFMul(builder_, leftVector, rightVector, "simd.multiply");
     vectorResult = applyFloatingPointMode(vectorResult, true);
     LLVMValueRef resultSlot = entryBlockAlloca(carrier, alignment, "simd.result.addr");
     LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
@@ -4068,7 +4080,15 @@ bool OopLlvmImplementation::lowerExpressionFrame089CoreSimdInt128Multiply(
         std::vector<LLVMValueRef>& values, std::string& error)
 {
     const frontend::ProjectOopMirNode* current = frame.node;
-    if (!(current->kind == frontend::ProjectOopMirNodeKind::CoreSimdInt128Multiply)) return false;
+    // EN: item347. This frame lowers the three 128-bit integer operations, as the recursive lowering of 00544c0db
+    //     did. The L04 iterative rewrite (0a5a78f99) kept only Multiply here while the dispatcher still sent Add and
+    //     Subtract to the iterative machine, which found no frame and recursed until the stack overflowed.
+    // ES: item347. Este frame baja las tres operaciones enteras de 128 bits, como la bajada recursiva de 00544c0db.
+    //     La reescritura iterativa L04 (0a5a78f99) dejo aqui solo Multiply mientras el despachador seguia enviando
+    //     Add y Subtract a la maquina iterativa, que no encontraba frame y recursaba hasta agotar la pila.
+    if (!(current->kind == frontend::ProjectOopMirNodeKind::CoreSimdInt128Add ||
+        current->kind == frontend::ProjectOopMirNodeKind::CoreSimdInt128Subtract ||
+        current->kind == frontend::ProjectOopMirNodeKind::CoreSimdInt128Multiply)) return false;
     if (current->children.size() != 2)
     {
         values.push_back(failValue(error, "128-bit integer SIMD operation requires two operands"));
@@ -4114,7 +4134,13 @@ bool OopLlvmImplementation::lowerExpressionFrame089CoreSimdInt128Multiply(
     LLVMValueRef rightVector = LLVMBuildLoad2(builder_, vectorType, rightSlot, "simd.int.right");
     LLVMSetAlignment(leftVector, 16U);
     LLVMSetAlignment(rightVector, 16U);
-    LLVMValueRef vectorResult = LLVMBuildMul(builder_, leftVector, rightVector, "simd.int.multiply");
+    LLVMValueRef vectorResult = nullptr;
+    if (current->kind == frontend::ProjectOopMirNodeKind::CoreSimdInt128Add)
+        vectorResult = LLVMBuildAdd(builder_, leftVector, rightVector, "simd.int.add");
+    else if (current->kind == frontend::ProjectOopMirNodeKind::CoreSimdInt128Subtract)
+        vectorResult = LLVMBuildSub(builder_, leftVector, rightVector, "simd.int.subtract");
+    else
+        vectorResult = LLVMBuildMul(builder_, leftVector, rightVector, "simd.int.multiply");
     LLVMValueRef resultSlot = entryBlockAlloca(carrier, 16U, "simd.int.result.addr");
     LLVMValueRef resultStore = LLVMBuildStore(builder_, vectorResult, resultSlot);
     LLVMSetAlignment(resultStore, 16U);

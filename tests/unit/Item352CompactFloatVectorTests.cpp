@@ -70,7 +70,11 @@ public class Program
         Float32x3 c; c.X = (float)2; c.Y = (float)3; c.Z = (float)3;
         Float32x3 d; d.X = (float)4; d.Y = (float)5; d.Z = (float)4;
         Float32x3 product = Float32x3.Multiply(c, d);
-        return (int)(sum.X + product.Z);
+        Float32x4 e; e.X = (float)9; e.Y = (float)1; e.Z = (float)1; e.W = (float)1;
+        Float32x4 f; f.X = (float)4; f.Y = (float)1; f.Z = (float)1; f.W = (float)1;
+        Float32x4 difference = Float32x4.Subtract(e, f);
+        Float32x4 total = Float32x4.Add(difference, f);
+        return (int)(sum.X + product.Z + (total.X - (float)9) + (difference.X - (float)5));
     }
 }
 )NS");
@@ -88,6 +92,11 @@ public class Program
         "float2 uses an exact two-lane LLVM vector (" + err + ")");
     tests.expect(dumped && out.find("fmul <3 x float>") != std::string::npos,
         "float3 uses an exact three-lane LLVM vector without public padding");
+    // EN: item347. Float32x4 Add and Subtract used to overflow the compiler stack in the iterative lowering.
+    // ES: item347. Add y Subtract de Float32x4 desbordaban la pila del compilador en la bajada iterativa.
+    tests.expect(dumped && out.find("fsub <4 x float>") != std::string::npos &&
+            out.find("fadd <4 x float>") != std::string::npos,
+        "Float32x4.Add and Float32x4.Subtract lower to one four-lane LLVM vector instruction each");
     const int result = tests.result();
     if (result == 0) std::filesystem::remove_all(root, filesystemError);
     return result;

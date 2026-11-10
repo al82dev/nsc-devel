@@ -6,7 +6,8 @@ Fecha: 2026-11-09. Indicación del usuario:
   La regla del lenguaje no se cambia.
 - `item347`: registrar el desbordamiento de pila con una reproducción y su alcance.
 
-No se modificó ni el compilador ni ninguna de las dos pruebas.
+Primera entrega (2026-11-09): solo diagnóstico. Segunda entrega (2026-11-10): se corrigieron las dos, ver las
+secciones «Resolución».
 
 ## `nsc.item341.exception-safe-com-thunk`
 
@@ -95,3 +96,72 @@ El compilador construido en `97911ad25` (`interop-t07-close`, el commit anterior
 igual con la misma reproducción (`claude\scripts\bisect-nsc.cmd`). La reproducción compila las fuentes de
 `lib\NativeSharp.Core` del árbol actual. Lo que cambia es el compilador; las fuentes de Core no las tocó esta tanda. Pertenece a la ruta SIMD, fuera de la
 interoperabilidad C, y queda sin corregir.
+
+## Resolución (2026-11-10)
+
+### `item341`: la prueba valida las reglas vigentes
+
+Las reglas del lenguaje no cambian. `tests/unit/Item341ExceptionSafeComThunkTests.cpp` comprueba ahora cuatro
+cosas:
+
+1. Un método que declara `throws Boom` no se convierte en el `extern C delegate ComMethod`, y el diagnóstico es
+   «no method in the method group exactly matches delegate signature».
+2. Un callback sin `throws`, guardado en una vtable COM, produce el thunk de frontera con `boundary.catchswitch`,
+   `boundary.exception.catchpad` y `boundary.panic.catchpad`.
+3. Ese thunk conserva como guarda la llamada `__nativesharp_trap(i32 13)` (`CallbackExceptionEscape`).
+4. Un `panic("boom")` dentro del callback, llamado por la vtable, termina con el perfil abort: salida 142 en O0 y en
+   O2.
+
+La salida 141 deja de esperarse porque, con las reglas vigentes, ningún código fuente puede hacer llegar una
+excepción a la frontera.
+
+**Resultado:** `nsc.item341.exception-safe-com-thunk` pasa.
+
+### `item347`: causa y corrección
+
+**Causa, confirmada en el código y con sondas.**
+
+- `00544c0db` (2026-09-15) bajaba `CoreSimdInt128Add/Subtract/Multiply` en un solo caso recursivo.
+- La reescritura iterativa L04 (`0a5a78f99`, 2026-10-16) dejó en el frame iterativo solo `Multiply`
+  (`lowerExpressionFrame089CoreSimdInt128Multiply`). El despachador
+  (`OopLlvmExpressionDispatch.cpp`) seguía enviando `Add` y `Subtract` a `lowerExpressionIterative`.
+- Ningún frame los reconocía, así que la máquina caía en `lowerExpression` y este volvía a llamarla. Esa recursión
+  mutua no terminaba y desbordaba la pila.
+
+**El mismo defecto afectaba a `Float32x4`, `Float32x3` y `Float32x2`.** `Add` y `Subtract` (frame 088) estaban en la
+misma situación. Lo confirmaron las sondas `f32add`, `f32sub` y `f32x2add`, que desbordaban la pila, y
+`nsc.item352.compact-float-vector`, que usa `Float32x2.Add`.
+
+**Comprobación sistemática.** Se cruzaron los 144 tipos de nodo que el despachador envía a la máquina iterativa con
+los que reconoce algún frame. Solo faltaban esos cuatro: `CoreSimdInt128Add`, `CoreSimdInt128Subtract`,
+`CoreSimdFloat32x4Add` y `CoreSimdFloat32x4Subtract`. Ahora no falta ninguno.
+
+**Corrección** (`src/LLVM/Lowering/OopLlvmExpressionMachine.cpp`). Los frames 088 y 089 aceptan otra vez `Add`,
+`Subtract` y `Multiply` y emiten `add`/`sub`/`mul` (`fadd`/`fsub`/`fmul` con el modo de punto flotante), como la
+bajada original.
+
+**Pruebas.**
+
+- **Sondas** (`claude\sonda-t09128`, O2), cada una con el valor esperado:
+
+  | Caso | Valor |
+  |---|---|
+  | `Int32x4.Add` | 20 |
+  | `Int32x4.Subtract` | 0 |
+  | `Int32x4.Multiply` | 100 |
+  | `Int64x2.Add` | 6 |
+  | `Int64x2.Subtract` | 0 |
+  | `Int64x2.Multiply` | 9 |
+  | `Float32x4.Add` | 8 |
+  | `Float32x4.Subtract` | 0 |
+  | `Float32x4.Multiply` | 16 |
+  | `Float32x2.Add` | 4 |
+  | copia de `Int32x4` | 10 |
+  | `copy struct` propio | 0 |
+  | sin vectores | 42 |
+
+- **`item347` ampliada:** `Int32x4.Subtract`, `Int64x2.Add` e `Int64x2.Subtract`, con su IR (`sub <4 x i32>`,
+  `add <2 x i64>`, `sub <2 x i64>`).
+- **`item352` ampliada:** `Float32x4.Add` y `Float32x4.Subtract` (`fadd <4 x float>`, `fsub <4 x float>`).
+- **ctest de la familia SIMD:** las 15 pasan. Son `t14.floating-point-semantics`, `item345`, `item347` a `item359`,
+  con `item352` entre ellas.
