@@ -26,3 +26,18 @@ pruebas son semánticas y no acreditan toda la seguridad de clases con alias
 mutables o de las familias públicas `Arc`/`WeakArc`. El build fue incremental
 en A y coexistió con cambios ajenos sin registrar; la prueba nueva se ejecuta
 directamente mientras el CMake compartido tiene cambios ajenos.
+
+La regresión se amplió con una biblioteca productora independiente y un
+consumidor que deriva de sus clases. Para un campo `int*` público o privado en
+la base binaria, ambas rutas rechazaron la base y la derivada; los controles
+con base segura se aceptaron. La matriz pasó tanto con Core desde fuentes como
+con Core binario (`thread-inherited-fields/regression.log` y
+`regression-binary.log`). La primera ejecución de la regresión ampliada no
+encontró el runtime predeterminado; se corrigió el comando para usar el runtime
+aislado de A y se repitió. Estas pruebas siguen siendo semánticas.
+
+Una tercera biblioteca, con un campo `ref mut int`, no pudo generarse: la
+verificación de metadata reportó que no puede materializar
+`refmut:builtin:int`. El productor no llegó a un consumidor; el diagnóstico
+se conserva en `thread-inherited-binary/mutable-producer-failure.json`. Esta
+variante binaria y su corrección permanecen pendientes.
