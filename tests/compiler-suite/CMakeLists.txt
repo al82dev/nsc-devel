@@ -540,6 +540,7 @@ add_executable(
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/StageBoundaryVerifier.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/EnumUnderlyingType.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Internal/IntegerExpression.cpp"
+    "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Internal/ComptimeFunctionEvaluator.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Internal/ProjectPhaseTimer.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Internal/IndexShadowMismatch.cpp"
     "${CMAKE_CURRENT_LIST_DIR}/../../src/Frontend/Internal/SpecializationWaveTimer.cpp"

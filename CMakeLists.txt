@@ -448,6 +448,7 @@ add_library(nsc_frontend STATIC
     src/Frontend/StageBoundaryVerifier.cpp
     src/Frontend/EnumUnderlyingType.cpp
     src/Frontend/Internal/IntegerExpression.cpp
+    src/Frontend/Internal/ComptimeFunctionEvaluator.cpp
     src/Frontend/Internal/ProjectPhaseTimer.cpp
     src/Frontend/Internal/IndexShadowMismatch.cpp
     src/Frontend/Internal/SpecializationWaveTimer.cpp
@@ -4485,6 +4486,12 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_item376_worker_fp_initialization_tests)
     add_test(NAME nsc.item376.worker-fp-initialization
         COMMAND nsc_item376_worker_fp_initialization_tests)
+
+    add_executable(nsc_comptime_function_calls_tests tests/unit/ComptimeFunctionCallsTests.cpp)
+    target_link_libraries(nsc_comptime_function_calls_tests PRIVATE nsc_frontend)
+    target_compile_features(nsc_comptime_function_calls_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_comptime_function_calls_tests)
+    add_test(NAME nsc.comptime-function-calls COMMAND nsc_comptime_function_calls_tests)
 
     add_executable(nsc_item385_comptime_core_tests tests/unit/Item385ComptimeCoreTests.cpp)
     target_link_libraries(nsc_item385_comptime_core_tests PRIVATE nsc_frontend)

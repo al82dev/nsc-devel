@@ -70,12 +70,14 @@ private:
         std::size_t& end,
         ComptimeResult& result) const;
     bool resolveRunExpression(
+        std::string_view source,
         std::string_view expression,
         std::size_t cursor,
         std::string& resolvedExpression,
         std::string& dependencyDigest,
         ComptimeResult& result) const;
     bool evaluateRunExpression(
+        std::string_view source,
         const std::string& resolvedExpression,
         const std::string& dependencyDigest,
         std::size_t cursor,

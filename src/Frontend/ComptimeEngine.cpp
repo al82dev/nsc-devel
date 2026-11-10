@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ComptimeEngine.h"
 #include "Internal/ComptimeScan.h"
 #include "Internal/IntegerExpression.h"
+#include "Internal/ComptimeFunctionEvaluator.h"
 #include "Internal/ComptimeCapabilityCall.h"
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Language/MetaprogrammingSemantics.h"
@@ -319,6 +320,21 @@ bool readCapabilityInput(
     content.assign(value, valueLength == 0 ? 0 : valueLength - 1);
     std::free(value);
     return true;
+}
+
+// Only call-shaped identifiers need function-source cache dependencies.
+bool containsFunctionCall(std::string_view expression)
+{
+    for (std::size_t i = 0; i < expression.size(); ++i)
+    {
+        if (!asciiAlpha(expression[i]) && expression[i] != '_') continue;
+        if (i != 0 && identifierByte(expression[i - 1])) continue;
+        std::size_t end = i + 1;
+        while (end < expression.size() && identifierByte(expression[end])) ++end;
+        while (end < expression.size() && asciiSpace(expression[end])) ++end;
+        if (end < expression.size() && expression[end] == '(') return true;
+    }
+    return false;
 }
 
 std::string comptimeCacheKey(std::string_view expression)
@@ -721,6 +737,7 @@ bool ComptimeEngine::locateRunExpression(
 }
 
 bool ComptimeEngine::resolveRunExpression(
+    std::string_view source,
     std::string_view expression,
     std::size_t cursor,
     std::string& resolvedExpression,
@@ -739,6 +756,15 @@ bool ComptimeEngine::resolveRunExpression(
         return false;
     }
     std::string cacheMaterial = resolvedExpression;
+    if (containsFunctionCall(resolvedExpression))
+    {
+        if (source.size() > internal::maximumComptimeFunctionSourceBytes)
+        {
+            result.error = "comptime function source limit exceeded";
+            return false;
+        }
+        cacheMaterial += "\nsource=" + digestText(source);
+    }
     for (const ComptimeDependency& dependency : externalDependencies)
         cacheMaterial += "\n" + dependency.kind + ":" +
             dependency.identity + "=" + dependency.digest;
@@ -751,6 +777,7 @@ bool ComptimeEngine::resolveRunExpression(
 }
 
 bool ComptimeEngine::evaluateRunExpression(
+    std::string_view source,
     const std::string& resolvedExpression,
     const std::string& dependencyDigest,
     std::size_t cursor,
@@ -759,7 +786,8 @@ bool ComptimeEngine::evaluateRunExpression(
     ComptimeResult& result) const
 {
     std::string error;
-    if (cache_)
+    // Function results are not cached until cache entries also account for parse memory.
+    if (cache_ && !containsFunctionCall(resolvedExpression))
     {
         if (const auto cached = cache_->find(dependencyDigest); cached.has_value())
         {
@@ -782,8 +810,16 @@ bool ComptimeEngine::evaluateRunExpression(
             resolvedExpression, limits_.maximumSteps, limits_.maximumNesting,
             result.executedSteps, context_.cancellationRequested);
         value = evaluator.evaluate(error);
+        if (!value.has_value() && containsFunctionCall(resolvedExpression) &&
+            error == "comptime sandbox forbids identifiers, calls, FFI, and host access")
+        {
+            error.clear();
+            value = internal::evaluateComptimeFunction(
+                source, resolvedExpression, cursor, limits_, result.executedSteps,
+                result.memoryUsed, context_.cancellationRequested, error);
+        }
         ++result.cacheMisses;
-        if (value.has_value() && cache_)
+        if (value.has_value() && cache_ && !containsFunctionCall(resolvedExpression))
             cache_->store(
                 dependencyDigest, {*value, result.executedSteps - stepsBefore});
     }
@@ -837,12 +873,12 @@ bool ComptimeEngine::processRunDirective(
     std::string resolvedExpression;
     std::string dependencyDigest;
     if (!resolveRunExpression(
-            expression, cursor, resolvedExpression, dependencyDigest, result))
+            source, expression, cursor, resolvedExpression, dependencyDigest, result))
         return false;
     std::optional<std::int64_t> value;
     bool cacheHit = false;
     if (!evaluateRunExpression(
-            resolvedExpression, dependencyDigest, cursor, value, cacheHit, result))
+            source, resolvedExpression, dependencyDigest, cursor, value, cacheHit, result))
         return false;
     if (!commitRunEvaluation(
             cursor, end, dependencyDigest, *value, cacheHit, result))
