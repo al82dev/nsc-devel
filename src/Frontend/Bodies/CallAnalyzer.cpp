@@ -5197,6 +5197,16 @@ bool ProjectMethodBodyModel::callTypeIsSend(const std::string& typeKey) const
             if (!current.starts_with("ref:") && !current.starts_with("refmut:")) break;
             current = current.substr(current.find(':') + 1);
         }
+        if (auto element = ProjectMemberModel::fixedArrayElementTypeKey(current); element.has_value())
+        {
+            pending.push_back(std::move(*element));
+            continue;
+        }
+        if (auto element = ProjectTypeConversion::nativeArrayElementType(current); element.has_value())
+        {
+            pending.push_back(std::move(*element));
+            continue;
+        }
         const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(current);
         if (!typeOrdinal.has_value() || !walkedTypes.insert(*typeOrdinal).second) continue;
         std::span<const std::size_t> memberOrdinals =
@@ -5245,6 +5255,16 @@ bool ProjectMethodBodyModel::callTypeIsSync(const std::string& typeKey) const
             if (current.starts_with("refmut:")) return false;
             if (!current.starts_with("ref:")) break;
             current = current.substr(current.find(':') + 1);
+        }
+        if (auto element = ProjectMemberModel::fixedArrayElementTypeKey(current); element.has_value())
+        {
+            pending.push_back(std::move(*element));
+            continue;
+        }
+        if (auto element = ProjectTypeConversion::nativeArrayElementType(current); element.has_value())
+        {
+            pending.push_back(std::move(*element));
+            continue;
         }
         const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(current);
         if (!typeOrdinal.has_value() || !walkedTypes.insert(*typeOrdinal).second) continue;
