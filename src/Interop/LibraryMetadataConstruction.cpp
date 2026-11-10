@@ -2357,6 +2357,36 @@ bool buildMetadataType(
     return true;
 }
 
+bool isDirectIntegerFieldUpdate(
+    const frontend::ProjectOopMirNode& node,
+    std::span<const frontend::ClassMemberSymbol> members)
+{
+    using Kind = frontend::ProjectOopMirNodeKind;
+    if (node.typeKey != "builtin:int" || node.operation != lexer::TokenKind::Equal ||
+        node.children.size() != 2U || node.children[0] == nullptr || node.children[1] == nullptr)
+        return false;
+    const auto& address = *node.children[0];
+    const auto& operation = *node.children[1];
+    if (address.kind != Kind::FieldAddress || address.typeKey != "builtin:int" ||
+        !address.memberOrdinal.has_value() || *address.memberOrdinal >= members.size() ||
+        members[*address.memberOrdinal].kind != frontend::ClassMemberKind::Field ||
+        members[*address.memberOrdinal].isStatic ||
+        members[*address.memberOrdinal].declaredTypeKey != "builtin:int" ||
+        address.children.size() != 1U || address.children[0] == nullptr ||
+        address.children[0]->kind != Kind::ThisValue || !address.children[0]->children.empty() ||
+        operation.kind != Kind::Binary || operation.typeKey != "builtin:int" ||
+        (operation.operation != lexer::TokenKind::Plus && operation.operation != lexer::TokenKind::Minus) ||
+        operation.children.size() != 2U || operation.children[0] == nullptr || operation.children[1] == nullptr)
+        return false;
+    const auto& load = *operation.children[0];
+    const auto& literal = *operation.children[1];
+    return load.kind == Kind::FieldLoad && load.typeKey == "builtin:int" &&
+        load.memberOrdinal == address.memberOrdinal && load.children.size() == 1U &&
+        load.children[0] != nullptr && load.children[0]->kind == Kind::ThisValue &&
+        load.children[0]->children.empty() && literal.kind == Kind::IntegerConstant &&
+        literal.typeKey == "builtin:int" && literal.children.empty();
+}
+
 // Proves scalar-field initialization and a certified parameterless base constructor call.
 // Unrecognized MIR remains unknown. The explicit stack bounds call-stack usage
 // and visits each node once; the result does not cover other lifecycle shapes.
@@ -2401,6 +2431,8 @@ bool isSimpleNonEscapingLifecycle(
                     node->children.front()->kind != Kind::ThisValue) return false;
                 break;
             case Kind::Store:
+                // The fully inspected update of an integer field on this cannot publish this.
+                if (isDirectIntegerFieldUpdate(*node, members)) continue;
                 // A scalar static counter increment cannot publish the receiver. Accept only
                 // the fully inspected MIR shape; all other static writes remain unknown.
                 if (node->typeKey == "builtin:int" && node->operation == lexer::TokenKind::Equal &&

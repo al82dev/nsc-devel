@@ -36,6 +36,9 @@ public class SafeIntegerFields { public static int Drops; public int Value;
  public SafeIntegerFields() { Value = 42; } ~SafeIntegerFields() { Drops = Drops + 1; } }
 public class SafeDecimalField { public static int Drops; public int Value; public decimal Amount;
  public SafeDecimalField() { Value = 42; } ~SafeDecimalField() { Drops = Drops + 1; } }
+public class SafeFieldArithmetic { public static int Drops; public int Value;
+ public SafeFieldArithmetic() { Value = 41; Value = Value + 1; }
+ ~SafeFieldArithmetic() { Value = Value - 1; Drops = Drops + 1; } }
 public class SafePayload {
  public static int Drops; public int Value; public SafePayload() { Value = 42; }
  ~SafePayload() { Drops = Drops + 1; } }
@@ -53,6 +56,12 @@ public class EscapingIntegers { public static EscapingIntegers Alias; public nin
  public EscapingIntegers() { Alias = this; } }
 public class EscapingDecimal { public static EscapingDecimal Alias; public decimal Amount;
  public EscapingDecimal() { Alias = this; } }
+public class EscapingFieldArithmetic { public static EscapingFieldArithmetic Alias; public int Value;
+ public EscapingFieldArithmetic() { Value = 41; Value = Value + 1; Alias = this; } }
+public class OpaqueFieldArithmetic { public int Value;
+ public OpaqueFieldArithmetic() { Value = Compute(); } public static int Compute() { return 42; } }
+public class OtherFieldArithmetic { public int Value; public int Other;
+ public OtherFieldArithmetic() { Other = 41; Value = Other + 1; } }
 ''', encoding='utf-8')
         producer_project = producer / 'Producer.nsproj'
         producer_project.write_text('<Project><PropertyGroup><Name>PayloadProducer</Name>'
@@ -106,6 +115,7 @@ class Program { public static int Main() { WeakArc<SafeIntegerFields> weak;
 '''
         decimal_field = unsigned.replace('SafeUnsigned', 'SafeDecimalField').replace('42u', '42').replace(
             'return 1; }', 'return 1; if (owner.Get().Amount != 0m) return 3; }')
+        arithmetic = unsigned.replace('SafeUnsigned', 'SafeFieldArithmetic').replace('42u', '42')
         local = valid.replace('using NativeSharp.Core;', '''using NativeSharp.Core;
 class LocalPayload { public static int Drops; public int Value; public LocalPayload() { Value = 42; }
  ~LocalPayload() { Drops = Drops + 1; } }''').replace('SafePayload', 'LocalPayload')
@@ -125,6 +135,8 @@ class Program { public static int Main() {
                                  ('integer-fields-rc', integers.replace('Arc', 'Rc')),
                                  ('decimal-field-arc', decimal_field),
                                  ('decimal-field-rc', decimal_field.replace('Arc', 'Rc')),
+                                 ('field-arithmetic-arc', arithmetic),
+                                 ('field-arithmetic-rc', arithmetic.replace('Arc', 'Rc')),
                                  ('local-counting-destructor', local),
                                  ('counting-destructor-arc', valid),
                                  ('counting-destructor-rc', valid_rc)):
@@ -147,7 +159,10 @@ class Program { public static int Main() {
                                       ('unsigned-constructor', 'EscapingUnsigned'),
                                       ('unsigned-destructor', 'EscapingUnsignedDestructor'),
                                       ('integer-constructor', 'EscapingIntegers'),
-                                      ('decimal-constructor', 'EscapingDecimal')):
+                                      ('decimal-constructor', 'EscapingDecimal'),
+                                      ('arithmetic-constructor', 'EscapingFieldArithmetic'),
+                                      ('arithmetic-opaque-call', 'OpaqueFieldArithmetic'),
+                                      ('arithmetic-other-field', 'OtherFieldArithmetic')):
                     main_source.write_text(invalid.replace('Arc', family).replace('EscapingPayload', payload),
                                            encoding='utf-8')
                     result = run([compiler, '--emit-project-oop-exe', project, '-' + level,
