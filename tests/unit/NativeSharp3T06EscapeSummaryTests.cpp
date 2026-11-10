@@ -180,6 +180,13 @@ namespace EscapeContracts
 
     nativesharp::interop::LibraryMetadata downlevel = roundTrip;
     downlevel.formatMinor = 34;
+    downlevel.trivialCleanupRootTypeKeys.clear();
+    downlevel.sourceNamespaces.clear();
+    for (auto& generic : downlevel.genericTemplates)
+    {
+        generic.candidateReceiverTypeKeys.clear();
+        generic.sourceImports.clear();
+    }
     for (auto& member : downlevel.members) member.parameterEscapeSummary.clear();
     for (auto& function : downlevel.namespaceFunctions)
         function.parameterEscapeSummary.clear();
