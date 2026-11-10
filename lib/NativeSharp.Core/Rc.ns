@@ -10,7 +10,7 @@ namespace NativeSharp.Core
         internal Rc(SharedLocalHandle<T> value) { inner = move(value); }
         public bool IsEmpty() { return inner.IsEmpty(); }
         public readonly long StrongCount() { return inner.StrongCount(); }
-        public long WeakCount() { return inner.WeakCount(); }
+        public readonly long WeakCount() { return inner.WeakCount(); }
         public readonly ref readonly T Get() { return ref inner.Get(); }
         public SharedView<T> Borrow() { return new SharedView<T>(inner.Borrow()); }
 
