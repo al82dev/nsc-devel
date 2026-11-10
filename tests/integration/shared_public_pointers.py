@@ -1721,6 +1721,34 @@ class Program { public static int Work(borrowed Holder first, borrowed Holder se
 class Program { public static int Main() { Holder holder = new Holder();
  holder.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = holder.value.Borrow();
  holder.Replace(); return (int)view.Get().Data; } }''', 'borrow'),
+        'overwrite_field_via_borrowed_argument': ('''class Holder { public STRONG<Payload> value; }
+class Program { public static void Replace(borrowed Holder item) { item.value = SharedPointers.MAKE<Payload>(); }
+ public static int Main() { Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
+ SharedView<Payload> view = holder.value.Borrow(); Replace(holder); return (int)view.Get().Data; } }''', 'borrow'),
+        'overwrite_field_via_value_argument': ('''class Holder { public STRONG<Payload> value; }
+class Program { public static void Replace(Holder item) { item.value = SharedPointers.MAKE<Payload>(); }
+ public static int Main() { Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
+ SharedView<Payload> view = holder.value.Borrow(); Replace(holder); return (int)view.Get().Data; } }''', 'borrow'),
+        'overwrite_field_via_alias_argument': ('''class Holder { public STRONG<Payload> value; }
+class Program { public static void Replace(borrowed Holder item) { item.value = SharedPointers.MAKE<Payload>(); }
+ public static int Main() { Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
+ borrowed Holder alias = holder; SharedView<Payload> view = holder.value.Borrow();
+ Replace(alias); return (int)view.Get().Data; } }''', 'borrow'),
+        'overwrite_field_via_named_argument': ('''class Holder { public STRONG<Payload> value; }
+class Program { public static void Replace(int ignored, borrowed Holder item) { item.value = SharedPointers.MAKE<Payload>(); }
+ public static int Main() { Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
+ SharedView<Payload> view = holder.value.Borrow(); Replace(item: holder, ignored: 1);
+ return (int)view.Get().Data; } }''', 'borrow'),
+        'argument_independent_holder': ('''class Holder { public STRONG<Payload> value; }
+class Program { public static void Replace(borrowed Holder item) { item.value = SharedPointers.MAKE<Payload>(); }
+ public static int Main() { Holder first = new Holder(); Holder second = new Holder();
+ first.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.value.Borrow();
+ Replace(second); return view.Get().Data == 42l ? 42 : 1; } }''', 'run:42'),
+        'argument_after_view_scope': ('''class Holder { public STRONG<Payload> value; }
+class Program { public static void Replace(borrowed Holder item) { item.value = SharedPointers.MAKE<Payload>(); }
+ public static int Main() { Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
+ { SharedView<Payload> view = holder.value.Borrow(); if (view.Get().Data != 42l) return 1; }
+ Replace(holder); return holder.value.Get().Data == 42l ? 42 : 2; } }''', 'run:42'),
         'overwrite_this_field_via_implicit_method': ('''class Holder { public STRONG<Payload> value;
  public void Replace() { value = SharedPointers.MAKE<Payload>(); }
  public int Work() { value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = value.Borrow();

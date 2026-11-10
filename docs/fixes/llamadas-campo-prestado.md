@@ -116,3 +116,22 @@ ejecutó 42 (`shared-this-method-static.log`). Los programas inseguros solo se
 analizaron. El SDK binario es el generado para una tanda anterior y contiene un
 archivo ajeno con cambios sin registrar; la evidencia no certifica árbol limpio
 ni cubre llamadas indirectas, argumentos mutables o alias arbitrarios.
+
+## Objeto entregado como argumento
+
+Los logs `argument-before-*` muestran que el análisis aceptaba pasar un objeto
+con vista de campo activa a `Replace`, tanto por valor como con parámetro
+`borrowed`; el método podía reemplazar el dueño. En llamadas seleccionadas se
+comparan ahora las raíces rastreadas de argumentos de tipo referencia contra
+las vistas activas. Sin un contrato de efectos comprobado se considera que la
+función puede mutar el objeto, lo que también puede rechazar funciones que
+solamente lo leen.
+
+Para Rc y Arc, desde fuentes y con SDK binario, las pruebas rechazaron los
+parámetros por valor, prestados, mediante alias y nombrados en distinto orden; los controles de objeto
+independiente y fin de ámbito ejecutaron 42 en O0/O2
+(`shared-argument-final.log` y `shared-observer-binary.log`). Los casos
+inseguros solo se analizaron. El SDK binario reutilizado incluye cambios ajenos
+sin registrar y no acredita un árbol limpio. No se demuestra la seguridad de
+delegados, parámetros de estructuras, estado global ni fuentes calculadas sin
+raíz rastreada; las llamadas de extensión no tienen una prueba específica.

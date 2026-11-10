@@ -69,13 +69,36 @@ class OuterValue { public InlineHolder child; }
                 'after-scope': '''Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
  { SharedView<Payload> view = holder.value.Borrow(); if (view.Get().Data != 42l) return 1; }
  holder.Replace(); return holder.value.Get().Data == 42l ? 42 : 2;''',
+                'arg-borrowed': '''Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
+ SharedView<Payload> view = holder.value.Borrow(); ReplaceBorrowed(holder); return (int)view.Get().Data;''',
+                'arg-value': '''Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
+ SharedView<Payload> view = holder.value.Borrow(); ReplaceValue(holder); return (int)view.Get().Data;''',
+                'arg-alias': '''Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
+ borrowed Holder alias = holder; SharedView<Payload> view = holder.value.Borrow();
+ ReplaceBorrowed(alias); return (int)view.Get().Data;''',
+                'arg-named': '''Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
+ SharedView<Payload> view = holder.value.Borrow(); ReplaceNamed(item: holder, ignored: 1);
+ return (int)view.Get().Data;''',
+                'arg-independent': '''Holder first = new Holder(); Holder second = new Holder();
+ first.value = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.value.Borrow();
+ ReplaceBorrowed(second); return view.Get().Data == 42l ? 42 : 1;''',
+                'arg-after-scope': '''Holder holder = new Holder(); holder.value = SharedPointers.MAKE<Payload>();
+ { SharedView<Payload> view = holder.value.Borrow(); if (view.Get().Data != 42l) return 1; }
+ ReplaceBorrowed(holder); return holder.value.Get().Data == 42l ? 42 : 2;''',
             }
             for name, body in bodies.items():
-                source.write_text(common + 'class Program { public static int Main() { ' +
-                                  body.replace('MAKE', 'Make' + family) + ' } }', encoding='utf-8')
+                helpers = ('class Program { public static void ReplaceBorrowed(borrowed Holder item) '
+                           '{ item.value = SharedPointers.MAKE<Payload>(); } '
+                           'public static void ReplaceValue(Holder item) '
+                           '{ item.value = SharedPointers.MAKE<Payload>(); } '
+                           'public static void ReplaceNamed(int ignored, borrowed Holder item) '
+                           '{ item.value = SharedPointers.MAKE<Payload>(); } public static int Main() { ')
+                source.write_text(common + (helpers + body + ' } }').replace('MAKE', 'Make' + family),
+                                  encoding='utf-8')
                 result = run([compiler, '--check-project-method-bodies', project], root)
                 output = result.stdout + result.stderr
-                if name in ('unsafe', 'alias', 'nested-unsafe', 'nested-struct-unsafe', 'indexed-unsafe'):
+                if name in ('unsafe', 'alias', 'nested-unsafe', 'nested-struct-unsafe', 'indexed-unsafe',
+                            'arg-borrowed', 'arg-value', 'arg-alias', 'arg-named'):
                     assert result.returncode != 0 and 'borrow' in output, (family, name, output)
                     print(family, name, 'rejected', flush=True)
                     continue

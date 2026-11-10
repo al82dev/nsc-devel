@@ -4708,6 +4708,21 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
     if (!validateSelectedCallReceiver(
             provenVariantCase, expression, callee, selected,
             call, scopeOrdinal, diagnostics)) return result;
+    for (std::size_t index = 0;
+         index < resolvedArguments.size() && index < selected.argumentParameterOrdinals.size(); ++index)
+    {
+        if (!isReferenceTypeKey(resolvedArguments[index].typeKey) &&
+            !resolvedArguments[index].typeKey.ends_with("[]")) continue;
+        const ast::AstNode* argument = resolvedCallArgumentSyntax(expression, callee, index, coreStringForwarding);
+        if (argument == nullptr ||
+            !hasActiveViewOfStorage(argument, methodMemberOrdinal, scopeOrdinal, true)) continue;
+        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error, argument->range(),
+            "cannot pass object with a borrowed field view to a potentially mutating call");
+        call.resolution = MethodCallResolutionKind::NoViableCandidate;
+        recordCallBinding(std::move(call));
+        return result;
+    }
     const std::vector<ExpressionResult> argumentValues(arguments.begin(), arguments.end());
     checkArgumentPassKinds(
         expression, call.methodName, selected.memberOrdinal, argumentValues, diagnostics,
