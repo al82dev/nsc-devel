@@ -39,7 +39,7 @@ public class EscapingMixed { public static EscapingMixed Alias; public static in
  public EscapingMixed() { } ~EscapingMixed() { Drops = Drops + 1; Alias = this; } }
 ''', encoding='utf-8')
         producer_project = producer / 'Producer.nsproj'
-        producer_project.write_text('<Project><PropertyGroup><Name>PayloadProducer</Name><Language>3</Language>'
+        producer_project.write_text('<Project><PropertyGroup><Name>PayloadProducer</Name>'
                                     '<OutputType>' + ('SharedLibrary' if dynamic else 'Library') +
                                     '</OutputType></PropertyGroup><ItemGroup>'
                                     '<Compile Include="Payload.ns" /></ItemGroup></Project>', encoding='utf-8')
@@ -58,7 +58,7 @@ public class EscapingMixed { public static EscapingMixed Alias; public static in
         def reference(library):
             return ('<LibraryReference Include="' + library.as_posix() + '" Metadata="' +
                     library.with_suffix('.nsmeta').as_posix() + '" />')
-        project.write_text('<Project><PropertyGroup><Name>PayloadConsumer</Name><Language>3</Language>'
+        project.write_text('<Project><PropertyGroup><Name>PayloadConsumer</Name>'
                            '</PropertyGroup><ItemGroup><Compile Include="Main.ns" />' + reference(core) +
                            reference(payload_lib) + '</ItemGroup></Project>', encoding='utf-8')
         main_source = consumer / 'Main.ns'
@@ -66,7 +66,7 @@ public class EscapingMixed { public static EscapingMixed Alias; public static in
 class Program { public static int Main() { WeakArc<SafePayload> weak;
  { Arc<SafePayload> owner = SharedPointers.MakeArc<SafePayload>(); weak = owner.Downgrade();
    if (owner.Get().Value != 42 || SafePayload.Drops != 0) return 1; }
- return weak.Expired() && SafePayload.Drops == 1 ? 42 : 2; } }
+ return weak.Expired() && weak.Upgrade().IsEmpty() && SafePayload.Drops == 1 ? 42 : 2; } }
 '''
         plain = '''using NativeSharp.Core;
 class Program { public static int Main() { Arc<PAYLOAD> owner = SharedPointers.MakeArc<PAYLOAD>();
