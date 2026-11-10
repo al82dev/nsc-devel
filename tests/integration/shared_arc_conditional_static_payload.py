@@ -1,5 +1,6 @@
-"""Arc lifecycle checks with a payload from a separate static library."""
+"""Shared-pointer lifecycle checks with a payload from a separate library."""
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,6 +14,10 @@ def run(command, cwd):
 def main():
     compiler = Path(sys.argv[1]).resolve()
     core = Path(sys.argv[2]).resolve()
+    options = sys.argv[3:]
+    if any(option != '--dll' for option in options) or options.count('--dll') > 1:
+        raise ValueError('expected only the optional --dll argument')
+    dynamic = '--dll' in options
     with tempfile.TemporaryDirectory(prefix='nsc-arc-static-payload-') as temporary:
         root = Path(temporary)
         producer = root / 'producer'
@@ -35,15 +40,20 @@ public class EscapingMixed { public static EscapingMixed Alias; public static in
 ''', encoding='utf-8')
         producer_project = producer / 'Producer.nsproj'
         producer_project.write_text('<Project><PropertyGroup><Name>PayloadProducer</Name><Language>3</Language>'
-                                    '<OutputType>Library</OutputType></PropertyGroup><ItemGroup>'
+                                    '<OutputType>' + ('SharedLibrary' if dynamic else 'Library') +
+                                    '</OutputType></PropertyGroup><ItemGroup>'
                                     '<Compile Include="Payload.ns" /></ItemGroup></Project>', encoding='utf-8')
         payload_lib = producer / 'PayloadProducer.lib'
-        result = run([compiler, '--emit-project-oop-lib', producer_project, '-O0', '-o', payload_lib,
+        output = producer / 'PayloadProducer.dll' if dynamic else payload_lib
+        result = run([compiler, '--emit-project-oop-dll' if dynamic else '--emit-project-oop-lib',
+                      producer_project, '-O0', '-o', output,
                       '--no-artifact-cache'], producer)
         print('producer compile=' + str(result.returncode), flush=True)
         if result.returncode != 0:
             print(result.stdout + result.stderr, file=sys.stderr)
             return 1
+        if dynamic:
+            shutil.copy2(output, consumer)
         project = consumer / 'Consumer.nsproj'
         def reference(library):
             return ('<LibraryReference Include="' + library.as_posix() + '" Metadata="' +
