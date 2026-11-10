@@ -357,6 +357,21 @@ public class Case
 }
 )NS", "cannot move owner 'owner' while a borrowed local is alive");
 
+    expectRejected(tests, root, "BorrowReassignmentOwnerMove", std::string(kBorrowedPrelude) + R"NS(
+public class Case
+{
+    public static int Run()
+    {
+        owned Resource first = new Resource(1);
+        owned Resource second = new Resource(2);
+        BorrowedReference<Resource> view = new BorrowedReference<Resource>(first);
+        view = new BorrowedReference<Resource>(second);
+        owned Resource moved = move(second);
+        return view.Get().Value;
+    }
+}
+)NS", "view reassignment has a different local owner");
+
     expectRejected(tests, root, "BorrowRetention", std::string(kBorrowedPrelude) + R"NS(
 public class Case
 {

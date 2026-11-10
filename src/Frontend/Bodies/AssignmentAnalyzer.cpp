@@ -1099,12 +1099,42 @@ bool ProjectMethodBodyModel::recordViewAssignmentRoot(
     }
     if (!target.viewRootLocalName.empty() && target.viewRootLocalName != *root)
     {
-        diagnostics.report(diagnostics::DiagnosticId::InvalidAssignmentTarget,
-            diagnostics::DiagnosticSeverity::Error, expression->range(),
-            "view reassignment has a different local owner; its lifetime cannot be proven");
-        return false;
+        // Permit a different owner only when every recorded origin resolves to
+        // the same move-only local or by-value parameter at the view's scope.
+        // Unknown or constructor-derived origins do not establish that proof.
+        bool proven = !target.viewSourceFields.empty() && memberModel_ != nullptr;
+        bool foundOld = false;
+        bool foundNew = false;
+        const ClassMemberSymbol* method = scopeOrdinal < scopes_.size()
+            ? methodSymbol(scopes_[scopeOrdinal].methodMemberOrdinal) : nullptr;
+        for (const std::string& field : target.viewSourceFields)
+        {
+            if (field.size() <= 1U || field.front() != '@') { proven = false; break; }
+            const std::string_view name = std::string_view(field).substr(1U);
+            const auto original = lookupScopeName(target.scopeOrdinal, name);
+            const auto current = lookupScopeName(scopeOrdinal, name);
+            if (!original.has_value() || !current.has_value() || original->kind != current->kind ||
+                original->semanticOrdinal != current->semanticOrdinal)
+            { proven = false; break; }
+            const bool local = original->kind == ScopeNameKind::Local && original->semanticOrdinal < locals_.size() &&
+                locals_[original->semanticOrdinal].isMoveOnly;
+            const bool parameter = original->kind == ScopeNameKind::Parameter && method != nullptr &&
+                original->semanticOrdinal < method->parameters.size() &&
+                method->parameters[original->semanticOrdinal].passKind == ParameterPassKind::Value &&
+                memberModel_ != nullptr && memberModel_->typeIsMoveOnly(method->parameters[original->semanticOrdinal].typeKey);
+            if (!local && !parameter) { proven = false; break; }
+            foundOld = foundOld || name == target.viewRootLocalName;
+            foundNew = foundNew || name == *root;
+        }
+        if (!proven || !foundOld || !foundNew)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "view reassignment has a different local owner; its lifetime cannot be proven");
+            return false;
+        }
     }
-    target.viewRootLocalName = *root;
+    if (target.viewRootLocalName.empty()) target.viewRootLocalName = *root;
     return true;
 }
 

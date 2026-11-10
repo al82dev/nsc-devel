@@ -1,0 +1,11 @@
+# Reasignación de vistas entre dueños identificables
+
+Una vista de `Rc` o `Arc` no podía reasignarse desde un dueño a otro, aun cuando ambos permanecían vivos. El rechazo anterior se reprodujo en `A:/nsc-fixes-evidencia/readonly-view-reassignment.log`. El análisis ya conserva las fuentes posibles de la vista y utiliza esa información para impedir la sustitución de sus dueños.
+
+Se permite la reasignación cuando todas las fuentes registradas se resuelven a los mismos locales move-only o parámetros move-only por valor tanto en el ámbito de la vista como en el de la asignación. Se conserva la primera raíz y se acumulan los demás dueños. El análisis es conservador: puede mantener protegido un dueño anterior y rechaza fuentes desconocidas o identidades sombreadas que no puede relacionar. Las vistas creadas mediante constructor con procedencia no identificada siguen rechazándose si se intenta cambiar de dueño.
+
+Un primer ensayo sin esa comprobación dejó de proteger el dueño de una `BorrowedReference` creada mediante constructor. No se ejecutó el acceso inválido. El extracto de la salida observada se conserva en `A:/nsc-fixes-evidencia/readonly-view-reassignment-first-observed.txt`; la regresión en `nsc.ns3.t31.array-borrow` verifica que esa asignación se siga rechazando.
+
+La selección dirigida `view-owner-reassignment-final.cmd` pasó cinco pruebas: resúmenes de escape (35 comprobaciones), vistas y arreglos (16), análisis de préstamos (40), duración de vistas (31) y ocho escenarios para cada una de `Rc` y `Arc`. Estos últimos cubren lectura O0/O2, copia de la vista, selección entre dueños, un parámetro por valor, protección ante reemplazo y rechazo conservador ante sombra. En `readonly-view-reassignment-binary.log` se comprobó también lectura y rechazo con el Core binario aislado. No se ejecutaron los escenarios de acceso inválido.
+
+El compilador y el Core utilizados contienen otros cambios locales no registrados. Las pruebas no acreditan todas las formas de constructor, llamadas, capturas ni vidas posibles, y el rechazo de reasignaciones que no identifica con certeza sigue siendo una limitación. Tampoco resuelven las vistas dentro de tuplas de bibliotecas binarias ni cierran la campaña.
