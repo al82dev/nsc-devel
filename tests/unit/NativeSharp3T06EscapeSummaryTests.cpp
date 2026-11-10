@@ -272,6 +272,83 @@ public class Program { public static int Main() { int local = 42; RetainFunction
             (unknownFunctionError + unknownFunctionOutput).find("escape contract") != std::string::npos,
         "an unknown native function escape contract rejects current-frame storage (" +
             unknownFunctionError + unknownFunctionOutput + ")");
+    const std::filesystem::path unknownForwardProject = writeProject(
+        root / "unknown-forward", "EscapeUnknownForward", R"NS(
+using EscapeContracts;
+public class Program {
+    static void Forward(int* value) { EscapeApi.Retain(value); }
+    public static int Main() { int local = 42; Forward(&local); return local; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::filesystem::path forwardLibraryProject = writeProject(
+        root / "forward-library", "ForwardLibrary", R"NS(
+using EscapeContracts;
+public class Forwarder { public static void Forward(int* value) { EscapeApi.Retain(value); } }
+)NS", "StaticLibrary", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string forwardLibraryProjectText = forwardLibraryProject.string();
+    const std::string forwardLibraryPath = (root / "ForwardLibrary.lib").string();
+    const std::array<std::string_view, 5> forwardLibraryArguments = {
+        "--emit-project-oop-lib", forwardLibraryProjectText, "-O0", "-o", forwardLibraryPath};
+    std::string forwardLibraryOutput;
+    std::string forwardLibraryError;
+    nativesharp::interop::LibraryMetadata forwardLibraryMetadata;
+    const bool forwardLibraryRead = runDriver(forwardLibraryArguments, forwardLibraryOutput, forwardLibraryError) ==
+        nativesharp::ExitCode::Success && codec.read(root / "ForwardLibrary.nsmeta", forwardLibraryMetadata, metadataError);
+    const auto forwardMember = std::ranges::find_if(forwardLibraryMetadata.members, [](const auto& candidate)
+        { return candidate.name == "Forward"; });
+    tests.expect(forwardLibraryRead && forwardMember != forwardLibraryMetadata.members.end() &&
+            forwardMember->parameterEscapeSummary == std::vector<nativesharp::interop::LibraryMetadataEscapeClass>{
+                nativesharp::interop::LibraryMetadataEscapeClass::Unknown},
+        "forwarding preserves the unknown escape summary (" + forwardLibraryError + forwardLibraryOutput + metadataError + ")");
+    const std::string unknownForwardProjectText = unknownForwardProject.string();
+    const std::array<std::string_view, 3> unknownForwardArguments = {
+        "--dump-project-method-bodies", unknownForwardProjectText, "-O0"};
+    std::string unknownForwardOutput;
+    std::string unknownForwardError;
+    const nativesharp::ExitCode unknownForwardResult =
+        runDriver(unknownForwardArguments, unknownForwardOutput, unknownForwardError);
+    tests.expect(unknownWritten && unknownForwardResult != nativesharp::ExitCode::Success &&
+            (unknownForwardError + unknownForwardOutput).find("escape contract") != std::string::npos,
+        "a forwarded unknown native contract rejects current-frame storage (" +
+            unknownForwardError + unknownForwardOutput + ")");
+    const std::filesystem::path unknownForwardFunctionProject = writeProject(
+        root / "unknown-forward-function", "EscapeUnknownForwardFunction", R"NS(
+using EscapeContracts;
+public class Program {
+    static void First(int* value) { RetainFunction(value); }
+    static void Second(int* value) { First(value); }
+    public static int Main() { int local = 42; Second(&local); return local; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownForwardFunctionProjectText = unknownForwardFunctionProject.string();
+    const std::array<std::string_view, 3> unknownForwardFunctionArguments = {
+        "--dump-project-method-bodies", unknownForwardFunctionProjectText, "-O0"};
+    std::string unknownForwardFunctionOutput;
+    std::string unknownForwardFunctionError;
+    const nativesharp::ExitCode unknownForwardFunctionResult =
+        runDriver(unknownForwardFunctionArguments, unknownForwardFunctionOutput, unknownForwardFunctionError);
+    tests.expect(unknownWritten && unknownForwardFunctionResult != nativesharp::ExitCode::Success &&
+            (unknownForwardFunctionError + unknownForwardFunctionOutput).find("escape contract") != std::string::npos,
+        "two wrappers preserve an unknown native function contract (" +
+            unknownForwardFunctionError + unknownForwardFunctionOutput + ")");
+    const std::filesystem::path unknownForwardGlobalProject = writeProject(
+        root / "unknown-forward-global", "EscapeUnknownForwardGlobal", R"NS(
+using EscapeContracts;
+public class Program {
+    public static int Data;
+    static void Forward(int* value) { EscapeApi.Retain(value); }
+    public static int Main() { Forward(&Data); return 42; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string unknownForwardGlobalProjectText = unknownForwardGlobalProject.string();
+    const std::array<std::string_view, 3> unknownForwardGlobalArguments = {
+        "--dump-project-method-bodies", unknownForwardGlobalProjectText, "-O0"};
+    std::string unknownForwardGlobalOutput;
+    std::string unknownForwardGlobalError;
+    tests.expect(unknownWritten && runDriver(unknownForwardGlobalArguments, unknownForwardGlobalOutput,
+            unknownForwardGlobalError) == nativesharp::ExitCode::Success,
+        "a forwarded unknown native contract permits global storage (" +
+            unknownForwardGlobalError + unknownForwardGlobalOutput + ")");
     const std::filesystem::path unknownGlobalProject = writeProject(
         root / "unknown-global", "EscapeUnknownGlobal", R"NS(
 using EscapeContracts;

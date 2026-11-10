@@ -5576,6 +5576,7 @@ private:
     std::vector<NamespaceFunctionCallBinding> namespaceFunctionCalls_;
     std::unordered_map<const ast::AstNode*, std::size_t> namespaceFunctionCallBySyntax_;
     std::vector<std::vector<language::EscapeClass>> parameterEscapeSummaries_;
+    std::vector<std::vector<bool>> parameterUnknownNativeEscape_;
     std::optional<std::size_t> isolatedCallableOrdinal_;
     std::vector<language::EscapeClass> isolatedParameterEscapeSummary_;
     std::size_t currentCallableLocalBase_ = 0;

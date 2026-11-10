@@ -156,6 +156,46 @@ void ProjectMethodBodyModel::finalizeEscapeSummaries(
     std::vector<std::vector<std::size_t>> dependents(cellCount);
     buildEscapeDependencies(callableCellOffsets, dependents);
     propagateEscapeDependencies(cellCallableOrdinals, cellParameterOrdinals, dependents);
+    // Preserve the origin of unknown NativeSharp contracts through source
+    // wrappers without changing the treatment of imported C calls.
+    parameterUnknownNativeEscape_.clear();
+    parameterUnknownNativeEscape_.resize(parameterEscapeSummaries_.size());
+    std::vector<bool> marked(cellCount, false);
+    std::vector<std::size_t> worklist;
+    for (std::size_t callable = 0; callable < parameterEscapeSummaries_.size(); ++callable)
+    {
+        parameterUnknownNativeEscape_[callable].resize(parameterEscapeSummaries_[callable].size(), false);
+        const ClassMemberSymbol* symbol = methodSymbol(callable);
+        bool native = symbol != nullptr && symbol->isPrecompiled && !symbol->isImportedC && !symbol->isExternC;
+        if (callable >= namespaceCallableBase_ && namespaceFunctionModel_ != nullptr)
+        {
+            const std::size_t function = callable - namespaceCallableBase_;
+            if (function < namespaceFunctionModel_->functions().size())
+            {
+                const auto& declaration = namespaceFunctionModel_->functions()[function];
+                native = declaration.isPrecompiled && !declaration.isExternC;
+            }
+        }
+        if (!native) continue;
+        for (std::size_t parameter = 0; parameter < parameterEscapeSummaries_[callable].size(); ++parameter)
+            if (parameterEscapeSummaries_[callable][parameter] == language::EscapeClass::Unknown)
+            {
+                const std::size_t cell = callableCellOffsets[callable] + parameter;
+                marked[cell] = true;
+                worklist.push_back(cell);
+            }
+    }
+    for (std::size_t cursor = 0; cursor < worklist.size(); ++cursor)
+    {
+        const std::size_t cell = worklist[cursor];
+        parameterUnknownNativeEscape_[cellCallableOrdinals[cell]][cellParameterOrdinals[cell]] = true;
+        for (const std::size_t dependent : dependents[cell])
+            if (!marked[dependent])
+            {
+                marked[dependent] = true;
+                worklist.push_back(dependent);
+            }
+    }
     validateEscapeCalls(diagnostics);
 }
 
@@ -356,7 +396,11 @@ void ProjectMethodBodyModel::validateEscapeCall(
                 precompiledNative = function.isPrecompiled && !function.isExternC;
             }
         }
-        const bool unknownNativeContract = contract == language::EscapeClass::Unknown && precompiledNative;
+        const bool forwardedNativeUnknown = calleeOrdinal < parameterUnknownNativeEscape_.size() &&
+            targetParameter < parameterUnknownNativeEscape_[calleeOrdinal].size() &&
+            parameterUnknownNativeEscape_[calleeOrdinal][targetParameter];
+        const bool unknownNativeContract = contract == language::EscapeClass::Unknown &&
+            (precompiledNative || forwardedNativeUnknown);
         if (contract != language::EscapeClass::Global && !unknownNativeContract) continue;
         const bool pointerValue = calleeSymbol != nullptr &&
             targetParameter < calleeSymbol->parameters.size() &&
