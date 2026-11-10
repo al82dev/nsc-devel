@@ -880,10 +880,16 @@ bool prepareProjectDescriptor(
     return true;
 }
 
+struct SourceCandidate
+{
+    std::filesystem::path path;
+    std::optional<std::filesystem::path> externalRoot;
+};
+
 bool collectSourceCandidates(
     const std::filesystem::path& projectDirectory,
     const ProjectDescriptor& descriptor,
-    std::vector<std::filesystem::path>& candidates,
+    std::vector<SourceCandidate>& candidates,
     std::string& error)
 {
     std::vector<std::string> candidateKeys;
@@ -901,7 +907,7 @@ bool collectSourceCandidates(
             }
             const std::string key = pathKey(relative);
             if (std::find(candidateKeys.begin(), candidateKeys.end(), key) != candidateKeys.end()) continue;
-            candidates.push_back(source);
+            candidates.push_back(SourceCandidate{source, std::nullopt});
             candidateKeys.push_back(key);
         }
         return true;
@@ -939,7 +945,7 @@ bool collectSourceCandidates(
                     const std::string key = pathKey(relative);
                     if (std::find(candidateKeys.begin(), candidateKeys.end(), key) == candidateKeys.end())
                     {
-                        candidates.push_back(entry.path());
+                        candidates.push_back(SourceCandidate{entry.path(), std::nullopt});
                         candidateKeys.push_back(key);
                     }
                 }
@@ -947,20 +953,151 @@ bool collectSourceCandidates(
         }
         iterator.increment(filesystemError);
     }
-    if (!filesystemError) return true;
-    error = "cannot enumerate project sources: " + filesystemError.message();
-    return false;
+    if (filesystemError)
+    {
+        error = "cannot enumerate project sources: " + filesystemError.message();
+        return false;
+    }
+
+    for (const SourceIncludeRule& rule : descriptor.includes)
+    {
+        const std::filesystem::path pattern(rule.include.pattern());
+        if (pattern.begin() == pattern.end() || *pattern.begin() != "..") continue;
+
+        std::filesystem::path ancestor = projectDirectory;
+        for (const auto& segment : pattern)
+        {
+            if (segment != "..") break;
+            const std::filesystem::path parent = ancestor.parent_path();
+            if (parent.empty() || parent == ancestor)
+            {
+                error = "external source pattern traverses above the filesystem root: '" +
+                    rule.include.pattern() + "'";
+                return false;
+            }
+            ancestor = parent;
+        }
+
+        std::filesystem::path prefix;
+        bool wildcard = false;
+        bool recursive = false;
+        std::size_t remainingSegments = 0;
+        for (const auto& segment : pattern)
+        {
+            const std::string component = segment.string();
+            if (component.find_first_of("*?") != std::string::npos)
+            {
+                wildcard = true;
+            }
+            if (wildcard)
+            {
+                ++remainingSegments;
+                recursive = recursive || component == "**";
+            }
+            else prefix /= segment;
+        }
+        if (!wildcard)
+        {
+            prefix = prefix.parent_path();
+            remainingSegments = 1;
+        }
+        bool reservedPrefix = false;
+        for (const auto& segment : prefix)
+        {
+            if (segment != ".." && isReservedDirectory(segment))
+            {
+                reservedPrefix = true;
+                break;
+            }
+        }
+        if (reservedPrefix) continue;
+        const std::filesystem::path root = (projectDirectory / prefix).lexically_normal();
+        if (!std::filesystem::exists(root, filesystemError))
+        {
+            if (!filesystemError) continue;
+            error = "cannot inspect external source root: " + filesystemError.message();
+            return false;
+        }
+        if (!std::filesystem::is_directory(root, filesystemError) || filesystemError)
+        {
+            error = "external source root is not a directory: '" + root.string() + "'";
+            return false;
+        }
+        const std::filesystem::path canonicalRoot = std::filesystem::canonical(root, filesystemError);
+        if (filesystemError)
+        {
+            error = "cannot resolve external source root: " + filesystemError.message();
+            return false;
+        }
+        std::filesystem::recursive_directory_iterator external(
+            root, std::filesystem::directory_options::skip_permission_denied, filesystemError);
+        while (!filesystemError && external != end)
+        {
+            const std::filesystem::directory_entry entry = *external;
+            if (entry.is_directory(filesystemError))
+            {
+                if (isReservedDirectory(entry.path()) ||
+                    (!recursive && static_cast<std::size_t>(external.depth()) + 1 >= remainingSegments))
+                    external.disable_recursion_pending();
+            }
+            else if (!filesystemError && entry.is_regular_file(filesystemError) &&
+                     entry.path().extension() == ".ns")
+            {
+                const std::filesystem::path relative = entry.path().lexically_relative(projectDirectory);
+                if (rule.include.matches(relative) && !matchesAny(rule.excludes, relative) &&
+                    !matchesAny(descriptor.removes, relative))
+                    candidates.push_back(SourceCandidate{entry.path(), canonicalRoot});
+            }
+            external.increment(filesystemError);
+        }
+        if (filesystemError)
+        {
+            error = "cannot enumerate external project sources: " + filesystemError.message();
+            return false;
+        }
+    }
+    return true;
 }
 
 bool populateSourceSet(
-    const std::vector<std::filesystem::path>& candidates,
+    const std::vector<SourceCandidate>& candidates,
     bool hasProjectReferences,
     ProjectSourceSet& sourceSet,
     std::string& error)
 {
-    for (const std::filesystem::path& sourcePath : candidates)
+    std::vector<std::string> canonicalKeys;
+    for (const SourceCandidate& candidate : candidates)
     {
-        if (!sourceSet.add(sourcePath, error)) return false;
+        if (!candidate.externalRoot.has_value())
+        {
+            if (!sourceSet.add(candidate.path, error)) return false;
+            canonicalKeys.push_back(pathKey(sourceSet.sources().back().absolutePath));
+            continue;
+        }
+        std::error_code filesystemError;
+        const std::filesystem::path source = std::filesystem::canonical(candidate.path, filesystemError);
+        if (filesystemError || !std::filesystem::is_regular_file(source) || source.extension() != ".ns")
+        {
+            error = "project source does not exist or is not a regular .ns file: '" + candidate.path.string() + "'";
+            return false;
+        }
+        const std::filesystem::path withinRoot = source.lexically_relative(*candidate.externalRoot);
+        if (withinRoot.empty() || *withinRoot.begin() == "..")
+        {
+            error = "external project source escapes its search root: '" + candidate.path.string() + "'";
+            return false;
+        }
+        const std::string key = pathKey(source);
+        if (std::find(canonicalKeys.begin(), canonicalKeys.end(), key) != canonicalKeys.end()) continue;
+        canonicalKeys.push_back(key);
+        const std::filesystem::path relative = source.lexically_relative(sourceSet.projectDirectory());
+        if (relative.empty())
+        {
+            error = "external project source cannot be expressed relative to the project: '" +
+                source.string() + "'";
+            return false;
+        }
+        if (!sourceSet.addCanonical(source, relative, error)) return false;
     }
     return sourceSet.finalize(error, hasProjectReferences);
 }
@@ -1251,7 +1388,7 @@ std::optional<Project> ProjectLoader::load(
 
     const std::filesystem::path projectDirectory = canonicalProject.parent_path();
     ProjectSourceSet sourceSet(projectDirectory);
-    std::vector<std::filesystem::path> candidates;
+    std::vector<SourceCandidate> candidates;
     if (!collectSourceCandidates(projectDirectory, descriptor, candidates, error))
         return std::nullopt;
     if (!populateSourceSet(

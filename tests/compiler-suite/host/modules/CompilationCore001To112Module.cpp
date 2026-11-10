@@ -13,7 +13,7 @@ void globNormalizationContract(TestContext& context, std::size_t variant)
     const std::string pattern = variant == 1 ? "Main.ns" :
         variant == 2 ? "src\\**\\*.ns" :
         variant == 3 ? "" :
-        variant == 4 ? "../Shared/*.ns" :
+        variant == 4 ? "../*/../*.ns" :
         variant == 5 ? "." :
         variant == 6 ? "Models/*.NS" :
         variant == 7 ? "src/**/*.ns" : std::string(512U, 'a') + ".ns";
@@ -26,7 +26,9 @@ void globNormalizationContract(TestContext& context, std::size_t variant)
     }
     const bool normalized = variant != 2 || glob.pattern() == "src/**/*.ns";
     const bool caseFolded = variant != 6 || glob.matches("models/PLAYER.ns");
-    context.expect(glob.isValid() && normalized && caseFolded,
+    const GlobPattern parentGlob("../Shared/*.ns");
+    const bool parentRelative = parentGlob.isValid() && parentGlob.matches("../Shared/Main.ns");
+    context.expect(glob.isValid() && normalized && caseFolded && parentRelative,
         "CF-COMPILATION-001 path separators normalize and validation is stable");
 }
 

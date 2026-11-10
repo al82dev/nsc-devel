@@ -13,6 +13,11 @@ GlobPattern::GlobPattern(std::string pattern)
     std::replace(pattern_.begin(), pattern_.end(), '\\', '/');
     segments_ = split(pattern_);
     validate();
+    if (isValid())
+    {
+        pattern_ = std::filesystem::path(pattern_).lexically_normal().generic_string();
+        segments_ = split(pattern_);
+    }
 }
 
 bool GlobPattern::isValid() const noexcept
@@ -143,11 +148,17 @@ void GlobPattern::validate()
         validationError_ = "glob pattern must be project-relative";
         return;
     }
+    if (segments_.size() == 1 && segments_.front() == ".")
+    {
+        validationError_ = "glob pattern cannot be a single '.' segment";
+        return;
+    }
+    bool hasWildcard = false;
     for (const std::string& segment : segments_)
     {
-        if (segment == "." || segment == "..")
+        if (segment == ".." && hasWildcard)
         {
-            validationError_ = "glob pattern cannot contain '.' or '..' segments";
+            validationError_ = "glob pattern cannot contain '..' after a wildcard segment";
             return;
         }
         if (segment.find("**") != std::string::npos && segment != "**")
@@ -155,6 +166,7 @@ void GlobPattern::validate()
             validationError_ = "'**' must occupy an entire glob path segment";
             return;
         }
+        hasWildcard = hasWildcard || segment.find_first_of("*?") != std::string::npos;
     }
 }
 }

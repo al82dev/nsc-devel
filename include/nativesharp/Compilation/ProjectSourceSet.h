@@ -18,8 +18,8 @@ public:
     explicit ProjectSourceSet(std::filesystem::path projectDirectory);
 
     bool add(const std::filesystem::path& sourcePath, std::string& error);
-    // Adds a source taken from another set of the same project directory: the path is already
-    // canonical and was validated by add, so only the finalization and duplicate checks run.
+    // Adds an already validated source. The caller must supply a canonical regular .ns file
+    // and its normalized path relative to this project; only duplicate/finalization checks run.
     bool addCanonical(
         const std::filesystem::path& canonicalSource,
         const std::filesystem::path& projectRelativePath,

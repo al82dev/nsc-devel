@@ -45,7 +45,11 @@ void testGlobPattern(TestContext& tests)
     tests.expect(question.matches("Models/Player1.ns"), "question mark matches one character");
     tests.expect(!question.matches("Models/Player10.ns"), "question mark does not match two characters");
 
-    tests.expect(!GlobPattern("../Shared/*.ns").isValid(), "parent traversal glob is invalid");
+    const GlobPattern external("../Shared/*.ns");
+    tests.expect(external.isValid(), "explicit parent-relative glob is valid");
+    tests.expect(external.matches("../Shared/Main.ns"), "parent-relative glob matches an external source");
+    tests.expect(!GlobPattern("../Shared/*/../Main.ns").isValid(),
+        "parent traversal after a wildcard is invalid");
     tests.expect(!GlobPattern("C:/Project/*.ns").isValid(), "absolute drive glob is invalid");
     tests.expect(!GlobPattern("Models/**Player.ns").isValid(), "double star must occupy a segment");
 }
@@ -235,8 +239,8 @@ void testInvalidProjects(TestContext& tests, const std::filesystem::path& root)
         "Exe', 'Library', 'StaticLibrary', or 'SharedLibrary",
         "invalid output kind is rejected");
 
-    writeFile(invalid / "Glob.nsproj", "<Project><ItemGroup><Compile Include=\"../*.ns\"/></ItemGroup></Project>\n");
-    expectLoadFailure(tests, invalid / "Glob.nsproj", "invalid glob pattern", "escaping glob is rejected");
+    writeFile(invalid / "Glob.nsproj", "<Project><ItemGroup><Compile Include=\"../*/../*.ns\"/></ItemGroup></Project>\n");
+    expectLoadFailure(tests, invalid / "Glob.nsproj", "after a wildcard segment", "parent after wildcard is rejected");
 
     writeFile(invalid / "Compile.nsproj", "<Project><ItemGroup><Compile/></ItemGroup></Project>\n");
     expectLoadFailure(tests, invalid / "Compile.nsproj", "exactly one", "empty Compile item is rejected");
