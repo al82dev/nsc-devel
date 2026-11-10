@@ -3,6 +3,7 @@
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
+#include "nativesharp/Language/AbiSemantics.h"
 
 namespace nativesharp::llvm_backend
 {
@@ -344,6 +345,15 @@ LLVMValueRef OopLlvmImplementation::lowerConditional(const frontend::ProjectOopM
         LLVMValueRef condition = lowerExpression(node->children[0].get(), error);
         if (condition == nullptr) return nullptr;
         if (terminated()) return condition;
+        const auto mask = language::parsePortableSimdType(node->children[0]->typeKey);
+        if (mask.has_value() && mask->mask)
+        {
+            LLVMValueRef whenTrue = lowerExpression(node->children[1].get(), error);
+            if (whenTrue == nullptr || terminated()) return whenTrue;
+            LLVMValueRef whenFalse = lowerExpression(node->children[2].get(), error);
+            if (whenFalse == nullptr || terminated()) return whenFalse;
+            return LLVMBuildSelect(builder_, condition, whenTrue, whenFalse, "mask.select");
+        }
         LLVMBasicBlockRef trueBlock = appendBlock("cond.true");
         LLVMBasicBlockRef falseBlock = appendBlock("cond.false");
         LLVMBasicBlockRef endBlock = appendBlock("cond.end");

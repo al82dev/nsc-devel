@@ -484,6 +484,13 @@ void ProjectMethodBodyModel::analyzeConditionalBranches(
     // tapaba el bug del analisis.
     const ExpressionResult condition = analyzeExpression(
         expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+    const auto maskCondition = language::parsePortableSimdType(condition.typeKey);
+    if (condition.valid && maskCondition.has_value() && maskCondition->mask)
+    {
+        whenTrue = analyzeExpression(expression->second(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        whenFalse = analyzeExpression(expression->third(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+        return;
+    }
     if (condition.valid && condition.typeKey != "builtin:bool" &&
         condition.typeKey != "builtin:never")
     {
@@ -711,6 +718,26 @@ ProjectMethodBodyModel::analyzeExpressionKindConditionalExpression(
     analyzeConditionalBranches(
         expression, methodMemberOrdinal, scopeOrdinal, diagnostics, whenTrue, whenFalse);
     if (!whenTrue.valid || !whenFalse.valid) return result;
+    const MethodExpressionTypeBinding* conditionBinding =
+        expressionTypeBinding(expression->first(), methodMemberOrdinal);
+    const auto maskCondition = conditionBinding != nullptr
+        ? language::parsePortableSimdType(conditionBinding->typeKey) : std::nullopt;
+    if (maskCondition.has_value() && maskCondition->mask)
+    {
+        const auto branchType = language::parsePortableSimdType(whenTrue.typeKey);
+        if (!branchType.has_value() || whenTrue.typeKey != whenFalse.typeKey ||
+            branchType->laneTypeKey != maskCondition->laneTypeKey ||
+            branchType->laneCount != maskCondition->laneCount)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "SIMD mask selection requires matching lane types and counts");
+            return result;
+        }
+        result.typeKey = whenTrue.typeKey;
+        result.valid = true;
+        return result;
+    }
     if (!resolveConditionalDivergence(result, whenTrue, whenFalse) &&
         !resolveConditionalMatchingType(result, expression, whenTrue, whenFalse, diagnostics))
         resolveConditionalSpecialType(result, expression, whenTrue, whenFalse, diagnostics);
