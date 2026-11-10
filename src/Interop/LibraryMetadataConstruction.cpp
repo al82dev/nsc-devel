@@ -4,6 +4,7 @@
 #include "nativesharp/Basic/ArtifactTransaction.h"
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Basic/Version.h"
+#include "nativesharp/Frontend/BuiltinIntegerTypes.h"
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Compilation/Project.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
@@ -2504,9 +2505,10 @@ bool appendMetadataTypes(
             !typesWithMissingLifecycle.contains(typeOrdinal);
         if (noEscape)
             for (const auto& field : layout->fields)
-                if (field.typeKey != "builtin:int" && field.typeKey != "builtin:bool" &&
-                    field.typeKey != "builtin:long" && field.typeKey != "builtin:float" &&
-                    field.typeKey != "builtin:double") { noEscape = false; break; }
+                if (!frontend::builtins::isIntegerTypeKey(field.typeKey) &&
+                    field.typeKey != "builtin:bool" && field.typeKey != "builtin:float" &&
+                    field.typeKey != "builtin:double" && field.typeKey != "builtin:decimal")
+                { noEscape = false; break; }
         bool constructorSeen = false;
         const auto foundBodies = lifecycleBodies.find(typeOrdinal);
         if (foundBodies != lifecycleBodies.end())
