@@ -239,7 +239,8 @@ private:
         std::size_t argumentOrdinal,
         bool sendMarker,
         const ProjectNameLookup& nameLookup,
-        const ProjectMemberModel& memberModel);
+        const ProjectMemberModel& memberModel,
+        const ProjectInheritanceModel& inheritanceModel);
     static bool satisfiesTypeConstraint(
         const NamedTypeDeclaration& argument,
         std::size_t argumentOrdinal,

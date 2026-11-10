@@ -5214,6 +5214,9 @@ bool ProjectMethodBodyModel::callTypeIsSend(const std::string& typeKey) const
         }
         const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(current);
         if (!typeOrdinal.has_value() || !walkedTypes.insert(*typeOrdinal).second) continue;
+        if (inheritanceModel_ != nullptr)
+            if (const auto base = inheritanceModel_->baseTypeOrdinal(*typeOrdinal); base.has_value())
+                pending.push_back(inheritanceModel_->typeKeyForOrdinal(*base));
         std::span<const std::size_t> memberOrdinals =
             memberModel_->membersDeclaredByType(*typeOrdinal);
         if (!memberModel_->hasMembersDeclaredByTypeIndex())
@@ -5278,6 +5281,9 @@ bool ProjectMethodBodyModel::callTypeIsSync(const std::string& typeKey) const
         }
         const std::optional<std::size_t> typeOrdinal = namedTypeOrdinalForTypeKey(current);
         if (!typeOrdinal.has_value() || !walkedTypes.insert(*typeOrdinal).second) continue;
+        if (inheritanceModel_ != nullptr)
+            if (const auto base = inheritanceModel_->baseTypeOrdinal(*typeOrdinal); base.has_value())
+                pending.push_back(inheritanceModel_->typeKeyForOrdinal(*base));
         std::span<const std::size_t> memberOrdinals =
             memberModel_->membersDeclaredByType(*typeOrdinal);
         if (!memberModel_->hasMembersDeclaredByTypeIndex())

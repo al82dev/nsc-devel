@@ -883,7 +883,8 @@ bool ProjectGenericConstraintModel::satisfiesThreadSafetyConstraint(
     std::size_t argumentOrdinal,
     bool sendMarker,
     const ProjectNameLookup& nameLookup,
-    const ProjectMemberModel& memberModel)
+    const ProjectMemberModel& memberModel,
+    const ProjectInheritanceModel& inheritanceModel)
 {
     // NS304-T07-F07: Send/Sync derivan estructuralmente — un tipo es Send/Sync
     // cuando sus campos lo son y no contiene raw pointers. No se exige `: Send`.
@@ -931,6 +932,8 @@ bool ProjectGenericConstraintModel::satisfiesThreadSafetyConstraint(
         const NamedTypeDeclaration* current = currentOrdinal == argumentOrdinal
             ? &argument : nameLookup.typeForOrdinal(currentOrdinal);
         if (current == nullptr) return false;
+        if (const auto base = inheritanceModel.baseTypeOrdinal(currentOrdinal); base.has_value())
+            pending.push_back(*base);
         language::ThreadSafetyTypeFacts facts;
         facts.typeName = current->identity.name();
         std::vector<std::size_t> fallbackMemberOrdinals;
@@ -1003,7 +1006,7 @@ bool ProjectGenericConstraintModel::satisfiesTypeConstraint(
         (argument.kind == NamedTypeDeclarationKind::Class ||
          argument.kind == NamedTypeDeclarationKind::Struct))
         return satisfiesThreadSafetyConstraint(
-            argument, argumentOrdinal, sendMarker, nameLookup, memberModel);
+            argument, argumentOrdinal, sendMarker, nameLookup, memberModel, inheritanceModel);
     if (constraint.kind == NamedTypeDeclarationKind::Interface)
     {
         // Dos caminos, y hacen falta los dos: una CLASE la implementa, y una INTERFAZ
