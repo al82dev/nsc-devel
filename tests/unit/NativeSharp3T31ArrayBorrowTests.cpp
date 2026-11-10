@@ -246,7 +246,40 @@ public class Program
 }
 )NS");
 
+    // Keep the historical reproduction verbatim and check its current, intentional
+    // result: a plain array does not destroy the class references in its slots.
     const std::string consumerProject = (consumer / "JaggedConsumer.nsproj").string();
+    const std::string originalExecutable = (consumer / "JaggedConsumer.original.exe").string();
+    const std::array<std::string_view, 6> originalArguments = {
+        "-O0", "--emit-project-oop-exe", consumerProject, "-o", originalExecutable, "--no-artifact-cache"};
+    output.clear();
+    error.clear();
+    const bool originalEmitted = runDriver(originalArguments, output, error) == ExitCode::Success;
+    tests.expect(originalEmitted, "historical plain-array example compiles (" + error + output + ")");
+    if (originalEmitted)
+    {
+#if defined(NSC_TEST_CONSOLIDATED_HOST)
+        const std::string originalCommand = "\"" + originalExecutable + "\"";
+#else
+        const std::string originalCommand = "cmd.exe /d /s /c \"\"" + originalExecutable + "\"\"";
+#endif
+        const int originalResult = std::system(originalCommand.c_str());
+        tests.expect(originalResult == 5,
+            "historical plain-array example reaches its old destruction expectation (exit=" +
+                std::to_string(originalResult) + ")");
+    }
+
+    // The remaining cleanup assertions require an array that owns its elements.
+    std::string owningSource = readFile(consumer / "Main.ns");
+    constexpr std::string_view plainDeclaration = "Payload[] owners = new Payload[]";
+    const std::size_t declaration = owningSource.find(plainDeclaration);
+    tests.expect(declaration != std::string::npos, "locate the historical plain-array declaration");
+    if (declaration != std::string::npos)
+    {
+        owningSource.insert(declaration, "owned ");
+        writeFile(consumer / "Main.ns", owningSource);
+    }
+
     const std::string executable = (consumer / "JaggedConsumer.exe").string();
     const std::array<std::string_view, 5> consumerArguments = {
         "-O0", "--emit-project-oop-exe", consumerProject, "-o", executable};
@@ -262,8 +295,10 @@ public class Program
 #else
         const std::string command = "cmd.exe /d /s /c \"\"" + executable + "\"\"";
 #endif
-        tests.expect(std::system(command.c_str()) == 0,
-            "jagged destruction, slot clearing, owning initializer cleanup and borrows execute exactly once");
+        const int executionResult = std::system(command.c_str());
+        tests.expect(executionResult == 0,
+            "jagged destruction, slot clearing, owning initializer cleanup and borrows execute exactly once (exit=" +
+                std::to_string(executionResult) + ")");
     }
 
     const std::array<std::string_view, 3> hirArguments = {
