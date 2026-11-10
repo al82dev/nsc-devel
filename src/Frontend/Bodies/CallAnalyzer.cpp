@@ -3899,6 +3899,56 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                 expression, arguments, parameterTypes, binding, diagnostics)) return result;
         if (!structuralFunction.has_value() && !isExternCDelegateTypeKey(callee.typeKey))
         {
+            if (expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const auto local = lookupScopeName(scopeOrdinal, expression->first()->text());
+                if (local.has_value() && local->kind == ScopeNameKind::Local &&
+                    local->semanticOrdinal < locals_.size() && locals_[local->semanticOrdinal].syntax != nullptr)
+                {
+                    const ast::AstNode* initializer = locals_[local->semanticOrdinal].syntax->first();
+                    for (const MethodDelegateBinding& created : delegateBindings_)
+                    {
+                        if (created.kind != MethodDelegateOperationKind::Create ||
+                            created.methodMemberOrdinal != methodMemberOrdinal || created.syntax != initializer ||
+                            created.staticTarget || created.receiverSyntax == nullptr)
+                            continue;
+                        bool activeView = hasActiveViewOfStorage(
+                            created.receiverSyntax, methodMemberOrdinal, scopeOrdinal, true);
+                        const ast::AstNode* root = created.receiverSyntax;
+                        while (root != nullptr && (root->kind() == ast::AstNodeKind::MemberExpression ||
+                                                   root->kind() == ast::AstNodeKind::IndexExpression))
+                            root = root->first();
+                        const MethodNameBinding* original = root != nullptr &&
+                            root->kind() == ast::AstNodeKind::IdentifierExpression
+                            ? nameBinding(root, methodMemberOrdinal) : nullptr;
+                        if (original != nullptr && (original->localOrdinal.has_value() ||
+                                                    original->parameterOrdinal.has_value()))
+                        {
+                            for (const MethodLocalSymbol& view : locals_)
+                            {
+                                if (view.methodMemberOrdinal != methodMemberOrdinal ||
+                                    !scopeContains(view.scopeOrdinal, scopeOrdinal)) continue;
+                                for (const std::string& field : view.viewSourceFields)
+                                {
+                                    if (field.size() <= 1 || field.front() != '@') continue;
+                                    const auto source = lookupScopeName(view.scopeOrdinal, std::string_view(field).substr(1));
+                                    if (!source.has_value()) continue;
+                                    if ((source->kind == ScopeNameKind::Local && original->localOrdinal.has_value() &&
+                                         source->semanticOrdinal == *original->localOrdinal) ||
+                                        (source->kind == ScopeNameKind::Parameter && original->parameterOrdinal.has_value() &&
+                                         source->semanticOrdinal == *original->parameterOrdinal)) activeView = true;
+                                }
+                            }
+                        }
+                        if (!activeView) continue;
+                        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+                            diagnostics::DiagnosticSeverity::Error, expression->range(),
+                            "cannot invoke delegate on an object with a borrowed field view");
+                        return result;
+                    }
+                }
+            }
             for (std::size_t index = 0;
                  index < arguments.size() && index < expression->children().size(); ++index)
             {

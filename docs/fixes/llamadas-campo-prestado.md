@@ -153,6 +153,26 @@ evidencia no certifica un árbol limpio. Los eventos, punteros de función,
 delegados externos y argumentos calculados sin raíz no quedan acreditados por
 esta corrección; la ruta de interoperabilidad no se modificó.
 
+## Delegado local ligado a un receptor
+
+`shared-bound-delegate-before.log` reproduce que un delegado local creado con
+`holder.Replace` podía invocarse mientras vivía una vista de `holder.value`.
+Para un inicializador directo de método de instancia, el análisis compara el
+receptor registrado del delegado con las vistas activas antes de invocarlo. Un
+primer ensayo buscó el receptor por nombre en el ámbito actual y aceptó el
+caso de un nombre oculto por otro local (`shared-bound-shadow.log`); el ajuste
+compara además la vinculación léxica original con las raíces de vistas.
+
+Para Rc y Arc se rechazan las variantes directas y con nombre oculto; los
+controles de objeto independiente y fin de ámbito ejecutan 42 en O0/O2,
+desde fuentes y SDK binario. Desde fuentes también se comprobó la creación del
+delegado después de la vista (`shared-bound-delegate-final.log` y
+`shared-bound-delegate-binary-final.log`). Los programas inseguros solo se
+analizaron. La regla puede rechazar métodos que solo leen. Reasignaciones,
+copias, uniones de flujo y delegados recibidos como parámetros no quedan
+acreditados por este cambio. El SDK binario reutilizado contiene cambios
+concurrentes sin registrar y no certifica un árbol limpio.
+
 ## Argumento de evento administrado
 
 `shared-event-before.log` registra que la invocación `Changed(holder)` era
