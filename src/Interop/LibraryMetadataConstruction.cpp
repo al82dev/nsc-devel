@@ -2388,6 +2388,32 @@ bool isSimpleNonEscapingLifecycle(
                     node->children.front()->kind != Kind::ThisValue) return false;
                 break;
             case Kind::Store:
+                // A scalar static counter increment cannot publish the receiver. Accept only
+                // the fully inspected MIR shape; all other static writes remain unknown.
+                if (node->typeKey == "builtin:int" && node->operation == lexer::TokenKind::Equal &&
+                    node->children.size() == 2U && node->children[0] != nullptr &&
+                    node->children[1] != nullptr)
+                {
+                    const auto& address = *node->children[0];
+                    const auto& sum = *node->children[1];
+                    if (address.kind == Kind::StaticFieldAddress && address.typeKey == "builtin:int" &&
+                        address.children.empty() && address.memberOrdinal.has_value() &&
+                        *address.memberOrdinal < members.size() &&
+                        members[*address.memberOrdinal].kind == frontend::ClassMemberKind::Field &&
+                        members[*address.memberOrdinal].isStatic &&
+                        members[*address.memberOrdinal].declaredTypeKey == "builtin:int" &&
+                        sum.kind == Kind::Binary && sum.typeKey == "builtin:int" &&
+                        sum.operation == lexer::TokenKind::Plus && sum.children.size() == 2U &&
+                        sum.children[0] != nullptr && sum.children[1] != nullptr)
+                    {
+                        const auto& load = *sum.children[0];
+                        const auto& increment = *sum.children[1];
+                        if (load.kind == Kind::StaticFieldLoad && load.typeKey == "builtin:int" &&
+                            load.memberOrdinal == address.memberOrdinal && load.children.empty() &&
+                            increment.kind == Kind::IntegerConstant && increment.typeKey == "builtin:int" &&
+                            increment.children.empty()) continue;
+                    }
+                }
                 if (node->children.size() != 2U || node->children.front() == nullptr ||
                     node->children.front()->kind != Kind::FieldAddress) return false;
                 break;
