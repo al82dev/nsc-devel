@@ -840,8 +840,11 @@ bool PublicSurfaceBuilder::emitNominalField(const interop::LibraryMetadataType &
     if ((field.flags & interop::kMetadataFieldAnonymousCarrier) != 0U)
         return emitAnonymousCarrier(owner, field, "    ");
     std::string fieldType;
-    if (!sourceTypeForMetadataKey(metadata, field.typeKey, fieldType, error))
+    const bool mutableReference = field.typeKey.starts_with("refmut:");
+    const std::string fieldValueKey = mutableReference ? field.typeKey.substr(7) : field.typeKey;
+    if (!sourceTypeForMetadataKey(metadata, fieldValueKey, fieldType, error))
         return false;
+    if (mutableReference) fieldType.insert(0, "ref mut ");
     if (const interop::LibraryMetadataMember *event = metadataEventForBacking(metadata, owner, field); event != nullptr)
     {
         (*generated) << "    " << sourceAccessibility(event->accessibility) << ' ';

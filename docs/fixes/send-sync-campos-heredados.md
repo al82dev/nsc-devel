@@ -40,4 +40,5 @@ Una tercera biblioteca, con un campo `ref mut int`, no pudo generarse: la
 verificación de metadata reportó que no puede materializar
 `refmut:builtin:int`. El productor no llegó a un consumidor; el diagnóstico
 se conserva en `thread-inherited-binary/mutable-producer-failure.json`. Esta
-variante binaria y su corrección permanecen pendientes.
+limitación se corrigió después para campos nominales; la prueba binaria y sus
+límites están en `metadata-campo-ref-mut.md`.

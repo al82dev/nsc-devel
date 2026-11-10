@@ -76,7 +76,13 @@ struct ThreadExec : IThreadExecutor {
                            encoding='utf-8')
         for visibility in ('public', 'private'):
             (root / 'Producer.ns').write_text('public class RawBase { ' + visibility + ' int* value; }\n'
-                                              'public class SafeBase { public int value; }\n', encoding='utf-8')
+                                              'public class SafeBase { public int value; }\n'
+                                              'public class MutBase { ' + visibility + ' ref mut int value; }\n'
+                                              'public struct RawReferent { public int* value; }\n'
+                                              'public class MutRawBase { ' + visibility + ' ref mut RawReferent value; }\n'
+                                              'public class MutExternalBase { ' + visibility +
+                                              ' ref mut NativeSharp.Core.Exception value; }\n',
+                                              encoding='utf-8')
             result = subprocess.run([str(compiler), '--emit-project-oop-lib', str(producer_project), '-O0',
                                      '-o', str(library), '--no-artifact-cache'], cwd=root, text=True,
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -84,6 +90,9 @@ struct ThreadExec : IThreadExecutor {
             binary_declarations = '''using NativeSharp.Core;
 class RawChild : RawBase { }
 class SafeChild : SafeBase { }
+class MutChild : MutBase { }
+class MutRawChild : MutRawBase { }
+class MutExternalChild : MutExternalBase { }
 struct ThreadExec : IThreadExecutor {
  public int Spawn(Future<void> task) { return 0; }
  public int PollJoin(int handle) { return 0; }
@@ -91,7 +100,8 @@ struct ThreadExec : IThreadExecutor {
 }
 '''
             for marker in ('Send', 'Sync'):
-                for spelling in ('RawBase', 'RawChild', 'SafeBase', 'SafeChild'):
+                for spelling in ('RawBase', 'RawChild', 'SafeBase', 'SafeChild', 'MutBase', 'MutChild',
+                                 'MutRawBase', 'MutRawChild'):
                     source = binary_declarations + '''class Program {
  public static int Require<T>() where T : MARKER { return 42; }
  public static int Main() { return Require<TYPE>(); } }
@@ -99,12 +109,14 @@ struct ThreadExec : IThreadExecutor {
                     (root / 'Main.ns').write_text(source, encoding='utf-8')
                     result = subprocess.run([str(compiler), '--check-project-method-bodies', str(project)],
                                             cwd=root, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                    if spelling.startswith('Raw'):
+                    if (spelling.startswith('Raw') or spelling.startswith('MutRaw') or
+                            (marker == 'Sync' and spelling.startswith('Mut'))):
                         assert result.returncode != 0 and 'does not implement it' in result.stdout, (visibility, marker, spelling, result.stdout)
                     else:
                         assert result.returncode == 0, (visibility, marker, spelling, result.stdout)
                     print('binary base constraint', visibility, marker, spelling, 'verified', flush=True)
-            for spelling in ('RawBase', 'RawChild', 'SafeBase', 'SafeChild'):
+            for spelling in ('RawBase', 'RawChild', 'SafeBase', 'SafeChild', 'MutBase', 'MutChild',
+                             'MutRawBase', 'MutRawChild'):
                 source = binary_declarations + '''class Program {
  public static async void Child(ref TYPE value) { yield; }
  public static int Main() { TYPE value = default(TYPE);
@@ -114,11 +126,24 @@ struct ThreadExec : IThreadExecutor {
                 (root / 'Main.ns').write_text(source, encoding='utf-8')
                 result = subprocess.run([str(compiler), '--check-project-method-bodies', str(project)],
                                         cwd=root, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-                if spelling.startswith('Raw'):
+                if spelling.startswith('Raw') or spelling.startswith('MutRaw'):
                     assert result.returncode != 0 and 'not Send' in result.stdout, (visibility, spelling, result.stdout)
+                elif spelling.startswith('Mut'):
+                    assert result.returncode != 0 and 'to be Sync' in result.stdout, (visibility, spelling, result.stdout)
                 else:
                     assert result.returncode == 0, (visibility, spelling, result.stdout)
                 print('binary base capture', visibility, spelling, 'verified', flush=True)
+            for spelling in ('MutExternalBase', 'MutExternalChild'):
+                source = binary_declarations + '''class Program {
+ public static int Require<T>() where T : Sync { return 42; }
+ public static int Main() { return Require<TYPE>(); } }
+'''.replace('TYPE', spelling)
+                (root / 'Main.ns').write_text(source, encoding='utf-8')
+                result = subprocess.run([str(compiler), '--check-project-method-bodies', str(project)],
+                                        cwd=root, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+                assert result.returncode != 0 and 'does not implement it' in result.stdout, (
+                    visibility, spelling, result.stdout)
+                print('binary external referent Sync', visibility, spelling, 'rejected', flush=True)
 
 
 if __name__ == '__main__':
