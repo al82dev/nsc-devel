@@ -65,8 +65,12 @@ bool experimentalCppCallableType(std::string_view key, bool allowVoid)
         std::find(std::begin(types), std::end(types), key) != std::end(types);
 }
 
+// EN: allowReconciledCType (C fields): a C enum, struct or union reconciled with a type of another project is
+//     visible to the project that owns the reconciled declaration (T08-D26 adds records of precompiled producers).
+// ES: allowReconciledCType (campos C): un enum, struct o union C conciliado con un tipo de otro proyecto es visible
+//     para el proyecto duenio de la declaracion conciliada (T08-D26 agrega records de productores precompilados).
 bool cppCallableRecordIsVisible(std::string_view key, std::size_t projectOrdinal, const ProjectNameLookup& lookup,
-    bool allowReconciledCEnum = false)
+    bool allowReconciledCType = false)
 {
     while (key.ends_with(']'))
     {
@@ -79,7 +83,9 @@ bool cppCallableRecordIsVisible(std::string_view key, std::size_t projectOrdinal
     const auto ordinal = lookup.typeOrdinalForIdentity(key.substr(5));
     const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
     return imported && (imported->projectOrdinal == projectOrdinal ||
-        (allowReconciledCEnum && imported->origin == CppImportedTypeOrigin::CEnum &&
+        (allowReconciledCType && (imported->origin == CppImportedTypeOrigin::CEnum ||
+                                  imported->origin == CppImportedTypeOrigin::CStruct ||
+                                  imported->origin == CppImportedTypeOrigin::CUnion) &&
          lookup.isReconciledCppTypeVisibleToProject(*ordinal, projectOrdinal)));
 }
 }

@@ -6,8 +6,9 @@ where an incomplete type is compatible with the record of the same tag in anothe
 the same type: the consumer passes the producer's `Opaque*` to its own C functions and the other way round, and a
 template of the producer that uses `Opaque*` is instantiated by the consumer. When the producer published the
 complete record, the consumer's name is that record, with its members. Runs O0-O3 with a Clang control, plus
-rejections (O0): a union against a struct of the same tag, an unrelated tag, a consumer that sees two producers
-with the same opaque tag (ambiguous) and a consumer that defines the record a producer published as opaque.
+rejections (O0): a union against a struct of the same tag, an unrelated tag and a consumer that defines the record a
+producer published as opaque. T08-D26: two producers that publish the same opaque tag publish one C type (two
+incomplete records with the same tag, kind and USR), so a consumer that sees both uses it with both (O0).
 """
 from pathlib import Path
 import os
@@ -191,7 +192,6 @@ REJECTIONS = [
     ("union-frente-a-struct", OPAQUE_UNION, CONSUMER_HEADERS["typedef"], False, CONFLICT),
     ("etiqueta-distinta", PRODUCER_HEADERS["opaco-typedef"], OTHER, False,
      "cannot initialize local 'other' of type 'type:Consumer::Other*' from 'type:Pub::Opaque*'"),
-    ("dos-productores", PRODUCER_HEADERS["opaco-typedef"], CONSUMER_HEADERS["typedef"], True, CONFLICT),
     ("consumidor-completo", PRODUCER_HEADERS["opaco-typedef"], OWN_COMPLETE, False, CONFLICT),
 ]
 for name, producer_header, consumer_header, two_producers, expected in REJECTIONS:
@@ -214,4 +214,25 @@ for name, producer_header, consumer_header, two_producers, expected in REJECTION
     if result.returncode == 0 or expected not in result.stdout or "internal error" in result.stdout:
         raise AssertionError(f"rechazo {name}: se esperaba «{expected}»:\n{result.stdout}")
     print("rechazo", name, "correcto", flush=True)
+# EN: T08-D26: the same opaque tag published by two producers is one C type for the consumer that sees both.
+# ES: T08-D26: la misma etiqueta opaca publicada por dos productores es un tipo C para el consumidor que ve ambos.
+folder = root / "dos-productores"
+producer(folder / "p", PRODUCER_HEADERS["opaco-typedef"], "0")
+producer(folder / "q", PRODUCER_HEADERS["opaco-typedef"], "0", "Pub2",
+         PRODUCER_NS.replace("namespace Pub", "namespace Pub2"))
+consumer(folder, CONSUMER_HEADERS["typedef"],
+         "    Opaque* o = Pub.Bridge.Make(7);\n    Opaque* p = Pub2.Bridge.Make(8);\n"
+         "    if (own_get(o) != 107 || Pub2.Bridge.Get(o) != 7 || Pub.Bridge.Get(p) != 8) return 1;\n"
+         "    if (Pub2.Bridge.Twice<int>(0, own_new()) != 80) return 2;\n",
+         '<LibraryReference Include="p/Pub.lib" /><LibraryReference Include="q/Pub2.lib" />')
+result = build(folder, "Consumer", "0")
+if observe:
+    print("dos-productores", result.returncode, errors(result), flush=True)
+else:
+    if result.returncode:
+        raise AssertionError(f"dos-productores:\n{result.stdout}")
+    code = run([folder / "out" / "Consumer.exe"], Path("A:/"), check=False).returncode
+    if code:
+        raise AssertionError(f"dos-productores: comprobación {code} falló")
+    print("dos-productores con la misma etiqueta opaca: un tipo (T08-D26), correcto", flush=True)
 print("observación terminada" if observe else "Declaración opaca propia del consumidor verificada:", root)

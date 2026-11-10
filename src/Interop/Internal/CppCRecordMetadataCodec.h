@@ -5,6 +5,7 @@
 #include "nativesharp/Interop/CppTypeAliasDeclaration.h"
 
 #include <cstdint>
+#include <map>
 #include <span>
 #include <string>
 #include <string_view>
@@ -143,7 +144,7 @@ bool compareCRecordClosureEvidence(std::span<const CppCRecordSnapshot> leftRecor
     std::span<const CppCEnumSnapshot> leftEnums, std::string_view leftRoot,
     std::span<const CppCRecordSnapshot> rightRecords, std::span<const CppCEnumSnapshot> rightEnums,
     std::string_view rightRoot, CRecordContractComparison& result, std::string& error,
-    bool allowBothSourcesMissing = false);
+    bool allowBothSourcesMissing = false, bool contractsOnly = false);
 bool encodeCTypeCatalog(std::span<const CppCRecordSnapshot> records,
                         std::span<const CppCEnumSnapshot> enums,
                         std::vector<std::uint8_t>& output, std::string& error);
@@ -172,4 +173,12 @@ bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
 bool reconstructPrecompiledCImportedTypes(std::span<const frontend::PrecompiledSyntaxModule> modules,
     const compilation::ProjectGraph& graph, std::string_view targetTriple,
     std::vector<frontend::CppImportedTypeDeclaration>& output, std::string& error);
+// EN: T08-D26. Maps each C record or enum of a precompiled producer to the equivalent declaration of the first
+//     producer (by project order) that publishes it: same identity (tag, scope, kind, target and USR) and the same
+//     declaration contract over its whole type closure. Canonical declarations are not keys of the map.
+// ES: T08-D26. Asocia cada record o enum C de un productor precompilado con la declaracion equivalente del primer
+//     productor (en el orden de proyectos) que la publica: misma identidad (etiqueta, ambito, clase, destino y USR)
+//     y el mismo contrato de declaracion en toda su clausura de tipos. Las canonicas no son claves del mapa.
+bool reconcilePrecompiledCTypes(std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const compilation::ProjectGraph& graph, std::map<std::string, std::string>& output, std::string& error);
 }

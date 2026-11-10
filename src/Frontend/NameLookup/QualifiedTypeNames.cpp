@@ -256,6 +256,19 @@ bool ProjectNameLookup::expandCppTypeAlias(
                 std::size_t pos = 0;
                 while ((pos = qualified.find("::", pos)) != std::string::npos) qualified.replace(pos, 2, ".");
                 if (qualified != spelling) continue;
+                // EN: T08-D26. Canonical identity of the C record or enum with this USR (and name, when given) in a
+                //     project: its reconciled identity when it names a live or precompiled type of another project.
+                // ES: T08-D26. Identidad canonica del record o enum C con este USR (y nombre, si se da) en un
+                //     proyecto: su identidad conciliada cuando nombra un tipo vivo o precompilado de otro proyecto.
+                const auto canonicalCType = [&](std::size_t project, std::string_view name,
+                                                const std::optional<std::string>& usr) -> std::optional<std::string> {
+                    if (!usr || usr->empty()) return std::nullopt;
+                    for (const auto& type : cppImportedTypes_)
+                        if (type.projectOrdinal == project && type.clangUsr == usr &&
+                            (name.empty() || type.identity.fullyQualifiedName() == name))
+                            return type.reconciledIdentityKey.value_or(type.identity.key());
+                    return std::nullopt;
+                };
                 const auto reconciledRecordAlias = [&]() {
                     if (!selected || selected->projectOrdinal == alias.projectOrdinal ||
                         !selected->declaration.clangUsr || !alias.declaration.clangUsr ||
@@ -282,18 +295,13 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     else if (ea && eb && ea->name == eb->name && ea->clangUsr && ea->clangUsr == eb->clangUsr)
                     { name = ea->name; usr = ea->clangUsr; }
                     else return false;
-                    for (const auto& live : cppImportedTypes_)
-                    {
-                        if (!live.reconciledIdentityKey || live.identity.fullyQualifiedName() != name ||
-                            !live.clangUsr || live.clangUsr != usr ||
-                            (live.projectOrdinal != selected->projectOrdinal && live.projectOrdinal != alias.projectOrdinal)) continue;
-                        for (const auto& precompiled : cppImportedTypes_)
-                            if (precompiled.identity.key() == *live.reconciledIdentityKey &&
-                                precompiled.projectOrdinal != live.projectOrdinal &&
-                                (precompiled.projectOrdinal == selected->projectOrdinal || precompiled.projectOrdinal == alias.projectOrdinal) &&
-                                precompiled.clangUsr == live.clangUsr) return true;
-                    }
-                    return false;
+                    // EN: Both aliases name the same canonical type: a live type reconciled with a precompiled one,
+                    //     or two equivalent declarations of precompiled producers (T08-D26).
+                    // ES: Los dos alias nombran el mismo tipo canonico: un tipo vivo conciliado con uno precompilado,
+                    //     o dos declaraciones equivalentes de productores precompilados (T08-D26).
+                    const auto left = canonicalCType(selected->projectOrdinal, name, usr);
+                    const auto right = canonicalCType(alias.projectOrdinal, name, usr);
+                    return left && right && *left == *right;
                 };
                 const auto reconciliationDetails = [&]() {
                     std::string details;
@@ -349,22 +357,10 @@ bool ProjectNameLookup::expandCppTypeAlias(
                         {
                             if (!type->recordIdentity || !type->recordIdentity->clangUsr ||
                                 type->recordIdentity->clangUsr->empty()) return false;
-                            const auto& usr = *type->recordIdentity->clangUsr;
-                            const bool reconciled = std::any_of(cppImportedTypes_.begin(), cppImportedTypes_.end(),
-                                [&](const auto& live) {
-                                    if (!live.reconciledIdentityKey || !live.clangUsr || *live.clangUsr != usr ||
-                                        (live.projectOrdinal != selected->projectOrdinal &&
-                                         live.projectOrdinal != alias.projectOrdinal)) return false;
-                                    return std::any_of(cppImportedTypes_.begin(), cppImportedTypes_.end(),
-                                        [&](const auto& precompiled) {
-                                            return precompiled.identity.key() == *live.reconciledIdentityKey &&
-                                                precompiled.projectOrdinal != live.projectOrdinal &&
-                                                (precompiled.projectOrdinal == selected->projectOrdinal ||
-                                                 precompiled.projectOrdinal == alias.projectOrdinal) &&
-                                                precompiled.clangUsr == live.clangUsr;
-                                        });
-                                });
-                            if (!reconciled) return false;
+                            const auto& usr = type->recordIdentity->clangUsr;
+                            const auto left = canonicalCType(selected->projectOrdinal, {}, usr);
+                            const auto right = canonicalCType(alias.projectOrdinal, {}, usr);
+                            if (!left || !right || *left != *right) return false;
                             ++records;
                             continue;
                         }

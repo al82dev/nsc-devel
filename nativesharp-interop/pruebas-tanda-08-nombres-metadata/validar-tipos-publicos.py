@@ -14,8 +14,8 @@ or by a header under the header's directory. A consumer without the header names
    signature and by the surface, are published once and the consumer uses them;
 6. conflicts with the cause: two references declaring NAlias differently (producer rejected); a consumer header
    that declares NAlias differently ("conflicting C/C++ type alias"); two libraries publishing different NMood used
-   by one consumer (rejected, never one chosen); two libraries publishing the same declaration are also rejected,
-   because precompiled producers do not share C type identities (limitation that predates T08-D25);
+   by one consumer (rejected, never one chosen); two libraries publishing the same declaration are one type since
+   T08-D26 and the consumer uses it (validated in depth by pruebas-tanda-08-identidad-c-productores);
 7. loader rejections: PublicTypes with another value, in an executable, and with Language C++;
 8. artifact cache: a repeated build hits; removing PublicTypes from the producer misses.
 T08-D25: una biblioteca NativeSharp publica los tipos C de su interfaz con PublicTypes="Header".
@@ -125,11 +125,11 @@ def write(path, text):
     path.write_text(text, encoding="utf-8")
 
 
-def c_library(folder, api_h=API_H):
+def c_library(folder, api_h=API_H, api_c=API_C):
     write(folder / "include" / "pub" / "api.h", api_h)
     write(folder / "include" / "pub" / "pub_types.h", PUB_TYPES_H)
     write(folder / "include" / "ext" / "ext.h", EXT_H)
-    write(folder / "api.c", API_C)
+    write(folder / "api.c", api_c)
     require([clang, "-c", "--target=x86_64-pc-windows-msvc", "-std=c11", "-Iinclude/pub", "api.c", "-o", "api.obj"],
             folder, "clang api.c")
     require([lib_tool, "/nologo", "/out:api.lib", "api.obj"], folder, "llvm-lib")
@@ -325,8 +325,10 @@ def check_duplicates_and_conflicts():
     project(other, "OtherTypes", "P.ns", reference(), "Library")
     expect_built(build(other, "OtherTypes", "lib", "out/OtherTypes.lib"), "segunda biblioteca")
     same = folder / "igual"
-    c_library(same)
-    write(same / "P.ns", PRODUCER_NS.replace("Published", "Same"))
+    # EN: The same types with other C functions (same_*), so that both C libraries link into one program.
+    # ES: Los mismos tipos con otras funciones C (same_*), para que las dos bibliotecas C se enlacen juntas.
+    c_library(same, API_H.replace("names_", "same_"), API_C.replace("names_", "same_"))
+    write(same / "P.ns", PRODUCER_NS.replace("Published", "Same").replace("names_", "same_"))
     project(same, "SameTypes", "P.ns", reference(), "Library")
     expect_built(build(same, "SameTypes", "lib", "out/SameTypes.lib"), "biblioteca con la misma declaracion")
     equal = folder / "dos-iguales"
@@ -338,12 +340,12 @@ def check_duplicates_and_conflicts():
     hide_headers(library)
     hide_headers(same)
     try:
-        # EN: Two precompiled producers keep distinct C type identities even for the same declaration (also for
-        #     types published through signatures, before T08-D25): the consumer is rejected with the cause.
-        # ES: Dos productores precompilados conservan identidades C distintas aun para la misma declaracion (tambien
-        #     para tipos publicados por firmas, antes de T08-D25): el consumidor se rechaza con la causa.
-        expect_rejected(build(equal, "TwoEqual", "exe", "out/C.exe"),
-                        "dos bibliotecas con la misma declaracion", "conflicting C/C++ type alias 'NAlias'")
+        # EN: T08-D26: the same declaration published by two precompiled producers is one C type.
+        # ES: T08-D26: la misma declaracion publicada por dos productores precompilados es un solo tipo C.
+        result = build(equal, "TwoEqual", "exe", "out/C.exe")
+        expect_built(result, "dos bibliotecas con la misma declaracion")
+        run_exe(equal / "out" / "C.exe", "dos bibliotecas con la misma declaracion")
+        print("dos bibliotecas con la misma declaracion: un solo tipo (T08-D26)", flush=True)
     finally:
         show_headers(library)
         show_headers(same)

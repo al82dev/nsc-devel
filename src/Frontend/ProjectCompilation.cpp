@@ -27,6 +27,7 @@
 #include <exception>
 #include <set>
 #include <memory>
+#include <span>
 #include <stdexcept>
 #include <string>
 #include <string_view>
@@ -499,6 +500,34 @@ bool ProjectCompilation::cancellationRequested(std::string& loadError, std::stri
 }
 namespace
 {
+// EN: T08-D26. A precompiled producer publishes its member signatures with its own C type keys; the consumer binds
+//     the reconciled ones to the canonical type. Each whole `type:` key (not a prefix of a longer or nested name)
+//     is replaced by its canonical key before comparing signatures.
+// ES: T08-D26. Un productor precompilado publica las firmas de sus miembros con sus propias claves de tipo C; el
+//     consumidor asocia las conciliadas al tipo canonico. Cada clave `type:` completa (no el prefijo de un nombre
+//     mas largo o anidado) se sustituye por su clave canonica antes de comparar firmas.
+void canonicalizeReconciledTypeKeys(std::string& value, std::span<const std::pair<std::string, std::string>> keys)
+{
+    for (const auto& [local, canonical] : keys)
+    {
+        std::size_t cursor = 0;
+        while ((cursor = value.find(local, cursor)) != std::string::npos)
+        {
+            const std::size_t end = cursor + local.size();
+            const bool whole = end == value.size() ||
+                !(std::isalnum(static_cast<unsigned char>(value[end])) || value[end] == '_' || value[end] == '.' ||
+                  value[end] == '`');
+            if (!whole)
+            {
+                cursor = end;
+                continue;
+            }
+            value.replace(cursor, local.size(), canonical);
+            cursor += canonical.size();
+        }
+    }
+}
+
 std::string utf8Path(const std::filesystem::path& path)
 {
     const auto encoded = path.generic_u8string();
@@ -1453,6 +1482,13 @@ bool ProjectCompilation::compileProjectMembers(
                 specializationTypeAliases.emplace_back(std::move(localTypeKey), externalTypeKey);
         }
     }
+    const auto reconciledTypeKeys = nameLookup_->reconciledCppTypeKeys();
+    if (!reconciledTypeKeys.empty())
+        for (PrecompiledMemberIdentity& identity : precompiledMembers)
+        {
+            canonicalizeReconciledTypeKeys(identity.declaringTypeKey, reconciledTypeKeys);
+            canonicalizeReconciledTypeKeys(identity.signatureKey, reconciledTypeKeys);
+        }
     if (!memberModel_->bindPrecompiledPhysicalNames(
             precompiledMembers, specializationTypeAliases, loadError))
     {
@@ -1467,6 +1503,8 @@ bool ProjectCompilation::compileProjectMembers(
             precompiledNamespaceFunctions.end(),
             module.namespaceFunctions.begin(), module.namespaceFunctions.end());
     }
+    for (PrecompiledNamespaceFunctionIdentity& identity : precompiledNamespaceFunctions)
+        canonicalizeReconciledTypeKeys(identity.signatureKey, reconciledTypeKeys);
     return namespaceFunctionModel_->bindPrecompiledEscapeSummaries(
         precompiledNamespaceFunctions, loadError);
 }

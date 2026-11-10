@@ -1553,11 +1553,62 @@ bool decodeVersionedCTypeCatalog(std::span<const std::uint8_t> bytes,
     return true;
 }
 
+// EN: T08-D26. Declaration contract of two C records published by different producers, without source evidence:
+//     tag, kind, scope, target and USR and, for complete records, size, alignment, `volatile` mode, every field
+//     (name, type, offset, bit width and USR) and the floating formats. Two incomplete records with the same tag
+//     are the same C type (T08-D16). A complete record and an incomplete one stay distinct.
+// ES: T08-D26. Contrato de declaracion de dos records C publicados por productores distintos, sin evidencia de
+//     origen: etiqueta, clase, ambito, destino y USR y, en los completos, tamanio, alineacion, modo `volatile`,
+//     cada campo (nombre, tipo, desplazamiento, ancho de bits y USR) y los formatos flotantes. Dos records
+//     incompletos con la misma etiqueta son el mismo tipo C (T08-D16). Uno completo y uno incompleto no se unen.
+static bool compareCRecordDeclarationContracts(const CppCRecordSnapshot& left, const CppCRecordSnapshot& right,
+    CRecordContractComparison& result, std::string& error)
+{
+    if (left.complete != right.complete)
+    { result = CRecordContractComparison::Different; error.clear(); return true; }
+    if (left.complete) return compareCRecordContracts(left, right, result, error);
+    if (left.name != right.name || left.namespaceSegments != right.namespaceSegments ||
+        left.containingRecords != right.containingRecords || left.targetTriple != right.targetTriple ||
+        left.kind != right.kind || !left.clangUsr || left.clangUsr->empty() || left.clangUsr != right.clangUsr)
+    { result = CRecordContractComparison::Different; error.clear(); return true; }
+    auto normalized = right;
+    normalized.moduleName = left.moduleName;
+    normalized.identityKey = left.identityKey;
+    std::vector<std::uint8_t> leftBytes, rightBytes;
+    if (!encodeCRecordCatalog(std::span(&left, 1), leftBytes, error) ||
+        !encodeCRecordCatalog(std::span(&normalized, 1), rightBytes, error)) return false;
+    result = leftBytes == rightBytes ? CRecordContractComparison::Matching : CRecordContractComparison::Different;
+    error.clear();
+    return true;
+}
+
+// EN: T08-D26. Declaration contract of two C enums: name, USR, target, underlying type, size, alignment and every
+//     enumerator (name, value and type), in order.
+// ES: T08-D26. Contrato de declaracion de dos enum C: nombre, USR, destino, tipo subyacente, tamanio, alineacion y
+//     cada enumerador (nombre, valor y tipo), en orden.
+static bool compareCEnumDeclarationContracts(const CppCEnumSnapshot& left, const CppCEnumSnapshot& right,
+    CRecordContractComparison& result, std::string& error)
+{
+    const auto& a = left.declaration;
+    const auto& b = right.declaration;
+    if (a.name != b.name || left.targetTriple != right.targetTriple || !a.clangUsr || a.clangUsr->empty() ||
+        a.clangUsr != b.clangUsr)
+    { result = CRecordContractComparison::Different; error.clear(); return true; }
+    auto normalized = right;
+    normalized.identityKey = left.identityKey;
+    std::vector<std::uint8_t> leftBytes, rightBytes;
+    if (!encodeCTypeCatalog({}, std::span(&left, 1), leftBytes, error) ||
+        !encodeCTypeCatalog({}, std::span(&normalized, 1), rightBytes, error)) return false;
+    result = leftBytes == rightBytes ? CRecordContractComparison::Matching : CRecordContractComparison::Different;
+    error.clear();
+    return true;
+}
+
 bool compareCRecordClosureEvidence(std::span<const CppCRecordSnapshot> leftRecords,
     std::span<const CppCEnumSnapshot> leftEnums, std::string_view leftRoot,
     std::span<const CppCRecordSnapshot> rightRecords, std::span<const CppCEnumSnapshot> rightEnums,
     std::string_view rightRoot, CRecordContractComparison& result, std::string& error,
-    bool allowBothSourcesMissing)
+    bool allowBothSourcesMissing, bool contractsOnly)
 {
     std::vector<std::uint8_t> checked;
     if (!encodeCTypeCatalog(leftRecords, leftEnums, checked, error) ||
@@ -1582,8 +1633,12 @@ bool compareCRecordClosureEvidence(std::span<const CppCRecordSnapshot> leftRecor
     {
         const auto [a, b] = pending.back(); pending.pop_back();
         if (!seenRecords.emplace(a->identityKey, b->identityKey).second) continue;
-        if (!compareCRecordSourceEvidence(*a, *b, verdict, error)) return false;
-        if (verdict != CRecordContractComparison::Matching && a->complete && b->complete &&
+        if (contractsOnly)
+        {
+            if (!compareCRecordDeclarationContracts(*a, *b, verdict, error)) return false;
+        }
+        else if (!compareCRecordSourceEvidence(*a, *b, verdict, error)) return false;
+        if (!contractsOnly && verdict != CRecordContractComparison::Matching && a->complete && b->complete &&
             a->sourceProvenance && b->sourceProvenance)
         {
             const auto state = [](const auto& source) {
@@ -1655,7 +1710,8 @@ bool compareCRecordClosureEvidence(std::span<const CppCRecordSnapshot> leftRecor
                 { verdict = CRecordContractComparison::Different; return true; }
                 if (seenEnums.emplace(leftIdentity.key(), rightIdentity.key()).second)
                 {
-                    if (!compareCEnumSourceEvidence(*leftEnum, *rightEnum, verdict, error, true)) return false;
+                    if (contractsOnly ? !compareCEnumDeclarationContracts(*leftEnum, *rightEnum, verdict, error) :
+                        !compareCEnumSourceEvidence(*leftEnum, *rightEnum, verdict, error, true)) return false;
                     if (verdict != CRecordContractComparison::Matching) return true;
                 }
             }
@@ -1743,6 +1799,116 @@ bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
     output = std::move(result); error.clear(); return true;
 }
 
+bool reconcilePrecompiledCTypes(std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const compilation::ProjectGraph& graph, std::map<std::string, std::string>& output, std::string& error)
+{
+    std::map<std::string, std::size_t> projectByModule;
+    for (std::size_t i = 0; i < graph.projects().size(); ++i)
+        projectByModule.emplace(graph.projects()[i].moduleName(), i);
+    // EN: One catalogue per owning module, sorted by identity as the catalogue codec requires. The same identity in
+    //     two catalogues has the same bytes (reconstructPrecompiledCImportedTypes rejects any other case).
+    // ES: Un catalogo por modulo duenio, ordenado por identidad como exige el codec. La misma identidad en dos
+    //     catalogos tiene los mismos bytes (reconstructPrecompiledCImportedTypes rechaza cualquier otro caso).
+    struct Producer
+    {
+        std::size_t project = 0;
+        std::vector<CppCRecordSnapshot> records;
+        std::vector<CppCEnumSnapshot> enums;
+    };
+    std::map<std::string, Producer> producers;
+    std::set<std::string> seen;
+    for (const auto& module : modules)
+    {
+        if (module.cppCTypeCatalog.empty()) continue;
+        std::vector<CppCRecordSnapshot> records;
+        std::vector<CppCEnumSnapshot> enums;
+        if (!decodeVersionedCTypeCatalog(module.cppCTypeCatalog, records, enums, error,
+                                         module.cppCTypeCatalogFormatMinor)) return false;
+        const auto producerFor = [&](const std::string& owner) -> Producer* {
+            const auto project = projectByModule.find(owner);
+            if (project == projectByModule.end())
+            { error = "C type owner is missing or ambiguous: " + owner; return nullptr; }
+            auto& producer = producers[owner];
+            producer.project = project->second;
+            return &producer;
+        };
+        for (auto& record : records)
+        {
+            if (!seen.insert(record.identityKey).second) continue;
+            auto* producer = producerFor(record.moduleName);
+            if (!producer) return false;
+            producer->records.push_back(std::move(record));
+        }
+        for (auto& item : enums)
+        {
+            const auto separator = item.identityKey.find("::");
+            if (separator == std::string::npos || separator == 0)
+            { error = "precompiled C enum has invalid identity"; return false; }
+            if (!seen.insert(item.identityKey).second) continue;
+            auto* producer = producerFor(item.identityKey.substr(0, separator));
+            if (!producer) return false;
+            producer->enums.push_back(std::move(item));
+        }
+    }
+    std::vector<Producer*> ordered;
+    for (auto& [name, producer] : producers)
+    {
+        const auto byIdentity = [](const auto& left, const auto& right) {
+            return left.identityKey < right.identityKey;
+        };
+        std::sort(producer.records.begin(), producer.records.end(), byIdentity);
+        std::sort(producer.enums.begin(), producer.enums.end(), byIdentity);
+        ordered.push_back(&producer);
+    }
+    std::sort(ordered.begin(), ordered.end(), [](const auto* left, const auto* right) {
+        return left->project < right->project;
+    });
+    std::map<std::string, std::string> result;
+    for (std::size_t current = 1; current < ordered.size(); ++current)
+    {
+        const auto& producer = *ordered[current];
+        for (const auto& record : producer.records)
+        {
+            if (!record.clangUsr || record.clangUsr->empty()) continue;
+            for (std::size_t earlier = 0; earlier < current && !result.contains(record.identityKey); ++earlier)
+            {
+                const auto& other = *ordered[earlier];
+                for (const auto& candidate : other.records)
+                {
+                    if (result.contains(candidate.identityKey) || candidate.name != record.name ||
+                        candidate.namespaceSegments != record.namespaceSegments ||
+                        candidate.containingRecords != record.containingRecords || candidate.kind != record.kind ||
+                        candidate.targetTriple != record.targetTriple || candidate.clangUsr != record.clangUsr)
+                        continue;
+                    CRecordContractComparison verdict{};
+                    if (!compareCRecordClosureEvidence(producer.records, producer.enums, record.identityKey,
+                            other.records, other.enums, candidate.identityKey, verdict, error, false, true))
+                        return false;
+                    if (verdict != CRecordContractComparison::Matching) continue;
+                    result.emplace(record.identityKey, candidate.identityKey);
+                    break;
+                }
+            }
+        }
+        for (const auto& item : producer.enums)
+        {
+            if (!item.declaration.clangUsr || item.declaration.clangUsr->empty()) continue;
+            for (std::size_t earlier = 0; earlier < current && !result.contains(item.identityKey); ++earlier)
+                for (const auto& candidate : ordered[earlier]->enums)
+                {
+                    if (result.contains(candidate.identityKey) ||
+                        candidate.declaration.clangUsr != item.declaration.clangUsr) continue;
+                    CRecordContractComparison verdict{};
+                    if (!compareCEnumDeclarationContracts(item, candidate, verdict, error)) return false;
+                    if (verdict != CRecordContractComparison::Matching) continue;
+                    result.emplace(item.identityKey, candidate.identityKey);
+                    break;
+                }
+        }
+    }
+    output = std::move(result); error.clear(); return true;
+}
+
 bool reconstructPrecompiledCImportedTypes(std::span<const frontend::PrecompiledSyntaxModule> modules,
     const compilation::ProjectGraph& graph, std::string_view targetTriple,
     std::vector<frontend::CppImportedTypeDeclaration>& output, std::string& error)
@@ -1791,6 +1957,7 @@ bool reconstructPrecompiledCImportedTypes(std::span<const frontend::PrecompiledS
             std::vector<frontend::CppImportedTypeDeclaration> reconstructed;
             if (!reconstructCImportedTypes(oneRecord, oneEnum, project->second, owner, targetTriple,
                     module.metadataPath.generic_string(), reconstructed, error)) return false;
+            for (auto& type : reconstructed) type.fromPrecompiledCatalog = true;
             result.insert(result.end(), std::make_move_iterator(reconstructed.begin()),
                           std::make_move_iterator(reconstructed.end()));
             return true;
@@ -1806,6 +1973,13 @@ bool reconstructPrecompiledCImportedTypes(std::span<const frontend::PrecompiledS
                      std::span(&item, 1))) return false;
         }
     }
+    // EN: T08-D26: an equivalent declaration of another producer names the canonical type of the first one.
+    // ES: T08-D26: una declaracion equivalente de otro productor nombra el tipo canonico del primero.
+    std::map<std::string, std::string> reconciled;
+    if (!reconcilePrecompiledCTypes(modules, graph, reconciled, error)) return false;
+    for (auto& type : result)
+        if (const auto found = reconciled.find(type.identity.key()); found != reconciled.end())
+            type.reconciledIdentityKey = found->second;
     output = std::move(result); error.clear(); return true;
 }
 }

@@ -63,6 +63,7 @@ for %%T in (
   pruebas-tanda-08-identidad-c\tls-dll-unicode\validar.py
   pruebas-tanda-08-identidad-c\tls-sin-import-host\validar-copia-adaptada.py
   pruebas-tanda-08-nombres-metadata\validar-tipos-publicos.py
+  pruebas-tanda-08-identidad-c-productores\validar-identidad-productores.py
   pruebas-tanda-08-identidad-c\tls-sin-import-host\validar-diagnostico.py
   pruebas-tanda-08-identidad-c\tls-sin-import-host\validar.py
   pruebas-tanda-08-identidad-c\typedef-calificadores\validar-callback-const.py

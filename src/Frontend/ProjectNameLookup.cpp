@@ -241,8 +241,21 @@ bool ProjectNameLookup::build(
         if (!live || !canonical || !target || imported.projectOrdinal >= modules_.size() ||
             !modules_[imported.projectOrdinal] || !typeIsVisibleTo(imported.projectOrdinal, *canonical)) return false;
         const auto visible = modules_[imported.projectOrdinal]->visibleProjectOrdinals();
-        if (std::find(visible.begin(), visible.end(), target->projectOrdinal) == visible.end() ||
-            !reconciledCppTypeOrdinals_.emplace(*live, *canonical).second) return false;
+        const auto sees = [&](std::size_t project) {
+            return std::find(visible.begin(), visible.end(), project) != visible.end();
+        };
+        // EN: T08-D26. A precompiled producer's C type reconciled with the equivalent one of another producer
+        //     names the canonical type although neither library references the other; a live project reaches it
+        //     through any visible producer that publishes the same declaration.
+        // ES: T08-D26. El tipo C de un productor precompilado conciliado con el equivalente de otro productor
+        //     nombra el tipo canonico aunque ninguna biblioteca referencie a la otra; un proyecto vivo llega a el
+        //     por cualquier productor visible que publique la misma declaracion.
+        const bool reachable = sees(target->projectOrdinal) || imported.fromPrecompiledCatalog ||
+            std::any_of(cppImportedTypes_.begin(), cppImportedTypes_.end(), [&](const auto& other) {
+                return other.fromPrecompiledCatalog && other.reconciledIdentityKey == imported.reconciledIdentityKey &&
+                    sees(other.projectOrdinal);
+            });
+        if (!reachable || !reconciledCppTypeOrdinals_.emplace(*live, *canonical).second) return false;
     }
     finalizeNamespaceDeclarations();
     collectBindingIndexes(units, diagnostics, workers);
@@ -308,6 +321,23 @@ bool ProjectNameLookup::isReconciledCppTypeVisibleToProject(
             return true;
     }
     return false;
+}
+
+std::vector<std::pair<std::string, std::string>> ProjectNameLookup::reconciledCppTypeKeys() const
+{
+    std::vector<std::pair<std::string, std::string>> result;
+    for (const auto& [localOrdinal, targetOrdinal] : reconciledCppTypeOrdinals_)
+    {
+        const auto* local = indexes_->typeForOrdinal(localOrdinal);
+        const auto* target = indexes_->typeForOrdinal(targetOrdinal);
+        if (local && target)
+            result.emplace_back("type:" + local->identity.key(), "type:" + target->identity.key());
+    }
+    std::sort(result.begin(), result.end(), [](const auto& left, const auto& right) {
+        return left.first.size() != right.first.size() ? left.first.size() > right.first.size() :
+            left.first < right.first;
+    });
+    return result;
 }
 
 std::optional<std::size_t> ProjectNameLookup::cppImportedTypeIndex(std::size_t typeOrdinal) const noexcept

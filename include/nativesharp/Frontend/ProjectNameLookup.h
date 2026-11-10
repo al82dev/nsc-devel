@@ -113,6 +113,8 @@ struct CppImportedTypeDeclaration final
     std::optional<std::string> reconciledIdentityKey = std::nullopt;
     // C flexible members make the Win64 aggregate ABI indirect even for small records.
     bool hasCFlexibleArrayMember = false;
+    // T08-D26: restored from the C catalogue of a precompiled producer, not observed by a live Clang session.
+    bool fromPrecompiledCatalog = false;
 };
 
 class ProjectNameLookup final
@@ -146,6 +148,9 @@ public:
     std::size_t canonicalCppTypeOrdinal(std::size_t ordinal) const noexcept;
     bool isReconciledCppTypeIdentity(std::string_view identity) const;
     bool isReconciledCppTypeVisibleToProject(std::size_t canonicalOrdinal, std::size_t projectOrdinal) const noexcept;
+    // EN: T08-D26. (`type:` local key, `type:` canonical key) of every reconciled C type, longest local key first.
+    // ES: T08-D26. (clave `type:` local, clave `type:` canonica) de cada tipo C conciliado, la local mas larga antes.
+    std::vector<std::pair<std::string, std::string>> reconciledCppTypeKeys() const;
     std::optional<std::size_t> cppImportedTypeIndex(std::size_t typeOrdinal) const noexcept;
     const CppImportedTypeDeclaration* cppImportedType(std::size_t typeOrdinal) const noexcept;
     std::span<const std::size_t> typeOrdinalsForName(std::string_view name) const;

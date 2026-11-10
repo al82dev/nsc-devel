@@ -48,6 +48,19 @@ std::string cEnumeratorSourceDigest(const std::optional<CppSourcePoint>& locatio
     if (!basic::sha256File(location->file, digest, size, error)) return {};
     return basic::sha256Hex(digest);
 }
+// EN: T08-D26. The installed C record that a field of a record of `projectOrdinal` names: its own record or, when
+//     that one is reconciled with an equivalent declaration of another producer, the canonical one.
+// ES: T08-D26. El record C instalado que nombra un campo de un record de `projectOrdinal`: su propio record o,
+//     si este esta conciliado con una declaracion equivalente de otro productor, el canonico.
+const frontend::CppImportedTypeDeclaration* fieldRecordType(const frontend::ProjectNameLookup& lookup,
+    const std::optional<compilation::TypeIdentity>& target, std::size_t projectOrdinal)
+{
+    const auto ordinal = target ? lookup.typeOrdinalForIdentity(target->key()) : std::nullopt;
+    const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+    if (!imported) return nullptr;
+    return imported->projectOrdinal == projectOrdinal || lookup.isReconciledCppTypeIdentity(target->key()) ?
+        imported : nullptr;
+}
 std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type, std::size_t projectOrdinal,
     std::string_view moduleName, const frontend::ProjectNameLookup* lookup)
 {
@@ -115,16 +128,15 @@ std::optional<CppScalarTypeMapping> projectCArrayField(const CppType& type, std:
         else if (lookup && element->kind == CppTypeKind::Record)
         {
             const auto target = projectCppRecordTypeIdentity(*element, moduleName);
-            const auto ordinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
-            const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
-            if (!target || !imported || imported->projectOrdinal != projectOrdinal || !imported->objectLayout ||
+            const auto* imported = fieldRecordType(*lookup, target, projectOrdinal);
+            if (!target || !imported || !imported->objectLayout ||
                 (element->recordIdentity && element->recordIdentity->clangUsr && imported->clangUsr &&
                  element->recordIdentity->clangUsr != imported->clangUsr) ||
                 imported->isIncomplete || !element->sizeBits || *element->sizeBits % 8 != 0 ||
                 *element->sizeBits / 8 != imported->objectLayout->sizeBytes || !element->alignmentBits ||
                 *element->alignmentBits % 8 != 0 ||
                 *element->alignmentBits / 8 != imported->objectLayout->alignmentBytes) return std::nullopt;
-            key = "type:" + target->key();
+            key = "type:" + imported->identity.key();
         }
         else return std::nullopt;
     }
@@ -169,15 +181,14 @@ std::optional<CppSemanticInstanceField> projectCFlexibleArrayField(const CppReco
     else if (element->kind == CppTypeKind::Record && lookup)
     {
         const auto target = projectCppRecordTypeIdentity(*element, moduleName);
-        const auto ordinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
-        const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
-        if (target && imported && imported->projectOrdinal == projectOrdinal && imported->objectLayout &&
-            !imported->isIncomplete &&
+        const auto* imported = fieldRecordType(*lookup, target, projectOrdinal);
+        if (target && imported && imported->objectLayout && !imported->isIncomplete &&
             (!element->recordIdentity || !element->recordIdentity->clangUsr || !imported->clangUsr ||
              element->recordIdentity->clangUsr == imported->clangUsr) &&
             *element->sizeBits / 8 == imported->objectLayout->sizeBytes &&
             naturalAlignment == imported->objectLayout->alignmentBytes)
-            mapped = CppScalarTypeMapping{"type:" + target->key(), element->canonicalSpelling, false, false};
+            mapped = CppScalarTypeMapping{"type:" + imported->identity.key(), element->canonicalSpelling, false,
+                                          false};
     }
     if (!mapped) return std::nullopt;
     return CppSemanticInstanceField{projectOrdinal, ownerIdentityKey, field.name,
@@ -396,18 +407,17 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     if (!mapped && !record.isCxx && lookup && field.type.kind == CppTypeKind::Record)
     {
         const auto target = projectCppRecordTypeIdentity(field.type, moduleName);
-        const auto ordinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
-        const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
+        const auto* imported = fieldRecordType(*lookup, target, projectOrdinal);
         const auto* layout = imported && imported->objectLayout ? &*imported->objectLayout :
             imported && field.isAnonymousCarrier && imported->memberAccessLayout ? &*imported->memberAccessLayout : nullptr;
-        if (target && imported && imported->projectOrdinal == projectOrdinal && layout &&
+        if (target && imported && layout &&
             (!field.type.recordIdentity || !field.type.recordIdentity->clangUsr || !imported->clangUsr ||
              field.type.recordIdentity->clangUsr == imported->clangUsr) &&
             !imported->isIncomplete && field.type.sizeBits && *field.type.sizeBits % 8 == 0 &&
             *field.type.sizeBits / 8 == layout->sizeBytes && field.type.alignmentBits &&
             *field.type.alignmentBits % 8 == 0 &&
             *field.type.alignmentBits / 8 == layout->alignmentBytes)
-            mapped = CppScalarTypeMapping{"type:" + target->key(), field.type.canonicalSpelling,
+            mapped = CppScalarTypeMapping{"type:" + imported->identity.key(), field.type.canonicalSpelling,
                                           field.type.isConst, field.type.isVolatile};
     }
     bool pointeeReadonly = false;
@@ -444,12 +454,11 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         if (!element && lookup && recordPointee && recordPointee->kind == CppTypeKind::Record)
         {
             const auto target = projectCppRecordTypeIdentity(*recordPointee, moduleName);
-            const auto ordinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
-            const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
-            if (target && imported && imported->projectOrdinal == projectOrdinal &&
+            const auto* imported = fieldRecordType(*lookup, target, projectOrdinal);
+            if (target && imported &&
                 (!recordPointee->recordIdentity || !recordPointee->recordIdentity->clangUsr ||
                  !imported->clangUsr || recordPointee->recordIdentity->clangUsr == imported->clangUsr))
-                element = CppScalarTypeMapping{"type:" + target->key() + extraLevels,
+                element = CppScalarTypeMapping{"type:" + imported->identity.key() + extraLevels,
                                                field.type.element->canonicalSpelling, false, false};
         }
         if (element)
@@ -497,13 +506,11 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
             if (!target && lookup && unqualified.kind == CppTypeKind::Record)
             {
                 const auto pointeeIdentity = projectCppRecordTypeIdentity(unqualified, moduleName);
-                const auto ordinal = pointeeIdentity ? lookup->typeOrdinalForIdentity(pointeeIdentity->key())
-                                                     : std::nullopt;
-                const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
-                if (pointeeIdentity && imported && imported->projectOrdinal == projectOrdinal &&
+                const auto* imported = fieldRecordType(*lookup, pointeeIdentity, projectOrdinal);
+                if (pointeeIdentity && imported &&
                     (!unqualified.recordIdentity || !unqualified.recordIdentity->clangUsr || !imported->clangUsr ||
                      unqualified.recordIdentity->clangUsr == imported->clangUsr))
-                    target = CppScalarTypeMapping{"type:" + pointeeIdentity->key(), unqualified.canonicalSpelling,
+                    target = CppScalarTypeMapping{"type:" + imported->identity.key(), unqualified.canonicalSpelling,
                                                   false, false};
             }
         }
@@ -2002,6 +2009,9 @@ bool reconstructPrecompiledCMembers(std::span<const frontend::PrecompiledSyntaxM
                                                           module.cppCTypeCatalogFormatMinor)) return false;
         for (const auto& record : records)
         {
+            // EN: T08-D26: the fields and enumerators of a reconciled producer type are those of its canonical type.
+            // ES: T08-D26: los campos y enumeradores de un tipo conciliado son los de su tipo canonico.
+            if (lookup.isReconciledCppTypeIdentity(record.identityKey)) continue;
             if (!seenTypes.insert(record.identityKey).second) continue;
             const auto ordinal = lookup.typeOrdinalForIdentity(record.identityKey);
             const auto* owner = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
@@ -2013,6 +2023,7 @@ bool reconstructPrecompiledCMembers(std::span<const frontend::PrecompiledSyntaxM
         }
         for (const auto& enumeration : enums)
         {
+            if (lookup.isReconciledCppTypeIdentity(enumeration.identityKey)) continue;
             if (!seenTypes.insert(enumeration.identityKey).second) continue;
             const auto ordinal = lookup.typeOrdinalForIdentity(enumeration.identityKey);
             const auto* owner = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
@@ -2733,6 +2744,20 @@ static bool collectVisibleCRecordReconciliations(
         catalogs.push_back(std::move(catalog));
     }
     if (catalogs.empty()) { output.clear(); error.clear(); return true; }
+    // EN: T08-D26: equivalent declarations of several producers are one type; the live one names the canonical.
+    // ES: T08-D26: las declaraciones equivalentes de varios productores son un tipo; la viva nombra la canonica.
+    std::map<std::string, std::string> producerTypes;
+    if (!metadata_detail::reconcilePrecompiledCTypes(compilation.precompiledModules(), *graph, producerTypes, error))
+        return false;
+    const auto canonicalMatches = [&](const std::set<std::string>& matches) {
+        std::set<std::string> canonical;
+        for (const auto& match : matches)
+        {
+            const auto found = producerTypes.find(match);
+            canonical.insert(found == producerTypes.end() ? match : found->second);
+        }
+        return canonical;
+    };
     auto enumInventory = collectCppSemanticEnums(*graph, compilation.cppProjectSessions());
     if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&enumInventory))
     { error = failure->message; return false; }
@@ -2789,6 +2814,7 @@ static bool collectVisibleCRecordReconciliations(
                 if (verdict == metadata_detail::CRecordContractComparison::Matching)
                     matches.insert(candidate.identityKey);
             }
+        matches = canonicalMatches(matches);
         if (matches.size() == 1)
         {
             const auto& matchedRecord = *matches.begin();
@@ -2836,9 +2862,12 @@ static bool collectVisibleCRecordReconciliations(
                     enumMatches[{entry.projectOrdinal, identity.key()}].insert(candidate.identityKey);
             }
     }
-    for (const auto& [source, matches] : enumMatches)
+    for (const auto& [source, candidates] : enumMatches)
+    {
+        const auto matches = canonicalMatches(candidates);
         if (matches.size() == 1 && source.second != *matches.begin())
             reconciliations.push_back({source.first, source.second, *matches.begin()});
+    }
     output = std::move(reconciliations); error.clear(); return true;
 }
 

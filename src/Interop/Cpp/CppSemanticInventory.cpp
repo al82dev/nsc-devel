@@ -272,7 +272,10 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
             const auto identity = projectCppRecordTypeIdentity(type, moduleName);
             const auto ordinal = identity ? lookup->typeOrdinalForIdentity(identity->key()) : std::nullopt;
             const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
-            if (!identity || !imported || imported->projectOrdinal != projectOrdinal ||
+            // EN: T08-D26: a reconciled record names the canonical one of another producer.
+            // ES: T08-D26: un record conciliado nombra el canonico de otro productor.
+            const bool reconciled = identity && lookup->isReconciledCppTypeIdentity(identity->key());
+            if (!identity || !imported || (!reconciled && imported->projectOrdinal != projectOrdinal) ||
                 (type.recordIdentity && type.recordIdentity->clangUsr && imported->clangUsr &&
                  type.recordIdentity->clangUsr != imported->clangUsr) ||
                 !imported->deferredImportError.empty() || imported->isIncomplete || !imported->objectLayout ||
@@ -280,7 +283,8 @@ std::optional<CppScalarTypeMapping> mapGlobalType(const CppType& type, std::size
                 *type.sizeBits / 8 != imported->objectLayout->sizeBytes || !type.alignmentBits ||
                 *type.alignmentBits % 8 != 0 ||
                 *type.alignmentBits / 8 != imported->objectLayout->alignmentBytes) return std::nullopt;
-            return CppScalarTypeMapping{"type:" + identity->key(), type.canonicalSpelling, type.isConst, type.isVolatile};
+            return CppScalarTypeMapping{"type:" + imported->identity.key(), type.canonicalSpelling, type.isConst,
+                                        type.isVolatile};
         }
         if (type.kind == CppTypeKind::Enumeration)
         {
