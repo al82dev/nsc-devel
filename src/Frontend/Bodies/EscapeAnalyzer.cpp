@@ -80,7 +80,11 @@ MethodEscapeOrigin ProjectMethodBodyModel::pointerValueEscapeOriginOfExpression(
     const ast::AstNode* expression,
     std::size_t scopeOrdinal) const
 {
-    if (expression != nullptr && expression->kind() == ast::AstNodeKind::ConditionalExpression)
+    if (expression != nullptr &&
+        (expression->kind() == ast::AstNodeKind::ConditionalExpression ||
+         (expression->kind() == ast::AstNodeKind::BinaryExpression &&
+          (expression->tokenKind() == lexer::TokenKind::Plus ||
+           expression->tokenKind() == lexer::TokenKind::Minus))))
     {
         MethodEscapeOrigin result;
         std::vector<const ast::AstNode*> pending{expression};
@@ -93,6 +97,24 @@ MethodEscapeOrigin ProjectMethodBodyModel::pointerValueEscapeOriginOfExpression(
             {
                 pending.push_back(branch->second());
                 pending.push_back(branch->third());
+            }
+            else if (branch->kind() == ast::AstNodeKind::BinaryExpression &&
+                     (branch->tokenKind() == lexer::TokenKind::Plus ||
+                      branch->tokenKind() == lexer::TokenKind::Minus))
+            {
+                const MethodExpressionTypeBinding* rightType = scopeOrdinal < scopes_.size()
+                    ? expressionTypeBinding(branch->second(), scopes_[scopeOrdinal].methodMemberOrdinal)
+                    : nullptr;
+                if (rightType == nullptr)
+                {
+                    pending.push_back(branch->first());
+                    pending.push_back(branch->second());
+                }
+                else
+                {
+                    pending.push_back(rightType->typeKey.ends_with("*")
+                        ? branch->second() : branch->first());
+                }
             }
             else
             {

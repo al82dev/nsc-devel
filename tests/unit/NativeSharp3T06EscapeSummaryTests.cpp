@@ -478,6 +478,55 @@ public class Program { public static int Data;
     tests.expect(unknownWritten && directConditionalLocalResult != nativesharp::ExitCode::Success &&
             (directConditionalLocalError + directConditionalLocalOutput).find("escape contract") != std::string::npos,
         "a direct conditional cannot retain local storage (" + directConditionalLocalError + directConditionalLocalOutput + ")");
+    const std::filesystem::path arithmeticConditionalProject = writeProject(
+        root / "arithmetic-conditional-local", "EscapeArithmeticConditionalLocal", R"NS(
+using EscapeContracts;
+public class Program { public static int Data;
+    public static int Main() { int local = 42; EscapeApi.Retain((false ? &Data : &local) + 0); return local; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string arithmeticConditionalText = arithmeticConditionalProject.string();
+    const std::array<std::string_view, 3> arithmeticConditionalArguments = {
+        "--dump-project-method-bodies", arithmeticConditionalText, "-O0"};
+    std::string arithmeticConditionalOutput;
+    std::string arithmeticConditionalError;
+    const nativesharp::ExitCode arithmeticConditionalResult =
+        runDriver(arithmeticConditionalArguments, arithmeticConditionalOutput, arithmeticConditionalError);
+    tests.expect(unknownWritten && arithmeticConditionalResult != nativesharp::ExitCode::Success &&
+            (arithmeticConditionalError + arithmeticConditionalOutput).find("escape contract") != std::string::npos,
+        "pointer arithmetic preserves conditional local storage (" + arithmeticConditionalError + arithmeticConditionalOutput + ")");
+    const std::filesystem::path reversedArithmeticProject = writeProject(
+        root / "reversed-arithmetic-conditional", "EscapeReversedArithmeticConditional", R"NS(
+using EscapeContracts;
+public class Program { public static int Data;
+    public static int Main() { int local = 42; EscapeApi.Retain(0 + (false ? &Data : &local)); return local; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string reversedArithmeticText = reversedArithmeticProject.string();
+    const std::array<std::string_view, 3> reversedArithmeticArguments = {
+        "--dump-project-method-bodies", reversedArithmeticText, "-O0"};
+    std::string reversedArithmeticOutput;
+    std::string reversedArithmeticError;
+    const nativesharp::ExitCode reversedArithmeticResult =
+        runDriver(reversedArithmeticArguments, reversedArithmeticOutput, reversedArithmeticError);
+    tests.expect(unknownWritten && reversedArithmeticResult != nativesharp::ExitCode::Success &&
+            (reversedArithmeticError + reversedArithmeticOutput).find("escape contract") != std::string::npos,
+        "integer plus pointer preserves conditional local storage (" + reversedArithmeticError + reversedArithmeticOutput + ")");
+    const std::filesystem::path arithmeticGlobalProject = writeProject(
+        root / "arithmetic-conditional-global", "EscapeArithmeticConditionalGlobal", R"NS(
+using EscapeContracts;
+public class Program { public static int Data;
+    public static int Main() { int offset = 0; EscapeApi.Retain((false ? &Data : &Data) + offset); EscapeApi.Retain(offset + (false ? &Data : &Data)); EscapeApi.Retain((false ? &Data : &Data) - offset); return 42; }
+}
+)NS", "Exe", "<LibraryReference Include=\"../EscapeProducer.lib\" Metadata=\"../EscapeProducer.unknown.nsmeta\" />");
+    const std::string arithmeticGlobalText = arithmeticGlobalProject.string();
+    const std::array<std::string_view, 3> arithmeticGlobalArguments = {
+        "--dump-project-method-bodies", arithmeticGlobalText, "-O0"};
+    std::string arithmeticGlobalOutput;
+    std::string arithmeticGlobalError;
+    tests.expect(unknownWritten && runDriver(arithmeticGlobalArguments, arithmeticGlobalOutput, arithmeticGlobalError) ==
+            nativesharp::ExitCode::Success,
+        "pointer arithmetic permits a conditional of globals (" + arithmeticGlobalError + arithmeticGlobalOutput + ")");
     const std::filesystem::path unknownForwardIgnoredProject = writeProject(
         root / "unknown-forward-ignored", "EscapeUnknownForwardIgnored", R"NS(
 using EscapeContracts;
