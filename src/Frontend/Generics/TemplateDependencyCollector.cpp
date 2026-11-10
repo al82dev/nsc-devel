@@ -223,6 +223,35 @@ void ProjectGenericModel::discoverTemplateDependencies(
         }
     }
 
+    // The impl is serialized separately from its owner. Collect its own
+    // constraint references in its lexical scope so publication can qualify
+    // them just as it qualifies the owner's constraints.
+    if (node->kind() == ast::AstNodeKind::ClassDeclaration &&
+        node->auxiliaryText() == "ns3-trait-impl" && !node->genericParameters().empty())
+    {
+        const std::string ownerKey = std::string(unit.moduleName()) + "::" +
+            qualifiedName(currentNamespace, node->text());
+        const auto candidates = typesByModuleQualified_.find(ownerKey);
+        if (candidates != typesByModuleQualified_.end())
+        {
+            for (TemplateState* candidate : candidates->second)
+            {
+                const auto extensions = traitImplExtensions_.find(candidate->syntax);
+                if (extensions == traitImplExtensions_.end() ||
+                    std::ranges::find(extensions->second, node) == extensions->second.end())
+                    continue;
+                for (const ast::GenericConstraintClause& clause : node->genericConstraints())
+                {
+                    for (const ast::TypeSyntax* constraint : clause.typeConstraints)
+                        collectTypeDependency(*candidate, unit, constraint, currentNamespace, currentScope);
+                    collectTypeDependency(*candidate, unit, clause.equalityConstraint,
+                                          currentNamespace, currentScope);
+                }
+                break;
+            }
+        }
+    }
+
     if (TemplateState* root = stateForSyntax(node); root != nullptr)
     {
         root->record.declarationImports = currentScope.importedNamespaces.read();

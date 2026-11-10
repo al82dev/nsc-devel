@@ -24,6 +24,23 @@ class Program {
  public static int Main() { Wrapper<int> item = new Wrapper<int>(); item.n = 42;
   return Read<Wrapper<int>>(item); }
 }''',
+        'struct-constrained': '''trait HasValue { int Value(); } trait Bound { }
+struct Good { } impl Bound for Good { }
+struct Wrapper<T> where T : Bound { public int n; }
+impl<T> HasValue for Wrapper<T> where T : Bound { int Value() { return this.n; } }
+class Program {
+ static int Read<T>(T value) where T : HasValue { return value.Value(); }
+ public static int Main() { Wrapper<Good> item; item.n = 42; return Read<Wrapper<Good>>(item); }
+}''',
+        'class-constrained': '''trait HasValue { int Value(); } trait Bound { }
+struct Good { } impl Bound for Good { }
+class Wrapper<T> where T : Bound { public int n; }
+impl<T> HasValue for Wrapper<T> where T : Bound { int Value() { return this.n; } }
+class Program {
+ static int Read<T>(T value) where T : HasValue { return value.Value(); }
+ public static int Main() { Wrapper<Good> item = new Wrapper<Good>(); item.n = 42;
+  return Read<Wrapper<Good>>(item); }
+}''',
     }
     failures = []
     with tempfile.TemporaryDirectory(prefix='nsc-generic-struct-impl-') as temporary:
@@ -71,6 +88,11 @@ struct Wrapper<T> {}
 impl<T> HasValue for Wrapper<T> where T : Bound { int Value() { return 42; } }
 class Program { public static int Main() { return 42; } }''',
                                        'where constraints exactly'),
+                'homonymous-condition': ('''trait HasValue { int Value(); } trait Bound {}
+namespace Other { public trait Bound {} }
+struct Wrapper<T> where T : Bound {}
+impl<T> HasValue for Wrapper<T> where T : Other.Bound { int Value() { return 42; } }
+class Program { public static int Main() { return 42; } }''', 'where constraints exactly'),
             }
             for name, (source, diagnostic) in negatives.items():
                 case = root / name
@@ -93,13 +115,22 @@ class Program { public static int Main() { return 42; } }''',
             producer.mkdir()
             consumer.mkdir()
             (producer / 'Producer.ns').write_text('''public trait HasValue { int Value(); }
+namespace Contracts { public trait Bound { } }
 public struct Wrapper<T> { public int n; }
 impl<T> HasValue for Wrapper<T> { int Value() { return this.n; } }
+''', encoding='utf-8')
+            (producer / 'Owner.ns').write_text('''using Contracts;
+public struct BoundedWrapper<T> where T : Bound { public int n; }
+public class BoundedClass<T> where T : Bound { public int n; }
+''', encoding='utf-8')
+            (producer / 'Implementation.ns').write_text('''using Contracts;
+impl<T> HasValue for BoundedWrapper<T> where T : Bound { int Value() { return this.n; } }
+impl<T> HasValue for BoundedClass<T> where T : Bound { int Value() { return this.n; } }
 ''', encoding='utf-8')
             producer_project = producer / 'Producer.nsproj'
             producer_project.write_text('<Project><PropertyGroup><Name>TraitProducer</Name>'
                                         '<Language>3</Language><OutputType>Library</OutputType>'
-                                        '</PropertyGroup><ItemGroup><Compile Include="Producer.ns" />'
+                                        '</PropertyGroup><ItemGroup><Compile Include="*.ns" />'
                                         '</ItemGroup></Project>', encoding='utf-8')
             library = producer / 'Producer.lib'
             result = subprocess.run([str(compiler), '--emit-project-oop-lib', str(producer_project),
@@ -109,9 +140,13 @@ impl<T> HasValue for Wrapper<T> { int Value() { return this.n; } }
             if result.returncode != 0:
                 failures.append(('binary-producer', 'compile', result.stdout + result.stderr))
             else:
-                (consumer / 'Main.ns').write_text('''class Program {
+                (consumer / 'Main.ns').write_text('''struct Good { } impl Contracts.Bound for Good { }
+class Program {
  static int Read<T>(T value) where T : HasValue { return value.Value(); }
- public static int Main() { Wrapper<int> item; item.n = 42; return Read<Wrapper<int>>(item); }
+ public static int Main() { Wrapper<int> item; item.n = 40;
+  BoundedWrapper<Good> bounded; bounded.n = 2;
+  BoundedClass<Good> cls = new BoundedClass<Good>(); cls.n = 0;
+  return Read<Wrapper<int>>(item) + Read<BoundedWrapper<Good>>(bounded) + Read<BoundedClass<Good>>(cls); }
 }''', encoding='utf-8')
                 consumer_project = consumer / 'Consumer.nsproj'
                 consumer_project.write_text('<Project><PropertyGroup><Name>Consumer</Name>'
