@@ -808,9 +808,28 @@ atributos `packed` y `aligned`, `#pragma pack`, alias, `const`, bitfields,
 punteros y arreglos; una declaracion incompleta, una sesion C++ o cerrada no
 proporcionan observacion. La compilacion incremental y las pruebas ABI,
 transporte e identidad pasaron (`A:/temp/t09-build-replay.log` y
-`A:/temp/t09-transport-directed/`). Esta observacion no se publica aun en el
-catalogo ni demuestra por si sola equivalencia ABI o procedencia, por lo que
-tampoco habilita llamadas precompiladas.
+`A:/temp/t09-transport-directed/`). En esa etapa la observacion aun no se
+publicaba; por si sola no demuestra equivalencia ABI o procedencia y tampoco
+habilita llamadas precompiladas.
+
+La observacion se transporta ahora en el catalogo C del contrato vigente. El
+productor solo la activa para una identidad y layout elegibles cuando todas
+las definiciones completas asociadas a sus sesiones de Clang la confirman; el
+codec rechaza una observacion incompatible con los datos del record. La
+observacion no modifica la identidad C: catalogos repetidos pueden deduplicar
+la declaracion aun si uno carece de ella, y cualquier consumidor futuro debe
+reconciliar la observacion por separado. Una prueba de productor real publico
+un record plano y conservo el atributo desactivado para otro `packed`; tambien
+pasaron el round trip, las pruebas de corrupcion y la deduplicacion
+(`A:/temp/t09-transport-directed/`).
+
+Pasaron las regresiones dirigidas C y SysV, con biblioteca estatica y DLL en
+O0–O3 (`A:/temp/nsc-t09-llamadas-8cgzodmp`,
+`A:/temp/nsc-t09-sysv-prueba-11l0kzt_`,
+`A:/temp/nsc-t09-sysv-padded-pair-id-jppawpqi` y
+`A:/temp/nsc-t09-sysv-varargs-5_z7sj51`). La ultima confirma que la plantilla
+variadica con record precompilado aun se rechaza: falta vincular la funcion,
+el tipo y la observacion al consultar el plan, y utilizarlo en el consumidor.
 
 ## Retorno indirecto sin argumentos byval
 

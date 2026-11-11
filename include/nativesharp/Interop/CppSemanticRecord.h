@@ -154,6 +154,9 @@ struct CppCRecordSnapshot
     CppRecordKind kind = CppRecordKind::Struct;
     bool complete = false;
     bool valueLayoutUsable = false;
+    // Observed from every live definition by Clang when publishing this
+    // catalogue. This is a syntax observation, not a complete ABI proof.
+    bool plainReplaySyntax = false;
     std::optional<std::uint64_t> sizeBits;
     std::optional<std::uint64_t> alignmentBits;
     std::vector<CppRecordField> fields;

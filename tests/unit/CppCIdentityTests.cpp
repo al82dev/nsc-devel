@@ -78,6 +78,7 @@ using UsrTable = std::map<std::string, std::optional<std::string>>;
 const char* const kProbeHeader =
     "typedef int CIdInt;\n"
     "struct CIdRecord { int value; };\n"
+    "struct __attribute__((packed)) CIdPacked { int value; };\n"
     "struct CIdCarriers { int tag; union { int x; float f; struct { short z; }; }; struct { short y; }; unsigned : 1; };\n"
     "typedef struct { int raw; } CIdAnonRecord;\n"
     "union CIdUnion { int whole; unsigned char bytes[4]; };\n"
@@ -1379,7 +1380,9 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
     const std::string templateSource =
         "namespace Published { public class Bridge { public static CIdInt Test<T>(T value) { return 0; } "
         "public static int Call<T>(T value) { return cid_function(2); } "
-        "public static int Global<T>(T value) { return cid_global; } } }\n";
+        "public static int Global<T>(T value) { return cid_global; } "
+        "public static int Record<T>(T value) { CIdRecord record; return 0; } "
+        "public static int Packed<T>(T value) { CIdPacked record; return 0; } } }\n";
     const auto project = writeProject(directory / "generic-publish", "CGenericPublish", templateSource);
     const auto header = std::filesystem::absolute(directory / "a.h");
     if (project.empty() || !writeText(project,
@@ -1397,6 +1400,7 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
     nativesharp::frontend::ProjectCompilation compilation;
     std::string error;
     const bool ready = compilation.setCppProjectSessions(std::move(groups), error) &&
+        compilation.setExperimentalCppTypeProvider(provideExperimentalCppRecordTypes, error) &&
         compilation.setCppTypeAliasProvider(provideCppTypeAliases, error) &&
         compilation.setCppNamespaceProvider([](const auto&, auto, auto&, auto&) { return true; }, error) &&
         compilation.setCppFunctionProvider([](const auto&, auto, auto, auto, auto&, auto&, auto&) { return true; }, error) &&
@@ -1406,7 +1410,8 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
     LibraryMetadata metadata;
     metadata.formatMinor = 46;
     for (const auto& record : compilation.genericModel()->templates())
-        if (record.name == "Test" || record.name == "Call" || record.name == "Global")
+        if (record.name == "Test" || record.name == "Call" || record.name == "Global" || record.name == "Record" ||
+            record.name == "Packed")
         {
             LibraryMetadataGenericTemplate item;
             item.canonicalKey = record.canonicalKey;
@@ -1450,6 +1455,34 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
         dependencies.aliases.size() == 1 && dependencies.aliases[0].declaration.name == "CIdInt";
     if (!captured) std::cerr << "generic alias publication: " << error << '\n';
     if (!expect(captured, "producer retains a template alias candidate from a real C project reference")) return false;
+    const auto publishedRecord = std::find_if(records.begin(), records.end(), [](const auto& record) {
+        return record.name == "CIdRecord";
+    });
+    if (!expect(publishedRecord != records.end() && publishedRecord->plainReplaySyntax && publishedRecord->clangUsr,
+                "producer publishes the plain C record observation with its Clang identity")) return false;
+    const auto packedRecord = std::find_if(records.begin(), records.end(), [](const auto& record) {
+        return record.name == "CIdPacked";
+    });
+    if (!expect(packedRecord != records.end() && !packedRecord->plainReplaySyntax,
+                "producer does not attest a packed C record as plain")) return false;
+    auto withoutObservation = records;
+    for (auto& record : withoutObservation) record.plainReplaySyntax = false;
+    nativesharp::frontend::PrecompiledSyntaxModule observedModule, unobservedModule;
+    observedModule.metadataPath = directory / "observed.nsmeta";
+    unobservedModule.metadataPath = directory / "unobserved.nsmeta";
+    observedModule.cppCTypeCatalogFormatMinor = unobservedModule.cppCTypeCatalogFormatMinor = 46;
+    observedModule.cppCTypeCatalog = bytes;
+    if (!metadata_detail::encodeCTypeCatalogWithDependencies(withoutObservation, enums, dependencies,
+            unobservedModule.cppCTypeCatalog, error)) return false;
+    std::vector<nativesharp::frontend::PrecompiledSyntaxModule> repeatedModules{observedModule, unobservedModule};
+    std::vector<nativesharp::frontend::CppImportedTypeDeclaration> restoredTypes;
+    const bool repeatedOk = metadata_detail::reconstructPrecompiledCImportedTypes(repeatedModules,
+                    *compilation.projectGraph(), "x86_64-pc-windows-msvc", restoredTypes, error);
+    if (!repeatedOk || restoredTypes.size() != records.size())
+        std::cerr << "repeated catalogues: " << error << " restored=" << restoredTypes.size()
+                  << " records=" << records.size() << '\n';
+    if (!expect(repeatedOk && restoredTypes.size() == records.size(),
+                "different replay observations do not change C type identity")) return false;
     metadata.targetTriple = "x86_64-pc-windows-msvc";
     metadata.cppCRecordCatalog = bytes;
     if (!expect(metadata_detail::verifyBinaryClosureMetadata(metadata, error),

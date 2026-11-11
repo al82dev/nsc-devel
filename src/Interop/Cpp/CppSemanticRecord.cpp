@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppSemanticRecord.h"
+#include "nativesharp/Interop/CppCRecordAbiReplay.h"
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/Interop/CppSemanticEnumType.h"
@@ -1707,6 +1708,34 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         if (const auto* failure = std::get_if<CppCRecordSnapshotFailure>(&closure))
         { error = failure->message; return false; }
         auto& selected = std::get<CppCRecordClosure>(closure);
+        for (auto& record : selected.records)
+        {
+            if (!record.clangUsr || record.clangUsr->empty() || !makeSimpleCRecordAbiReplay(record)) continue;
+            const auto group = std::find_if(groups.begin(), groups.end(), [&](const auto& item) {
+                return item.projectOrdinal == project && item.identity.key() == record.identityKey;
+            });
+            if (group == groups.end()) continue;
+            bool sawDefinition = false;
+            bool plain = true;
+            for (const auto index : group->inventoryIndices)
+            {
+                if (index >= inventory.size()) { plain = false; break; }
+                const auto& entry = inventory[index];
+                if (!entry.declaration.complete) continue;
+                sawDefinition = true;
+                const CppInteropSession* session = nullptr;
+                for (const auto& source : compilation.cppProjectSessions())
+                    if (source.projectFile == entry.projectFile && entry.referenceIndex < source.sessions.size())
+                    {
+                        if (session) { plain = false; break; }
+                        session = source.sessions[entry.referenceIndex].get();
+                    }
+                if (!plain || !session || entry.declaration.clangUsr != record.clangUsr ||
+                    session->cRecordHasPlainReplaySyntax(entry.declaration.qualifiedName) != true)
+                { plain = false; break; }
+            }
+            record.plainReplaySyntax = sawDefinition && plain;
+        }
         if (!selected.enumIdentityKeys.empty())
             enumSeeds[project].insert(selected.enumIdentityKeys.begin(), selected.enumIdentityKeys.end());
         records.insert(records.end(), std::make_move_iterator(selected.records.begin()),

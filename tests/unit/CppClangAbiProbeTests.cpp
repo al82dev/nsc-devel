@@ -747,12 +747,31 @@ int main(int argc, char** argv) {
     const auto capturedReplay = captureCppCRecordSnapshot(replayEntries, replayGroups.groups[0]);
     const auto* capturedRecord = std::get_if<CppCRecordSnapshot>(&capturedReplay);
     if (!capturedRecord) return 203;
+    if (equivalentOrigin->cRecordHasPlainReplaySyntax("RF") != true) return 212;
+    auto observedReplay = *capturedRecord;
+    observedReplay.plainReplaySyntax = true;
     std::vector<std::uint8_t> replayBytes;
     std::vector<CppCRecordSnapshot> restoredRecords;
     std::string replayError;
-    if (!metadata_detail::encodeCRecordCatalog(std::span(capturedRecord, 1), replayBytes, replayError) ||
+    if (!metadata_detail::encodeCRecordCatalog(std::span(&observedReplay, 1), replayBytes, replayError) ||
         !metadata_detail::decodeCRecordCatalog(replayBytes, restoredRecords, replayError) ||
-        restoredRecords.size() != 1) return 204;
+        restoredRecords.size() != 1 || !restoredRecords[0].plainReplaySyntax) return 204;
+    auto inconsistentObservation = observedReplay;
+    inconsistentObservation.fields[0].bitWidth = 1;
+    std::vector<std::uint8_t> rejectedBytes;
+    if (metadata_detail::encodeCRecordCatalog(std::span(&inconsistentObservation, 1), rejectedBytes, replayError)) return 213;
+    std::vector<std::uint8_t> unobservedBytes;
+    if (!metadata_detail::encodeCRecordCatalog(std::span(capturedRecord, 1), unobservedBytes, replayError) ||
+        unobservedBytes.size() != replayBytes.size()) return 215;
+    auto corruptBytes = replayBytes;
+    std::size_t differences = 0;
+    for (std::size_t i = 0; i < replayBytes.size(); ++i)
+        if (replayBytes[i] != unobservedBytes[i]) { ++differences; corruptBytes[i] = 2; }
+    std::vector<CppCRecordSnapshot> corruptOutput;
+    if (differences != 1 || metadata_detail::decodeCRecordCatalog(corruptBytes, corruptOutput, replayError)) return 216;
+    metadata_detail::CRecordContractComparison replayComparison{};
+    if (!metadata_detail::compareCRecordContracts(observedReplay, *capturedRecord, replayComparison, replayError) ||
+        replayComparison != metadata_detail::CRecordContractComparison::Matching) return 214;
     const auto& replayRecord = restoredRecords[0];
     const auto replayText = makeSimpleCRecordAbiReplay(replayRecord);
     if (!replayText) return 193;

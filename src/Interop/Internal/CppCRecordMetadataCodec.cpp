@@ -1,5 +1,6 @@
 #include "nativesharp/Interop/CppAbiPlanQueries.h"
 #include "CppCRecordMetadataCodec.h"
+#include "nativesharp/Interop/CppCRecordAbiReplay.h"
 #include "ByteReader.h"
 #include "ByteWriter.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
@@ -297,7 +298,7 @@ bool validateRecords(std::span<const CppCRecordSnapshot> records, std::string& e
         { error = "C record identities are empty, duplicated or not ordered"; return false; }
         if (!record.complete)
         {
-            if (record.valueLayoutUsable || record.sizeBits || record.alignmentBits || !record.fields.empty())
+            if (record.valueLayoutUsable || record.plainReplaySyntax || record.sizeBits || record.alignmentBits || !record.fields.empty())
             { error = "incomplete C record has a layout"; return false; }
             continue;
         }
@@ -305,6 +306,9 @@ bool validateRecords(std::span<const CppCRecordSnapshot> records, std::string& e
             *record.sizeBits % 8 != 0 || *record.alignmentBits % 8 != 0 ||
             *record.sizeBits % *record.alignmentBits != 0)
         { error = "invalid complete C record dimensions"; return false; }
+        if (record.plainReplaySyntax &&
+            (!record.clangUsr || record.clangUsr->empty() || !makeSimpleCRecordAbiReplay(record)))
+        { error = "invalid plain C record replay observation"; return false; }
         for (const auto& field : record.fields)
         {
             if (!field.offsetBits || *field.offsetBits > *record.sizeBits ||
@@ -1612,6 +1616,7 @@ bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
         { error = "invalid C record identity"; return false; }
         writer.u8(record.microsoftVolatileSemantics ? (*record.microsoftVolatileSemantics ? 2 : 1) : 0);
         writer.u8(static_cast<std::uint8_t>(record.kind)); writer.u8(record.complete); writer.u8(record.valueLayoutUsable);
+        writer.u8(record.plainReplaySyntax);
         putOptionalNumber(writer, record.sizeBits); putOptionalNumber(writer, record.alignmentBits);
         writer.u32(static_cast<std::uint32_t>(record.fields.size()));
         for (const auto& field : record.fields)
@@ -1649,10 +1654,15 @@ bool compareCRecordContracts(const CppCRecordSnapshot& left, const CppCRecordSna
         error.clear();
         return true;
     }
+    auto normalizedLeft = left;
     auto normalized = right;
+    // This auxiliary observation controls replay eligibility, not C type identity.
+    normalizedLeft.plainReplaySyntax = false;
+    normalized.plainReplaySyntax = false;
     normalized.moduleName = left.moduleName;
     normalized.identityKey = left.identityKey;
-    if (!encodeCRecordCatalog(std::span(&normalized, 1), rightBytes, error)) return false;
+    if (!encodeCRecordCatalog(std::span(&normalizedLeft, 1), leftBytes, error) ||
+        !encodeCRecordCatalog(std::span(&normalized, 1), rightBytes, error)) return false;
     result = leftBytes == rightBytes ? CRecordContractComparison::Matching : CRecordContractComparison::Different;
     if (result == CRecordContractComparison::Matching)
     {
@@ -1816,6 +1826,7 @@ bool decodeCRecordCatalog(std::span<const std::uint8_t> bytes,
             !getOptionalText(reader, record.clangUsr) || !reader.u8(volatileMode) || volatileMode > 2 || !reader.u8(kind) ||
             (kind != static_cast<std::uint8_t>(CppRecordKind::Struct) && kind != static_cast<std::uint8_t>(CppRecordKind::Union)) ||
             !getFlag(reader, record.complete) || !getFlag(reader, record.valueLayoutUsable) ||
+            !getFlag(reader, record.plainReplaySyntax) ||
             !getOptionalNumber(reader, record.sizeBits) ||
             !getOptionalNumber(reader, record.alignmentBits) || !reader.u32(fields) ||
             fields > maxItems || fields > reader.remaining())
@@ -2483,6 +2494,10 @@ bool reconstructPrecompiledCImportedTypes(std::span<const frontend::PrecompiledS
             if (project == projectByModule.end() || ambiguousModules.contains(std::string(owner)))
             { error = "C type owner is missing or ambiguous: " + std::string(owner); return false; }
             std::vector<std::uint8_t> canonical;
+            std::vector<CppCRecordSnapshot> identityRecords(oneRecord.begin(), oneRecord.end());
+            // Replay observations do not change whether two C declarations name
+            // the same type. Consumers of the observation must reconcile it separately.
+            for (auto& item : identityRecords) item.plainReplaySyntax = false;
             const bool hasCarriers = std::any_of(oneRecord.begin(), oneRecord.end(), [](const auto& record) {
                 return std::any_of(record.fields.begin(), record.fields.end(), [](const auto& field) {
                     return field.isAnonymousCarrier;
@@ -2491,9 +2506,9 @@ bool reconstructPrecompiledCImportedTypes(std::span<const frontend::PrecompiledS
             const bool hasEnumProvenance = std::any_of(oneEnum.begin(), oneEnum.end(), [](const auto& item) {
                 return item.declaration.sourceProvenance.has_value();
             });
-            if (hasEnumProvenance ? !encodeCTypeCatalogWithEnumProvenance(oneRecord, oneEnum, {}, canonical, error) :
-                hasCarriers ? !encodeCTypeCatalogWithAnonymousCarriers(oneRecord, oneEnum, {}, canonical, error) :
-                              !encodeCTypeCatalogWithProvenance(oneRecord, oneEnum, canonical, error)) return false;
+            if (hasEnumProvenance ? !encodeCTypeCatalogWithEnumProvenance(identityRecords, oneEnum, {}, canonical, error) :
+                hasCarriers ? !encodeCTypeCatalogWithAnonymousCarriers(identityRecords, oneEnum, {}, canonical, error) :
+                              !encodeCTypeCatalogWithProvenance(identityRecords, oneEnum, canonical, error)) return false;
             const auto [previous, inserted] = seen.emplace(std::string(identity), canonical);
             if (!inserted)
             {
