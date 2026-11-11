@@ -451,3 +451,14 @@ regresiones de 16 y 8 bytes pasaron en A:/temp/nsc-t09-sysv-align16-dd2ikeld y
 A:/temp/nsc-t09-sysv-a8-jcw607ff. La prueba negativa de esta sesion conserva
 el rechazo de un record indirecto alineado a dos y de callback en
 A:/temp/nsc-t09-sysv-prueba-2cj5q4xx. Otras formas siguen pendientes.
+
+Alineacion indirecta de dos bytes: Clang emitio `sret` alineado a 2 y `byval`
+alineado a 8 (A:/temp/nsc-t09-if-clang-oduvo4ld). El control C paso y NSC
+rechazo el caso antes del cambio en A:/temp/nsc-t09-sysv-a2-sl04vxyt. Despues
+pasaron las ocho comparaciones estatica/DLL O0–O3, atributos LLVM y plantilla
+sin encabezado O0 en A:/temp/nsc-t09-sysv-a2-wj1w5xxp. La sonda y metadatos
+pasaron en A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log. Las
+regresiones de 4 y 32 bytes pasaron en A:/temp/nsc-t09-sysv-a4-pj75qy41 y
+A:/temp/nsc-t09-sysv-align32-a8m2_n2s. La prueba negativa de esta sesion
+conserva el rechazo de un record indirecto alineado a 16 y de callback en
+A:/temp/nsc-t09-sysv-prueba-tff82wku. Otras formas siguen pendientes.

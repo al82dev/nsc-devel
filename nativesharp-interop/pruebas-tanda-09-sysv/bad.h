@@ -1,2 +1,2 @@
-typedef struct T09Unsupported { short x, y, z, a, b, c, d, e, f, g; } T09Unsupported;
+typedef struct __declspec(align(16)) T09Unsupported { float x, y, z, w; int a; } T09Unsupported;
 __attribute__((sysv_abi)) T09Unsupported sysv_record(T09Unsupported value);

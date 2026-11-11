@@ -117,4 +117,6 @@ T09-003: contrastar y probar el record de cuatro `float` alineado a 16 bytes, in
 T09-003: conservar la prueba negativa de esta sesion con alineacion de 32 bytes, aun no admitida.
 T09-003: contrastar un record vectorial alineado a 32 bytes y su paso indirecto con Clang, incluida precompilacion; conservar un caso negativo de alineacion aun no admitida.
 T09-003: conservar la prueba negativa de esta sesion con un record indirecto alineado a dos bytes, aun no admitido.
+T09-003: contrastar un record indirecto alineado a dos bytes con Clang y probar su copia y precompilacion; conservar negativa otra alineacion indirecta aun no admitida.
+T09-003: conservar la prueba negativa de esta sesion con un record indirecto alineado a 16, aun no admitido.
 T09-003: conservar la prueba negativa de esta sesion con vector fijo seguido de `double`, aun no admitido.

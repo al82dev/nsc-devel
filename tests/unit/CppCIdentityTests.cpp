@@ -1719,7 +1719,7 @@ bool checkDependencyTypeCodec()
     unchangedRecord = {42};
     ok &= expect(!encodeCDependencyFunction(recordFunction, unchangedRecord, error) &&
         unchangedRecord == std::vector<std::uint8_t>{42}, "indirect SysV plan rejects a conflicting record alignment");
-    for (const std::uint64_t alignment : {4U, 8U, 32U})
+    for (const std::uint64_t alignment : {2U, 4U, 8U, 32U})
     {
         auto alignedPlan = std::make_shared<abi_plan::Plan>(*indirectPlan);
         alignedPlan->logicalReturn.alignment = alignment;

@@ -140,7 +140,7 @@ inline bool isSysVIndirectRecordRoundTrip(const Plan& plan, std::string_view sym
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
         plan.returnSignExtend || plan.returnZeroExtend || plan.physicalReturn.kind != TypeKind::Void ||
         plan.logicalReturn.passing != Passing::Indirect ||
-        (alignment != 1 && alignment != 4 && alignment != 8 && alignment != 32) ||
+        (alignment != 1 && alignment != 2 && alignment != 4 && alignment != 8 && alignment != 32) ||
         plan.logicalParameters.size() != 1 || plan.physicalParameters.size() != 2) return false;
     const auto& logical = plan.logicalParameters[0];
     const auto& result = plan.physicalParameters[0];
