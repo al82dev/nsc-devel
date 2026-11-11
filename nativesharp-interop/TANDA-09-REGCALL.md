@@ -22,3 +22,20 @@ Pasaron regresiones cdecl (`A:/temp/nsc-t09-llamadas-67a6q_9a`), vectorcall
 (`A:/temp/nsc-t09-sysv-indirecta-opcional-flotante-pre-5_ukljdt`), cuatro
 sondas (`A:/temp/t09-test-varptr.log`) y transporte/ABI/identidad
 (`A:/temp/t09-transport-directed/`). T09-003 y la tanda permanecen abiertos.
+
+## Enteros de distintas anchuras
+
+Una muestra con `unsigned int`, `long long` y `unsigned long long` de
+parametros y retorno `unsigned long long` conserva valores negativos y el bit
+alto. El control C paso estatica/DLL O0-O3
+(`A:/temp/nsc-t09-regcall-enteros-24onjjoy`) y NSC rechazo inicialmente la
+firma (`A:/temp/nsc-t09-regcall-enteros-4u22keva`). Tras ampliar el filtro a
+enteros de 32 y 64 bits con y sin signo, pasaron ocho comparaciones C/NS,
+IR, simbolo y cache (`A:/temp/nsc-t09-regcall-enteros-zwvfgqyn`) y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-regcall-enteros-precompilado-nr9qolj4`). Pasaron la muestra
+anterior (`A:/temp/nsc-t09-regcall-bwl9lztu`), rechazo de `double`
+(`A:/temp/nsc-t09-regcall-negativo-eqeddmfj`), cuatro sondas
+(`A:/temp/t09-test-varptr.log`) y transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`). La muestra no acredita todas las firmas;
+T09-003 permanece abierto.
