@@ -586,7 +586,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     std::vector<std::optional<std::size_t>> recordForArgument;
     for (const auto& key : optionalTypeKeys)
     {
-        if (key == "builtin:int" || key == "builtin:double" || key == "builtin:int*" || key == "builtin:long" || key == "builtin:uint")
+        if (key == "builtin:int" || key == "builtin:double" || key == "builtin:int*" || key == "builtin:long" || key == "builtin:uint" || key == "builtin:ulong")
         {
             recordForArgument.push_back(std::nullopt);
             continue;
@@ -666,11 +666,14 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
             type.sizeBits == 64 && type.alignmentBits == 64 && !type.isConst && !type.isVolatile && !type.isRestrict;
         const bool fixedUint = type.kind == CppTypeKind::UnsignedInteger && type.canonicalSpelling == "unsigned int" &&
             type.sizeBits == 32 && type.alignmentBits == 32 && !type.isConst && !type.isVolatile && !type.isRestrict;
+        const bool fixedUlong = type.kind == CppTypeKind::UnsignedInteger && type.canonicalSpelling == "unsigned long long" &&
+            type.sizeBits == 64 && type.alignmentBits == 64 && !type.isConst && !type.isVolatile && !type.isRestrict;
         const bool fixedPointer = type.kind == CppTypeKind::Pointer && type.canonicalSpelling == "int *" &&
             type.sizeBits == 64 && type.alignmentBits == 64 && !type.isConst && !type.isVolatile &&
             !type.isRestrict && type.element && isInt(*type.element);
-        if (!isInt(type) && !fixedDouble && !fixedPointer && !fixedLong && !fixedUint) return {};
-        fixedSource += fixedDouble ? "double" : fixedPointer ? "int *" : fixedLong ? "long long" : fixedUint ? "unsigned int" : "int";
+        if (!isInt(type) && !fixedDouble && !fixedPointer && !fixedLong && !fixedUint && !fixedUlong) return {};
+        fixedSource += fixedDouble ? "double" : fixedPointer ? "int *" : fixedLong ? "long long" :
+            fixedUint ? "unsigned int" : fixedUlong ? "unsigned long long" : "int";
     }
     std::string error;
     std::vector<std::uint8_t> aliasType;
@@ -751,6 +754,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         "void __nsc_replay_int(int);\n"
         "void __nsc_replay_uint(unsigned int);\n"
         "void __nsc_replay_long(long long);\n"
+        "void __nsc_replay_ulong(unsigned long long);\n"
         "void __nsc_replay_double(double);\n"
         "void __nsc_replay_int_pointer(int *);\n"
         "typedef " + std::string(returnDouble ? "double" : returnVoid ? "void" : returnPointer ? "int *" : "int") +
@@ -802,6 +806,11 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     if (longHelper == functions->end() || longHelper->parameters.size() != 1 ||
         longHelper->parameters[0].type.kind != CppTypeKind::SignedInteger ||
         longHelper->parameters[0].type.canonicalSpelling != "long long") return {};
+    const auto ulongHelper = std::find_if(functions->begin(), functions->end(),
+        [](const auto& value) { return value.name == "__nsc_replay_ulong"; });
+    if (ulongHelper == functions->end() || ulongHelper->parameters.size() != 1 ||
+        ulongHelper->parameters[0].type.kind != CppTypeKind::UnsignedInteger ||
+        ulongHelper->parameters[0].type.canonicalSpelling != "unsigned long long") return {};
     const auto pointerHelper = std::find_if(functions->begin(), functions->end(),
         [](const auto& value) { return value.name == "__nsc_replay_int_pointer"; });
     if (pointerHelper == functions->end() || pointerHelper->parameters.size() != 1 ||
@@ -812,6 +821,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
             optionalTypeKeys[i] == "builtin:int" ? intHelper->parameters[0].type :
             optionalTypeKeys[i] == "builtin:uint" ? uintHelper->parameters[0].type :
             optionalTypeKeys[i] == "builtin:long" ? longHelper->parameters[0].type :
+            optionalTypeKeys[i] == "builtin:ulong" ? ulongHelper->parameters[0].type :
             optionalTypeKeys[i] == "builtin:double" ? doubleHelper->parameters[0].type : pointerHelper->parameters[0].type);
     auto plan = session.cVariadicFunctionPointerCallAbiPlan(replayAlias->name,
         replayAlias->underlyingType.canonicalSpelling, arguments);

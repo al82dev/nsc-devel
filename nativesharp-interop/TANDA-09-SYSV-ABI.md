@@ -1611,6 +1611,24 @@ opcional sin signo, prefijo de 64 bits y dos fijos
 `A:/temp/nsc-t09-sysv-indirecta-dos-fijos-pre-lbj2kgyh`). Otros prefijos y
 firmas siguen pendientes; T09-003 no esta cerrado.
 
+**Entero sin signo de 64 bits fijo y opcional:** los controles C y productor
+independiente comprobaron todos los bits activados; NSC rechazaba ambas
+posiciones (`A:/temp/nsc-t09-sysv-indirecta-variadica-record-ulong-5saddlfr`,
+`A:/temp/nsc-t09-sysv-indirecta-variadica-prefijo-ulong-w8gla0mw`). Tras emitir
+y reconstruir los tipos segun Clang pasaron las matrices C/NS estatica/DLL
+O0-O3 (`A:/temp/nsc-t09-sysv-indirecta-record-ulong-matriz-ma_mozbf`,
+`A:/temp/nsc-t09-sysv-indirecta-prefijo-ulong-matriz-hjrhswei`) y plantillas
+sin encabezado, cache y rechazos de variantes
+(`A:/temp/nsc-t09-sysv-indirecta-record-ulong-pre-mxsjptej`,
+`A:/temp/nsc-t09-sysv-indirecta-prefijo-ulong-pre-ck_bfh2z`). Pasaron cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones precompiladas de prefijo
+`long`, prefijo `uint` y record fijo de tres enteros
+(`A:/temp/nsc-t09-sysv-indirecta-prefijo-long-pre-fz3poz1s`,
+`A:/temp/nsc-t09-sysv-indirecta-prefijo-uint-pre-_6bfw631`,
+`A:/temp/nsc-t09-sysv-indirecta-fijo-tres-pre-f4y1hsgo`). Otros tipos y
+firmas siguen pendientes; T09-003 no esta cerrado.
+
 **Record mixto fijo y opcional:** el control C y productor independiente
 comprobaron ambos records por piezas; NSC rechazaba el record fijo
 (`A:/temp/nsc-t09-sysv-indirecta-variadica-record-fijo-_lc9qbgn`). Tras
