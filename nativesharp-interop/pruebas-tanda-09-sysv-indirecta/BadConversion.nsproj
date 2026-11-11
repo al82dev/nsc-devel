@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>BadSysvConversion</Name></PropertyGroup><ItemGroup><Compile Include="BadConversion.ns"/><CppLibraryReference Header="api.h" Language="C" Standard="c11" Library="api.lib"/></ItemGroup></Project>

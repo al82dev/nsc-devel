@@ -852,6 +852,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
             else if (signature.callingConvention == "fastcall") convention = ast::FunctionCallingConventionSyntaxKind::FastCall;
             else if (signature.callingConvention == "vectorcall") convention = ast::FunctionCallingConventionSyntaxKind::VectorCall;
             else if (signature.callingConvention == "ms_abi") convention = ast::FunctionCallingConventionSyntaxKind::Win64;
+            else if (signature.callingConvention == "sysv_abi") convention = ast::FunctionCallingConventionSyntaxKind::SysV;
             else return report(diagnostics::DiagnosticId::InvalidUsingTarget, "unsupported C callback calling convention");
             auto& arena = const_cast<ProjectSyntaxUnit&>(unit).arena();
             const auto makeType = [&](const auto& self, const interop::CppType& type,
@@ -869,6 +870,7 @@ bool ProjectNameLookup::expandCppTypeAlias(
                     else if (nested.callingConvention == "fastcall") nestedConvention = ast::FunctionCallingConventionSyntaxKind::FastCall;
                     else if (nested.callingConvention == "vectorcall") nestedConvention = ast::FunctionCallingConventionSyntaxKind::VectorCall;
                     else if (nested.callingConvention == "ms_abi") nestedConvention = ast::FunctionCallingConventionSyntaxKind::Win64;
+                    else if (nested.callingConvention == "sysv_abi") nestedConvention = ast::FunctionCallingConventionSyntaxKind::SysV;
                     else return nullptr;
                     auto* returnType = self(self, nested.returnType, depth + 1);
                     if (!returnType) return nullptr;

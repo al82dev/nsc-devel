@@ -198,6 +198,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         else if (signature.callingConvention == "fastcall") function.callingConvention = language::CallingConvention::FastCall;
         else if (signature.callingConvention == "vectorcall") function.callingConvention = language::CallingConvention::VectorCall;
         else if (signature.callingConvention == "ms_abi") function.callingConvention = language::CallingConvention::Win64;
+        else if (signature.callingConvention == "sysv_abi") function.callingConvention = language::CallingConvention::SysV;
         else return std::nullopt;
         // EN: T08-D22: only C contexts (direct C calls, C fields and globals) take records by value.
         // ES: T08-D22: solo los contextos C (llamadas C directas, campos y globales C) toman records por valor.

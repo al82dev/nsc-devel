@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>UnsupportedSysvIndirecta</Name></PropertyGroup><ItemGroup><Compile Include="Bad.ns"/><CppLibraryReference Header="Bad.h" Language="C" Standard="c11" Library="api.lib"/></ItemGroup></Project>

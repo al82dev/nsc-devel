@@ -1450,6 +1450,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
     {
         return result;
     }
+    if (const auto target = language::parseFunctionTypeIdentity(delegateTypeKey);
+        target && target->callingConvention == language::CallingConvention::SysV)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, syntax->range(),
+            "conversion of a lambda to a sysv_abi function pointer is not yet supported");
+        return result;
+    }
     if (genericConstraintModel_ != nullptr &&
         !genericConstraintModel_->specializationSatisfiesConstraints(syntax))
     {
@@ -1753,6 +1761,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
 {
     ExpressionResult result;
     if (!methodGroup.methodGroup || memberModel_ == nullptr) return result;
+    if (const auto target = language::parseFunctionTypeIdentity(delegateTypeKey);
+        target && target->callingConvention == language::CallingConvention::SysV)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},
+            "conversion of a method to a sysv_abi function pointer is not yet supported");
+        return result;
+    }
     std::string returnType;
     std::vector<std::string> parameterTypes;
     std::size_t delegateOrdinal = 0;

@@ -1,0 +1,5 @@
+int Main() {
+    T09UnsupportedCallback callback = t09_get_unsupported_callback();
+    if (callback(1.0f) != 2.0f) return 1;
+    return 0;
+}

@@ -9,6 +9,7 @@ enum class FunctionCallingConventionSyntaxKind
     StdCall,
     FastCall,
     VectorCall,
-    Win64
+    Win64,
+    SysV
 };
 }

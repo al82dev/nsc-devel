@@ -1,0 +1,1 @@
+int Main() { T09SysvCallback callback = t09_normal; return callback(1, 2, 3, 4, 5, 6); }

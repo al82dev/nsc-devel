@@ -728,6 +728,8 @@ void Parser::parseFunctionCallingConvention(FunctionTypeParseState& state)
         state.convention = ast::FunctionCallingConventionSyntaxKind::FastCall;
     else if (atContextualKeyword("win64"))
         state.convention = ast::FunctionCallingConventionSyntaxKind::Win64;
+    else if (atContextualKeyword("sysv_abi"))
+        state.convention = ast::FunctionCallingConventionSyntaxKind::SysV;
     else
         return;
     consume();

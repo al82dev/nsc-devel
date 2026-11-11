@@ -1035,21 +1035,35 @@ muestra descrita, no todos los layouts booleanos ni las demas convenciones.
 
 ## Puntero de funcion SysV devuelto por una biblioteca
 
-Pendiente: el control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
+El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor
 termino con codigo cero en estatica O0. NSC rechazo la importacion con
 `unsupported C callback calling convention`, antes de emitir la llamada
-(`A:/temp/nsc-t09-sysv-indirecta-k_gky9w0`). El validador permanece fallando
-para NSC hasta implementar el caso; este diagnostico no acredita soporte.
+(`A:/temp/nsc-t09-sysv-indirecta-k_gky9w0`). Ese diagnostico no acreditaba soporte.
 
 La inspeccion inicial localiza el rechazo en `QualifiedTypeNames.cpp` y
 `CppSemanticFunction.cpp`. La convencion de Clang ya se observa en el tipo,
 pero las identidades estructurales y la emision indirecta necesitan transportar
-una convencion SysV distinguible. Hay que preservar el rechazo existente al
-convertir una funcion SysV a un callback de convencion distinta y comprobar
-que no se emita accidentalmente el ABI Windows. El control actual aun no cubre
-DLL, optimizaciones, precompilacion ni otras firmas.
+una convencion SysV distinguible. La implementacion incorpora esa convencion
+a la identidad del tipo y emite `x86_64_sysvcc` en llamadas indirectas de la
+firma comprobada de enteros. Por ahora rechaza otras firmas y la conversion de
+metodos o lambdas hacia estos punteros; conserva el rechazo de convertir una
+funcion SysV a un callback de otra convencion.
+
+La muestra paso ejecucion C y NativeSharp en estatica y DLL O0–O3 y una
+plantilla precompilada sin encabezado O0; el LLVM de las llamadas directa y
+precompilada contiene la convencion SysV
+(`A:/temp/nsc-t09-sysv-indirecta-matriz-bhcgvs6s`). La prueba puntual tambien
+rechazo una firma flotante no admitida y una conversion de funcion C ordinaria
+a puntero SysV (`A:/temp/nsc-t09-sysv-indirecta-_9p96ymx`). Pasaron transporte,
+ABI, identidad y el control SysV previo, incluido el rechazo de conversion
+opuesta (`A:/temp/t09-transport-directed/`, `A:/temp/nsc-t09-sysv-prueba-in_if80d`).
+Las pruebas CTest `item344`, `item345`, `item333.win64-vararg-abi` y
+`project-loader` pasaron tras crear sus directorios temporales aislados: el
+primer intento fallo porque esos directorios aun no existian. Este resultado
+no acredita argumentos o retornos distintos de `int`, variadicas, agregados,
+ni la creacion de callbacks NativeSharp con convencion SysV.
 
 ## Retorno indirecto sin argumentos byval
 

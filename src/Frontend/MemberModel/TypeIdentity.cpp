@@ -77,6 +77,9 @@ std::string ProjectMemberModel::canonicalFunctionTypeKey(
         case ast::FunctionCallingConventionSyntaxKind::Win64:
             function.callingConvention = language::CallingConvention::Win64;
             break;
+        case ast::FunctionCallingConventionSyntaxKind::SysV:
+            function.callingConvention = language::CallingConvention::SysV;
+            break;
     }
     function.parameters.reserve(syntax->typeArguments().size());
     for (const ast::TypeSyntax* parameter : syntax->typeArguments())
