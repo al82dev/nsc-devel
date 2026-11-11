@@ -1538,6 +1538,15 @@ entero y argumentos opcionales entero, puntero y record en pila
 `A:/temp/nsc-t09-sysv-indirecta-record-agotado-pre-eyg5gc1w`). Otros prefijos
 y firmas siguen pendientes; T09-003 no esta cerrado.
 
+**Dos copias `byval` de la misma identidad:** el productor independiente
+verifica los diez enteros de un record fijo y otro opcional, modifica ambas
+copias y el consumidor comprueba que los originales no cambian. Pasaron ocho
+comparaciones C/NS estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-doble-byval-matriz-ojtfjp6p`) y plantilla
+sin encabezado, cache y rechazo de variante
+(`A:/temp/nsc-t09-sysv-indirecta-doble-byval-pre-tzykscis`). No fue necesario
+cambiar produccion; otras identidades y layouts siguen pendientes.
+
 **Entero opcional de 64 bits:** el control C y productor independiente
 comprobaron `long long` de valor 5000000000 junto al record mixto; NSC
 rechazaba la firma (`A:/temp/nsc-t09-sysv-indirecta-variadica-record-long-rby3kzfb`).
