@@ -14,6 +14,9 @@ compilador de desarrollo y `--clang-root` con la raiz de Clang:
 - `pruebas-tanda-09-llamadas`, `pruebas-tanda-09-agregados` y
   `pruebas-tanda-09-vectorcall`: ocho comparaciones C/NS cada uno, biblioteca
   estatica y DLL en O0–O3.
+- `pruebas-tanda-09-llamadas/validar-hir-mir.py`: comprobacion dirigida de las
+  representaciones internas HIR y MIR del caso de llamadas estaticas; recibe
+  los mismos argumentos `--nsc` y `--clang-root`.
 - `pruebas-tanda-09-global-const` y `pruebas-tanda-09-simbolo-ausente`:
   diagnosticos negativos C y NS.
 - `pruebas-tanda-09-precompilado`: 16 consumidores de una biblioteca NS, con

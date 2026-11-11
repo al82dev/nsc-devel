@@ -100,3 +100,14 @@ portador Win64 del agregado. Los tipos que no se reconocen en esa ruta se
 rechazan. El argumento fijo mantiene su conversion normal. Las pruebas de la
 sesion cubren los tipos concretos registrados arriba, no todas las variaciones
 posibles de enum, union o record ni otros destinos.
+
+T09-001, control repetible: `pruebas-tanda-09-llamadas/validar-hir-mir.py`
+construye una biblioteca C temporal, solicita HIR y MIR al NSC de desarrollo y
+exige la llamada directa, la creacion e invocacion de puntero y las conversiones
+variadicas observadas. Paso en A:/temp/nsc-t09-hir-mir-iw6opfec. En HIR la
+llamada directa conserva el ordinal de funcion; en MIR se resuelve al nombre
+`check_variadic`. La invocacion indirecta permanece como `delegate-invoke` en
+ambas representaciones y las promociones quedan explicitas. Este control usa
+una biblioteca estatica y una sola firma: no demuestra por si solo las rutas de
+DLL, otras convenciones ni todos los tipos. El item permanece abierto mientras
+se completa la auditoria de esas rutas.
