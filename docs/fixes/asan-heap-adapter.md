@@ -44,3 +44,11 @@ no acredita este commit sobre un árbol limpio. La ausencia real de
 `llvm-objcopy` tampoco se verificó; sí hay controles de fallo de herramienta y
 de resolución cuando existe un ejecutable homónimo en el proyecto. Los
 comandos, diagnósticos y códigos se conservan en el log de la selección.
+
+La regresión de liberación excepcional quedó registrada junto con esta nota.
+Su ejecución dirigida previa está en
+`A:/nsc-fixes-evidencia/asan-heap-targeted-20261111.log`: las variantes de
+arreglos de estructuras y clases pasaron en O0 y O2 y ASan diagnosticó el
+acceso posterior a la liberación. La prueba comprueba ese recorrido concreto,
+no la ausencia general de fugas. El compilador usado contenía cambios locales;
+no se ha validado el commit con un compilador construido desde un árbol limpio.
