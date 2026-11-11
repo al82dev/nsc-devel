@@ -1662,6 +1662,17 @@ bool checkDependencyTypeCodec()
         abi_plan::isSysVSmallRecordsRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
         "C dependency function retains a record and an integer argument");
     recordFunction.declaration.parameters[1].type = savedSecondType;
+    auto scalarFloatPlan = std::make_shared<abi_plan::Plan>(*twoSmallPlan);
+    scalarFloatPlan->logicalParameters[1].coercion = abi_plan::Type{abi_plan::TypeKind::Float};
+    scalarFloatPlan->physicalParameters[1].type = abi_plan::Type{abi_plan::TypeKind::Float};
+    recordFunction.declaration.parameters[1].type.kind = CppTypeKind::Floating;
+    recordFunction.declaration.abiPlan = scalarFloatPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        restoredRecord.declaration.abiPlan->physicalParameters[1].type.kind == abi_plan::TypeKind::Float,
+        "C dependency function retains a record and a float argument");
+    recordFunction.declaration.parameters[1].type = savedSecondType;
+    recordFunction.declaration.abiPlan = twoSmallPlan;
     const auto savedFirstType = recordFunction.declaration.parameters[0].type;
     recordFunction.declaration.parameters[0].type.kind = CppTypeKind::SignedInteger;
     ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&

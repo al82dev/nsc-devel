@@ -21,9 +21,12 @@ inline bool isSysVSmallRecordsRoundTrip(const Plan& plan, std::string_view symbo
     {
         const auto& logical = plan.logicalParameters[i];
         const auto& physical = plan.physicalParameters[i];
-        if (logical.passing != Passing::Direct || !logical.coercion || !integer(*logical.coercion) ||
+        const bool directFloat = plan.logicalParameters.size() == 2 && i == 1 &&
+            logical.coercion && logical.coercion->kind == TypeKind::Float && physical.type.kind == TypeKind::Float;
+        if (logical.passing != Passing::Direct || !logical.coercion ||
+            (!integer(*logical.coercion) && !directFloat) ||
             logical.offset != 0 || logical.firstPhysical != i || logical.physicalCount != 1 ||
-            !integer(physical.type) || logical.coercion->widthOrCount != physical.type.widthOrCount ||
+            (!integer(physical.type) && !directFloat) || logical.coercion->widthOrCount != physical.type.widthOrCount ||
             physical.structureReturn || physical.byValue || physical.signExtend ||
             physical.zeroExtend || physical.inRegister || physical.noAlias) return false;
     }

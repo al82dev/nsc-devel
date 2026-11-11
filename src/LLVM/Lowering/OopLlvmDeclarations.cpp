@@ -37,7 +37,8 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                     std::vector<LLVMTypeRef> parameters;
                     parameters.reserve(function.cppAbiPlan->physicalParameters.size());
                     for (const auto& parameter : function.cppAbiPlan->physicalParameters)
-                        parameters.push_back(LLVMIntTypeInContext(context_, static_cast<unsigned>(parameter.type.widthOrCount)));
+                        parameters.push_back(parameter.type.kind == interop::abi_plan::TypeKind::Float ?
+                            LLVMFloatTypeInContext(context_) : LLVMIntTypeInContext(context_, static_cast<unsigned>(parameter.type.widthOrCount)));
                     return LLVMFunctionType(integer, parameters.data(), static_cast<unsigned>(parameters.size()), 0);
                 }
                 if (interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||

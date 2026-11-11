@@ -1884,7 +1884,12 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                                    symbol.cppParameterTypes[i].sizeBits == symbol.cppAbiPlan->physicalParameters[i].type.widthOrCount) ||
                                   (symbol.cppParameterTypes[i].kind == interop::CppTypeKind::SignedInteger &&
                                    function.parameterTypeKeys[i] == "builtin:int" &&
-                                   symbol.cppAbiPlan->physicalParameters[i].type.widthOrCount == 32)))
+                                   symbol.cppAbiPlan->physicalParameters[i].type.kind == interop::abi_plan::TypeKind::Integer &&
+                                   symbol.cppAbiPlan->physicalParameters[i].type.widthOrCount == 32) ||
+                                  (symbol.cppParameterTypes.size() == 2 && i == 1 &&
+                                   symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Floating &&
+                                   function.parameterTypeKeys[i] == "builtin:float" &&
+                                   symbol.cppAbiPlan->physicalParameters[i].type.kind == interop::abi_plan::TypeKind::Float)))
                                 return false;
                         }
                         return hasRecord;

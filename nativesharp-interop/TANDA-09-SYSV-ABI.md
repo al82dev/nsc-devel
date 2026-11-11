@@ -573,3 +573,17 @@ metadatos pasaron en A:/temp/t09-planes-clang.log y
 A:/temp/t09-planes-identity.log. Siguen pendientes otros tipos escalares y
 otras clasificaciones de records; no se acredita compatibilidad general.
 
+## Record pequeno seguido de `float`
+
+El control C paso y NSC rechazo inicialmente la firma en estatica y DLL O0
+(A:/temp/nsc-t09-sysv-record-float-v5r37_1c). Tras usar la clasificacion de
+Clang para el parametro flotante, la muestra paso ocho comparaciones C/NS en
+estatica y DLL O0–O3 y una plantilla precompilada sin encabezado O0:
+A:/temp/nsc-t09-sysv-record-float-i3wd0v2u. La sonda Clang y el control del
+plan en metadatos pasaron en A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log. Las regresiones de ocho argumentos mixtos y
+del control general pasaron en A:/temp/nsc-t09-sysv-mixed-ptb5sy4y y
+A:/temp/nsc-t09-sysv-prueba-wf6mqllu. Para el control C aislado se definio
+`_fltused` localmente; no se modifico NSLink. Se comprobaron un record de cuatro
+bytes y el `float` en segundo lugar; otras firmas flotantes siguen pendientes.
+

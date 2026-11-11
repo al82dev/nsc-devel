@@ -488,7 +488,12 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                            f.parameters[i].type.sizeBits == f.abiPlan->physicalParameters[i].type.widthOrCount) ||
                           (f.parameters[i].type.kind == CppTypeKind::SignedInteger &&
                            f.parameters[i].type.sizeBits == 32 &&
-                           f.abiPlan->physicalParameters[i].type.widthOrCount == 32))) return true;
+                           f.abiPlan->physicalParameters[i].type.kind == abi_plan::TypeKind::Integer &&
+                           f.abiPlan->physicalParameters[i].type.widthOrCount == 32) ||
+                          (f.parameters.size() == 2 && i == 1 &&
+                           f.parameters[i].type.kind == CppTypeKind::Floating &&
+                           f.parameters[i].type.sizeBits == 32 &&
+                           f.abiPlan->physicalParameters[i].type.kind == abi_plan::TypeKind::Float))) return true;
                 }
                 return !hasRecord;
             }()) ||
@@ -639,7 +644,9 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                     if (!f.parameters[i].type.sizeBits) { error = "invalid C dependency record argument"; return false; }
                     auto nextLogical = plan->logicalParameters[0];
                     nextLogical.firstPhysical = i;
-                    nextLogical.coercion = abi_plan::Type{abi_plan::TypeKind::Integer, *f.parameters[i].type.sizeBits};
+                    nextLogical.coercion = f.parameters[i].type.kind == CppTypeKind::Floating ?
+                        abi_plan::Type{abi_plan::TypeKind::Float} :
+                        abi_plan::Type{abi_plan::TypeKind::Integer, *f.parameters[i].type.sizeBits};
                     plan->logicalParameters.push_back(std::move(nextLogical));
                     physical.type = *plan->logicalParameters.back().coercion;
                     plan->physicalParameters.push_back(physical);
