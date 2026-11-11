@@ -1,1 +1,1 @@
-int Main() { if (sysv_double(2.0) != 2.0) return 1; return 0; }
+int Main() { T09Unsupported value; value.x = 1; value.y = 2; value.z = 3; T09Unsupported result = sysv_record(value); return result.x; }

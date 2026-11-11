@@ -49,3 +49,4 @@ T09-003, primer caso: habilitar solo llamadas directas `sysv_abi` no variadicas 
 T09-003: incorporar en la interfaz privada `LlvmCApi.h` la constante de convencion SysV del LLVM oficial; rechazar el caso de enlace dinamico con alias TLS mientras no este validado para esta convencion.
 T09-003: impedir que la conversion de la funcion sysv_abi a un callback cdecl o vectorcall la trate como si fuera cdecl; probar el rechazo mientras no exista representacion segura del puntero SysV.
 T09-003: comprobar el uso de la nueva llamada desde una plantilla NativeSharp precompilada con encabezado C oculto, mediante el contrato NSMeta vigente y sin introducir etiquetas historicas.
+T09-003: ampliar las llamadas directas SysV a parametros y retornos `float` y `double`, conservando el rechazo para agregados y callbacks; contrastar llamadas mixtas y retornos con Clang en estatica y DLL O0–O3.

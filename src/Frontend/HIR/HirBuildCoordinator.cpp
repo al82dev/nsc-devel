@@ -1808,13 +1808,16 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             function.cppSysVCall = symbol.cppCallingConvention == "sysv_abi";
             if (function.cppSysVCall)
             {
-                const bool supportedReturn = function.returnTypeKey == "builtin:int" ||
-                    function.returnTypeKey == "builtin:void";
+                const auto supportedScalar = [](const std::string& type) {
+                    return type == "builtin:int" || type == "builtin:float" || type == "builtin:double";
+                };
+                const bool supportedReturn = function.returnTypeKey == "builtin:void" ||
+                    supportedScalar(function.returnTypeKey);
                 const bool supportedParameters = std::ranges::all_of(function.parameterTypeKeys,
-                    [](const std::string& type) { return type == "builtin:int"; });
+                    supportedScalar);
                 if (function.isVariadic || !supportedReturn || !supportedParameters)
                 {
-                    error = "sysv_abi currently supports only non-variadic int parameters and int or void return for " +
+                    error = "sysv_abi currently supports only non-variadic int, float or double parameters and scalar or void return for " +
                         symbol.mangledName;
                     return false;
                 }
