@@ -295,3 +295,18 @@ A:/temp/nsc-t09-sysv-mixed-di-q7c1vh1u. La prueba negativa de esta sesion
 conserva una forma con dos `float` que Clang representa mediante vector y aun
 se rechaza; paso junto con el rechazo de callbacks en
 A:/temp/nsc-t09-sysv-prueba-egocj7n9. No se certifican otras formas mixtas.
+
+Pieza vectorial fija: en `struct { int x, y; float z, w; }`, Clang emite
+`{ i64, <2 x float> }` con los mismos dos parametros fisicos
+(A:/temp/nsc-t09-if-clang-mbskzzej). El control C paso y NSC rechazo el caso
+antes del cambio en A:/temp/nsc-t09-sysv-mixed-iv-l0txw71j. NSC ahora conserva
+un vector fijo de dos `float` como tipo ABI distinto de un arreglo, solo para
+esta forma. Pasaron las ocho comparaciones estatica/DLL O0–O3, las firmas LLVM
+y una plantilla precompilada sin encabezado O0 en
+A:/temp/nsc-t09-sysv-mixed-iv-ejc8gq0r. La sonda Clang y el control de
+metadatos pasaron en A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log.
+Las regresiones de las formas con `float` escalar y `double` pasaron en
+A:/temp/nsc-t09-sysv-mixed-if-66_d2m89 y A:/temp/nsc-t09-sysv-mixed-di-ltgzjlf4.
+La prueba negativa de esta sesion conserva el rechazo de la pieza vectorial
+primera y de callback en A:/temp/nsc-t09-sysv-prueba-z3r8ex24. Vectores de
+otros tamanos, ordenes y firmas siguen pendientes.

@@ -49,9 +49,11 @@ inline bool isSysVMixedRecordRoundTrip(const Plan& plan, std::string_view symbol
         if (type.kind != TypeKind::Structure || type.packed || type.elements.size() != 2) return false;
         const auto& first = type.elements[0];
         const auto& second = type.elements[1];
+        const bool vector2f = second.kind == TypeKind::Vector && second.widthOrCount == 2 &&
+                              second.elements.size() == 1 && second.elements[0].kind == TypeKind::Float;
         return (first.kind == TypeKind::Double && second.kind == TypeKind::Integer && second.widthOrCount == 32) ||
                (first.kind == TypeKind::Integer && first.widthOrCount == 64 &&
-                (second.kind == TypeKind::Double || second.kind == TypeKind::Float));
+                (second.kind == TypeKind::Double || second.kind == TypeKind::Float || vector2f));
     };
     if (plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
@@ -68,6 +70,8 @@ inline bool isSysVMixedRecordRoundTrip(const Plan& plan, std::string_view symbol
         plan.physicalParameters[0].type.widthOrCount != first.widthOrCount ||
         plan.physicalParameters[1].type.kind != second.kind ||
         plan.physicalParameters[1].type.widthOrCount != second.widthOrCount ||
+        (second.kind == TypeKind::Vector && (plan.physicalParameters[1].type.elements.size() != 1 ||
+            plan.physicalParameters[1].type.elements[0].kind != TypeKind::Float)) ||
         logical.coercion->elements[0].kind != first.kind || logical.coercion->elements[1].kind != second.kind ||
         plan.logicalReturn.coercion->elements[0].kind != first.kind ||
         plan.logicalReturn.coercion->elements[1].kind != second.kind) return false;

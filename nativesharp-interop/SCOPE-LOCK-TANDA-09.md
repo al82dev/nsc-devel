@@ -91,3 +91,5 @@ T09-003: preparar un record SysV con `double` seguido de `int`, contrastar contr
 T09-003: preparar un record SysV con dos `int` seguidos de `double`, contrastar el rechazo previo y el plan Clang y probar la forma mixta inversa y su precompilacion. La prueba negativa de esta sesion seguira usando una forma mixta distinta no admitida.
 T09-003: conservar la prueba negativa de esta sesion con un agregado de `int`, `int` y `float`, cuya forma mixta continua fuera del soporte probado.
 T09-003: contrastar y, si pasa sus pruebas, admitir la forma mixta `int`, `int`, `float` con piezas `i64` y `float`; conservar la prueba negativa con una forma vectorial aun no representada.
+T09-003: investigar un record SysV con dos `int` y dos `float`, cuya segunda pieza Clang representa como vector fijo. Representar el tipo vectorial de forma explicita solo si la consulta oficial y las pruebas lo acreditan; comprobar ejecucion y precompilacion y mantener una forma distinta rechazada.
+T09-003: conservar la prueba negativa de esta sesion con dos `float` seguidos de dos `int`, cuya pieza vectorial aparece primero y aun no se admite.

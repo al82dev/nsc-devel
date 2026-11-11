@@ -35,7 +35,9 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                     LLVMTypeRef second = function.cppAbiPlan->physicalReturn.elements[1].kind == interop::abi_plan::TypeKind::Double
                         ? LLVMDoubleTypeInContext(context_) :
                         function.cppAbiPlan->physicalReturn.elements[1].kind == interop::abi_plan::TypeKind::Float
-                        ? LLVMFloatTypeInContext(context_) : LLVMIntTypeInContext(context_,
+                        ? LLVMFloatTypeInContext(context_) :
+                        function.cppAbiPlan->physicalReturn.elements[1].kind == interop::abi_plan::TypeKind::Vector
+                        ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) : LLVMIntTypeInContext(context_,
                             static_cast<unsigned>(function.cppAbiPlan->physicalReturn.elements[1].widthOrCount));
                     LLVMTypeRef pieces[] = {first, second};
                     LLVMTypeRef result = LLVMStructTypeInContext(context_, pieces, 2, 0);

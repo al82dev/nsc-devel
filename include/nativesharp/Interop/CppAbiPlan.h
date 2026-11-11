@@ -9,7 +9,7 @@
 // Value-only representation; NSMeta persists the limited SysV record form consumed by the backend.
 namespace nativesharp::interop::abi_plan
 {
-enum class TypeKind { Void, Integer, Float, Double, Pointer, Structure, Array };
+enum class TypeKind { Void, Integer, Float, Double, Pointer, Structure, Array, Vector };
 struct Type
 {
     TypeKind kind = TypeKind::Void;

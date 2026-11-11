@@ -71,6 +71,15 @@ std::optional<Type> copyType(const llvm::Type* input, unsigned depth)
             result.elements.push_back(std::move(*copied));
         }
     }
+    else if (const auto* vector = llvm::dyn_cast<llvm::FixedVectorType>(input))
+    {
+        if (vector->getNumElements() != 2 || !vector->getElementType()->isFloatTy()) return std::nullopt;
+        result.kind = TypeKind::Vector;
+        result.widthOrCount = 2;
+        Type element;
+        element.kind = TypeKind::Float;
+        result.elements.push_back(std::move(element));
+    }
     else if (const auto* array = llvm::dyn_cast<llvm::ArrayType>(input))
     {
         result.kind = TypeKind::Array;
