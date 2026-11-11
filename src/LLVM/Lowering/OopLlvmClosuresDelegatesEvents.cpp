@@ -1191,9 +1191,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             return key.starts_with("type:") && !key.ends_with('*');
         };
         const bool hasRecord = std::any_of(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), recordArgument);
-        const bool recordReturn = recordArgument(node->typeKey) &&
-            std::find(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), node->typeKey) != node->argumentTypeKeys.end();
-        if (externC && node->cppFunctionPointerPlan && hasRecord && (node->typeKey == "builtin:int" || recordReturn))
+        const bool recordReturn = recordArgument(node->typeKey);
+        if (externC && node->cppFunctionPointerPlan && (hasRecord || recordReturn) && (node->typeKey == "builtin:int" || recordReturn))
         {
             using namespace interop::abi_plan;
             const auto& plan = *node->cppFunctionPointerPlan;
@@ -1210,8 +1209,15 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             if (recordReturn)
             {
                 const auto* returnLayout = findStructLayout(mirModel_, node->typeKey);
+                const auto ordinal = nameLookup_.typeOrdinalForIdentity(std::string_view(node->typeKey).substr(5));
+                const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
                 const auto& physical = plan.physicalReturn;
-                if (!returnLayout || returnLayout->alignment != 4)
+                if (!returnLayout || returnLayout->alignment != 4 || !imported || imported->isIncomplete ||
+                    !imported->deferredImportError.empty() || !imported->objectLayout ||
+                    (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
+                     imported->origin != frontend::CppImportedTypeOrigin::CUnion) ||
+                    imported->objectLayout->sizeBytes != returnLayout->size ||
+                    imported->objectLayout->alignmentBytes != returnLayout->alignment)
                     return failValue(error, "sysv_abi function pointer record return is not supported");
                 indirectReturn = returnLayout->size == 20 && plan.logicalReturn.passing == Passing::Indirect &&
                     plan.logicalReturn.alignment == 4 && physical.kind == TypeKind::Void;

@@ -1271,6 +1271,23 @@ combinacion mixta y escalares, junto a transporte, ABI e identidad
 `A:/temp/t09-transport-directed/`). No se acreditan otras firmas de retorno;
 la contradiccion de la prueba negativa anterior sigue abierta.
 
+**Record solo como retorno:** el control C con un argumento `int` y retorno de
+un record de tres enteros paso; NSC inicialmente rechazo la firma
+(`A:/temp/nsc-t09-sysv-indirecta-retorno-solo-g2fvlo0l`). Se valida la
+procedencia y el layout del retorno sin exigir que aparezca entre los
+argumentos, y se recupera su definicion desde el catalogo precompilado. Pasaron
+ocho comparaciones directas estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-record-matriz-r1l6zut9`) y las mismas
+modalidades desde una plantilla sin encabezado, con cache y rechazo de una
+variante no acreditada (`A:/temp/nsc-t09-sysv-indirecta-record-pre-utd8k0ml`).
+Pasaron las plantillas anteriores de `sret` mixto, `sret` con `byval` y
+retorno directo, junto con transporte, ABI e identidad
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-eo3k5x82`,
+`A:/temp/nsc-t09-sysv-indirecta-record-pre-m4rlg5pm`,
+`A:/temp/nsc-t09-sysv-indirecta-record-pre-gu9qo3b9`,
+`A:/temp/t09-transport-directed/`). Solo se acreditan las formas probadas; la
+prueba negativa anterior sigue intacta y pendiente de resolucion.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor

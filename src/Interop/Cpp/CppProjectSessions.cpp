@@ -373,9 +373,12 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     std::vector<ReplayRecord> selectedRecords;
     std::string parameterSource;
     std::string error;
-    for (const auto& argument : signature.parameterTypes)
+    for (std::size_t argumentIndex = 0;
+         argumentIndex < signature.parameterTypes.size() + (returnRecord ? 1U : 0U); ++argumentIndex)
     {
-        if (!parameterSource.empty()) parameterSource += ", ";
+        const bool isReturn = argumentIndex == signature.parameterTypes.size();
+        const auto& argument = isReturn ? signature.returnType : signature.parameterTypes[argumentIndex];
+        if (!isReturn && !parameterSource.empty()) parameterSource += ", ";
         if (argument.kind == CppTypeKind::Record)
         {
             const auto& type = argument;
@@ -409,7 +412,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             }
             else if (found->encoded != encoded) return {};
             const auto index = static_cast<std::size_t>(found - selectedRecords.begin());
-            parameterSource += index == 0 ? "struct __nsc_abi_record" : "struct __nsc_abi_record_" + std::to_string(index);
+            if (!isReturn)
+                parameterSource += index == 0 ? "struct __nsc_abi_record" : "struct __nsc_abi_record_" + std::to_string(index);
         }
         else
         {
