@@ -43,3 +43,4 @@ T09-001 y T09-002: obtener HIR, MIR y LLVM reales del caso de llamadas C en moda
 T09-007 y T09-008: ampliar el caso nuevo de agregados, sin quitar las comprobaciones previas, con records de 1 y 2 bytes y union de 4 bytes; repetir el contraste completo estatico y DLL O0–O3.
 T09-001: agregar un control reproducible de volcados HIR y MIR usando el fixture de llamadas ya creado, una biblioteca C temporal y el compilador de desarrollo; comprobar identidad de llamada, invocacion indirecta y promociones sin modificar pruebas existentes.
 T09-001: ampliar ese control propio para repetir los volcados con importacion DLL; conservar las comprobaciones de la biblioteca estatica.
+T09-002: agregar un control LLVM nuevo para las llamadas directas e indirectas, promociones y global importada en biblioteca estatica y DLL, usando el fixture de llamadas ya existente y salidas aisladas en A:.

@@ -148,3 +148,20 @@ Resultado de auditoria T09-001, ruta ProjectOop Windows x64:
   con biblioteca estatica y DLL; el volcado vectorcall muestra el simbolo
   decorado. La revision de la emision fisica y de sus atributos corresponde a
   T09-002; esta auditoria no afirma que los demas casos C o C++ funcionen.
+
+T09-002, control repetible inicial: `validar-llvm.py` genera el IR del caso de
+llamadas tanto con biblioteca estatica como DLL y comprueba declaraciones,
+atributo `dllimport`, lectura/escritura global y llamadas variadicas directa e
+indirecta con argumentos promovidos. Paso en A:/temp/nsc-t09-llvm-nngtbl6r.
+Esto complementa las ejecuciones previas C/NS, pero no cubre el plan fisico
+vectorcall, todas las formas de agregado ni todos los tipos; sigue abierta la
+auditoria de la emision.
+
+T09-002, comparacion vectorcall O0: se emitieron IR de Clang y NSC para el
+fixture H2 con biblioteca estatica y DLL. Ambos muestran `x86_vectorcallcc`,
+parametro H2 `inreg`, simbolo decorado y `dllimport` en la modalidad DLL.
+Clang nombra la estructura `%struct.H2` y NSC usa `{ float, float }`; la
+comparacion se limita a esos atributos observados y se complementa con las
+ejecuciones registradas. Archivos `t09-clang.ll` y `t09-ns-llvm.log` bajo
+A:/temp/nsc-t09-vectorcall-rulir0cp/{estatica,dll}-O0. Esto no certifica todas
+las firmas vectorcall ni reemplaza la auditoria de agregados y retornos.
