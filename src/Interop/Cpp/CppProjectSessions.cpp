@@ -581,12 +581,14 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     {
         const bool fixedDouble = type.kind == CppTypeKind::Floating && type.canonicalSpelling == "double" &&
             !type.isConst && !type.isVolatile && !type.isRestrict;
+        const bool fixedLong = type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "long long" &&
+            type.sizeBits == 64 && type.alignmentBits == 64 && !type.isConst && !type.isVolatile && !type.isRestrict;
         const bool fixedPointer = type.kind == CppTypeKind::Pointer && type.canonicalSpelling == "int *" &&
             type.sizeBits == 64 && type.alignmentBits == 64 && !type.isConst && !type.isVolatile &&
             !type.isRestrict && type.element && isInt(*type.element);
-        if (!isInt(type) && !fixedDouble && !fixedPointer) return {};
+        if (!isInt(type) && !fixedDouble && !fixedPointer && !fixedLong) return {};
         if (!fixedSource.empty()) fixedSource += ", ";
-        fixedSource += fixedDouble ? "double" : fixedPointer ? "int *" : "int";
+        fixedSource += fixedDouble ? "double" : fixedPointer ? "int *" : fixedLong ? "long long" : "int";
     }
     struct ReplayRecord
     {

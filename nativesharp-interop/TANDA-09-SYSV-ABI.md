@@ -1554,6 +1554,22 @@ puntero, retorno `void` y dos parametros fijos
 `A:/temp/nsc-t09-sysv-indirecta-dos-fijos-pre-uphsm1yz`). El prefijo fijo
 `long` y otras firmas siguen pendientes; T09-003 no esta cerrado.
 
+**Prefijo fijo de 64 bits:** posteriormente el control C y un productor
+independiente verificaron un prefijo `long long` de valor 5000000000; NSC
+rechazaba la firma (`A:/temp/nsc-t09-sysv-indirecta-variadica-prefijo-long-xw34srmk`).
+Tras emitir y reconstruir el prefijo segun Clang pasaron ocho comparaciones
+C/NS estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-prefijo-long-matriz-ld0p6jwc`) y plantilla
+sin encabezado, cache y rechazo de variante
+(`A:/temp/nsc-t09-sysv-indirecta-prefijo-long-pre-oyrjgfbt`). Pasaron cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones precompiladas de entero
+opcional, dos parametros fijos y retorno puntero
+(`A:/temp/nsc-t09-sysv-indirecta-record-long-pre-a10u8oib`,
+`A:/temp/nsc-t09-sysv-indirecta-dos-fijos-pre-etju2nl4`,
+`A:/temp/nsc-t09-sysv-indirecta-retorno-puntero-pre-8r8g4t5j`). Otros
+prefijos y firmas siguen pendientes; T09-003 no esta cerrado.
+
 **Retorno `int*`:** el control C y productor independiente verifican identidad
 del puntero retornado y escritura por el prefijo; NSC rechazaba la firma
 (`A:/temp/nsc-t09-sysv-indirecta-variadica-retorno-puntero-ru68m35t`). Tras

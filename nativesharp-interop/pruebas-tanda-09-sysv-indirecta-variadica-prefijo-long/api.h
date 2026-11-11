@@ -1,0 +1,4 @@
+#pragma once
+typedef struct T09IndirectVarRecord { double x; int y; } T09IndirectVarRecord;
+typedef int (__attribute__((sysv_abi)) *T09IndirectVarCallback)(long long, ...);
+T09IndirectVarCallback t09_get_var_record_callback(void);

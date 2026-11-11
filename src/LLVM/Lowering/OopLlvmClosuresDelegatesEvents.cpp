@@ -1242,7 +1242,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                         return failValue(error, "sysv_abi variadic function pointer scalar does not match its plan");
                     if (i < signature->parameters.size())
                     {
-                        if (signature->parameters[i] != key || key == "builtin:long")
+                        if (signature->parameters[i] != key)
                             return failValue(error, "sysv_abi variadic function pointer fixed argument does not match its signature");
                         fixedTypes.push_back(expected);
                     }
