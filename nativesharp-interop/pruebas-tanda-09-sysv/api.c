@@ -8,3 +8,6 @@ void __attribute__((sysv_abi)) sysv_set(int value) { sysv_value = value; }
 double __attribute__((sysv_abi)) sysv_fp(double a, float b, int c, double d) { return a + b + c + d; }
 float __attribute__((sysv_abi)) sysv_float(float value) { return value + 1.0f; }
 int* __attribute__((sysv_abi)) sysv_pointer(int* value, int delta) { *value += delta; return value; }
+long long __attribute__((sysv_abi)) sysv_wide(long long value, unsigned int delta) { return value + delta; }
+unsigned int __attribute__((sysv_abi)) sysv_unsigned(unsigned int value) { return value + 7; }
+unsigned long long __attribute__((sysv_abi)) sysv_unsigned64(unsigned long long value) { return value + 1; }

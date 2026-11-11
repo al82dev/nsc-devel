@@ -6,7 +6,8 @@ del cambio, el control C enlazo y ejecuto una suma, mientras NSC rechazo la
 convencion en HIR. Reproduccion: A:/temp/nsc-t09-sysv-77xbbf6_.
 
 El primer cambio admite llamadas directas no variadicas con parametros `int`,
-`float`, `double` o `int*` y retorno de esos tipos o `void`. La convencion se transporta de HIR
+`uint`, `long`, `ulong`, `float`, `double` o `int*` y retorno de esos tipos o
+`void`. La convencion se transporta de HIR
 a MIR y se aplica en la declaracion y llamada LLVM. Las demas firmas y la
 resolucion especial de DLL con alias TLS siguen rechazadas. Convertir la funcion
 a delegado queda rechazado hasta representar correctamente ese puntero; no se
@@ -39,6 +40,12 @@ Ampliacion de punteros: se paso y devolvio `int*`, verificando direccion y
 escritura desde C y NS. Pasaron estatica y DLL O0–O3 y plantilla precompilada
 sin encabezado en estatica O0; tambien se repitieron los rechazos. Evidencia:
 A:/temp/nsc-t09-sysv-prueba-aidhp5lh. No se extrapola a otros tipos de puntero.
+
+Ampliacion de enteros: el caso con `uint` de 4.000.000.000, `long` negativo
+de -5.000.000.000 y `ulong` de 100 paso en estatica y DLL O0–O3 y en la muestra
+precompilada sin encabezado en estatica O0. Los rechazos anteriores siguen
+pasando. Evidencia A:/temp/nsc-t09-sysv-prueba-u_11ch2e; los valores probados
+no cubren todos los extremos de los tipos.
 
 No se afirma compatibilidad de SysV con agregados, otros escalares o punteros,
 variadicas, punteros de funcion, aislamiento TLS ni otros destinos. No se han cambiado

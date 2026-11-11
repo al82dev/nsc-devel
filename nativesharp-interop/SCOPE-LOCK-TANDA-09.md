@@ -51,3 +51,4 @@ T09-003: impedir que la conversion de la funcion sysv_abi a un callback cdecl o 
 T09-003: comprobar el uso de la nueva llamada desde una plantilla NativeSharp precompilada con encabezado C oculto, mediante el contrato NSMeta vigente y sin introducir etiquetas historicas.
 T09-003: ampliar las llamadas directas SysV a parametros y retornos `float` y `double`, conservando el rechazo para agregados y callbacks; contrastar llamadas mixtas y retornos con Clang en estatica y DLL O0–O3.
 T09-003: ampliar el mismo caso a paso y retorno de `int*`, con escritura observable y comparacion C/NS en estatica, DLL y precompilado. Mantener rechazados los demas punteros hasta probarlos.
+T09-003: ampliar SysV a enteros sin signo de 32 bits y enteros con y sin signo de 64 bits; comparar argumentos, retornos y llamada mixta con Clang en estatica, DLL y precompilado.

@@ -9,5 +9,8 @@ int main(void) {
     int value = 10;
     int* result = sysv_pointer(&value, 3);
     if (result != &value || value != 13 || *result != 13) return 5;
+    if (sysv_wide(-5000000000LL, 7U) != -4999999993LL) return 6;
+    if (sysv_unsigned(4000000000U) != 4000000007U) return 7;
+    if (sysv_unsigned64(100ULL) != 101ULL) return 8;
     return 0;
 }
