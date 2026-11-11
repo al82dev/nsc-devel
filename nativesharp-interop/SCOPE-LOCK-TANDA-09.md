@@ -111,4 +111,6 @@ T09-003: contrastar y probar `double` seguido de `float` en dos piezas, incluida
 T09-003: conservar la prueba negativa de esta sesion con `float` seguido de `double`, aun no admitido.
 T09-003: contrastar y probar `float` seguido de `double`, incluida precompilacion; mantener negativa una combinacion vectorial distinta aun no admitida.
 T09-003: conservar la prueba negativa de esta sesion con un vector de dos `float` seguido de `double`, aun no admitido.
+T09-003: contrastar y probar un vector de dos `float` y un `double` en ambos ordenes, incluidas plantillas precompiladas. Mantener negativa una alineacion aun no admitida.
+T09-003: conservar la prueba negativa de esta sesion con un record vectorial alineado a 16 bytes, aun no admitido.
 T09-003: conservar la prueba negativa de esta sesion con vector fijo seguido de `double`, aun no admitido.

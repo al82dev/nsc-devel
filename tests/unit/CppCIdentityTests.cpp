@@ -1841,6 +1841,28 @@ bool checkDependencyTypeCodec()
         abi_plan::isSysVMixedRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
         restoredRecord.declaration.abiPlan->physicalReturn.elements[0].kind == abi_plan::TypeKind::Vector,
         "C dependency function retains a vector-first SysV plan");
+    for (const bool vectorFirst : {true, false})
+    {
+        auto vectorDoublePlan = std::make_shared<abi_plan::Plan>(*vectorFirstPlan);
+        vectorDoublePlan->physicalReturn.elements = vectorFirst ?
+            std::vector<abi_plan::Type>{vectorType, doubleType} : std::vector<abi_plan::Type>{doubleType, vectorType};
+        vectorDoublePlan->logicalReturn.coercion = vectorDoublePlan->physicalReturn;
+        vectorDoublePlan->logicalParameters[0].coercion = vectorDoublePlan->physicalReturn;
+        vectorDoublePlan->physicalParameters[0].type = vectorDoublePlan->physicalReturn.elements[0];
+        vectorDoublePlan->physicalParameters[1].type = vectorDoublePlan->physicalReturn.elements[1];
+        recordFunction.declaration.abiPlan = vectorDoublePlan;
+        recordFunction.declaration.returnType.sizeBits = 128;
+        recordFunction.declaration.returnType.alignmentBits = 64;
+        recordFunction.declaration.parameters[0].type.sizeBits = 128;
+        recordFunction.declaration.parameters[0].type.alignmentBits = 64;
+        ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+            decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+            abi_plan::isSysVMixedRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+            (restoredRecord.declaration.abiPlan->physicalReturn.elements[0].kind == abi_plan::TypeKind::Vector) == vectorFirst,
+            "C dependency function retains vector and double order");
+    }
+    recordFunction.declaration.returnType.alignmentBits = 32;
+    recordFunction.declaration.parameters[0].type.alignmentBits = 32;
     auto vectorShortPlan = std::make_shared<abi_plan::Plan>(*vectorFirstPlan);
     vectorShortPlan->physicalReturn.elements[1] = int32Type;
     vectorShortPlan->logicalReturn.coercion = vectorShortPlan->physicalReturn;

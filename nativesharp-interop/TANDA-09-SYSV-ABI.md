@@ -417,3 +417,15 @@ A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log. Las regresiones
 y A:/temp/nsc-t09-sysv-mixed-dd-lx5g54yu. La prueba negativa de esta sesion
 conserva el rechazo de vector seguido de `double` y de callback en
 A:/temp/nsc-t09-sysv-prueba-oil_chm1. Otras formas siguen pendientes.
+
+Vector y `double` en ambos ordenes: Clang reporto `{ <2 x float>, double }` y
+`{ double, <2 x float> }` en A:/temp/nsc-t09-vd-clang-fbjw4t7r. Los controles C
+pasaron y NSC los rechazo antes del cambio en A:/temp/nsc-t09-sysv-mixed-vd-wbzrp23r
+y A:/temp/nsc-t09-sysv-mixed-dv-707ag_lh. Despues cada muestra paso las ocho
+comparaciones estatica/DLL O0–O3, firmas LLVM y plantilla sin encabezado O0 en
+A:/temp/nsc-t09-sysv-mixed-vd-ga7r9l_d y A:/temp/nsc-t09-sysv-mixed-dv-a527hom0.
+La sonda y metadatos pasaron en A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log; la regresion `float`/`double` paso en
+A:/temp/nsc-t09-sysv-mixed-fd-exwn69qi. La prueba negativa de esta sesion
+conserva el rechazo de un record alineado a 16 y de callback en
+A:/temp/nsc-t09-sysv-prueba-kgfh90kl. Otras formas siguen pendientes.
