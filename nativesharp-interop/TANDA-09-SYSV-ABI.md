@@ -1332,6 +1332,16 @@ cerrada. Pasaron esta sonda y las dos sondas ABI anteriores
 (`A:/temp/t09-test-varptr.log`). El resultado sigue siendo experimental: no
 transporta el plan ni permite emitir la llamada.
 
+La seleccion posterior enlaza el typedef resuelto con su proyecto, referencia,
+USR, tipo proyectado y sesion real; los tipos opcionales utilizan la misma
+resolucion de procedencia que las llamadas variadicas directas. Una sonda con
+grafo real obtuvo el plan y rechazo referencia, proyecto, identidad, tipo y
+record incorrectos o ambiguos. Pasaron las cuatro sondas ABI y de procedencia
+(`A:/temp/t09-test-varptr.log`) y la matriz variadica directa con estatica y
+DLL O0-O3, incluidos records, punteros y plantillas precompiladas
+(`A:/temp/nsc-t09-sysv-varargs-dbjypza2`). Todavia no se transporta este plan
+desde la llamada indirecta ni se emite; la capacidad permanece abierta.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor

@@ -910,6 +910,10 @@ if(LLVM_FOUND)
             target_link_libraries(nsc_cpp_variadic_pointer_reconcile_tests PRIVATE nsc_cpp_interop clangTooling clangCodeGen)
             target_compile_features(nsc_cpp_variadic_pointer_reconcile_tests PRIVATE cxx_std_20)
             nsc_enable_warnings(nsc_cpp_variadic_pointer_reconcile_tests)
+            add_executable(nsc_cpp_variadic_pointer_graph_tests tests/unit/CppClangVariadicPointerGraphTests.cpp)
+            target_link_libraries(nsc_cpp_variadic_pointer_graph_tests PRIVATE nsc_cpp_interop clangTooling clangCodeGen)
+            target_compile_features(nsc_cpp_variadic_pointer_graph_tests PRIVATE cxx_std_20)
+            nsc_enable_warnings(nsc_cpp_variadic_pointer_graph_tests)
             add_executable(nsc_cpp_c_anonymous_identity_tests tests/unit/CppCAnonymousIdentityTests.cpp)
             target_link_libraries(nsc_cpp_c_anonymous_identity_tests PRIVATE nsc_cpp_interop nsc_frontend nsc_precompiled)
             target_compile_features(nsc_cpp_c_anonymous_identity_tests PRIVATE cxx_std_20)
@@ -942,6 +946,10 @@ if(LLVM_FOUND)
             add_test(NAME nsc.cpp-interop.clang-variadic-pointer-reconcile COMMAND nsc_cpp_variadic_pointer_reconcile_tests
                 "${CLANG_INSTALL_PREFIX}/lib/clang/23" "${NSC_CPP_INTEROP_TEST_ROOT}")
             set_tests_properties(nsc.cpp-interop.clang-variadic-pointer-reconcile PROPERTIES
+                ENVIRONMENT "TMP=${NSC_CPP_INTEROP_TEST_ROOT};TEMP=${NSC_CPP_INTEROP_TEST_ROOT}")
+            add_test(NAME nsc.cpp-interop.clang-variadic-pointer-graph COMMAND nsc_cpp_variadic_pointer_graph_tests
+                "${CLANG_INSTALL_PREFIX}/lib/clang/23" "${NSC_CPP_INTEROP_TEST_ROOT}")
+            set_tests_properties(nsc.cpp-interop.clang-variadic-pointer-graph PROPERTIES
                 ENVIRONMENT "TMP=${NSC_CPP_INTEROP_TEST_ROOT};TEMP=${NSC_CPP_INTEROP_TEST_ROOT}")
             add_test(NAME nsc.cpp-interop.session COMMAND nsc_cpp_session_tests
                 "${CLANG_INSTALL_PREFIX}/lib/clang/23" "${NSC_CPP_INTEROP_TEST_ROOT}"
@@ -1240,6 +1248,7 @@ if(NSC_ENABLE_CPP_INTEROP)
         target_link_libraries(nsc_cpp_abi_probe_tests PRIVATE nsc_driver)
         target_link_libraries(nsc_cpp_variadic_pointer_probe_tests PRIVATE nsc_driver)
         target_link_libraries(nsc_cpp_variadic_pointer_reconcile_tests PRIVATE nsc_driver)
+        target_link_libraries(nsc_cpp_variadic_pointer_graph_tests PRIVATE nsc_driver)
         target_link_libraries(nsc_cpp_c_identity_tests PRIVATE nsc_driver)
         target_link_libraries(nsc_cpp_c_anonymous_identity_tests PRIVATE nsc_driver)
     endif()

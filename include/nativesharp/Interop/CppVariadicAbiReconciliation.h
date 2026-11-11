@@ -51,6 +51,11 @@ std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicFunctionPointerCal
     const CppInteropSession& aliasSession, std::string_view name, const CppType& expectedPointer,
     std::span<const CppVariadicArgumentOrigin> arguments);
 
+std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicFunctionPointerForAlias(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    const frontend::ProjectNameLookup& lookup, const frontend::CppImportedTypeAlias& alias,
+    std::string_view resolvedTypeKey, std::span<const std::string> optionalTypeKeys);
+
 // Records are accepted only after resolving and comparing their live origins.
 std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,

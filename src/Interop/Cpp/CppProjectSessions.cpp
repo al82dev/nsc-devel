@@ -621,15 +621,12 @@ std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicFunctionPointerCal
     return plan;
 }
 
-std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
-    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
-    const frontend::ProjectNameLookup& lookup, const frontend::NamespaceFunctionSymbol& function,
-    std::span<const std::string> optionalTypeKeys)
+namespace
 {
-    if (!function.isVariadic || function.cppCallingConvention != "sysv_abi" ||
-        !function.cppClangUsr || function.cppClangUsr->empty() || !function.cppReturnType ||
-        function.cppParameterTypes.size() != function.parameters.size() || function.projectOrdinal >= graph.projects().size())
-        return {};
+std::optional<std::vector<CppVariadicArgumentOrigin>> resolveVariadicArgumentOrigins(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    const frontend::ProjectNameLookup& lookup, std::span<const std::string> optionalTypeKeys)
+{
     std::vector<CppVariadicArgumentOrigin> arguments;
     arguments.reserve(optionalTypeKeys.size());
     for (const auto& key : optionalTypeKeys)
@@ -707,6 +704,21 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
         else return {};
         arguments.push_back({std::move(type), nullptr});
     }
+    return arguments;
+}
+}
+
+std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    const frontend::ProjectNameLookup& lookup, const frontend::NamespaceFunctionSymbol& function,
+    std::span<const std::string> optionalTypeKeys)
+{
+    if (!function.isVariadic || function.cppCallingConvention != "sysv_abi" ||
+        !function.cppClangUsr || function.cppClangUsr->empty() || !function.cppReturnType ||
+        function.cppParameterTypes.size() != function.parameters.size() || function.projectOrdinal >= graph.projects().size())
+        return {};
+    const auto arguments = resolveVariadicArgumentOrigins(graph, projects, lookup, optionalTypeKeys);
+    if (!arguments) return {};
     const auto& projectFile = graph.projects()[function.projectOrdinal].projectFile();
     const CppInteropSession* selected = nullptr;
     std::string selectedName, selectedCanonical;
@@ -738,9 +750,48 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
         }
     }
     if (!selected) return {};
-    auto plan = reconcileCppVariadicCallAbiPlan(*selected, selectedName, selectedCanonical, arguments);
+    auto plan = reconcileCppVariadicCallAbiPlan(*selected, selectedName, selectedCanonical, *arguments);
     if (!plan || plan->symbol != function.mangledName || plan->requiredArguments != function.parameters.size()) return {};
     return std::make_shared<const abi_plan::VariadicCallPlan>(std::move(*plan));
+}
+
+std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicFunctionPointerForAlias(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    const frontend::ProjectNameLookup& lookup, const frontend::CppImportedTypeAlias& alias,
+    std::string_view resolvedTypeKey, std::span<const std::string> optionalTypeKeys)
+{
+    if (alias.fromPrecompiledCatalog || alias.projectOrdinal >= graph.projects().size() ||
+        alias.projectFile != graph.projects()[alias.projectOrdinal].projectFile() ||
+        alias.targetTriple != "x86_64-pc-windows-msvc" || !alias.declaration.clangUsr ||
+        alias.declaration.clangUsr->empty() || alias.declaration.name.empty() ||
+        alias.declaration.qualifiedName != alias.declaration.name) return {};
+    const auto mapped = projectCppStoredFunctionPointer(alias.declaration.underlyingType, alias.projectOrdinal,
+        graph.projects()[alias.projectOrdinal].moduleName(), &lookup);
+    if (!mapped || mapped->nativeSharpTypeKey != resolvedTypeKey) return {};
+    const CppInteropSession* aliasSession = nullptr;
+    for (const auto& group : projects)
+    {
+        if (group.projectFile != alias.projectFile) continue;
+        if (aliasSession || alias.referenceIndex >= group.sessions.size() || !group.sessions[alias.referenceIndex]) return {};
+        aliasSession = group.sessions[alias.referenceIndex].get();
+    }
+    if (!aliasSession || aliasSession->state() != CppSessionState::Ready ||
+        aliasSession->optionsSnapshot().language != CppLanguageMode::C ||
+        aliasSession->optionsSnapshot().targetTriple != alias.targetTriple) return {};
+    const auto aliases = aliasSession->typeAliasesSnapshot();
+    if (!aliases) return {};
+    unsigned aliasMatches = 0;
+    for (const auto& observed : *aliases)
+        if (observed.name == alias.declaration.name && observed.qualifiedName == alias.declaration.qualifiedName &&
+            observed.clangUsr == alias.declaration.clangUsr &&
+            observed.underlyingType.canonicalSpelling == alias.declaration.underlyingType.canonicalSpelling)
+            ++aliasMatches;
+    if (aliasMatches != 1) return {};
+    const auto arguments = resolveVariadicArgumentOrigins(graph, projects, lookup, optionalTypeKeys);
+    if (!arguments) return {};
+    auto plan = reconcileCppVariadicFunctionPointerCallAbiPlan(
+        *aliasSession, alias.declaration.name, alias.declaration.underlyingType, *arguments);
+    return plan ? std::make_shared<const abi_plan::VariadicCallPlan>(std::move(*plan)) : nullptr;
 }
 
 std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall(
