@@ -613,7 +613,8 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     for (const auto& type : signature.parameterTypes)
     {
         if (type.kind != CppTypeKind::Record) continue;
-        if (type.isConst || type.isVolatile || type.isRestrict || type.sizeBits != 128 || type.alignmentBits != 64 ||
+        if (type.isConst || type.isVolatile || type.isRestrict ||
+            !((type.sizeBits == 128 && type.alignmentBits == 64) || (type.sizeBits == 160 && type.alignmentBits == 32)) ||
             !type.recordIdentity || !type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty() ||
             type.recordIdentity->anonymousContext || type.recordIdentity->specializationContext ||
             !type.recordIdentity->namespaceSegments.empty() || !type.recordIdentity->containingRecords.empty() ||
@@ -629,7 +630,8 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
             !imported->deferredImportError.empty() || !imported->objectLayout ||
             imported->origin != frontend::CppImportedTypeOrigin::CStruct ||
             imported->clangUsr != type.recordIdentity->clangUsr ||
-            imported->objectLayout->sizeBytes != 16 || imported->objectLayout->alignmentBytes != 8) return {};
+            imported->objectLayout->sizeBytes != *type.sizeBits / 8 ||
+            imported->objectLayout->alignmentBytes != *type.alignmentBits / 8) return {};
         selectedRecords.push_back({identity->key(), imported, std::nullopt});
     }
     std::string fixedSource;
@@ -638,7 +640,8 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         if (!fixedSource.empty()) fixedSource += ", ";
         if (type.kind == CppTypeKind::Record)
         {
-            if (type.isConst || type.isVolatile || type.isRestrict || type.sizeBits != 128 || type.alignmentBits != 64 ||
+            if (type.isConst || type.isVolatile || type.isRestrict ||
+                !((type.sizeBits == 128 && type.alignmentBits == 64) || (type.sizeBits == 160 && type.alignmentBits == 32)) ||
                 !type.recordIdentity || !type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty() ||
                 type.recordIdentity->anonymousContext || type.recordIdentity->specializationContext ||
                 !type.recordIdentity->namespaceSegments.empty() || !type.recordIdentity->containingRecords.empty() ||
@@ -648,7 +651,8 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
             const auto found = std::find_if(selectedRecords.begin(), selectedRecords.end(),
                 [&](const auto& value) { return value.identity == identity->key(); });
             if (found == selectedRecords.end() || found->imported->clangUsr != type.recordIdentity->clangUsr ||
-                found->imported->objectLayout->sizeBytes != 16 || found->imported->objectLayout->alignmentBytes != 8) return {};
+                found->imported->objectLayout->sizeBytes != *type.sizeBits / 8 ||
+                found->imported->objectLayout->alignmentBytes != *type.alignmentBits / 8) return {};
             const auto index = static_cast<std::size_t>(found - selectedRecords.begin());
             fixedSource += index == 0 ? "struct __nsc_abi_record" : "struct __nsc_abi_record_" + std::to_string(index);
             continue;

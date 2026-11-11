@@ -1268,7 +1268,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     return failValue(error, "sysv_abi variadic function pointer argument does not match its plan");
                 if (logical.passing == Passing::Indirect)
                 {
-                    if (fixedRecord || logical.physicalCount != 1 ||
+                    if (logical.physicalCount != 1 ||
                         physical != arguments.size() || physical >= plan.physicalParameters.size() ||
                         !((layout->size == 20 && layout->alignment == 4) ||
                           (layout->size == 16 && layout->alignment == 8)) ||
@@ -1278,6 +1278,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     LLVMValueRef store = LLVMBuildStore(builder_, record, slot);
                     LLVMSetAlignment(store, 8);
                     byValues.push_back({static_cast<unsigned>(arguments.size()), carrier, 8});
+                    if (fixedRecord) fixedTypes.push_back(LLVMPointerTypeInContext(context_, 0));
                     arguments.push_back(slot);
                     continue;
                 }

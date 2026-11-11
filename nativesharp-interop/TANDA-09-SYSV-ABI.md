@@ -1635,6 +1635,23 @@ repetida, dos parametros fijos y record en pila
 `A:/temp/nsc-t09-sysv-indirecta-record-agotado-pre-t4pu_hsv`). Otros layouts
 y `byval` fijo siguen pendientes; T09-003 no esta cerrado.
 
+**Record fijo `byval`:** posteriormente el control C y un productor
+independiente comprobaron un record fijo de cinco enteros en pila y un record
+mixto opcional; NSC rechazaba el plan
+(`A:/temp/nsc-t09-sysv-indirecta-variadica-fijo-byval-c1me6015`). El productor
+modifica la copia y el consumidor comprueba que el original permanece igual.
+Tras emitir y reconstruir el fijo pasaron ocho comparaciones C/NS estatica/DLL
+O0-O3 (`A:/temp/nsc-t09-sysv-indirecta-fijo-byval-matriz-zohgj8c8`) y plantilla
+sin encabezado, cache y rechazo de variante fija
+(`A:/temp/nsc-t09-sysv-indirecta-fijo-byval-pre-mv6bpkbl`). Pasaron cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones precompiladas de records
+fijos de identidades distintas, repetidas y de record opcional en pila
+(`A:/temp/nsc-t09-sysv-indirecta-fijo-distinto-pre-1x047k_q`,
+`A:/temp/nsc-t09-sysv-indirecta-record-fijo-pre-sz6xyziu`,
+`A:/temp/nsc-t09-sysv-indirecta-record-agotado-pre-kvvugpzu`). Otros layouts
+y firmas siguen pendientes; T09-003 no esta cerrado.
+
 **Retorno `int*`:** el control C y productor independiente verifican identidad
 del puntero retornado y escritura por el prefijo; NSC rechazaba la firma
 (`A:/temp/nsc-t09-sysv-indirecta-variadica-retorno-puntero-ru68m35t`). Tras
