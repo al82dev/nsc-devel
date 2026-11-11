@@ -1,0 +1,6 @@
+int Main() {
+    T09IndirectVarRecord value; value.a = 1; value.b = 2; value.c = 3; value.d = 4; value.e = 5;
+    T09IndirectVarCallback callback = t09_get_var_record_callback();
+    if (callback(1, value) != 1 || value.a != 1 || value.e != 5) return 1;
+    return 0;
+}

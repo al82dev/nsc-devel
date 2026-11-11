@@ -1395,6 +1395,21 @@ precompilado (`A:/temp/nsc-t09-sysv-indirecta-record-matriz-mqvq91fu`,
 precompilada admite aqui la identidad repetida; otros records y firmas siguen
 pendientes, asi como los conflictos con pruebas anteriores intactas.
 
+**Record opcional por copia:** Clang clasifico un record de cinco enteros
+`byval` alineado a 8 y el control C paso; NSC rechazaba el plan
+(`A:/temp/nsc-t09-sysv-indirecta-variadica-byval-3hu61a_p`). El productor
+independiente verifica los cinco valores en pila y modifica su copia; el
+consumidor comprueba que el original no cambia. Tras emitir la copia y su
+atributo ABI pasaron ocho comparaciones C/NS estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-var-byval-matriz-lasdua2k`) y la plantilla
+sin encabezado, cache y rechazo de variante no verificada
+(`A:/temp/nsc-t09-sysv-indirecta-var-byval-pre-ztcanqmy`). Pasaron las cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y las regresiones precompiladas de uno y
+dos records mixtos (`A:/temp/nsc-t09-sysv-indirecta-record-pre-2ugglot9`,
+`A:/temp/nsc-t09-sysv-indirecta-dos-records-pre-0xjl4fde`). Este caso no
+certifica otras combinaciones por copia ni cierra T09-003.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor

@@ -1203,7 +1203,6 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 signature->parameters.size() != 1 || signature->parameters[0] != "builtin:int" ||
                 !interop::validateCppVariadicSysVCallPlan(plan, "__nsc_variadic_pointer_abi_probe", 1) ||
                 plan.arguments.size() != node->argumentCount ||
-                plan.physicalParameters.size() != 1 + 2 * (node->argumentCount - 1) ||
                 plan.physicalReturn.kind != TypeKind::Integer || plan.physicalReturn.widthOrCount != 32 ||
                 plan.arguments[0].passing != Passing::Direct || plan.arguments[0].physicalCount != 1 ||
                 plan.physicalParameters[0].type.kind != TypeKind::Integer || plan.physicalParameters[0].type.widthOrCount != 32)
@@ -1213,18 +1212,17 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             if (LLVMTypeOf(fixed) != LLVMInt32TypeInContext(context_))
                 return failValue(error, "sysv_abi variadic function pointer argument does not match its plan");
             std::vector<LLVMValueRef> arguments{fixed};
+            struct VariadicByValue { unsigned ordinal; LLVMTypeRef carrier; unsigned alignment; };
+            std::vector<VariadicByValue> byValues;
             for (std::size_t i = 1; i < node->argumentCount; ++i)
             {
                 const auto& key = node->argumentTypeKeys[i];
                 const auto* layout = findStructLayout(mirModel_, key);
                 const auto ordinal = nameLookup_.typeOrdinalForIdentity(std::string_view(key).substr(5));
                 const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
-                const auto physical = 1 + 2 * (i - 1);
-                if (plan.arguments[i].passing != Passing::Direct || plan.arguments[i].physicalCount != 2 ||
-                    plan.physicalParameters[physical].type.kind != TypeKind::Double ||
-                    plan.physicalParameters[physical + 1].type.kind != TypeKind::Integer ||
-                    plan.physicalParameters[physical + 1].type.widthOrCount != 32 ||
-                    !layout || layout->size != 16 || layout->alignment != 8 || !imported || imported->isIncomplete ||
+                const auto& logical = plan.arguments[i];
+                const auto physical = logical.firstPhysical;
+                if (!layout || !imported || imported->isIncomplete ||
                     !imported->deferredImportError.empty() || !imported->objectLayout ||
                     (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
                      imported->origin != frontend::CppImportedTypeOrigin::CUnion) ||
@@ -1235,6 +1233,27 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 LLVMTypeRef carrier = llvmType(key, error);
                 if (!carrier || LLVMTypeOf(record) != carrier)
                     return failValue(error, "sysv_abi variadic function pointer argument does not match its plan");
+                if (logical.passing == Passing::Indirect)
+                {
+                    if (node->argumentCount != 2 || logical.physicalCount != 1 ||
+                        physical != arguments.size() || physical >= plan.physicalParameters.size() ||
+                        layout->size != 20 || layout->alignment != 4 ||
+                        !plan.physicalParameters[physical].byValue || plan.physicalParameters[physical].alignment != 8)
+                        return failValue(error, "sysv_abi variadic function pointer byval plan is not supported");
+                    LLVMValueRef slot = entryBlockAlloca(carrier, 8, "sysv.varptr.byval");
+                    LLVMValueRef store = LLVMBuildStore(builder_, record, slot);
+                    LLVMSetAlignment(store, 8);
+                    byValues.push_back({static_cast<unsigned>(arguments.size()), carrier, 8});
+                    arguments.push_back(slot);
+                    continue;
+                }
+                if (logical.passing != Passing::Direct || logical.physicalCount != 2 ||
+                    physical != arguments.size() || physical + 1 >= plan.physicalParameters.size() ||
+                    plan.physicalParameters[physical].type.kind != TypeKind::Double ||
+                    plan.physicalParameters[physical + 1].type.kind != TypeKind::Integer ||
+                    plan.physicalParameters[physical + 1].type.widthOrCount != 32 ||
+                    layout->size != 16 || layout->alignment != 8)
+                    return failValue(error, "sysv_abi variadic function pointer record plan is not supported");
                 LLVMValueRef slot = entryBlockAlloca(carrier, 8, "sysv.varptr.record");
                 LLVMValueRef store = LLVMBuildStore(builder_, record, slot);
                 LLVMSetAlignment(store, 8);
@@ -1246,6 +1265,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 arguments.push_back(first);
                 arguments.push_back(second);
             }
+            if (arguments.size() != plan.physicalParameters.size())
+                return failValue(error, "sysv_abi variadic function pointer physical argument count is invalid");
             releaseTransferredArguments(node);
             delegateValue = checkedReceiver(delegateValue, error);
             if (!delegateValue) return nullptr;
@@ -1254,6 +1275,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, arguments.data(),
                 static_cast<unsigned>(arguments.size()), "sysv.varptr.result");
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
+            for (const auto& value : byValues)
+                applySysVRecordByValue(context_, value.carrier, value.alignment, value.ordinal,
+                    [&](LLVMAttributeIndex index, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, index, attribute); });
             return call;
         }
         const bool hasRecord = std::any_of(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), recordArgument);

@@ -575,7 +575,9 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     if (!imported || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
         !imported->deferredImportError.empty() || !imported->objectLayout || !imported->clangUsr ||
         imported->origin != frontend::CppImportedTypeOrigin::CStruct ||
-        imported->objectLayout->sizeBytes != 16 || imported->objectLayout->alignmentBytes != 8) return {};
+        !((imported->objectLayout->sizeBytes == 16 && imported->objectLayout->alignmentBytes == 8) ||
+          (optionalTypeKeys.size() == 1 && imported->objectLayout->sizeBytes == 20 &&
+           imported->objectLayout->alignmentBytes == 4))) return {};
     std::string error;
     std::vector<std::uint8_t> aliasType;
     if (!metadata_detail::encodeCDependencyType(pointer, aliasType, error)) return {};
@@ -613,12 +615,24 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     if (!record.plainReplaySyntax || record.moduleName != moduleName ||
         !record.namespaceSegments.empty() || !record.containingRecords.empty() ||
         record.clangUsr != imported->clangUsr || record.name != imported->identity.name() ||
-        record.kind != CppRecordKind::Struct || record.sizeBits != 128 || record.alignmentBits != 64 ||
-        record.fields.size() != 2) return {};
-    const auto& first = record.fields[0];
-    const auto& second = record.fields[1];
-    if (first.bitWidth || first.type.kind != CppTypeKind::Floating || first.type.canonicalSpelling != "double" ||
-        first.offsetBits != 0 || second.bitWidth || !isInt(second.type) || second.offsetBits != 64) return {};
+        record.kind != CppRecordKind::Struct || !record.sizeBits || !record.alignmentBits ||
+        *record.sizeBits != imported->objectLayout->sizeBytes * 8 ||
+        *record.alignmentBits != imported->objectLayout->alignmentBytes * 8) return {};
+    if (record.sizeBits == 128 && record.alignmentBits == 64 && record.fields.size() == 2)
+    {
+        const auto& first = record.fields[0];
+        const auto& second = record.fields[1];
+        if (first.bitWidth || first.type.kind != CppTypeKind::Floating || first.type.canonicalSpelling != "double" ||
+            first.offsetBits != 0 || second.bitWidth || !isInt(second.type) || second.offsetBits != 64) return {};
+    }
+    else if (optionalTypeKeys.size() == 1 && record.sizeBits == 160 && record.alignmentBits == 32 &&
+             record.fields.size() == 5)
+    {
+        for (std::size_t i = 0; i < record.fields.size(); ++i)
+            if (record.fields[i].bitWidth || !isInt(record.fields[i].type) ||
+                record.fields[i].offsetBits != i * 32) return {};
+    }
+    else return {};
     const auto declaration = makeSimpleCRecordAbiReplay(record, 0);
     if (!declaration) return {};
     CppSessionOptions options;
