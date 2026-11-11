@@ -1884,6 +1884,20 @@ bool checkDependencyTypeCodec()
         "C dependency function retains a scalar before two records");
     std::rotate(recordFunction.declaration.parameters.begin(), recordFunction.declaration.parameters.begin() + 1,
                 recordFunction.declaration.parameters.end());
+    auto pairSmallPlan = std::make_shared<abi_plan::Plan>(*differentPairPlan);
+    pairSmallPlan->logicalParameters[1].coercion = abi_plan::Type{abi_plan::TypeKind::Integer, 32};
+    pairSmallPlan->logicalParameters[1].physicalCount = 1;
+    pairSmallPlan->logicalParameters[2].firstPhysical = 3;
+    pairSmallPlan->physicalParameters[2].type = abi_plan::Type{abi_plan::TypeKind::Integer, 32};
+    pairSmallPlan->physicalParameters.erase(pairSmallPlan->physicalParameters.begin() + 3);
+    recordFunction.declaration.parameters[1].type.sizeBits = 32;
+    recordFunction.declaration.abiPlan = pairSmallPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVTwoIntegerRecordWithScalars(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->logicalParameters[1].physicalCount == 1 &&
+        restoredRecord.declaration.abiPlan->logicalParameters[2].firstPhysical == 3,
+        "C dependency function retains records passed in one and two pieces");
     recordFunction.declaration.returnType.sizeBits = 128;
     recordFunction.declaration.parameters[0].type.sizeBits = 128;
     recordFunction.declaration.parameters.resize(1);

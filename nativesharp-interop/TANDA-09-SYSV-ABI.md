@@ -763,3 +763,20 @@ A:/temp/nsc-t09-sysv-mixed-vv-75bvrj_f), y el control general con rechazo
 de un record indirecto mixto (A:/temp/nsc-t09-sysv-prueba-bgf8v0mk). Quedan
 pendientes otras clases y formas indirectas; T09-003 continua abierto.
 
+## Records de una y dos piezas en la misma firma
+
+La referencia C con un record de doce bytes, otro de cuatro e `int` paso, y
+NSC rechazaba esa firma (A:/temp/nsc-t09-sysv-pair-small-6650stbj). Se
+ampliaron la validacion, conservacion del plan y generacion para distinguir
+un record de una pieza de un entero escalar con el mismo tipo fisico. La
+muestra paso ocho comparaciones estatica/DLL O0–O3, argumentos nombrados y
+plantilla precompilada sin encabezado O0
+(A:/temp/nsc-t09-sysv-pair-small-lw338m45); el orden inverso paso las mismas
+comprobaciones (A:/temp/nsc-t09-sysv-small-pair-stnk29ds). Sonda Clang y
+metadatos: A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log.
+Pasaron las regresiones de escalar seguido de dos records y de dos piezas
+vectoriales (A:/temp/nsc-t09-sysv-scalar-pairs-ghzfuzky y
+A:/temp/nsc-t09-sysv-mixed-vv-6g1w9lix). La muestra usa records de cuatro y
+doce bytes con clasificacion entera; no certifica otras clases ni agregados
+indirectos. T09-003 sigue abierto.
+

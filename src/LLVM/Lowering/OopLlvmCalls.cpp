@@ -1019,7 +1019,29 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     arguments.push_back(firstPiece);
                     arguments.push_back(secondPiece);
                 }
-                else arguments.push_back(sourceArguments[order[i]]);
+                else
+                {
+                    const auto& argumentKey = node->children[order[i]]->typeKey;
+                    const auto physicalIndex = imported->cppAbiPlan->logicalParameters[i].firstPhysical;
+                    const auto& physical = imported->cppAbiPlan->physicalParameters[physicalIndex].type;
+                    const bool scalarInteger = argumentKey == "builtin:int" || argumentKey == "builtin:uint" ||
+                        argumentKey == "builtin:long" || argumentKey == "builtin:ulong";
+                    if (physical.kind == interop::abi_plan::TypeKind::Integer && !scalarInteger)
+                    {
+                        LLVMTypeRef argumentCarrier = llvmType(argumentKey, error);
+                        if (!argumentCarrier) return nullptr;
+                        const unsigned argumentAlignment = structAlignmentFor(argumentKey);
+                        if (argumentAlignment == 0) return failValue(error, "SysV small argument has no alignment");
+                        LLVMValueRef slot = entryBlockAlloca(argumentCarrier, argumentAlignment, "sysv.pair.small.arg");
+                        LLVMValueRef store = LLVMBuildStore(builder_, sourceArguments[order[i]], slot);
+                        LLVMSetAlignment(store, argumentAlignment);
+                        LLVMTypeRef integer = LLVMIntTypeInContext(context_, static_cast<unsigned>(physical.widthOrCount));
+                        LLVMValueRef piece = LLVMBuildLoad2(builder_, integer, slot, "sysv.pair.small.piece");
+                        LLVMSetAlignment(piece, argumentAlignment);
+                        arguments.push_back(piece);
+                    }
+                    else arguments.push_back(sourceArguments[order[i]]);
+                }
             }
             releaseTransferredArguments(node);
             LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,

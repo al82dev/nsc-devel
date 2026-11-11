@@ -107,6 +107,7 @@ int main(int argc, char** argv) {
         R12 __attribute__((sysv_abi)) ptwopairs(R12, R12, int);
         R12 __attribute__((sysv_abi)) pdifferentpairs(R12, R16, int);
         R12 __attribute__((sysv_abi)) pscalarpairs(int, R12, R16);
+        R12 __attribute__((sysv_abi)) ppairsmall(R12, R4, int);
         R4 __attribute__((sysv_abi)) peight(R4, R4, R4, R4, R4, R4, R4, R4);
         R1 __attribute__((sysv_abi)) p1(R1);
         R2 __attribute__((sysv_abi)) p2(R2);
@@ -215,14 +216,14 @@ int main(int argc, char** argv) {
             name != "p11" && name != "p12" && name != "p13" && name != "p14" && name != "p15" &&
             name != "p16" && name != "pf" && name != "p24" && name != "p24b" && name != "p24i" && name != "p17b" &&
             name != "p20b" && name != "p20s" && name != "p32b" && name != "pid" && name != "pdd" && name != "pdf" && name != "pfd" && name != "pvd" && name != "pdv" && name != "pif" && name != "piv" && name != "pvi" && name != "pvs" && name != "pvv" && name != "pvv16" && name != "pvv32" && name != "pvv64" && name != "pvv128" && name != "pvv256" && name != "pvv16i" && name != "pvf" && name != "ponev" && name != "ponef" && name != "poned" && name != "ptwo" && name != "peight" && name != "ps8" && name != "pm" &&
-            name != "pp" && name != "pvec" && name != "pvoid" && name != "phetero" && name != "pscalar" && name != "pscalarfirst" && name != "pmixed8" && name != "pscalarfloat" && name != "pscalardouble" && name != "pfloatfirst" && name != "pdoublefirst" && name != "pfloats" && name != "pfloatstack" && name != "precordptr" && name != "ppairmix" && name != "ppairints" && name != "ptwopairs" && name != "pdifferentpairs" && name != "pscalarpairs") continue;
+            name != "pp" && name != "pvec" && name != "pvoid" && name != "phetero" && name != "pscalar" && name != "pscalarfirst" && name != "pmixed8" && name != "pscalarfloat" && name != "pscalardouble" && name != "pfloatfirst" && name != "pdoublefirst" && name != "pfloats" && name != "pfloatstack" && name != "precordptr" && name != "ppairmix" && name != "ppairints" && name != "ptwopairs" && name != "pdifferentpairs" && name != "pscalarpairs" && name != "ppairsmall") continue;
         if (name == "p3" && copiedPlans.contains(name)) continue;
         auto* physical = clang::CodeGen::convertFreeFunctionType(generator->CGM(), function);
         clang::CanQual<clang::FunctionProtoType> prototype =
             context.getCanonicalType(function->getType()).getAs<clang::FunctionProtoType>();
         if (!prototype) return 12;
         const auto& plan = clang::CodeGen::arrangeFreeFunctionType(generator->CGM(), prototype);
-        if (plan.arg_size() != ((name == "pm" || name == "ppairints") ? 4U : name == "pvoid" ? 0U : (name == "pfloats" || name == "ppairmix" || name == "ptwopairs" || name == "pdifferentpairs" || name == "pscalarpairs") ? 3U : name == "pfloatstack" ? 10U : (name == "ptwo" || name == "phetero" || name == "pscalar" || name == "pscalarfirst" || name == "pscalarfloat" || name == "pscalardouble" || name == "pfloatfirst" || name == "pdoublefirst" || name == "precordptr") ? 2U : (name == "peight" || name == "pmixed8") ? 8U : 1U)) return 13;
+        if (plan.arg_size() != ((name == "pm" || name == "ppairints") ? 4U : name == "pvoid" ? 0U : (name == "pfloats" || name == "ppairmix" || name == "ptwopairs" || name == "pdifferentpairs" || name == "pscalarpairs" || name == "ppairsmall") ? 3U : name == "pfloatstack" ? 10U : (name == "ptwo" || name == "phetero" || name == "pscalar" || name == "pscalarfirst" || name == "pscalarfloat" || name == "pscalardouble" || name == "pfloatfirst" || name == "pdoublefirst" || name == "precordptr") ? 2U : (name == "peight" || name == "pmixed8") ? 8U : 1U)) return 13;
         std::string copyError;
         auto copied = t09_probe::copyPlan(*generator, *function, copyError);
         if (!copied) { llvm::errs() << copyError << "\n"; return 19; }
@@ -282,7 +283,7 @@ int main(int argc, char** argv) {
         if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
-    if (matched != 68 || copiedPlans.size() != 68 || !unsupportedRejected || !variadicRejected ||
+    if (matched != 69 || copiedPlans.size() != 69 || !unsupportedRejected || !variadicRejected ||
         !noPrototypeRejected || !attributeRejected) return 7;
     generator.reset();
     ast.reset();
@@ -395,6 +396,8 @@ int main(int argc, char** argv) {
     if (!t09_probe::isSysVTwoIntegerRecordWithScalars(copiedPlans.at("pscalarpairs"), "pscalarpairs") ||
         copiedPlans.at("pscalarpairs").logicalParameters[1].firstPhysical != 1 ||
         copiedPlans.at("pscalarpairs").logicalParameters[2].firstPhysical != 3) return 122;
+    if (!t09_probe::isSysVTwoIntegerRecordWithScalars(copiedPlans.at("ppairsmall"), "ppairsmall") ||
+        copiedPlans.at("ppairsmall").logicalParameters[1].physicalCount != 1) return 123;
     if (!t09_probe::isSysVSingleFloatingRecordRoundTrip(copiedPlans.at("ponef"), "ponef") ||
         !t09_probe::isSysVSingleFloatingRecordRoundTrip(copiedPlans.at("poned"), "poned")) return 92;
     if (!t09_probe::isSysVMixedDoubleI32RecordRoundTrip(pf, "pf") ||

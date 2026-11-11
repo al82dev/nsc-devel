@@ -1887,8 +1887,10 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                                 kind == interop::abi_plan::TypeKind::Integer &&
                                 symbol.cppParameterTypes[i].sizeBits == symbol.cppAbiPlan->physicalParameters[physicalIndex].type.widthOrCount;
                             const bool directRecord = symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Record &&
-                                symbol.cppAbiPlan->logicalParameters[i].physicalCount == 2 &&
-                                symbol.cppParameterTypes[i].sizeBits == 64 + symbol.cppAbiPlan->physicalParameters[physicalIndex + 1].type.widthOrCount;
+                                ((symbol.cppAbiPlan->logicalParameters[i].physicalCount == 2 &&
+                                  symbol.cppParameterTypes[i].sizeBits == 64 + symbol.cppAbiPlan->physicalParameters[physicalIndex + 1].type.widthOrCount) ||
+                                 (symbol.cppAbiPlan->logicalParameters[i].physicalCount == 1 &&
+                                  symbol.cppParameterTypes[i].sizeBits == symbol.cppAbiPlan->physicalParameters[physicalIndex].type.widthOrCount));
                             hasRecord |= directRecord;
                             if (!(scalarInteger || directRecord ||
                                   (key == "builtin:float" && symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Floating && kind == interop::abi_plan::TypeKind::Float) ||
