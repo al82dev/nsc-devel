@@ -447,7 +447,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     // The current contract stores the direct aggregate plans the backend can consume.
     // A missing observation is never interpreted as an ABI classification.
     const bool directRecord = f.abiPlan && abi_plan::isSysVSmallRecordRoundTrip(*f.abiPlan, value.linkSymbol);
-    const bool twoRecords = f.abiPlan && abi_plan::isSysVTwoSmallRecordsRoundTrip(*f.abiPlan, value.linkSymbol);
+    const bool manyRecords = f.abiPlan && abi_plan::isSysVSmallRecordsRoundTrip(*f.abiPlan, value.linkSymbol);
     const bool singleVector = f.abiPlan && abi_plan::isSysVSingleVector2FRecordRoundTrip(*f.abiPlan, value.linkSymbol);
     const bool singleFloating = f.abiPlan && abi_plan::isSysVSingleFloatingRecordRoundTrip(*f.abiPlan, value.linkSymbol);
     const bool singleFloat = singleFloating && f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Float;
@@ -467,19 +467,21 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
          (mixedVectorSecond && mixedDoubleFirst));
     const bool mixedVectorFirstFloat = mixedVectorFirst && mixedFloatSecond;
     const bool mixedVectorFirstI32 = mixedVectorFirst && f.abiPlan->physicalReturn.elements[1].widthOrCount == 32;
-    writer.u8(twoRecords ? 20 : directRecord ? 1 : singleVector ? 12 : singleFloating ? (singleFloat ? 13 : 14) : pairRecord ? 2 : indirectRecord ? 3 :
+    writer.u8(manyRecords ? 20 : directRecord ? 1 : singleVector ? 12 : singleFloating ? (singleFloat ? 13 : 14) : pairRecord ? 2 : indirectRecord ? 3 :
               mixedRecord ? (mixedVectorDouble ? (mixedVectorFirst ? 18 : 19) : mixedFloatFirst ? 17 : mixedBothDouble ? 15 : mixedDoubleFloat ? 16 : mixedDoubleFirst ? 4 : mixedVectorFirstFloat ? 11 : mixedFloatSecond ? 6 : mixedBothVectors ? 10 : mixedVectorSecond ? 7 :
                              mixedVectorFirst ? (mixedVectorFirstI32 ? 9 : 8) : 5) : 0);
-    if (directRecord || twoRecords || singleVector || singleFloating || pairRecord || indirectRecord || mixedRecord)
+    if (directRecord || manyRecords || singleVector || singleFloating || pairRecord || indirectRecord || mixedRecord)
     {
         const auto secondBits = pairRecord ? f.abiPlan->physicalReturn.elements[1].widthOrCount : 0;
         const auto bits = singleVector ? 64 : singleFloating ? (singleFloat ? 32 : 64) : mixedRecord ? ((mixedFloatSecond && !mixedDoubleFloat) || mixedVectorFirstI32 ? 96 : 128) : indirectRecord ? f.returnType.sizeBits.value_or(0) :
                           pairRecord ? 64 + secondBits : f.abiPlan->physicalReturn.widthOrCount;
         if (f.callingConvention != "sysv_abi" || f.variadic || !f.hasPrototype ||
             f.externalSymbol != value.linkSymbol || f.returnType.kind != CppTypeKind::Record ||
-            f.returnType.sizeBits != bits || f.parameters.size() != (twoRecords ? 2U : 1U) ||
+            f.returnType.sizeBits != bits || f.parameters.size() != (manyRecords ? f.abiPlan->logicalParameters.size() : 1U) ||
             f.parameters[0].type.kind != CppTypeKind::Record || f.parameters[0].type.sizeBits != bits ||
-            (twoRecords && (f.parameters[1].type.kind != CppTypeKind::Record || f.parameters[1].type.sizeBits != bits)) ||
+            (manyRecords && !std::all_of(f.parameters.begin(), f.parameters.end(), [&](const auto& parameter) {
+                return parameter.type.kind == CppTypeKind::Record && parameter.type.sizeBits == bits;
+            })) ||
             (indirectRecord && (bits <= 128 || bits % 8 != 0 ||
                 f.returnType.alignmentBits != f.abiPlan->logicalReturn.alignment * 8 ||
                 f.parameters[0].type.alignmentBits != f.abiPlan->logicalReturn.alignment * 8)) ||
@@ -615,15 +617,18 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
             plan->physicalParameters.push_back(physical);
             if (recordPlan == 20)
             {
-                auto secondLogical = plan->logicalParameters[0];
-                secondLogical.firstPhysical = 1;
-                plan->logicalParameters.push_back(std::move(secondLogical));
-                plan->physicalParameters.push_back(physical);
+                for (std::size_t i = 1; i < f.parameters.size(); ++i)
+                {
+                    auto nextLogical = plan->logicalParameters[0];
+                    nextLogical.firstPhysical = i;
+                    plan->logicalParameters.push_back(std::move(nextLogical));
+                    plan->physicalParameters.push_back(physical);
+                }
             }
             else if (recordPlan == 2 || (recordPlan >= 4 && recordPlan <= 11) || recordPlan >= 15) { physical.type = integer; plan->physicalParameters.push_back(physical); }
             if (!(recordPlan == 1 ? abi_plan::isSysVSmallRecordRoundTrip(*plan, value.linkSymbol) :
                   recordPlan == 2 ? abi_plan::isSysVTwoIntegerRecordRoundTrip(*plan, value.linkSymbol) :
-                  recordPlan == 20 ? abi_plan::isSysVTwoSmallRecordsRoundTrip(*plan, value.linkSymbol) :
+                  recordPlan == 20 ? abi_plan::isSysVSmallRecordsRoundTrip(*plan, value.linkSymbol) :
                   recordPlan == 12 ? abi_plan::isSysVSingleVector2FRecordRoundTrip(*plan, value.linkSymbol) :
                   recordPlan == 13 || recordPlan == 14 ? abi_plan::isSysVSingleFloatingRecordRoundTrip(*plan, value.linkSymbol) :
                                     abi_plan::isSysVMixedRecordRoundTrip(*plan, value.linkSymbol)))

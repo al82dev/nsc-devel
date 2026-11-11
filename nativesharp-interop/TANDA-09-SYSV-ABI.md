@@ -502,3 +502,16 @@ de un record y dos vectores pasaron en A:/temp/nsc-t09-sysv-r4-4qhuf7p6 y
 A:/temp/nsc-t09-sysv-mixed-vv-3jyp565l. La prueba negativa de esta sesion
 conserva el rechazo de tres records y de callback en
 A:/temp/nsc-t09-sysv-prueba-8lqn7jbp. Otras firmas siguen pendientes.
+
+Varios argumentos de record pequeno: Clang emitio ocho argumentos `i32` para
+la muestra de cuatro bytes (A:/temp/nsc-t09-if-clang-0pu9xuh8). El control C
+paso y NSC rechazo inicialmente la firma en A:/temp/nsc-t09-sysv-eight-1l4naxr7.
+Se generalizo la forma directa del mismo tipo para varios argumentos. La muestra
+de ocho, que supera los registros de argumentos disponibles, paso las ocho
+comparaciones estatica/DLL O0–O3, firmas LLVM, orden, copias y plantilla sin
+encabezado O0 en A:/temp/nsc-t09-sysv-eight-ajv5p1ja. La sonda y metadatos
+pasaron en A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log.
+Las regresiones de dos y un record pasaron en A:/temp/nsc-t09-sysv-two-beru2_iy
+y A:/temp/nsc-t09-sysv-r4-6wjag0eb. La prueba negativa de esta sesion conserva
+el rechazo de records de tipos distintos y de callback en
+A:/temp/nsc-t09-sysv-prueba-xe3d6crd. Otras firmas siguen pendientes.

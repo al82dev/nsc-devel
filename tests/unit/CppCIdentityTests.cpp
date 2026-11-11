@@ -1642,6 +1642,22 @@ bool checkDependencyTypeCodec()
         decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
         abi_plan::isSysVTwoSmallRecordsRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
         "C dependency function retains two direct record arguments");
+    auto eightPlan = std::make_shared<abi_plan::Plan>(*twoSmallPlan);
+    for (std::size_t i = 2; i < 8; ++i)
+    {
+        auto logical = eightPlan->logicalParameters[0];
+        logical.firstPhysical = i;
+        eightPlan->logicalParameters.push_back(logical);
+        eightPlan->physicalParameters.push_back(eightPlan->physicalParameters[0]);
+        recordFunction.declaration.parameters.push_back(recordFunction.declaration.parameters[0]);
+    }
+    recordFunction.declaration.abiPlan = eightPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVSmallRecordsRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->logicalParameters.size() == 8,
+        "C dependency function retains eight direct record arguments");
+    recordFunction.declaration.parameters.resize(2);
     recordFunction.declaration.parameters.pop_back();
     for (const std::uint64_t bits : {8U, 16U, 40U, 48U, 56U, 64U})
     {

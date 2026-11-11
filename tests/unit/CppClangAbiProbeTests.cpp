@@ -91,6 +91,7 @@ int main(int argc, char** argv) {
         R3 __attribute__((sysv_abi)) p3(R3);
         R4 __attribute__((sysv_abi)) p4(R4);
         R4 __attribute__((sysv_abi)) ptwo(R4, R4);
+        R4 __attribute__((sysv_abi)) peight(R4, R4, R4, R4, R4, R4, R4, R4);
         R1 __attribute__((sysv_abi)) p1(R1);
         R2 __attribute__((sysv_abi)) p2(R2);
         R8 __attribute__((sysv_abi)) p8(R8);
@@ -197,7 +198,7 @@ int main(int argc, char** argv) {
             name != "p6" && name != "p7" && name != "p8" && name != "p9" && name != "p10" &&
             name != "p11" && name != "p12" && name != "p13" && name != "p14" && name != "p15" &&
             name != "p16" && name != "pf" && name != "p24" && name != "p24b" && name != "p24i" && name != "p17b" &&
-            name != "p20b" && name != "p20s" && name != "p32b" && name != "pid" && name != "pdd" && name != "pdf" && name != "pfd" && name != "pvd" && name != "pdv" && name != "pif" && name != "piv" && name != "pvi" && name != "pvs" && name != "pvv" && name != "pvv16" && name != "pvv32" && name != "pvv64" && name != "pvv128" && name != "pvv256" && name != "pvv16i" && name != "pvf" && name != "ponev" && name != "ponef" && name != "poned" && name != "ptwo" && name != "ps8" && name != "pm" &&
+            name != "p20b" && name != "p20s" && name != "p32b" && name != "pid" && name != "pdd" && name != "pdf" && name != "pfd" && name != "pvd" && name != "pdv" && name != "pif" && name != "piv" && name != "pvi" && name != "pvs" && name != "pvv" && name != "pvv16" && name != "pvv32" && name != "pvv64" && name != "pvv128" && name != "pvv256" && name != "pvv16i" && name != "pvf" && name != "ponev" && name != "ponef" && name != "poned" && name != "ptwo" && name != "peight" && name != "ps8" && name != "pm" &&
             name != "pp" && name != "pvec" && name != "pvoid") continue;
         if (name == "p3" && copiedPlans.contains(name)) continue;
         auto* physical = clang::CodeGen::convertFreeFunctionType(generator->CGM(), function);
@@ -205,7 +206,7 @@ int main(int argc, char** argv) {
             context.getCanonicalType(function->getType()).getAs<clang::FunctionProtoType>();
         if (!prototype) return 12;
         const auto& plan = clang::CodeGen::arrangeFreeFunctionType(generator->CGM(), prototype);
-        if (plan.arg_size() != (name == "pm" ? 4U : name == "pvoid" ? 0U : name == "ptwo" ? 2U : 1U)) return 13;
+        if (plan.arg_size() != (name == "pm" ? 4U : name == "pvoid" ? 0U : name == "ptwo" ? 2U : name == "peight" ? 8U : 1U)) return 13;
         std::string copyError;
         auto copied = t09_probe::copyPlan(*generator, *function, copyError);
         if (!copied) { llvm::errs() << copyError << "\n"; return 19; }
@@ -265,7 +266,7 @@ int main(int argc, char** argv) {
         if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
-    if (matched != 51 || copiedPlans.size() != 51 || !unsupportedRejected || !variadicRejected ||
+    if (matched != 52 || copiedPlans.size() != 52 || !unsupportedRejected || !variadicRejected ||
         !noPrototypeRejected || !attributeRejected) return 7;
     generator.reset();
     ast.reset();
@@ -330,6 +331,7 @@ int main(int argc, char** argv) {
         copiedPlans.at("pvf").physicalReturn.elements[1].kind != t09_probe::TypeKind::Float) return 90;
     if (!t09_probe::isSysVSingleVector2FRecordRoundTrip(copiedPlans.at("ponev"), "ponev")) return 91;
     if (!t09_probe::isSysVTwoSmallRecordsRoundTrip(copiedPlans.at("ptwo"), "ptwo")) return 102;
+    if (!t09_probe::isSysVSmallRecordsRoundTrip(copiedPlans.at("peight"), "peight")) return 103;
     if (!t09_probe::isSysVSingleFloatingRecordRoundTrip(copiedPlans.at("ponef"), "ponef") ||
         !t09_probe::isSysVSingleFloatingRecordRoundTrip(copiedPlans.at("poned"), "poned")) return 92;
     if (!t09_probe::isSysVMixedDoubleI32RecordRoundTrip(pf, "pf") ||

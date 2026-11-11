@@ -307,12 +307,15 @@ void configureFunctionAbi(
     std::span<const ProjectOopMirStructLayout> layouts)
 {
     if (function.cppSysVCall && function.cppAbiPlan &&
-        interop::abi_plan::isSysVTwoSmallRecordsRoundTrip(*function.cppAbiPlan, function.cAbiName))
+        interop::abi_plan::isSysVSmallRecordsRoundTrip(*function.cppAbiPlan, function.cAbiName))
     {
         function.abi.returnPassing = ProjectOopMirAbiPassing::Direct;
-        function.abi.parameterPassing = {ProjectOopMirAbiPassing::Direct, ProjectOopMirAbiPassing::Direct};
-        function.abi.parameterPhysicalOrdinals = {0, 1};
-        function.abi.physicalParameterCount = 2;
+        for (std::size_t i = 0; i < function.cppAbiPlan->logicalParameters.size(); ++i)
+        {
+            function.abi.parameterPassing.push_back(ProjectOopMirAbiPassing::Direct);
+            function.abi.parameterPhysicalOrdinals.push_back(i);
+        }
+        function.abi.physicalParameterCount = function.cppAbiPlan->physicalParameters.size();
         return;
     }
     if (function.cppSysVCall && function.cppAbiPlan &&

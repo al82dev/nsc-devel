@@ -834,11 +834,12 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
 
         const auto* imported = found->second.mirFunction;
         if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
-            interop::abi_plan::isSysVTwoSmallRecordsRoundTrip(*imported->cppAbiPlan, imported->cAbiName))
+            interop::abi_plan::isSysVSmallRecordsRoundTrip(*imported->cppAbiPlan, imported->cAbiName))
         {
-            if (node->children.size() != 2 || node->referenceResult || node->returnsAssignedValue ||
-                (argumentOverrides && argumentOverrides->size() != 2))
-                return failValue(error, "SysV two-record call has an unexpected argument contract");
+            const auto count = imported->cppAbiPlan->logicalParameters.size();
+            if (node->children.size() != count || node->referenceResult || node->returnsAssignedValue ||
+                (argumentOverrides && argumentOverrides->size() != count))
+                return failValue(error, "SysV multiple-record call has an unexpected argument contract");
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (!carrier) return nullptr;
             const unsigned alignment = structAlignmentFor(node->typeKey);
@@ -846,10 +847,10 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             LLVMTypeRef integer = LLVMIntTypeInContext(context_,
                 static_cast<unsigned>(imported->cppAbiPlan->physicalReturn.widthOrCount));
             std::vector<LLVMValueRef> sourceArguments;
-            for (std::size_t index = 0; index < 2; ++index)
+            for (std::size_t index = 0; index < count; ++index)
             {
                 if (node->children[index]->typeKey != node->typeKey)
-                    return failValue(error, "SysV two-record call has a mismatched argument type");
+                    return failValue(error, "SysV multiple-record call has a mismatched argument type");
                 LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[index] :
                     lowerExpression(node->children[index].get(), error);
                 if (!value) return nullptr;
@@ -863,11 +864,13 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             }
             std::vector<std::size_t> parameterToSource;
             if (!callArgumentOrder(node, sourceArguments.size(), parameterToSource, error)) return nullptr;
-            if (parameterToSource.size() != 2) return failValue(error, "SysV two-record argument mapping is invalid");
-            LLVMValueRef arguments[] = {sourceArguments[parameterToSource[0]], sourceArguments[parameterToSource[1]]};
+            if (parameterToSource.size() != count) return failValue(error, "SysV record argument mapping is invalid");
+            std::vector<LLVMValueRef> arguments;
+            arguments.reserve(count);
+            for (const auto source : parameterToSource) arguments.push_back(sourceArguments[source]);
             releaseTransferredArguments(node);
             LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
-                arguments, 2, "sysv.records.call", error);
+                arguments.data(), static_cast<unsigned>(arguments.size()), "sysv.records.call", error);
             if (!call) return nullptr;
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
             if (!applyMustTail(node, call, error)) return nullptr;

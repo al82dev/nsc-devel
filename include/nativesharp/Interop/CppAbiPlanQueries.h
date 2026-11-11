@@ -4,7 +4,7 @@
 
 namespace nativesharp::interop::abi_plan
 {
-inline bool isSysVTwoSmallRecordsRoundTrip(const Plan& plan, std::string_view symbol) noexcept
+inline bool isSysVSmallRecordsRoundTrip(const Plan& plan, std::string_view symbol) noexcept
 {
     const auto bits = plan.physicalReturn.widthOrCount;
     const auto integer = [bits](const Type& type) {
@@ -15,8 +15,8 @@ inline bool isSysVTwoSmallRecordsRoundTrip(const Plan& plan, std::string_view sy
         !plan.dataLayout.starts_with("e-") || plan.returnSignExtend || plan.returnZeroExtend ||
         !integer(plan.physicalReturn) || plan.logicalReturn.passing != Passing::Direct ||
         !plan.logicalReturn.coercion || !integer(*plan.logicalReturn.coercion) || plan.logicalReturn.offset != 0 ||
-        plan.logicalParameters.size() != 2 || plan.physicalParameters.size() != 2) return false;
-    for (std::size_t i = 0; i < 2; ++i)
+        plan.logicalParameters.size() < 2 || plan.physicalParameters.size() != plan.logicalParameters.size()) return false;
+    for (std::size_t i = 0; i < plan.logicalParameters.size(); ++i)
     {
         const auto& logical = plan.logicalParameters[i];
         const auto& physical = plan.physicalParameters[i];
@@ -26,6 +26,10 @@ inline bool isSysVTwoSmallRecordsRoundTrip(const Plan& plan, std::string_view sy
             physical.zeroExtend || physical.inRegister || physical.noAlias) return false;
     }
     return true;
+}
+inline bool isSysVTwoSmallRecordsRoundTrip(const Plan& plan, std::string_view symbol) noexcept
+{
+    return plan.logicalParameters.size() == 2 && isSysVSmallRecordsRoundTrip(plan, symbol);
 }
 inline bool isSysVSingleFloatingRecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
 {
