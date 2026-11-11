@@ -170,3 +170,26 @@ precompilados por convencion con y sin encabezado
 A:/temp/nsc-t09-preserve-all-estrechos-precompilado-pprvq_kq). Tambien paso la
 regresion booleana (A:/temp/nsc-t09-preserve-bool-nfx__k8b). Otras firmas y
 tipos quedan pendientes; T09-003 y la tanda 9 siguen abiertos.
+
+## Retornos escalares adicionales
+
+Se contrastaron firmas C con parametros y retornos `float`, `unsigned int` y
+`unsigned long long`, ademas de una regresion `double`, en llamadas directas e
+indirectas de ambas convenciones. Los controles C pasaron en
+A:/temp/nsc-t09-preserve-most-escalares-retorno-ivfq0nge y
+A:/temp/nsc-t09-preserve-all-escalares-retorno-5prl_r5k; NSC rechazaba las
+firmas en A:/temp/nsc-t09-preserve-most-escalares-retorno-nqjm703c y
+A:/temp/nsc-t09-preserve-all-escalares-retorno-1mg1hs17. Clang describio las
+firmas en A:/temp/t09-preserve-most-scalar-oracle.ll y
+A:/temp/t09-preserve-all-scalar-oracle.ll.
+
+Pasaron ocho comparaciones C/NS por convencion, IR y cache
+(A:/temp/nsc-t09-preserve-most-escalares-retorno-vfj2f021 y
+A:/temp/nsc-t09-preserve-all-escalares-retorno-w_st5122), y 16 consumidores
+precompilados por convencion con y sin encabezado
+(A:/temp/nsc-t09-preserve-most-escalares-retorno-precompilado-3lth7mdv y
+A:/temp/nsc-t09-preserve-all-escalares-retorno-precompilado-6ermeydz).
+Las muestras incluyen enteros sin signo cercanos al limite de 64 bits.
+Pasaron regresiones booleanas, estrechas y de retornos `void`/`int*`
+(A:/temp/t09-preserve-scalar-reg-*.log). Otras firmas y tipos siguen pendientes;
+T09-003 y la tanda 9 permanecen abiertos.

@@ -1077,7 +1077,7 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         const bool preserveMost = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::PreserveMost;
         const bool preserveAll = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::PreserveAll;
         const auto preserveArgument = [](std::string_view key) {
-            return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" ||
+            return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" || key == "builtin:ulong" ||
                 key == "builtin:sbyte" || key == "builtin:byte" || key == "builtin:short" ||
                 key == "builtin:ushort" || key == "builtin:bool" || key == "builtin:float" ||
                 key == "builtin:double" || key == "builtin:int*";
@@ -1086,7 +1086,8 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             (returnTypeKey != "builtin:int" && returnTypeKey != "builtin:long" && returnTypeKey != "builtin:double" &&
              returnTypeKey != "builtin:void" && returnTypeKey != "builtin:int*" && returnTypeKey != "builtin:bool" &&
              returnTypeKey != "builtin:sbyte" && returnTypeKey != "builtin:byte" &&
-             returnTypeKey != "builtin:short" && returnTypeKey != "builtin:ushort") ||
+             returnTypeKey != "builtin:short" && returnTypeKey != "builtin:ushort" &&
+             returnTypeKey != "builtin:uint" && returnTypeKey != "builtin:ulong" && returnTypeKey != "builtin:float") ||
             std::any_of(argumentTypeKeys.begin(), argumentTypeKeys.end(),
                 [&](const std::string& key) { return !preserveArgument(key); })))
             return failValue(error, "preserve convention function pointer signature is not yet supported");
