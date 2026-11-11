@@ -922,7 +922,8 @@ if(LLVM_FOUND)
                 endforeach()
             endif()
             enable_testing()
-            add_test(NAME nsc.cpp-interop.clang-abi-probe COMMAND nsc_cpp_abi_probe_tests)
+            add_test(NAME nsc.cpp-interop.clang-abi-probe COMMAND nsc_cpp_abi_probe_tests
+                "${CLANG_INSTALL_PREFIX}/lib/clang/23" "${NSC_CPP_INTEROP_TEST_ROOT}")
             set_tests_properties(nsc.cpp-interop.clang-abi-probe PROPERTIES
                 ENVIRONMENT "TMP=${NSC_CPP_INTEROP_TEST_ROOT};TEMP=${NSC_CPP_INTEROP_TEST_ROOT}")
             add_test(NAME nsc.cpp-interop.session COMMAND nsc_cpp_session_tests
@@ -1219,6 +1220,7 @@ if(NSC_ENABLE_CPP_INTEROP)
     target_compile_definitions(nsc_driver PRIVATE NSC_ENABLE_CPP_INTEROP=1)
     if(NSC_CPP_INTEROP_SESSION_TESTS)
         target_link_libraries(nsc_cpp_session_tests PRIVATE nsc_driver)
+        target_link_libraries(nsc_cpp_abi_probe_tests PRIVATE nsc_driver)
         target_link_libraries(nsc_cpp_c_identity_tests PRIVATE nsc_driver)
         target_link_libraries(nsc_cpp_c_anonymous_identity_tests PRIVATE nsc_driver)
     endif()

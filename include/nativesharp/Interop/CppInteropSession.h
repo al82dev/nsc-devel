@@ -8,6 +8,7 @@
 #include "nativesharp/Interop/CppRecordDeclaration.h"
 #include "nativesharp/Interop/CppTypeAliasDeclaration.h"
 #include "nativesharp/Interop/CppEnumDeclaration.h"
+#include "nativesharp/Interop/CppAbiPlan.h"
 #include "nativesharp/Basic/Sha256.h"
 
 #include <string>
@@ -76,6 +77,10 @@ public:
     // Initial projection: concrete free functions in namespaces and linkage specifications.
     // nullopt means closed; returned values own their data independently of the session.
     virtual std::optional<std::vector<CppFunctionDeclaration>> freeFunctionsSnapshot() const = 0;
+    // Experimental C-only query: the name and canonical type select one declaration in this session.
+    // The returned value owns its data; nullopt also covers unsupported ABI plans and closed sessions.
+    virtual std::optional<abi_plan::Plan> cFunctionAbiPlan(std::string_view, std::string_view) const
+    { return std::nullopt; }
     // Initial projection of named, non-dependent records; nullopt means closed.
     virtual std::optional<std::vector<CppRecordDeclaration>> recordsSnapshot() const = 0;
     // A missing value means this session cannot provide an alias snapshot.

@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppClangSessionFactory.h"
+#include "../Internal/ClangAbiPlan.h"
 #include "ClangSessionSupport.h"
 #include "nativesharp/Basic/Sha256.h"
 
@@ -884,6 +885,38 @@ public:
         std::set<const clang::FunctionDecl*> seen;
         collectFreeFunctions(*context.getTranslationUnitDecl(), context, *mangler, seen, result);
         return result;
+    }
+    std::optional<abi_plan::Plan> cFunctionAbiPlan(
+        std::string_view name, std::string_view canonicalType) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || name.empty() || canonicalType.empty()) return std::nullopt;
+        auto& context = ast_->getASTContext();
+        if (context.getLangOpts().CPlusPlus) return std::nullopt;
+        const clang::FunctionDecl* match = nullptr;
+        for (const auto* declaration : context.getTranslationUnitDecl()->decls())
+        {
+            const auto* candidate = llvm::dyn_cast<clang::FunctionDecl>(declaration);
+            if (!candidate || candidate->isImplicit() || !candidate->isExternallyVisible() ||
+                candidate->getNameAsString() != name || candidate->isDependentContext()) continue;
+            candidate = candidate->getMostRecentDecl();
+            if (candidate->getType().getCanonicalType().getAsString() != canonicalType) continue;
+            if (match && match->getCanonicalDecl() != candidate->getCanonicalDecl()) return std::nullopt;
+            match = candidate;
+        }
+        if (!match || !match->getType()->getAs<clang::FunctionProtoType>()) return std::nullopt;
+        const clang::QualType result = match->getReturnType();
+        if (result.isNull() || (!result->isVoidType() && result->isIncompleteType())) return std::nullopt;
+        for (const clang::ParmVarDecl* parameter : match->parameters())
+            if (parameter->getType().isNull() || parameter->getType()->isIncompleteType()) return std::nullopt;
+        llvm::LLVMContext llvmContext;
+        auto generator = clang::CreateLLVMCodeGen(ast_->getDiagnostics(), "nsc.c.abi.plan",
+            ast_->getVirtualFileSystemPtr(), ast_->getHeaderSearchOpts(), ast_->getPreprocessorOpts(),
+            ast_->getCodeGenOpts(), llvmContext);
+        if (!generator) return std::nullopt;
+        generator->Initialize(context);
+        std::string error;
+        return abi_plan::copyPlan(*generator, *match, error);
     }
     std::optional<std::vector<CppRecordDeclaration>> recordsSnapshot() const override
     {

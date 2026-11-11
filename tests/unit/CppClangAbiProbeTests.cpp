@@ -13,14 +13,21 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/Support/raw_ostream.h>
 #include <memory>
+#include <filesystem>
 #include <map>
 #include <string>
 #include <vector>
 #include "../../src/Interop/Internal/ClangAbiPlan.h"
+#include "nativesharp/Interop/CppClangSessionFactory.h"
+#include "nativesharp/Interop/CppInteropSession.h"
 
 namespace t09_probe = nativesharp::interop::abi_plan;
 
-int main() {
+int main(int argc, char** argv) {
+    if (argc != 3) return 34;
+    std::error_code directoryError;
+    std::filesystem::create_directories(argv[2], directoryError);
+    if (directoryError) { llvm::errs() << "cannot create test work directory: " << directoryError.message() << "\n"; return 42; }
     const char* source = R"c(
         typedef struct R3 { unsigned char x, y, z; } R3;
         typedef struct R16 { long long x, y; } R16;
@@ -28,6 +35,7 @@ int main() {
         typedef struct RF { double x; int y; } RF;
         typedef struct __attribute__((packed)) RP { char c; double d; } RP;
         typedef float Vec4 __attribute__((vector_size(16)));
+        R3 __attribute__((sysv_abi)) p3(R3);
         R3 __attribute__((sysv_abi)) p3(R3);
         R16 __attribute__((sysv_abi)) p16(R16);
         RF __attribute__((sysv_abi)) pf(RF);
@@ -41,6 +49,8 @@ int main() {
         void __attribute__((sysv_abi)) pvoid(void);
         int __attribute__((sysv_abi)) pold();
         void* __attribute__((sysv_abi, returns_nonnull)) pnonnull(void*);
+        struct Incomplete;
+        int __attribute__((sysv_abi)) pincomplete(struct Incomplete);
     )c";
     auto ast = clang::tooling::buildASTFromCodeWithArgs(source,
         {"-x", "c", "-std=c11", "-target", "x86_64-pc-windows-msvc"}, "probe.c");
@@ -88,6 +98,7 @@ int main() {
             continue;
         }
         if (name != "p3" && name != "p16" && name != "pf" && name != "p24" && name != "ps8" && name != "pm" && name != "pp" && name != "pvec" && name != "pvoid") continue;
+        if (name == "p3" && copiedPlans.contains(name)) continue;
         auto* physical = clang::CodeGen::convertFreeFunctionType(generator->CGM(), function);
         clang::CanQual<clang::FunctionProtoType> prototype =
             context.getCanonicalType(function->getType()).getAs<clang::FunctionProtoType>();
@@ -189,5 +200,74 @@ int main() {
     if (pvoid.physicalReturn.kind != t09_probe::TypeKind::Void ||
         pvoid.logicalReturn.passing != t09_probe::Passing::Ignore ||
         !pvoid.logicalParameters.empty() || !pvoid.physicalParameters.empty()) return 32;
+    using namespace nativesharp::interop;
+    CppSessionOptions options;
+    options.language = CppLanguageMode::C;
+    options.languageStandard = "c11";
+    options.targetTriple = "x86_64-pc-windows-msvc";
+    options.driverReferencePath = "clang.exe";
+    options.resourceDirectory = argv[1];
+    options.workingDirectory = argv[2];
+    options.input = CppBufferInput{"abi-probe.c", source};
+    CppClangSessionFactory factory;
+    auto opened = factory.open(std::move(options), {});
+    if (const auto* failure = std::get_if<CppSessionOpenFailure>(&opened)) {
+        llvm::errs() << "session open failed: " << failure->phase << ": " << failure->message << "\n";
+        for (const auto& diagnostic : failure->diagnostics) llvm::errs() << diagnostic.message << "\n";
+        return 35;
+    }
+    auto session = std::move(std::get<std::unique_ptr<CppInteropSession>>(opened));
+    if (!session) return 36;
+    const auto functions = session->freeFunctionsSnapshot();
+    if (!functions) return 37;
+    const auto findType = [&](const std::string& name) -> std::string {
+        for (const auto& function : *functions)
+            if (function.name == name) return function.canonicalFunctionType;
+        return {};
+    };
+    const std::string p3Type = findType("p3");
+    const std::string pvecType = findType("pvec");
+    const std::string vectorType = findType("pv");
+    const std::string p24Type = findType("p24");
+    const std::string pmType = findType("pm");
+    const std::string oldType = findType("pold");
+    const std::string variadicType = findType("pvariadic");
+    const std::string nonnullType = findType("pnonnull");
+    const std::string incompleteType = findType("pincomplete");
+    if (p3Type.empty() || pvecType.empty() || vectorType.empty() || p24Type.empty() || pmType.empty() ||
+        oldType.empty() || variadicType.empty() || nonnullType.empty() || incompleteType.empty()) return 38;
+    const auto diagnosticsBefore = session->diagnosticsSnapshot().size();
+    auto sessionPlan = session->cFunctionAbiPlan("p3", p3Type);
+    auto vectorcallPlan = session->cFunctionAbiPlan("pvec", pvecType);
+    auto aggregatePlan = session->cFunctionAbiPlan("p24", p24Type);
+    auto mixedPlan = session->cFunctionAbiPlan("pm", pmType);
+    if (!sessionPlan || !vectorcallPlan || !aggregatePlan || !mixedPlan || session->cFunctionAbiPlan("p3", "different") ||
+        session->cFunctionAbiPlan("missing", p3Type) || session->cFunctionAbiPlan("pv", vectorType) ||
+        session->cFunctionAbiPlan("pold", oldType) || session->cFunctionAbiPlan("pvariadic", variadicType) ||
+        session->cFunctionAbiPlan("pnonnull", nonnullType) || session->cFunctionAbiPlan("pincomplete", incompleteType) ||
+        session->diagnosticsSnapshot().size() != diagnosticsBefore) return 39;
+    if (!session->close().succeeded || session->cFunctionAbiPlan("p3", p3Type)) return 40;
+    session.reset();
+    if (sessionPlan->symbol != "p3" || sessionPlan->physicalReturn.widthOrCount != 24 ||
+        vectorcallPlan->symbol != "\1pvec@@8" ||
+        vectorcallPlan->callingConvention != llvm::CallingConv::X86_VectorCall ||
+        aggregatePlan->physicalParameters.size() != 2 || !aggregatePlan->physicalParameters[1].byValue ||
+        mixedPlan->logicalParameters.size() != 4 || mixedPlan->logicalParameters[1].physicalCount != 2) return 41;
+    CppSessionOptions cppOptions;
+    cppOptions.language = CppLanguageMode::Cpp;
+    cppOptions.languageStandard = "c++20";
+    cppOptions.targetTriple = "x86_64-pc-windows-msvc";
+    cppOptions.driverReferencePath = "clang.exe";
+    cppOptions.resourceDirectory = argv[1];
+    cppOptions.workingDirectory = argv[2];
+    cppOptions.input = CppBufferInput{"abi-probe.cpp", "extern \"C\" int cpp_probe(int);"};
+    auto cppOpened = factory.open(std::move(cppOptions), {});
+    if (!std::holds_alternative<std::unique_ptr<CppInteropSession>>(cppOpened)) return 43;
+    auto cppSession = std::move(std::get<std::unique_ptr<CppInteropSession>>(cppOpened));
+    if (!cppSession) return 44;
+    const auto cppFunctions = cppSession->freeFunctionsSnapshot();
+    if (!cppFunctions || cppFunctions->empty() ||
+        cppSession->cFunctionAbiPlan("cpp_probe", cppFunctions->front().canonicalFunctionType)) return 45;
+    if (!cppSession->close().succeeded) return 46;
     return 0;
 }

@@ -112,3 +112,27 @@ optimizacion aceptados que no se copian no se interpretan como garantias nuevas;
 la politica aun debe revisarse antes de usar el plan para emitir llamadas.
 La comprobacion de vida tambien destruye ahora el contexto LLVM antes de leer
 los planes copiados; CTest volvio a pasar 1/1.
+
+## Consulta experimental en una sesion real
+
+`CppInteropSession::cFunctionAbiPlan` permite solicitar el plan de una funcion
+C externa por nombre y tipo canonico dentro de su sesion. La implementacion
+Clang limita la consulta al modo C, evita declaraciones ambiguas o incompletas,
+usa el generador temporal bajo el bloqueo de sesion y devuelve la copia por valor.
+No es una consulta de metodos o templates C++ y `nullopt` tambien representa
+casos no soportados. El consumidor del compilador aun no usa esta consulta.
+
+La sonda abre una sesion real, obtiene planes de R3, R24, una firma mixta y
+vectorcall; verifica seleccion por tipo, preservacion de diagnosticos, rechazo
+de tipo no representado, variadica, declaracion sin prototipo y atributo no
+representado. Tras cerrar y destruir la sesion, comprueba los planes copiados;
+una consulta posterior al cierre devuelve ausencia. CTest paso 1/1 en
+A:/temp/t09-abi-probe-ctest.log. El primer intento no abrio por faltar el
+directorio de trabajo temporal; la prueba ahora lo crea y fue repetida.
+Esto aun no implementa llamadas de agregados ni guarda planes en NSMeta.
+La sonda ampliada tambien paso con una redeclaracion C compatible; rechazo un
+parametro de tipo incompleto y una consulta sobre una sesion C++. Por ahora se
+crea un generador por consulta; no se ha medido su coste ni se ha habilitado un
+cache, y la informacion queda atada a la configuracion de la sesion consultada.
+Tras enlazar la consulta, NSC se construyo incrementalmente y la regresion
+SysV existente paso en A:/temp/nsc-t09-sysv-prueba-lzpmdeme.

@@ -68,3 +68,5 @@ T09-003: probar en el prototipo el caso void sin argumentos y el rechazo de una 
 T09-003: hacer que el prototipo rechace atributos de retorno y parametros no reconocidos en vez de descartarlos silenciosamente; verificar un caso con `returns_nonnull`.
 T09-003: verificar la copia luego de destruir tambien el contexto LLVM, no solo el generador y el AST.
 T09-003: trasladar el prototipo por valor a infraestructura interna de interoperabilidad y conservar la sonda existente; aun no conectarlo a snapshots, backend ni NSMeta. Despues probar la consulta desde una sesion real.
+T09-003: exponer una consulta experimental de plan ABI para una funcion C libre identificada por nombre y tipo canonico dentro de su sesion viva. Devolver solo datos por valor y rechazar seleccion ambigua, tipos no representables y sesion cerrada. Probar con una sesion Clang real; no habilitar agregados ni cambiar NSMeta.
+T09-003: ampliar la prueba de sesion para cubrir redeclaracion C compatible, un argumento incompleto y la exclusividad de la consulta al modo C.
