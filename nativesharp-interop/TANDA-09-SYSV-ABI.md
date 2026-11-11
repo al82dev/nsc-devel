@@ -964,6 +964,16 @@ atributos aun no representados (`A:/temp/nsc-t09-sysv-varargs-xp1p031e`,
 anidada indicada; aliases, estructuras anonimas y otras combinaciones aun no
 observadas permanecen pendientes. T09-003 no se cierra.
 
+Se ampliaron las comprobaciones de la reconstruccion ya implementada con un
+arreglo de dos records interiores, un arreglo de tres records que Clang pasa
+por `byval`, y una union nombrada dentro de un record. Los productores verifican
+las piezas o la copia indirecta y el llamador comprueba que su valor original
+se conserva; la copia indirecta se modifica para detectar aliasing. Pasaron C
+y NativeSharp con estatica y DLL O0–O3, tambien desde plantilla precompilada
+sin encabezado, con inspeccion HIR/MIR y LLVM y cache fria/caliente
+(`A:/temp/nsc-t09-sysv-varargs-ce0tl155`). Esta es evidencia de las tres formas
+indicadas; otras estructuras y atributos siguen pendientes.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin

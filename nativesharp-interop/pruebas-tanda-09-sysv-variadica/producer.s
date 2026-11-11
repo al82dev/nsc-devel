@@ -420,3 +420,57 @@ sysv_record_nested:
 fail_record_nested:
     xorl %eax, %eax
     ret
+.globl sysv_record_record_array
+sysv_record_record_array:
+    cmpl $1, %edi
+    jne fail_record_record_array
+    movabsq $0x0000000200000001, %r8
+    cmpq %r8, %rsi
+    jne fail_record_record_array
+    movabsq $0x0000000400000003, %r8
+    cmpq %r8, %rdx
+    jne fail_record_record_array
+    movl $1, %eax
+    ret
+fail_record_record_array:
+    xorl %eax, %eax
+    ret
+.globl sysv_record_record_array_large
+sysv_record_record_array_large:
+    cmpl $1, %edi
+    jne fail_record_record_array_large
+    cmpl $1, 8(%rsp)
+    jne fail_record_record_array_large
+    cmpl $2, 12(%rsp)
+    jne fail_record_record_array_large
+    cmpl $3, 16(%rsp)
+    jne fail_record_record_array_large
+    cmpl $4, 20(%rsp)
+    jne fail_record_record_array_large
+    cmpl $5, 24(%rsp)
+    jne fail_record_record_array_large
+    cmpl $6, 28(%rsp)
+    jne fail_record_record_array_large
+    movl $0, 28(%rsp)
+    movl $1, %eax
+    ret
+fail_record_record_array_large:
+    xorl %eax, %eax
+    ret
+.globl sysv_record_union_outer
+sysv_record_union_outer:
+    cmpl $1, %edi
+    jne fail_record_union_outer
+    cmpb $1, %al
+    jb fail_record_union_outer
+    cmpq $7, %rsi
+    jne fail_record_union_outer
+    movq %xmm0, %r8
+    movabsq $0x4002000000000000, %r9
+    cmpq %r9, %r8
+    jne fail_record_union_outer
+    movl $1, %eax
+    ret
+fail_record_union_outer:
+    xorl %eax, %eax
+    ret

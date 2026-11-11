@@ -58,6 +58,8 @@ for mode in ('estatica', 'dll'):
                 '/export:sysv_record_packed_ptr',
                 '/export:sysv_record_array',
                 '/export:sysv_record_nested',
+                '/export:sysv_record_record_array', '/export:sysv_record_union_outer',
+                '/export:sysv_record_record_array_large',
                 '/out:'+str(case/'api.dll'), '/implib:'+str(case/'api-dll.lib'), str(case/'producer.obj')])
             library, project, cflags = 'api-dll.lib', 'Dll.nsproj', ['-DAPI_DLL_IMPORT']
         run(prefix+'-c-ir', ['clang.exe', *flags, '-std=c11', *cflags, '-S', '-emit-llvm', str(case/'Control.c'), '-o', str(case/'control.ll')])
@@ -68,10 +70,13 @@ for mode in ('estatica', 'dll'):
                              ('sysv_record_mixed', r'double [^,]+, i32 [^,\)]+'),
                              ('sysv_record_two', r'i64 [^,]+, double [^,]+, i32 [^,\)]+'),
                              ('sysv_record_array', r'double [^,]+, double [^,\)]+'),
-                             ('sysv_record_nested', r'double [^,]+, i64 [^,\)]+')):
+                             ('sysv_record_nested', r'double [^,]+, i64 [^,\)]+'),
+                             ('sysv_record_record_array', r'i64 [^,]+, i64 [^,\)]+'),
+                             ('sysv_record_union_outer', r'double [^,]+, i64 [^,\)]+')):
             if not re.search(r'call[^\n]*x86_64_sysvcc[^\n]*@'+name+r'\(i32[^,]+, '+pieces, ir):
                 raise SystemExit(prefix+': piezas C inesperadas de '+name+'; evidencia: '+str(root))
-        for name in ('sysv_record_pressure', 'sysv_record_sse_pressure', 'sysv_record_large', 'sysv_record_packed'):
+        for name in ('sysv_record_pressure', 'sysv_record_sse_pressure', 'sysv_record_large', 'sysv_record_packed',
+                     'sysv_record_record_array_large'):
             if not re.search(r'call[^\n]*@'+name+r'\([^\n]*byval\([^\n]*\) align 8', ir):
                 raise SystemExit(prefix+': falta byval C de '+name+'; evidencia: '+str(root))
         if not re.search(r'call[^\n]*x86_64_sysvcc[^\n]*@sysv_record_ptrs\(ptr[^,]+, double [^,]+, i32 [^,]+, ptr ', ir):
@@ -116,7 +121,10 @@ for mode in ('estatica', 'dll'):
                                          'cpp-variadic-plan=sysv_record_return_ptr:3', 'cpp-variadic-plan=sysv_record_rptr:3',
                                          'cpp-variadic-plan=sysv_record_fixed_rptr:3', 'cpp-variadic-plan=sysv_record_packed:2',
                                          'cpp-variadic-plan=sysv_record_packed_ptr:3', 'cpp-variadic-plan=sysv_record_array:2',
-                                         'cpp-variadic-plan=sysv_record_nested:2'):
+                                         'cpp-variadic-plan=sysv_record_nested:2',
+                                         'cpp-variadic-plan=sysv_record_record_array:2',
+                                         'cpp-variadic-plan=sysv_record_union_outer:2',
+                                         'cpp-variadic-plan=sysv_record_record_array_large:2'):
                             if expected not in dump:
                                 raise SystemExit(prefix+': falta '+expected+' en '+stage+'; evidencia: '+str(root))
             ns_ir = run(prefix+'-ns-ir', [args.nsc, '--dump-project-oop-llvm', str(case/project),
@@ -130,7 +138,8 @@ for mode in ('estatica', 'dll'):
                 raise SystemExit(prefix+': falta convencion del prefijo puntero; evidencia: '+str(root))
             if not re.search(r'call[^\n]*x86_64_sysvcc ptr \(ptr, \.\.\.\).*@sysv_return_ptr\(', ns_ir):
                 raise SystemExit(prefix+': falta convencion del retorno puntero; evidencia: '+str(root))
-            for name in ('sysv_record_pressure', 'sysv_record_sse_pressure', 'sysv_record_large', 'sysv_record_packed'):
+            for name in ('sysv_record_pressure', 'sysv_record_sse_pressure', 'sysv_record_large', 'sysv_record_packed',
+                         'sysv_record_record_array_large'):
                 if not re.search(r'call[^\n]*@'+name+r'\([^\n]*byval\([^\n]*\) align 8', ns_ir):
                     raise SystemExit(prefix+': falta byval de '+name+'; evidencia: '+str(root))
             if not re.search(r'call[^\n]*x86_64_sysvcc[^\n]*@sysv_record_ptrs\(ptr[^,]+, double [^,]+, i32 [^,]+, ptr ', ns_ir):
@@ -147,7 +156,9 @@ for mode in ('estatica', 'dll'):
                                  ('sysv_record_mixed', r'double [^,]+, i32 [^,\)]+'),
                                  ('sysv_record_two', r'i64 [^,]+, double [^,]+, i32 [^,\)]+'),
                                  ('sysv_record_array', r'double [^,]+, double [^,\)]+'),
-                                 ('sysv_record_nested', r'double [^,]+, i64 [^,\)]+')):
+                                 ('sysv_record_nested', r'double [^,]+, i64 [^,\)]+'),
+                                 ('sysv_record_record_array', r'i64 [^,]+, i64 [^,\)]+'),
+                                 ('sysv_record_union_outer', r'double [^,]+, i64 [^,\)]+')):
                 if not re.search(r'call[^\n]*x86_64_sysvcc[^\n]*@'+name+r'\(i32[^,]+, '+pieces, ns_ir):
                     raise SystemExit(prefix+': piezas NS inesperadas de '+name+'; evidencia: '+str(root))
             run(prefix+'-ns', command)
@@ -232,6 +243,15 @@ for name in ('api.h', 'api.lib'):
     'if (sysv_record_array(1, array) != 1 || array.values[0] != 2.25 || array.values[1] != 3.5) return 13; '
     'T09VarNested nested; nested.value = 2.25; nested.leaf.x = 1; nested.leaf.y = 2; '
     'if (sysv_record_nested(1, nested) != 1 || nested.leaf.x != 1 || nested.leaf.y != 2) return 14; '
+    'T09VarRecordArray recordArray; recordArray.leaves[0].x = 1; recordArray.leaves[0].y = 2; '
+    'recordArray.leaves[1].x = 3; recordArray.leaves[1].y = 4; '
+    'if (sysv_record_record_array(1, recordArray) != 1 || recordArray.leaves[1].y != 4) return 15; '
+    'T09VarRecordArrayLarge recordArrayLarge; recordArrayLarge.leaves[0].x = 1; recordArrayLarge.leaves[0].y = 2; '
+    'recordArrayLarge.leaves[1].x = 3; recordArrayLarge.leaves[1].y = 4; '
+    'recordArrayLarge.leaves[2].x = 5; recordArrayLarge.leaves[2].y = 6; '
+    'if (sysv_record_record_array_large(1, recordArrayLarge) != 1 || recordArrayLarge.leaves[2].y != 6) return 17; '
+    'T09VarUnionOuter unionOuter; unionOuter.value = 2.25; unionOuter.choice.integer = 7; '
+    'if (sysv_record_union_outer(1, unionOuter) != 1 || unionOuter.choice.integer != 7) return 16; '
     'return 0; } } } '
     'namespace T09 { public class PackedBridge { public static int Run<T>(T unused) { '
     'T09VarUnobserved record; record.x = 2.25; record.y = 7; return sysv_record_mixed(1, record); } } '
@@ -263,7 +283,9 @@ for stage in ('hir', 'mir'):
                          'cpp-variadic-plan=sysv_record_ptrs:3', 'cpp-variadic-plan=sysv_record_return_ptr:3',
                          'cpp-variadic-plan=sysv_record_rptr:3', 'cpp-variadic-plan=sysv_record_fixed_rptr:3',
                          'cpp-variadic-plan=sysv_record_packed:2', 'cpp-variadic-plan=sysv_record_packed_ptr:3',
-                         'cpp-variadic-plan=sysv_record_array:2', 'cpp-variadic-plan=sysv_record_nested:2'):
+                         'cpp-variadic-plan=sysv_record_array:2', 'cpp-variadic-plan=sysv_record_nested:2',
+                         'cpp-variadic-plan=sysv_record_record_array:2', 'cpp-variadic-plan=sysv_record_union_outer:2',
+                         'cpp-variadic-plan=sysv_record_record_array_large:2'):
             if expected not in output:
                 raise SystemExit('Falta '+expected+' en plantilla '+stage+'; evidencia: '+str(root))
 preIr = run('pre-record-llvm', [args.nsc, '--dump-project-oop-llvm', str(recordConsumer/'Consumer.nsproj'),
@@ -272,10 +294,13 @@ for name, pieces in (('sysv_record_small', r'i64 [^,\)]+'),
                      ('sysv_record_mixed', r'double [^,]+, i32 [^,\)]+'),
                      ('sysv_record_two', r'i64 [^,]+, double [^,]+, i32 [^,\)]+'),
                      ('sysv_record_array', r'double [^,]+, double [^,\)]+'),
-                     ('sysv_record_nested', r'double [^,]+, i64 [^,\)]+')):
+                     ('sysv_record_nested', r'double [^,]+, i64 [^,\)]+'),
+                     ('sysv_record_record_array', r'i64 [^,]+, i64 [^,\)]+'),
+                     ('sysv_record_union_outer', r'double [^,]+, i64 [^,\)]+')):
     if not re.search(r'call[^\n]*x86_64_sysvcc[^\n]*@'+name+r'\(i32[^,]+, '+pieces, preIr):
         raise SystemExit('Piezas LLVM precompiladas incorrectas: '+name+'; evidencia: '+str(root))
-for name in ('sysv_record_pressure', 'sysv_record_sse_pressure', 'sysv_record_large', 'sysv_record_packed'):
+for name in ('sysv_record_pressure', 'sysv_record_sse_pressure', 'sysv_record_large', 'sysv_record_packed',
+             'sysv_record_record_array_large'):
     if not re.search(r'call[^\n]*@'+name+r'\([^\n]*byval\([^\n]*\) align 8', preIr):
         raise SystemExit('Falta byval LLVM precompilado: '+name+'; evidencia: '+str(root))
 if not re.search(r'call[^\n]*x86_64_sysvcc[^\n]*@sysv_record_ptrs\(ptr[^,]+, double [^,]+, i32 [^,]+, ptr ', preIr):
