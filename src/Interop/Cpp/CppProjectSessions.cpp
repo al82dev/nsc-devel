@@ -583,12 +583,14 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
             !type.isConst && !type.isVolatile && !type.isRestrict;
         const bool fixedLong = type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "long long" &&
             type.sizeBits == 64 && type.alignmentBits == 64 && !type.isConst && !type.isVolatile && !type.isRestrict;
+        const bool fixedUint = type.kind == CppTypeKind::UnsignedInteger && type.canonicalSpelling == "unsigned int" &&
+            type.sizeBits == 32 && type.alignmentBits == 32 && !type.isConst && !type.isVolatile && !type.isRestrict;
         const bool fixedPointer = type.kind == CppTypeKind::Pointer && type.canonicalSpelling == "int *" &&
             type.sizeBits == 64 && type.alignmentBits == 64 && !type.isConst && !type.isVolatile &&
             !type.isRestrict && type.element && isInt(*type.element);
-        if (!isInt(type) && !fixedDouble && !fixedPointer && !fixedLong) return {};
+        if (!isInt(type) && !fixedDouble && !fixedPointer && !fixedLong && !fixedUint) return {};
         if (!fixedSource.empty()) fixedSource += ", ";
-        fixedSource += fixedDouble ? "double" : fixedPointer ? "int *" : fixedLong ? "long long" : "int";
+        fixedSource += fixedDouble ? "double" : fixedPointer ? "int *" : fixedLong ? "long long" : fixedUint ? "unsigned int" : "int";
     }
     struct ReplayRecord
     {

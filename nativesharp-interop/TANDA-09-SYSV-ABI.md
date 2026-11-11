@@ -1586,6 +1586,22 @@ de 64 bits, dos fijos y retorno puntero
 `A:/temp/nsc-t09-sysv-indirecta-retorno-puntero-pre-u9rq_s9t`). El prefijo
 fijo `uint` y otras firmas siguen pendientes; T09-003 no esta cerrado.
 
+**Prefijo fijo sin signo:** posteriormente el control C y un productor
+independiente comprobaron `unsigned int` de valor 4000000000 como prefijo;
+NSC rechazaba la firma (`A:/temp/nsc-t09-sysv-indirecta-variadica-prefijo-uint-2uthcvph`).
+Tras emitir y reconstruir el prefijo segun Clang pasaron ocho comparaciones
+C/NS estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-prefijo-uint-matriz-nq021zk_`) y plantilla
+sin encabezado, cache y rechazo de variante
+(`A:/temp/nsc-t09-sysv-indirecta-prefijo-uint-pre-zsyrhm5l`). Pasaron cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones precompiladas de entero
+opcional sin signo, prefijo de 64 bits y dos fijos
+(`A:/temp/nsc-t09-sysv-indirecta-record-uint-pre-zu3bh6nw`,
+`A:/temp/nsc-t09-sysv-indirecta-prefijo-long-pre-kt1t9snt`,
+`A:/temp/nsc-t09-sysv-indirecta-dos-fijos-pre-lbj2kgyh`). Otros prefijos y
+firmas siguen pendientes; T09-003 no esta cerrado.
+
 **Retorno `int*`:** el control C y productor independiente verifican identidad
 del puntero retornado y escritura por el prefijo; NSC rechazaba la firma
 (`A:/temp/nsc-t09-sysv-indirecta-variadica-retorno-puntero-ru68m35t`). Tras
