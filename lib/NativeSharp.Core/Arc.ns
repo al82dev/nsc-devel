@@ -13,7 +13,7 @@ namespace NativeSharp.Core
         // An observation during concurrent changes; exact without concurrent operations.
         public readonly long WeakCount() { return inner.WeakCount(); }
         public readonly ref readonly T Get() { return ref inner.Get(); }
-        public SharedView<T> Borrow() { return new SharedView<T>(inner.Borrow()); }
+        public readonly SharedView<T> Borrow() { return new SharedView<T>(inner.Borrow()); }
 
         public Arc<T> Clone()
         {
