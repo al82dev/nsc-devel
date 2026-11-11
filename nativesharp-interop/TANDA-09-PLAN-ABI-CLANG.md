@@ -86,3 +86,8 @@ empaquetado con `char` y `double`: Clang usa retorno `sret` alineado a 1 y
 argumento `byval` alineado a 8. La copia retiene ambas alineaciones y el tipo
 empaquetado; la prueba CTest paso 1/1 en A:/temp/t09-abi-probe-ctest.log.
 El caso sigue sin habilitarse en NSC.
+
+La copia incorpora el simbolo LLVM y la convencion numerica extraidos de la
+declaracion de Clang. La sonda comprobo despues de cerrar la sesion el marcador
+de escape y el nombre decorado de `pvec@@8`, junto con vectorcall. CTest paso
+1/1; sigue siendo una sonda aislada, no una ruta nueva de llamadas.

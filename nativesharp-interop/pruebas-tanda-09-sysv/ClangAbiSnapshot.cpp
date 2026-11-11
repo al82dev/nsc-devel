@@ -103,10 +103,11 @@ std::optional<Plan> copyPlan(clang::CodeGenerator& generator,
     { error = "physical declaration unavailable"; return std::nullopt; }
     const auto& logical = clang::CodeGen::arrangeFreeFunctionType(generator.CGM(), prototype);
     Plan result;
+    result.symbol = declaration->getName().str();
     result.targetTriple = generator.GetModule()->getTargetTriple().str();
     result.dataLayout = generator.GetModule()->getDataLayoutStr();
-    if (result.targetTriple.empty() || result.dataLayout.empty())
-    { error = "target configuration unavailable"; return std::nullopt; }
+    if (result.symbol.empty() || result.targetTriple.empty() || result.dataLayout.empty())
+    { error = "symbol or target configuration unavailable"; return std::nullopt; }
     result.callingConvention = declaration->getCallingConv();
     result.variadic = physical->isVarArg();
     if (result.variadic) { error = "variadic call plan not represented"; return std::nullopt; }

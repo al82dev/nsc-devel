@@ -46,6 +46,7 @@ struct PhysicalParameter
 };
 struct Plan
 {
+    std::string symbol;
     std::string targetTriple;
     std::string dataLayout;
     unsigned callingConvention = 0;

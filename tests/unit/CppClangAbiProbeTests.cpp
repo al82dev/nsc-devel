@@ -35,6 +35,7 @@ int main() {
         R24 __attribute__((sysv_abi)) pm(int, RF, R3, R24);
         int __attribute__((sysv_abi)) pvariadic(int, ...);
         RP __attribute__((sysv_abi)) pp(RP);
+        int __vectorcall pvec(int);
     )c";
     auto ast = clang::tooling::buildASTFromCodeWithArgs(source,
         {"-x", "c", "-std=c11", "-target", "x86_64-pc-windows-msvc"}, "probe.c");
@@ -67,7 +68,7 @@ int main() {
             variadicRejected = true;
             continue;
         }
-        if (name != "p3" && name != "p16" && name != "pf" && name != "p24" && name != "ps8" && name != "pm" && name != "pp") continue;
+        if (name != "p3" && name != "p16" && name != "pf" && name != "p24" && name != "ps8" && name != "pm" && name != "pp" && name != "pvec") continue;
         auto* physical = clang::CodeGen::convertFreeFunctionType(generator->CGM(), function);
         clang::CanQual<clang::FunctionProtoType> prototype =
             context.getCanonicalType(function->getType()).getAs<clang::FunctionProtoType>();
@@ -80,8 +81,10 @@ int main() {
         copiedPlans.emplace(name, std::move(*copied));
         if (!physical || !generator->GetAddrOfGlobal(clang::GlobalDecl(function), false)) return 3;
         auto* llvmFunction = generator->GetModule()->getFunction(generator->GetMangledName(clang::GlobalDecl(function)));
+        const auto expectedConvention = name == "pvec" ? llvm::CallingConv::X86_VectorCall :
+            llvm::CallingConv::X86_64_SysV;
         if (!llvmFunction || llvmFunction->getFunctionType() != physical ||
-            llvmFunction->getCallingConv() != llvm::CallingConv::X86_64_SysV) return 4;
+            llvmFunction->getCallingConv() != expectedConvention) return 4;
         llvmFunction->print(llvm::outs());
         llvm::outs() << "\n";
         if (plan.arguments()[0].info.isDirect()) {
@@ -123,7 +126,7 @@ int main() {
         if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
-    if (matched != 7 || copiedPlans.size() != 7 || !unsupportedRejected || !variadicRejected) return 7;
+    if (matched != 8 || copiedPlans.size() != 8 || !unsupportedRejected || !variadicRejected) return 7;
     generator.reset();
     ast.reset();
     const auto& p3 = copiedPlans.at("p3");
@@ -159,5 +162,7 @@ int main() {
         pp.physicalParameters[0].alignment != 1 || !pp.physicalParameters[1].byValue ||
         pp.physicalParameters[1].alignment != 8 || !pp.physicalParameters[1].pointee ||
         !pp.physicalParameters[1].pointee->packed) return 29;
+    const auto& pvec = copiedPlans.at("pvec");
+    if (pvec.symbol != "\1pvec@@8" || pvec.callingConvention != llvm::CallingConv::X86_VectorCall) return 30;
     return 0;
 }
