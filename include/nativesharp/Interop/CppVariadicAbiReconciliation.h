@@ -18,4 +18,9 @@ struct CppVariadicArgumentOrigin
 std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicCallAbiPlan(
     const CppInteropSession& functionSession, std::string_view name,
     std::string_view canonicalType, std::span<const CppVariadicArgumentOrigin> arguments);
+
+// Checks the represented calling contract, not the provenance of its types.
+bool validateCppVariadicSysVCallPlan(const abi_plan::VariadicCallPlan& plan,
+                                     std::string_view expectedSymbol,
+                                     std::size_t expectedRequiredArguments) noexcept;
 }

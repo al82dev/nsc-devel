@@ -220,6 +220,17 @@ int main(int argc, char** argv) {
                 std::vector<clang::QualType>{function->getParamDecl(0)->getType(),
                     function->getParamDecl(1)->getType(), context.DoubleTy}, error);
             if (!actual) { llvm::errs() << "variadic fixed/return plan: " << error << "\n"; return 145; }
+            if (!nativesharp::interop::validateCppVariadicSysVCallPlan(*actual, name, 2)) {
+                llvm::errs() << "variadic validation failed: " << name << " result passing="
+                             << static_cast<int>(actual->result.passing) << " byvalue=" << actual->result.byValue
+                             << " alignment=" << actual->result.alignment << "\n";
+                return 170;
+            }
+            if (name == "pvariadic_sret") {
+                auto invalid = *actual;
+                invalid.physicalParameters[0].alignment = 4;
+                if (nativesharp::interop::validateCppVariadicSysVCallPlan(invalid, name, 2)) return 171;
+            }
             if (actual->requiredArguments != 2 || actual->arguments.size() != 3 ||
                 actual->arguments[2].physicalCount != 1 ||
                 actual->physicalParameters.back().type.kind != t09_probe::TypeKind::Double) return 146;
@@ -703,6 +714,42 @@ int main(int argc, char** argv) {
     auto reconciledPlan = reconcileCppVariadicCallAbiPlan(*session, "pvariadic", variadicType, origins);
     if (!reconciledPlan || reconciledPlan->arguments.size() != 2 ||
         reconciledPlan->arguments[1].physicalCount != 2) return 150;
+    if (!validateCppVariadicSysVCallPlan(*reconciledPlan, "pvariadic", 1) ||
+        !validateCppVariadicSysVCallPlan(*variadicSessionPlan, "pvariadic", 1) ||
+        !validateCppVariadicSysVCallPlan(*variadicPressurePlan, "pvariadic", 1) ||
+        !validateCppVariadicSysVCallPlan(*variadicFloatPressurePlan, "pvariadic", 1) ||
+        validateCppVariadicSysVCallPlan(*reconciledPlan, "other", 1)) return 162;
+    auto brokenPlan = *variadicSessionPlan;
+    brokenPlan.arguments[2].firstPhysical++;
+    if (validateCppVariadicSysVCallPlan(brokenPlan, "pvariadic", 1)) return 163;
+    brokenPlan = *variadicSessionPlan;
+    brokenPlan.physicalParameters[2].type.kind = abi_plan::TypeKind::Integer;
+    if (validateCppVariadicSysVCallPlan(brokenPlan, "pvariadic", 1)) return 164;
+    brokenPlan = *variadicSessionPlan;
+    brokenPlan.physicalParameters[4].alignment = 4;
+    if (validateCppVariadicSysVCallPlan(brokenPlan, "pvariadic", 1)) return 165;
+    brokenPlan = *variadicSessionPlan;
+    brokenPlan.physicalParameters[4].pointee.reset();
+    if (validateCppVariadicSysVCallPlan(brokenPlan, "pvariadic", 1)) return 166;
+    brokenPlan = *variadicSessionPlan;
+    brokenPlan.physicalReturn.widthOrCount = 64;
+    if (validateCppVariadicSysVCallPlan(brokenPlan, "pvariadic", 1)) return 167;
+    brokenPlan = *variadicSessionPlan;
+    brokenPlan.callingConvention = 0;
+    if (validateCppVariadicSysVCallPlan(brokenPlan, "pvariadic", 1)) return 168;
+    brokenPlan = *variadicSessionPlan;
+    brokenPlan.requiredArguments = brokenPlan.arguments.size() + 1;
+    if (validateCppVariadicSysVCallPlan(brokenPlan, "pvariadic", 1)) return 169;
+    brokenPlan = *variadicSessionPlan;
+    brokenPlan.arguments[1].coercion = abi_plan::Type{};
+    brokenPlan.physicalParameters[1].type = abi_plan::Type{};
+    if (validateCppVariadicSysVCallPlan(brokenPlan, "pvariadic", 1)) return 172;
+    brokenPlan = *variadicSessionPlan;
+    brokenPlan.physicalParameters[0].alignment = 3;
+    if (validateCppVariadicSysVCallPlan(brokenPlan, "pvariadic", 1)) return 173;
+    brokenPlan = *variadicSessionPlan;
+    brokenPlan.requiredArguments = 0;
+    if (validateCppVariadicSysVCallPlan(brokenPlan, "pvariadic", 1)) return 174;
     std::vector<CppVariadicArgumentOrigin> pointerOrigins{{*pointerActual, equivalentOrigin.get()}};
     auto reconciledPointer = reconcileCppVariadicCallAbiPlan(*session, "pvariadic", variadicType, pointerOrigins);
     if (!reconciledPointer || reconciledPointer->physicalParameters[1].type.kind != abi_plan::TypeKind::Pointer) return 156;

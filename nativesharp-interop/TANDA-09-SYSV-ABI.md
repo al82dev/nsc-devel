@@ -686,6 +686,22 @@ tipo a su origen real y mantener vivas las sesiones durante la consulta; esa
 asociacion todavia no esta conectada al analisis de llamadas. Las estructuras
 por valor en la elipsis siguen rechazadas hasta integrar y probar toda la ruta.
 
+### Validacion del plan variadico
+
+La conciliacion comprueba ahora que el simbolo y el numero de parametros fijos
+coincidan con la declaracion observada, y valida destino, convencion, retorno,
+posiciones, coerciones, piezas, extensiones y argumentos indirectos. La sonda
+acepta planes reales, incluidos `sret` y prefijos `byval`, y rechaza planes
+alterados con simbolo, prefijo, posicion, pieza, tipo de retorno, alineacion o
+atributos inconsistentes (`A:/temp/t09-planes-clang.log`). Las comprobaciones
+del plan no sustituyen la conciliacion de procedencia ni prueban que el backend
+pueda emitir la llamada.
+
+Pasaron la compilacion incremental, las pruebas de plan y metadatos, el
+oraculo de IR (`A:/temp/nsc-t09-sysv-varrecord-ir-yh_zwq5u`) y la regresion
+variadica (`A:/temp/nsc-t09-sysv-varargs-5skgkebw`). La asociacion a las
+llamadas, el transporte y la emision de records variables siguen pendientes.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin
