@@ -1249,8 +1249,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     arguments.push_back(value);
                     continue;
                 }
-                if (i < signature->parameters.size())
-                    return failValue(error, "sysv_abi variadic function pointer fixed record is not supported");
+                const bool fixedRecord = i < signature->parameters.size();
+                if (fixedRecord && signature->parameters[i] != key)
+                    return failValue(error, "sysv_abi variadic function pointer fixed record does not match its signature");
                 const auto* layout = findStructLayout(mirModel_, key);
                 const auto ordinal = nameLookup_.typeOrdinalForIdentity(std::string_view(key).substr(5));
                 const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
@@ -1267,7 +1268,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     return failValue(error, "sysv_abi variadic function pointer argument does not match its plan");
                 if (logical.passing == Passing::Indirect)
                 {
-                    if (logical.physicalCount != 1 ||
+                    if (fixedRecord || logical.physicalCount != 1 ||
                         physical != arguments.size() || physical >= plan.physicalParameters.size() ||
                         !((layout->size == 20 && layout->alignment == 4) ||
                           (layout->size == 16 && layout->alignment == 8)) ||
@@ -1295,6 +1296,11 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     byteOffset(slot, 8, "sysv.varptr.second.addr"), "sysv.varptr.second");
                 LLVMSetAlignment(first, 8);
                 LLVMSetAlignment(second, 8);
+                if (fixedRecord)
+                {
+                    fixedTypes.push_back(LLVMDoubleTypeInContext(context_));
+                    fixedTypes.push_back(LLVMInt32TypeInContext(context_));
+                }
                 arguments.push_back(first);
                 arguments.push_back(second);
             }

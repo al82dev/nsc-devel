@@ -1,0 +1,7 @@
+int Main() {
+    T09IndirectVarRecord value; value.x = 2.25; value.y = 7;
+    T09IndirectVarRecord second; second.x = 3.5; second.y = 11;
+    T09IndirectVarCallback callback = t09_get_var_record_callback();
+    if (callback(value, second) != 1 || value.x != 2.25 || value.y != 7 || second.x != 3.5 || second.y != 11) return 1;
+    return 0;
+}

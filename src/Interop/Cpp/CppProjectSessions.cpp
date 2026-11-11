@@ -576,22 +576,6 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     if (!signature.hasPrototype || !signature.variadic || signature.callingConvention != "sysv_abi" ||
         (!isInt(signature.returnType) && !returnDouble && !returnVoid && !returnPointer) || signature.parameterTypes.empty() ||
         signature.parameterTypes.size() > 1024) return {};
-    std::string fixedSource;
-    for (const auto& type : signature.parameterTypes)
-    {
-        const bool fixedDouble = type.kind == CppTypeKind::Floating && type.canonicalSpelling == "double" &&
-            !type.isConst && !type.isVolatile && !type.isRestrict;
-        const bool fixedLong = type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "long long" &&
-            type.sizeBits == 64 && type.alignmentBits == 64 && !type.isConst && !type.isVolatile && !type.isRestrict;
-        const bool fixedUint = type.kind == CppTypeKind::UnsignedInteger && type.canonicalSpelling == "unsigned int" &&
-            type.sizeBits == 32 && type.alignmentBits == 32 && !type.isConst && !type.isVolatile && !type.isRestrict;
-        const bool fixedPointer = type.kind == CppTypeKind::Pointer && type.canonicalSpelling == "int *" &&
-            type.sizeBits == 64 && type.alignmentBits == 64 && !type.isConst && !type.isVolatile &&
-            !type.isRestrict && type.element && isInt(*type.element);
-        if (!isInt(type) && !fixedDouble && !fixedPointer && !fixedLong && !fixedUint) return {};
-        if (!fixedSource.empty()) fixedSource += ", ";
-        fixedSource += fixedDouble ? "double" : fixedPointer ? "int *" : fixedLong ? "long long" : fixedUint ? "unsigned int" : "int";
-    }
     struct ReplayRecord
     {
         std::string identity;
@@ -626,6 +610,39 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         else recordForArgument.push_back(static_cast<std::size_t>(found - selectedRecords.begin()));
     }
     if (selectedRecords.empty()) return {};
+    std::string fixedSource;
+    for (const auto& type : signature.parameterTypes)
+    {
+        if (!fixedSource.empty()) fixedSource += ", ";
+        if (type.kind == CppTypeKind::Record)
+        {
+            if (type.isConst || type.isVolatile || type.isRestrict || type.sizeBits != 128 || type.alignmentBits != 64 ||
+                !type.recordIdentity || !type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty() ||
+                type.recordIdentity->anonymousContext || type.recordIdentity->specializationContext ||
+                !type.recordIdentity->namespaceSegments.empty() || !type.recordIdentity->containingRecords.empty() ||
+                type.canonicalSpelling != "struct " + type.recordIdentity->name) return {};
+            const auto identity = projectCppRecordTypeIdentity(type, moduleName);
+            if (!identity) return {};
+            const auto found = std::find_if(selectedRecords.begin(), selectedRecords.end(),
+                [&](const auto& value) { return value.identity == identity->key(); });
+            if (found == selectedRecords.end() || found->imported->clangUsr != type.recordIdentity->clangUsr ||
+                found->imported->objectLayout->sizeBytes != 16 || found->imported->objectLayout->alignmentBytes != 8) return {};
+            const auto index = static_cast<std::size_t>(found - selectedRecords.begin());
+            fixedSource += index == 0 ? "struct __nsc_abi_record" : "struct __nsc_abi_record_" + std::to_string(index);
+            continue;
+        }
+        const bool fixedDouble = type.kind == CppTypeKind::Floating && type.canonicalSpelling == "double" &&
+            !type.isConst && !type.isVolatile && !type.isRestrict;
+        const bool fixedLong = type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "long long" &&
+            type.sizeBits == 64 && type.alignmentBits == 64 && !type.isConst && !type.isVolatile && !type.isRestrict;
+        const bool fixedUint = type.kind == CppTypeKind::UnsignedInteger && type.canonicalSpelling == "unsigned int" &&
+            type.sizeBits == 32 && type.alignmentBits == 32 && !type.isConst && !type.isVolatile && !type.isRestrict;
+        const bool fixedPointer = type.kind == CppTypeKind::Pointer && type.canonicalSpelling == "int *" &&
+            type.sizeBits == 64 && type.alignmentBits == 64 && !type.isConst && !type.isVolatile &&
+            !type.isRestrict && type.element && isInt(*type.element);
+        if (!isInt(type) && !fixedDouble && !fixedPointer && !fixedLong && !fixedUint) return {};
+        fixedSource += fixedDouble ? "double" : fixedPointer ? "int *" : fixedLong ? "long long" : fixedUint ? "unsigned int" : "int";
+    }
     std::string error;
     std::vector<std::uint8_t> aliasType;
     if (!metadata_detail::encodeCDependencyType(pointer, aliasType, error)) return {};

@@ -1602,6 +1602,23 @@ opcional sin signo, prefijo de 64 bits y dos fijos
 `A:/temp/nsc-t09-sysv-indirecta-dos-fijos-pre-lbj2kgyh`). Otros prefijos y
 firmas siguen pendientes; T09-003 no esta cerrado.
 
+**Record mixto fijo y opcional:** el control C y productor independiente
+comprobaron ambos records por piezas; NSC rechazaba el record fijo
+(`A:/temp/nsc-t09-sysv-indirecta-variadica-record-fijo-_lc9qbgn`). Tras
+emitir el fijo segun el plan y reconstruir su identidad coincidente con el
+record opcional pasaron ocho comparaciones C/NS estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-record-fijo-matriz-i7oludn_`) y plantilla
+sin encabezado, cache y rechazo de variante
+(`A:/temp/nsc-t09-sysv-indirecta-record-fijo-pre-l7p9nb6h`). Pasaron cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones precompiladas de prefijo
+sin signo, dos parametros fijos y record en pila
+(`A:/temp/nsc-t09-sysv-indirecta-prefijo-uint-pre-kpfw18p7`,
+`A:/temp/nsc-t09-sysv-indirecta-dos-fijos-pre-6xspy4r0`,
+`A:/temp/nsc-t09-sysv-indirecta-record-agotado-pre-qwy98qsd`). Otros records
+fijos, identidades no presentes en opcionales y `byval` fijo permanecen
+pendientes; T09-003 no esta cerrado.
+
 **Retorno `int*`:** el control C y productor independiente verifican identidad
 del puntero retornado y escritura por el prefijo; NSC rechazaba la firma
 (`A:/temp/nsc-t09-sysv-indirecta-variadica-retorno-puntero-ru68m35t`). Tras
