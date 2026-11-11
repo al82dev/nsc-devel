@@ -1,9 +1,9 @@
 #include "api.h"
 __declspec(selectany) int _fltused = 0;
-static int __attribute__((sysv_abi)) weighted(int a, int b, int c, int d, int e, int f) {
+int __attribute__((sysv_abi)) t09_sysv_sum(int a, int b, int c, int d, int e, int f) {
     return a + 2*b + 3*c + 4*d + 5*e + 6*f;
 }
-T09SysvCallback t09_get_sysv_callback(void) { return weighted; }
+T09SysvCallback t09_get_sysv_callback(void) { return t09_sysv_sum; }
 static double __attribute__((sysv_abi)) float_mix(double a, float b, int c, double d) { return a + b + c + d; }
 static float __attribute__((sysv_abi)) float_one(float x) { return x + 1.0f; }
 static long long __attribute__((sysv_abi)) wide(long long x, unsigned int y) { return x + y; }

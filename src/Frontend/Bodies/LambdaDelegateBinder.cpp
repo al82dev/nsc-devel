@@ -1582,6 +1582,8 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
     bool& virtualDispatch,
     diagnostics::DiagnosticEngine& diagnostics) const
 {
+    const auto structuralTarget = language::parseFunctionTypeIdentity(delegateTypeKey);
+    const bool targetSysV = structuralTarget && structuralTarget->callingConvention == language::CallingConvention::SysV;
     if (selected >= namespaceCallableBase_ && namespaceFunctionModel_ != nullptr)
     {
         const std::size_t functionOrdinal = selected - namespaceCallableBase_;
@@ -1599,13 +1601,20 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
                     "' is used as a delegate target but has no definition");
             return false;
         }
-        if (function.cppCallingConvention == "sysv_abi")
+        if (function.cppCallingConvention == "sysv_abi" && !targetSysV)
         {
             diagnostics.report(
                 diagnostics::DiagnosticId::InvalidConversion,
                 diagnostics::DiagnosticSeverity::Error,
                 syntax != nullptr ? syntax->range() : SourceRange{},
                 "conversion of a sysv_abi function to a delegate is not yet supported");
+            return false;
+        }
+        if (targetSysV && (function.cppCanonicalIdentity.empty() || function.cppCallingConvention != "sysv_abi"))
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},
+                "conversion of a method to a sysv_abi function pointer is not yet supported");
             return false;
         }
         // EN: T08-D22: a C function keeps its own address (T08-D18), so a C callback type must use the same
@@ -1641,6 +1650,13 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
                 return false;
             }
         }
+    }
+    else if (targetSysV)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},
+            "conversion of a method to a sysv_abi function pointer is not yet supported");
+        return false;
     }
     // Interop Foundation (callbacks C -> NativeSharp): an extern C delegate value IS a raw C
     // function pointer -- no cell, no receiver channel, no closure environment. Only a STATIC
@@ -1761,14 +1777,6 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindMethodGroup
 {
     ExpressionResult result;
     if (!methodGroup.methodGroup || memberModel_ == nullptr) return result;
-    if (const auto target = language::parseFunctionTypeIdentity(delegateTypeKey);
-        target && target->callingConvention == language::CallingConvention::SysV)
-    {
-        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
-            diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},
-            "conversion of a method to a sysv_abi function pointer is not yet supported");
-        return result;
-    }
     std::string returnType;
     std::vector<std::string> parameterTypes;
     std::size_t delegateOrdinal = 0;

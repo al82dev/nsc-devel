@@ -18,6 +18,7 @@ typedef short (__attribute__((sysv_abi)) *T09S16Callback)(short);
 typedef unsigned short (__attribute__((sysv_abi)) *T09U16Callback)(unsigned short);
 typedef _Bool (__attribute__((sysv_abi)) *T09BoolCallback)(_Bool);
 API_STORAGE T09SysvCallback t09_get_sysv_callback(void);
+API_STORAGE __attribute__((sysv_abi)) int t09_sysv_sum(int, int, int, int, int, int);
 API_STORAGE T09FloatCallback t09_get_float_callback(void);
 API_STORAGE T09FloatOneCallback t09_get_float_one_callback(void);
 API_STORAGE T09WideCallback t09_get_wide_callback(void);

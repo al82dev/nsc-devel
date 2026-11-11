@@ -44,7 +44,7 @@ for mode in ('estatica', 'dll'):
             library, project, cflags = 'api.lib', 'Static.nsproj', []
         else:
             run(prefix+'-dll', ['lld-link.exe', '/nologo', '/dll', '/noentry', '/nodefaultlib',
-                '/export:t09_get_sysv_callback', '/export:t09_get_float_callback',
+                '/export:t09_get_sysv_callback', '/export:t09_sysv_sum', '/export:t09_get_float_callback',
                 '/export:t09_get_float_one_callback', '/export:t09_get_wide_callback',
                 '/export:t09_get_uint_callback', '/export:t09_get_ulong_callback',
                 '/export:t09_get_s8_callback', '/export:t09_get_u8_callback', '/export:t09_get_s16_callback',
@@ -77,6 +77,7 @@ for name in ('api.h', 'api.lib'):
 (producer/'Producer.ns').write_text(
     'namespace T09 { public class IndirectBridge { public static int Run<T>(T unused) { '
     'T09SysvCallback callback = t09_get_sysv_callback(); '
+    'T09SysvCallback direct = t09_sysv_sum; if (direct != callback || direct(1, 2, 3, 4, 5, 6) != 91) return 12; '
     'if (callback(1, 2, 3, 4, 5, 6) != 91) return 1; '
     'T09FloatCallback floating = t09_get_float_callback(); if (floating(1.5, 2.25f, 3, 4.0) != 10.75) return 2; '
     'T09FloatOneCallback one = t09_get_float_one_callback(); if (one(2.5f) != 3.5f) return 3; '

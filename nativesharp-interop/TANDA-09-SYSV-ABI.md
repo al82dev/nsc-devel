@@ -1098,6 +1098,19 @@ aceptar el atributo adicional `noundef` de Clang y se corrigieron nombres NS
 que eran palabras reservadas; ambos intentos se conservan en temporales.
 Variadicas, agregados y creacion de callbacks siguen pendientes.
 
+Se contrasto tambien la conversion de una funcion C importada `sysv_abi` a un
+puntero con la misma convencion y firma. Antes del cambio, el control C paso y
+NSC rechazo la asignacion (`A:/temp/nsc-t09-sysv-indirecta-f95j2h4z`). Ahora
+la muestra compara la direccion con el puntero devuelto por la biblioteca e
+invoca ambos con seis enteros: pasaron C y NativeSharp en estatica y DLL O0–O3
+y en plantilla precompilada sin encabezado O0
+(`A:/temp/nsc-t09-sysv-indirecta-matriz-dgz97dne`). Permanecen los rechazos
+de C ordinario hacia puntero SysV y de funcion SysV hacia puntero C ordinario
+(`A:/temp/nsc-t09-sysv-indirecta-pgswh4hb`,
+`A:/temp/nsc-t09-sysv-prueba-bhibzcic`). Transporte, ABI e identidad tambien
+pasaron (`A:/temp/t09-transport-directed/`). El cambio no acredita la creacion
+de callbacks SysV desde metodos o lambdas NativeSharp, ni otras firmas.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin

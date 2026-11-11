@@ -2,6 +2,8 @@
 __declspec(selectany) int _fltused = 0;
 int main(void) {
     T09SysvCallback callback = t09_get_sysv_callback();
+    T09SysvCallback direct = t09_sysv_sum;
+    if (direct != callback || direct(1, 2, 3, 4, 5, 6) != 91) return 12;
     if (callback(1, 2, 3, 4, 5, 6) != 91) return 1;
     if (t09_get_float_callback()(1.5, 2.25f, 3, 4.0) != 10.75) return 2;
     if (t09_get_float_one_callback()(2.5f) != 3.5f) return 3;
