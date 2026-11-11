@@ -709,6 +709,32 @@ int main(int argc, char** argv) {
         "struct RF { double x; int y; }; struct R3 { unsigned char x, y, z; };");
     auto incompatibleOrigin = openRecordSession("struct RF { long long x; int y; };");
     if (!equivalentOrigin || !incompatibleOrigin) return 149;
+    auto attributeOrigin = openRecordSession(
+        "typedef int Number;\n"
+        "struct Plain { double x; int y; };\n"
+        "struct __attribute__((packed)) Packed { double x; int y; };\n"
+        "struct FieldAttribute { double x; int y __attribute__((aligned(8))); };\n"
+        "struct AliasField { Number x; };\n"
+        "struct QualifiedField { const int x; };\n"
+        "struct Bits { unsigned int x : 1; };\n"
+        "struct PointerField { int *x; };\n"
+        "struct ArrayField { int x[2]; };\n"
+        "struct Forward;\n"
+        "#pragma pack(push, 1)\n"
+        "struct PragmaPacked { int x; };\n"
+        "#pragma pack(pop)\n");
+    if (!attributeOrigin || attributeOrigin->cRecordHasPlainReplaySyntax("Plain") != true ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("Packed") != false ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("FieldAttribute") != false ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("AliasField") != false ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("QualifiedField") != false ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("Bits") != false ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("PointerField") != false ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("ArrayField") != false ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("Forward") ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("PragmaPacked") != false ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("Missing")) return 209;
+    if (!attributeOrigin->close().succeeded || attributeOrigin->cRecordHasPlainReplaySyntax("Plain")) return 210;
     const auto originalRecords = equivalentOrigin->recordsSnapshot();
     if (!originalRecords) return 192;
     std::vector<CppSemanticRecordEntry> replayEntries;
@@ -1069,6 +1095,7 @@ int main(int argc, char** argv) {
     if (!std::holds_alternative<std::unique_ptr<CppInteropSession>>(cppOpened)) return 43;
     auto cppSession = std::move(std::get<std::unique_ptr<CppInteropSession>>(cppOpened));
     if (!cppSession) return 44;
+    if (cppSession->cRecordHasPlainReplaySyntax("Plain")) return 211;
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();
     if (!cppFunctions || cppFunctions->empty() ||
         cppSession->cFunctionAbiPlan("cpp_probe", cppFunctions->front().canonicalFunctionType)) return 45;

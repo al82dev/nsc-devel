@@ -801,6 +801,17 @@ esas garantias, resolver la seleccion entre catalogos y cubrir tipos no planos.
 La plantilla precompilada con record permanece pendiente; no se ha ampliado el
 contrato de interoperabilidad ni se ha cerrado T09-003.
 
+Se agrego una consulta a la sesion viva de Clang para reconocer una sintaxis C
+plana: una definicion unica, completa, sin atributos en record o campos y con
+campos builtin sin calificadores. La sonda acepta un record ordinario y rechaza
+atributos `packed` y `aligned`, `#pragma pack`, alias, `const`, bitfields,
+punteros y arreglos; una declaracion incompleta, una sesion C++ o cerrada no
+proporcionan observacion. La compilacion incremental y las pruebas ABI,
+transporte e identidad pasaron (`A:/temp/t09-build-replay.log` y
+`A:/temp/t09-transport-directed/`). Esta observacion no se publica aun en el
+catalogo ni demuestra por si sola equivalencia ABI o procedencia, por lo que
+tampoco habilita llamadas precompiladas.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin

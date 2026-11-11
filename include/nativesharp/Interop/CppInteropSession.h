@@ -89,6 +89,10 @@ public:
     { return std::nullopt; }
     // Initial projection of named, non-dependent records; nullopt means closed.
     virtual std::optional<std::vector<CppRecordDeclaration>> recordsSnapshot() const = 0;
+    // Live C AST observation only: true means a unique, complete, plain record
+    // with unqualified builtin fields and no declaration attributes. It is not
+    // by itself an ABI-equivalence proof or persisted metadata.
+    virtual std::optional<bool> cRecordHasPlainReplaySyntax(std::string_view) const { return std::nullopt; }
     // A missing value means this session cannot provide an alias snapshot.
     virtual std::optional<std::vector<CppTypeAliasDeclaration>> typeAliasesSnapshot() const { return std::nullopt; }
     // Includes anonymous enums; this snapshot does not imply semantic import.
