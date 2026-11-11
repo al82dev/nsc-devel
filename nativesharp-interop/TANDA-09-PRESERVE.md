@@ -113,3 +113,23 @@ plantilla precompilada con y sin encabezado
 (A:/temp/nsc-t09-preserve-cpp-indirecta-precompilado-cix1grik). En esta ruta
 C++ la cache informa `disabled`; no se afirma una prueba de acierto de cache.
 Otras firmas y convenciones siguen pendientes; T09-003 permanece abierto.
+
+## Retornos void y puntero
+
+Cuatro funciones C `preserve_most` y `preserve_all` cubren ambos retornos
+`void` e `int*`, con parametros `int*` e `int`. Se prueban llamadas directas,
+punteros devueltos por C y conversiones de funciones compatibles a puntero.
+El control C paso estatica/DLL O0-O3
+(A:/temp/nsc-t09-preserve-retornos-e9y0ynj3), pero NSC rechazaba el retorno
+(A:/temp/nsc-t09-preserve-retornos-8nneafq7). El IR de Clang registra las
+ocho llamadas y sus convenciones en A:/temp/t09-preserve-retornos-oracle.ll.
+
+Ahora ambas rutas de NSC admiten esos retornos. Pasaron las ocho comparaciones
+C/NS, comprobaciones del IR y cache
+(A:/temp/nsc-t09-preserve-retornos-bceyiii6), y 16 consumidores precompilados
+con y sin encabezado (A:/temp/nsc-t09-preserve-retornos-precompilado-4i25_03s).
+Las pruebas comprueban escritura, direccion de las funciones y del puntero
+retornado. Pasaron la regresion de firmas mixtas
+(A:/temp/nsc-t09-preserve-indirecta-mixta-4f706a13) y los rechazos de
+conversiones incompatibles (A:/temp/nsc-t09-preserve-indirecta-conversiones-ml6p0nyt).
+Otros tipos de retorno y firmas permanecen pendientes; T09-003 sigue abierto.

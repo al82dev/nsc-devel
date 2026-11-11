@@ -1,0 +1,6 @@
+int Main() { int value=1; MostPtr mp=t09_get_most(); MostPtr md=t09_most;
+MostVoid mv=t09_get_most_void(); MostVoid mvd=t09_most_void;
+AllPtr ap=t09_get_all_ptr(); AllPtr ad=t09_all_ptr; AllVoid av=t09_get_all(); AllVoid avd=t09_all;
+int* p1=t09_most(&value,1); int* p2=mp(&value,1); t09_most_void(&value,1); mv(&value,1);
+int* p3=t09_all_ptr(&value,1); int* p4=ap(&value,1); t09_all(&value,1); av(&value,1);
+return mp==md && mv==mvd && ap==ad && av==avd && p1==&value && p2==&value && p3==&value && p4==&value && value==9 ? 0 : 1; }
