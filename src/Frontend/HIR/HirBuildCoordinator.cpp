@@ -1833,6 +1833,11 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                       interop::abi_plan::isSysVSmallRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName)) ||
                      (*symbol.cppReturnType->sizeBits == 64 && symbol.cppReturnType->alignmentBits == 32 &&
                       interop::abi_plan::isSysVSingleVector2FRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName)) ||
+                     (interop::abi_plan::isSysVSingleFloatingRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName) &&
+                      ((symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Float &&
+                        *symbol.cppReturnType->sizeBits == 32 && symbol.cppReturnType->alignmentBits == 32) ||
+                       (symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Double &&
+                        *symbol.cppReturnType->sizeBits == 64 && symbol.cppReturnType->alignmentBits == 64))) ||
                      (interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName) &&
                       *symbol.cppReturnType->sizeBits == 64 +
                           symbol.cppAbiPlan->physicalReturn.elements[1].widthOrCount) ||

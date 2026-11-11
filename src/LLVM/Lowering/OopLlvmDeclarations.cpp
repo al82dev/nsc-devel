@@ -19,6 +19,7 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
             if (function.cppSysVCall && function.cppAbiPlan &&
                 (interop::abi_plan::isSysVSmallRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
                  interop::abi_plan::isSysVSingleVector2FRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
+                 interop::abi_plan::isSysVSingleFloatingRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
                  interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
                  interop::abi_plan::isSysVMixedRecordRoundTrip(*function.cppAbiPlan, function.cAbiName)))
             {
@@ -47,7 +48,9 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                     return LLVMFunctionType(result, pieces, 2, 0);
                 }
                 LLVMTypeRef integer = interop::abi_plan::isSysVSingleVector2FRecordRoundTrip(*function.cppAbiPlan, function.cAbiName)
-                    ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) : LLVMIntTypeInContext(context_,
+                    ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) :
+                    function.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
+                    function.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) : LLVMIntTypeInContext(context_,
                         static_cast<unsigned>(function.cppAbiPlan->physicalReturn.widthOrCount));
                 return LLVMFunctionType(integer, &integer, 1, 0);
             }

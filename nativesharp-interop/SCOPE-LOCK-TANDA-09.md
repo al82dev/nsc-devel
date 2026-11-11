@@ -103,3 +103,5 @@ T09-003: contrastar y probar el record de tres `float`, con vector fijo seguido 
 T09-003: conservar la prueba negativa de esta sesion con un vector fijo como unica pieza, aun no admitido.
 T09-003: contrastar y probar un record de dos `float` transportado como vector fijo unico, incluida precompilacion. Mantener una prueba negativa para una pieza escalar flotante aun no admitida.
 T09-003: conservar la prueba negativa de esta sesion con un `float` como pieza escalar unica, aun no admitida.
+T09-003: contrastar y probar records con un `float` o un `double` como pieza escalar unica, incluida precompilacion. Conservar el rechazo de una forma flotante de dos piezas aun no admitida.
+T09-003: conservar la prueba negativa de esta sesion con dos piezas `double`, aun no admitidas.

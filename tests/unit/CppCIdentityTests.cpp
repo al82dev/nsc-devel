@@ -1859,6 +1859,25 @@ bool checkDependencyTypeCodec()
         decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
         abi_plan::isSysVSingleVector2FRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
         "C dependency function retains a single-vector SysV plan");
+    for (const bool isFloat : {true, false})
+    {
+        auto floatingPlan = std::make_shared<abi_plan::Plan>(*singleVectorPlan);
+        const auto type = isFloat ? floatType : doubleType;
+        floatingPlan->physicalReturn = type;
+        floatingPlan->logicalReturn.coercion = type;
+        floatingPlan->logicalParameters[0].coercion = type;
+        floatingPlan->physicalParameters[0].type = type;
+        recordFunction.declaration.abiPlan = floatingPlan;
+        recordFunction.declaration.returnType.sizeBits = isFloat ? 32 : 64;
+        recordFunction.declaration.returnType.alignmentBits = isFloat ? 32 : 64;
+        recordFunction.declaration.parameters[0].type.sizeBits = isFloat ? 32 : 64;
+        recordFunction.declaration.parameters[0].type.alignmentBits = isFloat ? 32 : 64;
+        ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+            decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+            abi_plan::isSysVSingleFloatingRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+            restoredRecord.declaration.abiPlan->physicalReturn.kind == type.kind,
+            "C dependency function retains a single floating SysV plan");
+    }
     if (!functionBytes.empty()) functionBytes.pop_back();
     decoded.moduleName = "sentinel";
     ok &= expect(!decodeCDependencyFunction(functionBytes, decoded, error) && decoded.moduleName == "sentinel",

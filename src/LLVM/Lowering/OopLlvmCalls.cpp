@@ -930,7 +930,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         }
         if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
             (interop::abi_plan::isSysVSmallRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName) ||
-             interop::abi_plan::isSysVSingleVector2FRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName)))
+             interop::abi_plan::isSysVSingleVector2FRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName) ||
+             interop::abi_plan::isSysVSingleFloatingRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName)))
         {
             if (node->children.size() != 1 || node->referenceResult || node->returnsAssignedValue ||
                 node->children[0]->typeKey != node->typeKey ||
@@ -948,7 +949,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             LLVMValueRef argumentStore = LLVMBuildStore(builder_, value, argumentSlot);
             LLVMSetAlignment(argumentStore, alignment);
             LLVMTypeRef integer = interop::abi_plan::isSysVSingleVector2FRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName)
-                ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) : LLVMIntTypeInContext(context_,
+                ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) :
+                imported->cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
+                imported->cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) : LLVMIntTypeInContext(context_,
                     static_cast<unsigned>(imported->cppAbiPlan->physicalReturn.widthOrCount));
             LLVMValueRef physicalArgument = LLVMBuildLoad2(builder_, integer, argumentSlot, "sysv.record.physical");
             LLVMSetAlignment(physicalArgument, alignment);

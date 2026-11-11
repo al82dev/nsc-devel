@@ -4,6 +4,22 @@
 
 namespace nativesharp::interop::abi_plan
 {
+inline bool isSysVSingleFloatingRecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
+{
+    const auto kind = plan.physicalReturn.kind;
+    if ((kind != TypeKind::Float && kind != TypeKind::Double) || plan.symbol != symbol ||
+        plan.callingConvention != 78 || plan.variadic || !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") ||
+        !plan.dataLayout.starts_with("e-") || plan.returnSignExtend || plan.returnZeroExtend ||
+        plan.logicalReturn.passing != Passing::Direct || !plan.logicalReturn.coercion ||
+        plan.logicalReturn.coercion->kind != kind || plan.logicalReturn.offset != 0 ||
+        plan.logicalParameters.size() != 1 || plan.physicalParameters.size() != 1) return false;
+    const auto& logical = plan.logicalParameters[0];
+    const auto& physical = plan.physicalParameters[0];
+    return logical.passing == Passing::Direct && logical.coercion && logical.coercion->kind == kind &&
+        logical.offset == 0 && logical.firstPhysical == 0 && logical.physicalCount == 1 &&
+        physical.type.kind == kind && !physical.structureReturn && !physical.byValue &&
+        !physical.signExtend && !physical.zeroExtend && !physical.inRegister && !physical.noAlias;
+}
 inline bool isSysVSingleVector2FRecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
 {
     const auto vector2f = [](const Type& value) {

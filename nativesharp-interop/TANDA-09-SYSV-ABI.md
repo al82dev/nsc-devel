@@ -371,3 +371,15 @@ pasaron en A:/temp/nsc-t09-sysv-mixed-vf-7zr2ivrt y
 A:/temp/nsc-t09-sysv-mixed-vv-w3ofwo2l. La prueba negativa de esta sesion
 conserva el rechazo de un `float` escalar unico y de callback en
 A:/temp/nsc-t09-sysv-prueba-bhbu1gfl. Otras formas siguen pendientes.
+
+Records con un escalar flotante: Clang emite un `float` o `double` para las
+respectivas muestras (A:/temp/nsc-t09-scalar-clang-t1ozox3m). El control C paso
+y NSC rechazo inicialmente los dos casos en A:/temp/nsc-t09-sysv-scalar-f-dsfas6ki
+y A:/temp/nsc-t09-sysv-scalar-d-l4y6xkqy. Despues cada muestra paso las ocho
+comparaciones estatica/DLL O0–O3, firmas LLVM y plantilla sin encabezado O0:
+A:/temp/nsc-t09-sysv-scalar-f-4_kn0bk0 y A:/temp/nsc-t09-sysv-scalar-d-ua6kkpsi.
+La sonda y metadatos pasaron en A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log. El vector unico paso nuevamente en
+A:/temp/nsc-t09-sysv-mixed-v-dmi98swh. La prueba negativa de esta sesion
+conserva el rechazo de dos `double` y de callback en
+A:/temp/nsc-t09-sysv-prueba-2bzdex5d. Otras formas siguen pendientes.
