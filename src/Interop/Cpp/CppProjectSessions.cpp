@@ -359,16 +359,31 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     const auto& signature = *pointer.element->function;
     if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "sysv_abi" ||
         signature.returnType.kind != CppTypeKind::SignedInteger || signature.returnType.canonicalSpelling != "int" ||
-        (signature.parameterTypes.size() != 1 && signature.parameterTypes.size() != 3)) return {};
-    const bool boundaryIntegers = signature.parameterTypes.size() == 3;
-    if (boundaryIntegers)
-        for (const auto index : {0U, 2U})
+        signature.parameterTypes.empty() || signature.parameterTypes.size() > 1024) return {};
+    const CppType* recordType = nullptr;
+    std::vector<std::uint8_t> encodedRecord;
+    std::string parameterSource;
+    std::string error;
+    for (const auto& argument : signature.parameterTypes)
+    {
+        if (!parameterSource.empty()) parameterSource += ", ";
+        if (argument.kind == CppTypeKind::Record)
         {
-            const auto& argument = signature.parameterTypes[index];
+            std::vector<std::uint8_t> encoded;
+            if (!metadata_detail::encodeCDependencyType(argument, encoded, error) ||
+                (recordType && encoded != encodedRecord)) return {};
+            if (!recordType) { recordType = &argument; encodedRecord = std::move(encoded); }
+            parameterSource += "struct __nsc_abi_record";
+        }
+        else
+        {
             if (argument.kind != CppTypeKind::SignedInteger || argument.canonicalSpelling != "int" ||
                 argument.isConst || argument.isVolatile || argument.isRestrict) return {};
+            parameterSource += "int";
         }
-    const auto& type = signature.parameterTypes[boundaryIntegers ? 1 : 0];
+    }
+    if (!recordType) return {};
+    const auto& type = *recordType;
     if (type.kind != CppTypeKind::Record || type.isConst || type.isVolatile || type.isRestrict ||
         !type.recordIdentity || !type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty() ||
         type.recordIdentity->anonymousContext || type.recordIdentity->specializationContext ||
@@ -386,7 +401,6 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         imported->objectLayout->alignmentBytes != *type.alignmentBits / 8 || imported->origin != frontend::CppImportedTypeOrigin::CStruct)
         return {};
     std::vector<std::uint8_t> aliasType;
-    std::string error;
     if (!metadata_detail::encodeCDependencyType(pointer, aliasType, error)) return {};
     std::optional<metadata_detail::CDependencyAliasSnapshot> selectedAlias;
     std::optional<CppCRecordSnapshot> selectedRecord;
@@ -452,8 +466,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     options.resourceDirectory = environment.resourceDirectory;
     options.workingDirectory = environment.workingDirectory;
     options.input = CppBufferInput{"nsc-pointer-replay.c", *recordSource +
-        "typedef int (__attribute__((sysv_abi)) *__nsc_replay_pointer)(" +
-        (boundaryIntegers ? "int, struct __nsc_abi_record, int);\n" : "struct __nsc_abi_record);\n")};
+        "typedef int (__attribute__((sysv_abi)) *__nsc_replay_pointer)(" + parameterSource + ");\n"};
     auto opened = factory.open(std::move(options), {});
     auto* holder = std::get_if<std::unique_ptr<CppInteropSession>>(&opened);
     if (!holder || !*holder) return {};

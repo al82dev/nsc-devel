@@ -1143,6 +1143,25 @@ ABI e identidad (`A:/temp/nsc-t09-sysv-indirecta-record-matriz-hjdh9mmd`,
 `A:/temp/t09-transport-directed/`). La prueba negativa anterior sigue intacta
 y su contradiccion continua pendiente; no se acreditan otras firmas.
 
+**Dos records mixtos y un entero:** el control C mostro cinco piezas y paso;
+NSC inicialmente rechazo la llamada
+(`A:/temp/nsc-t09-sysv-indirecta-dos-records-lk71ztw6`). El descenso ahora
+recorre los argumentos y las piezas del plan validado, con barreras para
+carriers, layouts y clases no comprobados. La muestra paso ocho comparaciones
+directas estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-record-matriz-34j4376f`) y plantilla
+precompilada sin encabezado en las mismas modalidades, con cache y rechazo de
+una variante no acreditada (`A:/temp/nsc-t09-sysv-indirecta-record-pre-e0npo1a6`).
+Pasaron las matrices anteriores y transporte, ABI e identidad
+(`A:/temp/nsc-t09-sysv-indirecta-record-matriz-i143y_5u`,
+`A:/temp/nsc-t09-sysv-indirecta-record-matriz-5p4wwgh8`,
+`A:/temp/nsc-t09-sysv-indirecta-record-matriz-7fuo77nk`,
+`A:/temp/nsc-t09-sysv-indirecta-record-matriz-0bkt6xnx`,
+`A:/temp/nsc-t09-sysv-indirecta-matriz-1ffw34bl`,
+`A:/temp/t09-transport-directed/`). En precompilacion se admite el mismo
+record reconstruido repetido, no records distintos sin contraste. La prueba
+negativa anterior sigue intacta y pendiente de resolucion.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor
