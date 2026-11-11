@@ -850,9 +850,10 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             if (alignment != imported->cppAbiPlan->logicalReturn.alignment)
                 return failValue(error, "SysV indirect record has an unexpected alignment");
             LLVMValueRef resultSlot = entryBlockAlloca(carrier, alignment, "sysv.indirect.result");
-            LLVMValueRef argumentSlot = entryBlockAlloca(carrier, 8, "sysv.indirect.argument");
+            const unsigned argumentAlignment = static_cast<unsigned>(imported->cppAbiPlan->physicalParameters[1].alignment);
+            LLVMValueRef argumentSlot = entryBlockAlloca(carrier, argumentAlignment, "sysv.indirect.argument");
             LLVMValueRef argumentStore = LLVMBuildStore(builder_, value, argumentSlot);
-            LLVMSetAlignment(argumentStore, 8);
+            LLVMSetAlignment(argumentStore, argumentAlignment);
             LLVMValueRef arguments[] = {resultSlot, argumentSlot};
             releaseTransferredArguments(node);
             LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
@@ -861,7 +862,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
             applySretAttributes([&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                 { LLVMAddCallSiteAttribute(call, index, attribute); }, 0, node->typeKey);
-            applySysVRecordByValue(context_, carrier,
+            applySysVRecordByValue(context_, carrier, argumentAlignment,
                 [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                 { LLVMAddCallSiteAttribute(call, index, attribute); });
             if (!applyMustTail(node, call, error)) return nullptr;

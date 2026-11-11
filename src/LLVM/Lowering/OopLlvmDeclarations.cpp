@@ -253,6 +253,7 @@ bool OopLlvmImplementation::declareFunction(
                 LLVMTypeRef carrier = llvmType(function.returnTypeKey, error);
                 if (!carrier) return false;
                 applySysVRecordByValue(context_, carrier,
+                    static_cast<unsigned>(function.cppAbiPlan->physicalParameters[1].alignment),
                     [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                     { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); });
             }

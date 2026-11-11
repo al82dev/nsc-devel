@@ -140,16 +140,17 @@ inline bool isSysVIndirectRecordRoundTrip(const Plan& plan, std::string_view sym
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
         plan.returnSignExtend || plan.returnZeroExtend || plan.physicalReturn.kind != TypeKind::Void ||
         plan.logicalReturn.passing != Passing::Indirect ||
-        (alignment != 1 && alignment != 4 && alignment != 8) ||
+        (alignment != 1 && alignment != 4 && alignment != 8 && alignment != 32) ||
         plan.logicalParameters.size() != 1 || plan.physicalParameters.size() != 2) return false;
     const auto& logical = plan.logicalParameters[0];
     const auto& result = plan.physicalParameters[0];
     const auto& argument = plan.physicalParameters[1];
-    return logical.passing == Passing::Indirect && logical.byValue && logical.alignment == 8 &&
+    const auto argumentAlignment = alignment < 8 ? 8 : alignment;
+    return logical.passing == Passing::Indirect && logical.byValue && logical.alignment == argumentAlignment &&
         logical.firstPhysical == 1 && logical.physicalCount == 1 &&
         result.type.kind == TypeKind::Pointer && result.pointee && result.structureReturn &&
         result.alignment == alignment && !result.byValue && !result.inRegister && !result.signExtend && !result.zeroExtend &&
-        argument.type.kind == TypeKind::Pointer && argument.pointee && argument.byValue && argument.alignment == 8 &&
+        argument.type.kind == TypeKind::Pointer && argument.pointee && argument.byValue && argument.alignment == argumentAlignment &&
         !argument.structureReturn && !argument.noAlias && !argument.inRegister && !argument.signExtend &&
         !argument.zeroExtend;
 }

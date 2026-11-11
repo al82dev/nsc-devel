@@ -556,7 +556,7 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
             plan->logicalReturn.alignment = bits;
             abi_plan::LogicalValue logical;
             logical.passing = abi_plan::Passing::Indirect;
-            logical.alignment = 8;
+            logical.alignment = bits < 8 ? 8 : bits;
             logical.byValue = true;
             logical.firstPhysical = 1;
             logical.physicalCount = 1;
@@ -571,7 +571,7 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
             argument.type.kind = abi_plan::TypeKind::Pointer;
             argument.pointee = abi_plan::Type{};
             argument.byValue = true;
-            argument.alignment = 8;
+            argument.alignment = bits < 8 ? 8 : bits;
             plan->physicalParameters.push_back(argument);
             if (!abi_plan::isSysVIndirectRecordRoundTrip(*plan, value.linkSymbol))
             { error = "invalid C dependency ABI plan"; return false; }
