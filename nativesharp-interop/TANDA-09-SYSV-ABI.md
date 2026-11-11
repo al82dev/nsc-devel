@@ -699,8 +699,32 @@ pueda emitir la llamada.
 
 Pasaron la compilacion incremental, las pruebas de plan y metadatos, el
 oraculo de IR (`A:/temp/nsc-t09-sysv-varrecord-ir-yh_zwq5u`) y la regresion
-variadica (`A:/temp/nsc-t09-sysv-varargs-5skgkebw`). La asociacion a las
-llamadas, el transporte y la emision de records variables siguen pendientes.
+variadica (`A:/temp/nsc-t09-sysv-varargs-5skgkebw`). En ese momento la
+asociacion, el transporte y la emision seguian pendientes; el avance posterior
+de transporte se describe a continuacion.
+
+### Transporte del plan por llamada
+
+Los nodos de HIR y MIR pueden conservar el plan especifico de una llamada;
+la traduccion HIR–MIR lo mantiene y las identidades de cache de HIR y LLVM
+incluyen su contenido. La cache interna de MIR lo codifica y restaura mediante
+un formato acotado; datos truncados, longitudes invalidas y planes que exceden
+sus limites se rechazan en vez de restaurar una llamada sin el plan. El codec
+comprueba la estructura de los datos; el consumidor debe seguir validando el
+contrato ABI y la procedencia antes de emitirlos.
+
+Pasaron la construccion incremental agrupada y las pruebas dirigidas de una
+llamada HIR sintetica, transporte a MIR, restauracion y cambio de identidad en
+ambas caches (`A:/temp/t09-transport-directed/transport.log`). La sonda uso
+planes reales de Clang, incluyo todas las truncaciones de un plan y probo la
+restauracion de retornos indirectos (`A:/temp/t09-transport-directed/abi.log`).
+Tambien pasaron la prueba existente de cache profunda
+(`A:/temp/t09-cache-directed/cache.log`) y la regresion de llamadas variadicas
+(`A:/temp/nsc-t09-sysv-varargs-u6d2_ifh`).
+
+El plan aun no se asigna a llamadas reales ni se consume en LLVM. Tampoco se
+ha agregado persistencia a NSMeta: las plantillas deben seguir rechazando los
+records variables hasta completar esa ruta. T09-003 permanece abierto.
 
 ## Retorno indirecto sin argumentos byval
 

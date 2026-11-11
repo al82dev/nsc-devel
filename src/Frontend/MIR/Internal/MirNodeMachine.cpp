@@ -162,6 +162,7 @@ void ProjectOopMirModel::MirNodeMachine::copyAttributes(
     result->argumentCount = node->argumentCount;
     result->argumentParameterOrdinals = node->argumentParameterOrdinals;
     result->argumentTypeKeys = node->argumentTypeKeys;
+    result->cppVariadicCallPlan = node->cppVariadicCallPlan;
 
 }
 

@@ -7,6 +7,7 @@
 #include "../../src/Frontend/MIR/MirConstantEvaluator.h"
 #include "../../src/Frontend/MIR/HirCacheIdentity.h"
 #include "nativesharp/Frontend/ProjectOopMirModelDumper.h"
+#include "nativesharp/Interop/CppVariadicAbiCodec.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/LLVM/CoffObjectVerifier.h"
 #include "nativesharp/LLVM/CompilationArtifactCache.h"
@@ -17,6 +18,7 @@
 #include "nativesharp/LLVM/ProjectOopCodePartition.h"
 #include "nativesharp/LLVM/ProjectOopFunctionReachability.h"
 #include "nativesharp/LLVM/ProjectOopLlvmLowerer.h"
+#include "nativesharp/LLVM/ProjectOopMirCacheIdentity.h"
 #include "nativesharp/LLVM/ProjectOopObjectGenerator.h"
 #include "nativesharp/Linker/WindowsExecutableBuilder.h"
 #include "nativesharp/Linker/WindowsLibraryBuilder.h"
@@ -1925,6 +1927,28 @@ struct ProjectOopHirModelTestAccess final
         std::string& error)
     {
         return model.lowerNode(node, error);
+    }
+    static std::unique_ptr<ProjectOopMirNode> lowerStaticCallWithTarget(
+        const ProjectOopHirNode* node, std::string& error)
+    {
+        ProjectOopHirModel hir;
+        ProjectOopHirFunction target;
+        target.isStatic = true;
+        target.mangledName = "variadic_target";
+        hir.functions_.push_back(std::move(target));
+        hir.functionByNamespaceFunction_.push_back(0U);
+        ProjectOopMirModel mir;
+        mir.hirModel_ = &hir;
+        return mir.lowerNode(node, error);
+    }
+    static std::string mirIdentityForNode(std::unique_ptr<ProjectOopMirNode> node)
+    {
+        ProjectOopMirModel model;
+        ProjectOopMirFunction function;
+        function.body = std::move(node);
+        model.functions_.push_back(std::move(function));
+        const std::array<std::size_t, 1> definitions{0};
+        return llvm_backend::projectOopMirCacheIdentity(model, definitions, definitions);
     }
 
     static bool collectMirCleanupContract(
@@ -20780,6 +20804,78 @@ void destroyMirTreeIteratively(std::unique_ptr<ProjectOopMirNode> root)
     }
 }
 
+void testVariadicCallPlanTransport(TestContext& tests)
+{
+    namespace abi = nativesharp::interop::abi_plan;
+    using HirNode = nativesharp::frontend::ProjectOopHirNode;
+    using HirKind = nativesharp::frontend::ProjectOopHirNodeKind;
+    using Access = nativesharp::frontend::ProjectOopHirModelTestAccess;
+    auto plan = std::make_shared<abi::VariadicCallPlan>();
+    plan->symbol = "variadic_target";
+    plan->targetTriple = "x86_64-pc-windows-msvc";
+    plan->dataLayout = "e-test";
+    plan->callingConvention = 78;
+    plan->requiredArguments = 1;
+    plan->physicalReturn = abi::Type{abi::TypeKind::Integer, 32};
+    plan->result.passing = abi::Passing::Direct;
+    plan->result.coercion = plan->physicalReturn;
+    abi::LogicalValue parameter;
+    parameter.passing = abi::Passing::Direct;
+    parameter.coercion = abi::Type{abi::TypeKind::Integer, 32};
+    parameter.physicalCount = 1;
+    plan->arguments.push_back(parameter);
+    abi::PhysicalParameter physical;
+    physical.type = *parameter.coercion;
+    plan->physicalParameters.push_back(physical);
+
+    auto hir = std::make_unique<HirNode>();
+    hir->kind = HirKind::StaticCall;
+    hir->namespaceFunctionOrdinal = 0U;
+    hir->typeKey = "builtin:int";
+    hir->cppVariadicCallPlan = plan;
+    std::string error;
+    auto mir = Access::lowerStaticCallWithTarget(hir.get(), error);
+    tests.expect(mir && error.empty() && mir->cppVariadicCallPlan &&
+        mir->cppVariadicCallPlan->symbol == "variadic_target" &&
+        mir->cppVariadicCallPlan->physicalParameters.size() == 1,
+        "HIR static call transports its variadic ABI plan into MIR");
+    if (!mir) return;
+    const auto bytes = Access::serializeMirNodeTree(mir.get());
+    std::unique_ptr<nativesharp::frontend::ProjectOopMirNode> restored;
+    const bool ok = Access::restoreMirNodeTree(bytes, restored);
+    tests.expect(ok && restored && restored->cppVariadicCallPlan &&
+        restored->cppVariadicCallPlan->symbol == plan->symbol &&
+        restored->cppVariadicCallPlan->physicalParameters.size() == 1 &&
+        restored->cppVariadicCallPlan->physicalParameters[0].type.widthOrCount == 32,
+        "MIR cache retains the variadic ABI plan");
+    std::unique_ptr<nativesharp::frontend::ProjectOopMirNode> truncated;
+    tests.expect(!bytes.empty() && !Access::restoreMirNodeTree(
+        std::string_view(bytes).substr(0, bytes.size() - 1), truncated),
+        "MIR cache rejects a truncated node carrying a variadic ABI plan");
+    auto oversized = std::make_shared<abi::VariadicCallPlan>(*plan);
+    oversized->arguments.resize(abi::variadic_cache_detail::maxArguments + 1);
+    mir->cppVariadicCallPlan = oversized;
+    std::unique_ptr<nativesharp::frontend::ProjectOopMirNode> invalidRestored;
+    tests.expect(!Access::restoreMirNodeTree(Access::serializeMirNodeTree(mir.get()), invalidRestored),
+        "MIR cache rejects an unencodable variadic ABI plan instead of losing it");
+    mir->cppVariadicCallPlan = plan;
+    nativesharp::frontend::ProjectOopHirFunction function;
+    function.body = std::move(hir);
+    const auto first = nativesharp::frontend::serializeHirCacheIdentity(function);
+    auto changed = std::make_shared<abi::VariadicCallPlan>(*plan);
+    changed->physicalParameters[0].type.widthOrCount = 64;
+    function.body->cppVariadicCallPlan = changed;
+    tests.expect(first != nativesharp::frontend::serializeHirCacheIdentity(function),
+        "HIR cache identity changes when the per-call ABI plan changes");
+    if (restored)
+    {
+        restored->cppVariadicCallPlan = changed;
+        tests.expect(Access::mirIdentityForNode(std::move(mir)) !=
+            Access::mirIdentityForNode(std::move(restored)),
+            "LLVM cache identity changes when the per-call ABI plan changes");
+    }
+}
+
 void testDeepMirNodeLowering(TestContext& tests)
 {
     constexpr std::size_t nestingDepth = 32768U;
@@ -21798,7 +21894,11 @@ int main()
         ? std::string(focus)
         : std::string{};
     std::free(focus);
-    if (focusValue == "precise-incremental-invalidation")
+    if (focusValue == "variadic-call-plan-transport")
+    {
+        testVariadicCallPlanTransport(tests);
+    }
+    else if (focusValue == "precise-incremental-invalidation")
     {
         testPreciseIncrementalInvalidation(tests, root);
     }
@@ -22097,6 +22197,7 @@ int main()
     else if (focusValue == "mir-node-lowering-depth")
     {
         testDeepMirNodeLowering(tests);
+        testVariadicCallPlanTransport(tests);
         testMirAggregateSpreadDescriptor(tests);
     }
     else if (focusValue == "mir-future-layout-depth")

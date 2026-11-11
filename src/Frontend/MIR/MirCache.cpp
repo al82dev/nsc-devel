@@ -10,6 +10,7 @@
 
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Basic/Version.h"
+#include "nativesharp/Interop/CppVariadicAbiCodec.h"
 #include "nativesharp/Language/CoroutineSemantics.h"
 #include "nativesharp/Frontend/ProjectDestructionModelDumper.h"
 #include "nativesharp/Frontend/ProjectInterfaceModelDumper.h"
@@ -245,6 +246,10 @@ void appendMirNodeShapeFields(std::string& out, const ProjectOopMirNode& node)
         node.nativeArrayRank ? static_cast<std::uint32_t>(node.nativeArrayRank) : 0U);
     internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.argumentCount));
     internal::CachePayloadWriter::stringVector(out, node.argumentTypeKeys);
+    const auto plan = node.cppVariadicCallPlan
+        ? interop::abi_plan::encodeVariadicCallPlanForCache(*node.cppVariadicCallPlan) : std::nullopt;
+    internal::CachePayloadWriter::string(out, !node.cppVariadicCallPlan ? std::string_view{} :
+        plan ? std::string_view(*plan) : std::string_view("\0", 1));
     internal::CachePayloadWriter::stringVector(out, node.catchMatchedErrorTypeKeys);
     internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.ownership));
     internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.objectLifetimeOwnership));
@@ -484,9 +489,16 @@ bool readMirNodeShapeFields(internal::CachePayloadReader& reader, ProjectOopMirN
     node.nativeArrayRank = u32;
     if (!reader.u32(u32)) return false;
     node.argumentCount = u32;
-    if (!reader.stringVector(node.argumentTypeKeys) ||
+    std::string variadicPlan;
+    if (!reader.stringVector(node.argumentTypeKeys) || !reader.string(variadicPlan) ||
         !reader.stringVector(node.catchMatchedErrorTypeKeys))
         return false;
+    if (!variadicPlan.empty())
+    {
+        auto decoded = interop::abi_plan::decodeVariadicCallPlanFromCache(variadicPlan);
+        if (!decoded) return false;
+        node.cppVariadicCallPlan = std::make_shared<const interop::abi_plan::VariadicCallPlan>(std::move(*decoded));
+    }
     if (!reader.u32(u32)) return false;
     node.ownership = static_cast<sema::OwnershipKind>(u32);
     if (!reader.u32(u32)) return false;

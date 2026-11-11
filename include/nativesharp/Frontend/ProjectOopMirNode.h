@@ -184,6 +184,7 @@ struct ProjectOopMirNode final
     std::string resultErrorFactoryCalleeName;
     std::string resultErrorConversionCalleeName;
     std::vector<std::string> argumentTypeKeys;
+    std::shared_ptr<const interop::abi_plan::VariadicCallPlan> cppVariadicCallPlan;
     std::vector<std::unique_ptr<ProjectOopMirNode>> children;
 };
 }

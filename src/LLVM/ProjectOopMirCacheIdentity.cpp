@@ -5,6 +5,7 @@
 #include "nativesharp/Basic/Sha256.h"
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
+#include "nativesharp/Interop/CppVariadicAbiCodec.h"
 #include "nativesharp/Source/SourceManager.h"
 
 #include <algorithm>
@@ -132,6 +133,10 @@ void writeNodeCall(IdentityWriter& output, const frontend::ProjectOopMirNode& no
     output.text(node.resultErrorFactoryCalleeName);
     output.text(node.resultErrorConversionCalleeName);
     output.texts(node.argumentTypeKeys);
+    const auto plan = node.cppVariadicCallPlan
+        ? interop::abi_plan::encodeVariadicCallPlanForCache(*node.cppVariadicCallPlan) : std::nullopt;
+    output.text(!node.cppVariadicCallPlan ? std::string_view{} :
+        plan ? std::string_view(*plan) : std::string_view("\0", 1));
     output.scalar(node.children.size());
 }
 

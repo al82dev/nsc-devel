@@ -3,6 +3,7 @@
 #include "../Cache/CachePayloadWriter.h"
 
 #include "nativesharp/Frontend/ProjectOopHirFunction.h"
+#include "nativesharp/Interop/CppVariadicAbiCodec.h"
 
 #include <bit>
 #include <cstdint>
@@ -157,6 +158,10 @@ void appendNode(std::string& out, const ProjectOopHirNode& node)
     appendNodeFlags(out, node);
     CachePayloadWriter::stringVector(out, node.catchMatchedErrorTypeKeys);
     CachePayloadWriter::stringVector(out, node.argumentTypeKeys);
+    const auto plan = node.cppVariadicCallPlan
+        ? interop::abi_plan::encodeVariadicCallPlanForCache(*node.cppVariadicCallPlan) : std::nullopt;
+    CachePayloadWriter::string(out, !node.cppVariadicCallPlan ? std::string_view{} :
+        plan ? std::string_view(*plan) : std::string_view("\0", 1));
     CachePayloadWriter::sizeVector(out, node.argumentParameterOrdinals);
     CachePayloadWriter::u64(out, node.children.size());
 }

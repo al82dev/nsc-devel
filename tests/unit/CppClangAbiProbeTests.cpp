@@ -24,6 +24,7 @@
 #include "nativesharp/Interop/CppClangSessionFactory.h"
 #include "nativesharp/Interop/CppInteropSession.h"
 #include "nativesharp/Interop/CppVariadicAbiReconciliation.h"
+#include "nativesharp/Interop/CppVariadicAbiCodec.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #include "nativesharp/Interop/CppSemanticInventory.h"
@@ -226,6 +227,10 @@ int main(int argc, char** argv) {
                              << " alignment=" << actual->result.alignment << "\n";
                 return 170;
             }
+            const auto cached = t09_probe::encodeVariadicCallPlanForCache(*actual);
+            const auto restored = cached ? t09_probe::decodeVariadicCallPlanFromCache(*cached) : std::nullopt;
+            if (!restored || !nativesharp::interop::validateCppVariadicSysVCallPlan(*restored, name, 2) ||
+                t09_probe::encodeVariadicCallPlanForCache(*restored) != cached) return 180;
             if (name == "pvariadic_sret") {
                 auto invalid = *actual;
                 invalid.physicalParameters[0].alignment = 4;
@@ -719,6 +724,17 @@ int main(int argc, char** argv) {
         !validateCppVariadicSysVCallPlan(*variadicPressurePlan, "pvariadic", 1) ||
         !validateCppVariadicSysVCallPlan(*variadicFloatPressurePlan, "pvariadic", 1) ||
         validateCppVariadicSysVCallPlan(*reconciledPlan, "other", 1)) return 162;
+    const auto encodedCall = abi_plan::encodeVariadicCallPlanForCache(*variadicSessionPlan);
+    if (!encodedCall) return 175;
+    const auto decodedCall = abi_plan::decodeVariadicCallPlanFromCache(*encodedCall);
+    if (!decodedCall || !validateCppVariadicSysVCallPlan(*decodedCall, "pvariadic", 1) ||
+        abi_plan::encodeVariadicCallPlanForCache(*decodedCall) != encodedCall) return 176;
+    for (std::size_t size = 0; size < encodedCall->size(); ++size)
+        if (abi_plan::decodeVariadicCallPlanFromCache(std::string_view(*encodedCall).substr(0, size))) return 177;
+    if (abi_plan::decodeVariadicCallPlanFromCache(*encodedCall + "x")) return 178;
+    auto invalidLength = *encodedCall;
+    for (std::size_t i = 0; i < 8; ++i) invalidLength[i] = static_cast<char>(0xff);
+    if (abi_plan::decodeVariadicCallPlanFromCache(invalidLength)) return 179;
     auto brokenPlan = *variadicSessionPlan;
     brokenPlan.arguments[2].firstPhysical++;
     if (validateCppVariadicSysVCallPlan(brokenPlan, "pvariadic", 1)) return 163;
