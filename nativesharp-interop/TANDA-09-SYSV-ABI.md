@@ -73,6 +73,18 @@ tipo fisico por parametro; un plan SysV completo tambien necesita representar
 descomposicion en varias piezas y clases de registro distintas, `byval` y el
 retorno correspondiente. Esta identificacion no habilita esas formas.
 
+Sonda de API oficial: Clang 23.1.0 expone `CodeGenABITypes.h` y
+`convertFreeFunctionType`; `CodeGenerator::GetAddrOfGlobal` permite consultar
+la declaracion LLVM con su convencion y atributos mientras el generador vive.
+El target nuevo `nsc_cpp_abi_probe_tests` crea una unidad C en memoria y verifica
+R3 (`i24`), R16 (dos `i64`), un record mixto (`double`, `i32`), R24 (`sret`,
+`byval`) y `signed char` (`signext`). La prueba CTest
+`nsc.cpp-interop.clang-abi-probe` paso 1/1; registros
+A:/temp/t09-abi-probe-build.log y A:/temp/t09-abi-probe-ctest.log.
+Esta sonda no integra el plan en NSC ni demuestra que una biblioteca con esos
+agregados pueda consumirse; los agregados SysV siguen rechazados. Los objetos
+de Clang y LLVM son temporales y no se almacenan en NSMeta ni tras su vida.
+
 No se afirma compatibilidad de SysV con agregados, otros escalares o punteros,
 variadicas, punteros de funcion, aislamiento TLS ni otros destinos. No se han cambiado
 Clang, NSLink ni el contrato de NSMeta.

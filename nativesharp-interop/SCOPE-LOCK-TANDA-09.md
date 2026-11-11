@@ -55,3 +55,5 @@ T09-003: ampliar SysV a enteros sin signo de 32 bits y enteros con y sin signo d
 T09-003: consultar el IR de Clang para `signed char`, `unsigned char`, `short`, `unsigned short` y `_Bool` bajo sysv_abi antes de admitirlos; verificar atributos de extension en retorno y parametros.
 T09-003: transportar signext/zeroext para enteros estrechos SysV en declaraciones y llamadas LLVM; contrastar enteros estrechos y bool contra Clang y mantener rechazo de agregados y callbacks.
 T09-003: investigar la clasificacion SysV de agregados frente al ABI Windows mediante IR de Clang antes de habilitar cualquier record o union; no reutilizar por suposicion la clasificacion Win64.
+T09-003: probar en un proyecto aislado bajo A:/temp la API publica CodeGen de Clang 23.1.0 para consultar las firmas LLVM de declaraciones C; no incorporar punteros del AST al contrato de NSC ni habilitar agregados durante la exploracion.
+T09-003: convertir la sonda de API ABI Clang en una prueba nueva `CppClangAbiProbeTests.cpp` y target CTest independiente, sin modificar pruebas existentes. Verificar tipos fisicos y atributos para casos SysV de referencia.

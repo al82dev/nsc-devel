@@ -24,6 +24,8 @@ compilador de desarrollo y `--clang-root` con la raiz de Clang:
   escalares y `int*`; su [alcance y limites](TANDA-09-SYSV-ABI.md) son acotados.
 - `pruebas-tanda-09-sysv/validar-records-clang.py`: referencia de clasificacion
   de agregados SysV generada por Clang; no es una prueba de soporte NSC.
+- `nsc.cpp-interop.clang-abi-probe`: sonda CTest independiente de la API publica
+  de Clang para firmas y atributos fisicos; tampoco prueba soporte NSC.
 - `pruebas-tanda-09-global-const` y `pruebas-tanda-09-simbolo-ausente`:
   diagnosticos negativos C y NS.
 - `pruebas-tanda-09-precompilado`: 16 consumidores de una biblioteca NS, con
