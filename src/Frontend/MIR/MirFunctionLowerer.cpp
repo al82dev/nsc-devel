@@ -226,6 +226,8 @@ void copyFunctionMetadata(
     function.isCppExternal = source.isCppExternal;
     function.cppVectorCall = source.cppVectorCall;
     function.cppRegCall = source.cppRegCall;
+    function.cppPreserveMost = source.cppPreserveMost;
+    function.cppPreserveAll = source.cppPreserveAll;
     function.cppSysVCall = source.cppSysVCall;
     function.cppSysVRecordArguments = source.cppSysVRecordArguments;
     function.cppSysVDirectRecordReturn = source.cppSysVDirectRecordReturn;

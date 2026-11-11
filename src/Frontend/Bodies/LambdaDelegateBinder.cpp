@@ -1599,6 +1599,13 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
         if (functionOrdinal >= namespaceFunctionModel_->functions().size()) return false;
         const NamespaceFunctionSymbol& function =
             namespaceFunctionModel_->functions()[functionOrdinal];
+        if (function.cppCallingConvention == "preserve_most" || function.cppCallingConvention == "preserve_all")
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},
+                "conversion of a preserve convention function to a pointer is not yet supported");
+            return false;
+        }
         if ((function.cppCallingConvention == "regcall") != targetRegCall)
         {
             diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,

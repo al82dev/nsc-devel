@@ -239,6 +239,8 @@ bool OopLlvmImplementation::declareFunction(
             if (function.cppDllImport) LLVMSetDLLStorageClass(llvmFunction, LLVMDLLImportStorageClass);
             if (function.cppSysVCall) LLVMSetFunctionCallConv(llvmFunction, LLVMX8664SysVCallConv);
             if (function.cppRegCall) LLVMSetFunctionCallConv(llvmFunction, LLVMX86RegCallCallConv);
+            if (function.cppPreserveMost) LLVMSetFunctionCallConv(llvmFunction, LLVMPreserveMostCallConv);
+            if (function.cppPreserveAll) LLVMSetFunctionCallConv(llvmFunction, LLVMPreserveAllCallConv);
             // EN: T08-D22: a `__vectorcall` C import keeps its convention on the declaration as well as on calls.
             // ES: T08-D22: una importacion C `__vectorcall` conserva su convencion en la declaracion y en las llamadas.
             if (function.cppVectorCall)

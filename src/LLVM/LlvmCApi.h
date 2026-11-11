@@ -70,6 +70,8 @@ using LLVMBool = int;
 // llvm-c/Core.h LLVMCallConv::LLVMX86VectorCallCallConv.
 inline constexpr unsigned LLVMX86VectorCallCallConv = 80;
 inline constexpr unsigned LLVMX86RegCallCallConv = 92;
+inline constexpr unsigned LLVMPreserveMostCallConv = 14;
+inline constexpr unsigned LLVMPreserveAllCallConv = 15;
 // llvm-c/Core.h LLVMCallConv::LLVMX8664SysVCallConv.
 inline constexpr unsigned LLVMX8664SysVCallConv = 78;
 

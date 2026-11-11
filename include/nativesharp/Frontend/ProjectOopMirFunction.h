@@ -54,6 +54,8 @@ struct ProjectOopMirFunction final
     // ES: T08-D22: una funcion C importada declarada `__vectorcall`; declaracion y llamadas usan esa convencion.
     bool cppVectorCall = false;
     bool cppRegCall = false;
+    bool cppPreserveMost = false;
+    bool cppPreserveAll = false;
     // Imported C function using the x86-64 System V calling convention.
     bool cppSysVCall = false;
     bool cppSysVRecordArguments = false;

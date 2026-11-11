@@ -1522,6 +1522,10 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
         if (imported != nullptr && imported->cppRegCall)
             LLVMSetInstructionCallConv(call, LLVMX86RegCallCallConv);
+        if (imported != nullptr && imported->cppPreserveMost)
+            LLVMSetInstructionCallConv(call, LLVMPreserveMostCallConv);
+        if (imported != nullptr && imported->cppPreserveAll)
+            LLVMSetInstructionCallConv(call, LLVMPreserveAllCallConv);
         if (!applyMustTail(node, call, error)) return nullptr;
         applySysVIntegerExtension(context_, imported,
             [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)

@@ -194,7 +194,8 @@ void appendFunctionFlags(std::string& out, const ProjectOopHirFunction& function
         function.isImportedNative, function.isCppExternal, function.isTransportedInlineBody,
         function.isSyntheticImplicitConstructor, function.importRequiresRuntimeBinding,
         function.isLambda, function.hasClosureEnvironment, function.isGeneratorConstructor,
-        function.capturesThisCell, function.cppVectorCall, function.cppRegCall};
+        function.capturesThisCell, function.cppVectorCall, function.cppRegCall,
+        function.cppPreserveMost, function.cppPreserveAll};
     for (const bool value : values) CachePayloadWriter::byte(out, value ? 1U : 0U);
     CachePayloadWriter::u32(out, static_cast<std::uint32_t>(function.inliningPolicy));
     CachePayloadWriter::u32(out, static_cast<std::uint32_t>(function.callableTrait));

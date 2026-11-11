@@ -1808,7 +1808,16 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             // ES: T08-D22: las funciones C `__vectorcall` se importan con su convencion.
             function.cppVectorCall = symbol.cppCallingConvention == "vectorcall";
             function.cppRegCall = symbol.cppCallingConvention == "regcall";
+            function.cppPreserveMost = symbol.cppCallingConvention == "preserve_most";
+            function.cppPreserveAll = symbol.cppCallingConvention == "preserve_all";
             function.cppSysVCall = symbol.cppCallingConvention == "sysv_abi";
+            if ((function.cppPreserveMost || function.cppPreserveAll) &&
+                (function.isVariadic || function.returnTypeKey != "builtin:int" ||
+                 !std::ranges::all_of(function.parameterTypeKeys, [](const auto& type) { return type == "builtin:int"; })))
+            {
+                error = symbol.cppCallingConvention + " currently supports only int scalar signatures for " + symbol.mangledName;
+                return false;
+            }
             const auto regCallScalar = [](const std::string& type) {
                 return type == "builtin:int" || type == "builtin:uint" ||
                     type == "builtin:long" || type == "builtin:ulong" || type == "builtin:float" ||
@@ -2038,7 +2047,8 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                       std::ranges::any_of(symbol.cppParameterTypes, [](const auto& type) { return type.kind == interop::CppTypeKind::Record; })) ||
                      function.cppSysVDirectRecordReturn);
             }
-            if (symbol.cppCallingConvention != "cdecl" && !function.cppVectorCall && !function.cppSysVCall && !function.cppRegCall)
+            if (symbol.cppCallingConvention != "cdecl" && !function.cppVectorCall && !function.cppSysVCall && !function.cppRegCall &&
+                !function.cppPreserveMost && !function.cppPreserveAll)
             {
                 error = "C/C++ calling convention '" + symbol.cppCallingConvention +
                     "' is not yet supported in HIR for " + symbol.mangledName;
@@ -2078,7 +2088,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             });
             if (requiresTlsAliases)
             {
-                if (function.cppSysVCall || function.cppRegCall)
+                if (function.cppSysVCall || function.cppRegCall || function.cppPreserveMost || function.cppPreserveAll)
                 {
                     error = symbol.cppCallingConvention + " with isolated TLS DLL binding is not yet supported for " + symbol.mangledName;
                     return false;

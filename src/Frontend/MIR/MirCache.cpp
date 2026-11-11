@@ -889,6 +889,8 @@ void appendMirFunctionFlags(std::string& out, const ProjectOopMirFunction& funct
     setFlag(17, function.isCppExternal);
     setFlag(18, function.cppVectorCall);
     setFlag(19, function.cppRegCall);
+    setFlag(20, function.cppPreserveMost);
+    setFlag(21, function.cppPreserveAll);
     internal::CachePayloadWriter::u32(out, flags);
 }
 
@@ -1111,6 +1113,8 @@ bool readMirFunctionFlags(
     function.isCppExternal = flag(17);
     function.cppVectorCall = flag(18);
     function.cppRegCall = flag(19);
+    function.cppPreserveMost = flag(20);
+    function.cppPreserveAll = flag(21);
     return true;
 }
 
@@ -1455,6 +1459,8 @@ bool matchesHirFunctionFlags(
         function.isCppExternal == source.isCppExternal &&
         function.cppVectorCall == source.cppVectorCall &&
         function.cppRegCall == source.cppRegCall &&
+        function.cppPreserveMost == source.cppPreserveMost &&
+        function.cppPreserveAll == source.cppPreserveAll &&
         function.isTransportedInlineBody == source.isTransportedInlineBody &&
         function.isSyntheticImplicitConstructor ==
             source.isSyntheticImplicitConstructor &&
