@@ -279,9 +279,25 @@ bool OopLlvmImplementation::declareFunction(
                 LLVMTypeRef carrier = llvmType(function.returnTypeKey, error);
                 if (!carrier) return false;
                 applySysVRecordByValue(context_, carrier,
-                    static_cast<unsigned>(function.cppAbiPlan->physicalParameters[1].alignment),
+                    static_cast<unsigned>(function.cppAbiPlan->physicalParameters[1].alignment), 1,
                     [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                     { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); });
+            }
+            if (function.cppSysVCall && function.cppAbiPlan &&
+                interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName))
+            {
+                for (std::size_t i = 0; i < function.cppAbiPlan->logicalParameters.size(); ++i)
+                {
+                    const auto& logical = function.cppAbiPlan->logicalParameters[i];
+                    if (logical.passing != interop::abi_plan::Passing::Indirect) continue;
+                    LLVMTypeRef carrier = llvmType(function.parameterTypeKeys[i], error);
+                    if (!carrier) return false;
+                    const auto ordinal = static_cast<unsigned>(logical.firstPhysical);
+                    applySysVRecordByValue(context_, carrier,
+                        static_cast<unsigned>(function.cppAbiPlan->physicalParameters[ordinal].alignment), ordinal,
+                        [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                        { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); });
+                }
             }
             LLVMMetadataRef subprogram = ownsDefinition ? createDebugSubprogram(function) : nullptr;
             if (debugBuilder_ != nullptr && ownsDefinition &&

@@ -1,0 +1,6 @@
+int Main() {
+    T09SysvAlignedMix first; T09SysvAlignedMix second; first.x=1; first.y=2; first.z=3; second.x=31; second.y=32; second.z=33;
+    T09SysvAlignedMix result=sysv_aligned_mix(1.5f,first,7,second); T09SysvAlignedMix named=sysv_aligned_mix(n: 7, second: second, factor: 1.5f, first: first);
+    if (first.x!=1 || first.y!=2 || second.x!=31 || second.y!=32 || result.x!=39 || result.y!=35 || result.z!=3 || named.x!=39 || named.y!=35 || named.z!=3) return 1;
+    return 0;
+}

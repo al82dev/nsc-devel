@@ -1,0 +1,6 @@
+int Main() {
+    T09SysvIndirectMix first; T09SysvIndirectMix second; first.x=1; second.x=31; first.y=2; second.y=32; first.z=3; second.z=33; first.w=4; second.w=34; first.a=5; second.a=35; first.b=6; second.b=36; first.c=7; second.c=37; first.d=8; second.d=38; first.e=9; second.e=39; first.f=10; second.f=40; first.g=11; second.g=41; first.h=12; second.h=42; first.i=13; second.i=43; first.j=14; second.j=44; first.k=15; second.k=45; first.l=16; second.l=46; first.m=17; second.m=47; first.n=18; second.n=48; first.o=19; second.o=49; first.p=20; second.p=50; first.q=21; second.q=51; first.r=22; second.r=52; first.s=23; second.s=53; first.t=24; second.t=54;
+    T09SysvIndirectMix result=sysv_indirect_mix(1.5f,first,7,second); T09SysvIndirectMix named=sysv_indirect_mix(n: 7, second: second, factor: 1.5f, first: first); if (named.x!=39 || named.y!=35 || first.x!=1 || second.y!=32) return 2;
+    if (first.x!=1 || second.x!=31 || first.y!=2 || second.y!=32 || result.x!=39 || result.y!=35 || result.t!=24) return 1;
+    return 0;
+}

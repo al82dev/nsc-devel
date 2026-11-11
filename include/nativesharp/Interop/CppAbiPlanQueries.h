@@ -238,4 +238,43 @@ inline bool isSysVIndirectRecordRoundTrip(const Plan& plan, std::string_view sym
         !argument.structureReturn && !argument.noAlias && !argument.inRegister && !argument.signExtend &&
         !argument.zeroExtend;
 }
+// Indirect record result and same-layout by-value records mixed with direct scalars.
+inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view symbol) noexcept
+{
+    const auto alignment = plan.logicalReturn.alignment;
+    if (plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
+        !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
+        plan.returnSignExtend || plan.returnZeroExtend || plan.physicalReturn.kind != TypeKind::Void ||
+        plan.logicalReturn.passing != Passing::Indirect || alignment == 0 || alignment > (1ULL << 29) ||
+        (alignment & (alignment - 1)) != 0 || plan.logicalParameters.size() < 2 ||
+        plan.physicalParameters.size() != plan.logicalParameters.size() + 1) return false;
+    const auto& result = plan.physicalParameters[0];
+    if (result.type.kind != TypeKind::Pointer || result.type.widthOrCount != 0 || !result.pointee ||
+        !result.structureReturn || result.alignment != alignment || result.byValue || result.inRegister ||
+        result.signExtend || result.zeroExtend) return false;
+    const auto byvalAlignment = alignment < 8 ? 8 : alignment;
+    bool hasRecord = false;
+    for (std::size_t i = 0; i < plan.logicalParameters.size(); ++i)
+    {
+        const auto& logical = plan.logicalParameters[i];
+        const auto& physical = plan.physicalParameters[i + 1];
+        if (logical.firstPhysical != i + 1 || logical.physicalCount != 1 || physical.structureReturn ||
+            physical.noAlias || physical.inRegister || physical.signExtend || physical.zeroExtend) return false;
+        if (logical.passing == Passing::Indirect)
+        {
+            if (!logical.byValue || logical.alignment != byvalAlignment || !physical.byValue ||
+                physical.type.kind != TypeKind::Pointer || physical.type.widthOrCount != 0 ||
+                !physical.pointee || physical.alignment != byvalAlignment) return false;
+            hasRecord = true;
+            continue;
+        }
+        if (logical.passing != Passing::Direct || !logical.coercion || logical.offset != 0 ||
+            logical.coercion->kind != physical.type.kind || logical.coercion->widthOrCount != physical.type.widthOrCount ||
+            physical.byValue ||
+            !((physical.type.kind == TypeKind::Integer && (physical.type.widthOrCount == 32 || physical.type.widthOrCount == 64)) ||
+              physical.type.kind == TypeKind::Float || physical.type.kind == TypeKind::Double ||
+              (physical.type.kind == TypeKind::Pointer && physical.type.widthOrCount == 0))) return false;
+    }
+    return hasRecord;
+}
 }

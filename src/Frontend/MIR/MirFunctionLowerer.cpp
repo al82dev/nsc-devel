@@ -331,6 +331,20 @@ void configureFunctionAbi(
         return;
     }
     if (function.cppSysVCall && function.cppAbiPlan &&
+        interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName))
+    {
+        function.abi.returnPassing = ProjectOopMirAbiPassing::Indirect;
+        function.abi.hiddenReturnParameterOrdinal = 0;
+        for (const auto& parameter : function.cppAbiPlan->logicalParameters)
+        {
+            function.abi.parameterPassing.push_back(parameter.passing == interop::abi_plan::Passing::Indirect ?
+                ProjectOopMirAbiPassing::Indirect : ProjectOopMirAbiPassing::Direct);
+            function.abi.parameterPhysicalOrdinals.push_back(parameter.firstPhysical);
+        }
+        function.abi.physicalParameterCount = function.cppAbiPlan->physicalParameters.size();
+        return;
+    }
+    if (function.cppSysVCall && function.cppAbiPlan &&
         interop::abi_plan::isSysVIndirectRecordRoundTrip(*function.cppAbiPlan, function.cAbiName))
     {
         function.abi.returnPassing = ProjectOopMirAbiPassing::Indirect;

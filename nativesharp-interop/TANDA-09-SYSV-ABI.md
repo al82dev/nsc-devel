@@ -780,3 +780,33 @@ A:/temp/nsc-t09-sysv-mixed-vv-6g1w9lix). La muestra usa records de cuatro y
 doce bytes con clasificacion entera; no certifica otras clases ni agregados
 indirectos. T09-003 sigue abierto.
 
+## Varios records indirectos y escalares
+
+La firma de referencia devuelve un record de 24 bytes y recibe `float`, dos
+records del mismo tipo e `int`. Clang 23.1.0 describe un retorno `sret` y dos
+argumentos `byval` en posiciones distintas (A:/temp/t09-indirect-mix-clang.ll).
+El control C paso y NSC rechazaba la firma antes de la ampliacion
+(A:/temp/nsc-t09-sysv-indirect-mix-_npqvkj1). La implementacion sigue las
+posiciones y alineaciones del plan, crea una copia independiente por cada
+record y aplica los atributos tanto a la declaracion como a la llamada; MIR y
+el contrato vigente conservan esa forma.
+
+Dos muestras, con alineacion de record de 1 y 8 bytes, pasaron ocho
+comparaciones C/NS en estatica/DLL O0–O3, llamadas con argumentos nombrados y
+plantillas precompiladas sin encabezado O0:
+A:/temp/nsc-t09-sysv-indirect-mix-abrmvgg4 y
+A:/temp/nsc-t09-sysv-aligned-mix-37_pi8k9. El productor modifica ambas
+copias y las pruebas comprueban que los originales no cambien; la prueba LLVM
+comprueba las posiciones de `sret` y ambos `byval`. La sonda de Clang rechaza
+alineaciones inconsistentes y el control de metadatos comprueba la
+reconstruccion (A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log).
+Pasaron las regresiones del record indirecto simple de 24 bytes, de alineacion
+16 y del control general con rechazo del caso aun pendiente
+(A:/temp/nsc-t09-sysv-r24-m79c_gsn,
+A:/temp/nsc-t09-sysv-align16-ind-124uzmzh y
+A:/temp/nsc-t09-sysv-prueba-0e9g56gk).
+
+Las muestras usan records de 24 bytes del mismo tipo que el retorno. Records
+indirectos de tipos o tamanos diferentes, mezclas con otras clases de agregado
+y otras firmas siguen pendientes; T09-003 permanece abierto.
+

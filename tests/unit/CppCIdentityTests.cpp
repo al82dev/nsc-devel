@@ -1952,6 +1952,47 @@ bool checkDependencyTypeCodec()
         decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
         abi_plan::isSysVIndirectRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
         "C dependency function retains the indirect SysV record plan");
+    auto indirectMixedPlan = std::make_shared<abi_plan::Plan>(*indirectPlan);
+    indirectMixedPlan->logicalParameters.clear();
+    indirectMixedPlan->physicalParameters.resize(1);
+    auto indirectRecordParameter = recordFunction.declaration.parameters[0];
+    recordFunction.declaration.parameters.clear();
+    for (std::size_t i = 0; i < 4; ++i)
+    {
+        auto parameter = indirectRecordParameter;
+        abi_plan::LogicalValue logical;
+        logical.firstPhysical = i + 1;
+        logical.physicalCount = 1;
+        abi_plan::PhysicalParameter physical;
+        if (i == 1 || i == 3)
+        {
+            logical.passing = abi_plan::Passing::Indirect;
+            logical.byValue = true;
+            logical.alignment = 8;
+            physical = indirectArgument;
+        }
+        else
+        {
+            logical.passing = abi_plan::Passing::Direct;
+            logical.coercion = i == 0 ? abi_plan::Type{abi_plan::TypeKind::Float} : abi_plan::Type{abi_plan::TypeKind::Integer, 32};
+            physical.type = *logical.coercion;
+            parameter.type.kind = i == 0 ? CppTypeKind::Floating : CppTypeKind::SignedInteger;
+            parameter.type.sizeBits = 32;
+        }
+        indirectMixedPlan->logicalParameters.push_back(logical);
+        indirectMixedPlan->physicalParameters.push_back(physical);
+        recordFunction.declaration.parameters.push_back(parameter);
+    }
+    recordFunction.declaration.abiPlan = indirectMixedPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVIndirectRecordWithArguments(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->physicalParameters[2].byValue &&
+        restoredRecord.declaration.abiPlan->physicalParameters[4].byValue,
+        "C dependency function retains two indirect records mixed with scalars");
+    recordFunction.declaration.parameters.resize(1);
+    recordFunction.declaration.parameters[0] = indirectRecordParameter;
+    recordFunction.declaration.abiPlan = indirectPlan;
     recordFunction.declaration.returnType.alignmentBits = 32;
     unchangedRecord = {42};
     ok &= expect(!encodeCDependencyFunction(recordFunction, unchangedRecord, error) &&

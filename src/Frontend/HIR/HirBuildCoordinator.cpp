@@ -1869,6 +1869,34 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                      (*symbol.cppReturnType->sizeBits > 128 && *symbol.cppReturnType->sizeBits % 8 == 0 &&
                       interop::abi_plan::isSysVIndirectRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName) &&
                       symbol.cppReturnType->alignmentBits == symbol.cppAbiPlan->logicalReturn.alignment * 8));
+                const bool supportedIndirectWithArguments = symbol.cppAbiPlan && symbol.cppReturnType &&
+                    symbol.cppReturnType->kind == interop::CppTypeKind::Record && symbol.cppReturnType->sizeBits &&
+                    *symbol.cppReturnType->sizeBits > 128 && *symbol.cppReturnType->sizeBits % 8 == 0 &&
+                    symbol.cppReturnType->alignmentBits == symbol.cppAbiPlan->logicalReturn.alignment * 8 &&
+                    function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
+                    interop::abi_plan::isSysVIndirectRecordWithArguments(*symbol.cppAbiPlan, symbol.mangledName) &&
+                    [&] {
+                        for (std::size_t i = 0; i < symbol.cppParameterTypes.size(); ++i)
+                        {
+                            const auto& type = symbol.cppParameterTypes[i];
+                            const auto& key = function.parameterTypeKeys[i];
+                            const auto& logical = symbol.cppAbiPlan->logicalParameters[i];
+                            const auto& physical = symbol.cppAbiPlan->physicalParameters[logical.firstPhysical].type;
+                            if (logical.passing == interop::abi_plan::Passing::Indirect)
+                            {
+                                if (type.kind != interop::CppTypeKind::Record || key != function.returnTypeKey ||
+                                    type.sizeBits != symbol.cppReturnType->sizeBits || type.alignmentBits != symbol.cppReturnType->alignmentBits) return false;
+                                continue;
+                            }
+                            if (!((((key == "builtin:int" || key == "builtin:long") && type.kind == interop::CppTypeKind::SignedInteger) ||
+                                   ((key == "builtin:uint" || key == "builtin:ulong") && type.kind == interop::CppTypeKind::UnsignedInteger)) &&
+                                   physical.kind == interop::abi_plan::TypeKind::Integer && type.sizeBits == physical.widthOrCount) &&
+                                !(key == "builtin:float" && type.kind == interop::CppTypeKind::Floating && physical.kind == interop::abi_plan::TypeKind::Float) &&
+                                !(key == "builtin:double" && type.kind == interop::CppTypeKind::Floating && physical.kind == interop::abi_plan::TypeKind::Double) &&
+                                !(key == "builtin:int*" && type.kind == interop::CppTypeKind::Pointer && physical.kind == interop::abi_plan::TypeKind::Pointer)) return false;
+                        }
+                        return true;
+                    }();
                 const bool supportedPairWithScalars = symbol.cppAbiPlan && symbol.cppReturnType &&
                     symbol.cppReturnType->kind == interop::CppTypeKind::Record &&
                     symbol.cppParameterTypes.size() >= 2 && function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
@@ -1930,7 +1958,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                         }
                         return hasRecord;
                     }();
-                if (function.isVariadic || ((!supportedReturn || !supportedParameters) && !supportedRecord && !supportedSmallRecords && !supportedPairWithScalars))
+                if (function.isVariadic || ((!supportedReturn || !supportedParameters) && !supportedRecord && !supportedSmallRecords && !supportedPairWithScalars && !supportedIndirectWithArguments))
                 {
                     error = "sysv_abi currently supports only selected non-variadic scalar and pointer signatures for " +
                         symbol.mangledName;
