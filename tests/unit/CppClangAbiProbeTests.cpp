@@ -14,12 +14,18 @@
 #include <llvm/Support/raw_ostream.h>
 #include <memory>
 #include <filesystem>
+#include <chrono>
+#include <fstream>
 #include <map>
 #include <string>
 #include <vector>
 #include "../../src/Interop/Internal/ClangAbiPlan.h"
 #include "nativesharp/Interop/CppClangSessionFactory.h"
 #include "nativesharp/Interop/CppInteropSession.h"
+#include "nativesharp/Interop/CppSemanticFunction.h"
+#include "nativesharp/Interop/CppSemanticRecord.h"
+#include "nativesharp/Interop/CppSemanticInventory.h"
+#include "nativesharp/Compilation/ProjectGraph.h"
 
 namespace t09_probe = nativesharp::interop::abi_plan;
 
@@ -37,6 +43,7 @@ int main(int argc, char** argv) {
         typedef float Vec4 __attribute__((vector_size(16)));
         R3 __attribute__((sysv_abi)) p3(R3);
         R3 __attribute__((sysv_abi)) p3(R3);
+        R3* __attribute__((sysv_abi)) p3ptr(R3*);
         R16 __attribute__((sysv_abi)) p16(R16);
         RF __attribute__((sysv_abi)) pf(RF);
         R24 __attribute__((sysv_abi)) p24(R24);
@@ -226,33 +233,112 @@ int main(int argc, char** argv) {
         return {};
     };
     const std::string p3Type = findType("p3");
+    const std::string p3ptrType = findType("p3ptr");
     const std::string pvecType = findType("pvec");
     const std::string vectorType = findType("pv");
     const std::string p24Type = findType("p24");
+    const std::string ps8Type = findType("ps8");
     const std::string pmType = findType("pm");
     const std::string oldType = findType("pold");
     const std::string variadicType = findType("pvariadic");
     const std::string nonnullType = findType("pnonnull");
     const std::string incompleteType = findType("pincomplete");
-    if (p3Type.empty() || pvecType.empty() || vectorType.empty() || p24Type.empty() || pmType.empty() ||
+    if (p3Type.empty() || p3ptrType.empty() || pvecType.empty() || vectorType.empty() || p24Type.empty() || ps8Type.empty() || pmType.empty() ||
         oldType.empty() || variadicType.empty() || nonnullType.empty() || incompleteType.empty()) return 38;
     const auto diagnosticsBefore = session->diagnosticsSnapshot().size();
     auto sessionPlan = session->cFunctionAbiPlan("p3", p3Type);
     auto vectorcallPlan = session->cFunctionAbiPlan("pvec", pvecType);
     auto aggregatePlan = session->cFunctionAbiPlan("p24", p24Type);
     auto mixedPlan = session->cFunctionAbiPlan("pm", pmType);
-    if (!sessionPlan || !vectorcallPlan || !aggregatePlan || !mixedPlan || session->cFunctionAbiPlan("p3", "different") ||
+    auto scalarPlan = session->cFunctionAbiPlan("ps8", ps8Type);
+    auto pointerPlan = session->cFunctionAbiPlan("p3ptr", p3ptrType);
+    if (!sessionPlan || !vectorcallPlan || !aggregatePlan || !mixedPlan || !scalarPlan || !pointerPlan || session->cFunctionAbiPlan("p3", "different") ||
         session->cFunctionAbiPlan("missing", p3Type) || session->cFunctionAbiPlan("pv", vectorType) ||
         session->cFunctionAbiPlan("pold", oldType) || session->cFunctionAbiPlan("pvariadic", variadicType) ||
         session->cFunctionAbiPlan("pnonnull", nonnullType) || session->cFunctionAbiPlan("pincomplete", incompleteType) ||
         session->diagnosticsSnapshot().size() != diagnosticsBefore) return 39;
+    const CppFunctionDeclaration* scalarDeclaration = nullptr;
+    for (const auto& function : *functions) if (function.name == "ps8") scalarDeclaration = &function;
+    if (!scalarDeclaration) return 47;
+    auto observation = *scalarDeclaration;
+    observation.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*scalarPlan));
+    auto projection = projectCppSemanticFunction(observation, 0, "AbiProbe");
+    const auto* projected = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&projection);
+    if (!projected || !projected->cppAbiPlan || projected->cppAbiPlan->symbol != "ps8" ||
+        !projected->cppAbiPlan->returnSignExtend) return 48;
+    const auto recordDeclarations = session->recordsSnapshot();
+    if (!recordDeclarations) return 49;
+    std::vector<CppSemanticRecordEntry> recordEntries;
+    for (const auto& record : *recordDeclarations)
+        recordEntries.push_back({{}, 0, 0, "x86_64-pc-windows-msvc", record,
+                                 projectCppRecordIdentity(record, "AbiProbe"), std::nullopt});
+    const auto recordGroups = groupCppSemanticRecords(recordEntries);
+    const CppFunctionDeclaration* recordDeclaration = nullptr;
+    for (const auto& function : *functions) if (function.name == "p3ptr") recordDeclaration = &function;
+    if (!recordDeclaration) return 50;
+    auto recordObservation = *recordDeclaration;
+    recordObservation.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*pointerPlan));
+    auto recordProjection = projectCppSemanticFunctionWithRecords(recordObservation, 0, "AbiProbe", recordGroups);
+    if (const auto* failure = std::get_if<CppSemanticFunctionFailure>(&recordProjection))
+        llvm::errs() << "record projection failed: " << failure->message << "\n";
+    const auto* projectedRecord = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&recordProjection);
+    if (!projectedRecord || !projectedRecord->cppAbiPlan || projectedRecord->cppAbiPlan->symbol != "p3ptr") return 51;
     if (!session->close().succeeded || session->cFunctionAbiPlan("p3", p3Type)) return 40;
     session.reset();
     if (sessionPlan->symbol != "p3" || sessionPlan->physicalReturn.widthOrCount != 24 ||
         vectorcallPlan->symbol != "\1pvec@@8" ||
         vectorcallPlan->callingConvention != llvm::CallingConv::X86_VectorCall ||
         aggregatePlan->physicalParameters.size() != 2 || !aggregatePlan->physicalParameters[1].byValue ||
-        mixedPlan->logicalParameters.size() != 4 || mixedPlan->logicalParameters[1].physicalCount != 2) return 41;
+        mixedPlan->logicalParameters.size() != 4 || mixedPlan->logicalParameters[1].physicalCount != 2 ||
+        projected->cppAbiPlan->symbol != "ps8" || projectedRecord->cppAbiPlan->symbol != "p3ptr") return 41;
+    CppSessionOptions inventoryOptions;
+    inventoryOptions.language = CppLanguageMode::C;
+    inventoryOptions.languageStandard = "c11";
+    inventoryOptions.targetTriple = "x86_64-pc-windows-msvc";
+    inventoryOptions.driverReferencePath = "clang.exe";
+    inventoryOptions.resourceDirectory = argv[1];
+    inventoryOptions.workingDirectory = argv[2];
+    inventoryOptions.input = CppBufferInput{"abi-inventory.c", source};
+    auto inventoryOpened = factory.open(std::move(inventoryOptions), {});
+    if (!std::holds_alternative<std::unique_ptr<CppInteropSession>>(inventoryOpened)) return 52;
+    auto inventorySession = std::move(std::get<std::unique_ptr<CppInteropSession>>(inventoryOpened));
+    if (!inventorySession) return 53;
+    namespace compilation = nativesharp::compilation;
+    const auto uniqueDirectory = std::filesystem::path(argv[2]) /
+        ("abi-inventory-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
+    std::error_code uniqueError;
+    if (!std::filesystem::create_directory(uniqueDirectory, uniqueError) || uniqueError) return 57;
+    const auto projectPath = uniqueDirectory / "abi-inventory.nsproj";
+    { std::ofstream projectFile(projectPath); if (!projectFile) return 58; projectFile << "<Project/>"; }
+    std::vector<compilation::Project> projects;
+    projects.emplace_back(projectPath, "AbiProbe", compilation::ProjectOutputKind::Library,
+        compilation::ProjectSourceSet(std::filesystem::path(argv[2])), std::vector<std::filesystem::path>{},
+        std::vector<compilation::LibraryReference>{}, std::vector<compilation::SdkManifest>{});
+    compilation::ProjectGraph graph(projectPath, std::move(projects));
+    std::vector<CppProjectSessions> sessionGroups(1);
+    sessionGroups[0].projectFile = projectPath;
+    sessionGroups[0].sessions.push_back(std::move(inventorySession));
+    auto inventoryResult = collectCppSemanticFunctions(graph, sessionGroups);
+    if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&inventoryResult))
+        llvm::errs() << "inventory failed: " << failure->message << "\n";
+    const auto* inventory = std::get_if<std::vector<CppSemanticInventoryEntry>>(&inventoryResult);
+    if (!inventory) return 54;
+    bool observedRecordPlan = false;
+    bool scalarWasSkipped = false;
+    bool pointerWasSkipped = false;
+    std::shared_ptr<const abi_plan::Plan> retainedInventoryPlan;
+    for (const auto& entry : *inventory) {
+        if (entry.declaration.name == "p3") {
+            observedRecordPlan = entry.declaration.abiPlan && entry.declaration.abiPlan->symbol == "p3";
+            retainedInventoryPlan = entry.declaration.abiPlan;
+        }
+        if (entry.declaration.name == "ps8") scalarWasSkipped = !entry.declaration.abiPlan;
+        if (entry.declaration.name == "p3ptr") pointerWasSkipped = !entry.declaration.abiPlan;
+    }
+    if (!observedRecordPlan || !scalarWasSkipped || !pointerWasSkipped) return 55;
+    if (!sessionGroups[0].sessions[0]->close().succeeded) return 56;
+    sessionGroups.clear();
+    if (!retainedInventoryPlan || retainedInventoryPlan->physicalReturn.widthOrCount != 24) return 59;
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;
     cppOptions.languageStandard = "c++20";

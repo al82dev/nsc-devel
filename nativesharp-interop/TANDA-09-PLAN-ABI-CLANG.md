@@ -136,3 +136,24 @@ crea un generador por consulta; no se ha medido su coste ni se ha habilitado un
 cache, y la informacion queda atada a la configuracion de la sesion consultada.
 Tras enlazar la consulta, NSC se construyo incrementalmente y la regresion
 SysV existente paso en A:/temp/nsc-t09-sysv-prueba-lzpmdeme.
+
+## Transporte al inventario y proyeccion
+
+El inventario solicita el plan solo para funciones C externas `sysv_abi` con
+un record por valor en resultado o parametros. La declaracion y el simbolo
+semantico pueden conservar una referencia compartida e inmutable al valor
+propio del plan; no contiene punteros de Clang. Si la consulta no puede
+representar el plan, queda ausente. Esto no habilita la llamada: HIR sigue
+rechazando agregados SysV y no hay transporte precompilado del plan aun.
+
+La sonda construye una sesion y un grafo de proyecto temporales, comprueba que
+el inventario adjunta el plan a una declaracion con record y no lo solicita
+para las muestras escalares o de puntero, y lee el plan tras cerrar la sesion.
+Tambien verifica el transporte por proyeccion semantica con una firma escalar y
+otra con puntero a record. El primer intento de proyectar por valor fallo porque
+el fixture no habia instalado el tipo con su layout; no se presenta como prueba
+de esa proyeccion. El control de inventario requirio crear un archivo de proyecto
+temporal para que la comprobacion de identidad del grafo pudiera encontrarlo.
+Tras esos ajustes, CTest paso 1/1: A:/temp/t09-abi-probe-ctest.log. La
+construccion incremental paso y las regresiones dirigidas de SysV y cdecl pasaron
+en A:/temp/nsc-t09-sysv-prueba-p98m9rp8 y A:/temp/nsc-t09-llamadas-yuidcadn.

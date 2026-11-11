@@ -341,6 +341,7 @@ CppSemanticFunctionResult projectFunction(
     symbol.declaredTypeKey = resultType->nativeSharpTypeKey;
     symbol.mangledName = *function.externalSymbol;
     symbol.cppCallingConvention = function.callingConvention;
+    symbol.cppAbiPlan = function.abiPlan;
     symbol.cppReturnType = function.returnType;
     symbol.cppDllImport = function.dllImport;
     symbol.isVariadic = function.variadic || cUnprototyped;

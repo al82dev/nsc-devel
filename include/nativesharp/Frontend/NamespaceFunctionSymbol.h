@@ -5,9 +5,11 @@
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNameLookup.h"
 #include "nativesharp/Interop/CppType.h"
+#include "nativesharp/Interop/CppAbiPlan.h"
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -85,5 +87,7 @@ struct NamespaceFunctionSymbol final
     //     referencias discrepan o la sesion no lo informa. Un `volatile T*` devuelto inicia el contrato de alias
     //     C con este modo.
     std::optional<bool> cppMicrosoftVolatileSemantics;
+    // Carried for future validated ABI lowering; not sufficient to enable a call.
+    std::shared_ptr<const interop::abi_plan::Plan> cppAbiPlan;
 };
 }

@@ -1654,6 +1654,15 @@ CppSemanticInventoryResult collectCppSemanticFunctions(
             const auto microsoftVolatileSemantics = session->microsoftVolatileSemantics();
             for (auto& declaration : *declarations)
             {
+                const bool hasRecordValue = declaration.returnType.kind == CppTypeKind::Record ||
+                    std::any_of(declaration.parameters.begin(), declaration.parameters.end(),
+                        [](const CppFunctionParameter& parameter) { return parameter.type.kind == CppTypeKind::Record; });
+                if (options.language == CppLanguageMode::C && declaration.externalLinkage &&
+                    declaration.callingConvention == "sysv_abi" && hasRecordValue)
+                {
+                    auto plan = session->cFunctionAbiPlan(declaration.name, declaration.canonicalFunctionType);
+                    if (plan) declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
+                }
                 if (declaration.isCStaticInlineDefinition && !declaration.externalLinkage)
                     declaration.externalSymbol = cppCInlineLinkSymbol(group.projectFile, index, declaration.name);
                 auto projection = projectCppSemanticFunction(

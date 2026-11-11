@@ -2,8 +2,10 @@
 
 #include "nativesharp/Interop/CppSessionDiagnostic.h"
 #include "nativesharp/Interop/CppType.h"
+#include "nativesharp/Interop/CppAbiPlan.h"
 
 #include <optional>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -46,5 +48,7 @@ struct CppFunctionDeclaration
     bool hasPrototype = true;
     // Definition owned by this C translation unit; not an external ABI symbol.
     bool isCStaticInlineDefinition = false;
+    // Optional experimental ABI observation; absence never implies a Win64 fallback.
+    std::shared_ptr<const abi_plan::Plan> abiPlan;
 };
 }
