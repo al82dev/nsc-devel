@@ -810,3 +810,26 @@ Las muestras usan records de 24 bytes del mismo tipo que el retorno. Records
 indirectos de tipos o tamanos diferentes, mezclas con otras clases de agregado
 y otras firmas siguen pendientes; T09-003 permanece abierto.
 
+La ampliacion posterior admite records indirectos de distintos tipos y
+alineaciones cuando Clang confirma las posiciones y atributos. La muestra C
+devuelve un record de 20 bytes y recibe records de 24 y 32 bytes, intercalados
+con `float` e `int`; el control C paso y NSC rechazo inicialmente la firma
+(A:/temp/nsc-t09-sysv-indirect-diff-hlqtimf2). La implementacion usa el tipo y
+alineacion de cada argumento para crear su copia y sus atributos `byval`, y
+conserva las alineaciones independientes en el contrato vigente.
+
+La muestra paso ocho comparaciones estatica/DLL O0–O3, argumentos nombrados y
+una plantilla precompilada sin encabezado O0
+(A:/temp/nsc-t09-sysv-indirect-diff-o475ufe8). Una variante con retorno
+alineado a 4, un argumento `byval` a 8 y otro a 16 paso las mismas pruebas
+(A:/temp/nsc-t09-sysv-indirect-diff16-v91r7nwh). Las dos muestras modifican
+ambas copias y comprueban que los originales sigan intactos. La sonda Clang
+y los metadatos pasaron con alineaciones independientes
+(A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log). Las
+regresiones de argumentos indirectos del mismo tipo y el control general con
+rechazo de un agregado directo mezclado pasaron en
+A:/temp/nsc-t09-sysv-indirect-mix-1bgw8p7b,
+A:/temp/nsc-t09-sysv-aligned-mix-5937l44e y
+A:/temp/nsc-t09-sysv-prueba-hu37bgv6. Siguen pendientes mezclas de argumentos
+indirectos con agregados directos u otras clases ABI; T09-003 continua abierto.
+

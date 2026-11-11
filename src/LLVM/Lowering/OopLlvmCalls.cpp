@@ -953,11 +953,18 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     arguments.push_back(sourceArguments[order[i]]);
                     continue;
                 }
-                if (node->children[order[i]]->typeKey != node->typeKey)
+                const auto& argumentKey = node->children[order[i]]->typeKey;
+                if (i >= imported->parameterTypeKeys.size() || argumentKey != imported->parameterTypeKeys[i])
                     return failValue(error, "SysV indirect argument type is invalid");
+                LLVMTypeRef argumentCarrier = llvmType(argumentKey, error);
+                if (!argumentCarrier) return nullptr;
+                const unsigned naturalAlignment = structAlignmentFor(argumentKey);
+                if (naturalAlignment == 0) return failValue(error, "SysV indirect argument has no alignment");
                 const unsigned argumentAlignment = static_cast<unsigned>(
                     imported->cppAbiPlan->physicalParameters[logical.firstPhysical].alignment);
-                LLVMValueRef slot = entryBlockAlloca(carrier, argumentAlignment, "sysv.indirect.mixed.argument");
+                if (argumentAlignment != (naturalAlignment < 8 ? 8U : naturalAlignment))
+                    return failValue(error, "SysV indirect argument has an unexpected alignment");
+                LLVMValueRef slot = entryBlockAlloca(argumentCarrier, argumentAlignment, "sysv.indirect.mixed.argument");
                 LLVMValueRef store = LLVMBuildStore(builder_, sourceArguments[order[i]], slot);
                 LLVMSetAlignment(store, argumentAlignment);
                 arguments.push_back(slot);
@@ -969,11 +976,14 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
             applySretAttributes([&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                 { LLVMAddCallSiteAttribute(call, index, attribute); }, 0, node->typeKey);
-            for (const auto& logical : imported->cppAbiPlan->logicalParameters)
+            for (std::size_t i = 0; i < imported->cppAbiPlan->logicalParameters.size(); ++i)
             {
+                const auto& logical = imported->cppAbiPlan->logicalParameters[i];
                 if (logical.passing != interop::abi_plan::Passing::Indirect) continue;
                 const auto ordinal = static_cast<unsigned>(logical.firstPhysical);
-                applySysVRecordByValue(context_, carrier,
+                LLVMTypeRef argumentCarrier = llvmType(imported->parameterTypeKeys[i], error);
+                if (!argumentCarrier) return nullptr;
+                applySysVRecordByValue(context_, argumentCarrier,
                     static_cast<unsigned>(imported->cppAbiPlan->physicalParameters[ordinal].alignment), ordinal,
                     [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                     { LLVMAddCallSiteAttribute(call, index, attribute); });

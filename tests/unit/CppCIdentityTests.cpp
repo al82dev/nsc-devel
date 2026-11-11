@@ -1990,6 +1990,25 @@ bool checkDependencyTypeCodec()
         restoredRecord.declaration.abiPlan->physicalParameters[2].byValue &&
         restoredRecord.declaration.abiPlan->physicalParameters[4].byValue,
         "C dependency function retains two indirect records mixed with scalars");
+    auto differentIndirectPlan = std::make_shared<abi_plan::Plan>(*indirectMixedPlan);
+    differentIndirectPlan->logicalReturn.alignment = 4;
+    differentIndirectPlan->physicalParameters[0].alignment = 4;
+    differentIndirectPlan->logicalParameters[3].alignment = 16;
+    differentIndirectPlan->physicalParameters[4].alignment = 16;
+    recordFunction.declaration.returnType.sizeBits = 160;
+    recordFunction.declaration.returnType.alignmentBits = 32;
+    recordFunction.declaration.parameters[3].type.sizeBits = 256;
+    recordFunction.declaration.parameters[3].type.alignmentBits = 128;
+    recordFunction.declaration.abiPlan = differentIndirectPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVIndirectRecordWithArguments(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->logicalReturn.alignment == 4 &&
+        restoredRecord.declaration.abiPlan->physicalParameters[2].alignment == 8 &&
+        restoredRecord.declaration.abiPlan->physicalParameters[4].alignment == 16,
+        "C dependency function retains different indirect record sizes and alignments");
+    recordFunction.declaration.returnType.sizeBits = 192;
+    recordFunction.declaration.returnType.alignmentBits = 8;
     recordFunction.declaration.parameters.resize(1);
     recordFunction.declaration.parameters[0] = indirectRecordParameter;
     recordFunction.declaration.abiPlan = indirectPlan;

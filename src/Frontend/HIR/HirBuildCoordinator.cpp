@@ -1884,8 +1884,9 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                             const auto& physical = symbol.cppAbiPlan->physicalParameters[logical.firstPhysical].type;
                             if (logical.passing == interop::abi_plan::Passing::Indirect)
                             {
-                                if (type.kind != interop::CppTypeKind::Record || key != function.returnTypeKey ||
-                                    type.sizeBits != symbol.cppReturnType->sizeBits || type.alignmentBits != symbol.cppReturnType->alignmentBits) return false;
+                                if (type.kind != interop::CppTypeKind::Record || !type.sizeBits || *type.sizeBits <= 128 ||
+                                    *type.sizeBits % 8 != 0 || !type.alignmentBits || *type.alignmentBits == 0 || *type.alignmentBits % 8 != 0 ||
+                                    logical.alignment != (*type.alignmentBits < 64 ? 8 : *type.alignmentBits / 8)) return false;
                                 continue;
                             }
                             if (!((((key == "builtin:int" || key == "builtin:long") && type.kind == interop::CppTypeKind::SignedInteger) ||

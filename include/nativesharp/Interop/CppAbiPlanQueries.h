@@ -238,7 +238,7 @@ inline bool isSysVIndirectRecordRoundTrip(const Plan& plan, std::string_view sym
         !argument.structureReturn && !argument.noAlias && !argument.inRegister && !argument.signExtend &&
         !argument.zeroExtend;
 }
-// Indirect record result and same-layout by-value records mixed with direct scalars.
+// Indirect record result and by-value records mixed with direct scalars.
 inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view symbol) noexcept
 {
     const auto alignment = plan.logicalReturn.alignment;
@@ -252,7 +252,6 @@ inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view
     if (result.type.kind != TypeKind::Pointer || result.type.widthOrCount != 0 || !result.pointee ||
         !result.structureReturn || result.alignment != alignment || result.byValue || result.inRegister ||
         result.signExtend || result.zeroExtend) return false;
-    const auto byvalAlignment = alignment < 8 ? 8 : alignment;
     bool hasRecord = false;
     for (std::size_t i = 0; i < plan.logicalParameters.size(); ++i)
     {
@@ -262,9 +261,10 @@ inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view
             physical.noAlias || physical.inRegister || physical.signExtend || physical.zeroExtend) return false;
         if (logical.passing == Passing::Indirect)
         {
-            if (!logical.byValue || logical.alignment != byvalAlignment || !physical.byValue ||
+            if (!logical.byValue || logical.alignment < 8 || logical.alignment > (1ULL << 29) ||
+                (logical.alignment & (logical.alignment - 1)) != 0 || !physical.byValue ||
                 physical.type.kind != TypeKind::Pointer || physical.type.widthOrCount != 0 ||
-                !physical.pointee || physical.alignment != byvalAlignment) return false;
+                !physical.pointee || physical.alignment != logical.alignment) return false;
             hasRecord = true;
             continue;
         }

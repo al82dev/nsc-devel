@@ -530,7 +530,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                     const auto& physical = f.abiPlan->physicalParameters[logical.firstPhysical].type;
                     if (logical.passing == abi_plan::Passing::Indirect)
                     {
-                        if (type.kind != CppTypeKind::Record || type.sizeBits != bits || type.alignmentBits != f.returnType.alignmentBits) return true;
+                        if (type.kind != CppTypeKind::Record || !type.sizeBits || *type.sizeBits <= 128 ||
+                            *type.sizeBits % 8 != 0 || !type.alignmentBits || *type.alignmentBits == 0 || *type.alignmentBits % 8 != 0 ||
+                            logical.alignment != (*type.alignmentBits < 64 ? 8 : *type.alignmentBits / 8)) return true;
                         continue;
                     }
                     if (!(((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) &&
@@ -636,9 +638,11 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                 abi_plan::PhysicalParameter physical;
                 if (type.kind == CppTypeKind::Record)
                 {
+                    if (!type.alignmentBits || *type.alignmentBits == 0 || *type.alignmentBits % 8 != 0)
+                    { error = "invalid C dependency indirect argument alignment"; return false; }
                     logical.passing = abi_plan::Passing::Indirect;
                     logical.byValue = true;
-                    logical.alignment = indirectAlignment < 8 ? 8 : indirectAlignment;
+                    logical.alignment = *type.alignmentBits < 64 ? 8 : *type.alignmentBits / 8;
                     physical.type.kind = abi_plan::TypeKind::Pointer;
                     physical.pointee = abi_plan::Type{};
                     physical.byValue = true;
