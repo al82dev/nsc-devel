@@ -1,0 +1,3 @@
+#include "api.h"
+__declspec(selectany) int _fltused=0;
+int main(void) { T09Byte first={1.5,2}; T09Wide wide={11,13,17,19}; T09Out probe={1.5f,2.5f,3}; T09Out result=sysv_padded_pair_vc(1.5f,first,probe,wide,7); if(first.x!=1.5 || first.y!=2 || wide.x!=11 || probe.a!=1.5f || probe.b!=2.5f || probe.c!=3 || result.a!=2.5f || result.b!=4.5f || result.c!=5) return 1; return 0; }

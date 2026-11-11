@@ -934,6 +934,52 @@ A:/temp/nsc-t09-sysv-indirect-diff16-eed8vwvp y
 A:/temp/nsc-t09-sysv-prueba-5voqucsx). No se acreditan todas las clases de
 agregado ni firmas posibles; T09-003 permanece abierto.
 
+## Records de dos piezas con relleno
+
+Clang 23.1.0 clasifica records con relleno como `i8`/`double`, `i16`/`double`,
+`i32`/`double`, `double`/`i8`, `double`/`i16`, vector/`i8` y vector/`i16`.
+La segunda pieza comienza a ocho bytes aunque el primer entero sea estrecho;
+en los dos casos vectoriales el tamano del record incluye relleno final. Las
+firmas exactas de las siete muestras estan en
+A:/temp/t09-par-relleno-*-clang.ll; la investigacion inicial incluye ademas
+A:/temp/t09-oraculo-relleno.ll.
+
+Cada muestra recibe y devuelve el record con relleno, junto a otro record
+directo, otro `byval` y escalares. Antes del cambio los controles C pasaron y
+NSC rechazo las siete firmas, respectivamente en
+A:/temp/nsc-t09-sysv-padded-pair-cd-cna9tral,
+A:/temp/nsc-t09-sysv-padded-pair-sd-pwsv9rp6,
+A:/temp/nsc-t09-sysv-padded-pair-id-occarjc7,
+A:/temp/nsc-t09-sysv-padded-pair-dc-23rnkrjj,
+A:/temp/nsc-t09-sysv-padded-pair-ds-ackkgsbp,
+A:/temp/nsc-t09-sysv-padded-pair-vc-ja70lca0 y
+A:/temp/nsc-t09-sysv-padded-pair-vs-ko62eh5w.
+
+El plan admite las piezas observadas y valida el tamano y alineacion del
+record, incluido el relleno; el generador mantiene el desplazamiento de ocho
+bytes y el contrato vigente conserva las clases. Las siete muestras pasaron
+ocho comparaciones C/NS en estatica y DLL O0–O3, argumentos nombrados, copias y
+plantilla precompilada sin encabezado O0, respectivamente en
+A:/temp/nsc-t09-sysv-padded-pair-cd-db9g8guy,
+A:/temp/nsc-t09-sysv-padded-pair-sd-h3a124xh,
+A:/temp/nsc-t09-sysv-padded-pair-id-knesn7xg,
+A:/temp/nsc-t09-sysv-padded-pair-dc-dhwkgmw6,
+A:/temp/nsc-t09-sysv-padded-pair-ds-l80__ndl,
+A:/temp/nsc-t09-sysv-padded-pair-vc-vkb7hqj0 y
+A:/temp/nsc-t09-sysv-padded-pair-vs-myh0y28w.
+
+La sonda y los metadatos pasaron, incluidos rechazos de records demasiado
+pequenos para su segunda pieza (A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log). Las regresiones del par previo, retorno
+indirecto con vector, retorno `i24` y retorno mixto pasaron en
+A:/temp/nsc-t09-sysv-return-pair-id-mixed-kgjdf_h8,
+A:/temp/nsc-t09-sysv-class-vs-gp78z1av,
+A:/temp/nsc-t09-sysv-return-one-i24-mixed-qzy2ny1j y
+A:/temp/nsc-t09-sysv-return-record-mixed-9c3qnk_r. El control general conserva
+el rechazo de un record empaquetado pasado indirectamente y de callback
+(A:/temp/nsc-t09-sysv-prueba-06o6hx33). Otras disposiciones siguen pendientes;
+T09-003 y la tanda 9 permanecen abiertos.
+
 ## Retorno directo de una pieza con argumentos mixtos
 
 Tres funciones C devuelven records transportados como `i24`, `float` y vector

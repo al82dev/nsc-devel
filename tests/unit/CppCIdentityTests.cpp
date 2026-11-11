@@ -2085,6 +2085,28 @@ bool checkDependencyTypeCodec()
         restoredRecord.declaration.abiPlan->physicalReturn.elements[0].kind == abi_plan::TypeKind::Vector &&
         restoredRecord.declaration.abiPlan->physicalReturn.elements[1].kind == abi_plan::TypeKind::Vector,
         "C dependency function retains both vector return pieces with indirect argument");
+    for (unsigned variant = 0; variant < 7; ++variant)
+    {
+        auto paddedPlan = std::make_shared<abi_plan::Plan>(*directPairReturnPlan);
+        const bool vectorFirst = variant >= 5;
+        const bool integerFirst = variant < 3;
+        const unsigned width = integerFirst ? (variant == 0 ? 8 : variant == 1 ? 16 : 32) :
+            (variant == 3 || variant == 5 ? 8 : 16);
+        const abi_plan::Type integerPiece{abi_plan::TypeKind::Integer, width};
+        const abi_plan::Type doublePiece{abi_plan::TypeKind::Double};
+        paddedPlan->physicalReturn.elements = integerFirst ? std::vector<abi_plan::Type>{integerPiece, doublePiece} :
+            std::vector<abi_plan::Type>{vectorFirst ? returnedVector : doublePiece, integerPiece};
+        paddedPlan->logicalReturn.coercion = paddedPlan->physicalReturn;
+        recordFunction.declaration.returnType.sizeBits = vectorFirst ? 96 : 128;
+        recordFunction.declaration.returnType.alignmentBits = vectorFirst ? 32 : 64;
+        recordFunction.declaration.abiPlan = paddedPlan;
+        ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+            decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+            restoredRecord.declaration.abiPlan->physicalReturn.elements[integerFirst ? 0 : 1].widthOrCount == width,
+            "C dependency function retains padded integer and floating return pieces");
+        ok &= expect(!abi_plan::isSysVDirectPairLayout(paddedPlan->physicalReturn, 64, vectorFirst ? 32 : 64),
+            "padded SysV pair rejects a record smaller than its second piece");
+    }
     for (unsigned variant = 0; variant < 5; ++variant)
     {
         auto singleReturnPlan = std::make_shared<abi_plan::Plan>(*directPairReturnPlan);
