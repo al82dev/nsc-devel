@@ -573,6 +573,14 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         signature.returnType.canonicalSpelling == "long long" && signature.returnType.sizeBits == 64 &&
         signature.returnType.alignmentBits == 64 && !signature.returnType.isConst &&
         !signature.returnType.isVolatile && !signature.returnType.isRestrict;
+    const bool returnSbyte = signature.returnType.kind == CppTypeKind::SignedInteger &&
+        signature.returnType.canonicalSpelling == "signed char" && signature.returnType.sizeBits == 8 &&
+        signature.returnType.alignmentBits == 8 && !signature.returnType.isConst &&
+        !signature.returnType.isVolatile && !signature.returnType.isRestrict;
+    const bool returnUshort = signature.returnType.kind == CppTypeKind::UnsignedInteger &&
+        signature.returnType.canonicalSpelling == "unsigned short" && signature.returnType.sizeBits == 16 &&
+        signature.returnType.alignmentBits == 16 && !signature.returnType.isConst &&
+        !signature.returnType.isVolatile && !signature.returnType.isRestrict;
     const bool returnUint = signature.returnType.kind == CppTypeKind::UnsignedInteger &&
         signature.returnType.canonicalSpelling == "unsigned int" && signature.returnType.sizeBits == 32 &&
         signature.returnType.alignmentBits == 32 && !signature.returnType.isConst &&
@@ -590,7 +598,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         !signature.returnType.isVolatile && !signature.returnType.isRestrict &&
         signature.returnType.element && isInt(*signature.returnType.element);
     if (!signature.hasPrototype || !signature.variadic || signature.callingConvention != "sysv_abi" ||
-        (!isInt(signature.returnType) && !returnDouble && !returnFloat && !returnLong && !returnVoid && !returnPointer && !returnUint && !returnUlong) || signature.parameterTypes.empty() ||
+        (!isInt(signature.returnType) && !returnDouble && !returnFloat && !returnLong && !returnSbyte && !returnUshort && !returnVoid && !returnPointer && !returnUint && !returnUlong) || signature.parameterTypes.empty() ||
         signature.parameterTypes.size() > 1024) return {};
     struct ReplayRecord
     {
@@ -773,7 +781,8 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         "void __nsc_replay_ulong(unsigned long long);\n"
         "void __nsc_replay_double(double);\n"
         "void __nsc_replay_int_pointer(int *);\n"
-        "typedef " + std::string(returnDouble ? "double" : returnFloat ? "float" : returnLong ? "long long" : returnVoid ? "void" : returnPointer ? "int *" :
+        "typedef " + std::string(returnDouble ? "double" : returnFloat ? "float" : returnLong ? "long long" :
+            returnSbyte ? "signed char" : returnUshort ? "unsigned short" : returnVoid ? "void" : returnPointer ? "int *" :
             returnUint ? "unsigned int" : returnUlong ? "unsigned long long" : "int") +
         " (__attribute__((sysv_abi)) *__nsc_replay_pointer)(" +
         fixedSource + ", ...);\n"};

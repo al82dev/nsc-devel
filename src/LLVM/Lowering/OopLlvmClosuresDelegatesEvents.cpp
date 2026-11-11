@@ -1192,6 +1192,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         };
         if (externC && node->cppVariadicCallPlan &&
             (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint" || node->typeKey == "builtin:ulong" ||
+             node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:ushort" ||
              node->typeKey == "builtin:long" || node->typeKey == "builtin:float" || node->typeKey == "builtin:double" ||
              node->typeKey == "builtin:void" || node->typeKey == "builtin:int*") &&
             node->argumentCount >= 2 && node->argumentCount <= 1025 &&
@@ -1213,6 +1214,10 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                                                      plan.physicalReturn.widthOrCount != 32)) ||
                 ((node->typeKey == "builtin:ulong" || node->typeKey == "builtin:long") && (plan.physicalReturn.kind != TypeKind::Integer ||
                                                        plan.physicalReturn.widthOrCount != 64)) ||
+                (node->typeKey == "builtin:sbyte" && (plan.physicalReturn.kind != TypeKind::Integer ||
+                    plan.physicalReturn.widthOrCount != 8 || !plan.returnSignExtend || plan.returnZeroExtend)) ||
+                (node->typeKey == "builtin:ushort" && (plan.physicalReturn.kind != TypeKind::Integer ||
+                    plan.physicalReturn.widthOrCount != 16 || plan.returnSignExtend || !plan.returnZeroExtend)) ||
                 (node->typeKey == "builtin:float" && plan.physicalReturn.kind != TypeKind::Float) ||
                 (node->typeKey == "builtin:double" && plan.physicalReturn.kind != TypeKind::Double) ||
                 (node->typeKey == "builtin:void" && plan.physicalReturn.kind != TypeKind::Void) ||
@@ -1323,6 +1328,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             delegateValue = checkedReceiver(delegateValue, error);
             if (!delegateValue) return nullptr;
             LLVMTypeRef returnType = (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") ? LLVMInt32TypeInContext(context_) :
+                node->typeKey == "builtin:sbyte" ? LLVMInt8TypeInContext(context_) :
+                node->typeKey == "builtin:ushort" ? LLVMInt16TypeInContext(context_) :
                 (node->typeKey == "builtin:ulong" || node->typeKey == "builtin:long") ? LLVMInt64TypeInContext(context_) :
                 node->typeKey == "builtin:float" ? LLVMFloatTypeInContext(context_) :
                 node->typeKey == "builtin:double" ? LLVMDoubleTypeInContext(context_) :
@@ -1332,6 +1339,15 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, arguments.data(),
                 static_cast<unsigned>(arguments.size()), node->typeKey == "builtin:void" ? "" : "sysv.varptr.result");
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
+            if (plan.returnSignExtend || plan.returnZeroExtend)
+            {
+                const std::string_view name = plan.returnSignExtend ? "signext" : "zeroext";
+                const auto kind = llvm_api::LLVMGetEnumAttributeKindForName(name.data(), name.size());
+                if (!kind) return failValue(error, "sysv_abi variadic function pointer return extension is unavailable");
+                const auto attribute = llvm_api::LLVMCreateEnumAttribute(context_, kind, 0);
+                if (!attribute) return failValue(error, "sysv_abi variadic function pointer return extension is unavailable");
+                LLVMAddCallSiteAttribute(call, 0, attribute);
+            }
             for (const auto& value : byValues)
                 applySysVRecordByValue(context_, value.carrier, value.alignment, value.ordinal,
                     [&](LLVMAttributeIndex index, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, index, attribute); });
