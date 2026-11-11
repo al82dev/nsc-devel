@@ -317,3 +317,30 @@ sysv_record_rptr:
 fail_record_rptr:
     xorl %eax, %eax
     ret
+.globl sysv_record_fixed_rptr
+sysv_record_fixed_rptr:
+    testq %rdi, %rdi
+    je fail_record_fixed_rptr
+    testq %rdx, %rdx
+    je fail_record_fixed_rptr
+    cmpl $1, (%rdi)
+    jne fail_record_fixed_rptr
+    cmpl $2, 4(%rdi)
+    jne fail_record_fixed_rptr
+    cmpw $12, (%rdx)
+    jne fail_record_fixed_rptr
+    cmpl $7, %esi
+    jne fail_record_fixed_rptr
+    cmpb $1, %al
+    jb fail_record_fixed_rptr
+    movq %xmm0, %r8
+    movabsq $0x4002000000000000, %r9
+    cmpq %r9, %r8
+    jne fail_record_fixed_rptr
+    movl $3, (%rdi)
+    movw $13, (%rdx)
+    movq %rdi, %rax
+    ret
+fail_record_fixed_rptr:
+    xorl %eax, %eax
+    ret

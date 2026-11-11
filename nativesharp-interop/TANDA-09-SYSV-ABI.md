@@ -897,9 +897,23 @@ puntero (`A:/temp/nsc-t09-sysv-varargs-0w1qmdlb`). Pasaron las sondas ABI,
 transporte e identidad y las regresiones C/SysV
 (`A:/temp/t09-transport-directed/`, `A:/temp/nsc-t09-llamadas-qlbak5x9`,
 `A:/temp/nsc-t09-sysv-prueba-dcr6w22o`,
-`A:/temp/nsc-t09-sysv-padded-pair-id-bk6dhgji`). El puntero fijo o retorno
-de puntero a record en esta combinacion, records no planos precompilados y
-otras formas siguen pendientes; T09-003 no se cierra.
+`A:/temp/nsc-t09-sysv-padded-pair-id-bk6dhgji`). En ese momento el puntero fijo
+o retorno de puntero a record en esta combinacion seguia pendiente.
+
+Se comprobo despues un puntero fijo a record C y retorno del mismo puntero,
+junto a un record mixto por valor y un `short*` variadico. El productor verifica
+los registros SysV, AL y los valores, modifica ambos destinos y retorna el
+puntero original. Clang paso antes del cambio, mientras NSC rechazaba la
+llamada (`A:/temp/nsc-t09-sysv-varargs-e_x9jijx`). En la ruta precompilada se
+verifica la identidad original de cada tipo y se compara el plan del prefijo
+con el observado por Clang; el puntero se representa como puntero opaco en la
+declaracion temporal. Pasaron llamadas directas y plantilla sin encabezado,
+estatica y DLL O0–O3, HIR/MIR, LLVM y cache
+(`A:/temp/nsc-t09-sysv-varargs-tsglggvf`). Pasaron las sondas ABI, identidad y
+transporte y las regresiones C/SysV (`A:/temp/t09-transport-directed/`,
+`A:/temp/nsc-t09-llamadas-hbq7mj6p`, `A:/temp/nsc-t09-sysv-prueba-drplfe1l`,
+`A:/temp/nsc-t09-sysv-padded-pair-id-31xfd4z0`). Records no planos
+precompilados y otras formas siguen pendientes; T09-003 no se cierra.
 
 ## Retorno indirecto sin argumentos byval
 

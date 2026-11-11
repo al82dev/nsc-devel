@@ -53,6 +53,7 @@ for mode in ('estatica', 'dll'):
                 '/export:sysv_record_ptrs',
                 '/export:sysv_record_return_ptr',
                 '/export:sysv_record_rptr',
+                '/export:sysv_record_fixed_rptr',
                 '/out:'+str(case/'api.dll'), '/implib:'+str(case/'api-dll.lib'), str(case/'producer.obj')])
             library, project, cflags = 'api-dll.lib', 'Dll.nsproj', ['-DAPI_DLL_IMPORT']
         run(prefix+'-c-ir', ['clang.exe', *flags, '-std=c11', *cflags, '-S', '-emit-llvm', str(case/'Control.c'), '-o', str(case/'control.ll')])
@@ -73,6 +74,8 @@ for mode in ('estatica', 'dll'):
             raise SystemExit(prefix+': retorno C de puntero inesperado; evidencia: '+str(root))
         if not re.search(r'call[^\n]*x86_64_sysvcc i32 \(i32, \.\.\.\).*@sysv_record_rptr\(i32[^,]+, double [^,]+, i32 [^,]+, ptr ', ir):
             raise SystemExit(prefix+': puntero C a record inesperado; evidencia: '+str(root))
+        if not re.search(r'call[^\n]*x86_64_sysvcc ptr \(ptr, \.\.\.\).*@sysv_record_fixed_rptr\(ptr[^,]+, double [^,]+, i32 [^,]+, ptr ', ir):
+            raise SystemExit(prefix+': puntero C fijo/retornado a record inesperado; evidencia: '+str(root))
         run(prefix+'-c-obj', ['clang.exe', *flags, '-std=c11', *cflags, '-c', str(case/'Control.c'), '-o', str(case/'control.obj')])
         run(prefix+'-c-link', ['lld-link.exe', '/nologo', '/entry:main', '/subsystem:console', '/nodefaultlib',
             '/out:'+str(case/'control.exe'), str(case/'control.obj'), str(case/library)])
@@ -102,7 +105,8 @@ for mode in ('estatica', 'dll'):
                                          'cpp-variadic-plan=sysv_record_two:3', 'cpp-variadic-plan=sysv_record_pressure:7',
                                          'cpp-variadic-plan=sysv_record_sse_pressure:10',
                                          'cpp-variadic-plan=sysv_record_large:2', 'cpp-variadic-plan=sysv_record_ptrs:3',
-                                         'cpp-variadic-plan=sysv_record_return_ptr:3', 'cpp-variadic-plan=sysv_record_rptr:3'):
+                                         'cpp-variadic-plan=sysv_record_return_ptr:3', 'cpp-variadic-plan=sysv_record_rptr:3',
+                                         'cpp-variadic-plan=sysv_record_fixed_rptr:3'):
                             if expected not in dump:
                                 raise SystemExit(prefix+': falta '+expected+' en '+stage+'; evidencia: '+str(root))
             ns_ir = run(prefix+'-ns-ir', [args.nsc, '--dump-project-oop-llvm', str(case/project),
@@ -125,6 +129,8 @@ for mode in ('estatica', 'dll'):
                 raise SystemExit(prefix+': retorno NS de puntero inesperado; evidencia: '+str(root))
             if not re.search(r'call[^\n]*x86_64_sysvcc i32 \(i32, \.\.\.\).*@sysv_record_rptr\(i32[^,]+, double [^,]+, i32 [^,]+, ptr ', ns_ir):
                 raise SystemExit(prefix+': puntero NS a record inesperado; evidencia: '+str(root))
+            if not re.search(r'call[^\n]*x86_64_sysvcc ptr \(ptr, \.\.\.\).*@sysv_record_fixed_rptr\(ptr[^,]+, double [^,]+, i32 [^,]+, ptr ', ns_ir):
+                raise SystemExit(prefix+': puntero NS fijo/retornado a record inesperado; evidencia: '+str(root))
             for name, pieces in (('sysv_record_small', r'i64 [^,\)]+'),
                                  ('sysv_record_mixed', r'double [^,]+, i32 [^,\)]+'),
                                  ('sysv_record_two', r'i64 [^,]+, double [^,]+, i32 [^,\)]+')):
@@ -203,6 +209,8 @@ for name in ('api.h', 'api.lib'):
     'fixedValue = 41; optionalValue = 12; '
     'if (sysv_record_return_ptr(&fixedValue, record, &optionalValue) != &fixedValue || fixedValue != 42 || optionalValue != 13 || record.y != 7) return 8; '
     'if (sysv_record_rptr(2, record, &small) != 1 || small.x != 3 || small.y != 2 || record.y != 7) return 9; '
+    'small.x = 1; optionalValue = 12; '
+    'if (sysv_record_fixed_rptr(&small, record, &optionalValue) != &small || small.x != 3 || optionalValue != 13 || record.y != 7) return 10; '
     'return 0; } } } '
     'namespace T09 { public class PackedBridge { public static int Run<T>(T unused) { '
     'T09VarPacked record; record.x = 2.25; record.y = 7; return sysv_record_mixed(1, record); } } '
@@ -229,7 +237,7 @@ for stage in ('hir', 'mir'):
                          'cpp-variadic-plan=sysv_record_two:3', 'cpp-variadic-plan=sysv_record_pressure:7',
                          'cpp-variadic-plan=sysv_record_sse_pressure:10', 'cpp-variadic-plan=sysv_record_large:2',
                          'cpp-variadic-plan=sysv_record_ptrs:3', 'cpp-variadic-plan=sysv_record_return_ptr:3',
-                         'cpp-variadic-plan=sysv_record_rptr:3'):
+                         'cpp-variadic-plan=sysv_record_rptr:3', 'cpp-variadic-plan=sysv_record_fixed_rptr:3'):
             if expected not in output:
                 raise SystemExit('Falta '+expected+' en plantilla '+stage+'; evidencia: '+str(root))
 preIr = run('pre-record-llvm', [args.nsc, '--dump-project-oop-llvm', str(recordConsumer/'Consumer.nsproj'),
@@ -248,6 +256,8 @@ if not re.search(r'call[^\n]*x86_64_sysvcc ptr \(ptr, \.\.\.\).*@sysv_record_ret
     raise SystemExit('Retorno LLVM precompilado de puntero incorrecto; evidencia: '+str(root))
 if not re.search(r'call[^\n]*x86_64_sysvcc i32 \(i32, \.\.\.\).*@sysv_record_rptr\(i32[^,]+, double [^,]+, i32 [^,]+, ptr ', preIr):
     raise SystemExit('Puntero LLVM precompilado a record incorrecto; evidencia: '+str(root))
+if not re.search(r'call[^\n]*x86_64_sysvcc ptr \(ptr, \.\.\.\).*@sysv_record_fixed_rptr\(ptr[^,]+, double [^,]+, i32 [^,]+, ptr ', preIr):
+    raise SystemExit('Puntero LLVM fijo/retornado a record incorrecto; evidencia: '+str(root))
 run('pre-record-consumer', [args.nsc, '--emit-project-oop-exe', str(recordConsumer/'Consumer.nsproj'),
     '--cpp-clang-root='+args.clang_root, '--no-artifact-cache', '-O0', '-o', str(recordConsumer/'Consumer.exe')])
 run('pre-record-run', [str(recordConsumer/'Consumer.exe')])

@@ -151,6 +151,15 @@ bool sameVariadicType(const CppType& left, const CppType& right, unsigned depth 
         return false;
     if (left.kind == CppTypeKind::Pointer)
         return left.element && right.element && sameVariadicType(*left.element, *right.element, depth + 1);
+    if (left.kind == CppTypeKind::Record)
+        return depth > 0 && left.recordIdentity && right.recordIdentity &&
+            left.recordIdentity->clangUsr && !left.recordIdentity->clangUsr->empty() &&
+            left.recordIdentity->clangUsr == right.recordIdentity->clangUsr &&
+            left.recordIdentity->name == right.recordIdentity->name &&
+            left.recordIdentity->namespaceSegments == right.recordIdentity->namespaceSegments &&
+            left.recordIdentity->containingRecords == right.recordIdentity->containingRecords &&
+            left.recordIdentity->anonymousContext == right.recordIdentity->anonymousContext &&
+            left.recordIdentity->specializationContext == right.recordIdentity->specializationContext;
     return left.kind == CppTypeKind::Void || left.kind == CppTypeKind::Boolean ||
         left.kind == CppTypeKind::SignedInteger || left.kind == CppTypeKind::UnsignedInteger ||
         left.kind == CppTypeKind::Floating;
@@ -345,13 +354,26 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
         !graph.projects()[function.projectOrdinal].cppLibraryReferences().empty() ||
         function.cppParameterTypes.size() != function.parameters.size() ||
         environment.targetTriple != "x86_64-pc-windows-msvc") return {};
-    const auto builtin = [](const auto& self, const CppType& type, unsigned depth = 0) -> std::optional<std::string> {
+    bool erasedRecordPointer = false;
+    const auto builtin = [&](const auto& self, const CppType& type, unsigned depth = 0) -> std::optional<std::string> {
         if (depth > 16) return std::nullopt;
         if (type.isConst || type.isVolatile || type.isRestrict) return std::nullopt;
         const auto& name = type.canonicalSpelling;
         if (type.kind == CppTypeKind::Pointer)
         {
             if (!type.element || type.sizeBits != 64 || type.alignmentBits != 64) return std::nullopt;
+            if (type.element->kind == CppTypeKind::Record)
+            {
+                const auto& record = *type.element;
+                if (depth != 0 || record.isConst || record.isVolatile || record.isRestrict ||
+                    !record.recordIdentity || !record.recordIdentity->clangUsr ||
+                    record.recordIdentity->clangUsr->empty() || record.recordIdentity->name.empty() ||
+                    record.recordIdentity->anonymousContext || record.recordIdentity->specializationContext ||
+                    !record.recordIdentity->namespaceSegments.empty() || !record.recordIdentity->containingRecords.empty() ||
+                    name != record.canonicalSpelling + " *") return std::nullopt;
+                erasedRecordPointer = true;
+                return std::string("void *");
+            }
             const auto element = self(self, *type.element, depth + 1);
             if (!element || name != *element + " *") return std::nullopt;
             return name;
@@ -479,7 +501,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
     const auto replayFunction = std::find_if(observedFunctions->begin(), observedFunctions->end(),
         [&](const auto& item) { return item.name == name; });
     if (replayFunction == observedFunctions->end() || replayFunction->clangUsr != function.cppClangUsr ||
-        replayFunction->canonicalFunctionType != selected->declaration.canonicalFunctionType) return {};
+        (!erasedRecordPointer && replayFunction->canonicalFunctionType != selected->declaration.canonicalFunctionType)) return {};
     const auto base = session.cVariadicCallAbiPlan(name, replayFunction->canonicalFunctionType, {});
     if (!base || abi_plan::encodeVariadicCallPlanForCache(*base) !=
                      abi_plan::encodeVariadicCallPlanForCache(*selected->variadicBasePlan)) return {};
