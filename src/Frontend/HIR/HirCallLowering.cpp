@@ -1287,6 +1287,33 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishDelegateInvoke(
         node->argumentTypeKeys.push_back(targetTypeKey);
         node->children.push_back(std::move(argument));
     }
+    if (functionType && functionType->variadic && functionType->callingConvention == language::CallingConvention::SysV &&
+        providerOwner->cppVariadicFunctionPointerPlanProvider_ && providerOwner->methodBodyModel_ &&
+        providerOwner->nameLookup_ && expression && expression->first() &&
+        node->argumentTypeKeys.size() == expression->children().size() + binding.selectedDefaultArguments.size() &&
+        node->argumentTypeKeys.size() >= functionType->parameters.size())
+    {
+        const auto optional = std::span<const std::string>(node->argumentTypeKeys).subspan(functionType->parameters.size());
+        if (std::any_of(optional.begin(), optional.end(), recordValue))
+        {
+            const auto* callee = nameBinding(expression->first());
+            const auto locals = providerOwner->methodBodyModel_->locals();
+            if (callee && callee->localOrdinal && *callee->localOrdinal < locals.size())
+            {
+                const auto& local = locals[*callee->localOrdinal];
+                const auto* typeSyntax = local.syntax ? local.syntax->typeSyntax() : nullptr;
+                const CppImportedTypeAlias* alias = nullptr;
+                for (const auto& typeBinding : providerOwner->nameLookup_->bindings())
+                    if (typeSyntax && typeBinding.syntax == typeSyntax && typeBinding.expandedCppAlias)
+                    {
+                        if (alias) { alias = nullptr; break; }
+                        alias = typeBinding.expandedCppAlias;
+                    }
+                if (alias) node->cppVariadicCallPlan = providerOwner->cppVariadicFunctionPointerPlanProvider_(
+                    *alias, binding.delegateTypeKey, optional);
+            }
+        }
+    }
     node->argumentCount =
         expression->children().size() + binding.selectedDefaultArguments.size();
     return node;

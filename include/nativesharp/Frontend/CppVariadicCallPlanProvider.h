@@ -16,4 +16,6 @@ using CppVariadicCallPlanProvider = std::function<std::shared_ptr<const interop:
     const NamespaceFunctionSymbol&, std::span<const std::string>)>;
 using CppFunctionPointerPlanProvider = std::function<std::shared_ptr<const interop::abi_plan::Plan>(
     const CppImportedTypeAlias&, std::string_view)>;
+using CppVariadicFunctionPointerPlanProvider = std::function<std::shared_ptr<const interop::abi_plan::VariadicCallPlan>(
+    const CppImportedTypeAlias&, std::string_view, std::span<const std::string>)>;
 }

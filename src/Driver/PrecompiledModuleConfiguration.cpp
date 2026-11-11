@@ -559,6 +559,15 @@ bool configurePrecompiledModules(
                     return interop::planPrecompiledCppFunctionPointerForAlias(*graph, compilation.precompiledModules(),
                         *lookup, alias, typeKey, environment, *replayFactory);
                 }, error)) return false;
+        if (!compilation.setCppVariadicFunctionPointerPlanProvider(
+                [&compilation](const frontend::CppImportedTypeAlias& alias, std::string_view typeKey,
+                               std::span<const std::string> optionalTypes) {
+                    const auto* graph = compilation.projectGraph();
+                    const auto* lookup = compilation.nameLookup();
+                    if (!graph || !lookup) return std::shared_ptr<const interop::abi_plan::VariadicCallPlan>{};
+                    return interop::planCppVariadicFunctionPointerForAlias(
+                        *graph, compilation.cppProjectSessions(), *lookup, alias, typeKey, optionalTypes);
+                }, error)) return false;
         if (hasSessions && !compilation.setCppMetadataCatalogProvider(
                 interop::provideCppCRecordMetadataCatalog, error)) return false;
         if (hasSessions && !compilation.setCppNamespaceProvider(

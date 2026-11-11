@@ -1342,6 +1342,18 @@ DLL O0-O3, incluidos records, punteros y plantillas precompiladas
 (`A:/temp/nsc-t09-sysv-varargs-dbjypza2`). Todavia no se transporta este plan
 desde la llamada indirecta ni se emite; la capacidad permanece abierta.
 
+Posteriormente se conecto la seleccion al typedef local resuelto de la llamada
+real y se reutilizo el transporte HIR/MIR y la cache interna de planes
+variadicos. La muestra muestra el plan completo en ambas fases con uno y
+cuatro trabajadores; el control C paso y LLVM mantiene el rechazo
+(`A:/temp/nsc-t09-sysv-indirecta-variadica-record-p5b62ac2`). Pasaron las
+cuatro sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`), la matriz de llamadas variadicas directas
+(`A:/temp/nsc-t09-sysv-varargs-5hftf1s7`) y la matriz de punteros escalares
+(`A:/temp/nsc-t09-sysv-indirecta-matriz-aibaeobm`). La emision y la
+precompilacion del record opcional por puntero siguen pendientes; este
+transporte no acredita interoperabilidad.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor

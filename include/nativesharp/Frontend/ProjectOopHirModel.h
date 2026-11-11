@@ -103,6 +103,7 @@ public:
     void setCppIsolatedDllIdentities(std::unordered_set<std::string> identities);
     void setCppVariadicCallPlanProvider(CppVariadicCallPlanProvider provider);
     void setCppFunctionPointerPlanProvider(CppFunctionPointerPlanProvider provider);
+    void setCppVariadicFunctionPointerPlanProvider(CppVariadicFunctionPointerPlanProvider provider);
     bool cppDllRequiresIsolation(std::string_view identity) const;
 
     bool build(
@@ -4403,6 +4404,7 @@ private:
     std::unordered_set<std::string> cppIsolatedDllIdentities_;
     CppVariadicCallPlanProvider cppVariadicCallPlanProvider_;
     CppFunctionPointerPlanProvider cppFunctionPointerPlanProvider_;
+    CppVariadicFunctionPointerPlanProvider cppVariadicFunctionPointerPlanProvider_;
     ProjectCompilationIndexes* indexes_ = nullptr;
     driver::CompilationWorkerPool* workerPool_ = nullptr;
     std::vector<ProjectOopHirFunction> functions_;

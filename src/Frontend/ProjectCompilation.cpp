@@ -105,6 +105,15 @@ bool ProjectCompilation::setCppFunctionPointerPlanProvider(
     return true;
 }
 
+bool ProjectCompilation::setCppVariadicFunctionPointerPlanProvider(
+    CppVariadicFunctionPointerPlanProvider provider, std::string& error)
+{
+    if (compilationAttempted_) { error = "C/C++ variadic function pointer plan provider must be set before compilation starts"; return false; }
+    cppVariadicFunctionPointerPlanProvider_ = std::move(provider);
+    error.clear();
+    return true;
+}
+
 bool ProjectCompilation::setExperimentalCppImportedStates(
     std::vector<NamespaceStateSymbol> states, std::string& error)
 {
@@ -1763,6 +1772,7 @@ bool ProjectCompilation::compileProjectOopHir(
     oopHirModel_ = std::make_unique<ProjectOopHirModel>(lifetime_->indexes());
     oopHirModel_->setCppVariadicCallPlanProvider(cppVariadicCallPlanProvider_);
     oopHirModel_->setCppFunctionPointerPlanProvider(cppFunctionPointerPlanProvider_);
+    oopHirModel_->setCppVariadicFunctionPointerPlanProvider(cppVariadicFunctionPointerPlanProvider_);
     std::unordered_map<std::uint32_t, compilation::CppConsumerVolatileMode> cppConsumerModes;
     for (const auto& unit : units_)
     {
