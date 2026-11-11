@@ -1193,7 +1193,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         if (externC && node->cppVariadicCallPlan && node->typeKey == "builtin:int" &&
             node->argumentCount >= 2 && node->argumentCount <= 1025 &&
             node->argumentTypeKeys.size() == node->argumentCount &&
-            (node->argumentTypeKeys[0] == "builtin:int" || node->argumentTypeKeys[0] == "builtin:double") &&
+            (node->argumentTypeKeys[0] == "builtin:int" || node->argumentTypeKeys[0] == "builtin:double" ||
+             node->argumentTypeKeys[0] == "builtin:int*") &&
             std::any_of(node->argumentTypeKeys.begin() + 1, node->argumentTypeKeys.end(), recordArgument) &&
             std::all_of(node->argumentTypeKeys.begin() + 1, node->argumentTypeKeys.end(),
                 [&](const auto& key) { return recordArgument(key) || key == "builtin:int" ||
@@ -1203,6 +1204,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             const auto& plan = *node->cppVariadicCallPlan;
             const auto signature = language::parseFunctionTypeIdentity(node->elementTypeKey);
             const bool fixedInteger = node->argumentTypeKeys[0] == "builtin:int";
+            const bool fixedPointer = node->argumentTypeKeys[0] == "builtin:int*";
             if (!signature || !signature->variadic || signature->callingConvention != language::CallingConvention::SysV ||
                 signature->parameters.size() != 1 || signature->parameters[0] != node->argumentTypeKeys[0] ||
                 !interop::validateCppVariadicSysVCallPlan(plan, "__nsc_variadic_pointer_abi_probe", 1) ||
@@ -1211,11 +1213,13 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 plan.arguments[0].passing != Passing::Direct || plan.arguments[0].physicalCount != 1 ||
                 (fixedInteger && (plan.physicalParameters[0].type.kind != TypeKind::Integer ||
                                   plan.physicalParameters[0].type.widthOrCount != 32)) ||
-                (!fixedInteger && plan.physicalParameters[0].type.kind != TypeKind::Double))
+                (fixedPointer && plan.physicalParameters[0].type.kind != TypeKind::Pointer) ||
+                (!fixedInteger && !fixedPointer && plan.physicalParameters[0].type.kind != TypeKind::Double))
                 return failValue(error, "sysv_abi variadic function pointer record plan is not supported");
             LLVMValueRef fixed = argumentOverrides ? (*argumentOverrides)[0] : lowerExpression(node->children[1].get(), error);
             if (!fixed || terminated()) return fixed;
-            LLVMTypeRef fixedType = fixedInteger ? LLVMInt32TypeInContext(context_) : LLVMDoubleTypeInContext(context_);
+            LLVMTypeRef fixedType = fixedInteger ? LLVMInt32TypeInContext(context_) :
+                fixedPointer ? LLVMPointerTypeInContext(context_, 0) : LLVMDoubleTypeInContext(context_);
             if (LLVMTypeOf(fixed) != fixedType)
                 return failValue(error, "sysv_abi variadic function pointer argument does not match its plan");
             std::vector<LLVMValueRef> arguments{fixed};

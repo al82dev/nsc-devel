@@ -566,9 +566,16 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         signature.parameterTypes[0].kind == CppTypeKind::Floating &&
         signature.parameterTypes[0].canonicalSpelling == "double" && !signature.parameterTypes[0].isConst &&
         !signature.parameterTypes[0].isVolatile && !signature.parameterTypes[0].isRestrict;
+    const bool fixedPointer = signature.parameterTypes.size() == 1 &&
+        signature.parameterTypes[0].kind == CppTypeKind::Pointer &&
+        signature.parameterTypes[0].canonicalSpelling == "int *" &&
+        signature.parameterTypes[0].sizeBits == 64 && signature.parameterTypes[0].alignmentBits == 64 &&
+        !signature.parameterTypes[0].isConst && !signature.parameterTypes[0].isVolatile &&
+        !signature.parameterTypes[0].isRestrict && signature.parameterTypes[0].element &&
+        isInt(*signature.parameterTypes[0].element);
     if (!signature.hasPrototype || !signature.variadic || signature.callingConvention != "sysv_abi" ||
         !isInt(signature.returnType) || signature.parameterTypes.size() != 1 ||
-        (!isInt(signature.parameterTypes[0]) && !fixedDouble)) return {};
+        (!isInt(signature.parameterTypes[0]) && !fixedDouble && !fixedPointer)) return {};
     struct ReplayRecord
     {
         std::string identity;
@@ -681,7 +688,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         "void __nsc_replay_double(double);\n"
         "void __nsc_replay_int_pointer(int *);\n"
         "typedef int (__attribute__((sysv_abi)) *__nsc_replay_pointer)(" +
-        (fixedDouble ? "double" : "int") + ", ...);\n"};
+        (fixedDouble ? "double" : fixedPointer ? "int *" : "int") + ", ...);\n"};
     auto opened = factory.open(std::move(options), {});
     auto* holder = std::get_if<std::unique_ptr<CppInteropSession>>(&opened);
     if (!holder || !*holder) return {};

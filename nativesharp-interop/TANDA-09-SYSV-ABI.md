@@ -1538,6 +1538,22 @@ entero y argumentos opcionales entero, puntero y record en pila
 `A:/temp/nsc-t09-sysv-indirecta-record-agotado-pre-eyg5gc1w`). Otros prefijos
 y firmas siguen pendientes; T09-003 no esta cerrado.
 
+**Prefijo fijo `int*`:** el control C y el productor independiente verifican
+la escritura por el puntero, el record y el entero opcional; NSC rechazaba la
+firma (`A:/temp/nsc-t09-sysv-indirecta-variadica-prefijo-puntero-h1jhavxa`).
+Tras emitir y reconstruir el prefijo segun Clang pasaron ocho comparaciones
+C/NS estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-prefijo-puntero-matriz-0pu_b66e`) y plantilla
+sin encabezado, cache y rechazo de variante
+(`A:/temp/nsc-t09-sysv-indirecta-prefijo-puntero-pre-vpwzkhq3`). Pasaron cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones precompiladas de prefijo
+`double`, prefijo entero y record en pila
+(`A:/temp/nsc-t09-sysv-indirecta-prefijo-double-pre-zjf633g3`,
+`A:/temp/nsc-t09-sysv-indirecta-record-escalar-pre-586b4vak`,
+`A:/temp/nsc-t09-sysv-indirecta-record-agotado-pre-ddb0_fyc`). Otros prefijos
+y firmas siguen pendientes; T09-003 no esta cerrado.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor
