@@ -142,3 +142,18 @@ registros A:/temp/t09-abi-probe-ctest.log y A:/temp/t09-identidad-run.log. El
 record de tres bytes y escalares SysV volvieron a pasar en
 A:/temp/nsc-t09-sysv-r3-w2wk_wy8 y A:/temp/nsc-t09-sysv-prueba-ovfco79r.
 Las demas formas SysV siguen abiertas.
+
+Ampliacion agrupada a uno, dos y ocho bytes: Clang emitio respectivamente
+`i8`, `i16` e `i64` directos en A:/temp/nsc-t09-sysv-pequenos-_ldgffqv. Los
+controles C pasaron y NSC rechazo los tres casos antes de implementarlos:
+A:/temp/nsc-t09-sysv-r1-2konpovo, A:/temp/nsc-t09-sysv-r2-tj7jpky8 y
+A:/temp/nsc-t09-sysv-r8-_1ak5vlj. Tras el cambio, cada muestra paso las ocho
+comparaciones estatica/DLL O0–O3 y la plantilla precompilada sin encabezado
+en estatica O0, respectivamente en A:/temp/nsc-t09-sysv-r1-0lijcusy,
+A:/temp/nsc-t09-sysv-r2-aptgz5bp y A:/temp/nsc-t09-sysv-r8-1g4nhssk.
+Las muestras usan campos `unsigned char` y la misma estructura como argumento
+y retorno; no certifican todos los layouts de esos tamanos. El record de tres
+bytes paso nuevamente en A:/temp/nsc-t09-sysv-r3-xvpwyzyq y el de cuatro en
+A:/temp/nsc-t09-sysv-r4-1a0etas5. Los controles conjuntos del plan de Clang y
+de identidad y metadatos pasaron: A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log.

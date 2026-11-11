@@ -1630,6 +1630,22 @@ bool checkDependencyTypeCodec()
         abi_plan::isSysVSmallRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
         restoredRecord.declaration.abiPlan->physicalReturn.widthOrCount == 32,
         "C dependency function retains a direct four-byte SysV record plan");
+    for (const std::uint64_t bits : {8U, 16U, 64U})
+    {
+        auto smallPlan = std::make_shared<abi_plan::Plan>(*plan4);
+        smallPlan->physicalReturn.widthOrCount = bits;
+        smallPlan->logicalReturn.coercion->widthOrCount = bits;
+        smallPlan->logicalParameters[0].coercion->widthOrCount = bits;
+        smallPlan->physicalParameters[0].type.widthOrCount = bits;
+        recordFunction.declaration.abiPlan = smallPlan;
+        recordFunction.declaration.returnType.sizeBits = bits;
+        recordFunction.declaration.parameters[0].type.sizeBits = bits;
+        ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+            decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+            restoredRecord.declaration.abiPlan->physicalReturn.widthOrCount == bits &&
+            abi_plan::isSysVSmallRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
+            "C dependency function retains a small SysV record plan");
+    }
     if (!functionBytes.empty()) functionBytes.pop_back();
     decoded.moduleName = "sentinel";
     ok &= expect(!decodeCDependencyFunction(functionBytes, decoded, error) && decoded.moduleName == "sentinel",

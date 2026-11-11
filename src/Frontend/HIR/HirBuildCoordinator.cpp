@@ -1822,7 +1822,9 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     supportedScalar);
                 const bool supportedRecord = symbol.cppAbiPlan && symbol.cppReturnType &&
                     symbol.cppReturnType->kind == interop::CppTypeKind::Record &&
-                    (symbol.cppReturnType->sizeBits == 24 || symbol.cppReturnType->sizeBits == 32) &&
+                    (symbol.cppReturnType->sizeBits == 8 || symbol.cppReturnType->sizeBits == 16 ||
+                     symbol.cppReturnType->sizeBits == 24 || symbol.cppReturnType->sizeBits == 32 ||
+                     symbol.cppReturnType->sizeBits == 64) &&
                     symbol.cppParameterTypes.size() == 1 &&
                     symbol.cppParameterTypes[0].kind == interop::CppTypeKind::Record &&
                     symbol.cppParameterTypes[0].sizeBits == symbol.cppReturnType->sizeBits &&

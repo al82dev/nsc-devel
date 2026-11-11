@@ -58,14 +58,15 @@ struct Plan
     std::vector<PhysicalParameter> physicalParameters;
 };
 
-// Supported aggregate shapes: one three- or four-byte record passed and returned directly.
+// Supported aggregate shapes: one small record passed and returned directly.
 inline bool isSysVSmallRecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
 {
     const auto bits = plan.physicalReturn.widthOrCount;
     const auto integer = [bits](const Type& type) {
         return type.kind == TypeKind::Integer && type.widthOrCount == bits;
     };
-    if ((bits != 24 && bits != 32) || plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
+    if ((bits != 8 && bits != 16 && bits != 24 && bits != 32 && bits != 64) ||
+        plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
         plan.returnSignExtend || plan.returnZeroExtend || !integer(plan.physicalReturn) ||
         plan.logicalReturn.passing != Passing::Direct || !plan.logicalReturn.coercion ||
