@@ -175,6 +175,14 @@ int main(int argc, char** argv) {
     llvmContext.reset();
     const auto& p3 = copiedPlans.at("p3");
     if (p3.targetTriple.find("x86_64-pc-windows-msvc") != 0 || p3.dataLayout.empty()) return 28;
+    if (!t09_probe::isSysVThreeByteRoundTrip(p3, "p3") ||
+        t09_probe::isSysVThreeByteRoundTrip(p3, "other")) return 70;
+    auto alteredPlan = p3;
+    alteredPlan.physicalParameters[0].type.widthOrCount = 32;
+    if (t09_probe::isSysVThreeByteRoundTrip(alteredPlan, "p3")) return 71;
+    alteredPlan = p3;
+    alteredPlan.targetTriple = "x86_64-unknown-linux-gnu";
+    if (t09_probe::isSysVThreeByteRoundTrip(alteredPlan, "p3")) return 72;
     if (p3.physicalReturn.kind != t09_probe::TypeKind::Integer || p3.physicalReturn.widthOrCount != 24 ||
         p3.logicalParameters.size() != 1 || p3.logicalParameters[0].passing != t09_probe::Passing::Direct ||
         !p3.logicalParameters[0].coercion || p3.logicalParameters[0].coercion->widthOrCount != 24) return 20;

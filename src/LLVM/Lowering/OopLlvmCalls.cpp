@@ -830,6 +830,42 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             return failValue(error, "Stage 37 static call target was not declared: " + node->calleeName);
         }
 
+        const auto* imported = found->second.mirFunction;
+        if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
+            interop::abi_plan::isSysVThreeByteRoundTrip(*imported->cppAbiPlan, imported->cAbiName))
+        {
+            if (node->children.size() != 1 || node->referenceResult || node->returnsAssignedValue ||
+                node->children[0]->typeKey != node->typeKey ||
+                (argumentOverrides && argumentOverrides->size() != 1))
+                return failValue(error, "SysV three-byte record call has an unexpected argument contract");
+            LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[0] :
+                lowerExpression(node->children[0].get(), error);
+            if (!value) return nullptr;
+            if (terminated()) return value;
+            LLVMTypeRef carrier = llvmType(node->typeKey, error);
+            if (!carrier) return nullptr;
+            const unsigned alignment = structAlignmentFor(node->typeKey);
+            if (alignment == 0) return failValue(error, "SysV three-byte record has no alignment");
+            LLVMValueRef argumentSlot = entryBlockAlloca(carrier, alignment, "sysv.r3.arg");
+            LLVMValueRef argumentStore = LLVMBuildStore(builder_, value, argumentSlot);
+            LLVMSetAlignment(argumentStore, alignment);
+            LLVMTypeRef integer24 = LLVMIntTypeInContext(context_, 24);
+            LLVMValueRef physicalArgument = LLVMBuildLoad2(builder_, integer24, argumentSlot, "sysv.r3.physical");
+            LLVMSetAlignment(physicalArgument, alignment);
+            releaseTransferredArguments(node);
+            LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
+                &physicalArgument, 1, "sysv.r3.call", error);
+            if (!call) return nullptr;
+            LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
+            if (!applyMustTail(node, call, error)) return nullptr;
+            LLVMValueRef resultSlot = entryBlockAlloca(carrier, alignment, "sysv.r3.result");
+            LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
+            LLVMSetAlignment(resultStore, alignment);
+            LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "sysv.r3.value");
+            LLVMSetAlignment(result, alignment);
+            return result;
+        }
+
         std::vector<LLVMValueRef> arguments;
         arguments.reserve(node->children.size() + 1);
         // Win64 aggregate ABI -- see lowerCall; for a static callee the sret slot leads.
@@ -875,7 +911,6 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         for (const std::size_t source : parameterToSource) arguments.push_back(sourceArguments[source]);
         releaseTransferredArguments(node);
         LLVMValueRef target = found->second.function;
-        const auto* imported = found->second.mirFunction;
         if (imported != nullptr && imported->isVariadic && imported->importRequiresRuntimeBinding &&
             imported->mangledName.starts_with("__nsc_cpp_tls_import_"))
         {

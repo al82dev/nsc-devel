@@ -101,6 +101,22 @@ no una especificacion completa de todas las clasificaciones o atributos.
 El trabajo para transportar ese plan a NSC esta descrito en
 [TANDA-09-PLAN-ABI-CLANG.md](TANDA-09-PLAN-ABI-CLANG.md).
 
-No se afirma compatibilidad de SysV con agregados, otros escalares o punteros,
-variadicas, punteros de funcion, aislamiento TLS ni otros destinos. No se han cambiado
-Clang, NSLink ni el contrato de NSMeta.
+Primer agregado implementado: una funcion C SysV no variadica que recibe y
+devuelve el mismo record de tres bytes, cuando el plan copiado de Clang verifica
+un argumento y un retorno directos `i24` en Windows x64. La prueba dirigida
+`pruebas-tanda-09-sysv-record3/validar.py` compara la ejecucion con C, comprueba
+la firma LLVM y verifica que la copia original no cambia. Paso para enlace
+estatico y DLL en O0–O3: A:/temp/nsc-t09-sysv-r3-wtnwoygk. La sonda del plan
+ABI paso 1/1 y sus registros estan en A:/temp/t09-abi-probe-ctest.log. Los
+controles de escalares SysV, cdecl y vectorcall pasaron 8/8 cada uno en
+A:/temp/nsc-t09-sysv-prueba-7gxaz43g, A:/temp/nsc-t09-llamadas-23_zt50f y
+A:/temp/nsc-t09-vectorcall-qgnnxsrk, respectivamente.
+
+La plantilla NS precompilada con ese record se rechazo al ocultar el encabezado:
+el plan ABI aun no se conserva en NSMeta. Es una capacidad pendiente, no una
+prueba aprobada; el validador conserva el diagnostico. La muestra ejecutada usa
+tres campos `unsigned char`; no acredita todos los layouts o firmas que puedan
+tener la misma representacion fisica. Siguen pendientes los demas agregados,
+otros escalares o punteros, variadicas, punteros de funcion, aislamiento TLS y
+otros destinos. El item T09-003 sigue abierto. No se han cambiado Clang,
+NSLink ni el contrato de NSMeta.

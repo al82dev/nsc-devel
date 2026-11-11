@@ -14,6 +14,18 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
         bool sretReturn,
         std::string& error)
 {
+            if (function.cppSysVCall && function.cppAbiPlan &&
+                interop::abi_plan::isSysVThreeByteRoundTrip(*function.cppAbiPlan, function.cAbiName))
+            {
+                const char* target = LLVMGetTarget(module_);
+                if (!target || !std::string_view(target).starts_with("x86_64-pc-windows-msvc"))
+                {
+                    error = "SysV three-byte record requires the validated Windows x64 target";
+                    return nullptr;
+                }
+                LLVMTypeRef integer24 = LLVMIntTypeInContext(context_, 24);
+                return LLVMFunctionType(integer24, &integer24, 1, 0);
+            }
             // Win64 aggregate ABI (ground truth: clang for x86_64-pc-windows-msvc). An indirect
             // struct return becomes `void` plus a leading sret pointer parameter; an indirect
             // struct parameter becomes a plain pointer to a caller-owned per-call copy. For

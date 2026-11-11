@@ -305,6 +305,15 @@ void configureFunctionAbi(
     const ProjectCompilationIndexes* indexes,
     std::span<const ProjectOopMirStructLayout> layouts)
 {
+    if (function.cppSysVCall && function.cppAbiPlan &&
+        interop::abi_plan::isSysVThreeByteRoundTrip(*function.cppAbiPlan, function.cAbiName))
+    {
+        function.abi.returnPassing = ProjectOopMirAbiPassing::Direct;
+        function.abi.parameterPassing.push_back(ProjectOopMirAbiPassing::Direct);
+        function.abi.parameterPhysicalOrdinals.push_back(0);
+        function.abi.physicalParameterCount = 1;
+        return;
+    }
     function.abi.returnPassing = function.referenceReturn
         ? ProjectOopMirAbiPassing::Direct
         : abiPassingForType(indexes, layouts, function.returnTypeKey);

@@ -3,9 +3,10 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
-// Experimental value-only representation; not yet consumed by the compiler or NSMeta.
+// Value-only representation; a limited SysV record call consumes it, NSMeta does not yet persist it.
 namespace nativesharp::interop::abi_plan
 {
 enum class TypeKind { Void, Integer, Float, Double, Pointer, Structure, Array };
@@ -57,4 +58,23 @@ struct Plan
     std::vector<PhysicalParameter> physicalParameters;
 };
 
+// First supported aggregate shape: SysV C round-trip of one three-byte record.
+inline bool isSysVThreeByteRoundTrip(const Plan& plan, std::string_view symbol) noexcept
+{
+    const auto i24 = [](const Type& type) {
+        return type.kind == TypeKind::Integer && type.widthOrCount == 24;
+    };
+    if (plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
+        !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
+        plan.returnSignExtend || plan.returnZeroExtend || !i24(plan.physicalReturn) ||
+        plan.logicalReturn.passing != Passing::Direct || !plan.logicalReturn.coercion ||
+        !i24(*plan.logicalReturn.coercion) || plan.logicalReturn.offset != 0 ||
+        plan.logicalParameters.size() != 1 || plan.physicalParameters.size() != 1) return false;
+    const auto& logical = plan.logicalParameters[0];
+    const auto& physical = plan.physicalParameters[0];
+    return logical.passing == Passing::Direct && logical.coercion && i24(*logical.coercion) &&
+        logical.offset == 0 && logical.firstPhysical == 0 && logical.physicalCount == 1 &&
+        i24(physical.type) && !physical.structureReturn && !physical.byValue &&
+        !physical.signExtend && !physical.zeroExtend && !physical.inRegister && !physical.noAlias;
+}
 }
