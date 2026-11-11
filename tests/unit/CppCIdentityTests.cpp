@@ -1579,6 +1579,45 @@ bool checkDependencyTypeCodec()
         decoded.declaration.parameters[0].type.element &&
         decoded.declaration.parameters[0].type.element->kind == CppTypeKind::Atomic,
         "C dependency function round trip preserves identity, signature and atomic type");
+    auto recordFunction = function;
+    recordFunction.declaration.callingConvention = "sysv_abi";
+    recordFunction.declaration.returnType = CppType{};
+    recordFunction.declaration.returnType.kind = CppTypeKind::Record;
+    recordFunction.declaration.returnType.sizeBits = 24;
+    recordFunction.declaration.parameters[0].type = recordFunction.declaration.returnType;
+    auto plan = std::make_shared<abi_plan::Plan>();
+    plan->symbol = recordFunction.linkSymbol;
+    plan->targetTriple = "x86_64-pc-windows-msvc";
+    plan->dataLayout = "e-test";
+    plan->callingConvention = 78;
+    const abi_plan::Type i24{abi_plan::TypeKind::Integer, 24};
+    plan->physicalReturn = i24;
+    plan->logicalReturn.passing = abi_plan::Passing::Direct;
+    plan->logicalReturn.coercion = i24;
+    abi_plan::LogicalValue logical;
+    logical.passing = abi_plan::Passing::Direct;
+    logical.coercion = i24;
+    logical.physicalCount = 1;
+    plan->logicalParameters.push_back(logical);
+    abi_plan::PhysicalParameter physical;
+    physical.type = i24;
+    plan->physicalParameters.push_back(physical);
+    recordFunction.declaration.abiPlan = plan;
+    std::vector<std::uint8_t> recordBytes;
+    CDependencyFunctionSnapshot restoredRecord;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVThreeByteRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
+        "C dependency function round trip retains the supported SysV record plan");
+    auto truncatedRecord = recordBytes;
+    if (!truncatedRecord.empty()) truncatedRecord.pop_back();
+    restoredRecord.moduleName = "sentinel";
+    ok &= expect(!decodeCDependencyFunction(truncatedRecord, restoredRecord, error) &&
+        restoredRecord.moduleName == "sentinel", "truncated SysV record plan is rejected without changing output");
+    recordFunction.declaration.parameters[0].type.sizeBits = 32;
+    std::vector<std::uint8_t> unchangedRecord{42};
+    ok &= expect(!encodeCDependencyFunction(recordFunction, unchangedRecord, error) &&
+        unchangedRecord == std::vector<std::uint8_t>{42}, "SysV record plan rejects a conflicting C signature");
     if (!functionBytes.empty()) functionBytes.pop_back();
     decoded.moduleName = "sentinel";
     ok &= expect(!decodeCDependencyFunction(functionBytes, decoded, error) && decoded.moduleName == "sentinel",

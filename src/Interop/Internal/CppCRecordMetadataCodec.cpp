@@ -443,6 +443,19 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         { if (error.empty()) error = "invalid C dependency function parameter"; return false; }
         writer.u8(parameter.hasDefaultArgument);
     }
+    // The current contract stores the one aggregate plan the backend can consume.
+    // A missing observation is never interpreted as an ABI classification.
+    const bool r3 = f.abiPlan && abi_plan::isSysVThreeByteRoundTrip(*f.abiPlan, value.linkSymbol);
+    writer.u8(r3 ? 1 : 0);
+    if (r3)
+    {
+        if (f.callingConvention != "sysv_abi" || f.variadic || !f.hasPrototype ||
+            f.externalSymbol != value.linkSymbol || f.returnType.kind != CppTypeKind::Record ||
+            f.returnType.sizeBits != 24 || f.parameters.size() != 1 ||
+            f.parameters[0].type.kind != CppTypeKind::Record || f.parameters[0].type.sizeBits != 24 ||
+            !putText(writer, f.abiPlan->targetTriple) || !putText(writer, f.abiPlan->dataLayout))
+        { error = "invalid C dependency SysV record ABI"; return false; }
+    }
     output = writer.takeBytes();
     error.clear();
     return true;
@@ -488,6 +501,31 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
             !getFlag(reader, parameter.hasDefaultArgument))
         { error = "invalid C dependency function parameter"; return false; }
         f.parameters.push_back(std::move(parameter));
+    }
+    bool r3 = false;
+    if (!getFlag(reader, r3)) { error = "invalid C dependency ABI marker"; return false; }
+    if (r3)
+    {
+        auto plan = std::make_shared<abi_plan::Plan>();
+        plan->symbol = value.linkSymbol;
+        plan->callingConvention = 78;
+        if (!reader.text(plan->targetTriple) || !reader.text(plan->dataLayout))
+        { error = "invalid C dependency ABI target"; return false; }
+        const abi_plan::Type i24{abi_plan::TypeKind::Integer, 24};
+        plan->physicalReturn = i24;
+        plan->logicalReturn.passing = abi_plan::Passing::Direct;
+        plan->logicalReturn.coercion = i24;
+        abi_plan::LogicalValue logical;
+        logical.passing = abi_plan::Passing::Direct;
+        logical.coercion = i24;
+        logical.physicalCount = 1;
+        plan->logicalParameters.push_back(std::move(logical));
+        abi_plan::PhysicalParameter physical;
+        physical.type = i24;
+        plan->physicalParameters.push_back(std::move(physical));
+        if (!abi_plan::isSysVThreeByteRoundTrip(*plan, value.linkSymbol))
+        { error = "invalid C dependency ABI plan"; return false; }
+        f.abiPlan = std::move(plan);
     }
     std::vector<std::uint8_t> canonical;
     if (!reader.atEnd() || !encodeCDependencyFunction(value, canonical, error) ||

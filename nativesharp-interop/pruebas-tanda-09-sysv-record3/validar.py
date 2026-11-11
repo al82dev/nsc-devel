@@ -95,18 +95,8 @@ else:
     run('pre-producer', [args.nsc, '--emit-project-oop-lib', str(producer/'Producer.nsproj'),
         '--cpp-clang-root='+args.clang_root, '--no-artifact-cache', '-O0', '-o', str(producer/'Producer.lib')])
     (producer/'api.h').rename(producer/'api.h.oculto')
-    command = [args.nsc, '--emit-project-oop-exe', str(consumer/'Consumer.nsproj'),
-               '--cpp-clang-root='+args.clang_root, '--no-artifact-cache', '-O0', '-o', str(consumer/'Consumer.exe')]
-    result = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT, text=True, errors='replace')
-    (root/'pre-consumer.log').write_text('COMMAND: '+repr(command)+'\nEXIT: '+str(result.returncode)+
-                                         '\n'+result.stdout, encoding='utf-8')
-    if result.returncode == 0:
-        run('pre-run', [str(consumer/'Consumer.exe')])
-        print('OK: plantilla precompilada sin encabezado a O0', flush=True)
-    elif 'sysv_abi currently supports only' in result.stdout:
-        print('PENDIENTE: plantilla precompilada rechazada sin plan ABI; evidencia:', root, flush=True)
-    else:
-        print(result.stdout)
-        raise SystemExit('Fallo inesperado de plantilla precompilada; evidencia: '+str(root))
+    run('pre-consumer', [args.nsc, '--emit-project-oop-exe', str(consumer/'Consumer.nsproj'),
+        '--cpp-clang-root='+args.clang_root, '--no-artifact-cache', '-O0', '-o', str(consumer/'Consumer.exe')])
+    run('pre-run', [str(consumer/'Consumer.exe')])
+    print('OK: plantilla precompilada sin encabezado a O0', flush=True)
     print('OK: ocho comparaciones C/NS; evidencia:', root)

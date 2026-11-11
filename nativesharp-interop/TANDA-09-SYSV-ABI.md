@@ -112,9 +112,18 @@ controles de escalares SysV, cdecl y vectorcall pasaron 8/8 cada uno en
 A:/temp/nsc-t09-sysv-prueba-7gxaz43g, A:/temp/nsc-t09-llamadas-23_zt50f y
 A:/temp/nsc-t09-vectorcall-qgnnxsrk, respectivamente.
 
-La plantilla NS precompilada con ese record se rechazo al ocultar el encabezado:
-el plan ABI aun no se conserva en NSMeta. Es una capacidad pendiente, no una
-prueba aprobada; el validador conserva el diagnostico. La muestra ejecutada usa
+La primera plantilla NS precompilada con ese record se rechazo al ocultar el
+encabezado porque se perdia el plan ABI. El contrato vigente de dependencias C
+ahora conserva la forma acotada `i24` y su destino, sin agregar una estrategia de
+versiones historicas. La plantilla paso sin encabezado en estatica O0 en
+A:/temp/nsc-t09-sysv-r3-v2gwcf6p; la prueba ahora exige compilacion y ejecucion.
+La prueba de identidad y metadatos paso despues de corregir un fixture que habia
+heredado indebidamente un atributo de tipo flotante; registros
+A:/temp/t09-identidad-build.log y A:/temp/t09-identidad-run.log. Verifica
+tambien rechazo de datos truncados y de firmas incompatibles. El control SysV
+de escalares y su plantilla previa pasaron en A:/temp/nsc-t09-sysv-prueba-q4eamjec.
+
+La muestra de record ejecutada usa
 tres campos `unsigned char`; no acredita todos los layouts o firmas que puedan
 tener la misma representacion fisica. Siguen pendientes los demas agregados,
 otros escalares o punteros, variadicas, punteros de funcion, aislamiento TLS y
