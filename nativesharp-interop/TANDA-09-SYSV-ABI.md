@@ -1444,6 +1444,20 @@ records y record mixto con `byval`
 `A:/temp/nsc-t09-sysv-indirecta-var-mixto-byval-pre-fh1f64rz`). Otras mezclas
 y firmas siguen abiertas; esta muestra no cierra T09-003.
 
+**Record y `double` opcionales:** el control C y el productor independiente
+comprobaron valores y dos registros flotantes, mientras NSC rechazaba la firma
+(`A:/temp/nsc-t09-sysv-indirecta-variadica-record-double-6_bkggj5`). Tras
+emitir y reconstruir el `double` segun Clang pasaron ocho comparaciones C/NS
+estatica/DLL O0-O3 (`A:/temp/nsc-t09-sysv-indirecta-record-double-matriz-co2zyam0`)
+y la plantilla sin encabezado, cache y rechazo de variante
+(`A:/temp/nsc-t09-sysv-indirecta-record-double-pre-0vthmabb`). Pasaron cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones precompiladas de record con
+entero y record mixto con `byval`
+(`A:/temp/nsc-t09-sysv-indirecta-record-escalar-pre-6grnexkj`,
+`A:/temp/nsc-t09-sysv-indirecta-var-mixto-byval-pre-9cz37lcb`). Otras mezclas
+y promociones no quedan certificadas y T09-003 permanece abierto.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor

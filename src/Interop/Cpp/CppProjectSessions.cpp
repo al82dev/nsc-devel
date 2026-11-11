@@ -575,7 +575,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     std::vector<std::optional<std::size_t>> recordForArgument;
     for (const auto& key : optionalTypeKeys)
     {
-        if (key == "builtin:int")
+        if (key == "builtin:int" || key == "builtin:double")
         {
             recordForArgument.push_back(std::nullopt);
             continue;
@@ -673,6 +673,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     options.resourceDirectory = environment.resourceDirectory;
     options.workingDirectory = environment.workingDirectory;
     options.input = CppBufferInput{"nsc-variadic-pointer-replay.c", recordSource +
+        "void __nsc_replay_double(double);\n"
         "typedef int (__attribute__((sysv_abi)) *__nsc_replay_pointer)(int, ...);\n"};
     auto opened = factory.open(std::move(options), {});
     auto* holder = std::get_if<std::unique_ptr<CppInteropSession>>(&opened);
@@ -701,8 +702,15 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     std::vector<CppType> arguments;
     if (!replayAlias->underlyingType.element || !replayAlias->underlyingType.element->function ||
         replayAlias->underlyingType.element->function->parameterTypes.size() != 1) return {};
-    for (const auto index : recordForArgument)
-        arguments.push_back(index ? replayTypes[*index] : replayAlias->underlyingType.element->function->parameterTypes[0]);
+    const auto doubleHelper = std::find_if(functions->begin(), functions->end(),
+        [](const auto& value) { return value.name == "__nsc_replay_double"; });
+    if (doubleHelper == functions->end() || doubleHelper->parameters.size() != 1 ||
+        doubleHelper->parameters[0].type.kind != CppTypeKind::Floating ||
+        doubleHelper->parameters[0].type.canonicalSpelling != "double") return {};
+    for (std::size_t i = 0; i < recordForArgument.size(); ++i)
+        arguments.push_back(recordForArgument[i] ? replayTypes[*recordForArgument[i]] :
+            optionalTypeKeys[i] == "builtin:int" ? replayAlias->underlyingType.element->function->parameterTypes[0] :
+            doubleHelper->parameters[0].type);
     auto plan = session.cVariadicFunctionPointerCallAbiPlan(replayAlias->name,
         replayAlias->underlyingType.canonicalSpelling, arguments);
     if (!plan || !validateCppVariadicSysVCallPlan(*plan, "__nsc_variadic_pointer_abi_probe", 1)) return {};
