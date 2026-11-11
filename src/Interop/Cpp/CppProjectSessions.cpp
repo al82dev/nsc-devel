@@ -562,8 +562,12 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         return type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "int" &&
             !type.isConst && !type.isVolatile && !type.isRestrict;
     };
+    const bool returnDouble = signature.returnType.kind == CppTypeKind::Floating &&
+        signature.returnType.canonicalSpelling == "double" && !signature.returnType.isConst &&
+        !signature.returnType.isVolatile && !signature.returnType.isRestrict;
     if (!signature.hasPrototype || !signature.variadic || signature.callingConvention != "sysv_abi" ||
-        !isInt(signature.returnType) || signature.parameterTypes.empty() || signature.parameterTypes.size() > 1024) return {};
+        (!isInt(signature.returnType) && !returnDouble) || signature.parameterTypes.empty() ||
+        signature.parameterTypes.size() > 1024) return {};
     std::string fixedSource;
     for (const auto& type : signature.parameterTypes)
     {
@@ -687,7 +691,8 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         "void __nsc_replay_int(int);\n"
         "void __nsc_replay_double(double);\n"
         "void __nsc_replay_int_pointer(int *);\n"
-        "typedef int (__attribute__((sysv_abi)) *__nsc_replay_pointer)(" +
+        "typedef " + std::string(returnDouble ? "double" : "int") +
+        " (__attribute__((sysv_abi)) *__nsc_replay_pointer)(" +
         fixedSource + ", ...);\n"};
     auto opened = factory.open(std::move(options), {});
     auto* holder = std::get_if<std::unique_ptr<CppInteropSession>>(&opened);
