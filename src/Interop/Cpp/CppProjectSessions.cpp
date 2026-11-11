@@ -567,6 +567,60 @@ std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicCallAbiPlan(
     return plan;
 }
 
+std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicFunctionPointerCallAbiPlan(
+    const CppInteropSession& aliasSession, std::string_view name, const CppType& expectedPointer,
+    std::span<const CppVariadicArgumentOrigin> arguments)
+{
+    if (aliasSession.state() != CppSessionState::Ready ||
+        aliasSession.optionsSnapshot().language != CppLanguageMode::C ||
+        aliasSession.optionsSnapshot().targetTriple != "x86_64-pc-windows-msvc" || name.empty() ||
+        expectedPointer.kind != CppTypeKind::Pointer || expectedPointer.canonicalSpelling.empty() ||
+        expectedPointer.isConst || expectedPointer.isVolatile || expectedPointer.isRestrict ||
+        !expectedPointer.element || expectedPointer.element->kind != CppTypeKind::Function ||
+        !expectedPointer.element->function || arguments.size() > 1024) return std::nullopt;
+    const auto aliases = aliasSession.typeAliasesSnapshot();
+    if (!aliases) return std::nullopt;
+    const CppType* observed = nullptr;
+    for (const auto& alias : *aliases)
+        if (alias.name == name && alias.qualifiedName == name &&
+            alias.underlyingType.canonicalSpelling == expectedPointer.canonicalSpelling)
+        {
+            if (observed) return std::nullopt;
+            observed = &alias.underlyingType;
+        }
+    if (!observed || observed->kind != CppTypeKind::Pointer || !observed->element ||
+        observed->element->kind != CppTypeKind::Function || !observed->element->function ||
+        observed->sizeBits != expectedPointer.sizeBits || observed->alignmentBits != expectedPointer.alignmentBits ||
+        observed->isConst != expectedPointer.isConst || observed->isVolatile != expectedPointer.isVolatile ||
+        observed->isRestrict != expectedPointer.isRestrict ||
+        observed->element->canonicalSpelling != expectedPointer.element->canonicalSpelling ||
+        observed->element->isConst != expectedPointer.element->isConst ||
+        observed->element->isVolatile != expectedPointer.element->isVolatile ||
+        observed->element->isRestrict != expectedPointer.element->isRestrict) return std::nullopt;
+    const auto& signature = *observed->element->function;
+    const auto& expectedSignature = *expectedPointer.element->function;
+    if (signature.callingConvention != "sysv_abi" || !signature.hasPrototype || !signature.variadic ||
+        expectedSignature.callingConvention != signature.callingConvention ||
+        expectedSignature.hasPrototype != signature.hasPrototype || expectedSignature.variadic != signature.variadic ||
+        expectedSignature.parameterTypes.size() != signature.parameterTypes.size() ||
+        !sameVariadicType(signature.returnType, expectedSignature.returnType, 1) ||
+        !variadicRecordOriginMatches(aliasSession, &aliasSession, signature.returnType, 0)) return std::nullopt;
+    for (std::size_t i = 0; i < signature.parameterTypes.size(); ++i)
+        if (!sameVariadicType(signature.parameterTypes[i], expectedSignature.parameterTypes[i], 1) ||
+            !variadicRecordOriginMatches(aliasSession, &aliasSession, signature.parameterTypes[i], 0)) return std::nullopt;
+    std::vector<CppType> types;
+    types.reserve(arguments.size());
+    for (const auto& argument : arguments)
+    {
+        if (!variadicRecordOriginMatches(aliasSession, argument.origin, argument.type, 0)) return std::nullopt;
+        types.push_back(argument.type);
+    }
+    auto plan = aliasSession.cVariadicFunctionPointerCallAbiPlan(name, expectedPointer.canonicalSpelling, types);
+    if (!plan || !validateCppVariadicSysVCallPlan(*plan, "__nsc_variadic_pointer_abi_probe",
+                                                  signature.parameterTypes.size())) return std::nullopt;
+    return plan;
+}
+
 std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
     const frontend::ProjectNameLookup& lookup, const frontend::NamespaceFunctionSymbol& function,

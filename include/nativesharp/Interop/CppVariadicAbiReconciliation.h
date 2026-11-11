@@ -45,6 +45,12 @@ std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicCallAbiPlan(
     const CppInteropSession& functionSession, std::string_view name,
     std::string_view canonicalType, std::span<const CppVariadicArgumentOrigin> arguments);
 
+// Experimental observation: the typedef must match its live session and each
+// record argument must be reconciled with its actual origin before querying Clang.
+std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicFunctionPointerCallAbiPlan(
+    const CppInteropSession& aliasSession, std::string_view name, const CppType& expectedPointer,
+    std::span<const CppVariadicArgumentOrigin> arguments);
+
 // Records are accepted only after resolving and comparing their live origins.
 std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,

@@ -1323,6 +1323,15 @@ consulta aun no esta conectada a HIR/MIR ni a la emision; la llamada variadica
 con record y su precompilacion siguen pendientes. No se acredita soporte por el
 diagnostico ni por la sonda.
 
+La reconciliacion posterior verifica el typedef observado, su firma fija y el
+origen de cada argumento antes de consultar el plan; para records de otra
+sesion exige equivalencia estructural. Una sonda nueva con Clang real acepta
+origen local y equivalente y rechaza origen ausente, record incompatible del
+mismo tamano, tamano alterado, firma fija alterada, nombre incorrecto y sesion
+cerrada. Pasaron esta sonda y las dos sondas ABI anteriores
+(`A:/temp/t09-test-varptr.log`). El resultado sigue siendo experimental: no
+transporta el plan ni permite emitir la llamada.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor
