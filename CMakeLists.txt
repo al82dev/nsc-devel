@@ -5595,6 +5595,14 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.sdk.namespace-tuple-binary
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/namespace_tuple_binary.py"
                 "${NSC_TEST_COMPILER}")
+    add_test(NAME nsc.sdk.namespace-weakarc-binary
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/namespace_weakarc_binary.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.sdk.namespace-weakarc-binary PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME nsc.sdk.shared-tuple-return-binary
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_tuple_return_binary.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.sdk.shared-tuple-return-binary PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME nsc.sdk.shared-public-pointers
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_public_pointers.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"

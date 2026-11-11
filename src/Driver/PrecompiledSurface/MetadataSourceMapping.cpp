@@ -483,6 +483,24 @@ bool sourceTypeForMetadataKey(const interop::LibraryMetadata &metadata, const st
                 converted += item.value.substr(8U);
                 continue;
             }
+            const auto specialization = std::ranges::find_if(metadata.genericSpecializations,
+                [&](const auto &candidate)
+                {
+                    const auto key = metadataSpecializedTypeKey(candidate);
+                    return (candidate.templateKey == "NativeSharpCore::NativeSharp.Core.Arc`1" ||
+                            candidate.templateKey == "NativeSharpCore::NativeSharp.Core.WeakArc`1" ||
+                            candidate.templateKey == "NativeSharpCore::NativeSharp.Core.Rc`1" ||
+                            candidate.templateKey == "NativeSharpCore::NativeSharp.Core.WeakRc`1") &&
+                           key.has_value() && *key == item.value;
+                });
+            if (specialization != metadata.genericSpecializations.end())
+            {
+                std::string elementSource;
+                if (!sourceTypeForGenericSpecialization(metadata, *specialization, elementSource, error))
+                    return false;
+                converted += elementSource;
+                continue;
+            }
             error = "metadata-backed tuple source import cannot yet materialize element '" + item.value + "'";
             return false;
         }
