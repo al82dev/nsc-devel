@@ -1035,7 +1035,7 @@ muestra descrita, no todos los layouts booleanos ni las demas convenciones.
 
 ## Puntero de funcion SysV devuelto por una biblioteca
 
-**Avance del transporte, aun sin emision:** el plan de Clang asociado al
+**Transporte, antes de habilitar emision:** el plan de Clang asociado al
 typedef local pasa de HIR a MIR y participa en sus identidades de cache y en la
 serializacion interna de MIR. La muestra con record de tres enteros conserva el
 plan de dos piezas en HIR y MIR con uno y cuatro trabajadores; el control C
@@ -1047,6 +1047,39 @@ de llamadas indirectas escalares, estatica y DLL O0-O3, y su plantilla
 precompilada pasan (`A:/temp/nsc-t09-sysv-indirecta-matriz-q99snji3`). El codec
 es interno y no cambia el contrato NSMeta. El record por valor, su emision y su
 precompilacion siguen pendientes; T09-003 permanece abierto.
+
+**Avance posterior de emision:** el caso del record de tres enteros, un solo
+argumento y retorno `int` se emite con las piezas `i64` e `i32` del plan de
+Clang. Las ocho comparaciones C/NativeSharp con biblioteca estatica y DLL,
+en O0-O3, pasaron (`A:/temp/nsc-t09-sysv-indirecta-record-matriz-v8chz2up`);
+tambien paso la prueba puntual con inspeccion de HIR, MIR y LLVM
+(`A:/temp/nsc-t09-sysv-indirecta-record-6bfciowe`). Las ocho comparaciones
+escalares anteriores y su plantilla precompilada pasaron
+(`A:/temp/nsc-t09-sysv-indirecta-matriz-y4b1h123`). La precompilacion del
+record y otras formas siguen pendientes. La prueba negativa existente
+`pruebas-tanda-09-sysv-indirecta/validar.py` fallo porque exige rechazar un
+record con la misma firma recien admitida; se conserva intacta
+(`A:/temp/nsc-t09-sysv-indirecta-w8u8ult8/rechazo-firma.log`). Este conflicto
+impide declarar limpia la validacion del bloque. T09-003 sigue abierto.
+La prueba nueva de plantilla precompilada construyo la biblioteca productora,
+oculto el header y reprodujo el rechazo en el consumidor: falta recuperar y
+conciliar el plan para ese camino
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-20mld2ng/consumer.log`).
+Posteriormente se recuperaron el alias y el record desde el catalogo vigente,
+se cotejaron su identidad y disposicion, y una sesion Clang reconstruida
+clasifico la llamada. La misma plantilla paso sin encabezado; una variante con
+un campo `unsigned int` en lugar de `int`, del mismo tamano, se rechazo por
+esta ruta aun no validada
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-2fixhha6`); pasaron ejecuciones
+precompiladas con biblioteca estatica y DLL en O0-O3 y se inspeccionaron las
+piezas LLVM con uno y cuatro trabajadores. Con la biblioteca estatica, un
+consumidor paso primero con cache vacia y luego con acierto de cache, ejecutando
+ambos artefactos. Volvieron a pasar las
+matrices del record directo y de escalares, y las pruebas de transporte, ABI e
+identidad (`A:/temp/nsc-t09-sysv-indirecta-record-matriz-foxtfwtz`,
+`A:/temp/nsc-t09-sysv-indirecta-matriz-pizrlsrl` y
+`A:/temp/t09-transport-directed/`). Esto no cubre otras firmas ni resuelve la
+contradiccion de la prueba negativa anterior.
 
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.

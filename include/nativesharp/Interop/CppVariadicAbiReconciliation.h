@@ -31,6 +31,14 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
     const frontend::ProjectNameLookup& lookup, const frontend::CppImportedTypeAlias& alias,
     std::string_view resolvedTypeKey);
 
+// Reconstruct the observed record and pointer type from the current catalogue;
+// a fresh Clang session classifies it after identity and layout checks.
+std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
+    const compilation::ProjectGraph& graph, std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const frontend::ProjectNameLookup& lookup, const frontend::CppImportedTypeAlias& alias,
+    std::string_view resolvedTypeKey, const CppProjectSessionEnvironment& environment,
+    CppInteropSessionFactory& factory);
+
 // Resolve against the function's session after checking each record's origin
 // and, when necessary, structural equivalence. The caller retains all sessions.
 std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicCallAbiPlan(

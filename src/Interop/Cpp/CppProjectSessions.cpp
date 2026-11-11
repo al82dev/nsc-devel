@@ -338,6 +338,120 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
     return plan ? std::make_shared<const abi_plan::Plan>(std::move(*plan)) : nullptr;
 }
 
+std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
+    const compilation::ProjectGraph& graph, std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const frontend::ProjectNameLookup& lookup, const frontend::CppImportedTypeAlias& alias,
+    std::string_view resolvedTypeKey, const CppProjectSessionEnvironment& environment,
+    CppInteropSessionFactory& factory)
+{
+    if (!alias.fromPrecompiledCatalog || alias.projectOrdinal >= graph.projects().size() ||
+        alias.targetTriple != "x86_64-pc-windows-msvc" || environment.targetTriple != alias.targetTriple ||
+        alias.projectFile != graph.projects()[alias.projectOrdinal].projectFile() ||
+        !alias.declaration.clangUsr || alias.declaration.clangUsr->empty()) return {};
+    const auto& moduleName = graph.projects()[alias.projectOrdinal].moduleName();
+    const auto mapped = projectCppStoredFunctionPointer(alias.declaration.underlyingType, alias.projectOrdinal,
+        moduleName, &lookup);
+    if (!mapped || mapped->nativeSharpTypeKey != resolvedTypeKey) return {};
+    const auto& pointer = alias.declaration.underlyingType;
+    if (pointer.kind != CppTypeKind::Pointer || pointer.isConst || pointer.isVolatile || pointer.isRestrict ||
+        pointer.sizeBits != 64 || pointer.alignmentBits != 64 || !pointer.element ||
+        pointer.element->kind != CppTypeKind::Function || !pointer.element->function) return {};
+    const auto& signature = *pointer.element->function;
+    if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "sysv_abi" ||
+        signature.returnType.kind != CppTypeKind::SignedInteger || signature.returnType.canonicalSpelling != "int" ||
+        signature.parameterTypes.size() != 1) return {};
+    const auto& type = signature.parameterTypes[0];
+    if (type.kind != CppTypeKind::Record || type.isConst || type.isVolatile || type.isRestrict ||
+        !type.recordIdentity || !type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty() ||
+        type.recordIdentity->anonymousContext || type.recordIdentity->specializationContext ||
+        !type.recordIdentity->namespaceSegments.empty() || !type.recordIdentity->containingRecords.empty() ||
+        type.canonicalSpelling != "struct " + type.recordIdentity->name ||
+        type.sizeBits != 96 || type.alignmentBits != 32) return {};
+    const auto identity = projectCppRecordTypeIdentity(type, moduleName);
+    if (!identity) return {};
+    const auto ordinal = lookup.typeOrdinalForIdentity(identity->key());
+    const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+    if (!imported || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
+        !imported->deferredImportError.empty() || !imported->objectLayout ||
+        imported->clangUsr != type.recordIdentity->clangUsr || imported->objectLayout->sizeBytes != 12 ||
+        imported->objectLayout->alignmentBytes != 4 || imported->origin != frontend::CppImportedTypeOrigin::CStruct)
+        return {};
+    std::vector<std::uint8_t> aliasType;
+    std::string error;
+    if (!metadata_detail::encodeCDependencyType(pointer, aliasType, error)) return {};
+    std::optional<metadata_detail::CDependencyAliasSnapshot> selectedAlias;
+    std::optional<CppCRecordSnapshot> selectedRecord;
+    for (const auto& module : modules)
+    {
+        if (module.cppCTypeCatalog.empty()) continue;
+        std::vector<CppCRecordSnapshot> records;
+        std::vector<CppCEnumSnapshot> enums;
+        metadata_detail::CDependencyCatalog dependencies;
+        if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
+                module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return {};
+        for (const auto& candidate : dependencies.aliases)
+        {
+            const auto& declaration = candidate.declaration;
+            if (candidate.moduleName != moduleName || declaration.name != alias.declaration.name ||
+                declaration.qualifiedName != alias.declaration.qualifiedName ||
+                declaration.clangUsr != alias.declaration.clangUsr) continue;
+            std::vector<std::uint8_t> encoded;
+            if (selectedAlias || candidate.referenceIdentity.empty() ||
+                !metadata_detail::encodeCDependencyType(declaration.underlyingType, encoded, error) ||
+                encoded != aliasType) return {};
+            selectedAlias = candidate;
+        }
+        for (const auto& record : records)
+            if (record.identityKey == identity->key())
+            {
+                if (selectedRecord) return {};
+                selectedRecord = record;
+            }
+    }
+    if (!selectedAlias || !selectedRecord || !selectedRecord->plainReplaySyntax ||
+        selectedRecord->moduleName != moduleName || !selectedRecord->namespaceSegments.empty() ||
+        !selectedRecord->containingRecords.empty() ||
+        selectedRecord->clangUsr != type.recordIdentity->clangUsr ||
+        selectedRecord->name != type.recordIdentity->name || selectedRecord->kind != CppRecordKind::Struct ||
+        selectedRecord->sizeBits != type.sizeBits || selectedRecord->alignmentBits != type.alignmentBits ||
+        selectedRecord->fields.size() != 3) return {};
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+        const auto& field = selectedRecord->fields[i];
+        if (field.bitWidth || field.type.kind != CppTypeKind::SignedInteger ||
+            field.type.canonicalSpelling != "int" || field.offsetBits != i * 32) return {};
+    }
+    const auto recordSource = makeSimpleCRecordAbiReplay(*selectedRecord);
+    if (!recordSource) return {};
+    CppSessionOptions options;
+    options.language = CppLanguageMode::C;
+    options.languageStandard = "c11";
+    options.targetTriple = environment.targetTriple;
+    options.driverReferencePath = environment.driverReferencePath;
+    options.resourceDirectory = environment.resourceDirectory;
+    options.workingDirectory = environment.workingDirectory;
+    options.input = CppBufferInput{"nsc-pointer-replay.c", *recordSource +
+        "typedef int (__attribute__((sysv_abi)) *__nsc_replay_pointer)(struct __nsc_abi_record);\n"};
+    auto opened = factory.open(std::move(options), {});
+    auto* holder = std::get_if<std::unique_ptr<CppInteropSession>>(&opened);
+    if (!holder || !*holder) return {};
+    auto& session = **holder;
+    const auto records = session.recordsSnapshot();
+    const auto aliases = session.typeAliasesSnapshot();
+    if (!records || !aliases) return {};
+    const auto replayRecord = std::find_if(records->begin(), records->end(),
+        [](const auto& value) { return value.name == "__nsc_abi_record"; });
+    const auto replayAlias = std::find_if(aliases->begin(), aliases->end(),
+        [](const auto& value) { return value.name == "__nsc_replay_pointer"; });
+    if (replayRecord == records->end() || replayAlias == aliases->end() ||
+        !matchesSimpleCRecordAbiReplay(*selectedRecord, *replayRecord)) return {};
+    auto plan = session.cFunctionPointerAbiPlan(replayAlias->name, replayAlias->underlyingType.canonicalSpelling);
+    if (!plan || plan->symbol != "__nsc_pointer_abi_probe" || plan->callingConvention != 78 ||
+        plan->variadic || !plan->targetTriple.starts_with("x86_64-pc-windows-msvc") ||
+        !plan->dataLayout.starts_with("e-") || plan->logicalParameters.size() != 1) return {};
+    return std::make_shared<const abi_plan::Plan>(std::move(*plan));
+}
+
 std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicCallAbiPlan(
     const CppInteropSession& functionSession, std::string_view name,
     std::string_view canonicalType, std::span<const CppVariadicArgumentOrigin> arguments)

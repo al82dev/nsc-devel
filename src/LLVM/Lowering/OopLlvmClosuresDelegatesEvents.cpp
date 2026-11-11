@@ -8,6 +8,7 @@
 #include "OopLlvmSupport.h"
 
 #include "nativesharp/Interop/LibraryMetadata.h"
+#include "nativesharp/Interop/CppAbiPlan.h"
 
 namespace nativesharp::llvm_backend
 {
@@ -1184,6 +1185,64 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         if (delegateValue == nullptr) return nullptr;
         const bool externC = isExternCDelegateType(node->elementTypeKey);
         const bool vectorCall = externC && isVectorCallDelegateType(node->elementTypeKey);
+        if (externC && node->cppFunctionPointerPlan && node->argumentCount == 1 &&
+            node->argumentTypeKeys.size() == 1 && node->argumentTypeKeys[0].starts_with("type:") &&
+            !node->argumentTypeKeys[0].ends_with('*') && node->typeKey == "builtin:int")
+        {
+            using namespace interop::abi_plan;
+            const auto& plan = *node->cppFunctionPointerPlan;
+            const auto signature = language::parseFunctionTypeIdentity(node->elementTypeKey);
+            const auto plainInteger = [](const PhysicalParameter& p, std::uint64_t width) {
+                return p.type.kind == TypeKind::Integer && p.type.widthOrCount == width &&
+                    !p.pointee && !p.structureReturn && !p.byValue && !p.signExtend &&
+                    !p.zeroExtend && !p.inRegister && !p.noAlias;
+            };
+            const auto& key = node->argumentTypeKeys[0];
+            const auto* layout = findStructLayout(mirModel_, key);
+            const auto ordinal = key.starts_with("type:")
+                ? nameLookup_.typeOrdinalForIdentity(std::string_view(key).substr(5)) : std::nullopt;
+            const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
+            if (!signature || signature->callingConvention != language::CallingConvention::SysV ||
+                signature->variadic || signature->parameters.size() != 1 || plan.variadic ||
+                plan.symbol != "__nsc_pointer_abi_probe" || plan.callingConvention != 78 ||
+                !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
+                plan.returnSignExtend || plan.returnZeroExtend || plan.physicalReturn.kind != TypeKind::Integer ||
+                plan.physicalReturn.widthOrCount != 32 || plan.logicalReturn.passing != Passing::Direct ||
+                plan.logicalParameters.size() != 1 || plan.physicalParameters.size() != 2 ||
+                plan.logicalParameters[0].passing != Passing::Direct ||
+                plan.logicalParameters[0].firstPhysical != 0 || plan.logicalParameters[0].physicalCount != 2 ||
+                plan.logicalParameters[0].offset != 0 || !plainInteger(plan.physicalParameters[0], 64) ||
+                !plainInteger(plan.physicalParameters[1], 32) || !layout || layout->size != 12 ||
+                layout->alignment != 4 || !imported || imported->isIncomplete ||
+                !imported->deferredImportError.empty() || !imported->objectLayout ||
+                (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
+                 imported->origin != frontend::CppImportedTypeOrigin::CUnion) ||
+                imported->objectLayout->sizeBytes != 12 || imported->objectLayout->alignmentBytes != 4)
+                return failValue(error, "sysv_abi function pointer record plan is not supported");
+            LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[0] :
+                lowerExpression(node->children[1].get(), error);
+            if (!value || terminated()) return value;
+            LLVMTypeRef carrier = llvmType(key, error);
+            if (!carrier || LLVMTypeOf(value) != carrier)
+                return failValue(error, "sysv_abi function pointer record carrier does not match its plan");
+            LLVMValueRef slot = entryBlockAlloca(carrier, 4, "sysv.callback.record");
+            LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+            LLVMSetAlignment(store, 4);
+            LLVMTypeRef types[] = {LLVMInt64TypeInContext(context_), LLVMInt32TypeInContext(context_)};
+            LLVMValueRef pieces[] = {
+                LLVMBuildLoad2(builder_, types[0], slot, "sysv.callback.first"),
+                LLVMBuildLoad2(builder_, types[1], byteOffset(slot, 8, "sysv.callback.second.addr"),
+                    "sysv.callback.second")};
+            LLVMSetAlignment(pieces[0], 4);
+            LLVMSetAlignment(pieces[1], 4);
+            releaseTransferredArguments(node);
+            delegateValue = checkedReceiver(delegateValue, error);
+            if (!delegateValue) return nullptr;
+            LLVMTypeRef functionType = LLVMFunctionType(LLVMInt32TypeInContext(context_), types, 2, 0);
+            LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, pieces, 2, "sysv.callback.result");
+            LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
+            return call;
+        }
         std::vector<LLVMValueRef> arguments;
         arguments.reserve(node->argumentCount);
         for (std::size_t index = 1; index < node->children.size(); ++index)

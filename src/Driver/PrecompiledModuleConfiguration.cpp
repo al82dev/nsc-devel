@@ -549,12 +549,15 @@ bool configurePrecompiledModules(
                         *lookup, function, optionalTypes, environment, *replayFactory);
                 }, error)) return false;
         if (!compilation.setCppFunctionPointerPlanProvider(
-                [&compilation](const frontend::CppImportedTypeAlias& alias, std::string_view typeKey) {
+                [&compilation, environment, replayMutex, replayFactory](const frontend::CppImportedTypeAlias& alias, std::string_view typeKey) {
                     const auto* graph = compilation.projectGraph();
                     const auto* lookup = compilation.nameLookup();
                     if (!graph || !lookup) return std::shared_ptr<const interop::abi_plan::Plan>{};
-                    return interop::planCppFunctionPointerForAlias(
-                        *graph, compilation.cppProjectSessions(), *lookup, alias, typeKey);
+                    if (auto plan = interop::planCppFunctionPointerForAlias(
+                            *graph, compilation.cppProjectSessions(), *lookup, alias, typeKey)) return plan;
+                    std::lock_guard lock(*replayMutex);
+                    return interop::planPrecompiledCppFunctionPointerForAlias(*graph, compilation.precompiledModules(),
+                        *lookup, alias, typeKey, environment, *replayFactory);
                 }, error)) return false;
         if (hasSessions && !compilation.setCppMetadataCatalogProvider(
                 interop::provideCppCRecordMetadataCatalog, error)) return false;
