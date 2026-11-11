@@ -163,3 +163,5 @@ T09-003: investigar el transporte variadico de punteros C de distintos tipos, in
 T09-003: comprobar una elipsis vacia y otra que agota los ocho registros vectoriales y pasa un `double` por pila, incluidos el contador AL y la llamada precompilada.
 T09-003: contrastar tambien punteros C a record y a `short` en el prefijo fijo de una funcion SysV variadica, junto a valores promovidos; no confundir punteros con records por valor ni callbacks.
 T09-003: comprobar el retorno de un puntero a record en una funcion SysV variadica, preservando identidad, escritura y precompilacion.
+T09-003: investigar con la API publica `arrangeFreeFunctionCall` y con el IR de Clang la clasificacion de records en elipsis, incluyendo combinaciones que agotan registros. Mantener la ejecucion NS rechazada mientras el plan por llamada no se transporte y valide.
+T09-003: copiar por valor la clasificacion logica de la llamada variadica de Clang, incluidos prefijo, retorno, coerciones, posiciones y paso indirecto. Validar los tipos efectivos, rechazar formas no representadas y demostrar que la copia sobrevive al contexto LLVM; aun no habilitar su emision desde NSC.

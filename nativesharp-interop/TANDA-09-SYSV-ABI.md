@@ -613,6 +613,30 @@ regresion SysV general (`A:/temp/nsc-t09-sysv-prueba-br0h3slf`) y la regresion
 variadica cdecl (`A:/temp/nsc-t09-llamadas-98t_fwt_`). Los records por valor,
 callbacks SysV y combinaciones no probadas permanecen pendientes.
 
+### Plan experimental de records en la elipsis
+
+El IR de Clang muestra que el record `double`/`int` se descompone en dos
+piezas cuando hay registros, pero se pasa `byval` si se agotan los registros
+enteros o los flotantes. El oraculo reproducible
+`pruebas-tanda-09-sysv-plan-variadico/validar.py` comprueba esos tres casos
+(`A:/temp/nsc-t09-sysv-varrecord-ir-r42708hg`). Por tanto, clasificar el
+record aisladamente no basta: hay que considerar los tipos de toda la llamada.
+
+La infraestructura interna consulta `arrangeFreeFunctionCall` de Clang y copia
+por valor el simbolo, destino, convencion, prefijo requerido, retorno y clases,
+coerciones y posiciones logicas de los argumentos. Exige tipos efectivos ya
+promovidos, comprueba el prefijo y rechaza atributos o formas no representados;
+por ahora solo consulta C SysV para Windows x64. La sonda comprueba casos
+directos e indirectos, agotamiento de ambos grupos de registros, rechazos y
+supervivencia despues de destruir Clang y LLVM (`A:/temp/t09-planes-clang.log`).
+
+Pasaron la compilacion incremental, los controles de plan y metadatos y la
+regresion variadica (`A:/temp/nsc-t09-sysv-varargs-xvjzbpad`). Esta copia es
+infraestructura interna, no una firma LLVM completa: falta obtener el plan
+para cada llamada de NativeSharp, transportar y validar atributos y metadatos,
+y emitir y ejecutar la llamada. Los records variadicos continuan rechazados y
+T09-003 permanece abierto.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin

@@ -243,4 +243,82 @@ std::optional<Plan> copyPlan(clang::CodeGenerator& generator,
     { error = "unmapped physical parameters"; return std::nullopt; }
     return result;
 }
+
+std::optional<VariadicCallPlan> copyVariadicCallPlan(
+    clang::CodeGenerator& generator, const clang::FunctionDecl& function,
+    std::span<const clang::QualType> argumentTypes, std::string& error)
+{
+    error.clear();
+    auto& context = function.getASTContext();
+    clang::CanQual<clang::FunctionProtoType> prototype =
+        context.getCanonicalType(function.getType()).getAs<clang::FunctionProtoType>();
+    if (!prototype || !prototype->isVariadic() || argumentTypes.size() < prototype->getNumParams())
+    { error = "variadic prototype or required arguments unavailable"; return std::nullopt; }
+    if (context.getLangOpts().CPlusPlus || prototype->getExtInfo().getCC() != clang::CC_X86_64SysV ||
+        !generator.GetModule()->getTargetTriple().str().starts_with("x86_64-pc-windows-msvc"))
+    { error = "variadic call target or convention not represented"; return std::nullopt; }
+    if (prototype->hasExtParameterInfos())
+    { error = "extended parameter information not represented"; return std::nullopt; }
+    std::vector<clang::CanQualType> canonical;
+    canonical.reserve(argumentTypes.size());
+    for (std::size_t i = 0; i < argumentTypes.size(); ++i)
+    {
+        const auto type = argumentTypes[i];
+        if (type.isNull() || type->isIncompleteType() || type->isVoidType() ||
+            type->isArrayType() || type->isFunctionType())
+        { error = "actual argument type not represented"; return std::nullopt; }
+        const auto value = context.getCanonicalType(type);
+        if (i < prototype->getNumParams() && value != prototype->getParamType(i))
+        { error = "fixed argument type mismatch"; return std::nullopt; }
+        if (i >= prototype->getNumParams() &&
+            (type->isSpecificBuiltinType(clang::BuiltinType::Float) || context.isPromotableIntegerType(type)))
+        { error = "variadic argument has not undergone default promotions"; return std::nullopt; }
+        canonical.push_back(value);
+    }
+    if (!generator.GetAddrOfGlobal(clang::GlobalDecl(&function), false))
+    { error = "physical declaration unavailable"; return std::nullopt; }
+    auto* declaration = generator.GetModule()->getFunction(generator.GetMangledName(clang::GlobalDecl(&function)));
+    if (!declaration || !supportedAttributes(declaration->getAttributes().getRetAttrs(), true))
+    { error = "return declaration or attribute not represented"; return std::nullopt; }
+    for (unsigned i = 0; i < declaration->arg_size(); ++i)
+        if (!supportedAttributes(declaration->getAttributes().getParamAttrs(i), false))
+        { error = "fixed parameter attribute not represented"; return std::nullopt; }
+    const auto& call = clang::CodeGen::arrangeFreeFunctionCall(generator.CGM(),
+        context.getCanonicalType(function.getReturnType()), canonical, prototype->getExtInfo(),
+        clang::CodeGen::RequiredArgs::forPrototype(prototype));
+    auto copiedReturn = copyLogical(call.getReturnInfo());
+    if (!copiedReturn) { error = "return plan not represented"; return std::nullopt; }
+    VariadicCallPlan result;
+    result.symbol = declaration->getName().str();
+    result.targetTriple = generator.GetModule()->getTargetTriple().str();
+    result.dataLayout = generator.GetModule()->getDataLayoutStr();
+    result.callingConvention = declaration->getCallingConv();
+    result.requiredArguments = prototype->getNumParams();
+    result.result = std::move(*copiedReturn);
+    if (result.symbol.empty() || result.targetTriple.empty() || result.dataLayout.empty())
+    { error = "symbol or target configuration unavailable"; return std::nullopt; }
+    std::uint64_t next = call.getReturnInfo().isIndirect() ? 1 : 0;
+    for (const auto& argument : call.arguments())
+    {
+        const auto& info = argument.info;
+        auto value = copyLogical(info);
+        if (!value || info.getPaddingType())
+        { error = "actual argument plan not represented"; return std::nullopt; }
+        value->firstPhysical = next;
+        if (info.isIndirect()) value->physicalCount = 1;
+        else if (info.isDirect() || info.isExtend())
+        {
+            auto* coercion = info.getCoerceToType();
+            if (!coercion) { error = "actual argument coercion unavailable"; return std::nullopt; }
+            const auto* structure = llvm::dyn_cast<llvm::StructType>(coercion);
+            value->physicalCount = structure && info.isDirect() && info.getCanBeFlattened()
+                ? structure->getNumElements() : 1;
+        }
+        else if (!info.isIgnore())
+        { error = "actual argument mapping not represented"; return std::nullopt; }
+        next += value->physicalCount;
+        result.arguments.push_back(std::move(*value));
+    }
+    return result;
+}
 }

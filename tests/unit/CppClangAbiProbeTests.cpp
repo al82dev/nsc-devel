@@ -172,6 +172,7 @@ int main(int argc, char** argv) {
         Vec4 __attribute__((sysv_abi)) pv(Vec4);
         R24 __attribute__((sysv_abi)) pm(int, RF, R3, R24);
         int __attribute__((sysv_abi)) pvariadic(int, ...);
+        int pvariadic_cdecl(int, ...);
         RP __attribute__((sysv_abi)) pp(RP);
         int __vectorcall pvec(int);
         void __attribute__((sysv_abi)) pvoid(void);
@@ -196,10 +197,20 @@ int main(int argc, char** argv) {
     bool noPrototypeRejected = false;
     bool attributeRejected = false;
     std::map<std::string, t09_probe::Plan> copiedPlans;
+    std::optional<t09_probe::VariadicCallPlan> copiedVariadicNormal;
+    std::optional<t09_probe::VariadicCallPlan> copiedVariadicPressure;
+    std::optional<t09_probe::VariadicCallPlan> copiedVariadicFloatPressure;
     for (const auto* decl : context.getTranslationUnitDecl()->decls()) {
         const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
         if (!function || !function->getIdentifier()) continue;
         const std::string name = function->getNameAsString();
+        if (name == "pvariadic_cdecl") {
+            std::string error;
+            if (t09_probe::copyVariadicCallPlan(*generator, *function,
+                std::vector<clang::QualType>{context.IntTy}, error) ||
+                error != "variadic call target or convention not represented") return 141;
+            continue;
+        }
         if (name == "pv") {
             std::string error;
             if (t09_probe::copyPlan(*generator, *function, error) || error.empty()) return 25;
@@ -210,6 +221,66 @@ int main(int argc, char** argv) {
             std::string error;
             if (t09_probe::copyPlan(*generator, *function, error) ||
                 error != "variadic call plan not represented") return 27;
+            const clang::RecordDecl* mixed = nullptr;
+            const clang::RecordDecl* large = nullptr;
+            const clang::RecordDecl* small = nullptr;
+            for (const auto* candidate : context.getTranslationUnitDecl()->decls()) {
+                const auto* record = llvm::dyn_cast<clang::RecordDecl>(candidate);
+                if (!record || !record->isCompleteDefinition()) continue;
+                if (record->getName() == "RF") mixed = record;
+                else if (record->getName() == "R24") large = record;
+                else if (record->getName() == "R8") small = record;
+            }
+            if (!mixed || !large || !small) return 133;
+            clang::CanQual<clang::FunctionProtoType> prototype =
+                context.getCanonicalType(function->getType()).getAs<clang::FunctionProtoType>();
+            if (!prototype || !prototype->isVariadic()) return 134;
+            const auto integer = context.getCanonicalType(context.IntTy);
+            const auto floating = context.getCanonicalType(context.DoubleTy);
+            const auto mixedType = context.getCanonicalType(context.getTypeDeclType(static_cast<const clang::TypeDecl*>(mixed)));
+            const auto largeType = context.getCanonicalType(context.getTypeDeclType(static_cast<const clang::TypeDecl*>(large)));
+            const auto smallType = context.getCanonicalType(context.getTypeDeclType(static_cast<const clang::TypeDecl*>(small)));
+            auto arrange = [&](const std::vector<clang::CanQualType>& arguments) -> const clang::CodeGen::CGFunctionInfo& {
+                return clang::CodeGen::arrangeFreeFunctionCall(generator->CGM(), integer, arguments,
+                    prototype->getExtInfo(), clang::CodeGen::RequiredArgs::forPrototype(prototype));
+            };
+            const auto& normal = arrange({integer, smallType, mixedType, largeType});
+            if (normal.arg_size() != 4 || !normal.arguments()[1].info.isDirect() ||
+                !normal.arguments()[1].info.getCoerceToType()->isIntegerTy(64) ||
+                !normal.arguments()[2].info.isDirect() || !normal.arguments()[2].info.getCanBeFlattened() ||
+                !normal.arguments()[3].info.isIndirect() || !normal.arguments()[3].info.getIndirectByVal()) return 135;
+            const auto* mixedCoercion = llvm::dyn_cast<llvm::StructType>(normal.arguments()[2].info.getCoerceToType());
+            if (!mixedCoercion || mixedCoercion->getNumElements() != 2 ||
+                !mixedCoercion->getElementType(0)->isDoubleTy() ||
+                !mixedCoercion->getElementType(1)->isIntegerTy(32)) return 136;
+            const auto& integerPressure = arrange({integer, integer, integer, integer, integer, integer, mixedType});
+            if (integerPressure.arg_size() != 7 || !integerPressure.arguments()[6].info.isIndirect() ||
+                !integerPressure.arguments()[6].info.getIndirectByVal()) return 137;
+            const auto& floatingPressure = arrange({integer, floating, floating, floating, floating,
+                                                    floating, floating, floating, floating, mixedType});
+            if (floatingPressure.arg_size() != 10 || !floatingPressure.arguments()[9].info.isIndirect() ||
+                !floatingPressure.arguments()[9].info.getIndirectByVal()) return 138;
+            copiedVariadicNormal = t09_probe::copyVariadicCallPlan(*generator, *function,
+                std::vector<clang::QualType>{integer, smallType, mixedType, largeType}, error);
+            copiedVariadicPressure = t09_probe::copyVariadicCallPlan(*generator, *function,
+                std::vector<clang::QualType>{integer, integer, integer, integer, integer, integer, mixedType}, error);
+            copiedVariadicFloatPressure = t09_probe::copyVariadicCallPlan(*generator, *function,
+                std::vector<clang::QualType>{integer, floating, floating, floating, floating,
+                    floating, floating, floating, floating, mixedType}, error);
+            if (!copiedVariadicNormal || !copiedVariadicPressure || !copiedVariadicFloatPressure ||
+                t09_probe::copyVariadicCallPlan(*generator, *function,
+                    std::vector<clang::QualType>{integer, context.FloatTy}, error) ||
+                error != "variadic argument has not undergone default promotions" ||
+                t09_probe::copyVariadicCallPlan(*generator, *function,
+                    std::vector<clang::QualType>{integer, context.ShortTy}, error) ||
+                error != "variadic argument has not undergone default promotions" ||
+                t09_probe::copyVariadicCallPlan(*generator, *function,
+                    std::vector<clang::QualType>{}, error) ||
+                error != "variadic prototype or required arguments unavailable" ||
+                t09_probe::copyVariadicCallPlan(*generator, *function,
+                    std::vector<clang::QualType>{context.FloatTy}, error) ||
+                error != "fixed argument type mismatch") return 139;
+            llvm::outs() << "variadic SysV: direct small/mixed, indirect large and register-pressure fallback verified\n";
             variadicRejected = true;
             continue;
         }
@@ -302,6 +373,20 @@ int main(int argc, char** argv) {
     generator.reset();
     ast.reset();
     llvmContext.reset();
+    if (!copiedVariadicNormal || !copiedVariadicPressure || !copiedVariadicFloatPressure ||
+        copiedVariadicNormal->symbol != "pvariadic" ||
+        !copiedVariadicNormal->targetTriple.starts_with("x86_64-pc-windows-msvc") ||
+        copiedVariadicNormal->dataLayout.empty() ||
+        copiedVariadicNormal->callingConvention != llvm::CallingConv::X86_64_SysV ||
+        copiedVariadicNormal->requiredArguments != 1 || copiedVariadicNormal->arguments.size() != 4 ||
+        copiedVariadicNormal->arguments[1].firstPhysical != 1 || copiedVariadicNormal->arguments[1].physicalCount != 1 ||
+        copiedVariadicNormal->arguments[2].firstPhysical != 2 || copiedVariadicNormal->arguments[2].physicalCount != 2 ||
+        !copiedVariadicNormal->arguments[2].coercion ||
+        copiedVariadicNormal->arguments[2].coercion->elements[0].kind != t09_probe::TypeKind::Double ||
+        copiedVariadicNormal->arguments[3].firstPhysical != 4 || !copiedVariadicNormal->arguments[3].byValue ||
+        copiedVariadicPressure->arguments[6].firstPhysical != 6 || !copiedVariadicPressure->arguments[6].byValue ||
+        copiedVariadicFloatPressure->arguments[9].firstPhysical != 9 || !copiedVariadicFloatPressure->arguments[9].byValue)
+        return 140;
     const auto& p3 = copiedPlans.at("p3");
     if (!t09_probe::isSysVSmallRecordRoundTrip(copiedPlans.at("p4"), "p4") ||
         t09_probe::isSysVThreeByteRoundTrip(copiedPlans.at("p4"), "p4")) return 74;
