@@ -26,6 +26,7 @@ typedef struct T09VarRecordArrayLarge { struct T09VarNestLeaf leaves[3]; } T09Va
 typedef union T09VarChoice { double real; long long integer; } T09VarChoice;
 typedef struct T09VarUnionOuter { double value; union T09VarChoice choice; } T09VarUnionOuter;
 typedef struct T09VarBits { unsigned int low : 3; unsigned int high : 5; unsigned int middle : 8; unsigned int upper : 16; } T09VarBits;
+typedef struct T09VarBitsGap { unsigned int low : 3; unsigned int : 5; unsigned int high : 8; unsigned int : 0; unsigned int upper : 16; } T09VarBitsGap;
 typedef struct __attribute__((packed, aligned(2))) T09BadInner { int x; } T09BadInner;
 typedef struct T09BadOuter { double value; struct T09BadInner inner; } T09BadOuter;
 API_STORAGE __attribute__((sysv_abi)) int sysv_ptrs(int count, ...);
@@ -51,3 +52,4 @@ API_STORAGE __attribute__((sysv_abi)) int sysv_record_record_array(int count, ..
 API_STORAGE __attribute__((sysv_abi)) int sysv_record_record_array_large(int count, ...);
 API_STORAGE __attribute__((sysv_abi)) int sysv_record_union_outer(int count, ...);
 API_STORAGE __attribute__((sysv_abi)) int sysv_record_bits(int count, ...);
+API_STORAGE __attribute__((sysv_abi)) int sysv_record_bits_gap(int count, ...);

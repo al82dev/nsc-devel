@@ -721,6 +721,7 @@ int main(int argc, char** argv) {
         "struct QualifiedField { const int x; };\n"
         "struct Bits { unsigned int x : 1; };\n"
         "struct UnnamedBits { unsigned int : 1; };\n"
+        "struct ZeroBits { unsigned int x : 3; unsigned int : 0; unsigned int y : 4; };\n"
         "struct PointerField { int *x; };\n"
         "struct ArrayField { int x[2]; };\n"
         "struct AliasArray { Number x[2]; };\n"
@@ -737,7 +738,8 @@ int main(int argc, char** argv) {
         attributeOrigin->cRecordHasPlainReplaySyntax("AliasAligned") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("QualifiedField") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("Bits") != true ||
-        attributeOrigin->cRecordHasPlainReplaySyntax("UnnamedBits") != false ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("UnnamedBits") != true ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("ZeroBits") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("PointerField") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("ArrayField") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("AliasArray") != true ||
@@ -824,8 +826,36 @@ int main(int argc, char** argv) {
     if (matchesSimpleCRecordAbiReplay(brokenBits, rebuiltBits->front())) return 232;
     brokenBits = bitsSnapshot;
     brokenBits.fields[0].name.clear();
-    if (makeSimpleCRecordAbiReplay(brokenBits)) return 233;
+    if (!makeSimpleCRecordAbiReplay(brokenBits) ||
+        matchesSimpleCRecordAbiReplay(brokenBits, rebuiltBits->front())) return 233;
     if (!bitsReplay->close().succeeded || !bitsOrigin->close().succeeded) return 234;
+    auto gapOrigin = openRecordSession("struct Gap { unsigned a:3; unsigned :5; unsigned b:8; unsigned :0; unsigned c:16; };");
+    if (!gapOrigin || gapOrigin->cRecordHasPlainReplaySyntax("Gap") != true) return 235;
+    const auto gapRecords = gapOrigin->recordsSnapshot();
+    if (!gapRecords || gapRecords->size() != 1) return 236;
+    CppCRecordSnapshot gapSnapshot;
+    gapSnapshot.targetTriple = "x86_64-pc-windows-msvc";
+    gapSnapshot.kind = gapRecords->front().kind;
+    gapSnapshot.complete = gapRecords->front().complete;
+    gapSnapshot.valueLayoutUsable = true;
+    gapSnapshot.plainReplaySyntax = true;
+    gapSnapshot.sizeBits = gapRecords->front().sizeBits;
+    gapSnapshot.alignmentBits = gapRecords->front().alignmentBits;
+    gapSnapshot.fields = gapRecords->front().fields;
+    const auto gapText = makeSimpleCRecordAbiReplay(gapSnapshot);
+    if (!gapText) return 237;
+    auto gapReplay = openRecordSession(gapText->c_str());
+    if (!gapReplay) return 238;
+    const auto rebuiltGap = gapReplay->recordsSnapshot();
+    if (!rebuiltGap || rebuiltGap->size() != 1 ||
+        !matchesSimpleCRecordAbiReplay(gapSnapshot, rebuiltGap->front())) return 239;
+    auto wrongGap = gapSnapshot;
+    wrongGap.fields[3].bitWidth = 1;
+    if (matchesSimpleCRecordAbiReplay(wrongGap, rebuiltGap->front())) return 240;
+    wrongGap = gapSnapshot;
+    wrongGap.fields[3].offsetBits = 0;
+    if (matchesSimpleCRecordAbiReplay(wrongGap, rebuiltGap->front())) return 241;
+    if (!gapReplay->close().succeeded || !gapOrigin->close().succeeded) return 242;
     const auto originalRecords = equivalentOrigin->recordsSnapshot();
     if (!originalRecords) return 192;
     std::vector<CppSemanticRecordEntry> replayEntries;

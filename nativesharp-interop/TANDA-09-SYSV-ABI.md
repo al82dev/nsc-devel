@@ -996,11 +996,27 @@ llamador. Antes del cambio pasaban C y la llamada directa, pero la plantilla
 precompilada se rechazaba (`A:/temp/nsc-t09-sysv-varargs-f8_ku9cf`). Despues
 pasaron estatica y DLL O0–O3, plantilla sin encabezado, HIR/MIR, comparacion
 LLVM y cache (`A:/temp/nsc-t09-sysv-varargs-3ax9raie`). Las sondas rechazan
-anchos o desplazamientos distintos y campos anonimos
+anchos o desplazamientos distintos y, en ese momento, campos anonimos
 (`A:/temp/t09-transport-directed/`). Tambien pasaron las regresiones C/SysV
 (`A:/temp/nsc-t09-llamadas-esthiyol`, `A:/temp/nsc-t09-sysv-prueba-vbi5bsq0`,
-`A:/temp/nsc-t09-sysv-padded-pair-id-8xhqfjoa`). Campos de bits anonimos o de
-ancho cero y otras formas no acreditadas siguen pendientes en esta ruta.
+`A:/temp/nsc-t09-sysv-padded-pair-id-8xhqfjoa`). En ese momento, campos de bits
+anonimos o de ancho cero y otras formas no acreditadas seguian pendientes.
+
+La reconstruccion preserva ahora la ausencia de nombre y el ancho cero en
+campos de bits enteros, y contrasta anchos y desplazamientos contra Clang. La
+muestra incluye un campo anonimo de cinco bits y otro de ancho cero entre
+campos `unsigned int`; el productor comprueba unicamente los bits nombrados,
+sin exigir valores para el relleno. Antes del cambio, la llamada directa paso
+en estatica y DLL O0–O3 pero la plantilla precompilada fallo
+(`A:/temp/nsc-t09-sysv-varargs-pm6k2sh2`). Despues pasaron esas ocho
+comparaciones, la plantilla precompilada sin encabezado, los planes HIR/MIR y
+las piezas LLVM (`A:/temp/nsc-t09-sysv-varargs-x8rqtbh_`). Las pruebas
+dirigidas de transporte, ABI e identidad pasaron (`A:/temp/t09-transport-directed/`),
+incluido el contraste de offsets y anchos alterados. Pasaron las regresiones
+de llamadas, SysV y relleno (`A:/temp/nsc-t09-llamadas-451wwwvl`,
+`A:/temp/nsc-t09-sysv-prueba-bphihlmg`,
+`A:/temp/nsc-t09-sysv-padded-pair-id-qpavo23m`). Esto acredita solo la muestra
+indicada; otros tipos de campos, layouts y convenciones siguen pendientes.
 
 ## Retorno indirecto sin argumentos byval
 

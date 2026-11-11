@@ -1055,7 +1055,7 @@ public:
         {
             const auto type = field->getType();
             if (type.isNull() || field->hasAttrs() || field->isAnonymousStructOrUnion() ||
-                (field->isBitField() && (!field->getIdentifier() || field->getBitWidthValue() == 0 ||
+                (field->isBitField() && ((field->getIdentifier() && field->getBitWidthValue() == 0) ||
                                          !type->isIntegerType())) ||
                 !hasReplayBuiltinOrArray(type))
                 return false;
@@ -1079,7 +1079,7 @@ public:
         {
             const auto type = field->getType();
             if (type.isNull() || field->hasAttrs() || field->isAnonymousStructOrUnion() ||
-                (field->isBitField() && (!field->getIdentifier() || field->getBitWidthValue() == 0 ||
+                (field->isBitField() && ((field->getIdentifier() && field->getBitWidthValue() == 0) ||
                                          !type->isIntegerType())) ||
                 !hasReplayBuiltinOrArray(type))
                 return false;

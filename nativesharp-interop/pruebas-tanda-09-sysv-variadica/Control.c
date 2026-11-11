@@ -46,5 +46,7 @@ int main(void) {
     if (sysv_record_union_outer(1, unionOuter) != 1 || unionOuter.choice.integer != 7) return 23;
     T09VarBits bits = {5, 17, 0xa5, 0x1234};
     if (sysv_record_bits(1, bits) != 1 || bits.low != 5 || bits.upper != 0x1234) return 26;
+    T09VarBitsGap gap = {5, 0xa5, 0x1234};
+    if (sysv_record_bits_gap(1, gap) != 1 || gap.low != 5 || gap.high != 0xa5 || gap.upper != 0x1234) return 27;
     return 0;
 }
