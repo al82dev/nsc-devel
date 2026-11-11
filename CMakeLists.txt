@@ -5592,6 +5592,9 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.sdk.shared-weak-readonly-binary
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_weak_readonly_binary.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core")
+    add_test(NAME nsc.sdk.namespace-tuple-binary
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/namespace_tuple_binary.py"
+                "${NSC_TEST_COMPILER}")
     add_test(NAME nsc.sdk.shared-public-pointers
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_public_pointers.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"

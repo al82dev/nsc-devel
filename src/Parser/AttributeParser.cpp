@@ -851,7 +851,8 @@ ast::AstNode* Parser::dispatchGlobalFallback(GlobalDeclarationAttributeState& st
         return nullptr;
     }
     else if (at(TokenKind::KwConst) || lexer::isOwnershipQualifierKeyword(current().kind()) ||
-             lexer::isBuiltinTypeKeyword(current().kind()) || at(TokenKind::Identifier))
+             lexer::isBuiltinTypeKeyword(current().kind()) || at(TokenKind::Identifier) ||
+             (at(TokenKind::LeftParen) && canStartTypeAt(index_)))
     {
         declaration = parseFunctionOrGlobalVariable();
         if (declaration != nullptr && accessibility != TokenKind::Invalid)
