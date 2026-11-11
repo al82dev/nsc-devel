@@ -58,23 +58,28 @@ struct Plan
     std::vector<PhysicalParameter> physicalParameters;
 };
 
-// First supported aggregate shape: SysV C round-trip of one three-byte record.
-inline bool isSysVThreeByteRoundTrip(const Plan& plan, std::string_view symbol) noexcept
+// Supported aggregate shapes: one three- or four-byte record passed and returned directly.
+inline bool isSysVSmallRecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
 {
-    const auto i24 = [](const Type& type) {
-        return type.kind == TypeKind::Integer && type.widthOrCount == 24;
+    const auto bits = plan.physicalReturn.widthOrCount;
+    const auto integer = [bits](const Type& type) {
+        return type.kind == TypeKind::Integer && type.widthOrCount == bits;
     };
-    if (plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
+    if ((bits != 24 && bits != 32) || plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
-        plan.returnSignExtend || plan.returnZeroExtend || !i24(plan.physicalReturn) ||
+        plan.returnSignExtend || plan.returnZeroExtend || !integer(plan.physicalReturn) ||
         plan.logicalReturn.passing != Passing::Direct || !plan.logicalReturn.coercion ||
-        !i24(*plan.logicalReturn.coercion) || plan.logicalReturn.offset != 0 ||
+        !integer(*plan.logicalReturn.coercion) || plan.logicalReturn.offset != 0 ||
         plan.logicalParameters.size() != 1 || plan.physicalParameters.size() != 1) return false;
     const auto& logical = plan.logicalParameters[0];
     const auto& physical = plan.physicalParameters[0];
-    return logical.passing == Passing::Direct && logical.coercion && i24(*logical.coercion) &&
+    return logical.passing == Passing::Direct && logical.coercion && integer(*logical.coercion) &&
         logical.offset == 0 && logical.firstPhysical == 0 && logical.physicalCount == 1 &&
-        i24(physical.type) && !physical.structureReturn && !physical.byValue &&
+        integer(physical.type) && !physical.structureReturn && !physical.byValue &&
         !physical.signExtend && !physical.zeroExtend && !physical.inRegister && !physical.noAlias;
+}
+inline bool isSysVThreeByteRoundTrip(const Plan& plan, std::string_view symbol) noexcept
+{
+    return plan.physicalReturn.widthOrCount == 24 && isSysVSmallRecordRoundTrip(plan, symbol);
 }
 }

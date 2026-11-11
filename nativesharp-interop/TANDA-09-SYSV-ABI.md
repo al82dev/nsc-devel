@@ -127,5 +127,18 @@ La muestra de record ejecutada usa
 tres campos `unsigned char`; no acredita todos los layouts o firmas que puedan
 tener la misma representacion fisica. Siguen pendientes los demas agregados,
 otros escalares o punteros, variadicas, punteros de funcion, aislamiento TLS y
-otros destinos. El item T09-003 sigue abierto. No se han cambiado Clang,
-NSLink ni el contrato de NSMeta.
+otros destinos. El item T09-003 sigue abierto. No se han cambiado Clang ni NSLink.
+
+Ampliacion a cuatro bytes: el control previo C paso y NSC rechazo la firma en
+estatica y DLL O0 (A:/temp/nsc-t09-sysv-r4-2_jbmdt0). El plan de Clang identifica
+la forma directa `i32`; NSC ahora la consume cuando argumento y retorno son el
+mismo record. El control C/NS paso en estatica y DLL O0–O3 y la plantilla NS
+precompilada paso en estatica O0 con encabezado oculto:
+A:/temp/nsc-t09-sysv-r4-idoz6jnm, y tras el ajuste final de diagnosticos en
+A:/temp/nsc-t09-sysv-r4-wumdw6za. La muestra tiene cuatro campos
+`unsigned char`; otras disposiciones no quedan certificadas. Pasaron la sonda
+del plan y la prueba de identidad y metadatos, incluidos planes de 24 y 32 bits;
+registros A:/temp/t09-abi-probe-ctest.log y A:/temp/t09-identidad-run.log. El
+record de tres bytes y escalares SysV volvieron a pasar en
+A:/temp/nsc-t09-sysv-r3-w2wk_wy8 y A:/temp/nsc-t09-sysv-prueba-ovfco79r.
+Las demas formas SysV siguen abiertas.

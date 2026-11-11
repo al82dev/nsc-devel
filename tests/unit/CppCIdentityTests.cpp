@@ -1618,6 +1618,18 @@ bool checkDependencyTypeCodec()
     std::vector<std::uint8_t> unchangedRecord{42};
     ok &= expect(!encodeCDependencyFunction(recordFunction, unchangedRecord, error) &&
         unchangedRecord == std::vector<std::uint8_t>{42}, "SysV record plan rejects a conflicting C signature");
+    auto plan4 = std::make_shared<abi_plan::Plan>(*plan);
+    plan4->physicalReturn.widthOrCount = 32;
+    plan4->logicalReturn.coercion->widthOrCount = 32;
+    plan4->logicalParameters[0].coercion->widthOrCount = 32;
+    plan4->physicalParameters[0].type.widthOrCount = 32;
+    recordFunction.declaration.abiPlan = plan4;
+    recordFunction.declaration.returnType.sizeBits = 32;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVSmallRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->physicalReturn.widthOrCount == 32,
+        "C dependency function retains a direct four-byte SysV record plan");
     if (!functionBytes.empty()) functionBytes.pop_back();
     decoded.moduleName = "sentinel";
     ok &= expect(!decodeCDependencyFunction(functionBytes, decoded, error) && decoded.moduleName == "sentinel",

@@ -1822,11 +1822,14 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     supportedScalar);
                 const bool supportedRecord = symbol.cppAbiPlan && symbol.cppReturnType &&
                     symbol.cppReturnType->kind == interop::CppTypeKind::Record &&
-                    symbol.cppReturnType->sizeBits == 24 && symbol.cppParameterTypes.size() == 1 &&
+                    (symbol.cppReturnType->sizeBits == 24 || symbol.cppReturnType->sizeBits == 32) &&
+                    symbol.cppParameterTypes.size() == 1 &&
                     symbol.cppParameterTypes[0].kind == interop::CppTypeKind::Record &&
-                    symbol.cppParameterTypes[0].sizeBits == 24 && function.parameterTypeKeys.size() == 1 &&
+                    symbol.cppParameterTypes[0].sizeBits == symbol.cppReturnType->sizeBits &&
+                    symbol.cppReturnType->sizeBits == symbol.cppAbiPlan->physicalReturn.widthOrCount &&
+                    function.parameterTypeKeys.size() == 1 &&
                     function.returnTypeKey == function.parameterTypeKeys[0] &&
-                    interop::abi_plan::isSysVThreeByteRoundTrip(*symbol.cppAbiPlan, symbol.mangledName);
+                    interop::abi_plan::isSysVSmallRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName);
                 if (function.isVariadic || ((!supportedReturn || !supportedParameters) && !supportedRecord))
                 {
                     error = "sysv_abi currently supports only selected non-variadic scalar and pointer signatures for " +

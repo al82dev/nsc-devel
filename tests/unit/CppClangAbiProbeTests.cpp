@@ -41,12 +41,14 @@ int main(int argc, char** argv) {
     if (directoryError) { llvm::errs() << "cannot create test work directory: " << directoryError.message() << "\n"; return 42; }
     const char* source = R"c(
         typedef struct R3 { unsigned char x, y, z; } R3;
+        typedef struct R4 { unsigned char x, y, z, w; } R4;
         typedef struct R16 { long long x, y; } R16;
         typedef struct R24 { long long x, y, z; } R24;
         typedef struct RF { double x; int y; } RF;
         typedef struct __attribute__((packed)) RP { char c; double d; } RP;
         typedef float Vec4 __attribute__((vector_size(16)));
         R3 __attribute__((sysv_abi)) p3(R3);
+        R4 __attribute__((sysv_abi)) p4(R4);
         R3 __attribute__((sysv_abi)) p3(R3);
         R3* __attribute__((sysv_abi)) p3ptr(R3*);
         R16 __attribute__((sysv_abi)) p16(R16);
@@ -109,7 +111,7 @@ int main(int argc, char** argv) {
             attributeRejected = true;
             continue;
         }
-        if (name != "p3" && name != "p16" && name != "pf" && name != "p24" && name != "ps8" && name != "pm" && name != "pp" && name != "pvec" && name != "pvoid") continue;
+        if (name != "p3" && name != "p4" && name != "p16" && name != "pf" && name != "p24" && name != "ps8" && name != "pm" && name != "pp" && name != "pvec" && name != "pvoid") continue;
         if (name == "p3" && copiedPlans.contains(name)) continue;
         auto* physical = clang::CodeGen::convertFreeFunctionType(generator->CGM(), function);
         clang::CanQual<clang::FunctionProtoType> prototype =
@@ -138,6 +140,8 @@ int main(int argc, char** argv) {
         }
         if (name == "p3" && (!physical->getReturnType()->isIntegerTy(24) || physical->getNumParams() != 1 ||
                               !physical->getParamType(0)->isIntegerTy(24))) return 5;
+        if (name == "p4" && (!physical->getReturnType()->isIntegerTy(32) || physical->getNumParams() != 1 ||
+                              !physical->getParamType(0)->isIntegerTy(32))) return 73;
         if ((name == "p3" || name == "p16" || name == "pf") &&
             (!plan.getReturnInfo().isDirect() || !plan.arguments()[0].info.isDirect())) return 14;
         if ((name == "p3" || name == "p16" || name == "pf") &&
@@ -168,12 +172,14 @@ int main(int argc, char** argv) {
         if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
-    if (matched != 9 || copiedPlans.size() != 9 || !unsupportedRejected || !variadicRejected ||
+    if (matched != 10 || copiedPlans.size() != 10 || !unsupportedRejected || !variadicRejected ||
         !noPrototypeRejected || !attributeRejected) return 7;
     generator.reset();
     ast.reset();
     llvmContext.reset();
     const auto& p3 = copiedPlans.at("p3");
+    if (!t09_probe::isSysVSmallRecordRoundTrip(copiedPlans.at("p4"), "p4") ||
+        t09_probe::isSysVThreeByteRoundTrip(copiedPlans.at("p4"), "p4")) return 74;
     if (p3.targetTriple.find("x86_64-pc-windows-msvc") != 0 || p3.dataLayout.empty()) return 28;
     if (!t09_probe::isSysVThreeByteRoundTrip(p3, "p3") ||
         t09_probe::isSysVThreeByteRoundTrip(p3, "other")) return 70;

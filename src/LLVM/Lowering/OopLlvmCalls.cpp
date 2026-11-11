@@ -832,12 +832,12 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
 
         const auto* imported = found->second.mirFunction;
         if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
-            interop::abi_plan::isSysVThreeByteRoundTrip(*imported->cppAbiPlan, imported->cAbiName))
+            interop::abi_plan::isSysVSmallRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName))
         {
             if (node->children.size() != 1 || node->referenceResult || node->returnsAssignedValue ||
                 node->children[0]->typeKey != node->typeKey ||
                 (argumentOverrides && argumentOverrides->size() != 1))
-                return failValue(error, "SysV three-byte record call has an unexpected argument contract");
+                return failValue(error, "SysV small record call has an unexpected argument contract");
             LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[0] :
                 lowerExpression(node->children[0].get(), error);
             if (!value) return nullptr;
@@ -845,23 +845,24 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (!carrier) return nullptr;
             const unsigned alignment = structAlignmentFor(node->typeKey);
-            if (alignment == 0) return failValue(error, "SysV three-byte record has no alignment");
-            LLVMValueRef argumentSlot = entryBlockAlloca(carrier, alignment, "sysv.r3.arg");
+            if (alignment == 0) return failValue(error, "SysV small record has no alignment");
+            LLVMValueRef argumentSlot = entryBlockAlloca(carrier, alignment, "sysv.record.arg");
             LLVMValueRef argumentStore = LLVMBuildStore(builder_, value, argumentSlot);
             LLVMSetAlignment(argumentStore, alignment);
-            LLVMTypeRef integer24 = LLVMIntTypeInContext(context_, 24);
-            LLVMValueRef physicalArgument = LLVMBuildLoad2(builder_, integer24, argumentSlot, "sysv.r3.physical");
+            LLVMTypeRef integer = LLVMIntTypeInContext(context_,
+                static_cast<unsigned>(imported->cppAbiPlan->physicalReturn.widthOrCount));
+            LLVMValueRef physicalArgument = LLVMBuildLoad2(builder_, integer, argumentSlot, "sysv.record.physical");
             LLVMSetAlignment(physicalArgument, alignment);
             releaseTransferredArguments(node);
             LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
-                &physicalArgument, 1, "sysv.r3.call", error);
+                &physicalArgument, 1, "sysv.record.call", error);
             if (!call) return nullptr;
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
             if (!applyMustTail(node, call, error)) return nullptr;
-            LLVMValueRef resultSlot = entryBlockAlloca(carrier, alignment, "sysv.r3.result");
+            LLVMValueRef resultSlot = entryBlockAlloca(carrier, alignment, "sysv.record.result");
             LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
             LLVMSetAlignment(resultStore, alignment);
-            LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "sysv.r3.value");
+            LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "sysv.record.value");
             LLVMSetAlignment(result, alignment);
             return result;
         }

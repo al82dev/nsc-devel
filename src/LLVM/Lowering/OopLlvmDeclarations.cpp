@@ -15,16 +15,17 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
         std::string& error)
 {
             if (function.cppSysVCall && function.cppAbiPlan &&
-                interop::abi_plan::isSysVThreeByteRoundTrip(*function.cppAbiPlan, function.cAbiName))
+                interop::abi_plan::isSysVSmallRecordRoundTrip(*function.cppAbiPlan, function.cAbiName))
             {
                 const char* target = LLVMGetTarget(module_);
                 if (!target || !std::string_view(target).starts_with("x86_64-pc-windows-msvc"))
                 {
-                    error = "SysV three-byte record requires the validated Windows x64 target";
+                    error = "SysV small record requires the validated Windows x64 target";
                     return nullptr;
                 }
-                LLVMTypeRef integer24 = LLVMIntTypeInContext(context_, 24);
-                return LLVMFunctionType(integer24, &integer24, 1, 0);
+                LLVMTypeRef integer = LLVMIntTypeInContext(context_,
+                    static_cast<unsigned>(function.cppAbiPlan->physicalReturn.widthOrCount));
+                return LLVMFunctionType(integer, &integer, 1, 0);
             }
             // Win64 aggregate ABI (ground truth: clang for x86_64-pc-windows-msvc). An indirect
             // struct return becomes `void` plus a leading sret pointer parameter; an indirect
