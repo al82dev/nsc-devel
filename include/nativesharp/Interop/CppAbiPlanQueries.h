@@ -43,6 +43,30 @@ inline bool isSysVTwoI64RecordRoundTrip(const Plan& plan, std::string_view symbo
     return isSysVTwoIntegerRecordRoundTrip(plan, symbol) &&
         plan.physicalReturn.elements[1].widthOrCount == 64;
 }
+inline bool isSysVMixedDoubleI32RecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
+{
+    const auto pair = [](const Type& type) {
+        return type.kind == TypeKind::Structure && !type.packed && type.elements.size() == 2 &&
+            type.elements[0].kind == TypeKind::Double && type.elements[1].kind == TypeKind::Integer &&
+            type.elements[1].widthOrCount == 32;
+    };
+    if (plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
+        !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
+        plan.returnSignExtend || plan.returnZeroExtend || !pair(plan.physicalReturn) ||
+        plan.logicalReturn.passing != Passing::Direct || !plan.logicalReturn.coercion ||
+        !pair(*plan.logicalReturn.coercion) || plan.logicalReturn.offset != 0 ||
+        plan.logicalParameters.size() != 1 || plan.physicalParameters.size() != 2) return false;
+    const auto& logical = plan.logicalParameters[0];
+    if (logical.passing != Passing::Direct || !logical.coercion || !pair(*logical.coercion) ||
+        logical.offset != 0 || logical.firstPhysical != 0 || logical.physicalCount != 2 ||
+        plan.physicalParameters[0].type.kind != TypeKind::Double ||
+        plan.physicalParameters[1].type.kind != TypeKind::Integer ||
+        plan.physicalParameters[1].type.widthOrCount != 32) return false;
+    for (const auto& physical : plan.physicalParameters)
+        if (physical.structureReturn || physical.byValue || physical.signExtend || physical.zeroExtend ||
+            physical.inRegister || physical.noAlias) return false;
+    return true;
+}
 inline bool isSysVIndirectRecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
 {
     const auto alignment = plan.logicalReturn.alignment;

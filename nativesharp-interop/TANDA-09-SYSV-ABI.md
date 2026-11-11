@@ -257,3 +257,16 @@ La prueba negativa de esta sesion se conserva con un record mixto entero y
 `double`, cuya clasificacion fisica aun no esta admitida; paso junto con
 escalares y rechazo de callback en A:/temp/nsc-t09-sysv-prueba-7ws2m1_c.
 No se certifican otras alineaciones, layouts o firmas.
+
+Primer record mixto: para `struct { double x; int y; }`, Clang utiliza retorno
+`{ double, i32 }` y dos argumentos fisicos `double` e `i32`. El primer control C
+necesito corregir su propia dependencia `_fltused`; despues paso y NSC rechazo
+el caso en A:/temp/nsc-t09-sysv-mixed-di-mfry54ru. Tras el cambio pasaron las
+ocho comparaciones estatica/DLL O0–O3, las firmas LLVM y la plantilla sin
+encabezado O0: A:/temp/nsc-t09-sysv-mixed-di-2c_tuni2. La sonda Clang y la
+prueba de metadatos pasaron (A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log). Volvieron a pasar el record entero de dos
+piezas y el indirecto alineado a ocho en A:/temp/nsc-t09-sysv-r16-emtqi600 y
+A:/temp/nsc-t09-sysv-a8-y5c0k8se. Una forma mixta distinta sigue rechazada,
+junto con callbacks, en A:/temp/nsc-t09-sysv-prueba-7pj53wlf. Esta muestra no
+certifica otras combinaciones mixtas ni otras firmas; T09-003 permanece abierto.

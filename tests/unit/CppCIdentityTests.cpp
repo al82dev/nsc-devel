@@ -1733,6 +1733,23 @@ bool checkDependencyTypeCodec()
             restoredRecord.declaration.abiPlan->logicalReturn.alignment == alignment,
             "indirect SysV dependency retains the return alignment");
     }
+    auto mixedPlan = std::make_shared<abi_plan::Plan>(*pairPlan);
+    const abi_plan::Type doubleType{abi_plan::TypeKind::Double};
+    const abi_plan::Type int32Type{abi_plan::TypeKind::Integer, 32};
+    mixedPlan->physicalReturn.elements = {doubleType, int32Type};
+    mixedPlan->logicalReturn.coercion = mixedPlan->physicalReturn;
+    mixedPlan->logicalParameters[0].coercion = mixedPlan->physicalReturn;
+    mixedPlan->physicalParameters[0].type = doubleType;
+    mixedPlan->physicalParameters[1].type = int32Type;
+    recordFunction.declaration.abiPlan = mixedPlan;
+    recordFunction.declaration.returnType.sizeBits = 128;
+    recordFunction.declaration.returnType.alignmentBits = 64;
+    recordFunction.declaration.parameters[0].type.sizeBits = 128;
+    recordFunction.declaration.parameters[0].type.alignmentBits = 64;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVMixedDoubleI32RecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
+        "C dependency function retains a mixed double and integer SysV plan");
     if (!functionBytes.empty()) functionBytes.pop_back();
     decoded.moduleName = "sentinel";
     ok &= expect(!decodeCDependencyFunction(functionBytes, decoded, error) && decoded.moduleName == "sentinel",

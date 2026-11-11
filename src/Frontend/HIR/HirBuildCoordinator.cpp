@@ -1834,6 +1834,8 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                      (interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName) &&
                       *symbol.cppReturnType->sizeBits == 64 +
                           symbol.cppAbiPlan->physicalReturn.elements[1].widthOrCount) ||
+                     (*symbol.cppReturnType->sizeBits == 128 && symbol.cppReturnType->alignmentBits == 64 &&
+                      interop::abi_plan::isSysVMixedDoubleI32RecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName)) ||
                      (*symbol.cppReturnType->sizeBits > 128 && *symbol.cppReturnType->sizeBits % 8 == 0 &&
                       interop::abi_plan::isSysVIndirectRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName) &&
                       symbol.cppReturnType->alignmentBits == symbol.cppAbiPlan->logicalReturn.alignment * 8));

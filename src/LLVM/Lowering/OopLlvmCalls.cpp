@@ -870,7 +870,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             return result;
         }
         if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
-            interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName))
+            (interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName) ||
+             interop::abi_plan::isSysVMixedDoubleI32RecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName)))
         {
             if (node->children.size() != 1 || node->referenceResult || node->returnsAssignedValue ||
                 node->children[0]->typeKey != node->typeKey ||
@@ -886,6 +887,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             if (alignment == 0) return failValue(error, "SysV two-piece record has no alignment");
             const unsigned pieceAlignment = alignment < 8 ? alignment : 8;
             LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+            LLVMTypeRef firstType = imported->cppAbiPlan->physicalReturn.elements[0].kind == interop::abi_plan::TypeKind::Double
+                ? LLVMDoubleTypeInContext(context_) : i64;
             LLVMTypeRef secondType = LLVMIntTypeInContext(context_,
                 static_cast<unsigned>(imported->cppAbiPlan->physicalReturn.elements[1].widthOrCount));
             LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
@@ -897,7 +900,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             LLVMValueRef argumentStore = LLVMBuildStore(builder_, value, argumentSlot);
             LLVMSetAlignment(argumentStore, alignment);
             LLVMValueRef arguments[] = {
-                LLVMBuildLoad2(builder_, i64, argumentSlot, "sysv.pair.first"),
+                LLVMBuildLoad2(builder_, firstType, argumentSlot, "sysv.pair.first"),
                 LLVMBuildLoad2(builder_, secondType, second(argumentSlot, "sysv.pair.arg.second"), "sysv.pair.second")};
             LLVMSetAlignment(arguments[0], pieceAlignment);
             LLVMSetAlignment(arguments[1], pieceAlignment);

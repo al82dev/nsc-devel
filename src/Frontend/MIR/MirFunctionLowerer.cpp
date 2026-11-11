@@ -318,7 +318,8 @@ void configureFunctionAbi(
     }
     if (function.cppSysVCall && function.cppAbiPlan &&
         (interop::abi_plan::isSysVSmallRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
-         interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*function.cppAbiPlan, function.cAbiName)))
+         interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
+         interop::abi_plan::isSysVMixedDoubleI32RecordRoundTrip(*function.cppAbiPlan, function.cAbiName)))
     {
         function.abi.returnPassing = ProjectOopMirAbiPassing::Direct;
         function.abi.parameterPassing.push_back(ProjectOopMirAbiPassing::Direct);

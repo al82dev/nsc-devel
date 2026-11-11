@@ -254,6 +254,8 @@ int main(int argc, char** argv) {
         p16.physicalParameters.size() != 2 || p16.physicalParameters[0].type.widthOrCount != 64 ||
         p16.physicalParameters[1].type.widthOrCount != 64) return 21;
     const auto& pf = copiedPlans.at("pf");
+    if (!t09_probe::isSysVMixedDoubleI32RecordRoundTrip(pf, "pf") ||
+        t09_probe::isSysVMixedDoubleI32RecordRoundTrip(p16, "p16")) return 83;
     if (pf.physicalParameters.size() != 2 || pf.physicalParameters[0].type.kind != t09_probe::TypeKind::Double ||
         pf.physicalParameters[1].type.widthOrCount != 32) return 22;
     const auto& p24 = copiedPlans.at("p24");
