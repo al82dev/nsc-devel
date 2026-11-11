@@ -1,0 +1,1 @@
+int Main() { if (sysv_double(2.0) != 2.0) return 1; return 0; }

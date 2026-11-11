@@ -919,6 +919,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             static_cast<unsigned>(arguments.size()),
             node->typeKey == "builtin:void" || sretSlot != nullptr ? "" : "static.call", error);
         if (call == nullptr) return nullptr;
+        if (imported != nullptr && imported->cppSysVCall)
+            LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
         if (!applyMustTail(node, call, error)) return nullptr;
         applyExternalBoolAbi(context_, found->second.mirFunction,
             [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)

@@ -224,6 +224,7 @@ void copyFunctionMetadata(
     function.isImportedNative = source.isImportedNative;
     function.isCppExternal = source.isCppExternal;
     function.cppVectorCall = source.cppVectorCall;
+    function.cppSysVCall = source.cppSysVCall;
     function.isTransportedInlineBody = source.isTransportedInlineBody;
     function.isSyntheticImplicitConstructor = source.isSyntheticImplicitConstructor;
     function.importDllName = source.importDllName;

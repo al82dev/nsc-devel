@@ -1591,6 +1591,15 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
                     "' is used as a delegate target but has no definition");
             return false;
         }
+        if (function.cppCallingConvention == "sysv_abi")
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error,
+                syntax != nullptr ? syntax->range() : SourceRange{},
+                "conversion of a sysv_abi function to a delegate is not yet supported");
+            return false;
+        }
         // EN: T08-D22: a C function keeps its own address (T08-D18), so a C callback type must use the same
         //     calling convention: cdecl and `__vectorcall` never stand in for each other.
         // ES: T08-D22: una funcion C conserva su direccion (T08-D18), asi que el tipo de callback C debe usar

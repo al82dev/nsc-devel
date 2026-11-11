@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>SysvBadCallback</Name></PropertyGroup><ItemGroup><Compile Include="BadCallback.ns"/><CppLibraryReference Header="api.h" Language="C" Standard="c11" Library="api.lib"/></ItemGroup></Project>

@@ -1805,7 +1805,21 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             // EN: T08-D22: `__vectorcall` C functions are imported with their convention.
             // ES: T08-D22: las funciones C `__vectorcall` se importan con su convencion.
             function.cppVectorCall = symbol.cppCallingConvention == "vectorcall";
-            if (symbol.cppCallingConvention != "cdecl" && !function.cppVectorCall)
+            function.cppSysVCall = symbol.cppCallingConvention == "sysv_abi";
+            if (function.cppSysVCall)
+            {
+                const bool supportedReturn = function.returnTypeKey == "builtin:int" ||
+                    function.returnTypeKey == "builtin:void";
+                const bool supportedParameters = std::ranges::all_of(function.parameterTypeKeys,
+                    [](const std::string& type) { return type == "builtin:int"; });
+                if (function.isVariadic || !supportedReturn || !supportedParameters)
+                {
+                    error = "sysv_abi currently supports only non-variadic int parameters and int or void return for " +
+                        symbol.mangledName;
+                    return false;
+                }
+            }
+            if (symbol.cppCallingConvention != "cdecl" && !function.cppVectorCall && !function.cppSysVCall)
             {
                 error = "C/C++ calling convention '" + symbol.cppCallingConvention +
                     "' is not yet supported in HIR for " + symbol.mangledName;
@@ -1845,6 +1859,11 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             });
             if (requiresTlsAliases)
             {
+                if (function.cppSysVCall)
+                {
+                    error = "sysv_abi with isolated TLS DLL binding is not yet supported for " + symbol.mangledName;
+                    return false;
+                }
                 function.importDllName = interop::cppTlsDllAlias(symbol.cppDllRuntimeIdentity);
                 if (function.importDllName.empty())
                 {
