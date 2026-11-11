@@ -1289,7 +1289,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     return failValue(error, "sysv_abi variadic function pointer record plan is not supported");
                 const bool mixed = layout->size == 16 && layout->alignment == 8 &&
                     plan.physicalParameters[physical].type.kind == TypeKind::Double;
-                const bool threeIntegers = !fixedRecord && layout->size == 12 && layout->alignment == 4 &&
+                const bool threeIntegers = layout->size == 12 && layout->alignment == 4 &&
                     plan.physicalParameters[physical].type.kind == TypeKind::Integer &&
                     plan.physicalParameters[physical].type.widthOrCount == 64;
                 if (!mixed && !threeIntegers)
@@ -1305,7 +1305,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 LLVMSetAlignment(second, alignment);
                 if (fixedRecord)
                 {
-                    fixedTypes.push_back(LLVMDoubleTypeInContext(context_));
+                    fixedTypes.push_back(mixed ? LLVMDoubleTypeInContext(context_) : LLVMInt64TypeInContext(context_));
                     fixedTypes.push_back(LLVMInt32TypeInContext(context_));
                 }
                 arguments.push_back(first);

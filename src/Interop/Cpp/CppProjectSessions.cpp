@@ -615,7 +615,8 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     {
         if (type.kind != CppTypeKind::Record) continue;
         if (type.isConst || type.isVolatile || type.isRestrict ||
-            !((type.sizeBits == 128 && type.alignmentBits == 64) || (type.sizeBits == 160 && type.alignmentBits == 32)) ||
+            !((type.sizeBits == 96 && type.alignmentBits == 32) || (type.sizeBits == 128 && type.alignmentBits == 64) ||
+              (type.sizeBits == 160 && type.alignmentBits == 32)) ||
             !type.recordIdentity || !type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty() ||
             type.recordIdentity->anonymousContext || type.recordIdentity->specializationContext ||
             !type.recordIdentity->namespaceSegments.empty() || !type.recordIdentity->containingRecords.empty() ||
@@ -642,7 +643,8 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         if (type.kind == CppTypeKind::Record)
         {
             if (type.isConst || type.isVolatile || type.isRestrict ||
-                !((type.sizeBits == 128 && type.alignmentBits == 64) || (type.sizeBits == 160 && type.alignmentBits == 32)) ||
+                !((type.sizeBits == 96 && type.alignmentBits == 32) || (type.sizeBits == 128 && type.alignmentBits == 64) ||
+                  (type.sizeBits == 160 && type.alignmentBits == 32)) ||
                 !type.recordIdentity || !type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty() ||
                 type.recordIdentity->anonymousContext || type.recordIdentity->specializationContext ||
                 !type.recordIdentity->namespaceSegments.empty() || !type.recordIdentity->containingRecords.empty() ||
