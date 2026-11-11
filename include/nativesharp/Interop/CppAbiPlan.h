@@ -59,7 +59,7 @@ struct Plan
     std::vector<PhysicalParameter> physicalParameters;
 };
 
-// Classification of one actual variadic call; not a complete LLVM signature.
+// Classification of one actual variadic call; it does not itself authorize emission.
 struct VariadicCallPlan
 {
     std::string symbol;
@@ -69,6 +69,10 @@ struct VariadicCallPlan
     std::size_t requiredArguments = 0;
     LogicalValue result;
     std::vector<LogicalValue> arguments;
+    Type physicalReturn;
+    bool returnSignExtend = false;
+    bool returnZeroExtend = false;
+    std::vector<PhysicalParameter> physicalParameters;
 };
 
 // Supported aggregate shapes: one small record passed and returned directly.

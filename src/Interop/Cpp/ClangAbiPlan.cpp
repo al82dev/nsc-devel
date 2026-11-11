@@ -295,29 +295,110 @@ std::optional<VariadicCallPlan> copyVariadicCallPlan(
     result.callingConvention = declaration->getCallingConv();
     result.requiredArguments = prototype->getNumParams();
     result.result = std::move(*copiedReturn);
+    auto physicalReturn = copyType(declaration->getReturnType(), 0);
+    if (!physicalReturn) { error = "physical return type not represented"; return std::nullopt; }
+    result.physicalReturn = std::move(*physicalReturn);
+    result.returnSignExtend = declaration->hasRetAttribute(llvm::Attribute::SExt);
+    result.returnZeroExtend = declaration->hasRetAttribute(llvm::Attribute::ZExt);
     if (result.symbol.empty() || result.targetTriple.empty() || result.dataLayout.empty())
     { error = "symbol or target configuration unavailable"; return std::nullopt; }
-    std::uint64_t next = call.getReturnInfo().isIndirect() ? 1 : 0;
+    std::vector<llvm::Type*> physicalTypes;
+    if (call.getReturnInfo().isIndirect())
+    {
+        if (declaration->arg_size() == 0 || !declaration->hasParamAttribute(0, llvm::Attribute::StructRet))
+        { error = "hidden return not represented"; return std::nullopt; }
+        PhysicalParameter hidden;
+        hidden.type.kind = TypeKind::Pointer;
+        hidden.structureReturn = true;
+        if (const auto alignment = declaration->getParamAlign(0)) hidden.alignment = alignment->value();
+        hidden.pointee = copyType(declaration->getParamStructRetType(0), 0);
+        if (!hidden.pointee) { error = "hidden return type not represented"; return std::nullopt; }
+        result.physicalParameters.push_back(std::move(hidden));
+        physicalTypes.push_back(declaration->getFunctionType()->getParamType(0));
+    }
+    else if (!call.getReturnInfo().isIgnore() &&
+             ((!call.getReturnInfo().isDirect() && !call.getReturnInfo().isExtend()) ||
+              call.getReturnInfo().getCoerceToType() != declaration->getReturnType()))
+    { error = "physical return mapping not represented"; return std::nullopt; }
+    std::size_t ordinal = 0;
+    std::size_t fixedPhysicalCount = physicalTypes.size();
     for (const auto& argument : call.arguments())
     {
         const auto& info = argument.info;
         auto value = copyLogical(info);
         if (!value || info.getPaddingType())
         { error = "actual argument plan not represented"; return std::nullopt; }
-        value->firstPhysical = next;
-        if (info.isIndirect()) value->physicalCount = 1;
+        value->firstPhysical = physicalTypes.size();
+        if (info.isIndirect())
+        {
+            if (!info.getIndirectByVal()) { error = "indirect argument without byval not represented"; return std::nullopt; }
+            auto* memory = clang::CodeGen::convertTypeForMemory(generator.CGM(), argument.type);
+            PhysicalParameter parameter;
+            parameter.type.kind = TypeKind::Pointer;
+            parameter.byValue = true;
+            parameter.alignment = static_cast<std::uint64_t>(info.getIndirectAlign().getQuantity());
+            parameter.pointee = copyType(memory, 0);
+            if (!parameter.pointee) { error = "indirect argument type not represented"; return std::nullopt; }
+            result.physicalParameters.push_back(std::move(parameter));
+            physicalTypes.push_back(llvm::PointerType::getUnqual(generator.GetModule()->getContext()));
+            value->physicalCount = 1;
+        }
         else if (info.isDirect() || info.isExtend())
         {
             auto* coercion = info.getCoerceToType();
-            if (!coercion) { error = "actual argument coercion unavailable"; return std::nullopt; }
+            if (!coercion || info.getDirectOffset() != 0)
+            { error = "actual argument coercion or offset not represented"; return std::nullopt; }
             const auto* structure = llvm::dyn_cast<llvm::StructType>(coercion);
-            value->physicalCount = structure && info.isDirect() && info.getCanBeFlattened()
-                ? structure->getNumElements() : 1;
+            const auto appendPiece = [&](llvm::Type* part) {
+                auto type = copyType(part, 0);
+                if (!type) return false;
+                PhysicalParameter parameter;
+                parameter.type = std::move(*type);
+                parameter.signExtend = info.isExtend() && info.isSignExt();
+                parameter.zeroExtend = info.isExtend() && info.isZeroExt();
+                result.physicalParameters.push_back(std::move(parameter));
+                physicalTypes.push_back(part);
+                ++value->physicalCount;
+                return true;
+            };
+            if (structure && info.isDirect() && info.getCanBeFlattened())
+            {
+                for (auto* part : structure->elements())
+                    if (!appendPiece(part)) { error = "physical piece not represented"; return std::nullopt; }
+            }
+            else if (!appendPiece(coercion)) { error = "physical piece not represented"; return std::nullopt; }
         }
         else if (!info.isIgnore())
         { error = "actual argument mapping not represented"; return std::nullopt; }
-        next += value->physicalCount;
         result.arguments.push_back(std::move(*value));
+        if (++ordinal == result.requiredArguments) fixedPhysicalCount = physicalTypes.size();
+    }
+    if (fixedPhysicalCount != declaration->arg_size())
+    { error = "fixed physical argument count mismatch"; return std::nullopt; }
+    for (unsigned i = 0; i < declaration->arg_size(); ++i)
+    {
+        if (physicalTypes[i] != declaration->getFunctionType()->getParamType(i))
+        { error = "fixed physical argument type mismatch"; return std::nullopt; }
+        auto& parameter = result.physicalParameters[i];
+        if (parameter.structureReturn != declaration->hasParamAttribute(i, llvm::Attribute::StructRet) ||
+            parameter.byValue != declaration->hasParamAttribute(i, llvm::Attribute::ByVal) ||
+            parameter.signExtend != declaration->hasParamAttribute(i, llvm::Attribute::SExt) ||
+            parameter.zeroExtend != declaration->hasParamAttribute(i, llvm::Attribute::ZExt))
+        { error = "fixed physical argument attribute mismatch"; return std::nullopt; }
+        parameter.structureReturn = declaration->hasParamAttribute(i, llvm::Attribute::StructRet);
+        parameter.byValue = declaration->hasParamAttribute(i, llvm::Attribute::ByVal);
+        parameter.signExtend = declaration->hasParamAttribute(i, llvm::Attribute::SExt);
+        parameter.zeroExtend = declaration->hasParamAttribute(i, llvm::Attribute::ZExt);
+        parameter.inRegister = declaration->hasParamAttribute(i, llvm::Attribute::InReg);
+        parameter.noAlias = declaration->hasParamAttribute(i, llvm::Attribute::NoAlias);
+        if (const auto alignment = declaration->getParamAlign(i)) parameter.alignment = alignment->value();
+        const auto* pointee = parameter.structureReturn ? declaration->getParamStructRetType(i) :
+            parameter.byValue ? declaration->getParamByValType(i) : nullptr;
+        if (pointee)
+        {
+            parameter.pointee = copyType(pointee, 0);
+            if (!parameter.pointee) { error = "fixed pointee type not represented"; return std::nullopt; }
+        }
     }
     return result;
 }

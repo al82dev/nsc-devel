@@ -172,6 +172,8 @@ int main(int argc, char** argv) {
         Vec4 __attribute__((sysv_abi)) pv(Vec4);
         R24 __attribute__((sysv_abi)) pm(int, RF, R3, R24);
         int __attribute__((sysv_abi)) pvariadic(int, ...);
+        int __attribute__((sysv_abi)) pvariadic_fixed(R24, signed char, ...);
+        R24 __attribute__((sysv_abi)) pvariadic_sret(RF, signed char, ...);
         int pvariadic_cdecl(int, ...);
         RP __attribute__((sysv_abi)) pp(RP);
         int __vectorcall pvec(int);
@@ -209,6 +211,27 @@ int main(int argc, char** argv) {
             if (t09_probe::copyVariadicCallPlan(*generator, *function,
                 std::vector<clang::QualType>{context.IntTy}, error) ||
                 error != "variadic call target or convention not represented") return 141;
+            continue;
+        }
+        if (name == "pvariadic_fixed" || name == "pvariadic_sret") {
+            std::string error;
+            auto actual = t09_probe::copyVariadicCallPlan(*generator, *function,
+                std::vector<clang::QualType>{function->getParamDecl(0)->getType(),
+                    function->getParamDecl(1)->getType(), context.DoubleTy}, error);
+            if (!actual) { llvm::errs() << "variadic fixed/return plan: " << error << "\n"; return 145; }
+            if (actual->requiredArguments != 2 || actual->arguments.size() != 3 ||
+                actual->arguments[2].physicalCount != 1 ||
+                actual->physicalParameters.back().type.kind != t09_probe::TypeKind::Double) return 146;
+            if (name == "pvariadic_fixed") {
+                if (actual->physicalParameters.size() != 3 || !actual->physicalParameters[0].byValue ||
+                    actual->physicalParameters[0].alignment != 8 || !actual->physicalParameters[0].pointee ||
+                    !actual->physicalParameters[1].signExtend || actual->physicalParameters[1].type.widthOrCount != 8)
+                    return 147;
+            } else if (actual->physicalReturn.kind != t09_probe::TypeKind::Void ||
+                actual->physicalParameters.size() != 5 || !actual->physicalParameters[0].structureReturn ||
+                !actual->physicalParameters[0].pointee || actual->physicalParameters[0].alignment != 8 ||
+                actual->arguments[0].physicalCount != 2 || !actual->physicalParameters[3].signExtend)
+                return 148;
             continue;
         }
         if (name == "pv") {
@@ -384,8 +407,19 @@ int main(int argc, char** argv) {
         !copiedVariadicNormal->arguments[2].coercion ||
         copiedVariadicNormal->arguments[2].coercion->elements[0].kind != t09_probe::TypeKind::Double ||
         copiedVariadicNormal->arguments[3].firstPhysical != 4 || !copiedVariadicNormal->arguments[3].byValue ||
+        copiedVariadicNormal->physicalReturn.kind != t09_probe::TypeKind::Integer ||
+        copiedVariadicNormal->physicalReturn.widthOrCount != 32 || copiedVariadicNormal->physicalParameters.size() != 5 ||
+        copiedVariadicNormal->physicalParameters[1].type.widthOrCount != 64 ||
+        copiedVariadicNormal->physicalParameters[2].type.kind != t09_probe::TypeKind::Double ||
+        copiedVariadicNormal->physicalParameters[3].type.widthOrCount != 32 ||
+        !copiedVariadicNormal->physicalParameters[4].byValue || copiedVariadicNormal->physicalParameters[4].alignment != 8 ||
+        !copiedVariadicNormal->physicalParameters[4].pointee ||
+        copiedVariadicNormal->physicalParameters[4].pointee->kind != t09_probe::TypeKind::Structure ||
         copiedVariadicPressure->arguments[6].firstPhysical != 6 || !copiedVariadicPressure->arguments[6].byValue ||
-        copiedVariadicFloatPressure->arguments[9].firstPhysical != 9 || !copiedVariadicFloatPressure->arguments[9].byValue)
+        !copiedVariadicPressure->physicalParameters[6].byValue || copiedVariadicPressure->physicalParameters[6].alignment != 8 ||
+        copiedVariadicFloatPressure->arguments[9].firstPhysical != 9 || !copiedVariadicFloatPressure->arguments[9].byValue ||
+        !copiedVariadicFloatPressure->physicalParameters[9].byValue ||
+        copiedVariadicFloatPressure->physicalParameters[9].alignment != 8)
         return 140;
     const auto& p3 = copiedPlans.at("p3");
     if (!t09_probe::isSysVSmallRecordRoundTrip(copiedPlans.at("p4"), "p4") ||
@@ -687,6 +721,9 @@ int main(int argc, char** argv) {
         mixedPlan->logicalParameters.size() != 4 || mixedPlan->logicalParameters[1].physicalCount != 2 ||
         projected->cppAbiPlan->symbol != "ps8" || projectedRecord->cppAbiPlan->symbol != "p3ptr" ||
         variadicSessionPlan->symbol != "pvariadic" || variadicSessionPlan->arguments[2].physicalCount != 2 ||
+        variadicSessionPlan->physicalParameters.size() != 5 ||
+        variadicSessionPlan->physicalParameters[2].type.kind != abi_plan::TypeKind::Double ||
+        !variadicSessionPlan->physicalParameters[4].pointee ||
         !variadicPressurePlan->arguments[6].byValue || !variadicFloatPressurePlan->arguments[9].byValue) return 41;
     CppSessionOptions inventoryOptions;
     inventoryOptions.language = CppLanguageMode::C;

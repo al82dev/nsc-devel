@@ -652,6 +652,21 @@ sesiones: el futuro consumidor debe usar tipos de la misma sesion o verificar
 esa equivalencia antes de solicitar el plan. La consulta todavia no esta
 conectada a la emision ni a NSMeta, y no acredita records en la elipsis.
 
+La copia experimental ahora incluye el tipo fisico de retorno, piezas fisicas
+por argumento, atributos de extension y retorno oculto, y tipo y alineacion
+de la memoria de los argumentos indirectos `byval`. Los parametros fijos se
+contrastan con la declaracion LLVM y se rechazan discrepancias o formas no
+representadas. La sonda verifica `i64`, `double`/`i32`, `byval`, presion de
+registros, un prefijo fijo indirecto, extension `signext`, retorno `sret` y
+supervivencia al cierre de Clang (`A:/temp/t09-planes-clang.log`).
+
+Pasaron la compilacion incremental, la sonda y las regresiones dirigidas de
+llamadas variadicas y records (`A:/temp/nsc-t09-sysv-varargs-hakk11_1` y
+`A:/temp/nsc-t09-sysv-padded-pair-id-0pcbt3c_`). Aun debe integrarse el plan
+por llamada con la conciliacion de origenes, HIR, MIR, emision y el contrato
+vigente; las pruebas anteriores no demuestran ejecucion de records en la
+elipsis. T09-003 sigue abierto.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin
