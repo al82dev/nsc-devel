@@ -43,3 +43,10 @@ contratos binarios históricos ni todas las formas indirectas de procedencia.
 El archivo del analizador preparado para el commit se compiló por separado
 con las cabeceras y configuración del árbol de trabajo; no se enlazó ni se
 ejecutó un compilador compuesto únicamente por los archivos registrados.
+
+La regresión se amplió con funciones de namespace y delegados que devuelven
+la vista recibida. Con el compilador de trabajo pasaron 68 análisis: 52
+rechazos esperados y 16 controles aceptados; los controles completaron 32
+ejecuciones O0/O2 con salida 42. Los casos inseguros solo se analizaron. Esta
+prueba sigue sin verificar por separado un compilador enlazado exclusivamente
+con la revisión registrada.

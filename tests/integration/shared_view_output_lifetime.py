@@ -23,17 +23,20 @@ with tempfile.TemporaryDirectory(prefix='nsc-shared-view-output-') as directory:
         for mode in ('ref', 'out'):
             for variant in ('local', 'consumed', 'live', 'local_alias', 'consumed_alias',
                             'local_conditional', 'consumed_conditional', 'mixed_conditional',
-                            'local_echo', 'consumed_echo', 'live_echo'):
+                            'local_echo', 'consumed_echo', 'live_echo',
+                            'local_namespace', 'consumed_namespace', 'live_namespace',
+                            'local_delegate', 'consumed_delegate', 'live_delegate'):
                 consumed = variant.startswith('consumed')
                 conditional = variant.endswith('_conditional')
                 alias = variant.endswith('_alias')
-                parameters = ('SharedView<Payload> input, ' if variant in ('live', 'live_echo', 'mixed_conditional') else
+                live = variant.startswith('live')
+                parameters = ('SharedView<Payload> input, ' if live or variant == 'mixed_conditional' else
                               family + '<Payload> input, ' if consumed else '')
                 if conditional:
                     parameters = 'bool choose, ' + parameters
                 owner = (family + '<Payload> local = SharedPointers.Make' + family + '<Payload>(); '
                          if variant.startswith('local') or variant == 'mixed_conditional' else '')
-                view = 'input' if variant in ('live', 'live_echo') else 'input.Borrow()' if consumed else 'local.Borrow()'
+                view = 'input' if live else 'input.Borrow()' if consumed else 'local.Borrow()'
                 if alias:
                     owner += 'SharedView<Payload> saved = ' + view + '; '
                     view = 'saved'
@@ -41,13 +44,20 @@ with tempfile.TemporaryDirectory(prefix='nsc-shared-view-output-') as directory:
                     view = 'choose ? ' + ('input' if variant == 'mixed_conditional' else view) + ' : ' + view
                 elif variant.endswith('_echo'):
                     view = 'Echo(' + view + ')'
+                elif variant.endswith('_namespace'):
+                    view = 'Helpers.Echo(' + view + ')'
+                elif variant.endswith('_delegate'):
+                    owner += 'ViewIdentity echo = Echo; '
+                    view = 'echo(' + view + ')'
                 caller_owner = family + '<Payload> owner = SharedPointers.Make' + family + '<Payload>(); '
-                argument = 'owner.Borrow(), ' if variant in ('live', 'live_echo', 'mixed_conditional') else 'move(owner), ' if consumed else ''
+                argument = 'owner.Borrow(), ' if live or variant == 'mixed_conditional' else 'move(owner), ' if consumed else ''
                 if conditional:
                     argument = 'true, ' + argument
                 source = ('using NativeSharp.Core; namespace NativeSharp.Core { public class Exception {} '
                           'public trait Send {} public trait Sync {} } '
                           'class Payload { public int Data; public Payload() { Data = 42; } } '
+                          'delegate SharedView<Payload> ViewIdentity(SharedView<Payload> value); '
+                          'namespace Helpers { public SharedView<Payload> Echo(SharedView<Payload> value) { return value; } } '
                           'class Sink { public static SharedView<Payload> Echo(SharedView<Payload> value) { return value; } '
                           'public static void Store(' + parameters + mode +
                           ' SharedView<Payload> output) { ' + owner + 'output = ' + view + '; } } '
@@ -60,7 +70,7 @@ with tempfile.TemporaryDirectory(prefix='nsc-shared-view-output-') as directory:
                 print('CASE', family, mode, variant, '\nSOURCE', source, '\nCOMMAND',
                       subprocess.list2cmdline(command), 'EXIT', checked.returncode,
                       checked.stdout + checked.stderr, flush=True)
-                if variant not in ('live', 'live_echo'):
+                if not live:
                     if checked.returncode == 0 or 'view output cannot outlive its possible owner' not in checked.stdout + checked.stderr:
                         failures.append((family, mode, variant, 'diagnostic'))
                     continue
