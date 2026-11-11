@@ -1865,6 +1865,25 @@ bool checkDependencyTypeCodec()
         restoredRecord.declaration.abiPlan->physicalParameters[1].type.widthOrCount == 32 &&
         restoredRecord.declaration.abiPlan->physicalParameters[3].type.widthOrCount == 64,
         "C dependency function retains two-piece records of different sizes");
+    auto scalarFirstPlan = std::make_shared<abi_plan::Plan>(*differentPairPlan);
+    std::rotate(scalarFirstPlan->logicalParameters.begin(), scalarFirstPlan->logicalParameters.end() - 1,
+                scalarFirstPlan->logicalParameters.end());
+    std::rotate(scalarFirstPlan->physicalParameters.begin(), scalarFirstPlan->physicalParameters.end() - 1,
+                scalarFirstPlan->physicalParameters.end());
+    scalarFirstPlan->logicalParameters[0].firstPhysical = 0;
+    scalarFirstPlan->logicalParameters[1].firstPhysical = 1;
+    scalarFirstPlan->logicalParameters[2].firstPhysical = 3;
+    std::rotate(recordFunction.declaration.parameters.begin(), recordFunction.declaration.parameters.end() - 1,
+                recordFunction.declaration.parameters.end());
+    recordFunction.declaration.abiPlan = scalarFirstPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVTwoIntegerRecordWithScalars(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->logicalParameters[1].firstPhysical == 1 &&
+        restoredRecord.declaration.abiPlan->logicalParameters[2].firstPhysical == 3,
+        "C dependency function retains a scalar before two records");
+    std::rotate(recordFunction.declaration.parameters.begin(), recordFunction.declaration.parameters.begin() + 1,
+                recordFunction.declaration.parameters.end());
     recordFunction.declaration.returnType.sizeBits = 128;
     recordFunction.declaration.parameters[0].type.sizeBits = 128;
     recordFunction.declaration.parameters.resize(1);

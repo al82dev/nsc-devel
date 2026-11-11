@@ -129,11 +129,9 @@ inline bool isSysVTwoIntegerRecordWithScalars(const Plan& plan, std::string_view
         !pair(*plan.logicalReturn.coercion) || plan.logicalReturn.offset != 0 ||
         plan.logicalParameters.size() < 2) return false;
     const auto bits = plan.physicalReturn.elements[1].widthOrCount;
-    const auto& record = plan.logicalParameters[0];
-    if (!record.coercion || !pair(*record.coercion) || record.coercion->elements[1].widthOrCount != bits ||
-        plan.logicalReturn.coercion->elements[1].widthOrCount != bits || record.passing != Passing::Direct ||
-        record.offset != 0 || record.firstPhysical != 0 || record.physicalCount != 2) return false;
+    if (plan.logicalReturn.coercion->elements[1].widthOrCount != bits) return false;
     std::size_t physicalIndex = 0;
+    bool hasRecord = false;
     for (std::size_t i = 0; i < plan.logicalParameters.size(); ++i)
     {
         const auto& logical = plan.logicalParameters[i];
@@ -141,6 +139,7 @@ inline bool isSysVTwoIntegerRecordWithScalars(const Plan& plan, std::string_view
             logical.firstPhysical != physicalIndex) return false;
         if (pair(*logical.coercion))
         {
+            hasRecord = true;
             const auto argumentBits = logical.coercion->elements[1].widthOrCount;
             if (logical.physicalCount != 2 ||
                 physicalIndex + 2 > plan.physicalParameters.size()) return false;
@@ -153,7 +152,7 @@ inline bool isSysVTwoIntegerRecordWithScalars(const Plan& plan, std::string_view
             physicalIndex += 2;
             continue;
         }
-        if (i == 0 || logical.physicalCount != 1 || physicalIndex >= plan.physicalParameters.size()) return false;
+        if (logical.physicalCount != 1 || physicalIndex >= plan.physicalParameters.size()) return false;
         const auto& p = plan.physicalParameters[physicalIndex++];
         if (p.structureReturn || p.byValue || p.signExtend || p.zeroExtend || p.inRegister || p.noAlias ||
             logical.coercion->kind != p.type.kind || logical.coercion->widthOrCount != p.type.widthOrCount) return false;
@@ -161,7 +160,7 @@ inline bool isSysVTwoIntegerRecordWithScalars(const Plan& plan, std::string_view
               p.type.kind == TypeKind::Float || p.type.kind == TypeKind::Double ||
               (p.type.kind == TypeKind::Pointer && p.type.widthOrCount == 0))) return false;
     }
-    return physicalIndex == plan.physicalParameters.size();
+    return hasRecord && physicalIndex == plan.physicalParameters.size();
 }
 inline bool isSysVMixedRecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
 {

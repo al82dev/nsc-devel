@@ -479,7 +479,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         if (f.callingConvention != "sysv_abi" || f.variadic || !f.hasPrototype ||
             f.externalSymbol != value.linkSymbol || f.returnType.kind != CppTypeKind::Record ||
             f.returnType.sizeBits != bits || f.parameters.size() != ((manyRecords || pairWithScalars) ? f.abiPlan->logicalParameters.size() : 1U) ||
-            (!manyRecords && (f.parameters[0].type.kind != CppTypeKind::Record || f.parameters[0].type.sizeBits != bits)) ||
+            (!manyRecords && !pairWithScalars && (f.parameters[0].type.kind != CppTypeKind::Record || f.parameters[0].type.sizeBits != bits)) ||
             (manyRecords && [&] {
                 bool hasRecord = false;
                 for (std::size_t i = 0; i < f.parameters.size(); ++i)
@@ -501,7 +501,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                 return !hasRecord;
             }()) ||
             (pairWithScalars && [&] {
-                for (std::size_t i = 1; i < f.parameters.size(); ++i)
+                for (std::size_t i = 0; i < f.parameters.size(); ++i)
                 {
                     const auto& type = f.parameters[i].type;
                     const auto physicalIndex = f.abiPlan->logicalParameters[i].firstPhysical;
@@ -680,7 +680,9 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
             if (recordPlan == 21)
             {
                 if (f.parameters.size() < 2) { error = "invalid C dependency pair arguments"; return false; }
-                for (std::size_t i = 1; i < f.parameters.size(); ++i)
+                plan->logicalParameters.clear();
+                plan->physicalParameters.clear();
+                for (std::size_t i = 0; i < f.parameters.size(); ++i)
                 {
                     const auto& type = f.parameters[i].type;
                     if (!type.sizeBits) { error = "invalid C dependency scalar argument"; return false; }

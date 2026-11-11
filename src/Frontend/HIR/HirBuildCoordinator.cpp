@@ -1872,13 +1872,11 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 const bool supportedPairWithScalars = symbol.cppAbiPlan && symbol.cppReturnType &&
                     symbol.cppReturnType->kind == interop::CppTypeKind::Record &&
                     symbol.cppParameterTypes.size() >= 2 && function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
-                    symbol.cppParameterTypes[0].kind == interop::CppTypeKind::Record &&
-                    function.returnTypeKey == function.parameterTypeKeys[0] &&
                     interop::abi_plan::isSysVTwoIntegerRecordWithScalars(*symbol.cppAbiPlan, symbol.mangledName) &&
                     symbol.cppReturnType->sizeBits == 64 + symbol.cppAbiPlan->physicalReturn.elements[1].widthOrCount &&
-                    symbol.cppParameterTypes[0].sizeBits == symbol.cppReturnType->sizeBits &&
                     [&] {
-                        for (std::size_t i = 1; i < symbol.cppParameterTypes.size(); ++i)
+                        bool hasRecord = false;
+                        for (std::size_t i = 0; i < symbol.cppParameterTypes.size(); ++i)
                         {
                             const auto physicalIndex = symbol.cppAbiPlan->logicalParameters[i].firstPhysical;
                             const auto kind = symbol.cppAbiPlan->physicalParameters[physicalIndex].type.kind;
@@ -1891,12 +1889,13 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                             const bool directRecord = symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Record &&
                                 symbol.cppAbiPlan->logicalParameters[i].physicalCount == 2 &&
                                 symbol.cppParameterTypes[i].sizeBits == 64 + symbol.cppAbiPlan->physicalParameters[physicalIndex + 1].type.widthOrCount;
+                            hasRecord |= directRecord;
                             if (!(scalarInteger || directRecord ||
                                   (key == "builtin:float" && symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Floating && kind == interop::abi_plan::TypeKind::Float) ||
                                   (key == "builtin:double" && symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Floating && kind == interop::abi_plan::TypeKind::Double) ||
                                   (key == "builtin:int*" && symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Pointer && kind == interop::abi_plan::TypeKind::Pointer))) return false;
                         }
-                        return true;
+                        return hasRecord;
                     }();
                 const bool supportedSmallRecords = symbol.cppAbiPlan && symbol.cppReturnType &&
                     symbol.cppReturnType->kind == interop::CppTypeKind::Record &&

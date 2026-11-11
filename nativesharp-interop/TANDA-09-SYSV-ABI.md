@@ -746,3 +746,20 @@ regresiones de tres records iguales y del record con `int`/`float`
 A:/temp/nsc-t09-sysv-pair-mix-k34m9kq8). No se acreditan records indirectos,
 otros tipos de pieza ni todos los layouts; T09-003 permanece abierto.
 
+Se probo despues la misma mezcla con el `int` antes de ambos records. El
+control C paso y NSC rechazo inicialmente la firma
+(A:/temp/nsc-t09-sysv-scalar-pairs-seh9pj3u). La emision ahora recorre el
+orden logico y las posiciones fisicas descritas por Clang, y el contrato
+vigente conserva ese orden. La muestra paso estatica y DLL O0–O3, argumentos
+nombrados reordenados y plantilla precompilada sin encabezado O0
+(A:/temp/nsc-t09-sysv-scalar-pairs-cz3j048p). La sonda Clang y la prueba de
+metadatos verificaron las posiciones (A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log). Pasaron las regresiones de records de
+distinto tamano, tres records, piezas `double`/entero y dos piezas vectoriales
+(A:/temp/nsc-t09-sysv-different-pairs-_t2pp3wq,
+A:/temp/nsc-t09-sysv-three-pairs-s_9a8158,
+A:/temp/nsc-t09-sysv-mixed-di-0z_u0aen y
+A:/temp/nsc-t09-sysv-mixed-vv-75bvrj_f), y el control general con rechazo
+de un record indirecto mixto (A:/temp/nsc-t09-sysv-prueba-bgf8v0mk). Quedan
+pendientes otras clases y formas indirectas; T09-003 continua abierto.
+

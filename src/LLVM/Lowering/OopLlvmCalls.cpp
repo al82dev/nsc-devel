@@ -969,8 +969,6 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 if (index >= count || seen[index]) return failValue(error, "SysV two-piece argument mapping is invalid");
                 seen[index] = true;
             }
-            if (node->children[order[0]]->typeKey != node->typeKey)
-                return failValue(error, "SysV two-piece record argument type is invalid");
             std::vector<LLVMValueRef> sourceArguments;
             for (std::size_t i = 0; i < count; ++i)
             {
@@ -979,40 +977,19 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 if (terminated()) return value;
                 sourceArguments.push_back(value);
             }
-            LLVMValueRef value = sourceArguments[order[0]];
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (!carrier) return nullptr;
             const unsigned alignment = structAlignmentFor(node->typeKey);
             if (alignment == 0) return failValue(error, "SysV two-piece record has no alignment");
             const unsigned pieceAlignment = alignment < 8 ? alignment : 8;
             LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
-            LLVMTypeRef firstType = imported->cppAbiPlan->physicalReturn.elements[0].kind == interop::abi_plan::TypeKind::Double
-                ? LLVMDoubleTypeInContext(context_) :
-                imported->cppAbiPlan->physicalReturn.elements[0].kind == interop::abi_plan::TypeKind::Float
-                ? LLVMFloatTypeInContext(context_) :
-                imported->cppAbiPlan->physicalReturn.elements[0].kind == interop::abi_plan::TypeKind::Vector
-                ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) : i64;
-            LLVMTypeRef secondType = imported->cppAbiPlan->physicalReturn.elements[1].kind == interop::abi_plan::TypeKind::Double
-                ? LLVMDoubleTypeInContext(context_) :
-                imported->cppAbiPlan->physicalReturn.elements[1].kind == interop::abi_plan::TypeKind::Float
-                ? LLVMFloatTypeInContext(context_) :
-                imported->cppAbiPlan->physicalReturn.elements[1].kind == interop::abi_plan::TypeKind::Vector
-                ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) : LLVMIntTypeInContext(context_,
-                    static_cast<unsigned>(imported->cppAbiPlan->physicalReturn.elements[1].widthOrCount));
             LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
             LLVMValueRef offset = LLVMConstInt(i64, 8, 0);
             const auto second = [&](LLVMValueRef slot, const char* name) {
                 return LLVMBuildGEP2(builder_, i8, slot, &offset, 1, name);
             };
-            LLVMValueRef argumentSlot = entryBlockAlloca(carrier, alignment, "sysv.pair.arg");
-            LLVMValueRef argumentStore = LLVMBuildStore(builder_, value, argumentSlot);
-            LLVMSetAlignment(argumentStore, alignment);
-            std::vector<LLVMValueRef> arguments = {
-                LLVMBuildLoad2(builder_, firstType, argumentSlot, "sysv.pair.first"),
-                LLVMBuildLoad2(builder_, secondType, second(argumentSlot, "sysv.pair.arg.second"), "sysv.pair.second")};
-            LLVMSetAlignment(arguments[0], pieceAlignment);
-            LLVMSetAlignment(arguments[1], pieceAlignment);
-            for (std::size_t i = 1; i < count; ++i)
+            std::vector<LLVMValueRef> arguments;
+            for (std::size_t i = 0; i < count; ++i)
             {
                 if (imported->cppAbiPlan->logicalParameters[i].physicalCount == 2)
                 {
@@ -1023,12 +1000,19 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     if (argumentAlignment == 0) return failValue(error, "SysV two-piece argument has no alignment");
                     const unsigned argumentPieceAlignment = argumentAlignment < 8 ? argumentAlignment : 8;
                     const auto physicalIndex = imported->cppAbiPlan->logicalParameters[i].firstPhysical;
-                    LLVMTypeRef argumentSecond = LLVMIntTypeInContext(context_, static_cast<unsigned>(
-                        imported->cppAbiPlan->physicalParameters[physicalIndex + 1].type.widthOrCount));
+                    const auto pieceType = [&](std::size_t position) {
+                        const auto& physical = imported->cppAbiPlan->physicalParameters[position].type;
+                        return physical.kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
+                            physical.kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
+                            physical.kind == interop::abi_plan::TypeKind::Vector ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) :
+                            LLVMIntTypeInContext(context_, static_cast<unsigned>(physical.widthOrCount));
+                    };
+                    LLVMTypeRef argumentFirst = pieceType(physicalIndex);
+                    LLVMTypeRef argumentSecond = pieceType(physicalIndex + 1);
                     LLVMValueRef slot = entryBlockAlloca(argumentCarrier, argumentAlignment, "sysv.pair.extra.arg");
                     LLVMValueRef store = LLVMBuildStore(builder_, sourceArguments[order[i]], slot);
                     LLVMSetAlignment(store, argumentAlignment);
-                    LLVMValueRef firstPiece = LLVMBuildLoad2(builder_, firstType, slot, "sysv.pair.extra.first");
+                    LLVMValueRef firstPiece = LLVMBuildLoad2(builder_, argumentFirst, slot, "sysv.pair.extra.first");
                     LLVMValueRef secondPiece = LLVMBuildLoad2(builder_, argumentSecond, second(slot, "sysv.pair.extra.second.addr"), "sysv.pair.extra.second");
                     LLVMSetAlignment(firstPiece, argumentPieceAlignment);
                     LLVMSetAlignment(secondPiece, argumentPieceAlignment);

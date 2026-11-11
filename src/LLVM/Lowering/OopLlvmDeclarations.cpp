@@ -63,11 +63,12 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                             static_cast<unsigned>(function.cppAbiPlan->physicalReturn.elements[1].widthOrCount));
                     LLVMTypeRef pieces[] = {first, second};
                     LLVMTypeRef result = LLVMStructTypeInContext(context_, pieces, 2, 0);
-                    std::vector<LLVMTypeRef> parameters{first, second};
-                    for (std::size_t i = 2; i < function.cppAbiPlan->physicalParameters.size(); ++i)
+                    std::vector<LLVMTypeRef> parameters;
+                    for (std::size_t i = 0; i < function.cppAbiPlan->physicalParameters.size(); ++i)
                     {
                         const auto kind = function.cppAbiPlan->physicalParameters[i].type.kind;
-                        parameters.push_back(kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
+                        parameters.push_back(kind == interop::abi_plan::TypeKind::Vector ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) :
+                            kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
                             kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
                             kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
                             LLVMIntTypeInContext(context_, static_cast<unsigned>(function.cppAbiPlan->physicalParameters[i].type.widthOrCount)));
