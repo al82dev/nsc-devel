@@ -691,3 +691,19 @@ Las muestras comprueban un record primero, con retorno del mismo tipo, seguido
 de `int` y `float`; no acreditan todos los layouts, otros ordenes ni records de
 clases flotantes o indirectos en firmas mixtas. T09-003 permanece abierto.
 
+## Enteros de 32 y 64 bits con records
+
+La firma de record de doce bytes seguido de `uint`, `long` y `ulong` tenia
+controles C correctos y era rechazada por NSC
+(A:/temp/nsc-t09-sysv-pair-ints-jaq1p27z). La ampliacion verifica el tipo y
+anchura de cada escalar frente al plan de Clang y conserva esas anchuras en
+el contrato vigente. Dos muestras, de record de cuatro y doce bytes, pasaron
+las ocho comparaciones estatica/DLL O0–O3 y la plantilla precompilada sin
+encabezado O0: A:/temp/nsc-t09-sysv-small-ints-2z5_42f5 y
+A:/temp/nsc-t09-sysv-pair-ints-chj_3v26. El productor usa las partes altas
+de un entero negativo y otro sin signo de 64 bits para detectar truncamiento.
+La sonda Clang y metadatos pasaron en A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log, y la regresion del record con `int`/`float`
+en A:/temp/nsc-t09-sysv-pair-mix-0zjk9uli. Otros enteros y clasificaciones
+siguen pendientes; T09-003 no se cierra.
+

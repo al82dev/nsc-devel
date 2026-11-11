@@ -487,10 +487,10 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                     if (f.parameters[i].type.kind == CppTypeKind::Record) hasRecord = true;
                     if (!((f.parameters[i].type.kind == CppTypeKind::Record &&
                            f.parameters[i].type.sizeBits == f.abiPlan->physicalParameters[i].type.widthOrCount) ||
-                          (f.parameters[i].type.kind == CppTypeKind::SignedInteger &&
-                           f.parameters[i].type.sizeBits == 32 &&
+                          ((f.parameters[i].type.kind == CppTypeKind::SignedInteger || f.parameters[i].type.kind == CppTypeKind::UnsignedInteger) &&
+                           (f.parameters[i].type.sizeBits == 32 || f.parameters[i].type.sizeBits == 64) &&
                            f.abiPlan->physicalParameters[i].type.kind == abi_plan::TypeKind::Integer &&
-                           f.abiPlan->physicalParameters[i].type.widthOrCount == 32) ||
+                           f.abiPlan->physicalParameters[i].type.widthOrCount == f.parameters[i].type.sizeBits) ||
                           (f.parameters[i].type.kind == CppTypeKind::Pointer &&
                            f.abiPlan->physicalParameters[i].type.kind == abi_plan::TypeKind::Pointer &&
                            f.abiPlan->physicalParameters[i].type.widthOrCount == 0) ||
@@ -505,7 +505,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                 {
                     const auto& type = f.parameters[i].type;
                     const auto kind = f.abiPlan->physicalParameters[i + 1].type.kind;
-                    if (!((type.kind == CppTypeKind::SignedInteger && type.sizeBits == 32 && kind == abi_plan::TypeKind::Integer) ||
+                    if (!(((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) &&
+                           (type.sizeBits == 32 || type.sizeBits == 64) && kind == abi_plan::TypeKind::Integer &&
+                           type.sizeBits == f.abiPlan->physicalParameters[i + 1].type.widthOrCount) ||
                           (type.kind == CppTypeKind::Pointer && kind == abi_plan::TypeKind::Pointer) ||
                           (type.kind == CppTypeKind::Floating && ((type.sizeBits == 32 && kind == abi_plan::TypeKind::Float) ||
                                                                  (type.sizeBits == 64 && kind == abi_plan::TypeKind::Double))))) return true;

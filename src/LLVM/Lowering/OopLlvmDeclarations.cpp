@@ -70,7 +70,7 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                         parameters.push_back(kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
                             kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
                             kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
-                            LLVMInt32TypeInContext(context_));
+                            LLVMIntTypeInContext(context_, static_cast<unsigned>(function.cppAbiPlan->physicalParameters[i].type.widthOrCount)));
                     }
                     return LLVMFunctionType(result, parameters.data(), static_cast<unsigned>(parameters.size()), 0);
                 }

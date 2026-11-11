@@ -1882,7 +1882,12 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                         {
                             const auto kind = symbol.cppAbiPlan->physicalParameters[i + 1].type.kind;
                             const auto& key = function.parameterTypeKeys[i];
-                            if (!((key == "builtin:int" && symbol.cppParameterTypes[i].kind == interop::CppTypeKind::SignedInteger && kind == interop::abi_plan::TypeKind::Integer) ||
+                            const bool scalarInteger =
+                                (((key == "builtin:int" || key == "builtin:long") && symbol.cppParameterTypes[i].kind == interop::CppTypeKind::SignedInteger) ||
+                                 ((key == "builtin:uint" || key == "builtin:ulong") && symbol.cppParameterTypes[i].kind == interop::CppTypeKind::UnsignedInteger)) &&
+                                kind == interop::abi_plan::TypeKind::Integer &&
+                                symbol.cppParameterTypes[i].sizeBits == symbol.cppAbiPlan->physicalParameters[i + 1].type.widthOrCount;
+                            if (!(scalarInteger ||
                                   (key == "builtin:float" && symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Floating && kind == interop::abi_plan::TypeKind::Float) ||
                                   (key == "builtin:double" && symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Floating && kind == interop::abi_plan::TypeKind::Double) ||
                                   (key == "builtin:int*" && symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Pointer && kind == interop::abi_plan::TypeKind::Pointer))) return false;
@@ -1902,10 +1907,12 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                             if (symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Record) hasRecord = true;
                             if (!((symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Record &&
                                    symbol.cppParameterTypes[i].sizeBits == symbol.cppAbiPlan->physicalParameters[i].type.widthOrCount) ||
-                                  (symbol.cppParameterTypes[i].kind == interop::CppTypeKind::SignedInteger &&
-                                   function.parameterTypeKeys[i] == "builtin:int" &&
+                                  ((((function.parameterTypeKeys[i] == "builtin:int" || function.parameterTypeKeys[i] == "builtin:long") &&
+                                      symbol.cppParameterTypes[i].kind == interop::CppTypeKind::SignedInteger) ||
+                                     ((function.parameterTypeKeys[i] == "builtin:uint" || function.parameterTypeKeys[i] == "builtin:ulong") &&
+                                      symbol.cppParameterTypes[i].kind == interop::CppTypeKind::UnsignedInteger)) &&
                                    symbol.cppAbiPlan->physicalParameters[i].type.kind == interop::abi_plan::TypeKind::Integer &&
-                                   symbol.cppAbiPlan->physicalParameters[i].type.widthOrCount == 32) ||
+                                   symbol.cppParameterTypes[i].sizeBits == symbol.cppAbiPlan->physicalParameters[i].type.widthOrCount) ||
                                   (symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Pointer &&
                                    function.parameterTypeKeys[i] == "builtin:int*" &&
                                    symbol.cppAbiPlan->physicalParameters[i].type.kind == interop::abi_plan::TypeKind::Pointer) ||

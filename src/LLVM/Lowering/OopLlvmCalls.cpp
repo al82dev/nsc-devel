@@ -844,8 +844,6 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             if (!carrier) return nullptr;
             const unsigned alignment = structAlignmentFor(node->typeKey);
             if (alignment == 0) return failValue(error, "SysV record has no alignment");
-            LLVMTypeRef integer = LLVMIntTypeInContext(context_,
-                static_cast<unsigned>(imported->cppAbiPlan->physicalReturn.widthOrCount));
             std::vector<std::size_t> parameterToSource;
             if (!callArgumentOrder(node, count, parameterToSource, error)) return nullptr;
             if (parameterToSource.size() != count) return failValue(error, "SysV record argument mapping is invalid");
@@ -879,9 +877,10 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     sourceArguments.push_back(value);
                     continue;
                 }
-                if (typeKey == "builtin:int")
+                if (typeKey == "builtin:int" || typeKey == "builtin:uint" || typeKey == "builtin:long" || typeKey == "builtin:ulong")
                 {
-                    if (imported->cppAbiPlan->physicalParameters[sourceToParameter[index]].type.widthOrCount != 32)
+                    const auto width = imported->cppAbiPlan->physicalParameters[sourceToParameter[index]].type.widthOrCount;
+                    if (width != (typeKey == "builtin:int" || typeKey == "builtin:uint" ? 32U : 64U))
                         return failValue(error, "SysV scalar argument has an unexpected physical type");
                     sourceArguments.push_back(value);
                     continue;

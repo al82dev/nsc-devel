@@ -146,7 +146,7 @@ inline bool isSysVTwoIntegerRecordWithScalars(const Plan& plan, std::string_view
         if (logical.passing != Passing::Direct || !logical.coercion || logical.offset != 0 ||
             logical.firstPhysical != i || logical.physicalCount != 1 ||
             logical.coercion->kind != p.type.kind || logical.coercion->widthOrCount != p.type.widthOrCount) return false;
-        if (!((p.type.kind == TypeKind::Integer && p.type.widthOrCount == 32) ||
+        if (!((p.type.kind == TypeKind::Integer && (p.type.widthOrCount == 32 || p.type.widthOrCount == 64)) ||
               p.type.kind == TypeKind::Float || p.type.kind == TypeKind::Double ||
               (p.type.kind == TypeKind::Pointer && p.type.widthOrCount == 0))) return false;
     }
