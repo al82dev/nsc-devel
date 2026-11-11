@@ -99,3 +99,5 @@ T09-003: contrastar y probar la forma vector fijo seguido de `i32`, con un recor
 T09-003: conservar la prueba negativa de esta sesion con dos piezas vectoriales, todavia no admitidas; ajustar su consumidor para que el diagnostico siga comprobando la firma ABI.
 T09-003: contrastar y probar un record de cuatro `float` distribuido en dos vectores fijos de dos elementos, incluida su precompilacion. Mantener la prueba negativa de esta sesion en una forma vectorial diferente no admitida.
 T09-003: conservar la prueba negativa de esta sesion con tres `float`, cuya segunda pieza es escalar y aun no se admite.
+T09-003: contrastar y probar el record de tres `float`, con vector fijo seguido de `float`, incluida precompilacion. Mantener el rechazo de una forma vectorial de una sola pieza aun no admitida.
+T09-003: conservar la prueba negativa de esta sesion con un vector fijo como unica pieza, aun no admitido.

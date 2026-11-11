@@ -347,3 +347,15 @@ vector/entero y entero/vector pasaron en A:/temp/nsc-t09-sysv-mixed-vi-bfc4wgmw
 y A:/temp/nsc-t09-sysv-mixed-iv-zg39sn9x. La prueba negativa de esta sesion
 mantiene el rechazo de tres `float` y de callback en
 A:/temp/nsc-t09-sysv-prueba-btryzaxf. Otras formas siguen pendientes.
+
+Vector y escalar: `struct { float x, y, z; }` se representa como
+`{ <2 x float>, float }` en Clang (A:/temp/nsc-t09-if-clang-mrzvb9m2). El
+control C paso y NSC lo rechazo previamente en A:/temp/nsc-t09-sysv-mixed-vf-7_n8zswb.
+Despues pasaron las ocho comparaciones estatica/DLL O0–O3, las firmas LLVM y la
+plantilla sin encabezado O0 en A:/temp/nsc-t09-sysv-mixed-vf-qr2gvly1. La sonda
+y metadatos pasaron en A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log.
+Las regresiones de dos vectores y vector/`i32` pasaron en
+A:/temp/nsc-t09-sysv-mixed-vv-ekv28p0n y A:/temp/nsc-t09-sysv-mixed-vs-poqmw92g.
+La prueba negativa de esta sesion conserva el rechazo de un vector como unica
+pieza y de callback en A:/temp/nsc-t09-sysv-prueba-rn4icml4. Otras formas siguen
+pendientes.
