@@ -1,3 +1,3 @@
 typedef struct T09Unsupported { int x, y, z, w, extra; } T09Unsupported;
-typedef struct T09Other { int x, y, z; } T09Other;
+typedef struct T09Other { double x; int y; } T09Other;
 __attribute__((sysv_abi)) T09Unsupported sysv_record(float first, T09Other second, float third);

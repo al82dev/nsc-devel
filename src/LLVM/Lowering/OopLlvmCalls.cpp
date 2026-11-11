@@ -952,6 +952,32 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 {
                     const auto& argumentKey = node->children[order[i]]->typeKey;
                     const auto& physical = imported->cppAbiPlan->physicalParameters[logical.firstPhysical].type;
+                    if (logical.physicalCount == 2)
+                    {
+                        if (i >= imported->parameterTypeKeys.size() || argumentKey != imported->parameterTypeKeys[i])
+                            return failValue(error, "SysV direct pair argument type is invalid");
+                        LLVMTypeRef argumentCarrier = llvmType(argumentKey, error);
+                        if (!argumentCarrier) return nullptr;
+                        const unsigned argumentAlignment = structAlignmentFor(argumentKey);
+                        if (argumentAlignment == 0) return failValue(error, "SysV direct pair argument has no alignment");
+                        const unsigned pieceAlignment = argumentAlignment < 8 ? argumentAlignment : 8;
+                        LLVMValueRef slot = entryBlockAlloca(argumentCarrier, argumentAlignment, "sysv.indirect.mixed.pair");
+                        LLVMValueRef store = LLVMBuildStore(builder_, sourceArguments[order[i]], slot);
+                        LLVMSetAlignment(store, argumentAlignment);
+                        LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+                        LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
+                        LLVMValueRef offset = LLVMConstInt(i64, 8, 0);
+                        LLVMValueRef secondAddress = LLVMBuildGEP2(builder_, i8, slot, &offset, 1, "sysv.indirect.mixed.pair.second.addr");
+                        LLVMTypeRef secondType = LLVMIntTypeInContext(context_, static_cast<unsigned>(
+                            imported->cppAbiPlan->physicalParameters[logical.firstPhysical + 1].type.widthOrCount));
+                        LLVMValueRef firstPiece = LLVMBuildLoad2(builder_, i64, slot, "sysv.indirect.mixed.pair.first");
+                        LLVMValueRef secondPiece = LLVMBuildLoad2(builder_, secondType, secondAddress, "sysv.indirect.mixed.pair.second");
+                        LLVMSetAlignment(firstPiece, pieceAlignment);
+                        LLVMSetAlignment(secondPiece, pieceAlignment);
+                        arguments.push_back(firstPiece);
+                        arguments.push_back(secondPiece);
+                        continue;
+                    }
                     const bool scalarInteger = argumentKey == "builtin:int" || argumentKey == "builtin:uint" ||
                         argumentKey == "builtin:long" || argumentKey == "builtin:ulong";
                     if (physical.kind == interop::abi_plan::TypeKind::Integer && !scalarInteger)

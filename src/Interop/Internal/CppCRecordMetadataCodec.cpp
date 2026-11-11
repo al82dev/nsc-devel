@@ -535,7 +535,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                             logical.alignment != (*type.alignmentBits < 64 ? 8 : *type.alignmentBits / 8)) return true;
                         continue;
                     }
-                    if (!((type.kind == CppTypeKind::Record && type.sizeBits == physical.widthOrCount && physical.kind == abi_plan::TypeKind::Integer) ||
+                    if (!((type.kind == CppTypeKind::Record &&
+                           ((logical.physicalCount == 1 && type.sizeBits == physical.widthOrCount && physical.kind == abi_plan::TypeKind::Integer) ||
+                            (logical.physicalCount == 2 && type.sizeBits == 64 + f.abiPlan->physicalParameters[logical.firstPhysical + 1].type.widthOrCount))) ||
                           ((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) &&
                            (type.sizeBits == 32 || type.sizeBits == 64) && physical.kind == abi_plan::TypeKind::Integer && type.sizeBits == physical.widthOrCount) ||
                           (type.kind == CppTypeKind::Pointer && physical.kind == abi_plan::TypeKind::Pointer) ||
@@ -634,8 +636,9 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                 const auto& type = f.parameters[i].type;
                 if (!type.sizeBits) { error = "invalid C dependency indirect argument"; return false; }
                 abi_plan::LogicalValue logical;
-                logical.firstPhysical = i + 1;
-                logical.physicalCount = 1;
+                logical.firstPhysical = plan->physicalParameters.size();
+                const bool twoPiece = type.kind == CppTypeKind::Record && *type.sizeBits > 64 && *type.sizeBits <= 128;
+                logical.physicalCount = twoPiece ? 2 : 1;
                 abi_plan::PhysicalParameter physical;
                 if (type.kind == CppTypeKind::Record && *type.sizeBits > 128)
                 {
@@ -655,10 +658,21 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                     logical.coercion = type.kind == CppTypeKind::Pointer ? abi_plan::Type{abi_plan::TypeKind::Pointer} :
                         type.kind == CppTypeKind::Floating ? abi_plan::Type{*type.sizeBits == 64 ? abi_plan::TypeKind::Double : abi_plan::TypeKind::Float} :
                         abi_plan::Type{abi_plan::TypeKind::Integer, *type.sizeBits};
-                    physical.type = *logical.coercion;
+                    if (twoPiece)
+                    {
+                        logical.coercion = abi_plan::Type{abi_plan::TypeKind::Structure};
+                        logical.coercion->elements = {{abi_plan::TypeKind::Integer, 64}, {abi_plan::TypeKind::Integer, *type.sizeBits - 64}};
+                        physical.type = logical.coercion->elements[0];
+                    }
+                    else physical.type = *logical.coercion;
                 }
                 plan->logicalParameters.push_back(logical);
                 plan->physicalParameters.push_back(physical);
+                if (twoPiece)
+                {
+                    physical.type = logical.coercion->elements[1];
+                    plan->physicalParameters.push_back(physical);
+                }
             }
             if (!abi_plan::isSysVIndirectRecordWithArguments(*plan, value.linkSymbol))
             { error = "invalid C dependency indirect ABI plan"; return false; }

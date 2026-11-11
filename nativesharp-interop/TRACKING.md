@@ -1739,6 +1739,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Se probaron retorno `sret` y dos records `byval` del mismo tipo intercalados con `float` e `int`, con alineaciones de 1 y 8 bytes y precompilacion. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probo tambien retorno de 20 bytes con argumentos indirectos de 24 y 32 bytes y alineaciones diferentes, incluida una muestra con argumento alineado a 16 y precompilacion. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probaron retorno indirecto y argumentos que combinan un record directo de tres o cuatro bytes con otro indirecto, incluidos argumentos nombrados y precompilacion. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
+  - La mezcla con retorno indirecto paso tambien con un record directo de doce o dieciseis bytes dividido en dos piezas enteras y otro indirecto, incluida precompilacion. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
 - [ ] T09-004. Emitir una llamada C sin parámetros y con resultado escalar. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-005. Emitir una llamada C con parámetros escalares. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-006. Emitir el paso de punteros a una función C. [Prueba y contraste](pruebas-tanda-09-llamadas/).

@@ -855,3 +855,22 @@ que conserva el rechazo de un record directo de dos piezas aun no admitido
 A:/temp/nsc-t09-sysv-prueba-kkuz_ggj). Otras clases de record directo y firmas
 quedan abiertas; T09-003 no se cierra.
 
+Se ampliaron despues los argumentos directos a records clasificados por Clang
+en dos piezas enteras. La referencia C con record directo de doce bytes y otro
+indirecto paso mientras NSC rechazaba la firma
+(A:/temp/nsc-t09-sysv-directpair-indirect-iexlbks8). El plan, MIR, generador y
+metadatos conservan las posiciones de ambas piezas y del `byval` posterior.
+La muestra paso ocho comparaciones estatica/DLL O0–O3, argumentos nombrados y
+plantilla precompilada sin encabezado O0
+(A:/temp/nsc-t09-sysv-directpair-indirect-nsujc6dz); la variante de dieciseis
+bytes paso las mismas comprobaciones
+(A:/temp/nsc-t09-sysv-directpair16-indirect-k1_jhb7l). La sonda Clang y el
+control de metadatos pasaron (A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log), al igual que las regresiones del record de
+tres bytes, la alineacion indirecta 16 y el control general con rechazo de
+una clase mixta de piezas aun no admitida
+(A:/temp/nsc-t09-sysv-direct3-indirect-ih6jt_wh,
+A:/temp/nsc-t09-sysv-indirect-diff16-eed8vwvp y
+A:/temp/nsc-t09-sysv-prueba-5voqucsx). No se acreditan todas las clases de
+agregado ni firmas posibles; T09-003 permanece abierto.
+

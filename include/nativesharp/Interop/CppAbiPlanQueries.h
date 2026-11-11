@@ -247,34 +247,56 @@ inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view
         plan.returnSignExtend || plan.returnZeroExtend || plan.physicalReturn.kind != TypeKind::Void ||
         plan.logicalReturn.passing != Passing::Indirect || alignment == 0 || alignment > (1ULL << 29) ||
         (alignment & (alignment - 1)) != 0 || plan.logicalParameters.size() < 2 ||
-        plan.physicalParameters.size() != plan.logicalParameters.size() + 1) return false;
+        plan.physicalParameters.empty()) return false;
     const auto& result = plan.physicalParameters[0];
     if (result.type.kind != TypeKind::Pointer || result.type.widthOrCount != 0 || !result.pointee ||
         !result.structureReturn || result.alignment != alignment || result.byValue || result.inRegister ||
         result.signExtend || result.zeroExtend) return false;
     bool hasRecord = false;
+    std::size_t physicalIndex = 1;
     for (std::size_t i = 0; i < plan.logicalParameters.size(); ++i)
     {
         const auto& logical = plan.logicalParameters[i];
-        const auto& physical = plan.physicalParameters[i + 1];
-        if (logical.firstPhysical != i + 1 || logical.physicalCount != 1 || physical.structureReturn ||
+        if (logical.firstPhysical != physicalIndex || physicalIndex >= plan.physicalParameters.size()) return false;
+        const auto& physical = plan.physicalParameters[physicalIndex];
+        if (physical.structureReturn ||
             physical.noAlias || physical.inRegister || physical.signExtend || physical.zeroExtend) return false;
         if (logical.passing == Passing::Indirect)
         {
-            if (!logical.byValue || logical.alignment < 8 || logical.alignment > (1ULL << 29) ||
+            if (logical.physicalCount != 1 || !logical.byValue || logical.alignment < 8 || logical.alignment > (1ULL << 29) ||
                 (logical.alignment & (logical.alignment - 1)) != 0 || !physical.byValue ||
                 physical.type.kind != TypeKind::Pointer || physical.type.widthOrCount != 0 ||
                 !physical.pointee || physical.alignment != logical.alignment) return false;
             hasRecord = true;
+            ++physicalIndex;
+            continue;
+        }
+        if (logical.passing == Passing::Direct && logical.coercion && logical.coercion->kind == TypeKind::Structure)
+        {
+            const auto& type = *logical.coercion;
+            if (logical.offset != 0 || logical.physicalCount != 2 || type.packed || type.elements.size() != 2 ||
+                type.elements[0].kind != TypeKind::Integer || type.elements[0].widthOrCount != 64 ||
+                type.elements[1].kind != TypeKind::Integer || type.elements[1].widthOrCount < 8 ||
+                type.elements[1].widthOrCount > 64 || type.elements[1].widthOrCount % 8 != 0 ||
+                physicalIndex + 2 > plan.physicalParameters.size()) return false;
+            for (std::size_t piece = 0; piece < 2; ++piece)
+            {
+                const auto& p = plan.physicalParameters[physicalIndex + piece];
+                if (p.type.kind != TypeKind::Integer || p.type.widthOrCount != type.elements[piece].widthOrCount ||
+                    p.structureReturn || p.byValue || p.noAlias || p.inRegister || p.signExtend || p.zeroExtend) return false;
+            }
+            physicalIndex += 2;
             continue;
         }
         if (logical.passing != Passing::Direct || !logical.coercion || logical.offset != 0 ||
+            logical.physicalCount != 1 ||
             logical.coercion->kind != physical.type.kind || logical.coercion->widthOrCount != physical.type.widthOrCount ||
             physical.byValue ||
             !((physical.type.kind == TypeKind::Integer && physical.type.widthOrCount >= 8 && physical.type.widthOrCount <= 64 && physical.type.widthOrCount % 8 == 0) ||
               physical.type.kind == TypeKind::Float || physical.type.kind == TypeKind::Double ||
               (physical.type.kind == TypeKind::Pointer && physical.type.widthOrCount == 0))) return false;
+        ++physicalIndex;
     }
-    return hasRecord;
+    return hasRecord && physicalIndex == plan.physicalParameters.size();
 }
 }

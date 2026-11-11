@@ -1889,8 +1889,12 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                                     logical.alignment != (*type.alignmentBits < 64 ? 8 : *type.alignmentBits / 8)) return false;
                                 continue;
                             }
-                            if (!(type.kind == interop::CppTypeKind::Record && type.sizeBits == physical.widthOrCount &&
-                                  physical.kind == interop::abi_plan::TypeKind::Integer) &&
+                            const bool directRecord = type.kind == interop::CppTypeKind::Record &&
+                                ((logical.physicalCount == 1 && physical.kind == interop::abi_plan::TypeKind::Integer &&
+                                  type.sizeBits == physical.widthOrCount) ||
+                                 (logical.physicalCount == 2 && type.sizeBits == 64 +
+                                  symbol.cppAbiPlan->physicalParameters[logical.firstPhysical + 1].type.widthOrCount));
+                            if (!directRecord &&
                                 !((((key == "builtin:int" || key == "builtin:long") && type.kind == interop::CppTypeKind::SignedInteger) ||
                                    ((key == "builtin:uint" || key == "builtin:ulong") && type.kind == interop::CppTypeKind::UnsignedInteger)) &&
                                    physical.kind == interop::abi_plan::TypeKind::Integer && type.sizeBits == physical.widthOrCount) &&

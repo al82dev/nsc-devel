@@ -2023,6 +2023,26 @@ bool checkDependencyTypeCodec()
         restoredRecord.declaration.abiPlan->logicalParameters[1].passing == abi_plan::Passing::Direct &&
         restoredRecord.declaration.abiPlan->physicalParameters[4].byValue,
         "C dependency function retains direct and indirect record arguments");
+    auto pairIndirectPlan = std::make_shared<abi_plan::Plan>(*directIndirectPlan);
+    abi_plan::Type directPair;
+    directPair.kind = abi_plan::TypeKind::Structure;
+    directPair.elements = {{abi_plan::TypeKind::Integer, 64}, {abi_plan::TypeKind::Integer, 32}};
+    pairIndirectPlan->logicalParameters[1].coercion = directPair;
+    pairIndirectPlan->logicalParameters[1].physicalCount = 2;
+    pairIndirectPlan->logicalParameters[2].firstPhysical = 4;
+    pairIndirectPlan->logicalParameters[3].firstPhysical = 5;
+    pairIndirectPlan->physicalParameters[2].type = directPair.elements[0];
+    abi_plan::PhysicalParameter pairSecond;
+    pairSecond.type = directPair.elements[1];
+    pairIndirectPlan->physicalParameters.insert(pairIndirectPlan->physicalParameters.begin() + 3, pairSecond);
+    recordFunction.declaration.parameters[1].type.sizeBits = 96;
+    recordFunction.declaration.abiPlan = pairIndirectPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVIndirectRecordWithArguments(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->logicalParameters[1].physicalCount == 2 &&
+        restoredRecord.declaration.abiPlan->physicalParameters[5].byValue,
+        "C dependency function retains a direct two-piece record and an indirect record");
     recordFunction.declaration.returnType.sizeBits = 192;
     recordFunction.declaration.returnType.alignmentBits = 8;
     recordFunction.declaration.parameters.resize(1);
