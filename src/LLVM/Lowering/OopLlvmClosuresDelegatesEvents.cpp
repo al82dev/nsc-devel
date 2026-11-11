@@ -1191,7 +1191,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             return key.starts_with("type:") && !key.ends_with('*');
         };
         const bool hasRecord = std::any_of(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), recordArgument);
-        if (externC && node->cppFunctionPointerPlan && hasRecord && node->typeKey == "builtin:int")
+        const bool recordReturn = recordArgument(node->typeKey) && node->argumentCount == 1 &&
+            node->argumentTypeKeys.size() == 1 && node->argumentTypeKeys[0] == node->typeKey;
+        if (externC && node->cppFunctionPointerPlan && hasRecord && (node->typeKey == "builtin:int" || recordReturn))
         {
             using namespace interop::abi_plan;
             const auto& plan = *node->cppFunctionPointerPlan;
@@ -1200,9 +1202,26 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 signature->callingConvention != language::CallingConvention::SysV || signature->variadic ||
                 signature->parameters.size() != node->argumentCount ||
                 node->argumentTypeKeys.size() != node->argumentCount ||
-                plan.logicalParameters.size() != node->argumentCount || plan.physicalReturn.kind != TypeKind::Integer ||
-                plan.physicalReturn.widthOrCount != 32 || plan.logicalReturn.passing != Passing::Direct)
+                plan.logicalParameters.size() != node->argumentCount || plan.logicalReturn.passing != Passing::Direct)
                 return failValue(error, "sysv_abi function pointer record plan is not supported");
+            LLVMTypeRef returnType = LLVMInt32TypeInContext(context_);
+            LLVMTypeRef returnCarrier = nullptr;
+            if (recordReturn)
+            {
+                const auto* returnLayout = findStructLayout(mirModel_, node->typeKey);
+                const auto& physical = plan.physicalReturn;
+                if (!returnLayout || returnLayout->size != 12 || returnLayout->alignment != 4 ||
+                    physical.kind != TypeKind::Structure || physical.packed || physical.elements.size() != 2 ||
+                    physical.elements[0].kind != TypeKind::Integer || physical.elements[0].widthOrCount != 64 ||
+                    physical.elements[1].kind != TypeKind::Integer || physical.elements[1].widthOrCount != 32)
+                    return failValue(error, "sysv_abi function pointer record return is not supported");
+                returnCarrier = llvmType(node->typeKey, error);
+                if (!returnCarrier) return nullptr;
+                LLVMTypeRef pieces[] = {LLVMInt64TypeInContext(context_), LLVMInt32TypeInContext(context_)};
+                returnType = LLVMStructTypeInContext(context_, pieces, 2, 0);
+            }
+            else if (plan.physicalReturn.kind != TypeKind::Integer || plan.physicalReturn.widthOrCount != 32)
+                return failValue(error, "sysv_abi function pointer return plan is not supported");
             const auto plain = [](const PhysicalParameter& p) {
                 return !p.pointee && !p.structureReturn && !p.byValue && !p.signExtend &&
                     !p.zeroExtend && !p.inRegister && !p.noAlias;
@@ -1296,7 +1315,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             releaseTransferredArguments(node);
             delegateValue = checkedReceiver(delegateValue, error);
             if (!delegateValue) return nullptr;
-            LLVMTypeRef functionType = LLVMFunctionType(LLVMInt32TypeInContext(context_), physicalTypes.data(),
+            LLVMTypeRef functionType = LLVMFunctionType(returnType, physicalTypes.data(),
                 static_cast<unsigned>(physicalTypes.size()), 0);
             LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, physicalArguments.data(),
                 static_cast<unsigned>(physicalArguments.size()), "sysv.callback.result");
@@ -1304,6 +1323,18 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             for (const auto& value : byValues)
                 applySysVRecordByValue(context_, value.carrier, value.alignment, value.ordinal,
                     [&](LLVMAttributeIndex index, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, index, attribute); });
+            if (recordReturn)
+            {
+                LLVMValueRef slot = entryBlockAlloca(returnCarrier, 4, "sysv.callback.return");
+                LLVMValueRef first = LLVMBuildStore(builder_, LLVMBuildExtractValue(builder_, call, 0, "sysv.callback.return.first"), slot);
+                LLVMValueRef second = LLVMBuildStore(builder_, LLVMBuildExtractValue(builder_, call, 1, "sysv.callback.return.second"),
+                    byteOffset(slot, 8, "sysv.callback.return.second.addr"));
+                LLVMSetAlignment(first, 4);
+                LLVMSetAlignment(second, 4);
+                LLVMValueRef result = LLVMBuildLoad2(builder_, returnCarrier, slot, "sysv.callback.return.value");
+                LLVMSetAlignment(result, 4);
+                return result;
+            }
             return call;
         }
         std::vector<LLVMValueRef> arguments;

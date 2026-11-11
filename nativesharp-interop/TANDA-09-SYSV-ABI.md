@@ -1212,6 +1212,26 @@ cache y rechazo de alteraciones en cada record
 (`A:/temp/nsc-t09-sysv-indirecta-record-pre-um8nmmxm`). No se modifico el
 compilador para este contraste y no se acreditan otras combinaciones.
 
+**Retorno indirecto de record:** Clang recibe y devuelve un record de tres
+enteros como dos piezas `i64`/`i32`; el control C paso y NSC originalmente
+rechazo la firma (`A:/temp/nsc-t09-sysv-indirecta-retorno-record-z8mb1_ob`).
+La implementacion reconstruye el resultado a partir del plan validado cuando el
+argumento y el retorno son el mismo tipo de 12 bytes alineado a 4. Pasaron
+ocho comparaciones C/NS en estatica y DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-record-matriz-5xavzvu_`) y la plantilla
+precompilada sin encabezado en las mismas modalidades, con acierto de cache y
+rechazo de una variante no acreditada
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-6iyr2nwq`). Se comprobaron los
+campos del resultado y la conservacion del argumento. Pasaron las matrices de
+piezas con `byval`, records distintos, record entre escalares y llamadas
+escalares, junto a transporte, ABI e identidad
+(`A:/temp/nsc-t09-sysv-indirecta-record-matriz-zro9xtb5`,
+`A:/temp/nsc-t09-sysv-indirecta-record-matriz-b3lrjnez`,
+`A:/temp/nsc-t09-sysv-indirecta-record-matriz-mjyjxb1x`,
+`A:/temp/nsc-t09-sysv-indirecta-matriz-yx91szzr`,
+`A:/temp/t09-transport-directed/`). Otras formas de retorno y la prueba
+negativa anterior siguen pendientes.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor

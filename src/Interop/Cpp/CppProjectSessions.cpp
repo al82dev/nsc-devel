@@ -357,8 +357,11 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         pointer.sizeBits != 64 || pointer.alignmentBits != 64 || !pointer.element ||
         pointer.element->kind != CppTypeKind::Function || !pointer.element->function) return {};
     const auto& signature = *pointer.element->function;
+    const bool returnInteger = signature.returnType.kind == CppTypeKind::SignedInteger &&
+        signature.returnType.canonicalSpelling == "int";
+    const bool returnRecord = signature.returnType.kind == CppTypeKind::Record;
     if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "sysv_abi" ||
-        signature.returnType.kind != CppTypeKind::SignedInteger || signature.returnType.canonicalSpelling != "int" ||
+        (!returnInteger && !returnRecord) ||
         signature.parameterTypes.empty() || signature.parameterTypes.size() > 1024) return {};
     struct ReplayRecord
     {
@@ -416,6 +419,14 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         }
     }
     if (selectedRecords.empty()) return {};
+    if (returnRecord)
+    {
+        std::vector<std::uint8_t> encodedReturn;
+        if (signature.parameterTypes.size() != 1 || selectedRecords.size() != 1 ||
+            signature.returnType.sizeBits != 96 || signature.returnType.alignmentBits != 32 ||
+            !metadata_detail::encodeCDependencyType(signature.returnType, encodedReturn, error) ||
+            encodedReturn != selectedRecords[0].encoded) return {};
+    }
     std::vector<std::uint8_t> aliasType;
     if (!metadata_detail::encodeCDependencyType(pointer, aliasType, error)) return {};
     std::optional<metadata_detail::CDependencyAliasSnapshot> selectedAlias;
@@ -490,7 +501,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     options.resourceDirectory = environment.resourceDirectory;
     options.workingDirectory = environment.workingDirectory;
     options.input = CppBufferInput{"nsc-pointer-replay.c", recordSource +
-        "typedef int (__attribute__((sysv_abi)) *__nsc_replay_pointer)(" + parameterSource + ");\n"};
+        "typedef " + (returnRecord ? "struct __nsc_abi_record" : "int") +
+        " (__attribute__((sysv_abi)) *__nsc_replay_pointer)(" + parameterSource + ");\n"};
     auto opened = factory.open(std::move(options), {});
     auto* holder = std::get_if<std::unique_ptr<CppInteropSession>>(&opened);
     if (!holder || !*holder) return {};

@@ -1,0 +1,7 @@
+int Main() {
+    T09ReturnRecord input; input.x = 1; input.y = 2; input.z = 3;
+    T09ReturnCallback callback = t09_get_return_callback();
+    T09ReturnRecord result = callback(input);
+    if (input.x != 1 || input.y != 2 || input.z != 3 || result.x != 11 || result.y != 22 || result.z != 33) return 1;
+    return 0;
+}
