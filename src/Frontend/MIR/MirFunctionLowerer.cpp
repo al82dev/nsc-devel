@@ -225,6 +225,7 @@ void copyFunctionMetadata(
     function.isCppExternal = source.isCppExternal;
     function.cppVectorCall = source.cppVectorCall;
     function.cppSysVCall = source.cppSysVCall;
+    function.cppAbiPlan = source.cppAbiPlan;
     function.isTransportedInlineBody = source.isTransportedInlineBody;
     function.isSyntheticImplicitConstructor = source.isSyntheticImplicitConstructor;
     function.importDllName = source.importDllName;

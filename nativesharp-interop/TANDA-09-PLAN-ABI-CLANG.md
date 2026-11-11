@@ -163,3 +163,15 @@ tipos y layouts observados en el lookup de un grafo temporal y proyecta la
 funcion `p3`, verificando que su simbolo semantico conserve el plan. CTest paso
 1/1 en A:/temp/t09-abi-probe-ctest.log. Esta comprobacion no emite ni ejecuta
 la llamada por valor; HIR continua rechazandola hasta implementar su ABI.
+
+## Transporte HIR y MIR
+
+El simbolo de funcion puede pasar la referencia inmutable del plan a HIR y MIR.
+Una prueba construye un proyecto temporal, inyecta una funcion SysV escalar
+con plan obtenido de Clang y comprueba la misma informacion en ambas etapas;
+la sonda CTest paso 1/1 en A:/temp/t09-abi-probe-ctest.log. El backend aun no
+utiliza el plan para registros y la barrera de HIR sigue activa para ellos.
+Este control no demuestra la persistencia por NSMeta de planes de agregados.
+NSC se enlazo incrementalmente y las regresiones SysV y vectorcall pasaron
+8/8 cada una en A:/temp/nsc-t09-sysv-prueba-yjxkpyye y
+A:/temp/nsc-t09-vectorcall-5y2ug6rd.

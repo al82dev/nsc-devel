@@ -72,3 +72,4 @@ T09-003: exponer una consulta experimental de plan ABI para una funcion C libre 
 T09-003: ampliar la prueba de sesion para cubrir redeclaracion C compatible, un argumento incompleto y la exclusividad de la consulta al modo C.
 T09-003: transportar opcionalmente el plan ABI por valor desde la declaracion C al simbolo semantico. Consultarlo solo para funciones C externas SysV con records por valor; mantener el rechazo de agregados en HIR y no alterar NSMeta ni emision en esta etapa.
 T09-003: comprobar la proyeccion de una firma SysV con record por valor instalando previamente el tipo importado y su layout en el lookup del proyecto; no habilitar aun la llamada.
+T09-003: transportar la referencia inmutable del plan de simbolo semantico a HIR y MIR, sin utilizarla aun para emitir agregados. Probar el transporte con un simbolo escalar inyectado y un proyecto temporal real.

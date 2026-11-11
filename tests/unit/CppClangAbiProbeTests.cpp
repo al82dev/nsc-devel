@@ -28,6 +28,9 @@
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Frontend/ProjectSyntaxUnit.h"
+#include "nativesharp/Frontend/ProjectCompilation.h"
+#include "nativesharp/Frontend/ProjectOopHirModel.h"
+#include "nativesharp/Frontend/ProjectOopMirModel.h"
 
 namespace t09_probe = nativesharp::interop::abi_plan;
 
@@ -333,6 +336,28 @@ int main(int argc, char** argv) {
     auto valueProjection = projectCppSemanticFunctionWithRecords(valueObservation, 0, "AbiProbe", recordGroups, &lookup);
     const auto* projectedValue = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&valueProjection);
     if (!projectedValue || !projectedValue->cppAbiPlan || projectedValue->cppAbiPlan->symbol != "p3") return 64;
+    const auto transportProject = uniqueDirectory / "transport.nsproj";
+    { std::ofstream file(transportProject); if (!file) return 65;
+      file << "<Project><PropertyGroup><Name>AbiProbe</Name></PropertyGroup><ItemGroup>"
+              "<Compile Include=\"transport.ns\"/></ItemGroup></Project>"; }
+    { std::ofstream file(uniqueDirectory / "transport.ns"); if (!file) return 66;
+      file << "int Main() { if (ps8((sbyte)-7) != (sbyte)-7) return 1; return 0; }"; }
+    nativesharp::frontend::ProjectCompilation transportCompilation;
+    std::string transportError;
+    if (!transportCompilation.setCppImportedFunctions({*projected}, transportError) ||
+        !transportCompilation.compileProjectOopMir(transportProject, transportError)) {
+        llvm::errs() << "ABI transport project failed: " << transportError << "\n";
+        return 67;
+    }
+    const auto* hir = transportCompilation.oopHirModel();
+    const auto* mir = transportCompilation.oopMirModel();
+    if (!hir || !mir) return 68;
+    bool foundHirPlan = false, foundMirPlan = false;
+    for (const auto& function : hir->functions())
+        if (function.mangledName == "ps8") foundHirPlan = function.cppAbiPlan && function.cppAbiPlan->symbol == "ps8";
+    for (const auto& function : mir->functions())
+        if (function.mangledName == "ps8") foundMirPlan = function.cppAbiPlan && function.cppAbiPlan->symbol == "ps8";
+    if (!foundHirPlan || !foundMirPlan) return 69;
     std::vector<CppProjectSessions> sessionGroups(1);
     sessionGroups[0].projectFile = projectPath;
     sessionGroups[0].sessions.push_back(std::move(inventorySession));

@@ -1722,6 +1722,7 @@ void ProjectOopHirModel::initializeNamespaceFunction(
     function.isExportedC = symbol.isExportedC;
     if (symbol.isExportedC) function.cAbiName = symbol.name;
     function.mangledName = symbol.mangledName;
+    function.cppAbiPlan = symbol.cppAbiPlan;
     function.debugDisplayName = symbol.namespaceName.empty()
         ? symbol.name
         : symbol.namespaceName + "." + symbol.name;
