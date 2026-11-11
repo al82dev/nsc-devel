@@ -21,6 +21,9 @@ int Main() {
     if (boolean(true) != false || boolean(false) != true) return 11;
     int varValue = 17; T09VarCallback variadic = t09_get_variadic_callback();
     if (variadic(3, (short)-2, 2.25f, &varValue) != 1 || varValue != 42) return 13;
+    int pressureValue = 17; T09VarCallback pressure = t09_get_pressure_callback();
+    if (pressure(18, 1, 2, 3, 4, 5, 6, (uint)4000000000,
+        1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, &pressureValue, true) != 1 || pressureValue != 43) return 14;
     int x = 10;
     T09PointerCallback pointer = t09_get_pointer_callback();
     if (pointer(&x, 3) != &x || x != 13) return 5;

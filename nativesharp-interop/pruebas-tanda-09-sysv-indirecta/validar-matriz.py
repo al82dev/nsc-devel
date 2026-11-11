@@ -50,7 +50,7 @@ for mode in ('estatica', 'dll'):
                 '/export:t09_get_uint_callback', '/export:t09_get_ulong_callback',
                 '/export:t09_get_s8_callback', '/export:t09_get_u8_callback', '/export:t09_get_s16_callback',
                 '/export:t09_get_u16_callback', '/export:t09_get_bool_callback',
-                '/export:t09_get_variadic_callback',
+                '/export:t09_get_variadic_callback', '/export:t09_get_pressure_callback',
                 '/export:t09_get_pointer_callback', '/export:t09_get_void_callback', '/out:'+str(case/'api.dll'),
                 '/implib:'+str(case/'api-dll.lib'), str(case/'api.obj'), str(case/'variadic.obj')])
             library, project, cflags = 'api-dll.lib', 'Dll.nsproj', ['-DAPI_DLL_IMPORT']
@@ -96,6 +96,9 @@ for name in ('api.h', 'api.lib'):
     'T09BoolCallback boolean = t09_get_bool_callback(); if (boolean(true) != false || boolean(false) != true) return 11; '
     'int varValue = 17; T09VarCallback variadic = t09_get_variadic_callback(); '
     'if (variadic(3, (short)-2, 2.25f, &varValue) != 1 || varValue != 42) return 13; '
+    'int pressureValue = 17; T09VarCallback pressure = t09_get_pressure_callback(); '
+    'if (pressure(18, 1, 2, 3, 4, 5, 6, (uint)4000000000, '
+    '1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, &pressureValue, true) != 1 || pressureValue != 43) return 14; '
     'int x = 10; T09PointerCallback pointer = t09_get_pointer_callback(); '
     'if (pointer(&x, 3) != &x || x != 13) return 5; '
     'T09VoidCallback setter = t09_get_void_callback(); setter(&x); if (x != 47) return 6; '

@@ -33,4 +33,5 @@ API_STORAGE T09S16Callback t09_get_s16_callback(void);
 API_STORAGE T09U16Callback t09_get_u16_callback(void);
 API_STORAGE T09BoolCallback t09_get_bool_callback(void);
 API_STORAGE T09VarCallback t09_get_variadic_callback(void);
+API_STORAGE T09VarCallback t09_get_pressure_callback(void);
 API_STORAGE int t09_normal(int, int, int, int, int, int);

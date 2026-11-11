@@ -1124,8 +1124,18 @@ el rechazo de un record variadico y las conversiones incompatibles
 (`A:/temp/t09-transport-directed/`) y las regresiones de llamadas y variadicas
 directas (`A:/temp/nsc-t09-llamadas-qywnfjf3`,
 `A:/temp/nsc-t09-sysv-varargs-l1fh1xv9`). Se acreditan solo los argumentos
-escalares y puntero de esta muestra; los records por valor en esta ruta,
-otras firmas y presion de registros permanecen pendientes.
+escalares y puntero de esta muestra; en esa revision los records por valor,
+otras firmas y la presion de registros permanecian pendientes.
+
+Se contrasto despues una llamada indirecta con siete argumentos enteros, nueve
+flotantes, un puntero y un booleano promovido, ademas del prefijo. El productor
+comprueba todos los enteros y flotantes, el contador de registros flotantes,
+los argumentos que pasan por pila y la escritura a traves del puntero. Pasaron
+el control C y NativeSharp en estatica y DLL O0–O3 y la plantilla precompilada
+sin encabezado O0 (`A:/temp/nsc-t09-sysv-indirecta-matriz-1syff98h`); tambien
+pasaron las pruebas negativas de records y conversiones incompatibles
+(`A:/temp/nsc-t09-sysv-indirecta-autorfbq`). Esta evidencia cubre esa firma,
+no todos los ordenes ni agregados por valor.
 
 ## Retorno indirecto sin argumentos byval
 
