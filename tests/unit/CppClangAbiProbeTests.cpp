@@ -31,6 +31,8 @@ int main() {
         R24 __attribute__((sysv_abi)) p24(R24);
         signed char __attribute__((sysv_abi)) ps8(signed char);
         Vec4 __attribute__((sysv_abi)) pv(Vec4);
+        R24 __attribute__((sysv_abi)) pm(int, RF, R3, R24);
+        int __attribute__((sysv_abi)) pvariadic(int, ...);
     )c";
     auto ast = clang::tooling::buildASTFromCodeWithArgs(source,
         {"-x", "c", "-std=c11", "-target", "x86_64-pc-windows-msvc"}, "probe.c");
@@ -44,6 +46,7 @@ int main() {
     generator->Initialize(context);
     unsigned matched = 0;
     bool unsupportedRejected = false;
+    bool variadicRejected = false;
     std::map<std::string, t09_probe::Plan> copiedPlans;
     for (const auto* decl : context.getTranslationUnitDecl()->decls()) {
         const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
@@ -55,13 +58,20 @@ int main() {
             unsupportedRejected = true;
             continue;
         }
-        if (name != "p3" && name != "p16" && name != "pf" && name != "p24" && name != "ps8") continue;
+        if (name == "pvariadic") {
+            std::string error;
+            if (t09_probe::copyPlan(*generator, *function, error) ||
+                error != "variadic call plan not represented") return 27;
+            variadicRejected = true;
+            continue;
+        }
+        if (name != "p3" && name != "p16" && name != "pf" && name != "p24" && name != "ps8" && name != "pm") continue;
         auto* physical = clang::CodeGen::convertFreeFunctionType(generator->CGM(), function);
         clang::CanQual<clang::FunctionProtoType> prototype =
             context.getCanonicalType(function->getType()).getAs<clang::FunctionProtoType>();
         if (!prototype) return 12;
         const auto& plan = clang::CodeGen::arrangeFreeFunctionType(generator->CGM(), prototype);
-        if (plan.arg_size() != 1) return 13;
+        if (plan.arg_size() != (name == "pm" ? 4U : 1U)) return 13;
         std::string copyError;
         auto copied = t09_probe::copyPlan(*generator, *function, copyError);
         if (!copied) { llvm::errs() << copyError << "\n"; return 19; }
@@ -111,7 +121,7 @@ int main() {
         if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
-    if (matched != 5 || copiedPlans.size() != 5 || !unsupportedRejected) return 7;
+    if (matched != 6 || copiedPlans.size() != 6 || !unsupportedRejected || !variadicRejected) return 7;
     generator.reset();
     ast.reset();
     const auto& p3 = copiedPlans.at("p3");
@@ -134,5 +144,12 @@ int main() {
     const auto& ps8 = copiedPlans.at("ps8");
     if (!ps8.returnSignExtend || !ps8.logicalParameters[0].signExtend ||
         !ps8.physicalParameters[0].signExtend) return 24;
+    const auto& pm = copiedPlans.at("pm");
+    if (pm.physicalParameters.size() != 6 || !pm.physicalParameters[0].structureReturn ||
+        pm.logicalParameters.size() != 4 || pm.logicalParameters[0].firstPhysical != 1 ||
+        pm.logicalParameters[0].physicalCount != 1 || pm.logicalParameters[1].firstPhysical != 2 ||
+        pm.logicalParameters[1].physicalCount != 2 || pm.logicalParameters[2].firstPhysical != 4 ||
+        pm.logicalParameters[2].physicalCount != 1 || pm.logicalParameters[3].firstPhysical != 5 ||
+        pm.logicalParameters[3].physicalCount != 1 || !pm.physicalParameters[5].byValue) return 26;
     return 0;
 }

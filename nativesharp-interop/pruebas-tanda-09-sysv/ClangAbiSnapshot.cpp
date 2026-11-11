@@ -105,6 +105,7 @@ std::optional<Plan> copyPlan(clang::CodeGenerator& generator,
     Plan result;
     result.callingConvention = declaration->getCallingConv();
     result.variadic = physical->isVarArg();
+    if (result.variadic) { error = "variadic call plan not represented"; return std::nullopt; }
     result.returnSignExtend = declaration->hasRetAttribute(llvm::Attribute::SExt);
     result.returnZeroExtend = declaration->hasRetAttribute(llvm::Attribute::ZExt);
     auto returnType = copyType(physical->getReturnType(), 0);
@@ -140,6 +141,60 @@ std::optional<Plan> copyPlan(clang::CodeGenerator& generator,
         }
         result.physicalParameters.push_back(std::move(parameter));
     }
+    unsigned next = 0;
+    if (logical.getReturnInfo().isIndirect())
+    {
+        if (result.physicalParameters.empty() || !result.physicalParameters[0].structureReturn)
+        { error = "hidden return mapping not represented"; return std::nullopt; }
+        next = 1;
+    }
+    else if (!logical.getReturnInfo().isIgnore())
+    {
+        const auto& ret = logical.getReturnInfo();
+        if ((!ret.isDirect() && !ret.isExtend()) || ret.getCoerceToType() != physical->getReturnType())
+        { error = "direct return mapping not represented"; return std::nullopt; }
+    }
+    for (unsigned ordinal = 0; ordinal < logical.arg_size(); ++ordinal)
+    {
+        const auto& info = logical.arguments()[ordinal].info;
+        auto& value = result.logicalParameters[ordinal];
+        value.firstPhysical = next;
+        if (info.getPaddingType()) { error = "argument padding not represented"; return std::nullopt; }
+        if (info.isIgnore()) continue;
+        if (info.isIndirect())
+        {
+            if (next >= physical->getNumParams() || !physical->getParamType(next)->isPointerTy() ||
+                result.physicalParameters[next].byValue != info.getIndirectByVal())
+            { error = "indirect argument mapping not represented"; return std::nullopt; }
+            value.physicalCount = 1;
+            ++next;
+            continue;
+        }
+        if (!info.isDirect() && !info.isExtend())
+        { error = "argument mapping not represented"; return std::nullopt; }
+        auto* coerce = info.getCoerceToType();
+        if (!coerce) { error = "argument coercion unavailable"; return std::nullopt; }
+        if (const auto* structure = llvm::dyn_cast<llvm::StructType>(coerce);
+            structure && info.isDirect() && info.getCanBeFlattened())
+        {
+            for (llvm::Type* part : structure->elements())
+            {
+                if (next >= physical->getNumParams() || physical->getParamType(next) != part)
+                { error = "flattened argument mapping not represented"; return std::nullopt; }
+                ++next;
+                ++value.physicalCount;
+            }
+        }
+        else
+        {
+            if (next >= physical->getNumParams() || physical->getParamType(next) != coerce)
+            { error = "direct argument mapping not represented"; return std::nullopt; }
+            ++next;
+            value.physicalCount = 1;
+        }
+    }
+    if (next != physical->getNumParams())
+    { error = "unmapped physical parameters"; return std::nullopt; }
     return result;
 }
 }

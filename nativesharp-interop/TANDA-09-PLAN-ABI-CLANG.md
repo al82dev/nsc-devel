@@ -70,3 +70,12 @@ clases `ABIArgInfo`, atributos, mapeos logico-fisicos o tipos LLVM. El rechazo
 del vector valida el limite del prototipo, no implementa interoperabilidad con
 vectores. Antes de utilizar estos datos hay que completar y comprobar esos
 contratos para las formas que se habiliten.
+
+Ampliacion del prototipo: se asignan posiciones y cantidades fisicas a cada
+argumento logico, comprobando los tipos que Clang genero. Se contemplan un
+retorno oculto `sret`, expansion de una estructura de coercion y argumentos
+indirectos; padding no representado, tipos no reconocidos y llamadas variadicas
+se rechazan. Una firma mixta con retorno oculto, escalar, record mixto, record
+de 3 bytes y argumento `byval` paso la sonda, junto con los rechazos de vector y
+variadica. CTest paso 1/1 en A:/temp/t09-abi-probe-ctest.log. El mapeo es
+experimental y aun no se usa para generar llamadas ni garantiza toda forma ABI.

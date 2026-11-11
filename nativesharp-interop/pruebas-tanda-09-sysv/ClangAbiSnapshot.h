@@ -25,6 +25,8 @@ struct LogicalValue
     std::optional<Type> coercion;
     std::uint64_t offset = 0;
     std::uint64_t alignment = 0;
+    std::uint64_t firstPhysical = 0;
+    std::uint64_t physicalCount = 0;
     bool flatten = false;
     bool byValue = false;
     bool signExtend = false;
