@@ -56,6 +56,12 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicFunctionPointer
     const frontend::ProjectNameLookup& lookup, const frontend::CppImportedTypeAlias& alias,
     std::string_view resolvedTypeKey, std::span<const std::string> optionalTypeKeys);
 
+std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunctionPointerForAlias(
+    const compilation::ProjectGraph& graph, std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const frontend::ProjectNameLookup& lookup, const frontend::CppImportedTypeAlias& alias,
+    std::string_view resolvedTypeKey, std::span<const std::string> optionalTypeKeys,
+    const CppProjectSessionEnvironment& environment, CppInteropSessionFactory& factory);
+
 // Records are accepted only after resolving and comparing their live origins.
 std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,

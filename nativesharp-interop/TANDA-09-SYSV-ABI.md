@@ -1354,6 +1354,32 @@ cuatro sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
 precompilacion del record opcional por puntero siguen pendientes; este
 transporte no acredita interoperabilidad.
 
+**Emision posterior de la muestra variadica indirecta:** se emite la firma
+con prefijo `int` y record opcional `double`/`int` a partir del plan validado,
+con copia y convencion SysV. El control C y NativeSharp ejecutaron y coincidieron
+(`A:/temp/nsc-t09-sysv-indirecta-variadica-record-s08siigr`); pasaron ocho
+comparaciones estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-record-matriz-hreixuot`). Pasaron cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y la matriz de punteros escalares
+(`A:/temp/nsc-t09-sysv-indirecta-matriz-y2mcrc0x`). La prueba de transporte
+anterior permanece intacta y falla porque exige que LLVM rechace esta misma
+llamada (`A:/temp/nsc-t09-sysv-indirecta-variadica-record-c_lkaa_9`).
+
+**Precompilacion posterior:** se reprodujo el rechazo del consumidor sin
+encabezado (`A:/temp/nsc-t09-sysv-indirecta-record-pre-32y4tkcw`). Se recuperan
+el typedef y record del catalogo vigente, se contrastan identidad, campos y
+layout, y Clang clasifica la llamada en una sesion sintetica. La muestra paso
+estatica y DLL O0-O3, cache fria y reutilizada, y un rechazo de record distinto
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-v64ezc2r`). Pasaron de nuevo ocho
+comparaciones directas (`A:/temp/nsc-t09-sysv-indirecta-record-matriz-988mn1e6`),
+cuatro sondas (`A:/temp/t09-test-varptr.log`), transporte, ABI e identidad
+(`A:/temp/t09-transport-directed/`), la regresion variadica directa
+(`A:/temp/nsc-t09-sysv-varargs-lp8i7n1u`) y la matriz indirecta escalar
+(`A:/temp/nsc-t09-sysv-indirecta-matriz-xp8zy54f`). Otras firmas y la
+contradiccion con la prueba anterior siguen pendientes; no se acredita
+compatibilidad general.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor
