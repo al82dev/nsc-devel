@@ -1680,6 +1680,39 @@ bool checkDependencyTypeCodec()
             restoredRecord.declaration.abiPlan->physicalReturn.elements[1].widthOrCount == bits,
             "C dependency function retains the second piece width");
     }
+    auto indirectPlan = std::make_shared<abi_plan::Plan>();
+    indirectPlan->symbol = recordFunction.linkSymbol;
+    indirectPlan->targetTriple = "x86_64-pc-windows-msvc";
+    indirectPlan->dataLayout = "e-test";
+    indirectPlan->callingConvention = 78;
+    indirectPlan->logicalReturn.passing = abi_plan::Passing::Indirect;
+    indirectPlan->logicalReturn.alignment = 1;
+    abi_plan::LogicalValue indirectLogical;
+    indirectLogical.passing = abi_plan::Passing::Indirect;
+    indirectLogical.alignment = 8;
+    indirectLogical.byValue = true;
+    indirectLogical.firstPhysical = 1;
+    indirectLogical.physicalCount = 1;
+    indirectPlan->logicalParameters.push_back(indirectLogical);
+    abi_plan::PhysicalParameter indirectResult;
+    indirectResult.type.kind = abi_plan::TypeKind::Pointer;
+    indirectResult.pointee = abi_plan::Type{};
+    indirectResult.structureReturn = true;
+    indirectResult.alignment = 1;
+    indirectPlan->physicalParameters.push_back(indirectResult);
+    abi_plan::PhysicalParameter indirectArgument;
+    indirectArgument.type.kind = abi_plan::TypeKind::Pointer;
+    indirectArgument.pointee = abi_plan::Type{};
+    indirectArgument.byValue = true;
+    indirectArgument.alignment = 8;
+    indirectPlan->physicalParameters.push_back(indirectArgument);
+    recordFunction.declaration.abiPlan = indirectPlan;
+    recordFunction.declaration.returnType.sizeBits = 192;
+    recordFunction.declaration.parameters[0].type.sizeBits = 192;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVIndirect24ByteRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
+        "C dependency function retains the indirect SysV record plan");
     if (!functionBytes.empty()) functionBytes.pop_back();
     decoded.moduleName = "sentinel";
     ok &= expect(!decodeCDependencyFunction(functionBytes, decoded, error) && decoded.moduleName == "sentinel",

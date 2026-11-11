@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppAbiPlanQueries.h"
+#include "../Internal/CppSysVRecordAbi.h"
 #include "../Internal/OopLlvmImplementation.h"
 #include "../Internal/CppBoolAbi.h"
 #include "../Internal/DropCase.h"
@@ -832,6 +833,41 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         }
 
         const auto* imported = found->second.mirFunction;
+        if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
+            interop::abi_plan::isSysVIndirect24ByteRoundTrip(*imported->cppAbiPlan, imported->cAbiName))
+        {
+            if (node->children.size() != 1 || node->referenceResult || node->returnsAssignedValue ||
+                node->children[0]->typeKey != node->typeKey ||
+                (argumentOverrides && argumentOverrides->size() != 1))
+                return failValue(error, "SysV indirect record call has an unexpected argument contract");
+            LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[0] :
+                lowerExpression(node->children[0].get(), error);
+            if (!value) return nullptr;
+            if (terminated()) return value;
+            LLVMTypeRef carrier = llvmType(node->typeKey, error);
+            if (!carrier) return nullptr;
+            const unsigned alignment = structAlignmentFor(node->typeKey);
+            if (alignment != 1) return failValue(error, "SysV indirect record has an unexpected alignment");
+            LLVMValueRef resultSlot = entryBlockAlloca(carrier, alignment, "sysv.indirect.result");
+            LLVMValueRef argumentSlot = entryBlockAlloca(carrier, 8, "sysv.indirect.argument");
+            LLVMValueRef argumentStore = LLVMBuildStore(builder_, value, argumentSlot);
+            LLVMSetAlignment(argumentStore, 8);
+            LLVMValueRef arguments[] = {resultSlot, argumentSlot};
+            releaseTransferredArguments(node);
+            LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
+                arguments, 2, "", error);
+            if (!call) return nullptr;
+            LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
+            applySretAttributes([&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                { LLVMAddCallSiteAttribute(call, index, attribute); }, 0, node->typeKey);
+            applySysVRecordByValue(context_, carrier,
+                [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                { LLVMAddCallSiteAttribute(call, index, attribute); });
+            if (!applyMustTail(node, call, error)) return nullptr;
+            LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "sysv.indirect.value");
+            LLVMSetAlignment(result, alignment);
+            return result;
+        }
         if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
             interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName))
         {

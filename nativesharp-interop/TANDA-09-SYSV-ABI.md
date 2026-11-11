@@ -207,3 +207,23 @@ de las siete anchuras (A:/temp/t09-planes-clang.log y
 A:/temp/t09-planes-identity.log). Las muestras tienen campos `unsigned char`;
 otras disposiciones, clases de registro, firmas multiples y callbacks no quedan
 certificados. El item sigue abierto.
+
+Record indirecto de 24 bytes: para la muestra de 24 campos `unsigned char`,
+Clang emitio retorno `sret` con alineacion 1 y argumento `byval` con alineacion
+8 (A:/temp/nsc-t09-sysv-pequenos-k0urrlty). El control C paso y NSC rechazo
+el caso previo al cambio en A:/temp/nsc-t09-sysv-r24-czyf6n9a. NSC ahora
+reserva una copia de argumento alineada a 8 y conserva el plan acotado en el
+contrato vigente. La prueba verifica ambos atributos y alineaciones en
+declaracion y llamada, ejecucion C/NS en estatica y DLL O0–O3, y una plantilla
+precompilada sin encabezado O0; paso en A:/temp/nsc-t09-sysv-r24-pyqjraer.
+La sonda primero encontro que la declaracion de Clang no llevaba `noalias`
+aunque la definicion observada si; se corrigio la comprobacion del plan y
+pasaron los controles de Clang y metadatos (A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log).
+
+Los controles de 3, 9 y 16 bytes pasaron nuevamente en
+A:/temp/nsc-t09-sysv-r3-01ogudlm, A:/temp/nsc-t09-sysv-r9-ms9m104o y
+A:/temp/nsc-t09-sysv-r16-1rgtxzv0. La prueba negativa incorporada en esta
+sesion se conserva con un record de 20 bytes, todavia no admitido; paso junto
+con escalares y el rechazo de callbacks en A:/temp/nsc-t09-sysv-prueba-ym6ix5hw.
+No se certifican otras alineaciones, layouts, tamanos indirectos ni firmas.

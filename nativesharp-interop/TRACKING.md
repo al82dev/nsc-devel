@@ -1719,6 +1719,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Avance parcial: llamadas directas `sysv_abi` con `sbyte`, `byte`, `short`, `ushort`, `int`, `uint`, `long`, `ulong`, `bool`, `float`, `double`, `int*`, `double*`, `void*`, `int**` y retorno `void` o de esos tipos pasaron en estatica y DLL O0–O3. Otras firmas y callbacks SysV siguen pendientes. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Avance adicional: funciones SysV C que reciben y devuelven el mismo record de uno a ocho bytes con el plan directo de Clang pasaron las pruebas indicadas; otras firmas y layouts siguen pendientes. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probaron tambien records de nueve a dieciseis bytes con dos piezas enteras y retorno compuesto, incluidas plantillas precompiladas. No cubre otras clases de registro ni todos los layouts. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
+  - Se probo un record de 24 bytes con retorno `sret` y argumento `byval` en el caso de alineaciones observado; siguen pendientes otras formas indirectas. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
 - [ ] T09-004. Emitir una llamada C sin parámetros y con resultado escalar. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-005. Emitir una llamada C con parámetros escalares. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-006. Emitir el paso de punteros a una función C. [Prueba y contraste](pruebas-tanda-09-llamadas/).

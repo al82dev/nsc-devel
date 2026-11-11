@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppAbiPlanQueries.h"
+#include "../Internal/CppSysVRecordAbi.h"
 #include "../Internal/OopLlvmImplementation.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/LlvmExpressionFrame.h"
@@ -228,6 +229,15 @@ bool OopLlvmImplementation::declareFunction(
                     { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); },
                     static_cast<unsigned>(*function.abi.hiddenReturnParameterOrdinal),
                     function.returnTypeKey);
+            }
+            if (function.cppSysVCall && function.cppAbiPlan &&
+                interop::abi_plan::isSysVIndirect24ByteRoundTrip(*function.cppAbiPlan, function.cAbiName))
+            {
+                LLVMTypeRef carrier = llvmType(function.returnTypeKey, error);
+                if (!carrier) return false;
+                applySysVRecordByValue(context_, carrier,
+                    [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                    { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); });
             }
             LLVMMetadataRef subprogram = ownsDefinition ? createDebugSubprogram(function) : nullptr;
             if (debugBuilder_ != nullptr && ownsDefinition &&

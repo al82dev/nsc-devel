@@ -58,6 +58,7 @@ int main(int argc, char** argv) {
         typedef struct R15 { unsigned char x[15]; } R15;
         typedef struct R16 { long long x, y; } R16;
         typedef struct R24 { long long x, y, z; } R24;
+        typedef struct R24B { unsigned char x[24]; } R24B;
         typedef struct RF { double x; int y; } RF;
         typedef struct __attribute__((packed)) RP { char c; double d; } RP;
         typedef float Vec4 __attribute__((vector_size(16)));
@@ -81,6 +82,7 @@ int main(int argc, char** argv) {
         R16 __attribute__((sysv_abi)) p16(R16);
         RF __attribute__((sysv_abi)) pf(RF);
         R24 __attribute__((sysv_abi)) p24(R24);
+        R24B __attribute__((sysv_abi)) p24b(R24B);
         signed char __attribute__((sysv_abi)) ps8(signed char);
         Vec4 __attribute__((sysv_abi)) pv(Vec4);
         R24 __attribute__((sysv_abi)) pm(int, RF, R3, R24);
@@ -141,7 +143,7 @@ int main(int argc, char** argv) {
         if (name != "p1" && name != "p2" && name != "p3" && name != "p4" && name != "p5" &&
             name != "p6" && name != "p7" && name != "p8" && name != "p9" && name != "p10" &&
             name != "p11" && name != "p12" && name != "p13" && name != "p14" && name != "p15" &&
-            name != "p16" && name != "pf" && name != "p24" && name != "ps8" && name != "pm" &&
+            name != "p16" && name != "pf" && name != "p24" && name != "p24b" && name != "ps8" && name != "pm" &&
             name != "pp" && name != "pvec" && name != "pvoid") continue;
         if (name == "p3" && copiedPlans.contains(name)) continue;
         auto* physical = clang::CodeGen::convertFreeFunctionType(generator->CGM(), function);
@@ -209,7 +211,7 @@ int main(int argc, char** argv) {
         if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
-    if (matched != 23 || copiedPlans.size() != 23 || !unsupportedRejected || !variadicRejected ||
+    if (matched != 24 || copiedPlans.size() != 24 || !unsupportedRejected || !variadicRejected ||
         !noPrototypeRejected || !attributeRejected) return 7;
     generator.reset();
     ast.reset();
@@ -246,6 +248,8 @@ int main(int argc, char** argv) {
     if (pf.physicalParameters.size() != 2 || pf.physicalParameters[0].type.kind != t09_probe::TypeKind::Double ||
         pf.physicalParameters[1].type.widthOrCount != 32) return 22;
     const auto& p24 = copiedPlans.at("p24");
+    if (!t09_probe::isSysVIndirect24ByteRoundTrip(copiedPlans.at("p24b"), "p24b") ||
+        t09_probe::isSysVIndirect24ByteRoundTrip(p24, "p24")) return 81;
     if (p24.logicalParameters[0].passing != t09_probe::Passing::Indirect ||
         !p24.logicalParameters[0].byValue || p24.logicalParameters[0].alignment != 8 ||
         p24.physicalParameters.size() != 2 || !p24.physicalParameters[0].structureReturn ||
