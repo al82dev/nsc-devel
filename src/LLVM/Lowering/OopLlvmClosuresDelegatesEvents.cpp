@@ -1235,7 +1235,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     return failValue(error, "sysv_abi variadic function pointer argument does not match its plan");
                 if (logical.passing == Passing::Indirect)
                 {
-                    if (node->argumentCount != 2 || logical.physicalCount != 1 ||
+                    if (logical.physicalCount != 1 ||
                         physical != arguments.size() || physical >= plan.physicalParameters.size() ||
                         layout->size != 20 || layout->alignment != 4 ||
                         !plan.physicalParameters[physical].byValue || plan.physicalParameters[physical].alignment != 8)

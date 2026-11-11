@@ -1,0 +1,7 @@
+int Main() {
+    T09IndirectVarRecord value; value.a = 1; value.b = 2; value.c = 3; value.d = 4; value.e = 5;
+    T09IndirectVarMixed mixed; mixed.x = 2.25; mixed.y = 7;
+    T09IndirectVarCallback callback = t09_get_var_record_callback();
+    if (callback(1, mixed, value) != 1 || value.a != 1 || value.e != 5 || mixed.x != 2.25 || mixed.y != 7) return 1;
+    return 0;
+}

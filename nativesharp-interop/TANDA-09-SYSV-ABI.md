@@ -1410,6 +1410,17 @@ dos records mixtos (`A:/temp/nsc-t09-sysv-indirecta-record-pre-2ugglot9`,
 `A:/temp/nsc-t09-sysv-indirecta-dos-records-pre-0xjl4fde`). Este caso no
 certifica otras combinaciones por copia ni cierra T09-003.
 
+**Record mixto y copia en la misma llamada:** el control C y el productor
+independiente pasaron y NSC rechazaba el segundo record
+(`A:/temp/nsc-t09-sysv-indirecta-variadica-mixto-byval-yf02u6i8`). Tras
+respetar la posicion de `byval` en el plan, pasaron ocho comparaciones directas
+estatica/DLL O0-O3 (`A:/temp/nsc-t09-sysv-indirecta-var-mixto-byval-matriz-cs5jlzrz`),
+cuatro sondas (`A:/temp/t09-test-varptr.log`) y la regresion precompilada del
+record grande (`A:/temp/nsc-t09-sysv-indirecta-var-byval-pre-ttddwyaz`). La
+plantilla de la combinacion sigue rechazada
+(`A:/temp/nsc-t09-sysv-indirecta-var-mixto-byval-pre-088t7sux`); requiere
+conciliar dos identidades de record distintas y permanece pendiente.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor
