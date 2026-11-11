@@ -31,6 +31,7 @@
 
 #include <algorithm>
 #include <filesystem>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <mutex>
@@ -917,6 +918,94 @@ public:
         generator->Initialize(context);
         std::string error;
         return abi_plan::copyPlan(*generator, *match, error);
+    }
+    std::optional<abi_plan::VariadicCallPlan> cVariadicCallAbiPlan(
+        std::string_view name, std::string_view canonicalType,
+        const std::vector<CppType>& optionalArguments) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || name.empty() || canonicalType.empty()) return std::nullopt;
+        auto& context = ast_->getASTContext();
+        if (context.getLangOpts().CPlusPlus) return std::nullopt;
+        const clang::FunctionDecl* match = nullptr;
+        for (const auto* declaration : context.getTranslationUnitDecl()->decls())
+        {
+            const auto* candidate = llvm::dyn_cast<clang::FunctionDecl>(declaration);
+            if (!candidate || candidate->isImplicit() || !candidate->isExternallyVisible() ||
+                candidate->getNameAsString() != name || candidate->isDependentContext()) continue;
+            candidate = candidate->getMostRecentDecl();
+            if (candidate->getType().getCanonicalType().getAsString() != canonicalType) continue;
+            if (match && match->getCanonicalDecl() != candidate->getCanonicalDecl()) return std::nullopt;
+            match = candidate;
+        }
+        if (!match) return std::nullopt;
+        const auto* prototype = match->getType()->getAs<clang::FunctionProtoType>();
+        if (!prototype || !prototype->isVariadic()) return std::nullopt;
+        std::function<std::optional<clang::QualType>(const CppType&, unsigned)> resolve =
+            [&](const CppType& input, unsigned depth) -> std::optional<clang::QualType>
+        {
+            if (depth > 16 || input.isConst || input.isVolatile || input.isRestrict ||
+                input.canonicalSpelling.empty()) return std::nullopt;
+            clang::QualType result;
+            if (input.kind == CppTypeKind::Record)
+            {
+                if (!input.recordIdentity || input.recordIdentity->name.empty() ||
+                    !input.recordIdentity->clangUsr || input.recordIdentity->anonymousContext ||
+                    input.recordIdentity->specializationContext || !input.recordIdentity->namespaceSegments.empty() ||
+                    !input.recordIdentity->containingRecords.empty()) return std::nullopt;
+                std::set<const clang::TagDecl*> seen;
+                std::vector<const clang::RecordDecl*> candidates;
+                findComparableRecords(*context.getTranslationUnitDecl(), input.recordIdentity->name, seen, candidates);
+                if (candidates.size() != 1 || declarationUsr(candidates[0]) != input.recordIdentity->clangUsr)
+                    return std::nullopt;
+                result = context.getTypeDeclType(static_cast<const clang::TypeDecl*>(candidates[0]));
+            }
+            else if (input.kind == CppTypeKind::Pointer)
+            {
+                if (!input.element) return std::nullopt;
+                auto element = resolve(*input.element, depth + 1);
+                if (!element) return std::nullopt;
+                result = context.getPointerType(*element);
+            }
+            else
+            {
+                const clang::QualType builtins[] = {context.VoidTy, context.BoolTy, context.CharTy,
+                    context.SignedCharTy, context.UnsignedCharTy, context.ShortTy, context.UnsignedShortTy,
+                    context.IntTy, context.UnsignedIntTy, context.LongTy, context.UnsignedLongTy,
+                    context.LongLongTy, context.UnsignedLongLongTy, context.FloatTy, context.DoubleTy};
+                for (const auto type : builtins)
+                    if (type.getCanonicalType().getAsString() == input.canonicalSpelling) { result = type; break; }
+            }
+            if (result.isNull() || result.getCanonicalType().getAsString() != input.canonicalSpelling)
+                return std::nullopt;
+            if (!((input.kind == CppTypeKind::Void && result->isVoidType()) ||
+                  (input.kind == CppTypeKind::Boolean && result->isBooleanType()) ||
+                  (input.kind == CppTypeKind::SignedInteger && result->isSignedIntegerType()) ||
+                  (input.kind == CppTypeKind::UnsignedInteger && result->isUnsignedIntegerType() && !result->isBooleanType()) ||
+                  (input.kind == CppTypeKind::Floating && result->isRealFloatingType()) ||
+                  (input.kind == CppTypeKind::Pointer && result->isPointerType()) ||
+                  (input.kind == CppTypeKind::Record && result->isRecordType()))) return std::nullopt;
+            if (!result->isVoidType() && (!input.sizeBits || !input.alignmentBits ||
+                *input.sizeBits != context.getTypeSize(result) || *input.alignmentBits != context.getTypeAlign(result)))
+                return std::nullopt;
+            return result;
+        };
+        std::vector<clang::QualType> arguments;
+        for (const auto* parameter : match->parameters()) arguments.push_back(parameter->getType());
+        for (const auto& argument : optionalArguments)
+        {
+            auto resolved = resolve(argument, 0);
+            if (!resolved) return std::nullopt;
+            arguments.push_back(*resolved);
+        }
+        llvm::LLVMContext llvmContext;
+        auto generator = clang::CreateLLVMCodeGen(ast_->getDiagnostics(), "nsc.c.variadic.call.abi",
+            ast_->getVirtualFileSystemPtr(), ast_->getHeaderSearchOpts(), ast_->getPreprocessorOpts(),
+            ast_->getCodeGenOpts(), llvmContext);
+        if (!generator) return std::nullopt;
+        generator->Initialize(context);
+        std::string error;
+        return abi_plan::copyVariadicCallPlan(*generator, *match, arguments, error);
     }
     std::optional<std::vector<CppRecordDeclaration>> recordsSnapshot() const override
     {

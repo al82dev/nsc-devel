@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -56,6 +57,18 @@ struct Plan
     LogicalValue logicalReturn;
     std::vector<LogicalValue> logicalParameters;
     std::vector<PhysicalParameter> physicalParameters;
+};
+
+// Classification of one actual variadic call; not a complete LLVM signature.
+struct VariadicCallPlan
+{
+    std::string symbol;
+    std::string targetTriple;
+    std::string dataLayout;
+    unsigned callingConvention = 0;
+    std::size_t requiredArguments = 0;
+    LogicalValue result;
+    std::vector<LogicalValue> arguments;
 };
 
 // Supported aggregate shapes: one small record passed and returned directly.

@@ -81,6 +81,12 @@ public:
     // The returned value owns its data; nullopt also covers unsupported ABI plans and closed sessions.
     virtual std::optional<abi_plan::Plan> cFunctionAbiPlan(std::string_view, std::string_view) const
     { return std::nullopt; }
+    // Types must come from this session and describe already-promoted optional
+    // arguments. Identity and layout checks are not proof of cross-session ODR
+    // equivalence. nullopt includes a closed session or unsupported form.
+    virtual std::optional<abi_plan::VariadicCallPlan> cVariadicCallAbiPlan(
+        std::string_view, std::string_view, const std::vector<CppType>&) const
+    { return std::nullopt; }
     // Initial projection of named, non-dependent records; nullopt means closed.
     virtual std::optional<std::vector<CppRecordDeclaration>> recordsSnapshot() const = 0;
     // A missing value means this session cannot provide an alias snapshot.

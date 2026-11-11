@@ -599,6 +599,46 @@ int main(int argc, char** argv) {
     const std::string incompleteType = findType("pincomplete");
     if (p3Type.empty() || p3ptrType.empty() || pvecType.empty() || vectorType.empty() || p24Type.empty() || ps8Type.empty() || pmType.empty() ||
         oldType.empty() || variadicType.empty() || nonnullType.empty() || incompleteType.empty()) return 38;
+    const auto findParameter = [&](const std::string& name, std::size_t index) -> std::optional<CppType> {
+        for (const auto& function : *functions)
+            if (function.name == name && index < function.parameters.size()) return function.parameters[index].type;
+        return std::nullopt;
+    };
+    const auto smallActual = findParameter("p8", 0);
+    const auto mixedActual = findParameter("pf", 0);
+    const auto largeActual = findParameter("p24", 0);
+    const auto integerActual = findParameter("pscalar", 1);
+    const auto floatingActual = findParameter("pscalardouble", 1);
+    const auto narrowActual = findParameter("ps8", 0);
+    const auto pointerActual = findParameter("p3ptr", 0);
+    if (!smallActual || !mixedActual || !largeActual || !integerActual || !floatingActual || !narrowActual || !pointerActual) return 142;
+    auto variadicSessionPlan = session->cVariadicCallAbiPlan("pvariadic", variadicType,
+        {*smallActual, *mixedActual, *largeActual});
+    auto variadicPressurePlan = session->cVariadicCallAbiPlan("pvariadic", variadicType,
+        {*integerActual, *integerActual, *integerActual, *integerActual, *integerActual, *mixedActual});
+    auto variadicFloatPressurePlan = session->cVariadicCallAbiPlan("pvariadic", variadicType,
+        {*floatingActual, *floatingActual, *floatingActual, *floatingActual,
+         *floatingActual, *floatingActual, *floatingActual, *floatingActual, *mixedActual});
+    auto variadicPointerPlan = session->cVariadicCallAbiPlan("pvariadic", variadicType, {*pointerActual});
+    auto wrongRecord = *mixedActual;
+    if (!wrongRecord.recordIdentity || !wrongRecord.recordIdentity->clangUsr) return 143;
+    wrongRecord.recordIdentity->clangUsr = "incorrect-usr";
+    auto wrongSize = *mixedActual;
+    wrongSize.sizeBits = 8;
+    auto wrongKind = *integerActual;
+    wrongKind.kind = CppTypeKind::Floating;
+    if (!variadicSessionPlan || !variadicPressurePlan || !variadicFloatPressurePlan || !variadicPointerPlan ||
+        variadicSessionPlan->arguments.size() != 4 || variadicSessionPlan->arguments[2].physicalCount != 2 ||
+        !variadicPointerPlan->arguments[1].coercion ||
+        variadicPointerPlan->arguments[1].coercion->kind != abi_plan::TypeKind::Pointer ||
+        !variadicSessionPlan->arguments[3].byValue || !variadicPressurePlan->arguments[6].byValue ||
+        !variadicFloatPressurePlan->arguments[9].byValue ||
+        session->cVariadicCallAbiPlan("pvariadic", variadicType, {wrongRecord}) ||
+        session->cVariadicCallAbiPlan("pvariadic", variadicType, {wrongSize}) ||
+        session->cVariadicCallAbiPlan("pvariadic", variadicType, {wrongKind}) ||
+        session->cVariadicCallAbiPlan("pvariadic", variadicType, {*narrowActual}) ||
+        session->cVariadicCallAbiPlan("pvariadic", "different", {}) ||
+        session->cVariadicCallAbiPlan("p3", p3Type, {})) return 144;
     const auto diagnosticsBefore = session->diagnosticsSnapshot().size();
     auto sessionPlan = session->cFunctionAbiPlan("p3", p3Type);
     auto vectorcallPlan = session->cFunctionAbiPlan("pvec", pvecType);
@@ -637,14 +677,17 @@ int main(int argc, char** argv) {
         llvm::errs() << "record projection failed: " << failure->message << "\n";
     const auto* projectedRecord = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&recordProjection);
     if (!projectedRecord || !projectedRecord->cppAbiPlan || projectedRecord->cppAbiPlan->symbol != "p3ptr") return 51;
-    if (!session->close().succeeded || session->cFunctionAbiPlan("p3", p3Type)) return 40;
+    if (!session->close().succeeded || session->cFunctionAbiPlan("p3", p3Type) ||
+        session->cVariadicCallAbiPlan("pvariadic", variadicType, {*mixedActual})) return 40;
     session.reset();
     if (sessionPlan->symbol != "p3" || sessionPlan->physicalReturn.widthOrCount != 24 ||
         vectorcallPlan->symbol != "\1pvec@@8" ||
         vectorcallPlan->callingConvention != llvm::CallingConv::X86_VectorCall ||
         aggregatePlan->physicalParameters.size() != 2 || !aggregatePlan->physicalParameters[1].byValue ||
         mixedPlan->logicalParameters.size() != 4 || mixedPlan->logicalParameters[1].physicalCount != 2 ||
-        projected->cppAbiPlan->symbol != "ps8" || projectedRecord->cppAbiPlan->symbol != "p3ptr") return 41;
+        projected->cppAbiPlan->symbol != "ps8" || projectedRecord->cppAbiPlan->symbol != "p3ptr" ||
+        variadicSessionPlan->symbol != "pvariadic" || variadicSessionPlan->arguments[2].physicalCount != 2 ||
+        !variadicPressurePlan->arguments[6].byValue || !variadicFloatPressurePlan->arguments[9].byValue) return 41;
     CppSessionOptions inventoryOptions;
     inventoryOptions.language = CppLanguageMode::C;
     inventoryOptions.languageStandard = "c11";

@@ -637,6 +637,21 @@ para cada llamada de NativeSharp, transportar y validar atributos y metadatos,
 y emitir y ejecutar la llamada. Los records variadicos continuan rechazados y
 T09-003 permanece abierto.
 
+La sesion Clang ahora expone esa consulta experimental para tipos observados
+en la propia sesion. Reconstruye tipos escalares, punteros y records nombrados,
+exige identidad, tamaño y alineacion coherentes y rechaza tipos sin promocion,
+identidades o tamaños incorrectos y sesiones cerradas. La sonda de sesion
+comprueba records pequenos, mixtos y grandes, presion de registros enteros y
+flotantes, punteros y uso del plan tras cerrar la sesion
+(`A:/temp/t09-planes-clang.log`). Pasaron la compilacion incremental y las
+regresiones de variadicas y records (`A:/temp/nsc-t09-sysv-varargs-mqb5op6c` y
+`A:/temp/nsc-t09-sysv-padded-pair-id-008toa55`).
+
+La identidad, tamaño y alineacion no prueban equivalencia estructural entre
+sesiones: el futuro consumidor debe usar tipos de la misma sesion o verificar
+esa equivalencia antes de solicitar el plan. La consulta todavia no esta
+conectada a la emision ni a NSMeta, y no acredita records en la elipsis.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin
