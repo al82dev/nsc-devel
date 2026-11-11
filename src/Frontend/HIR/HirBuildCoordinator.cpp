@@ -1870,11 +1870,13 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                       interop::abi_plan::isSysVIndirectRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName) &&
                       symbol.cppReturnType->alignmentBits == symbol.cppAbiPlan->logicalReturn.alignment * 8));
                 const bool supportedIndirectWithArguments = symbol.cppAbiPlan && symbol.cppReturnType &&
-                    symbol.cppReturnType->kind == interop::CppTypeKind::Record && symbol.cppReturnType->sizeBits &&
-                    *symbol.cppReturnType->sizeBits > 128 && *symbol.cppReturnType->sizeBits % 8 == 0 &&
-                    symbol.cppReturnType->alignmentBits == symbol.cppAbiPlan->logicalReturn.alignment * 8 &&
+                    ((symbol.cppReturnType->kind == interop::CppTypeKind::Record && symbol.cppReturnType->sizeBits &&
+                      *symbol.cppReturnType->sizeBits > 128 && *symbol.cppReturnType->sizeBits % 8 == 0 &&
+                      symbol.cppReturnType->alignmentBits == symbol.cppAbiPlan->logicalReturn.alignment * 8 &&
+                      interop::abi_plan::isSysVIndirectRecordWithArguments(*symbol.cppAbiPlan, symbol.mangledName)) ||
+                     (symbol.cppReturnType->kind == interop::CppTypeKind::SignedInteger && symbol.cppReturnType->sizeBits == 32 &&
+                      interop::abi_plan::isSysVScalarReturnWithRecordArguments(*symbol.cppAbiPlan, symbol.mangledName))) &&
                     function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
-                    interop::abi_plan::isSysVIndirectRecordWithArguments(*symbol.cppAbiPlan, symbol.mangledName) &&
                     [&] {
                         for (std::size_t i = 0; i < symbol.cppParameterTypes.size(); ++i)
                         {

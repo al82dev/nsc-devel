@@ -17,7 +17,8 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
         std::string& error)
 {
             if (function.cppSysVCall && function.cppAbiPlan &&
-                interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName))
+                (interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName) ||
+                 interop::abi_plan::isSysVScalarReturnWithRecordArguments(*function.cppAbiPlan, function.cAbiName)))
             {
                 std::vector<LLVMTypeRef> parameters;
                 for (const auto& parameter : function.cppAbiPlan->physicalParameters)
@@ -29,7 +30,9 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                         physical.kind == interop::abi_plan::TypeKind::Vector ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) :
                         LLVMIntTypeInContext(context_, static_cast<unsigned>(physical.widthOrCount)));
                 }
-                return LLVMFunctionType(LLVMVoidTypeInContext(context_), parameters.data(), static_cast<unsigned>(parameters.size()), 0);
+                LLVMTypeRef result = interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName) ?
+                    LLVMVoidTypeInContext(context_) : LLVMInt32TypeInContext(context_);
+                return LLVMFunctionType(result, parameters.data(), static_cast<unsigned>(parameters.size()), 0);
             }
             if (function.cppSysVCall && function.cppAbiPlan &&
                 (interop::abi_plan::isSysVSmallRecordsRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
@@ -299,7 +302,8 @@ bool OopLlvmImplementation::declareFunction(
                     { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); });
             }
             if (function.cppSysVCall && function.cppAbiPlan &&
-                interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName))
+                (interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName) ||
+                 interop::abi_plan::isSysVScalarReturnWithRecordArguments(*function.cppAbiPlan, function.cAbiName)))
             {
                 for (std::size_t i = 0; i < function.cppAbiPlan->logicalParameters.size(); ++i)
                 {

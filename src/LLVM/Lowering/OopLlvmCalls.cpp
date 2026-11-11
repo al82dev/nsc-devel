@@ -915,8 +915,10 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             return result;
         }
         if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
-            interop::abi_plan::isSysVIndirectRecordWithArguments(*imported->cppAbiPlan, imported->cAbiName))
+            (interop::abi_plan::isSysVIndirectRecordWithArguments(*imported->cppAbiPlan, imported->cAbiName) ||
+             interop::abi_plan::isSysVScalarReturnWithRecordArguments(*imported->cppAbiPlan, imported->cAbiName)))
         {
+            const bool indirectReturn = interop::abi_plan::isSysVIndirectRecordWithArguments(*imported->cppAbiPlan, imported->cAbiName);
             const auto count = imported->cppAbiPlan->logicalParameters.size();
             if (node->children.size() != count || node->referenceResult || node->returnsAssignedValue ||
                 (argumentOverrides && argumentOverrides->size() != count))
@@ -938,13 +940,20 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 if (terminated()) return value;
                 sourceArguments.push_back(value);
             }
-            LLVMTypeRef carrier = llvmType(node->typeKey, error);
-            if (!carrier) return nullptr;
-            const unsigned alignment = structAlignmentFor(node->typeKey);
-            if (alignment != imported->cppAbiPlan->logicalReturn.alignment)
-                return failValue(error, "SysV indirect record has an unexpected alignment");
-            LLVMValueRef resultSlot = entryBlockAlloca(carrier, alignment, "sysv.indirect.mixed.result");
-            std::vector<LLVMValueRef> arguments{resultSlot};
+            LLVMTypeRef carrier = nullptr;
+            unsigned alignment = 0;
+            LLVMValueRef resultSlot = nullptr;
+            std::vector<LLVMValueRef> arguments;
+            if (indirectReturn)
+            {
+                carrier = llvmType(node->typeKey, error);
+                if (!carrier) return nullptr;
+                alignment = structAlignmentFor(node->typeKey);
+                if (alignment != imported->cppAbiPlan->logicalReturn.alignment)
+                    return failValue(error, "SysV indirect record has an unexpected alignment");
+                resultSlot = entryBlockAlloca(carrier, alignment, "sysv.indirect.mixed.result");
+                arguments.push_back(resultSlot);
+            }
             for (std::size_t i = 0; i < count; ++i)
             {
                 const auto& logical = imported->cppAbiPlan->logicalParameters[i];
@@ -1028,11 +1037,12 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             }
             releaseTransferredArguments(node);
             LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
-                arguments.data(), static_cast<unsigned>(arguments.size()), "", error);
+                arguments.data(), static_cast<unsigned>(arguments.size()), indirectReturn ? "" : "sysv.scalar.mixed.result", error);
             if (!call) return nullptr;
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
-            applySretAttributes([&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
-                { LLVMAddCallSiteAttribute(call, index, attribute); }, 0, node->typeKey);
+            if (indirectReturn)
+                applySretAttributes([&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                    { LLVMAddCallSiteAttribute(call, index, attribute); }, 0, node->typeKey);
             for (std::size_t i = 0; i < imported->cppAbiPlan->logicalParameters.size(); ++i)
             {
                 const auto& logical = imported->cppAbiPlan->logicalParameters[i];
@@ -1046,6 +1056,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     { LLVMAddCallSiteAttribute(call, index, attribute); });
             }
             if (!applyMustTail(node, call, error)) return nullptr;
+            if (!indirectReturn) return call;
             LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "sysv.indirect.mixed.value");
             LLVMSetAlignment(result, alignment);
             return result;

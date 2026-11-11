@@ -934,6 +934,33 @@ A:/temp/nsc-t09-sysv-indirect-diff16-eed8vwvp y
 A:/temp/nsc-t09-sysv-prueba-5voqucsx). No se acreditan todas las clases de
 agregado ni firmas posibles; T09-003 permanece abierto.
 
+## Retorno escalar con records directos e indirectos
+
+Se contrasto una llamada que devuelve `int` y recibe `float`, un record de
+`double` e `int`, un record de cuatro enteros de 64 bits y otro `int`. El
+control C funciono en estatica y DLL mientras NSC rechazaba la firma
+(A:/temp/nsc-t09-sysv-scalar-mixed-d1g80255). Clang 23.1.0 confirmo retorno
+`i32`, piezas `double`/`i32` y argumento `byval` alineado a ocho
+(A:/temp/t09-scalar-mixed-clang.ll).
+
+NSC transporta el plan de argumentos y el retorno directo por HIR, MIR y LLVM;
+el contrato vigente conserva las piezas observadas y reconstruye el argumento
+indirecto. La muestra paso ocho comparaciones C/NS en estatica y DLL O0–O3,
+argumentos nombrados y plantilla precompilada sin encabezado O0. El productor
+altera las copias y el consumidor verifica los valores originales. La prueba
+se reforzo para usar los cuatro campos del record indirecto y paso de nuevo
+(A:/temp/nsc-t09-sysv-scalar-mixed-7xu1jv3b). La sonda y prueba de metadatos
+pasaron (A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log).
+Pasaron las regresiones de retorno indirecto con piezas vectoriales, retorno
+indirecto sin `byval` y el control general con sus rechazos:
+A:/temp/nsc-t09-sysv-class-vf-gsbrspu9,
+A:/temp/nsc-t09-sysv-sret-mixed-daoybwim y
+A:/temp/nsc-t09-sysv-prueba-4t9v5m_m.
+
+El retorno escalar nuevo se limita a `int` de 32 bits y a planes verificados
+con al menos un record indirecto o descompuesto; no acredita `void`, otros
+retornos ni todas las clases y firmas. T09-003 y la tanda 9 siguen abiertos.
+
 ## Record con `double` y dos enteros con retorno indirecto
 
 El control C de una funcion que recibe `float`, un record con `double` y dos

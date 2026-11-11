@@ -280,20 +280,29 @@ inline bool isSysVDirectSingleRecordLayout(const Type& type, std::uint64_t bits,
         type.elements[0].kind == TypeKind::Float && type.elements[0].widthOrCount == 0 && bits == 64 && alignmentBits == 32;
 }
 // Indirect record result and by-value records mixed with direct scalars.
-inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view symbol) noexcept
+inline bool isSysVRecordArguments(const Plan& plan, std::string_view symbol, bool indirectReturn) noexcept
 {
     const auto alignment = plan.logicalReturn.alignment;
     if (plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
-        plan.returnSignExtend || plan.returnZeroExtend || plan.physicalReturn.kind != TypeKind::Void ||
-        plan.logicalReturn.passing != Passing::Indirect || alignment == 0 || alignment > (1ULL << 29) ||
-        (alignment & (alignment - 1)) != 0 || plan.physicalParameters.empty() ||
-        (plan.logicalParameters.size() == 1 && plan.logicalParameters[0].passing == Passing::Indirect)) return false;
-    const auto& result = plan.physicalParameters[0];
-    if (result.type.kind != TypeKind::Pointer || result.type.widthOrCount != 0 || !result.pointee ||
-        !result.structureReturn || result.alignment != alignment || result.byValue || result.inRegister ||
-        result.signExtend || result.zeroExtend) return false;
-    std::size_t physicalIndex = 1;
+        plan.returnSignExtend || plan.returnZeroExtend) return false;
+    std::size_t physicalIndex = 0;
+    if (indirectReturn)
+    {
+        if (plan.physicalReturn.kind != TypeKind::Void || plan.logicalReturn.passing != Passing::Indirect ||
+            alignment == 0 || alignment > (1ULL << 29) || (alignment & (alignment - 1)) != 0 || plan.physicalParameters.empty() ||
+            (plan.logicalParameters.size() == 1 && plan.logicalParameters[0].passing == Passing::Indirect)) return false;
+        const auto& result = plan.physicalParameters[0];
+        if (result.type.kind != TypeKind::Pointer || result.type.widthOrCount != 0 || !result.pointee ||
+            !result.structureReturn || result.alignment != alignment || result.byValue || result.inRegister ||
+            result.signExtend || result.zeroExtend) return false;
+        physicalIndex = 1;
+    }
+    else if (plan.physicalReturn.kind != TypeKind::Integer || plan.physicalReturn.widthOrCount != 32 ||
+             plan.logicalReturn.passing != Passing::Direct || !plan.logicalReturn.coercion ||
+             plan.logicalReturn.coercion->kind != TypeKind::Integer || plan.logicalReturn.coercion->widthOrCount != 32 ||
+             plan.logicalReturn.offset != 0) return false;
+    bool hasAggregate = false;
     for (std::size_t i = 0; i < plan.logicalParameters.size(); ++i)
     {
         const auto& logical = plan.logicalParameters[i];
@@ -303,6 +312,7 @@ inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view
             physical.noAlias || physical.inRegister || physical.signExtend || physical.zeroExtend) return false;
         if (logical.passing == Passing::Indirect)
         {
+            hasAggregate = true;
             if (logical.physicalCount != 1 || !logical.byValue || logical.alignment < 8 || logical.alignment > (1ULL << 29) ||
                 (logical.alignment & (logical.alignment - 1)) != 0 || !physical.byValue ||
                 physical.type.kind != TypeKind::Pointer || physical.type.widthOrCount != 0 ||
@@ -313,6 +323,7 @@ inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view
         if (logical.passing == Passing::Direct && (logical.byValue || logical.signExtend || logical.zeroExtend)) return false;
         if (logical.passing == Passing::Direct && logical.coercion && logical.coercion->kind == TypeKind::Structure)
         {
+            hasAggregate = true;
             const auto& type = *logical.coercion;
             if (logical.offset != 0 || logical.physicalCount != 2 || !isSysVDirectPairShape(type) ||
                 physicalIndex + 2 > plan.physicalParameters.size()) return false;
@@ -340,6 +351,14 @@ inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view
               (physical.type.kind == TypeKind::Pointer && physical.type.widthOrCount == 0))) return false;
         ++physicalIndex;
     }
-    return physicalIndex == plan.physicalParameters.size();
+    return physicalIndex == plan.physicalParameters.size() && (indirectReturn || hasAggregate);
+}
+inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view symbol) noexcept
+{
+    return isSysVRecordArguments(plan, symbol, true);
+}
+inline bool isSysVScalarReturnWithRecordArguments(const Plan& plan, std::string_view symbol) noexcept
+{
+    return isSysVRecordArguments(plan, symbol, false);
 }
 }

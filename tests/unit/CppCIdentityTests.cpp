@@ -2055,6 +2055,33 @@ bool checkDependencyTypeCodec()
         restoredRecord.declaration.abiPlan->physicalParameters[2].type.kind == abi_plan::TypeKind::Double &&
         restoredRecord.declaration.abiPlan->physicalParameters[3].type.widthOrCount == 32,
         "C dependency function retains mixed direct pieces and an indirect record");
+    auto scalarReturnPlan = std::make_shared<abi_plan::Plan>(*mixedIndirectPlan);
+    scalarReturnPlan->physicalParameters.erase(scalarReturnPlan->physicalParameters.begin());
+    for (auto& logical : scalarReturnPlan->logicalParameters) --logical.firstPhysical;
+    scalarReturnPlan->physicalReturn = abi_plan::Type{abi_plan::TypeKind::Integer, 32};
+    scalarReturnPlan->logicalReturn = {};
+    scalarReturnPlan->logicalReturn.passing = abi_plan::Passing::Direct;
+    scalarReturnPlan->logicalReturn.coercion = scalarReturnPlan->physicalReturn;
+    const auto savedReturnType = recordFunction.declaration.returnType;
+    recordFunction.declaration.returnType.kind = CppTypeKind::SignedInteger;
+    recordFunction.declaration.returnType.sizeBits = 32;
+    recordFunction.declaration.returnType.alignmentBits = 32;
+    recordFunction.declaration.abiPlan = scalarReturnPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVScalarReturnWithRecordArguments(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->physicalParameters[1].type.kind == abi_plan::TypeKind::Double &&
+        restoredRecord.declaration.abiPlan->physicalParameters[4].byValue,
+        "C dependency function retains scalar return and direct and indirect record arguments");
+    auto invalidScalarPlan = *scalarReturnPlan;
+    invalidScalarPlan.physicalParameters[4].byValue = false;
+    ok &= expect(!abi_plan::isSysVScalarReturnWithRecordArguments(invalidScalarPlan, recordFunction.linkSymbol),
+        "scalar SysV plan rejects a missing byval attribute");
+    invalidScalarPlan = *scalarReturnPlan;
+    invalidScalarPlan.physicalReturn.widthOrCount = 64;
+    ok &= expect(!abi_plan::isSysVScalarReturnWithRecordArguments(invalidScalarPlan, recordFunction.linkSymbol),
+        "scalar SysV plan rejects a conflicting return width");
+    recordFunction.declaration.returnType = savedReturnType;
     auto inconsistentIndirectPlan = *mixedIndirectPlan;
     inconsistentIndirectPlan.physicalParameters[2].type.kind = abi_plan::TypeKind::Float;
     ok &= expect(!abi_plan::isSysVIndirectRecordWithArguments(inconsistentIndirectPlan, recordFunction.linkSymbol),
