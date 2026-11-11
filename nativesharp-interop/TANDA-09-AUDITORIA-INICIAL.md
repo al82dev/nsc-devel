@@ -124,3 +124,27 @@ estatica O0 ya validada en A:/temp/nsc-t09-vectorcall-rulir0cp/estatica-O0/
 `transform_h2@@16` precedido por el marcador interno; MIR lo conserva como
 destino de la llamada directa. Estos volcados no muestran por si solos el plan
 fisico vectorcall completo; ese contraste pertenece tambien a T09-002.
+
+Resultado de auditoria T09-001, ruta ProjectOop Windows x64:
+
+- La declaracion HIR de una funcion externa conserva identidad de enlace,
+  variadicidad, importacion DLL y la marca de vectorcall; la construccion rechaza
+  convenciones distintas de cdecl y vectorcall en esa ruta. En llamadas directas
+  el nodo HIR lleva el ordinal de funcion y su identidad; los argumentos extra
+  llevan sus conversiones C. Referencias: HirBuildCoordinator.cpp:1797–1819 y
+  HirCallFrameLowering.cpp:557–562, 672–682.
+- Las llamadas por puntero se representan como creacion e invocacion de
+  delegado C, con promociones propias: HirCallFrameLowering.cpp:950–959.
+  En MIR, el destino indirecto sigue siendo `DelegateInvoke`; un delegado de
+  lambda nominal sin carga es una ruta distinta que puede resolverse a llamada
+  directa: MIR/Internal/MirNodeMachine.cpp:1325–1336.
+- MIR resuelve la llamada directa a su funcion y nombre de destino, y copia
+  importacion DLL, variadicidad, vectorcall, nombre C y tipos desde HIR:
+  MIR/Internal/MirNodeMachine.cpp:1898–1926 y MirFunctionLowerer.cpp:207–257.
+  La clasificacion fisica de agregados usa sus layouts y distingue tamanos
+  directos de indirectos; el miembro flexible usa tratamiento indirecto:
+  MirLayoutImporter.cpp:14–19, 100–120; MirFunctionLowerer.cpp:292–316.
+- Los controles ejecutados muestran esas formas para cdecl directa e indirecta
+  con biblioteca estatica y DLL; el volcado vectorcall muestra el simbolo
+  decorado. La revision de la emision fisica y de sus atributos corresponde a
+  T09-002; esta auditoria no afirma que los demas casos C o C++ funcionen.
