@@ -43,12 +43,14 @@ inline bool isSysVTwoI64RecordRoundTrip(const Plan& plan, std::string_view symbo
     return isSysVTwoIntegerRecordRoundTrip(plan, symbol) &&
         plan.physicalReturn.elements[1].widthOrCount == 64;
 }
-inline bool isSysVMixedDoubleI32RecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
+inline bool isSysVMixedRecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
 {
     const auto pair = [](const Type& type) {
-        return type.kind == TypeKind::Structure && !type.packed && type.elements.size() == 2 &&
-            type.elements[0].kind == TypeKind::Double && type.elements[1].kind == TypeKind::Integer &&
-            type.elements[1].widthOrCount == 32;
+        if (type.kind != TypeKind::Structure || type.packed || type.elements.size() != 2) return false;
+        const auto& first = type.elements[0];
+        const auto& second = type.elements[1];
+        return (first.kind == TypeKind::Double && second.kind == TypeKind::Integer && second.widthOrCount == 32) ||
+               (first.kind == TypeKind::Integer && first.widthOrCount == 64 && second.kind == TypeKind::Double);
     };
     if (plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
@@ -58,14 +60,24 @@ inline bool isSysVMixedDoubleI32RecordRoundTrip(const Plan& plan, std::string_vi
         plan.logicalParameters.size() != 1 || plan.physicalParameters.size() != 2) return false;
     const auto& logical = plan.logicalParameters[0];
     if (logical.passing != Passing::Direct || !logical.coercion || !pair(*logical.coercion) ||
-        logical.offset != 0 || logical.firstPhysical != 0 || logical.physicalCount != 2 ||
-        plan.physicalParameters[0].type.kind != TypeKind::Double ||
-        plan.physicalParameters[1].type.kind != TypeKind::Integer ||
-        plan.physicalParameters[1].type.widthOrCount != 32) return false;
+        logical.offset != 0 || logical.firstPhysical != 0 || logical.physicalCount != 2) return false;
+    const auto& first = plan.physicalReturn.elements[0];
+    const auto& second = plan.physicalReturn.elements[1];
+    if (plan.physicalParameters[0].type.kind != first.kind ||
+        plan.physicalParameters[0].type.widthOrCount != first.widthOrCount ||
+        plan.physicalParameters[1].type.kind != second.kind ||
+        plan.physicalParameters[1].type.widthOrCount != second.widthOrCount ||
+        logical.coercion->elements[0].kind != first.kind || logical.coercion->elements[1].kind != second.kind ||
+        plan.logicalReturn.coercion->elements[0].kind != first.kind ||
+        plan.logicalReturn.coercion->elements[1].kind != second.kind) return false;
     for (const auto& physical : plan.physicalParameters)
         if (physical.structureReturn || physical.byValue || physical.signExtend || physical.zeroExtend ||
             physical.inRegister || physical.noAlias) return false;
     return true;
+}
+inline bool isSysVMixedDoubleI32RecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
+{
+    return isSysVMixedRecordRoundTrip(plan, symbol) && plan.physicalReturn.elements[0].kind == TypeKind::Double;
 }
 inline bool isSysVIndirectRecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
 {

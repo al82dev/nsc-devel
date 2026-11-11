@@ -270,3 +270,15 @@ piezas y el indirecto alineado a ocho en A:/temp/nsc-t09-sysv-r16-emtqi600 y
 A:/temp/nsc-t09-sysv-a8-y5c0k8se. Una forma mixta distinta sigue rechazada,
 junto con callbacks, en A:/temp/nsc-t09-sysv-prueba-7pj53wlf. Esta muestra no
 certifica otras combinaciones mixtas ni otras firmas; T09-003 permanece abierto.
+
+Forma mixta inversa: `struct { int x, y; double z; }` usa piezas `i64` y
+`double`. El control C paso y NSC rechazo inicialmente la muestra en
+A:/temp/nsc-t09-sysv-mixed-id-spgg2ibn. Tras el cambio pasaron las ocho
+comparaciones estatica/DLL O0–O3, las firmas LLVM y la plantilla precompilada
+sin encabezado O0 en A:/temp/nsc-t09-sysv-mixed-id-7_06db2r. La sonda Clang y
+el control de metadatos pasaron en A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log. Las regresiones de la forma inversa anterior y
+del record entero de dos piezas pasaron en A:/temp/nsc-t09-sysv-mixed-di-kdu5s3z0
+y A:/temp/nsc-t09-sysv-r16-fg15wbmz. La prueba negativa de esta sesion conserva
+el rechazo de `int`, `int`, `float`, junto con el de callback, en
+A:/temp/nsc-t09-sysv-prueba-5m4k6kv6. No se certifican otras formas mixtas.

@@ -449,8 +449,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     const bool directRecord = f.abiPlan && abi_plan::isSysVSmallRecordRoundTrip(*f.abiPlan, value.linkSymbol);
     const bool pairRecord = f.abiPlan && abi_plan::isSysVTwoIntegerRecordRoundTrip(*f.abiPlan, value.linkSymbol);
     const bool indirectRecord = f.abiPlan && abi_plan::isSysVIndirectRecordRoundTrip(*f.abiPlan, value.linkSymbol);
-    const bool mixedRecord = f.abiPlan && abi_plan::isSysVMixedDoubleI32RecordRoundTrip(*f.abiPlan, value.linkSymbol);
-    writer.u8(directRecord ? 1 : pairRecord ? 2 : indirectRecord ? 3 : mixedRecord ? 4 : 0);
+    const bool mixedRecord = f.abiPlan && abi_plan::isSysVMixedRecordRoundTrip(*f.abiPlan, value.linkSymbol);
+    const bool mixedDoubleFirst = mixedRecord && f.abiPlan->physicalReturn.elements[0].kind == abi_plan::TypeKind::Double;
+    writer.u8(directRecord ? 1 : pairRecord ? 2 : indirectRecord ? 3 : mixedRecord ? (mixedDoubleFirst ? 4 : 5) : 0);
     if (directRecord || pairRecord || indirectRecord || mixedRecord)
     {
         const auto secondBits = pairRecord ? f.abiPlan->physicalReturn.elements[1].widthOrCount : 0;
@@ -518,14 +519,14 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
         f.parameters.push_back(std::move(parameter));
     }
     std::uint8_t recordPlan = 0;
-    if (!reader.u8(recordPlan) || recordPlan > 4) { error = "invalid C dependency ABI marker"; return false; }
+    if (!reader.u8(recordPlan) || recordPlan > 5) { error = "invalid C dependency ABI marker"; return false; }
     if (recordPlan != 0)
     {
         auto plan = std::make_shared<abi_plan::Plan>();
         plan->symbol = value.linkSymbol;
         plan->callingConvention = 78;
         std::uint8_t bits = 0;
-        if ((recordPlan != 4 && !reader.u8(bits)) || !reader.text(plan->targetTriple) || !reader.text(plan->dataLayout))
+        if ((recordPlan < 4 && !reader.u8(bits)) || !reader.text(plan->targetTriple) || !reader.text(plan->dataLayout))
         { error = "invalid C dependency ABI target"; return false; }
         if (recordPlan == 3)
         {
@@ -557,11 +558,12 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
         }
         else
         {
-            const abi_plan::Type integer{abi_plan::TypeKind::Integer, recordPlan == 4 ? 32U : bits};
+            const abi_plan::Type integer{recordPlan == 5 ? abi_plan::TypeKind::Double : abi_plan::TypeKind::Integer,
+                                         recordPlan == 4 ? 32U : recordPlan == 5 ? 0U : bits};
             const abi_plan::Type firstInteger{recordPlan == 4 ? abi_plan::TypeKind::Double : abi_plan::TypeKind::Integer,
-                                              recordPlan == 2 ? 64U : recordPlan == 4 ? 0U : bits};
+                                              recordPlan == 2 || recordPlan == 5 ? 64U : recordPlan == 4 ? 0U : bits};
             abi_plan::Type physicalReturn = integer;
-            if (recordPlan == 2 || recordPlan == 4)
+            if (recordPlan == 2 || recordPlan >= 4)
             {
                 physicalReturn = {};
                 physicalReturn.kind = abi_plan::TypeKind::Structure;
@@ -573,15 +575,15 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
             abi_plan::LogicalValue logical;
             logical.passing = abi_plan::Passing::Direct;
             logical.coercion = physicalReturn;
-            logical.physicalCount = recordPlan == 2 || recordPlan == 4 ? 2 : 1;
+            logical.physicalCount = recordPlan == 2 || recordPlan >= 4 ? 2 : 1;
             plan->logicalParameters.push_back(std::move(logical));
             abi_plan::PhysicalParameter physical;
             physical.type = firstInteger;
             plan->physicalParameters.push_back(physical);
-            if (recordPlan == 2 || recordPlan == 4) { physical.type = integer; plan->physicalParameters.push_back(physical); }
+            if (recordPlan == 2 || recordPlan >= 4) { physical.type = integer; plan->physicalParameters.push_back(physical); }
             if (!(recordPlan == 1 ? abi_plan::isSysVSmallRecordRoundTrip(*plan, value.linkSymbol) :
                   recordPlan == 2 ? abi_plan::isSysVTwoIntegerRecordRoundTrip(*plan, value.linkSymbol) :
-                                    abi_plan::isSysVMixedDoubleI32RecordRoundTrip(*plan, value.linkSymbol)))
+                                    abi_plan::isSysVMixedRecordRoundTrip(*plan, value.linkSymbol)))
             { error = "invalid C dependency ABI plan"; return false; }
             f.abiPlan = std::move(plan);
         }

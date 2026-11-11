@@ -1750,6 +1750,19 @@ bool checkDependencyTypeCodec()
         decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
         abi_plan::isSysVMixedDoubleI32RecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
         "C dependency function retains a mixed double and integer SysV plan");
+    auto reversePlan = std::make_shared<abi_plan::Plan>(*mixedPlan);
+    const abi_plan::Type int64Type{abi_plan::TypeKind::Integer, 64};
+    reversePlan->physicalReturn.elements = {int64Type, doubleType};
+    reversePlan->logicalReturn.coercion = reversePlan->physicalReturn;
+    reversePlan->logicalParameters[0].coercion = reversePlan->physicalReturn;
+    reversePlan->physicalParameters[0].type = int64Type;
+    reversePlan->physicalParameters[1].type = doubleType;
+    recordFunction.declaration.abiPlan = reversePlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVMixedRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        !abi_plan::isSysVMixedDoubleI32RecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
+        "C dependency function retains an integer and double SysV plan");
     if (!functionBytes.empty()) functionBytes.pop_back();
     decoded.moduleName = "sentinel";
     ok &= expect(!decodeCDependencyFunction(functionBytes, decoded, error) && decoded.moduleName == "sentinel",

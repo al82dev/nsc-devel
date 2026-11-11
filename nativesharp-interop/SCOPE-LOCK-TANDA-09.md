@@ -88,3 +88,5 @@ T09-003: contrastar records indirectos alineados a un byte de 17, 20 y 32 bytes 
 T09-003: contrastar records indirectos de 24 bytes alineados a cuatro y ocho bytes con Clang y consumidores C/NS. Ampliar solo las alineaciones verificadas por el plan; conservar la prueba negativa con una firma mixta aun no admitida.
 T09-003: conservar la prueba negativa de esta sesion usando un agregado SysV mixto entero/flotante de dos piezas, cuya emision todavia no esta admitida.
 T09-003: preparar un record SysV con `double` seguido de `int`, contrastar control C y rechazo previo, y consultar el plan de dos piezas de Clang. Implementar solo esa forma mixta si pasa las pruebas, incluida precompilacion; conservar una firma mixta diferente como negativa.
+T09-003: preparar un record SysV con dos `int` seguidos de `double`, contrastar el rechazo previo y el plan Clang y probar la forma mixta inversa y su precompilacion. La prueba negativa de esta sesion seguira usando una forma mixta distinta no admitida.
+T09-003: conservar la prueba negativa de esta sesion con un agregado de `int`, `int` y `float`, cuya forma mixta continua fuera del soporte probado.
