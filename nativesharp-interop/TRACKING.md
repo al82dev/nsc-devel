@@ -1723,7 +1723,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Se probaron firmas con vectores fijos de dos `float`, como pieza unica o junto con otras piezas, incluido `double` en ambos ordenes y una muestra alineada a 16; otras formas vectoriales siguen pendientes. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probaron records con un `float` o `double` como pieza escalar y plantilla precompilada; otras formas flotantes siguen pendientes. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probaron records de dos `double` y combinaciones `double`/`float` en ambos ordenes, incluida precompilacion; otras combinaciones flotantes siguen pendientes. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
-  - Se probaron records indirectos con retorno `sret` y argumento `byval`, incluidas muestras alineadas a uno, dos, cuatro, ocho y 32 bytes; siguen pendientes otras formas indirectas. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
+  - Se probaron records indirectos con retorno `sret` y argumento `byval`, incluidas muestras alineadas a uno, dos, cuatro, ocho, 16 y 32 bytes; siguen pendientes otras formas indirectas. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
 - [ ] T09-004. Emitir una llamada C sin parámetros y con resultado escalar. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-005. Emitir una llamada C con parámetros escalares. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-006. Emitir el paso de punteros a una función C. [Prueba y contraste](pruebas-tanda-09-llamadas/).

@@ -78,6 +78,7 @@ int main(int argc, char** argv) {
         typedef struct RVV { float x, y, z, w; } RVV;
         typedef struct __declspec(align(16)) RVV16 { float x, y, z, w; } RVV16;
         typedef struct __declspec(align(32)) RVV32 { float x, y, z, w; } RVV32;
+        typedef struct __declspec(align(16)) RVV16I { float x, y, z, w; int a; } RVV16I;
         typedef struct RVF { float x, y, z; } RVF;
         typedef struct RV { float x, y; } RV;
         typedef struct ROneF { float x; } ROneF;
@@ -116,6 +117,7 @@ int main(int argc, char** argv) {
         RVV __attribute__((sysv_abi)) pvv(RVV);
         RVV16 __attribute__((sysv_abi)) pvv16(RVV16);
         RVV32 __attribute__((sysv_abi)) pvv32(RVV32);
+        RVV16I __attribute__((sysv_abi)) pvv16i(RVV16I);
         RVF __attribute__((sysv_abi)) pvf(RVF);
         RV __attribute__((sysv_abi)) ponev(RV);
         ROneF __attribute__((sysv_abi)) ponef(ROneF);
@@ -188,7 +190,7 @@ int main(int argc, char** argv) {
             name != "p6" && name != "p7" && name != "p8" && name != "p9" && name != "p10" &&
             name != "p11" && name != "p12" && name != "p13" && name != "p14" && name != "p15" &&
             name != "p16" && name != "pf" && name != "p24" && name != "p24b" && name != "p24i" && name != "p17b" &&
-            name != "p20b" && name != "p20s" && name != "p32b" && name != "pid" && name != "pdd" && name != "pdf" && name != "pfd" && name != "pvd" && name != "pdv" && name != "pif" && name != "piv" && name != "pvi" && name != "pvs" && name != "pvv" && name != "pvv16" && name != "pvv32" && name != "pvf" && name != "ponev" && name != "ponef" && name != "poned" && name != "ps8" && name != "pm" &&
+            name != "p20b" && name != "p20s" && name != "p32b" && name != "pid" && name != "pdd" && name != "pdf" && name != "pfd" && name != "pvd" && name != "pdv" && name != "pif" && name != "piv" && name != "pvi" && name != "pvs" && name != "pvv" && name != "pvv16" && name != "pvv32" && name != "pvv16i" && name != "pvf" && name != "ponev" && name != "ponef" && name != "poned" && name != "ps8" && name != "pm" &&
             name != "pp" && name != "pvec" && name != "pvoid") continue;
         if (name == "p3" && copiedPlans.contains(name)) continue;
         auto* physical = clang::CodeGen::convertFreeFunctionType(generator->CGM(), function);
@@ -256,7 +258,7 @@ int main(int argc, char** argv) {
         if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
-    if (matched != 46 || copiedPlans.size() != 46 || !unsupportedRejected || !variadicRejected ||
+    if (matched != 47 || copiedPlans.size() != 47 || !unsupportedRejected || !variadicRejected ||
         !noPrototypeRejected || !attributeRejected) return 7;
     generator.reset();
     ast.reset();
@@ -313,6 +315,7 @@ int main(int argc, char** argv) {
         copiedPlans.at("pvv").physicalReturn.elements[1].kind != t09_probe::TypeKind::Vector) return 89;
     if (!t09_probe::isSysVMixedRecordRoundTrip(copiedPlans.at("pvv16"), "pvv16")) return 97;
     if (!t09_probe::isSysVIndirectRecordRoundTrip(copiedPlans.at("pvv32"), "pvv32")) return 98;
+    if (!t09_probe::isSysVIndirectRecordRoundTrip(copiedPlans.at("pvv16i"), "pvv16i")) return 100;
     if (!t09_probe::isSysVIndirectRecordRoundTrip(copiedPlans.at("p20s"), "p20s")) return 99;
     if (!t09_probe::isSysVMixedRecordRoundTrip(copiedPlans.at("pvf"), "pvf") ||
         copiedPlans.at("pvf").physicalReturn.elements[1].kind != t09_probe::TypeKind::Float) return 90;
