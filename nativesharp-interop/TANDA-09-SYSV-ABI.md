@@ -957,9 +957,37 @@ A:/temp/nsc-t09-sysv-class-vf-gsbrspu9,
 A:/temp/nsc-t09-sysv-sret-mixed-daoybwim y
 A:/temp/nsc-t09-sysv-prueba-4t9v5m_m.
 
-El retorno escalar nuevo se limita a `int` de 32 bits y a planes verificados
-con al menos un record indirecto o descompuesto; no acredita `void`, otros
-retornos ni todas las clases y firmas. T09-003 y la tanda 9 siguen abiertos.
+Esa ampliacion inicial cubria retorno `int` de 32 bits y planes con al menos un
+record indirecto o descompuesto; otras formas seguian pendientes.
+
+Una ampliacion posterior cubre la misma combinacion de argumentos con retorno
+`long`, `uint`, `ulong`, `float`, `double` y `void`; este ultimo comprueba su
+resultado mediante un puntero de salida. Clang 23.1.0 emitio respectivamente
+`i64`, `i32`, `i64`, `float`, `double` y `void`, conservando el argumento
+`byval` (archivos A:/temp/t09-retorno-*-clang.ll). Los controles C de las cinco
+formas distintas de `ulong` pasaron y NSC las rechazaba antes de la ampliacion:
+A:/temp/nsc-t09-sysv-return-long-mixed-xogmiivs,
+A:/temp/nsc-t09-sysv-return-uint-mixed-s4s3aakk,
+A:/temp/nsc-t09-sysv-return-float-mixed-6gj8mug3,
+A:/temp/nsc-t09-sysv-return-double-mixed-61yetu8n y
+A:/temp/nsc-t09-sysv-return-void-mixed-rwmy_nsy. La muestra `ulong` se agrego
+despues de habilitar esa clasificacion; no se afirma un rechazo previo suyo.
+
+Cada una de las seis muestras paso ocho comparaciones C/NS, estatica y DLL en
+O0–O3, argumentos nombrados y una plantilla precompilada sin encabezado O0:
+A:/temp/nsc-t09-sysv-return-long-mixed-d7s75l2l,
+A:/temp/nsc-t09-sysv-return-uint-mixed-r_klx09m,
+A:/temp/nsc-t09-sysv-return-ulong-mixed-kmd6dh1k,
+A:/temp/nsc-t09-sysv-return-float-mixed-5n627f5c,
+A:/temp/nsc-t09-sysv-return-double-mixed-lfja7pr4 y
+A:/temp/nsc-t09-sysv-return-void-mixed-ir6k1pvt. Los retornos enteros usan
+valores fuera del rango de 32 bits cuando corresponde. La sonda Clang y los
+metadatos pasaron (A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log). Las regresiones de `int`, retorno indirecto
+y control general pasaron en A:/temp/nsc-t09-sysv-scalar-mixed-rol8e20p,
+A:/temp/nsc-t09-sysv-sret-mixed-j4g82clv y
+A:/temp/nsc-t09-sysv-prueba-zavu8jpq. Siguen pendientes otras clases, firmas,
+retornos y callbacks; T09-003 y la tanda 9 permanecen abiertos.
 
 ## Record con `double` y dos enteros con retorno indirecto
 

@@ -2081,6 +2081,30 @@ bool checkDependencyTypeCodec()
     invalidScalarPlan.physicalReturn.widthOrCount = 64;
     ok &= expect(!abi_plan::isSysVScalarReturnWithRecordArguments(invalidScalarPlan, recordFunction.linkSymbol),
         "scalar SysV plan rejects a conflicting return width");
+    for (unsigned variant = 0; variant < 6; ++variant)
+    {
+        auto changedReturn = std::make_shared<abi_plan::Plan>(*scalarReturnPlan);
+        const bool noReturn = variant == 4;
+        const bool floating = variant == 2 || variant == 3;
+        const unsigned bits = variant == 0 || variant == 3 || variant == 5 ? 64 : 32;
+        changedReturn->physicalReturn = noReturn ? abi_plan::Type{abi_plan::TypeKind::Void} :
+            floating ? abi_plan::Type{bits == 32 ? abi_plan::TypeKind::Float : abi_plan::TypeKind::Double} :
+                       abi_plan::Type{abi_plan::TypeKind::Integer, bits};
+        changedReturn->logicalReturn = {};
+        changedReturn->logicalReturn.passing = noReturn ? abi_plan::Passing::Ignore : abi_plan::Passing::Direct;
+        if (!noReturn) changedReturn->logicalReturn.coercion = changedReturn->physicalReturn;
+        recordFunction.declaration.returnType.kind = noReturn ? CppTypeKind::Void : floating ? CppTypeKind::Floating :
+            variant == 1 || variant == 5 ? CppTypeKind::UnsignedInteger : CppTypeKind::SignedInteger;
+        recordFunction.declaration.returnType.sizeBits = noReturn ? std::nullopt : std::optional<std::uint64_t>{bits};
+        recordFunction.declaration.returnType.alignmentBits = noReturn ? std::nullopt : std::optional<std::uint64_t>{bits};
+        recordFunction.declaration.abiPlan = changedReturn;
+        ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+            decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+            abi_plan::isSysVScalarReturnWithRecordArguments(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+            restoredRecord.declaration.abiPlan->physicalReturn.kind == changedReturn->physicalReturn.kind &&
+            restoredRecord.declaration.abiPlan->physicalReturn.widthOrCount == changedReturn->physicalReturn.widthOrCount,
+            "C dependency function retains scalar or void return with record arguments");
+    }
     recordFunction.declaration.returnType = savedReturnType;
     auto inconsistentIndirectPlan = *mixedIndirectPlan;
     inconsistentIndirectPlan.physicalParameters[2].type.kind = abi_plan::TypeKind::Float;

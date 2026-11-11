@@ -1874,8 +1874,14 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                       *symbol.cppReturnType->sizeBits > 128 && *symbol.cppReturnType->sizeBits % 8 == 0 &&
                       symbol.cppReturnType->alignmentBits == symbol.cppAbiPlan->logicalReturn.alignment * 8 &&
                       interop::abi_plan::isSysVIndirectRecordWithArguments(*symbol.cppAbiPlan, symbol.mangledName)) ||
-                     (symbol.cppReturnType->kind == interop::CppTypeKind::SignedInteger && symbol.cppReturnType->sizeBits == 32 &&
-                      interop::abi_plan::isSysVScalarReturnWithRecordArguments(*symbol.cppAbiPlan, symbol.mangledName))) &&
+                     (interop::abi_plan::isSysVScalarReturnWithRecordArguments(*symbol.cppAbiPlan, symbol.mangledName) &&
+                      ((symbol.cppReturnType->kind == interop::CppTypeKind::Void && symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Void) ||
+                       ((symbol.cppReturnType->kind == interop::CppTypeKind::SignedInteger || symbol.cppReturnType->kind == interop::CppTypeKind::UnsignedInteger) &&
+                        symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Integer &&
+                        symbol.cppReturnType->sizeBits == symbol.cppAbiPlan->physicalReturn.widthOrCount) ||
+                       (symbol.cppReturnType->kind == interop::CppTypeKind::Floating &&
+                        ((symbol.cppReturnType->sizeBits == 32 && symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Float) ||
+                         (symbol.cppReturnType->sizeBits == 64 && symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Double)))))) &&
                     function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
                     [&] {
                         for (std::size_t i = 0; i < symbol.cppParameterTypes.size(); ++i)

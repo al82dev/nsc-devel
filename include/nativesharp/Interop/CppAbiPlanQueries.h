@@ -298,9 +298,18 @@ inline bool isSysVRecordArguments(const Plan& plan, std::string_view symbol, boo
             result.signExtend || result.zeroExtend) return false;
         physicalIndex = 1;
     }
-    else if (plan.physicalReturn.kind != TypeKind::Integer || plan.physicalReturn.widthOrCount != 32 ||
+    else if (plan.physicalReturn.kind == TypeKind::Void)
+    {
+        if (plan.physicalReturn.widthOrCount != 0 || plan.logicalReturn.passing != Passing::Ignore ||
+            plan.logicalReturn.coercion) return false;
+    }
+    else if (!((plan.physicalReturn.kind == TypeKind::Integer &&
+                (plan.physicalReturn.widthOrCount == 32 || plan.physicalReturn.widthOrCount == 64)) ||
+               ((plan.physicalReturn.kind == TypeKind::Float || plan.physicalReturn.kind == TypeKind::Double) &&
+                plan.physicalReturn.widthOrCount == 0)) ||
              plan.logicalReturn.passing != Passing::Direct || !plan.logicalReturn.coercion ||
-             plan.logicalReturn.coercion->kind != TypeKind::Integer || plan.logicalReturn.coercion->widthOrCount != 32 ||
+             plan.logicalReturn.coercion->kind != plan.physicalReturn.kind ||
+             plan.logicalReturn.coercion->widthOrCount != plan.physicalReturn.widthOrCount ||
              plan.logicalReturn.offset != 0) return false;
     bool hasAggregate = false;
     for (std::size_t i = 0; i < plan.logicalParameters.size(); ++i)

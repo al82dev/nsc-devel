@@ -1037,7 +1037,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             }
             releaseTransferredArguments(node);
             LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
-                arguments.data(), static_cast<unsigned>(arguments.size()), indirectReturn ? "" : "sysv.scalar.mixed.result", error);
+                arguments.data(), static_cast<unsigned>(arguments.size()),
+                indirectReturn || node->typeKey == "builtin:void" ? "" : "sysv.scalar.mixed.result", error);
             if (!call) return nullptr;
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
             if (indirectReturn)

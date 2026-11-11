@@ -30,8 +30,11 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                         physical.kind == interop::abi_plan::TypeKind::Vector ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) :
                         LLVMIntTypeInContext(context_, static_cast<unsigned>(physical.widthOrCount)));
                 }
-                LLVMTypeRef result = interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName) ?
-                    LLVMVoidTypeInContext(context_) : LLVMInt32TypeInContext(context_);
+                const auto& physicalReturn = function.cppAbiPlan->physicalReturn;
+                LLVMTypeRef result = physicalReturn.kind == interop::abi_plan::TypeKind::Void ? LLVMVoidTypeInContext(context_) :
+                    physicalReturn.kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
+                    physicalReturn.kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
+                    LLVMIntTypeInContext(context_, static_cast<unsigned>(physicalReturn.widthOrCount));
                 return LLVMFunctionType(result, parameters.data(), static_cast<unsigned>(parameters.size()), 0);
             }
             if (function.cppSysVCall && function.cppAbiPlan &&

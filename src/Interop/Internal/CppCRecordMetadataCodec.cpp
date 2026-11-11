@@ -493,7 +493,12 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                           (pairRecord || pairWithScalars) ? 64 + secondBits : f.abiPlan->physicalReturn.widthOrCount;
         if (f.callingConvention != "sysv_abi" || f.variadic || !f.hasPrototype ||
             f.externalSymbol != value.linkSymbol ||
-            (scalarMixed ? (f.returnType.kind != CppTypeKind::SignedInteger || f.returnType.sizeBits != 32) :
+            (scalarMixed ? !((f.returnType.kind == CppTypeKind::Void && f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Void) ||
+                ((f.returnType.kind == CppTypeKind::SignedInteger || f.returnType.kind == CppTypeKind::UnsignedInteger) &&
+                 f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Integer && f.returnType.sizeBits == f.abiPlan->physicalReturn.widthOrCount) ||
+                (f.returnType.kind == CppTypeKind::Floating &&
+                 ((f.returnType.sizeBits == 32 && f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Float) ||
+                  (f.returnType.sizeBits == 64 && f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Double)))) :
                            (f.returnType.kind != CppTypeKind::Record || f.returnType.sizeBits != bits)) ||
             f.parameters.size() != ((manyRecords || pairWithScalars || indirectMixed || scalarMixed) ? f.abiPlan->logicalParameters.size() : 1U) ||
             (!manyRecords && !pairWithScalars && !indirectMixed && !scalarMixed && (f.parameters[0].type.kind != CppTypeKind::Record || f.parameters[0].type.sizeBits != bits)) ||
@@ -661,9 +666,23 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
         {
             if (recordPlan == 24)
             {
-                plan->physicalReturn = abi_plan::Type{abi_plan::TypeKind::Integer, 32};
-                plan->logicalReturn.passing = abi_plan::Passing::Direct;
-                plan->logicalReturn.coercion = plan->physicalReturn;
+                if (f.returnType.kind == CppTypeKind::Void)
+                {
+                    plan->physicalReturn = abi_plan::Type{abi_plan::TypeKind::Void};
+                    plan->logicalReturn.passing = abi_plan::Passing::Ignore;
+                }
+                else
+                {
+                    if (!f.returnType.sizeBits ||
+                        !((f.returnType.kind == CppTypeKind::SignedInteger || f.returnType.kind == CppTypeKind::UnsignedInteger ||
+                           f.returnType.kind == CppTypeKind::Floating) && (*f.returnType.sizeBits == 32 || *f.returnType.sizeBits == 64)))
+                    { error = "invalid C dependency scalar return"; return false; }
+                    plan->physicalReturn = f.returnType.kind == CppTypeKind::Floating ?
+                        abi_plan::Type{*f.returnType.sizeBits == 32 ? abi_plan::TypeKind::Float : abi_plan::TypeKind::Double} :
+                        abi_plan::Type{abi_plan::TypeKind::Integer, *f.returnType.sizeBits};
+                    plan->logicalReturn.passing = abi_plan::Passing::Direct;
+                    plan->logicalReturn.coercion = plan->physicalReturn;
+                }
             }
             else
             {
