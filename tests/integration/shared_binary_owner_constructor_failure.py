@@ -39,13 +39,17 @@ def run(command, cwd):
 
 def main():
     compiler, core, metadata = (Path(item).resolve() for item in sys.argv[1:4])
+    dynamic = len(sys.argv) == 5 and sys.argv[4] == '--dll'
+    if len(sys.argv) not in (4, 5) or (len(sys.argv) == 5 and not dynamic):
+        raise ValueError('expected compiler, Core library, metadata, and optional --dll')
     failures = []
     with tempfile.TemporaryDirectory(prefix='nsc-binary-owner-constructor-') as temporary:
         root = Path(temporary)
         producer = root / 'Producer.nsproj'
         consumer = root / 'Consumer.nsproj'
         producer.write_text('<Project><PropertyGroup><Name>SharedOwnerProducer</Name>'
-            '<OutputType>StaticLibrary</OutputType></PropertyGroup><ItemGroup><Compile Include="Producer.ns"/>' +
+            '<OutputType>' + ('SharedLibrary' if dynamic else 'StaticLibrary') +
+            '</OutputType></PropertyGroup><ItemGroup><Compile Include="Producer.ns"/>' +
             reference(core, metadata) + '</ItemGroup></Project>', encoding='utf-8')
         for strong, weak, factory in (('Rc', 'WeakRc', 'MakeRc'), ('Arc', 'WeakArc', 'MakeArc')):
             for kind, handle, source, count, expected in (
@@ -62,8 +66,9 @@ def main():
                     for producer_level in ('O0', 'O2'):
                         name = strong + '-' + kind + '-' + where + '-' + producer_level
                         library = root / (name + '.lib')
-                        if run([compiler, '--emit-project-oop-lib', producer, '-' + producer_level,
-                                '-o', library, '--no-artifact-cache'], root).returncode:
+                        output = library.with_suffix('.dll') if dynamic else library
+                        if run([compiler, '--emit-project-oop-dll' if dynamic else '--emit-project-oop-lib',
+                                producer, '-' + producer_level, '-o', output, '--no-artifact-cache'], root).returncode:
                             failures.append((name, 'producer'))
                             continue
                         consumer.write_text('<Project><PropertyGroup><Name>SharedOwnerConsumer</Name></PropertyGroup>'
