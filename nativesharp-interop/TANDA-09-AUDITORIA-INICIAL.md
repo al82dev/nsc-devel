@@ -165,3 +165,31 @@ comparacion se limita a esos atributos observados y se complementa con las
 ejecuciones registradas. Archivos `t09-clang.ll` y `t09-ns-llvm.log` bajo
 A:/temp/nsc-t09-vectorcall-rulir0cp/{estatica,dll}-O0. Esto no certifica todas
 las firmas vectorcall ni reemplaza la auditoria de agregados y retornos.
+
+T09-002, contraste de agregados O0: Clang y NSC emiten portadores `i8`, `i16`,
+`i32` e `i64` para las muestras directas de 1, 2, 4 y 8 bytes; para los
+records de 3 y 24 bytes usan argumento por puntero y retorno `sret`. NSC
+reserva copias con alineacion 1 y 4 respectivamente. En las declaraciones Clang
+anota atributos adicionales sobre el puntero del argumento que NSC no imprime;
+se registra la diferencia sin afirmar equivalencia textual de los IR. La muestra
+de DLL conserva `dllimport`. IR y salidas bajo
+A:/temp/nsc-t09-agregados-_wrupfy_/{estatica,dll}-O0, archivos `t09-clang.ll`
+y `t09-ns-llvm.log`. Las ejecuciones de ambos consumidores pasaron O0–O3 como
+se registro arriba; el contraste de IR se realizo solo en O0.
+
+Resultado de auditoria T09-002, emision ProjectOop Windows x64:
+
+- OopLlvmDeclarations.cpp:12–69 construye firmas y retorno indirecto y
+  :100–139 declara simbolos e importacion. OopLlvmCalls.cpp:822–935 prepara
+  argumentos, copias, retorno oculto y destino directo; la ruta vectorcall
+  deriva a la emision de punteros de funcion C. La ruta indirecta y su
+  convencion estan en OopLlvmClosuresDelegatesEvents.cpp:1038–1122.
+- OopLlvmFieldsAndConversions.cpp:541–542 emite la ampliacion de float a double;
+  OopLlvmStaticState.cpp:106–115 y OopLlvmExpressionLeaves.cpp:227–254 declaran
+  y acceden a globales importadas. Las rutas y los limites de seleccion de
+  convenciones se detallan en T09-001.
+- Los controles de LLVM y ejecucion contrastan las muestras de escalares,
+  punteros, variadicos, globales y agregados, y un caso vectorcall, segun se
+  detalla arriba. Las diferencias de atributos del puntero de agregado se dejan
+  registradas para los items funcionales; la auditoria no certifica toda firma,
+  ni convierte un rechazo o una comparacion de IR en soporte funcional.
