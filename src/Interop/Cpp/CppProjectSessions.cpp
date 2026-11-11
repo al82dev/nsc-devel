@@ -382,6 +382,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                 !type.recordIdentity->namespaceSegments.empty() || !type.recordIdentity->containingRecords.empty() ||
                 type.canonicalSpelling != "struct " + type.recordIdentity->name ||
                 !((type.sizeBits == 96 && type.alignmentBits == 32) ||
+                  (type.sizeBits == 160 && type.alignmentBits == 32) ||
                   (type.sizeBits == 128 && (type.alignmentBits == 32 || type.alignmentBits == 64)))) return {};
             const auto identity = projectCppRecordTypeIdentity(type, moduleName);
             if (!identity) return {};

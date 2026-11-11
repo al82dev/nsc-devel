@@ -1,6 +1,7 @@
 #include "../Internal/OopLlvmImplementation.h"
 #include "../Internal/CppBoolAbi.h"
 #include "../Internal/CppDllExportHelper.h"
+#include "../Internal/CppSysVRecordAbi.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/OopLlvmDirectCFunction.h"
 #include "../Internal/LlvmExpressionFrame.h"
@@ -1220,15 +1221,17 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             }
             std::vector<LLVMTypeRef> physicalTypes;
             std::vector<LLVMValueRef> physicalArguments;
+            struct ByValueAttribute { unsigned ordinal; LLVMTypeRef carrier; unsigned alignment; };
+            std::vector<ByValueAttribute> byValues;
             for (std::size_t i = 0; i < node->argumentCount; ++i)
             {
                 const auto& key = node->argumentTypeKeys[i];
                 const auto& logical = plan.logicalParameters[i];
-                if (logical.passing != Passing::Direct || logical.offset != 0)
+                if (logical.offset != 0)
                     return failValue(error, "sysv_abi function pointer argument plan is not supported");
                 if (!recordArgument(key))
                 {
-                    if (key != "builtin:int" || logical.physicalCount != 1 ||
+                    if (key != "builtin:int" || logical.passing != Passing::Direct || logical.physicalCount != 1 ||
                         !integer(plan.physicalParameters[logical.firstPhysical], 32) ||
                         LLVMTypeOf(evaluated[i]) != LLVMInt32TypeInContext(context_))
                         return failValue(error, "sysv_abi function pointer scalar plan is not supported");
@@ -1240,12 +1243,31 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 const auto ordinal = nameLookup_.typeOrdinalForIdentity(std::string_view(key).substr(5));
                 const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
                 if (!layout || !imported || imported->isIncomplete || !imported->deferredImportError.empty() ||
-                    !imported->objectLayout || logical.physicalCount != 2 ||
+                    !imported->objectLayout ||
                     (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
                      imported->origin != frontend::CppImportedTypeOrigin::CUnion) ||
                     imported->objectLayout->sizeBytes != layout->size ||
                     imported->objectLayout->alignmentBytes != layout->alignment)
                     return failValue(error, "sysv_abi function pointer record provenance is invalid");
+                LLVMTypeRef carrier = llvmType(key, error);
+                if (!carrier || LLVMTypeOf(evaluated[i]) != carrier)
+                    return failValue(error, "sysv_abi function pointer record carrier does not match its plan");
+                if (logical.passing == Passing::Indirect)
+                {
+                    if (logical.physicalCount != 1 || layout->size != 20 || layout->alignment != 4 ||
+                        !plan.physicalParameters[logical.firstPhysical].byValue ||
+                        plan.physicalParameters[logical.firstPhysical].alignment != 8)
+                        return failValue(error, "sysv_abi function pointer byval plan is not supported");
+                    LLVMValueRef slot = entryBlockAlloca(carrier, 8, "sysv.callback.byval");
+                    LLVMValueRef store = LLVMBuildStore(builder_, evaluated[i], slot);
+                    LLVMSetAlignment(store, 8);
+                    byValues.push_back({static_cast<unsigned>(physicalArguments.size()), carrier, 8});
+                    physicalTypes.push_back(LLVMPointerTypeInContext(context_, 0));
+                    physicalArguments.push_back(slot);
+                    continue;
+                }
+                if (logical.passing != Passing::Direct || logical.physicalCount != 2)
+                    return failValue(error, "sysv_abi function pointer record plan is not supported");
                 const auto& first = plan.physicalParameters[logical.firstPhysical];
                 const auto& second = plan.physicalParameters[logical.firstPhysical + 1];
                 const bool integerShape = layout->alignment == 4 && (layout->size == 12 || layout->size == 16) &&
@@ -1254,9 +1276,6 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     first.type.kind == TypeKind::Double && integer(second, 32);
                 if (!integerShape && !mixedShape)
                     return failValue(error, "sysv_abi function pointer record plan is not supported");
-                LLVMTypeRef carrier = llvmType(key, error);
-                if (!carrier || LLVMTypeOf(evaluated[i]) != carrier)
-                    return failValue(error, "sysv_abi function pointer record carrier does not match its plan");
                 const auto alignment = static_cast<unsigned>(layout->alignment);
                 LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "sysv.callback.record");
                 LLVMValueRef store = LLVMBuildStore(builder_, evaluated[i], slot);
@@ -1282,6 +1301,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, physicalArguments.data(),
                 static_cast<unsigned>(physicalArguments.size()), "sysv.callback.result");
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
+            for (const auto& value : byValues)
+                applySysVRecordByValue(context_, value.carrier, value.alignment, value.ordinal,
+                    [&](LLVMAttributeIndex index, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, index, attribute); });
             return call;
         }
         std::vector<LLVMValueRef> arguments;

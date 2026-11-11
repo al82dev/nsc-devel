@@ -1182,6 +1182,24 @@ matrices precompiladas anteriores y transporte, ABI e identidad
 `A:/temp/t09-transport-directed/`). Solo se acreditan las formas indicadas;
 la prueba negativa anterior sigue intacta y su contradiccion pendiente.
 
+**Record grande por copia `byval`:** Clang paso el record de cinco enteros
+por copia alineada a 8 y el control C paso; NSC inicialmente rechazo el plan
+(`A:/temp/nsc-t09-sysv-indirecta-record-byval-clq9f04x`). Tras emitir la
+copia y sus atributos, pasaron ocho comparaciones directas estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-record-matriz-c6wg5yka`) y la plantilla
+precompilada sin encabezado en las mismas modalidades, con acierto de cache y
+rechazo de un campo no acreditado
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-t6muyuio`). Las pruebas comprueban
+que el original mantiene sus valores. Pasaron regresiones de dos records
+distintos, dos records iguales, record entre escalares, llamadas escalares y
+transporte/ABI/identidad
+(`A:/temp/nsc-t09-sysv-indirecta-record-matriz-m0ofcpqt`,
+`A:/temp/nsc-t09-sysv-indirecta-record-matriz-q9e6rrzt`,
+`A:/temp/nsc-t09-sysv-indirecta-record-matriz-shij29n9`,
+`A:/temp/nsc-t09-sysv-indirecta-matriz-q5wivk1l`,
+`A:/temp/t09-transport-directed/`). El resultado cubre esta muestra concreta;
+otras formas y la contradiccion de la prueba negativa anterior siguen abiertas.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor
