@@ -71,6 +71,26 @@ prueba anterior (A:/temp/nsc-t09-preserve-conversiones-_eo23f71).
 Pasaron conversiones y precompilacion `regcall`, cuatro sondas, transporte,
 ABI, identidad y metadatos (registros A:/temp/t09-preserve-ptr-*.log).
 
-La cobertura indirecta se limita a las firmas `int` comprobadas. Otras
-firmas, conversiones de lambdas y metodos, y los demas casos de T09-003
-quedan pendientes. Esta evidencia no cierra T09-003 ni la tanda 9.
+La cobertura indirecta de firmas mixtas se detalla abajo. Otras firmas,
+conversiones de lambdas y metodos, y los demas casos de T09-003 quedan
+pendientes. Esta evidencia no cierra T09-003 ni la tanda 9.
+
+## Firmas mixtas por puntero
+
+La misma muestra escalar C directa se probo mediante punteros devueltos por C:
+`preserve_most` recibe `double`, `int*`, `short`, booleano y retorna `double`;
+`preserve_all` recibe entero de 64 bits, entero sin signo y `float`, y retorna
+entero de 64 bits. Los ocho controles C pasaron
+(A:/temp/nsc-t09-preserve-indirecta-mixta-nciy8qsa); NSC rechazaba la firma
+(A:/temp/nsc-t09-preserve-indirecta-mixta-2ys76sra). Clang 23.1.0 emitio las
+convenciones y `zeroext` del booleano en A:/temp/t09-preserve-ptr-mixed-oracle.ll.
+
+Ahora pasan las ocho comparaciones C/NS, la inspeccion LLVM de las llamadas
+indirectas y `zeroext`, y la cache
+(A:/temp/nsc-t09-preserve-indirecta-mixta-1aygb8be), junto con 16 consumidores
+precompilados con y sin encabezado
+(A:/temp/nsc-t09-preserve-indirecta-mixta-precompilado-im7kps6e). La muestra
+comprueba tambien la escritura por el puntero y valores de 64 bits. La muestra
+indirecta anterior de enteros paso de nuevo
+(A:/temp/nsc-t09-preserve-indirecta-ne8o69x3). Los demas tipos y firmas
+indirectas permanecen pendientes; T09-003 y la tanda 9 siguen abiertos.

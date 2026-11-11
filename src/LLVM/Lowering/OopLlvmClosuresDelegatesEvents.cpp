@@ -1076,10 +1076,15 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         const bool regCall = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::RegCall;
         const bool preserveMost = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::PreserveMost;
         const bool preserveAll = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::PreserveAll;
+        const auto preserveArgument = [](std::string_view key) {
+            return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" ||
+                key == "builtin:short" || key == "builtin:bool" || key == "builtin:float" ||
+                key == "builtin:double" || key == "builtin:int*";
+        };
         if ((preserveMost || preserveAll) && (structuralFunction->variadic ||
-            returnTypeKey != "builtin:int" ||
+            (returnTypeKey != "builtin:int" && returnTypeKey != "builtin:long" && returnTypeKey != "builtin:double") ||
             std::any_of(argumentTypeKeys.begin(), argumentTypeKeys.end(),
-                [](const std::string& key) { return key != "builtin:int"; })))
+                [&](const std::string& key) { return !preserveArgument(key); })))
             return failValue(error, "preserve convention function pointer signature is not yet supported");
         const auto regCallScalar = [](std::string_view key) {
             return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" ||
