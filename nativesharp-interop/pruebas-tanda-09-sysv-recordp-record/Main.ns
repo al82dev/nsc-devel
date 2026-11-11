@@ -1,0 +1,1 @@
+int Main() { T09Byte first; first.x=11; T09Wide wide; wide.x=1.5f; wide.y=2.5f; T09Byte value; value.x=10; T09Byte* p=&value; T09Byte* result=sysv_recordp_record(1.5f,first,wide,p,7); T09Byte* named=sysv_recordp_record(n: 7, p: p, wide: wide, first: first, factor: 1.5f); if (first.x!=11 || wide.x!=1.5f || wide.y!=2.5f || result!=p || named!=p || value.x!=16) return 1; return 0; }

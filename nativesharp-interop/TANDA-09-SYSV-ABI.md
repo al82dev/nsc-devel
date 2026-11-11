@@ -934,6 +934,29 @@ A:/temp/nsc-t09-sysv-indirect-diff16-eed8vwvp y
 A:/temp/nsc-t09-sysv-prueba-5voqucsx). No se acreditan todas las clases de
 agregado ni firmas posibles; T09-003 permanece abierto.
 
+## Punteros a datos con records SysV
+
+Dos funciones reciben un record entero y otro vectorial por valor junto a un
+puntero, que devuelven tras escribir en el objeto apuntado. Las muestras usan
+un puntero a record C y un puntero a `short`. Los controles C pasaron y NSC las
+rechazo antes del cambio en A:/temp/nsc-t09-sysv-recordp-record-0lwmr6de y
+A:/temp/nsc-t09-sysv-shortp-record-uo9u2hof. Clang 23.1.0 representa el
+puntero a record como `ptr` en argumento y retorno
+(A:/temp/t09-recordp-record-clang.ll).
+
+El importador admite los punteros a datos mapeados cuando el plan conserva esa
+forma fisica y el generador pasa la direccion directamente. Los punteros a
+funcion se mantienen fuera de esta ruta. Ambas muestras pasaron ocho
+comparaciones C/NS con estatica y DLL en O0–O3, llamadas nombradas y plantilla
+precompilada sin encabezado O0, verificando direccion y escritura:
+A:/temp/nsc-t09-sysv-recordp-record-v_7ggzva y
+A:/temp/nsc-t09-sysv-shortp-record-euo77f7r. Pasaron las regresiones de
+booleano, puntero a `int` y control general, que conserva el rechazo de la
+conversion a callback: A:/temp/nsc-t09-sysv-bool-record-pt39wwep,
+A:/temp/nsc-t09-sysv-intp-record-873rcnzm y
+A:/temp/nsc-t09-sysv-prueba-0mhi34vk. No se acreditan todos los tipos de
+puntero ni callbacks; T09-003 y la tanda 9 siguen abiertos.
+
 ## Booleanos y punteros con records SysV
 
 Cinco funciones reciben dos records directos, escalares y respectivamente

@@ -1750,6 +1750,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Se probo retorno `int` con dos records directos de una pieza, uno entero y otro vectorial, sin argumento indirecto ni descompuesto. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - `sbyte`, `byte`, `short` y `ushort` como retorno y argumento, mezclados con records directos SysV, pasaron con extensiones de signo o cero, incluidas firmas combinadas y retorno indirecto. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probaron booleano C e `int*`, `double*`, `void*` e `int**` como retorno y argumento junto con records directos, con precompilacion. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
+  - Se probaron punteros a record C y a `short` como argumento y retorno junto a records por valor, con identidad, escritura y precompilacion. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
 - [ ] T09-004. Emitir una llamada C sin parámetros y con resultado escalar. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-005. Emitir una llamada C con parámetros escalares. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-006. Emitir el paso de punteros a una función C. [Prueba y contraste](pruebas-tanda-09-llamadas/).

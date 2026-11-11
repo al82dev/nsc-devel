@@ -998,8 +998,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                         argumentKey == "builtin:sbyte" || argumentKey == "builtin:byte" ||
                         argumentKey == "builtin:short" || argumentKey == "builtin:ushort";
                     const bool scalarArgument = scalarInteger || argumentKey == "builtin:bool" || argumentKey == "builtin:float" ||
-                        argumentKey == "builtin:double" || argumentKey == "builtin:int*" || argumentKey == "builtin:double*" ||
-                        argumentKey == "builtin:void*" || argumentKey == "builtin:int**";
+                        argumentKey == "builtin:double" || physical.kind == interop::abi_plan::TypeKind::Pointer;
                     if (!scalarArgument)
                     {
                         if (i >= imported->parameterTypeKeys.size() || argumentKey != imported->parameterTypeKeys[i])
