@@ -1191,7 +1191,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             return key.starts_with("type:") && !key.ends_with('*');
         };
         if (externC && node->cppVariadicCallPlan &&
-            (node->typeKey == "builtin:int" || node->typeKey == "builtin:double") &&
+            (node->typeKey == "builtin:int" || node->typeKey == "builtin:double" || node->typeKey == "builtin:void") &&
             node->argumentCount >= 2 && node->argumentCount <= 1025 &&
             node->argumentTypeKeys.size() == node->argumentCount &&
             std::any_of(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), recordArgument) &&
@@ -1208,7 +1208,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 plan.arguments.size() != node->argumentCount ||
                 (node->typeKey == "builtin:int" && (plan.physicalReturn.kind != TypeKind::Integer ||
                                                      plan.physicalReturn.widthOrCount != 32)) ||
-                (node->typeKey == "builtin:double" && plan.physicalReturn.kind != TypeKind::Double))
+                (node->typeKey == "builtin:double" && plan.physicalReturn.kind != TypeKind::Double) ||
+                (node->typeKey == "builtin:void" && plan.physicalReturn.kind != TypeKind::Void))
                 return failValue(error, "sysv_abi variadic function pointer record plan is not supported");
             std::vector<LLVMValueRef> arguments;
             std::vector<LLVMTypeRef> fixedTypes;
@@ -1297,11 +1298,12 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             releaseTransferredArguments(node);
             delegateValue = checkedReceiver(delegateValue, error);
             if (!delegateValue) return nullptr;
-            LLVMTypeRef returnType = node->typeKey == "builtin:int" ? LLVMInt32TypeInContext(context_) : LLVMDoubleTypeInContext(context_);
+            LLVMTypeRef returnType = node->typeKey == "builtin:int" ? LLVMInt32TypeInContext(context_) :
+                node->typeKey == "builtin:double" ? LLVMDoubleTypeInContext(context_) : LLVMVoidTypeInContext(context_);
             LLVMTypeRef functionType = LLVMFunctionType(returnType, fixedTypes.data(),
                 static_cast<unsigned>(fixedTypes.size()), 1);
             LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, arguments.data(),
-                static_cast<unsigned>(arguments.size()), "sysv.varptr.result");
+                static_cast<unsigned>(arguments.size()), node->typeKey == "builtin:void" ? "" : "sysv.varptr.result");
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
             for (const auto& value : byValues)
                 applySysVRecordByValue(context_, value.carrier, value.alignment, value.ordinal,
