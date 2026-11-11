@@ -1009,6 +1009,55 @@ public:
             match = candidate;
         }
         if (!match) return std::nullopt;
+        return copyVariadicPlanForDeclaration(match, optionalArguments);
+    }
+    std::optional<abi_plan::VariadicCallPlan> cVariadicFunctionPointerCallAbiPlan(
+        std::string_view name, std::string_view canonicalType,
+        const std::vector<CppType>& optionalArguments) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || name.empty() || canonicalType.empty()) return std::nullopt;
+        auto& context = ast_->getASTContext();
+        if (context.getLangOpts().CPlusPlus) return std::nullopt;
+        const clang::TypedefNameDecl* match = nullptr;
+        for (const auto* declaration : context.getTranslationUnitDecl()->decls())
+        {
+            const auto* candidate = llvm::dyn_cast<clang::TypedefNameDecl>(declaration);
+            if (!candidate || candidate->isImplicit() || candidate->hasAttrs() ||
+                candidate->getNameAsString() != name ||
+                candidate->getUnderlyingType().getCanonicalType().getAsString() != canonicalType) continue;
+            if (match && match->getCanonicalDecl() != candidate->getCanonicalDecl()) return std::nullopt;
+            match = candidate;
+        }
+        if (!match) return std::nullopt;
+        const auto pointer = match->getUnderlyingType().getCanonicalType();
+        if (pointer.hasQualifiers() || !pointer->isPointerType()) return std::nullopt;
+        const auto functionType = pointer->getPointeeType();
+        const auto* prototype = functionType->getAs<clang::FunctionProtoType>();
+        if (!prototype || !prototype->isVariadic() || prototype->hasExtParameterInfos() ||
+            prototype->getCallConv() != clang::CC_X86_64SysV) return std::nullopt;
+        const auto resultType = prototype->getReturnType();
+        if (resultType.isNull() || (!resultType->isVoidType() && resultType->isIncompleteType())) return std::nullopt;
+        for (const auto type : prototype->param_types())
+            if (type.isNull() || type->isIncompleteType()) return std::nullopt;
+        auto* declaration = clang::FunctionDecl::Create(context, context.getTranslationUnitDecl(), {}, {},
+            &context.Idents.get("__nsc_variadic_pointer_abi_probe"), functionType,
+            context.getTrivialTypeSourceInfo(functionType), clang::SC_Extern);
+        if (!declaration) return std::nullopt;
+        std::vector<clang::ParmVarDecl*> parameters;
+        parameters.reserve(prototype->getNumParams());
+        for (const auto type : prototype->param_types())
+            parameters.push_back(clang::ParmVarDecl::Create(context, declaration, {}, {}, nullptr, type,
+                context.getTrivialTypeSourceInfo(type), clang::SC_None, nullptr));
+        declaration->setParams(parameters);
+        return copyVariadicPlanForDeclaration(declaration, optionalArguments);
+    }
+    // Caller holds mutex_ and owns the declaration for the duration of this observation.
+    std::optional<abi_plan::VariadicCallPlan> copyVariadicPlanForDeclaration(
+        const clang::FunctionDecl* match, const std::vector<CppType>& optionalArguments) const
+    {
+        if (!ast_ || !match) return std::nullopt;
+        auto& context = ast_->getASTContext();
         const auto* prototype = match->getType()->getAs<clang::FunctionProtoType>();
         if (!prototype || !prototype->isVariadic()) return std::nullopt;
         std::function<std::optional<clang::QualType>(const CppType&, unsigned)> resolve =

@@ -1306,6 +1306,23 @@ mas transporte, ABI e identidad
 `A:/temp/t09-transport-directed/`). La prueba negativa anterior sigue intacta
 y su contradiccion permanece abierta.
 
+**Record opcional en puntero variadico:** el control C y una rutina
+independiente de registros pasaron con un record `double`/`int`; NSC rechazo
+la llamada (`A:/temp/nsc-t09-sysv-indirecta-variadica-record-524p0576`). Se
+agrego una consulta experimental para un typedef de puntero observado en una
+sesion Clang, usando una declaracion sintetica no enlazable. La sonda nueva
+comparó el plan completo con el de una funcion C equivalente, tanto con
+registros disponibles como bajo presion que fuerza `byval`; comprobo rechazos
+de identidad, tipo y convencion y que no aparece una funcion publica nueva.
+Pasaron la sonda nueva y la sonda ABI existente
+(`A:/temp/t09-test-varptr.log`), transporte, ABI e identidad
+(`A:/temp/t09-transport-directed/`), la matriz de llamadas escalares indirectas
+(`A:/temp/nsc-t09-sysv-indirecta-matriz-5447lski`) y la plantilla de retorno
+sin parametros (`A:/temp/nsc-t09-sysv-indirecta-record-pre-il0cb6h2`). La
+consulta aun no esta conectada a HIR/MIR ni a la emision; la llamada variadica
+con record y su precompilacion siguen pendientes. No se acredita soporte por el
+diagnostico ni por la sonda.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor

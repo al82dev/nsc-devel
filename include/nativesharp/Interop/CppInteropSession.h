@@ -91,6 +91,11 @@ public:
     virtual std::optional<abi_plan::VariadicCallPlan> cVariadicCallAbiPlan(
         std::string_view, std::string_view, const std::vector<CppType>&) const
     { return std::nullopt; }
+    // Experimental C-only observation for one variadic function-pointer typedef.
+    // Its synthetic symbol is not linkable and the result does not authorize emission.
+    virtual std::optional<abi_plan::VariadicCallPlan> cVariadicFunctionPointerCallAbiPlan(
+        std::string_view, std::string_view, const std::vector<CppType>&) const
+    { return std::nullopt; }
     // Initial projection of named, non-dependent records; nullopt means closed.
     virtual std::optional<std::vector<CppRecordDeclaration>> recordsSnapshot() const = 0;
     // Live C AST observation only: true means a unique, complete, plain record
