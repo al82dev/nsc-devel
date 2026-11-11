@@ -51,6 +51,22 @@ struct CppImplicitLifetimeDeclaration
     bool dllImport = false;
 };
 
+enum class CppSpecialMemberSelectionStatus { Selected, MissingOrDeleted, Ambiguous };
+struct CppSpecialMemberSelection
+{
+    CppSpecialMemberSelectionStatus status = CppSpecialMemberSelectionStatus::MissingOrDeleted;
+    // Declared member access, not a context-dependent accessibility decision.
+    std::optional<CppAccess> access;
+    std::optional<bool> isDeleted;
+    std::optional<bool> isTrivial;
+};
+struct CppRecordValueOperations
+{
+    CppSpecialMemberSelection copyFromConst;
+    CppSpecialMemberSelection copyFromMutable;
+    CppSpecialMemberSelection destructor;
+};
+
 struct CppCInlineIRExport
 {
     std::string name;
@@ -113,6 +129,10 @@ public:
     // nullopt also covers unavailable Sema, ambiguous names and unsupported records.
     virtual std::optional<std::vector<CppImplicitLifetimeDeclaration>> implicitLifetimeDeclarations(
         std::string_view) const { return std::nullopt; }
+    // Live C++ Sema selection; nullopt means closed, ambiguous record name,
+    // incomplete record or unavailable Sema. This does not authorize a call.
+    virtual std::optional<CppRecordValueOperations> recordValueOperations(std::string_view) const
+    { return std::nullopt; }
     // Experimental isolated IR only; no object, linkage, or lifetime integration is implied.
     virtual std::optional<std::string> emitImplicitLifetimeIR(
         std::string_view, CppImplicitLifetimeKind) const { return std::nullopt; }

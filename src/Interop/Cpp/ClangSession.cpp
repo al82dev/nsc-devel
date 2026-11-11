@@ -1296,6 +1296,39 @@ public:
         }
         return result;
     }
+    std::optional<CppRecordValueOperations> recordValueOperations(std::string_view name) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || !ast_->hasSema() || name.empty() || !ast_->getASTContext().getLangOpts().CPlusPlus)
+            return std::nullopt;
+        auto& context = ast_->getASTContext();
+        std::set<const clang::TagDecl*> seen;
+        std::vector<const clang::RecordDecl*> records;
+        findComparableRecords(*context.getTranslationUnitDecl(), name, seen, records);
+        if (records.size() != 1) return std::nullopt;
+        auto* record = llvm::dyn_cast<clang::CXXRecordDecl>(const_cast<clang::RecordDecl*>(records.front()));
+        if (!record || !record->isCompleteDefinition() || record->isDependentContext()) return std::nullopt;
+        auto& sema = ast_->getSema();
+        sema.ForceDeclarationOfImplicitMembers(record);
+        const auto select = [&](clang::CXXSpecialMemberKind kind, bool constArgument) {
+            const auto result = sema.LookupSpecialMember(record, kind, constArgument, false, false, false, false);
+            CppSpecialMemberSelection selected;
+            using Status = clang::Sema::SpecialMemberOverloadResult;
+            if (result.getKind() == Status::Success) selected.status = CppSpecialMemberSelectionStatus::Selected;
+            else if (result.getKind() == Status::Ambiguous) selected.status = CppSpecialMemberSelectionStatus::Ambiguous;
+            if (const auto* method = result.getMethod())
+            {
+                selected.access = describeAccess(method->getAccess());
+                selected.isDeleted = method->isDeleted();
+                selected.isTrivial = method->isTrivial();
+            }
+            return selected;
+        };
+        return CppRecordValueOperations{
+            select(clang::CXXSpecialMemberKind::CopyConstructor, true),
+            select(clang::CXXSpecialMemberKind::CopyConstructor, false),
+            select(clang::CXXSpecialMemberKind::Destructor, false)};
+    }
     std::optional<std::string> emitImplicitLifetimeIR(
         std::string_view name, CppImplicitLifetimeKind requested) const override
     {

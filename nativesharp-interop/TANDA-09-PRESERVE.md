@@ -299,3 +299,18 @@ La muestra de record C++ por valor anterior sigue pendiente: faltan reglas de
 seleccion y accesibilidad de operaciones, proyeccion de la firma, transporte
 del contrato vigente y ejecucion comprobada. No se declara compatibilidad por
 la observacion de estos rasgos.
+
+La sesion Clang expone ahora una consulta viva de seleccion de constructor de
+copia para argumentos const y no const, y del destructor. Devuelve seleccion,
+ausencia/eliminacion o ambiguedad, junto con el acceso declarado y trivialidad
+cuando Clang identifica un miembro. El acceso declarado no equivale por si
+solo a una decision de accesibilidad desde un contexto C++ concreto.
+
+La prueba dirigida cubre copias implicitas publicas, copia eliminada, copia
+privada, sobrecargas const/no const, sobrecarga ambigua, destructor privado y
+eliminado, nombre ausente, record incompleto, lenguaje C y sesion cerrada
+(A:/temp/t09-cpp-record-operations-test.log). Clang confirmo el caso ambiguo
+(A:/temp/t09-copy-ambiguous.log). Pasaron cuatro sondas y controles de
+transporte/ABI/identidad, y 16 consumidores precompilados C y 16 C++
+(A:/temp/t09-cpp-record-operations-reg-*.log). Esta consulta todavia no alimenta
+la proyeccion de funciones ni NSMeta: el record C++ por valor sigue pendiente.
