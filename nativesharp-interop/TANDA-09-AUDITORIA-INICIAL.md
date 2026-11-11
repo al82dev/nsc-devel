@@ -111,3 +111,16 @@ ambas representaciones y las promociones quedan explicitas. Este control usa
 una biblioteca estatica y una sola firma: no demuestra por si solo las rutas de
 DLL, otras convenciones ni todos los tipos. El item permanece abierto mientras
 se completa la auditoria de esas rutas.
+
+Ampliacion T09-001: el mismo control se repitio con biblioteca estatica y DLL;
+los cuatro volcados HIR/MIR pasaron. Evidencia A:/temp/nsc-t09-hir-mir-fbojst03.
+Los volcados verifican la estructura de la llamada y sus conversiones; no
+exponen por si solos todos los atributos de enlace o ABI. Otras convenciones y
+tipos requieren analisis separado.
+
+Vectorcall, observacion adicional T09-001: se obtuvieron HIR y MIR de la muestra
+estatica O0 ya validada en A:/temp/nsc-t09-vectorcall-rulir0cp/estatica-O0/
+(t09-hir.log y t09-mir.log). Ambos identifican el simbolo decorado
+`transform_h2@@16` precedido por el marcador interno; MIR lo conserva como
+destino de la llamada directa. Estos volcados no muestran por si solos el plan
+fisico vectorcall completo; ese contraste pertenece tambien a T09-002.
