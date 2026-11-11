@@ -94,3 +94,22 @@ comprueba tambien la escritura por el puntero y valores de 64 bits. La muestra
 indirecta anterior de enteros paso de nuevo
 (A:/temp/nsc-t09-preserve-indirecta-ne8o69x3). Los demas tipos y firmas
 indirectas permanecen pendientes; T09-003 y la tanda 9 siguen abiertos.
+
+## Alias C++ preserve_most por puntero
+
+Se contrasto una biblioteca C++ con un alias de puntero `preserve_most` en un
+namespace, una funcion que devuelve ese puntero y la conversion de una funcion
+compatible. La firma recibe `double`, `int*`, `short` y `bool`, y retorna
+`double`. Clang genero los nombres decorados y la convencion observados en
+A:/temp/t09-preserve-cpp-pointer-oracle.ll. El primer fixture uso por error el
+nombre `get`, reservado por NativeSharp; se sustituyo por `fetchCallback` antes
+de las pruebas definitivas. No fue necesario modificar el compilador.
+
+Pasaron ocho comparaciones C++/NS con biblioteca estatica y DLL O0-O3,
+comprobando ambos simbolos, la direccion de la funcion, la llamada indirecta,
+`zeroext` y la escritura por el puntero
+(A:/temp/nsc-t09-preserve-cpp-indirecta-609wsxuh). Pasaron 16 consumidores de
+plantilla precompilada con y sin encabezado
+(A:/temp/nsc-t09-preserve-cpp-indirecta-precompilado-cix1grik). En esta ruta
+C++ la cache informa `disabled`; no se afirma una prueba de acierto de cache.
+Otras firmas y convenciones siguen pendientes; T09-003 permanece abierto.
