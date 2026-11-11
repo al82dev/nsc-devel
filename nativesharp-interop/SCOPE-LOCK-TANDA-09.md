@@ -93,3 +93,5 @@ T09-003: conservar la prueba negativa de esta sesion con un agregado de `int`, `
 T09-003: contrastar y, si pasa sus pruebas, admitir la forma mixta `int`, `int`, `float` con piezas `i64` y `float`; conservar la prueba negativa con una forma vectorial aun no representada.
 T09-003: investigar un record SysV con dos `int` y dos `float`, cuya segunda pieza Clang representa como vector fijo. Representar el tipo vectorial de forma explicita solo si la consulta oficial y las pruebas lo acreditan; comprobar ejecucion y precompilacion y mantener una forma distinta rechazada.
 T09-003: conservar la prueba negativa de esta sesion con dos `float` seguidos de dos `int`, cuya pieza vectorial aparece primero y aun no se admite.
+T09-003: contrastar y probar el orden inverso, vector fijo de dos `float` seguido de una pieza `i64`, incluida precompilacion. Mantener la prueba negativa con una segunda pieza entera distinta que aun no se admite.
+T09-003: conservar la prueba negativa de esta sesion con un vector fijo seguido de una pieza `i32`, cuyo ancho aun no se admite.

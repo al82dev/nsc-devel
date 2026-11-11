@@ -888,7 +888,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             const unsigned pieceAlignment = alignment < 8 ? alignment : 8;
             LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
             LLVMTypeRef firstType = imported->cppAbiPlan->physicalReturn.elements[0].kind == interop::abi_plan::TypeKind::Double
-                ? LLVMDoubleTypeInContext(context_) : i64;
+                ? LLVMDoubleTypeInContext(context_) :
+                imported->cppAbiPlan->physicalReturn.elements[0].kind == interop::abi_plan::TypeKind::Vector
+                ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) : i64;
             LLVMTypeRef secondType = imported->cppAbiPlan->physicalReturn.elements[1].kind == interop::abi_plan::TypeKind::Double
                 ? LLVMDoubleTypeInContext(context_) :
                 imported->cppAbiPlan->physicalReturn.elements[1].kind == interop::abi_plan::TypeKind::Float

@@ -67,6 +67,7 @@ int main(int argc, char** argv) {
         typedef struct RID { int x, y; double z; } RID;
         typedef struct RIF { int x, y; float z; } RIF;
         typedef struct RIV { int x, y; float z, w; } RIV;
+        typedef struct RVI { float z, w; int x, y; } RVI;
         typedef struct __attribute__((packed)) RP { char c; double d; } RP;
         typedef float Vec4 __attribute__((vector_size(16)));
         R3 __attribute__((sysv_abi)) p3(R3);
@@ -91,6 +92,7 @@ int main(int argc, char** argv) {
         RID __attribute__((sysv_abi)) pid(RID);
         RIF __attribute__((sysv_abi)) pif(RIF);
         RIV __attribute__((sysv_abi)) piv(RIV);
+        RVI __attribute__((sysv_abi)) pvi(RVI);
         R24 __attribute__((sysv_abi)) p24(R24);
         R24B __attribute__((sysv_abi)) p24b(R24B);
         R24I __attribute__((sysv_abi)) p24i(R24I);
@@ -158,7 +160,7 @@ int main(int argc, char** argv) {
             name != "p6" && name != "p7" && name != "p8" && name != "p9" && name != "p10" &&
             name != "p11" && name != "p12" && name != "p13" && name != "p14" && name != "p15" &&
             name != "p16" && name != "pf" && name != "p24" && name != "p24b" && name != "p24i" && name != "p17b" &&
-            name != "p20b" && name != "p32b" && name != "pid" && name != "pif" && name != "piv" && name != "ps8" && name != "pm" &&
+            name != "p20b" && name != "p32b" && name != "pid" && name != "pif" && name != "piv" && name != "pvi" && name != "ps8" && name != "pm" &&
             name != "pp" && name != "pvec" && name != "pvoid") continue;
         if (name == "p3" && copiedPlans.contains(name)) continue;
         auto* physical = clang::CodeGen::convertFreeFunctionType(generator->CGM(), function);
@@ -226,7 +228,7 @@ int main(int argc, char** argv) {
         if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
-    if (matched != 31 || copiedPlans.size() != 31 || !unsupportedRejected || !variadicRejected ||
+    if (matched != 32 || copiedPlans.size() != 32 || !unsupportedRejected || !variadicRejected ||
         !noPrototypeRejected || !attributeRejected) return 7;
     generator.reset();
     ast.reset();
@@ -266,6 +268,8 @@ int main(int argc, char** argv) {
         copiedPlans.at("pif").physicalReturn.elements[1].kind != t09_probe::TypeKind::Float) return 85;
     if (!t09_probe::isSysVMixedRecordRoundTrip(copiedPlans.at("piv"), "piv") ||
         copiedPlans.at("piv").physicalReturn.elements[1].kind != t09_probe::TypeKind::Vector) return 86;
+    if (!t09_probe::isSysVMixedRecordRoundTrip(copiedPlans.at("pvi"), "pvi") ||
+        copiedPlans.at("pvi").physicalReturn.elements[0].kind != t09_probe::TypeKind::Vector) return 87;
     if (!t09_probe::isSysVMixedDoubleI32RecordRoundTrip(pf, "pf") ||
         t09_probe::isSysVMixedDoubleI32RecordRoundTrip(p16, "p16")) return 83;
     if (pf.physicalParameters.size() != 2 || pf.physicalParameters[0].type.kind != t09_probe::TypeKind::Double ||
