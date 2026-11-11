@@ -1191,54 +1191,68 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             return key.starts_with("type:") && !key.ends_with('*');
         };
         if (externC && node->cppVariadicCallPlan && node->typeKey == "builtin:int" &&
-            node->argumentCount == 2 && node->argumentTypeKeys.size() == 2 &&
-            node->argumentTypeKeys[0] == "builtin:int" && recordArgument(node->argumentTypeKeys[1]))
+            (node->argumentCount == 2 || node->argumentCount == 3) &&
+            node->argumentTypeKeys.size() == node->argumentCount &&
+            node->argumentTypeKeys[0] == "builtin:int" &&
+            std::all_of(node->argumentTypeKeys.begin() + 1, node->argumentTypeKeys.end(), recordArgument))
         {
             using namespace interop::abi_plan;
             const auto& plan = *node->cppVariadicCallPlan;
             const auto signature = language::parseFunctionTypeIdentity(node->elementTypeKey);
-            const auto& key = node->argumentTypeKeys[1];
-            const auto* layout = findStructLayout(mirModel_, key);
-            const auto ordinal = nameLookup_.typeOrdinalForIdentity(std::string_view(key).substr(5));
-            const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
             if (!signature || !signature->variadic || signature->callingConvention != language::CallingConvention::SysV ||
                 signature->parameters.size() != 1 || signature->parameters[0] != "builtin:int" ||
                 !interop::validateCppVariadicSysVCallPlan(plan, "__nsc_variadic_pointer_abi_probe", 1) ||
-                plan.arguments.size() != 2 || plan.physicalParameters.size() != 3 ||
+                plan.arguments.size() != node->argumentCount ||
+                plan.physicalParameters.size() != 1 + 2 * (node->argumentCount - 1) ||
                 plan.physicalReturn.kind != TypeKind::Integer || plan.physicalReturn.widthOrCount != 32 ||
                 plan.arguments[0].passing != Passing::Direct || plan.arguments[0].physicalCount != 1 ||
-                plan.physicalParameters[0].type.kind != TypeKind::Integer || plan.physicalParameters[0].type.widthOrCount != 32 ||
-                plan.arguments[1].passing != Passing::Direct || plan.arguments[1].physicalCount != 2 ||
-                plan.physicalParameters[1].type.kind != TypeKind::Double ||
-                plan.physicalParameters[2].type.kind != TypeKind::Integer || plan.physicalParameters[2].type.widthOrCount != 32 ||
-                !layout || layout->size != 16 || layout->alignment != 8 || !imported || imported->isIncomplete ||
-                !imported->deferredImportError.empty() || !imported->objectLayout ||
-                (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
-                 imported->origin != frontend::CppImportedTypeOrigin::CUnion) ||
-                imported->objectLayout->sizeBytes != layout->size || imported->objectLayout->alignmentBytes != layout->alignment)
+                plan.physicalParameters[0].type.kind != TypeKind::Integer || plan.physicalParameters[0].type.widthOrCount != 32)
                 return failValue(error, "sysv_abi variadic function pointer record plan is not supported");
             LLVMValueRef fixed = argumentOverrides ? (*argumentOverrides)[0] : lowerExpression(node->children[1].get(), error);
             if (!fixed || terminated()) return fixed;
-            LLVMValueRef record = argumentOverrides ? (*argumentOverrides)[1] : lowerExpression(node->children[2].get(), error);
-            if (!record || terminated()) return record;
-            LLVMTypeRef carrier = llvmType(key, error);
-            if (!carrier || LLVMTypeOf(fixed) != LLVMInt32TypeInContext(context_) || LLVMTypeOf(record) != carrier)
+            if (LLVMTypeOf(fixed) != LLVMInt32TypeInContext(context_))
                 return failValue(error, "sysv_abi variadic function pointer argument does not match its plan");
-            LLVMValueRef slot = entryBlockAlloca(carrier, 8, "sysv.varptr.record");
-            LLVMValueRef store = LLVMBuildStore(builder_, record, slot);
-            LLVMSetAlignment(store, 8);
-            LLVMValueRef first = LLVMBuildLoad2(builder_, LLVMDoubleTypeInContext(context_), slot, "sysv.varptr.first");
-            LLVMValueRef second = LLVMBuildLoad2(builder_, LLVMInt32TypeInContext(context_),
-                byteOffset(slot, 8, "sysv.varptr.second.addr"), "sysv.varptr.second");
-            LLVMSetAlignment(first, 8);
-            LLVMSetAlignment(second, 8);
+            std::vector<LLVMValueRef> arguments{fixed};
+            for (std::size_t i = 1; i < node->argumentCount; ++i)
+            {
+                const auto& key = node->argumentTypeKeys[i];
+                const auto* layout = findStructLayout(mirModel_, key);
+                const auto ordinal = nameLookup_.typeOrdinalForIdentity(std::string_view(key).substr(5));
+                const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
+                const auto physical = 1 + 2 * (i - 1);
+                if (plan.arguments[i].passing != Passing::Direct || plan.arguments[i].physicalCount != 2 ||
+                    plan.physicalParameters[physical].type.kind != TypeKind::Double ||
+                    plan.physicalParameters[physical + 1].type.kind != TypeKind::Integer ||
+                    plan.physicalParameters[physical + 1].type.widthOrCount != 32 ||
+                    !layout || layout->size != 16 || layout->alignment != 8 || !imported || imported->isIncomplete ||
+                    !imported->deferredImportError.empty() || !imported->objectLayout ||
+                    (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
+                     imported->origin != frontend::CppImportedTypeOrigin::CUnion) ||
+                    imported->objectLayout->sizeBytes != layout->size || imported->objectLayout->alignmentBytes != layout->alignment)
+                    return failValue(error, "sysv_abi variadic function pointer record plan is not supported");
+                LLVMValueRef record = argumentOverrides ? (*argumentOverrides)[i] : lowerExpression(node->children[i + 1].get(), error);
+                if (!record || terminated()) return record;
+                LLVMTypeRef carrier = llvmType(key, error);
+                if (!carrier || LLVMTypeOf(record) != carrier)
+                    return failValue(error, "sysv_abi variadic function pointer argument does not match its plan");
+                LLVMValueRef slot = entryBlockAlloca(carrier, 8, "sysv.varptr.record");
+                LLVMValueRef store = LLVMBuildStore(builder_, record, slot);
+                LLVMSetAlignment(store, 8);
+                LLVMValueRef first = LLVMBuildLoad2(builder_, LLVMDoubleTypeInContext(context_), slot, "sysv.varptr.first");
+                LLVMValueRef second = LLVMBuildLoad2(builder_, LLVMInt32TypeInContext(context_),
+                    byteOffset(slot, 8, "sysv.varptr.second.addr"), "sysv.varptr.second");
+                LLVMSetAlignment(first, 8);
+                LLVMSetAlignment(second, 8);
+                arguments.push_back(first);
+                arguments.push_back(second);
+            }
             releaseTransferredArguments(node);
             delegateValue = checkedReceiver(delegateValue, error);
             if (!delegateValue) return nullptr;
             LLVMTypeRef fixedTypes[] = {LLVMInt32TypeInContext(context_)};
             LLVMTypeRef functionType = LLVMFunctionType(LLVMInt32TypeInContext(context_), fixedTypes, 1, 1);
-            LLVMValueRef arguments[] = {fixed, first, second};
-            LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, arguments, 3, "sysv.varptr.result");
+            LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, arguments.data(),
+                static_cast<unsigned>(arguments.size()), "sysv.varptr.result");
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
             return call;
         }

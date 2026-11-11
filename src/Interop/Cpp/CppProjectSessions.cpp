@@ -547,7 +547,10 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     if (!alias.fromPrecompiledCatalog || alias.projectOrdinal >= graph.projects().size() ||
         alias.targetTriple != "x86_64-pc-windows-msvc" || environment.targetTriple != alias.targetTriple ||
         alias.projectFile != graph.projects()[alias.projectOrdinal].projectFile() ||
-        !alias.declaration.clangUsr || alias.declaration.clangUsr->empty() || optionalTypeKeys.size() != 1) return {};
+        !alias.declaration.clangUsr || alias.declaration.clangUsr->empty() || optionalTypeKeys.empty() ||
+        optionalTypeKeys.size() > 2 ||
+        !std::all_of(optionalTypeKeys.begin(), optionalTypeKeys.end(),
+            [&](const auto& key) { return key == optionalTypeKeys.front(); })) return {};
     const auto& moduleName = graph.projects()[alias.projectOrdinal].moduleName();
     const auto mapped = projectCppStoredFunctionPointer(alias.declaration.underlyingType, alias.projectOrdinal,
         moduleName, &lookup);
@@ -644,7 +647,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         [](const auto& value) { return value.name == "__nsc_replay_pointer"; });
     if (replayRecord == records->end() || !matchesSimpleCRecordAbiReplay(record, *replayRecord, 0) ||
         helper == functions->end() || helper->parameters.size() != 1 || replayAlias == aliases->end()) return {};
-    const std::vector<CppType> arguments{helper->parameters[0].type};
+    const std::vector<CppType> arguments(optionalTypeKeys.size(), helper->parameters[0].type);
     auto plan = session.cVariadicFunctionPointerCallAbiPlan(replayAlias->name,
         replayAlias->underlyingType.canonicalSpelling, arguments);
     if (!plan || !validateCppVariadicSysVCallPlan(*plan, "__nsc_variadic_pointer_abi_probe", 1)) return {};

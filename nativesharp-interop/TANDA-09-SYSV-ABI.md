@@ -1380,6 +1380,21 @@ cuatro sondas (`A:/temp/t09-test-varptr.log`), transporte, ABI e identidad
 contradiccion con la prueba anterior siguen pendientes; no se acredita
 compatibilidad general.
 
+**Dos records opcionales:** el control C y un productor independiente
+comprobaron los valores y registros; NSC rechazaba la llamada
+(`A:/temp/nsc-t09-sysv-indirecta-variadica-dos-records-6mvfvg97`). Tras
+recorrer las dos copias y piezas del plan de Clang, pasaron C y NativeSharp
+en estatica y DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-dos-records-matriz-sdqkt528`) y la plantilla
+sin encabezado, cache y rechazo de record diferente
+(`A:/temp/nsc-t09-sysv-indirecta-dos-records-pre-9y5nrow6`). Pasaron cuatro
+sondas ABI (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones de un record directo y
+precompilado (`A:/temp/nsc-t09-sysv-indirecta-record-matriz-mqvq91fu`,
+`A:/temp/nsc-t09-sysv-indirecta-record-pre-p3hvh57l`). La reconstruccion
+precompilada admite aqui la identidad repetida; otros records y firmas siguen
+pendientes, asi como los conflictos con pruebas anteriores intactas.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor
