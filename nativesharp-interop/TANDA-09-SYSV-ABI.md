@@ -360,6 +360,7 @@ La prueba negativa de esta sesion conserva el rechazo de un vector como unica
 pieza y de callback en A:/temp/nsc-t09-sysv-prueba-rn4icml4. Otras formas siguen
 pendientes.
 
+
 Vector como unica pieza: `struct { float x, y; }` se transporta como
 `<2 x float>` en Clang (A:/temp/nsc-t09-if-clang-dbl6nos2). El control C paso y
 NSC lo rechazo antes del cambio en A:/temp/nsc-t09-sysv-mixed-v-ldjdxl0t. Tras
@@ -474,3 +475,18 @@ A:/temp/nsc-t09-sysv-align16-d4vw6mv3 y A:/temp/nsc-t09-sysv-align32-w1q9pn0p.
 La prueba negativa de esta sesion conserva el rechazo de alineacion indirecta
 64 y de callback en A:/temp/nsc-t09-sysv-prueba-gcqjvlza. Otras formas siguen
 pendientes.
+
+Alineaciones indirectas mayores: Clang emitio `sret` y `byval` alineados a 64,
+128 y 256 en A:/temp/nsc-t09-highalign-clang-jioufv_3. El primer control C no
+enlazo porque el fixture aislado carecia de `memcpy` y `memset`; se incorporo
+un soporte minimo al propio fixture y los controles pasaron, reproduciendo el
+rechazo previo de NSC. Tras conservar la alineacion completa del plan en el
+contrato vigente, cada muestra paso las ocho comparaciones estatica/DLL O0–O3,
+atributos LLVM y plantilla sin encabezado O0:
+A:/temp/nsc-t09-sysv-align64-o1ke9jvx,
+A:/temp/nsc-t09-sysv-align128-o8hykaac y
+A:/temp/nsc-t09-sysv-align256-1pbc9cil. La sonda y metadatos pasaron en
+A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log. La regresion de
+32 bytes paso en A:/temp/nsc-t09-sysv-align32-0qe7h9zw. La prueba negativa de
+esta sesion conserva el rechazo de dos argumentos de record y de callback en
+A:/temp/nsc-t09-sysv-prueba-qx2bfuqv. Otras firmas siguen pendientes.
