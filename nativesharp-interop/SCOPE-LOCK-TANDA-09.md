@@ -123,4 +123,6 @@ T09-003: contrastar y probar un record indirecto alineado a 16 bytes, distinto d
 T09-003: conservar la prueba negativa de esta sesion con un record indirecto alineado a 64, aun no admitido.
 T09-003: contrastar alineaciones indirectas de 64, 128 y 256 bytes, conservando la alineacion completa del plan en el contrato vigente. Validar cada muestra con C, NS y precompilacion; conservar un caso negativo de varios argumentos de record aun no admitido.
 T09-003: conservar la prueba negativa de esta sesion con dos argumentos de record, todavia fuera de las formas implementadas.
+T09-003: contrastar una funcion SysV con dos records pequenos del mismo tipo y retorno del mismo record, comprobando el orden de argumentos y las copias. Implementar la forma directa acreditada por Clang y probar tambien su precompilacion; mantener una firma de tres argumentos como negativa.
+T09-003: conservar la prueba negativa de esta sesion con tres argumentos de record, aun no admitidos.
 T09-003: conservar la prueba negativa de esta sesion con vector fijo seguido de `double`, aun no admitido.

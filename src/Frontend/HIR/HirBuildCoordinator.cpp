@@ -1869,7 +1869,16 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                      (*symbol.cppReturnType->sizeBits > 128 && *symbol.cppReturnType->sizeBits % 8 == 0 &&
                       interop::abi_plan::isSysVIndirectRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName) &&
                       symbol.cppReturnType->alignmentBits == symbol.cppAbiPlan->logicalReturn.alignment * 8));
-                if (function.isVariadic || ((!supportedReturn || !supportedParameters) && !supportedRecord))
+                const bool supportedTwoRecords = symbol.cppAbiPlan && symbol.cppReturnType &&
+                    symbol.cppReturnType->kind == interop::CppTypeKind::Record &&
+                    symbol.cppReturnType->sizeBits == symbol.cppAbiPlan->physicalReturn.widthOrCount &&
+                    symbol.cppParameterTypes.size() == 2 && function.parameterTypeKeys.size() == 2 &&
+                    function.returnTypeKey == function.parameterTypeKeys[0] &&
+                    function.returnTypeKey == function.parameterTypeKeys[1] &&
+                    std::ranges::all_of(symbol.cppParameterTypes, [&](const auto& type) {
+                        return type.kind == interop::CppTypeKind::Record && type.sizeBits == symbol.cppReturnType->sizeBits;
+                    }) && interop::abi_plan::isSysVTwoSmallRecordsRoundTrip(*symbol.cppAbiPlan, symbol.mangledName);
+                if (function.isVariadic || ((!supportedReturn || !supportedParameters) && !supportedRecord && !supportedTwoRecords))
                 {
                     error = "sysv_abi currently supports only selected non-variadic scalar and pointer signatures for " +
                         symbol.mangledName;

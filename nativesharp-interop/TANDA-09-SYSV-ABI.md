@@ -490,3 +490,15 @@ A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log. La regresion de
 32 bytes paso en A:/temp/nsc-t09-sysv-align32-0qe7h9zw. La prueba negativa de
 esta sesion conserva el rechazo de dos argumentos de record y de callback en
 A:/temp/nsc-t09-sysv-prueba-qx2bfuqv. Otras firmas siguen pendientes.
+
+Dos argumentos de record pequeno: Clang emitio `i32 (i32, i32)` para la
+muestra de cuatro bytes (A:/temp/nsc-t09-if-clang-u2420j88). El control C paso
+y NSC rechazo la muestra antes del cambio en A:/temp/nsc-t09-sysv-two-ffh3pq_x.
+Despues pasaron las ocho comparaciones estatica/DLL O0–O3, declaracion y llamada
+LLVM, orden de argumentos, copias y plantilla sin encabezado O0 en
+A:/temp/nsc-t09-sysv-two-7ajd8cz_. La sonda y metadatos pasaron en
+A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log. Las regresiones
+de un record y dos vectores pasaron en A:/temp/nsc-t09-sysv-r4-4qhuf7p6 y
+A:/temp/nsc-t09-sysv-mixed-vv-3jyp565l. La prueba negativa de esta sesion
+conserva el rechazo de tres records y de callback en
+A:/temp/nsc-t09-sysv-prueba-8lqn7jbp. Otras firmas siguen pendientes.

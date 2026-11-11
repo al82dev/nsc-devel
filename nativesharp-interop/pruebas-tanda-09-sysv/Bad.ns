@@ -1,1 +1,1 @@
-int Main() { T09Unsupported value; value.x = 1; T09Unsupported result = sysv_record(value, value); return result.x; }
+int Main() { T09Unsupported value; value.x = 1; T09Unsupported result = sysv_record(value, value, value); return result.x; }

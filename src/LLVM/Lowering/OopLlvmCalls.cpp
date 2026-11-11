@@ -834,6 +834,51 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
 
         const auto* imported = found->second.mirFunction;
         if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
+            interop::abi_plan::isSysVTwoSmallRecordsRoundTrip(*imported->cppAbiPlan, imported->cAbiName))
+        {
+            if (node->children.size() != 2 || node->referenceResult || node->returnsAssignedValue ||
+                (argumentOverrides && argumentOverrides->size() != 2))
+                return failValue(error, "SysV two-record call has an unexpected argument contract");
+            LLVMTypeRef carrier = llvmType(node->typeKey, error);
+            if (!carrier) return nullptr;
+            const unsigned alignment = structAlignmentFor(node->typeKey);
+            if (alignment == 0) return failValue(error, "SysV record has no alignment");
+            LLVMTypeRef integer = LLVMIntTypeInContext(context_,
+                static_cast<unsigned>(imported->cppAbiPlan->physicalReturn.widthOrCount));
+            std::vector<LLVMValueRef> sourceArguments;
+            for (std::size_t index = 0; index < 2; ++index)
+            {
+                if (node->children[index]->typeKey != node->typeKey)
+                    return failValue(error, "SysV two-record call has a mismatched argument type");
+                LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[index] :
+                    lowerExpression(node->children[index].get(), error);
+                if (!value) return nullptr;
+                if (terminated()) return value;
+                LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "sysv.records.arg");
+                LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+                LLVMSetAlignment(store, alignment);
+                LLVMValueRef piece = LLVMBuildLoad2(builder_, integer, slot, "sysv.records.piece");
+                LLVMSetAlignment(piece, alignment);
+                sourceArguments.push_back(piece);
+            }
+            std::vector<std::size_t> parameterToSource;
+            if (!callArgumentOrder(node, sourceArguments.size(), parameterToSource, error)) return nullptr;
+            if (parameterToSource.size() != 2) return failValue(error, "SysV two-record argument mapping is invalid");
+            LLVMValueRef arguments[] = {sourceArguments[parameterToSource[0]], sourceArguments[parameterToSource[1]]};
+            releaseTransferredArguments(node);
+            LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
+                arguments, 2, "sysv.records.call", error);
+            if (!call) return nullptr;
+            LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
+            if (!applyMustTail(node, call, error)) return nullptr;
+            LLVMValueRef resultSlot = entryBlockAlloca(carrier, alignment, "sysv.records.result");
+            LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
+            LLVMSetAlignment(resultStore, alignment);
+            LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "sysv.records.value");
+            LLVMSetAlignment(result, alignment);
+            return result;
+        }
+        if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
             interop::abi_plan::isSysVIndirectRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName))
         {
             if (node->children.size() != 1 || node->referenceResult || node->returnsAssignedValue ||

@@ -17,7 +17,8 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
         std::string& error)
 {
             if (function.cppSysVCall && function.cppAbiPlan &&
-                (interop::abi_plan::isSysVSmallRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
+                (interop::abi_plan::isSysVTwoSmallRecordsRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
+                 interop::abi_plan::isSysVSmallRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
                  interop::abi_plan::isSysVSingleVector2FRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
                  interop::abi_plan::isSysVSingleFloatingRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
                  interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
@@ -28,6 +29,13 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                 {
                     error = "SysV small record requires the validated Windows x64 target";
                     return nullptr;
+                }
+                if (interop::abi_plan::isSysVTwoSmallRecordsRoundTrip(*function.cppAbiPlan, function.cAbiName))
+                {
+                    LLVMTypeRef integer = LLVMIntTypeInContext(context_,
+                        static_cast<unsigned>(function.cppAbiPlan->physicalReturn.widthOrCount));
+                    LLVMTypeRef parameters[] = {integer, integer};
+                    return LLVMFunctionType(integer, parameters, 2, 0);
                 }
                 if (interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
                     interop::abi_plan::isSysVMixedRecordRoundTrip(*function.cppAbiPlan, function.cAbiName))
