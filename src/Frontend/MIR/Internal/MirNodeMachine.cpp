@@ -455,7 +455,14 @@ int ProjectOopMirModel::MirNodeMachine::lowerRawStorage(
         error = "CC1 raw storage lowering requires name lookup and value layouts";
         return -1;
     }
-    const auto layout = model_.elementLayout(node->elementTypeKey);
+    auto layout = model_.elementLayout(node->elementTypeKey);
+    if (!layout.has_value() && node->kind == ProjectOopHirNodeKind::StackAllocation &&
+        node->elementTypeKey == "builtin:decimal")
+    {
+        const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(
+            target::BuiltinLayoutKind::Decimal);
+        layout = {{decimal.size, decimal.alignment}};
+    }
     if (!layout.has_value() || layout->first == 0)
     {
         error = "CC1 cannot determine the element layout of '" + node->elementTypeKey + "'";

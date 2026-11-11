@@ -1,0 +1,20 @@
+int Main()
+{
+    unsafe("test local raw storage")
+    {
+        double* control = stackalloc double[2];
+        control[0] = 1.0;
+        control[1] = 2.0;
+        if (control[0] != 1.0 || control[1] != 2.0) return 1;
+        decimal* values = stackalloc decimal[2];
+        values[0] = 1.0m;
+        values[1] = 2.0m;
+        if (values[0] != 1.0m || values[1] != 2.0m) return 2;
+        int count = 2;
+        decimal* dynamicValues = stackalloc decimal[count];
+        dynamicValues[0] = 3.0m;
+        dynamicValues[1] = 4.0m;
+        if (dynamicValues[0] != 3.0m || dynamicValues[1] != 4.0m) return 3;
+        return 0;
+    }
+}

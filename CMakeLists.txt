@@ -6934,6 +6934,17 @@ if(NSC_BUILD_TESTS)
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
             "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDecimalFixedArray.cmake")
+    set(NSC_DECIMAL_STACKALLOC_PROJECT
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decimal_stackalloc/DecimalStackalloc.nsproj")
+    add_test(
+        NAME nsc.compiler.decimal-stackalloc
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DPROJECT_FILE=${NSC_DECIMAL_STACKALLOC_PROJECT}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/decimal-stackalloc"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDecimalStackalloc.cmake")
     add_test(
         NAME nsc.compiler.decimal-generic-array
         COMMAND "${CMAKE_COMMAND}"
