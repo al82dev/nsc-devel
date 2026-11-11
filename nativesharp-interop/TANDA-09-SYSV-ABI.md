@@ -1513,6 +1513,15 @@ mezcla `byval` (`A:/temp/nsc-t09-sysv-indirecta-record-presion-pre-pxcn6xva`,
 `A:/temp/nsc-t09-sysv-indirecta-var-mixto-byval-pre-6bzxl2a4`). Otras formas y
 condiciones permanecen pendientes; T09-003 sigue abierto.
 
+**Record mixto tras agotar registros enteros:** un control independiente
+verifica los seis registros enteros, la copia del record y un puntero posterior
+en pila; modifica la copia y escribe por el puntero. Las ocho comparaciones
+C/NS estatica/DLL O0-O3 pasaron
+(`A:/temp/nsc-t09-sysv-indirecta-record-gpr-matriz-n4_m7ugn`) y tambien la
+plantilla sin encabezado, cache y rechazo de variante
+(`A:/temp/nsc-t09-sysv-indirecta-record-gpr-pre-cmg60jjy`). No se requirio
+cambio de produccion; otras formas y presiones permanecen pendientes.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor
