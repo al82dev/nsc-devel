@@ -1631,6 +1631,24 @@ sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
 `A:/temp/nsc-t09-sysv-indirecta-fijo-tres-pre-duoo1rxa`). Otros retornos y
 firmas siguen pendientes; T09-003 no esta cerrado.
 
+**Record fijo de ocho bytes:** la muestra con dos `int` fijos por valor y un
+record mixto opcional paso frente a C con el encabezado disponible
+(`A:/temp/nsc-t09-sysv-indirecta-variadica-fijo-ocho-fvxta57m`), pero el
+consumidor precompilado rechazo la reconstruccion
+(`A:/temp/nsc-t09-sysv-indirecta-fijo-ocho-pre-r_ifg5zh`). Se elimino el
+filtro duplicado de tamanos de records fijos; identidad, campos, layout y la
+reconstruccion de Clang siguen verificados en comun. Pasaron ocho comparaciones
+C/NS estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-fijo-ocho-matriz-ni8ud5lt`) y plantillas sin
+encabezado, cache y variantes negativas
+(`A:/temp/nsc-t09-sysv-indirecta-fijo-ocho-pre-lku2nu0c`). Pasaron cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones precompiladas de record
+fijo de tres enteros y record opcional flotante
+(`A:/temp/nsc-t09-sysv-indirecta-fijo-tres-pre-3_95mrgd`,
+`A:/temp/nsc-t09-sysv-indirecta-opcional-flotante-pre-75dkz59l`). Otras
+formas y firmas siguen pendientes; T09-003 permanece abierto.
+
 **Record opcional de un `double`:** Clang y el productor independiente
 comprobaron un record fijo mixto y otro opcional flotante, con dos registros
 flotantes y `%al` igual a dos; NSC rechazo el plan
