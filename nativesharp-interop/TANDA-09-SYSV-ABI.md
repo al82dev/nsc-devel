@@ -1033,6 +1033,24 @@ refuerzo de ancho (`A:/temp/nsc-t09-llamadas-rw4h8bv_`,
 `A:/temp/nsc-t09-sysv-padded-pair-id-_w27v5qo`). Esta evidencia cubre la
 muestra descrita, no todos los layouts booleanos ni las demas convenciones.
 
+## Puntero de funcion SysV devuelto por una biblioteca
+
+Pendiente: el control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
+una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
+Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor
+termino con codigo cero en estatica O0. NSC rechazo la importacion con
+`unsupported C callback calling convention`, antes de emitir la llamada
+(`A:/temp/nsc-t09-sysv-indirecta-k_gky9w0`). El validador permanece fallando
+para NSC hasta implementar el caso; este diagnostico no acredita soporte.
+
+La inspeccion inicial localiza el rechazo en `QualifiedTypeNames.cpp` y
+`CppSemanticFunction.cpp`. La convencion de Clang ya se observa en el tipo,
+pero las identidades estructurales y la emision indirecta necesitan transportar
+una convencion SysV distinguible. Hay que preservar el rechazo existente al
+convertir una funcion SysV a un callback de convencion distinta y comprobar
+que no se emita accidentalmente el ABI Windows. El control actual aun no cubre
+DLL, optimizaciones, precompilacion ni otras firmas.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin
