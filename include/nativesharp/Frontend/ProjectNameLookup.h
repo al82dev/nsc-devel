@@ -40,6 +40,12 @@ namespace nativesharp::diagnostics
 class DiagnosticEngine;
 }
 
+namespace nativesharp::interop
+{
+struct CppRecordValueTraits;
+struct CppRecordValueOperations;
+}
+
 namespace nativesharp::compilation
 {
 class PartialTypeAggregator;
@@ -115,6 +121,10 @@ struct CppImportedTypeDeclaration final
     bool hasCFlexibleArrayMember = false;
     // T08-D26: restored from the C catalogue of a precompiled producer, not observed by a live Clang session.
     bool fromPrecompiledCatalog = false;
+    // Live observations only. Neither field authorizes copying or an ABI call;
+    // absent for precompiled types until the current contract transports them.
+    std::shared_ptr<const interop::CppRecordValueTraits> cppValueTraits;
+    std::shared_ptr<const interop::CppRecordValueOperations> cppValueOperations;
 };
 
 class ProjectNameLookup final

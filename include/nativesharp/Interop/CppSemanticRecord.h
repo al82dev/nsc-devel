@@ -81,6 +81,16 @@ struct CppSemanticRecordEntry
     std::optional<bool> microsoftVolatileSemantics;
 };
 
+struct CppRecordValueObservation
+{
+    CppRecordValueTraits traits;
+    CppRecordValueOperations operations;
+};
+// The entry must come from the current inventory and a uniquely selected
+// definition. Missing or ambiguous source sessions yield no observation.
+std::optional<CppRecordValueObservation> observeCppRecordValueForEntry(
+    const CppSemanticRecordEntry& entry, std::span<const CppProjectSessions> projects);
+
 struct CppSemanticRecordFailure
 {
     std::filesystem::path projectFile;

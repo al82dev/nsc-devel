@@ -859,6 +859,30 @@ CppSemanticRecordsResult collectCppSemanticRecords(
     return result;
 }
 
+std::optional<CppRecordValueObservation> observeCppRecordValueForEntry(
+    const CppSemanticRecordEntry& entry, std::span<const CppProjectSessions> projects)
+{
+    const auto& record = entry.declaration;
+    if (!entry.identity || !entry.identity->isValid() || entry.targetTriple.empty() ||
+        !record.isCxx || !record.complete || record.qualifiedName.empty() ||
+        !record.clangUsr || record.clangUsr->empty() || !record.valueTraits)
+        return std::nullopt;
+    const CppInteropSession* source = nullptr;
+    for (const auto& project : projects)
+    {
+        std::error_code ec;
+        if (!std::filesystem::equivalent(project.projectFile, entry.projectFile, ec) || ec) continue;
+        if (source || entry.referenceIndex >= project.sessions.size() || !project.sessions[entry.referenceIndex])
+            return std::nullopt;
+        source = project.sessions[entry.referenceIndex].get();
+    }
+    if (!source || source->state() != CppSessionState::Ready ||
+        source->optionsSnapshot().targetTriple != entry.targetTriple) return std::nullopt;
+    const auto operations = source->recordValueOperations(record.qualifiedName);
+    if (!operations || !operations->clangUsr || operations->clangUsr != record.clangUsr) return std::nullopt;
+    return CppRecordValueObservation{*record.valueTraits, *operations};
+}
+
 CppRecordGroups groupCppSemanticRecords(std::span<const CppSemanticRecordEntry> inventory)
 {
     CppRecordGroups result;
@@ -3228,6 +3252,19 @@ bool selectExperimentalCppRecordTypesForCompilation(
                                           item.liveIdentityKey == type.identity.key(); });
         if (reconciled != observation.reconciliations.end())
             type.reconciledIdentityKey = reconciled->precompiledIdentityKey;
+        if (type.origin != frontend::CppImportedTypeOrigin::CppRecord || !type.objectLayout ||
+            !type.deferredImportError.empty() || type.fromPrecompiledCatalog) continue;
+        const auto group = std::find_if(observation.groups.groups.begin(), observation.groups.groups.end(),
+            [&](const auto& item) { return item.projectOrdinal == type.projectOrdinal &&
+                                           item.identity.key() == type.identity.key(); });
+        if (group == observation.groups.groups.end() || group->status != CppRecordGroupStatus::OneDefinition)
+            continue;
+        const auto selected = selectCppRecordMemberDefinition(observation.inventory, *group);
+        if (!selected || *selected >= observation.inventory.size()) continue;
+        const auto value = observeCppRecordValueForEntry(observation.inventory[*selected], compilation.cppProjectSessions());
+        if (!value) continue;
+        type.cppValueTraits = std::make_shared<const CppRecordValueTraits>(value->traits);
+        type.cppValueOperations = std::make_shared<const CppRecordValueOperations>(value->operations);
     }
     std::vector<frontend::CppImportedTypeDeclaration> enumCandidates;
     const auto* graph = compilation.projectGraph();

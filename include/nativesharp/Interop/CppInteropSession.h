@@ -65,6 +65,7 @@ struct CppRecordValueOperations
     CppSpecialMemberSelection copyFromConst;
     CppSpecialMemberSelection copyFromMutable;
     CppSpecialMemberSelection destructor;
+    std::optional<std::string> clangUsr;
 };
 
 struct CppCInlineIRExport

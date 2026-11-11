@@ -1327,7 +1327,7 @@ public:
         return CppRecordValueOperations{
             select(clang::CXXSpecialMemberKind::CopyConstructor, true),
             select(clang::CXXSpecialMemberKind::CopyConstructor, false),
-            select(clang::CXXSpecialMemberKind::Destructor, false)};
+            select(clang::CXXSpecialMemberKind::Destructor, false), declarationUsr(record)};
     }
     std::optional<std::string> emitImplicitLifetimeIR(
         std::string_view name, CppImplicitLifetimeKind requested) const override

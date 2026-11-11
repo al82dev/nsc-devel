@@ -1,0 +1,116 @@
+#include "nativesharp/Interop/CppClangSessionFactory.h"
+#include "nativesharp/Interop/CppSemanticRecord.h"
+#include "nativesharp/Frontend/ProjectCompilation.h"
+#include <chrono>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <memory>
+#include <variant>
+#include <vector>
+
+using namespace nativesharp::interop;
+
+int main(int argc, char** argv)
+{
+    if (argc != 3) return 1;
+    CppSessionOptions options;
+    options.language = CppLanguageMode::Cpp;
+    options.languageStandard = "c++20";
+    options.targetTriple = "x86_64-pc-windows-msvc";
+    options.driverReferencePath = "clang.exe";
+    options.resourceDirectory = argv[1];
+    options.workingDirectory = argv[2];
+    options.input = CppBufferInput{"record-observation.cpp", R"cpp(
+        namespace N { struct Plain { int x; }; struct Deleted { Deleted(const Deleted&) = delete; int x; }; }
+        struct Incomplete;
+    )cpp"};
+    CppClangSessionFactory factory;
+    auto opened = factory.open(std::move(options), {});
+    if (!std::holds_alternative<std::unique_ptr<CppInteropSession>>(opened)) return 2;
+    std::vector<CppProjectSessions> groups(1);
+    groups[0].projectFile = std::filesystem::path(argv[2]);
+    groups[0].sessions.push_back(std::move(std::get<std::unique_ptr<CppInteropSession>>(opened)));
+    if (!groups[0].sessions[0]) return 3;
+    const auto records = groups[0].sessions[0]->recordsSnapshot();
+    if (!records) return 4;
+    const auto find = [&](const char* name) -> const CppRecordDeclaration* {
+        for (const auto& record : *records) if (record.qualifiedName == name) return &record;
+        return nullptr;
+    };
+    const auto* plain = find("N::Plain");
+    const auto* deleted = find("N::Deleted");
+    const auto* incomplete = find("Incomplete");
+    if (!plain || !deleted || !incomplete) return 5;
+    auto entry = CppSemanticRecordEntry{groups[0].projectFile, 0, 0, "x86_64-pc-windows-msvc", *plain,
+        projectCppRecordIdentity(*plain, "Observation"), std::nullopt};
+    const auto observed = observeCppRecordValueForEntry(entry, groups);
+    if (!observed || !observed->traits.triviallyCopyable ||
+        observed->operations.copyFromConst.status != CppSpecialMemberSelectionStatus::Selected ||
+        observed->operations.copyFromConst.access != CppAccess::Public) return 6;
+    auto bad = entry;
+    bad.targetTriple = "wrong-target";
+    if (observeCppRecordValueForEntry(bad, groups)) return 7;
+    bad = entry; bad.referenceIndex = 1;
+    if (observeCppRecordValueForEntry(bad, groups)) return 8;
+    bad = entry; bad.declaration.clangUsr = "wrong-identity";
+    if (observeCppRecordValueForEntry(bad, groups)) return 20;
+    bad = entry; bad.declaration = *incomplete;
+    if (observeCppRecordValueForEntry(bad, groups)) return 9;
+    bad = entry; bad.declaration = *deleted;
+    bad.identity = projectCppRecordIdentity(*deleted, "Observation");
+    const auto deletedObserved = observeCppRecordValueForEntry(bad, groups);
+    if (!deletedObserved || deletedObserved->operations.copyFromConst.status !=
+            CppSpecialMemberSelectionStatus::MissingOrDeleted) return 10;
+    groups.emplace_back(); groups.back().projectFile = groups[0].projectFile;
+    if (observeCppRecordValueForEntry(entry, groups)) return 11;
+    groups.pop_back();
+    if (!groups[0].sessions[0]->close().succeeded || observeCppRecordValueForEntry(entry, groups)) return 12;
+
+    const auto unique = std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+    const auto projectDir = std::filesystem::path(argv[2]) / ("record-value-observation-" + unique);
+    std::error_code ec;
+    std::filesystem::create_directories(projectDir, ec);
+    if (ec) return 13;
+    const auto projectPath = projectDir / "Observation.nsproj";
+    { std::ofstream project(projectPath); if (!project) return 14;
+      project << "<Project><PropertyGroup><Name>Observation</Name></PropertyGroup>"
+                 "<ItemGroup><Compile Include=\"Main.ns\" /></ItemGroup></Project>"; }
+    { std::ofstream source(projectDir / "Main.ns"); if (!source) return 15;
+      source << "int Use(N.Plain* x, N.Deleted* y) { return 0; } int Main() { return 0; }\n"; }
+    CppSessionOptions liveOptions;
+    liveOptions.language = CppLanguageMode::Cpp;
+    liveOptions.languageStandard = "c++20";
+    liveOptions.targetTriple = "x86_64-pc-windows-msvc";
+    liveOptions.driverReferencePath = "clang.exe";
+    liveOptions.resourceDirectory = argv[1];
+    liveOptions.workingDirectory = argv[2];
+    liveOptions.input = CppBufferInput{"record-observation-live.cpp", R"cpp(
+        namespace N { struct Plain { int x; }; struct Deleted { Deleted(const Deleted&) = delete; int x; }; }
+    )cpp"};
+    auto liveOpened = factory.open(std::move(liveOptions), {});
+    if (!std::holds_alternative<std::unique_ptr<CppInteropSession>>(liveOpened)) return 16;
+    std::vector<CppProjectSessions> liveGroups(1);
+    liveGroups[0].projectFile = projectPath;
+    liveGroups[0].sessions.push_back(std::move(std::get<std::unique_ptr<CppInteropSession>>(liveOpened)));
+    nativesharp::frontend::ProjectCompilation compilation;
+    std::string error;
+    if (!compilation.setCppProjectSessions(std::move(liveGroups), error) ||
+        !compilation.setExperimentalCppTypeProvider(provideExperimentalCppRecordCandidates, error) ||
+        !compilation.setExperimentalCppTypeSelector(selectExperimentalCppRecordTypesForCompilation, error) ||
+        !compilation.compileProjectNames(projectPath, error))
+    { std::cerr << "project selection: " << error << '\n'; return 17; }
+    const auto* lookup = compilation.nameLookup();
+    const auto plainIdentity = projectCppRecordIdentity(*plain, "Observation");
+    const auto deletedIdentity = projectCppRecordIdentity(*deleted, "Observation");
+    const auto plainOrdinal = lookup && plainIdentity ? lookup->typeOrdinalForIdentity(plainIdentity->key()) : std::nullopt;
+    const auto deletedOrdinal = lookup && deletedIdentity ? lookup->typeOrdinalForIdentity(deletedIdentity->key()) : std::nullopt;
+    const auto* plainType = plainOrdinal ? lookup->cppImportedType(*plainOrdinal) : nullptr;
+    const auto* deletedType = deletedOrdinal ? lookup->cppImportedType(*deletedOrdinal) : nullptr;
+    if (!plainType || !plainType->cppValueTraits || !plainType->cppValueOperations ||
+        !plainType->cppValueTraits->triviallyCopyable ||
+        plainType->cppValueOperations->copyFromConst.status != CppSpecialMemberSelectionStatus::Selected) return 18;
+    if (!deletedType || !deletedType->cppValueTraits || !deletedType->cppValueOperations ||
+        deletedType->cppValueOperations->copyFromConst.status != CppSpecialMemberSelectionStatus::MissingOrDeleted) return 19;
+    return 0;
+}

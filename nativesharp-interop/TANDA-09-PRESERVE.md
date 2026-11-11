@@ -314,3 +314,20 @@ eliminado, nombre ausente, record incompleto, lenguaje C y sesion cerrada
 transporte/ABI/identidad, y 16 consumidores precompilados C y 16 C++
 (A:/temp/t09-cpp-record-operations-reg-*.log). Esta consulta todavia no alimenta
 la proyeccion de funciones ni NSMeta: el record C++ por valor sigue pendiente.
+
+El modelo de tipos seleccionados de una compilacion conserva ahora estas
+observaciones para records C++ con una sola definicion y layout disponible.
+La consulta se realiza solo para tipos seleccionados y vincula el resultado al
+proyecto, sesion, triple e identidad USR observados; no se incorpora ante
+ausencia o ambiguedad. Los campos son observaciones vivas: no conceden permiso
+de copia ni de llamada y no se serializan en NSMeta.
+
+La prueba nueva verifica el transporte con una sesion real, triple, indice e
+identidad incorrectos, proyecto ambiguo, record incompleto y sesion cerrada.
+Tambien compila la seleccion de un proyecto real y comprueba que un record
+normal y otro con copia eliminada conservan resultados distintos en el modelo
+(A:/temp/t09-cpp-record-observation-final.log). Pasaron cuatro sondas,
+transporte/ABI/identidad y 16 consumidores precompilados C y 16 C++
+(A:/temp/t09-cpp-record-model-reg-*.log). Falta aplicar reglas de uso y ABI,
+proyectar las firmas, transportar el contrato vigente y ejecutar la muestra C++
+por valor; T09-003 permanece abierto.
