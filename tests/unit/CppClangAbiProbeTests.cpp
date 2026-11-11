@@ -75,6 +75,7 @@ int main(int argc, char** argv) {
         typedef struct RVI { float z, w; int x, y; } RVI;
         typedef struct RVS { float z, w; short x, y; } RVS;
         typedef struct RVV { float x, y, z, w; } RVV;
+        typedef struct __declspec(align(16)) RVV16 { float x, y, z, w; } RVV16;
         typedef struct RVF { float x, y, z; } RVF;
         typedef struct RV { float x, y; } RV;
         typedef struct ROneF { float x; } ROneF;
@@ -111,6 +112,7 @@ int main(int argc, char** argv) {
         RVI __attribute__((sysv_abi)) pvi(RVI);
         RVS __attribute__((sysv_abi)) pvs(RVS);
         RVV __attribute__((sysv_abi)) pvv(RVV);
+        RVV16 __attribute__((sysv_abi)) pvv16(RVV16);
         RVF __attribute__((sysv_abi)) pvf(RVF);
         RV __attribute__((sysv_abi)) ponev(RV);
         ROneF __attribute__((sysv_abi)) ponef(ROneF);
@@ -182,7 +184,7 @@ int main(int argc, char** argv) {
             name != "p6" && name != "p7" && name != "p8" && name != "p9" && name != "p10" &&
             name != "p11" && name != "p12" && name != "p13" && name != "p14" && name != "p15" &&
             name != "p16" && name != "pf" && name != "p24" && name != "p24b" && name != "p24i" && name != "p17b" &&
-            name != "p20b" && name != "p32b" && name != "pid" && name != "pdd" && name != "pdf" && name != "pfd" && name != "pvd" && name != "pdv" && name != "pif" && name != "piv" && name != "pvi" && name != "pvs" && name != "pvv" && name != "pvf" && name != "ponev" && name != "ponef" && name != "poned" && name != "ps8" && name != "pm" &&
+            name != "p20b" && name != "p32b" && name != "pid" && name != "pdd" && name != "pdf" && name != "pfd" && name != "pvd" && name != "pdv" && name != "pif" && name != "piv" && name != "pvi" && name != "pvs" && name != "pvv" && name != "pvv16" && name != "pvf" && name != "ponev" && name != "ponef" && name != "poned" && name != "ps8" && name != "pm" &&
             name != "pp" && name != "pvec" && name != "pvoid") continue;
         if (name == "p3" && copiedPlans.contains(name)) continue;
         auto* physical = clang::CodeGen::convertFreeFunctionType(generator->CGM(), function);
@@ -250,7 +252,7 @@ int main(int argc, char** argv) {
         if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
-    if (matched != 43 || copiedPlans.size() != 43 || !unsupportedRejected || !variadicRejected ||
+    if (matched != 44 || copiedPlans.size() != 44 || !unsupportedRejected || !variadicRejected ||
         !noPrototypeRejected || !attributeRejected) return 7;
     generator.reset();
     ast.reset();
@@ -305,6 +307,7 @@ int main(int argc, char** argv) {
     if (!t09_probe::isSysVMixedRecordRoundTrip(copiedPlans.at("pvv"), "pvv") ||
         copiedPlans.at("pvv").physicalReturn.elements[0].kind != t09_probe::TypeKind::Vector ||
         copiedPlans.at("pvv").physicalReturn.elements[1].kind != t09_probe::TypeKind::Vector) return 89;
+    if (!t09_probe::isSysVMixedRecordRoundTrip(copiedPlans.at("pvv16"), "pvv16")) return 97;
     if (!t09_probe::isSysVMixedRecordRoundTrip(copiedPlans.at("pvf"), "pvf") ||
         copiedPlans.at("pvf").physicalReturn.elements[1].kind != t09_probe::TypeKind::Float) return 90;
     if (!t09_probe::isSysVSingleVector2FRecordRoundTrip(copiedPlans.at("ponev"), "ponev")) return 91;

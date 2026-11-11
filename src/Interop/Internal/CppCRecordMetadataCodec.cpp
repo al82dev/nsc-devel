@@ -483,8 +483,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                 f.parameters[0].type.alignmentBits != f.abiPlan->logicalReturn.alignment * 8)) ||
             (singleVector && (f.returnType.alignmentBits != 32 || f.parameters[0].type.alignmentBits != 32)) ||
             (singleFloating && (f.returnType.alignmentBits != bits || f.parameters[0].type.alignmentBits != bits)) ||
-            (mixedRecord && (f.returnType.alignmentBits != (!mixedVectorDouble && ((mixedFloatSecond && !mixedDoubleFloat) || mixedVectorSecond || mixedVectorFirst) ? 32 : 64) ||
-                             f.parameters[0].type.alignmentBits != (!mixedVectorDouble && ((mixedFloatSecond && !mixedDoubleFloat) || mixedVectorSecond || mixedVectorFirst) ? 32 : 64))))
+            (mixedRecord && ((f.returnType.alignmentBits != (!mixedVectorDouble && ((mixedFloatSecond && !mixedDoubleFloat) || mixedVectorSecond || mixedVectorFirst) ? 32 : 64) &&
+                              !(mixedBothVectors && f.returnType.alignmentBits == 128)) ||
+                             f.parameters[0].type.alignmentBits != f.returnType.alignmentBits)))
         { error = "invalid C dependency SysV record ABI"; return false; }
         if (!mixedRecord && !singleVector && !singleFloating)
             writer.u8(static_cast<std::uint8_t>(indirectRecord ? f.abiPlan->logicalReturn.alignment :

@@ -1889,6 +1889,15 @@ bool checkDependencyTypeCodec()
         abi_plan::isSysVMixedRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
         restoredRecord.declaration.abiPlan->physicalReturn.elements[1].kind == abi_plan::TypeKind::Vector,
         "C dependency function retains a two-vector SysV plan");
+    recordFunction.declaration.returnType.alignmentBits = 128;
+    recordFunction.declaration.parameters[0].type.alignmentBits = 128;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        restoredRecord.declaration.returnType.alignmentBits == 128 &&
+        abi_plan::isSysVMixedRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
+        "C dependency function retains sixteen-byte vector record alignment");
+    recordFunction.declaration.returnType.alignmentBits = 32;
+    recordFunction.declaration.parameters[0].type.alignmentBits = 32;
     auto vectorFloatPlan = std::make_shared<abi_plan::Plan>(*twoVectorPlan);
     vectorFloatPlan->physicalReturn.elements[1] = floatType;
     vectorFloatPlan->logicalReturn.coercion = vectorFloatPlan->physicalReturn;

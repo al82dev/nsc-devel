@@ -429,3 +429,14 @@ A:/temp/t09-planes-identity.log; la regresion `float`/`double` paso en
 A:/temp/nsc-t09-sysv-mixed-fd-exwn69qi. La prueba negativa de esta sesion
 conserva el rechazo de un record alineado a 16 y de callback en
 A:/temp/nsc-t09-sysv-prueba-kgfh90kl. Otras formas siguen pendientes.
+
+Alineacion de 16 bytes: el record de cuatro `float` sigue usando dos piezas
+vectoriales segun Clang (A:/temp/nsc-t09-if-clang-2jqpqpj5). El control C paso
+y NSC rechazo la muestra antes del cambio en A:/temp/nsc-t09-sysv-align16-k3cl06_u.
+Despues pasaron las ocho comparaciones estatica/DLL O0–O3, firmas LLVM y
+plantilla sin encabezado O0 en A:/temp/nsc-t09-sysv-align16-m58qy1j0. La sonda
+y metadatos pasaron en A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log.
+Las regresiones sin alineacion especial y vector/`double` pasaron en
+A:/temp/nsc-t09-sysv-mixed-vv-kf6o1dni y A:/temp/nsc-t09-sysv-mixed-vd-poj6b46t.
+La prueba negativa de esta sesion conserva el rechazo de alineacion 32 y de
+callback en A:/temp/nsc-t09-sysv-prueba-a0n8us9t. Otras formas siguen pendientes.

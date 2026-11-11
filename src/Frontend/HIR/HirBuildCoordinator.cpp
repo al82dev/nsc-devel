@@ -1858,7 +1858,10 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                         symbol.cppReturnType->alignmentBits == 32) ||
                        (symbol.cppAbiPlan->physicalReturn.elements[1].kind == interop::abi_plan::TypeKind::Vector &&
                         symbol.cppAbiPlan->physicalReturn.elements[0].kind != interop::abi_plan::TypeKind::Double &&
-                        *symbol.cppReturnType->sizeBits == 128 && symbol.cppReturnType->alignmentBits == 32) ||
+                        *symbol.cppReturnType->sizeBits == 128 &&
+                        (symbol.cppReturnType->alignmentBits == 32 ||
+                         (symbol.cppAbiPlan->physicalReturn.elements[0].kind == interop::abi_plan::TypeKind::Vector &&
+                          symbol.cppReturnType->alignmentBits == 128))) ||
                        (symbol.cppAbiPlan->physicalReturn.elements[1].kind != interop::abi_plan::TypeKind::Float &&
                         symbol.cppAbiPlan->physicalReturn.elements[0].kind != interop::abi_plan::TypeKind::Vector &&
                         symbol.cppAbiPlan->physicalReturn.elements[1].kind != interop::abi_plan::TypeKind::Vector &&
