@@ -1843,6 +1843,10 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                           symbol.cppAbiPlan->physicalReturn.elements[1].widthOrCount) ||
                      (interop::abi_plan::isSysVMixedRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName) &&
                       ((symbol.cppAbiPlan->physicalReturn.elements[1].kind == interop::abi_plan::TypeKind::Float &&
+                        symbol.cppAbiPlan->physicalReturn.elements[0].kind == interop::abi_plan::TypeKind::Double &&
+                        *symbol.cppReturnType->sizeBits == 128 && symbol.cppReturnType->alignmentBits == 64) ||
+                       (symbol.cppAbiPlan->physicalReturn.elements[1].kind == interop::abi_plan::TypeKind::Float &&
+                        symbol.cppAbiPlan->physicalReturn.elements[0].kind != interop::abi_plan::TypeKind::Double &&
                         *symbol.cppReturnType->sizeBits == 96 && symbol.cppReturnType->alignmentBits == 32) ||
                        (symbol.cppAbiPlan->physicalReturn.elements[0].kind == interop::abi_plan::TypeKind::Vector &&
                         *symbol.cppReturnType->sizeBits == 64 + symbol.cppAbiPlan->physicalReturn.elements[1].widthOrCount &&

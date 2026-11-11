@@ -107,3 +107,5 @@ T09-003: contrastar y probar records con un `float` o un `double` como pieza esc
 T09-003: conservar la prueba negativa de esta sesion con dos piezas `double`, aun no admitidas.
 T09-003: contrastar y probar un record de dos `double` en dos piezas fisicas, incluida precompilacion. Mantener negativa una combinacion flotante distinta no admitida.
 T09-003: conservar la prueba negativa de esta sesion con `double` seguido de `float`, aun no admitido.
+T09-003: contrastar y probar `double` seguido de `float` en dos piezas, incluida precompilacion; conservar el rechazo del orden inverso aun no admitido.
+T09-003: conservar la prueba negativa de esta sesion con `float` seguido de `double`, aun no admitido.

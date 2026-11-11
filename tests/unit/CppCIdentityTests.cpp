@@ -1775,6 +1775,18 @@ bool checkDependencyTypeCodec()
         abi_plan::isSysVMixedRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
         restoredRecord.declaration.abiPlan->physicalReturn.elements[0].kind == abi_plan::TypeKind::Double,
         "C dependency function retains a pair of doubles SysV plan");
+    auto doubleFloatPlan = std::make_shared<abi_plan::Plan>(*doublePairPlan);
+    const abi_plan::Type floatForDouble{abi_plan::TypeKind::Float};
+    doubleFloatPlan->physicalReturn.elements[1] = floatForDouble;
+    doubleFloatPlan->logicalReturn.coercion = doubleFloatPlan->physicalReturn;
+    doubleFloatPlan->logicalParameters[0].coercion = doubleFloatPlan->physicalReturn;
+    doubleFloatPlan->physicalParameters[1].type = floatForDouble;
+    recordFunction.declaration.abiPlan = doubleFloatPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVMixedRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->physicalReturn.elements[1].kind == abi_plan::TypeKind::Float,
+        "C dependency function retains a double and float SysV plan");
     auto floatPlan = std::make_shared<abi_plan::Plan>(*reversePlan);
     const abi_plan::Type floatType{abi_plan::TypeKind::Float};
     floatPlan->physicalReturn.elements[1] = floatType;

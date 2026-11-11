@@ -395,3 +395,14 @@ A:/temp/nsc-t09-sysv-mixed-di-bwd3uxf4 y A:/temp/nsc-t09-sysv-scalar-d-qfch1uvb.
 La prueba negativa de esta sesion conserva el rechazo de `double` seguido de
 `float` y callback en A:/temp/nsc-t09-sysv-prueba-x75p_hvu. Otras formas siguen
 pendientes.
+
+`double` seguido de `float`: Clang usa `{ double, float }`
+(A:/temp/nsc-t09-if-clang-lsgq3yea). El control C paso y NSC rechazo la muestra
+antes del cambio en A:/temp/nsc-t09-sysv-mixed-df-hziv3z7k. Despues pasaron las
+ocho comparaciones estatica/DLL O0–O3, firmas LLVM y plantilla sin encabezado
+O0 en A:/temp/nsc-t09-sysv-mixed-df-8ov6c70w. La sonda y metadatos pasaron en
+A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log. Las regresiones
+de dos `double` y de `int`/`float` pasaron en
+A:/temp/nsc-t09-sysv-mixed-dd-objh6q23 y A:/temp/nsc-t09-sysv-mixed-if-ra2fjiai.
+La prueba negativa de esta sesion conserva el rechazo de `float`/`double` y de
+callback en A:/temp/nsc-t09-sysv-prueba-p78h10cp. Otras formas siguen pendientes.
