@@ -1458,6 +1458,22 @@ entero y record mixto con `byval`
 `A:/temp/nsc-t09-sysv-indirecta-var-mixto-byval-pre-9cz37lcb`). Otras mezclas
 y promociones no quedan certificadas y T09-003 permanece abierto.
 
+**Record y puntero opcionales:** el control C y productor independiente
+verificaron registros y escritura por `int*`, mientras NSC rechazaba la firma
+(`A:/temp/nsc-t09-sysv-indirecta-variadica-record-puntero-5fnspplf`). Tras
+emitir y reconstruir el puntero conforme al plan de Clang pasaron ocho
+comparaciones C/NS estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-record-puntero-matriz-jamlr61s`) y la
+plantilla sin encabezado con cache y rechazo de variante
+(`A:/temp/nsc-t09-sysv-indirecta-record-puntero-pre-7vifraaq`). Pasaron cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y las regresiones precompiladas de record
+con `double`, con `int` y con otro record `byval`
+(`A:/temp/nsc-t09-sysv-indirecta-record-double-pre-s2c1cumj`,
+`A:/temp/nsc-t09-sysv-indirecta-record-escalar-pre-39hyyibk`,
+`A:/temp/nsc-t09-sysv-indirecta-var-mixto-byval-pre-5t780b5e`). Otras formas
+de puntero y firmas permanecen pendientes; T09-003 no esta cerrado.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor

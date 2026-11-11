@@ -1196,7 +1196,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             node->argumentTypeKeys[0] == "builtin:int" &&
             std::any_of(node->argumentTypeKeys.begin() + 1, node->argumentTypeKeys.end(), recordArgument) &&
             std::all_of(node->argumentTypeKeys.begin() + 1, node->argumentTypeKeys.end(),
-                [&](const auto& key) { return recordArgument(key) || key == "builtin:int" || key == "builtin:double"; }))
+                [&](const auto& key) { return recordArgument(key) || key == "builtin:int" ||
+                    key == "builtin:double" || key == "builtin:int*"; }))
         {
             using namespace interop::abi_plan;
             const auto& plan = *node->cppVariadicCallPlan;
@@ -1221,17 +1222,19 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 const auto& key = node->argumentTypeKeys[i];
                 const auto& logical = plan.arguments[i];
                 const auto physical = logical.firstPhysical;
-                if (key == "builtin:int" || key == "builtin:double")
+                if (key == "builtin:int" || key == "builtin:double" || key == "builtin:int*")
                 {
                     if (logical.passing != Passing::Direct || logical.physicalCount != 1 ||
                         physical != arguments.size() || physical >= plan.physicalParameters.size() ||
                         (key == "builtin:int" && (plan.physicalParameters[physical].type.kind != TypeKind::Integer ||
                          plan.physicalParameters[physical].type.widthOrCount != 32)) ||
-                        (key == "builtin:double" && plan.physicalParameters[physical].type.kind != TypeKind::Double))
+                        (key == "builtin:double" && plan.physicalParameters[physical].type.kind != TypeKind::Double) ||
+                        (key == "builtin:int*" && plan.physicalParameters[physical].type.kind != TypeKind::Pointer))
                         return failValue(error, "sysv_abi variadic function pointer scalar plan is not supported");
                     LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[i] : lowerExpression(node->children[i + 1].get(), error);
                     if (!value || terminated()) return value;
-                    LLVMTypeRef expected = key == "builtin:int" ? LLVMInt32TypeInContext(context_) : LLVMDoubleTypeInContext(context_);
+                    LLVMTypeRef expected = key == "builtin:int" ? LLVMInt32TypeInContext(context_) :
+                        key == "builtin:double" ? LLVMDoubleTypeInContext(context_) : LLVMPointerTypeInContext(context_, 0);
                     if (LLVMTypeOf(value) != expected)
                         return failValue(error, "sysv_abi variadic function pointer scalar does not match its plan");
                     arguments.push_back(value);
