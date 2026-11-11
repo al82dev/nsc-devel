@@ -929,7 +929,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             return result;
         }
         if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
-            interop::abi_plan::isSysVSmallRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName))
+            (interop::abi_plan::isSysVSmallRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName) ||
+             interop::abi_plan::isSysVSingleVector2FRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName)))
         {
             if (node->children.size() != 1 || node->referenceResult || node->returnsAssignedValue ||
                 node->children[0]->typeKey != node->typeKey ||
@@ -946,8 +947,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             LLVMValueRef argumentSlot = entryBlockAlloca(carrier, alignment, "sysv.record.arg");
             LLVMValueRef argumentStore = LLVMBuildStore(builder_, value, argumentSlot);
             LLVMSetAlignment(argumentStore, alignment);
-            LLVMTypeRef integer = LLVMIntTypeInContext(context_,
-                static_cast<unsigned>(imported->cppAbiPlan->physicalReturn.widthOrCount));
+            LLVMTypeRef integer = interop::abi_plan::isSysVSingleVector2FRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName)
+                ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) : LLVMIntTypeInContext(context_,
+                    static_cast<unsigned>(imported->cppAbiPlan->physicalReturn.widthOrCount));
             LLVMValueRef physicalArgument = LLVMBuildLoad2(builder_, integer, argumentSlot, "sysv.record.physical");
             LLVMSetAlignment(physicalArgument, alignment);
             releaseTransferredArguments(node);

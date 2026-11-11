@@ -18,6 +18,7 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
 {
             if (function.cppSysVCall && function.cppAbiPlan &&
                 (interop::abi_plan::isSysVSmallRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
+                 interop::abi_plan::isSysVSingleVector2FRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
                  interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
                  interop::abi_plan::isSysVMixedRecordRoundTrip(*function.cppAbiPlan, function.cAbiName)))
             {
@@ -45,8 +46,9 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                     LLVMTypeRef result = LLVMStructTypeInContext(context_, pieces, 2, 0);
                     return LLVMFunctionType(result, pieces, 2, 0);
                 }
-                LLVMTypeRef integer = LLVMIntTypeInContext(context_,
-                    static_cast<unsigned>(function.cppAbiPlan->physicalReturn.widthOrCount));
+                LLVMTypeRef integer = interop::abi_plan::isSysVSingleVector2FRecordRoundTrip(*function.cppAbiPlan, function.cAbiName)
+                    ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) : LLVMIntTypeInContext(context_,
+                        static_cast<unsigned>(function.cppAbiPlan->physicalReturn.widthOrCount));
                 return LLVMFunctionType(integer, &integer, 1, 0);
             }
             // Win64 aggregate ABI (ground truth: clang for x86_64-pc-windows-msvc). An indirect

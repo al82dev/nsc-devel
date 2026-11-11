@@ -4,6 +4,25 @@
 
 namespace nativesharp::interop::abi_plan
 {
+inline bool isSysVSingleVector2FRecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
+{
+    const auto vector2f = [](const Type& value) {
+        return value.kind == TypeKind::Vector && value.widthOrCount == 2 &&
+               value.elements.size() == 1 && value.elements[0].kind == TypeKind::Float;
+    };
+    if (plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
+        !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
+        plan.returnSignExtend || plan.returnZeroExtend || !vector2f(plan.physicalReturn) ||
+        plan.logicalReturn.passing != Passing::Direct || !plan.logicalReturn.coercion ||
+        !vector2f(*plan.logicalReturn.coercion) || plan.logicalReturn.offset != 0 ||
+        plan.logicalParameters.size() != 1 || plan.physicalParameters.size() != 1) return false;
+    const auto& logical = plan.logicalParameters[0];
+    const auto& physical = plan.physicalParameters[0];
+    return logical.passing == Passing::Direct && logical.coercion && vector2f(*logical.coercion) &&
+        logical.offset == 0 && logical.firstPhysical == 0 && logical.physicalCount == 1 &&
+        vector2f(physical.type) && !physical.structureReturn && !physical.byValue &&
+        !physical.signExtend && !physical.zeroExtend && !physical.inRegister && !physical.noAlias;
+}
 // Only the observed two-integer SysV round trip; mixed register classes stay unsupported.
 inline bool isSysVTwoIntegerRecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
 {

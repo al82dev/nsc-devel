@@ -1831,6 +1831,8 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     function.returnTypeKey == function.parameterTypeKeys[0] &&
                     ((*symbol.cppReturnType->sizeBits == symbol.cppAbiPlan->physicalReturn.widthOrCount &&
                       interop::abi_plan::isSysVSmallRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName)) ||
+                     (*symbol.cppReturnType->sizeBits == 64 && symbol.cppReturnType->alignmentBits == 32 &&
+                      interop::abi_plan::isSysVSingleVector2FRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName)) ||
                      (interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName) &&
                       *symbol.cppReturnType->sizeBits == 64 +
                           symbol.cppAbiPlan->physicalReturn.elements[1].widthOrCount) ||

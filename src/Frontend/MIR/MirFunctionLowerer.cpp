@@ -318,6 +318,7 @@ void configureFunctionAbi(
     }
     if (function.cppSysVCall && function.cppAbiPlan &&
         (interop::abi_plan::isSysVSmallRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
+         interop::abi_plan::isSysVSingleVector2FRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
          interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
          interop::abi_plan::isSysVMixedRecordRoundTrip(*function.cppAbiPlan, function.cAbiName)))
     {
