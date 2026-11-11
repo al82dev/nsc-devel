@@ -35,12 +35,13 @@ for mode in ('estatica', 'dll'):
         prefix = mode+'-O'+str(opt)
         case = root/prefix
         case.mkdir()
-        for name in ('api.h', 'api-dll.h', 'api.c', 'Control.c', 'Main.ns', 'Static.nsproj', 'Dll.nsproj'):
+        for name in ('api.h', 'api-dll.h', 'api.c', 'variadic.s', 'Control.c', 'Main.ns', 'Static.nsproj', 'Dll.nsproj'):
             shutil.copyfile(fixture/name, case/name)
         flags = ['-target', 'x86_64-pc-windows-msvc', '-std=c11', '-O'+str(opt)]
         run(prefix+'-productor', ['clang.exe', *flags, '-c', str(case/'api.c'), '-o', str(case/'api.obj')])
+        run(prefix+'-variadic-productor', ['clang.exe', *flags, '-c', str(case/'variadic.s'), '-o', str(case/'variadic.obj')])
         if mode == 'estatica':
-            run(prefix+'-biblioteca', ['llvm-lib.exe', '/nologo', '/out:'+str(case/'api.lib'), str(case/'api.obj')])
+            run(prefix+'-biblioteca', ['llvm-lib.exe', '/nologo', '/out:'+str(case/'api.lib'), str(case/'api.obj'), str(case/'variadic.obj')])
             library, project, cflags = 'api.lib', 'Static.nsproj', []
         else:
             run(prefix+'-dll', ['lld-link.exe', '/nologo', '/dll', '/noentry', '/nodefaultlib',
@@ -49,8 +50,9 @@ for mode in ('estatica', 'dll'):
                 '/export:t09_get_uint_callback', '/export:t09_get_ulong_callback',
                 '/export:t09_get_s8_callback', '/export:t09_get_u8_callback', '/export:t09_get_s16_callback',
                 '/export:t09_get_u16_callback', '/export:t09_get_bool_callback',
+                '/export:t09_get_variadic_callback',
                 '/export:t09_get_pointer_callback', '/export:t09_get_void_callback', '/out:'+str(case/'api.dll'),
-                '/implib:'+str(case/'api-dll.lib'), str(case/'api.obj')])
+                '/implib:'+str(case/'api-dll.lib'), str(case/'api.obj'), str(case/'variadic.obj')])
             library, project, cflags = 'api-dll.lib', 'Dll.nsproj', ['-DAPI_DLL_IMPORT']
         run(prefix+'-control-obj', ['clang.exe', *flags, *cflags, '-c', str(case/'Control.c'), '-o', str(case/'control.obj')])
         run(prefix+'-control-link', ['lld-link.exe', '/nologo', '/entry:main', '/subsystem:console', '/nodefaultlib',
@@ -58,6 +60,9 @@ for mode in ('estatica', 'dll'):
         run(prefix+'-control-run', [str(case/'control.exe')])
         common = [str(case/project), '--cpp-clang-root='+args.clang_root, '--library-reference-root', str(case)]
         ir = run(prefix+'-ns-ir', [args.nsc, '--dump-project-oop-llvm', *common])
+        variadic_pattern = r'call\s+x86_64_sysvcc\s+i32\s+\(i32,\s*\.\.\.\)\s+%[^\(]+\(i32[^,]*,\s*i32[^,]*,\s*double[^,]*,\s*ptr\b'
+        if not re.search(variadic_pattern, ir):
+            raise SystemExit(prefix+': faltan promociones variadicas; evidencia: '+str(root))
         for result_type in ('i32', 'i64', 'double', 'float', 'ptr', 'void'):
             if not re.search(r'call\s+x86_64_sysvcc\s+'+result_type+r'\s+%[^\(]+\(', ir):
                 raise SystemExit(prefix+': falta convencion indirecta de '+result_type+'; evidencia: '+str(root))
@@ -89,6 +94,8 @@ for name in ('api.h', 'api.lib'):
     'T09S16Callback signed16 = t09_get_s16_callback(); T09U16Callback unsigned16 = t09_get_u16_callback(); '
     'if (signed16((short)-1000) != (short)-999 || unsigned16((ushort)65000) != (ushort)65001) return 10; '
     'T09BoolCallback boolean = t09_get_bool_callback(); if (boolean(true) != false || boolean(false) != true) return 11; '
+    'int varValue = 17; T09VarCallback variadic = t09_get_variadic_callback(); '
+    'if (variadic(3, (short)-2, 2.25f, &varValue) != 1 || varValue != 42) return 13; '
     'int x = 10; T09PointerCallback pointer = t09_get_pointer_callback(); '
     'if (pointer(&x, 3) != &x || x != 13) return 5; '
     'T09VoidCallback setter = t09_get_void_callback(); setter(&x); if (x != 47) return 6; '
@@ -107,6 +114,8 @@ run('pre-producer', [args.nsc, '--emit-project-oop-lib', str(producer/'Producer.
 (producer/'api.h').rename(producer/'api.h.oculto')
 ir = run('pre-ir', [args.nsc, '--dump-project-oop-llvm', str(consumer/'Consumer.nsproj'),
     '--cpp-clang-root='+args.clang_root])
+if not re.search(variadic_pattern, ir):
+    raise SystemExit('Faltan promociones variadicas precompiladas; evidencia: '+str(root))
 for result_type in ('i32', 'i64', 'double', 'float', 'ptr', 'void'):
     if not re.search(r'call\s+x86_64_sysvcc\s+'+result_type+r'\s+%[^\(]+\(', ir):
         raise SystemExit('Falta convencion indirecta precompilada de '+result_type+'; evidencia: '+str(root))

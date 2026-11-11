@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>BadSysvVariadic</Name></PropertyGroup><ItemGroup><Compile Include="BadVar.ns"/><CppLibraryReference Header="BadVar.h" Language="C" Standard="c11" Library="api.lib"/></ItemGroup></Project>

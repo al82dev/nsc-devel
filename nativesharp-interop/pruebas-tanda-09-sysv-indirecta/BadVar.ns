@@ -1,0 +1,5 @@
+int Main() {
+    T09VarCallback callback = t09_get_variadic_callback();
+    T09BadVarRecord value; value.x = 1; value.y = 2; value.z = 3;
+    return callback(1, value);
+}

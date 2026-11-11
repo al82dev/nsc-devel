@@ -19,6 +19,8 @@ int Main() {
     if (signed16((short)-1000) != (short)-999 || unsigned16((ushort)65000) != (ushort)65001) return 10;
     T09BoolCallback boolean = t09_get_bool_callback();
     if (boolean(true) != false || boolean(false) != true) return 11;
+    int varValue = 17; T09VarCallback variadic = t09_get_variadic_callback();
+    if (variadic(3, (short)-2, 2.25f, &varValue) != 1 || varValue != 42) return 13;
     int x = 10;
     T09PointerCallback pointer = t09_get_pointer_callback();
     if (pointer(&x, 3) != &x || x != 13) return 5;

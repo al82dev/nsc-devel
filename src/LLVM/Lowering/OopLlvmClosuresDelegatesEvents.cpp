@@ -1076,7 +1076,7 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
                 key == "builtin:sbyte" || key == "builtin:byte" || key == "builtin:short" ||
                 key == "builtin:ushort" || key == "builtin:bool" || key.ends_with('*');
         };
-        if (sysvCall && (structuralFunction->variadic || (returnTypeKey != "builtin:void" && !sysvScalar(returnTypeKey)) ||
+        if (sysvCall && ((returnTypeKey != "builtin:void" && !sysvScalar(returnTypeKey)) ||
             std::any_of(argumentTypeKeys.begin(), argumentTypeKeys.end(),
                 [&](const std::string& key) { return !sysvScalar(key); })))
             return failValue(error, "sysv_abi function pointer signature is not yet supported");
@@ -1085,6 +1085,16 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             ? structuralFunction->parameters.size() : argumentTypeKeys.size();
         if (fixedParameterCount > argumentTypeKeys.size())
             return failValue(error, "variadic function pointer invocation lost a fixed argument");
+        if (sysvCall && variadic)
+        {
+            for (std::size_t index = fixedParameterCount; index < argumentTypeKeys.size(); ++index)
+            {
+                const auto& key = argumentTypeKeys[index];
+                if (key != "builtin:int" && key != "builtin:uint" && key != "builtin:long" &&
+                    key != "builtin:ulong" && key != "builtin:double" && !key.ends_with('*'))
+                    return failValue(error, "sysv_abi variadic function pointer argument is not yet supported");
+            }
+        }
         const std::vector<VectorCallPassing> passing = vectorCall
             ? vectorCallPassing(argumentTypeKeys, fixedParameterCount) : std::vector<VectorCallPassing>{};
         std::vector<LLVMTypeRef> parameterTypes;

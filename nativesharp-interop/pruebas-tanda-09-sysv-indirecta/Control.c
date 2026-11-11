@@ -13,6 +13,8 @@ int main(void) {
     if (t09_get_s8_callback()(-7) != -6 || t09_get_u8_callback()(250) != 251) return 9;
     if (t09_get_s16_callback()(-1000) != -999 || t09_get_u16_callback()(65000) != 65001) return 10;
     if (t09_get_bool_callback()(1) != 0 || t09_get_bool_callback()(0) != 1) return 11;
+    int varValue = 17;
+    if (t09_get_variadic_callback()(3, (short)-2, 2.25f, &varValue) != 1 || varValue != 42) return 13;
     int x = 10;
     if (t09_get_pointer_callback()(&x, 3) != &x || x != 13) return 5;
     t09_get_void_callback()(&x);

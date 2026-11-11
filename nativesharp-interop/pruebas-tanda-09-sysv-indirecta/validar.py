@@ -30,12 +30,13 @@ def run(label, command):
 
 if 'clang version 23.1.0' not in run('version', ['clang.exe', '--version']):
     raise SystemExit('Se requiere Clang 23.1.0')
-for name in ('api.h', 'api.c', 'Control.c', 'Main.ns', 'Static.nsproj', 'Bad.h', 'Bad.ns', 'Bad.nsproj',
-             'BadConversion.ns', 'BadConversion.nsproj'):
+for name in ('api.h', 'api.c', 'variadic.s', 'Control.c', 'Main.ns', 'Static.nsproj', 'Bad.h', 'Bad.ns', 'Bad.nsproj',
+             'BadConversion.ns', 'BadConversion.nsproj', 'BadVar.h', 'BadVar.ns', 'BadVar.nsproj'):
     shutil.copyfile(fixture / name, root / name)
 flags = ['-target', 'x86_64-pc-windows-msvc', '-std=c11', '-O0']
 run('productor', ['clang.exe', *flags, '-c', str(root/'api.c'), '-o', str(root/'api.obj')])
-run('biblioteca', ['llvm-lib.exe', '/nologo', '/out:' + str(root/'api.lib'), str(root/'api.obj')])
+run('variadic-productor', ['clang.exe', *flags, '-c', str(root/'variadic.s'), '-o', str(root/'variadic.obj')])
+run('biblioteca', ['llvm-lib.exe', '/nologo', '/out:' + str(root/'api.lib'), str(root/'api.obj'), str(root/'variadic.obj')])
 run('control-ir', ['clang.exe', *flags, '-S', '-emit-llvm', str(root/'Control.c'), '-o', str(root/'control.ll')])
 ir = (root/'control.ll').read_text(encoding='utf-8')
 for result_type in ('i32', 'i64', 'double', 'float', 'ptr', 'void'):
@@ -45,6 +46,9 @@ for bits, extension in ((8, 'signext'), (8, 'zeroext'), (16, 'signext'), (16, 'z
     pattern = r'call\s+x86_64_sysvcc\s+'+extension+r'\s+i'+str(bits)+r'\s+%[^\(]+\(i'+str(bits)+r'\s+(?:noundef\s+)?'+extension
     if not re.search(pattern, ir):
         raise SystemExit('Clang no emitio '+extension+' i'+str(bits)+'; evidencia: '+str(root))
+variadic_pattern = r'call\s+x86_64_sysvcc\s+i32\s+\(i32,\s*\.\.\.\)\s+%[^\(]+\(i32[^,]*,\s*i32[^,]*,\s*double[^,]*,\s*ptr\b'
+if not re.search(variadic_pattern, ir):
+    raise SystemExit('Clang no emitio las promociones variadicas esperadas; evidencia: '+str(root))
 run('control-obj', ['clang.exe', *flags, '-c', str(root/'Control.c'), '-o', str(root/'control.obj')])
 run('control-link', ['lld-link.exe', '/nologo', '/entry:main', '/subsystem:console', '/nodefaultlib',
     '/out:' + str(root/'control.exe'), str(root/'control.obj'), str(root/'api.lib')])
@@ -52,6 +56,8 @@ run('control-run', [str(root/'control.exe')])
 print('Control C y convencion indirecta de Clang: OK', flush=True)
 common = [str(root/'Static.nsproj'), '--cpp-clang-root=' + args.clang_root, '--library-reference-root', str(root)]
 ns_ir = run('ns-ir', [args.nsc, '--dump-project-oop-llvm', *common])
+if not re.search(variadic_pattern, ns_ir):
+    raise SystemExit('NativeSharp no emitio las promociones variadicas esperadas; evidencia: '+str(root))
 for bits, extension in ((8, 'signext'), (8, 'zeroext'), (16, 'signext'), (16, 'zeroext'), (1, 'zeroext')):
     pattern = r'call\s+x86_64_sysvcc\s+'+extension+r'\s+i'+str(bits)+r'\s+%[^\(]+\(i'+str(bits)+r'\s+(?:noundef\s+)?'+extension
     if not re.search(pattern, ns_ir):
@@ -76,4 +82,12 @@ result = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,
     str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
 if result.returncode == 0 or 'sysv_abi function pointer is not yet supported' not in result.stdout:
     raise SystemExit('La conversion incompatible no fue rechazada correctamente; evidencia: ' + str(root))
+command = [args.nsc, '--dump-project-oop-llvm', str(root/'BadVar.nsproj'),
+           '--cpp-clang-root=' + args.clang_root, '--library-reference-root', str(root)]
+result = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT, text=True, errors='replace')
+(root/'rechazo-variadico-record.log').write_text('COMMAND: ' + repr(command) + '\nEXIT: ' +
+    str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
+if result.returncode == 0 or 'sysv_abi function pointer signature is not yet supported' not in result.stdout:
+    raise SystemExit('El record variadico no fue rechazado correctamente; evidencia: ' + str(root))
 print('OK: llamada indirecta C/NativeSharp, estatica O0; evidencia:', root, flush=True)

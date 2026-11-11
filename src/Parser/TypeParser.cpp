@@ -922,12 +922,13 @@ void Parser::validateFunctionVariadic(
             "variadicity requires a foreign function pointer calling convention");
     if (function->functionIsVariadic() &&
         state.convention != ast::FunctionCallingConventionSyntaxKind::C &&
-        state.convention != ast::FunctionCallingConventionSyntaxKind::Win64)
+        state.convention != ast::FunctionCallingConventionSyntaxKind::Win64 &&
+        state.convention != ast::FunctionCallingConventionSyntaxKind::SysV)
         diagnostics_.report(
             diagnostics::DiagnosticId::InvalidType,
             diagnostics::DiagnosticSeverity::Error,
             start,
-            "a variadic function pointer requires the cdecl/C or win64 calling convention on Windows x64");
+            "a variadic function pointer requires the cdecl/C, win64 or sysv_abi calling convention on Windows x64");
 }
 
 void Parser::finishFunctionTypeFrame(TypeParseFrame& frame)

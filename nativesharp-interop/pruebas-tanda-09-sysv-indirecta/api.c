@@ -28,4 +28,6 @@ T09U8Callback t09_get_u8_callback(void) { return u8; }
 T09S16Callback t09_get_s16_callback(void) { return s16; }
 T09U16Callback t09_get_u16_callback(void) { return u16; }
 T09BoolCallback t09_get_bool_callback(void) { return boolean; }
+extern int __attribute__((sysv_abi)) t09_variadic(int, ...);
+T09VarCallback t09_get_variadic_callback(void) { return t09_variadic; }
 int t09_normal(int a, int b, int c, int d, int e, int f) { return a + b + c + d + e + f; }

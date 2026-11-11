@@ -1096,7 +1096,7 @@ y SysV (`A:/temp/nsc-t09-llamadas-e_t90z2s`,
 `A:/temp/nsc-t09-sysv-prueba-g_yx1bs9`). El primer control de IR requirio
 aceptar el atributo adicional `noundef` de Clang y se corrigieron nombres NS
 que eran palabras reservadas; ambos intentos se conservan en temporales.
-Variadicas, agregados y creacion de callbacks siguen pendientes.
+En esa revision, variadicas, agregados y creacion de callbacks seguian pendientes.
 
 Se contrasto tambien la conversion de una funcion C importada `sysv_abi` a un
 puntero con la misma convencion y firma. Antes del cambio, el control C paso y
@@ -1110,6 +1110,22 @@ de C ordinario hacia puntero SysV y de funcion SysV hacia puntero C ordinario
 `A:/temp/nsc-t09-sysv-prueba-bhibzcic`). Transporte, ABI e identidad tambien
 pasaron (`A:/temp/t09-transport-directed/`). El cambio no acredita la creacion
 de callbacks SysV desde metodos o lambdas NativeSharp, ni otras firmas.
+
+Una muestra variadica indirecta agrega un prefijo `int`, un `short` promovido
+a `int`, un `float` promovido a `double` y un puntero. El productor en ensamblador
+comprueba valores, registros y contador de registros flotantes antes de escribir
+en el puntero. Antes del cambio paso el control C y NSC rechazo la firma
+(`A:/temp/nsc-t09-sysv-indirecta-u1vlogwv`). Despues pasaron las ocho
+comparaciones en estatica y DLL O0–O3 y una plantilla precompilada sin
+encabezado O0, con comprobacion de la convencion y promociones en LLVM
+(`A:/temp/nsc-t09-sysv-indirecta-matriz-rqd8n8ss`). La prueba dirigida conserva
+el rechazo de un record variadico y las conversiones incompatibles
+(`A:/temp/nsc-t09-sysv-indirecta-c63s_av7`). Pasaron transporte, ABI e identidad
+(`A:/temp/t09-transport-directed/`) y las regresiones de llamadas y variadicas
+directas (`A:/temp/nsc-t09-llamadas-qywnfjf3`,
+`A:/temp/nsc-t09-sysv-varargs-l1fh1xv9`). Se acreditan solo los argumentos
+escalares y puntero de esta muestra; los records por valor en esta ruta,
+otras firmas y presion de registros permanecen pendientes.
 
 ## Retorno indirecto sin argumentos byval
 
