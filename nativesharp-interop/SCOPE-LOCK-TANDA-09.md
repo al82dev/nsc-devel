@@ -67,3 +67,4 @@ T09-003: ampliar las firmas SysV a `double*`, `void*` e `int**`; comprobar paso,
 T09-003: probar en el prototipo el caso void sin argumentos y el rechazo de una declaracion C sin prototipo; mantener el prototipo aislado de produccion.
 T09-003: hacer que el prototipo rechace atributos de retorno y parametros no reconocidos en vez de descartarlos silenciosamente; verificar un caso con `returns_nonnull`.
 T09-003: verificar la copia luego de destruir tambien el contexto LLVM, no solo el generador y el AST.
+T09-003: trasladar el prototipo por valor a infraestructura interna de interoperabilidad y conservar la sonda existente; aun no conectarlo a snapshots, backend ni NSMeta. Despues probar la consulta desde una sesion real.

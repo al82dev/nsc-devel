@@ -869,7 +869,7 @@ if(LLVM_FOUND)
                 "C/C++ interoperability requires Clang and LLVM from the same installation; "
                 "LLVM: ${NSC_CPP_LLVM_PREFIX}; Clang: ${NSC_CPP_CLANG_PREFIX}")
         endif()
-        add_library(nsc_cpp_interop STATIC src/Interop/Cpp/ClangSession.cpp src/Interop/Cpp/CppProjectSessions.cpp
+        add_library(nsc_cpp_interop STATIC src/Interop/Cpp/ClangSession.cpp src/Interop/Cpp/ClangAbiPlan.cpp src/Interop/Cpp/CppProjectSessions.cpp
             src/Interop/Cpp/ClangInvocationBuilder.cpp src/Interop/Cpp/ClangDiagnosticConsumer.cpp
             src/Interop/Cpp/ClangSessionAction.cpp src/Interop/Cpp/ClangCancellationFileSystem.cpp
             src/Interop/Cpp/CppSessionConfigurationIdentity.cpp
@@ -896,10 +896,9 @@ if(LLVM_FOUND)
             target_link_libraries(nsc_cpp_c_identity_tests PRIVATE nsc_cpp_interop nsc_frontend nsc_precompiled)
             target_compile_features(nsc_cpp_c_identity_tests PRIVATE cxx_std_20)
             nsc_enable_warnings(nsc_cpp_c_identity_tests)
-            add_executable(nsc_cpp_abi_probe_tests tests/unit/CppClangAbiProbeTests.cpp
-                nativesharp-interop/pruebas-tanda-09-sysv/ClangAbiSnapshot.cpp)
+            add_executable(nsc_cpp_abi_probe_tests tests/unit/CppClangAbiProbeTests.cpp)
             target_include_directories(nsc_cpp_abi_probe_tests SYSTEM PRIVATE ${LLVM_INCLUDE_DIRS} ${CLANG_INCLUDE_DIRS})
-            target_link_libraries(nsc_cpp_abi_probe_tests PRIVATE clangTooling clangCodeGen)
+            target_link_libraries(nsc_cpp_abi_probe_tests PRIVATE nsc_cpp_interop clangTooling clangCodeGen)
             target_compile_features(nsc_cpp_abi_probe_tests PRIVATE cxx_std_20)
             nsc_enable_warnings(nsc_cpp_abi_probe_tests)
             add_executable(nsc_cpp_c_anonymous_identity_tests tests/unit/CppCAnonymousIdentityTests.cpp)

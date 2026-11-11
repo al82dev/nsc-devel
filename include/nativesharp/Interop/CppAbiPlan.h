@@ -5,10 +5,8 @@
 #include <string>
 #include <vector>
 
-namespace clang { class CodeGenerator; class FunctionDecl; }
-
-// Experimental value-only snapshot; not a production ABI or metadata contract.
-namespace t09_probe
+// Experimental value-only representation; not yet consumed by the compiler or NSMeta.
+namespace nativesharp::interop::abi_plan
 {
 enum class TypeKind { Void, Integer, Float, Double, Pointer, Structure, Array };
 struct Type
@@ -59,7 +57,4 @@ struct Plan
     std::vector<PhysicalParameter> physicalParameters;
 };
 
-std::optional<Plan> copyPlan(clang::CodeGenerator& generator,
-                             const clang::FunctionDecl& function,
-                             std::string& error);
 }

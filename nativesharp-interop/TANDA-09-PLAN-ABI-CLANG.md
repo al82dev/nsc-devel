@@ -56,7 +56,8 @@ desenrollado de excepciones requieren contratos adicionales posteriores.
 
 ## Primer prototipo aislado
 
-`pruebas-tanda-09-sysv/ClangAbiSnapshot.h` y `.cpp` contienen una copia por
+`include/nativesharp/Interop/CppAbiPlan.h` y
+`src/Interop/Cpp/ClangAbiPlan.cpp` contienen una copia por
 valor experimental: tipos fisicos y de coercion representables, clases logicas,
 alineacion y atributos seleccionados. La sonda CTest copia planes de R3, R16,
 un record mixto, R24 y signed char; destruye el generador y la unidad Clang
@@ -64,12 +65,17 @@ y verifica los datos copiados. Tambien exige el rechazo de un vector LLVM que
 el prototipo aun no representa. La prueba paso 1/1, registros
 `A:/temp/t09-abi-probe-build.log` y `A:/temp/t09-abi-probe-ctest.log`.
 
-Este codigo solo se compila dentro del target de prueba; no se conecta a los
-snapshots de produccion, al backend ni a NSMeta. Todavia no representa todas las
+El conversor se compila en `nsc_cpp_interop`, pero todavia no se conecta a los
+snapshots de produccion, al backend ni a NSMeta. La sonda paso tras el traslado
+y NSC se compilo incrementalmente; registros A:/temp/t09-abi-probe-ctest.log y
+A:/temp/t09-compilar-sysv.log. Todavia no representa todas las
 clases `ABIArgInfo`, atributos, mapeos logico-fisicos o tipos LLVM. El rechazo
 del vector valida el limite del prototipo, no implementa interoperabilidad con
 vectores. Antes de utilizar estos datos hay que completar y comprobar esos
 contratos para las formas que se habiliten.
+La regresion de las firmas SysV ya admitidas paso de nuevo en estatica y DLL
+O0–O3, con la muestra precompilada y los rechazos, en
+A:/temp/nsc-t09-sysv-prueba-rwppfjgv.
 
 Ampliacion del prototipo: se asignan posiciones y cantidades fisicas a cada
 argumento logico, comprobando los tipos que Clang genero. Se contemplan un

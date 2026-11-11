@@ -16,7 +16,9 @@
 #include <map>
 #include <string>
 #include <vector>
-#include "../../nativesharp-interop/pruebas-tanda-09-sysv/ClangAbiSnapshot.h"
+#include "../../src/Interop/Internal/ClangAbiPlan.h"
+
+namespace t09_probe = nativesharp::interop::abi_plan;
 
 int main() {
     const char* source = R"c(

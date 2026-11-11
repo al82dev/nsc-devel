@@ -1,4 +1,4 @@
-#include "ClangAbiSnapshot.h"
+#include "../Internal/ClangAbiPlan.h"
 
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/Decl.h>
@@ -10,7 +10,7 @@
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Module.h>
 
-namespace t09_probe
+namespace nativesharp::interop::abi_plan
 {
 namespace
 {
