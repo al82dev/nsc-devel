@@ -1458,6 +1458,14 @@ entero y record mixto con `byval`
 `A:/temp/nsc-t09-sysv-indirecta-var-mixto-byval-pre-9cz37lcb`). Otras mezclas
 y promociones no quedan certificadas y T09-003 permanece abierto.
 
+**Promocion `float` tras record:** un productor independiente comprueba el
+valor `float` promocionado a `double` junto al record mixto. Las ocho
+comparaciones C/NS en estatica y DLL O0-O3 pasaron
+(`A:/temp/nsc-t09-sysv-indirecta-record-float-matriz-aunu9161`), igual que la
+plantilla sin encabezado, cache y rechazo de variante
+(`A:/temp/nsc-t09-sysv-indirecta-record-float-pre-dgznw3nb`). No se requirio
+cambio de produccion. Otras promociones y firmas no quedan certificadas.
+
 **Record y puntero opcionales:** el control C y productor independiente
 verificaron registros y escritura por `int*`, mientras NSC rechazaba la firma
 (`A:/temp/nsc-t09-sysv-indirecta-variadica-record-puntero-5fnspplf`). Tras
