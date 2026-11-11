@@ -934,6 +934,41 @@ A:/temp/nsc-t09-sysv-indirect-diff16-eed8vwvp y
 A:/temp/nsc-t09-sysv-prueba-5voqucsx). No se acreditan todas las clases de
 agregado ni firmas posibles; T09-003 permanece abierto.
 
+## Piezas flotantes con alineacion de ocho bytes
+
+Clang 23.1.0 clasifica las muestras con alineacion de ocho bytes en piezas
+`float`/`i64`, `i64`/`float`, `float`/vector y vector/`float`; las firmas
+exactas estan en A:/temp/t09-float-alineado-*-clang.ll. Antes del cambio los
+controles C pasaron y NSC rechazo esas cuatro firmas, respectivamente en
+A:/temp/nsc-t09-sysv-float-aligned-fi64-yk_psn_w,
+A:/temp/nsc-t09-sysv-float-aligned-i8f-1jqtmrwh,
+A:/temp/nsc-t09-sysv-float-aligned-fv-k2b2g7ua y
+A:/temp/nsc-t09-sysv-float-aligned-vf-p62r8y7i.
+
+El plan admite las piezas y el tamano de 16 bytes alineado a ocho; las cuatro
+muestras verifican argumento y retorno, campos, copias y `byval`, y pasaron
+ocho comparaciones C/NS en estatica y DLL O0–O3 y plantilla precompilada sin
+encabezado O0, respectivamente en
+A:/temp/nsc-t09-sysv-float-aligned-fi64-v6809lpc,
+A:/temp/nsc-t09-sysv-float-aligned-i8f-eazntrwv,
+A:/temp/nsc-t09-sysv-float-aligned-fv-3vy7_3p0 y
+A:/temp/nsc-t09-sysv-float-aligned-vf-nxb4siui.
+
+Una quinta muestra alinea un byte despues de un `float`; Clang transporta el
+primer campo y su relleno como `double`. Ya pasaba antes del cambio
+(A:/temp/nsc-t09-sysv-float-aligned-fi8-tgpvuu3b) y paso nuevamente en
+A:/temp/nsc-t09-sysv-float-aligned-fi8-oz_4yg0_; se conserva como regresion,
+no como capacidad nueva. La sonda y los metadatos pasaron
+(A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log). Pasaron las
+regresiones del layout `i64`/`float` previo, vector/`float`, par con relleno y
+record empaquetado en A:/temp/nsc-t09-sysv-mixed-if-aj7qk5yv,
+A:/temp/nsc-t09-sysv-class-vf-8l45yvf1,
+A:/temp/nsc-t09-sysv-padded-pair-dc-e5osspbp y
+A:/temp/nsc-t09-sysv-packed-small-mixed-irektwlr. El control general mantiene
+el rechazo de `i64`/`i32` con relleno final y de callback
+(A:/temp/nsc-t09-sysv-prueba-g9x35wij). Otras formas siguen abiertas;
+T09-003 y la tanda 9 no se cierran.
+
 ## Record empaquetado pequeno pasado indirectamente
 
 Clang 23.1.0 pasa un record empaquetado de nueve bytes con `unsigned char` y

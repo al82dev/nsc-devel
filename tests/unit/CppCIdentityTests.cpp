@@ -2133,6 +2133,25 @@ bool checkDependencyTypeCodec()
         ok &= expect(!abi_plan::isSysVDirectPairLayout(paddedPlan->physicalReturn, 64, vectorFirst ? 32 : 64),
             "padded SysV pair rejects a record smaller than its second piece");
     }
+    for (unsigned variant = 0; variant < 4; ++variant)
+    {
+        auto alignedPlan = std::make_shared<abi_plan::Plan>(*directPairReturnPlan);
+        const abi_plan::Type floatPiece{abi_plan::TypeKind::Float};
+        const abi_plan::Type integerPiece{abi_plan::TypeKind::Integer, 64};
+        alignedPlan->physicalReturn.elements = variant == 0 ? std::vector<abi_plan::Type>{floatPiece, integerPiece} :
+            variant == 1 ? std::vector<abi_plan::Type>{integerPiece, floatPiece} :
+            variant == 2 ? std::vector<abi_plan::Type>{floatPiece, returnedVector} :
+                           std::vector<abi_plan::Type>{returnedVector, floatPiece};
+        alignedPlan->logicalReturn.coercion = alignedPlan->physicalReturn;
+        recordFunction.declaration.returnType.sizeBits = 128;
+        recordFunction.declaration.returnType.alignmentBits = 64;
+        recordFunction.declaration.abiPlan = alignedPlan;
+        ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+            decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+            restoredRecord.declaration.abiPlan->physicalReturn.elements[0].kind == alignedPlan->physicalReturn.elements[0].kind &&
+            restoredRecord.declaration.abiPlan->physicalReturn.elements[1].kind == alignedPlan->physicalReturn.elements[1].kind,
+            "C dependency function retains aligned float and integer or vector pieces");
+    }
     for (unsigned variant = 0; variant < 5; ++variant)
     {
         auto singleReturnPlan = std::make_shared<abi_plan::Plan>(*directPairReturnPlan);

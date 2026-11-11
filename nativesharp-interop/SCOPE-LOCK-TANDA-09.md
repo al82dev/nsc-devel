@@ -153,3 +153,5 @@ T09-003: contrastar records C empaquetados menores o iguales a 16 bytes que Clan
 T09-003: conservar el control negativo con una funcion SysV variadica, cuyo plan aun no esta admitido.
 T09-003: la firma variadica se rechazo antes de HIR con un diagnostico diferente al requerido por el control existente; conservar ese control con una firma no variadica `float`/`i64`, aun no admitida y observada en A:/temp/t09-negative-new-oracle.ll.
 T09-003: comprobar tambien el argumento empaquetado indirecto con retornos directos de una y dos piezas, incluida su reconstruccion desde metadatos.
+T09-003: contrastar disposiciones de dos piezas con `float`, enteros o vectores y alineacion explicita de ocho bytes. Implementar solo las formas observadas por Clang y validarlas como argumento y retorno, con copias, biblioteca estatica, DLL y precompilacion; conservar un rechazo distinto aun pendiente.
+T09-003: conservar el control negativo con `i64`/`i32` y relleno final, cuya disposicion aun no esta admitida; Clang confirma las piezas en A:/temp/t09-float-align-oracle.ll.

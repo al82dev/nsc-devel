@@ -252,7 +252,8 @@ inline bool isSysVDirectPairShape(const Type& type) noexcept
     return (ai && bi) || (a.kind == TypeKind::Integer && (a.widthOrCount == 8 || a.widthOrCount == 16 || a.widthOrCount == 32) && b.kind == TypeKind::Double) ||
         (a.kind == TypeKind::Double && b.kind == TypeKind::Integer && (b.widthOrCount == 8 || b.widthOrCount == 16 || b.widthOrCount == 32 || b.widthOrCount == 64)) ||
         (a.kind == TypeKind::Double && (b.kind == TypeKind::Double || b.kind == TypeKind::Float || vec(b))) ||
-        (a.kind == TypeKind::Float && b.kind == TypeKind::Double) ||
+        (a.kind == TypeKind::Float && (b.kind == TypeKind::Double || vec(b) ||
+                                     (b.kind == TypeKind::Integer && b.widthOrCount == 64))) ||
         (ai && (b.kind == TypeKind::Double || b.kind == TypeKind::Float || vec(b))) ||
         (vec(a) && (vec(b) || b.kind == TypeKind::Float || b.kind == TypeKind::Double ||
                     (b.kind == TypeKind::Integer && (b.widthOrCount == 8 || b.widthOrCount == 16 || b.widthOrCount == 32 || b.widthOrCount == 64))));
@@ -265,8 +266,8 @@ inline bool isSysVDirectPairLayout(const Type& type, std::uint64_t bits, std::ui
     if (a.kind == TypeKind::Integer && b.kind == TypeKind::Integer) return bits == 64 + b.widthOrCount;
     if (a.kind == TypeKind::Vector && b.kind == TypeKind::Integer)
         return alignmentBits == 32 && bits == ((64 + b.widthOrCount + 31) / 32) * 32;
-    if (a.kind == TypeKind::Vector && b.kind == TypeKind::Float) return bits == 96 && alignmentBits == 32;
-    if (a.kind == TypeKind::Integer && b.kind == TypeKind::Float) return bits == 96 && alignmentBits == 32;
+    if ((a.kind == TypeKind::Vector || a.kind == TypeKind::Integer) && b.kind == TypeKind::Float)
+        return (bits == 96 && alignmentBits == 32) || (bits == 128 && alignmentBits == 64);
     if ((a.kind == TypeKind::Vector && b.kind == TypeKind::Double) ||
         (a.kind == TypeKind::Double && b.kind == TypeKind::Vector)) return bits == 128 && alignmentBits == 64;
     if (a.kind == TypeKind::Vector && b.kind == TypeKind::Vector) return bits == 128 && (alignmentBits == 32 || alignmentBits == 128);
