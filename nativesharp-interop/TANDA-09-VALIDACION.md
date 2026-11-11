@@ -21,7 +21,9 @@ compilador de desarrollo y `--clang-root` con la raiz de Clang:
   LLVM para llamadas variadicas y globales en estatica y DLL; usa los mismos
   argumentos.
 - `pruebas-tanda-09-sysv/validar.py`: caso inicial de convencion SysV con
-  parametros enteros, flotantes y `int*`; su [alcance y limites](TANDA-09-SYSV-ABI.md) son acotados.
+  escalares y `int*`; su [alcance y limites](TANDA-09-SYSV-ABI.md) son acotados.
+- `pruebas-tanda-09-sysv/validar-records-clang.py`: referencia de clasificacion
+  de agregados SysV generada por Clang; no es una prueba de soporte NSC.
 - `pruebas-tanda-09-global-const` y `pruebas-tanda-09-simbolo-ausente`:
   diagnosticos negativos C y NS.
 - `pruebas-tanda-09-precompilado`: 16 consumidores de una biblioteca NS, con

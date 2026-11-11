@@ -56,6 +56,23 @@ rechazos de agregado y callback; evidencia A:/temp/nsc-t09-sysv-prueba-hkwn48zr.
 Las regresiones dirigidas cdecl y vectorcall pasaron 8/8 cada una en
 A:/temp/nsc-t09-llamadas-llazaflq y A:/temp/nsc-t09-vectorcall-2vpltaqh.
 
+Investigacion de agregados SysV con Clang 23.1.0 O0, Windows x64:
+R3 se pasa y devuelve como `i24`, R4 como `i32`, R8 como `i64`, R16 se
+descompone en dos `i64` y R24 usa `sret` y parametro `byval`. Un agregado
+mixto de `double` e `int` se descompone en registros de tipos distintos.
+Referencia y comando: A:/temp/t09-sysv-records.c, t09-sysv-records.ll y
+t09-sysv-records.log. Es una muestra del IR de Clang, no soporte en NSC.
+La clasificacion Win64 actual trata R3 indirectamente y no puede reutilizarse
+para estos casos; siguen rechazados hasta implementar y comprobar un plan ABI
+SysV adecuado para cada forma.
+
+Referencia reproducible: `pruebas-tanda-09-sysv/validar-records-clang.py`
+repite las seis clasificaciones y paso en A:/temp/nsc-t09-sysv-records-gtjk7r__.
+El modelo Win64 actual expresa paso directo o indirecto y el generador usa un
+tipo fisico por parametro; un plan SysV completo tambien necesita representar
+descomposicion en varias piezas y clases de registro distintas, `byval` y el
+retorno correspondiente. Esta identificacion no habilita esas formas.
+
 No se afirma compatibilidad de SysV con agregados, otros escalares o punteros,
 variadicas, punteros de funcion, aislamiento TLS ni otros destinos. No se han cambiado
 Clang, NSLink ni el contrato de NSMeta.

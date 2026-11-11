@@ -54,3 +54,4 @@ T09-003: ampliar el mismo caso a paso y retorno de `int*`, con escritura observa
 T09-003: ampliar SysV a enteros sin signo de 32 bits y enteros con y sin signo de 64 bits; comparar argumentos, retornos y llamada mixta con Clang en estatica, DLL y precompilado.
 T09-003: consultar el IR de Clang para `signed char`, `unsigned char`, `short`, `unsigned short` y `_Bool` bajo sysv_abi antes de admitirlos; verificar atributos de extension en retorno y parametros.
 T09-003: transportar signext/zeroext para enteros estrechos SysV en declaraciones y llamadas LLVM; contrastar enteros estrechos y bool contra Clang y mantener rechazo de agregados y callbacks.
+T09-003: investigar la clasificacion SysV de agregados frente al ABI Windows mediante IR de Clang antes de habilitar cualquier record o union; no reutilizar por suposicion la clasificacion Win64.
