@@ -248,18 +248,9 @@ void ProjectGenericModel::collectGenericMethodTemplate(
     ast::AstNode* parent,
     const std::string& currentNamespace,
     const std::string& ownerName,
-    bool insideGenericType,
-    diagnostics::DiagnosticEngine& diagnostics)
+    [[maybe_unused]] bool insideGenericType,
+    [[maybe_unused]] diagnostics::DiagnosticEngine& diagnostics)
 {
-    if (insideGenericType)
-    {
-        diagnostics.report(
-            diagnostics::DiagnosticId::ExpectedDeclaration,
-            diagnostics::DiagnosticSeverity::Error,
-            node->range(),
-            "generic methods declared inside generic types are deliberately deferred beyond "
-            "Stage 44; specialize one generic dimension at a time");
-    }
     if (tryRestoreTemplateRecord(unit, node, parent, currentNamespace, ownerName)) return;
     GenericTemplateRecord record;
     record.kind = GenericTemplateKind::Method;
@@ -276,8 +267,10 @@ void ProjectGenericModel::collectGenericMethodTemplate(
     record.parameterSyntaxes = node->genericParameterSyntaxes();
     record.constraints = node->genericConstraints();
     record.qualifiedTypeName = ownerName;
-    const std::string callableScope = ownerName.empty()
+    std::string callableScope = ownerName.empty()
         ? currentNamespace : qualifiedName(currentNamespace, ownerName);
+    if (parent != nullptr && !parent->genericParameters().empty())
+        callableScope += "`" + std::to_string(parent->genericParameters().size());
     record.canonicalKey = record.moduleName + "::" +
         (callableScope.empty() ? std::string{} : callableScope + ".") +
         record.name + "``" + genericAritySpelling(record);

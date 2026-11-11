@@ -641,6 +641,15 @@ bool ProjectGenericModel::processTypeSyntax(
             state->record, syntax->typeArguments(), syntax->range(), diagnostics))
         return false;
 
+    // Preserve the resolved nested identity before the wave reserves its enclosing type.
+    // The later rewrite records the same identity after materialization.
+    std::vector<std::string> spellings;
+    std::vector<std::string> identities;
+    std::string canonical = "generic:" + computeSpecializationKey(
+        state->record, syntax->typeArguments(), spellings, identities);
+    appendTypeModifiers(canonical, syntax);
+    resolvedTypeIdentityBySyntax_[syntax] = std::move(canonical);
+
     // NSC305-G08. The two-pass: record the demand (the wave scheduler executes + rewrites later).
     collectTypeSpecializationDemand(unit, syntax, *state, namespaceName);
     return true;

@@ -900,7 +900,9 @@ void ProjectGenericModel::cloneGenericConstraints(
             preserveOrAttachInstantiationOrigin(substitutedArgument);
             copy.substitutedArgument = substitutedArgument;
         }
-        else if (clause.enclosingTypeParameter && clause.substitutedArgument != nullptr)
+        else if (clause.substitutedArgument != nullptr &&
+                 (clause.enclosingTypeParameter ||
+                  source->auxiliaryText().starts_with("stage44-specialization:")))
         {
             // EN: Freeze 3.0 P1: a member clause keeps the argument of its closed type when the
             //     member is cloned again without that parameter.

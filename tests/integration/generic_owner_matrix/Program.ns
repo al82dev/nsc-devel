@@ -1,0 +1,13 @@
+using NativeSharp.Examples.Chapter16.GenericVectorAndMatrix;
+int Main() {
+    FixedMatrix<int, 2, 3> left;
+    FixedMatrix<int, 3, 2> right;
+    left.Data[0][0] = 1; left.Data[0][1] = 2; left.Data[0][2] = 3;
+    left.Data[1][0] = 4; left.Data[1][1] = 5; left.Data[1][2] = 6;
+    right.Data[0][0] = 1; right.Data[0][1] = 2;
+    right.Data[1][0] = 3; right.Data[1][1] = 4;
+    right.Data[2][0] = 5; right.Data[2][1] = 6;
+    FixedMatrix<int, 2, 2> result = left.Multiply<2>(right);
+    return result.Data[0][0] == 22 && result.Data[0][1] == 28 &&
+        result.Data[1][0] == 49 && result.Data[1][1] == 64 ? 42 : 1;
+}

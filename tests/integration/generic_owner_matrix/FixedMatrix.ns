@@ -1,0 +1,60 @@
+namespace NativeSharp.Examples.Chapter16.GenericVectorAndMatrix
+{
+    /// <summary>
+    /// Inline fixed-dimension matrix parameterized by Rows and Columns const generics.
+    /// </summary>
+    /// <typeparam name="T">Element type.</typeparam>
+    public struct FixedMatrix<T, const int Rows, const int Columns>
+    {
+        public T[Rows][Columns] Data;
+
+        /// <summary>
+        /// Returns the total number of cells in the matrix.
+        /// </summary>
+        /// <returns>Rows multiplied by Columns.</returns>
+        public int CellCount()
+        {
+            return Rows * Columns;
+        }
+
+        public FixedMatrix<T, Rows, Columns> Add(FixedMatrix<T, Rows, Columns> other)
+        {
+            FixedMatrix<T, Rows, Columns> result;
+            for (int row = 0; row < Rows; row++)
+            {
+                for (int column = 0; column < Columns; column++)
+                {
+                    T left = Data[row][column];
+                    T right = other.Data[row][column];
+                    result.Data[row][column] = left + right;
+                }
+            }
+            return move(result);
+        }
+
+        // Columns must be positive. The inner dimensions match at compile time.
+        public FixedMatrix<T, Rows, OtherColumns> Multiply<const int OtherColumns>(
+            FixedMatrix<T, Columns, OtherColumns> other)
+        {
+            FixedMatrix<T, Rows, OtherColumns> result;
+            for (int row = 0; row < Rows; row++)
+            {
+                for (int column = 0; column < OtherColumns; column++)
+                {
+                    T left = Data[row][0];
+                    T right = other.Data[0][column];
+                    T sum = left * right;
+                    for (int k = 1; k < Columns; k++)
+                    {
+                        left = Data[row][k];
+                        right = other.Data[k][column];
+                        T product = left * right;
+                        sum = sum + product;
+                    }
+                    result.Data[row][column] = sum;
+                }
+            }
+            return move(result);
+        }
+    }
+}

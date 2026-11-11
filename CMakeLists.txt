@@ -5710,6 +5710,27 @@ if(NSC_BUILD_TESTS)
         add_test(NAME nsc.generics.type-declaration-import-binary
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_type_declaration_import_binary.py"
                     "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.generics.owner-method-matrix
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_owner_matrix.py"
+                    "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.generics.owner-method-inference
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_owner_method_inference.py"
+                    "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.generics.owner-method-binary
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_owner_method_binary.py"
+                    "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.generics.owner-method-producer-trait
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_owner_method_producer_trait.py"
+                    "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.generics.owner-method-field-split
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_owner_field_split.py"
+                    "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.generics.owner-method-field-project-ref
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_owner_field_project_ref.py"
+                    "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.generics.owner-method-nested-alias-binary
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_owner_nested_alias_binary.py"
+                    "${NSC_TEST_COMPILER}")
         add_test(NAME nsc.generics.dependent-constraints
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/dependent_generic_constraints.py"
                     "${NSC_TEST_COMPILER}")

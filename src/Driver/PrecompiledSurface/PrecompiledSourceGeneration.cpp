@@ -143,6 +143,13 @@ bool buildPrecompiledGenericTemplateSource(const interop::LibraryMetadata &metad
         }
         if (generic.kind == kGenericMethodKind)
         {
+            const bool includedInGenericOwner = std::ranges::any_of(
+                metadata.genericTemplates, [&](const auto& owner) {
+                    if (owner.kind > 1U || owner.sourceText.empty() ||
+                        owner.moduleName != generic.moduleName) return false;
+                    return generic.canonicalKey.starts_with(owner.canonicalKey + "." + generic.name + "``");
+                });
+            if (includedInGenericOwner) continue;
             if (generic.ownerName.empty())
             {
                 generated << generic.sourceText << std::endl;

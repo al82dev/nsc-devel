@@ -377,6 +377,7 @@ void ProjectGenericModel::discoverTemplateDependenciesForBuild(
     // can then publish exactly the fixed-point closure of its public roots, and the NSMETA
     // verifier can prove that a same-module edge was not silently dropped.
     const GenericTelemetry::Scope phase(telemetry_, "generics.dependency-discovery");
+    declaredFieldContexts_.clear();
     for (std::size_t unitIndex = 0; unitIndex < units.size(); ++unitIndex)
     {
         const std::unique_ptr<ProjectSyntaxUnit>& unitPtr = units[unitIndex];

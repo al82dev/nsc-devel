@@ -26,6 +26,8 @@
 #include "nativesharp/Frontend/IntegerLiteralTyping.h"
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Language/CallableSemantics.h"
+#include "nativesharp/Language/GenericSemantics.h"
+#include "nativesharp/Lexer/Keyword.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <algorithm>
@@ -763,6 +765,7 @@ void ProjectGenericModel::commitMethodSpecialization(
 std::string ProjectGenericModel::completeMethodSpecialization(
     TemplateState& state,
     ast::AstNode* clone,
+    std::span<ast::TypeSyntax* const> arguments,
     const std::string& key,
     const std::string& specializedName,
     std::size_t ordinal,
@@ -770,14 +773,48 @@ std::string ProjectGenericModel::completeMethodSpecialization(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     commitMethodSpecialization(state, clone, key, specializedName, ordinal);
+    if (state.parent != nullptr && !state.parent->genericParameters().empty())
+    {
+        std::vector<ast::AstNode*> closedOwners;
+        for (const GenericSpecializationRecord& specialization : specializations_)
+            if (specialization.templateSyntax == state.parent && specialization.specializedSyntax != nullptr)
+                closedOwners.push_back(const_cast<ast::AstNode*>(specialization.specializedSyntax));
+        std::unordered_map<std::string, const ast::TypeSyntax*> substitutions;
+        prepareSpecializationSubstitutions(state, arguments, substitutions);
+        for (ast::AstNode* owner : closedOwners)
+        {
+            const ast::AstNode* source = nullptr;
+            for (const ast::AstNode* member : owner->children())
+                if (member != nullptr && isGenericMethodTemplateNode(member) &&
+                    member->range().begin().fileId() == state.syntax->range().begin().fileId() &&
+                    member->range().begin().offset() == state.syntax->range().begin().offset())
+                {
+                    source = member;
+                    break;
+                }
+            if (source == nullptr) continue;
+            ast::AstNode* closedMethod = cloneNode(state.unit->arena(), source, substitutions, "", "");
+            closedMethod->setText(specializedName);
+            closedMethod->clearGenericParameters();
+            closedMethod->setAuxiliaryText(clone->auxiliaryText());
+            owner->addChild(closedMethod);
+            GenericLookupScope memberScope;
+            memberScope.importedNamespaces.write() = state.record.declarationImports;
+            memberScope.aliases.write().insert(
+                state.record.declarationAliases.begin(), state.record.declarationAliases.end());
+            processNode(*state.unit, closedMethod, state.record.namespaceName, owner->text(),
+                        std::move(memberScope), false, diagnostics);
+        }
+    }
     GenericLookupScope declarationScope;
     if (!state.declarationImports.empty())
         declarationScope.importedNamespaces.write() = state.declarationImports;
     if (!state.declarationAliases.empty())
         declarationScope.aliases.write() = state.declarationAliases;
-    processNode(
-        *state.unit, clone, state.record.namespaceName, state.record.ownerName,
-        std::move(declarationScope), false, diagnostics);
+    if (state.parent == nullptr || state.parent->genericParameters().empty())
+        processNode(
+            *state.unit, clone, state.record.namespaceName, state.record.ownerName,
+            std::move(declarationScope), false, diagnostics);
     currentInstantiationProjectOrdinal_ = callerContext.projectOrdinal;
     currentInstantiationNamespace_ = callerContext.namespaceName;
     currentInstantiationRange_ = callerContext.range;
@@ -791,7 +828,9 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     TemplateState& state,
     std::span<ast::TypeSyntax* const> arguments,
     diagnostics::DiagnosticEngine& diagnostics,
-    std::string_view sharedName)
+    std::string_view sharedName,
+    ast::AstNode* closedOwner,
+    std::string_view closedOwnerKey)
 {
     SpecializationContext callerContext;
     callerContext.save(*this);
@@ -803,8 +842,16 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
 
     std::vector<std::string> spellings;
     std::vector<std::string> identities;
-    const std::string key = computeSpecializationKey(
+    std::string key = computeSpecializationKey(
         state.record, arguments, spellings, identities);
+    const bool hasClosedGenericOwner = closedOwner != nullptr && !closedOwnerKey.empty() &&
+        state.parent != nullptr && !state.parent->genericParameters().empty() &&
+        std::ranges::any_of(specializations_, [&](const GenericSpecializationRecord& owner) {
+            return (owner.specializedSyntax == closedOwner || owner.specializedSyntax == nullptr) &&
+                owner.templateSyntax == state.parent &&
+                owner.specializationKey == closedOwnerKey;
+        });
+    if (hasClosedGenericOwner) key += "@owner:" + std::string(closedOwnerKey);
     if (const auto found = specializationPlanner_.request(key))
     {
         telemetry_.noteSpecializationHit();
@@ -825,14 +872,163 @@ std::string ProjectGenericModel::ensureMethodSpecialization(
     SourceRange packErrorRange{};
     std::string associatedError;
     SourceRange associatedErrorRange{};
+    TemplateState closedState = state;
+    if (hasClosedGenericOwner)
+    {
+        closedState.syntax = nullptr;
+        for (ast::AstNode* member : closedOwner->children())
+            if (member != nullptr && isGenericMethodTemplateNode(member) &&
+                member->range().begin() == state.syntax->range().begin())
+            {
+                closedState.syntax = member;
+                break;
+            }
+        if (closedState.syntax == nullptr)
+        {
+            const auto imported = specializationPlanner_.request(std::string(closedOwnerKey));
+            if (imported.has_value() && *imported < specializations_.size())
+            {
+                const GenericSpecializationRecord& owner = specializations_[*imported];
+                const GenericTemplateRecord& ownerTemplate = templateStates_[owner.templateOrdinal].record;
+                std::unordered_map<std::string, const ast::TypeSyntax*> ownerSubstitutions;
+                bool supported = owner.typeArguments.size() == ownerTemplate.parameters.size();
+                for (std::size_t i = 0; supported && i < owner.typeArguments.size(); ++i)
+                {
+                    const std::string& identity = owner.typeArguments[i];
+                    std::string baseIdentity = identity;
+                    std::string spelling;
+                    std::size_t dynamicArrayDepth = 0;
+                    while (!baseIdentity.starts_with("const:") && baseIdentity.ends_with("[]"))
+                    {
+                        baseIdentity.resize(baseIdentity.size() - 2U);
+                        ++dynamicArrayDepth;
+                    }
+                    lexer::TokenKind kind = lexer::TokenKind::Identifier;
+                    if (baseIdentity.starts_with("const:"))
+                    {
+                        const std::size_t separator = baseIdentity.find('=', 6U);
+                        if (separator == std::string::npos) { supported = false; break; }
+                        spelling = language::constGenericArgumentMarker(
+                            baseIdentity.substr(6U, separator - 6U), baseIdentity.substr(separator + 1U));
+                    }
+                    else if (baseIdentity.starts_with("builtin:"))
+                    {
+                        spelling = baseIdentity.substr(8U);
+                        kind = lexer::keywordKind(spelling);
+                        if (kind == lexer::TokenKind::Identifier) { supported = false; break; }
+                    }
+                    else if (baseIdentity.starts_with("type:"))
+                        spelling = baseIdentity.substr(5U);
+                    else if (baseIdentity.starts_with("generic:"))
+                    {
+                        const auto nestedOrdinal = specializationPlanner_.request(baseIdentity.substr(8U));
+                        if (!nestedOrdinal.has_value() || *nestedOrdinal >= specializations_.size())
+                        {
+                            supported = false;
+                            break;
+                        }
+                        const GenericSpecializationRecord& nested = specializations_[*nestedOrdinal];
+                        if (nested.templateOrdinal >= templateStates_.size() || nested.kind == GenericTemplateKind::Method)
+                        {
+                            supported = false;
+                            break;
+                        }
+                        const GenericTemplateRecord& nestedTemplate = templateStates_[nested.templateOrdinal].record;
+                        spelling = nestedTemplate.moduleName + "::" + qualifiedName(
+                            nestedTemplate.namespaceName, appendOwner(nestedTemplate.ownerName, nested.specializedName));
+                    }
+                    else
+                    {
+                        spelling = baseIdentity;
+                        kind = lexer::keywordKind(spelling);
+                        if (kind == lexer::TokenKind::Identifier)
+                        {
+                            const GenericSpecializationRecord* matched = nullptr;
+                            for (const GenericSpecializationRecord& nested : specializations_)
+                            {
+                                if (nested.templateOrdinal >= templateStates_.size() || nested.kind == GenericTemplateKind::Method)
+                                    continue;
+                                const GenericTemplateRecord& nestedTemplate = templateStates_[nested.templateOrdinal].record;
+                                std::string written = nestedTemplate.name + "<";
+                                bool comparable = !nested.typeArguments.empty();
+                                for (std::size_t j = 0; comparable && j < nested.typeArguments.size(); ++j)
+                                {
+                                    if (j != 0) written += ',';
+                                    const std::string& item = nested.typeArguments[j];
+                                    if (item.starts_with("const:")) written += "const(" + item.substr(6U) + ")";
+                                    else if (lexer::keywordKind(item) != lexer::TokenKind::Identifier) written += item;
+                                    else if (item.starts_with("type:"))
+                                    {
+                                        const std::string_view key(item.data() + 5U, item.size() - 5U);
+                                        const std::size_t separator = key.find_last_of(".+:");
+                                        const std::string_view terminal = separator == std::string_view::npos
+                                            ? key : key.substr(separator + 1U);
+                                        std::unordered_set<std::string> identities;
+                                        for (const DeclaredTypeIdentity& declared : declaredTypeIdentities_)
+                                        {
+                                            const std::size_t dot = declared.sourceName.find_last_of('.');
+                                            const std::string_view candidate = dot == std::string::npos
+                                                ? std::string_view(declared.sourceName)
+                                                : std::string_view(declared.sourceName).substr(dot + 1U);
+                                            if (candidate == terminal) identities.insert(declared.identityKey);
+                                        }
+                                        if (identities.size() == 1U && identities.contains(std::string(key)))
+                                            written.append(terminal);
+                                        else comparable = false;
+                                    }
+                                    else comparable = false;
+                                }
+                                written += ">@origin-module[" + std::to_string(nestedTemplate.moduleName.size()) +
+                                    "]=" + nestedTemplate.moduleName + ";namespace[" +
+                                    std::to_string(nestedTemplate.namespaceName.size()) + "]=" + nestedTemplate.namespaceName;
+                                if (!comparable || written != baseIdentity) continue;
+                                if (matched != nullptr) { matched = nullptr; break; }
+                                matched = &nested;
+                            }
+                            if (matched == nullptr) { supported = false; break; }
+                            const GenericTemplateRecord& nestedTemplate = templateStates_[matched->templateOrdinal].record;
+                            spelling = nestedTemplate.moduleName + "::" + qualifiedName(
+                                nestedTemplate.namespaceName,
+                                appendOwner(nestedTemplate.ownerName, matched->specializedName));
+                        }
+                    }
+                    ast::TypeSyntax* argument = state.unit->arena().make<ast::TypeSyntax>(
+                        state.syntax->range(), kind, spelling);
+                    for (std::size_t depth = 0; depth < dynamicArrayDepth; ++depth)
+                        argument->addModifier(ast::TypeModifierSyntax{
+                            ast::TypeModifierSyntaxKind::DynamicArray, nullptr, state.syntax->range(), 0U});
+                    if (identity.starts_with("type:")) recordResolvedTypeIdentity(argument, identity);
+                    else if (identity.starts_with("generic:")) recordResolvedTypeIdentity(argument, identity);
+                    else if (kind == lexer::TokenKind::Identifier && !identity.starts_with("const:"))
+                        recordResolvedTypeIdentity(argument, "type:" + spelling);
+                    ownerSubstitutions.emplace(ownerTemplate.parameters[i], argument);
+                }
+                if (supported)
+                    closedState.syntax = cloneNode(state.unit->arena(), state.syntax, ownerSubstitutions, "", "");
+            }
+        }
+        if (closedState.syntax == nullptr)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidType,
+                               diagnostics::DiagnosticSeverity::Error, currentInstantiationRange_,
+                               "generic method declaration is missing from its closed owner");
+            specializationPlanner_.rollback(key);
+            specializations_.pop_back();
+            instantiationBudget_.leave();
+            return {};
+        }
+        closedState.parent = closedOwner;
+        closedState.record.ownerName = closedOwner->text();
+    }
+    TemplateState& materializationState = hasClosedGenericOwner ? closedState : state;
     ast::AstNode* clone = cloneMethodSpecialization(
-        state, arguments, callerContext, packError, packErrorRange,
+        materializationState, arguments, callerContext, packError, packErrorRange,
         associatedError, associatedErrorRange);
     if (reportMethodSpecializationError(
             key, packError, packErrorRange, associatedError,
             associatedErrorRange, callerContext, diagnostics))
         return {};
     return completeMethodSpecialization(
-        state, clone, key, specializedName, ordinal, callerContext, diagnostics);
+        materializationState, clone, arguments, key, specializedName, ordinal, callerContext, diagnostics);
 }
 }

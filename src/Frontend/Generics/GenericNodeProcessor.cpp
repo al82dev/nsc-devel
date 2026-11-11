@@ -251,6 +251,19 @@ bool ProjectGenericModel::shouldSkipTemplateNode(
 {
     if (templateNode || insideTemplate)
     {
+        if (isGenericTypeTemplateNode(node))
+        {
+            GenericLookupScope ownerScope = currentScope;
+            for (const std::string& parameter : node->genericParameters())
+                ownerScope.typeParameters.write().insert(parameter);
+            for (const ast::GenericParameterSyntax& parameter : node->genericParameterSyntaxes())
+                if (parameter.kind == ast::GenericParameterSyntaxKind::Constant ||
+                    parameter.kind == ast::GenericParameterSyntaxKind::ConstantPack)
+                    ownerScope.constParameters.write().insert(parameter.name);
+            for (ast::AstNode* child : node->children())
+                if (child != nullptr && isGenericMethodTemplateNode(child))
+                    processNodeGenericConstraints(unit, child, currentNamespace, ownerScope, diagnostics);
+        }
         if (isGenericMethodTemplateNode(node))
         {
             GenericLookupScope receiverScope = currentScope;

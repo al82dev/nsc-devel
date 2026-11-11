@@ -199,6 +199,10 @@ void ProjectGenericModel::discoverTemplateDependencies(
 
     GenericLookupScope currentScope = scope;
     collectDependencyImports(node, currentNamespace, currentScope);
+    if ((node->kind() == ast::AstNodeKind::FieldDeclaration && node->typeSyntax() != nullptr) ||
+        node->kind() == ast::AstNodeKind::ClassDeclaration)
+        declaredFieldContexts_[node] = DeclaredFieldContext{
+            &unit, currentNamespace, currentScope.importedNamespaces.read(), currentScope.aliases.read()};
     if (node->kind() == ast::AstNodeKind::CompilationUnit ||
         node->kind() == ast::AstNodeKind::NamespaceDeclaration)
     {
@@ -320,6 +324,8 @@ void ProjectGenericModel::collectTypeDependency(
         if (current == nullptr) continue;
         for (const ast::TypeSyntax* argument : current->typeArguments())
             stack.push_back(argument);
+        // packtype<Ts, index> is resolved by the generic cloner, not a nominal template.
+        if (current->baseName() == "packtype" && current->typeArguments().size() == 2U) continue;
         // Future/Iterator/AsyncIterator, tuples, and portable SIMD are structural surfaces. Their
         // arguments may depend on nominal templates, but the surface itself has no template record
         // that a reusable NSMETA closure could or should include.

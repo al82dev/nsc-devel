@@ -184,6 +184,14 @@ private:
         std::string namespaceName;
     };
 
+    struct DeclaredFieldContext final
+    {
+        ProjectSyntaxUnit* unit = nullptr;
+        std::string namespaceName;
+        std::vector<std::string> imports;
+        std::unordered_map<std::string, std::string> aliases;
+    };
+
     struct GenericLookupScope;
     struct DependencyFrame;
     struct BodyFrame;
@@ -896,6 +904,8 @@ private:
         const std::string& methodName,
         const std::string& namespaceName,
         const std::vector<TemplateState*>& shared,
+        ast::AstNode* closedOwner,
+        const std::string& closedOwnerKey,
         diagnostics::DiagnosticEngine& diagnostics);
     // NSC305-G08. Normalizes and materializes the single resolved method of a generic call, then
     // rewrites the call site. Returns false on error.
@@ -905,6 +915,8 @@ private:
         ast::AstNode* callee,
         TemplateState& state,
         const std::string& namespaceName,
+        ast::AstNode* closedOwner,
+        const std::string& closedOwnerKey,
         diagnostics::DiagnosticEngine& diagnostics);
     void preserveCallTypeArguments(const ast::AstNode* call);
 
@@ -1367,7 +1379,9 @@ private:
         // ID 132. Cuando varias plantillas comparten nombre y aridad generica, todas se
         // especializan con ESTE nombre y se convierten en sobrecargas ordinarias. Vacio para el
         // caso normal, donde el nombre lo deriva la propia clave.
-        std::string_view sharedName = {});
+        std::string_view sharedName = {},
+        ast::AstNode* closedOwner = nullptr,
+        std::string_view closedOwnerKey = {});
     std::string typeSpecializedName(
         const GenericTemplateRecord& record,
         std::size_t argumentCount,
@@ -1413,6 +1427,7 @@ private:
     std::string completeMethodSpecialization(
         TemplateState& state,
         ast::AstNode* clone,
+        std::span<ast::TypeSyntax* const> arguments,
         const std::string& key,
         const std::string& specializedName,
         std::size_t ordinal,
@@ -1665,6 +1680,7 @@ private:
     std::unordered_map<const ast::AstNode*, std::size_t> genericLambdaTemplateOrdinals_;
     std::unordered_map<const ast::AstNode*, std::string> genericLambdaCarrierKeys_;
     std::vector<DeclaredTypeIdentity> declaredTypeIdentities_;
+    std::unordered_map<const ast::AstNode*, DeclaredFieldContext> declaredFieldContexts_;
     // Positions in declaredTypeIdentities_ by sourceName, in vector order; appended together
     // with the vector by collectDeclaredTypeIdentity, its only writer.
     std::unordered_map<

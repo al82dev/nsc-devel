@@ -1287,7 +1287,9 @@ void ProjectGenericConstraintModel::validateSpecializationMemberClause(
         "; template is declared in module '" + templateRecord.moduleName + "'";
     for (const ast::GenericConstraintClause& clause : member->genericConstraints())
     {
-        if (!clause.enclosingTypeParameter) continue;
+        if (!clause.enclosingTypeParameter &&
+            !(member->genericParameters().empty() && clause.substitutedArgument != nullptr &&
+              member->auxiliaryText().starts_with("stage44-specialization:"))) continue;
         validateSpecializationClause(
             specialization, memberRecord, clause, templateModuleSuffix, nameLookup, memberModel,
             inheritanceModel, interfaceModel, pending);
