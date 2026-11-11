@@ -587,3 +587,13 @@ A:/temp/nsc-t09-sysv-prueba-wf6mqllu. Para el control C aislado se definio
 `_fltused` localmente; no se modifico NSLink. Se comprobaron un record de cuatro
 bytes y el `float` en segundo lugar; otras firmas flotantes siguen pendientes.
 
+La variante con `double` tenia controles C correctos y rechazo previo de NSC
+(A:/temp/nsc-t09-sysv-record-double-0oxy_6u1). Tras la ampliacion paso ocho
+comparaciones C/NS estatica/DLL O0–O3 y la plantilla precompilada sin
+encabezado O0 (A:/temp/nsc-t09-sysv-record-double-qepvwywt). La regresion de
+`float` paso en A:/temp/nsc-t09-sysv-record-float-juy36erc y la general, con
+rechazos pendientes, en A:/temp/nsc-t09-sysv-prueba-bncej3ey. Sonda Clang y
+metadatos: A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log.
+La muestra conserva el record de cuatro bytes y el escalar en segundo lugar;
+otras posiciones y mezclas flotantes siguen pendientes.
+

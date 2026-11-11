@@ -1671,6 +1671,13 @@ bool checkDependencyTypeCodec()
         decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
         restoredRecord.declaration.abiPlan->physicalParameters[1].type.kind == abi_plan::TypeKind::Float,
         "C dependency function retains a record and a float argument");
+    scalarFloatPlan->logicalParameters[1].coercion = abi_plan::Type{abi_plan::TypeKind::Double};
+    scalarFloatPlan->physicalParameters[1].type = abi_plan::Type{abi_plan::TypeKind::Double};
+    recordFunction.declaration.parameters[1].type.sizeBits = 64;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        restoredRecord.declaration.abiPlan->physicalParameters[1].type.kind == abi_plan::TypeKind::Double,
+        "C dependency function retains a record and a double argument");
     recordFunction.declaration.parameters[1].type = savedSecondType;
     recordFunction.declaration.abiPlan = twoSmallPlan;
     const auto savedFirstType = recordFunction.declaration.parameters[0].type;

@@ -492,8 +492,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                            f.abiPlan->physicalParameters[i].type.widthOrCount == 32) ||
                           (f.parameters.size() == 2 && i == 1 &&
                            f.parameters[i].type.kind == CppTypeKind::Floating &&
-                           f.parameters[i].type.sizeBits == 32 &&
-                           f.abiPlan->physicalParameters[i].type.kind == abi_plan::TypeKind::Float))) return true;
+                           ((f.parameters[i].type.sizeBits == 32 && f.abiPlan->physicalParameters[i].type.kind == abi_plan::TypeKind::Float) ||
+                            (f.parameters[i].type.sizeBits == 64 && f.abiPlan->physicalParameters[i].type.kind == abi_plan::TypeKind::Double))))) return true;
                 }
                 return !hasRecord;
             }()) ||
@@ -645,7 +645,7 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                     auto nextLogical = plan->logicalParameters[0];
                     nextLogical.firstPhysical = i;
                     nextLogical.coercion = f.parameters[i].type.kind == CppTypeKind::Floating ?
-                        abi_plan::Type{abi_plan::TypeKind::Float} :
+                        abi_plan::Type{*f.parameters[i].type.sizeBits == 64 ? abi_plan::TypeKind::Double : abi_plan::TypeKind::Float} :
                         abi_plan::Type{abi_plan::TypeKind::Integer, *f.parameters[i].type.sizeBits};
                     plan->logicalParameters.push_back(std::move(nextLogical));
                     physical.type = *plan->logicalParameters.back().coercion;

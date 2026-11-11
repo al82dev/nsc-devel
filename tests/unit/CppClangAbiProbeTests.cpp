@@ -96,6 +96,7 @@ int main(int argc, char** argv) {
         R4 __attribute__((sysv_abi)) pscalarfirst(int, R4);
         R4 __attribute__((sysv_abi)) pmixed8(R4, R4, int, R4, int, R4, int, R4);
         R4 __attribute__((sysv_abi)) pscalarfloat(R4, float);
+        R4 __attribute__((sysv_abi)) pscalardouble(R4, double);
         R4 __attribute__((sysv_abi)) peight(R4, R4, R4, R4, R4, R4, R4, R4);
         R1 __attribute__((sysv_abi)) p1(R1);
         R2 __attribute__((sysv_abi)) p2(R2);
@@ -204,14 +205,14 @@ int main(int argc, char** argv) {
             name != "p11" && name != "p12" && name != "p13" && name != "p14" && name != "p15" &&
             name != "p16" && name != "pf" && name != "p24" && name != "p24b" && name != "p24i" && name != "p17b" &&
             name != "p20b" && name != "p20s" && name != "p32b" && name != "pid" && name != "pdd" && name != "pdf" && name != "pfd" && name != "pvd" && name != "pdv" && name != "pif" && name != "piv" && name != "pvi" && name != "pvs" && name != "pvv" && name != "pvv16" && name != "pvv32" && name != "pvv64" && name != "pvv128" && name != "pvv256" && name != "pvv16i" && name != "pvf" && name != "ponev" && name != "ponef" && name != "poned" && name != "ptwo" && name != "peight" && name != "ps8" && name != "pm" &&
-            name != "pp" && name != "pvec" && name != "pvoid" && name != "phetero" && name != "pscalar" && name != "pscalarfirst" && name != "pmixed8" && name != "pscalarfloat") continue;
+            name != "pp" && name != "pvec" && name != "pvoid" && name != "phetero" && name != "pscalar" && name != "pscalarfirst" && name != "pmixed8" && name != "pscalarfloat" && name != "pscalardouble") continue;
         if (name == "p3" && copiedPlans.contains(name)) continue;
         auto* physical = clang::CodeGen::convertFreeFunctionType(generator->CGM(), function);
         clang::CanQual<clang::FunctionProtoType> prototype =
             context.getCanonicalType(function->getType()).getAs<clang::FunctionProtoType>();
         if (!prototype) return 12;
         const auto& plan = clang::CodeGen::arrangeFreeFunctionType(generator->CGM(), prototype);
-        if (plan.arg_size() != (name == "pm" ? 4U : name == "pvoid" ? 0U : (name == "ptwo" || name == "phetero" || name == "pscalar" || name == "pscalarfirst" || name == "pscalarfloat") ? 2U : (name == "peight" || name == "pmixed8") ? 8U : 1U)) return 13;
+        if (plan.arg_size() != (name == "pm" ? 4U : name == "pvoid" ? 0U : (name == "ptwo" || name == "phetero" || name == "pscalar" || name == "pscalarfirst" || name == "pscalarfloat" || name == "pscalardouble") ? 2U : (name == "peight" || name == "pmixed8") ? 8U : 1U)) return 13;
         std::string copyError;
         auto copied = t09_probe::copyPlan(*generator, *function, copyError);
         if (!copied) { llvm::errs() << copyError << "\n"; return 19; }
@@ -271,7 +272,7 @@ int main(int argc, char** argv) {
         if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
-    if (matched != 57 || copiedPlans.size() != 57 || !unsupportedRejected || !variadicRejected ||
+    if (matched != 58 || copiedPlans.size() != 58 || !unsupportedRejected || !variadicRejected ||
         !noPrototypeRejected || !attributeRejected) return 7;
     generator.reset();
     ast.reset();
@@ -351,6 +352,8 @@ int main(int argc, char** argv) {
         copiedPlans.at("pmixed8").physicalParameters.size() != 8) return 108;
     if (!t09_probe::isSysVSmallRecordsRoundTrip(copiedPlans.at("pscalarfloat"), "pscalarfloat") ||
         copiedPlans.at("pscalarfloat").physicalParameters[1].type.kind != t09_probe::TypeKind::Float) return 109;
+    if (!t09_probe::isSysVSmallRecordsRoundTrip(copiedPlans.at("pscalardouble"), "pscalardouble") ||
+        copiedPlans.at("pscalardouble").physicalParameters[1].type.kind != t09_probe::TypeKind::Double) return 110;
     if (!t09_probe::isSysVSingleFloatingRecordRoundTrip(copiedPlans.at("ponef"), "ponef") ||
         !t09_probe::isSysVSingleFloatingRecordRoundTrip(copiedPlans.at("poned"), "poned")) return 92;
     if (!t09_probe::isSysVMixedDoubleI32RecordRoundTrip(pf, "pf") ||
