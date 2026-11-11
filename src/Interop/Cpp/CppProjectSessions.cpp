@@ -366,7 +366,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         type.recordIdentity->anonymousContext || type.recordIdentity->specializationContext ||
         !type.recordIdentity->namespaceSegments.empty() || !type.recordIdentity->containingRecords.empty() ||
         type.canonicalSpelling != "struct " + type.recordIdentity->name ||
-        (type.sizeBits != 96 && type.sizeBits != 128) || type.alignmentBits != 32) return {};
+        !((type.sizeBits == 96 && type.alignmentBits == 32) ||
+          (type.sizeBits == 128 && (type.alignmentBits == 32 || type.alignmentBits == 64)))) return {};
     const auto identity = projectCppRecordTypeIdentity(type, moduleName);
     if (!identity) return {};
     const auto ordinal = lookup.typeOrdinalForIdentity(identity->key());
@@ -374,7 +375,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     if (!imported || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
         !imported->deferredImportError.empty() || !imported->objectLayout ||
         imported->clangUsr != type.recordIdentity->clangUsr || imported->objectLayout->sizeBytes != *type.sizeBits / 8 ||
-        imported->objectLayout->alignmentBytes != 4 || imported->origin != frontend::CppImportedTypeOrigin::CStruct)
+        imported->objectLayout->alignmentBytes != *type.alignmentBits / 8 || imported->origin != frontend::CppImportedTypeOrigin::CStruct)
         return {};
     std::vector<std::uint8_t> aliasType;
     std::string error;
@@ -413,13 +414,25 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         !selectedRecord->containingRecords.empty() ||
         selectedRecord->clangUsr != type.recordIdentity->clangUsr ||
         selectedRecord->name != type.recordIdentity->name || selectedRecord->kind != CppRecordKind::Struct ||
-        selectedRecord->sizeBits != type.sizeBits || selectedRecord->alignmentBits != type.alignmentBits ||
-        selectedRecord->fields.size() != *type.sizeBits / 32) return {};
-    for (std::size_t i = 0; i < selectedRecord->fields.size(); ++i)
+        selectedRecord->sizeBits != type.sizeBits || selectedRecord->alignmentBits != type.alignmentBits) return {};
+    if (type.alignmentBits == 64)
     {
-        const auto& field = selectedRecord->fields[i];
-        if (field.bitWidth || field.type.kind != CppTypeKind::SignedInteger ||
-            field.type.canonicalSpelling != "int" || field.offsetBits != i * 32) return {};
+        if (selectedRecord->fields.size() != 2) return {};
+        const auto& first = selectedRecord->fields[0];
+        const auto& second = selectedRecord->fields[1];
+        if (first.bitWidth || first.type.kind != CppTypeKind::Floating || first.type.canonicalSpelling != "double" ||
+            first.offsetBits != 0 || second.bitWidth || second.type.kind != CppTypeKind::SignedInteger ||
+            second.type.canonicalSpelling != "int" || second.offsetBits != 64) return {};
+    }
+    else
+    {
+        if (selectedRecord->fields.size() != *type.sizeBits / 32) return {};
+        for (std::size_t i = 0; i < selectedRecord->fields.size(); ++i)
+        {
+            const auto& field = selectedRecord->fields[i];
+            if (field.bitWidth || field.type.kind != CppTypeKind::SignedInteger ||
+                field.type.canonicalSpelling != "int" || field.offsetBits != i * 32) return {};
+        }
     }
     const auto recordSource = makeSimpleCRecordAbiReplay(*selectedRecord);
     if (!recordSource) return {};

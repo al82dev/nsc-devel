@@ -1,0 +1,6 @@
+int Main() {
+    T09IndirectMixed value; value.x = 1.5; value.y = 7;
+    T09MixedCallback callback = t09_get_mixed_callback();
+    if (callback(value) != 42 || value.x != 1.5 || value.y != 7) return 1;
+    return 0;
+}

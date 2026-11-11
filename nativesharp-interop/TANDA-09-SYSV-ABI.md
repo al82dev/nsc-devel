@@ -1097,6 +1097,22 @@ escalares, y las pruebas de transporte, ABI e identidad
 `A:/temp/t09-transport-directed/`). No cubre otras firmas; la prueba negativa
 anterior permanece intacta y su contradiccion sigue pendiente.
 
+**Record mixto `double`/`int`:** Clang emitio piezas `double` e `i32` y el
+control C paso; NSC inicialmente rechazo la firma
+(`A:/temp/nsc-t09-sysv-indirecta-record-mixto-64kirmfr`). La ampliacion paso
+ocho comparaciones directas C/NativeSharp en estatica y DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-record-matriz-exk461kb`) y ejecuciones
+precompiladas sin encabezado en las mismas modalidades y optimizaciones,
+incluido acierto de cache y rechazo de una variante de campo no acreditada
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-izkbf3y4`). Pasaron las matrices de
+records enteros y escalares y las pruebas de transporte, ABI e identidad
+(`A:/temp/nsc-t09-sysv-indirecta-record-matriz-8chvo81k`,
+`A:/temp/nsc-t09-sysv-indirecta-record-matriz-8x7rz0ur`,
+`A:/temp/nsc-t09-sysv-indirecta-matriz-2tw9igsj`,
+`A:/temp/t09-transport-directed/`). Esta muestra no acredita el orden inverso,
+otras piezas mixtas ni firmas adicionales. La prueba negativa anterior sigue
+intacta y pendiente de resolucion.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor
