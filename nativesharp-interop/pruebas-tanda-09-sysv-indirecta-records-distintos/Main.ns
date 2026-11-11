@@ -1,0 +1,8 @@
+int Main() {
+    T09MixedDistinct first; first.x = 1.5; first.y = 3;
+    T09TripleDistinct second; second.x = 4; second.y = 5; second.z = 6;
+    T09DistinctCallback callback = t09_get_distinct_callback();
+    if (callback(first, second, 5) != 55 || first.x != 1.5 || first.y != 3 ||
+        second.x != 4 || second.y != 5 || second.z != 6) return 1;
+    return 0;
+}

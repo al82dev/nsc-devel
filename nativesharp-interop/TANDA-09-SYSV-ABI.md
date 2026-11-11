@@ -1158,9 +1158,29 @@ Pasaron las matrices anteriores y transporte, ABI e identidad
 `A:/temp/nsc-t09-sysv-indirecta-record-matriz-7fuo77nk`,
 `A:/temp/nsc-t09-sysv-indirecta-record-matriz-0bkt6xnx`,
 `A:/temp/nsc-t09-sysv-indirecta-matriz-1ffw34bl`,
-`A:/temp/t09-transport-directed/`). En precompilacion se admite el mismo
+`A:/temp/t09-transport-directed/`). En esa revision se admitia el mismo
 record reconstruido repetido, no records distintos sin contraste. La prueba
 negativa anterior sigue intacta y pendiente de resolucion.
+
+**Dos records de tipos distintos:** un record `double`/`int` seguido de otro
+de tres enteros y un `int` paso directamente con las piezas observadas por
+Clang, mientras la plantilla precompilada inicialmente rechazo la firma
+(`A:/temp/nsc-t09-sysv-indirecta-dos-records-e3y88uk9` y
+`A:/temp/nsc-t09-sysv-indirecta-record-pre-pmbtw7k3`). Se extendio la
+recuperacion para reconstruir cada identidad y layout por separado y consultar
+el plan de la firma completa. Pasaron ocho comparaciones directas estatica/DLL
+O0-O3 (`A:/temp/nsc-t09-sysv-indirecta-record-matriz-zy6_k1dq`) y ejecuciones
+precompiladas en las mismas modalidades, con acierto de cache y rechazos al
+alterar por separado un campo de cada tipo
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-lvyokfsf`). Pasaron las cinco
+matrices precompiladas anteriores y transporte, ABI e identidad
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-45x81i9g`,
+`A:/temp/nsc-t09-sysv-indirecta-record-pre-es52rd8s`,
+`A:/temp/nsc-t09-sysv-indirecta-record-pre-5k6riddn`,
+`A:/temp/nsc-t09-sysv-indirecta-record-pre-mmjzqvdo`,
+`A:/temp/nsc-t09-sysv-indirecta-record-pre-iyldwejl`,
+`A:/temp/t09-transport-directed/`). Solo se acreditan las formas indicadas;
+la prueba negativa anterior sigue intacta y su contradiccion pendiente.
 
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
