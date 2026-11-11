@@ -97,3 +97,12 @@ aparezcan parametros fisicos ni resultado materializado; una declaracion C
 sin prototipo se rechaza en el prototipo. CTest paso 1/1 en
 A:/temp/t09-abi-probe-ctest.log. Esto no establece el soporte de las llamadas
 C sin prototipo en la ruta de produccion.
+
+La copia experimental ahora acepta una lista acotada de atributos de retorno y
+parametros; ante otro atributo devuelve un error en lugar de descartarlo en
+silencio. La sonda exige el rechazo de una funcion con `returns_nonnull`, ademas
+de conservar las comprobaciones anteriores. CTest paso 1/1. Los atributos de
+optimizacion aceptados que no se copian no se interpretan como garantias nuevas;
+la politica aun debe revisarse antes de usar el plan para emitir llamadas.
+La comprobacion de vida tambien destruye ahora el contexto LLVM antes de leer
+los planes copiados; CTest volvio a pasar 1/1.

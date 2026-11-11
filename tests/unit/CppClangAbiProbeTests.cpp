@@ -38,21 +38,23 @@ int main() {
         int __vectorcall pvec(int);
         void __attribute__((sysv_abi)) pvoid(void);
         int __attribute__((sysv_abi)) pold();
+        void* __attribute__((sysv_abi, returns_nonnull)) pnonnull(void*);
     )c";
     auto ast = clang::tooling::buildASTFromCodeWithArgs(source,
         {"-x", "c", "-std=c11", "-target", "x86_64-pc-windows-msvc"}, "probe.c");
     if (!ast) return 1;
     auto& context = ast->getASTContext();
-    llvm::LLVMContext llvmContext;
+    auto llvmContext = std::make_unique<llvm::LLVMContext>();
     auto generator = clang::CreateLLVMCodeGen(ast->getDiagnostics(), "probe",
         ast->getVirtualFileSystemPtr(), ast->getHeaderSearchOpts(), ast->getPreprocessorOpts(),
-        ast->getCodeGenOpts(), llvmContext);
+        ast->getCodeGenOpts(), *llvmContext);
     if (!generator) return 2;
     generator->Initialize(context);
     unsigned matched = 0;
     bool unsupportedRejected = false;
     bool variadicRejected = false;
     bool noPrototypeRejected = false;
+    bool attributeRejected = false;
     std::map<std::string, t09_probe::Plan> copiedPlans;
     for (const auto* decl : context.getTranslationUnitDecl()->decls()) {
         const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
@@ -75,6 +77,12 @@ int main() {
             std::string error;
             if (t09_probe::copyPlan(*generator, *function, error) || error != "function prototype unavailable") return 31;
             noPrototypeRejected = true;
+            continue;
+        }
+        if (name == "pnonnull") {
+            std::string error;
+            if (t09_probe::copyPlan(*generator, *function, error) || error != "return attribute not represented") return 33;
+            attributeRejected = true;
             continue;
         }
         if (name != "p3" && name != "p16" && name != "pf" && name != "p24" && name != "ps8" && name != "pm" && name != "pp" && name != "pvec" && name != "pvoid") continue;
@@ -135,9 +143,11 @@ int main() {
         if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
-    if (matched != 9 || copiedPlans.size() != 9 || !unsupportedRejected || !variadicRejected || !noPrototypeRejected) return 7;
+    if (matched != 9 || copiedPlans.size() != 9 || !unsupportedRejected || !variadicRejected ||
+        !noPrototypeRejected || !attributeRejected) return 7;
     generator.reset();
     ast.reset();
+    llvmContext.reset();
     const auto& p3 = copiedPlans.at("p3");
     if (p3.targetTriple.find("x86_64-pc-windows-msvc") != 0 || p3.dataLayout.empty()) return 28;
     if (p3.physicalReturn.kind != t09_probe::TypeKind::Integer || p3.physicalReturn.widthOrCount != 24 ||

@@ -65,3 +65,5 @@ T09-003: contrastar el plan copiado de un record SysV empaquetado con campos des
 T09-003: conservar simbolo fisico y convencion elegidos por Clang en el prototipo por valor, y comprobar una funcion vectorcall con nombre decorado despues de cerrar la sesion.
 T09-003: ampliar las firmas SysV a `double*`, `void*` e `int**`; comprobar paso, retorno e identidad de los punteros en las pruebas C/NS y en la muestra precompilada.
 T09-003: probar en el prototipo el caso void sin argumentos y el rechazo de una declaracion C sin prototipo; mantener el prototipo aislado de produccion.
+T09-003: hacer que el prototipo rechace atributos de retorno y parametros no reconocidos en vez de descartarlos silenciosamente; verificar un caso con `returns_nonnull`.
+T09-003: verificar la copia luego de destruir tambien el contexto LLVM, no solo el generador y el AST.

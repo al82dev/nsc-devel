@@ -14,6 +14,34 @@ namespace t09_probe
 {
 namespace
 {
+bool supportedAttributes(llvm::AttributeSet attributes, bool isReturn)
+{
+    for (const auto attribute : attributes)
+    {
+        if (attribute.isStringAttribute()) return false;
+        switch (attribute.getKindAsEnum())
+        {
+            case llvm::Attribute::NoUndef:
+            case llvm::Attribute::SExt:
+            case llvm::Attribute::ZExt:
+                break;
+            case llvm::Attribute::NoAlias:
+            case llvm::Attribute::InReg:
+            case llvm::Attribute::StructRet:
+            case llvm::Attribute::ByVal:
+            case llvm::Attribute::Alignment:
+            case llvm::Attribute::DeadOnUnwind:
+            case llvm::Attribute::DeadOnReturn:
+            case llvm::Attribute::Writable:
+                if (isReturn) return false;
+                break;
+            default:
+                return false;
+        }
+    }
+    return true;
+}
+
 std::optional<Type> copyType(const llvm::Type* input, unsigned depth)
 {
     if (input == nullptr || depth > 32) return std::nullopt;
@@ -101,6 +129,8 @@ std::optional<Plan> copyPlan(clang::CodeGenerator& generator,
     auto* declaration = generator.GetModule()->getFunction(generator.GetMangledName(clang::GlobalDecl(&function)));
     if (!declaration || declaration->getFunctionType() != physical)
     { error = "physical declaration unavailable"; return std::nullopt; }
+    if (!supportedAttributes(declaration->getAttributes().getRetAttrs(), true))
+    { error = "return attribute not represented"; return std::nullopt; }
     const auto& logical = clang::CodeGen::arrangeFreeFunctionType(generator.CGM(), prototype);
     Plan result;
     result.symbol = declaration->getName().str();
@@ -126,6 +156,8 @@ std::optional<Plan> copyPlan(clang::CodeGenerator& generator,
     }
     for (unsigned index = 0; index < physical->getNumParams(); ++index)
     {
+        if (!supportedAttributes(declaration->getAttributes().getParamAttrs(index), false))
+        { error = "parameter attribute not represented"; return std::nullopt; }
         PhysicalParameter parameter;
         auto type = copyType(physical->getParamType(index), 0);
         if (!type) { error = "physical parameter type not represented"; return std::nullopt; }
