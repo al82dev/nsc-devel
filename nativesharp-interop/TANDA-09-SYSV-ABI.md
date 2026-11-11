@@ -1631,6 +1631,24 @@ sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
 `A:/temp/nsc-t09-sysv-indirecta-fijo-tres-pre-duoo1rxa`). Otros retornos y
 firmas siguen pendientes; T09-003 no esta cerrado.
 
+**Record opcional de ocho bytes:** con parametro fijo mixto y record opcional
+de dos `int`, Clang emite una pieza `i64` y el productor independiente verifica
+ambos valores y los registros del parametro fijo. El control C paso pero NSC
+rechazo el plan (`A:/temp/nsc-t09-sysv-indirecta-variadica-opcional-ocho-dd7wpuh7`).
+Tras admitir la pieza y reconstruir el record validado desde el catalogo,
+pasaron el control dirigido
+(`A:/temp/nsc-t09-sysv-indirecta-variadica-opcional-ocho-_s5wmfxh`), las
+ocho comparaciones C/NS estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-opcional-ocho-matriz-4wuxbd3r`) y las
+plantillas sin encabezado, cache y rechazos de variantes
+(`A:/temp/nsc-t09-sysv-indirecta-opcional-ocho-pre-fpv85apg`). Pasaron cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones precompiladas de record
+opcional de tres enteros y retorno `short`
+(`A:/temp/nsc-t09-sysv-indirecta-opcional-tres-pre-i78ytg2y`,
+`A:/temp/nsc-t09-sysv-indirecta-retorno-short-pre-816179b_`). No se acreditan
+otras clases ni firmas; T09-003 permanece abierto.
+
 **Retornos `short` y `unsigned char`:** los controles C y productores
 independientes comprobaron -30000 y 250 con un `int` fijo y record mixto
 opcional. Clang exige `signext i16` y `zeroext i8`; NSC rechazaba ambas

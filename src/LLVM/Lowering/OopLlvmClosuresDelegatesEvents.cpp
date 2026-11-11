@@ -1298,6 +1298,21 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     arguments.push_back(slot);
                     continue;
                 }
+                if (logical.passing == Passing::Direct && logical.physicalCount == 1 &&
+                    physical == arguments.size() && physical < plan.physicalParameters.size() &&
+                    layout->size == 8 && layout->alignment == 4 &&
+                    plan.physicalParameters[physical].type.kind == TypeKind::Integer &&
+                    plan.physicalParameters[physical].type.widthOrCount == 64)
+                {
+                    LLVMValueRef slot = entryBlockAlloca(carrier, 4, "sysv.varptr.record");
+                    LLVMValueRef store = LLVMBuildStore(builder_, record, slot);
+                    LLVMSetAlignment(store, 4);
+                    LLVMValueRef piece = LLVMBuildLoad2(builder_, LLVMInt64TypeInContext(context_), slot, "sysv.varptr.first");
+                    LLVMSetAlignment(piece, 4);
+                    if (fixedRecord) fixedTypes.push_back(LLVMInt64TypeInContext(context_));
+                    arguments.push_back(piece);
+                    continue;
+                }
                 if (logical.passing != Passing::Direct || logical.physicalCount != 2 ||
                     physical != arguments.size() || physical + 1 >= plan.physicalParameters.size() ||
                     plan.physicalParameters[physical + 1].type.kind != TypeKind::Integer ||
