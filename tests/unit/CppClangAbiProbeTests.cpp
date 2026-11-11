@@ -26,6 +26,8 @@
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #include "nativesharp/Interop/CppSemanticInventory.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
+#include "nativesharp/Diagnostics/DiagnosticEngine.h"
+#include "nativesharp/Frontend/ProjectSyntaxUnit.h"
 
 namespace t09_probe = nativesharp::interop::abi_plan;
 
@@ -315,6 +317,22 @@ int main(int argc, char** argv) {
         compilation::ProjectSourceSet(std::filesystem::path(argv[2])), std::vector<std::filesystem::path>{},
         std::vector<compilation::LibraryReference>{}, std::vector<compilation::SdkManifest>{});
     compilation::ProjectGraph graph(projectPath, std::move(projects));
+    auto preparedResult = prepareCppRecordObservation(recordEntries, recordGroups);
+    auto* prepared = std::get_if<CppRecordObservationInputs>(&preparedResult);
+    if (!prepared) return 60;
+    nativesharp::frontend::ProjectNameLookup lookup;
+    if (!lookup.setCppImportedTypes(std::move(prepared->types))) return 61;
+    nativesharp::diagnostics::DiagnosticEngine diagnostics;
+    std::vector<std::unique_ptr<nativesharp::frontend::ProjectSyntaxUnit>> units;
+    if (!lookup.build(graph, units, diagnostics) || diagnostics.hasErrors()) return 62;
+    const CppFunctionDeclaration* valueDeclaration = nullptr;
+    for (const auto& function : *functions) if (function.name == "p3") valueDeclaration = &function;
+    if (!valueDeclaration) return 63;
+    auto valueObservation = *valueDeclaration;
+    valueObservation.abiPlan = std::make_shared<const abi_plan::Plan>(*sessionPlan);
+    auto valueProjection = projectCppSemanticFunctionWithRecords(valueObservation, 0, "AbiProbe", recordGroups, &lookup);
+    const auto* projectedValue = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&valueProjection);
+    if (!projectedValue || !projectedValue->cppAbiPlan || projectedValue->cppAbiPlan->symbol != "p3") return 64;
     std::vector<CppProjectSessions> sessionGroups(1);
     sessionGroups[0].projectFile = projectPath;
     sessionGroups[0].sessions.push_back(std::move(inventorySession));

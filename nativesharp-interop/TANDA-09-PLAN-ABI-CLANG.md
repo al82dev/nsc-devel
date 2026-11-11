@@ -157,3 +157,9 @@ temporal para que la comprobacion de identidad del grafo pudiera encontrarlo.
 Tras esos ajustes, CTest paso 1/1: A:/temp/t09-abi-probe-ctest.log. La
 construccion incremental paso y las regresiones dirigidas de SysV y cdecl pasaron
 en A:/temp/nsc-t09-sysv-prueba-p98m9rp8 y A:/temp/nsc-t09-llamadas-yuidcadn.
+
+Se completo despues la prueba de proyeccion por valor: la sonda instala los
+tipos y layouts observados en el lookup de un grafo temporal y proyecta la
+funcion `p3`, verificando que su simbolo semantico conserve el plan. CTest paso
+1/1 en A:/temp/t09-abi-probe-ctest.log. Esta comprobacion no emite ni ejecuta
+la llamada por valor; HIR continua rechazandola hasta implementar su ABI.
