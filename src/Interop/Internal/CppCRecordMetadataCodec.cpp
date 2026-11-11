@@ -498,7 +498,10 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             f.externalSymbol != value.linkSymbol ||
             (scalarMixed ? !((f.returnType.kind == CppTypeKind::Void && f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Void) ||
                 ((f.returnType.kind == CppTypeKind::SignedInteger || f.returnType.kind == CppTypeKind::UnsignedInteger) &&
-                 f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Integer && f.returnType.sizeBits == f.abiPlan->physicalReturn.widthOrCount) ||
+                 f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Integer && f.returnType.sizeBits == f.abiPlan->physicalReturn.widthOrCount &&
+                 ((f.returnType.sizeBits == 32 || f.returnType.sizeBits == 64) ||
+                  (f.abiPlan->returnSignExtend == (f.returnType.kind == CppTypeKind::SignedInteger) &&
+                   f.abiPlan->returnZeroExtend == (f.returnType.kind == CppTypeKind::UnsignedInteger)))) ||
                 (f.returnType.kind == CppTypeKind::Floating &&
                  ((f.returnType.sizeBits == 32 && f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Float) ||
                   (f.returnType.sizeBits == 64 && f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Double)))) :
@@ -565,7 +568,11 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                             (logical.physicalCount == 2 && logical.coercion && type.sizeBits && type.alignmentBits &&
                              abi_plan::isSysVDirectPairLayout(*logical.coercion, *type.sizeBits, *type.alignmentBits)))) ||
                           ((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) &&
-                           (type.sizeBits == 32 || type.sizeBits == 64) && physical.kind == abi_plan::TypeKind::Integer && type.sizeBits == physical.widthOrCount) ||
+                           physical.kind == abi_plan::TypeKind::Integer && type.sizeBits == physical.widthOrCount &&
+                           ((type.sizeBits == 32 || type.sizeBits == 64) ||
+                            (logical.passing == abi_plan::Passing::Extend &&
+                             logical.signExtend == (type.kind == CppTypeKind::SignedInteger) &&
+                             logical.zeroExtend == (type.kind == CppTypeKind::UnsignedInteger)))) ||
                           (type.kind == CppTypeKind::Pointer && physical.kind == abi_plan::TypeKind::Pointer) ||
                           (type.kind == CppTypeKind::Floating && ((type.sizeBits == 32 && physical.kind == abi_plan::TypeKind::Float) ||
                                                                  (type.sizeBits == 64 && physical.kind == abi_plan::TypeKind::Double))))) return true;
@@ -678,13 +685,21 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                 {
                     if (!f.returnType.sizeBits ||
                         !((f.returnType.kind == CppTypeKind::SignedInteger || f.returnType.kind == CppTypeKind::UnsignedInteger ||
-                           f.returnType.kind == CppTypeKind::Floating) && (*f.returnType.sizeBits == 32 || *f.returnType.sizeBits == 64)))
+                           f.returnType.kind == CppTypeKind::Floating) &&
+                          ((*f.returnType.sizeBits == 32 || *f.returnType.sizeBits == 64) ||
+                           (f.returnType.kind != CppTypeKind::Floating && (*f.returnType.sizeBits == 8 || *f.returnType.sizeBits == 16)))))
                     { error = "invalid C dependency scalar return"; return false; }
                     plan->physicalReturn = f.returnType.kind == CppTypeKind::Floating ?
                         abi_plan::Type{*f.returnType.sizeBits == 32 ? abi_plan::TypeKind::Float : abi_plan::TypeKind::Double} :
                         abi_plan::Type{abi_plan::TypeKind::Integer, *f.returnType.sizeBits};
-                    plan->logicalReturn.passing = abi_plan::Passing::Direct;
+                    const bool narrow = f.returnType.kind != CppTypeKind::Floating && *f.returnType.sizeBits < 32;
+                    plan->logicalReturn.passing = narrow ? abi_plan::Passing::Extend : abi_plan::Passing::Direct;
                     plan->logicalReturn.coercion = plan->physicalReturn;
+                    if (narrow)
+                    {
+                        plan->returnSignExtend = plan->logicalReturn.signExtend = f.returnType.kind == CppTypeKind::SignedInteger;
+                        plan->returnZeroExtend = plan->logicalReturn.zeroExtend = f.returnType.kind == CppTypeKind::UnsignedInteger;
+                    }
                 }
             }
             else
@@ -763,6 +778,13 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                         physical.type = logical.coercion->elements[0];
                     }
                     else physical.type = *logical.coercion;
+                    if ((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) &&
+                        (*type.sizeBits == 8 || *type.sizeBits == 16))
+                    {
+                        logical.passing = abi_plan::Passing::Extend;
+                        logical.signExtend = physical.signExtend = type.kind == CppTypeKind::SignedInteger;
+                        logical.zeroExtend = physical.zeroExtend = type.kind == CppTypeKind::UnsignedInteger;
+                    }
                 }
                 plan->logicalParameters.push_back(logical);
                 plan->physicalParameters.push_back(physical);

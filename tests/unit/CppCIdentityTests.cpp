@@ -2101,6 +2101,47 @@ bool checkDependencyTypeCodec()
         restoredRecord.declaration.abiPlan->physicalParameters[1].type.kind == abi_plan::TypeKind::Vector,
         "C dependency function retains a one-piece vector record with scalar return");
     recordFunction.declaration.parameters = savedScalarParameters;
+    for (unsigned variant = 0; variant < 4; ++variant)
+    {
+        const bool isSigned = variant == 0 || variant == 2;
+        const unsigned bits = variant < 2 ? 8 : 16;
+        auto narrowPlan = std::make_shared<abi_plan::Plan>(*scalarReturnPlan);
+        narrowPlan->physicalReturn = abi_plan::Type{abi_plan::TypeKind::Integer, bits};
+        narrowPlan->logicalReturn.passing = abi_plan::Passing::Extend;
+        narrowPlan->logicalReturn.coercion = narrowPlan->physicalReturn;
+        narrowPlan->returnSignExtend = narrowPlan->logicalReturn.signExtend = isSigned;
+        narrowPlan->returnZeroExtend = narrowPlan->logicalReturn.zeroExtend = !isSigned;
+        auto& narrow = narrowPlan->logicalParameters[2];
+        narrow.passing = abi_plan::Passing::Extend;
+        narrow.coercion = abi_plan::Type{abi_plan::TypeKind::Integer, bits};
+        narrow.signExtend = isSigned;
+        narrow.zeroExtend = !isSigned;
+        auto& physical = narrowPlan->physicalParameters[narrow.firstPhysical];
+        physical.type = *narrow.coercion;
+        physical.signExtend = isSigned;
+        physical.zeroExtend = !isSigned;
+        recordFunction.declaration.returnType.kind = isSigned ? CppTypeKind::SignedInteger : CppTypeKind::UnsignedInteger;
+        recordFunction.declaration.returnType.sizeBits = bits;
+        recordFunction.declaration.returnType.alignmentBits = bits;
+        recordFunction.declaration.parameters[2].type.kind = recordFunction.declaration.returnType.kind;
+        recordFunction.declaration.parameters[2].type.sizeBits = bits;
+        recordFunction.declaration.parameters[2].type.alignmentBits = bits;
+        recordFunction.declaration.abiPlan = narrowPlan;
+        ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+            decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+            abi_plan::isSysVScalarReturnWithRecordArguments(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+            restoredRecord.declaration.abiPlan->returnSignExtend == isSigned &&
+            restoredRecord.declaration.abiPlan->returnZeroExtend == !isSigned &&
+            restoredRecord.declaration.abiPlan->physicalParameters[3].signExtend == isSigned &&
+            restoredRecord.declaration.abiPlan->physicalParameters[3].zeroExtend == !isSigned,
+            "C dependency function retains narrow signedness on return and argument");
+        auto invalidNarrow = *narrowPlan;
+        invalidNarrow.physicalParameters[3].signExtend = !isSigned;
+        invalidNarrow.physicalParameters[3].zeroExtend = isSigned;
+        ok &= expect(!abi_plan::isSysVScalarReturnWithRecordArguments(invalidNarrow, recordFunction.linkSymbol),
+            "SysV record argument rejects an inconsistent narrow extension");
+    }
+    recordFunction.declaration.parameters = savedScalarParameters;
     auto invalidScalarPlan = *scalarReturnPlan;
     invalidScalarPlan.physicalParameters[4].byValue = false;
     ok &= expect(!abi_plan::isSysVScalarReturnWithRecordArguments(invalidScalarPlan, recordFunction.linkSymbol),

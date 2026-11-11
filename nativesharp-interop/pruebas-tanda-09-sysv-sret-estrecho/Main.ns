@@ -1,0 +1,1 @@
+int Main() { T09Byte first; first.x=1.5; first.y=2; T09Result result=sysv_sret_narrow(1.5f,first,(sbyte)-2,7); T09Result named=sysv_sret_narrow(n: 7, small: (sbyte)-2, first: first, factor: 1.5f); if (first.x!=1.5 || first.y!=2 || result.x!=10 || result.y!=7 || result.z!=13 || named.x!=10 || named.y!=7 || named.z!=13) return 1; return 0; }

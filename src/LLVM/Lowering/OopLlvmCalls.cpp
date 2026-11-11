@@ -994,7 +994,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                         continue;
                     }
                     const bool scalarInteger = argumentKey == "builtin:int" || argumentKey == "builtin:uint" ||
-                        argumentKey == "builtin:long" || argumentKey == "builtin:ulong";
+                        argumentKey == "builtin:long" || argumentKey == "builtin:ulong" ||
+                        argumentKey == "builtin:sbyte" || argumentKey == "builtin:byte" ||
+                        argumentKey == "builtin:short" || argumentKey == "builtin:ushort";
                     const bool scalarArgument = scalarInteger || argumentKey == "builtin:float" ||
                         argumentKey == "builtin:double" || argumentKey == "builtin:int*";
                     if (!scalarArgument)
@@ -1041,6 +1043,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 indirectReturn || node->typeKey == "builtin:void" ? "" : "sysv.scalar.mixed.result", error);
             if (!call) return nullptr;
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
+            applySysVIntegerExtension(context_, imported,
+                [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                { LLVMAddCallSiteAttribute(call, index, attribute); });
             if (indirectReturn)
                 applySretAttributes([&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                     { LLVMAddCallSiteAttribute(call, index, attribute); }, 0, node->typeKey);

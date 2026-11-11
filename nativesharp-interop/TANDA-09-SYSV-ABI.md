@@ -934,6 +934,43 @@ A:/temp/nsc-t09-sysv-indirect-diff16-eed8vwvp y
 A:/temp/nsc-t09-sysv-prueba-5voqucsx). No se acreditan todas las clases de
 agregado ni firmas posibles; T09-003 permanece abierto.
 
+## Enteros estrechos con records SysV
+
+Cuatro funciones reciben y devuelven respectivamente `sbyte`, `byte`, `short`
+y `ushort`, junto a un record entero, un record vectorial y escalares. Los
+controles C pasaron y NSC rechazaba las firmas antes del cambio:
+A:/temp/nsc-t09-sysv-narrow-sbyte-record-lnljui14,
+A:/temp/nsc-t09-sysv-narrow-byte-record-rfe048r3,
+A:/temp/nsc-t09-sysv-narrow-short-record-qzkri88t y
+A:/temp/nsc-t09-sysv-narrow-ushort-record-9c203rou. Clang 23.1.0 confirmo
+`signext` para los tipos con signo y `zeroext` para los tipos sin signo, tanto
+en el retorno como en el argumento (A:/temp/t09-estrecho-*-record-clang.ll).
+
+NSC valida que las extensiones logicas y fisicas coincidan con el tipo C y
+aplica los atributos en declaracion y llamada; el contrato vigente reconstruye
+la misma extension. Cada muestra paso ocho comparaciones C/NS en estatica y DLL
+O0–O3, argumentos nombrados, comprobacion de atributos LLVM y plantilla
+precompilada sin encabezado O0:
+A:/temp/nsc-t09-sysv-narrow-sbyte-record-9zyx7_z6,
+A:/temp/nsc-t09-sysv-narrow-byte-record-ybsde98d,
+A:/temp/nsc-t09-sysv-narrow-short-record-2h69be8p y
+A:/temp/nsc-t09-sysv-narrow-ushort-record-tzt6aaz5.
+
+Una llamada con `sbyte` y `ushort` simultaneos paso las mismas comprobaciones
+(A:/temp/nsc-t09-sysv-narrow-mixed-record-zd0j3eye), al igual que una llamada
+con retorno indirecto `sret` y argumento `sbyte`
+(A:/temp/nsc-t09-sysv-sret-narrow-swejnl_g). Esas dos variantes se agregaron
+despues de implementar la forma y no se afirma un rechazo previo ejecutado.
+La sonda Clang y metadatos, incluidos planes con extension inconsistente,
+pasaron (A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log).
+Las regresiones de records directos, records mixtos, retorno indirecto y
+llamadas escalares pasaron en
+A:/temp/nsc-t09-sysv-scalar-direct-records-4a1dsq6r,
+A:/temp/nsc-t09-sysv-scalar-mixed-xtn291g_,
+A:/temp/nsc-t09-sysv-sret-mixed-v4wh5tj1 y
+A:/temp/nsc-t09-sysv-prueba-rd5f10eg. Otras firmas y tipos permanecen
+pendientes; T09-003 y la tanda 9 siguen abiertos.
+
 ## Retorno escalar con records directos de una pieza
 
 Una funcion C devuelve `int` y recibe dos records directos de una pieza,

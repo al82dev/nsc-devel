@@ -285,11 +285,11 @@ inline bool isSysVRecordArguments(const Plan& plan, std::string_view symbol, boo
     const auto alignment = plan.logicalReturn.alignment;
     if (plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
-        plan.returnSignExtend || plan.returnZeroExtend) return false;
+        (plan.returnSignExtend && plan.returnZeroExtend)) return false;
     std::size_t physicalIndex = 0;
     if (indirectReturn)
     {
-        if (plan.physicalReturn.kind != TypeKind::Void || plan.logicalReturn.passing != Passing::Indirect ||
+        if (plan.returnSignExtend || plan.returnZeroExtend || plan.physicalReturn.kind != TypeKind::Void || plan.logicalReturn.passing != Passing::Indirect ||
             alignment == 0 || alignment > (1ULL << 29) || (alignment & (alignment - 1)) != 0 || plan.physicalParameters.empty() ||
             (plan.logicalParameters.size() == 1 && plan.logicalParameters[0].passing == Passing::Indirect)) return false;
         const auto& result = plan.physicalParameters[0];
@@ -300,14 +300,22 @@ inline bool isSysVRecordArguments(const Plan& plan, std::string_view symbol, boo
     }
     else if (plan.physicalReturn.kind == TypeKind::Void)
     {
-        if (plan.physicalReturn.widthOrCount != 0 || plan.logicalReturn.passing != Passing::Ignore ||
+        if (plan.returnSignExtend || plan.returnZeroExtend || plan.physicalReturn.widthOrCount != 0 || plan.logicalReturn.passing != Passing::Ignore ||
             plan.logicalReturn.coercion) return false;
+    }
+    else if (plan.physicalReturn.kind == TypeKind::Integer &&
+             (plan.physicalReturn.widthOrCount == 8 || plan.physicalReturn.widthOrCount == 16))
+    {
+        if (plan.returnSignExtend == plan.returnZeroExtend || plan.logicalReturn.passing != Passing::Extend ||
+            plan.logicalReturn.signExtend != plan.returnSignExtend || plan.logicalReturn.zeroExtend != plan.returnZeroExtend ||
+            !plan.logicalReturn.coercion || plan.logicalReturn.coercion->kind != TypeKind::Integer ||
+            plan.logicalReturn.coercion->widthOrCount != plan.physicalReturn.widthOrCount || plan.logicalReturn.offset != 0) return false;
     }
     else if (!((plan.physicalReturn.kind == TypeKind::Integer &&
                 (plan.physicalReturn.widthOrCount == 32 || plan.physicalReturn.widthOrCount == 64)) ||
                ((plan.physicalReturn.kind == TypeKind::Float || plan.physicalReturn.kind == TypeKind::Double) &&
                 plan.physicalReturn.widthOrCount == 0)) ||
-             plan.logicalReturn.passing != Passing::Direct || !plan.logicalReturn.coercion ||
+             plan.returnSignExtend || plan.returnZeroExtend || plan.logicalReturn.passing != Passing::Direct || !plan.logicalReturn.coercion ||
              plan.logicalReturn.coercion->kind != plan.physicalReturn.kind ||
              plan.logicalReturn.coercion->widthOrCount != plan.physicalReturn.widthOrCount ||
              plan.logicalReturn.offset != 0) return false;
@@ -316,8 +324,18 @@ inline bool isSysVRecordArguments(const Plan& plan, std::string_view symbol, boo
         const auto& logical = plan.logicalParameters[i];
         if (logical.firstPhysical != physicalIndex || physicalIndex >= plan.physicalParameters.size()) return false;
         const auto& physical = plan.physicalParameters[physicalIndex];
-        if (physical.structureReturn ||
-            physical.noAlias || physical.inRegister || physical.signExtend || physical.zeroExtend) return false;
+        if (physical.structureReturn || physical.noAlias || physical.inRegister) return false;
+        if (logical.passing == Passing::Extend)
+        {
+            if (logical.physicalCount != 1 || logical.offset != 0 || logical.byValue || !logical.coercion ||
+                logical.coercion->kind != TypeKind::Integer || physical.type.kind != TypeKind::Integer ||
+                (physical.type.widthOrCount != 8 && physical.type.widthOrCount != 16) ||
+                logical.coercion->widthOrCount != physical.type.widthOrCount || logical.signExtend == logical.zeroExtend ||
+                logical.signExtend != physical.signExtend || logical.zeroExtend != physical.zeroExtend || physical.byValue) return false;
+            ++physicalIndex;
+            continue;
+        }
+        if (physical.signExtend || physical.zeroExtend) return false;
         if (logical.passing == Passing::Indirect)
         {
             if (logical.physicalCount != 1 || !logical.byValue || logical.alignment < 8 || logical.alignment > (1ULL << 29) ||

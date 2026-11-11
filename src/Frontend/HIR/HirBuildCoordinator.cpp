@@ -1878,7 +1878,10 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                       ((symbol.cppReturnType->kind == interop::CppTypeKind::Void && symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Void) ||
                        ((symbol.cppReturnType->kind == interop::CppTypeKind::SignedInteger || symbol.cppReturnType->kind == interop::CppTypeKind::UnsignedInteger) &&
                         symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Integer &&
-                        symbol.cppReturnType->sizeBits == symbol.cppAbiPlan->physicalReturn.widthOrCount) ||
+                        symbol.cppReturnType->sizeBits == symbol.cppAbiPlan->physicalReturn.widthOrCount &&
+                        ((symbol.cppReturnType->sizeBits == 32 || symbol.cppReturnType->sizeBits == 64) ||
+                         (symbol.cppAbiPlan->returnSignExtend == (symbol.cppReturnType->kind == interop::CppTypeKind::SignedInteger) &&
+                          symbol.cppAbiPlan->returnZeroExtend == (symbol.cppReturnType->kind == interop::CppTypeKind::UnsignedInteger)))) ||
                        (symbol.cppReturnType->kind == interop::CppTypeKind::Floating &&
                         ((symbol.cppReturnType->sizeBits == 32 && symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Float) ||
                          (symbol.cppReturnType->sizeBits == 64 && symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Double)))))) &&
@@ -1904,9 +1907,13 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                                  (logical.physicalCount == 2 && logical.coercion && type.sizeBits && type.alignmentBits &&
                                   interop::abi_plan::isSysVDirectPairLayout(*logical.coercion, *type.sizeBits, *type.alignmentBits)));
                             if (!directRecord &&
-                                !((((key == "builtin:int" || key == "builtin:long") && type.kind == interop::CppTypeKind::SignedInteger) ||
-                                   ((key == "builtin:uint" || key == "builtin:ulong") && type.kind == interop::CppTypeKind::UnsignedInteger)) &&
-                                   physical.kind == interop::abi_plan::TypeKind::Integer && type.sizeBits == physical.widthOrCount) &&
+                                !((((key == "builtin:int" || key == "builtin:long" || key == "builtin:sbyte" || key == "builtin:short") && type.kind == interop::CppTypeKind::SignedInteger) ||
+                                   ((key == "builtin:uint" || key == "builtin:ulong" || key == "builtin:byte" || key == "builtin:ushort") && type.kind == interop::CppTypeKind::UnsignedInteger)) &&
+                                   physical.kind == interop::abi_plan::TypeKind::Integer && type.sizeBits == physical.widthOrCount &&
+                                   ((type.sizeBits == 32 || type.sizeBits == 64) ||
+                                    (logical.passing == interop::abi_plan::Passing::Extend &&
+                                     logical.signExtend == (type.kind == interop::CppTypeKind::SignedInteger) &&
+                                     logical.zeroExtend == (type.kind == interop::CppTypeKind::UnsignedInteger)))) &&
                                 !(key == "builtin:float" && type.kind == interop::CppTypeKind::Floating && physical.kind == interop::abi_plan::TypeKind::Float) &&
                                 !(key == "builtin:double" && type.kind == interop::CppTypeKind::Floating && physical.kind == interop::abi_plan::TypeKind::Double) &&
                                 !(key == "builtin:int*" && type.kind == interop::CppTypeKind::Pointer && physical.kind == interop::abi_plan::TypeKind::Pointer)) return false;
