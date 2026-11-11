@@ -1,0 +1,7 @@
+int Main() {
+    T09Small a; a.x=1; a.y=2; a.z=3; a.w=4;
+    T09Wide b; b.x=5; b.y=6; b.z=7; b.w=8; b.a=9; b.b=10; b.c=11; b.d=12;
+    T09Small r=sysv_hetero(a,b);
+    if(a.x!=1 || b.x!=5 || r.x!=15 || r.y!=6 || r.z!=3 || r.w!=12) return 1;
+    return 0;
+}

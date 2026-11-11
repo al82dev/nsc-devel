@@ -478,10 +478,13 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         if (f.callingConvention != "sysv_abi" || f.variadic || !f.hasPrototype ||
             f.externalSymbol != value.linkSymbol || f.returnType.kind != CppTypeKind::Record ||
             f.returnType.sizeBits != bits || f.parameters.size() != (manyRecords ? f.abiPlan->logicalParameters.size() : 1U) ||
-            f.parameters[0].type.kind != CppTypeKind::Record || f.parameters[0].type.sizeBits != bits ||
-            (manyRecords && !std::all_of(f.parameters.begin(), f.parameters.end(), [&](const auto& parameter) {
-                return parameter.type.kind == CppTypeKind::Record && parameter.type.sizeBits == bits;
-            })) ||
+            f.parameters[0].type.kind != CppTypeKind::Record || (!manyRecords && f.parameters[0].type.sizeBits != bits) ||
+            (manyRecords && [&] {
+                for (std::size_t i = 0; i < f.parameters.size(); ++i)
+                    if (f.parameters[i].type.kind != CppTypeKind::Record ||
+                        f.parameters[i].type.sizeBits != f.abiPlan->physicalParameters[i].type.widthOrCount) return true;
+                return false;
+            }()) ||
             (indirectRecord && (bits <= 128 || bits % 8 != 0 ||
                 f.returnType.alignmentBits != f.abiPlan->logicalReturn.alignment * 8 ||
                 f.parameters[0].type.alignmentBits != f.abiPlan->logicalReturn.alignment * 8)) ||
@@ -610,18 +613,28 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
             abi_plan::LogicalValue logical;
             logical.passing = abi_plan::Passing::Direct;
             logical.coercion = physicalReturn;
+            if (recordPlan == 20)
+            {
+                if (f.parameters.size() < 2 || !f.parameters[0].type.sizeBits)
+                { error = "invalid C dependency record arguments"; return false; }
+                logical.coercion = abi_plan::Type{abi_plan::TypeKind::Integer, *f.parameters[0].type.sizeBits};
+            }
             logical.physicalCount = recordPlan == 2 || (recordPlan >= 4 && recordPlan <= 11) || (recordPlan >= 15 && recordPlan != 20) ? 2 : 1;
             plan->logicalParameters.push_back(std::move(logical));
             abi_plan::PhysicalParameter physical;
             physical.type = firstInteger;
+            if (recordPlan == 20) physical.type = *plan->logicalParameters[0].coercion;
             plan->physicalParameters.push_back(physical);
             if (recordPlan == 20)
             {
                 for (std::size_t i = 1; i < f.parameters.size(); ++i)
                 {
+                    if (!f.parameters[i].type.sizeBits) { error = "invalid C dependency record argument"; return false; }
                     auto nextLogical = plan->logicalParameters[0];
                     nextLogical.firstPhysical = i;
+                    nextLogical.coercion = abi_plan::Type{abi_plan::TypeKind::Integer, *f.parameters[i].type.sizeBits};
                     plan->logicalParameters.push_back(std::move(nextLogical));
+                    physical.type = *plan->logicalParameters.back().coercion;
                     plan->physicalParameters.push_back(physical);
                 }
             }

@@ -846,25 +846,38 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             if (alignment == 0) return failValue(error, "SysV record has no alignment");
             LLVMTypeRef integer = LLVMIntTypeInContext(context_,
                 static_cast<unsigned>(imported->cppAbiPlan->physicalReturn.widthOrCount));
+            std::vector<std::size_t> parameterToSource;
+            if (!callArgumentOrder(node, count, parameterToSource, error)) return nullptr;
+            if (parameterToSource.size() != count) return failValue(error, "SysV record argument mapping is invalid");
+            std::vector<std::size_t> sourceToParameter(count, count);
+            for (std::size_t parameter = 0; parameter < count; ++parameter)
+            {
+                const auto source = parameterToSource[parameter];
+                if (source >= count || sourceToParameter[source] != count)
+                    return failValue(error, "SysV record argument mapping is invalid");
+                sourceToParameter[source] = parameter;
+            }
             std::vector<LLVMValueRef> sourceArguments;
             for (std::size_t index = 0; index < count; ++index)
             {
-                if (node->children[index]->typeKey != node->typeKey)
-                    return failValue(error, "SysV multiple-record call has a mismatched argument type");
                 LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[index] :
                     lowerExpression(node->children[index].get(), error);
                 if (!value) return nullptr;
                 if (terminated()) return value;
-                LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "sysv.records.arg");
+                const auto& typeKey = node->children[index]->typeKey;
+                LLVMTypeRef argumentCarrier = llvmType(typeKey, error);
+                if (!argumentCarrier) return nullptr;
+                const unsigned argumentAlignment = structAlignmentFor(typeKey);
+                if (argumentAlignment == 0) return failValue(error, "SysV record argument has no alignment");
+                LLVMTypeRef argumentInteger = LLVMIntTypeInContext(context_, static_cast<unsigned>(
+                    imported->cppAbiPlan->physicalParameters[sourceToParameter[index]].type.widthOrCount));
+                LLVMValueRef slot = entryBlockAlloca(argumentCarrier, argumentAlignment, "sysv.records.arg");
                 LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
-                LLVMSetAlignment(store, alignment);
-                LLVMValueRef piece = LLVMBuildLoad2(builder_, integer, slot, "sysv.records.piece");
-                LLVMSetAlignment(piece, alignment);
+                LLVMSetAlignment(store, argumentAlignment);
+                LLVMValueRef piece = LLVMBuildLoad2(builder_, argumentInteger, slot, "sysv.records.piece");
+                LLVMSetAlignment(piece, argumentAlignment);
                 sourceArguments.push_back(piece);
             }
-            std::vector<std::size_t> parameterToSource;
-            if (!callArgumentOrder(node, sourceArguments.size(), parameterToSource, error)) return nullptr;
-            if (parameterToSource.size() != count) return failValue(error, "SysV record argument mapping is invalid");
             std::vector<LLVMValueRef> arguments;
             arguments.reserve(count);
             for (const auto source : parameterToSource) arguments.push_back(sourceArguments[source]);

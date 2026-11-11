@@ -6,15 +6,16 @@ namespace nativesharp::interop::abi_plan
 {
 inline bool isSysVSmallRecordsRoundTrip(const Plan& plan, std::string_view symbol) noexcept
 {
-    const auto bits = plan.physicalReturn.widthOrCount;
-    const auto integer = [bits](const Type& type) {
-        return type.kind == TypeKind::Integer && type.widthOrCount == bits;
+    const auto integer = [](const Type& type) {
+        return type.kind == TypeKind::Integer && type.widthOrCount >= 8 &&
+            type.widthOrCount <= 64 && type.widthOrCount % 8 == 0;
     };
-    if (bits < 8 || bits > 64 || bits % 8 != 0 || plan.symbol != symbol || plan.callingConvention != 78 ||
+    if (plan.symbol != symbol || plan.callingConvention != 78 ||
         plan.variadic || !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") ||
         !plan.dataLayout.starts_with("e-") || plan.returnSignExtend || plan.returnZeroExtend ||
         !integer(plan.physicalReturn) || plan.logicalReturn.passing != Passing::Direct ||
-        !plan.logicalReturn.coercion || !integer(*plan.logicalReturn.coercion) || plan.logicalReturn.offset != 0 ||
+        !plan.logicalReturn.coercion || !integer(*plan.logicalReturn.coercion) ||
+        plan.logicalReturn.coercion->widthOrCount != plan.physicalReturn.widthOrCount || plan.logicalReturn.offset != 0 ||
         plan.logicalParameters.size() < 2 || plan.physicalParameters.size() != plan.logicalParameters.size()) return false;
     for (std::size_t i = 0; i < plan.logicalParameters.size(); ++i)
     {
@@ -22,7 +23,8 @@ inline bool isSysVSmallRecordsRoundTrip(const Plan& plan, std::string_view symbo
         const auto& physical = plan.physicalParameters[i];
         if (logical.passing != Passing::Direct || !logical.coercion || !integer(*logical.coercion) ||
             logical.offset != 0 || logical.firstPhysical != i || logical.physicalCount != 1 ||
-            !integer(physical.type) || physical.structureReturn || physical.byValue || physical.signExtend ||
+            !integer(physical.type) || logical.coercion->widthOrCount != physical.type.widthOrCount ||
+            physical.structureReturn || physical.byValue || physical.signExtend ||
             physical.zeroExtend || physical.inRegister || physical.noAlias) return false;
     }
     return true;

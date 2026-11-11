@@ -1,0 +1,9 @@
+#pragma once
+#ifdef API_DLL_IMPORT
+#define API_STORAGE __declspec(dllimport)
+#else
+#define API_STORAGE
+#endif
+typedef struct T09Small { unsigned char x, y, z, w; } T09Small;
+typedef struct T09Wide { unsigned char x,y,z,w,a,b,c,d; } T09Wide;
+API_STORAGE __attribute__((sysv_abi)) T09Small sysv_hetero(T09Small first, T09Wide second);

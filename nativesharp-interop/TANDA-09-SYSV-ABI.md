@@ -515,3 +515,25 @@ Las regresiones de dos y un record pasaron en A:/temp/nsc-t09-sysv-two-beru2_iy
 y A:/temp/nsc-t09-sysv-r4-6wjag0eb. La prueba negativa de esta sesion conserva
 el rechazo de records de tipos distintos y de callback en
 A:/temp/nsc-t09-sysv-prueba-xe3d6crd. Otras firmas siguen pendientes.
+# Records pequenos de distintos tipos
+
+Clang clasifico la muestra con argumentos de cuatro y ocho bytes como `i32` e
+`i64`, con retorno `i32` (A:/temp/nsc-t09-if-clang-bq434o1n). Antes del
+cambio paso el control C y NSC rechazo la firma
+(A:/temp/nsc-t09-sysv-hetero-kl2q518l). NSC ahora comprueba y usa la pieza
+fisica de cada argumento y conserva el plan admitido en los metadatos vigentes.
+
+Tras la compilacion incremental, la prueba dirigida comparo C y NativeSharp en
+estatica y DLL, de O0 a O3, y ejecuto una plantilla precompilada sin encabezado
+en estatica O0: A:/temp/nsc-t09-sysv-hetero-fclt0rpk. La sonda de Clang
+comprueba tambien el rechazo de un plan inconsistente y la prueba de identidad
+verifica la conservacion del plan: A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log. Pasaron las regresiones de dos y ocho records
+(A:/temp/nsc-t09-sysv-two-_qj_vbgq y A:/temp/nsc-t09-sysv-eight-kpzhsqik)
+y la prueba general, incluidos los rechazos pendientes
+(A:/temp/nsc-t09-sysv-prueba-58j5cssi).
+
+La muestra no acredita todos los layouts ni firmas con records y escalares,
+varios records indirectos, callbacks u otras clasificaciones. T09-003 permanece
+abierto.
+

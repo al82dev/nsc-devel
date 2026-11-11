@@ -1642,6 +1642,17 @@ bool checkDependencyTypeCodec()
         decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
         abi_plan::isSysVTwoSmallRecordsRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
         "C dependency function retains two direct record arguments");
+    auto heteroPlan = std::make_shared<abi_plan::Plan>(*twoSmallPlan);
+    heteroPlan->logicalParameters[1].coercion->widthOrCount = 64;
+    heteroPlan->physicalParameters[1].type.widthOrCount = 64;
+    recordFunction.declaration.abiPlan = heteroPlan;
+    recordFunction.declaration.parameters[1].type.sizeBits = 64;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVSmallRecordsRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->physicalParameters[1].type.widthOrCount == 64,
+        "C dependency function retains direct record arguments of different sizes");
+    recordFunction.declaration.parameters[1].type.sizeBits = 32;
     auto eightPlan = std::make_shared<abi_plan::Plan>(*twoSmallPlan);
     for (std::size_t i = 2; i < 8; ++i)
     {
