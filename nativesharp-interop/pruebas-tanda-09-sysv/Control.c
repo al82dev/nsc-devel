@@ -15,5 +15,9 @@ int main(void) {
     if (sysv_s8(-7) != -6 || sysv_u8(250) != 251) return 9;
     if (sysv_s16(-1000) != -999 || sysv_u16(65000) != 65001) return 10;
     if (sysv_bool(1) != 0 || sysv_bool(0) != 1) return 11;
+    double floating = 2.0;
+    if (sysv_double_pointer(&floating) != &floating || floating != 2.5) return 12;
+    if (sysv_void_pointer(&value) != (void*)&value) return 13;
+    if (sysv_pointer_pointer(&result) != &result) return 14;
     return 0;
 }

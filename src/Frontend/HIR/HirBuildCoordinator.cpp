@@ -1811,7 +1811,8 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 const auto supportedScalar = [](const std::string& type) {
                     return type == "builtin:int" || type == "builtin:uint" || type == "builtin:long" ||
                         type == "builtin:ulong" || type == "builtin:float" || type == "builtin:double" ||
-                        type == "builtin:int*" || type == "builtin:sbyte" || type == "builtin:byte" ||
+                        type == "builtin:int*" || type == "builtin:double*" || type == "builtin:void*" ||
+                        type == "builtin:int**" || type == "builtin:sbyte" || type == "builtin:byte" ||
                         type == "builtin:short" || type == "builtin:ushort" || type == "builtin:bool";
                 };
                 const bool supportedReturn = function.returnTypeKey == "builtin:void" ||
@@ -1820,7 +1821,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     supportedScalar);
                 if (function.isVariadic || !supportedReturn || !supportedParameters)
                 {
-                    error = "sysv_abi currently supports only selected non-variadic scalar and int* signatures for " +
+                    error = "sysv_abi currently supports only selected non-variadic scalar and pointer signatures for " +
                         symbol.mangledName;
                     return false;
                 }

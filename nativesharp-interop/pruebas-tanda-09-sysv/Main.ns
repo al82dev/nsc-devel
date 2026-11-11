@@ -13,5 +13,9 @@ int Main() {
     if (sysv_s8((sbyte)-7) != (sbyte)-6 || sysv_u8((byte)250) != (byte)251) return 9;
     if (sysv_s16((short)-1000) != (short)-999 || sysv_u16((ushort)65000) != (ushort)65001) return 10;
     if (sysv_bool(true) != false || sysv_bool(false) != true) return 11;
+    double floating = 2.0;
+    if (sysv_double_pointer(&floating) != &floating || floating != 2.5) return 12;
+    if (sysv_void_pointer((void*)&value) != (void*)&value) return 13;
+    if (sysv_pointer_pointer(&result) != &result) return 14;
     return 0;
 }

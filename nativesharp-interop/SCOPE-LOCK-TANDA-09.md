@@ -63,3 +63,4 @@ T09-003: prototipar el mapeo conservador de argumentos logicos a posiciones fisi
 T09-003: conservar en el prototipo la identidad de destino y data layout efectivos; comprobar que sobreviven al cierre de la sesion de Clang, sin usar aun el plan en produccion.
 T09-003: contrastar el plan copiado de un record SysV empaquetado con campos desalineados, incluidos el alineamiento del retorno y el del argumento byval, sin habilitar aun el caso en NSC.
 T09-003: conservar simbolo fisico y convencion elegidos por Clang en el prototipo por valor, y comprobar una funcion vectorcall con nombre decorado despues de cerrar la sesion.
+T09-003: ampliar las firmas SysV a `double*`, `void*` e `int**`; comprobar paso, retorno e identidad de los punteros en las pruebas C/NS y en la muestra precompilada.

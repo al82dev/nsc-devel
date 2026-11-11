@@ -61,7 +61,8 @@ for mode in ('estatica', 'dll'):
                 '/export:sysv_mix', '/export:sysv_set', '/export:sysv_fp', '/export:sysv_float',
                 '/export:sysv_pointer', '/export:sysv_wide', '/export:sysv_unsigned',
                 '/export:sysv_unsigned64', '/export:sysv_s8', '/export:sysv_u8',
-                '/export:sysv_s16', '/export:sysv_u16', '/export:sysv_bool', '/export:sysv_value,DATA',
+                '/export:sysv_s16', '/export:sysv_u16', '/export:sysv_bool', '/export:sysv_double_pointer',
+                '/export:sysv_void_pointer', '/export:sysv_pointer_pointer', '/export:sysv_value,DATA',
                 '/out:' + str(case/'api.dll'), '/implib:' + str(case/'api-dll.lib'), str(case/'api.obj')])
             library, project, cflags = 'api-dll.lib', 'Dll.nsproj', ['-DAPI_DLL_IMPORT']
         run(prefix + '-control-obj', ['clang.exe', *flags, *cflags, '-c', str(case/'Control.c'), '-o', str(case/'control.obj')])
@@ -77,7 +78,8 @@ for mode in ('estatica', 'dll'):
         ir = run(prefix + '-llvm', [args.nsc, '--dump-project-oop-llvm', *common])
         for name in ('sysv_mix', 'sysv_set', 'sysv_fp', 'sysv_float', 'sysv_pointer',
                      'sysv_wide', 'sysv_unsigned', 'sysv_unsigned64', 'sysv_s8', 'sysv_u8',
-                     'sysv_s16', 'sysv_u16', 'sysv_bool'):
+                     'sysv_s16', 'sysv_u16', 'sysv_bool', 'sysv_double_pointer',
+                     'sysv_void_pointer', 'sysv_pointer_pointer'):
             for kind in ('declare', 'call'):
                 if not re.search(kind + r'[^\n]*x86_64_sysvcc[^\n]*@' + name + r'\(', ir):
                     raise SystemExit(prefix + ': falta convencion en ' + kind + ' ' + name + '; evidencia: ' + str(root))
@@ -112,7 +114,10 @@ for name in ('api.h', 'api.lib'):
     'if (sysv_unsigned64((ulong)100) != (ulong)101) return 8; '
     'if (sysv_s8((sbyte)-7) != (sbyte)-6 || sysv_u8((byte)250) != (byte)251) return 9; '
     'if (sysv_s16((short)-1000) != (short)-999 || sysv_u16((ushort)65000) != (ushort)65001) return 10; '
-    'if (sysv_bool(true) != false || sysv_bool(false) != true) return 11; return 0; } } }', encoding='utf-8')
+    'if (sysv_bool(true) != false || sysv_bool(false) != true) return 11; '
+    'double floating = 2.0; if (sysv_double_pointer(&floating) != &floating || floating != 2.5) return 12; '
+    'if (sysv_void_pointer((void*)&value) != (void*)&value) return 13; '
+    'if (sysv_pointer_pointer(&result) != &result) return 14; return 0; } } }', encoding='utf-8')
 (producer/'Producer.nsproj').write_text(
     '<Project><PropertyGroup><Name>T09SysvProducer</Name><OutputType>Library</OutputType>'
     '</PropertyGroup><ItemGroup><Compile Include="Producer.ns"/><CppLibraryReference '
