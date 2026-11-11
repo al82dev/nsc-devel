@@ -57,3 +57,4 @@ T09-003: transportar signext/zeroext para enteros estrechos SysV en declaracione
 T09-003: investigar la clasificacion SysV de agregados frente al ABI Windows mediante IR de Clang antes de habilitar cualquier record o union; no reutilizar por suposicion la clasificacion Win64.
 T09-003: probar en un proyecto aislado bajo A:/temp la API publica CodeGen de Clang 23.1.0 para consultar las firmas LLVM de declaraciones C; no incorporar punteros del AST al contrato de NSC ni habilitar agregados durante la exploracion.
 T09-003: convertir la sonda de API ABI Clang en una prueba nueva `CppClangAbiProbeTests.cpp` y target CTest independiente, sin modificar pruebas existentes. Verificar tipos fisicos y atributos para casos SysV de referencia.
+T09-003: extender la sonda para consultar `CGFunctionInfo` de Clang y comprobar clasificacion logica de retorno y argumentos, ademas de la firma fisica, sin conservar objetos de Clang tras su sesion.

@@ -85,6 +85,13 @@ Esta sonda no integra el plan en NSC ni demuestra que una biblioteca con esos
 agregados pueda consumirse; los agregados SysV siguen rechazados. Los objetos
 de Clang y LLVM son temporales y no se almacenan en NSMeta ni tras su vida.
 
+La sonda tambien consulta `arrangeFreeFunctionType` y `CGFunctionInfo`: las
+muestras R3, R16 y RF tienen retorno y argumento directos, tipo de coercion y
+desplazamiento cero; R24 tiene retorno y argumento indirectos, con `byval` y
+alineacion 8; signed char usa el plan de extension. La prueba ampliada paso
+1/1 con A:/temp/t09-abi-probe-ctest.log. Estos son hechos de las muestras,
+no una especificacion completa de todas las clasificaciones o atributos.
+
 No se afirma compatibilidad de SysV con agregados, otros escalares o punteros,
 variadicas, punteros de funcion, aislamiento TLS ni otros destinos. No se han cambiado
 Clang, NSLink ni el contrato de NSMeta.

@@ -45,14 +45,32 @@ int main() {
         const std::string name = function->getNameAsString();
         if (name != "p3" && name != "p16" && name != "pf" && name != "p24" && name != "ps8") continue;
         auto* physical = clang::CodeGen::convertFreeFunctionType(generator->CGM(), function);
+        clang::CanQual<clang::FunctionProtoType> prototype =
+            context.getCanonicalType(function->getType()).getAs<clang::FunctionProtoType>();
+        if (!prototype) return 12;
+        const auto& plan = clang::CodeGen::arrangeFreeFunctionType(generator->CGM(), prototype);
+        if (plan.arg_size() != 1) return 13;
         if (!physical || !generator->GetAddrOfGlobal(clang::GlobalDecl(function), false)) return 3;
         auto* llvmFunction = generator->GetModule()->getFunction(generator->GetMangledName(clang::GlobalDecl(function)));
         if (!llvmFunction || llvmFunction->getFunctionType() != physical ||
             llvmFunction->getCallingConv() != llvm::CallingConv::X86_64_SysV) return 4;
         llvmFunction->print(llvm::outs());
         llvm::outs() << "\n";
+        if (plan.arguments()[0].info.isDirect()) {
+            auto* coercion = plan.arguments()[0].info.getCoerceToType();
+            if (!coercion) return 17;
+            llvm::outs() << "argumento " << name << ": ";
+            coercion->print(llvm::outs());
+            llvm::outs() << ", descomponible=" << plan.arguments()[0].info.getCanBeFlattened() << "\n";
+        }
         if (name == "p3" && (!physical->getReturnType()->isIntegerTy(24) || physical->getNumParams() != 1 ||
                               !physical->getParamType(0)->isIntegerTy(24))) return 5;
+        if ((name == "p3" || name == "p16" || name == "pf") &&
+            (!plan.getReturnInfo().isDirect() || !plan.arguments()[0].info.isDirect())) return 14;
+        if ((name == "p3" || name == "p16" || name == "pf") &&
+            (plan.arguments()[0].info.getCoerceToType() != physical->getReturnType() ||
+             !plan.arguments()[0].info.getCanBeFlattened() ||
+             plan.arguments()[0].info.getDirectOffset() != 0)) return 18;
         if ((name == "p16" || name == "pf") && physical->getNumParams() != 2) return 6;
         if (name == "p16") {
             const auto* result = llvm::dyn_cast<llvm::StructType>(physical->getReturnType());
@@ -69,8 +87,12 @@ int main() {
         if (name == "p24" && (physical->getNumParams() != 2 || !physical->getReturnType()->isVoidTy() ||
             !llvmFunction->hasParamAttribute(0, llvm::Attribute::StructRet) ||
             !llvmFunction->hasParamAttribute(1, llvm::Attribute::ByVal))) return 8;
+        if (name == "p24" && (!plan.getReturnInfo().isIndirect() ||
+            !plan.arguments()[0].info.isIndirect() || !plan.arguments()[0].info.getIndirectByVal() ||
+            plan.arguments()[0].info.getIndirectAlign().getQuantity() != 8)) return 15;
         if (name == "ps8" && (!llvmFunction->hasRetAttribute(llvm::Attribute::SExt) ||
             !llvmFunction->hasParamAttribute(0, llvm::Attribute::SExt))) return 9;
+        if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
     return matched == 5 ? 0 : 7;
