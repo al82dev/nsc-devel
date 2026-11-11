@@ -249,3 +249,14 @@ A:/temp/t09-preserve-records-reg-anteriores.log). La primera revision del
 verificador de `sret` fallo por un patron incompleto para el nombre de funcion;
 se corrigio el verificador y paso la matriz completa. Los layouts y firmas no
 probados siguen pendientes; T09-003 y la tanda 9 permanecen abiertos.
+
+### Records de 3 y 4 bytes
+
+Se contrastaron tambien un record C de 4 bytes y otro de 3 bytes, pasados y
+retornados por valor con ambas convenciones. Pasaron los ocho controles C
+(A:/temp/nsc-t09-preserve-records34-vs8t0f0r), ocho comparaciones C/NS en
+estatica y DLL O0-O3, IR con `i32` y `sret` de 3 bytes, preservacion del
+original y cache (A:/temp/nsc-t09-preserve-records34-e11wvs77), y 16
+consumidores precompilados con y sin encabezado
+(A:/temp/nsc-t09-preserve-records34-precompilado-pigtd7cd). No hizo falta
+modificar produccion. Estos controles no certifican todos los layouts.
