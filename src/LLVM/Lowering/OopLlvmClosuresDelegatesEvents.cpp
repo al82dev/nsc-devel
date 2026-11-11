@@ -1191,8 +1191,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             return key.starts_with("type:") && !key.ends_with('*');
         };
         const bool hasRecord = std::any_of(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), recordArgument);
-        const bool recordReturn = recordArgument(node->typeKey) && node->argumentCount == 1 &&
-            node->argumentTypeKeys.size() == 1 && node->argumentTypeKeys[0] == node->typeKey;
+        const bool recordReturn = recordArgument(node->typeKey) &&
+            std::find(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), node->typeKey) != node->argumentTypeKeys.end();
         if (externC && node->cppFunctionPointerPlan && hasRecord && (node->typeKey == "builtin:int" || recordReturn))
         {
             using namespace interop::abi_plan;

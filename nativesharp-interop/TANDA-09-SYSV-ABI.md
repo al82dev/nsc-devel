@@ -1251,6 +1251,26 @@ ademas de transporte, ABI e identidad
 `A:/temp/t09-transport-directed/`). Otras firmas y la contradiccion de la
 prueba negativa anterior siguen abiertas.
 
+**Retorno `sret` con argumentos mixtos:** una firma con enteros, record
+`double`/`int` dividido y copia `byval` de un record de cinco enteros devuelve
+este ultimo mediante `sret`. Clang y su control C mostraron las posiciones y
+valores esperados; NSC inicialmente rechazo la firma
+(`A:/temp/nsc-t09-sysv-indirecta-dos-records-pvja80zu`). Se permitio retornar
+un tipo de record que tambien aparece en los argumentos cuando su plan y su
+identidad coinciden. Pasaron ocho comparaciones C/NS estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-record-matriz-dudjjgvf`) y la plantilla
+precompilada sin encabezado en las mismas modalidades, con cache y rechazo de
+alteraciones independientes de ambos records
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-oudwq429`). Se verificaron retorno
+y copias. Pasaron las matrices anteriores de retorno indirecto y directo,
+combinacion mixta y escalares, junto a transporte, ABI e identidad
+(`A:/temp/nsc-t09-sysv-indirecta-record-matriz-ozksgpqo`,
+`A:/temp/nsc-t09-sysv-indirecta-record-matriz-7ro5u3cp`,
+`A:/temp/nsc-t09-sysv-indirecta-record-matriz-coinz_07`,
+`A:/temp/nsc-t09-sysv-indirecta-matriz-c5fmyx39`,
+`A:/temp/t09-transport-directed/`). No se acreditan otras firmas de retorno;
+la contradiccion de la prueba negativa anterior sigue abierta.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor

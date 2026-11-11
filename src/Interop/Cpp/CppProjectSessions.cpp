@@ -419,14 +419,18 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         }
     }
     if (selectedRecords.empty()) return {};
+    std::string returnTypeSource = "int";
     if (returnRecord)
     {
         std::vector<std::uint8_t> encodedReturn;
-        if (signature.parameterTypes.size() != 1 || selectedRecords.size() != 1 ||
-            (signature.returnType.sizeBits != 96 && signature.returnType.sizeBits != 160) ||
+        if ((signature.returnType.sizeBits != 96 && signature.returnType.sizeBits != 160) ||
             signature.returnType.alignmentBits != 32 ||
-            !metadata_detail::encodeCDependencyType(signature.returnType, encodedReturn, error) ||
-            encodedReturn != selectedRecords[0].encoded) return {};
+            !metadata_detail::encodeCDependencyType(signature.returnType, encodedReturn, error)) return {};
+        const auto match = std::find_if(selectedRecords.begin(), selectedRecords.end(),
+            [&](const auto& record) { return record.encoded == encodedReturn; });
+        if (match == selectedRecords.end()) return {};
+        const auto index = static_cast<std::size_t>(match - selectedRecords.begin());
+        returnTypeSource = index == 0 ? "struct __nsc_abi_record" : "struct __nsc_abi_record_" + std::to_string(index);
     }
     std::vector<std::uint8_t> aliasType;
     if (!metadata_detail::encodeCDependencyType(pointer, aliasType, error)) return {};
@@ -502,7 +506,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     options.resourceDirectory = environment.resourceDirectory;
     options.workingDirectory = environment.workingDirectory;
     options.input = CppBufferInput{"nsc-pointer-replay.c", recordSource +
-        "typedef " + (returnRecord ? "struct __nsc_abi_record" : "int") +
+        "typedef " + returnTypeSource +
         " (__attribute__((sysv_abi)) *__nsc_replay_pointer)(" + parameterSource + ");\n"};
     auto opened = factory.open(std::move(options), {});
     auto* holder = std::get_if<std::unique_ptr<CppInteropSession>>(&opened);
