@@ -362,7 +362,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     const bool returnRecord = signature.returnType.kind == CppTypeKind::Record;
     if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "sysv_abi" ||
         (!returnInteger && !returnRecord) ||
-        signature.parameterTypes.empty() || signature.parameterTypes.size() > 1024) return {};
+        (signature.parameterTypes.empty() && !returnRecord) || signature.parameterTypes.size() > 1024) return {};
     struct ReplayRecord
     {
         const CppType* type;
@@ -423,6 +423,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         }
     }
     if (selectedRecords.empty()) return {};
+    if (signature.parameterTypes.empty()) parameterSource = "void";
     std::string returnTypeSource = "int";
     if (returnRecord)
     {

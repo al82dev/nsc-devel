@@ -1,0 +1,6 @@
+int Main() {
+    T09NoArgsCallback callback = t09_get_noargs_callback();
+    T09NoArgsResult result = callback();
+    if (result.x != 7 || result.y != 17 || result.z != 27) return 1;
+    return 0;
+}

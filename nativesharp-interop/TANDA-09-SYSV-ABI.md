@@ -1288,6 +1288,24 @@ retorno directo, junto con transporte, ABI e identidad
 `A:/temp/t09-transport-directed/`). Solo se acreditan las formas probadas; la
 prueba negativa anterior sigue intacta y pendiente de resolucion.
 
+**Retorno sin parametros:** el control C y la llamada NS directa ya pasaban
+para un puntero SysV `(void)` que devuelve un record de tres enteros
+(`A:/temp/nsc-t09-sysv-indirecta-retorno-sin-args-tl4xakdg`), pero la plantilla
+precompilada lo rechazaba
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-s4xccho2`). La reconstruccion usa
+ahora el prototipo C explicito `(void)` y valida el record retornado. Pasaron
+ocho comparaciones directas estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-record-matriz-i7mi1ja2`) y ejecuciones
+precompiladas en las mismas modalidades, con cache y rechazo de una variante
+no acreditada (`A:/temp/nsc-t09-sysv-indirecta-record-pre-de7560sj`). Pasaron
+las plantillas anteriores con argumento entero, `sret` mixto y `sret`/`byval`,
+mas transporte, ABI e identidad
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-ugq7fysg`,
+`A:/temp/nsc-t09-sysv-indirecta-record-pre-qz2e7964`,
+`A:/temp/nsc-t09-sysv-indirecta-record-pre-w3ehtb_6`,
+`A:/temp/t09-transport-directed/`). La prueba negativa anterior sigue intacta
+y su contradiccion permanece abierta.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor
