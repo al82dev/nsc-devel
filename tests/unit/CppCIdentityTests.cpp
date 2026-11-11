@@ -2183,6 +2183,33 @@ bool checkDependencyTypeCodec()
     }
     recordFunction.declaration.returnType = scalarReturnType;
     recordFunction.declaration.parameters = savedScalarParameters;
+    for (const bool isSigned : {true, false})
+    {
+        auto underlying = scalarReturnType;
+        underlying.kind = isSigned ? CppTypeKind::SignedInteger : CppTypeKind::UnsignedInteger;
+        CppType enumeration;
+        enumeration.kind = CppTypeKind::Enumeration;
+        enumeration.sizeBits = 32;
+        enumeration.alignmentBits = 32;
+        enumeration.enumIdentity = CppEnumTypeIdentity{"T09Color", "T09Color", false, std::nullopt};
+        enumeration.enumUnderlying = std::make_shared<CppType>(underlying);
+        recordFunction.declaration.returnType = enumeration;
+        recordFunction.declaration.parameters[2].type = enumeration;
+        recordFunction.declaration.abiPlan = scalarReturnPlan;
+        ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+            decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+            restoredRecord.declaration.returnType.enumUnderlying &&
+            restoredRecord.declaration.returnType.enumUnderlying->kind == underlying.kind &&
+            restoredRecord.declaration.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Integer &&
+            restoredRecord.declaration.abiPlan->physicalReturn.widthOrCount == 32,
+            "C dependency function retains enum underlying type with record arguments");
+        recordFunction.declaration.returnType.enumUnderlying.reset();
+        unchangedRecord = {42};
+        ok &= expect(!encodeCDependencyFunction(recordFunction, unchangedRecord, error) && unchangedRecord == std::vector<std::uint8_t>{42},
+            "C dependency function rejects enum without an underlying type");
+    }
+    recordFunction.declaration.returnType = scalarReturnType;
+    recordFunction.declaration.parameters = savedScalarParameters;
     auto invalidScalarPlan = *scalarReturnPlan;
     invalidScalarPlan.physicalParameters[4].byValue = false;
     ok &= expect(!abi_plan::isSysVScalarReturnWithRecordArguments(invalidScalarPlan, recordFunction.linkSymbol),

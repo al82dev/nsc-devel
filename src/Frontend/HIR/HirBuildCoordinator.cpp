@@ -1878,6 +1878,12 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                       ((symbol.cppReturnType->kind == interop::CppTypeKind::Void && symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Void) ||
                        (symbol.cppReturnType->kind == interop::CppTypeKind::Boolean && symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Integer &&
                         symbol.cppAbiPlan->physicalReturn.widthOrCount == 1 && symbol.cppAbiPlan->returnZeroExtend) ||
+                       (symbol.cppReturnType->kind == interop::CppTypeKind::Enumeration && symbol.cppReturnType->enumUnderlying &&
+                        (symbol.cppReturnType->enumUnderlying->kind == interop::CppTypeKind::SignedInteger ||
+                         symbol.cppReturnType->enumUnderlying->kind == interop::CppTypeKind::UnsignedInteger) &&
+                        symbol.cppReturnType->sizeBits == 32 && symbol.cppReturnType->enumUnderlying->sizeBits == 32 &&
+                        symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Integer &&
+                        symbol.cppAbiPlan->physicalReturn.widthOrCount == 32) ||
                        (symbol.cppReturnType->kind == interop::CppTypeKind::Pointer && symbol.cppReturnType->element &&
                         symbol.cppReturnType->element->kind != interop::CppTypeKind::Function &&
                         symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Pointer) ||
@@ -1921,6 +1927,10 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                                      logical.zeroExtend == (type.kind == interop::CppTypeKind::UnsignedInteger)))) &&
                                 !(key == "builtin:float" && type.kind == interop::CppTypeKind::Floating && physical.kind == interop::abi_plan::TypeKind::Float) &&
                                 !(key == "builtin:double" && type.kind == interop::CppTypeKind::Floating && physical.kind == interop::abi_plan::TypeKind::Double) &&
+                                !(type.kind == interop::CppTypeKind::Enumeration && type.enumUnderlying && type.sizeBits == 32 &&
+                                  type.enumUnderlying->sizeBits == 32 &&
+                                  (type.enumUnderlying->kind == interop::CppTypeKind::SignedInteger || type.enumUnderlying->kind == interop::CppTypeKind::UnsignedInteger) &&
+                                  physical.kind == interop::abi_plan::TypeKind::Integer && physical.widthOrCount == 32) &&
                                 !(key == "builtin:bool" && type.kind == interop::CppTypeKind::Boolean && physical.kind == interop::abi_plan::TypeKind::Integer &&
                                   physical.widthOrCount == 1 && logical.passing == interop::abi_plan::Passing::Extend && logical.zeroExtend) &&
                                 !(type.kind == interop::CppTypeKind::Pointer && type.element &&

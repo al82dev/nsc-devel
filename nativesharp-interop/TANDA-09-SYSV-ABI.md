@@ -934,6 +934,40 @@ A:/temp/nsc-t09-sysv-indirect-diff16-eed8vwvp y
 A:/temp/nsc-t09-sysv-prueba-5voqucsx). No se acreditan todas las clases de
 agregado ni firmas posibles; T09-003 permanece abierto.
 
+## Enumeraciones C con records SysV
+
+Dos funciones reciben y devuelven un enum C de 32 bits junto a records entero y
+vectorial. La primera utiliza un valor negativo y subyacente con signo; el
+control C paso y NSC rechazo la firma antes del cambio
+(A:/temp/nsc-t09-sysv-enum-signed-record-c4_dnj8a). El plan de Clang usa
+`i32` para argumento y retorno (A:/temp/t09-enum-signed-record-clang.ll).
+
+La muestra inicialmente propuesta como enum sin signo contenia el valor
+`4000000000U`, pero una asercion revelo que Clang para este objetivo lo habia
+convertido a un enum con signo (fallo reproducido en
+A:/temp/nsc-t09-sysv-enum-unsigned-record-2invevq3). Se corrigio la muestra
+declarando base `unsigned int` explicitamente, extension aceptada por Clang en
+modo C11; su asercion comprueba signo y tamano, y la firma usa `i32`
+(A:/temp/t09-enum-unsigned-record-clang.ll). No se afirma un rechazo previo
+ejecutado para la muestra corregida.
+
+NSC comprueba la anchura y el tipo subyacente observado y conserva ambos en el
+contrato vigente. Las dos muestras pasaron ocho comparaciones C/NS en estatica
+y DLL O0–O3, argumentos nombrados, aserciones de Clang y plantilla
+precompilada sin encabezado O0:
+A:/temp/nsc-t09-sysv-enum-signed-record-vixcqyha y
+A:/temp/nsc-t09-sysv-enum-unsigned-record-e8dbicdb. La prueba de metadatos
+comprueba ambos tipos subyacentes y rechaza uno ausente; paso junto a la sonda
+Clang (A:/temp/t09-planes-identity.log y A:/temp/t09-planes-clang.log).
+
+Pasaron las regresiones de records directos, puntero a record, record directo
+de tres bytes con retorno indirecto y llamadas generales:
+A:/temp/nsc-t09-sysv-scalar-direct-records-19soh0jz,
+A:/temp/nsc-t09-sysv-recordp-record-37jjtm4q,
+A:/temp/nsc-t09-sysv-direct3-indirect-bmi9s6a3 y
+A:/temp/nsc-t09-sysv-prueba-zhqcwm05. Enum C++ y otras anchuras permanecen
+pendientes; T09-003 y la tanda 9 siguen abiertos.
+
 ## Punteros a datos con records SysV
 
 Dos funciones reciben un record entero y otro vectorial por valor junto a un

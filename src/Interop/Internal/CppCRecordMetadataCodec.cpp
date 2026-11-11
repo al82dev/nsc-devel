@@ -457,7 +457,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     const bool indirectMixed = f.abiPlan && abi_plan::isSysVIndirectRecordWithArguments(*f.abiPlan, value.linkSymbol);
     const bool scalarMixed = f.abiPlan && abi_plan::isSysVScalarReturnWithRecordArguments(*f.abiPlan, value.linkSymbol) &&
         (f.returnType.kind == CppTypeKind::Void || f.returnType.kind == CppTypeKind::Boolean || f.returnType.kind == CppTypeKind::Pointer ||
-         f.returnType.kind == CppTypeKind::SignedInteger || f.returnType.kind == CppTypeKind::UnsignedInteger || f.returnType.kind == CppTypeKind::Floating) &&
+         f.returnType.kind == CppTypeKind::SignedInteger || f.returnType.kind == CppTypeKind::UnsignedInteger ||
+         f.returnType.kind == CppTypeKind::Floating || f.returnType.kind == CppTypeKind::Enumeration) &&
         std::any_of(f.parameters.begin(), f.parameters.end(), [](const auto& parameter) { return parameter.type.kind == CppTypeKind::Record; });
     const bool indirectDetailed = indirectMixed && [&] {
         if (f.parameters.size() != f.abiPlan->logicalParameters.size()) return false;
@@ -500,6 +501,10 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                 (f.returnType.kind == CppTypeKind::Pointer && f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Pointer) ||
                 (f.returnType.kind == CppTypeKind::Boolean && f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Integer &&
                  f.abiPlan->physicalReturn.widthOrCount == 1 && f.abiPlan->returnZeroExtend) ||
+                (f.returnType.kind == CppTypeKind::Enumeration && f.returnType.enumUnderlying && f.returnType.sizeBits == 32 &&
+                 f.returnType.enumUnderlying->sizeBits == 32 &&
+                 (f.returnType.enumUnderlying->kind == CppTypeKind::SignedInteger || f.returnType.enumUnderlying->kind == CppTypeKind::UnsignedInteger) &&
+                 f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Integer && f.abiPlan->physicalReturn.widthOrCount == 32) ||
                 ((f.returnType.kind == CppTypeKind::SignedInteger || f.returnType.kind == CppTypeKind::UnsignedInteger) &&
                  f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Integer && f.returnType.sizeBits == f.abiPlan->physicalReturn.widthOrCount &&
                  ((f.returnType.sizeBits == 32 || f.returnType.sizeBits == 64) ||
@@ -579,6 +584,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                           (type.kind == CppTypeKind::Pointer && physical.kind == abi_plan::TypeKind::Pointer) ||
                           (type.kind == CppTypeKind::Boolean && physical.kind == abi_plan::TypeKind::Integer && physical.widthOrCount == 1 &&
                            logical.passing == abi_plan::Passing::Extend && logical.zeroExtend) ||
+                          (type.kind == CppTypeKind::Enumeration && type.enumUnderlying && type.sizeBits == 32 && type.enumUnderlying->sizeBits == 32 &&
+                           (type.enumUnderlying->kind == CppTypeKind::SignedInteger || type.enumUnderlying->kind == CppTypeKind::UnsignedInteger) &&
+                           physical.kind == abi_plan::TypeKind::Integer && physical.widthOrCount == 32) ||
                           (type.kind == CppTypeKind::Floating && ((type.sizeBits == 32 && physical.kind == abi_plan::TypeKind::Float) ||
                                                                  (type.sizeBits == 64 && physical.kind == abi_plan::TypeKind::Double))))) return true;
                 }
@@ -698,6 +706,15 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                     plan->logicalReturn.passing = abi_plan::Passing::Extend;
                     plan->logicalReturn.coercion = plan->physicalReturn;
                     plan->returnZeroExtend = plan->logicalReturn.zeroExtend = true;
+                }
+                else if (f.returnType.kind == CppTypeKind::Enumeration && f.returnType.enumUnderlying &&
+                         f.returnType.sizeBits == 32 && f.returnType.enumUnderlying->sizeBits == 32 &&
+                         (f.returnType.enumUnderlying->kind == CppTypeKind::SignedInteger ||
+                          f.returnType.enumUnderlying->kind == CppTypeKind::UnsignedInteger))
+                {
+                    plan->physicalReturn = abi_plan::Type{abi_plan::TypeKind::Integer, 32};
+                    plan->logicalReturn.passing = abi_plan::Passing::Direct;
+                    plan->logicalReturn.coercion = plan->physicalReturn;
                 }
                 else
                 {

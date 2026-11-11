@@ -1,0 +1,1 @@
+int Main() { T09Byte first; first.x=11; T09Wide wide; wide.x=1.5f; wide.y=2.5f; if (sysv_enum_signed_record(1.5f,first,wide,T09A,7)!=T09A || sysv_enum_signed_record(n: 7, code: T09B, wide: wide, first: first, factor: 1.5f)!=T09B) return 1; if (first.x!=11 || wide.x!=1.5f || wide.y!=2.5f) return 2; return 0; }
