@@ -1,0 +1,6 @@
+int Main() {
+    T09IndirectRecord record; record.x = 1; record.y = 2; record.z = 3;
+    T09RecordCallback callback = t09_get_record_callback();
+    if (callback(record) != 14 || record.x != 1 || record.y != 2 || record.z != 3) return 1;
+    return 0;
+}

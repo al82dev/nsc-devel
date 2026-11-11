@@ -1137,6 +1137,23 @@ pasaron las pruebas negativas de records y conversiones incompatibles
 (`A:/temp/nsc-t09-sysv-indirecta-autorfbq`). Esta evidencia cubre esa firma,
 no todos los ordenes ni agregados por valor.
 
+Una reproduccion independiente de un record de tres `int` pasado por valor a
+un puntero SysV no variadico permanece abierta. El control C termino con codigo
+cero y Clang emitio dos piezas `i64` e `i32`; NSC rechazo la firma antes de
+generar LLVM (`A:/temp/nsc-t09-sysv-indirecta-record-7_tjgfg6`). El productor
+modifica su copia y el consumidor comprueba que el valor original se conserva.
+El validador `pruebas-tanda-09-sysv-indirecta-record/validar.py` queda como
+reproduccion fallida, no como evidencia de soporte.
+
+La consulta `cFunctionAbiPlan` actual selecciona una declaracion de funcion
+por nombre y tipo, mientras esta llamada puede recibir una direccion cuyo
+destino no esta declarado en el encabezado. El plan fisico debe proceder de
+Clang para la firma del puntero y conservarse hasta la llamada indirecta,
+incluida la precompilacion; no basta inferir dos piezas a partir de los doce
+bytes. `finishDelegateInvoke` conserva la identidad y los argumentos, y el
+emisor indirecto aun no recibe ese plan. El rechazo debe permanecer hasta
+conciliar y probar esas etapas y sus equivalencias de tipos.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin
