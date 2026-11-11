@@ -62,6 +62,27 @@ conversiones y firma `double` no admitida
 (`A:/temp/t09-transport-directed/`). Otras firmas siguen pendientes; T09-003
 permanece abierto.
 
+## Enteros estrechos en regcall
+
+Clang emite `i8` e `i16` sin atributos de extension para las muestras
+(`A:/temp/t09-regcall-narrow-oracle.ll`). El control C paso O0-O3 en estatica
+y DLL (`A:/temp/nsc-t09-regcall-estrechos-649xkt5j`), pero NSC rechazaba la
+firma (`A:/temp/nsc-t09-regcall-estrechos-g8hilae1`). Tras admitir `sbyte`,
+`byte`, `short` y `ushort`, pasaron ocho comparaciones C/NS con llamadas
+directas y por puntero, IR y cache
+(`A:/temp/nsc-t09-regcall-estrechos-zu6mcinp`) y 16 consumidores
+precompilados (`A:/temp/nsc-t09-regcall-estrechos-precompilado-_nnt1jnq`).
+Las muestras comprueban valores negativos y valores altos sin signo.
+
+Pasaron el rechazo de `double` directo e indirecto y conversiones incompatibles
+(`A:/temp/nsc-t09-regcall-negativo-atzr6uv4`,
+`A:/temp/nsc-t09-regcall-conversiones-7t268yfq`), la regresion precompilada
+de retornos `void` e `int*`
+(`A:/temp/nsc-t09-regcall-indirecta-vp-precompilado-vpj1fm9_`), cuatro
+sondas (`A:/temp/t09-test-varptr.log`) y transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`). Las muestras no acreditan todas las
+firmas; T09-003 permanece abierto.
+
 ## Funcion libre C++ en namespace
 
 Clang emitio el simbolo `?calculate@T09Cpp@@YwHHHH@Z` y `x86_regcallcc`

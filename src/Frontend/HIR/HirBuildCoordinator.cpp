@@ -1811,7 +1811,9 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             function.cppSysVCall = symbol.cppCallingConvention == "sysv_abi";
             const auto regCallScalar = [](const std::string& type) {
                 return type == "builtin:int" || type == "builtin:uint" ||
-                    type == "builtin:long" || type == "builtin:ulong" || type == "builtin:float";
+                    type == "builtin:long" || type == "builtin:ulong" || type == "builtin:float" ||
+                    type == "builtin:sbyte" || type == "builtin:byte" ||
+                    type == "builtin:short" || type == "builtin:ushort";
             };
             if (function.cppRegCall && (function.isVariadic ||
                 (!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&
@@ -1820,7 +1822,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     return regCallScalar(type) || type == "builtin:int*";
                 })))
             {
-                error = "regcall currently supports only int scalar signatures or 32/64-bit unsigned/long types, float, void and int* for " + symbol.mangledName;
+                error = "regcall currently supports only int scalar signatures or other integer types, float, void and int* for " + symbol.mangledName;
                 return false;
             }
             if (function.cppSysVCall)
