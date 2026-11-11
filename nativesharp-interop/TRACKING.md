@@ -1686,6 +1686,29 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 ## 09. Llamadas, enlace y datos C
 
+**Trabajo en curso en la laptop.** La auditoria y su evidencia estan en
+[TANDA-09-AUDITORIA-INICIAL.md](TANDA-09-AUDITORIA-INICIAL.md); el alcance y
+las restricciones estan en [SCOPE-LOCK-TANDA-09.md](SCOPE-LOCK-TANDA-09.md).
+
+Se prepararon controles nuevos de [llamadas y globales](pruebas-tanda-09-llamadas/),
+[agregados](pruebas-tanda-09-agregados/), [vectorcall](pruebas-tanda-09-vectorcall/),
+[biblioteca ausente](pruebas-tanda-09-biblioteca-ausente/),
+[simbolo ausente](pruebas-tanda-09-simbolo-ausente/) y
+[global const](pruebas-tanda-09-global-const/),
+[biblioteca NS precompilada](pruebas-tanda-09-precompilado/),
+[cache de encabezados](pruebas-tanda-09-cache/) y
+[cache de biblioteca](pruebas-tanda-09-cache-biblioteca/). Las comparaciones C y
+NativeSharp de llamadas, agregados y vectorcall pasaron en estatica y DLL en
+O0–O3; tambien pasaron los casos negativos y las pruebas de cache descritas en
+la auditoria. La validacion agrupada seleccionada paso 6/6 y la identidad C
+paso por separado. Se conserva pendiente el cierre integral de la tanda y no se
+modificaron las pruebas existentes.
+
+Las 16 casillas originales se conservan: T09-013 y T09-014 estaban marcadas con
+los limites de su evidencia previa; las otras 14 siguen pendientes de revision
+individual para su cierre. Las pruebas nuevas aportan evidencia adicional para
+enlace estatico y DLL, sin extrapolar a todas las formas de metadatos o cache.
+
 - [ ] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas.
 - [ ] T09-002. Auditar la emisión actual de llamadas C en el generador de código.
 - [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang.
