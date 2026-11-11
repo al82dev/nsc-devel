@@ -598,7 +598,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     std::vector<std::optional<std::size_t>> recordForArgument;
     for (const auto& key : optionalTypeKeys)
     {
-        if (key == "builtin:int" || key == "builtin:double" || key == "builtin:int*")
+        if (key == "builtin:int" || key == "builtin:double" || key == "builtin:int*" || key == "builtin:long")
         {
             recordForArgument.push_back(std::nullopt);
             continue;
@@ -697,6 +697,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     options.workingDirectory = environment.workingDirectory;
     options.input = CppBufferInput{"nsc-variadic-pointer-replay.c", recordSource +
         "void __nsc_replay_int(int);\n"
+        "void __nsc_replay_long(long long);\n"
         "void __nsc_replay_double(double);\n"
         "void __nsc_replay_int_pointer(int *);\n"
         "typedef " + std::string(returnDouble ? "double" : returnVoid ? "void" : returnPointer ? "int *" : "int") +
@@ -738,6 +739,11 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         [](const auto& value) { return value.name == "__nsc_replay_int"; });
     if (intHelper == functions->end() || intHelper->parameters.size() != 1 ||
         !isInt(intHelper->parameters[0].type)) return {};
+    const auto longHelper = std::find_if(functions->begin(), functions->end(),
+        [](const auto& value) { return value.name == "__nsc_replay_long"; });
+    if (longHelper == functions->end() || longHelper->parameters.size() != 1 ||
+        longHelper->parameters[0].type.kind != CppTypeKind::SignedInteger ||
+        longHelper->parameters[0].type.canonicalSpelling != "long long") return {};
     const auto pointerHelper = std::find_if(functions->begin(), functions->end(),
         [](const auto& value) { return value.name == "__nsc_replay_int_pointer"; });
     if (pointerHelper == functions->end() || pointerHelper->parameters.size() != 1 ||
@@ -746,6 +752,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     for (std::size_t i = 0; i < recordForArgument.size(); ++i)
         arguments.push_back(recordForArgument[i] ? replayTypes[*recordForArgument[i]] :
             optionalTypeKeys[i] == "builtin:int" ? intHelper->parameters[0].type :
+            optionalTypeKeys[i] == "builtin:long" ? longHelper->parameters[0].type :
             optionalTypeKeys[i] == "builtin:double" ? doubleHelper->parameters[0].type : pointerHelper->parameters[0].type);
     auto plan = session.cVariadicFunctionPointerCallAbiPlan(replayAlias->name,
         replayAlias->underlyingType.canonicalSpelling, arguments);
