@@ -1,0 +1,1 @@
+int Main() { t09_const_global = 9; return 0; }

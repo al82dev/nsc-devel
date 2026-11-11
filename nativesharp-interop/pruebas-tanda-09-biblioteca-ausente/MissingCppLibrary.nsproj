@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>MissingCppLibrary</Name></PropertyGroup><ItemGroup><Compile Include='Main.ns' /><CppLibraryReference Header='api.h' Language='C' Standard='c11' Library='biblioteca_ausente_t09.lib' /></ItemGroup></Project>

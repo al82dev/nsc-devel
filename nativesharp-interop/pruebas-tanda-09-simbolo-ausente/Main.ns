@@ -1,0 +1,1 @@
+int Main() { return simbolo_ausente_t09(1); }
