@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppAbiPlanQueries.h"
+#include "nativesharp/Interop/CppCRecordAbiReplay.h"
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/Decl.h>
 #include <clang/AST/GlobalDecl.h>
@@ -21,6 +22,7 @@
 #include <string>
 #include <vector>
 #include "../../src/Interop/Internal/ClangAbiPlan.h"
+#include "../../src/Interop/Internal/CppCRecordMetadataCodec.h"
 #include "nativesharp/Interop/CppClangSessionFactory.h"
 #include "nativesharp/Interop/CppInteropSession.h"
 #include "nativesharp/Interop/CppVariadicAbiReconciliation.h"
@@ -707,6 +709,81 @@ int main(int argc, char** argv) {
         "struct RF { double x; int y; }; struct R3 { unsigned char x, y, z; };");
     auto incompatibleOrigin = openRecordSession("struct RF { long long x; int y; };");
     if (!equivalentOrigin || !incompatibleOrigin) return 149;
+    const auto originalRecords = equivalentOrigin->recordsSnapshot();
+    if (!originalRecords) return 192;
+    std::vector<CppSemanticRecordEntry> replayEntries;
+    for (const auto& record : *originalRecords)
+        if (record.name == "RF")
+            replayEntries.push_back({{}, 0, 0, "x86_64-pc-windows-msvc", record,
+                                     projectCppRecordIdentity(record, "AbiProbe"), std::nullopt});
+    const auto replayGroups = groupCppSemanticRecords(replayEntries);
+    if (replayGroups.groups.size() != 1) return 202;
+    const auto capturedReplay = captureCppCRecordSnapshot(replayEntries, replayGroups.groups[0]);
+    const auto* capturedRecord = std::get_if<CppCRecordSnapshot>(&capturedReplay);
+    if (!capturedRecord) return 203;
+    std::vector<std::uint8_t> replayBytes;
+    std::vector<CppCRecordSnapshot> restoredRecords;
+    std::string replayError;
+    if (!metadata_detail::encodeCRecordCatalog(std::span(capturedRecord, 1), replayBytes, replayError) ||
+        !metadata_detail::decodeCRecordCatalog(replayBytes, restoredRecords, replayError) ||
+        restoredRecords.size() != 1) return 204;
+    const auto& replayRecord = restoredRecords[0];
+    const auto replayText = makeSimpleCRecordAbiReplay(replayRecord);
+    if (!replayText) return 193;
+    auto replay = openRecordSession((*replayText +
+        "int __attribute__((sysv_abi)) pvariadic(int, ...); "
+        "int replay_type(struct __nsc_abi_record);").c_str());
+    if (!replay) return 194;
+    const auto replayRecords = replay->recordsSnapshot();
+    const auto replayFunctions = replay->freeFunctionsSnapshot();
+    if (!replayRecords || !replayFunctions) return 195;
+    const CppRecordDeclaration* replayDeclaration = nullptr;
+    for (const auto& record : *replayRecords)
+        if (record.name == "__nsc_abi_record") replayDeclaration = &record;
+    const CppFunctionDeclaration* replayFunction = nullptr;
+    const CppType* replayType = nullptr;
+    for (const auto& function : *replayFunctions)
+    {
+        if (function.name == "pvariadic") replayFunction = &function;
+        if (function.name == "replay_type" && function.parameters.size() == 1)
+            replayType = &function.parameters[0].type;
+    }
+    if (!replayDeclaration || !replayFunction || !replayType ||
+        !matchesSimpleCRecordAbiReplay(replayRecord, *replayDeclaration)) return 196;
+    const auto replayPlan = replay->cVariadicCallAbiPlan("pvariadic", replayFunction->canonicalFunctionType,
+        {*replayType});
+    const auto replayPressure = replay->cVariadicCallAbiPlan("pvariadic", replayFunction->canonicalFunctionType,
+        {*integerActual, *integerActual, *integerActual, *integerActual, *integerActual, *replayType});
+    const auto replayFloatPressure = replay->cVariadicCallAbiPlan("pvariadic", replayFunction->canonicalFunctionType,
+        {*floatingActual, *floatingActual, *floatingActual, *floatingActual,
+         *floatingActual, *floatingActual, *floatingActual, *floatingActual, *replayType});
+    const auto originalPlan = session->cVariadicCallAbiPlan("pvariadic", variadicType, {*mixedActual});
+    if (!replayPlan || !replayPressure || !replayFloatPressure || !originalPlan ||
+        abi_plan::encodeVariadicCallPlanForCache(*replayPlan) != abi_plan::encodeVariadicCallPlanForCache(*originalPlan) ||
+        abi_plan::encodeVariadicCallPlanForCache(*replayPressure) != abi_plan::encodeVariadicCallPlanForCache(*variadicPressurePlan) ||
+        abi_plan::encodeVariadicCallPlanForCache(*replayFloatPressure) != abi_plan::encodeVariadicCallPlanForCache(*variadicFloatPressurePlan)) return 197;
+    auto wrongReplay = replayRecord;
+    wrongReplay.fields[1].offsetBits = 0;
+    if (matchesSimpleCRecordAbiReplay(wrongReplay, *replayDeclaration)) return 198;
+    wrongReplay = replayRecord;
+    wrongReplay.fields[0].type.kind = CppTypeKind::SignedInteger;
+    if (makeSimpleCRecordAbiReplay(wrongReplay)) return 199;
+    wrongReplay.fields[0].type.canonicalSpelling = "long long";
+    if (!makeSimpleCRecordAbiReplay(wrongReplay) ||
+        matchesSimpleCRecordAbiReplay(wrongReplay, *replayDeclaration)) return 208;
+    wrongReplay = replayRecord;
+    wrongReplay.fields[0].bitWidth = 1;
+    if (makeSimpleCRecordAbiReplay(wrongReplay)) return 200;
+    wrongReplay = replayRecord;
+    wrongReplay.fields[0].type.canonicalSpelling = "double; int injected";
+    if (makeSimpleCRecordAbiReplay(wrongReplay)) return 205;
+    wrongReplay = replayRecord;
+    wrongReplay.alignmentBits = 32;
+    if (matchesSimpleCRecordAbiReplay(wrongReplay, *replayDeclaration)) return 206;
+    wrongReplay = replayRecord;
+    wrongReplay.targetTriple = "x86_64-unknown-linux-gnu";
+    if (makeSimpleCRecordAbiReplay(wrongReplay)) return 207;
+    if (!replay->close().succeeded) return 201;
     const auto conflictingRecords = incompatibleOrigin->recordsSnapshot();
     if (!conflictingRecords) return 160;
     bool sameIdentityAndLayout = false;

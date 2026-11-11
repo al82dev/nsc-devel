@@ -781,6 +781,26 @@ oculto se rechaza (`pre-record-pendiente.log` en la evidencia anterior). Falta
 transportar esa dependencia bajo el unico contrato vigente de NSMeta, y tambien
 quedan abiertas otras firmas, tipos y formas de origen. T09-003 sigue abierto.
 
+#### Sonda de reconstruccion desde el catalogo
+
+Como preparacion se agrego un reconstruidor experimental de records C planos
+con campos escalares, todavia desconectado del compilador. La prueba obtiene un
+record mixto de Clang, lo captura, serializa y recupera mediante el catalogo C,
+reconstruye una declaracion en memoria y comprueba cada tipo, desplazamiento,
+tamano y alineacion. Clang produce el mismo plan para la llamada sin presion y
+con registros enteros o flotantes agotados. Tambien se rechazan campos de tipo
+incompatible aunque tengan igual tamano, offsets o alineaciones alterados,
+bitfields, texto de tipo inesperado y otro destino. Pasaron compilacion
+incremental y sondas ABI, transporte e identidad
+(`A:/temp/t09-build-replay.log` y `A:/temp/t09-transport-directed/`).
+
+Esto no prueba que el catalogo actual conserve todos los atributos relevantes
+para la ABI ni vincula la declaracion recreada con la funcion y el origen
+originales. Antes de usarlo en el consumidor hay que acreditar y transportar
+esas garantias, resolver la seleccion entre catalogos y cubrir tipos no planos.
+La plantilla precompilada con record permanece pendiente; no se ha ampliado el
+contrato de interoperabilidad ni se ha cerrado T09-003.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin
