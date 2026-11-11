@@ -2439,6 +2439,35 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
         (right.typeKey == "builtin:string" || right.typeKey == "string-literal");
     classifyNamedAssignmentTarget(
         assignmentTargetLocal, assignmentTargetParameter, expression, scopeOrdinal);
+    if (assignmentTargetParameter.has_value() && typeKeyIsViewLike(right.typeKey))
+    {
+        const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+        if (caller != nullptr && *assignmentTargetParameter < caller->parameters.size() &&
+            (caller->parameters[*assignmentTargetParameter].passKind == ParameterPassKind::Ref ||
+             caller->parameters[*assignmentTargetParameter].passKind == ParameterPassKind::Out))
+        {
+            MethodLocalSymbol sources;
+            collectViewSourceFields(sources, expression->second(), scopeOrdinal);
+            for (const std::string& source : sources.viewSourceFields)
+            {
+                if (source.size() <= 1 || source.front() != '@') continue;
+                const std::string_view rootName = std::string_view(source).substr(1);
+                const auto root = lookupScopeName(scopeOrdinal, rootName);
+                if (!root.has_value()) continue;
+                const bool localOwner = root->kind == ScopeNameKind::Local &&
+                    root->semanticOrdinal < locals_.size() && !locals_[root->semanticOrdinal].isStatic;
+                const bool consumedParameter = root->kind == ScopeNameKind::Parameter &&
+                    root->semanticOrdinal < caller->parameters.size() && memberModel_ != nullptr &&
+                    caller->parameters[root->semanticOrdinal].passKind == ParameterPassKind::Value &&
+                    memberModel_->typeIsMoveOnly(caller->parameters[root->semanticOrdinal].typeKey);
+                if (!localOwner && !consumedParameter) continue;
+                diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                    diagnostics::DiagnosticSeverity::Error, expression->first()->range(),
+                    "view output cannot outlive its possible owner '" + std::string(rootName) + "'");
+                return false;
+            }
+        }
+    }
     if (!validateAssignmentTargetStorage(
             expression, right, assignmentTargetLocal, scopeOrdinal, diagnostics)) return false;
     if (delegateTarget && assignmentTargetLocal.has_value() &&
