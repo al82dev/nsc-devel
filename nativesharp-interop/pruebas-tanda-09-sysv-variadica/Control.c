@@ -19,5 +19,11 @@ int main(void) {
     if (sysv_record_pressure(6, 1, 2, 3, 4, 5, mixed) != 1 || mixed.y != 7) return 10;
     if (sysv_record_sse_pressure(9, 1., 2., 3., 4., 5., 6., 7., 8., mixed) != 1 || mixed.y != 7) return 12;
     if (sysv_record_large(1, large) != 1 || large.x != 11 || large.y != 13 || large.z != 17) return 11;
+    int fixedValue = 41; short optionalValue = 12;
+    if (sysv_record_ptrs(&fixedValue, mixed, &optionalValue) != 1 || fixedValue != 42 ||
+        optionalValue != 13 || mixed.y != 7) return 14;
+    fixedValue = 41; optionalValue = 12;
+    if (sysv_record_return_ptr(&fixedValue, mixed, &optionalValue) != &fixedValue || fixedValue != 42 ||
+        optionalValue != 13 || mixed.y != 7) return 15;
     return 0;
 }

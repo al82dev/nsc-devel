@@ -864,10 +864,25 @@ ABI e identidad y las regresiones de llamadas C y SysV
 `A:/temp/nsc-t09-sysv-padded-pair-id-qjkigrcg`).
 
 La reconstruccion admite por ahora records C planos de campos escalares sin
-atributos y prefijo/retorno escalar; rechaza catalogos ambiguos, records
-empaquetados o anidados, punteros en llamadas que requieren esta ruta y otras
-formas que no puede comprobar. Exige Clang configurado en el consumidor. No
+atributos y las formas escalares y de puntero que se describen despues; rechaza
+catalogos ambiguos, records empaquetados o anidados y otras formas que no puede
+comprobar. Exige Clang configurado en el consumidor. No
 acredita callbacks SysV, compatibilidad C++ general ni cierre de T09-003.
+
+La llamada completa admite tambien un puntero fijo `int*` y uno variadico
+`short*` junto a un record mixto por valor, con retorno `int` o `int*`. El
+productor comprueba los registros SysV, el contador AL y los valores, modifica
+los dos destinos y devuelve el mismo puntero en el segundo caso. El control C
+paso mientras el NSC anterior rechazaba la combinacion
+(`A:/temp/nsc-t09-sysv-varargs-egxt94zf`); despues pasaron C y NativeSharp,
+directos y mediante plantilla precompilada sin encabezado, en estatica y DLL
+O0–O3, con HIR/MIR de uno y cuatro trabajadores, comparacion LLVM y cache
+fria/caliente (`A:/temp/nsc-t09-sysv-varargs-2pi2f5zs`). Tambien pasaron las
+sondas de transporte, ABI e identidad y las regresiones C/SysV
+(`A:/temp/t09-transport-directed/`, `A:/temp/nsc-t09-llamadas-l518teid`,
+`A:/temp/nsc-t09-sysv-prueba-mlzsk3ef`,
+`A:/temp/nsc-t09-sysv-padded-pair-id-fpdt6oxk`). Punteros a records y otras
+combinaciones en esta ruta siguen pendientes de evidencia.
 
 ## Retorno indirecto sin argumentos byval
 

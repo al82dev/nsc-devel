@@ -111,6 +111,51 @@ CppGraphSessionsResult openCppGraphSessions(
 
 namespace
 {
+std::optional<CppType> simpleVariadicType(std::string_view key, unsigned depth = 0)
+{
+    if (depth > 16) return std::nullopt;
+    if (key.ends_with('*'))
+    {
+        auto element = simpleVariadicType(key.substr(0, key.size() - 1), depth + 1);
+        if (!element) return std::nullopt;
+        CppType pointer;
+        pointer.kind = CppTypeKind::Pointer;
+        pointer.canonicalSpelling = element->canonicalSpelling + " *";
+        pointer.sizeBits = pointer.alignmentBits = 64;
+        pointer.element = std::make_shared<const CppType>(std::move(*element));
+        return pointer;
+    }
+    CppType type;
+    if (key == "builtin:void") { type.kind = CppTypeKind::Void; type.canonicalSpelling = "void"; }
+    else if (key == "builtin:sbyte") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "signed char"; type.sizeBits = type.alignmentBits = 8; }
+    else if (key == "builtin:byte") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned char"; type.sizeBits = type.alignmentBits = 8; }
+    else if (key == "builtin:short") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "short"; type.sizeBits = type.alignmentBits = 16; }
+    else if (key == "builtin:ushort") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned short"; type.sizeBits = type.alignmentBits = 16; }
+    else if (key == "builtin:int") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "int"; type.sizeBits = type.alignmentBits = 32; }
+    else if (key == "builtin:uint") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned int"; type.sizeBits = type.alignmentBits = 32; }
+    else if (key == "builtin:long") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "long long"; type.sizeBits = type.alignmentBits = 64; }
+    else if (key == "builtin:ulong") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned long long"; type.sizeBits = type.alignmentBits = 64; }
+    else if (key == "builtin:float") { type.kind = CppTypeKind::Floating; type.canonicalSpelling = "float"; type.sizeBits = type.alignmentBits = 32; }
+    else if (key == "builtin:double") { type.kind = CppTypeKind::Floating; type.canonicalSpelling = "double"; type.sizeBits = type.alignmentBits = 64; }
+    else return std::nullopt;
+    if (depth == 0 && (type.kind == CppTypeKind::Void || type.canonicalSpelling == "float" ||
+        (type.sizeBits && *type.sizeBits < 32))) return std::nullopt;
+    return type;
+}
+
+bool sameVariadicType(const CppType& left, const CppType& right, unsigned depth = 0)
+{
+    if (depth > 16 || left.kind != right.kind || left.canonicalSpelling != right.canonicalSpelling ||
+        left.sizeBits != right.sizeBits || left.alignmentBits != right.alignmentBits ||
+        left.isConst != right.isConst || left.isVolatile != right.isVolatile || left.isRestrict != right.isRestrict)
+        return false;
+    if (left.kind == CppTypeKind::Pointer)
+        return left.element && right.element && sameVariadicType(*left.element, *right.element, depth + 1);
+    return left.kind == CppTypeKind::Void || left.kind == CppTypeKind::Boolean ||
+        left.kind == CppTypeKind::SignedInteger || left.kind == CppTypeKind::UnsignedInteger ||
+        left.kind == CppTypeKind::Floating;
+}
+
 bool variadicRecordOriginMatches(const CppInteropSession& target, const CppInteropSession* origin,
                                  const CppType& type, unsigned depth)
 {
@@ -175,24 +220,12 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
         !function.cppClangUsr || function.cppClangUsr->empty() || !function.cppReturnType ||
         function.cppParameterTypes.size() != function.parameters.size() || function.projectOrdinal >= graph.projects().size())
         return {};
-    const auto sameScalar = [](const CppType& left, const CppType& right) {
-        const bool scalar = left.kind == CppTypeKind::Void || left.kind == CppTypeKind::Boolean ||
-            left.kind == CppTypeKind::SignedInteger || left.kind == CppTypeKind::UnsignedInteger ||
-            left.kind == CppTypeKind::Floating;
-        return scalar && left.kind == right.kind && left.canonicalSpelling == right.canonicalSpelling &&
-            left.sizeBits == right.sizeBits && left.alignmentBits == right.alignmentBits &&
-            left.isConst == right.isConst && left.isVolatile == right.isVolatile && left.isRestrict == right.isRestrict;
-    };
     std::vector<CppVariadicArgumentOrigin> arguments;
     arguments.reserve(optionalTypeKeys.size());
     for (const auto& key : optionalTypeKeys)
     {
         CppType type;
-        if (key == "builtin:int") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "int"; type.sizeBits = type.alignmentBits = 32; }
-        else if (key == "builtin:uint") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned int"; type.sizeBits = type.alignmentBits = 32; }
-        else if (key == "builtin:long") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "long long"; type.sizeBits = type.alignmentBits = 64; }
-        else if (key == "builtin:ulong") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned long long"; type.sizeBits = type.alignmentBits = 64; }
-        else if (key == "builtin:double") { type.kind = CppTypeKind::Floating; type.canonicalSpelling = "double"; type.sizeBits = type.alignmentBits = 64; }
+        if (auto simple = simpleVariadicType(key)) type = std::move(*simple);
         else if (key.starts_with("type:") && !key.ends_with('*'))
         {
             const auto ordinal = lookup.typeOrdinalForIdentity(std::string_view(key).substr(5));
@@ -269,11 +302,11 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
                 if (!declaration.variadic || declaration.callingConvention != "sysv_abi" ||
                     declaration.externalSymbol != std::optional<std::string>(function.mangledName) ||
                     declaration.clangUsr != function.cppClangUsr || declaration.parameters.size() != function.parameters.size() ||
-                    !sameScalar(declaration.returnType, *function.cppReturnType))
+                    !sameVariadicType(declaration.returnType, *function.cppReturnType))
                     continue;
                 bool fixedMatch = true;
                 for (std::size_t i = 0; i < declaration.parameters.size(); ++i)
-                    if (!sameScalar(declaration.parameters[i].type, function.cppParameterTypes[i])) { fixedMatch = false; break; }
+                    if (!sameVariadicType(declaration.parameters[i].type, function.cppParameterTypes[i])) { fixedMatch = false; break; }
                 if (!fixedMatch) continue;
                 if (selected) return {}; // Do not guess between reference origins.
                 selected = candidate.get();
@@ -300,9 +333,17 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
         !graph.projects()[function.projectOrdinal].cppLibraryReferences().empty() ||
         function.cppParameterTypes.size() != function.parameters.size() ||
         environment.targetTriple != "x86_64-pc-windows-msvc") return {};
-    const auto builtin = [](const CppType& type) -> std::optional<std::string> {
+    const auto builtin = [](const auto& self, const CppType& type, unsigned depth = 0) -> std::optional<std::string> {
+        if (depth > 16) return std::nullopt;
         if (type.isConst || type.isVolatile || type.isRestrict) return std::nullopt;
         const auto& name = type.canonicalSpelling;
+        if (type.kind == CppTypeKind::Pointer)
+        {
+            if (!type.element || type.sizeBits != 64 || type.alignmentBits != 64) return std::nullopt;
+            const auto element = self(self, *type.element, depth + 1);
+            if (!element || name != *element + " *") return std::nullopt;
+            return name;
+        }
         if (type.kind == CppTypeKind::Void && name == "void") return name;
         if (type.kind == CppTypeKind::Boolean && name == "_Bool") return name;
         if (type.kind == CppTypeKind::SignedInteger &&
@@ -312,11 +353,6 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
              name == "unsigned long" || name == "unsigned long long")) return name;
         if (type.kind == CppTypeKind::Floating && (name == "float" || name == "double")) return name;
         return std::nullopt;
-    };
-    const auto sameType = [](const CppType& a, const CppType& b) {
-        return a.kind == b.kind && a.canonicalSpelling == b.canonicalSpelling && a.sizeBits == b.sizeBits &&
-            a.alignmentBits == b.alignmentBits && a.isConst == b.isConst && a.isVolatile == b.isVolatile &&
-            a.isRestrict == b.isRestrict;
     };
     std::optional<metadata_detail::CDependencyFunctionSnapshot> selected;
     std::vector<CppCRecordSnapshot> records;
@@ -341,20 +377,20 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
     }
     if (!selected || selected->declaration.name != selected->linkSymbol ||
         selected->declaration.parameters.size() != function.parameters.size() ||
-        !sameType(selected->declaration.returnType, *function.cppReturnType)) return {};
+        !sameVariadicType(selected->declaration.returnType, *function.cppReturnType)) return {};
     const auto& name = selected->declaration.name;
     const auto letter = [](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; };
     if (name.empty() || !letter(name.front()) || !std::all_of(name.begin(), name.end(), [&](char c) {
             return letter(c) || (c >= '0' && c <= '9');
         })) return {};
-    const auto resultType = builtin(selected->declaration.returnType);
+    const auto resultType = builtin(builtin, selected->declaration.returnType);
     if (!resultType || selected->declaration.parameters.empty()) return {};
     std::string parameters;
     for (std::size_t i = 0; i < selected->declaration.parameters.size(); ++i)
     {
         const auto& type = selected->declaration.parameters[i].type;
-        const auto spelling = builtin(type);
-        if (!spelling || *spelling == "void" || !sameType(type, function.cppParameterTypes[i])) return {};
+        const auto spelling = builtin(builtin, type);
+        if (!spelling || *spelling == "void" || !sameVariadicType(type, function.cppParameterTypes[i])) return {};
         if (i) parameters += ", ";
         parameters += *spelling;
     }
@@ -435,15 +471,9 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
     for (std::size_t i = 0; i < optionalTypeKeys.size(); ++i)
     {
         if (recordForArgument[i]) { args.push_back(replayTypes[*recordForArgument[i]]); continue; }
-        CppType type;
-        const auto& key = optionalTypeKeys[i];
-        if (key == "builtin:int") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "int"; type.sizeBits = type.alignmentBits = 32; }
-        else if (key == "builtin:uint") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned int"; type.sizeBits = type.alignmentBits = 32; }
-        else if (key == "builtin:long") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "long long"; type.sizeBits = type.alignmentBits = 64; }
-        else if (key == "builtin:ulong") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned long long"; type.sizeBits = type.alignmentBits = 64; }
-        else if (key == "builtin:double") { type.kind = CppTypeKind::Floating; type.canonicalSpelling = "double"; type.sizeBits = type.alignmentBits = 64; }
-        else return {};
-        args.push_back(std::move(type));
+        auto type = simpleVariadicType(optionalTypeKeys[i]);
+        if (!type) return {};
+        args.push_back(std::move(*type));
     }
     auto plan = session.cVariadicCallAbiPlan(name, replayFunction->canonicalFunctionType, args);
     if (!plan || !validateCppVariadicSysVCallPlan(*plan, function.mangledName, function.parameters.size())) return {};

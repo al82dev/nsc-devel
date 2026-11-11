@@ -23,5 +23,11 @@ int Main() {
     if (sysv_record_pressure(6, 1, 2, 3, 4, 5, mixed) != 1 || mixed.y != 7) return 11;
     if (sysv_record_sse_pressure(9, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, mixed) != 1 || mixed.y != 7) return 13;
     if (sysv_record_large(1, large) != 1 || large.x != 11 || large.y != 13 || large.z != 17) return 12;
+    int fixedValue = 41; short optionalValue = 12;
+    if (sysv_record_ptrs(&fixedValue, mixed, &optionalValue) != 1 || fixedValue != 42 ||
+        optionalValue != 13 || mixed.y != 7) return 15;
+    fixedValue = 41; optionalValue = 12;
+    if (sysv_record_return_ptr(&fixedValue, mixed, &optionalValue) != &fixedValue || fixedValue != 42 ||
+        optionalValue != 13 || mixed.y != 7) return 16;
     return 0;
 }

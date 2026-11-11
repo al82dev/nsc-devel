@@ -257,3 +257,39 @@ sysv_record_large:
 fail_record_large:
     xorl %eax, %eax
     ret
+.globl sysv_record_ptrs
+sysv_record_ptrs:
+    testq %rdi, %rdi
+    je fail_record_ptrs
+    testq %rdx, %rdx
+    je fail_record_ptrs
+    cmpl $41, (%rdi)
+    jne fail_record_ptrs
+    cmpw $12, (%rdx)
+    jne fail_record_ptrs
+    cmpl $7, %esi
+    jne fail_record_ptrs
+    cmpb $1, %al
+    jb fail_record_ptrs
+    movq %xmm0, %r8
+    movabsq $0x4002000000000000, %r9
+    cmpq %r9, %r8
+    jne fail_record_ptrs
+    movl $42, (%rdi)
+    movw $13, (%rdx)
+    movl $1, %eax
+    ret
+fail_record_ptrs:
+    xorl %eax, %eax
+    ret
+.globl sysv_record_return_ptr
+sysv_record_return_ptr:
+    movq %rdi, %r10
+    callq sysv_record_ptrs
+    testl %eax, %eax
+    je fail_record_return_ptr
+    movq %r10, %rax
+    ret
+fail_record_return_ptr:
+    xorl %eax, %eax
+    ret
