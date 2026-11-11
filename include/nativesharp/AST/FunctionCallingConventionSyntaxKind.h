@@ -11,6 +11,8 @@ enum class FunctionCallingConventionSyntaxKind
     VectorCall,
     Win64,
     SysV,
-    RegCall
+    RegCall,
+    PreserveMost,
+    PreserveAll
 };
 }

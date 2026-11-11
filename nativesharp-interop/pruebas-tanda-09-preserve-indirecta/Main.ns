@@ -1,0 +1,3 @@
+int Main() { T09MostCallback m=t09_get_most(); T09MostCallback dm=t09_most; T09AllCallback a=t09_get_all(); T09AllCallback da=t09_all;
+fn* preserve_most(int,int,int) -> int tm=m; fn* preserve_all(int,int,int) -> int ta=a;
+return m==dm && a==da && t09_most(3,4,7)==347 && t09_all(3,4,7)==3047 && tm(3,4,7)==347 && ta(3,4,7)==3047 ? 0 : 1; }

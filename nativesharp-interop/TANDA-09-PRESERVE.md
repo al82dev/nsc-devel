@@ -11,7 +11,7 @@ y sin encabezado (`A:/temp/nsc-t09-preserve-precompilado-gbco_aal`).
 
 Una conversion a puntero `cdecl` se aceptaba indebidamente
 (`A:/temp/nsc-t09-preserve-conversiones-nc66dqyf`). Las conversiones desde
-ambas convenciones se rechazan hasta implementar su identidad de puntero
+ambas convenciones se rechazaban mientras faltaba su identidad de puntero
 (`A:/temp/nsc-t09-preserve-conversiones-z_lhphyc`); tambien pasaron los
 controles de conversion `regcall` (`A:/temp/nsc-t09-regcall-conversiones-x0mn_d5l`).
 
@@ -26,8 +26,8 @@ afirma soporte C++ para ese caso.
 Pasaron regresiones `cdecl` (`A:/temp/nsc-t09-llamadas-a_io0j3n`), `regcall`
 precompilado (`A:/temp/nsc-t09-regcall-estrechos-precompilado-8ere5j_v`),
 cuatro sondas (`A:/temp/t09-test-varptr.log`) y transporte/ABI/identidad
-(`A:/temp/t09-transport-directed/`). Otras firmas y llamadas por puntero
-permanecen pendientes; T09-003 y la tanda 9 siguen abiertos.
+(`A:/temp/t09-transport-directed/`). La cobertura posterior de punteros se
+detalla abajo; T09-003 y la tanda 9 siguen abiertos.
 
 ## Firmas escalares mixtas
 
@@ -48,5 +48,29 @@ precompilados (A:/temp/nsc-t09-preserve-cpp-escalares-precompilado-q5_hsm1e).
 Pasaron las firmas anteriores (A:/temp/nsc-t09-preserve-n8lkjlab), rechazo
 de conversiones incompatibles (A:/temp/nsc-t09-preserve-conversiones-5wo2k9_s),
 cuatro sondas (A:/temp/t09-test-varptr.log) y transporte/ABI/identidad
-(A:/temp/t09-transport-directed/). Otras firmas y punteros a funcion siguen
-pendientes; T09-003 permanece abierto.
+(A:/temp/t09-transport-directed/). Otras firmas siguen pendientes;
+la cobertura de punteros se detalla abajo. T09-003 permanece abierto.
+
+## Punteros preserve devueltos por C
+
+Los controles C de punteros con tres parametros y retorno `int` pasaron en
+estatica/DLL O0-O3 (A:/temp/nsc-t09-preserve-indirecta-j1bm45nh), mientras
+NSC rechazaba el tipo importado (A:/temp/nsc-t09-preserve-indirecta-blvrpy2i).
+Ahora las identidades de funcion conservan ambas convenciones, incluyendo
+sus formas explicitas `fn* preserve_most` y `fn* preserve_all`. La llamada
+indirecta emite la convencion LLVM correspondiente. Las conversiones desde
+funciones importadas solo se admiten cuando coincide la convencion.
+
+Pasaron ocho comparaciones C/NS, verificaciones del IR y cache en estatica y
+DLL (A:/temp/nsc-t09-preserve-indirecta-08_85ltk), y 16 consumidores de una
+plantilla precompilada con y sin encabezado
+(A:/temp/nsc-t09-preserve-indirecta-precompilado-stuf8_fe). Se rechazaron las
+conversiones entre ambas convenciones y con `cdecl`, en los dos sentidos
+(A:/temp/nsc-t09-preserve-indirecta-conversiones-vxijs7r2); tambien paso la
+prueba anterior (A:/temp/nsc-t09-preserve-conversiones-_eo23f71).
+Pasaron conversiones y precompilacion `regcall`, cuatro sondas, transporte,
+ABI, identidad y metadatos (registros A:/temp/t09-preserve-ptr-*.log).
+
+La cobertura indirecta se limita a las firmas `int` comprobadas. Otras
+firmas, conversiones de lambdas y metodos, y los demas casos de T09-003
+quedan pendientes. Esta evidencia no cierra T09-003 ni la tanda 9.

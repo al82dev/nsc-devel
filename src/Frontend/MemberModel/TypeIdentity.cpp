@@ -83,6 +83,12 @@ std::string ProjectMemberModel::canonicalFunctionTypeKey(
         case ast::FunctionCallingConventionSyntaxKind::RegCall:
             function.callingConvention = language::CallingConvention::RegCall;
             break;
+        case ast::FunctionCallingConventionSyntaxKind::PreserveMost:
+            function.callingConvention = language::CallingConvention::PreserveMost;
+            break;
+        case ast::FunctionCallingConventionSyntaxKind::PreserveAll:
+            function.callingConvention = language::CallingConvention::PreserveAll;
+            break;
     }
     function.parameters.reserve(syntax->typeArguments().size());
     for (const ast::TypeSyntax* parameter : syntax->typeArguments())

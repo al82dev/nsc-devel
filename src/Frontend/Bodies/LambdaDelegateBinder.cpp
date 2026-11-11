@@ -1466,6 +1466,15 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
             "conversion of a lambda to a regcall function pointer is not yet supported");
         return result;
     }
+    if (const auto target = language::parseFunctionTypeIdentity(delegateTypeKey);
+        target && (target->callingConvention == language::CallingConvention::PreserveMost ||
+                   target->callingConvention == language::CallingConvention::PreserveAll))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, syntax->range(),
+            "conversion of a lambda to a preserve convention function pointer is not yet supported");
+        return result;
+    }
     if (genericConstraintModel_ != nullptr &&
         !genericConstraintModel_->specializationSatisfiesConstraints(syntax))
     {
@@ -1593,13 +1602,16 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
     const auto structuralTarget = language::parseFunctionTypeIdentity(delegateTypeKey);
     const bool targetSysV = structuralTarget && structuralTarget->callingConvention == language::CallingConvention::SysV;
     const bool targetRegCall = structuralTarget && structuralTarget->callingConvention == language::CallingConvention::RegCall;
+    const bool targetPreserveMost = structuralTarget && structuralTarget->callingConvention == language::CallingConvention::PreserveMost;
+    const bool targetPreserveAll = structuralTarget && structuralTarget->callingConvention == language::CallingConvention::PreserveAll;
     if (selected >= namespaceCallableBase_ && namespaceFunctionModel_ != nullptr)
     {
         const std::size_t functionOrdinal = selected - namespaceCallableBase_;
         if (functionOrdinal >= namespaceFunctionModel_->functions().size()) return false;
         const NamespaceFunctionSymbol& function =
             namespaceFunctionModel_->functions()[functionOrdinal];
-        if (function.cppCallingConvention == "preserve_most" || function.cppCallingConvention == "preserve_all")
+        if ((function.cppCallingConvention == "preserve_most") != targetPreserveMost ||
+            (function.cppCallingConvention == "preserve_all") != targetPreserveAll)
         {
             diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
                 diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},
@@ -1673,6 +1685,13 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
                 return false;
             }
         }
+    }
+    else if (targetPreserveMost || targetPreserveAll)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},
+            "conversion of a method to a preserve convention function pointer is not yet supported");
+        return false;
     }
     else if (targetRegCall)
     {

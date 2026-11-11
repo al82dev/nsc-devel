@@ -58,6 +58,8 @@ std::optional<CallingConvention> parseConvention(std::string_view value) noexcep
     if (value == "win64") return CallingConvention::Win64;
     if (value == "sysv_abi") return CallingConvention::SysV;
     if (value == "regcall") return CallingConvention::RegCall;
+    if (value == "preserve_most") return CallingConvention::PreserveMost;
+    if (value == "preserve_all") return CallingConvention::PreserveAll;
     return std::nullopt;
 }
 
@@ -196,6 +198,8 @@ std::string_view callingConventionName(CallingConvention convention) noexcept
         case CallingConvention::Win64: return "win64";
         case CallingConvention::SysV: return "sysv_abi";
         case CallingConvention::RegCall: return "regcall";
+        case CallingConvention::PreserveMost: return "preserve_most";
+        case CallingConvention::PreserveAll: return "preserve_all";
     }
     return "native";
 }

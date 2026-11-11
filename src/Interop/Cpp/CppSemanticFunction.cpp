@@ -200,6 +200,8 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         else if (signature.callingConvention == "ms_abi") function.callingConvention = language::CallingConvention::Win64;
         else if (signature.callingConvention == "sysv_abi") function.callingConvention = language::CallingConvention::SysV;
         else if (signature.callingConvention == "regcall") function.callingConvention = language::CallingConvention::RegCall;
+        else if (signature.callingConvention == "preserve_most") function.callingConvention = language::CallingConvention::PreserveMost;
+        else if (signature.callingConvention == "preserve_all") function.callingConvention = language::CallingConvention::PreserveAll;
         else return std::nullopt;
         // EN: T08-D22: only C contexts (direct C calls, C fields and globals) take records by value.
         // ES: T08-D22: solo los contextos C (llamadas C directas, campos y globales C) toman records por valor.
