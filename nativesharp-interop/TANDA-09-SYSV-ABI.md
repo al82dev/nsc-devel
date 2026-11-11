@@ -594,6 +594,25 @@ formas y otras combinaciones no probadas siguen pendientes. La muestra no
 acredita la implementacion de `va_start` SysV de Clang ni compatibilidad
 general. T09-003 permanece abierto.
 
+### Punteros adicionales y limites de registros variadicos
+
+El control C ejecutaba punteros a `short`, byte y record en la elipsis,
+mientras NSC los rechazaba (`A:/temp/nsc-t09-sysv-varargs-6vef73o8`).
+Tambien rechazaba un prefijo fijo con punteros a record y a `short`
+(`A:/temp/nsc-t09-sysv-varargs-ueaivg9s`). Ahora se aceptan punteros de datos
+en ambos lugares y como retorno; la muestra comprueba identidad, lecturas y
+escrituras en los tipos citados, incluyendo un retorno de puntero a record.
+Se conserva el rechazo de records pasados por valor en la elipsis.
+
+La prueba tambien comprueba una elipsis vacia y nueve argumentos flotantes:
+ocho ocupan registros y el ultimo la pila, con el contador AL que exige SysV.
+Pasaron C y NativeSharp en estatica y DLL O0–O3, las comprobaciones de IR y
+la plantilla precompilada sin encabezado (`A:/temp/nsc-t09-sysv-varargs-l994l0f0`).
+Pasaron la compilacion incremental, los controles de plan y metadatos, la
+regresion SysV general (`A:/temp/nsc-t09-sysv-prueba-br0h3slf`) y la regresion
+variadica cdecl (`A:/temp/nsc-t09-llamadas-98t_fwt_`). Los records por valor,
+callbacks SysV y combinaciones no probadas permanecen pendientes.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin

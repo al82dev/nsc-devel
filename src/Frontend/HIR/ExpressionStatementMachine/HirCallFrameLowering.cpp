@@ -677,9 +677,7 @@ bool ProjectOopHirModel::acceptNamespaceCallArgumentChild(
             if (call.target->cppCallingConvention == "sysv_abi" &&
                 conversion.targetTypeKey != "builtin:int" && conversion.targetTypeKey != "builtin:uint" &&
                 conversion.targetTypeKey != "builtin:long" && conversion.targetTypeKey != "builtin:ulong" &&
-                conversion.targetTypeKey != "builtin:double" && conversion.targetTypeKey != "builtin:int*" &&
-                conversion.targetTypeKey != "builtin:double*" && conversion.targetTypeKey != "builtin:void*" &&
-                conversion.targetTypeKey != "builtin:int**")
+                conversion.targetTypeKey != "builtin:double" && !conversion.targetTypeKey.ends_with('*'))
             {
                 error = "sysv_abi variadic argument type is not yet supported";
                 return false;

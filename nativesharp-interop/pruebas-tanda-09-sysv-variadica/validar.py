@@ -11,6 +11,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
 parser.add_argument('--esperar-pendiente', action='store_true')
+parser.add_argument('--esperar-punteros-pendientes', action='store_true')
+parser.add_argument('--esperar-prefijo-pendiente', action='store_true')
 args = parser.parse_args()
 fixture = Path(__file__).resolve().parent
 repo = fixture.parents[1]
@@ -44,7 +46,9 @@ for mode in ('estatica', 'dll'):
             library, project, cflags = 'api.lib', 'Static.nsproj', []
         else:
             run(prefix+'-library', ['lld-link.exe', '/nologo', '/dll', '/noentry', '/nodefaultlib',
-                '/export:sysv_varargs', '/export:sysv_many', '/out:'+str(case/'api.dll'), '/implib:'+str(case/'api-dll.lib'), str(case/'producer.obj')])
+                '/export:sysv_varargs', '/export:sysv_many', '/export:sysv_ptrs', '/export:sysv_empty',
+                '/export:sysv_floatspill', '/export:sysv_fixed_ptrs', '/export:sysv_return_ptr',
+                '/out:'+str(case/'api.dll'), '/implib:'+str(case/'api-dll.lib'), str(case/'producer.obj')])
             library, project, cflags = 'api-dll.lib', 'Dll.nsproj', ['-DAPI_DLL_IMPORT']
         run(prefix+'-c-ir', ['clang.exe', *flags, '-std=c11', *cflags, '-S', '-emit-llvm', str(case/'Control.c'), '-o', str(case/'control.ll')])
         ir = (case/'control.ll').read_text(encoding='utf-8')
@@ -56,21 +60,28 @@ for mode in ('estatica', 'dll'):
         run(prefix+'-c-run', [str(case/'control.exe')])
         command = [args.nsc, '--emit-project-oop-exe', str(case/project), '--cpp-clang-root='+args.clang_root,
                    '--library-reference-root', str(case), '--no-artifact-cache', '-O'+str(opt), '-o', str(case/'result.exe')]
-        if args.esperar_pendiente:
+        if args.esperar_pendiente or args.esperar_punteros_pendientes or args.esperar_prefijo_pendiente:
             output = run(prefix+'-ns-rechazo', command, expected=1)
-            if 'variadic C++ or non-cdecl functions are not yet projected' not in output:
+            expected = ('sysv_abi currently supports only selected' if args.esperar_prefijo_pendiente else
+                        'sysv_abi variadic argument type is not yet supported' if args.esperar_punteros_pendientes else
+                        'variadic C++ or non-cdecl functions are not yet projected')
+            if expected not in output:
                 raise SystemExit(prefix + ': rechazo inesperado; evidencia: ' + str(root))
             print(prefix + ': C paso; NSC aun rechaza la firma', flush=True)
         else:
             ns_ir = run(prefix+'-ns-ir', [args.nsc, '--dump-project-oop-llvm', str(case/project),
                 '--cpp-clang-root='+args.clang_root, '--library-reference-root', str(case)])
-            for name in ('sysv_varargs', 'sysv_many'):
+            for name in ('sysv_varargs', 'sysv_many', 'sysv_ptrs', 'sysv_empty', 'sysv_floatspill'):
                 if not re.search(r'call[^\n]*x86_64_sysvcc i32 \(i32, \.\.\.\).*@'+name+r'\(', ns_ir):
                     raise SystemExit(prefix+': falta convencion variadica de '+name+'; evidencia: '+str(root))
+            if not re.search(r'call[^\n]*x86_64_sysvcc i32 \(ptr, ptr, \.\.\.\).*@sysv_fixed_ptrs\(', ns_ir):
+                raise SystemExit(prefix+': falta convencion del prefijo puntero; evidencia: '+str(root))
+            if not re.search(r'call[^\n]*x86_64_sysvcc ptr \(ptr, \.\.\.\).*@sysv_return_ptr\(', ns_ir):
+                raise SystemExit(prefix+': falta convencion del retorno puntero; evidencia: '+str(root))
             run(prefix+'-ns', command)
             run(prefix+'-ns-run', [str(case/'result.exe')])
             print(prefix + ': C y NativeSharp pasaron', flush=True)
-if args.esperar_pendiente:
+if args.esperar_pendiente or args.esperar_punteros_pendientes or args.esperar_prefijo_pendiente:
     print('PENDIENTE: solo control C y rechazo', root)
     raise SystemExit(0)
 case = root/'estatica-O0'
@@ -87,7 +98,13 @@ for name in ('api.h', 'api.lib'):
     shutil.copyfile(case/name, producer/name)
 (producer/'Producer.ns').write_text(
     'namespace T09 { public class Bridge { public static int Run<T>(T unused) { '
-    'return sysv_varargs(3, (sbyte)-2, 2.25f, -5000000000L) == 1 ? 0 : 1; } } }', encoding='utf-8')
+    'if (sysv_varargs(3, (sbyte)-2, 2.25f, -5000000000L) != 1) return 1; '
+    'short s = -1234; T09VarRecord record; record.x = 42; record.y = 0; sbyte b = -12; '
+    'if (sysv_ptrs(3, &s, &record, &b) != 1 || s != 1234 || record.x != 43 || b != 12) return 2; '
+    'if (sysv_empty(0) != 1 || sysv_floatspill(9, 2.25f, 2.25f, 2.25f, 2.25f, 2.25f, 2.25f, 2.25f, 2.25f, 3.5) != 1) return 3; '
+    's = -1234; record.x = 42; if (sysv_fixed_ptrs(&record, &s, (sbyte)-7, 2.25f) != 1 || s != 1234 || record.x != 43) return 4; '
+    'if (sysv_return_ptr(&record, 7) != &record || record.x != 44) return 5; '
+    'return 0; } } }', encoding='utf-8')
 (producer/'Producer.nsproj').write_text(
     '<Project><PropertyGroup><Name>SysvVarProducer</Name><OutputType>Library</OutputType></PropertyGroup>'
     '<ItemGroup><Compile Include="Producer.ns"/><CppLibraryReference Header="api.h" Language="C" '
