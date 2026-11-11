@@ -1080,8 +1080,23 @@ del rechazo de conversion incompatible (`A:/temp/nsc-t09-sysv-indirecta-7roifs2d
 Pasaron transporte, ABI e identidad (`A:/temp/t09-transport-directed/`) y las
 regresiones de llamadas, SysV y variadicas (`A:/temp/nsc-t09-llamadas-b5nmhjsw`,
 `A:/temp/nsc-t09-sysv-prueba-sniutyu0`, `A:/temp/nsc-t09-sysv-varargs-rud7djst`).
-Booleanos, enteros estrechos, variadicas, agregados y creacion de callbacks
-siguen pendientes en la ruta indirecta; no se acredita cada combinacion posible.
+En esa revision, booleanos, enteros estrechos, variadicas, agregados y creacion
+de callbacks seguian pendientes; no se acreditaba cada combinacion posible.
+
+La ruta indirecta se amplio despues a `signed char`, `unsigned char`, `short`,
+`unsigned short` y `_Bool` como argumento y retorno. Antes del cambio el
+control C pasaba y NSC rechazaba la firma
+(`A:/temp/nsc-t09-sysv-indirecta-bz7n6r7q`). Las pruebas comparan valores y
+atributos `signext` o `zeroext` en LLVM tanto para Clang como para NSC,
+incluida la plantilla precompilada sin encabezado. Pasaron estatica y DLL
+O0–O3 (`A:/temp/nsc-t09-sysv-indirecta-matriz-b5merp0r`) y los controles
+dirigidos y rechazos existentes (`A:/temp/nsc-t09-sysv-indirecta-fqdjm5n7`,
+`A:/temp/t09-transport-directed/`). Tambien pasaron las regresiones de llamadas
+y SysV (`A:/temp/nsc-t09-llamadas-e_t90z2s`,
+`A:/temp/nsc-t09-sysv-prueba-g_yx1bs9`). El primer control de IR requirio
+aceptar el atributo adicional `noundef` de Clang y se corrigieron nombres NS
+que eran palabras reservadas; ambos intentos se conservan en temporales.
+Variadicas, agregados y creacion de callbacks siguen pendientes.
 
 ## Retorno indirecto sin argumentos byval
 

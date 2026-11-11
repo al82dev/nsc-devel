@@ -1072,7 +1072,9 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         const bool sysvCall = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::SysV;
         const auto sysvScalar = [](std::string_view key) {
             return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" ||
-                key == "builtin:ulong" || key == "builtin:float" || key == "builtin:double" || key.ends_with('*');
+                key == "builtin:ulong" || key == "builtin:float" || key == "builtin:double" ||
+                key == "builtin:sbyte" || key == "builtin:byte" || key == "builtin:short" ||
+                key == "builtin:ushort" || key == "builtin:bool" || key.ends_with('*');
         };
         if (sysvCall && (structuralFunction->variadic || (returnTypeKey != "builtin:void" && !sysvScalar(returnTypeKey)) ||
             std::any_of(argumentTypeKeys.begin(), argumentTypeKeys.end(),
@@ -1114,11 +1116,22 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             returnType == LLVMVoidTypeInContext(context_) ? "" : "cabi.callback.result");
         auto addBoolAttribute = [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
             { LLVMAddCallSiteAttribute(call, index, attribute); };
+        const auto applySysVExtension = [&](std::string_view key, unsigned index) {
+            const std::string_view name = key == "builtin:sbyte" || key == "builtin:short" ? "signext" :
+                key == "builtin:byte" || key == "builtin:ushort" ? "zeroext" : "";
+            if (name.empty()) return;
+            const unsigned kind = llvm_api::LLVMGetEnumAttributeKindForName(name.data(), name.size());
+            if (kind == 0) return;
+            const auto attribute = llvm_api::LLVMCreateEnumAttribute(context_, kind, 0);
+            if (attribute != nullptr) LLVMAddCallSiteAttribute(call, index, attribute);
+        };
+        if (sysvCall) applySysVExtension(returnTypeKey, 0);
         if (returnTypeKey == "builtin:bool" && returnType == LLVMInt1TypeInContext(context_))
             applyBoolZeroExtension(context_, 0, addBoolAttribute);
         for (std::size_t index = 0; index < fixedParameterCount; ++index)
         {
             const std::size_t position = index + (sretReturn ? 1U : 0U);
+            if (sysvCall) applySysVExtension(argumentTypeKeys[index], static_cast<unsigned>(position + 1));
             if (argumentTypeKeys[index] == "builtin:bool" &&
                 LLVMTypeOf(callArguments[position]) == LLVMInt1TypeInContext(context_))
                 applyBoolZeroExtension(context_, static_cast<unsigned>(position + 1), addBoolAttribute);

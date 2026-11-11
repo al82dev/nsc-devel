@@ -11,6 +11,12 @@ int Main() {
     if (uintCallback((uint)4000000000) != (uint)4000000007) return 7;
     T09ULongCallback ulongCallback = t09_get_ulong_callback();
     if (ulongCallback((ulong)5000000000, (uint)7) != (ulong)5000000007) return 8;
+    T09S8Callback signed8 = t09_get_s8_callback(); T09U8Callback unsigned8 = t09_get_u8_callback();
+    if (signed8((sbyte)-7) != (sbyte)-6 || unsigned8((byte)250) != (byte)251) return 9;
+    T09S16Callback signed16 = t09_get_s16_callback(); T09U16Callback unsigned16 = t09_get_u16_callback();
+    if (signed16((short)-1000) != (short)-999 || unsigned16((ushort)65000) != (ushort)65001) return 10;
+    T09BoolCallback boolean = t09_get_bool_callback();
+    if (boolean(true) != false || boolean(false) != true) return 11;
     int x = 10;
     T09PointerCallback pointer = t09_get_pointer_callback();
     if (pointer(&x, 3) != &x || x != 13) return 5;

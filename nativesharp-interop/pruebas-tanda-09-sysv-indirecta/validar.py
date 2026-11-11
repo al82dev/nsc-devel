@@ -41,6 +41,10 @@ ir = (root/'control.ll').read_text(encoding='utf-8')
 for result_type in ('i32', 'i64', 'double', 'float', 'ptr', 'void'):
     if not re.search(r'call\s+x86_64_sysvcc\s+'+result_type+r'\s+%[^\(]+\(', ir):
         raise SystemExit('Clang no emitio la convencion SysV indirecta para '+result_type+'; evidencia: '+str(root))
+for bits, extension in ((8, 'signext'), (8, 'zeroext'), (16, 'signext'), (16, 'zeroext'), (1, 'zeroext')):
+    pattern = r'call\s+x86_64_sysvcc\s+'+extension+r'\s+i'+str(bits)+r'\s+%[^\(]+\(i'+str(bits)+r'\s+(?:noundef\s+)?'+extension
+    if not re.search(pattern, ir):
+        raise SystemExit('Clang no emitio '+extension+' i'+str(bits)+'; evidencia: '+str(root))
 run('control-obj', ['clang.exe', *flags, '-c', str(root/'Control.c'), '-o', str(root/'control.obj')])
 run('control-link', ['lld-link.exe', '/nologo', '/entry:main', '/subsystem:console', '/nodefaultlib',
     '/out:' + str(root/'control.exe'), str(root/'control.obj'), str(root/'api.lib')])
@@ -48,6 +52,10 @@ run('control-run', [str(root/'control.exe')])
 print('Control C y convencion indirecta de Clang: OK', flush=True)
 common = [str(root/'Static.nsproj'), '--cpp-clang-root=' + args.clang_root, '--library-reference-root', str(root)]
 ns_ir = run('ns-ir', [args.nsc, '--dump-project-oop-llvm', *common])
+for bits, extension in ((8, 'signext'), (8, 'zeroext'), (16, 'signext'), (16, 'zeroext'), (1, 'zeroext')):
+    pattern = r'call\s+x86_64_sysvcc\s+'+extension+r'\s+i'+str(bits)+r'\s+%[^\(]+\(i'+str(bits)+r'\s+(?:noundef\s+)?'+extension
+    if not re.search(pattern, ns_ir):
+        raise SystemExit('NativeSharp no emitio '+extension+' i'+str(bits)+'; evidencia: '+str(root))
 if not re.search(r'call\s+x86_64_sysvcc\s+i32\s+%[^\(]+\(i32', ns_ir):
     raise SystemExit('NativeSharp no emitio la convencion SysV indirecta; evidencia: ' + str(root))
 run('ns-build', [args.nsc, '--emit-project-oop-exe', *common, '--no-artifact-cache', '-O0', '-o', str(root/'ns.exe')])

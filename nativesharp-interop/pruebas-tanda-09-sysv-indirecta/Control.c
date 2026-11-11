@@ -8,6 +8,9 @@ int main(void) {
     if (t09_get_wide_callback()(-5000000000LL, 7U) != -4999999993LL) return 4;
     if (t09_get_uint_callback()(4000000000U) != 4000000007U) return 7;
     if (t09_get_ulong_callback()(5000000000ULL, 7U) != 5000000007ULL) return 8;
+    if (t09_get_s8_callback()(-7) != -6 || t09_get_u8_callback()(250) != 251) return 9;
+    if (t09_get_s16_callback()(-1000) != -999 || t09_get_u16_callback()(65000) != 65001) return 10;
+    if (t09_get_bool_callback()(1) != 0 || t09_get_bool_callback()(0) != 1) return 11;
     int x = 10;
     if (t09_get_pointer_callback()(&x, 3) != &x || x != 13) return 5;
     t09_get_void_callback()(&x);
