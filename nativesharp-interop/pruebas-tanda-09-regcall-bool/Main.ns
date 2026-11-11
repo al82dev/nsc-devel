@@ -1,0 +1,2 @@
+int Main() { T09RegCallback callback = t09_get_callback(); fn* regcall(bool) -> bool typed = callback;
+return t09_regcall(true) || !t09_regcall(false) || typed(true) || !typed(false) ? 1 : 0; }

@@ -1,0 +1,1 @@
+int Main() { return T09Cpp.calculate(true) || !T09Cpp.calculate(false) ? 1 : 0; }

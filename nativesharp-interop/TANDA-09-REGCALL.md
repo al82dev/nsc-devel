@@ -83,6 +83,30 @@ sondas (`A:/temp/t09-test-varptr.log`) y transporte/ABI/identidad
 (`A:/temp/t09-transport-directed/`). Las muestras no acreditan todas las
 firmas; T09-003 permanece abierto.
 
+## Booleanos en regcall
+
+Clang emite retorno y parametro `zeroext i1` para la muestra C
+(`A:/temp/t09-regcall-bool-oracle.ll`). El control C paso estatica/DLL O0-O3
+(`A:/temp/nsc-t09-regcall-bool-mo0_8jfu`) y NSC rechazaba la firma
+(`A:/temp/nsc-t09-regcall-bool-sf5c4q5d`). Tras admitir `bool`, pasaron ocho
+comparaciones C/NS directas e indirectas, atributos LLVM y cache
+(`A:/temp/nsc-t09-regcall-bool-49mk19wx`) y 16 consumidores precompilados
+(`A:/temp/nsc-t09-regcall-bool-precompilado-4pjozy4x`).
+
+Clang usa los mismos atributos para la funcion C++ en namespace
+(`A:/temp/t09-regcall-cpp-bool-oracle.ll`). Pasaron ocho comparaciones C++/NS
+y atributos de retorno y parametro
+(`A:/temp/nsc-t09-regcall-cpp-bool-t5ygpqqm`) y 16 consumidores precompilados
+(`A:/temp/nsc-t09-regcall-cpp-bool-precompilado-mv1zh0m4`). Pasaron el rechazo
+de firmas `double` y conversiones incompatibles
+(`A:/temp/nsc-t09-regcall-negativo-sund5oti`,
+`A:/temp/nsc-t09-regcall-conversiones-5dolgxv6`), la regresion precompilada
+de enteros estrechos
+(`A:/temp/nsc-t09-regcall-estrechos-precompilado-zfzwi8eh`), cuatro sondas
+(`A:/temp/t09-test-varptr.log`) y transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`). La muestra C++ indirecta y otras firmas
+siguen pendientes; T09-003 permanece abierto.
+
 ## Funcion libre C++ en namespace
 
 Clang emitio el simbolo `?calculate@T09Cpp@@YwHHHH@Z` y `x86_regcallcc`

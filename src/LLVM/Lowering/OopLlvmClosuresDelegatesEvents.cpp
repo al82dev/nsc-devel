@@ -1077,7 +1077,7 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         const auto regCallScalar = [](std::string_view key) {
             return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" ||
                 key == "builtin:ulong" || key == "builtin:float" || key == "builtin:sbyte" ||
-                key == "builtin:byte" || key == "builtin:short" || key == "builtin:ushort";
+                key == "builtin:byte" || key == "builtin:short" || key == "builtin:ushort" || key == "builtin:bool";
         };
         if (regCall && (!structuralFunction || structuralFunction->variadic ||
             (!regCallScalar(returnTypeKey) && returnTypeKey != "builtin:void" && returnTypeKey != "builtin:int*") ||
