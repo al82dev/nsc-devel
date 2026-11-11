@@ -193,3 +193,23 @@ Las muestras incluyen enteros sin signo cercanos al limite de 64 bits.
 Pasaron regresiones booleanas, estrechas y de retornos `void`/`int*`
 (A:/temp/t09-preserve-scalar-reg-*.log). Otras firmas y tipos siguen pendientes;
 T09-003 y la tanda 9 permanecen abiertos.
+
+## Punteros a otros tipos
+
+Una muestra C recibe `unsigned char*`, `short*` y `void*`, y retorna los dos
+punteros tipados, mediante llamadas directas e indirectas `preserve_most` y
+`preserve_all`. Comprueba identidad de punteros y funciones, y escritura en la
+memoria apuntada. Los controles C pasaron
+(A:/temp/nsc-t09-preserve-punteros-wokbnysd), pero NSC rechazaba esas firmas
+(A:/temp/nsc-t09-preserve-punteros-584uvhqw); el IR de Clang esta en
+A:/temp/t09-preserve-pointers-oracle.ll.
+
+Los filtros de ambas rutas reconocen ahora punteros por su identidad, en vez de
+limitarse a `int*`. Pasaron ocho comparaciones C/NS, IR y cache
+(A:/temp/nsc-t09-preserve-punteros-wxo8_2qd) y 16 consumidores precompilados
+con y sin encabezado (A:/temp/nsc-t09-preserve-punteros-precompilado-a45o5tdz).
+Pasaron regresiones de `int*` y firmas mixtas
+(A:/temp/nsc-t09-preserve-retornos-ar3k5utt y
+A:/temp/nsc-t09-preserve-indirecta-mixta-twdz1c9l). No se acredita con estas
+pruebas la interoperabilidad de todos los tipos apuntados; quedan pendientes
+records, punteros multiples y otras firmas. T09-003 y la tanda 9 siguen abiertos.

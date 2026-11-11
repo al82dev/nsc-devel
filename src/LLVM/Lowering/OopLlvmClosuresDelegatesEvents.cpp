@@ -1080,11 +1080,11 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" || key == "builtin:ulong" ||
                 key == "builtin:sbyte" || key == "builtin:byte" || key == "builtin:short" ||
                 key == "builtin:ushort" || key == "builtin:bool" || key == "builtin:float" ||
-                key == "builtin:double" || key == "builtin:int*";
+                key == "builtin:double" || key.ends_with('*');
         };
         if ((preserveMost || preserveAll) && (structuralFunction->variadic ||
             (returnTypeKey != "builtin:int" && returnTypeKey != "builtin:long" && returnTypeKey != "builtin:double" &&
-             returnTypeKey != "builtin:void" && returnTypeKey != "builtin:int*" && returnTypeKey != "builtin:bool" &&
+             returnTypeKey != "builtin:void" && !returnTypeKey.ends_with('*') && returnTypeKey != "builtin:bool" &&
              returnTypeKey != "builtin:sbyte" && returnTypeKey != "builtin:byte" &&
              returnTypeKey != "builtin:short" && returnTypeKey != "builtin:ushort" &&
              returnTypeKey != "builtin:uint" && returnTypeKey != "builtin:ulong" && returnTypeKey != "builtin:float") ||

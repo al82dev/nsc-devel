@@ -1815,12 +1815,12 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 return type == "builtin:int" || type == "builtin:uint" || type == "builtin:long" || type == "builtin:ulong" ||
                     type == "builtin:sbyte" || type == "builtin:byte" || type == "builtin:short" ||
                     type == "builtin:ushort" || type == "builtin:float" || type == "builtin:double" ||
-                    type == "builtin:bool" || type == "builtin:int*";
+                    type == "builtin:bool" || type.ends_with('*');
             };
             if ((function.cppPreserveMost || function.cppPreserveAll) &&
                 (function.isVariadic || (function.returnTypeKey != "builtin:int" &&
                  function.returnTypeKey != "builtin:long" && function.returnTypeKey != "builtin:double" &&
-                 function.returnTypeKey != "builtin:void" && function.returnTypeKey != "builtin:int*" &&
+                 function.returnTypeKey != "builtin:void" && !function.returnTypeKey.ends_with('*') &&
                  function.returnTypeKey != "builtin:bool" && function.returnTypeKey != "builtin:sbyte" &&
                  function.returnTypeKey != "builtin:byte" && function.returnTypeKey != "builtin:short" &&
                  function.returnTypeKey != "builtin:ushort" && function.returnTypeKey != "builtin:uint" &&
