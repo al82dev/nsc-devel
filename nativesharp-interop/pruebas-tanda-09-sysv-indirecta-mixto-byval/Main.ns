@@ -1,0 +1,8 @@
+int Main() {
+    T09SplitValue small; small.x = 1.5; small.y = 7;
+    T09ByvalValue large; large.a = 1; large.b = 2; large.c = 3; large.d = 4; large.e = 5;
+    T09SplitByvalCallback callback = t09_get_split_byval_callback();
+    if (callback(3, small, large, 10) != 42 || small.x != 1.5 || small.y != 7 ||
+        large.a != 1 || large.b != 2 || large.c != 3 || large.d != 4 || large.e != 5) return 1;
+    return 0;
+}

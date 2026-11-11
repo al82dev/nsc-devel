@@ -1200,6 +1200,18 @@ transporte/ABI/identidad
 `A:/temp/t09-transport-directed/`). El resultado cubre esta muestra concreta;
 otras formas y la contradiccion de la prueba negativa anterior siguen abiertas.
 
+**Piezas y `byval` en una misma llamada:** un control nuevo combina un entero,
+un record `double`/`int`, un record de cinco enteros y otro entero. Clang y
+NSC coinciden en el orden de las piezas y la posicion del atributo `byval`; la
+ejecucion conserva ambos originales
+(`A:/temp/nsc-t09-sysv-indirecta-dos-records-qo0am89s`). La muestra paso ocho
+comparaciones directas estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-record-matriz-il0nmmd9`) y ejecuciones desde
+plantilla precompilada sin encabezado en las mismas modalidades, con acierto de
+cache y rechazo de alteraciones en cada record
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-um8nmmxm`). No se modifico el
+compilador para este contraste y no se acreditan otras combinaciones.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor
