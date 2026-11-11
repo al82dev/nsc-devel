@@ -2096,8 +2096,30 @@ bool checkDependencyTypeCodec()
     inconsistentVectorPlan.logicalParameters[1].byValue = true;
     ok &= expect(!abi_plan::isSysVIndirectRecordWithArguments(inconsistentVectorPlan, recordFunction.linkSymbol),
         "indirect SysV plan rejects direct pieces with indirect attributes");
+    auto mixedWithoutByval = std::make_shared<abi_plan::Plan>(*mixedIndirectPlan);
+    mixedWithoutByval->logicalParameters.pop_back();
+    mixedWithoutByval->physicalParameters.pop_back();
+    recordFunction.declaration.parameters.resize(3);
+    recordFunction.declaration.parameters[1].type.sizeBits = 128;
+    recordFunction.declaration.parameters[1].type.alignmentBits = 64;
+    recordFunction.declaration.abiPlan = mixedWithoutByval;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVIndirectRecordWithArguments(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->logicalParameters.size() == 3,
+        "C dependency function retains an indirect return without byval arguments");
     recordFunction.declaration.returnType.sizeBits = 192;
     recordFunction.declaration.returnType.alignmentBits = 8;
+    auto sretOnly = std::make_shared<abi_plan::Plan>(*indirectPlan);
+    sretOnly->logicalParameters.clear();
+    sretOnly->physicalParameters.resize(1);
+    recordFunction.declaration.parameters.clear();
+    recordFunction.declaration.abiPlan = sretOnly;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVIndirectRecordWithArguments(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->physicalParameters.size() == 1,
+        "C dependency function retains an indirect return without parameters");
     recordFunction.declaration.parameters.resize(1);
     recordFunction.declaration.parameters[0] = indirectRecordParameter;
     recordFunction.declaration.abiPlan = indirectPlan;

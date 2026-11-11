@@ -279,13 +279,12 @@ inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
         plan.returnSignExtend || plan.returnZeroExtend || plan.physicalReturn.kind != TypeKind::Void ||
         plan.logicalReturn.passing != Passing::Indirect || alignment == 0 || alignment > (1ULL << 29) ||
-        (alignment & (alignment - 1)) != 0 || plan.logicalParameters.size() < 2 ||
-        plan.physicalParameters.empty()) return false;
+        (alignment & (alignment - 1)) != 0 || plan.physicalParameters.empty() ||
+        (plan.logicalParameters.size() == 1 && plan.logicalParameters[0].passing == Passing::Indirect)) return false;
     const auto& result = plan.physicalParameters[0];
     if (result.type.kind != TypeKind::Pointer || result.type.widthOrCount != 0 || !result.pointee ||
         !result.structureReturn || result.alignment != alignment || result.byValue || result.inRegister ||
         result.signExtend || result.zeroExtend) return false;
-    bool hasRecord = false;
     std::size_t physicalIndex = 1;
     for (std::size_t i = 0; i < plan.logicalParameters.size(); ++i)
     {
@@ -300,7 +299,6 @@ inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view
                 (logical.alignment & (logical.alignment - 1)) != 0 || !physical.byValue ||
                 physical.type.kind != TypeKind::Pointer || physical.type.widthOrCount != 0 ||
                 !physical.pointee || physical.alignment != logical.alignment) return false;
-            hasRecord = true;
             ++physicalIndex;
             continue;
         }
@@ -330,6 +328,6 @@ inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view
               (physical.type.kind == TypeKind::Pointer && physical.type.widthOrCount == 0))) return false;
         ++physicalIndex;
     }
-    return hasRecord && physicalIndex == plan.physicalParameters.size();
+    return physicalIndex == plan.physicalParameters.size();
 }
 }

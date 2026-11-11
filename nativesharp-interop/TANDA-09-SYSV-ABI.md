@@ -537,6 +537,27 @@ La muestra no acredita todos los layouts ni firmas arbitrarias con records y esc
 varios records indirectos, callbacks u otras clasificaciones. T09-003 permanece
 abierto.
 
+## Retorno indirecto sin argumentos byval
+
+Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin
+parametros y otra que recibe `float`, un record directo `double`/`i32` e
+`int`, ambas con retorno indirecto de 20 bytes y sin argumentos `byval`
+(A:/temp/nsc-t09-sysv-sret-empty-z9woiblv y
+A:/temp/nsc-t09-sysv-sret-mixed-7gjer3n_). Se amplio el consumo del plan para
+esas formas sin exigir un argumento indirecto; el retorno y sus posiciones
+siguen determinados por Clang.
+
+Ambas muestras pasaron las ocho comparaciones estatica/DLL O0–O3 y una
+plantilla precompilada sin encabezado O0; la muestra con parametros incluye
+argumentos nombrados (A:/temp/nsc-t09-sysv-sret-empty-cro5g_bd y
+A:/temp/nsc-t09-sysv-sret-mixed-h3wj0z0u). La sonda de Clang y el control de
+metadatos verificaron las dos formas (A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log). Pasaron la regresion con pieza vectorial y
+argumento indirecto y el control general con su rechazo pendiente
+(A:/temp/nsc-t09-sysv-class-vf-gf8vy5gm y
+A:/temp/nsc-t09-sysv-prueba-07ho5f3y). No se acreditan todas las firmas ni
+las clases de agregado; T09-003 sigue abierto.
+
 ## Clases adicionales de piezas directas con retorno indirecto
 
 Se amplio la validacion de las clases fisicas observadas por Clang para
