@@ -1191,8 +1191,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             return key.starts_with("type:") && !key.ends_with('*');
         };
         if (externC && node->cppVariadicCallPlan &&
-            (node->typeKey == "builtin:int" || node->typeKey == "builtin:double" ||
-             node->typeKey == "builtin:void" || node->typeKey == "builtin:int*") &&
+            (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint" || node->typeKey == "builtin:ulong" ||
+             node->typeKey == "builtin:double" || node->typeKey == "builtin:void" || node->typeKey == "builtin:int*") &&
             node->argumentCount >= 2 && node->argumentCount <= 1025 &&
             node->argumentTypeKeys.size() == node->argumentCount &&
             std::any_of(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), recordArgument) &&
@@ -1208,8 +1208,10 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 signature->parameters.empty() || signature->parameters.size() >= node->argumentCount ||
                 !interop::validateCppVariadicSysVCallPlan(plan, "__nsc_variadic_pointer_abi_probe", signature->parameters.size()) ||
                 plan.arguments.size() != node->argumentCount ||
-                (node->typeKey == "builtin:int" && (plan.physicalReturn.kind != TypeKind::Integer ||
+                ((node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") && (plan.physicalReturn.kind != TypeKind::Integer ||
                                                      plan.physicalReturn.widthOrCount != 32)) ||
+                (node->typeKey == "builtin:ulong" && (plan.physicalReturn.kind != TypeKind::Integer ||
+                                                       plan.physicalReturn.widthOrCount != 64)) ||
                 (node->typeKey == "builtin:double" && plan.physicalReturn.kind != TypeKind::Double) ||
                 (node->typeKey == "builtin:void" && plan.physicalReturn.kind != TypeKind::Void) ||
                 (node->typeKey == "builtin:int*" && plan.physicalReturn.kind != TypeKind::Pointer))
@@ -1318,7 +1320,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             releaseTransferredArguments(node);
             delegateValue = checkedReceiver(delegateValue, error);
             if (!delegateValue) return nullptr;
-            LLVMTypeRef returnType = node->typeKey == "builtin:int" ? LLVMInt32TypeInContext(context_) :
+            LLVMTypeRef returnType = (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") ? LLVMInt32TypeInContext(context_) :
+                node->typeKey == "builtin:ulong" ? LLVMInt64TypeInContext(context_) :
                 node->typeKey == "builtin:double" ? LLVMDoubleTypeInContext(context_) :
                 node->typeKey == "builtin:int*" ? LLVMPointerTypeInContext(context_, 0) : LLVMVoidTypeInContext(context_);
             LLVMTypeRef functionType = LLVMFunctionType(returnType, fixedTypes.data(),
