@@ -91,6 +91,7 @@ inline bool isSysVMixedRecordRoundTrip(const Plan& plan, std::string_view symbol
         return (first.kind == TypeKind::Double && second.kind == TypeKind::Integer && second.widthOrCount == 32) ||
                (first.kind == TypeKind::Double && second.kind == TypeKind::Double) ||
                (first.kind == TypeKind::Double && second.kind == TypeKind::Float) ||
+               (first.kind == TypeKind::Float && second.kind == TypeKind::Double) ||
                (first.kind == TypeKind::Integer && first.widthOrCount == 64 &&
                 (second.kind == TypeKind::Double || second.kind == TypeKind::Float || vector2f(second))) ||
                (vector2f(first) && vector2f(second)) ||

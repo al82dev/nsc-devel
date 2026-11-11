@@ -1,0 +1,6 @@
+int Main() {
+    T09SysvMixedFD original; original.x = 1.5f; original.y = 2;
+    T09SysvMixedFD result = sysv_mixed_fd(original);
+    if (original.x != 1.5f || original.y != 2 || result.x != 11.5f || result.y != 2) return 1;
+    return 0;
+}

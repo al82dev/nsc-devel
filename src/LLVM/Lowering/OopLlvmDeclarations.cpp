@@ -34,6 +34,8 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                 {
                     LLVMTypeRef first = function.cppAbiPlan->physicalReturn.elements[0].kind == interop::abi_plan::TypeKind::Double
                         ? LLVMDoubleTypeInContext(context_) :
+                        function.cppAbiPlan->physicalReturn.elements[0].kind == interop::abi_plan::TypeKind::Float
+                        ? LLVMFloatTypeInContext(context_) :
                         function.cppAbiPlan->physicalReturn.elements[0].kind == interop::abi_plan::TypeKind::Vector
                         ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) : LLVMInt64TypeInContext(context_);
                     LLVMTypeRef second = function.cppAbiPlan->physicalReturn.elements[1].kind == interop::abi_plan::TypeKind::Double

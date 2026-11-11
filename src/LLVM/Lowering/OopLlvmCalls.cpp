@@ -889,6 +889,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
             LLVMTypeRef firstType = imported->cppAbiPlan->physicalReturn.elements[0].kind == interop::abi_plan::TypeKind::Double
                 ? LLVMDoubleTypeInContext(context_) :
+                imported->cppAbiPlan->physicalReturn.elements[0].kind == interop::abi_plan::TypeKind::Float
+                ? LLVMFloatTypeInContext(context_) :
                 imported->cppAbiPlan->physicalReturn.elements[0].kind == interop::abi_plan::TypeKind::Vector
                 ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) : i64;
             LLVMTypeRef secondType = imported->cppAbiPlan->physicalReturn.elements[1].kind == interop::abi_plan::TypeKind::Double
