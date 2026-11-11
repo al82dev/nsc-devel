@@ -91,6 +91,8 @@ desplazamiento cero; R24 tiene retorno y argumento indirectos, con `byval` y
 alineacion 8; signed char usa el plan de extension. La prueba ampliada paso
 1/1 con A:/temp/t09-abi-probe-ctest.log. Estos son hechos de las muestras,
 no una especificacion completa de todas las clasificaciones o atributos.
+El trabajo para transportar ese plan a NSC esta descrito en
+[TANDA-09-PLAN-ABI-CLANG.md](TANDA-09-PLAN-ABI-CLANG.md).
 
 No se afirma compatibilidad de SysV con agregados, otros escalares o punteros,
 variadicas, punteros de funcion, aislamiento TLS ni otros destinos. No se han cambiado

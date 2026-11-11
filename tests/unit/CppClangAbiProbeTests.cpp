@@ -13,8 +13,10 @@
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/Support/raw_ostream.h>
 #include <memory>
+#include <map>
 #include <string>
 #include <vector>
+#include "../../nativesharp-interop/pruebas-tanda-09-sysv/ClangAbiSnapshot.h"
 
 int main() {
     const char* source = R"c(
@@ -22,11 +24,13 @@ int main() {
         typedef struct R16 { long long x, y; } R16;
         typedef struct R24 { long long x, y, z; } R24;
         typedef struct RF { double x; int y; } RF;
+        typedef float Vec4 __attribute__((vector_size(16)));
         R3 __attribute__((sysv_abi)) p3(R3);
         R16 __attribute__((sysv_abi)) p16(R16);
         RF __attribute__((sysv_abi)) pf(RF);
         R24 __attribute__((sysv_abi)) p24(R24);
         signed char __attribute__((sysv_abi)) ps8(signed char);
+        Vec4 __attribute__((sysv_abi)) pv(Vec4);
     )c";
     auto ast = clang::tooling::buildASTFromCodeWithArgs(source,
         {"-x", "c", "-std=c11", "-target", "x86_64-pc-windows-msvc"}, "probe.c");
@@ -39,10 +43,18 @@ int main() {
     if (!generator) return 2;
     generator->Initialize(context);
     unsigned matched = 0;
+    bool unsupportedRejected = false;
+    std::map<std::string, t09_probe::Plan> copiedPlans;
     for (const auto* decl : context.getTranslationUnitDecl()->decls()) {
         const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
         if (!function || !function->getIdentifier()) continue;
         const std::string name = function->getNameAsString();
+        if (name == "pv") {
+            std::string error;
+            if (t09_probe::copyPlan(*generator, *function, error) || error.empty()) return 25;
+            unsupportedRejected = true;
+            continue;
+        }
         if (name != "p3" && name != "p16" && name != "pf" && name != "p24" && name != "ps8") continue;
         auto* physical = clang::CodeGen::convertFreeFunctionType(generator->CGM(), function);
         clang::CanQual<clang::FunctionProtoType> prototype =
@@ -50,6 +62,10 @@ int main() {
         if (!prototype) return 12;
         const auto& plan = clang::CodeGen::arrangeFreeFunctionType(generator->CGM(), prototype);
         if (plan.arg_size() != 1) return 13;
+        std::string copyError;
+        auto copied = t09_probe::copyPlan(*generator, *function, copyError);
+        if (!copied) { llvm::errs() << copyError << "\n"; return 19; }
+        copiedPlans.emplace(name, std::move(*copied));
         if (!physical || !generator->GetAddrOfGlobal(clang::GlobalDecl(function), false)) return 3;
         auto* llvmFunction = generator->GetModule()->getFunction(generator->GetMangledName(clang::GlobalDecl(function)));
         if (!llvmFunction || llvmFunction->getFunctionType() != physical ||
@@ -95,5 +111,28 @@ int main() {
         if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
-    return matched == 5 ? 0 : 7;
+    if (matched != 5 || copiedPlans.size() != 5 || !unsupportedRejected) return 7;
+    generator.reset();
+    ast.reset();
+    const auto& p3 = copiedPlans.at("p3");
+    if (p3.physicalReturn.kind != t09_probe::TypeKind::Integer || p3.physicalReturn.widthOrCount != 24 ||
+        p3.logicalParameters.size() != 1 || p3.logicalParameters[0].passing != t09_probe::Passing::Direct ||
+        !p3.logicalParameters[0].coercion || p3.logicalParameters[0].coercion->widthOrCount != 24) return 20;
+    const auto& p16 = copiedPlans.at("p16");
+    if (p16.physicalReturn.kind != t09_probe::TypeKind::Structure || p16.physicalReturn.elements.size() != 2 ||
+        p16.physicalParameters.size() != 2 || p16.physicalParameters[0].type.widthOrCount != 64 ||
+        p16.physicalParameters[1].type.widthOrCount != 64) return 21;
+    const auto& pf = copiedPlans.at("pf");
+    if (pf.physicalParameters.size() != 2 || pf.physicalParameters[0].type.kind != t09_probe::TypeKind::Double ||
+        pf.physicalParameters[1].type.widthOrCount != 32) return 22;
+    const auto& p24 = copiedPlans.at("p24");
+    if (p24.logicalParameters[0].passing != t09_probe::Passing::Indirect ||
+        !p24.logicalParameters[0].byValue || p24.logicalParameters[0].alignment != 8 ||
+        p24.physicalParameters.size() != 2 || !p24.physicalParameters[0].structureReturn ||
+        !p24.physicalParameters[1].byValue || !p24.physicalParameters[1].pointee ||
+        p24.physicalParameters[1].alignment != 8) return 23;
+    const auto& ps8 = copiedPlans.at("ps8");
+    if (!ps8.returnSignExtend || !ps8.logicalParameters[0].signExtend ||
+        !ps8.physicalParameters[0].signExtend) return 24;
+    return 0;
 }

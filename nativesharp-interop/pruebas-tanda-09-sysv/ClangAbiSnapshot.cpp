@@ -1,0 +1,145 @@
+#include "ClangAbiSnapshot.h"
+
+#include <clang/AST/ASTContext.h>
+#include <clang/AST/Decl.h>
+#include <clang/AST/GlobalDecl.h>
+#include <clang/CodeGen/CodeGenABITypes.h>
+#include <clang/CodeGen/ModuleBuilder.h>
+#include <llvm/IR/Attributes.h>
+#include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/Function.h>
+#include <llvm/IR/Module.h>
+
+namespace t09_probe
+{
+namespace
+{
+std::optional<Type> copyType(const llvm::Type* input, unsigned depth)
+{
+    if (input == nullptr || depth > 32) return std::nullopt;
+    Type result;
+    if (input->isVoidTy()) result.kind = TypeKind::Void;
+    else if (input->isIntegerTy())
+    {
+        result.kind = TypeKind::Integer;
+        result.widthOrCount = input->getIntegerBitWidth();
+    }
+    else if (input->isFloatTy()) result.kind = TypeKind::Float;
+    else if (input->isDoubleTy()) result.kind = TypeKind::Double;
+    else if (input->isPointerTy())
+    {
+        result.kind = TypeKind::Pointer;
+        result.widthOrCount = input->getPointerAddressSpace();
+    }
+    else if (const auto* structure = llvm::dyn_cast<llvm::StructType>(input))
+    {
+        if (structure->isOpaque()) return std::nullopt;
+        result.kind = TypeKind::Structure;
+        result.packed = structure->isPacked();
+        for (const llvm::Type* member : structure->elements())
+        {
+            auto copied = copyType(member, depth + 1);
+            if (!copied) return std::nullopt;
+            result.elements.push_back(std::move(*copied));
+        }
+    }
+    else if (const auto* array = llvm::dyn_cast<llvm::ArrayType>(input))
+    {
+        result.kind = TypeKind::Array;
+        result.widthOrCount = array->getNumElements();
+        auto element = copyType(array->getElementType(), depth + 1);
+        if (!element) return std::nullopt;
+        result.elements.push_back(std::move(*element));
+    }
+    else return std::nullopt;
+    return result;
+}
+
+std::optional<LogicalValue> copyLogical(const clang::CodeGen::ABIArgInfo& input)
+{
+    LogicalValue result;
+    if (input.isDirect() || input.isExtend())
+    {
+        result.passing = input.isDirect() ? Passing::Direct : Passing::Extend;
+        result.offset = input.getDirectOffset();
+        result.alignment = input.getDirectAlign();
+        if (input.isDirect()) result.flatten = input.getCanBeFlattened();
+        if (input.isExtend())
+        {
+            result.signExtend = input.isSignExt();
+            result.zeroExtend = input.isZeroExt();
+        }
+        if (input.getCoerceToType())
+        {
+            result.coercion = copyType(input.getCoerceToType(), 0);
+            if (!result.coercion) return std::nullopt;
+        }
+    }
+    else if (input.isIndirect())
+    {
+        result.passing = Passing::Indirect;
+        result.alignment = static_cast<std::uint64_t>(input.getIndirectAlign().getQuantity());
+        result.byValue = input.getIndirectByVal();
+    }
+    else if (input.isIgnore()) result.passing = Passing::Ignore;
+    else return std::nullopt;
+    return result;
+}
+}
+
+std::optional<Plan> copyPlan(clang::CodeGenerator& generator,
+                             const clang::FunctionDecl& function,
+                             std::string& error)
+{
+    error.clear();
+    const auto canonical = function.getASTContext().getCanonicalType(function.getType());
+    clang::CanQual<clang::FunctionProtoType> prototype = canonical.getAs<clang::FunctionProtoType>();
+    if (!prototype) { error = "function prototype unavailable"; return std::nullopt; }
+    auto* physical = clang::CodeGen::convertFreeFunctionType(generator.CGM(), &function);
+    if (!physical || !generator.GetAddrOfGlobal(clang::GlobalDecl(&function), false))
+    { error = "physical function unavailable"; return std::nullopt; }
+    auto* declaration = generator.GetModule()->getFunction(generator.GetMangledName(clang::GlobalDecl(&function)));
+    if (!declaration || declaration->getFunctionType() != physical)
+    { error = "physical declaration unavailable"; return std::nullopt; }
+    const auto& logical = clang::CodeGen::arrangeFreeFunctionType(generator.CGM(), prototype);
+    Plan result;
+    result.callingConvention = declaration->getCallingConv();
+    result.variadic = physical->isVarArg();
+    result.returnSignExtend = declaration->hasRetAttribute(llvm::Attribute::SExt);
+    result.returnZeroExtend = declaration->hasRetAttribute(llvm::Attribute::ZExt);
+    auto returnType = copyType(physical->getReturnType(), 0);
+    auto returnInfo = copyLogical(logical.getReturnInfo());
+    if (!returnType || !returnInfo) { error = "return plan not represented"; return std::nullopt; }
+    result.physicalReturn = std::move(*returnType);
+    result.logicalReturn = std::move(*returnInfo);
+    for (const auto& argument : logical.arguments())
+    {
+        auto value = copyLogical(argument.info);
+        if (!value) { error = "logical argument plan not represented"; return std::nullopt; }
+        result.logicalParameters.push_back(std::move(*value));
+    }
+    for (unsigned index = 0; index < physical->getNumParams(); ++index)
+    {
+        PhysicalParameter parameter;
+        auto type = copyType(physical->getParamType(index), 0);
+        if (!type) { error = "physical parameter type not represented"; return std::nullopt; }
+        parameter.type = std::move(*type);
+        parameter.structureReturn = declaration->hasParamAttribute(index, llvm::Attribute::StructRet);
+        parameter.byValue = declaration->hasParamAttribute(index, llvm::Attribute::ByVal);
+        parameter.signExtend = declaration->hasParamAttribute(index, llvm::Attribute::SExt);
+        parameter.zeroExtend = declaration->hasParamAttribute(index, llvm::Attribute::ZExt);
+        parameter.inRegister = declaration->hasParamAttribute(index, llvm::Attribute::InReg);
+        parameter.noAlias = declaration->hasParamAttribute(index, llvm::Attribute::NoAlias);
+        if (const auto alignment = declaration->getParamAlign(index)) parameter.alignment = alignment->value();
+        const llvm::Type* pointee = parameter.structureReturn ? declaration->getParamStructRetType(index) :
+            parameter.byValue ? declaration->getParamByValType(index) : nullptr;
+        if (pointee)
+        {
+            parameter.pointee = copyType(pointee, 0);
+            if (!parameter.pointee) { error = "physical pointee type not represented"; return std::nullopt; }
+        }
+        result.physicalParameters.push_back(std::move(parameter));
+    }
+    return result;
+}
+}
