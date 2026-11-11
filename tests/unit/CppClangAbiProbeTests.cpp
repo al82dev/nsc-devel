@@ -721,6 +721,8 @@ int main(int argc, char** argv) {
         "struct PointerField { int *x; };\n"
         "struct ArrayField { int x[2]; };\n"
         "struct AliasArray { Number x[2]; };\n"
+        "struct Leaf { int x; }; struct Parent { struct Leaf leaf; };\n"
+        "typedef struct Leaf LeafAlias; struct AliasRecord { LeafAlias leaf; };\n"
         "struct Forward;\n"
         "#pragma pack(push, 1)\n"
         "struct PragmaPacked { int x; };\n"
@@ -734,6 +736,8 @@ int main(int argc, char** argv) {
         attributeOrigin->cRecordHasPlainReplaySyntax("PointerField") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("ArrayField") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("AliasArray") != false ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("Parent") != true ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("AliasRecord") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("Forward") ||
         attributeOrigin->cRecordHasPlainReplaySyntax("PragmaPacked") != false ||
         attributeOrigin->cRecordHasPackedReplaySyntax("Plain") != false ||
@@ -743,6 +747,46 @@ int main(int argc, char** argv) {
         attributeOrigin->cRecordHasPackedReplaySyntax("PragmaPacked") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("Missing")) return 209;
     if (!attributeOrigin->close().succeeded || attributeOrigin->cRecordHasPlainReplaySyntax("Plain")) return 210;
+    auto nestedOrigin = openRecordSession("struct Leaf { int x; int y; }; struct Parent { double x; struct Leaf leaf; };");
+    if (!nestedOrigin || nestedOrigin->cRecordHasPlainReplaySyntax("Parent") != true) return 217;
+    const auto nestedRecords = nestedOrigin->recordsSnapshot();
+    if (!nestedRecords) return 218;
+    CppCRecordSnapshot nestedLeaf, nestedParent;
+    for (const auto& item : *nestedRecords)
+    {
+        auto* snapshot = item.name == "Leaf" ? &nestedLeaf : item.name == "Parent" ? &nestedParent : nullptr;
+        if (!snapshot) continue;
+        snapshot->targetTriple = "x86_64-pc-windows-msvc";
+        snapshot->kind = item.kind;
+        snapshot->complete = item.complete;
+        snapshot->valueLayoutUsable = true;
+        snapshot->plainReplaySyntax = true;
+        snapshot->clangUsr = item.clangUsr;
+        snapshot->sizeBits = item.sizeBits;
+        snapshot->alignmentBits = item.alignmentBits;
+        snapshot->fields = item.fields;
+    }
+    const CppReplayRecordResolver resolveLeaf = [&](const CppType& type) -> std::optional<std::string> {
+        if (!type.recordIdentity || type.recordIdentity->clangUsr != nestedLeaf.clangUsr ||
+            type.recordIdentity->name != "Leaf") return std::nullopt;
+        return "struct __nsc_abi_record_1";
+    };
+    const auto leafText = makeSimpleCRecordAbiReplay(nestedLeaf, 1);
+    const auto parentText = makeSimpleCRecordAbiReplay(nestedParent, 0, resolveLeaf);
+    if (!leafText || !parentText) return 219;
+    auto nestedReplay = openRecordSession((*leafText + *parentText).c_str());
+    if (!nestedReplay) return 220;
+    const auto rebuiltRecords = nestedReplay->recordsSnapshot();
+    if (!rebuiltRecords) return 221;
+    const CppRecordDeclaration* rebuiltParent = nullptr;
+    for (const auto& item : *rebuiltRecords)
+        if (item.name == "__nsc_abi_record") rebuiltParent = &item;
+    if (!rebuiltParent || !matchesSimpleCRecordAbiReplay(nestedParent, *rebuiltParent, 0, resolveLeaf)) return 222;
+    auto wrongNested = nestedParent;
+    if (wrongNested.fields.size() != 2 || !wrongNested.fields[1].type.recordIdentity) return 223;
+    wrongNested.fields[1].type.recordIdentity->clangUsr = "wrong-origin";
+    if (matchesSimpleCRecordAbiReplay(wrongNested, *rebuiltParent, 0, resolveLeaf)) return 224;
+    if (!nestedReplay->close().succeeded || !nestedOrigin->close().succeeded) return 225;
     const auto originalRecords = equivalentOrigin->recordsSnapshot();
     if (!originalRecords) return 192;
     std::vector<CppSemanticRecordEntry> replayEntries;

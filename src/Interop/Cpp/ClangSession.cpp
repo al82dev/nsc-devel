@@ -851,7 +851,10 @@ bool hasReplayBuiltinOrArray(clang::QualType type, unsigned depth = 0)
         return count.getActiveBits() <= 32 && count.getZExtValue() > 0 && count.getZExtValue() <= 1024 &&
             hasReplayBuiltinOrArray(array->getElementType(), depth + 1);
     }
-    return llvm::isa<clang::BuiltinType>(type.getTypePtr());
+    if (llvm::isa<clang::BuiltinType>(type.getTypePtr())) return true;
+    if (const auto* record = llvm::dyn_cast<clang::RecordType>(type.getTypePtr()))
+        return record->getDecl() && record->getDecl()->getIdentifier() && record->getDecl()->isCompleteDefinition();
+    return false;
 }
 
 class ClangSession final : public CppInteropSession

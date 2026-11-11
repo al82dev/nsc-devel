@@ -931,8 +931,8 @@ controles negativos para atributos combinados
 (`A:/temp/nsc-t09-sysv-varargs-91crtgf3`). Pasaron las sondas de ABI, identidad,
 transporte y las regresiones C/SysV (`A:/temp/t09-transport-directed/`,
 `A:/temp/nsc-t09-llamadas-64i3ab_r`, `A:/temp/nsc-t09-sysv-prueba-5u2x7j0i`,
-`A:/temp/nsc-t09-sysv-padded-pair-id-t4nwi_td`). Records anidados, atributos
-combinados y otras formas siguen pendientes; T09-003 no se cierra.
+`A:/temp/nsc-t09-sysv-padded-pair-id-t4nwi_td`). En ese momento los records
+anidados, atributos combinados y otras formas seguian pendientes.
 
 La reconstruccion admite tambien campos de arreglos C de tamano conocido con
 elementos escalares, comprobando dimensiones, tamano, alineacion y el tipo de
@@ -944,8 +944,25 @@ estatica/DLL O0–O3, plantilla sin encabezado, HIR/MIR, LLVM, cache y rechazo
 de dimensiones inconsistentes (`A:/temp/nsc-t09-sysv-varargs-e9zkdcrx`,
 `A:/temp/t09-transport-directed/`). Tambien pasaron las regresiones C/SysV
 (`A:/temp/nsc-t09-llamadas-0uyfvhht`, `A:/temp/nsc-t09-sysv-prueba-d00229lp`,
-`A:/temp/nsc-t09-sysv-padded-pair-id-c5m49yb5`). Esta evidencia cubre el
-arreglo probado; records anidados y otras formas continuan abiertos.
+`A:/temp/nsc-t09-sysv-padded-pair-id-c5m49yb5`). Esa evidencia cubria el
+arreglo probado; en ese momento los records anidados seguian abiertos.
+
+Se agrego la reconstruccion de dependencias de records C nombrados: el
+consumidor localiza cada tipo interior por identidad y USR, comprueba su layout
+y observacion, ordena las declaraciones y verifica cada campo reconstruido.
+La muestra contiene un `double` y un record interior de dos `int`; el productor
+comprueba las piezas y el llamador verifica que el valor original se conserva.
+Antes del cambio pasaban C y la llamada directa, pero la plantilla sin encabezado
+se rechazaba (`A:/temp/nsc-t09-sysv-varargs-bmlj7x6h`).
+
+Pasaron estatica y DLL O0–O3, plantilla precompilada, HIR/MIR, comparacion LLVM,
+cache, rechazo de identidad interior incorrecta y rechazo de una dependencia con
+atributos aun no representados (`A:/temp/nsc-t09-sysv-varargs-xp1p031e`,
+`A:/temp/t09-transport-directed/`). Pasaron las regresiones C/SysV
+(`A:/temp/nsc-t09-llamadas-ap4h1n_r`, `A:/temp/nsc-t09-sysv-prueba-dpo4s1rk`,
+`A:/temp/nsc-t09-sysv-padded-pair-id-4gum6931`). La evidencia cubre la muestra
+anidada indicada; aliases, estructuras anonimas y otras combinaciones aun no
+observadas permanecen pendientes. T09-003 no se cierra.
 
 ## Retorno indirecto sin argumentos byval
 

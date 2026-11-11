@@ -402,3 +402,21 @@ sysv_record_array:
 fail_record_array:
     xorl %eax, %eax
     ret
+.globl sysv_record_nested
+sysv_record_nested:
+    cmpl $1, %edi
+    jne fail_record_nested
+    cmpb $1, %al
+    jb fail_record_nested
+    movq %xmm0, %r8
+    movabsq $0x4002000000000000, %r9
+    cmpq %r9, %r8
+    jne fail_record_nested
+    movabsq $0x0000000200000001, %r9
+    cmpq %r9, %rsi
+    jne fail_record_nested
+    movl $1, %eax
+    ret
+fail_record_nested:
+    xorl %eax, %eax
+    ret

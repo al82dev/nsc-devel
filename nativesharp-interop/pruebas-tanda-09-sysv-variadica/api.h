@@ -13,6 +13,10 @@ typedef struct __attribute__((packed)) T09VarPacked { double x; int y; } T09VarP
 typedef struct __attribute__((packed, aligned(2))) T09VarUnobserved { double x; int y; } T09VarUnobserved;
 typedef struct __attribute__((packed)) T09VarPackedValue { signed char tag; double value; } T09VarPackedValue;
 typedef struct T09VarArray { double values[2]; } T09VarArray;
+typedef struct T09VarNestLeaf { int x; int y; } T09VarNestLeaf;
+typedef struct T09VarNested { double value; struct T09VarNestLeaf leaf; } T09VarNested;
+typedef struct __attribute__((packed, aligned(2))) T09BadInner { int x; } T09BadInner;
+typedef struct T09BadOuter { double value; struct T09BadInner inner; } T09BadOuter;
 API_STORAGE __attribute__((sysv_abi)) int sysv_ptrs(int count, ...);
 API_STORAGE __attribute__((sysv_abi)) int sysv_empty(int count, ...);
 API_STORAGE __attribute__((sysv_abi)) int sysv_floatspill(int count, ...);
@@ -31,3 +35,4 @@ API_STORAGE __attribute__((sysv_abi)) T09VarRecord *sysv_record_fixed_rptr(T09Va
 API_STORAGE __attribute__((sysv_abi)) int sysv_record_packed(int count, ...);
 API_STORAGE __attribute__((sysv_abi)) int sysv_record_packed_ptr(int count, ...);
 API_STORAGE __attribute__((sysv_abi)) int sysv_record_array(int count, ...);
+API_STORAGE __attribute__((sysv_abi)) int sysv_record_nested(int count, ...);

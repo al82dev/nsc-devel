@@ -12,6 +12,7 @@
 #include <clang/Basic/LangStandard.h>
 
 #include <algorithm>
+#include <functional>
 #include <utility>
 
 namespace nativesharp::interop
@@ -353,7 +354,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
         graph.projects()[function.projectOrdinal].moduleName() != function.moduleName ||
         !graph.projects()[function.projectOrdinal].cppLibraryReferences().empty() ||
         function.cppParameterTypes.size() != function.parameters.size() ||
-        environment.targetTriple != "x86_64-pc-windows-msvc") return {};
+        environment.targetTriple != "x86_64-pc-windows-msvc" || optionalTypeKeys.size() > 1024) return {};
     bool erasedRecordPointer = false;
     const auto builtin = [&](const auto& self, const CppType& type, unsigned depth = 0) -> std::optional<std::string> {
         if (depth > 16) return std::nullopt;
@@ -458,14 +459,94 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
             !match->namespaceSegments.empty() || !match->containingRecords.empty() ||
             !match->sizeBits || !match->alignmentBits || *match->sizeBits / 8 != imported->objectLayout->sizeBytes ||
             *match->alignmentBits / 8 != imported->objectLayout->alignmentBytes || !makeSimpleCRecordAbiReplay(*match)) return {};
+        if (selectedRecords.size() >= 1024) return {};
         recordForArgument.emplace_back(std::make_pair(selectedRecords.size(), pointer));
         selectedRecords.push_back({*match, baseKey});
     }
     if (selectedRecords.empty()) return {};
-    std::string source;
+    const auto findDependency = [&](const CppType& type, std::string_view module) -> std::optional<std::size_t> {
+        const auto identity = projectCppRecordTypeIdentity(type, module);
+        if (!identity || !type.recordIdentity || !type.recordIdentity->clangUsr) return std::nullopt;
+        for (std::size_t i = 0; i < selectedRecords.size(); ++i)
+            if (selectedRecords[i].key == "type:" + identity->key())
+            {
+                const auto& snapshot = selectedRecords[i].snapshot;
+                if (snapshot.clangUsr != type.recordIdentity->clangUsr || snapshot.sizeBits != type.sizeBits ||
+                    snapshot.alignmentBits != type.alignmentBits || snapshot.name != type.recordIdentity->name ||
+                    type.canonicalSpelling != std::string(snapshot.kind == CppRecordKind::Struct ? "struct " : "union ") + snapshot.name)
+                    return std::nullopt;
+                return i;
+            }
+        return std::nullopt;
+    };
     for (std::size_t i = 0; i < selectedRecords.size(); ++i)
     {
-        source += *makeSimpleCRecordAbiReplay(selectedRecords[i].snapshot, i);
+        const auto parent = selectedRecords[i].snapshot;
+        const auto collect = [&](const auto& self, const CppType& type, unsigned depth) -> bool {
+            if (depth > 16) return false;
+            if (type.kind == CppTypeKind::Array) return type.element && self(self, *type.element, depth + 1);
+            if (type.kind != CppTypeKind::Record) return true;
+            if (findDependency(type, parent.moduleName)) return true;
+            const auto identity = projectCppRecordTypeIdentity(type, parent.moduleName);
+            if (!identity || !type.recordIdentity || !type.recordIdentity->clangUsr) return false;
+            const CppCRecordSnapshot* match = nullptr;
+            for (const auto& candidate : records)
+                if (candidate.identityKey == identity->key())
+                { if (match) return false; match = &candidate; }
+            const auto ordinal = lookup.typeOrdinalForIdentity(identity->key());
+            const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+            if (!match || (!match->plainReplaySyntax && !match->packedReplaySyntax) ||
+                match->clangUsr != type.recordIdentity->clangUsr || match->sizeBits != type.sizeBits ||
+                match->alignmentBits != type.alignmentBits || !match->sizeBits || !match->alignmentBits ||
+                match->name != type.recordIdentity->name ||
+                type.canonicalSpelling != std::string(match->kind == CppRecordKind::Struct ? "struct " : "union ") + match->name ||
+                !imported || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
+                imported->origin != (match->kind == CppRecordKind::Struct ? frontend::CppImportedTypeOrigin::CStruct :
+                                                                          frontend::CppImportedTypeOrigin::CUnion) ||
+                !imported->objectLayout || !imported->deferredImportError.empty() ||
+                imported->clangUsr != match->clangUsr || imported->objectLayout->sizeBytes != *match->sizeBits / 8 ||
+                imported->objectLayout->alignmentBytes != *match->alignmentBits / 8 ||
+                !makeSimpleCRecordAbiReplay(*match)) return false;
+            if (selectedRecords.size() >= 1024) return false;
+            selectedRecords.push_back({*match, "type:" + identity->key()});
+            return true;
+        };
+        for (const auto& field : parent.fields) if (!collect(collect, field.type, 0)) return {};
+    }
+    std::string source;
+    const auto resolverFor = [&](std::size_t parent) -> CppReplayRecordResolver {
+        return [&, parent](const CppType& type) -> std::optional<std::string> {
+            const auto index = findDependency(type, selectedRecords[parent].snapshot.moduleName);
+            if (!index) return std::nullopt;
+            const auto tag = *index == 0 ? std::string("__nsc_abi_record") : "__nsc_abi_record_" + std::to_string(*index);
+            return std::string(selectedRecords[*index].snapshot.kind == CppRecordKind::Struct ? "struct " : "union ") + tag;
+        };
+    };
+    std::vector<unsigned char> visiting(selectedRecords.size());
+    std::function<bool(std::size_t, unsigned)> emitRecord = [&](std::size_t i, unsigned depth) {
+        if (depth > 64) return false;
+        if (visiting[i] == 2) return true;
+        if (visiting[i] != 0) return false;
+        visiting[i] = 1;
+        const auto visitType = [&](const auto& self, const CppType& type, unsigned depth) -> bool {
+            if (depth > 16) return false;
+            if (type.kind == CppTypeKind::Array) return type.element && self(self, *type.element, depth + 1);
+            if (type.kind != CppTypeKind::Record) return true;
+            const auto dependency = findDependency(type, selectedRecords[i].snapshot.moduleName);
+            return dependency && emitRecord(*dependency, depth + 1);
+        };
+        for (const auto& field : selectedRecords[i].snapshot.fields)
+            if (!visitType(visitType, field.type, 0)) return false;
+        const auto declaration = makeSimpleCRecordAbiReplay(selectedRecords[i].snapshot, i, resolverFor(i));
+        if (!declaration) return false;
+        source += *declaration;
+        visiting[i] = 2;
+        return true;
+    };
+    for (std::size_t i = 0; i < selectedRecords.size(); ++i)
+        if (!emitRecord(i, 0)) return {};
+    for (std::size_t i = 0; i < selectedRecords.size(); ++i)
+    {
         const auto tag = i == 0 ? std::string("__nsc_abi_record") : "__nsc_abi_record_" + std::to_string(i);
         source += "void __nsc_replay_type_" + std::to_string(i) + "(" +
             (selectedRecords[i].snapshot.kind == CppRecordKind::Struct ? "struct " : "union ") + tag + ");\n";
@@ -494,7 +575,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
         const auto helper = std::find_if(observedFunctions->begin(), observedFunctions->end(), [&](const auto& value) {
             return value.name == "__nsc_replay_type_" + std::to_string(i);
         });
-        if (record == observedRecords->end() || !matchesSimpleCRecordAbiReplay(selectedRecords[i].snapshot, *record, i) ||
+        if (record == observedRecords->end() || !matchesSimpleCRecordAbiReplay(selectedRecords[i].snapshot, *record, i, resolverFor(i)) ||
             helper == observedFunctions->end() || helper->parameters.size() != 1) return {};
         replayTypes[i] = helper->parameters[0].type;
     }

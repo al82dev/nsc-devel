@@ -34,5 +34,7 @@ int main(void) {
     if (sysv_record_packed_ptr(2, mixed, &packedValue) != 1 || packedValue.tag != 8 || mixed.y != 7) return 19;
     T09VarArray array = {{2.25, 3.5}};
     if (sysv_record_array(1, array) != 1 || array.values[0] != 2.25 || array.values[1] != 3.5) return 20;
+    T09VarNested nested = {2.25, {1, 2}};
+    if (sysv_record_nested(1, nested) != 1 || nested.leaf.x != 1 || nested.leaf.y != 2) return 21;
     return 0;
 }
