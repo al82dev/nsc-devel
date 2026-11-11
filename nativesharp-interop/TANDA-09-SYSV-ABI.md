@@ -282,3 +282,16 @@ del record entero de dos piezas pasaron en A:/temp/nsc-t09-sysv-mixed-di-kdu5s3z
 y A:/temp/nsc-t09-sysv-r16-fg15wbmz. La prueba negativa de esta sesion conserva
 el rechazo de `int`, `int`, `float`, junto con el de callback, en
 A:/temp/nsc-t09-sysv-prueba-5m4k6kv6. No se certifican otras formas mixtas.
+
+Forma mixta con `float`: `struct { int x, y; float z; }` usa piezas `i64` y
+`float` segun Clang (A:/temp/nsc-t09-if-clang-65e4313_). El control C paso y
+NSC rechazo inicialmente la muestra en A:/temp/nsc-t09-sysv-mixed-if-a759p778.
+Tras el cambio pasaron las ocho comparaciones estatica/DLL O0–O3, las firmas
+LLVM y la plantilla sin encabezado O0 en A:/temp/nsc-t09-sysv-mixed-if-qhmqw3ng.
+La sonda y el control de metadatos pasaron (A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log). Las regresiones de las formas `int`/`double`
+y `double`/`int` pasaron en A:/temp/nsc-t09-sysv-mixed-id-bu3g7hxe y
+A:/temp/nsc-t09-sysv-mixed-di-q7c1vh1u. La prueba negativa de esta sesion
+conserva una forma con dos `float` que Clang representa mediante vector y aun
+se rechaza; paso junto con el rechazo de callbacks en
+A:/temp/nsc-t09-sysv-prueba-egocj7n9. No se certifican otras formas mixtas.

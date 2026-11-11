@@ -890,7 +890,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             LLVMTypeRef firstType = imported->cppAbiPlan->physicalReturn.elements[0].kind == interop::abi_plan::TypeKind::Double
                 ? LLVMDoubleTypeInContext(context_) : i64;
             LLVMTypeRef secondType = imported->cppAbiPlan->physicalReturn.elements[1].kind == interop::abi_plan::TypeKind::Double
-                ? LLVMDoubleTypeInContext(context_) : LLVMIntTypeInContext(context_,
+                ? LLVMDoubleTypeInContext(context_) :
+                imported->cppAbiPlan->physicalReturn.elements[1].kind == interop::abi_plan::TypeKind::Float
+                ? LLVMFloatTypeInContext(context_) : LLVMIntTypeInContext(context_,
                     static_cast<unsigned>(imported->cppAbiPlan->physicalReturn.elements[1].widthOrCount));
             LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
             LLVMValueRef offset = LLVMConstInt(i64, 8, 0);

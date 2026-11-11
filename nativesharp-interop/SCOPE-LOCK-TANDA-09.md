@@ -90,3 +90,4 @@ T09-003: conservar la prueba negativa de esta sesion usando un agregado SysV mix
 T09-003: preparar un record SysV con `double` seguido de `int`, contrastar control C y rechazo previo, y consultar el plan de dos piezas de Clang. Implementar solo esa forma mixta si pasa las pruebas, incluida precompilacion; conservar una firma mixta diferente como negativa.
 T09-003: preparar un record SysV con dos `int` seguidos de `double`, contrastar el rechazo previo y el plan Clang y probar la forma mixta inversa y su precompilacion. La prueba negativa de esta sesion seguira usando una forma mixta distinta no admitida.
 T09-003: conservar la prueba negativa de esta sesion con un agregado de `int`, `int` y `float`, cuya forma mixta continua fuera del soporte probado.
+T09-003: contrastar y, si pasa sus pruebas, admitir la forma mixta `int`, `int`, `float` con piezas `i64` y `float`; conservar la prueba negativa con una forma vectorial aun no representada.

@@ -50,7 +50,8 @@ inline bool isSysVMixedRecordRoundTrip(const Plan& plan, std::string_view symbol
         const auto& first = type.elements[0];
         const auto& second = type.elements[1];
         return (first.kind == TypeKind::Double && second.kind == TypeKind::Integer && second.widthOrCount == 32) ||
-               (first.kind == TypeKind::Integer && first.widthOrCount == 64 && second.kind == TypeKind::Double);
+               (first.kind == TypeKind::Integer && first.widthOrCount == 64 &&
+                (second.kind == TypeKind::Double || second.kind == TypeKind::Float));
     };
     if (plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
