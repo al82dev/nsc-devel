@@ -241,3 +241,19 @@ A:/temp/nsc-t09-sysv-prueba-v0mutgsi. La sonda de Clang y el control de
 metadatos, incluido un plan con alineacion incompatible, pasaron en
 A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log. Las muestras
 no certifican otros layouts, alineaciones ni firmas; T09-003 permanece abierto.
+
+Ampliacion de alineacion indirecta a cuatro y ocho bytes: el control C paso y
+NSC rechazo previamente cada muestra en A:/temp/nsc-t09-sysv-a4-bfp6m1sj y
+A:/temp/nsc-t09-sysv-a8-qufzw08w. Tras transportar la alineacion del retorno
+observada por Clang, ambos records de 24 bytes pasaron las ocho comparaciones
+estatica/DLL O0–O3, atributos en declaracion y llamada y plantilla sin
+encabezado en estatica O0, en A:/temp/nsc-t09-sysv-a4-dhw4zjy4 y
+A:/temp/nsc-t09-sysv-a8-l39ob5ln. La muestra alineada a cuatro usa seis `int`;
+la alineada a ocho usa tres `long long`. La regresion alineada a uno paso en
+A:/temp/nsc-t09-sysv-r24-3a3s5_d2. La sonda Clang y el control de metadatos
+pasaron (A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log).
+
+La prueba negativa de esta sesion se conserva con un record mixto entero y
+`double`, cuya clasificacion fisica aun no esta admitida; paso junto con
+escalares y rechazo de callback en A:/temp/nsc-t09-sysv-prueba-7ws2m1_c.
+No se certifican otras alineaciones, layouts o firmas.

@@ -43,12 +43,14 @@ inline bool isSysVTwoI64RecordRoundTrip(const Plan& plan, std::string_view symbo
     return isSysVTwoIntegerRecordRoundTrip(plan, symbol) &&
         plan.physicalReturn.elements[1].widthOrCount == 64;
 }
-inline bool isSysVIndirectByteAlignedRecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
+inline bool isSysVIndirectRecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
 {
+    const auto alignment = plan.logicalReturn.alignment;
     if (plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
         plan.returnSignExtend || plan.returnZeroExtend || plan.physicalReturn.kind != TypeKind::Void ||
-        plan.logicalReturn.passing != Passing::Indirect || plan.logicalReturn.alignment != 1 ||
+        plan.logicalReturn.passing != Passing::Indirect ||
+        (alignment != 1 && alignment != 4 && alignment != 8) ||
         plan.logicalParameters.size() != 1 || plan.physicalParameters.size() != 2) return false;
     const auto& logical = plan.logicalParameters[0];
     const auto& result = plan.physicalParameters[0];
@@ -56,7 +58,7 @@ inline bool isSysVIndirectByteAlignedRecordRoundTrip(const Plan& plan, std::stri
     return logical.passing == Passing::Indirect && logical.byValue && logical.alignment == 8 &&
         logical.firstPhysical == 1 && logical.physicalCount == 1 &&
         result.type.kind == TypeKind::Pointer && result.pointee && result.structureReturn &&
-        result.alignment == 1 && !result.byValue && !result.inRegister && !result.signExtend && !result.zeroExtend &&
+        result.alignment == alignment && !result.byValue && !result.inRegister && !result.signExtend && !result.zeroExtend &&
         argument.type.kind == TypeKind::Pointer && argument.pointee && argument.byValue && argument.alignment == 8 &&
         !argument.structureReturn && !argument.noAlias && !argument.inRegister && !argument.signExtend &&
         !argument.zeroExtend;

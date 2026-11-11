@@ -834,7 +834,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
 
         const auto* imported = found->second.mirFunction;
         if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
-            interop::abi_plan::isSysVIndirectByteAlignedRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName))
+            interop::abi_plan::isSysVIndirectRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName))
         {
             if (node->children.size() != 1 || node->referenceResult || node->returnsAssignedValue ||
                 node->children[0]->typeKey != node->typeKey ||
@@ -847,7 +847,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (!carrier) return nullptr;
             const unsigned alignment = structAlignmentFor(node->typeKey);
-            if (alignment != 1) return failValue(error, "SysV indirect record has an unexpected alignment");
+            if (alignment != imported->cppAbiPlan->logicalReturn.alignment)
+                return failValue(error, "SysV indirect record has an unexpected alignment");
             LLVMValueRef resultSlot = entryBlockAlloca(carrier, alignment, "sysv.indirect.result");
             LLVMValueRef argumentSlot = entryBlockAlloca(carrier, 8, "sysv.indirect.argument");
             LLVMValueRef argumentStore = LLVMBuildStore(builder_, value, argumentSlot);

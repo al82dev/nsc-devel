@@ -448,7 +448,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     // A missing observation is never interpreted as an ABI classification.
     const bool directRecord = f.abiPlan && abi_plan::isSysVSmallRecordRoundTrip(*f.abiPlan, value.linkSymbol);
     const bool pairRecord = f.abiPlan && abi_plan::isSysVTwoIntegerRecordRoundTrip(*f.abiPlan, value.linkSymbol);
-    const bool indirectRecord = f.abiPlan && abi_plan::isSysVIndirectByteAlignedRecordRoundTrip(*f.abiPlan, value.linkSymbol);
+    const bool indirectRecord = f.abiPlan && abi_plan::isSysVIndirectRecordRoundTrip(*f.abiPlan, value.linkSymbol);
     writer.u8(directRecord ? 1 : pairRecord ? 2 : indirectRecord ? 3 : 0);
     if (directRecord || pairRecord || indirectRecord)
     {
@@ -459,10 +459,12 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             f.externalSymbol != value.linkSymbol || f.returnType.kind != CppTypeKind::Record ||
             f.returnType.sizeBits != bits || f.parameters.size() != 1 ||
             f.parameters[0].type.kind != CppTypeKind::Record || f.parameters[0].type.sizeBits != bits ||
-            (indirectRecord && (bits <= 128 || bits % 8 != 0 || f.returnType.alignmentBits != 8 ||
-                                f.parameters[0].type.alignmentBits != 8)))
+            (indirectRecord && (bits <= 128 || bits % 8 != 0 ||
+                f.returnType.alignmentBits != f.abiPlan->logicalReturn.alignment * 8 ||
+                f.parameters[0].type.alignmentBits != f.abiPlan->logicalReturn.alignment * 8)))
         { error = "invalid C dependency SysV record ABI"; return false; }
-        if (!indirectRecord) writer.u8(static_cast<std::uint8_t>(pairRecord ? secondBits : bits));
+        writer.u8(static_cast<std::uint8_t>(indirectRecord ? f.abiPlan->logicalReturn.alignment :
+                                           pairRecord ? secondBits : bits));
         if (!putText(writer, f.abiPlan->targetTriple) || !putText(writer, f.abiPlan->dataLayout))
         { error = "invalid C dependency ABI target"; return false; }
     }
@@ -520,13 +522,13 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
         plan->symbol = value.linkSymbol;
         plan->callingConvention = 78;
         std::uint8_t bits = 0;
-        if ((recordPlan != 3 && !reader.u8(bits)) || !reader.text(plan->targetTriple) || !reader.text(plan->dataLayout))
+        if (!reader.u8(bits) || !reader.text(plan->targetTriple) || !reader.text(plan->dataLayout))
         { error = "invalid C dependency ABI target"; return false; }
         if (recordPlan == 3)
         {
             plan->physicalReturn.kind = abi_plan::TypeKind::Void;
             plan->logicalReturn.passing = abi_plan::Passing::Indirect;
-            plan->logicalReturn.alignment = 1;
+            plan->logicalReturn.alignment = bits;
             abi_plan::LogicalValue logical;
             logical.passing = abi_plan::Passing::Indirect;
             logical.alignment = 8;
@@ -538,7 +540,7 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
             result.type.kind = abi_plan::TypeKind::Pointer;
             result.pointee = abi_plan::Type{};
             result.structureReturn = true;
-            result.alignment = 1;
+            result.alignment = bits;
             plan->physicalParameters.push_back(result);
             abi_plan::PhysicalParameter argument;
             argument.type.kind = abi_plan::TypeKind::Pointer;
@@ -546,7 +548,7 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
             argument.byValue = true;
             argument.alignment = 8;
             plan->physicalParameters.push_back(argument);
-            if (!abi_plan::isSysVIndirectByteAlignedRecordRoundTrip(*plan, value.linkSymbol))
+            if (!abi_plan::isSysVIndirectRecordRoundTrip(*plan, value.linkSymbol))
             { error = "invalid C dependency ABI plan"; return false; }
             f.abiPlan = std::move(plan);
         }

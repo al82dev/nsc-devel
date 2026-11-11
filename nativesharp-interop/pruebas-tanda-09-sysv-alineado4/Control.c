@@ -1,0 +1,7 @@
+#include "api.h"
+int main(void) {
+    T09SysvA4 original = {1, 2, 3, 4, 5, 6};
+    T09SysvA4 result = sysv_a4(original);
+    if (original.x != 1 || original.y != 2 || original.z != 3 || original.a != 4 || original.b != 5 || original.c != 6 || result.x != 11 || result.y != 2 || result.z != 3 || result.a != 4 || result.b != 5 || result.c != 6) return 1;
+    return 0;
+}

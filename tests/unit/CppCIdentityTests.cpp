@@ -1713,12 +1713,26 @@ bool checkDependencyTypeCodec()
     recordFunction.declaration.parameters[0].type.alignmentBits = 8;
     ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
         decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
-        abi_plan::isSysVIndirectByteAlignedRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
+        abi_plan::isSysVIndirectRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
         "C dependency function retains the indirect SysV record plan");
     recordFunction.declaration.returnType.alignmentBits = 32;
     unchangedRecord = {42};
     ok &= expect(!encodeCDependencyFunction(recordFunction, unchangedRecord, error) &&
         unchangedRecord == std::vector<std::uint8_t>{42}, "indirect SysV plan rejects a conflicting record alignment");
+    for (const std::uint64_t alignment : {4U, 8U})
+    {
+        auto alignedPlan = std::make_shared<abi_plan::Plan>(*indirectPlan);
+        alignedPlan->logicalReturn.alignment = alignment;
+        alignedPlan->physicalParameters[0].alignment = alignment;
+        recordFunction.declaration.abiPlan = alignedPlan;
+        recordFunction.declaration.returnType.alignmentBits = alignment * 8;
+        recordFunction.declaration.parameters[0].type.alignmentBits = alignment * 8;
+        ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+            decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+            abi_plan::isSysVIndirectRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+            restoredRecord.declaration.abiPlan->logicalReturn.alignment == alignment,
+            "indirect SysV dependency retains the return alignment");
+    }
     if (!functionBytes.empty()) functionBytes.pop_back();
     decoded.moduleName = "sentinel";
     ok &= expect(!decodeCDependencyFunction(functionBytes, decoded, error) && decoded.moduleName == "sentinel",

@@ -307,7 +307,7 @@ void configureFunctionAbi(
     std::span<const ProjectOopMirStructLayout> layouts)
 {
     if (function.cppSysVCall && function.cppAbiPlan &&
-        interop::abi_plan::isSysVIndirectByteAlignedRecordRoundTrip(*function.cppAbiPlan, function.cAbiName))
+        interop::abi_plan::isSysVIndirectRecordRoundTrip(*function.cppAbiPlan, function.cAbiName))
     {
         function.abi.returnPassing = ProjectOopMirAbiPassing::Indirect;
         function.abi.hiddenReturnParameterOrdinal = 0;

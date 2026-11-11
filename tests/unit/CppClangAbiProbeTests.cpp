@@ -59,6 +59,7 @@ int main(int argc, char** argv) {
         typedef struct R16 { long long x, y; } R16;
         typedef struct R24 { long long x, y, z; } R24;
         typedef struct R24B { unsigned char x[24]; } R24B;
+        typedef struct R24I { int x[6]; } R24I;
         typedef struct R17B { unsigned char x[17]; } R17B;
         typedef struct R20B { unsigned char x[20]; } R20B;
         typedef struct R32B { unsigned char x[32]; } R32B;
@@ -86,6 +87,7 @@ int main(int argc, char** argv) {
         RF __attribute__((sysv_abi)) pf(RF);
         R24 __attribute__((sysv_abi)) p24(R24);
         R24B __attribute__((sysv_abi)) p24b(R24B);
+        R24I __attribute__((sysv_abi)) p24i(R24I);
         R17B __attribute__((sysv_abi)) p17b(R17B);
         R20B __attribute__((sysv_abi)) p20b(R20B);
         R32B __attribute__((sysv_abi)) p32b(R32B);
@@ -149,7 +151,7 @@ int main(int argc, char** argv) {
         if (name != "p1" && name != "p2" && name != "p3" && name != "p4" && name != "p5" &&
             name != "p6" && name != "p7" && name != "p8" && name != "p9" && name != "p10" &&
             name != "p11" && name != "p12" && name != "p13" && name != "p14" && name != "p15" &&
-            name != "p16" && name != "pf" && name != "p24" && name != "p24b" && name != "p17b" &&
+            name != "p16" && name != "pf" && name != "p24" && name != "p24b" && name != "p24i" && name != "p17b" &&
             name != "p20b" && name != "p32b" && name != "ps8" && name != "pm" &&
             name != "pp" && name != "pvec" && name != "pvoid") continue;
         if (name == "p3" && copiedPlans.contains(name)) continue;
@@ -218,7 +220,7 @@ int main(int argc, char** argv) {
         if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
-    if (matched != 27 || copiedPlans.size() != 27 || !unsupportedRejected || !variadicRejected ||
+    if (matched != 28 || copiedPlans.size() != 28 || !unsupportedRejected || !variadicRejected ||
         !noPrototypeRejected || !attributeRejected) return 7;
     generator.reset();
     ast.reset();
@@ -255,10 +257,11 @@ int main(int argc, char** argv) {
     if (pf.physicalParameters.size() != 2 || pf.physicalParameters[0].type.kind != t09_probe::TypeKind::Double ||
         pf.physicalParameters[1].type.widthOrCount != 32) return 22;
     const auto& p24 = copiedPlans.at("p24");
-    if (!t09_probe::isSysVIndirectByteAlignedRecordRoundTrip(copiedPlans.at("p24b"), "p24b") ||
-        t09_probe::isSysVIndirectByteAlignedRecordRoundTrip(p24, "p24")) return 81;
+    if (!t09_probe::isSysVIndirectRecordRoundTrip(copiedPlans.at("p24b"), "p24b") ||
+        !t09_probe::isSysVIndirectRecordRoundTrip(copiedPlans.at("p24i"), "p24i") ||
+        !t09_probe::isSysVIndirectRecordRoundTrip(p24, "p24")) return 81;
     for (const char* name : {"p17b", "p20b", "p32b"})
-        if (!t09_probe::isSysVIndirectByteAlignedRecordRoundTrip(copiedPlans.at(name), name)) return 82;
+        if (!t09_probe::isSysVIndirectRecordRoundTrip(copiedPlans.at(name), name)) return 82;
     if (p24.logicalParameters[0].passing != t09_probe::Passing::Indirect ||
         !p24.logicalParameters[0].byValue || p24.logicalParameters[0].alignment != 8 ||
         p24.physicalParameters.size() != 2 || !p24.physicalParameters[0].structureReturn ||
