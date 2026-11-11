@@ -1744,6 +1744,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Se probaron ademas combinaciones de piezas enteras, flotantes y vectores de dos `float` con retorno indirecto, incluidos ambos ordenes y una muestra alineada a 16. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probaron retornos indirectos sin argumentos `byval`, tanto sin parametros como con escalares y un record directo de piezas mixtas; incluye precompilacion. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probaron tres records directos de una pieza `float`, `double` o vector de dos `float`, junto a retorno indirecto y escalares; incluye precompilacion. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
+  - Se probo un record directo con piezas `double` e `i64`, junto a retorno indirecto y escalares; se verificaron ambos campos enteros y precompilacion. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
 - [ ] T09-004. Emitir una llamada C sin parámetros y con resultado escalar. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-005. Emitir una llamada C con parámetros escalares. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-006. Emitir el paso de punteros a una función C. [Prueba y contraste](pruebas-tanda-09-llamadas/).

@@ -934,6 +934,27 @@ A:/temp/nsc-t09-sysv-indirect-diff16-eed8vwvp y
 A:/temp/nsc-t09-sysv-prueba-5voqucsx). No se acreditan todas las clases de
 agregado ni firmas posibles; T09-003 permanece abierto.
 
+## Record con `double` y dos enteros con retorno indirecto
+
+El control C de una funcion que recibe `float`, un record con `double` y dos
+`int` y un `int`, y devuelve un record indirecto de 20 bytes, paso con enlace
+estatico y DLL mientras NSC rechazaba la firma
+(A:/temp/nsc-t09-sysv-sret-double-i64-l9eclpay). Clang 23.1.0 clasifico el
+record en las piezas `double` e `i64`
+(A:/temp/t09-sret-double-i64-clang.ll). NSC admite esa forma y conserva ambas
+piezas en el contrato vigente.
+
+La prueba paso ocho comparaciones C/NS con biblioteca estatica y DLL O0–O3,
+llamadas normales y nombradas y plantilla precompilada sin encabezado O0;
+comprueba los dos campos enteros y que la copia original permanezca intacta
+(A:/temp/nsc-t09-sysv-sret-double-i64-cbzgjcbu). La sonda Clang y la prueba de
+metadatos pasaron (A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log). La regresion del record `double`/`i32` paso
+en A:/temp/nsc-t09-sysv-sret-mixed-atyyx9oh. La regresion general paso y conserva el
+rechazo de una firma diferente con `double` e `i16` y de callback
+(A:/temp/nsc-t09-sysv-prueba-12rcdydv). Otras firmas y clases permanecen
+pendientes; T09-003 y la tanda 9 siguen abiertos.
+
 ## Record de una pieza flotante con retorno indirecto
 
 Tres muestras reciben un record directo, respectivamente de un `float`, un

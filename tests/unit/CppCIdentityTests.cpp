@@ -2108,6 +2108,14 @@ bool checkDependencyTypeCodec()
         abi_plan::isSysVIndirectRecordWithArguments(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
         restoredRecord.declaration.abiPlan->logicalParameters.size() == 3,
         "C dependency function retains an indirect return without byval arguments");
+    auto doubleI64WithoutByval = std::make_shared<abi_plan::Plan>(*mixedWithoutByval);
+    doubleI64WithoutByval->logicalParameters[1].coercion->elements[1].widthOrCount = 64;
+    doubleI64WithoutByval->physicalParameters[3].type.widthOrCount = 64;
+    recordFunction.declaration.abiPlan = doubleI64WithoutByval;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        restoredRecord.declaration.abiPlan->physicalParameters[3].type.widthOrCount == 64,
+        "C dependency function retains double and i64 record pieces with indirect return");
     auto singleWithoutByval = std::make_shared<abi_plan::Plan>(*mixedWithoutByval);
     singleWithoutByval->logicalParameters[1].physicalCount = 1;
     singleWithoutByval->logicalParameters[2].firstPhysical = 3;

@@ -249,7 +249,7 @@ inline bool isSysVDirectPairShape(const Type& type) noexcept
         t.elements.size() == 1 && t.elements[0].kind == TypeKind::Float && t.elements[0].widthOrCount == 0; };
     const bool ai = a.kind == TypeKind::Integer && a.widthOrCount == 64;
     const bool bi = b.kind == TypeKind::Integer && b.widthOrCount >= 8 && b.widthOrCount <= 64 && b.widthOrCount % 8 == 0;
-    return (ai && bi) || (a.kind == TypeKind::Double && b.kind == TypeKind::Integer && b.widthOrCount == 32) ||
+    return (ai && bi) || (a.kind == TypeKind::Double && b.kind == TypeKind::Integer && (b.widthOrCount == 32 || b.widthOrCount == 64)) ||
         (a.kind == TypeKind::Double && (b.kind == TypeKind::Double || b.kind == TypeKind::Float || vec(b))) ||
         (a.kind == TypeKind::Float && b.kind == TypeKind::Double) ||
         (ai && (b.kind == TypeKind::Double || b.kind == TypeKind::Float || vec(b))) ||
