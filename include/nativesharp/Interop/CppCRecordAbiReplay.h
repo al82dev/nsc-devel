@@ -31,8 +31,10 @@ inline std::optional<std::string> makeSimpleCRecordAbiReplay(const CppCRecordSna
     {
         const auto& field = record.fields[i];
         const auto& type = field.type;
-        if (!field.offsetBits || field.bitWidth || field.isAnonymousCarrier || !type.sizeBits ||
+        if (!field.offsetBits || field.isAnonymousCarrier || !type.sizeBits ||
             !type.alignmentBits || type.isConst || type.isVolatile || type.isRestrict) return std::nullopt;
+        if (field.bitWidth && (field.name.empty() || *field.bitWidth == 0 || *field.bitWidth > *type.sizeBits ||
+            (type.kind != CppTypeKind::SignedInteger && type.kind != CppTypeKind::UnsignedInteger))) return std::nullopt;
         const CppType* element = &type;
         std::string dimensions;
         unsigned depth = 0;
@@ -76,7 +78,9 @@ inline std::optional<std::string> makeSimpleCRecordAbiReplay(const CppCRecordSna
             else emittedType = "struct __nsc_abi_dependency";
         }
         else return std::nullopt;
-        result += emittedType + " __nsc_f" + std::to_string(i) + dimensions + ";\n";
+        result += emittedType + " __nsc_f" + std::to_string(i) + dimensions;
+        if (field.bitWidth) result += " : " + std::to_string(*field.bitWidth);
+        result += ";\n";
     }
     result += "};\n";
     return result;
@@ -112,7 +116,7 @@ inline bool matchesSimpleCRecordAbiReplay(const CppCRecordSnapshot& expected,
     {
         const auto& left = expected.fields[i];
         const auto& right = actual.fields[i];
-        if (right.name != "__nsc_f" + std::to_string(i) || right.bitWidth || right.isAnonymousCarrier ||
+        if (right.name != "__nsc_f" + std::to_string(i) || left.bitWidth != right.bitWidth || right.isAnonymousCarrier ||
             left.offsetBits != right.offsetBits || !sameType(sameType, left.type, right.type, 0))
             return false;
     }

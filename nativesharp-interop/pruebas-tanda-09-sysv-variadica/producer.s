@@ -474,3 +474,14 @@ sysv_record_union_outer:
 fail_record_union_outer:
     xorl %eax, %eax
     ret
+.globl sysv_record_bits
+sysv_record_bits:
+    cmpl $1, %edi
+    jne fail_record_bits
+    cmpl $0x1234a58d, %esi
+    jne fail_record_bits
+    movl $1, %eax
+    ret
+fail_record_bits:
+    xorl %eax, %eax
+    ret

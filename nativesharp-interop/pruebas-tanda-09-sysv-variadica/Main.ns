@@ -51,5 +51,7 @@ int Main() {
     if (sysv_record_record_array_large(1, recordArrayLarge) != 1 || recordArrayLarge.leaves[2].y != 6) return 25;
     T09VarUnionOuter unionOuter; unionOuter.value = 2.25; unionOuter.choice.integer = 7;
     if (sysv_record_union_outer(1, unionOuter) != 1 || unionOuter.choice.integer != 7) return 24;
+    T09VarBits bits; bits.low = (uint)5; bits.high = (uint)17; bits.middle = (uint)165; bits.upper = (uint)4660;
+    if (sysv_record_bits(1, bits) != 1 || bits.low != (uint)5 || bits.upper != (uint)4660) return 27;
     return 0;
 }

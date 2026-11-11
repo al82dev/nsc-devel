@@ -988,6 +988,20 @@ pasaron las sondas ABI, identidad y transporte y las regresiones C/SysV
 `A:/temp/nsc-t09-sysv-padded-pair-id-qzcg_kr_`). Aliases con atributos y otras
 formas permanecen pendientes.
 
+La reconstruccion admite campos de bits C nombrados con ancho positivo y tipo
+entero observado por Clang; comprueba el ancho y el desplazamiento de cada
+campo antes de usar el plan. La muestra de cuatro campos `unsigned int`
+comprueba el patron completo que recibe el productor y conserva el valor del
+llamador. Antes del cambio pasaban C y la llamada directa, pero la plantilla
+precompilada se rechazaba (`A:/temp/nsc-t09-sysv-varargs-f8_ku9cf`). Despues
+pasaron estatica y DLL O0–O3, plantilla sin encabezado, HIR/MIR, comparacion
+LLVM y cache (`A:/temp/nsc-t09-sysv-varargs-3ax9raie`). Las sondas rechazan
+anchos o desplazamientos distintos y campos anonimos
+(`A:/temp/t09-transport-directed/`). Tambien pasaron las regresiones C/SysV
+(`A:/temp/nsc-t09-llamadas-esthiyol`, `A:/temp/nsc-t09-sysv-prueba-vbi5bsq0`,
+`A:/temp/nsc-t09-sysv-padded-pair-id-8xhqfjoa`). Campos de bits anonimos o de
+ancho cero y otras formas no acreditadas siguen pendientes en esta ruta.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin

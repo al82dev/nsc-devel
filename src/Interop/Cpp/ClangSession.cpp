@@ -1054,7 +1054,9 @@ public:
         for (const auto* field : record->fields())
         {
             const auto type = field->getType();
-            if (field->hasAttrs() || field->isBitField() || field->isAnonymousStructOrUnion() ||
+            if (type.isNull() || field->hasAttrs() || field->isAnonymousStructOrUnion() ||
+                (field->isBitField() && (!field->getIdentifier() || field->getBitWidthValue() == 0 ||
+                                         !type->isIntegerType())) ||
                 !hasReplayBuiltinOrArray(type))
                 return false;
         }
@@ -1076,7 +1078,9 @@ public:
         for (const auto* field : record->fields())
         {
             const auto type = field->getType();
-            if (field->hasAttrs() || field->isBitField() || field->isAnonymousStructOrUnion() ||
+            if (type.isNull() || field->hasAttrs() || field->isAnonymousStructOrUnion() ||
+                (field->isBitField() && (!field->getIdentifier() || field->getBitWidthValue() == 0 ||
+                                         !type->isIntegerType())) ||
                 !hasReplayBuiltinOrArray(type))
                 return false;
         }

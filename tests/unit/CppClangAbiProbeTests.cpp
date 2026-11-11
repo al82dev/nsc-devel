@@ -720,6 +720,7 @@ int main(int argc, char** argv) {
         "struct AliasAligned { NumberAligned x; };\n"
         "struct QualifiedField { const int x; };\n"
         "struct Bits { unsigned int x : 1; };\n"
+        "struct UnnamedBits { unsigned int : 1; };\n"
         "struct PointerField { int *x; };\n"
         "struct ArrayField { int x[2]; };\n"
         "struct AliasArray { Number x[2]; };\n"
@@ -735,7 +736,8 @@ int main(int argc, char** argv) {
         attributeOrigin->cRecordHasPlainReplaySyntax("AliasField") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("AliasAligned") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("QualifiedField") != false ||
-        attributeOrigin->cRecordHasPlainReplaySyntax("Bits") != false ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("Bits") != true ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("UnnamedBits") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("PointerField") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("ArrayField") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("AliasArray") != true ||
@@ -790,6 +792,40 @@ int main(int argc, char** argv) {
     wrongNested.fields[1].type.recordIdentity->clangUsr = "wrong-origin";
     if (matchesSimpleCRecordAbiReplay(wrongNested, *rebuiltParent, 0, resolveLeaf)) return 224;
     if (!nestedReplay->close().succeeded || !nestedOrigin->close().succeeded) return 225;
+    auto bitsOrigin = openRecordSession("struct BitsLayout { unsigned a:3; unsigned b:5; unsigned c:24; };");
+    if (!bitsOrigin || bitsOrigin->cRecordHasPlainReplaySyntax("BitsLayout") != true) return 226;
+    const auto bitsRecords = bitsOrigin->recordsSnapshot();
+    if (!bitsRecords) return 227;
+    CppCRecordSnapshot bitsSnapshot;
+    for (const auto& item : *bitsRecords)
+        if (item.name == "BitsLayout")
+        {
+            bitsSnapshot.targetTriple = "x86_64-pc-windows-msvc";
+            bitsSnapshot.kind = item.kind;
+            bitsSnapshot.complete = item.complete;
+            bitsSnapshot.valueLayoutUsable = true;
+            bitsSnapshot.plainReplaySyntax = true;
+            bitsSnapshot.sizeBits = item.sizeBits;
+            bitsSnapshot.alignmentBits = item.alignmentBits;
+            bitsSnapshot.fields = item.fields;
+        }
+    const auto bitsText = makeSimpleCRecordAbiReplay(bitsSnapshot);
+    if (!bitsText) return 228;
+    auto bitsReplay = openRecordSession(bitsText->c_str());
+    if (!bitsReplay) return 229;
+    const auto rebuiltBits = bitsReplay->recordsSnapshot();
+    if (!rebuiltBits || rebuiltBits->size() != 1 ||
+        !matchesSimpleCRecordAbiReplay(bitsSnapshot, rebuiltBits->front())) return 230;
+    auto brokenBits = bitsSnapshot;
+    brokenBits.fields[1].bitWidth = 4;
+    if (matchesSimpleCRecordAbiReplay(brokenBits, rebuiltBits->front())) return 231;
+    brokenBits = bitsSnapshot;
+    brokenBits.fields[1].offsetBits = 4;
+    if (matchesSimpleCRecordAbiReplay(brokenBits, rebuiltBits->front())) return 232;
+    brokenBits = bitsSnapshot;
+    brokenBits.fields[0].name.clear();
+    if (makeSimpleCRecordAbiReplay(brokenBits)) return 233;
+    if (!bitsReplay->close().succeeded || !bitsOrigin->close().succeeded) return 234;
     const auto originalRecords = equivalentOrigin->recordsSnapshot();
     if (!originalRecords) return 192;
     std::vector<CppSemanticRecordEntry> replayEntries;
