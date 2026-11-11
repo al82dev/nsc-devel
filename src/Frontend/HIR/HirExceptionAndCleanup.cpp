@@ -309,12 +309,16 @@ bool ProjectOopHirModel::ownReceiverTemporary(std::unique_ptr<ProjectOopHirNode>
 
 void ProjectOopHirModel::ownDroppableTemporaries(ProjectOopHirNode* root)
 {
-    // A discarded tuple literal owns its completed value until the statement ends.
+    // A discarded owned tuple value lives until the end of its statement.
     const auto discardedTupleNeedsDrop = [this](const ProjectOopHirNode* value)
     {
-        return value != nullptr && value->kind == ProjectOopHirNodeKind::AggregateInitializer &&
-            value->syntax != nullptr && value->syntax->kind() == ast::AstNodeKind::TupleExpression &&
-            memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(value->typeKey);
+        if (value == nullptr || value->syntax == nullptr || memberModel_ == nullptr ||
+            !memberModel_->typeRequiresValueDrop(value->typeKey)) return false;
+        if (value->kind == ProjectOopHirNodeKind::AggregateInitializer &&
+            value->syntax->kind() == ast::AstNodeKind::TupleExpression) return true;
+        return value->kind == ProjectOopHirNodeKind::Conditional &&
+            ProjectTypeConversion::tupleElementTypeKeys(value->typeKey).has_value() &&
+            memberModel_->typeIsMoveOnly(value->typeKey);
     };
     std::vector<ProjectOopHirNode*> pending{root};
     while (!pending.empty())

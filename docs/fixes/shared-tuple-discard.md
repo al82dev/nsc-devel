@@ -35,3 +35,33 @@ ni un Core generado con este compilador. No cubren `await`, DLL, tuplas
 condicionales ni todos los patrones de excepciones. No se modifica
 interoperabilidad C/C++, LLVM ni la instalación de C:;
 se usan compilación incremental y pruebas dirigidas.
+
+## Resultado condicional descartado
+
+La corrección inicial no cubría `choose ? (first.Clone(), 0) :
+(second.Clone(), 0)` como sentencia. La reproducción compiló, pero el contador
+quedó incrementado para Rc y Arc, ambas ramas y O0/O2: ocho salidas 2 frente a
+42. Los ocho controles con tupla literal anidada sí devolvieron 42. Entradas,
+comandos y resultados: `conditional.cmd` y `conditional.log` en la carpeta de
+evidencia anterior.
+
+La unión se representa en HIR como `Conditional`, no `AggregateInitializer`.
+El ensayo aplica el dueño temporal al resultado descartado únicamente cuando
+su tipo es una tupla move-only que necesita drop; el análisis existente rechaza
+las ramas addressable que intentarían copiar ese tipo. Se conserva la selección
+de ramas y no se altera la clasificación global de otros temporales.
+
+Con compilación incremental, el sondeo original pasó 16/16. La regresión nueva
+pasó 48 combinaciones: cuatro familias, ambas ramas, resultado descartado,
+excepción durante la construcción y resultado guardado, en O0/O2; también
+rechazó copiar una tupla move-only existente. Los dos dueños tienen contadores
+separados, lo que comprueba cuál rama adquirió una referencia. Pasaron de nuevo
+el control anterior de descarte y las dos pruebas de paso a método. Resultados:
+`conditional-after.log`, `conditional-regressions-final.log`,
+`conditional-controls.log` y `conditional-call-controls.log` en la carpeta de
+evidencia anterior. Estos resultados usan el árbol con otros cambios locales y
+el Core binario anterior: no demuestran una revisión limpia ni acreditan
+tuplas copiables con destructor, `await`, `match` o contratos binarios generales.
+El compilador utilizado tiene SHA-256
+`84b3406e935d6bd5a71007c34daeea1d2040f3bf868cf1341bda8676fef99ac1`;
+la selección registrada de CTest pasó 1/1 sin omisión (`conditional-ctest.log`).
