@@ -17,7 +17,7 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
 {
             if (function.cppSysVCall && function.cppAbiPlan &&
                 (interop::abi_plan::isSysVSmallRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
-                 interop::abi_plan::isSysVTwoI64RecordRoundTrip(*function.cppAbiPlan, function.cAbiName)))
+                 interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*function.cppAbiPlan, function.cAbiName)))
             {
                 const char* target = LLVMGetTarget(module_);
                 if (!target || !std::string_view(target).starts_with("x86_64-pc-windows-msvc"))
@@ -25,10 +25,12 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                     error = "SysV small record requires the validated Windows x64 target";
                     return nullptr;
                 }
-                if (interop::abi_plan::isSysVTwoI64RecordRoundTrip(*function.cppAbiPlan, function.cAbiName))
+                if (interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*function.cppAbiPlan, function.cAbiName))
                 {
                     LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
-                    LLVMTypeRef pieces[] = {i64, i64};
+                    LLVMTypeRef second = LLVMIntTypeInContext(context_,
+                        static_cast<unsigned>(function.cppAbiPlan->physicalReturn.elements[1].widthOrCount));
+                    LLVMTypeRef pieces[] = {i64, second};
                     LLVMTypeRef result = LLVMStructTypeInContext(context_, pieces, 2, 0);
                     return LLVMFunctionType(result, pieces, 2, 0);
                 }

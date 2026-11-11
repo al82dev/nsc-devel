@@ -186,3 +186,24 @@ pasaron en A:/temp/nsc-t09-sysv-r3-m12vqtcd, A:/temp/nsc-t09-sysv-r8-ccbln1vt y
 A:/temp/nsc-t09-sysv-prueba-ij2dqjzw. La sonda del plan y la prueba de metadatos
 se registran en A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log.
 Los agregados de otra forma, firmas multiples y callbacks siguen pendientes.
+
+Records de nueve a quince bytes: Clang reporto dos piezas, `i64` y un entero
+de `i8` a `i56` segun el tamano, en A:/temp/nsc-t09-sysv-pequenos-4ckars9k.
+Cada control C paso y NSC lo rechazo antes del cambio. Despues, cada muestra
+paso las ocho comparaciones estatica/DLL O0–O3, la verificacion de ambas piezas
+en declaracion y llamada, y una plantilla precompilada sin encabezado en
+estatica O0. Evidencia por tamano:
+
+- 9: A:/temp/nsc-t09-sysv-r9-nen03wit; 10: A:/temp/nsc-t09-sysv-r10-4l0w99la.
+- 11: A:/temp/nsc-t09-sysv-r11-r5rnu6j1; 12: A:/temp/nsc-t09-sysv-r12-ylj2mwer.
+- 13: A:/temp/nsc-t09-sysv-r13-5ttz6jxq; 14: A:/temp/nsc-t09-sysv-r14-xbnval2a.
+- 15: A:/temp/nsc-t09-sysv-r15-1e2hus4i.
+
+La regresion de 16 bytes paso en A:/temp/nsc-t09-sysv-r16-6p9zi2vs. La prueba
+negativa creada en esta sesion conserva el rechazo, ahora con un record de 24
+bytes, cuya forma indirecta sigue pendiente; paso junto con los escalares en
+A:/temp/nsc-t09-sysv-prueba-_m11qhp6. Pasaron los controles Clang y metadatos
+de las siete anchuras (A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log). Las muestras tienen campos `unsigned char`;
+otras disposiciones, clases de registro, firmas multiples y callbacks no quedan
+certificados. El item sigue abierto.

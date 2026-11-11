@@ -1,0 +1,6 @@
+int Main() {
+    T09SysvR11 original; original.x = 1; original.y = 2; original.z = 3; original.w = 4; original.a = 5; original.b = 6; original.c = 7; original.d = 8; original.e = 9; original.f = 10; original.g = 11;
+    T09SysvR11 result = sysv_r11(original);
+    if (original.x != 1 || original.y != 2 || original.z != 3 || original.w != 4 || original.a != 5 || original.b != 6 || original.c != 7 || original.d != 8 || original.e != 9 || original.f != 10 || original.g != 11 || result.x != 11 || result.y != 2 || result.z != 3 || result.w != 4 || result.a != 5 || result.b != 6 || result.c != 7 || result.d != 8 || result.e != 9 || result.f != 10 || result.g != 11) return 1;
+    return 0;
+}

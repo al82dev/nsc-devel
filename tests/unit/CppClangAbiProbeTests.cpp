@@ -49,6 +49,13 @@ int main(int argc, char** argv) {
         typedef struct R6 { unsigned char x, y, z, w, a, b; } R6;
         typedef struct R7 { unsigned char x, y, z, w, a, b, c; } R7;
         typedef struct R8 { unsigned char x, y, z, w, a, b, c, d; } R8;
+        typedef struct R9 { unsigned char x[9]; } R9;
+        typedef struct R10 { unsigned char x[10]; } R10;
+        typedef struct R11 { unsigned char x[11]; } R11;
+        typedef struct R12 { unsigned char x[12]; } R12;
+        typedef struct R13 { unsigned char x[13]; } R13;
+        typedef struct R14 { unsigned char x[14]; } R14;
+        typedef struct R15 { unsigned char x[15]; } R15;
         typedef struct R16 { long long x, y; } R16;
         typedef struct R24 { long long x, y, z; } R24;
         typedef struct RF { double x; int y; } RF;
@@ -62,6 +69,13 @@ int main(int argc, char** argv) {
         R5 __attribute__((sysv_abi)) p5(R5);
         R6 __attribute__((sysv_abi)) p6(R6);
         R7 __attribute__((sysv_abi)) p7(R7);
+        R9 __attribute__((sysv_abi)) p9(R9);
+        R10 __attribute__((sysv_abi)) p10(R10);
+        R11 __attribute__((sysv_abi)) p11(R11);
+        R12 __attribute__((sysv_abi)) p12(R12);
+        R13 __attribute__((sysv_abi)) p13(R13);
+        R14 __attribute__((sysv_abi)) p14(R14);
+        R15 __attribute__((sysv_abi)) p15(R15);
         R3 __attribute__((sysv_abi)) p3(R3);
         R3* __attribute__((sysv_abi)) p3ptr(R3*);
         R16 __attribute__((sysv_abi)) p16(R16);
@@ -125,7 +139,8 @@ int main(int argc, char** argv) {
             continue;
         }
         if (name != "p1" && name != "p2" && name != "p3" && name != "p4" && name != "p5" &&
-            name != "p6" && name != "p7" && name != "p8" &&
+            name != "p6" && name != "p7" && name != "p8" && name != "p9" && name != "p10" &&
+            name != "p11" && name != "p12" && name != "p13" && name != "p14" && name != "p15" &&
             name != "p16" && name != "pf" && name != "p24" && name != "ps8" && name != "pm" &&
             name != "pp" && name != "pvec" && name != "pvoid") continue;
         if (name == "p3" && copiedPlans.contains(name)) continue;
@@ -194,7 +209,7 @@ int main(int argc, char** argv) {
         if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
-    if (matched != 16 || copiedPlans.size() != 16 || !unsupportedRejected || !variadicRejected ||
+    if (matched != 23 || copiedPlans.size() != 23 || !unsupportedRejected || !variadicRejected ||
         !noPrototypeRejected || !attributeRejected) return 7;
     generator.reset();
     ast.reset();
@@ -204,6 +219,8 @@ int main(int argc, char** argv) {
         t09_probe::isSysVThreeByteRoundTrip(copiedPlans.at("p4"), "p4")) return 74;
     for (const char* name : {"p1", "p2", "p5", "p6", "p7", "p8"})
         if (!t09_probe::isSysVSmallRecordRoundTrip(copiedPlans.at(name), name)) return 76;
+    for (const char* name : {"p9", "p10", "p11", "p12", "p13", "p14", "p15"})
+        if (!t09_probe::isSysVTwoIntegerRecordRoundTrip(copiedPlans.at(name), name)) return 80;
     if (p3.targetTriple.find("x86_64-pc-windows-msvc") != 0 || p3.dataLayout.empty()) return 28;
     if (!t09_probe::isSysVThreeByteRoundTrip(p3, "p3") ||
         t09_probe::isSysVThreeByteRoundTrip(p3, "other")) return 70;

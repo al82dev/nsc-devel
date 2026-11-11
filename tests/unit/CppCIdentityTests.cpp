@@ -1664,6 +1664,22 @@ bool checkDependencyTypeCodec()
         decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
         abi_plan::isSysVTwoI64RecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
         "C dependency function retains a two-piece SysV record plan");
+    for (const std::uint64_t bits : {8U, 16U, 24U, 32U, 40U, 48U, 56U})
+    {
+        auto varied = std::make_shared<abi_plan::Plan>(*pairPlan);
+        varied->physicalReturn.elements[1].widthOrCount = bits;
+        varied->logicalReturn.coercion->elements[1].widthOrCount = bits;
+        varied->logicalParameters[0].coercion->elements[1].widthOrCount = bits;
+        varied->physicalParameters[1].type.widthOrCount = bits;
+        recordFunction.declaration.abiPlan = varied;
+        recordFunction.declaration.returnType.sizeBits = 64 + bits;
+        recordFunction.declaration.parameters[0].type.sizeBits = 64 + bits;
+        ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+            decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+            abi_plan::isSysVTwoIntegerRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+            restoredRecord.declaration.abiPlan->physicalReturn.elements[1].widthOrCount == bits,
+            "C dependency function retains the second piece width");
+    }
     if (!functionBytes.empty()) functionBytes.pop_back();
     decoded.moduleName = "sentinel";
     ok &= expect(!decodeCDependencyFunction(functionBytes, decoded, error) && decoded.moduleName == "sentinel",
