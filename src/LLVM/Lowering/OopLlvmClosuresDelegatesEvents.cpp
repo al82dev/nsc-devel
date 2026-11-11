@@ -1191,7 +1191,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             return key.starts_with("type:") && !key.ends_with('*');
         };
         if (externC && node->cppVariadicCallPlan && node->typeKey == "builtin:int" &&
-            (node->argumentCount == 2 || node->argumentCount == 3) &&
+            node->argumentCount >= 2 && node->argumentCount <= 1025 &&
             node->argumentTypeKeys.size() == node->argumentCount &&
             node->argumentTypeKeys[0] == "builtin:int" &&
             std::any_of(node->argumentTypeKeys.begin() + 1, node->argumentTypeKeys.end(), recordArgument) &&

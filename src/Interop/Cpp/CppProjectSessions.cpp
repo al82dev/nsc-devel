@@ -548,7 +548,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         alias.targetTriple != "x86_64-pc-windows-msvc" || environment.targetTriple != alias.targetTriple ||
         alias.projectFile != graph.projects()[alias.projectOrdinal].projectFile() ||
         !alias.declaration.clangUsr || alias.declaration.clangUsr->empty() || optionalTypeKeys.empty() ||
-        optionalTypeKeys.size() > 2) return {};
+        optionalTypeKeys.size() > 1024) return {};
     const auto& moduleName = graph.projects()[alias.projectOrdinal].moduleName();
     const auto mapped = projectCppStoredFunctionPointer(alias.declaration.underlyingType, alias.projectOrdinal,
         moduleName, &lookup);

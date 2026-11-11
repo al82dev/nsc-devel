@@ -1474,6 +1474,22 @@ con `double`, con `int` y con otro record `byval`
 `A:/temp/nsc-t09-sysv-indirecta-var-mixto-byval-pre-5t780b5e`). Otras formas
 de puntero y firmas permanecen pendientes; T09-003 no esta cerrado.
 
+**Presion de registros con record opcional:** el control C paso con un record
+mixto, ocho `double` y un puntero opcionales, pero NSC rechazaba la cantidad
+de argumentos (`A:/temp/nsc-t09-sysv-indirecta-variadica-record-presion-e92p38pg`).
+Se retiro el limite artificial de dos argumentos opcionales para las clases ya
+validadas, conservando el limite de 1024 y el plan de Clang. El productor
+independiente comprueba los ocho registros flotantes, el `double` en pila,
+el contador y escritura por puntero. Pasaron C/NS estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-record-presion-matriz-m2dwoiuf`) y plantilla
+sin encabezado, cache y rechazo de variante
+(`A:/temp/nsc-t09-sysv-indirecta-record-presion-pre-wjt75qfg`). Pasaron cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones precompiladas de puntero y
+mezcla `byval` (`A:/temp/nsc-t09-sysv-indirecta-record-puntero-pre-5etbz2yf`,
+`A:/temp/nsc-t09-sysv-indirecta-var-mixto-byval-pre-2lpfhkz3`). Otras clases,
+promociones y presiones no quedan certificadas; T09-003 sigue abierto.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor
