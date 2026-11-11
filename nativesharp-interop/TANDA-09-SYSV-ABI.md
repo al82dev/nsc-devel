@@ -1126,6 +1126,23 @@ records de tres enteros, cuatro enteros y `double`/`int`
 precompilada mixta (`A:/temp/nsc-t09-sysv-indirecta-record-pre-om0yol1a`).
 El conflicto de la prueba negativa anterior sigue abierto.
 
+**Record mixto entre escalares:** Clang emitio `i32`, `double`, `i32`, `i32`
+y su control C paso; NSC inicialmente rechazo la firma
+(`A:/temp/nsc-t09-sysv-indirecta-record-escalares-njuycwt0`). La muestra paso
+en estatica y DLL O0-O3; dos llamadas con efectos observables comprobaron el
+orden de evaluacion de los argumentos escalares y el record permanecio intacto
+(`A:/temp/nsc-t09-sysv-indirecta-record-matriz-9cdtdr4f`). La plantilla
+precompilada sin encabezado paso en las mismas modalidades y optimizaciones,
+incluido acierto de cache y rechazo de una variante no acreditada
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-uly2gkyv`). Pasaron las matrices de
+records de tres y cuatro enteros, record mixto y escalares, junto a transporte,
+ABI e identidad (`A:/temp/nsc-t09-sysv-indirecta-record-matriz-hjdh9mmd`,
+`A:/temp/nsc-t09-sysv-indirecta-record-matriz-hpe3637r`,
+`A:/temp/nsc-t09-sysv-indirecta-record-matriz-iian_w4r`,
+`A:/temp/nsc-t09-sysv-indirecta-matriz-pu3yg2cj`,
+`A:/temp/t09-transport-directed/`). La prueba negativa anterior sigue intacta
+y su contradiccion continua pendiente; no se acreditan otras firmas.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor

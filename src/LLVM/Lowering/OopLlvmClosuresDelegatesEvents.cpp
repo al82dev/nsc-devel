@@ -1186,9 +1186,12 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         if (delegateValue == nullptr) return nullptr;
         const bool externC = isExternCDelegateType(node->elementTypeKey);
         const bool vectorCall = externC && isVectorCallDelegateType(node->elementTypeKey);
-        if (externC && node->cppFunctionPointerPlan && node->argumentCount == 1 &&
-            node->argumentTypeKeys.size() == 1 && node->argumentTypeKeys[0].starts_with("type:") &&
-            !node->argumentTypeKeys[0].ends_with('*') && node->typeKey == "builtin:int")
+        const bool boundaryIntegers = node->argumentCount == 3 && node->argumentTypeKeys.size() == 3 &&
+            node->argumentTypeKeys[0] == "builtin:int" && node->argumentTypeKeys[2] == "builtin:int";
+        const std::size_t recordIndex = boundaryIntegers ? 1 : 0;
+        if (externC && node->cppFunctionPointerPlan && (node->argumentCount == 1 || boundaryIntegers) &&
+            node->argumentTypeKeys.size() == node->argumentCount && node->argumentTypeKeys[recordIndex].starts_with("type:") &&
+            !node->argumentTypeKeys[recordIndex].ends_with('*') && node->typeKey == "builtin:int")
         {
             using namespace interop::abi_plan;
             const auto& plan = *node->cppFunctionPointerPlan;
@@ -1200,43 +1203,56 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             const auto plainInteger = [&](const PhysicalParameter& p, std::uint64_t width) {
                 return plain(p) && p.type.kind == TypeKind::Integer && p.type.widthOrCount == width;
             };
-            const auto& key = node->argumentTypeKeys[0];
+            const auto& key = node->argumentTypeKeys[recordIndex];
             const auto* layout = findStructLayout(mirModel_, key);
             const auto ordinal = key.starts_with("type:")
                 ? nameLookup_.typeOrdinalForIdentity(std::string_view(key).substr(5)) : std::nullopt;
             const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
-            const bool integerShape = layout && plan.physicalParameters.size() == 2 && layout->alignment == 4 &&
-                (layout->size == 12 || layout->size == 16) && plainInteger(plan.physicalParameters[0], 64) &&
-                plainInteger(plan.physicalParameters[1], layout->size == 12 ? 32 : 64);
-            const bool mixedShape = layout && plan.physicalParameters.size() == 2 && layout->size == 16 &&
-                layout->alignment == 8 && plain(plan.physicalParameters[0]) &&
-                plan.physicalParameters[0].type.kind == TypeKind::Double && plainInteger(plan.physicalParameters[1], 32);
+            const auto physicalStart = boundaryIntegers ? 1U : 0U;
+            const bool physicalCount = plan.physicalParameters.size() == (boundaryIntegers ? 4U : 2U);
+            const bool scalarShape = !boundaryIntegers || (physicalCount &&
+                plainInteger(plan.physicalParameters[0], 32) && plainInteger(plan.physicalParameters[3], 32));
+            const bool integerShape = layout && physicalCount && layout->alignment == 4 &&
+                (layout->size == 12 || layout->size == 16) && plainInteger(plan.physicalParameters[physicalStart], 64) &&
+                plainInteger(plan.physicalParameters[physicalStart + 1], layout->size == 12 ? 32 : 64);
+            const bool mixedShape = layout && physicalCount && layout->size == 16 && layout->alignment == 8 &&
+                plain(plan.physicalParameters[physicalStart]) &&
+                plan.physicalParameters[physicalStart].type.kind == TypeKind::Double &&
+                plainInteger(plan.physicalParameters[physicalStart + 1], 32);
             if (!interop::validateCppSysVFunctionPointerPlan(plan) ||
                 !signature || signature->callingConvention != language::CallingConvention::SysV ||
-                signature->variadic || signature->parameters.size() != 1 || plan.variadic ||
+                signature->variadic || signature->parameters.size() != node->argumentCount || plan.variadic ||
                 plan.symbol != "__nsc_pointer_abi_probe" || plan.callingConvention != 78 ||
                 !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
                 plan.returnSignExtend || plan.returnZeroExtend || plan.physicalReturn.kind != TypeKind::Integer ||
                 plan.physicalReturn.widthOrCount != 32 || plan.logicalReturn.passing != Passing::Direct ||
-                plan.logicalParameters.size() != 1 || plan.physicalParameters.size() != 2 ||
-                plan.logicalParameters[0].passing != Passing::Direct ||
-                plan.logicalParameters[0].firstPhysical != 0 || plan.logicalParameters[0].physicalCount != 2 ||
-                plan.logicalParameters[0].offset != 0 || (!integerShape && !mixedShape) ||
+                plan.logicalParameters.size() != node->argumentCount || !physicalCount || !scalarShape ||
+                plan.logicalParameters[recordIndex].passing != Passing::Direct ||
+                plan.logicalParameters[recordIndex].firstPhysical != physicalStart ||
+                plan.logicalParameters[recordIndex].physicalCount != 2 ||
+                plan.logicalParameters[recordIndex].offset != 0 || (!integerShape && !mixedShape) ||
                 !imported || imported->isIncomplete ||
                 !imported->deferredImportError.empty() || !imported->objectLayout ||
                 (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
                  imported->origin != frontend::CppImportedTypeOrigin::CUnion) ||
                 imported->objectLayout->sizeBytes != layout->size || imported->objectLayout->alignmentBytes != layout->alignment)
                 return failValue(error, "sysv_abi function pointer record plan is not supported");
-            LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[0] :
-                lowerExpression(node->children[1].get(), error);
-            if (!value || terminated()) return value;
+            std::vector<LLVMValueRef> evaluated;
+            for (std::size_t i = 0; i < node->argumentCount; ++i)
+            {
+                LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[i] :
+                    lowerExpression(node->children[i + 1].get(), error);
+                if (!value || terminated()) return value;
+                evaluated.push_back(value);
+            }
             LLVMTypeRef carrier = llvmType(key, error);
-            if (!carrier || LLVMTypeOf(value) != carrier)
+            if (!carrier || LLVMTypeOf(evaluated[recordIndex]) != carrier ||
+                (boundaryIntegers && (LLVMTypeOf(evaluated[0]) != LLVMInt32TypeInContext(context_) ||
+                                      LLVMTypeOf(evaluated[2]) != LLVMInt32TypeInContext(context_))))
                 return failValue(error, "sysv_abi function pointer record carrier does not match its plan");
             const auto alignment = static_cast<unsigned>(layout->alignment);
             LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "sysv.callback.record");
-            LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+            LLVMValueRef store = LLVMBuildStore(builder_, evaluated[recordIndex], slot);
             LLVMSetAlignment(store, alignment);
             LLVMTypeRef types[] = {mixedShape ? LLVMDoubleTypeInContext(context_) : LLVMInt64TypeInContext(context_),
                 mixedShape || layout->size == 12 ? LLVMInt32TypeInContext(context_) : LLVMInt64TypeInContext(context_)};
@@ -1249,8 +1265,16 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             releaseTransferredArguments(node);
             delegateValue = checkedReceiver(delegateValue, error);
             if (!delegateValue) return nullptr;
-            LLVMTypeRef functionType = LLVMFunctionType(LLVMInt32TypeInContext(context_), types, 2, 0);
-            LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, pieces, 2, "sysv.callback.result");
+            std::vector<LLVMTypeRef> physicalTypes;
+            std::vector<LLVMValueRef> physicalArguments;
+            if (boundaryIntegers) { physicalTypes.push_back(LLVMInt32TypeInContext(context_)); physicalArguments.push_back(evaluated[0]); }
+            physicalTypes.insert(physicalTypes.end(), std::begin(types), std::end(types));
+            physicalArguments.insert(physicalArguments.end(), std::begin(pieces), std::end(pieces));
+            if (boundaryIntegers) { physicalTypes.push_back(LLVMInt32TypeInContext(context_)); physicalArguments.push_back(evaluated[2]); }
+            LLVMTypeRef functionType = LLVMFunctionType(LLVMInt32TypeInContext(context_), physicalTypes.data(),
+                static_cast<unsigned>(physicalTypes.size()), 0);
+            LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, physicalArguments.data(),
+                static_cast<unsigned>(physicalArguments.size()), "sysv.callback.result");
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
             return call;
         }
