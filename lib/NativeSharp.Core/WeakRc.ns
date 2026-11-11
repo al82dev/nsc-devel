@@ -8,8 +8,8 @@ namespace NativeSharp.Core
         private SharedLocalWeak<T> inner;
 
         internal WeakRc(SharedLocalWeak<T> value) { inner = move(value); }
-        public bool Expired() { return inner.Expired(); }
-        public long WeakCount() { return inner.WeakCount(); }
+        public readonly bool Expired() { return inner.Expired(); }
+        public readonly long WeakCount() { return inner.WeakCount(); }
 
         public WeakRc<T> Clone()
         {

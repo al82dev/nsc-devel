@@ -17,12 +17,12 @@ namespace NativeSharp.Core.Internal
             if (block != null) SharedAtomicControl.DropWeak(block);
         }
 
-        public bool Expired()
+        public readonly bool Expired()
         {
             return block == null || SharedAtomicControl.StrongCount(block) == 0l;
         }
 
-        public long WeakCount()
+        public readonly long WeakCount()
         {
             return block == null ? 0l : SharedAtomicControl.WeakCount(block);
         }

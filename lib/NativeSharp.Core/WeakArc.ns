@@ -8,9 +8,9 @@ namespace NativeSharp.Core
         private SharedAtomicWeak<T> inner;
 
         internal WeakArc(SharedAtomicWeak<T> value) { inner = move(value); }
-        public bool Expired() { return inner.Expired(); }
+        public readonly bool Expired() { return inner.Expired(); }
         // An observation during concurrent changes; exact without concurrent operations.
-        public long WeakCount() { return inner.WeakCount(); }
+        public readonly long WeakCount() { return inner.WeakCount(); }
 
         public WeakArc<T> Clone()
         {

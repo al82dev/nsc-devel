@@ -14,7 +14,7 @@ def run(command, cwd):
 def main():
     compiler, *sources = map(Path, sys.argv[1:])
     prefix = '''using NativeSharp.Core;
-namespace NativeSharp.Core { public class Exception { } }
+namespace NativeSharp.Core { public class Exception { } public trait Send {} public trait Sync {} }
 class Payload { public static int Drops; public long Data; public Payload() { Data = 42l; }
  ~Payload() { Drops = Drops + 1; } }
 struct Value { public static int Drops; public long Data; public Value() { Data = 42l; }
@@ -802,6 +802,14 @@ struct BadValue { public owned Resource item;
  STRONG<Payload> b = a; return 0; } }''', 'move'),
         'weak_copy': ('''class Program { public static int Main() { WEAK<Payload> a = default(WEAK<Payload>);
  WEAK<Payload> b = a; return 0; } }''', 'move'),
+        'weak_readonly_observation': ('''class Program {
+ static int Observe(in WEAK<Payload> weak) {
+ int expired = weak.Expired() ? 100 : 0; return expired + (int)weak.WeakCount(); }
+ public static int Main() { WEAK<Payload> weak = default(WEAK<Payload>);
+ if (Observe(in weak) != 100) return 1;
+ { STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); weak = owner.Downgrade();
+   if (Observe(in weak) != 1) return 2; }
+ return Observe(in weak) == 101 && weak.WeakCount() == 1l ? 42 : 3; } }''', 'run:42'),
         'tuple_owner_copy': ('''class Program { public static int Main() {
  STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
  (STRONG<Payload>, int) pair = (owner, 42); return 0; } }''', 'move'),
