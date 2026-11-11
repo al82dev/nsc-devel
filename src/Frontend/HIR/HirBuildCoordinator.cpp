@@ -1883,7 +1883,6 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                             if (!((symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Record &&
                                    symbol.cppParameterTypes[i].sizeBits == symbol.cppAbiPlan->physicalParameters[i].type.widthOrCount) ||
                                   (symbol.cppParameterTypes[i].kind == interop::CppTypeKind::SignedInteger &&
-                                   symbol.cppParameterTypes.size() == 2 &&
                                    function.parameterTypeKeys[i] == "builtin:int" &&
                                    symbol.cppAbiPlan->physicalParameters[i].type.widthOrCount == 32)))
                                 return false;

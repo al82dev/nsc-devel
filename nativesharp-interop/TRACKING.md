@@ -1725,7 +1725,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Se probaron records de dos `double` y combinaciones `double`/`float` en ambos ordenes, incluida precompilacion; otras combinaciones flotantes siguen pendientes. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probaron records indirectos con retorno `sret` y argumento `byval`, incluidas muestras alineadas hasta 256 bytes; siguen pendientes otras formas indirectas. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probaron firmas con dos y ocho argumentos de record pequeno del mismo tipo y retorno del mismo tipo; otras firmas con varios argumentos siguen pendientes. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
-  - Se probo tambien una firma con records pequenos de distintos tamanos, clasificados por separado por Clang, y firmas de dos argumentos con un record pequeno y `int` en ambos ordenes; otras mezclas siguen pendientes. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
+  - Se probaron records pequenos de distintos tamanos y mezclas con `int`, incluidos ambos ordenes y ocho argumentos con paso por pila; otras mezclas siguen pendientes. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
 - [ ] T09-004. Emitir una llamada C sin parámetros y con resultado escalar. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-005. Emitir una llamada C con parámetros escalares. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-006. Emitir el paso de punteros a una función C. [Prueba y contraste](pruebas-tanda-09-llamadas/).

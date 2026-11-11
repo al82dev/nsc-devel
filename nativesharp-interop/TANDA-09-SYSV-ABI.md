@@ -560,5 +560,16 @@ plantilla precompilada sin encabezado O0:
 A:/temp/nsc-t09-sysv-scalar-record-7d9j9daf. La regresion del orden anterior
 paso en A:/temp/nsc-t09-sysv-record-scalar-yljdztd2 y las pruebas de plan y
 metadatos en A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log.
-Otras mezclas, cantidades de argumentos y tipos de escalar siguen pendientes.
+En ese paso otras mezclas, cantidades de argumentos y tipos de escalar seguian pendientes.
+
+Posteriormente se probo una firma de ocho argumentos que intercala records de
+cuatro bytes e `int`, incluidos argumentos en pila. El control C paso y NSC
+rechazo inicialmente el caso (A:/temp/nsc-t09-sysv-mixed-n1d_958c); tras
+ampliar el plan, pasaron las comparaciones estatica/DLL O0–O3 y la plantilla
+precompilada sin encabezado O0 (A:/temp/nsc-t09-sysv-mixed-bxz8rw3f).
+La regresion de dos argumentos paso en
+A:/temp/nsc-t09-sysv-scalar-record-_w55bx67; la sonda Clang y el control de
+metadatos pasaron en A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log. Siguen pendientes otros tipos escalares y
+otras clasificaciones de records; no se acredita compatibilidad general.
 

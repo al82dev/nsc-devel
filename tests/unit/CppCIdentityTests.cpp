@@ -1685,6 +1685,16 @@ bool checkDependencyTypeCodec()
         abi_plan::isSysVSmallRecordsRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
         restoredRecord.declaration.abiPlan->logicalParameters.size() == 8,
         "C dependency function retains eight direct record arguments");
+    for (const auto index : {2U, 4U, 6U})
+        recordFunction.declaration.parameters[index].type.kind = CppTypeKind::SignedInteger;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        restoredRecord.declaration.parameters[6].type.kind == CppTypeKind::SignedInteger &&
+        abi_plan::isSysVSmallRecordsRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->logicalParameters.size() == 8,
+        "C dependency function retains eight mixed record and integer arguments");
+    for (const auto index : {2U, 4U, 6U})
+        recordFunction.declaration.parameters[index].type.kind = CppTypeKind::Record;
     recordFunction.declaration.parameters.resize(2);
     recordFunction.declaration.parameters.pop_back();
     for (const std::uint64_t bits : {8U, 16U, 40U, 48U, 56U, 64U})

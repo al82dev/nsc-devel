@@ -487,7 +487,6 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                     if (!((f.parameters[i].type.kind == CppTypeKind::Record &&
                            f.parameters[i].type.sizeBits == f.abiPlan->physicalParameters[i].type.widthOrCount) ||
                           (f.parameters[i].type.kind == CppTypeKind::SignedInteger &&
-                           f.parameters.size() == 2 &&
                            f.parameters[i].type.sizeBits == 32 &&
                            f.abiPlan->physicalParameters[i].type.widthOrCount == 32))) return true;
                 }
