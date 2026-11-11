@@ -271,6 +271,14 @@ inline bool isSysVDirectPairLayout(const Type& type, std::uint64_t bits, std::ui
     if (a.kind == TypeKind::Integer && b.kind == TypeKind::Vector) return bits == 128 && alignmentBits == 32;
     return bits == 128 && alignmentBits == 64;
 }
+inline bool isSysVDirectSingleRecordLayout(const Type& type, std::uint64_t bits, std::uint64_t alignmentBits) noexcept
+{
+    if (type.kind == TypeKind::Integer) return bits == type.widthOrCount && bits >= 8 && bits <= 64 && bits % 8 == 0;
+    if (type.kind == TypeKind::Float) return bits == 32 && alignmentBits == 32 && type.widthOrCount == 0;
+    if (type.kind == TypeKind::Double) return bits == 64 && alignmentBits == 64 && type.widthOrCount == 0;
+    return type.kind == TypeKind::Vector && type.widthOrCount == 2 && type.elements.size() == 1 &&
+        type.elements[0].kind == TypeKind::Float && type.elements[0].widthOrCount == 0 && bits == 64 && alignmentBits == 32;
+}
 // Indirect record result and by-value records mixed with direct scalars.
 inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view symbol) noexcept
 {
@@ -325,6 +333,10 @@ inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view
             physical.byValue ||
             !((physical.type.kind == TypeKind::Integer && physical.type.widthOrCount >= 8 && physical.type.widthOrCount <= 64 && physical.type.widthOrCount % 8 == 0) ||
               physical.type.kind == TypeKind::Float || physical.type.kind == TypeKind::Double ||
+              (physical.type.kind == TypeKind::Vector && physical.type.widthOrCount == 2 &&
+               physical.type.elements.size() == 1 && physical.type.elements[0].kind == TypeKind::Float &&
+               physical.type.elements[0].widthOrCount == 0 && logical.coercion->elements.size() == 1 &&
+               logical.coercion->elements[0].kind == TypeKind::Float && logical.coercion->elements[0].widthOrCount == 0) ||
               (physical.type.kind == TypeKind::Pointer && physical.type.widthOrCount == 0))) return false;
         ++physicalIndex;
     }

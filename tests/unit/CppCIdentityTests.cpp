@@ -2108,6 +2108,24 @@ bool checkDependencyTypeCodec()
         abi_plan::isSysVIndirectRecordWithArguments(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
         restoredRecord.declaration.abiPlan->logicalParameters.size() == 3,
         "C dependency function retains an indirect return without byval arguments");
+    auto singleWithoutByval = std::make_shared<abi_plan::Plan>(*mixedWithoutByval);
+    singleWithoutByval->logicalParameters[1].physicalCount = 1;
+    singleWithoutByval->logicalParameters[2].firstPhysical = 3;
+    singleWithoutByval->physicalParameters.erase(singleWithoutByval->physicalParameters.begin() + 3);
+    for (const auto kind : {abi_plan::TypeKind::Float, abi_plan::TypeKind::Double, abi_plan::TypeKind::Vector})
+    {
+        abi_plan::Type piece{kind, kind == abi_plan::TypeKind::Vector ? 2U : 0U};
+        if (kind == abi_plan::TypeKind::Vector) piece.elements.push_back(abi_plan::Type{abi_plan::TypeKind::Float});
+        singleWithoutByval->logicalParameters[1].coercion = piece;
+        singleWithoutByval->physicalParameters[2].type = piece;
+        recordFunction.declaration.parameters[1].type.sizeBits = kind == abi_plan::TypeKind::Float ? 32 : 64;
+        recordFunction.declaration.parameters[1].type.alignmentBits = kind == abi_plan::TypeKind::Double ? 64 : 32;
+        recordFunction.declaration.abiPlan = singleWithoutByval;
+        ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+            decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+            restoredRecord.declaration.abiPlan->physicalParameters[2].type.kind == kind,
+            "C dependency function retains a single direct floating or vector record piece");
+    }
     recordFunction.declaration.returnType.sizeBits = 192;
     recordFunction.declaration.returnType.alignmentBits = 8;
     auto sretOnly = std::make_shared<abi_plan::Plan>(*indirectPlan);

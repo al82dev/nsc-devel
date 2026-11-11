@@ -130,3 +130,4 @@ T09-003: conservar la prueba negativa de esta sesion con dos tipos de record dis
 T09-003: contrastar y generalizar firmas directas con records pequenos de tipos y anchuras distintas. Verificar el orden de parametros, copias y precompilacion con una muestra de 4 y 8 bytes; mantener negativo el caso de record mezclado con escalar aun no admitido.
 T09-003: conservar la prueba negativa de esta sesion con retorno indirecto y record directo de una pieza vectorial, aun no admitida.
 T09-003: conservar la prueba negativa de esta sesion con vector fijo seguido de `double`, aun no admitido.
+T09-003: contrastar retorno indirecto con un record directo de una pieza `float`, `double` o vector de dos `float`, sin otro argumento indirecto; comprobar ejecucion y precompilacion. Conservar el rechazo de una forma diferente, con piezas `double` e `i64`, aun no admitida.

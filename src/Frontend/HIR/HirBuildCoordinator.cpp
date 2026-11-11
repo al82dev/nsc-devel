@@ -1890,8 +1890,8 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                                 continue;
                             }
                             const bool directRecord = type.kind == interop::CppTypeKind::Record &&
-                                ((logical.physicalCount == 1 && physical.kind == interop::abi_plan::TypeKind::Integer &&
-                                  type.sizeBits == physical.widthOrCount) ||
+                                ((logical.physicalCount == 1 && type.sizeBits && type.alignmentBits &&
+                                  interop::abi_plan::isSysVDirectSingleRecordLayout(physical, *type.sizeBits, *type.alignmentBits)) ||
                                  (logical.physicalCount == 2 && logical.coercion && type.sizeBits && type.alignmentBits &&
                                   interop::abi_plan::isSysVDirectPairLayout(*logical.coercion, *type.sizeBits, *type.alignmentBits)));
                             if (!directRecord &&

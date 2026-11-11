@@ -934,6 +934,35 @@ A:/temp/nsc-t09-sysv-indirect-diff16-eed8vwvp y
 A:/temp/nsc-t09-sysv-prueba-5voqucsx). No se acreditan todas las clases de
 agregado ni firmas posibles; T09-003 permanece abierto.
 
+## Record de una pieza flotante con retorno indirecto
+
+Tres muestras reciben un record directo, respectivamente de un `float`, un
+`double` o dos `float`, junto a escalares y con retorno indirecto de 20 bytes.
+Clang clasifica los records como `float`, `double` y `<2 x float>`. Los
+controles C pasaron y NSC rechazo cada firma antes del cambio en
+A:/temp/nsc-t09-sysv-sret-one-f-uzpn58fi,
+A:/temp/nsc-t09-sysv-sret-one-d-lyqgpvlk y
+A:/temp/nsc-t09-sysv-sret-one-v-fas0cow5.
+
+NSC conserva la pieza observada por Clang en el contrato vigente, la carga
+desde la copia del record y la pasa con su tipo fisico. Cada muestra paso ocho
+comparaciones C/NS, con biblioteca estatica y DLL en O0–O3, llamadas normales
+y nombradas, comprobacion de firma LLVM y plantilla precompilada sin encabezado
+en O0. Evidencia, en el mismo orden:
+A:/temp/nsc-t09-sysv-sret-one-f-ewz0m4oi,
+A:/temp/nsc-t09-sysv-sret-one-d-rajp96it y
+A:/temp/nsc-t09-sysv-sret-one-v-fkvrw1pf.
+
+La sonda de Clang y la prueba de metadatos pasaron
+(A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log). Pasaron las
+regresiones del record mixto sin `byval`, del vector/float con `byval` y del
+control general con rechazo de una forma aun no admitida y de callback:
+A:/temp/nsc-t09-sysv-sret-mixed-n3zd0my4,
+A:/temp/nsc-t09-sysv-class-vf-__cjdsj1 y
+A:/temp/nsc-t09-sysv-prueba-8myjsk_9. La muestra negativa usa ahora piezas
+`double` e `i64`. Estas pruebas no acreditan todas las firmas o clases ABI;
+T09-003 y la tanda 9 siguen abiertos.
+
 ## Piezas flotante y entera con retorno indirecto
 
 El control C de una firma con retorno indirecto, un record directo clasificado

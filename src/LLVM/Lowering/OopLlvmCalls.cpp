@@ -986,7 +986,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     }
                     const bool scalarInteger = argumentKey == "builtin:int" || argumentKey == "builtin:uint" ||
                         argumentKey == "builtin:long" || argumentKey == "builtin:ulong";
-                    if (physical.kind == interop::abi_plan::TypeKind::Integer && !scalarInteger)
+                    const bool scalarArgument = scalarInteger || argumentKey == "builtin:float" ||
+                        argumentKey == "builtin:double" || argumentKey == "builtin:int*";
+                    if (!scalarArgument)
                     {
                         if (i >= imported->parameterTypeKeys.size() || argumentKey != imported->parameterTypeKeys[i])
                             return failValue(error, "SysV direct argument type is invalid");
@@ -997,8 +999,11 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                         LLVMValueRef slot = entryBlockAlloca(argumentCarrier, argumentAlignment, "sysv.indirect.mixed.direct");
                         LLVMValueRef store = LLVMBuildStore(builder_, sourceArguments[order[i]], slot);
                         LLVMSetAlignment(store, argumentAlignment);
-                        LLVMTypeRef integer = LLVMIntTypeInContext(context_, static_cast<unsigned>(physical.widthOrCount));
-                        LLVMValueRef piece = LLVMBuildLoad2(builder_, integer, slot, "sysv.indirect.mixed.direct.piece");
+                        LLVMTypeRef physicalType = physical.kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
+                            physical.kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
+                            physical.kind == interop::abi_plan::TypeKind::Vector ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) :
+                            LLVMIntTypeInContext(context_, static_cast<unsigned>(physical.widthOrCount));
+                        LLVMValueRef piece = LLVMBuildLoad2(builder_, physicalType, slot, "sysv.indirect.mixed.direct.piece");
                         LLVMSetAlignment(piece, argumentAlignment);
                         arguments.push_back(piece);
                     }
