@@ -1851,6 +1851,22 @@ bool checkDependencyTypeCodec()
         abi_plan::isSysVTwoIntegerRecordWithScalars(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
         restoredRecord.declaration.abiPlan->logicalParameters[2].firstPhysical == 4,
         "C dependency function retains two two-piece records and an integer argument");
+    auto differentPairPlan = std::make_shared<abi_plan::Plan>(*twoPairPlan);
+    differentPairPlan->physicalReturn.elements[1].widthOrCount = 32;
+    differentPairPlan->logicalReturn.coercion->elements[1].widthOrCount = 32;
+    differentPairPlan->logicalParameters[0].coercion->elements[1].widthOrCount = 32;
+    differentPairPlan->physicalParameters[1].type.widthOrCount = 32;
+    recordFunction.declaration.returnType.sizeBits = 96;
+    recordFunction.declaration.parameters[0].type.sizeBits = 96;
+    recordFunction.declaration.abiPlan = differentPairPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVTwoIntegerRecordWithScalars(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->physicalParameters[1].type.widthOrCount == 32 &&
+        restoredRecord.declaration.abiPlan->physicalParameters[3].type.widthOrCount == 64,
+        "C dependency function retains two-piece records of different sizes");
+    recordFunction.declaration.returnType.sizeBits = 128;
+    recordFunction.declaration.parameters[0].type.sizeBits = 128;
     recordFunction.declaration.parameters.resize(1);
     for (const std::uint64_t bits : {8U, 16U, 24U, 32U, 40U, 48U, 56U})
     {

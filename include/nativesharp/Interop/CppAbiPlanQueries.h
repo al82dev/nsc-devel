@@ -141,12 +141,13 @@ inline bool isSysVTwoIntegerRecordWithScalars(const Plan& plan, std::string_view
             logical.firstPhysical != physicalIndex) return false;
         if (pair(*logical.coercion))
         {
-            if (logical.coercion->elements[1].widthOrCount != bits || logical.physicalCount != 2 ||
+            const auto argumentBits = logical.coercion->elements[1].widthOrCount;
+            if (logical.physicalCount != 2 ||
                 physicalIndex + 2 > plan.physicalParameters.size()) return false;
             for (std::size_t piece = 0; piece < 2; ++piece)
             {
                 const auto& p = plan.physicalParameters[physicalIndex + piece];
-                if (p.type.kind != TypeKind::Integer || p.type.widthOrCount != (piece == 0 ? 64 : bits) ||
+                if (p.type.kind != TypeKind::Integer || p.type.widthOrCount != (piece == 0 ? 64 : argumentBits) ||
                     p.structureReturn || p.byValue || p.signExtend || p.zeroExtend || p.inRegister || p.noAlias) return false;
             }
             physicalIndex += 2;

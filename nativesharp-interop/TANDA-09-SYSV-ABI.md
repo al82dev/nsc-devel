@@ -731,3 +731,18 @@ Las muestras no acreditan records de diferentes tipos o clases fisicas, ni
 records que Clang pase indirectamente cuando faltan registros. T09-003 sigue
 abierto.
 
+Se amplio despues a records de distintos tipos y tamanos, siempre que Clang
+los clasifique en dos piezas enteras. La muestra de records de doce y dieciseis
+bytes y un `int` tenia controles C correctos y NSC la rechazaba antes del
+cambio (A:/temp/nsc-t09-sysv-different-pairs-1ki7irrc). El plan, el generador
+y el contrato vigente conservan por separado la anchura de cada pieza. La
+muestra paso ocho comparaciones estatica/DLL O0–O3, argumentos nombrados
+reordenados y plantilla precompilada sin encabezado O0
+(A:/temp/nsc-t09-sysv-different-pairs-puq2r3_t). La sonda Clang y el control
+de metadatos verificaron las anchuras diferentes
+(A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log); pasaron las
+regresiones de tres records iguales y del record con `int`/`float`
+(A:/temp/nsc-t09-sysv-three-pairs-4aosay6u y
+A:/temp/nsc-t09-sysv-pair-mix-k34m9kq8). No se acreditan records indirectos,
+otros tipos de pieza ni todos los layouts; T09-003 permanece abierto.
+

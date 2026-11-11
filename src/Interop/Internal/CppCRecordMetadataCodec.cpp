@@ -506,8 +506,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                     const auto& type = f.parameters[i].type;
                     const auto physicalIndex = f.abiPlan->logicalParameters[i].firstPhysical;
                     const auto kind = f.abiPlan->physicalParameters[physicalIndex].type.kind;
-                    if (!((type.kind == CppTypeKind::Record && type.sizeBits == bits &&
-                           f.abiPlan->logicalParameters[i].physicalCount == 2) ||
+                    if (!((type.kind == CppTypeKind::Record && f.abiPlan->logicalParameters[i].physicalCount == 2 &&
+                           type.sizeBits == 64 + f.abiPlan->physicalParameters[physicalIndex + 1].type.widthOrCount) ||
                           ((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) &&
                            (type.sizeBits == 32 || type.sizeBits == 64) && kind == abi_plan::TypeKind::Integer &&
                            type.sizeBits == f.abiPlan->physicalParameters[physicalIndex].type.widthOrCount) ||
@@ -692,13 +692,19 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                         type.kind == CppTypeKind::Pointer ? abi_plan::Type{abi_plan::TypeKind::Pointer} :
                         type.kind == CppTypeKind::Floating ? abi_plan::Type{*type.sizeBits == 64 ? abi_plan::TypeKind::Double : abi_plan::TypeKind::Float} :
                         abi_plan::Type{abi_plan::TypeKind::Integer, *type.sizeBits};
+                    if (type.kind == CppTypeKind::Record)
+                    {
+                        if (*type.sizeBits <= 64 || *type.sizeBits > 128 || *type.sizeBits % 8 != 0)
+                        { error = "invalid C dependency pair argument size"; return false; }
+                        scalar.coercion->elements[1].widthOrCount = *type.sizeBits - 64;
+                    }
                     plan->logicalParameters.push_back(scalar);
                     abi_plan::PhysicalParameter argument;
-                    argument.type = type.kind == CppTypeKind::Record ? physicalReturn.elements[0] : *scalar.coercion;
+                    argument.type = type.kind == CppTypeKind::Record ? scalar.coercion->elements[0] : *scalar.coercion;
                     plan->physicalParameters.push_back(argument);
                     if (type.kind == CppTypeKind::Record)
                     {
-                        argument.type = physicalReturn.elements[1];
+                        argument.type = scalar.coercion->elements[1];
                         plan->physicalParameters.push_back(argument);
                     }
                 }

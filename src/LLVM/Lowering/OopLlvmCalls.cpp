@@ -1016,15 +1016,22 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             {
                 if (imported->cppAbiPlan->logicalParameters[i].physicalCount == 2)
                 {
-                    if (node->children[order[i]]->typeKey != node->typeKey)
-                        return failValue(error, "SysV two-piece record argument type is invalid");
-                    LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "sysv.pair.extra.arg");
+                    const auto& argumentKey = node->children[order[i]]->typeKey;
+                    LLVMTypeRef argumentCarrier = llvmType(argumentKey, error);
+                    if (!argumentCarrier) return nullptr;
+                    const unsigned argumentAlignment = structAlignmentFor(argumentKey);
+                    if (argumentAlignment == 0) return failValue(error, "SysV two-piece argument has no alignment");
+                    const unsigned argumentPieceAlignment = argumentAlignment < 8 ? argumentAlignment : 8;
+                    const auto physicalIndex = imported->cppAbiPlan->logicalParameters[i].firstPhysical;
+                    LLVMTypeRef argumentSecond = LLVMIntTypeInContext(context_, static_cast<unsigned>(
+                        imported->cppAbiPlan->physicalParameters[physicalIndex + 1].type.widthOrCount));
+                    LLVMValueRef slot = entryBlockAlloca(argumentCarrier, argumentAlignment, "sysv.pair.extra.arg");
                     LLVMValueRef store = LLVMBuildStore(builder_, sourceArguments[order[i]], slot);
-                    LLVMSetAlignment(store, alignment);
+                    LLVMSetAlignment(store, argumentAlignment);
                     LLVMValueRef firstPiece = LLVMBuildLoad2(builder_, firstType, slot, "sysv.pair.extra.first");
-                    LLVMValueRef secondPiece = LLVMBuildLoad2(builder_, secondType, second(slot, "sysv.pair.extra.second.addr"), "sysv.pair.extra.second");
-                    LLVMSetAlignment(firstPiece, pieceAlignment);
-                    LLVMSetAlignment(secondPiece, pieceAlignment);
+                    LLVMValueRef secondPiece = LLVMBuildLoad2(builder_, argumentSecond, second(slot, "sysv.pair.extra.second.addr"), "sysv.pair.extra.second");
+                    LLVMSetAlignment(firstPiece, argumentPieceAlignment);
+                    LLVMSetAlignment(secondPiece, argumentPieceAlignment);
                     arguments.push_back(firstPiece);
                     arguments.push_back(secondPiece);
                 }

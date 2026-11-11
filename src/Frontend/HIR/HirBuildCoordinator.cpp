@@ -1888,10 +1888,10 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                                  ((key == "builtin:uint" || key == "builtin:ulong") && symbol.cppParameterTypes[i].kind == interop::CppTypeKind::UnsignedInteger)) &&
                                 kind == interop::abi_plan::TypeKind::Integer &&
                                 symbol.cppParameterTypes[i].sizeBits == symbol.cppAbiPlan->physicalParameters[physicalIndex].type.widthOrCount;
-                            const bool sameRecord = symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Record &&
-                                key == function.returnTypeKey && symbol.cppParameterTypes[i].sizeBits == symbol.cppReturnType->sizeBits &&
-                                symbol.cppAbiPlan->logicalParameters[i].physicalCount == 2;
-                            if (!(scalarInteger || sameRecord ||
+                            const bool directRecord = symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Record &&
+                                symbol.cppAbiPlan->logicalParameters[i].physicalCount == 2 &&
+                                symbol.cppParameterTypes[i].sizeBits == 64 + symbol.cppAbiPlan->physicalParameters[physicalIndex + 1].type.widthOrCount;
+                            if (!(scalarInteger || directRecord ||
                                   (key == "builtin:float" && symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Floating && kind == interop::abi_plan::TypeKind::Float) ||
                                   (key == "builtin:double" && symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Floating && kind == interop::abi_plan::TypeKind::Double) ||
                                   (key == "builtin:int*" && symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Pointer && kind == interop::abi_plan::TypeKind::Pointer))) return false;

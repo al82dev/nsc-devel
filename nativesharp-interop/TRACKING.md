@@ -1733,6 +1733,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Se probaron records de doce y dieciseis bytes clasificados en dos piezas enteras, seguidos de `int` y `float`; incluyen precompilacion y orden de argumentos nombrados. Otras clasificaciones y posiciones siguen pendientes. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probaron records de cuatro y doce bytes con `uint`, `long` y `ulong`, incluidos valores de 64 bits fuera del rango de 32 bits y precompilacion. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probaron dos y tres records iguales de doce bytes, cada uno en dos piezas enteras, junto con un `int`; la muestra de tres agota los registros enteros e incluye argumento en pila. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
+  - Se probo una firma con records de doce y dieciseis bytes y `int`, cada record con la anchura fisica indicada por Clang, incluida precompilacion. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
 - [ ] T09-004. Emitir una llamada C sin parámetros y con resultado escalar. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-005. Emitir una llamada C con parámetros escalares. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-006. Emitir el paso de punteros a una función C. [Prueba y contraste](pruebas-tanda-09-llamadas/).
