@@ -65,7 +65,7 @@ inline bool isSysVSmallRecordRoundTrip(const Plan& plan, std::string_view symbol
     const auto integer = [bits](const Type& type) {
         return type.kind == TypeKind::Integer && type.widthOrCount == bits;
     };
-    if ((bits != 8 && bits != 16 && bits != 24 && bits != 32 && bits != 64) ||
+    if ((bits < 8 || bits > 64 || bits % 8 != 0) ||
         plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
         plan.returnSignExtend || plan.returnZeroExtend || !integer(plan.physicalReturn) ||

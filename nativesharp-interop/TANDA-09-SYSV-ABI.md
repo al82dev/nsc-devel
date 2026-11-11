@@ -157,3 +157,17 @@ bytes paso nuevamente en A:/temp/nsc-t09-sysv-r3-xvpwyzyq y el de cuatro en
 A:/temp/nsc-t09-sysv-r4-1a0etas5. Los controles conjuntos del plan de Clang y
 de identidad y metadatos pasaron: A:/temp/t09-planes-clang.log y
 A:/temp/t09-planes-identity.log.
+
+Ampliacion a cinco, seis y siete bytes: Clang reporto `i40`, `i48` e `i56`
+directos (A:/temp/nsc-t09-sysv-pequenos-gpe4xtha). Antes del cambio pasaron
+los controles C y NSC rechazo cada caso: A:/temp/nsc-t09-sysv-r5-rvqvo404,
+A:/temp/nsc-t09-sysv-r6-mdowdwwg y A:/temp/nsc-t09-sysv-r7-ds43mawl. Tras el
+cambio pasaron las ocho comparaciones C/NS por tamano en estatica y DLL O0–O3
+y la plantilla precompilada sin encabezado en estatica O0: respectivamente
+A:/temp/nsc-t09-sysv-r5-eoss30bm, A:/temp/nsc-t09-sysv-r6-sv_3ee0m y
+A:/temp/nsc-t09-sysv-r7-28kwqo72. Las muestras usan campos `unsigned char` y
+no certifican todos los layouts de esos tamanos. Los casos de tres y ocho bytes
+pasaron de nuevo en A:/temp/nsc-t09-sysv-r3-ykdnypg7 y
+A:/temp/nsc-t09-sysv-r8-f0edfjzg. La sonda Clang y el control de identidad y
+metadatos pasaron, con registros A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log. T09-003 sigue abierto para las demas firmas.

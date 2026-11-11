@@ -44,6 +44,9 @@ int main(int argc, char** argv) {
         typedef struct R1 { unsigned char x; } R1;
         typedef struct R2 { unsigned char x, y; } R2;
         typedef struct R4 { unsigned char x, y, z, w; } R4;
+        typedef struct R5 { unsigned char x, y, z, w, a; } R5;
+        typedef struct R6 { unsigned char x, y, z, w, a, b; } R6;
+        typedef struct R7 { unsigned char x, y, z, w, a, b, c; } R7;
         typedef struct R8 { unsigned char x, y, z, w, a, b, c, d; } R8;
         typedef struct R16 { long long x, y; } R16;
         typedef struct R24 { long long x, y, z; } R24;
@@ -55,6 +58,9 @@ int main(int argc, char** argv) {
         R1 __attribute__((sysv_abi)) p1(R1);
         R2 __attribute__((sysv_abi)) p2(R2);
         R8 __attribute__((sysv_abi)) p8(R8);
+        R5 __attribute__((sysv_abi)) p5(R5);
+        R6 __attribute__((sysv_abi)) p6(R6);
+        R7 __attribute__((sysv_abi)) p7(R7);
         R3 __attribute__((sysv_abi)) p3(R3);
         R3* __attribute__((sysv_abi)) p3ptr(R3*);
         R16 __attribute__((sysv_abi)) p16(R16);
@@ -117,7 +123,8 @@ int main(int argc, char** argv) {
             attributeRejected = true;
             continue;
         }
-        if (name != "p1" && name != "p2" && name != "p3" && name != "p4" && name != "p8" &&
+        if (name != "p1" && name != "p2" && name != "p3" && name != "p4" && name != "p5" &&
+            name != "p6" && name != "p7" && name != "p8" &&
             name != "p16" && name != "pf" && name != "p24" && name != "ps8" && name != "pm" &&
             name != "pp" && name != "pvec" && name != "pvoid") continue;
         if (name == "p3" && copiedPlans.contains(name)) continue;
@@ -153,6 +160,9 @@ int main(int argc, char** argv) {
         if ((name == "p1" || name == "p2" || name == "p8") &&
             (!physical->getReturnType()->isIntegerTy(name == "p1" ? 8 : name == "p2" ? 16 : 64) ||
              physical->getNumParams() != 1 || physical->getParamType(0) != physical->getReturnType())) return 75;
+        if ((name == "p5" || name == "p6" || name == "p7") &&
+            (!physical->getReturnType()->isIntegerTy(name == "p5" ? 40 : name == "p6" ? 48 : 56) ||
+             physical->getNumParams() != 1 || physical->getParamType(0) != physical->getReturnType())) return 77;
         if ((name == "p3" || name == "p16" || name == "pf") &&
             (!plan.getReturnInfo().isDirect() || !plan.arguments()[0].info.isDirect())) return 14;
         if ((name == "p3" || name == "p16" || name == "pf") &&
@@ -183,7 +193,7 @@ int main(int argc, char** argv) {
         if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
-    if (matched != 13 || copiedPlans.size() != 13 || !unsupportedRejected || !variadicRejected ||
+    if (matched != 16 || copiedPlans.size() != 16 || !unsupportedRejected || !variadicRejected ||
         !noPrototypeRejected || !attributeRejected) return 7;
     generator.reset();
     ast.reset();
@@ -191,7 +201,7 @@ int main(int argc, char** argv) {
     const auto& p3 = copiedPlans.at("p3");
     if (!t09_probe::isSysVSmallRecordRoundTrip(copiedPlans.at("p4"), "p4") ||
         t09_probe::isSysVThreeByteRoundTrip(copiedPlans.at("p4"), "p4")) return 74;
-    for (const char* name : {"p1", "p2", "p8"})
+    for (const char* name : {"p1", "p2", "p5", "p6", "p7", "p8"})
         if (!t09_probe::isSysVSmallRecordRoundTrip(copiedPlans.at(name), name)) return 76;
     if (p3.targetTriple.find("x86_64-pc-windows-msvc") != 0 || p3.dataLayout.empty()) return 28;
     if (!t09_probe::isSysVThreeByteRoundTrip(p3, "p3") ||

@@ -1630,7 +1630,7 @@ bool checkDependencyTypeCodec()
         abi_plan::isSysVSmallRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
         restoredRecord.declaration.abiPlan->physicalReturn.widthOrCount == 32,
         "C dependency function retains a direct four-byte SysV record plan");
-    for (const std::uint64_t bits : {8U, 16U, 64U})
+    for (const std::uint64_t bits : {8U, 16U, 40U, 48U, 56U, 64U})
     {
         auto smallPlan = std::make_shared<abi_plan::Plan>(*plan4);
         smallPlan->physicalReturn.widthOrCount = bits;
