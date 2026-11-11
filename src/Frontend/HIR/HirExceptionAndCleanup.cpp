@@ -309,6 +309,13 @@ bool ProjectOopHirModel::ownReceiverTemporary(std::unique_ptr<ProjectOopHirNode>
 
 void ProjectOopHirModel::ownDroppableTemporaries(ProjectOopHirNode* root)
 {
+    // A discarded tuple literal owns its completed value until the statement ends.
+    const auto discardedTupleNeedsDrop = [this](const ProjectOopHirNode* value)
+    {
+        return value != nullptr && value->kind == ProjectOopHirNodeKind::AggregateInitializer &&
+            value->syntax != nullptr && value->syntax->kind() == ast::AstNodeKind::TupleExpression &&
+            memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(value->typeKey);
+    };
     std::vector<ProjectOopHirNode*> pending{root};
     while (!pending.empty())
     {
@@ -326,7 +333,7 @@ void ProjectOopHirModel::ownDroppableTemporaries(ProjectOopHirNode* root)
             if (child->kind == ProjectOopHirNodeKind::FullExpressionCleanup && child->children.size() == 1U)
                 inner = &child->children.front();
             if (inner != &child && node->kind == ProjectOopHirNodeKind::ExpressionStatement &&
-                isFreshDroppableTemporary(inner->get()))
+                (isFreshDroppableTemporary(inner->get()) || discardedTupleNeedsDrop(inner->get())))
             {
                 ProjectOopHirNode* producer = inner->get();
                 *inner = ownTemporary(std::move(*inner));
@@ -334,7 +341,7 @@ void ProjectOopHirModel::ownDroppableTemporaries(ProjectOopHirNode* root)
                 continue;
             }
             if (node->kind == ProjectOopHirNodeKind::ExpressionStatement &&
-                isFreshDroppableTemporary(child.get()))
+                (isFreshDroppableTemporary(child.get()) || discardedTupleNeedsDrop(child.get())))
             {
                 ProjectOopHirNode* producer = child.get();
                 const ast::AstNode* syntax = producer->syntax;

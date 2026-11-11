@@ -5617,6 +5617,10 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.sdk.shared-tuple-move-call-binary
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_tuple_move_call_binary.py"
                 "${NSC_TEST_COMPILER}")
+    add_test(NAME nsc.sdk.shared-tuple-discard
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_tuple_discard.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.sdk.shared-tuple-discard PROPERTIES SKIP_RETURN_CODE 77)
     set_tests_properties(nsc.sdk.shared-tuple-move-call nsc.sdk.shared-tuple-move-call-binary
         PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME nsc.sdk.shared-public-pointers
