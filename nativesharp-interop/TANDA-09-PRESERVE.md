@@ -227,3 +227,25 @@ ocho comparaciones C/NS en estatica y DLL O0-O3, inspeccion LLVM y cache
 con y sin encabezado (A:/temp/nsc-t09-preserve-recordptr-precompilado-fsd7t9lt).
 Otras clases de record, punteros y firmas permanecen sin certificar; T09-003 y
 la tanda 9 siguen abiertos.
+
+## Records C por valor
+
+Una muestra C pasa y retorna records de dos y seis enteros, en llamadas
+directas e indirectas con `preserve_most` y `preserve_all`. Los ocho controles
+C pasaron (A:/temp/nsc-t09-preserve-records-5263eb0v); NSC rechazaba la firma
+(A:/temp/nsc-t09-preserve-records-xkq_mxkl). Clang representa el record de
+8 bytes con `i64` y el de 24 bytes mediante copia y `sret`
+(A:/temp/t09-preserve-records-oracle.ll).
+
+NSC usa ahora el ABI Win64 existente para los records identificados por su
+modelo en estas convenciones. Pasaron ocho comparaciones C/NS, IR con `i64`
+y `sret`, conservacion del valor original y cache
+(A:/temp/nsc-t09-preserve-records-nhd5a02i), y 16 consumidores precompilados
+con y sin encabezado (A:/temp/nsc-t09-preserve-records-precompilado-koagjzhv).
+Pasaron regresiones de punteros a record, booleanos y agregados C previos
+(A:/temp/t09-preserve-records-reg-punteros.log,
+A:/temp/t09-preserve-records-reg-bool.log y
+A:/temp/t09-preserve-records-reg-anteriores.log). La primera revision del
+verificador de `sret` fallo por un patron incompleto para el nombre de funcion;
+se corrigio el verificador y paso la matriz completa. Los layouts y firmas no
+probados siguen pendientes; T09-003 y la tanda 9 permanecen abiertos.

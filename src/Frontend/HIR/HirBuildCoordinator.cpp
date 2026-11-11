@@ -1811,11 +1811,11 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             function.cppPreserveMost = symbol.cppCallingConvention == "preserve_most";
             function.cppPreserveAll = symbol.cppCallingConvention == "preserve_all";
             function.cppSysVCall = symbol.cppCallingConvention == "sysv_abi";
-            const auto preserveParameter = [](const std::string& type) {
+            const auto preserveParameter = [this](const std::string& type) {
                 return type == "builtin:int" || type == "builtin:uint" || type == "builtin:long" || type == "builtin:ulong" ||
                     type == "builtin:sbyte" || type == "builtin:byte" || type == "builtin:short" ||
                     type == "builtin:ushort" || type == "builtin:float" || type == "builtin:double" ||
-                    type == "builtin:bool" || type.ends_with('*');
+                    type == "builtin:bool" || type.ends_with('*') || isStructValueType(type);
             };
             if ((function.cppPreserveMost || function.cppPreserveAll) &&
                 (function.isVariadic || (function.returnTypeKey != "builtin:int" &&
@@ -1824,7 +1824,8 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                  function.returnTypeKey != "builtin:bool" && function.returnTypeKey != "builtin:sbyte" &&
                  function.returnTypeKey != "builtin:byte" && function.returnTypeKey != "builtin:short" &&
                  function.returnTypeKey != "builtin:ushort" && function.returnTypeKey != "builtin:uint" &&
-                 function.returnTypeKey != "builtin:ulong" && function.returnTypeKey != "builtin:float") ||
+                 function.returnTypeKey != "builtin:ulong" && function.returnTypeKey != "builtin:float" &&
+                 !isStructValueType(function.returnTypeKey)) ||
                  !std::ranges::all_of(function.parameterTypeKeys, preserveParameter)))
             {
                 error = symbol.cppCallingConvention + " does not yet support this signature for " + symbol.mangledName;
