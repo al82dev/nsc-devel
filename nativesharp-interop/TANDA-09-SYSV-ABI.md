@@ -1522,6 +1522,22 @@ plantilla sin encabezado, cache y rechazo de variante
 (`A:/temp/nsc-t09-sysv-indirecta-record-gpr-pre-cmg60jjy`). No se requirio
 cambio de produccion; otras formas y presiones permanecen pendientes.
 
+**Prefijo fijo `double`:** el control C y el productor independiente
+comprobaron el prefijo flotante y los argumentos opcionales, pero NSC
+rechazaba la firma (`A:/temp/nsc-t09-sysv-indirecta-variadica-prefijo-double-757ljbmd`).
+Se selecciona el tipo fijo segun el plan y se reconstruyen en Clang los tipos
+fijo y opcionales. Pasaron ocho comparaciones C/NS estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-prefijo-double-matriz-12v5t_ta`) y plantilla
+sin encabezado, cache y rechazo de variante
+(`A:/temp/nsc-t09-sysv-indirecta-prefijo-double-pre-rslj4xlh`). Pasaron cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones precompiladas con prefijo
+entero y argumentos opcionales entero, puntero y record en pila
+(`A:/temp/nsc-t09-sysv-indirecta-record-escalar-pre-ns20x2xu`,
+`A:/temp/nsc-t09-sysv-indirecta-record-puntero-pre-22h9vfh8`,
+`A:/temp/nsc-t09-sysv-indirecta-record-agotado-pre-eyg5gc1w`). Otros prefijos
+y firmas siguen pendientes; T09-003 no esta cerrado.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor
