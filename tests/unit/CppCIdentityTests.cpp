@@ -2043,6 +2043,22 @@ bool checkDependencyTypeCodec()
         restoredRecord.declaration.abiPlan->logicalParameters[1].physicalCount == 2 &&
         restoredRecord.declaration.abiPlan->physicalParameters[5].byValue,
         "C dependency function retains a direct two-piece record and an indirect record");
+    auto mixedIndirectPlan = std::make_shared<abi_plan::Plan>(*pairIndirectPlan);
+    mixedIndirectPlan->logicalParameters[1].coercion->elements[0] = abi_plan::Type{abi_plan::TypeKind::Double};
+    mixedIndirectPlan->physicalParameters[2].type = abi_plan::Type{abi_plan::TypeKind::Double};
+    recordFunction.declaration.parameters[1].type.sizeBits = 128;
+    recordFunction.declaration.parameters[1].type.alignmentBits = 64;
+    recordFunction.declaration.abiPlan = mixedIndirectPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVIndirectRecordWithArguments(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->physicalParameters[2].type.kind == abi_plan::TypeKind::Double &&
+        restoredRecord.declaration.abiPlan->physicalParameters[3].type.widthOrCount == 32,
+        "C dependency function retains mixed direct pieces and an indirect record");
+    auto inconsistentIndirectPlan = *mixedIndirectPlan;
+    inconsistentIndirectPlan.physicalParameters[2].type.kind = abi_plan::TypeKind::Float;
+    ok &= expect(!abi_plan::isSysVIndirectRecordWithArguments(inconsistentIndirectPlan, recordFunction.linkSymbol),
+        "indirect SysV plan rejects inconsistent mixed piece classification");
     recordFunction.declaration.returnType.sizeBits = 192;
     recordFunction.declaration.returnType.alignmentBits = 8;
     recordFunction.declaration.parameters.resize(1);

@@ -874,3 +874,24 @@ A:/temp/nsc-t09-sysv-indirect-diff16-eed8vwvp y
 A:/temp/nsc-t09-sysv-prueba-5voqucsx). No se acreditan todas las clases de
 agregado ni firmas posibles; T09-003 permanece abierto.
 
+## Piezas flotante y entera con retorno indirecto
+
+El control C de una firma con retorno indirecto, un record directo clasificado
+como `double`/`i32` y otro argumento `byval` paso, y NSC rechazaba la firma
+(A:/temp/nsc-t09-sysv-mixedpair-indirect-20v06i3w). La implementacion valida
+esa clasificacion y conserva explicitamente las clases fisicas observadas por
+Clang en el contrato vigente; no intenta deducirlas solo del tamano del tipo.
+
+La muestra paso ocho comparaciones estatica/DLL O0–O3, argumentos nombrados y
+plantilla precompilada sin encabezado O0
+(A:/temp/nsc-t09-sysv-mixedpair-indirect-infboyde). La sonda de Clang y el
+control de metadatos comprobaron las piezas y rechazaron una clasificacion
+inconsistente (A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log).
+Pasaron las regresiones de dos piezas enteras con retorno indirecto, de
+alineaciones indirectas distintas y el control general con rechazo de una
+clase vectorial aun pendiente (A:/temp/nsc-t09-sysv-directpair-indirect-4uetfmjr,
+A:/temp/nsc-t09-sysv-indirect-diff16-6bz2kcxr y
+A:/temp/nsc-t09-sysv-prueba-ewdl26ki). La muestra cubre el orden
+`double`/`i32`; otras clases y firmas siguen pendientes. T09-003 permanece
+abierto.
+

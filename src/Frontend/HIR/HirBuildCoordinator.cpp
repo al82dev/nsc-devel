@@ -1892,8 +1892,10 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                             const bool directRecord = type.kind == interop::CppTypeKind::Record &&
                                 ((logical.physicalCount == 1 && physical.kind == interop::abi_plan::TypeKind::Integer &&
                                   type.sizeBits == physical.widthOrCount) ||
-                                 (logical.physicalCount == 2 && type.sizeBits == 64 +
-                                  symbol.cppAbiPlan->physicalParameters[logical.firstPhysical + 1].type.widthOrCount));
+                                 (logical.physicalCount == 2 &&
+                                  ((physical.kind == interop::abi_plan::TypeKind::Integer && type.sizeBits == 64 +
+                                    symbol.cppAbiPlan->physicalParameters[logical.firstPhysical + 1].type.widthOrCount) ||
+                                   (physical.kind == interop::abi_plan::TypeKind::Double && type.sizeBits == 128 && type.alignmentBits == 64))));
                             if (!directRecord &&
                                 !((((key == "builtin:int" || key == "builtin:long") && type.kind == interop::CppTypeKind::SignedInteger) ||
                                    ((key == "builtin:uint" || key == "builtin:ulong") && type.kind == interop::CppTypeKind::UnsignedInteger)) &&

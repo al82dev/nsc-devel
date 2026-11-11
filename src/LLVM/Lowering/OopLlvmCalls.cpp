@@ -970,7 +970,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                         LLVMValueRef secondAddress = LLVMBuildGEP2(builder_, i8, slot, &offset, 1, "sysv.indirect.mixed.pair.second.addr");
                         LLVMTypeRef secondType = LLVMIntTypeInContext(context_, static_cast<unsigned>(
                             imported->cppAbiPlan->physicalParameters[logical.firstPhysical + 1].type.widthOrCount));
-                        LLVMValueRef firstPiece = LLVMBuildLoad2(builder_, i64, slot, "sysv.indirect.mixed.pair.first");
+                        LLVMTypeRef firstType = physical.kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) : i64;
+                        LLVMValueRef firstPiece = LLVMBuildLoad2(builder_, firstType, slot, "sysv.indirect.mixed.pair.first");
                         LLVMValueRef secondPiece = LLVMBuildLoad2(builder_, secondType, secondAddress, "sysv.indirect.mixed.pair.second");
                         LLVMSetAlignment(firstPiece, pieceAlignment);
                         LLVMSetAlignment(secondPiece, pieceAlignment);

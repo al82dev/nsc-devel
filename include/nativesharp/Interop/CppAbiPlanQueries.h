@@ -274,15 +274,20 @@ inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view
         if (logical.passing == Passing::Direct && logical.coercion && logical.coercion->kind == TypeKind::Structure)
         {
             const auto& type = *logical.coercion;
+            const bool integerPair = type.elements.size() == 2 &&
+                type.elements[0].kind == TypeKind::Integer && type.elements[0].widthOrCount == 64 &&
+                type.elements[1].kind == TypeKind::Integer && type.elements[1].widthOrCount >= 8 &&
+                type.elements[1].widthOrCount <= 64 && type.elements[1].widthOrCount % 8 == 0;
+            const bool doubleIntegerPair = type.elements.size() == 2 &&
+                type.elements[0].kind == TypeKind::Double && type.elements[0].widthOrCount == 0 &&
+                type.elements[1].kind == TypeKind::Integer && type.elements[1].widthOrCount == 32;
             if (logical.offset != 0 || logical.physicalCount != 2 || type.packed || type.elements.size() != 2 ||
-                type.elements[0].kind != TypeKind::Integer || type.elements[0].widthOrCount != 64 ||
-                type.elements[1].kind != TypeKind::Integer || type.elements[1].widthOrCount < 8 ||
-                type.elements[1].widthOrCount > 64 || type.elements[1].widthOrCount % 8 != 0 ||
+                (!integerPair && !doubleIntegerPair) ||
                 physicalIndex + 2 > plan.physicalParameters.size()) return false;
             for (std::size_t piece = 0; piece < 2; ++piece)
             {
                 const auto& p = plan.physicalParameters[physicalIndex + piece];
-                if (p.type.kind != TypeKind::Integer || p.type.widthOrCount != type.elements[piece].widthOrCount ||
+                if (p.type.kind != type.elements[piece].kind || p.type.widthOrCount != type.elements[piece].widthOrCount ||
                     p.structureReturn || p.byValue || p.noAlias || p.inRegister || p.signExtend || p.zeroExtend) return false;
             }
             physicalIndex += 2;
