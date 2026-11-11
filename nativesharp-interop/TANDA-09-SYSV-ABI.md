@@ -1417,9 +1417,17 @@ respetar la posicion de `byval` en el plan, pasaron ocho comparaciones directas
 estatica/DLL O0-O3 (`A:/temp/nsc-t09-sysv-indirecta-var-mixto-byval-matriz-cs5jlzrz`),
 cuatro sondas (`A:/temp/t09-test-varptr.log`) y la regresion precompilada del
 record grande (`A:/temp/nsc-t09-sysv-indirecta-var-byval-pre-ttddwyaz`). La
-plantilla de la combinacion sigue rechazada
-(`A:/temp/nsc-t09-sysv-indirecta-var-mixto-byval-pre-088t7sux`); requiere
-conciliar dos identidades de record distintas y permanece pendiente.
+plantilla de la combinacion se rechazo inicialmente
+(`A:/temp/nsc-t09-sysv-indirecta-var-mixto-byval-pre-088t7sux`). Luego se
+reconstruyeron y contrastaron ambas identidades del catalogo vigente; paso la
+plantilla sin encabezado, estatica/DLL O0-O3, cache y rechazo de variante
+(`A:/temp/nsc-t09-sysv-indirecta-var-mixto-byval-pre-oxroylx3`). Pasaron las
+regresiones precompiladas de un record mixto, dos records mixtos y un record
+grande (`A:/temp/nsc-t09-sysv-indirecta-record-pre-lxtd7n7q`,
+`A:/temp/nsc-t09-sysv-indirecta-dos-records-pre-ym1_9t9h`,
+`A:/temp/nsc-t09-sysv-indirecta-var-byval-pre-zvfjw27r`), las cuatro sondas
+(`A:/temp/t09-test-varptr.log`) y transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`). Otras firmas siguen pendientes.
 
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.

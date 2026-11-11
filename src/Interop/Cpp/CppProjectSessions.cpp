@@ -548,9 +548,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         alias.targetTriple != "x86_64-pc-windows-msvc" || environment.targetTriple != alias.targetTriple ||
         alias.projectFile != graph.projects()[alias.projectOrdinal].projectFile() ||
         !alias.declaration.clangUsr || alias.declaration.clangUsr->empty() || optionalTypeKeys.empty() ||
-        optionalTypeKeys.size() > 2 ||
-        !std::all_of(optionalTypeKeys.begin(), optionalTypeKeys.end(),
-            [&](const auto& key) { return key == optionalTypeKeys.front(); })) return {};
+        optionalTypeKeys.size() > 2) return {};
     const auto& moduleName = graph.projects()[alias.projectOrdinal].moduleName();
     const auto mapped = projectCppStoredFunctionPointer(alias.declaration.underlyingType, alias.projectOrdinal,
         moduleName, &lookup);
@@ -567,22 +565,38 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     if (!signature.hasPrototype || !signature.variadic || signature.callingConvention != "sysv_abi" ||
         !isInt(signature.returnType) || signature.parameterTypes.size() != 1 ||
         !isInt(signature.parameterTypes[0])) return {};
-    const auto& key = optionalTypeKeys[0];
-    if (!key.starts_with("type:") || key.ends_with('*')) return {};
-    const auto identity = std::string_view(key).substr(5);
-    const auto ordinal = lookup.typeOrdinalForIdentity(identity);
-    const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
-    if (!imported || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
-        !imported->deferredImportError.empty() || !imported->objectLayout || !imported->clangUsr ||
-        imported->origin != frontend::CppImportedTypeOrigin::CStruct ||
-        !((imported->objectLayout->sizeBytes == 16 && imported->objectLayout->alignmentBytes == 8) ||
-          (optionalTypeKeys.size() == 1 && imported->objectLayout->sizeBytes == 20 &&
-           imported->objectLayout->alignmentBytes == 4))) return {};
+    struct ReplayRecord
+    {
+        std::string identity;
+        const frontend::CppImportedTypeDeclaration* imported;
+        std::optional<CppCRecordSnapshot> snapshot;
+    };
+    std::vector<ReplayRecord> selectedRecords;
+    std::vector<std::size_t> recordForArgument;
+    for (const auto& key : optionalTypeKeys)
+    {
+        if (!key.starts_with("type:") || key.ends_with('*')) return {};
+        const auto identity = std::string_view(key).substr(5);
+        const auto ordinal = lookup.typeOrdinalForIdentity(identity);
+        const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+        if (!imported || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
+            !imported->deferredImportError.empty() || !imported->objectLayout || !imported->clangUsr ||
+            imported->origin != frontend::CppImportedTypeOrigin::CStruct ||
+            !((imported->objectLayout->sizeBytes == 16 && imported->objectLayout->alignmentBytes == 8) ||
+              (imported->objectLayout->sizeBytes == 20 && imported->objectLayout->alignmentBytes == 4))) return {};
+        auto found = std::find_if(selectedRecords.begin(), selectedRecords.end(),
+            [&](const auto& value) { return value.identity == identity; });
+        if (found == selectedRecords.end())
+        {
+            selectedRecords.push_back({std::string(identity), imported, std::nullopt});
+            recordForArgument.push_back(selectedRecords.size() - 1);
+        }
+        else recordForArgument.push_back(static_cast<std::size_t>(found - selectedRecords.begin()));
+    }
     std::string error;
     std::vector<std::uint8_t> aliasType;
     if (!metadata_detail::encodeCDependencyType(pointer, aliasType, error)) return {};
     std::optional<metadata_detail::CDependencyAliasSnapshot> selectedAlias;
-    std::optional<CppCRecordSnapshot> selectedRecord;
     for (const auto& module : modules)
     {
         if (module.cppCTypeCatalog.empty()) continue;
@@ -604,37 +618,47 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
             selectedAlias = candidate;
         }
         for (const auto& record : records)
-            if (record.identityKey == identity)
-            {
-                if (selectedRecord) return {};
-                selectedRecord = record;
-            }
+            for (auto& selected : selectedRecords)
+                if (record.identityKey == selected.identity)
+                {
+                    if (selected.snapshot) return {};
+                    selected.snapshot = record;
+                }
     }
-    if (!selectedAlias || !selectedRecord) return {};
-    const auto& record = *selectedRecord;
-    if (!record.plainReplaySyntax || record.moduleName != moduleName ||
-        !record.namespaceSegments.empty() || !record.containingRecords.empty() ||
-        record.clangUsr != imported->clangUsr || record.name != imported->identity.name() ||
-        record.kind != CppRecordKind::Struct || !record.sizeBits || !record.alignmentBits ||
-        *record.sizeBits != imported->objectLayout->sizeBytes * 8 ||
-        *record.alignmentBits != imported->objectLayout->alignmentBytes * 8) return {};
-    if (record.sizeBits == 128 && record.alignmentBits == 64 && record.fields.size() == 2)
+    if (!selectedAlias) return {};
+    std::string recordSource;
+    for (std::size_t index = 0; index < selectedRecords.size(); ++index)
     {
-        const auto& first = record.fields[0];
-        const auto& second = record.fields[1];
-        if (first.bitWidth || first.type.kind != CppTypeKind::Floating || first.type.canonicalSpelling != "double" ||
-            first.offsetBits != 0 || second.bitWidth || !isInt(second.type) || second.offsetBits != 64) return {};
+        const auto& selected = selectedRecords[index];
+        if (!selected.snapshot) return {};
+        const auto& record = *selected.snapshot;
+        const auto* imported = selected.imported;
+        if (!record.plainReplaySyntax || record.moduleName != moduleName ||
+            !record.namespaceSegments.empty() || !record.containingRecords.empty() ||
+            record.clangUsr != imported->clangUsr || record.name != imported->identity.name() ||
+            record.kind != CppRecordKind::Struct || !record.sizeBits || !record.alignmentBits ||
+            *record.sizeBits != imported->objectLayout->sizeBytes * 8 ||
+            *record.alignmentBits != imported->objectLayout->alignmentBytes * 8) return {};
+        if (record.sizeBits == 128 && record.alignmentBits == 64 && record.fields.size() == 2)
+        {
+            const auto& first = record.fields[0];
+            const auto& second = record.fields[1];
+            if (first.bitWidth || first.type.kind != CppTypeKind::Floating || first.type.canonicalSpelling != "double" ||
+                first.offsetBits != 0 || second.bitWidth || !isInt(second.type) || second.offsetBits != 64) return {};
+        }
+        else if (record.sizeBits == 160 && record.alignmentBits == 32 && record.fields.size() == 5)
+        {
+            for (std::size_t i = 0; i < record.fields.size(); ++i)
+                if (record.fields[i].bitWidth || !isInt(record.fields[i].type) ||
+                    record.fields[i].offsetBits != i * 32) return {};
+        }
+        else return {};
+        const auto declaration = makeSimpleCRecordAbiReplay(record, index);
+        if (!declaration) return {};
+        recordSource += *declaration;
+        const auto tag = index == 0 ? std::string("__nsc_abi_record") : "__nsc_abi_record_" + std::to_string(index);
+        recordSource += "void __nsc_replay_type_" + std::to_string(index) + "(struct " + tag + ");\n";
     }
-    else if (optionalTypeKeys.size() == 1 && record.sizeBits == 160 && record.alignmentBits == 32 &&
-             record.fields.size() == 5)
-    {
-        for (std::size_t i = 0; i < record.fields.size(); ++i)
-            if (record.fields[i].bitWidth || !isInt(record.fields[i].type) ||
-                record.fields[i].offsetBits != i * 32) return {};
-    }
-    else return {};
-    const auto declaration = makeSimpleCRecordAbiReplay(record, 0);
-    if (!declaration) return {};
     CppSessionOptions options;
     options.language = CppLanguageMode::C;
     options.languageStandard = "c11";
@@ -642,8 +666,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     options.driverReferencePath = environment.driverReferencePath;
     options.resourceDirectory = environment.resourceDirectory;
     options.workingDirectory = environment.workingDirectory;
-    options.input = CppBufferInput{"nsc-variadic-pointer-replay.c", *declaration +
-        "void __nsc_replay_type(struct __nsc_abi_record);\n"
+    options.input = CppBufferInput{"nsc-variadic-pointer-replay.c", recordSource +
         "typedef int (__attribute__((sysv_abi)) *__nsc_replay_pointer)(int, ...);\n"};
     auto opened = factory.open(std::move(options), {});
     auto* holder = std::get_if<std::unique_ptr<CppInteropSession>>(&opened);
@@ -653,15 +676,24 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     const auto functions = session.freeFunctionsSnapshot();
     const auto aliases = session.typeAliasesSnapshot();
     if (!records || !functions || !aliases) return {};
-    const auto replayRecord = std::find_if(records->begin(), records->end(),
-        [](const auto& value) { return value.name == "__nsc_abi_record"; });
-    const auto helper = std::find_if(functions->begin(), functions->end(),
-        [](const auto& value) { return value.name == "__nsc_replay_type"; });
     const auto replayAlias = std::find_if(aliases->begin(), aliases->end(),
         [](const auto& value) { return value.name == "__nsc_replay_pointer"; });
-    if (replayRecord == records->end() || !matchesSimpleCRecordAbiReplay(record, *replayRecord, 0) ||
-        helper == functions->end() || helper->parameters.size() != 1 || replayAlias == aliases->end()) return {};
-    const std::vector<CppType> arguments(optionalTypeKeys.size(), helper->parameters[0].type);
+    if (replayAlias == aliases->end()) return {};
+    std::vector<CppType> replayTypes;
+    for (std::size_t index = 0; index < selectedRecords.size(); ++index)
+    {
+        const auto tag = index == 0 ? std::string("__nsc_abi_record") : "__nsc_abi_record_" + std::to_string(index);
+        const auto replayRecord = std::find_if(records->begin(), records->end(),
+            [&](const auto& value) { return value.name == tag; });
+        const auto helper = std::find_if(functions->begin(), functions->end(),
+            [&](const auto& value) { return value.name == "__nsc_replay_type_" + std::to_string(index); });
+        if (replayRecord == records->end() ||
+            !matchesSimpleCRecordAbiReplay(*selectedRecords[index].snapshot, *replayRecord, index) ||
+            helper == functions->end() || helper->parameters.size() != 1) return {};
+        replayTypes.push_back(helper->parameters[0].type);
+    }
+    std::vector<CppType> arguments;
+    for (const auto index : recordForArgument) arguments.push_back(replayTypes[index]);
     auto plan = session.cVariadicFunctionPointerCallAbiPlan(replayAlias->name,
         replayAlias->underlyingType.canonicalSpelling, arguments);
     if (!plan || !validateCppVariadicSysVCallPlan(*plan, "__nsc_variadic_pointer_abi_probe", 1)) return {};
