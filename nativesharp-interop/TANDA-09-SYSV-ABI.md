@@ -597,3 +597,13 @@ metadatos: A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log.
 La muestra conserva el record de cuatro bytes y el escalar en segundo lugar;
 otras posiciones y mezclas flotantes siguen pendientes.
 
+El orden `float` seguido de record tenia controles C correctos y rechazo previo
+de NSC (A:/temp/nsc-t09-sysv-float-record-oysiibi8). Tras la ampliacion paso
+estatica y DLL O0–O3 y la plantilla precompilada sin encabezado O0:
+A:/temp/nsc-t09-sysv-float-record-u08i08t0. La regresion de record y `double`
+paso en A:/temp/nsc-t09-sysv-record-double-_g230mg9 y el control general con
+rechazos pendientes en A:/temp/nsc-t09-sysv-prueba-hd3y_0hi. La sonda Clang y
+metadatos pasaron en A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log. El orden inverso para `double` y otras mezclas
+flotantes siguen pendientes.
+
