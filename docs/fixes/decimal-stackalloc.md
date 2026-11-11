@@ -27,3 +27,10 @@ el aislado de la campaña en A; no se modificó la instalación de C:.
 
 Los resultados cubren estas configuraciones de Windows x64 y deben repetirse
 con el compilador y SDK integrados; no certifican otras configuraciones.
+# Validación de integración posterior
+
+La compilación incremental del compilador en la copia principal terminó con
+código 0 y la prueba dirigida de stackalloc pasó; los comandos y resultados
+figuran en `A:/nsc-fixes-evidencia/integrated-agent-tests-20261111.cmd` y
+`.log`. El compilador incorpora otros cambios locales: no demuestra un árbol
+limpio ni certifica los demás casos de decimal.

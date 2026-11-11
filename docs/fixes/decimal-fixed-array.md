@@ -29,3 +29,10 @@ sin registrar, pasó ambos casos (`reference.log`).
 Las pruebas comprueban el caso concreto en Windows x64. Debe repetirse la
 regresión con el compilador y SDK integrados de la rama principal; esta
 evidencia híbrida no certifica el resto del compilador.
+# Validación de integración posterior
+
+La compilación incremental del compilador en la copia principal terminó con
+código 0 y la prueba dirigida de arreglo fijo pasó; los comandos y resultados
+figuran en `A:/nsc-fixes-evidencia/integrated-agent-tests-20261111.cmd` y
+`.log`. El compilador incorpora otros cambios locales: no demuestra un árbol
+limpio ni certifica los demás casos de decimal.

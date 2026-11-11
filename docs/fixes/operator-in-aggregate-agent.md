@@ -72,3 +72,10 @@ Toda la ejecución anterior utiliza objetos WIP de la copia principal y una
 pero no identifica el ejecutable como build limpio del commit de esta rama.
 Falta integrar con los cambios locales existentes y repetir las pruebas con el
 compilador resultante. No se ejecutó una batería completa.
+
+Tras integrar el cambio en la copia principal, la compilación incremental de
+`nsc` terminó con código 0. Las regresiones de fuente y biblioteca de este caso
+pasaron con el compilador resultante; comando y salida se conservan en
+`A:/nsc-fixes-evidencia/integrated-agent-tests-20261111.cmd` y `.log`.
+El árbol aún contiene otros cambios locales, por lo que no se acredita una
+compilación limpia de la revisión integrada.
