@@ -1018,6 +1018,21 @@ de llamadas, SysV y relleno (`A:/temp/nsc-t09-llamadas-451wwwvl`,
 `A:/temp/nsc-t09-sysv-padded-pair-id-qpavo23m`). Esto acredita solo la muestra
 indicada; otros tipos de campos, layouts y convenciones siguen pendientes.
 
+Para `_Bool` se contrasto un record con dos campos de bits de un bit y un
+campo ordinario, comprobando ambos valores verdaderos y el falso sin depender
+del relleno. Antes del cambio, C y NativeSharp pasaban en estatica y DLL O0–O3,
+pero se rechazaba la plantilla precompilada
+(`A:/temp/nsc-t09-sysv-varargs-u6d4k_3p`). La reconstruccion conserva `_Bool`
+y rechaza anchos mayores a uno; la sonda comprueba tambien un desplazamiento
+alterado. Despues pasaron la compilacion incremental, transporte, ABI e
+identidad (`A:/temp/t09-transport-directed/`) y las ocho comparaciones con
+la plantilla precompilada sin encabezado y planes HIR/MIR/LLVM
+(`A:/temp/nsc-t09-sysv-varargs-bag0zyqp`). Pasaron las regresiones previas al
+refuerzo de ancho (`A:/temp/nsc-t09-llamadas-rw4h8bv_`,
+`A:/temp/nsc-t09-sysv-prueba-vhripc34`,
+`A:/temp/nsc-t09-sysv-padded-pair-id-_w27v5qo`). Esta evidencia cubre la
+muestra descrita, no todos los layouts booleanos ni las demas convenciones.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin

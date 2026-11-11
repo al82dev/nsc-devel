@@ -55,5 +55,7 @@ int Main() {
     if (sysv_record_bits(1, bits) != 1 || bits.low != (uint)5 || bits.upper != (uint)4660) return 27;
     T09VarBitsGap gap; gap.low = (uint)5; gap.high = (uint)165; gap.upper = (uint)4660;
     if (sysv_record_bits_gap(1, gap) != 1 || gap.low != (uint)5 || gap.high != (uint)165 || gap.upper != (uint)4660) return 28;
+    T09VarBoolBits boolBits; boolBits.first = true; boolBits.second = false; boolBits.plain = true;
+    if (sysv_record_bool_bits(1, boolBits) != 1 || !boolBits.first || boolBits.second || !boolBits.plain) return 29;
     return 0;
 }

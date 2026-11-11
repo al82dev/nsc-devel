@@ -34,7 +34,9 @@ inline std::optional<std::string> makeSimpleCRecordAbiReplay(const CppCRecordSna
         if (!field.offsetBits || field.isAnonymousCarrier || !type.sizeBits ||
             !type.alignmentBits || type.isConst || type.isVolatile || type.isRestrict) return std::nullopt;
         if (field.bitWidth && ((*field.bitWidth == 0 && !field.name.empty()) || *field.bitWidth > *type.sizeBits ||
-            (type.kind != CppTypeKind::SignedInteger && type.kind != CppTypeKind::UnsignedInteger))) return std::nullopt;
+            (type.kind == CppTypeKind::Boolean && *field.bitWidth > 1) ||
+            (type.kind != CppTypeKind::SignedInteger && type.kind != CppTypeKind::UnsignedInteger &&
+             type.kind != CppTypeKind::Boolean))) return std::nullopt;
         const CppType* element = &type;
         std::string dimensions;
         unsigned depth = 0;
@@ -62,7 +64,8 @@ inline std::optional<std::string> makeSimpleCRecordAbiReplay(const CppCRecordSna
             (spelling == "unsigned char" || spelling == "unsigned short" || spelling == "unsigned int" ||
              spelling == "unsigned long" || spelling == "unsigned long long");
         const bool realType = element->kind == CppTypeKind::Floating && (spelling == "float" || spelling == "double");
-        if (signedType || unsignedType || realType) emittedType = element->canonicalSpelling;
+        const bool booleanType = element->kind == CppTypeKind::Boolean && spelling == "_Bool";
+        if (signedType || unsignedType || realType || booleanType) emittedType = element->canonicalSpelling;
         else if (element->kind == CppTypeKind::Record && element->recordIdentity &&
                  element->recordIdentity->clangUsr && !element->recordIdentity->clangUsr->empty() &&
                  !element->recordIdentity->name.empty() && !element->recordIdentity->anonymousContext &&

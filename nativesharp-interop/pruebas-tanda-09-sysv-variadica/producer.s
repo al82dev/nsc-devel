@@ -476,6 +476,24 @@ fail_record_union_outer:
     ret
 .globl sysv_record_bits
 .globl sysv_record_bits_gap
+.globl sysv_record_bool_bits
+sysv_record_bool_bits:
+    cmpl $1, %edi
+    jne fail_record_bool_bits
+    movl %esi, %r8d
+    andl $3, %r8d
+    cmpl $1, %r8d
+    jne fail_record_bool_bits
+    movl %esi, %r8d
+    shrl $8, %r8d
+    andl $255, %r8d
+    cmpl $1, %r8d
+    jne fail_record_bool_bits
+    movl $1, %eax
+    ret
+fail_record_bool_bits:
+    xorl %eax, %eax
+    ret
 sysv_record_bits_gap:
     cmpl $1, %edi
     jne fail_record_bits_gap
