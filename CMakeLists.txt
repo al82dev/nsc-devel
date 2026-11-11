@@ -5657,6 +5657,9 @@ if(NSC_BUILD_TESTS)
         add_test(NAME nsc.generics.dependent-constraints
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/dependent_generic_constraints.py"
                     "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.generics.binary-struct-trait-conformance
+            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/binary_struct_trait_conformance.py"
+                    "${NSC_TEST_COMPILER}")
         add_test(NAME nsc.concurrency.conditional-traits
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/conditional_unsafe_thread_traits.py"
                     "${NSC_TEST_COMPILER}")

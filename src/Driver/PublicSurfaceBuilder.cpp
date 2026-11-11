@@ -706,7 +706,7 @@ bool PublicSurfaceBuilder::emitNominalBases(const interop::LibraryMetadataType &
                                     metadata.formatMinor >= 30 &&
                                     (type.flags & interop::kMetadataTypeOpaqueResult) != 0U;
     if (!((type.kind == interop::LibraryMetadataTypeKind::Class && (type.flags & (1U << 3U)) == 0U) ||
-          opaqueResultStruct) ||
+          type.kind == interop::LibraryMetadataTypeKind::Struct) ||
         (type.baseTypeKey.empty() && type.interfaceTypeKeys.empty()))
         return true;
     (*generated) << " : ";
