@@ -65,6 +65,7 @@ int main(int argc, char** argv) {
         typedef struct R32B { unsigned char x[32]; } R32B;
         typedef struct RF { double x; int y; } RF;
         typedef struct RID { int x, y; double z; } RID;
+        typedef struct RDD { double x, y; } RDD;
         typedef struct RIF { int x, y; float z; } RIF;
         typedef struct RIV { int x, y; float z, w; } RIV;
         typedef struct RVI { float z, w; int x, y; } RVI;
@@ -96,6 +97,7 @@ int main(int argc, char** argv) {
         R16 __attribute__((sysv_abi)) p16(R16);
         RF __attribute__((sysv_abi)) pf(RF);
         RID __attribute__((sysv_abi)) pid(RID);
+        RDD __attribute__((sysv_abi)) pdd(RDD);
         RIF __attribute__((sysv_abi)) pif(RIF);
         RIV __attribute__((sysv_abi)) piv(RIV);
         RVI __attribute__((sysv_abi)) pvi(RVI);
@@ -172,7 +174,7 @@ int main(int argc, char** argv) {
             name != "p6" && name != "p7" && name != "p8" && name != "p9" && name != "p10" &&
             name != "p11" && name != "p12" && name != "p13" && name != "p14" && name != "p15" &&
             name != "p16" && name != "pf" && name != "p24" && name != "p24b" && name != "p24i" && name != "p17b" &&
-            name != "p20b" && name != "p32b" && name != "pid" && name != "pif" && name != "piv" && name != "pvi" && name != "pvs" && name != "pvv" && name != "pvf" && name != "ponev" && name != "ponef" && name != "poned" && name != "ps8" && name != "pm" &&
+            name != "p20b" && name != "p32b" && name != "pid" && name != "pdd" && name != "pif" && name != "piv" && name != "pvi" && name != "pvs" && name != "pvv" && name != "pvf" && name != "ponev" && name != "ponef" && name != "poned" && name != "ps8" && name != "pm" &&
             name != "pp" && name != "pvec" && name != "pvoid") continue;
         if (name == "p3" && copiedPlans.contains(name)) continue;
         auto* physical = clang::CodeGen::convertFreeFunctionType(generator->CGM(), function);
@@ -240,7 +242,7 @@ int main(int argc, char** argv) {
         if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
-    if (matched != 38 || copiedPlans.size() != 38 || !unsupportedRejected || !variadicRejected ||
+    if (matched != 39 || copiedPlans.size() != 39 || !unsupportedRejected || !variadicRejected ||
         !noPrototypeRejected || !attributeRejected) return 7;
     generator.reset();
     ast.reset();
@@ -276,6 +278,8 @@ int main(int argc, char** argv) {
     const auto& pf = copiedPlans.at("pf");
     if (!t09_probe::isSysVMixedRecordRoundTrip(copiedPlans.at("pid"), "pid") ||
         t09_probe::isSysVMixedDoubleI32RecordRoundTrip(copiedPlans.at("pid"), "pid")) return 84;
+    if (!t09_probe::isSysVMixedRecordRoundTrip(copiedPlans.at("pdd"), "pdd") ||
+        copiedPlans.at("pdd").physicalReturn.elements[1].kind != t09_probe::TypeKind::Double) return 93;
     if (!t09_probe::isSysVMixedRecordRoundTrip(copiedPlans.at("pif"), "pif") ||
         copiedPlans.at("pif").physicalReturn.elements[1].kind != t09_probe::TypeKind::Float) return 85;
     if (!t09_probe::isSysVMixedRecordRoundTrip(copiedPlans.at("piv"), "piv") ||

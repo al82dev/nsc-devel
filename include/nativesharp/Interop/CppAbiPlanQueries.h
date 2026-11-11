@@ -89,6 +89,7 @@ inline bool isSysVMixedRecordRoundTrip(const Plan& plan, std::string_view symbol
                    value.elements.size() == 1 && value.elements[0].kind == TypeKind::Float;
         };
         return (first.kind == TypeKind::Double && second.kind == TypeKind::Integer && second.widthOrCount == 32) ||
+               (first.kind == TypeKind::Double && second.kind == TypeKind::Double) ||
                (first.kind == TypeKind::Integer && first.widthOrCount == 64 &&
                 (second.kind == TypeKind::Double || second.kind == TypeKind::Float || vector2f(second))) ||
                (vector2f(first) && vector2f(second)) ||
@@ -125,7 +126,8 @@ inline bool isSysVMixedRecordRoundTrip(const Plan& plan, std::string_view symbol
 }
 inline bool isSysVMixedDoubleI32RecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
 {
-    return isSysVMixedRecordRoundTrip(plan, symbol) && plan.physicalReturn.elements[0].kind == TypeKind::Double;
+    return isSysVMixedRecordRoundTrip(plan, symbol) && plan.physicalReturn.elements[0].kind == TypeKind::Double &&
+        plan.physicalReturn.elements[1].kind == TypeKind::Integer;
 }
 inline bool isSysVIndirectRecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
 {

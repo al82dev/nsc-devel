@@ -383,3 +383,15 @@ A:/temp/t09-planes-identity.log. El vector unico paso nuevamente en
 A:/temp/nsc-t09-sysv-mixed-v-dmi98swh. La prueba negativa de esta sesion
 conserva el rechazo de dos `double` y de callback en
 A:/temp/nsc-t09-sysv-prueba-2bzdex5d. Otras formas siguen pendientes.
+
+Dos `double`: Clang emite `{ double, double }` y dos parametros `double`
+(A:/temp/nsc-t09-if-clang-95zv0pj0). El control C paso y NSC rechazo la muestra
+antes del cambio en A:/temp/nsc-t09-sysv-mixed-dd-k6ycz7bt. Despues pasaron las
+ocho comparaciones estatica/DLL O0–O3, las firmas LLVM y la plantilla sin
+encabezado O0 en A:/temp/nsc-t09-sysv-mixed-dd-lxwe5f11. La sonda y metadatos
+pasaron en A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log. Las
+regresiones `double`/`int` y escalar `double` pasaron en
+A:/temp/nsc-t09-sysv-mixed-di-bwd3uxf4 y A:/temp/nsc-t09-sysv-scalar-d-qfch1uvb.
+La prueba negativa de esta sesion conserva el rechazo de `double` seguido de
+`float` y callback en A:/temp/nsc-t09-sysv-prueba-x75p_hvu. Otras formas siguen
+pendientes.
