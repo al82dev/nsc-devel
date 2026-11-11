@@ -1,0 +1,1 @@
+int Main() { int value=7; double result=t09_most(2.25,&value,(short)-7,true); return result==9.5 && value==19 && t09_all(-5000000000L,(uint)4000000000,3.5f)==-4999999990L ? 0 : 1; }

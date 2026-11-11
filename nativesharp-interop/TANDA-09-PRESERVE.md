@@ -28,3 +28,25 @@ precompilado (`A:/temp/nsc-t09-regcall-estrechos-precompilado-8ere5j_v`),
 cuatro sondas (`A:/temp/t09-test-varptr.log`) y transporte/ABI/identidad
 (`A:/temp/t09-transport-directed/`). Otras firmas y llamadas por puntero
 permanecen pendientes; T09-003 y la tanda 9 siguen abiertos.
+
+## Firmas escalares mixtas
+
+Clang clasifico las muestras C con `double`, `float`, enteros, booleano y
+`int*` en A:/temp/t09-preserve-scalars-oracle.ll. El control C paso
+estatica/DLL O0-O3 (A:/temp/nsc-t09-preserve-escalares-1hy5zckw), mientras
+NSC rechazo la firma mixta (A:/temp/nsc-t09-preserve-escalares-_zhs211q).
+Tras ampliar el filtro de firmas, pasaron ocho comparaciones C/NS, la
+verificacion LLVM de ambas convenciones y `zeroext`, y cache
+(A:/temp/nsc-t09-preserve-escalares-m1udhb7m), junto con 16 consumidores
+precompilados (A:/temp/nsc-t09-preserve-escalares-precompilado-dw1pq0t7).
+La muestra comprueba la escritura mediante el puntero y valores de 64 bits.
+
+La firma mixta C++ `preserve_most` paso ocho comparaciones C++/NS y la
+comprobacion del atributo booleano
+(A:/temp/nsc-t09-preserve-cpp-escalares-rjlaj17w), y 16 consumidores
+precompilados (A:/temp/nsc-t09-preserve-cpp-escalares-precompilado-q5_hsm1e).
+Pasaron las firmas anteriores (A:/temp/nsc-t09-preserve-n8lkjlab), rechazo
+de conversiones incompatibles (A:/temp/nsc-t09-preserve-conversiones-5wo2k9_s),
+cuatro sondas (A:/temp/t09-test-varptr.log) y transporte/ABI/identidad
+(A:/temp/t09-transport-directed/). Otras firmas y punteros a funcion siguen
+pendientes; T09-003 permanece abierto.

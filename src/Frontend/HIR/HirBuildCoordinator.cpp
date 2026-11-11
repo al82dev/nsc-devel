@@ -1811,11 +1811,17 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             function.cppPreserveMost = symbol.cppCallingConvention == "preserve_most";
             function.cppPreserveAll = symbol.cppCallingConvention == "preserve_all";
             function.cppSysVCall = symbol.cppCallingConvention == "sysv_abi";
+            const auto preserveParameter = [](const std::string& type) {
+                return type == "builtin:int" || type == "builtin:uint" || type == "builtin:long" ||
+                    type == "builtin:short" || type == "builtin:float" || type == "builtin:double" ||
+                    type == "builtin:bool" || type == "builtin:int*";
+            };
             if ((function.cppPreserveMost || function.cppPreserveAll) &&
-                (function.isVariadic || function.returnTypeKey != "builtin:int" ||
-                 !std::ranges::all_of(function.parameterTypeKeys, [](const auto& type) { return type == "builtin:int"; })))
+                (function.isVariadic || (function.returnTypeKey != "builtin:int" &&
+                 function.returnTypeKey != "builtin:long" && function.returnTypeKey != "builtin:double") ||
+                 !std::ranges::all_of(function.parameterTypeKeys, preserveParameter)))
             {
-                error = symbol.cppCallingConvention + " currently supports only int scalar signatures for " + symbol.mangledName;
+                error = symbol.cppCallingConvention + " does not yet support this signature for " + symbol.mangledName;
                 return false;
             }
             const auto regCallScalar = [](const std::string& type) {
