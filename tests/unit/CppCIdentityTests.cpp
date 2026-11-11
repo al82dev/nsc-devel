@@ -1717,6 +1717,28 @@ bool checkDependencyTypeCodec()
         restoredRecord.declaration.abiPlan->physicalParameters.size() == 3 &&
         restoredRecord.declaration.abiPlan->physicalParameters[2].type.kind == abi_plan::TypeKind::Float,
         "C dependency function retains two floats and a record argument");
+    for (std::size_t i = 3; i < 10; ++i)
+    {
+        auto logical = firstFloatPlan->logicalParameters[0];
+        logical.firstPhysical = i;
+        auto physical = firstFloatPlan->physicalParameters[0];
+        auto parameter = recordFunction.declaration.parameters[0];
+        if (i % 2 == 0)
+        {
+            logical.coercion = abi_plan::Type{abi_plan::TypeKind::Double};
+            physical.type = *logical.coercion;
+            parameter.type.sizeBits = 64;
+        }
+        firstFloatPlan->logicalParameters.push_back(logical);
+        firstFloatPlan->physicalParameters.push_back(physical);
+        recordFunction.declaration.parameters.push_back(parameter);
+    }
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        restoredRecord.declaration.abiPlan->physicalParameters.size() == 10 &&
+        restoredRecord.declaration.abiPlan->physicalParameters[8].type.kind == abi_plan::TypeKind::Double,
+        "C dependency function retains mixed floating arguments beyond register capacity");
+    recordFunction.declaration.parameters.resize(3);
     recordFunction.declaration.parameters.pop_back();
     recordFunction.declaration.parameters[0].type = savedFirstType;
     recordFunction.declaration.abiPlan = twoSmallPlan;

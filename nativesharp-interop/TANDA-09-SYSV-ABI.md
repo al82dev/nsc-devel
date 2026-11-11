@@ -629,3 +629,23 @@ A:/temp/nsc-t09-sysv-prueba-vu1tz324. La sonda Clang y metadatos pasaron en
 A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log. Siguen
 pendientes otras mezclas, clasificaciones y casos con mas argumentos.
 
+## Argumentos flotantes directos y pila
+
+La firma de control con un record de cuatro bytes y nueve escalares `float` y
+`double` alternados supera los ocho registros flotantes SysV. Antes del cambio
+el control C paso en estatica y DLL y NSC rechazo la firma
+(A:/temp/nsc-t09-sysv-float-stack-m1krm5v0). Se eliminaron los limites de
+cantidad para las piezas directas de esos dos tipos que el plan de Clang
+describe sin atributos adicionales. La muestra paso ocho comparaciones C/NS
+estatica/DLL O0–O3, comprobacion de la firma LLVM y una plantilla precompilada
+sin encabezado O0 (A:/temp/nsc-t09-sysv-float-stack-6h2w1mig). La sonda de
+Clang y el control de metadatos tambien incluyeron diez argumentos
+(A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log). Pasaron las
+regresiones de tres argumentos (A:/temp/nsc-t09-sysv-floats-record-g_s1fgey)
+y del control general, incluido el rechazo de un record de varias piezas en
+una firma mixta (A:/temp/nsc-t09-sysv-prueba-0pgj78jv).
+
+Esto no acredita combinaciones con records que necesiten multiples piezas,
+argumentos indirectos, punteros u otros escalares en la misma firma, ni todas
+las disposiciones de registros. T09-003 sigue abierto.
+

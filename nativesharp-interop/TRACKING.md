@@ -1728,6 +1728,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Se probaron records pequenos de distintos tamanos y mezclas con `int`, incluidos ambos ordenes y ocho argumentos con paso por pila; otras mezclas siguen pendientes. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Firmas de dos argumentos con record pequeno y `float` o `double` en ambos ordenes pasaron las pruebas dirigidas y de precompilacion; otras mezclas siguen pendientes. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probo tambien `float`, record pequeno, `float`, con precompilacion; firmas flotantes de mayor complejidad siguen pendientes. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
+  - Una firma con un record pequeno y nueve escalares `float`/`double` intercalados paso las pruebas, incluido el paso de flotantes por pila y precompilacion; quedan abiertas otras clasificaciones de agregados. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
 - [ ] T09-004. Emitir una llamada C sin parámetros y con resultado escalar. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-005. Emitir una llamada C con parámetros escalares. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-006. Emitir el paso de punteros a una función C. [Prueba y contraste](pruebas-tanda-09-llamadas/).

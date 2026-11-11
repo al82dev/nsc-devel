@@ -490,10 +490,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                            f.parameters[i].type.sizeBits == 32 &&
                            f.abiPlan->physicalParameters[i].type.kind == abi_plan::TypeKind::Integer &&
                            f.abiPlan->physicalParameters[i].type.widthOrCount == 32) ||
-                          (f.parameters.size() <= 3 &&
-                           f.parameters[i].type.kind == CppTypeKind::Floating &&
+                          (f.parameters[i].type.kind == CppTypeKind::Floating &&
                            ((f.parameters[i].type.sizeBits == 32 && f.abiPlan->physicalParameters[i].type.kind == abi_plan::TypeKind::Float) ||
-                            (f.parameters.size() == 2 && f.parameters[i].type.sizeBits == 64 && f.abiPlan->physicalParameters[i].type.kind == abi_plan::TypeKind::Double))))) return true;
+                            (f.parameters[i].type.sizeBits == 64 && f.abiPlan->physicalParameters[i].type.kind == abi_plan::TypeKind::Double))))) return true;
                 }
                 return !hasRecord;
             }()) ||
