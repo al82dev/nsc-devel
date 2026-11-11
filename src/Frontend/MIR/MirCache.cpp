@@ -888,6 +888,7 @@ void appendMirFunctionFlags(std::string& out, const ProjectOopMirFunction& funct
     setFlag(16, function.cppDllImport);
     setFlag(17, function.isCppExternal);
     setFlag(18, function.cppVectorCall);
+    setFlag(19, function.cppRegCall);
     internal::CachePayloadWriter::u32(out, flags);
 }
 
@@ -1109,6 +1110,7 @@ bool readMirFunctionFlags(
     function.cppDllImport = flag(16);
     function.isCppExternal = flag(17);
     function.cppVectorCall = flag(18);
+    function.cppRegCall = flag(19);
     return true;
 }
 
@@ -1452,6 +1454,7 @@ bool matchesHirFunctionFlags(
         function.isImportedNative == source.isImportedNative &&
         function.isCppExternal == source.isCppExternal &&
         function.cppVectorCall == source.cppVectorCall &&
+        function.cppRegCall == source.cppRegCall &&
         function.isTransportedInlineBody == source.isTransportedInlineBody &&
         function.isSyntheticImplicitConstructor ==
             source.isSyntheticImplicitConstructor &&

@@ -196,6 +196,7 @@ void writeFunctionIdentity(
     output.scalar(function.isImportedNative);
     output.scalar(function.isCppExternal);
     output.scalar(function.cppVectorCall);
+    output.scalar(function.cppRegCall);
     output.scalar(function.isTransportedInlineBody);
     output.scalar(function.isSyntheticImplicitConstructor);
     output.text(function.importDllName);

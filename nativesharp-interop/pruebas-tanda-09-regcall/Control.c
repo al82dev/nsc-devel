@@ -1,0 +1,2 @@
+#include "api.h"
+int main(void) { return t09_regcall(3, 4, 7) == 347 ? 0 : 1; }

@@ -1,0 +1,3 @@
+int Main() {
+    return t09_regcall(3, 4, 7) == 347 ? 0 : 1;
+}

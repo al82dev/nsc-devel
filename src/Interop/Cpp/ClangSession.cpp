@@ -342,6 +342,7 @@ void collectNamespaces(const clang::DeclContext& context, clang::ASTContext& ast
 
 void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& astContext,
                           clang::MangleContext& mangler,
+                          clang::CodeGenerator* generator,
                           std::set<const clang::FunctionDecl*>& seen,
                           std::vector<CppFunctionDeclaration>& result)
 {
@@ -349,12 +350,12 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
     {
         if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
         {
-            collectFreeFunctions(*nested, astContext, mangler, seen, result);
+            collectFreeFunctions(*nested, astContext, mangler, generator, seen, result);
             continue;
         }
         if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
         {
-            collectFreeFunctions(*linkage, astContext, mangler, seen, result);
+            collectFreeFunctions(*linkage, astContext, mangler, generator, seen, result);
             continue;
         }
         const auto* function = llvm::dyn_cast<clang::FunctionDecl>(declaration);
@@ -414,7 +415,9 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
         }
         if (value.externalLinkage)
         {
-            if (mangler.shouldMangleDeclName(function))
+            if (value.callingConvention == "regcall" && generator)
+                value.externalSymbol = generator->GetMangledName(clang::GlobalDecl(function)).str();
+            else if (mangler.shouldMangleDeclName(function))
             {
                 llvm::SmallString<128> symbol;
                 llvm::raw_svector_ostream stream(symbol);
@@ -905,7 +908,19 @@ public:
         std::unique_ptr<clang::MangleContext> mangler(context.createMangleContext());
         std::vector<CppFunctionDeclaration> result;
         std::set<const clang::FunctionDecl*> seen;
-        collectFreeFunctions(*context.getTranslationUnitDecl(), context, *mangler, seen, result);
+        collectFreeFunctions(*context.getTranslationUnitDecl(), context, *mangler, nullptr, seen, result);
+        if (std::any_of(result.begin(), result.end(), [](const auto& value) { return value.callingConvention == "regcall"; }))
+        {
+            llvm::LLVMContext llvmContext;
+            auto generator = clang::CreateLLVMCodeGen(ast_->getDiagnostics(), "nsc.regcall.symbol",
+                ast_->getVirtualFileSystemPtr(), ast_->getHeaderSearchOpts(), ast_->getPreprocessorOpts(),
+                ast_->getCodeGenOpts(), llvmContext);
+            if (!generator) return std::nullopt;
+            generator->Initialize(context);
+            seen.clear();
+            result.clear();
+            collectFreeFunctions(*context.getTranslationUnitDecl(), context, *mangler, generator.get(), seen, result);
+        }
         return result;
     }
     std::optional<abi_plan::Plan> cFunctionAbiPlan(

@@ -1807,7 +1807,14 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             // EN: T08-D22: `__vectorcall` C functions are imported with their convention.
             // ES: T08-D22: las funciones C `__vectorcall` se importan con su convencion.
             function.cppVectorCall = symbol.cppCallingConvention == "vectorcall";
+            function.cppRegCall = symbol.cppCallingConvention == "regcall";
             function.cppSysVCall = symbol.cppCallingConvention == "sysv_abi";
+            if (function.cppRegCall && (function.isVariadic || function.returnTypeKey != "builtin:int" ||
+                !std::ranges::all_of(function.parameterTypeKeys, [](const auto& type) { return type == "builtin:int"; })))
+            {
+                error = "regcall currently supports only int scalar signatures for " + symbol.mangledName;
+                return false;
+            }
             if (function.cppSysVCall)
             {
                 const auto supportedScalar = [](const std::string& type) {
@@ -2021,7 +2028,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                       std::ranges::any_of(symbol.cppParameterTypes, [](const auto& type) { return type.kind == interop::CppTypeKind::Record; })) ||
                      function.cppSysVDirectRecordReturn);
             }
-            if (symbol.cppCallingConvention != "cdecl" && !function.cppVectorCall && !function.cppSysVCall)
+            if (symbol.cppCallingConvention != "cdecl" && !function.cppVectorCall && !function.cppSysVCall && !function.cppRegCall)
             {
                 error = "C/C++ calling convention '" + symbol.cppCallingConvention +
                     "' is not yet supported in HIR for " + symbol.mangledName;
@@ -2061,9 +2068,9 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             });
             if (requiresTlsAliases)
             {
-                if (function.cppSysVCall)
+                if (function.cppSysVCall || function.cppRegCall)
                 {
-                    error = "sysv_abi with isolated TLS DLL binding is not yet supported for " + symbol.mangledName;
+                    error = symbol.cppCallingConvention + " with isolated TLS DLL binding is not yet supported for " + symbol.mangledName;
                     return false;
                 }
                 function.importDllName = interop::cppTlsDllAlias(symbol.cppDllRuntimeIdentity);
