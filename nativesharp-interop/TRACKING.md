@@ -1686,7 +1686,7 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 ## 09. Llamadas, enlace y datos C
 
-**Trabajo en curso en la laptop.** La auditoria y su evidencia estan en
+**Tanda 9 cerrada con el alcance y los limites documentados.** La auditoria y su evidencia estan en
 [TANDA-09-AUDITORIA-INICIAL.md](TANDA-09-AUDITORIA-INICIAL.md); el alcance y
 las restricciones estan en [SCOPE-LOCK-TANDA-09.md](SCOPE-LOCK-TANDA-09.md),
 y las instrucciones de prueba en [TANDA-09-VALIDACION.md](TANDA-09-VALIDACION.md).
@@ -1707,8 +1707,9 @@ modificaron las pruebas existentes.
 
 Las 16 casillas originales se conservan. Las pruebas nuevas aportan evidencia
 para enlace estatico y DLL, sin extrapolar a todas las formas de metadatos o
-cache. La tanda sigue en revision de cierre y no certifica interoperabilidad
-general C o C++.
+cache. El cierre se refiere a los casos descritos en Windows x64; no certifica
+interoperabilidad general C o C++. La suite de sesiones Clang no se ejecuto
+por faltar su fixture, como se indica en la validacion.
 
 - [x] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [x] T09-002. Auditar la emisión actual de llamadas C en el generador de código. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
