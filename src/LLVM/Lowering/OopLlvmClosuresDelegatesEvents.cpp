@@ -1078,7 +1078,8 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
             return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" ||
                 key == "builtin:ulong" || key == "builtin:float";
         };
-        if (regCall && (!structuralFunction || structuralFunction->variadic || !regCallScalar(returnTypeKey) ||
+        if (regCall && (!structuralFunction || structuralFunction->variadic ||
+            (!regCallScalar(returnTypeKey) && returnTypeKey != "builtin:void" && returnTypeKey != "builtin:int*") ||
             std::any_of(argumentTypeKeys.begin(), argumentTypeKeys.end(), [&](const std::string& key) {
                 return !regCallScalar(key) && key != "builtin:int*";
             })))

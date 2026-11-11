@@ -40,6 +40,28 @@ anterior (`A:/temp/nsc-t09-regcall-bwl9lztu`), rechazo de `double`
 (`A:/temp/t09-transport-directed/`). La muestra no acredita todas las firmas;
 T09-003 permanece abierto.
 
+## Retornos void y puntero en regcall
+
+Los controles C pasaron y NSC rechazo inicialmente el retorno `int*` en
+llamadas directas (`A:/temp/nsc-t09-regcall-void-puntero-amhtiwcj`,
+`A:/temp/nsc-t09-regcall-void-puntero-pfzplqzs`). Tras admitir `int*` y
+`void`, pasaron ocho comparaciones C/NS, IR y cache
+(`A:/temp/nsc-t09-regcall-void-puntero-61m886zq`) y 16 consumidores
+precompilados (`A:/temp/nsc-t09-regcall-void-puntero-precompilado-elf3h373`).
+
+Los controles equivalentes por puntero pasaron en C y fueron rechazados por
+NSC antes de la ampliacion (`A:/temp/nsc-t09-regcall-indirecta-vp-yqid7th5`,
+`A:/temp/nsc-t09-regcall-indirecta-vp-8xey612k`). Pasaron despues ocho
+comparaciones, IR y cache (`A:/temp/nsc-t09-regcall-indirecta-vp-dtscx3ha`)
+y 16 consumidores precompilados
+(`A:/temp/nsc-t09-regcall-indirecta-vp-precompilado-5iulw2q5`). Las muestras
+comprueban identidad del puntero y efectos sobre el dato. Pasaron rechazo de
+conversiones y firma `double` no admitida
+(`A:/temp/nsc-t09-regcall-conversiones-egrolnqk`), cuatro sondas
+(`A:/temp/t09-test-varptr.log`) y transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`). Otras firmas siguen pendientes; T09-003
+permanece abierto.
+
 ## Funcion libre C++ en namespace
 
 Clang emitio el simbolo `?calculate@T09Cpp@@YwHHHH@Z` y `x86_regcallcc`

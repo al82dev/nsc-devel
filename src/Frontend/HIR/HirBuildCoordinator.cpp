@@ -1813,12 +1813,14 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 return type == "builtin:int" || type == "builtin:uint" ||
                     type == "builtin:long" || type == "builtin:ulong" || type == "builtin:float";
             };
-            if (function.cppRegCall && (function.isVariadic || !regCallScalar(function.returnTypeKey) ||
+            if (function.cppRegCall && (function.isVariadic ||
+                (!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&
+                 function.returnTypeKey != "builtin:int*") ||
                 !std::ranges::all_of(function.parameterTypeKeys, [&](const auto& type) {
                     return regCallScalar(type) || type == "builtin:int*";
                 })))
             {
-                error = "regcall currently supports only int scalar signatures or 32/64-bit unsigned/long types, float and int* parameters for " + symbol.mangledName;
+                error = "regcall currently supports only int scalar signatures or 32/64-bit unsigned/long types, float, void and int* for " + symbol.mangledName;
                 return false;
             }
             if (function.cppSysVCall)
