@@ -1070,9 +1070,13 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         const std::optional<language::FunctionType> structuralFunction =
             language::parseFunctionTypeIdentity(delegateTypeKey);
         const bool sysvCall = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::SysV;
-        if (sysvCall && (structuralFunction->variadic || returnTypeKey != "builtin:int" ||
+        const auto sysvScalar = [](std::string_view key) {
+            return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" ||
+                key == "builtin:ulong" || key == "builtin:float" || key == "builtin:double" || key.ends_with('*');
+        };
+        if (sysvCall && (structuralFunction->variadic || (returnTypeKey != "builtin:void" && !sysvScalar(returnTypeKey)) ||
             std::any_of(argumentTypeKeys.begin(), argumentTypeKeys.end(),
-                [](const std::string& key) { return key != "builtin:int"; })))
+                [&](const std::string& key) { return !sysvScalar(key); })))
             return failValue(error, "sysv_abi function pointer signature is not yet supported");
         const bool variadic = structuralFunction.has_value() && structuralFunction->variadic;
         const std::size_t fixedParameterCount = variadic

@@ -1047,11 +1047,11 @@ La inspeccion inicial localiza el rechazo en `QualifiedTypeNames.cpp` y
 pero las identidades estructurales y la emision indirecta necesitan transportar
 una convencion SysV distinguible. La implementacion incorpora esa convencion
 a la identidad del tipo y emite `x86_64_sysvcc` en llamadas indirectas de la
-firma comprobada de enteros. Por ahora rechaza otras firmas y la conversion de
-metodos o lambdas hacia estos punteros; conserva el rechazo de convertir una
-funcion SysV a un callback de otra convencion.
+firma comprobada de enteros. En ese primer cambio rechazaba otras firmas y la
+conversion de metodos o lambdas hacia estos punteros; conservaba el rechazo de
+convertir una funcion SysV a un callback de otra convencion.
 
-La muestra paso ejecucion C y NativeSharp en estatica y DLL O0–O3 y una
+La muestra inicial paso ejecucion C y NativeSharp en estatica y DLL O0–O3 y una
 plantilla precompilada sin encabezado O0; el LLVM de las llamadas directa y
 precompilada contiene la convencion SysV
 (`A:/temp/nsc-t09-sysv-indirecta-matriz-bhcgvs6s`). La prueba puntual tambien
@@ -1062,8 +1062,26 @@ opuesta (`A:/temp/t09-transport-directed/`, `A:/temp/nsc-t09-sysv-prueba-in_if80
 Las pruebas CTest `item344`, `item345`, `item333.win64-vararg-abi` y
 `project-loader` pasaron tras crear sus directorios temporales aislados: el
 primer intento fallo porque esos directorios aun no existian. Este resultado
-no acredita argumentos o retornos distintos de `int`, variadicas, agregados,
+no acreditaba argumentos o retornos distintos de `int`, variadicas, agregados,
 ni la creacion de callbacks NativeSharp con convencion SysV.
+
+Posteriormente se ampliaron llamadas indirectas escalares no variadicas: la
+muestra incorpora una firma mixta `double`/`float`/`int`, retorno `float`,
+`long` con valor fuera de 32 bits, `uint` y `ulong` con valores grandes,
+puntero con escritura y retorno de identidad, y retorno `void`. Antes de la
+ampliacion el control C pasaba y NSC rechazaba la firma
+(`A:/temp/nsc-t09-sysv-indirecta-bg4a7j7i`); el primer intento de control C
+necesito agregar `_fltused` para el enlace sin runtime
+(`A:/temp/nsc-t09-sysv-indirecta-br66nrki`). Despues pasaron ocho comparaciones
+C/NS en estatica y DLL O0–O3, con plantilla precompilada sin encabezado O0 y
+verificacion LLVM de los tipos de retorno (`A:/temp/nsc-t09-sysv-indirecta-matriz-10gqw56l`).
+Se conserva el rechazo de firma no admitida con un argumento record, ademas
+del rechazo de conversion incompatible (`A:/temp/nsc-t09-sysv-indirecta-7roifs2d`).
+Pasaron transporte, ABI e identidad (`A:/temp/t09-transport-directed/`) y las
+regresiones de llamadas, SysV y variadicas (`A:/temp/nsc-t09-llamadas-b5nmhjsw`,
+`A:/temp/nsc-t09-sysv-prueba-sniutyu0`, `A:/temp/nsc-t09-sysv-varargs-rud7djst`).
+Booleanos, enteros estrechos, variadicas, agregados y creacion de callbacks
+siguen pendientes en la ruta indirecta; no se acredita cada combinacion posible.
 
 ## Retorno indirecto sin argumentos byval
 

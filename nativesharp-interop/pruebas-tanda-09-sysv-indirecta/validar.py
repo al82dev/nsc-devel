@@ -38,8 +38,9 @@ run('productor', ['clang.exe', *flags, '-c', str(root/'api.c'), '-o', str(root/'
 run('biblioteca', ['llvm-lib.exe', '/nologo', '/out:' + str(root/'api.lib'), str(root/'api.obj')])
 run('control-ir', ['clang.exe', *flags, '-S', '-emit-llvm', str(root/'Control.c'), '-o', str(root/'control.ll')])
 ir = (root/'control.ll').read_text(encoding='utf-8')
-if not re.search(r'call\s+x86_64_sysvcc\s+i32\s+%[^\(]+\(i32', ir):
-    raise SystemExit('Clang no emitio la convencion SysV indirecta; evidencia: ' + str(root))
+for result_type in ('i32', 'i64', 'double', 'float', 'ptr', 'void'):
+    if not re.search(r'call\s+x86_64_sysvcc\s+'+result_type+r'\s+%[^\(]+\(', ir):
+        raise SystemExit('Clang no emitio la convencion SysV indirecta para '+result_type+'; evidencia: '+str(root))
 run('control-obj', ['clang.exe', *flags, '-c', str(root/'Control.c'), '-o', str(root/'control.obj')])
 run('control-link', ['lld-link.exe', '/nologo', '/entry:main', '/subsystem:console', '/nodefaultlib',
     '/out:' + str(root/'control.exe'), str(root/'control.obj'), str(root/'api.lib')])
