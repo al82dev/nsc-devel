@@ -718,9 +718,10 @@ int main(int argc, char** argv) {
     const auto pointerFunctions = pointerOrigin->freeFunctionsSnapshot();
     if (!pointerAliases || !pointerFunctions) return 252;
     std::string pointerSpelling, variadicPointerSpelling, cdeclPointerSpelling, incompletePointerSpelling, realSpelling;
+    const CppType* observedPointer = nullptr;
     for (const auto& alias : *pointerAliases)
     {
-        if (alias.name == "PointerFn") pointerSpelling = alias.underlyingType.canonicalSpelling;
+        if (alias.name == "PointerFn") { pointerSpelling = alias.underlyingType.canonicalSpelling; observedPointer = &alias.underlyingType; }
         if (alias.name == "PointerVarFn") variadicPointerSpelling = alias.underlyingType.canonicalSpelling;
         if (alias.name == "PointerCdeclFn") cdeclPointerSpelling = alias.underlyingType.canonicalSpelling;
         if (alias.name == "PointerIncompleteFn") incompletePointerSpelling = alias.underlyingType.canonicalSpelling;
@@ -752,6 +753,39 @@ int main(int argc, char** argv) {
     const auto afterPointerFunctions = pointerOrigin->freeFunctionsSnapshot();
     if (!repeatedPointerPlan || repeatedPointerPlan->physicalParameters.size() != 2 ||
         !afterPointerFunctions || afterPointerFunctions->size() != pointerFunctions->size()) return 257;
+    if (!observedPointer || !observedPointer->element || !observedPointer->element->function ||
+        observedPointer->element->function->parameterTypes.size() != 1) return 258;
+    const auto& pointerSignature = *observedPointer->element->function;
+    CppVariadicArgumentOrigin pointerResult{pointerSignature.returnType, pointerOrigin.get()};
+    std::vector<CppVariadicArgumentOrigin> pointerArguments{{pointerSignature.parameterTypes[0], pointerOrigin.get()}};
+    if (!reconcileCppFunctionPointerAbiPlan(*pointerOrigin, "PointerFn", *observedPointer,
+        pointerResult, pointerArguments)) return 259;
+    auto equivalentPointerOrigin = openRecordSession("struct PointerRecord { int x, y, z; };");
+    auto incompatiblePointerOrigin = openRecordSession("struct PointerRecord { unsigned x; int y, z; };");
+    if (!equivalentPointerOrigin || !incompatiblePointerOrigin) return 260;
+    pointerArguments[0].origin = equivalentPointerOrigin.get();
+    if (!reconcileCppFunctionPointerAbiPlan(*pointerOrigin, "PointerFn", *observedPointer,
+        pointerResult, pointerArguments)) return 261;
+    pointerArguments[0].origin = incompatiblePointerOrigin.get();
+    if (reconcileCppFunctionPointerAbiPlan(*pointerOrigin, "PointerFn", *observedPointer,
+        pointerResult, pointerArguments)) return 262;
+    pointerArguments[0].origin = nullptr;
+    if (reconcileCppFunctionPointerAbiPlan(*pointerOrigin, "PointerFn", *observedPointer,
+        pointerResult, pointerArguments)) return 263;
+    pointerArguments[0].origin = pointerOrigin.get();
+    pointerArguments[0].type.sizeBits = 64;
+    if (reconcileCppFunctionPointerAbiPlan(*pointerOrigin, "PointerFn", *observedPointer,
+        pointerResult, pointerArguments)) return 264;
+    pointerArguments[0].type = pointerSignature.parameterTypes[0];
+    auto forgedPointer = *observedPointer;
+    auto forgedElement = std::make_shared<CppType>(*forgedPointer.element);
+    auto forgedSignature = std::make_shared<CppFunctionType>(*forgedElement->function);
+    forgedSignature->parameterTypes[0].sizeBits = 64;
+    forgedElement->function = forgedSignature;
+    forgedPointer.element = forgedElement;
+    if (reconcileCppFunctionPointerAbiPlan(*pointerOrigin, "PointerFn", forgedPointer,
+        pointerResult, pointerArguments)) return 266;
+    if (!equivalentPointerOrigin->close().succeeded || !incompatiblePointerOrigin->close().succeeded) return 265;
     if (!pointerOrigin->close().succeeded || pointerOrigin->cFunctionPointerAbiPlan("PointerFn", pointerSpelling)) return 256;
     auto equivalentOrigin = openRecordSession(
         "struct RF { double x; int y; }; struct R3 { unsigned char x, y, z; };");

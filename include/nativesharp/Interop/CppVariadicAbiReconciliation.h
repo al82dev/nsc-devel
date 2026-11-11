@@ -19,6 +19,12 @@ struct CppVariadicArgumentOrigin
     const CppInteropSession* origin = nullptr;
 };
 
+// Experimental observation only: the caller supplies the actual origin of each
+// signature type. A returned synthetic plan is not authorization to emit.
+std::optional<abi_plan::Plan> reconcileCppFunctionPointerAbiPlan(
+    const CppInteropSession& aliasSession, std::string_view name, const CppType& expectedPointer,
+    const CppVariadicArgumentOrigin& result, std::span<const CppVariadicArgumentOrigin> parameters);
+
 // Resolve against the function's session after checking each record's origin
 // and, when necessary, structural equivalence. The caller retains all sessions.
 std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicCallAbiPlan(

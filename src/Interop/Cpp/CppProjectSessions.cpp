@@ -192,6 +192,56 @@ bool variadicRecordOriginMatches(const CppInteropSession& target, const CppInter
 }
 }
 
+std::optional<abi_plan::Plan> reconcileCppFunctionPointerAbiPlan(
+    const CppInteropSession& aliasSession, std::string_view name, const CppType& expectedPointer,
+    const CppVariadicArgumentOrigin& result, std::span<const CppVariadicArgumentOrigin> parameters)
+{
+    if (aliasSession.state() != CppSessionState::Ready || name.empty() ||
+        expectedPointer.kind != CppTypeKind::Pointer || expectedPointer.canonicalSpelling.empty() ||
+        expectedPointer.isConst || expectedPointer.isVolatile || expectedPointer.isRestrict ||
+        !expectedPointer.element || expectedPointer.element->kind != CppTypeKind::Function ||
+        !expectedPointer.element->function) return std::nullopt;
+    const auto aliases = aliasSession.typeAliasesSnapshot();
+    if (!aliases) return std::nullopt;
+    const CppType* observed = nullptr;
+    for (const auto& alias : *aliases)
+        if (alias.name == name && alias.qualifiedName == name &&
+            alias.underlyingType.canonicalSpelling == expectedPointer.canonicalSpelling)
+        {
+            if (observed) return std::nullopt;
+            observed = &alias.underlyingType;
+        }
+    if (!observed || observed->kind != CppTypeKind::Pointer || !observed->element ||
+        observed->element->kind != CppTypeKind::Function || !observed->element->function ||
+        observed->sizeBits != expectedPointer.sizeBits || observed->alignmentBits != expectedPointer.alignmentBits ||
+        observed->isConst != expectedPointer.isConst || observed->isVolatile != expectedPointer.isVolatile ||
+        observed->isRestrict != expectedPointer.isRestrict ||
+        observed->element->canonicalSpelling != expectedPointer.element->canonicalSpelling ||
+        observed->element->isConst != expectedPointer.element->isConst ||
+        observed->element->isVolatile != expectedPointer.element->isVolatile ||
+        observed->element->isRestrict != expectedPointer.element->isRestrict) return std::nullopt;
+    const auto& signature = *observed->element->function;
+    const auto& expectedSignature = *expectedPointer.element->function;
+    if (signature.callingConvention != "sysv_abi" || !signature.hasPrototype || signature.variadic ||
+        expectedSignature.callingConvention != signature.callingConvention ||
+        expectedSignature.hasPrototype != signature.hasPrototype || expectedSignature.variadic != signature.variadic ||
+        signature.parameterTypes.size() != parameters.size() ||
+        expectedSignature.parameterTypes.size() != parameters.size() ||
+        !sameVariadicType(signature.returnType, expectedSignature.returnType, 1) ||
+        !sameVariadicType(signature.returnType, result.type, 1) ||
+        !variadicRecordOriginMatches(aliasSession, result.origin, result.type, 0)) return std::nullopt;
+    for (std::size_t index = 0; index < parameters.size(); ++index)
+        if (!sameVariadicType(signature.parameterTypes[index], expectedSignature.parameterTypes[index], 1) ||
+            !sameVariadicType(signature.parameterTypes[index], parameters[index].type, 1) ||
+            !variadicRecordOriginMatches(aliasSession, parameters[index].origin, parameters[index].type, 0))
+            return std::nullopt;
+    auto plan = aliasSession.cFunctionPointerAbiPlan(name, expectedPointer.canonicalSpelling);
+    if (!plan || plan->symbol != "__nsc_pointer_abi_probe" || plan->callingConvention != 78 || plan->variadic ||
+        !plan->targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan->dataLayout.starts_with("e-") ||
+        plan->logicalParameters.size() != parameters.size()) return std::nullopt;
+    return plan;
+}
+
 std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicCallAbiPlan(
     const CppInteropSession& functionSession, std::string_view name,
     std::string_view canonicalType, std::span<const CppVariadicArgumentOrigin> arguments)

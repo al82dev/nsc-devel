@@ -1169,6 +1169,18 @@ La consulta todavia no prueba la procedencia ni todos los atributos de una
 firma almacenada, no se transporta a HIR/MIR/NSMeta y no habilita el record
 indirecto: la reproduccion funcional permanece fallando.
 
+Se agrego una conciliacion experimental que exige el typedef observado en la
+sesion, compara la firma y exige un origen vivo para cada record. Para otra
+sesion contrasta tambien la equivalencia estructural con Clang; una identidad
+o un tamano iguales no bastan. La sonda acepta el mismo origen y un record
+equivalente de otra sesion, y rechaza uno del mismo tamano con un campo de tipo
+distinto, origen ausente, tamano alterado y firma manipulada
+(`A:/temp/t09-transport-directed/`). La regresion de llamadas indirectas paso
+estatica y DLL O0–O3 y plantilla precompilada
+(`A:/temp/nsc-t09-sysv-indirecta-matriz-4drf5mo5`). La conciliacion todavia es
+una observacion aislada: falta asociarla a la resolucion real del typedef,
+transportar el plan y validar su procedencia precompilada antes de emitir.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin
