@@ -39,3 +39,22 @@ anterior (`A:/temp/nsc-t09-regcall-bwl9lztu`), rechazo de `double`
 (`A:/temp/t09-test-varptr.log`) y transporte/ABI/identidad
 (`A:/temp/t09-transport-directed/`). La muestra no acredita todas las firmas;
 T09-003 permanece abierto.
+
+## Funcion libre C++ en namespace
+
+Clang emitio el simbolo `?calculate@T09Cpp@@YwHHHH@Z` y `x86_regcallcc`
+(`A:/temp/t09-regcall-cpp-oracle.ll`). El control C++ paso estatica/DLL O0-O3
+(`A:/temp/nsc-t09-regcall-cpp-xy8jklqf`); NativeSharp tambien ejecuto las
+ocho variantes y conservo simbolo y convencion en LLVM
+(`A:/temp/nsc-t09-regcall-cpp-42868933`). La cache de paquete de compilacion
+se informa desactivada en esta muestra C++; no se acredita hit de esa cache.
+
+La plantilla precompilada falla al resolver `T09Cpp`, incluso cuando el
+consumidor incluye el encabezado
+(`A:/temp/nsc-t09-regcall-cpp-precompilado-805e785k`). Un control equivalente
+con `cdecl` falla de la misma forma
+(`A:/temp/nsc-t09-regcall-cpp-precompilado-y0wame_8`), por lo que no hay
+evidencia de que el defecto sea exclusivo de `regcall`. Esta dependencia de
+resolucion de nombres C++ en plantillas precompiladas queda pendiente; la
+prueba `pruebas-tanda-09-regcall-cpp/validar-precompilado.py` reproduce el
+fallo y no se presenta como aprobada. T09-003 sigue abierto.
