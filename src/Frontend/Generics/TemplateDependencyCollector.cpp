@@ -208,6 +208,12 @@ void ProjectGenericModel::collectTypeDependency(
         if (current == nullptr) continue;
         for (const ast::TypeSyntax* argument : current->typeArguments())
             stack.push_back(argument);
+        if (current->isFunction())
+        {
+            stack.push_back(current->functionReturnType());
+            stack.push_back(current->functionErrorType());
+            continue;
+        }
         // Future/Iterator/AsyncIterator, tuples, and portable SIMD are structural surfaces. Their
         // arguments may depend on nominal templates, but the surface itself has no template record
         // that a reusable NSMETA closure could or should include.

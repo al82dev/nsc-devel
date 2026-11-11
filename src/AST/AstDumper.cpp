@@ -225,6 +225,7 @@ void AstDumper::dumpFunctionType(const TypeSyntax* typeSyntax, std::ostream& out
         case FunctionCallingConventionSyntaxKind::VectorCall: output << " vectorcall"; break;
         case FunctionCallingConventionSyntaxKind::Win64: output << " win64"; break;
         case FunctionCallingConventionSyntaxKind::SysV: output << " sysv_abi"; break;
+        case FunctionCallingConventionSyntaxKind::RegCall: output << " regcall"; break;
     }
     output << '(';
     for (std::size_t index = 0; index < typeSyntax->typeArguments().size(); ++index)

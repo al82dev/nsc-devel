@@ -1073,6 +1073,16 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         const std::optional<language::FunctionType> structuralFunction =
             language::parseFunctionTypeIdentity(delegateTypeKey);
         const bool sysvCall = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::SysV;
+        const bool regCall = structuralFunction && structuralFunction->callingConvention == language::CallingConvention::RegCall;
+        const auto regCallScalar = [](std::string_view key) {
+            return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" ||
+                key == "builtin:ulong" || key == "builtin:float";
+        };
+        if (regCall && (!structuralFunction || structuralFunction->variadic || !regCallScalar(returnTypeKey) ||
+            std::any_of(argumentTypeKeys.begin(), argumentTypeKeys.end(), [&](const std::string& key) {
+                return !regCallScalar(key) && key != "builtin:int*";
+            })))
+            return failValue(error, "regcall function pointer signature is not yet supported");
         const auto sysvScalar = [](std::string_view key) {
             return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" ||
                 key == "builtin:ulong" || key == "builtin:float" || key == "builtin:double" ||
@@ -1151,6 +1161,7 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         }
         if (vectorCall) LLVMSetInstructionCallConv(call, LLVMX86VectorCallCallConv);
         if (sysvCall) LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
+        if (regCall) LLVMSetInstructionCallConv(call, LLVMX86RegCallCallConv);
         if (vectorCall)
         {
             applyVectorCallInRegAttributes(

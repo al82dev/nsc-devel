@@ -1,0 +1,10 @@
+namespace T09 {
+class Box<T> { }
+public class RegBridge {
+public static int Run<T>(T unused) {
+    fn&(Box<int>) -> Box<int> unusedFunction;
+    T09RegCallback callback = t09_get_callback();
+    return callback(3,4,7) == 347 ? 0 : 1;
+}
+}
+}

@@ -210,7 +210,8 @@ bool Parser::scanFunctionCarrierAt(std::size_t& cursor) const noexcept
            tokens_[cursor].lexeme() == "cdecl" ||
            tokens_[cursor].lexeme() == "stdcall" ||
            tokens_[cursor].lexeme() == "fastcall" ||
-           tokens_[cursor].lexeme() == "win64"))))
+           tokens_[cursor].lexeme() == "win64" ||
+           tokens_[cursor].lexeme() == "regcall"))))
         ++cursor;
     if (cursor >= tokens_.size() || tokens_[cursor].kind() != TokenKind::LeftParen)
         return false;
@@ -730,6 +731,8 @@ void Parser::parseFunctionCallingConvention(FunctionTypeParseState& state)
         state.convention = ast::FunctionCallingConventionSyntaxKind::Win64;
     else if (atContextualKeyword("sysv_abi"))
         state.convention = ast::FunctionCallingConventionSyntaxKind::SysV;
+    else if (atContextualKeyword("regcall"))
+        state.convention = ast::FunctionCallingConventionSyntaxKind::RegCall;
     else
         return;
     consume();

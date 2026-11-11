@@ -109,3 +109,32 @@ rechazo de `double` (`A:/temp/nsc-t09-regcall-negativo-ph6jkfwk`), cuatro
 sondas (`A:/temp/t09-test-varptr.log`) y transporte/ABI/identidad
 (`A:/temp/t09-transport-directed/`). Otras firmas y punteros siguen pendientes;
 T09-003 permanece abierto.
+
+## Puntero regcall devuelto por C
+
+El control C paso estatica/DLL O0-O3
+(`A:/temp/nsc-t09-regcall-indirecta-5sxm0ld1`), pero NSC rechazaba la
+convencion del typedef (`A:/temp/nsc-t09-regcall-indirecta-t2aez33f`). La
+identidad estructural y la escritura `fn* regcall` conservan la convencion;
+LLVM la aplica a la llamada indirecta. Pasaron ocho comparaciones C/NS,
+igualdad y llamada por punteros, IR y cache
+(`A:/temp/nsc-t09-regcall-indirecta-3774fxgw`), asi como 16 consumidores
+precompilados con y sin encabezado
+(`A:/temp/nsc-t09-regcall-indirecta-precompilado-1o9d0nwq`). Se rechazaron
+conversiones incompatibles con `cdecl` en ambas direcciones y la firma
+indirecta `double` aun no implementada
+(`A:/temp/nsc-t09-regcall-conversiones-lktx86es`).
+
+La escritura explicita dentro de una plantilla descubrio una dependencia
+generica falsa (`A:/temp/nsc-t09-regcall-indirecta-precompilado-0hzrnpxc`).
+El colector recorre ahora parametros, resultado y error de tipos funcion sin
+tratar el tipo estructural como plantilla nominal. Una prueba con tipo
+generico no publico en parametro y retorno comprobo su inclusion en el
+catalogo y ejecuto 16 consumidores
+(`A:/temp/nsc-t09-funcion-cierre-generico-ljqr50g2`). Pasaron regresiones de
+regcall directo (`A:/temp/nsc-t09-regcall-enteros-bo1diq3p`), sobrecargas C++
+precompiladas (`A:/temp/nsc-t09-cpp-sobrecargas-precompilado-o_az4yhi`),
+cuatro sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y metadatos
+(`A:/temp/t09-cpp-meta-check.log`). Otras firmas indirectas quedan pendientes;
+T09-003 permanece abierto.

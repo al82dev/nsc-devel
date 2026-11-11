@@ -1458,6 +1458,14 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::bindLambdaToDel
             "conversion of a lambda to a sysv_abi function pointer is not yet supported");
         return result;
     }
+    if (const auto target = language::parseFunctionTypeIdentity(delegateTypeKey);
+        target && target->callingConvention == language::CallingConvention::RegCall)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, syntax->range(),
+            "conversion of a lambda to a regcall function pointer is not yet supported");
+        return result;
+    }
     if (genericConstraintModel_ != nullptr &&
         !genericConstraintModel_->specializationSatisfiesConstraints(syntax))
     {
@@ -1584,12 +1592,20 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
 {
     const auto structuralTarget = language::parseFunctionTypeIdentity(delegateTypeKey);
     const bool targetSysV = structuralTarget && structuralTarget->callingConvention == language::CallingConvention::SysV;
+    const bool targetRegCall = structuralTarget && structuralTarget->callingConvention == language::CallingConvention::RegCall;
     if (selected >= namespaceCallableBase_ && namespaceFunctionModel_ != nullptr)
     {
         const std::size_t functionOrdinal = selected - namespaceCallableBase_;
         if (functionOrdinal >= namespaceFunctionModel_->functions().size()) return false;
         const NamespaceFunctionSymbol& function =
             namespaceFunctionModel_->functions()[functionOrdinal];
+        if ((function.cppCallingConvention == "regcall") != targetRegCall)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},
+                "conversion between regcall and another function pointer convention is not supported");
+            return false;
+        }
         if (function.definitionSyntax == nullptr && !function.isExternC && !function.isPrecompiled &&
             function.cppCanonicalIdentity.empty())
         {
@@ -1650,6 +1666,13 @@ bool ProjectMethodBodyModel::validateDelegateMethodTarget(
                 return false;
             }
         }
+    }
+    else if (targetRegCall)
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+            diagnostics::DiagnosticSeverity::Error, syntax != nullptr ? syntax->range() : SourceRange{},
+            "conversion of a method to a regcall function pointer is not yet supported");
+        return false;
     }
     else if (targetSysV)
     {

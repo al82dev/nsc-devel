@@ -57,6 +57,7 @@ std::optional<CallingConvention> parseConvention(std::string_view value) noexcep
     if (value == "vectorcall") return CallingConvention::VectorCall;
     if (value == "win64") return CallingConvention::Win64;
     if (value == "sysv_abi") return CallingConvention::SysV;
+    if (value == "regcall") return CallingConvention::RegCall;
     return std::nullopt;
 }
 
@@ -194,6 +195,7 @@ std::string_view callingConventionName(CallingConvention convention) noexcept
         case CallingConvention::VectorCall: return "vectorcall";
         case CallingConvention::Win64: return "win64";
         case CallingConvention::SysV: return "sysv_abi";
+        case CallingConvention::RegCall: return "regcall";
     }
     return "native";
 }

@@ -10,6 +10,7 @@ enum class FunctionCallingConventionSyntaxKind
     FastCall,
     VectorCall,
     Win64,
-    SysV
+    SysV,
+    RegCall
 };
 }

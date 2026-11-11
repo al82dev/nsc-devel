@@ -1,0 +1,1 @@
+int Main() { T09RegCallback callback = t09_get_callback(); T09RegCallback direct = t09_regcall; fn* regcall(int, int, int) -> int typed = callback; return callback == direct && typed(3, 4, 7) == 347 && direct(3, 4, 7) == 347 ? 0 : 1; }
