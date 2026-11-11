@@ -1193,6 +1193,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         if (externC && node->cppVariadicCallPlan &&
             (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint" || node->typeKey == "builtin:ulong" ||
              node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:ushort" ||
+             node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" ||
              node->typeKey == "builtin:long" || node->typeKey == "builtin:float" || node->typeKey == "builtin:double" ||
              node->typeKey == "builtin:void" || node->typeKey == "builtin:int*") &&
             node->argumentCount >= 2 && node->argumentCount <= 1025 &&
@@ -1216,6 +1217,10 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                                                        plan.physicalReturn.widthOrCount != 64)) ||
                 (node->typeKey == "builtin:sbyte" && (plan.physicalReturn.kind != TypeKind::Integer ||
                     plan.physicalReturn.widthOrCount != 8 || !plan.returnSignExtend || plan.returnZeroExtend)) ||
+                (node->typeKey == "builtin:short" && (plan.physicalReturn.kind != TypeKind::Integer ||
+                    plan.physicalReturn.widthOrCount != 16 || !plan.returnSignExtend || plan.returnZeroExtend)) ||
+                (node->typeKey == "builtin:byte" && (plan.physicalReturn.kind != TypeKind::Integer ||
+                    plan.physicalReturn.widthOrCount != 8 || plan.returnSignExtend || !plan.returnZeroExtend)) ||
                 (node->typeKey == "builtin:ushort" && (plan.physicalReturn.kind != TypeKind::Integer ||
                     plan.physicalReturn.widthOrCount != 16 || plan.returnSignExtend || !plan.returnZeroExtend)) ||
                 (node->typeKey == "builtin:float" && plan.physicalReturn.kind != TypeKind::Float) ||
@@ -1328,8 +1333,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             delegateValue = checkedReceiver(delegateValue, error);
             if (!delegateValue) return nullptr;
             LLVMTypeRef returnType = (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") ? LLVMInt32TypeInContext(context_) :
-                node->typeKey == "builtin:sbyte" ? LLVMInt8TypeInContext(context_) :
-                node->typeKey == "builtin:ushort" ? LLVMInt16TypeInContext(context_) :
+                (node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte") ? LLVMInt8TypeInContext(context_) :
+                (node->typeKey == "builtin:ushort" || node->typeKey == "builtin:short") ? LLVMInt16TypeInContext(context_) :
                 (node->typeKey == "builtin:ulong" || node->typeKey == "builtin:long") ? LLVMInt64TypeInContext(context_) :
                 node->typeKey == "builtin:float" ? LLVMFloatTypeInContext(context_) :
                 node->typeKey == "builtin:double" ? LLVMDoubleTypeInContext(context_) :

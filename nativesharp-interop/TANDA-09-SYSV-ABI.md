@@ -1631,6 +1631,25 @@ sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
 `A:/temp/nsc-t09-sysv-indirecta-fijo-tres-pre-duoo1rxa`). Otros retornos y
 firmas siguen pendientes; T09-003 no esta cerrado.
 
+**Retornos `short` y `unsigned char`:** los controles C y productores
+independientes comprobaron -30000 y 250 con un `int` fijo y record mixto
+opcional. Clang exige `signext i16` y `zeroext i8`; NSC rechazaba ambas
+firmas (`A:/temp/nsc-t09-sysv-indirecta-variadica-retorno-short-3th9poy0`,
+`A:/temp/nsc-t09-sysv-indirecta-variadica-retorno-byte-pmfrxtox`). Tras
+emitir y reconstruir los retornos segun el plan pasaron las matrices C/NS
+estatica/DLL O0-O3 (`A:/temp/nsc-t09-sysv-indirecta-retorno-short-matriz-ed3pf048`,
+`A:/temp/nsc-t09-sysv-indirecta-retorno-byte-matriz-iuomvh79`) y las
+plantillas sin encabezado, cache y rechazo de variantes
+(`A:/temp/nsc-t09-sysv-indirecta-retorno-short-pre-m7k1tk5f`,
+`A:/temp/nsc-t09-sysv-indirecta-retorno-byte-pre-q62etstr`). Pasaron las
+cuatro sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones precompiladas de `sbyte`,
+`ushort` y record fijo de tres enteros
+(`A:/temp/nsc-t09-sysv-indirecta-retorno-sbyte-pre-z7968a6s`,
+`A:/temp/nsc-t09-sysv-indirecta-retorno-ushort-pre-fr2pks6d`,
+`A:/temp/nsc-t09-sysv-indirecta-fijo-tres-pre-vmmegiby`). Otras firmas y
+retornos siguen pendientes; T09-003 permanece abierto.
+
 **Retornos `long long` y `float`:** los controles C y productores
 independientes comprobaron un entero negativo fuera de 32 bits y un flotante;
 NSC rechazaba ambas firmas
