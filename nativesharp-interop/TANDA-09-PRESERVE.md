@@ -211,5 +211,19 @@ con y sin encabezado (A:/temp/nsc-t09-preserve-punteros-precompilado-a45o5tdz).
 Pasaron regresiones de `int*` y firmas mixtas
 (A:/temp/nsc-t09-preserve-retornos-ar3k5utt y
 A:/temp/nsc-t09-preserve-indirecta-mixta-twdz1c9l). No se acredita con estas
-pruebas la interoperabilidad de todos los tipos apuntados; quedan pendientes
-records, punteros multiples y otras firmas. T09-003 y la tanda 9 siguen abiertos.
+pruebas la interoperabilidad de todos los tipos apuntados; la seccion siguiente
+detalla una muestra de record y puntero doble. T09-003 y la tanda 9 siguen abiertos.
+
+## Punteros a record y punteros dobles
+
+Una muestra C pasa y retorna un puntero a un record de dos enteros y un puntero
+doble `int**`, mediante llamadas directas e indirectas en ambas convenciones.
+Comprueba la direccion de los punteros y las funciones, y modifica el record y
+el entero por sus respectivos punteros. No se requirieron cambios de produccion.
+
+Pasaron los ocho controles C (A:/temp/nsc-t09-preserve-recordptr-8hgmlxwn),
+ocho comparaciones C/NS en estatica y DLL O0-O3, inspeccion LLVM y cache
+(A:/temp/nsc-t09-preserve-recordptr-ngpsialy), y 16 consumidores precompilados
+con y sin encabezado (A:/temp/nsc-t09-preserve-recordptr-precompilado-fsd7t9lt).
+Otras clases de record, punteros y firmas permanecen sin certificar; T09-003 y
+la tanda 9 siguen abiertos.
