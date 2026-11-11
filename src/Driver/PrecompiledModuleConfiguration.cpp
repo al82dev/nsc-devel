@@ -537,8 +537,9 @@ bool configurePrecompiledModules(
                 [&compilation](const frontend::NamespaceFunctionSymbol& function,
                                std::span<const std::string> optionalTypes) {
                     const auto* graph = compilation.projectGraph();
-                    return graph ? interop::planCppScalarVariadicCall(
-                        *graph, compilation.cppProjectSessions(), function, optionalTypes) : nullptr;
+                    const auto* lookup = compilation.nameLookup();
+                    return graph && lookup ? interop::planCppVariadicCall(
+                        *graph, compilation.cppProjectSessions(), *lookup, function, optionalTypes) : nullptr;
                 }, error)) return false;
         if (hasSessions && !compilation.setCppMetadataCatalogProvider(
                 interop::provideCppCRecordMetadataCatalog, error)) return false;

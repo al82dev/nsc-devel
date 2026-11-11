@@ -674,10 +674,13 @@ bool ProjectOopHirModel::acceptNamespaceCallArgumentChild(
             selectedIndex < call.binding->selectedConversions.size())
         {
             const auto& conversion = call.binding->selectedConversions[selectedIndex];
+            const auto* providerOwner = lookupSource_ ? lookupSource_ : this;
+            const bool possibleRecordPlan = conversion.targetTypeKey.starts_with("type:") &&
+                !conversion.targetTypeKey.ends_with('*') && providerOwner->cppVariadicCallPlanProvider_;
             if (call.target->cppCallingConvention == "sysv_abi" &&
                 conversion.targetTypeKey != "builtin:int" && conversion.targetTypeKey != "builtin:uint" &&
                 conversion.targetTypeKey != "builtin:long" && conversion.targetTypeKey != "builtin:ulong" &&
-                conversion.targetTypeKey != "builtin:double" && !conversion.targetTypeKey.ends_with('*'))
+                conversion.targetTypeKey != "builtin:double" && !conversion.targetTypeKey.ends_with('*') && !possibleRecordPlan)
             {
                 error = "sysv_abi variadic argument type is not yet supported";
                 return false;

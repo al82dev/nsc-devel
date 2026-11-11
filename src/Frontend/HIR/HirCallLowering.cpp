@@ -1223,6 +1223,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishNamespaceCall(
             if (ordinal >= fixed) optional[ordinal - fixed] = node->argumentTypeKeys[i];
         }
         if (complete) node->cppVariadicCallPlan = providerOwner->cppVariadicCallPlanProvider_(target, optional);
+        const bool hasRecord = std::ranges::any_of(optional, [](const std::string& key) {
+            return key.starts_with("type:") && !key.ends_with('*');
+        });
+        if (hasRecord && (!complete || !node->cppVariadicCallPlan))
+        {
+            error = "sysv_abi variadic argument type is not yet supported";
+            return nullptr;
+        }
     }
     node->referenceResult = target.isReferenceReturn;
     auto loweredCall = wrapFullExpressionCleanup(

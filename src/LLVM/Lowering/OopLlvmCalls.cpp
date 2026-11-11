@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppAbiPlanQueries.h"
+#include "nativesharp/Interop/CppVariadicAbiValidation.h"
 #include "../Internal/CppSysVRecordAbi.h"
 #include "../Internal/OopLlvmImplementation.h"
 #include "../Internal/CppBoolAbi.h"
@@ -833,6 +834,151 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         }
 
         const auto* imported = found->second.mirFunction;
+        bool hasVariadicRecord = false;
+        if (imported && imported->cppSysVCall && imported->isVariadic)
+        {
+            if (node->argumentTypeKeys.size() != node->children.size() ||
+                (!node->argumentParameterOrdinals.empty() && node->argumentParameterOrdinals.size() != node->children.size()))
+                return failValue(error, "sysv_abi variadic argument mapping is incomplete");
+            for (std::size_t i = 0; i < node->argumentTypeKeys.size(); ++i)
+            {
+                const auto ordinal = node->argumentParameterOrdinals.empty() ? i : node->argumentParameterOrdinals[i];
+                if (ordinal >= imported->parameterTypeKeys.size() &&
+                    node->argumentTypeKeys[i].starts_with("type:") && !node->argumentTypeKeys[i].ends_with('*'))
+                    hasVariadicRecord = true;
+            }
+        }
+        if (hasVariadicRecord)
+        {
+            using interop::abi_plan::Passing;
+            using interop::abi_plan::TypeKind;
+            const auto* plan = node->cppVariadicCallPlan.get();
+            const auto count = node->children.size();
+            if (!plan || !interop::validateCppVariadicSysVCallPlan(*plan, imported->cAbiName,
+                    imported->parameterTypeKeys.size()) || plan->arguments.size() != count ||
+                node->argumentTypeKeys.size() != count || node->referenceResult || node->returnsAssignedValue ||
+                (argumentOverrides && argumentOverrides->size() != count) ||
+                plan->result.passing == Passing::Indirect)
+                return failValue(error, "sysv_abi variadic record call has an invalid or unsupported plan");
+            const auto physicalType = [&](const interop::abi_plan::Type& type) -> LLVMTypeRef {
+                switch (type.kind)
+                {
+                    case TypeKind::Void: return LLVMVoidTypeInContext(context_);
+                    case TypeKind::Integer: return LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount));
+                    case TypeKind::Float: return LLVMFloatTypeInContext(context_);
+                    case TypeKind::Double: return LLVMDoubleTypeInContext(context_);
+                    case TypeKind::Pointer: return LLVMPointerTypeInContext(context_, 0);
+                    case TypeKind::Vector: return LLVMVectorType(LLVMFloatTypeInContext(context_), 2);
+                    default: return nullptr;
+                }
+            };
+            LLVMTypeRef resultType = llvmType(node->typeKey, error);
+            if (!resultType || resultType != physicalType(plan->physicalReturn))
+                return failValue(error, "sysv_abi variadic record return type does not match its plan");
+            std::vector<std::size_t> order;
+            if (!callArgumentOrder(node, count, order, error) || order.size() != count) return nullptr;
+            std::vector<LLVMValueRef> evaluated;
+            evaluated.reserve(count);
+            for (std::size_t i = 0; i < count; ++i)
+            {
+                auto* value = argumentOverrides ? (*argumentOverrides)[i] : lowerExpression(node->children[i].get(), error);
+                if (!value) return nullptr;
+                if (terminated()) return value;
+                evaluated.push_back(value);
+            }
+            std::vector<LLVMValueRef> arguments;
+            std::vector<std::pair<unsigned, LLVMTypeRef>> byValues;
+            for (std::size_t i = 0; i < count; ++i)
+            {
+                if (order[i] >= count) return failValue(error, "sysv_abi variadic argument order is invalid");
+                const auto source = order[i];
+                const auto& logical = plan->arguments[i];
+                const auto& key = node->argumentTypeKeys[source];
+                const bool record = key.starts_with("type:") && !key.ends_with('*');
+                if (!record)
+                {
+                    if (logical.passing == Passing::Ignore) continue;
+                    if ((logical.passing != Passing::Direct && logical.passing != Passing::Extend) ||
+                        logical.physicalCount != 1 || logical.firstPhysical >= plan->physicalParameters.size())
+                        return failValue(error, "sysv_abi variadic scalar argument has an unsupported plan");
+                    auto* expected = physicalType(plan->physicalParameters[logical.firstPhysical].type);
+                    if (!expected || LLVMTypeOf(evaluated[source]) != expected)
+                        return failValue(error, "sysv_abi variadic scalar argument type does not match its plan");
+                    arguments.push_back(evaluated[source]);
+                    continue;
+                }
+                const auto* layout = findStructLayout(mirModel_, key);
+                auto* carrier = llvmType(key, error);
+                if (!layout || !carrier || layout->alignment == 0 || layout->alignment > (1ULL << 29) ||
+                    (layout->alignment & (layout->alignment - 1)) != 0)
+                    return failValue(error, "sysv_abi variadic record layout is unavailable");
+                const auto ordinal = nameLookup_.typeOrdinalForIdentity(std::string_view(key).substr(5));
+                const auto* recordType = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
+                if (!recordType || recordType->fromPrecompiledCatalog || recordType->isIncomplete ||
+                    !recordType->deferredImportError.empty() || !recordType->objectLayout ||
+                    (recordType->origin != frontend::CppImportedTypeOrigin::CStruct &&
+                     recordType->origin != frontend::CppImportedTypeOrigin::CUnion) ||
+                    recordType->objectLayout->sizeBytes != layout->size ||
+                    recordType->objectLayout->alignmentBytes != layout->alignment)
+                    return failValue(error, "sysv_abi variadic record provenance or layout is invalid");
+                if (LLVMTypeOf(evaluated[source]) != carrier)
+                    return failValue(error, "sysv_abi variadic record carrier does not match its layout");
+                if (logical.passing == Passing::Ignore) continue;
+                if (logical.passing == Passing::Indirect)
+                {
+                    const auto& p = plan->physicalParameters[logical.firstPhysical];
+                    if (!p.byValue || p.alignment < layout->alignment)
+                        return failValue(error, "sysv_abi variadic record byval alignment is invalid");
+                    auto* slot = entryBlockAlloca(carrier, static_cast<unsigned>(p.alignment), "sysv.vararg.byval");
+                    auto* store = LLVMBuildStore(builder_, evaluated[source], slot);
+                    LLVMSetAlignment(store, static_cast<unsigned>(p.alignment));
+                    byValues.emplace_back(static_cast<unsigned>(arguments.size()), carrier);
+                    arguments.push_back(slot);
+                    continue;
+                }
+                if (logical.passing != Passing::Direct || logical.physicalCount < 1 || logical.physicalCount > 2)
+                    return failValue(error, "sysv_abi variadic record pieces are not supported");
+                auto* slot = entryBlockAlloca(carrier, static_cast<unsigned>(layout->alignment), "sysv.vararg.record");
+                auto* store = LLVMBuildStore(builder_, evaluated[source], slot);
+                LLVMSetAlignment(store, static_cast<unsigned>(layout->alignment));
+                for (std::size_t piece = 0; piece < logical.physicalCount; ++piece)
+                {
+                    const auto& p = plan->physicalParameters[logical.firstPhysical + piece].type;
+                    auto* type = physicalType(p);
+                    const std::uint64_t bytes = p.kind == TypeKind::Integer ? (p.widthOrCount + 7) / 8 :
+                        p.kind == TypeKind::Float ? 4 : (p.kind == TypeKind::Double || p.kind == TypeKind::Vector) ? 8 : 0;
+                    const std::uint64_t offset = piece * 8;
+                    if (!type || bytes == 0 || offset > layout->size || bytes > layout->size - offset)
+                        return failValue(error, "sysv_abi variadic record piece exceeds its layout");
+                    auto* address = slot;
+                    if (offset)
+                    {
+                        auto* index = LLVMConstInt(LLVMInt64TypeInContext(context_), offset, 0);
+                        address = LLVMBuildGEP2(builder_, LLVMInt8TypeInContext(context_), slot, &index, 1, "sysv.vararg.second");
+                    }
+                    auto* value = LLVMBuildLoad2(builder_, type, address, "sysv.vararg.piece");
+                    LLVMSetAlignment(value, static_cast<unsigned>(layout->alignment < 8 ? layout->alignment : 8));
+                    arguments.push_back(value);
+                }
+            }
+            if (arguments.size() != plan->physicalParameters.size())
+                return failValue(error, "sysv_abi variadic physical argument count does not match its plan");
+            releaseTransferredArguments(node);
+            auto* call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
+                arguments.empty() ? nullptr : arguments.data(), static_cast<unsigned>(arguments.size()),
+                node->typeKey == "builtin:void" ? "" : "sysv.vararg.call", error);
+            if (!call) return nullptr;
+            LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
+            applySysVIntegerExtension(context_, imported,
+                [&](LLVMAttributeIndex index, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, index, attribute); });
+            applyExternalBoolAbi(context_, imported,
+                [&](LLVMAttributeIndex index, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, index, attribute); });
+            for (const auto& [index, carrier] : byValues)
+                applySysVRecordByValue(context_, carrier, static_cast<unsigned>(plan->physicalParameters[index].alignment), index,
+                    [&](LLVMAttributeIndex ordinal, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, ordinal, attribute); });
+            if (!applyMustTail(node, call, error)) return nullptr;
+            return call;
+        }
         if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
             interop::abi_plan::isSysVSmallRecordsRoundTrip(*imported->cppAbiPlan, imported->cAbiName))
         {

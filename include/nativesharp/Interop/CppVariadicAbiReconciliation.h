@@ -1,10 +1,11 @@
 #pragma once
 
 #include "nativesharp/Interop/CppInteropSession.h"
+#include "nativesharp/Interop/CppVariadicAbiValidation.h"
 #include <span>
 
 namespace nativesharp::compilation { class ProjectGraph; }
-namespace nativesharp::frontend { struct NamespaceFunctionSymbol; }
+namespace nativesharp::frontend { struct NamespaceFunctionSymbol; class ProjectNameLookup; }
 namespace nativesharp::interop
 {
 struct CppProjectSessions;
@@ -22,13 +23,9 @@ std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicCallAbiPlan(
     const CppInteropSession& functionSession, std::string_view name,
     std::string_view canonicalType, std::span<const CppVariadicArgumentOrigin> arguments);
 
-// Checks the represented calling contract, not the provenance of its types.
-bool validateCppVariadicSysVCallPlan(const abi_plan::VariadicCallPlan& plan,
-                                     std::string_view expectedSymbol,
-                                     std::size_t expectedRequiredArguments) noexcept;
-
-// Only scalar promoted optional arguments are currently associated automatically.
-std::shared_ptr<const abi_plan::VariadicCallPlan> planCppScalarVariadicCall(
+// Records are accepted only after resolving and comparing their live origins.
+std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
-    const frontend::NamespaceFunctionSymbol& function, std::span<const std::string> optionalTypeKeys);
+    const frontend::ProjectNameLookup& lookup, const frontend::NamespaceFunctionSymbol& function,
+    std::span<const std::string> optionalTypeKeys);
 }

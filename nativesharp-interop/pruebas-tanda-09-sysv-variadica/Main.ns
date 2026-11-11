@@ -14,5 +14,14 @@ int Main() {
     if (sysv_fixed_ptrs(&record, &s, (sbyte)-7, 2.25f) != 1 || s != 1234 || record.x != 43) return 6;
     if (sysv_return_ptr(&record, 7) != &record || record.x != 44) return 7;
     if (T09Probe.Run() != 1) return 8;
+    T09VarRecord small; small.x = 1; small.y = 2;
+    T09VarMixed mixed; mixed.x = 2.25; mixed.y = 7;
+    T09VarLarge large; large.x = 11; large.y = 13; large.z = 17;
+    if (sysv_record_small(1, small) != 1 || small.x != 1 || small.y != 2) return 9;
+    if (sysv_record_mixed(1, mixed) != 1 || mixed.x != 2.25 || mixed.y != 7) return 10;
+    if (sysv_record_two(2, small, mixed) != 1 || small.x != 1 || mixed.y != 7) return 14;
+    if (sysv_record_pressure(6, 1, 2, 3, 4, 5, mixed) != 1 || mixed.y != 7) return 11;
+    if (sysv_record_sse_pressure(9, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, mixed) != 1 || mixed.y != 7) return 13;
+    if (sysv_record_large(1, large) != 1 || large.x != 11 || large.y != 13 || large.z != 17) return 12;
     return 0;
 }

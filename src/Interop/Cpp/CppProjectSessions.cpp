@@ -3,6 +3,7 @@
 #include "nativesharp/Compilation/Project.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Frontend/NamespaceFunctionSymbol.h"
+#include "nativesharp/Frontend/ProjectNameLookup.h"
 
 #include <clang/Basic/LangStandard.h>
 
@@ -105,50 +106,6 @@ CppGraphSessionsResult openCppGraphSessions(
 
 namespace
 {
-bool validVariadicType(const abi_plan::Type& type, unsigned depth) noexcept
-{
-    using abi_plan::TypeKind;
-    if (depth > 32) return false;
-    switch (type.kind)
-    {
-        case TypeKind::Void:
-        case TypeKind::Float:
-        case TypeKind::Double:
-        case TypeKind::Pointer:
-            return type.widthOrCount == 0 && !type.packed && type.elements.empty();
-        case TypeKind::Integer:
-            return type.widthOrCount > 0 && type.widthOrCount <= 128 && !type.packed && type.elements.empty();
-        case TypeKind::Structure:
-            if (type.widthOrCount != 0 || type.elements.size() > 1024) return false;
-            break;
-        case TypeKind::Array:
-            if (type.packed || type.widthOrCount > (1U << 24) || type.elements.size() != 1) return false;
-            break;
-        case TypeKind::Vector:
-            if (type.packed || type.widthOrCount != 2 || type.elements.size() != 1 ||
-                type.elements[0].kind != TypeKind::Float) return false;
-            break;
-        default: return false;
-    }
-    for (const auto& element : type.elements)
-        if (element.kind == TypeKind::Void || !validVariadicType(element, depth + 1)) return false;
-    return true;
-}
-
-bool equalVariadicType(const abi_plan::Type& a, const abi_plan::Type& b) noexcept
-{
-    if (a.kind != b.kind || a.widthOrCount != b.widthOrCount || a.packed != b.packed ||
-        a.elements.size() != b.elements.size()) return false;
-    for (std::size_t i = 0; i < a.elements.size(); ++i)
-        if (!equalVariadicType(a.elements[i], b.elements[i])) return false;
-    return true;
-}
-
-bool validVariadicAlignment(std::uint64_t value) noexcept
-{
-    return value != 0 && value <= (1ULL << 29) && (value & (value - 1)) == 0;
-}
-
 bool variadicRecordOriginMatches(const CppInteropSession& target, const CppInteropSession* origin,
                                  const CppType& type, unsigned depth)
 {
@@ -173,100 +130,6 @@ bool variadicRecordOriginMatches(const CppInteropSession& target, const CppInter
     const auto equivalent = target.structurallyEquivalentRecord(*origin, type.recordIdentity->name);
     return equivalent && *equivalent;
 }
-}
-
-bool validateCppVariadicSysVCallPlan(const abi_plan::VariadicCallPlan& plan,
-                                     std::string_view expectedSymbol,
-                                     std::size_t expectedRequiredArguments) noexcept
-{
-    using abi_plan::Passing;
-    using abi_plan::TypeKind;
-    if (expectedSymbol.empty() || plan.symbol != expectedSymbol || plan.callingConvention != 78 ||
-        !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
-        plan.requiredArguments != expectedRequiredArguments || plan.requiredArguments > plan.arguments.size() ||
-        plan.arguments.size() > 1024 ||
-        plan.physicalParameters.size() > 2049 || !validVariadicType(plan.physicalReturn, 0) ||
-        (plan.returnSignExtend && plan.returnZeroExtend)) return false;
-    const auto& result = plan.result;
-    if (result.offset != 0) return false;
-    std::size_t next = 0;
-    if (result.passing == Passing::Indirect)
-    {
-        if (plan.physicalReturn.kind != TypeKind::Void || plan.returnSignExtend || plan.returnZeroExtend ||
-            result.coercion || result.signExtend || result.zeroExtend ||
-            !validVariadicAlignment(result.alignment) || plan.physicalParameters.empty()) return false;
-        const auto& p = plan.physicalParameters[0];
-        if (!p.structureReturn || p.byValue || p.inRegister || p.signExtend || p.zeroExtend ||
-            p.type.kind != TypeKind::Pointer || !validVariadicType(p.type, 0) || !p.pointee ||
-            p.pointee->kind == TypeKind::Void || !validVariadicType(*p.pointee, 0) ||
-            p.alignment != result.alignment) return false;
-        next = 1;
-    }
-    else if (result.passing == Passing::Ignore)
-    {
-        if (plan.physicalReturn.kind != TypeKind::Void || result.coercion || result.byValue ||
-            result.signExtend || result.zeroExtend ||
-            plan.returnSignExtend || plan.returnZeroExtend) return false;
-    }
-    else if (result.passing == Passing::Direct || result.passing == Passing::Extend)
-    {
-        if (!result.coercion || result.byValue || plan.physicalReturn.kind == TypeKind::Void ||
-            !validVariadicType(*result.coercion, 0) ||
-            !equalVariadicType(*result.coercion, plan.physicalReturn)) return false;
-        if (result.passing == Passing::Extend)
-        {
-            if (result.signExtend == result.zeroExtend || result.signExtend != plan.returnSignExtend ||
-                result.zeroExtend != plan.returnZeroExtend || plan.physicalReturn.kind != TypeKind::Integer) return false;
-        }
-        else if (plan.returnSignExtend || plan.returnZeroExtend || result.signExtend || result.zeroExtend) return false;
-    }
-    else return false;
-    for (std::size_t i = 0; i < plan.arguments.size(); ++i)
-    {
-        const auto& argument = plan.arguments[i];
-        if (argument.firstPhysical != next || argument.offset != 0 ||
-            argument.physicalCount > plan.physicalParameters.size() - next) return false;
-        if (argument.passing == Passing::Ignore)
-        {
-            if (argument.physicalCount != 0 || argument.coercion || argument.byValue ||
-                argument.signExtend || argument.zeroExtend) return false;
-            continue;
-        }
-        if (argument.passing == Passing::Indirect)
-        {
-            if (argument.physicalCount != 1 || !argument.byValue || argument.coercion || argument.flatten ||
-                argument.signExtend || argument.zeroExtend || !validVariadicAlignment(argument.alignment)) return false;
-            const auto& p = plan.physicalParameters[next++];
-            if (!p.byValue || p.structureReturn || p.inRegister || p.noAlias || p.signExtend || p.zeroExtend ||
-                p.type.kind != TypeKind::Pointer || !validVariadicType(p.type, 0) || !p.pointee ||
-                p.pointee->kind == TypeKind::Void || !validVariadicType(*p.pointee, 0) ||
-                p.alignment != argument.alignment) return false;
-            continue;
-        }
-        if ((argument.passing != Passing::Direct && argument.passing != Passing::Extend) ||
-            !argument.coercion || argument.coercion->kind == TypeKind::Void ||
-            !validVariadicType(*argument.coercion, 0) || argument.byValue ||
-            (argument.alignment != 0 && !validVariadicAlignment(argument.alignment))) return false;
-        const auto& coercion = *argument.coercion;
-        const bool flattened = argument.passing == Passing::Direct && argument.flatten && coercion.kind == TypeKind::Structure;
-        const auto count = flattened ? coercion.elements.size() : 1U;
-        if (argument.physicalCount != count) return false;
-        if (argument.passing == Passing::Extend && (argument.signExtend == argument.zeroExtend ||
-            coercion.kind != TypeKind::Integer)) return false;
-        if (argument.passing == Passing::Direct && (argument.signExtend || argument.zeroExtend)) return false;
-        for (std::size_t part = 0; part < count; ++part)
-        {
-            const auto& p = plan.physicalParameters[next++];
-            const auto& expected = flattened ? coercion.elements[part] : coercion;
-            if (!validVariadicType(p.type, 0) || !equalVariadicType(p.type, expected) || p.structureReturn ||
-                p.byValue || p.inRegister || p.pointee || (p.alignment != 0 &&
-                (p.type.kind != TypeKind::Pointer || !validVariadicAlignment(p.alignment))) ||
-                (p.noAlias && (i >= plan.requiredArguments ||
-                p.type.kind != TypeKind::Pointer)) || p.signExtend != argument.signExtend ||
-                p.zeroExtend != argument.zeroExtend) return false;
-        }
-    }
-    return next == plan.physicalParameters.size();
 }
 
 std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicCallAbiPlan(
@@ -298,9 +161,10 @@ std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicCallAbiPlan(
     return plan;
 }
 
-std::shared_ptr<const abi_plan::VariadicCallPlan> planCppScalarVariadicCall(
+std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
-    const frontend::NamespaceFunctionSymbol& function, std::span<const std::string> optionalTypeKeys)
+    const frontend::ProjectNameLookup& lookup, const frontend::NamespaceFunctionSymbol& function,
+    std::span<const std::string> optionalTypeKeys)
 {
     if (!function.isVariadic || function.cppCallingConvention != "sysv_abi" ||
         !function.cppClangUsr || function.cppClangUsr->empty() || !function.cppReturnType ||
@@ -324,6 +188,62 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppScalarVariadicCall(
         else if (key == "builtin:long") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "long long"; type.sizeBits = type.alignmentBits = 64; }
         else if (key == "builtin:ulong") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned long long"; type.sizeBits = type.alignmentBits = 64; }
         else if (key == "builtin:double") { type.kind = CppTypeKind::Floating; type.canonicalSpelling = "double"; type.sizeBits = type.alignmentBits = 64; }
+        else if (key.starts_with("type:") && !key.ends_with('*'))
+        {
+            const auto ordinal = lookup.typeOrdinalForIdentity(std::string_view(key).substr(5));
+            const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+            if (!imported || imported->fromPrecompiledCatalog || imported->isIncomplete ||
+                !imported->deferredImportError.empty() || !imported->clangUsr || !imported->objectLayout ||
+                imported->projectOrdinal >= graph.projects().size() ||
+                (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
+                 imported->origin != frontend::CppImportedTypeOrigin::CUnion) ||
+                !imported->identity.namespaceSegments().empty() || !imported->identity.containingTypes().empty() ||
+                imported->objectLayout->sizeBytes > UINT64_MAX / 8 ||
+                imported->objectLayout->alignmentBytes > UINT64_MAX / 8) return {};
+            const auto& originFile = graph.projects()[imported->projectOrdinal].projectFile();
+            const CppInteropSession* origin = nullptr;
+            std::optional<CppRecordDeclaration> observed;
+            for (const auto& group : projects)
+            {
+                if (group.projectFile != originFile) continue;
+                for (const auto& candidate : group.sessions)
+                {
+                    if (!candidate || candidate->state() != CppSessionState::Ready) return {};
+                    if (candidate->optionsSnapshot().language != CppLanguageMode::C) continue;
+                    const auto records = candidate->recordsSnapshot();
+                    if (!records) return {};
+                    for (const auto& record : *records)
+                    {
+                        if (record.clangUsr != imported->clangUsr || record.name != imported->identity.name()) continue;
+                        if (!record.complete) continue;
+                        const auto expectedKind = imported->origin == frontend::CppImportedTypeOrigin::CStruct
+                            ? CppRecordKind::Struct : CppRecordKind::Union;
+                        if (record.isCxx || record.kind != expectedKind || record.anonymousContext ||
+                            !record.namespaceSegments.empty() || !record.containingRecords.empty() ||
+                            record.sizeBits != std::optional<std::uint64_t>(imported->objectLayout->sizeBytes * 8) ||
+                            record.alignmentBits != std::optional<std::uint64_t>(imported->objectLayout->alignmentBytes * 8)) return {};
+                        if (origin && origin != candidate.get())
+                        {
+                            const auto equivalent = origin->structurallyEquivalentRecord(*candidate, record.qualifiedName);
+                            if (!equivalent || !*equivalent) return {};
+                        }
+                        else if (origin) return {};
+                        origin = candidate.get();
+                        observed = record;
+                    }
+                }
+            }
+            if (!origin || !observed) return {};
+            type.kind = CppTypeKind::Record;
+            type.canonicalSpelling = (observed->kind == CppRecordKind::Struct ? "struct " : "union ") + observed->qualifiedName;
+            type.sizeBits = observed->sizeBits;
+            type.alignmentBits = observed->alignmentBits;
+            type.recordIdentity.emplace();
+            type.recordIdentity->name = observed->name;
+            type.recordIdentity->clangUsr = observed->clangUsr;
+            arguments.push_back({std::move(type), origin});
+            continue;
+        }
         else return {};
         arguments.push_back({std::move(type), nullptr});
     }

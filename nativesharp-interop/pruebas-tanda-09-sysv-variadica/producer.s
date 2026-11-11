@@ -150,3 +150,110 @@ sysv_return_ptr:
 fail_return_ptr:
     xorl %eax, %eax
     ret
+.globl sysv_record_small
+sysv_record_small:
+    cmpl $1, %edi
+    jne fail_record_small
+    movabsq $0x0000000200000001, %r8
+    cmpq %r8, %rsi
+    jne fail_record_small
+    movl $1, %eax
+    ret
+fail_record_small:
+    xorl %eax, %eax
+    ret
+.globl sysv_record_mixed
+sysv_record_mixed:
+    cmpl $1, %edi
+    jne fail_record_mixed
+    cmpb $1, %al
+    jb fail_record_mixed
+    cmpl $7, %esi
+    jne fail_record_mixed
+    movq %xmm0, %r8
+    movabsq $0x4002000000000000, %r9
+    cmpq %r9, %r8
+    jne fail_record_mixed
+    movl $1, %eax
+    ret
+fail_record_mixed:
+    xorl %eax, %eax
+    ret
+.globl sysv_record_two
+sysv_record_two:
+    cmpl $2, %edi
+    jne fail_record_two
+    cmpb $1, %al
+    jb fail_record_two
+    movabsq $0x0000000200000001, %r8
+    cmpq %r8, %rsi
+    jne fail_record_two
+    cmpl $7, %edx
+    jne fail_record_two
+    movq %xmm0, %r8
+    movabsq $0x4002000000000000, %r9
+    cmpq %r9, %r8
+    jne fail_record_two
+    movl $1, %eax
+    ret
+fail_record_two:
+    xorl %eax, %eax
+    ret
+.globl sysv_record_pressure
+sysv_record_pressure:
+    cmpl $6, %edi
+    jne fail_record_pressure
+    cmpl $1, %esi
+    jne fail_record_pressure
+    cmpl $2, %edx
+    jne fail_record_pressure
+    cmpl $3, %ecx
+    jne fail_record_pressure
+    cmpl $4, %r8d
+    jne fail_record_pressure
+    cmpl $5, %r9d
+    jne fail_record_pressure
+    movabsq $0x4002000000000000, %r10
+    cmpq %r10, 8(%rsp)
+    jne fail_record_pressure
+    cmpl $7, 16(%rsp)
+    jne fail_record_pressure
+    movl $0, 16(%rsp)
+    movl $1, %eax
+    ret
+fail_record_pressure:
+    xorl %eax, %eax
+    ret
+.globl sysv_record_sse_pressure
+sysv_record_sse_pressure:
+    cmpl $9, %edi
+    jne fail_record_sse_pressure
+    cmpb $8, %al
+    jne fail_record_sse_pressure
+    movabsq $0x4002000000000000, %r10
+    cmpq %r10, 8(%rsp)
+    jne fail_record_sse_pressure
+    cmpl $7, 16(%rsp)
+    jne fail_record_sse_pressure
+    movl $0, 16(%rsp)
+    movl $1, %eax
+    ret
+fail_record_sse_pressure:
+    xorl %eax, %eax
+    ret
+.globl sysv_record_large
+sysv_record_large:
+    cmpl $1, %edi
+    jne fail_record_large
+    cmpq $11, 8(%rsp)
+    jne fail_record_large
+    cmpq $13, 16(%rsp)
+    jne fail_record_large
+    cmpq $17, 24(%rsp)
+    jne fail_record_large
+    movq $0, 8(%rsp)
+    movl $1, %eax
+    ret
+fail_record_large:
+    xorl %eax, %eax
+    ret

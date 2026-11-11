@@ -750,10 +750,36 @@ Tambien pasaron las regresiones de llamadas C convencionales y SysV no
 variadicas (`A:/temp/nsc-t09-llamadas-v5uajkqb` y
 `A:/temp/nsc-t09-sysv-prueba-mdjcnlcb`).
 
-La emision escalar sigue usando su ruta ya acreditada; todavia no consume el
-plan asociado. Falta asignar planes a los records variables y completar su
-emision y persistencia para plantillas bajo el contrato vigente de NSMeta.
-T09-003 permanece abierto.
+La emision escalar seguia usando su ruta ya acreditada en ese momento. El
+avance posterior con records se describe a continuacion.
+
+### Records C en llamadas variadicas SysV directas
+
+El proveedor resuelve records C completos con identidad y layout comprobados,
+compara sus origenes vivos y consulta el plan de la llamada entera. La emision
+valida ese plan, conserva el orden de evaluacion y transporta cada pieza directa
+o una copia `byval`, con limites y alineacion verificados. La validacion ABI se
+comparte con el backend; no depende de mantener vivo el contexto de Clang.
+
+Antes del cambio pasaban los controles C y NSC rechazaba los records
+(`A:/temp/nsc-t09-sysv-varargs-slhtza84`). Pasaron despues seis formas: record
+entero pequeno, record mixto `double`/`int`, dos records en la misma llamada,
+record mixto indirecto por agotamiento de registros enteros o flotantes y
+record grande indirecto. El productor ensamblado verifica registros, pila y
+contador AL; modifica las copias indirectas y los consumidores comprueban que
+sus originales no cambien. Los IR C y NS coinciden en las piezas y `byval`.
+Pasaron estatica y DLL O0–O3, HIR/MIR con uno y cuatro trabajadores, cache
+fria/caliente y el rechazo de un struct NativeSharp no admitido
+(`A:/temp/nsc-t09-sysv-varargs-ml6qaxe_`).
+
+Tambien pasaron la sonda de ABI, la prueba de transporte y las regresiones de
+llamadas C, SysV y pares con relleno (`A:/temp/t09-transport-directed/abi.log`,
+`A:/temp/nsc-t09-llamadas-a9bodxcu`, `A:/temp/nsc-t09-sysv-prueba-czh6juvn`,
+`A:/temp/nsc-t09-sysv-padded-pair-id-0ariwi50`). La plantilla escalar
+precompilada sigue pasando, pero una plantilla con record variable y encabezado
+oculto se rechaza (`pre-record-pendiente.log` en la evidencia anterior). Falta
+transportar esa dependencia bajo el unico contrato vigente de NSMeta, y tambien
+quedan abiertas otras firmas, tipos y formas de origen. T09-003 sigue abierto.
 
 ## Retorno indirecto sin argumentos byval
 

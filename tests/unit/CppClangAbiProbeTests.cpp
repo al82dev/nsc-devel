@@ -911,12 +911,12 @@ int main(int argc, char** argv) {
     const auto* variadicSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&variadicProjection);
     if (!variadicSymbol) return 182;
     const std::vector<std::string> scalarKeys{"builtin:int", "builtin:double", "builtin:long"};
-    auto associated = planCppScalarVariadicCall(graph, sessionGroups, *variadicSymbol, scalarKeys);
+    auto associated = planCppVariadicCall(graph, sessionGroups, lookup, *variadicSymbol, scalarKeys);
     if (!associated || associated->symbol != "pvariadic" || associated->arguments.size() != 4 ||
         associated->physicalParameters[1].type.widthOrCount != 32 ||
         associated->physicalParameters[2].type.kind != abi_plan::TypeKind::Double ||
         associated->physicalParameters[3].type.widthOrCount != 64) return 183;
-    const std::vector<std::string> unsupportedKeys{"type:AbiProbe::RF"};
+    const std::vector<std::string> unsupportedKeys{"type:AbiProbe::NotPresent"};
     auto wrongSymbol = *variadicSymbol;
     wrongSymbol.cppClangUsr = "incorrect-usr";
     auto wrongSignature = *variadicSymbol;
@@ -924,10 +924,28 @@ int main(int argc, char** argv) {
     wrongSignature.cppReturnType->canonicalSpelling = "different";
     auto wrongProject = *variadicSymbol;
     wrongProject.projectOrdinal = graph.projects().size();
-    if (planCppScalarVariadicCall(graph, sessionGroups, *variadicSymbol, unsupportedKeys) ||
-        planCppScalarVariadicCall(graph, sessionGroups, wrongSymbol, scalarKeys) ||
-        planCppScalarVariadicCall(graph, sessionGroups, wrongSignature, scalarKeys) ||
-        planCppScalarVariadicCall(graph, sessionGroups, wrongProject, scalarKeys)) return 184;
+    if (planCppVariadicCall(graph, sessionGroups, lookup, *variadicSymbol, unsupportedKeys) ||
+        planCppVariadicCall(graph, sessionGroups, lookup, wrongSymbol, scalarKeys) ||
+        planCppVariadicCall(graph, sessionGroups, lookup, wrongSignature, scalarKeys) ||
+        planCppVariadicCall(graph, sessionGroups, lookup, wrongProject, scalarKeys)) return 184;
+    std::string mixedKey;
+    for (const auto ordinal : lookup.typeOrdinalsForName("RF"))
+    {
+        const auto* imported = lookup.cppImportedType(ordinal);
+        if (imported && imported->clangUsr == mixedActual->recordIdentity->clangUsr)
+            mixedKey = "type:" + imported->identity.key();
+    }
+    if (mixedKey.empty()) return 188;
+    const std::vector<std::string> recordKeys{"builtin:int", mixedKey};
+    auto recordCall = planCppVariadicCall(graph, sessionGroups, lookup, *variadicSymbol, recordKeys);
+    if (!recordCall || recordCall->arguments.size() != 3 || recordCall->arguments[2].physicalCount != 2 ||
+        recordCall->physicalParameters[2].type.kind != abi_plan::TypeKind::Double ||
+        recordCall->physicalParameters[3].type.widthOrCount != 32) return 189;
+    auto conflictingRecordOrigin = openRecordSession("struct RF { long long x; int y; };");
+    if (!conflictingRecordOrigin) return 190;
+    sessionGroups[0].sessions.push_back(std::move(conflictingRecordOrigin));
+    if (planCppVariadicCall(graph, sessionGroups, lookup, *variadicSymbol, recordKeys)) return 191;
+    sessionGroups[0].sessions.pop_back();
     CppSessionOptions duplicateOptions;
     duplicateOptions.language = CppLanguageMode::C;
     duplicateOptions.languageStandard = "c11";
@@ -939,7 +957,7 @@ int main(int argc, char** argv) {
     auto duplicateOpened = factory.open(std::move(duplicateOptions), {});
     if (!std::holds_alternative<std::unique_ptr<CppInteropSession>>(duplicateOpened)) return 185;
     sessionGroups[0].sessions.push_back(std::move(std::get<std::unique_ptr<CppInteropSession>>(duplicateOpened)));
-    if (planCppScalarVariadicCall(graph, sessionGroups, *variadicSymbol, scalarKeys)) return 186;
+    if (planCppVariadicCall(graph, sessionGroups, lookup, *variadicSymbol, scalarKeys)) return 186;
     sessionGroups[0].sessions.pop_back();
     auto inventoryResult = collectCppSemanticFunctions(graph, sessionGroups);
     if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&inventoryResult))

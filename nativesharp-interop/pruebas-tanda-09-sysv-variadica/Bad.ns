@@ -1,1 +1,2 @@
-int Main() { T09VarRecord value; value.x = 1; value.y = 2; return sysv_varargs(1, value); }
+struct T09Native { public int x; public int y; }
+int Main() { T09Native value; value.x = 1; value.y = 2; return sysv_varargs(1, value); }

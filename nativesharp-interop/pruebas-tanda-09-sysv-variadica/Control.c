@@ -12,5 +12,12 @@ int main(void) {
     s = -1234; record.x = 42;
     if (sysv_fixed_ptrs(&record, &s, (signed char)-7, 2.25f) != 1 || s != 1234 || record.x != 43) return 6;
     if (sysv_return_ptr(&record, 7) != &record || record.x != 44) return 7;
+    T09VarRecord small = {1, 2}; T09VarMixed mixed = {2.25, 7}; T09VarLarge large = {11, 13, 17};
+    if (sysv_record_small(1, small) != 1 || small.x != 1 || small.y != 2) return 8;
+    if (sysv_record_mixed(1, mixed) != 1 || mixed.x != 2.25 || mixed.y != 7) return 9;
+    if (sysv_record_two(2, small, mixed) != 1 || small.x != 1 || mixed.y != 7) return 13;
+    if (sysv_record_pressure(6, 1, 2, 3, 4, 5, mixed) != 1 || mixed.y != 7) return 10;
+    if (sysv_record_sse_pressure(9, 1., 2., 3., 4., 5., 6., 7., 8., mixed) != 1 || mixed.y != 7) return 12;
+    if (sysv_record_large(1, large) != 1 || large.x != 11 || large.y != 13 || large.z != 17) return 11;
     return 0;
 }
