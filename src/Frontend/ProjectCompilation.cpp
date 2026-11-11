@@ -87,6 +87,15 @@ bool ProjectCompilation::setCppImportedFunctions(
     return true;
 }
 
+bool ProjectCompilation::setCppVariadicCallPlanProvider(
+    CppVariadicCallPlanProvider provider, std::string& error)
+{
+    if (compilationAttempted_) { error = "C/C++ variadic plan provider must be set before compilation starts"; return false; }
+    cppVariadicCallPlanProvider_ = std::move(provider);
+    error.clear();
+    return true;
+}
+
 bool ProjectCompilation::setExperimentalCppImportedStates(
     std::vector<NamespaceStateSymbol> states, std::string& error)
 {
@@ -1743,6 +1752,7 @@ bool ProjectCompilation::compileProjectOopHir(
 
     const ProjectPhaseTimer timing(phaseTimingSink_, progressSink_, "oop-hir");
     oopHirModel_ = std::make_unique<ProjectOopHirModel>(lifetime_->indexes());
+    oopHirModel_->setCppVariadicCallPlanProvider(cppVariadicCallPlanProvider_);
     std::unordered_map<std::uint32_t, compilation::CppConsumerVolatileMode> cppConsumerModes;
     for (const auto& unit : units_)
     {

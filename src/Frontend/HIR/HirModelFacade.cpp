@@ -12,6 +12,11 @@ ProjectOopHirModel::ProjectOopHirModel(ProjectCompilationIndexes& indexes) noexc
 {
 }
 
+void ProjectOopHirModel::setCppVariadicCallPlanProvider(CppVariadicCallPlanProvider provider)
+{
+    cppVariadicCallPlanProvider_ = std::move(provider);
+}
+
 ProjectOopHirNode::~ProjectOopHirNode()
 {
     std::vector<std::unique_ptr<ProjectOopHirNode>> pending;

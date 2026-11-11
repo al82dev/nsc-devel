@@ -724,7 +724,36 @@ Tambien pasaron la prueba existente de cache profunda
 
 El plan aun no se asigna a llamadas reales ni se consume en LLVM. Tampoco se
 ha agregado persistencia a NSMeta: las plantillas deben seguir rechazando los
-records variables hasta completar esa ruta. T09-003 permanece abierto.
+records variables hasta completar esa ruta. El avance posterior de asociacion
+escalar se describe a continuacion.
+
+### Asociacion del plan a llamadas escalares reales
+
+Cuando existe una sola referencia C de origen inequívoco, NSC localiza la
+funcion por simbolo, USR y firma escalar, y consulta Clang con los tipos de
+los argumentos opcionales ya promocionados en orden de ABI. El proveedor
+rechaza identidades o firmas diferentes, referencias ambiguas y tipos fuera
+del subconjunto observado. La asociacion actual cubre parametros fijos y
+retorno escalares, y argumentos opcionales `int`, `uint`, `long`, `ulong` y
+`double`; punteros y records aun no reciben plan mediante este proveedor.
+
+Se verifico el plan en los volcados HIR y MIR de llamadas reales desde `Main`
+y desde un metodo, con uno y cuatro trabajadores. Las muestras incluyen una
+elipsis vacia, promociones y nueve valores flotantes. Pasaron ocho ejecuciones
+C/NativeSharp con biblioteca estatica y DLL O0–O3, plantilla precompilada y
+compilaciones fria y caliente con cache en A:
+(`A:/temp/nsc-t09-sysv-varargs-vzcprhlu`). Las pruebas de sonda verifican
+tipos fisicos, firma incorrecta y dos sesiones candidatas ambiguas
+(`A:/temp/t09-transport-directed/abi.log`); tambien pasaron transporte y
+cache de MIR (`A:/temp/t09-transport-directed/transport.log`).
+Tambien pasaron las regresiones de llamadas C convencionales y SysV no
+variadicas (`A:/temp/nsc-t09-llamadas-v5uajkqb` y
+`A:/temp/nsc-t09-sysv-prueba-mdjcnlcb`).
+
+La emision escalar sigue usando su ruta ya acreditada; todavia no consume el
+plan asociado. Falta asignar planes a los records variables y completar su
+emision y persistencia para plantillas bajo el contrato vigente de NSMeta.
+T09-003 permanece abierto.
 
 ## Retorno indirecto sin argumentos byval
 

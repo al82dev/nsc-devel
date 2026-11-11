@@ -17,6 +17,8 @@ using internal::HirDumpFrame;
 void dumpNodeIdentityFields(std::ostringstream& output, const ProjectOopHirNode& node)
 {
     if (!node.typeKey.empty()) output << " type=" << node.typeKey;
+    if (node.cppVariadicCallPlan) output << " cpp-variadic-plan=" << node.cppVariadicCallPlan->symbol
+        << ":" << node.cppVariadicCallPlan->arguments.size();
     if (node.memberOrdinal.has_value()) output << " member=#" << *node.memberOrdinal;
     if (node.namespaceFunctionOrdinal.has_value())
         output << " namespace-function=#" << *node.namespaceFunctionOrdinal;

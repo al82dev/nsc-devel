@@ -2,6 +2,7 @@
 #include "nativesharp/Interop/CppVariadicAbiReconciliation.h"
 #include "nativesharp/Compilation/Project.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
+#include "nativesharp/Frontend/NamespaceFunctionSymbol.h"
 
 #include <clang/Basic/LangStandard.h>
 
@@ -295,5 +296,70 @@ std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicCallAbiPlan(
     if (!match || !validateCppVariadicSysVCallPlan(*plan, *match->externalSymbol, match->parameters.size()))
         return std::nullopt;
     return plan;
+}
+
+std::shared_ptr<const abi_plan::VariadicCallPlan> planCppScalarVariadicCall(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    const frontend::NamespaceFunctionSymbol& function, std::span<const std::string> optionalTypeKeys)
+{
+    if (!function.isVariadic || function.cppCallingConvention != "sysv_abi" ||
+        !function.cppClangUsr || function.cppClangUsr->empty() || !function.cppReturnType ||
+        function.cppParameterTypes.size() != function.parameters.size() || function.projectOrdinal >= graph.projects().size())
+        return {};
+    const auto sameScalar = [](const CppType& left, const CppType& right) {
+        const bool scalar = left.kind == CppTypeKind::Void || left.kind == CppTypeKind::Boolean ||
+            left.kind == CppTypeKind::SignedInteger || left.kind == CppTypeKind::UnsignedInteger ||
+            left.kind == CppTypeKind::Floating;
+        return scalar && left.kind == right.kind && left.canonicalSpelling == right.canonicalSpelling &&
+            left.sizeBits == right.sizeBits && left.alignmentBits == right.alignmentBits &&
+            left.isConst == right.isConst && left.isVolatile == right.isVolatile && left.isRestrict == right.isRestrict;
+    };
+    std::vector<CppVariadicArgumentOrigin> arguments;
+    arguments.reserve(optionalTypeKeys.size());
+    for (const auto& key : optionalTypeKeys)
+    {
+        CppType type;
+        if (key == "builtin:int") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "int"; type.sizeBits = type.alignmentBits = 32; }
+        else if (key == "builtin:uint") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned int"; type.sizeBits = type.alignmentBits = 32; }
+        else if (key == "builtin:long") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "long long"; type.sizeBits = type.alignmentBits = 64; }
+        else if (key == "builtin:ulong") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned long long"; type.sizeBits = type.alignmentBits = 64; }
+        else if (key == "builtin:double") { type.kind = CppTypeKind::Floating; type.canonicalSpelling = "double"; type.sizeBits = type.alignmentBits = 64; }
+        else return {};
+        arguments.push_back({std::move(type), nullptr});
+    }
+    const auto& projectFile = graph.projects()[function.projectOrdinal].projectFile();
+    const CppInteropSession* selected = nullptr;
+    std::string selectedName, selectedCanonical;
+    for (const auto& group : projects)
+    {
+        if (group.projectFile != projectFile) continue;
+        for (const auto& candidate : group.sessions)
+        {
+            if (!candidate || candidate->state() != CppSessionState::Ready ||
+                candidate->optionsSnapshot().language != CppLanguageMode::C) continue;
+            const auto declarations = candidate->freeFunctionsSnapshot();
+            if (!declarations) continue;
+            for (const auto& declaration : *declarations)
+            {
+                if (!declaration.variadic || declaration.callingConvention != "sysv_abi" ||
+                    declaration.externalSymbol != std::optional<std::string>(function.mangledName) ||
+                    declaration.clangUsr != function.cppClangUsr || declaration.parameters.size() != function.parameters.size() ||
+                    !sameScalar(declaration.returnType, *function.cppReturnType))
+                    continue;
+                bool fixedMatch = true;
+                for (std::size_t i = 0; i < declaration.parameters.size(); ++i)
+                    if (!sameScalar(declaration.parameters[i].type, function.cppParameterTypes[i])) { fixedMatch = false; break; }
+                if (!fixedMatch) continue;
+                if (selected) return {}; // Do not guess between reference origins.
+                selected = candidate.get();
+                selectedName = declaration.name;
+                selectedCanonical = declaration.canonicalFunctionType;
+            }
+        }
+    }
+    if (!selected) return {};
+    auto plan = reconcileCppVariadicCallAbiPlan(*selected, selectedName, selectedCanonical, arguments);
+    if (!plan || plan->symbol != function.mangledName || plan->requiredArguments != function.parameters.size()) return {};
+    return std::make_shared<const abi_plan::VariadicCallPlan>(std::move(*plan));
 }
 }

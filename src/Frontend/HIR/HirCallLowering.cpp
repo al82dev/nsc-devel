@@ -1204,6 +1204,26 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishNamespaceCall(
         node->argumentTypeKeys.push_back(target.parameters[parameterOrdinal].typeKey);
     }
     node->argumentCount = node->children.size();
+    const auto* providerOwner = lookupSource_ ? lookupSource_ : this;
+    if (target.isVariadic && target.cppCallingConvention == "sysv_abi" &&
+        providerOwner->cppVariadicCallPlanProvider_ &&
+        node->argumentTypeKeys.size() == node->argumentParameterOrdinals.size() &&
+        node->argumentTypeKeys.size() >= target.parameters.size())
+    {
+        const std::size_t count = node->argumentTypeKeys.size();
+        const std::size_t fixed = target.parameters.size();
+        std::vector<std::string> optional(count - fixed);
+        std::vector<bool> seen(count, false);
+        bool complete = true;
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            const auto ordinal = node->argumentParameterOrdinals[i];
+            if (ordinal >= count || seen[ordinal]) { complete = false; break; }
+            seen[ordinal] = true;
+            if (ordinal >= fixed) optional[ordinal - fixed] = node->argumentTypeKeys[i];
+        }
+        if (complete) node->cppVariadicCallPlan = providerOwner->cppVariadicCallPlanProvider_(target, optional);
+    }
     node->referenceResult = target.isReferenceReturn;
     auto loweredCall = wrapFullExpressionCleanup(
         std::move(node), expression, hasOwnedTemporary);

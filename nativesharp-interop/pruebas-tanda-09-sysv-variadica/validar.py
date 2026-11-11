@@ -69,6 +69,16 @@ for mode in ('estatica', 'dll'):
                 raise SystemExit(prefix + ': rechazo inesperado; evidencia: ' + str(root))
             print(prefix + ': C paso; NSC aun rechaza la firma', flush=True)
         else:
+            if opt == 0:
+                for stage in ('hir', 'mir'):
+                    for jobs in (1, 4):
+                        dump = run(prefix+'-'+stage+'-j'+str(jobs), [args.nsc, '--dump-project-oop-'+stage, str(case/project),
+                            '--cpp-clang-root='+args.clang_root, '--library-reference-root', str(case), '-j', str(jobs)])
+                        for expected in ('cpp-variadic-plan=sysv_empty:1', 'cpp-variadic-plan=sysv_floatspill:10'):
+                            if expected not in dump:
+                                raise SystemExit(prefix+': falta '+expected+' en '+stage+'; evidencia: '+str(root))
+                        if dump.count('cpp-variadic-plan=sysv_varargs:4') < 2:
+                            raise SystemExit(prefix+': falta plan en la llamada de metodo o Main en '+stage+'; evidencia: '+str(root))
             ns_ir = run(prefix+'-ns-ir', [args.nsc, '--dump-project-oop-llvm', str(case/project),
                 '--cpp-clang-root='+args.clang_root, '--library-reference-root', str(case)])
             for name in ('sysv_varargs', 'sysv_many', 'sysv_ptrs', 'sysv_empty', 'sysv_floatspill'):
@@ -85,6 +95,16 @@ if args.esperar_pendiente or args.esperar_punteros_pendientes or args.esperar_pr
     print('PENDIENTE: solo control C y rechazo', root)
     raise SystemExit(0)
 case = root/'estatica-O0'
+cachedExe = case/'cached.exe'
+cacheCommand = [args.nsc, '--emit-project-oop-exe', str(case/'Static.nsproj'),
+    '--cpp-clang-root='+args.clang_root, '--library-reference-root', str(case),
+    '--artifact-cache='+str(case/'cache'), '--time', '-O0', '-o', str(cachedExe)]
+for label, reason in (('cache-fria', 'not-found'), ('cache-caliente', 'hit')):
+    cachedExe.unlink(missing_ok=True)
+    output = run(label, cacheCommand)
+    if 'compilation-bundle-cache: '+reason not in output:
+        raise SystemExit(label+': estado de cache inesperado; evidencia: '+str(root))
+    run(label+'-run', [str(cachedExe)])
 for name in ('Bad.ns', 'Bad.nsproj'):
     shutil.copyfile(fixture/name, case/name)
 bad = run('record-rechazado', [args.nsc, '--dump-project-oop-llvm', str(case/'Bad.nsproj'),

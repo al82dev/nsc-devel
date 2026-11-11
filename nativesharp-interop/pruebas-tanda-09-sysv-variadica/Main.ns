@@ -1,3 +1,6 @@
+class T09Probe {
+    public static int Run() { return sysv_varargs(3, (sbyte)-2, 2.25f, -5000000000L); }
+}
 int Main() {
     int value = 123;
     if (sysv_varargs(3, (sbyte)-2, 2.25f, -5000000000L) != 1) return 1;
@@ -10,5 +13,6 @@ int Main() {
     s = -1234; record.x = 42;
     if (sysv_fixed_ptrs(&record, &s, (sbyte)-7, 2.25f) != 1 || s != 1234 || record.x != 43) return 6;
     if (sysv_return_ptr(&record, 7) != &record || record.x != 44) return 7;
+    if (T09Probe.Run() != 1) return 8;
     return 0;
 }

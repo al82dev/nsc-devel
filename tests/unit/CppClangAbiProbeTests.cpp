@@ -904,6 +904,43 @@ int main(int argc, char** argv) {
     std::vector<CppProjectSessions> sessionGroups(1);
     sessionGroups[0].projectFile = projectPath;
     sessionGroups[0].sessions.push_back(std::move(inventorySession));
+    const CppFunctionDeclaration* variadicDeclaration = nullptr;
+    for (const auto& function : *functions) if (function.name == "pvariadic") variadicDeclaration = &function;
+    if (!variadicDeclaration) return 181;
+    const auto variadicProjection = projectCppSemanticFunction(*variadicDeclaration, 0, "AbiProbe");
+    const auto* variadicSymbol = std::get_if<nativesharp::frontend::NamespaceFunctionSymbol>(&variadicProjection);
+    if (!variadicSymbol) return 182;
+    const std::vector<std::string> scalarKeys{"builtin:int", "builtin:double", "builtin:long"};
+    auto associated = planCppScalarVariadicCall(graph, sessionGroups, *variadicSymbol, scalarKeys);
+    if (!associated || associated->symbol != "pvariadic" || associated->arguments.size() != 4 ||
+        associated->physicalParameters[1].type.widthOrCount != 32 ||
+        associated->physicalParameters[2].type.kind != abi_plan::TypeKind::Double ||
+        associated->physicalParameters[3].type.widthOrCount != 64) return 183;
+    const std::vector<std::string> unsupportedKeys{"type:AbiProbe::RF"};
+    auto wrongSymbol = *variadicSymbol;
+    wrongSymbol.cppClangUsr = "incorrect-usr";
+    auto wrongSignature = *variadicSymbol;
+    if (!wrongSignature.cppReturnType) return 187;
+    wrongSignature.cppReturnType->canonicalSpelling = "different";
+    auto wrongProject = *variadicSymbol;
+    wrongProject.projectOrdinal = graph.projects().size();
+    if (planCppScalarVariadicCall(graph, sessionGroups, *variadicSymbol, unsupportedKeys) ||
+        planCppScalarVariadicCall(graph, sessionGroups, wrongSymbol, scalarKeys) ||
+        planCppScalarVariadicCall(graph, sessionGroups, wrongSignature, scalarKeys) ||
+        planCppScalarVariadicCall(graph, sessionGroups, wrongProject, scalarKeys)) return 184;
+    CppSessionOptions duplicateOptions;
+    duplicateOptions.language = CppLanguageMode::C;
+    duplicateOptions.languageStandard = "c11";
+    duplicateOptions.targetTriple = "x86_64-pc-windows-msvc";
+    duplicateOptions.driverReferencePath = "clang.exe";
+    duplicateOptions.resourceDirectory = argv[1];
+    duplicateOptions.workingDirectory = argv[2];
+    duplicateOptions.input = CppBufferInput{"duplicate.c", "int __attribute__((sysv_abi)) pvariadic(int, ...);"};
+    auto duplicateOpened = factory.open(std::move(duplicateOptions), {});
+    if (!std::holds_alternative<std::unique_ptr<CppInteropSession>>(duplicateOpened)) return 185;
+    sessionGroups[0].sessions.push_back(std::move(std::get<std::unique_ptr<CppInteropSession>>(duplicateOpened)));
+    if (planCppScalarVariadicCall(graph, sessionGroups, *variadicSymbol, scalarKeys)) return 186;
+    sessionGroups[0].sessions.pop_back();
     auto inventoryResult = collectCppSemanticFunctions(graph, sessionGroups);
     if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&inventoryResult))
         llvm::errs() << "inventory failed: " << failure->message << "\n";

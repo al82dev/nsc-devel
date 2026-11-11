@@ -16,6 +16,7 @@
 #include "nativesharp/Interop/CppSemanticInventory.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/Interop/CppSemanticRecord.h"
+#include "nativesharp/Interop/CppVariadicAbiReconciliation.h"
 #endif
 
 #include <algorithm>
@@ -532,6 +533,13 @@ bool configurePrecompiledModules(
         if (!compilation.setCppProjectSessions(
                 std::move(std::get<interop::CppGraphSessions>(opened).projects), error))
             return false;
+        if (hasSessions && !compilation.setCppVariadicCallPlanProvider(
+                [&compilation](const frontend::NamespaceFunctionSymbol& function,
+                               std::span<const std::string> optionalTypes) {
+                    const auto* graph = compilation.projectGraph();
+                    return graph ? interop::planCppScalarVariadicCall(
+                        *graph, compilation.cppProjectSessions(), function, optionalTypes) : nullptr;
+                }, error)) return false;
         if (hasSessions && !compilation.setCppMetadataCatalogProvider(
                 interop::provideCppCRecordMetadataCatalog, error)) return false;
         if (hasSessions && !compilation.setCppNamespaceProvider(

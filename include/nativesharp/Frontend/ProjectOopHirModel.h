@@ -1,5 +1,7 @@
 #pragma once
 
+#include "nativesharp/Frontend/CppVariadicCallPlanProvider.h"
+
 #include "nativesharp/Compilation/CppConsumerVolatileMode.h"
 #include "nativesharp/Basic/FileId.h"
 
@@ -99,6 +101,7 @@ public:
     // EN: T08-D05b. DLL identities whose TLS aliases need isolated dependencies (see ProjectCompilation).
     // ES: T08-D05b. Identidades de DLL cuyos alias TLS necesitan dependencias aisladas (ver ProjectCompilation).
     void setCppIsolatedDllIdentities(std::unordered_set<std::string> identities);
+    void setCppVariadicCallPlanProvider(CppVariadicCallPlanProvider provider);
     bool cppDllRequiresIsolation(std::string_view identity) const;
 
     bool build(
@@ -4397,6 +4400,7 @@ private:
     const ProjectOopHirModel* lookupSource_ = nullptr;
     std::unordered_map<std::uint32_t, compilation::CppConsumerVolatileMode> cppConsumerVolatileModes_;
     std::unordered_set<std::string> cppIsolatedDllIdentities_;
+    CppVariadicCallPlanProvider cppVariadicCallPlanProvider_;
     ProjectCompilationIndexes* indexes_ = nullptr;
     driver::CompilationWorkerPool* workerPool_ = nullptr;
     std::vector<ProjectOopHirFunction> functions_;

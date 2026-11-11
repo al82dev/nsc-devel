@@ -3,8 +3,11 @@
 #include "nativesharp/Interop/CppInteropSession.h"
 #include <span>
 
+namespace nativesharp::compilation { class ProjectGraph; }
+namespace nativesharp::frontend { struct NamespaceFunctionSymbol; }
 namespace nativesharp::interop
 {
+struct CppProjectSessions;
 // The caller must associate each C type with its actual live origin session.
 // A null origin cannot authorize a record, including through a pointer.
 struct CppVariadicArgumentOrigin
@@ -23,4 +26,9 @@ std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicCallAbiPlan(
 bool validateCppVariadicSysVCallPlan(const abi_plan::VariadicCallPlan& plan,
                                      std::string_view expectedSymbol,
                                      std::size_t expectedRequiredArguments) noexcept;
+
+// Only scalar promoted optional arguments are currently associated automatically.
+std::shared_ptr<const abi_plan::VariadicCallPlan> planCppScalarVariadicCall(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    const frontend::NamespaceFunctionSymbol& function, std::span<const std::string> optionalTypeKeys);
 }
