@@ -1809,14 +1809,16 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             function.cppVectorCall = symbol.cppCallingConvention == "vectorcall";
             function.cppRegCall = symbol.cppCallingConvention == "regcall";
             function.cppSysVCall = symbol.cppCallingConvention == "sysv_abi";
-            const auto regCallInteger = [](const std::string& type) {
+            const auto regCallScalar = [](const std::string& type) {
                 return type == "builtin:int" || type == "builtin:uint" ||
-                    type == "builtin:long" || type == "builtin:ulong";
+                    type == "builtin:long" || type == "builtin:ulong" || type == "builtin:float";
             };
-            if (function.cppRegCall && (function.isVariadic || !regCallInteger(function.returnTypeKey) ||
-                !std::ranges::all_of(function.parameterTypeKeys, regCallInteger)))
+            if (function.cppRegCall && (function.isVariadic || !regCallScalar(function.returnTypeKey) ||
+                !std::ranges::all_of(function.parameterTypeKeys, [&](const auto& type) {
+                    return regCallScalar(type) || type == "builtin:int*";
+                })))
             {
-                error = "regcall currently supports only int scalar signatures or 32/64-bit unsigned/long types for " + symbol.mangledName;
+                error = "regcall currently supports only int scalar signatures or 32/64-bit unsigned/long types, float and int* parameters for " + symbol.mangledName;
                 return false;
             }
             if (function.cppSysVCall)

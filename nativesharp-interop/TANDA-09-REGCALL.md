@@ -83,3 +83,29 @@ en estatica y DLL O0-O3
 (`A:/temp/nsc-t09-cpp-sobrecargas-precompilado-73lootny`). No se cambio
 produccion; otras formas de sobrecarga, tipos y convenciones siguen pendientes.
 T09-003 permanece abierto.
+
+## Float y puntero en regcall
+
+El control C paso estatica/DLL O0-O3
+(`A:/temp/nsc-t09-regcall-float-puntero-0qpooymq`) y NSC rechazaba la firma
+con dos `float`, un `int*` y retorno `float`
+(`A:/temp/nsc-t09-regcall-float-puntero-un0ee76o`). Tras ampliar el filtro
+HIR, pasaron las ocho comparaciones C/NS, IR, simbolo y cache
+(`A:/temp/nsc-t09-regcall-float-puntero-64_wfvfn`) y 16 consumidores
+precompilados con y sin encabezado
+(`A:/temp/nsc-t09-regcall-float-puntero-precompilado-b56jn89c`). La prueba
+comprueba los argumentos, retorno y escritura mediante el puntero.
+
+La misma firma C++ en namespace usa el simbolo observado por Clang
+(`A:/temp/t09-regcall-cpp-fp-oracle.ll`) y paso ocho comparaciones C++/NS
+(`A:/temp/nsc-t09-regcall-cpp-float-puntero-f3w4o9fg`) y 16 consumidores
+precompilados (`A:/temp/nsc-t09-regcall-cpp-float-puntero-precompilado-ji6qhdla`).
+Los primeros controles C++ fallaron por enlace de `_fltused`; se corrigio el
+enlace C del simbolo en el fixture y se repitieron
+(`A:/temp/nsc-t09-regcall-cpp-float-puntero-yll2oklv`,
+`A:/temp/nsc-t09-regcall-cpp-float-puntero-precompilado-_a8lpqb7`).
+Pasaron regresiones de enteros (`A:/temp/nsc-t09-regcall-enteros-kskuz4s0`),
+rechazo de `double` (`A:/temp/nsc-t09-regcall-negativo-ph6jkfwk`), cuatro
+sondas (`A:/temp/t09-test-varptr.log`) y transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`). Otras firmas y punteros siguen pendientes;
+T09-003 permanece abierto.
