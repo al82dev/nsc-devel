@@ -1802,6 +1802,31 @@ bool checkDependencyTypeCodec()
         decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
         abi_plan::isSysVTwoI64RecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
         "C dependency function retains a two-piece SysV record plan");
+    auto pairScalarPlan = std::make_shared<abi_plan::Plan>(*pairPlan);
+    auto scalarParameter = recordFunction.declaration.parameters[0];
+    scalarParameter.type.kind = CppTypeKind::SignedInteger;
+    scalarParameter.type.sizeBits = 32;
+    for (std::size_t i = 0; i < 2; ++i)
+    {
+        abi_plan::LogicalValue scalar;
+        scalar.passing = abi_plan::Passing::Direct;
+        scalar.firstPhysical = i + 2;
+        scalar.physicalCount = 1;
+        scalar.coercion = i == 0 ? abi_plan::Type{abi_plan::TypeKind::Integer, 32} : abi_plan::Type{abi_plan::TypeKind::Float};
+        pairScalarPlan->logicalParameters.push_back(scalar);
+        abi_plan::PhysicalParameter physical;
+        physical.type = *scalar.coercion;
+        pairScalarPlan->physicalParameters.push_back(physical);
+        if (i == 1) scalarParameter.type.kind = CppTypeKind::Floating;
+        recordFunction.declaration.parameters.push_back(scalarParameter);
+    }
+    recordFunction.declaration.abiPlan = pairScalarPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVTwoIntegerRecordWithScalars(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->logicalParameters[2].firstPhysical == 3,
+        "C dependency function retains a two-piece record and scalar arguments");
+    recordFunction.declaration.parameters.resize(1);
     for (const std::uint64_t bits : {8U, 16U, 24U, 32U, 40U, 48U, 56U})
     {
         auto varied = std::make_shared<abi_plan::Plan>(*pairPlan);

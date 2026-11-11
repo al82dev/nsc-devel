@@ -664,3 +664,30 @@ A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log; la regresion de
 flotantes en pila paso en A:/temp/nsc-t09-sysv-float-stack-puxxn49a. Otros
 punteros y clasificaciones de records en firmas mixtas siguen pendientes.
 
+## Record de dos piezas enteras seguido de escalares
+
+Una firma con record de doce bytes, `int` y `float` paso los controles C y fue
+rechazada inicialmente por NSC (A:/temp/nsc-t09-sysv-pair-mix-wwdrr860). El
+primer intento de soporte obtuvo un rechazo del verificador LLVM porque MIR
+seguia clasificando el retorno como indirecto
+(A:/temp/nsc-t09-sysv-pair-mix-ty_2qfv4); se corrigio MIR para conservar la
+clasificacion y posiciones fisicas del plan de Clang. El generador emite dos
+piezas del record seguidas de los escalares y reconstruye el retorno, y el
+contrato vigente conserva la forma validada del plan.
+
+La muestra de doce bytes paso ocho comparaciones C/NS estatica/DLL O0–O3,
+incluido el orden de evaluacion de argumentos nombrados, y una plantilla
+precompilada sin encabezado O0 con argumentos nombrados
+(A:/temp/nsc-t09-sysv-pair-mix-g_ltc7ay). La muestra de dieciseis bytes paso
+las mismas ocho combinaciones y precompilacion O0
+(A:/temp/nsc-t09-sysv-pair16-mix-mgasai0v). La sonda Clang comprueba la
+clasificacion y rechaza posiciones fisicas inconsistentes; la prueba de
+metadatos comprueba la reconstruccion del plan
+(A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log). Pasaron la
+regresion de doce bytes sin escalares (A:/temp/nsc-t09-sysv-r12-7knjzh53) y
+el control general con sus rechazos (A:/temp/nsc-t09-sysv-prueba-f8jskb5m).
+
+Las muestras comprueban un record primero, con retorno del mismo tipo, seguido
+de `int` y `float`; no acreditan todos los layouts, otros ordenes ni records de
+clases flotantes o indirectos en firmas mixtas. T09-003 permanece abierto.
+

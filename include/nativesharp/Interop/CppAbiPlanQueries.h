@@ -113,6 +113,45 @@ inline bool isSysVTwoI64RecordRoundTrip(const Plan& plan, std::string_view symbo
     return isSysVTwoIntegerRecordRoundTrip(plan, symbol) &&
         plan.physicalReturn.elements[1].widthOrCount == 64;
 }
+// A two-integer record followed by direct scalar arguments; physical indices come from Clang.
+inline bool isSysVTwoIntegerRecordWithScalars(const Plan& plan, std::string_view symbol) noexcept
+{
+    const auto pair = [](const Type& type) {
+        return type.kind == TypeKind::Structure && !type.packed && type.elements.size() == 2 &&
+            type.elements[0].kind == TypeKind::Integer && type.elements[0].widthOrCount == 64 &&
+            type.elements[1].kind == TypeKind::Integer && type.elements[1].widthOrCount >= 8 &&
+            type.elements[1].widthOrCount <= 64 && type.elements[1].widthOrCount % 8 == 0;
+    };
+    if (plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
+        !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
+        plan.returnSignExtend || plan.returnZeroExtend || !pair(plan.physicalReturn) ||
+        plan.logicalReturn.passing != Passing::Direct || !plan.logicalReturn.coercion ||
+        !pair(*plan.logicalReturn.coercion) || plan.logicalReturn.offset != 0 ||
+        plan.logicalParameters.size() < 2 || plan.physicalParameters.size() != plan.logicalParameters.size() + 1) return false;
+    const auto bits = plan.physicalReturn.elements[1].widthOrCount;
+    const auto& record = plan.logicalParameters[0];
+    if (!record.coercion || !pair(*record.coercion) || record.coercion->elements[1].widthOrCount != bits ||
+        plan.logicalReturn.coercion->elements[1].widthOrCount != bits || record.passing != Passing::Direct ||
+        record.offset != 0 || record.firstPhysical != 0 || record.physicalCount != 2) return false;
+    for (std::size_t i = 0; i < plan.physicalParameters.size(); ++i)
+    {
+        const auto& p = plan.physicalParameters[i];
+        if (p.structureReturn || p.byValue || p.signExtend || p.zeroExtend || p.inRegister || p.noAlias) return false;
+        if (i < 2)
+        {
+            if (p.type.kind != TypeKind::Integer || p.type.widthOrCount != (i == 0 ? 64 : bits)) return false;
+            continue;
+        }
+        const auto& logical = plan.logicalParameters[i - 1];
+        if (logical.passing != Passing::Direct || !logical.coercion || logical.offset != 0 ||
+            logical.firstPhysical != i || logical.physicalCount != 1 ||
+            logical.coercion->kind != p.type.kind || logical.coercion->widthOrCount != p.type.widthOrCount) return false;
+        if (!((p.type.kind == TypeKind::Integer && p.type.widthOrCount == 32) ||
+              p.type.kind == TypeKind::Float || p.type.kind == TypeKind::Double ||
+              (p.type.kind == TypeKind::Pointer && p.type.widthOrCount == 0))) return false;
+    }
+    return true;
+}
 inline bool isSysVMixedRecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
 {
     const auto pair = [](const Type& type) {

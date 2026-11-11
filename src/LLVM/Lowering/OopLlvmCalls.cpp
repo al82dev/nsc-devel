@@ -953,17 +953,34 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             return result;
         }
         if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
-            (interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName) ||
+            (interop::abi_plan::isSysVTwoIntegerRecordWithScalars(*imported->cppAbiPlan, imported->cAbiName) ||
+             interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName) ||
              interop::abi_plan::isSysVMixedRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName)))
         {
-            if (node->children.size() != 1 || node->referenceResult || node->returnsAssignedValue ||
-                node->children[0]->typeKey != node->typeKey ||
-                (argumentOverrides && argumentOverrides->size() != 1))
+            const auto count = imported->cppAbiPlan->logicalParameters.size();
+            if (node->children.size() != count || node->referenceResult || node->returnsAssignedValue ||
+                (argumentOverrides && argumentOverrides->size() != count))
                 return failValue(error, "SysV two-piece record call has an unexpected argument contract");
-            LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[0] :
-                lowerExpression(node->children[0].get(), error);
-            if (!value) return nullptr;
-            if (terminated()) return value;
+            std::vector<std::size_t> order;
+            if (!callArgumentOrder(node, count, order, error)) return nullptr;
+            if (order.size() != count) return failValue(error, "SysV two-piece argument mapping is invalid");
+            std::vector<bool> seen(count, false);
+            for (const auto index : order)
+            {
+                if (index >= count || seen[index]) return failValue(error, "SysV two-piece argument mapping is invalid");
+                seen[index] = true;
+            }
+            if (node->children[order[0]]->typeKey != node->typeKey)
+                return failValue(error, "SysV two-piece record argument type is invalid");
+            std::vector<LLVMValueRef> sourceArguments;
+            for (std::size_t i = 0; i < count; ++i)
+            {
+                LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[i] : lowerExpression(node->children[i].get(), error);
+                if (!value) return nullptr;
+                if (terminated()) return value;
+                sourceArguments.push_back(value);
+            }
+            LLVMValueRef value = sourceArguments[order[0]];
             LLVMTypeRef carrier = llvmType(node->typeKey, error);
             if (!carrier) return nullptr;
             const unsigned alignment = structAlignmentFor(node->typeKey);
@@ -991,14 +1008,15 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             LLVMValueRef argumentSlot = entryBlockAlloca(carrier, alignment, "sysv.pair.arg");
             LLVMValueRef argumentStore = LLVMBuildStore(builder_, value, argumentSlot);
             LLVMSetAlignment(argumentStore, alignment);
-            LLVMValueRef arguments[] = {
+            std::vector<LLVMValueRef> arguments = {
                 LLVMBuildLoad2(builder_, firstType, argumentSlot, "sysv.pair.first"),
                 LLVMBuildLoad2(builder_, secondType, second(argumentSlot, "sysv.pair.arg.second"), "sysv.pair.second")};
             LLVMSetAlignment(arguments[0], pieceAlignment);
             LLVMSetAlignment(arguments[1], pieceAlignment);
+            for (std::size_t i = 1; i < count; ++i) arguments.push_back(sourceArguments[order[i]]);
             releaseTransferredArguments(node);
             LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
-                arguments, 2, "sysv.pair.call", error);
+                arguments.data(), static_cast<unsigned>(arguments.size()), "sysv.pair.call", error);
             if (!call) return nullptr;
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
             if (!applyMustTail(node, call, error)) return nullptr;

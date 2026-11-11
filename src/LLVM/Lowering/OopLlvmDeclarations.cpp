@@ -21,6 +21,7 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                  interop::abi_plan::isSysVSmallRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
                  interop::abi_plan::isSysVSingleVector2FRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
                  interop::abi_plan::isSysVSingleFloatingRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
+                 interop::abi_plan::isSysVTwoIntegerRecordWithScalars(*function.cppAbiPlan, function.cAbiName) ||
                  interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
                  interop::abi_plan::isSysVMixedRecordRoundTrip(*function.cppAbiPlan, function.cAbiName)))
             {
@@ -43,7 +44,8 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                             LLVMPointerTypeInContext(context_, 0) : LLVMIntTypeInContext(context_, static_cast<unsigned>(parameter.type.widthOrCount)));
                     return LLVMFunctionType(integer, parameters.data(), static_cast<unsigned>(parameters.size()), 0);
                 }
-                if (interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
+                if (interop::abi_plan::isSysVTwoIntegerRecordWithScalars(*function.cppAbiPlan, function.cAbiName) ||
+                    interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
                     interop::abi_plan::isSysVMixedRecordRoundTrip(*function.cppAbiPlan, function.cAbiName))
                 {
                     LLVMTypeRef first = function.cppAbiPlan->physicalReturn.elements[0].kind == interop::abi_plan::TypeKind::Double
@@ -61,7 +63,16 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                             static_cast<unsigned>(function.cppAbiPlan->physicalReturn.elements[1].widthOrCount));
                     LLVMTypeRef pieces[] = {first, second};
                     LLVMTypeRef result = LLVMStructTypeInContext(context_, pieces, 2, 0);
-                    return LLVMFunctionType(result, pieces, 2, 0);
+                    std::vector<LLVMTypeRef> parameters{first, second};
+                    for (std::size_t i = 2; i < function.cppAbiPlan->physicalParameters.size(); ++i)
+                    {
+                        const auto kind = function.cppAbiPlan->physicalParameters[i].type.kind;
+                        parameters.push_back(kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
+                            kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
+                            kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
+                            LLVMInt32TypeInContext(context_));
+                    }
+                    return LLVMFunctionType(result, parameters.data(), static_cast<unsigned>(parameters.size()), 0);
                 }
                 LLVMTypeRef integer = interop::abi_plan::isSysVSingleVector2FRecordRoundTrip(*function.cppAbiPlan, function.cAbiName)
                     ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) :
