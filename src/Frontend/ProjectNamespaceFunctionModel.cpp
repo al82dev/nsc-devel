@@ -1468,9 +1468,34 @@ void ProjectNamespaceFunctionModel::captureCppFunctionDemand(
         if (std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), std::string{}) ==
             demand.lookupNamespaces.end()) demand.lookupNamespaces.emplace_back();
     }
-    else if (const auto resolved = resolveNamespace(nameLookup, unit.projectOrdinal(), lexicalNamespace,
-                                                     environment, std::string(written.substr(0, dot))))
-        demand.lookupNamespaces.push_back(*resolved);
+    else
+    {
+        const std::string writtenNamespace(written.substr(0, dot));
+        if (const auto resolved = resolveNamespace(nameLookup, unit.projectOrdinal(), lexicalNamespace,
+                                                   environment, writtenNamespace))
+            demand.lookupNamespaces.push_back(*resolved);
+        else
+        {
+            // A precompiled dependency may be the first declaration of this namespace.
+            // Capture possible lookup paths; normal visibility and binding still decide which one exists.
+            const auto firstDot = writtenNamespace.find('.');
+            const auto alias = environment.aliases.find(writtenNamespace.substr(0, firstDot));
+            if (alias != environment.aliases.end())
+                demand.lookupNamespaces.push_back(alias->second +
+                    (firstDot == std::string::npos ? std::string{} : writtenNamespace.substr(firstDot)));
+            else
+            {
+                auto segments = splitName(lexicalNamespace);
+                while (true)
+                {
+                    const auto prefix = joinName(segments);
+                    demand.lookupNamespaces.push_back(prefix.empty() ? writtenNamespace : prefix + "." + writtenNamespace);
+                    if (segments.empty()) break;
+                    segments.pop_back();
+                }
+            }
+        }
+    }
     demand.visibleProjects.push_back(unit.projectOrdinal());
     for (const auto visible : visibleProjects(nameLookup, unit.projectOrdinal()))
         if (std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), visible) ==

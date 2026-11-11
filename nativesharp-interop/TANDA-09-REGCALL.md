@@ -49,12 +49,25 @@ ocho variantes y conservo simbolo y convencion en LLVM
 (`A:/temp/nsc-t09-regcall-cpp-42868933`). La cache de paquete de compilacion
 se informa desactivada en esta muestra C++; no se acredita hit de esa cache.
 
-La plantilla precompilada falla al resolver `T09Cpp`, incluso cuando el
+La plantilla precompilada fallaba al resolver `T09Cpp`, incluso cuando el
 consumidor incluye el encabezado
 (`A:/temp/nsc-t09-regcall-cpp-precompilado-805e785k`). Un control equivalente
 con `cdecl` falla de la misma forma
 (`A:/temp/nsc-t09-regcall-cpp-precompilado-y0wame_8`), por lo que no hay
-evidencia de que el defecto sea exclusivo de `regcall`. Esta dependencia de
-resolucion de nombres C++ en plantillas precompiladas queda pendiente; la
-prueba `pruebas-tanda-09-regcall-cpp/validar-precompilado.py` reproduce el
-fallo y no se presenta como aprobada. T09-003 sigue abierto.
+evidencia de que el defecto fuera exclusivo de `regcall`. El catalogo vigente
+ahora captura el enlace C++ y la identidad de la funcion seleccionada, y la
+demanda calificada puede localizar el namespace del productor antes de
+restaurar el simbolo. Pasaron los 16 consumidores de la prueba original con
+`regcall` (`A:/temp/nsc-t09-regcall-cpp-precompilado-j6gxcq9k`) y los 16 del
+control `cdecl` (`A:/temp/nsc-t09-cpp-cdecl-precompilado-ik9rmc6i`), con y
+sin encabezado, en estatica/DLL O0-O3. Pasaron tambien los controles C
+precompilados (`A:/temp/nsc-t09-precompilado-yc3jre_f` y
+`A:/temp/nsc-t09-regcall-precompilado-_knqkzxp`), las cuatro sondas de ABI
+(`A:/temp/t09-test-varptr.log`) y las pruebas de transporte, ABI e identidad
+(`A:/temp/t09-transport-directed/`), incluida la comprobacion nueva de enlace
+y nombre C++ en el codec. Pasaron ademas las pruebas de metadatos y cierre de
+dependencias seleccionadas (`A:/temp/t09-cpp-meta-check.log`). El control adicional con llamada propia
+del consumidor y encabezado paso; sin encabezado no expone automaticamente
+la dependencia privada de la plantilla
+(`A:/temp/nsc-t09-regcall-cpp-precompilado-lwtb9ay5`). No se acreditan todos
+los tipos ni las sobrecargas C++; T09-003 sigue abierto.

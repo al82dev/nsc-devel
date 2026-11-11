@@ -1656,6 +1656,22 @@ bool checkDependencyTypeCodec()
         decoded.declaration.parameters[0].type.element &&
         decoded.declaration.parameters[0].type.element->kind == CppTypeKind::Atomic,
         "C dependency function round trip preserves identity, signature and atomic type");
+    auto cppFunction = function;
+    cppFunction.linkSymbol = "?f@ns@@YAHH@Z";
+    cppFunction.declaration.name = "f";
+    cppFunction.declaration.qualifiedName = "ns::f";
+    cppFunction.declaration.externalSymbol = cppFunction.linkSymbol;
+    cppFunction.declaration.clangUsr = "c:@N@ns@F@f#I#";
+    cppFunction.declaration.languageLinkage = CppLanguageLinkage::Cpp;
+    std::vector<std::uint8_t> cppFunctionBytes;
+    CDependencyFunctionSnapshot decodedCpp;
+    ok &= expect(encodeCDependencyFunction(cppFunction, cppFunctionBytes, error) &&
+        decodeCDependencyFunction(cppFunctionBytes, decodedCpp, error) &&
+        decodedCpp.declaration.languageLinkage == CppLanguageLinkage::Cpp &&
+        decodedCpp.declaration.qualifiedName == "ns::f" &&
+        decodedCpp.declaration.externalSymbol == cppFunction.declaration.externalSymbol &&
+        decodedCpp.declaration.clangUsr == cppFunction.declaration.clangUsr,
+        "C++ dependency function round trip preserves linkage and qualified identity");
     auto recordFunction = function;
     recordFunction.declaration.callingConvention = "sysv_abi";
     recordFunction.declaration.returnType = CppType{};

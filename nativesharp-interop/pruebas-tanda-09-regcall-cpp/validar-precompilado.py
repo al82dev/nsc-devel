@@ -1,4 +1,4 @@
-"""T09: reproduce el fallo pendiente de llamada C++ desde plantilla precompilada."""
+"""T09: llamada C++ regcall desde plantilla precompilada, con y sin encabezado."""
 import argparse
 import os
 from pathlib import Path

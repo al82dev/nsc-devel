@@ -1458,7 +1458,9 @@ bool verifyBinaryClosureMetadata(
             for (const auto& function : dependencies.functions)
                 if ((function.declaration.isCStaticInlineDefinition ?
                         (function.declaration.externalLinkage || function.declaration.languageLinkage != CppLanguageLinkage::None) :
-                        (!function.declaration.externalLinkage || function.declaration.languageLinkage != CppLanguageLinkage::C)) ||
+                        (!function.declaration.externalLinkage ||
+                         (function.declaration.languageLinkage != CppLanguageLinkage::C &&
+                          function.declaration.languageLinkage != CppLanguageLinkage::Cpp))) ||
                     !function.declaration.clangUsr || function.declaration.clangUsr->empty() ||
                     function.declaration.externalSymbol != function.linkSymbol)
                 { error = "C dependency function has incomplete or unsupported identity"; return false; }

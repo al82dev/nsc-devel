@@ -327,8 +327,7 @@ bool captureCppTemplateFunctionCandidates(const compilation::ProjectGraph& graph
                 const auto& project = graph.projects()[entry.projectOrdinal];
                 if (entry.referenceIndex >= project.cppLibraryReferences().size())
                 { error = "C function candidate has no source reference"; return false; }
-                if (project.cppLibraryReferences()[entry.referenceIndex].language != CppLanguageMode::C ||
-                    (!entry.declaration.externalLinkage && !entry.declaration.isCStaticInlineDefinition)) continue;
+                if (!entry.declaration.externalLinkage && !entry.declaration.isCStaticInlineDefinition) continue;
                 const auto key = std::make_tuple(entry.projectOrdinal, entry.referenceIndex, group.symbol.mangledName);
                 if (!seen.insert(key).second) continue;
                 metadata_detail::CDependencyFunctionSnapshot snapshot;
@@ -549,10 +548,20 @@ bool provideCppFunctionsWithPrecompiledCatalogs(
             const auto owner = owners.find(function.moduleName);
             if (owner == owners.end() || ambiguous.contains(function.moduleName))
             { error = "precompiled C function owner is missing or ambiguous: " + function.moduleName; return false; }
+            std::string functionNamespace;
+            const auto separator = function.declaration.qualifiedName.rfind("::");
+            if (separator != std::string::npos)
+            {
+                const auto cppNamespace = function.declaration.qualifiedName.substr(0, separator);
+                for (std::size_t i = 0; i < cppNamespace.size(); ++i)
+                    if (cppNamespace[i] == ':' && i + 1 < cppNamespace.size() && cppNamespace[i + 1] == ':')
+                    { functionNamespace.push_back('.'); ++i; }
+                    else functionNamespace.push_back(cppNamespace[i]);
+            }
             const bool demanded = std::any_of(demands.begin(), demands.end(), [&](const auto& demand) {
                 return demand.lookupName == function.declaration.name &&
                     std::find(demand.visibleProjects.begin(), demand.visibleProjects.end(), owner->second) != demand.visibleProjects.end() &&
-                    std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), "") != demand.lookupNamespaces.end();
+                    std::find(demand.lookupNamespaces.begin(), demand.lookupNamespaces.end(), functionNamespace) != demand.lookupNamespaces.end();
             });
             if (!demanded) continue;
             auto restored = projectCppPrecompiledCFunction(function, records, owner->second,

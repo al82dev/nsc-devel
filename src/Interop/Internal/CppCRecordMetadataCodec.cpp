@@ -387,6 +387,7 @@ bool captureCDependencyFunction(std::span<const CppSemanticInventoryEntry> inven
         if (entry.projectOrdinal != selected.projectOrdinal || entry.referenceIndex != referenceIndex ||
             entry.targetTriple != "x86_64-pc-windows-msvc" ||
             (entry.declaration.languageLinkage != CppLanguageLinkage::C &&
+             entry.declaration.languageLinkage != CppLanguageLinkage::Cpp &&
              !(entry.declaration.languageLinkage == CppLanguageLinkage::None &&
                entry.declaration.isCStaticInlineDefinition && !entry.declaration.externalLinkage)) ||
             entry.declaration.clangUsr != selected.cppClangUsr ||
@@ -419,7 +420,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         f.name.empty() || f.qualifiedName.empty() || f.callingConvention.empty() ||
         (f.isCStaticInlineDefinition ?
             (f.languageLinkage != CppLanguageLinkage::None || f.externalLinkage) :
-            f.languageLinkage != CppLanguageLinkage::C) || f.parameters.size() > maxItems)
+            (f.languageLinkage != CppLanguageLinkage::C && f.languageLinkage != CppLanguageLinkage::Cpp)) || f.parameters.size() > maxItems)
     { error = "invalid C dependency function identity"; return false; }
     ByteWriter writer;
     writer.u8(1);
@@ -430,7 +431,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         !putOptionalText(writer, f.externalSymbol) || !putOptionalText(writer, f.clangUsr))
     { error = "invalid C dependency function text"; return false; }
     writer.u8(f.variadic); writer.u8(f.externalLinkage); writer.u8(f.isNonThrowing);
-    writer.u8(f.dllImport); writer.u8(f.hasPrototype); writer.u8(f.isCStaticInlineDefinition);
+    writer.u8(f.dllImport); writer.u8(f.hasPrototype);
+    writer.u8(f.isCStaticInlineDefinition ? 1 : f.languageLinkage == CppLanguageLinkage::Cpp ? 2 : 0);
     std::optional<std::string> variadicBase;
     if (value.variadicBasePlan)
     {
@@ -690,9 +692,12 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
         !reader.text(f.canonicalReturnTypeSpelling) || !getOptionalText(reader, f.externalSymbol) ||
         !getOptionalText(reader, f.clangUsr) || !getFlag(reader, f.variadic) ||
         !getFlag(reader, f.externalLinkage) || !getFlag(reader, f.isNonThrowing) ||
-        !getFlag(reader, f.dllImport) || !getFlag(reader, f.hasPrototype) ||
-        !getFlag(reader, f.isCStaticInlineDefinition))
+        !getFlag(reader, f.dllImport) || !getFlag(reader, f.hasPrototype))
     { error = "invalid C dependency function"; return false; }
+    std::uint8_t linkageKind = 0;
+    if (!reader.u8(linkageKind) || linkageKind > 2)
+    { error = "invalid C/C++ dependency function linkage"; return false; }
+    f.isCStaticInlineDefinition = linkageKind == 1;
     std::optional<std::string> variadicBase;
     if (!getOptionalText(reader, variadicBase)) { error = "invalid C variadic base plan"; return false; }
     if (variadicBase)
@@ -705,7 +710,8 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
     if (!reader.u8(volatileMode) || volatileMode > 2)
     { error = "invalid C dependency function volatile mode"; return false; }
     if (volatileMode != 0) value.microsoftVolatileSemantics = volatileMode == 2;
-    f.languageLinkage = f.isCStaticInlineDefinition ? CppLanguageLinkage::None : CppLanguageLinkage::C;
+    f.languageLinkage = linkageKind == 1 ? CppLanguageLinkage::None :
+        linkageKind == 2 ? CppLanguageLinkage::Cpp : CppLanguageLinkage::C;
     const auto getDependencyType = [&](CppType& type) {
         std::uint32_t size = 0;
         if (!reader.u32(size) || size > reader.remaining()) return false;
