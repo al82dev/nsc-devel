@@ -45,10 +45,11 @@ run('control-link', ['lld-link.exe', '/nologo', '/entry:main', '/subsystem:conso
 run('control-run', [str(root/'control.exe')])
 print('Control C y piezas de Clang: OK', flush=True)
 common = [str(root/'Static.nsproj'), '--cpp-clang-root='+args.clang_root, '--library-reference-root', str(root)]
-for jobs in (1, 4):
-    hir = run('ns-hir-j'+str(jobs), [args.nsc, '--dump-project-oop-hir', *common, '-j', str(jobs)])
-    if 'cpp-pointer-plan=__nsc_pointer_abi_probe:2' not in hir:
-        raise SystemExit('Falta plan indirecto conciliado en HIR; evidencia: '+str(root))
+for stage in ('hir', 'mir'):
+    for jobs in (1, 4):
+        dump = run('ns-'+stage+'-j'+str(jobs), [args.nsc, '--dump-project-oop-'+stage, *common, '-j', str(jobs)])
+        if 'cpp-pointer-plan=__nsc_pointer_abi_probe:2' not in dump:
+            raise SystemExit('Falta plan indirecto conciliado en '+stage+'; evidencia: '+str(root))
 ir = run('ns-ir', [args.nsc, '--dump-project-oop-llvm', *common])
 if not re.search(pattern, ir):
     raise SystemExit('NS no emitio las piezas esperadas; evidencia: '+str(root))

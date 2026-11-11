@@ -173,7 +173,7 @@ std::string preLowerMirCacheKey(
     std::size_t functionOrdinal)
 {
     std::string material;
-    internal::CachePayloadWriter::string(material, "nsc-mir-prelower-key-v6");
+    internal::CachePayloadWriter::string(material, "nsc-mir-prelower-key-v7");
     internal::CachePayloadWriter::string(material, compilationIdentity);
     internal::CachePayloadWriter::u64(material, functionOrdinal);
     internal::CachePayloadWriter::string(material, serializeHirCacheIdentity(function));
@@ -250,6 +250,10 @@ void appendMirNodeShapeFields(std::string& out, const ProjectOopMirNode& node)
         ? interop::abi_plan::encodeVariadicCallPlanForCache(*node.cppVariadicCallPlan) : std::nullopt;
     internal::CachePayloadWriter::string(out, !node.cppVariadicCallPlan ? std::string_view{} :
         plan ? std::string_view(*plan) : std::string_view("\0", 1));
+    const auto pointerPlan = node.cppFunctionPointerPlan
+        ? interop::abi_plan::encodeFunctionPointerPlanForCache(*node.cppFunctionPointerPlan) : std::nullopt;
+    internal::CachePayloadWriter::string(out, !node.cppFunctionPointerPlan ? std::string_view{} :
+        pointerPlan ? std::string_view(*pointerPlan) : std::string_view("\0", 1));
     internal::CachePayloadWriter::stringVector(out, node.catchMatchedErrorTypeKeys);
     internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.ownership));
     internal::CachePayloadWriter::u32(out, static_cast<std::uint32_t>(node.objectLifetimeOwnership));
@@ -489,8 +493,9 @@ bool readMirNodeShapeFields(internal::CachePayloadReader& reader, ProjectOopMirN
     node.nativeArrayRank = u32;
     if (!reader.u32(u32)) return false;
     node.argumentCount = u32;
-    std::string variadicPlan;
+    std::string variadicPlan, pointerPlan;
     if (!reader.stringVector(node.argumentTypeKeys) || !reader.string(variadicPlan) ||
+        !reader.string(pointerPlan) ||
         !reader.stringVector(node.catchMatchedErrorTypeKeys))
         return false;
     if (!variadicPlan.empty())
@@ -498,6 +503,12 @@ bool readMirNodeShapeFields(internal::CachePayloadReader& reader, ProjectOopMirN
         auto decoded = interop::abi_plan::decodeVariadicCallPlanFromCache(variadicPlan);
         if (!decoded) return false;
         node.cppVariadicCallPlan = std::make_shared<const interop::abi_plan::VariadicCallPlan>(std::move(*decoded));
+    }
+    if (!pointerPlan.empty())
+    {
+        auto decoded = interop::abi_plan::decodeFunctionPointerPlanFromCache(pointerPlan);
+        if (!decoded) return false;
+        node.cppFunctionPointerPlan = std::make_shared<const interop::abi_plan::Plan>(std::move(*decoded));
     }
     if (!reader.u32(u32)) return false;
     node.ownership = static_cast<sema::OwnershipKind>(u32);

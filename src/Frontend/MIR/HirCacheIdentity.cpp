@@ -162,6 +162,10 @@ void appendNode(std::string& out, const ProjectOopHirNode& node)
         ? interop::abi_plan::encodeVariadicCallPlanForCache(*node.cppVariadicCallPlan) : std::nullopt;
     CachePayloadWriter::string(out, !node.cppVariadicCallPlan ? std::string_view{} :
         plan ? std::string_view(*plan) : std::string_view("\0", 1));
+    const auto pointerPlan = node.cppFunctionPointerPlan
+        ? interop::abi_plan::encodeFunctionPointerPlanForCache(*node.cppFunctionPointerPlan) : std::nullopt;
+    CachePayloadWriter::string(out, !node.cppFunctionPointerPlan ? std::string_view{} :
+        pointerPlan ? std::string_view(*pointerPlan) : std::string_view("\0", 1));
     CachePayloadWriter::sizeVector(out, node.argumentParameterOrdinals);
     CachePayloadWriter::u64(out, node.children.size());
 }

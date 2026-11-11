@@ -31,6 +31,8 @@ void dumpNodeOrdinals(std::ostringstream& output, const ProjectOopMirNode& node)
     if (!node.typeKey.empty()) output << " type=" << node.typeKey;
     if (node.cppVariadicCallPlan) output << " cpp-variadic-plan=" << node.cppVariadicCallPlan->symbol
         << ":" << node.cppVariadicCallPlan->arguments.size();
+    if (node.cppFunctionPointerPlan) output << " cpp-pointer-plan=" << node.cppFunctionPointerPlan->symbol
+        << ":" << node.cppFunctionPointerPlan->physicalParameters.size();
     if (node.memberOrdinal.has_value()) output << " member=#" << *node.memberOrdinal;
     if (node.namespaceFunctionOrdinal.has_value())
         output << " namespace-function=#" << *node.namespaceFunctionOrdinal;

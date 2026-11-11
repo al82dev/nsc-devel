@@ -20874,6 +20874,58 @@ void testVariadicCallPlanTransport(TestContext& tests)
             Access::mirIdentityForNode(std::move(restored)),
             "LLVM cache identity changes when the per-call ABI plan changes");
     }
+    auto pointerPlan = std::make_shared<abi::Plan>();
+    pointerPlan->symbol = "__nsc_pointer_abi_probe";
+    pointerPlan->targetTriple = plan->targetTriple;
+    pointerPlan->dataLayout = plan->dataLayout;
+    pointerPlan->callingConvention = plan->callingConvention;
+    pointerPlan->physicalReturn = plan->physicalReturn;
+    pointerPlan->logicalReturn = plan->result;
+    pointerPlan->logicalParameters = plan->arguments;
+    pointerPlan->physicalParameters = plan->physicalParameters;
+    auto pointerHir = std::make_unique<HirNode>();
+    pointerHir->kind = HirKind::StaticCall;
+    pointerHir->namespaceFunctionOrdinal = 0U;
+    pointerHir->typeKey = "builtin:int";
+    pointerHir->cppFunctionPointerPlan = pointerPlan;
+    auto pointerMir = Access::lowerStaticCallWithTarget(pointerHir.get(), error);
+    tests.expect(pointerMir && pointerMir->cppFunctionPointerPlan &&
+        pointerMir->cppFunctionPointerPlan->symbol == pointerPlan->symbol,
+        "HIR call transports its function pointer ABI plan into MIR");
+    if (!pointerMir) return;
+    const auto pointerBytes = Access::serializeMirNodeTree(pointerMir.get());
+    std::unique_ptr<nativesharp::frontend::ProjectOopMirNode> pointerRestored;
+    tests.expect(Access::restoreMirNodeTree(pointerBytes, pointerRestored) && pointerRestored &&
+        pointerRestored->cppFunctionPointerPlan &&
+        pointerRestored->cppFunctionPointerPlan->physicalParameters.size() == 1 &&
+        pointerRestored->cppFunctionPointerPlan->physicalParameters[0].type.widthOrCount == 32 &&
+        !pointerRestored->cppFunctionPointerPlan->variadic,
+        "MIR cache preserves the function pointer ABI plan");
+    std::unique_ptr<nativesharp::frontend::ProjectOopMirNode> invalidPointer;
+    tests.expect(!pointerBytes.empty() && !Access::restoreMirNodeTree(
+        std::string_view(pointerBytes).substr(0, pointerBytes.size() - 1), invalidPointer),
+        "MIR cache rejects a truncated node carrying a function pointer plan");
+    auto invalidPlan = std::make_shared<abi::Plan>(*pointerPlan);
+    invalidPlan->variadic = true;
+    pointerMir->cppFunctionPointerPlan = invalidPlan;
+    tests.expect(!Access::restoreMirNodeTree(Access::serializeMirNodeTree(pointerMir.get()), invalidPointer),
+        "MIR cache rejects an unencodable function pointer plan");
+    pointerMir->cppFunctionPointerPlan = pointerPlan;
+    nativesharp::frontend::ProjectOopHirFunction pointerFunction;
+    pointerFunction.body = std::move(pointerHir);
+    const auto pointerIdentity = nativesharp::frontend::serializeHirCacheIdentity(pointerFunction);
+    auto changedPointer = std::make_shared<abi::Plan>(*pointerPlan);
+    changedPointer->physicalParameters[0].type.widthOrCount = 64;
+    pointerFunction.body->cppFunctionPointerPlan = changedPointer;
+    tests.expect(pointerIdentity != nativesharp::frontend::serializeHirCacheIdentity(pointerFunction),
+        "HIR cache identity changes when the function pointer plan changes");
+    if (pointerRestored)
+    {
+        pointerRestored->cppFunctionPointerPlan = changedPointer;
+        tests.expect(Access::mirIdentityForNode(std::move(pointerMir)) !=
+            Access::mirIdentityForNode(std::move(pointerRestored)),
+            "LLVM cache identity changes when the function pointer plan changes");
+    }
 }
 
 void testDeepMirNodeLowering(TestContext& tests)

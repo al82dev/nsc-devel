@@ -1035,6 +1035,19 @@ muestra descrita, no todos los layouts booleanos ni las demas convenciones.
 
 ## Puntero de funcion SysV devuelto por una biblioteca
 
+**Avance del transporte, aun sin emision:** el plan de Clang asociado al
+typedef local pasa de HIR a MIR y participa en sus identidades de cache y en la
+serializacion interna de MIR. La muestra con record de tres enteros conserva el
+plan de dos piezas en HIR y MIR con uno y cuatro trabajadores; el control C
+pasa y NSC todavia rechaza la emision LLVM
+(`A:/temp/nsc-t09-sysv-indirecta-record-bzpakb83`). Las pruebas dirigidas de
+transporte, ABI e identidad pasan e incluyen restauracion, truncamiento y plan
+invalido (`A:/temp/t09-transport-directed/`). Las ocho comparaciones anteriores
+de llamadas indirectas escalares, estatica y DLL O0-O3, y su plantilla
+precompilada pasan (`A:/temp/nsc-t09-sysv-indirecta-matriz-q99snji3`). El codec
+es interno y no cambia el contrato NSMeta. El record por valor, su emision y su
+precompilacion siguen pendientes; T09-003 permanece abierto.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor

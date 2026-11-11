@@ -137,6 +137,10 @@ void writeNodeCall(IdentityWriter& output, const frontend::ProjectOopMirNode& no
         ? interop::abi_plan::encodeVariadicCallPlanForCache(*node.cppVariadicCallPlan) : std::nullopt;
     output.text(!node.cppVariadicCallPlan ? std::string_view{} :
         plan ? std::string_view(*plan) : std::string_view("\0", 1));
+    const auto pointerPlan = node.cppFunctionPointerPlan
+        ? interop::abi_plan::encodeFunctionPointerPlanForCache(*node.cppFunctionPointerPlan) : std::nullopt;
+    output.text(!node.cppFunctionPointerPlan ? std::string_view{} :
+        pointerPlan ? std::string_view(*pointerPlan) : std::string_view("\0", 1));
     output.scalar(node.children.size());
 }
 

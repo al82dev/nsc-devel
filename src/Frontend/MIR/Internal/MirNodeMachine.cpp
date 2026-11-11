@@ -163,6 +163,7 @@ void ProjectOopMirModel::MirNodeMachine::copyAttributes(
     result->argumentParameterOrdinals = node->argumentParameterOrdinals;
     result->argumentTypeKeys = node->argumentTypeKeys;
     result->cppVariadicCallPlan = node->cppVariadicCallPlan;
+    result->cppFunctionPointerPlan = node->cppFunctionPointerPlan;
 
 }
 

@@ -131,4 +131,30 @@ inline std::optional<VariadicCallPlan> decodeVariadicCallPlanFromCache(std::stri
     if (r.pos != bytes.size()) return std::nullopt;
     return plan;
 }
+
+// Reuses the bounded internal cache representation; this does not validate ABI semantics.
+inline std::optional<std::string> encodeFunctionPointerPlanForCache(const Plan& plan)
+{
+    if (plan.variadic) return std::nullopt;
+    VariadicCallPlan value;
+    value.symbol = plan.symbol; value.targetTriple = plan.targetTriple; value.dataLayout = plan.dataLayout;
+    value.callingConvention = plan.callingConvention; value.requiredArguments = plan.logicalParameters.size();
+    value.result = plan.logicalReturn; value.arguments = plan.logicalParameters;
+    value.physicalReturn = plan.physicalReturn; value.returnSignExtend = plan.returnSignExtend;
+    value.returnZeroExtend = plan.returnZeroExtend; value.physicalParameters = plan.physicalParameters;
+    return encodeVariadicCallPlanForCache(value);
+}
+
+inline std::optional<Plan> decodeFunctionPointerPlanFromCache(std::string_view bytes)
+{
+    auto value = decodeVariadicCallPlanFromCache(bytes);
+    if (!value || value->requiredArguments != value->arguments.size()) return std::nullopt;
+    Plan plan;
+    plan.symbol = std::move(value->symbol); plan.targetTriple = std::move(value->targetTriple);
+    plan.dataLayout = std::move(value->dataLayout); plan.callingConvention = value->callingConvention;
+    plan.logicalReturn = std::move(value->result); plan.logicalParameters = std::move(value->arguments);
+    plan.physicalReturn = std::move(value->physicalReturn); plan.returnSignExtend = value->returnSignExtend;
+    plan.returnZeroExtend = value->returnZeroExtend; plan.physicalParameters = std::move(value->physicalParameters);
+    return plan;
+}
 }
