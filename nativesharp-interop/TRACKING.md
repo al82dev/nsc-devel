@@ -1755,6 +1755,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Se probaron retornos directos de dos piezas `double`/`i32`, `i64`/`double` y vector/vector, junto a records directos e indirectos, escalares y precompilacion. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probaron retornos directos de record de una pieza `i24`, `i32`, `i64`, `float` y vector de dos `float`, junto a argumentos directos, `byval` y precompilacion. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probaron siete clasificaciones de records con relleno: enteros de 8, 16 o 32 bits junto a `double` y vectores junto a enteros de 8 o 16 bits, como argumento y retorno. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
+  - Se probo un record empaquetado de nueve bytes que Clang pasa indirectamente, con retornos indirectos, escalares y directos, y consumo precompilado. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
 - [ ] T09-004. Emitir una llamada C sin parámetros y con resultado escalar. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-005. Emitir una llamada C con parámetros escalares. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-006. Emitir el paso de punteros a una función C. [Prueba y contraste](pruebas-tanda-09-llamadas/).

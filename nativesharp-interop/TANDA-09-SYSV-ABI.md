@@ -934,6 +934,43 @@ A:/temp/nsc-t09-sysv-indirect-diff16-eed8vwvp y
 A:/temp/nsc-t09-sysv-prueba-5voqucsx). No se acreditan todas las clases de
 agregado ni firmas posibles; T09-003 permanece abierto.
 
+## Record empaquetado pequeno pasado indirectamente
+
+Clang 23.1.0 pasa un record empaquetado de nueve bytes con `unsigned char` y
+`double` desalineado mediante `byval` alineado a ocho; cuando lo devuelve usa
+`sret` alineado a uno (A:/temp/t09-packed-small-oracle.ll). El tamano por si
+solo no indica si un record se pasa directamente. Los controles C de tres
+firmas pasaron y NSC las rechazaba antes del cambio:
+A:/temp/nsc-t09-sysv-packed-small-identity-sectpn53,
+A:/temp/nsc-t09-sysv-packed-small-scalar-m2ifzsbp y
+A:/temp/nsc-t09-sysv-packed-small-mixed-n_vcv9p4.
+
+NSC usa el modo y alineaciones del plan observado por Clang y el contrato
+vigente conserva explicitamente cuando un argumento pequeno es indirecto.
+Las tres muestras pasaron ocho comparaciones C/NS, estatica y DLL O0–O3,
+comprobacion de atributos LLVM, copias y plantilla precompilada sin encabezado
+O0: A:/temp/nsc-t09-sysv-packed-small-identity-x7xnnpjk,
+A:/temp/nsc-t09-sysv-packed-small-scalar-xs2ezii4 y
+A:/temp/nsc-t09-sysv-packed-small-mixed-gxfqtue4. Dos muestras agregadas
+despues, con el argumento empaquetado y retornos directos de una y dos piezas,
+pasaron las mismas pruebas en
+A:/temp/nsc-t09-sysv-packed-small-return-single-w801xfpi y
+A:/temp/nsc-t09-sysv-packed-small-return-pair-5o_o6crj; no se afirma un
+rechazo previo ejecutado para estas variantes.
+
+La sonda y los metadatos pasaron, incluido el rechazo de un descriptor
+contradictorio (A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log).
+Las regresiones del record indirecto de 24 bytes, retorno directo mixto y
+record con relleno pasaron en A:/temp/nsc-t09-sysv-r24-viiv_4mo,
+A:/temp/nsc-t09-sysv-return-record-mixed-ktlzlvo4 y
+A:/temp/nsc-t09-sysv-padded-pair-ds-9ah52plb. El primer intento de conservar
+un control negativo con firma variadica produjo un rechazo anterior a HIR con
+un diagnostico distinto (A:/temp/nsc-t09-sysv-prueba-cg_y2r4t); el control se
+replanteo con un record `float`/`i64` aun no admitido por esta ruta y paso en
+A:/temp/nsc-t09-sysv-prueba-gthf82qy. La llamada variadica sigue pendiente;
+su rechazo no acredita interoperabilidad. Otras disposiciones empaquetadas
+tambien quedan abiertas; T09-003 y la tanda 9 no se cierran.
+
 ## Records de dos piezas con relleno
 
 Clang 23.1.0 clasifica records con relleno como `i8`/`double`, `i16`/`double`,

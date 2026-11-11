@@ -1866,12 +1866,12 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                         symbol.cppAbiPlan->physicalReturn.elements[0].kind != interop::abi_plan::TypeKind::Vector &&
                         symbol.cppAbiPlan->physicalReturn.elements[1].kind != interop::abi_plan::TypeKind::Vector &&
                         *symbol.cppReturnType->sizeBits == 128 && symbol.cppReturnType->alignmentBits == 64))) ||
-                     (*symbol.cppReturnType->sizeBits > 128 && *symbol.cppReturnType->sizeBits % 8 == 0 &&
+                     (*symbol.cppReturnType->sizeBits > 0 && *symbol.cppReturnType->sizeBits % 8 == 0 &&
                       interop::abi_plan::isSysVIndirectRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName) &&
                       symbol.cppReturnType->alignmentBits == symbol.cppAbiPlan->logicalReturn.alignment * 8));
                 const bool supportedIndirectWithArguments = symbol.cppAbiPlan && symbol.cppReturnType &&
                     ((symbol.cppReturnType->kind == interop::CppTypeKind::Record && symbol.cppReturnType->sizeBits &&
-                      *symbol.cppReturnType->sizeBits > 128 && *symbol.cppReturnType->sizeBits % 8 == 0 &&
+                      *symbol.cppReturnType->sizeBits > 0 && *symbol.cppReturnType->sizeBits % 8 == 0 &&
                       symbol.cppReturnType->alignmentBits == symbol.cppAbiPlan->logicalReturn.alignment * 8 &&
                       interop::abi_plan::isSysVIndirectRecordWithArguments(*symbol.cppAbiPlan, symbol.mangledName)) ||
                      (interop::abi_plan::isSysVScalarReturnWithRecordArguments(*symbol.cppAbiPlan, symbol.mangledName) &&
@@ -1913,7 +1913,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                             const auto& physical = symbol.cppAbiPlan->physicalParameters[logical.firstPhysical].type;
                             if (logical.passing == interop::abi_plan::Passing::Indirect)
                             {
-                                if (type.kind != interop::CppTypeKind::Record || !type.sizeBits || *type.sizeBits <= 128 ||
+                                if (type.kind != interop::CppTypeKind::Record || !type.sizeBits || *type.sizeBits == 0 ||
                                     *type.sizeBits % 8 != 0 || !type.alignmentBits || *type.alignmentBits == 0 || *type.alignmentBits % 8 != 0 ||
                                     logical.alignment != (*type.alignmentBits < 64 ? 8 : *type.alignmentBits / 8)) return false;
                                 continue;

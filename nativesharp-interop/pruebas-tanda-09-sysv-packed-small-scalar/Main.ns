@@ -1,0 +1,1 @@
+int Main() { T09Packed original; original.tag=(byte)7; original.value=3.5; int result=sysv_packed_small_scalar(1.5f,original,2); int named=sysv_packed_small_scalar(extra: 2, original: original, scale: 1.5f); if (original.tag!=7 || original.value!=3.5 || result!=13 || named!=13) return 1; return 0; }

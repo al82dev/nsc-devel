@@ -2055,6 +2055,32 @@ bool checkDependencyTypeCodec()
         restoredRecord.declaration.abiPlan->physicalParameters[2].type.kind == abi_plan::TypeKind::Double &&
         restoredRecord.declaration.abiPlan->physicalParameters[3].type.widthOrCount == 32,
         "C dependency function retains mixed direct pieces and an indirect record");
+    const auto savedPackedReturnType = recordFunction.declaration.returnType;
+    const auto savedPackedArgumentType = recordFunction.declaration.parameters[3].type;
+    auto packedIndirectPlan = std::make_shared<abi_plan::Plan>(*mixedIndirectPlan);
+    packedIndirectPlan->logicalReturn.alignment = 1;
+    packedIndirectPlan->physicalParameters[0].alignment = 1;
+    packedIndirectPlan->logicalParameters[3].alignment = 8;
+    packedIndirectPlan->physicalParameters[5].alignment = 8;
+    recordFunction.declaration.returnType.sizeBits = 72;
+    recordFunction.declaration.returnType.alignmentBits = 8;
+    recordFunction.declaration.parameters[3].type.sizeBits = 72;
+    recordFunction.declaration.parameters[3].type.alignmentBits = 8;
+    recordFunction.declaration.abiPlan = packedIndirectPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        restoredRecord.declaration.abiPlan->logicalReturn.alignment == 1 &&
+        restoredRecord.declaration.abiPlan->logicalParameters[3].passing == abi_plan::Passing::Indirect &&
+        restoredRecord.declaration.abiPlan->physicalParameters[5].byValue &&
+        restoredRecord.declaration.abiPlan->physicalParameters[5].alignment == 8,
+        "C dependency function retains a small indirect record and indirect return");
+    auto invalidSmallIndirectBytes = recordBytes;
+    if (!invalidSmallIndirectBytes.empty()) invalidSmallIndirectBytes.back() = 2;
+    ok &= expect(!invalidSmallIndirectBytes.empty() &&
+        !decodeCDependencyFunction(invalidSmallIndirectBytes, restoredRecord, error),
+        "C dependency function rejects a conflicting small indirect descriptor");
+    recordFunction.declaration.returnType = savedPackedReturnType;
+    recordFunction.declaration.parameters[3].type = savedPackedArgumentType;
     auto directPairReturnPlan = std::make_shared<abi_plan::Plan>(*mixedIndirectPlan);
     directPairReturnPlan->physicalParameters.erase(directPairReturnPlan->physicalParameters.begin());
     for (auto& logical : directPairReturnPlan->logicalParameters) --logical.firstPhysical;
@@ -2148,6 +2174,18 @@ bool checkDependencyTypeCodec()
         restoredRecord.declaration.abiPlan->physicalParameters[1].type.kind == abi_plan::TypeKind::Double &&
         restoredRecord.declaration.abiPlan->physicalParameters[4].byValue,
         "C dependency function retains scalar return and direct and indirect record arguments");
+    auto packedScalarPlan = std::make_shared<abi_plan::Plan>(*scalarReturnPlan);
+    packedScalarPlan->logicalParameters[3].alignment = 8;
+    packedScalarPlan->physicalParameters[4].alignment = 8;
+    recordFunction.declaration.parameters[3].type.sizeBits = 72;
+    recordFunction.declaration.parameters[3].type.alignmentBits = 8;
+    recordFunction.declaration.abiPlan = packedScalarPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        restoredRecord.declaration.abiPlan->logicalParameters[3].passing == abi_plan::Passing::Indirect &&
+        restoredRecord.declaration.abiPlan->physicalParameters[4].byValue,
+        "C dependency function retains a small indirect argument with scalar return");
+    recordFunction.declaration.parameters[3].type = savedPackedArgumentType;
     const auto savedScalarParameters = recordFunction.declaration.parameters;
     auto scalarSmallRecord = std::make_shared<abi_plan::Plan>(*scalarReturnPlan);
     scalarSmallRecord->logicalParameters.pop_back();

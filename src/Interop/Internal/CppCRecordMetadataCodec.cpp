@@ -465,7 +465,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         for (std::size_t i = 0; i < f.parameters.size(); ++i)
         {
             const auto& logical = f.abiPlan->logicalParameters[i];
-            if (f.parameters[i].type.kind != CppTypeKind::Record || logical.passing != abi_plan::Passing::Direct) continue;
+            if (f.parameters[i].type.kind != CppTypeKind::Record) continue;
+            if (logical.passing == abi_plan::Passing::Indirect && f.parameters[i].type.sizeBits && *f.parameters[i].type.sizeBits <= 128) return true;
+            if (logical.passing != abi_plan::Passing::Direct) continue;
             if (logical.physicalCount == 1 && f.abiPlan->physicalParameters[logical.firstPhysical].type.kind != abi_plan::TypeKind::Integer) return true;
             if (logical.physicalCount == 2 && logical.coercion &&
                 (logical.coercion->elements[0].kind != abi_plan::TypeKind::Integer ||
@@ -565,7 +567,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                 return false;
             }()) ||
             ((indirectMixed || scalarMixed || directMixed || directSingleMixed) && [&] {
-                if (indirectMixed && (bits <= 128 || bits % 8 != 0 || f.returnType.alignmentBits != f.abiPlan->logicalReturn.alignment * 8)) return true;
+                if (indirectMixed && (bits == 0 || bits % 8 != 0 || f.returnType.alignmentBits != f.abiPlan->logicalReturn.alignment * 8)) return true;
                 for (std::size_t i = 0; i < f.parameters.size(); ++i)
                 {
                     const auto& type = f.parameters[i].type;
@@ -573,7 +575,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                     const auto& physical = f.abiPlan->physicalParameters[logical.firstPhysical].type;
                     if (logical.passing == abi_plan::Passing::Indirect)
                     {
-                        if (type.kind != CppTypeKind::Record || !type.sizeBits || *type.sizeBits <= 128 ||
+                        if (type.kind != CppTypeKind::Record || !type.sizeBits || *type.sizeBits == 0 ||
                             *type.sizeBits % 8 != 0 || !type.alignmentBits || *type.alignmentBits == 0 || *type.alignmentBits % 8 != 0 ||
                             logical.alignment != (*type.alignmentBits < 64 ? 8 : *type.alignmentBits / 8)) return true;
                         continue;
@@ -600,7 +602,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                 }
                 return false;
             }()) ||
-            (indirectRecord && (bits <= 128 || bits % 8 != 0 ||
+            (indirectRecord && (bits == 0 || bits % 8 != 0 ||
                 f.returnType.alignmentBits != f.abiPlan->logicalReturn.alignment * 8 ||
                 f.parameters[0].type.alignmentBits != f.abiPlan->logicalReturn.alignment * 8)) ||
             (singleVector && (f.returnType.alignmentBits != 32 || f.parameters[0].type.alignmentBits != 32)) ||
@@ -638,7 +640,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                 const bool pair = f.parameters[i].type.kind == CppTypeKind::Record && logical.passing == abi_plan::Passing::Direct && logical.physicalCount == 2;
                 const bool single = f.parameters[i].type.kind == CppTypeKind::Record && logical.passing == abi_plan::Passing::Direct &&
                     logical.physicalCount == 1 && f.abiPlan->physicalParameters[logical.firstPhysical].type.kind != abi_plan::TypeKind::Integer;
-                writer.u8(pair ? 1 : single ? 2 : 0);
+                const bool indirectSmall = f.parameters[i].type.kind == CppTypeKind::Record && logical.passing == abi_plan::Passing::Indirect &&
+                    f.parameters[i].type.sizeBits && *f.parameters[i].type.sizeBits <= 128;
+                writer.u8(pair ? 1 : single ? 2 : indirectSmall ? 3 : 0);
                 if (!pair && !single) continue;
                 for (std::size_t piece = 0; piece < (pair ? 2U : 1U); ++piece)
                 {
@@ -808,16 +812,21 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                 if (!type.sizeBits) { error = "invalid C dependency indirect argument"; return false; }
                 abi_plan::LogicalValue logical;
                 logical.firstPhysical = plan->physicalParameters.size();
-                const bool twoPiece = type.kind == CppTypeKind::Record && *type.sizeBits > 64 && *type.sizeBits <= 128;
+                bool twoPiece = type.kind == CppTypeKind::Record && *type.sizeBits > 64 && *type.sizeBits <= 128;
+                bool indirectSmall = false;
                 abi_plan::Type storedPair;
                 std::optional<abi_plan::Type> storedSingle;
                 if (recordPlan == 23 || recordPlan == 24 || recordPlan == 25 || recordPlan == 26)
                 {
                     std::uint8_t shape = 0;
-                    if (!reader.u8(shape) || shape > 2 || (shape == 1) != twoPiece ||
+                    if (!reader.u8(shape) || shape > 3 ||
+                        (shape == 3 && (type.kind != CppTypeKind::Record || *type.sizeBits == 0 || *type.sizeBits > 128)) ||
+                        (shape != 3 && (shape == 1) != twoPiece) ||
                         (shape == 2 && (type.kind != CppTypeKind::Record || *type.sizeBits > 64)))
                     { error = "invalid C dependency indirect pair descriptor"; return false; }
-                    if (shape != 0)
+                    indirectSmall = shape == 3;
+                    if (indirectSmall) twoPiece = false;
+                    if (shape == 1 || shape == 2)
                     {
                         storedPair.kind = abi_plan::TypeKind::Structure;
                         for (unsigned piece = 0; piece < (shape == 1 ? 2U : 1U); ++piece)
@@ -836,7 +845,7 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                 }
                 logical.physicalCount = twoPiece ? 2 : 1;
                 abi_plan::PhysicalParameter physical;
-                if (type.kind == CppTypeKind::Record && *type.sizeBits > 128)
+                if (type.kind == CppTypeKind::Record && (*type.sizeBits > 128 || indirectSmall))
                 {
                     if (!type.alignmentBits || *type.alignmentBits == 0 || *type.alignmentBits % 8 != 0)
                     { error = "invalid C dependency indirect argument alignment"; return false; }
