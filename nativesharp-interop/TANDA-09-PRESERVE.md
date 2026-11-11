@@ -133,3 +133,20 @@ retornado. Pasaron la regresion de firmas mixtas
 (A:/temp/nsc-t09-preserve-indirecta-mixta-4f706a13) y los rechazos de
 conversiones incompatibles (A:/temp/nsc-t09-preserve-indirecta-conversiones-ml6p0nyt).
 Otros tipos de retorno y firmas permanecen pendientes; T09-003 sigue abierto.
+
+## Retornos booleanos
+
+Una muestra C recibe y retorna `_Bool` en llamadas directas e indirectas con
+`preserve_most` y `preserve_all`; comprueba ambos valores y la direccion de las
+funciones. El control C paso estatica/DLL O0-O3
+(A:/temp/nsc-t09-preserve-bool-20rmex79), mientras NSC rechazaba el retorno
+(A:/temp/nsc-t09-preserve-bool-1231ia6z). Clang aplica `zeroext` al argumento
+y al retorno (A:/temp/t09-preserve-bool-oracle.ll).
+
+Ahora pasan ocho comparaciones C/NS, verificaciones de ambas extensiones en
+llamadas directas e indirectas y cache (A:/temp/nsc-t09-preserve-bool-ql7ejjy9),
+y 16 consumidores precompilados con y sin encabezado
+(A:/temp/nsc-t09-preserve-bool-precompilado-lxcop106). Pasaron las regresiones
+de retornos `void` y `int*` (A:/temp/nsc-t09-preserve-retornos-k7m3lffp) y de
+conversiones incompatibles (A:/temp/nsc-t09-preserve-indirecta-conversiones-bh0hv6l1).
+Otros tipos de retorno permanecen pendientes; T09-003 y la tanda 9 siguen abiertos.

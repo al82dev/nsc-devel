@@ -1083,7 +1083,7 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         };
         if ((preserveMost || preserveAll) && (structuralFunction->variadic ||
             (returnTypeKey != "builtin:int" && returnTypeKey != "builtin:long" && returnTypeKey != "builtin:double" &&
-             returnTypeKey != "builtin:void" && returnTypeKey != "builtin:int*") ||
+             returnTypeKey != "builtin:void" && returnTypeKey != "builtin:int*" && returnTypeKey != "builtin:bool") ||
             std::any_of(argumentTypeKeys.begin(), argumentTypeKeys.end(),
                 [&](const std::string& key) { return !preserveArgument(key); })))
             return failValue(error, "preserve convention function pointer signature is not yet supported");

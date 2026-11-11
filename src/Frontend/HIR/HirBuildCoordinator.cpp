@@ -1819,7 +1819,8 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             if ((function.cppPreserveMost || function.cppPreserveAll) &&
                 (function.isVariadic || (function.returnTypeKey != "builtin:int" &&
                  function.returnTypeKey != "builtin:long" && function.returnTypeKey != "builtin:double" &&
-                 function.returnTypeKey != "builtin:void" && function.returnTypeKey != "builtin:int*") ||
+                 function.returnTypeKey != "builtin:void" && function.returnTypeKey != "builtin:int*" &&
+                 function.returnTypeKey != "builtin:bool") ||
                  !std::ranges::all_of(function.parameterTypeKeys, preserveParameter)))
             {
                 error = symbol.cppCallingConvention + " does not yet support this signature for " + symbol.mangledName;
