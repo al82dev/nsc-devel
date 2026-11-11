@@ -2073,6 +2073,34 @@ bool checkDependencyTypeCodec()
         restoredRecord.declaration.abiPlan->physicalParameters[1].type.kind == abi_plan::TypeKind::Double &&
         restoredRecord.declaration.abiPlan->physicalParameters[4].byValue,
         "C dependency function retains scalar return and direct and indirect record arguments");
+    const auto savedScalarParameters = recordFunction.declaration.parameters;
+    auto scalarSmallRecord = std::make_shared<abi_plan::Plan>(*scalarReturnPlan);
+    scalarSmallRecord->logicalParameters.pop_back();
+    scalarSmallRecord->physicalParameters.pop_back();
+    scalarSmallRecord->logicalParameters[1].physicalCount = 1;
+    scalarSmallRecord->logicalParameters[2].firstPhysical = 2;
+    scalarSmallRecord->physicalParameters.erase(scalarSmallRecord->physicalParameters.begin() + 2);
+    scalarSmallRecord->logicalParameters[1].coercion = abi_plan::Type{abi_plan::TypeKind::Integer, 32};
+    scalarSmallRecord->physicalParameters[1].type = *scalarSmallRecord->logicalParameters[1].coercion;
+    recordFunction.declaration.parameters.resize(3);
+    recordFunction.declaration.parameters[1].type.sizeBits = 32;
+    recordFunction.declaration.parameters[1].type.alignmentBits = 32;
+    recordFunction.declaration.abiPlan = scalarSmallRecord;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVScalarReturnWithRecordArguments(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->physicalParameters[1].type.widthOrCount == 32,
+        "C dependency function retains a one-piece integer record with scalar return");
+    abi_plan::Type vectorArgument{abi_plan::TypeKind::Vector, 2};
+    vectorArgument.elements.push_back(abi_plan::Type{abi_plan::TypeKind::Float});
+    scalarSmallRecord->logicalParameters[1].coercion = vectorArgument;
+    scalarSmallRecord->physicalParameters[1].type = vectorArgument;
+    recordFunction.declaration.parameters[1].type.sizeBits = 64;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        restoredRecord.declaration.abiPlan->physicalParameters[1].type.kind == abi_plan::TypeKind::Vector,
+        "C dependency function retains a one-piece vector record with scalar return");
+    recordFunction.declaration.parameters = savedScalarParameters;
     auto invalidScalarPlan = *scalarReturnPlan;
     invalidScalarPlan.physicalParameters[4].byValue = false;
     ok &= expect(!abi_plan::isSysVScalarReturnWithRecordArguments(invalidScalarPlan, recordFunction.linkSymbol),

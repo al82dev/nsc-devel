@@ -1883,6 +1883,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                         ((symbol.cppReturnType->sizeBits == 32 && symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Float) ||
                          (symbol.cppReturnType->sizeBits == 64 && symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Double)))))) &&
                     function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
+                    symbol.cppParameterTypes.size() == symbol.cppAbiPlan->logicalParameters.size() &&
                     [&] {
                         for (std::size_t i = 0; i < symbol.cppParameterTypes.size(); ++i)
                         {
@@ -1979,6 +1980,9 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                         symbol.mangledName;
                     return false;
                 }
+                function.cppSysVRecordArguments = supportedIndirectWithArguments && symbol.cppAbiPlan &&
+                    interop::abi_plan::isSysVScalarReturnWithRecordArguments(*symbol.cppAbiPlan, symbol.mangledName) &&
+                    std::ranges::any_of(symbol.cppParameterTypes, [](const auto& type) { return type.kind == interop::CppTypeKind::Record; });
             }
             if (symbol.cppCallingConvention != "cdecl" && !function.cppVectorCall && !function.cppSysVCall)
             {

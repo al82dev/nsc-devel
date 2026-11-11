@@ -1,0 +1,1 @@
+int Main() { T09Byte first; first.x=11; T09Wide wide; wide.x=1.5f; wide.y=2.5f; int result=sysv_scalar_direct_records(1.5f,first,wide,7); int named=sysv_scalar_direct_records(n: 7, wide: wide, first: first, factor: 1.5f); if (first.x!=11 || wide.x!=1.5f || wide.y!=2.5f || result!=58 || named!=58) return 1; return 0; }

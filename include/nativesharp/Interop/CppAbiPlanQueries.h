@@ -311,7 +311,6 @@ inline bool isSysVRecordArguments(const Plan& plan, std::string_view symbol, boo
              plan.logicalReturn.coercion->kind != plan.physicalReturn.kind ||
              plan.logicalReturn.coercion->widthOrCount != plan.physicalReturn.widthOrCount ||
              plan.logicalReturn.offset != 0) return false;
-    bool hasAggregate = false;
     for (std::size_t i = 0; i < plan.logicalParameters.size(); ++i)
     {
         const auto& logical = plan.logicalParameters[i];
@@ -321,7 +320,6 @@ inline bool isSysVRecordArguments(const Plan& plan, std::string_view symbol, boo
             physical.noAlias || physical.inRegister || physical.signExtend || physical.zeroExtend) return false;
         if (logical.passing == Passing::Indirect)
         {
-            hasAggregate = true;
             if (logical.physicalCount != 1 || !logical.byValue || logical.alignment < 8 || logical.alignment > (1ULL << 29) ||
                 (logical.alignment & (logical.alignment - 1)) != 0 || !physical.byValue ||
                 physical.type.kind != TypeKind::Pointer || physical.type.widthOrCount != 0 ||
@@ -332,7 +330,6 @@ inline bool isSysVRecordArguments(const Plan& plan, std::string_view symbol, boo
         if (logical.passing == Passing::Direct && (logical.byValue || logical.signExtend || logical.zeroExtend)) return false;
         if (logical.passing == Passing::Direct && logical.coercion && logical.coercion->kind == TypeKind::Structure)
         {
-            hasAggregate = true;
             const auto& type = *logical.coercion;
             if (logical.offset != 0 || logical.physicalCount != 2 || !isSysVDirectPairShape(type) ||
                 physicalIndex + 2 > plan.physicalParameters.size()) return false;
@@ -360,7 +357,7 @@ inline bool isSysVRecordArguments(const Plan& plan, std::string_view symbol, boo
               (physical.type.kind == TypeKind::Pointer && physical.type.widthOrCount == 0))) return false;
         ++physicalIndex;
     }
-    return physicalIndex == plan.physicalParameters.size() && (indirectReturn || hasAggregate);
+    return physicalIndex == plan.physicalParameters.size();
 }
 inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view symbol) noexcept
 {

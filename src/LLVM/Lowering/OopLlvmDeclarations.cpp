@@ -18,7 +18,7 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
 {
             if (function.cppSysVCall && function.cppAbiPlan &&
                 (interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName) ||
-                 interop::abi_plan::isSysVScalarReturnWithRecordArguments(*function.cppAbiPlan, function.cAbiName)))
+                 (function.cppSysVRecordArguments && interop::abi_plan::isSysVScalarReturnWithRecordArguments(*function.cppAbiPlan, function.cAbiName))))
             {
                 std::vector<LLVMTypeRef> parameters;
                 for (const auto& parameter : function.cppAbiPlan->physicalParameters)
@@ -306,7 +306,7 @@ bool OopLlvmImplementation::declareFunction(
             }
             if (function.cppSysVCall && function.cppAbiPlan &&
                 (interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName) ||
-                 interop::abi_plan::isSysVScalarReturnWithRecordArguments(*function.cppAbiPlan, function.cAbiName)))
+                 (function.cppSysVRecordArguments && interop::abi_plan::isSysVScalarReturnWithRecordArguments(*function.cppAbiPlan, function.cAbiName))))
             {
                 for (std::size_t i = 0; i < function.cppAbiPlan->logicalParameters.size(); ++i)
                 {

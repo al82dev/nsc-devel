@@ -455,7 +455,10 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     const bool pairWithScalars = f.abiPlan && abi_plan::isSysVTwoIntegerRecordWithScalars(*f.abiPlan, value.linkSymbol);
     const bool indirectRecord = f.abiPlan && abi_plan::isSysVIndirectRecordRoundTrip(*f.abiPlan, value.linkSymbol);
     const bool indirectMixed = f.abiPlan && abi_plan::isSysVIndirectRecordWithArguments(*f.abiPlan, value.linkSymbol);
-    const bool scalarMixed = f.abiPlan && abi_plan::isSysVScalarReturnWithRecordArguments(*f.abiPlan, value.linkSymbol);
+    const bool scalarMixed = f.abiPlan && abi_plan::isSysVScalarReturnWithRecordArguments(*f.abiPlan, value.linkSymbol) &&
+        (f.returnType.kind == CppTypeKind::Void || f.returnType.kind == CppTypeKind::SignedInteger ||
+         f.returnType.kind == CppTypeKind::UnsignedInteger || f.returnType.kind == CppTypeKind::Floating) &&
+        std::any_of(f.parameters.begin(), f.parameters.end(), [](const auto& parameter) { return parameter.type.kind == CppTypeKind::Record; });
     const bool indirectDetailed = indirectMixed && [&] {
         if (f.parameters.size() != f.abiPlan->logicalParameters.size()) return false;
         for (std::size_t i = 0; i < f.parameters.size(); ++i)

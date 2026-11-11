@@ -226,6 +226,7 @@ void copyFunctionMetadata(
     function.isCppExternal = source.isCppExternal;
     function.cppVectorCall = source.cppVectorCall;
     function.cppSysVCall = source.cppSysVCall;
+    function.cppSysVRecordArguments = source.cppSysVRecordArguments;
     function.cppAbiPlan = source.cppAbiPlan;
     function.isTransportedInlineBody = source.isTransportedInlineBody;
     function.isSyntheticImplicitConstructor = source.isSyntheticImplicitConstructor;
@@ -332,7 +333,7 @@ void configureFunctionAbi(
     }
     if (function.cppSysVCall && function.cppAbiPlan &&
         (interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName) ||
-         interop::abi_plan::isSysVScalarReturnWithRecordArguments(*function.cppAbiPlan, function.cAbiName)))
+         (function.cppSysVRecordArguments && interop::abi_plan::isSysVScalarReturnWithRecordArguments(*function.cppAbiPlan, function.cAbiName))))
     {
         const bool indirect = interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName);
         function.abi.returnPassing = indirect ? ProjectOopMirAbiPassing::Indirect : ProjectOopMirAbiPassing::Direct;

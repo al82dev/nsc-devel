@@ -934,6 +934,34 @@ A:/temp/nsc-t09-sysv-indirect-diff16-eed8vwvp y
 A:/temp/nsc-t09-sysv-prueba-5voqucsx). No se acreditan todas las clases de
 agregado ni firmas posibles; T09-003 permanece abierto.
 
+## Retorno escalar con records directos de una pieza
+
+Una funcion C devuelve `int` y recibe dos records directos de una pieza,
+intercalados con escalares: el primero contiene un `int` y el segundo dos
+`float`. Los controles C pasaron y NSC rechazo la firma en estatica y DLL antes
+del cambio (A:/temp/nsc-t09-sysv-scalar-direct-records-bioop6l_). Clang
+23.1.0 confirmo las piezas `i32` y `<2 x float>`
+(A:/temp/t09-escalar-records-directos-clang.ll).
+
+Una pieza `i32` puede representar un escalar o un record; el plan fisico por si
+solo no permite distinguirlos. HIR conserva la presencia semantica de records
+y la transmite a MIR para seleccionar el generador adecuado sin cambiar las
+llamadas exclusivamente escalares. El contrato vigente conserva la pieza
+vectorial para consumo precompilado.
+
+La prueba paso ocho comparaciones C/NS en estatica y DLL O0–O3, argumentos
+nombrados y plantilla precompilada sin encabezado O0; comprueba ambos elementos
+del vector y que las copias originales no cambien
+(A:/temp/nsc-t09-sysv-scalar-direct-records-fcnv2xs1). Pasaron la sonda y los
+metadatos, incluidos controles de piezas enteras y vectoriales
+(A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log). Pasaron las
+regresiones de llamada mixta con `byval`, retorno de record de tres bytes y
+llamadas escalares, incluidas sus pruebas de precompilacion y rechazos:
+A:/temp/nsc-t09-sysv-scalar-mixed-s8hwmdir,
+A:/temp/nsc-t09-sysv-r3-j4ectv54 y A:/temp/nsc-t09-sysv-prueba-1raha6lv.
+La muestra no certifica todas las firmas, retornos ni layouts; T09-003 y la
+tanda 9 siguen abiertos.
+
 ## Retorno escalar con records directos e indirectos
 
 Se contrasto una llamada que devuelve `int` y recibe `float`, un record de

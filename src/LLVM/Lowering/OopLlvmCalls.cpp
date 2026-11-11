@@ -916,7 +916,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         }
         if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
             (interop::abi_plan::isSysVIndirectRecordWithArguments(*imported->cppAbiPlan, imported->cAbiName) ||
-             interop::abi_plan::isSysVScalarReturnWithRecordArguments(*imported->cppAbiPlan, imported->cAbiName)))
+             (imported->cppSysVRecordArguments && interop::abi_plan::isSysVScalarReturnWithRecordArguments(*imported->cppAbiPlan, imported->cAbiName))))
         {
             const bool indirectReturn = interop::abi_plan::isSysVIndirectRecordWithArguments(*imported->cppAbiPlan, imported->cAbiName);
             const auto count = imported->cppAbiPlan->logicalParameters.size();
