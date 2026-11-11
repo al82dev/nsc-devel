@@ -1611,6 +1611,25 @@ opcional sin signo, prefijo de 64 bits y dos fijos
 `A:/temp/nsc-t09-sysv-indirecta-dos-fijos-pre-lbj2kgyh`). Otros prefijos y
 firmas siguen pendientes; T09-003 no esta cerrado.
 
+**Retornos `long long` y `float`:** los controles C y productores
+independientes comprobaron un entero negativo fuera de 32 bits y un flotante;
+NSC rechazaba ambas firmas
+(`A:/temp/nsc-t09-sysv-indirecta-variadica-retorno-long-utbho47t`,
+`A:/temp/nsc-t09-sysv-indirecta-variadica-retorno-float-xrc_bku4`). Tras emitir
+y reconstruir los retornos segun Clang pasaron las matrices C/NS estatica/DLL
+O0-O3 (`A:/temp/nsc-t09-sysv-indirecta-retorno-long-matriz-927opop6`,
+`A:/temp/nsc-t09-sysv-indirecta-retorno-float-matriz-6g4bb1wn`) y plantillas
+sin encabezado, cache y rechazos de variantes
+(`A:/temp/nsc-t09-sysv-indirecta-retorno-long-pre-wuxx2nxg`,
+`A:/temp/nsc-t09-sysv-indirecta-retorno-float-pre-l5kfv675`). Pasaron cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones precompiladas de retornos
+`ulong`, `double` y record fijo de tres enteros
+(`A:/temp/nsc-t09-sysv-indirecta-retorno-ulong-pre-0xt6pmzj`,
+`A:/temp/nsc-t09-sysv-indirecta-retorno-double-pre-x35jfu73`,
+`A:/temp/nsc-t09-sysv-indirecta-fijo-tres-pre-hl9tlfzt`). Otros retornos y
+firmas siguen pendientes; T09-003 no esta cerrado.
+
 **Retornos sin signo de 32 y 64 bits:** los controles C y productores
 independientes comprobaron valores con bit alto activado; NSC rechazaba ambas
 firmas (`A:/temp/nsc-t09-sysv-indirecta-variadica-retorno-uint-3zh80n2m`,

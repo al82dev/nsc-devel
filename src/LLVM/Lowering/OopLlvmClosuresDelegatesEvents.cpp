@@ -1192,7 +1192,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         };
         if (externC && node->cppVariadicCallPlan &&
             (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint" || node->typeKey == "builtin:ulong" ||
-             node->typeKey == "builtin:double" || node->typeKey == "builtin:void" || node->typeKey == "builtin:int*") &&
+             node->typeKey == "builtin:long" || node->typeKey == "builtin:float" || node->typeKey == "builtin:double" ||
+             node->typeKey == "builtin:void" || node->typeKey == "builtin:int*") &&
             node->argumentCount >= 2 && node->argumentCount <= 1025 &&
             node->argumentTypeKeys.size() == node->argumentCount &&
             std::any_of(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), recordArgument) &&
@@ -1210,8 +1211,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 plan.arguments.size() != node->argumentCount ||
                 ((node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") && (plan.physicalReturn.kind != TypeKind::Integer ||
                                                      plan.physicalReturn.widthOrCount != 32)) ||
-                (node->typeKey == "builtin:ulong" && (plan.physicalReturn.kind != TypeKind::Integer ||
+                ((node->typeKey == "builtin:ulong" || node->typeKey == "builtin:long") && (plan.physicalReturn.kind != TypeKind::Integer ||
                                                        plan.physicalReturn.widthOrCount != 64)) ||
+                (node->typeKey == "builtin:float" && plan.physicalReturn.kind != TypeKind::Float) ||
                 (node->typeKey == "builtin:double" && plan.physicalReturn.kind != TypeKind::Double) ||
                 (node->typeKey == "builtin:void" && plan.physicalReturn.kind != TypeKind::Void) ||
                 (node->typeKey == "builtin:int*" && plan.physicalReturn.kind != TypeKind::Pointer))
@@ -1321,7 +1323,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             delegateValue = checkedReceiver(delegateValue, error);
             if (!delegateValue) return nullptr;
             LLVMTypeRef returnType = (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") ? LLVMInt32TypeInContext(context_) :
-                node->typeKey == "builtin:ulong" ? LLVMInt64TypeInContext(context_) :
+                (node->typeKey == "builtin:ulong" || node->typeKey == "builtin:long") ? LLVMInt64TypeInContext(context_) :
+                node->typeKey == "builtin:float" ? LLVMFloatTypeInContext(context_) :
                 node->typeKey == "builtin:double" ? LLVMDoubleTypeInContext(context_) :
                 node->typeKey == "builtin:int*" ? LLVMPointerTypeInContext(context_, 0) : LLVMVoidTypeInContext(context_);
             LLVMTypeRef functionType = LLVMFunctionType(returnType, fixedTypes.data(),
