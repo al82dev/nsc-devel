@@ -834,7 +834,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
 
         const auto* imported = found->second.mirFunction;
         if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
-            interop::abi_plan::isSysVIndirect24ByteRoundTrip(*imported->cppAbiPlan, imported->cAbiName))
+            interop::abi_plan::isSysVIndirectByteAlignedRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName))
         {
             if (node->children.size() != 1 || node->referenceResult || node->returnsAssignedValue ||
                 node->children[0]->typeKey != node->typeKey ||

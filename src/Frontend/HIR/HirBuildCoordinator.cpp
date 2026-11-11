@@ -1834,8 +1834,9 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                      (interop::abi_plan::isSysVTwoIntegerRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName) &&
                       *symbol.cppReturnType->sizeBits == 64 +
                           symbol.cppAbiPlan->physicalReturn.elements[1].widthOrCount) ||
-                     (*symbol.cppReturnType->sizeBits == 192 &&
-                      interop::abi_plan::isSysVIndirect24ByteRoundTrip(*symbol.cppAbiPlan, symbol.mangledName)));
+                     (*symbol.cppReturnType->sizeBits > 128 && *symbol.cppReturnType->sizeBits % 8 == 0 &&
+                      symbol.cppReturnType->alignmentBits == 8 &&
+                      interop::abi_plan::isSysVIndirectByteAlignedRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName)));
                 if (function.isVariadic || ((!supportedReturn || !supportedParameters) && !supportedRecord))
                 {
                     error = "sysv_abi currently supports only selected non-variadic scalar and pointer signatures for " +

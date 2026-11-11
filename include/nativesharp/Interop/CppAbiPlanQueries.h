@@ -43,7 +43,7 @@ inline bool isSysVTwoI64RecordRoundTrip(const Plan& plan, std::string_view symbo
     return isSysVTwoIntegerRecordRoundTrip(plan, symbol) &&
         plan.physicalReturn.elements[1].widthOrCount == 64;
 }
-inline bool isSysVIndirect24ByteRoundTrip(const Plan& plan, std::string_view symbol) noexcept
+inline bool isSysVIndirectByteAlignedRecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
 {
     if (plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||

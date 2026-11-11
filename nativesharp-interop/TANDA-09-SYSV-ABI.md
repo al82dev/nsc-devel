@@ -227,3 +227,17 @@ A:/temp/nsc-t09-sysv-r16-1rgtxzv0. La prueba negativa incorporada en esta
 sesion se conserva con un record de 20 bytes, todavia no admitido; paso junto
 con escalares y el rechazo de callbacks en A:/temp/nsc-t09-sysv-prueba-ym6ix5hw.
 No se certifican otras alineaciones, layouts, tamanos indirectos ni firmas.
+
+Ampliacion indirecta con alineacion de un byte: Clang confirmo `sret` alineado
+a 1 y `byval` alineado a 8 para las muestras de 17, 20 y 32 bytes en
+A:/temp/nsc-t09-sysv-pequenos-1vdsqla1. Los controles C pasaron y NSC las
+rechazo antes del cambio; posteriormente pasaron las ocho comparaciones por
+tamano, los atributos de declaracion y llamada, y una plantilla precompilada
+sin encabezado en estatica O0: A:/temp/nsc-t09-sysv-r17-6zkp3kpo,
+A:/temp/nsc-t09-sysv-r20-phot1xzy y A:/temp/nsc-t09-sysv-r32-jc6neitb.
+La regresion de 24 bytes paso en A:/temp/nsc-t09-sysv-r24-e3ugwimq. La prueba
+de 20 bytes alineada a cuatro sigue rechazada, junto con callbacks, en
+A:/temp/nsc-t09-sysv-prueba-v0mutgsi. La sonda de Clang y el control de
+metadatos, incluido un plan con alineacion incompatible, pasaron en
+A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log. Las muestras
+no certifican otros layouts, alineaciones ni firmas; T09-003 permanece abierto.

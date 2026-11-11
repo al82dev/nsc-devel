@@ -1708,11 +1708,17 @@ bool checkDependencyTypeCodec()
     indirectPlan->physicalParameters.push_back(indirectArgument);
     recordFunction.declaration.abiPlan = indirectPlan;
     recordFunction.declaration.returnType.sizeBits = 192;
+    recordFunction.declaration.returnType.alignmentBits = 8;
     recordFunction.declaration.parameters[0].type.sizeBits = 192;
+    recordFunction.declaration.parameters[0].type.alignmentBits = 8;
     ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
         decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
-        abi_plan::isSysVIndirect24ByteRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
+        abi_plan::isSysVIndirectByteAlignedRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
         "C dependency function retains the indirect SysV record plan");
+    recordFunction.declaration.returnType.alignmentBits = 32;
+    unchangedRecord = {42};
+    ok &= expect(!encodeCDependencyFunction(recordFunction, unchangedRecord, error) &&
+        unchangedRecord == std::vector<std::uint8_t>{42}, "indirect SysV plan rejects a conflicting record alignment");
     if (!functionBytes.empty()) functionBytes.pop_back();
     decoded.moduleName = "sentinel";
     ok &= expect(!decodeCDependencyFunction(functionBytes, decoded, error) && decoded.moduleName == "sentinel",

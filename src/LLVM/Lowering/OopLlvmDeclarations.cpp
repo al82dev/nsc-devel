@@ -231,7 +231,7 @@ bool OopLlvmImplementation::declareFunction(
                     function.returnTypeKey);
             }
             if (function.cppSysVCall && function.cppAbiPlan &&
-                interop::abi_plan::isSysVIndirect24ByteRoundTrip(*function.cppAbiPlan, function.cAbiName))
+                interop::abi_plan::isSysVIndirectByteAlignedRecordRoundTrip(*function.cppAbiPlan, function.cAbiName))
             {
                 LLVMTypeRef carrier = llvmType(function.returnTypeKey, error);
                 if (!carrier) return false;
