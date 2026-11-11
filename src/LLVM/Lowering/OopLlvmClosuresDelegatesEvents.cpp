@@ -1284,19 +1284,25 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 }
                 if (logical.passing != Passing::Direct || logical.physicalCount != 2 ||
                     physical != arguments.size() || physical + 1 >= plan.physicalParameters.size() ||
-                    plan.physicalParameters[physical].type.kind != TypeKind::Double ||
                     plan.physicalParameters[physical + 1].type.kind != TypeKind::Integer ||
-                    plan.physicalParameters[physical + 1].type.widthOrCount != 32 ||
-                    layout->size != 16 || layout->alignment != 8)
+                    plan.physicalParameters[physical + 1].type.widthOrCount != 32)
                     return failValue(error, "sysv_abi variadic function pointer record plan is not supported");
-                LLVMValueRef slot = entryBlockAlloca(carrier, 8, "sysv.varptr.record");
+                const bool mixed = layout->size == 16 && layout->alignment == 8 &&
+                    plan.physicalParameters[physical].type.kind == TypeKind::Double;
+                const bool threeIntegers = !fixedRecord && layout->size == 12 && layout->alignment == 4 &&
+                    plan.physicalParameters[physical].type.kind == TypeKind::Integer &&
+                    plan.physicalParameters[physical].type.widthOrCount == 64;
+                if (!mixed && !threeIntegers)
+                    return failValue(error, "sysv_abi variadic function pointer record pieces are not supported");
+                const auto alignment = static_cast<unsigned>(layout->alignment);
+                LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "sysv.varptr.record");
                 LLVMValueRef store = LLVMBuildStore(builder_, record, slot);
-                LLVMSetAlignment(store, 8);
-                LLVMValueRef first = LLVMBuildLoad2(builder_, LLVMDoubleTypeInContext(context_), slot, "sysv.varptr.first");
+                LLVMSetAlignment(store, alignment);
+                LLVMValueRef first = LLVMBuildLoad2(builder_, mixed ? LLVMDoubleTypeInContext(context_) : LLVMInt64TypeInContext(context_), slot, "sysv.varptr.first");
                 LLVMValueRef second = LLVMBuildLoad2(builder_, LLVMInt32TypeInContext(context_),
                     byteOffset(slot, 8, "sysv.varptr.second.addr"), "sysv.varptr.second");
-                LLVMSetAlignment(first, 8);
-                LLVMSetAlignment(second, 8);
+                LLVMSetAlignment(first, alignment);
+                LLVMSetAlignment(second, alignment);
                 if (fixedRecord)
                 {
                     fixedTypes.push_back(LLVMDoubleTypeInContext(context_));

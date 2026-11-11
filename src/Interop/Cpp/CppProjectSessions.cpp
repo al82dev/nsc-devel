@@ -598,7 +598,8 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         if (!imported || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
             !imported->deferredImportError.empty() || !imported->objectLayout || !imported->clangUsr ||
             imported->origin != frontend::CppImportedTypeOrigin::CStruct ||
-            !((imported->objectLayout->sizeBytes == 16 && imported->objectLayout->alignmentBytes == 8) ||
+            !((imported->objectLayout->sizeBytes == 12 && imported->objectLayout->alignmentBytes == 4) ||
+              (imported->objectLayout->sizeBytes == 16 && imported->objectLayout->alignmentBytes == 8) ||
               (imported->objectLayout->sizeBytes == 20 && imported->objectLayout->alignmentBytes == 4))) return {};
         auto found = std::find_if(selectedRecords.begin(), selectedRecords.end(),
             [&](const auto& value) { return value.identity == identity; });
@@ -722,7 +723,9 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
             if (first.bitWidth || first.type.kind != CppTypeKind::Floating || first.type.canonicalSpelling != "double" ||
                 first.offsetBits != 0 || second.bitWidth || !isInt(second.type) || second.offsetBits != 64) return {};
         }
-        else if (record.sizeBits == 160 && record.alignmentBits == 32 && record.fields.size() == 5)
+        else if (record.alignmentBits == 32 &&
+                 ((record.sizeBits == 96 && record.fields.size() == 3) ||
+                  (record.sizeBits == 160 && record.fields.size() == 5)))
         {
             for (std::size_t i = 0; i < record.fields.size(); ++i)
                 if (record.fields[i].bitWidth || !isInt(record.fields[i].type) ||

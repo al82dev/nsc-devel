@@ -1644,6 +1644,22 @@ repetida, dos parametros fijos y record en pila
 `A:/temp/nsc-t09-sysv-indirecta-record-agotado-pre-t4pu_hsv`). Otros layouts
 y `byval` fijo siguen pendientes; T09-003 no esta cerrado.
 
+**Record opcional de tres enteros:** el control C y productor independiente
+comprobaron un record mixto fijo seguido de piezas `i64`/`i32`; NSC rechazaba
+la firma (`A:/temp/nsc-t09-sysv-indirecta-variadica-opcional-tres-j_4mzvhr`).
+Tras emitir y reconstruir el record opcional segun Clang pasaron ocho
+comparaciones C/NS estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-opcional-tres-matriz-5_w3uukp`) y plantilla
+sin encabezado, cache y rechazos independientes de variantes del fijo y del
+opcional (`A:/temp/nsc-t09-sysv-indirecta-opcional-tres-pre-mp80zwyy`).
+Pasaron cuatro sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones precompiladas de records
+fijos distintos, `byval` y repetidos
+(`A:/temp/nsc-t09-sysv-indirecta-fijo-distinto-pre-u676nu62`,
+`A:/temp/nsc-t09-sysv-indirecta-fijo-byval-pre-s_8iwhat`,
+`A:/temp/nsc-t09-sysv-indirecta-record-fijo-pre-rdsl5x9q`). El mismo record
+como parametro fijo y otros layouts siguen pendientes; T09-003 no esta cerrado.
+
 **Record fijo `byval`:** posteriormente el control C y un productor
 independiente comprobaron un record fijo de cinco enteros en pila y un record
 mixto opcional; NSC rechazaba el plan
