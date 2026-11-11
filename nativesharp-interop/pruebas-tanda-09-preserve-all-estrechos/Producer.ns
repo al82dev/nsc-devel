@@ -1,0 +1,3 @@
+namespace T09 { public class RegBridge { public static int Run<T>(T unused) { if (t09_regcall((sbyte)-7)!=(sbyte)-6 || t09_uc((byte)250)!=(byte)251 || t09_sh((short)-1000)!=(short)-999 || t09_us((ushort)65000)!=(ushort)65001) return 1;
+  T09SC a=t09_get_sc(); T09UC b=t09_get_uc(); T09SH c=t09_get_sh(); T09US d=t09_get_us();
+  return a((sbyte)-7)==(sbyte)-6 && b((byte)250)==(byte)251 && c((short)-1000)==(short)-999 && d((ushort)65000)==(ushort)65001 ? 0 : 2; } } }

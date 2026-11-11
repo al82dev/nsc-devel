@@ -150,3 +150,23 @@ y 16 consumidores precompilados con y sin encabezado
 de retornos `void` y `int*` (A:/temp/nsc-t09-preserve-retornos-k7m3lffp) y de
 conversiones incompatibles (A:/temp/nsc-t09-preserve-indirecta-conversiones-bh0hv6l1).
 Otros tipos de retorno permanecen pendientes; T09-003 y la tanda 9 siguen abiertos.
+
+## Enteros estrechos
+
+Se probaron parametros y retornos `signed char`, `unsigned char`, `short` y
+`unsigned short` en llamadas C directas e indirectas con ambas convenciones.
+Los controles C pasaron en A:/temp/nsc-t09-preserve-most-estrechos-40txmmba y
+A:/temp/nsc-t09-preserve-all-estrechos-pdni4q3m; NSC rechazaba las firmas en
+A:/temp/nsc-t09-preserve-most-estrechos-2yar3821 y
+A:/temp/nsc-t09-preserve-all-estrechos-d91r4087. Clang emitio `i8` e `i16`
+sin extensiones adicionales en A:/temp/t09-preserve-most-estrechos-oracle.ll
+y A:/temp/t09-preserve-all-estrechos-oracle.ll.
+
+Pasaron ocho comparaciones C/NS por convencion, con verificacion LLVM y cache
+(A:/temp/nsc-t09-preserve-most-estrechos-djittsme y
+A:/temp/nsc-t09-preserve-all-estrechos-_grp1d38), y 16 consumidores
+precompilados por convencion con y sin encabezado
+(A:/temp/nsc-t09-preserve-most-estrechos-precompilado-ib4ms_8r y
+A:/temp/nsc-t09-preserve-all-estrechos-precompilado-pprvq_kq). Tambien paso la
+regresion booleana (A:/temp/nsc-t09-preserve-bool-nfx__k8b). Otras firmas y
+tipos quedan pendientes; T09-003 y la tanda 9 siguen abiertos.

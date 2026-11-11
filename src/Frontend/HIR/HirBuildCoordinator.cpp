@@ -1813,14 +1813,17 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             function.cppSysVCall = symbol.cppCallingConvention == "sysv_abi";
             const auto preserveParameter = [](const std::string& type) {
                 return type == "builtin:int" || type == "builtin:uint" || type == "builtin:long" ||
-                    type == "builtin:short" || type == "builtin:float" || type == "builtin:double" ||
+                    type == "builtin:sbyte" || type == "builtin:byte" || type == "builtin:short" ||
+                    type == "builtin:ushort" || type == "builtin:float" || type == "builtin:double" ||
                     type == "builtin:bool" || type == "builtin:int*";
             };
             if ((function.cppPreserveMost || function.cppPreserveAll) &&
                 (function.isVariadic || (function.returnTypeKey != "builtin:int" &&
                  function.returnTypeKey != "builtin:long" && function.returnTypeKey != "builtin:double" &&
                  function.returnTypeKey != "builtin:void" && function.returnTypeKey != "builtin:int*" &&
-                 function.returnTypeKey != "builtin:bool") ||
+                 function.returnTypeKey != "builtin:bool" && function.returnTypeKey != "builtin:sbyte" &&
+                 function.returnTypeKey != "builtin:byte" && function.returnTypeKey != "builtin:short" &&
+                 function.returnTypeKey != "builtin:ushort") ||
                  !std::ranges::all_of(function.parameterTypeKeys, preserveParameter)))
             {
                 error = symbol.cppCallingConvention + " does not yet support this signature for " + symbol.mangledName;
