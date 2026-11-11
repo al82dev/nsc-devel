@@ -934,6 +934,19 @@ transporte y las regresiones C/SysV (`A:/temp/t09-transport-directed/`,
 `A:/temp/nsc-t09-sysv-padded-pair-id-t4nwi_td`). Records anidados, atributos
 combinados y otras formas siguen pendientes; T09-003 no se cierra.
 
+La reconstruccion admite tambien campos de arreglos C de tamano conocido con
+elementos escalares, comprobando dimensiones, tamano, alineacion y el tipo de
+cada elemento. La muestra con dos `double` compara las dos piezas en registros
+y el contador AL de Clang y NativeSharp; el control directo pasaba y la
+plantilla precompilada se rechazaba antes del cambio
+(`A:/temp/nsc-t09-sysv-varargs-pzrssr6d`). Pasaron despues las ocho variantes
+estatica/DLL O0–O3, plantilla sin encabezado, HIR/MIR, LLVM, cache y rechazo
+de dimensiones inconsistentes (`A:/temp/nsc-t09-sysv-varargs-e9zkdcrx`,
+`A:/temp/t09-transport-directed/`). Tambien pasaron las regresiones C/SysV
+(`A:/temp/nsc-t09-llamadas-0uyfvhht`, `A:/temp/nsc-t09-sysv-prueba-d00229lp`,
+`A:/temp/nsc-t09-sysv-padded-pair-id-c5m49yb5`). Esta evidencia cubre el
+arreglo probado; records anidados y otras formas continuan abiertos.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin

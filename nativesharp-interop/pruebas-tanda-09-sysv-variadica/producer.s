@@ -383,3 +383,22 @@ sysv_record_packed_ptr:
 fail_record_packed_ptr:
     xorl %eax, %eax
     ret
+.globl sysv_record_array
+sysv_record_array:
+    cmpl $1, %edi
+    jne fail_record_array
+    cmpb $2, %al
+    jb fail_record_array
+    movq %xmm0, %r8
+    movabsq $0x4002000000000000, %r9
+    cmpq %r9, %r8
+    jne fail_record_array
+    movq %xmm1, %r8
+    movabsq $0x400c000000000000, %r9
+    cmpq %r9, %r8
+    jne fail_record_array
+    movl $1, %eax
+    ret
+fail_record_array:
+    xorl %eax, %eax
+    ret

@@ -720,6 +720,7 @@ int main(int argc, char** argv) {
         "struct Bits { unsigned int x : 1; };\n"
         "struct PointerField { int *x; };\n"
         "struct ArrayField { int x[2]; };\n"
+        "struct AliasArray { Number x[2]; };\n"
         "struct Forward;\n"
         "#pragma pack(push, 1)\n"
         "struct PragmaPacked { int x; };\n"
@@ -731,7 +732,8 @@ int main(int argc, char** argv) {
         attributeOrigin->cRecordHasPlainReplaySyntax("QualifiedField") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("Bits") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("PointerField") != false ||
-        attributeOrigin->cRecordHasPlainReplaySyntax("ArrayField") != false ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("ArrayField") != true ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("AliasArray") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("Forward") ||
         attributeOrigin->cRecordHasPlainReplaySyntax("PragmaPacked") != false ||
         attributeOrigin->cRecordHasPackedReplaySyntax("Plain") != false ||

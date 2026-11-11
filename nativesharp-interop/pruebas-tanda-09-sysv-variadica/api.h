@@ -12,6 +12,7 @@ typedef struct T09VarLarge { long long x; long long y; long long z; } T09VarLarg
 typedef struct __attribute__((packed)) T09VarPacked { double x; int y; } T09VarPacked;
 typedef struct __attribute__((packed, aligned(2))) T09VarUnobserved { double x; int y; } T09VarUnobserved;
 typedef struct __attribute__((packed)) T09VarPackedValue { signed char tag; double value; } T09VarPackedValue;
+typedef struct T09VarArray { double values[2]; } T09VarArray;
 API_STORAGE __attribute__((sysv_abi)) int sysv_ptrs(int count, ...);
 API_STORAGE __attribute__((sysv_abi)) int sysv_empty(int count, ...);
 API_STORAGE __attribute__((sysv_abi)) int sysv_floatspill(int count, ...);
@@ -29,3 +30,4 @@ API_STORAGE __attribute__((sysv_abi)) int sysv_record_rptr(int count, ...);
 API_STORAGE __attribute__((sysv_abi)) T09VarRecord *sysv_record_fixed_rptr(T09VarRecord *fixed, ...);
 API_STORAGE __attribute__((sysv_abi)) int sysv_record_packed(int count, ...);
 API_STORAGE __attribute__((sysv_abi)) int sysv_record_packed_ptr(int count, ...);
+API_STORAGE __attribute__((sysv_abi)) int sysv_record_array(int count, ...);

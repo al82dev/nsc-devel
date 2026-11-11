@@ -842,6 +842,18 @@ void findComparableRecords(const clang::DeclContext& context, std::string_view n
     }
 }
 
+bool hasReplayBuiltinOrArray(clang::QualType type, unsigned depth = 0)
+{
+    if (depth > 16 || type.isNull() || type.hasQualifiers()) return false;
+    if (const auto* array = llvm::dyn_cast<clang::ConstantArrayType>(type.getTypePtr()))
+    {
+        const auto& count = array->getSize();
+        return count.getActiveBits() <= 32 && count.getZExtValue() > 0 && count.getZExtValue() <= 1024 &&
+            hasReplayBuiltinOrArray(array->getElementType(), depth + 1);
+    }
+    return llvm::isa<clang::BuiltinType>(type.getTypePtr());
+}
+
 class ClangSession final : public CppInteropSession
 {
 public:
@@ -1034,7 +1046,7 @@ public:
         {
             const auto type = field->getType();
             if (field->hasAttrs() || field->isBitField() || field->isAnonymousStructOrUnion() ||
-                type.isNull() || type.hasQualifiers() || !llvm::isa<clang::BuiltinType>(type.getTypePtr()))
+                !hasReplayBuiltinOrArray(type))
                 return false;
         }
         return true;
@@ -1056,7 +1068,7 @@ public:
         {
             const auto type = field->getType();
             if (field->hasAttrs() || field->isBitField() || field->isAnonymousStructOrUnion() ||
-                type.isNull() || type.hasQualifiers() || !llvm::isa<clang::BuiltinType>(type.getTypePtr()))
+                !hasReplayBuiltinOrArray(type))
                 return false;
         }
         return true;

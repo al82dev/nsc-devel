@@ -79,6 +79,7 @@ const char* const kProbeHeader =
     "typedef int CIdInt;\n"
     "struct CIdRecord { int value; };\n"
     "struct __attribute__((packed)) CIdPacked { int value; };\n"
+    "struct CIdArray { double values[2]; };\n"
     "int __attribute__((sysv_abi)) cid_variadic(int, ...);\n"
     "struct CIdCarriers { int tag; union { int x; float f; struct { short z; }; }; struct { short y; }; unsigned : 1; };\n"
     "typedef struct { int raw; } CIdAnonRecord;\n"
@@ -1384,7 +1385,8 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
         "public static int Global<T>(T value) { return cid_global; } "
         "public static int Record<T>(T value) { CIdRecord record; return 0; } "
         "public static int Packed<T>(T value) { CIdPacked record; return 0; } "
-        "public static int Variadic<T>(T value) { return cid_variadic(1, 2); } } }\n";
+        "public static int Variadic<T>(T value) { return cid_variadic(1, 2); } "
+        "public static int Array<T>(T value) { CIdArray record; return 0; } } }\n";
     const auto project = writeProject(directory / "generic-publish", "CGenericPublish", templateSource);
     const auto header = std::filesystem::absolute(directory / "a.h");
     if (project.empty() || !writeText(project,
@@ -1413,7 +1415,7 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
     metadata.formatMinor = 46;
     for (const auto& record : compilation.genericModel()->templates())
         if (record.name == "Test" || record.name == "Call" || record.name == "Global" || record.name == "Record" ||
-            record.name == "Packed" || record.name == "Variadic")
+            record.name == "Packed" || record.name == "Variadic" || record.name == "Array")
         {
             LibraryMetadataGenericTemplate item;
             item.canonicalKey = record.canonicalKey;
@@ -1490,6 +1492,17 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
     });
     if (!expect(packedRecord != records.end() && !packedRecord->plainReplaySyntax && packedRecord->packedReplaySyntax,
                 "producer captures packed syntax without attesting it as plain")) return false;
+    const auto arrayRecord = std::find_if(records.begin(), records.end(), [](const auto& record) {
+        return record.name == "CIdArray";
+    });
+    if (!expect(arrayRecord != records.end() && arrayRecord->plainReplaySyntax &&
+                arrayRecord->fields.size() == 1 && arrayRecord->fields[0].type.arrayCount == 2,
+                "producer preserves a plain fixed-array field for replay")) return false;
+    auto brokenArray = *arrayRecord;
+    brokenArray.fields[0].type.arrayCount = 3;
+    std::vector<std::uint8_t> rejectedArray;
+    if (!expect(!metadata_detail::encodeCRecordCatalog(std::span(&brokenArray, 1), rejectedArray, error),
+                "inconsistent replay array dimensions are rejected")) return false;
     auto contradictoryRecord = *packedRecord;
     contradictoryRecord.plainReplaySyntax = true;
     std::vector<std::uint8_t> rejectedRecord;

@@ -90,7 +90,7 @@ public:
     // Initial projection of named, non-dependent records; nullopt means closed.
     virtual std::optional<std::vector<CppRecordDeclaration>> recordsSnapshot() const = 0;
     // Live C AST observation only: true means a unique, complete, plain record
-    // with unqualified builtin fields and no declaration attributes. It is not
+    // with unqualified builtin fields or their fixed arrays, and no declaration attributes. It is not
     // by itself an ABI-equivalence proof or persisted metadata.
     virtual std::optional<bool> cRecordHasPlainReplaySyntax(std::string_view) const { return std::nullopt; }
     // As above, for a C record with only Clang's packed attribute.

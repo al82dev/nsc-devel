@@ -3,6 +3,7 @@
 #include "nativesharp/Interop/CppSemanticRecord.h"
 
 #include <optional>
+#include <limits>
 #include <string>
 #include <string_view>
 
@@ -29,16 +30,34 @@ inline std::optional<std::string> makeSimpleCRecordAbiReplay(const CppCRecordSna
         const auto& type = field.type;
         if (!field.offsetBits || field.bitWidth || field.isAnonymousCarrier || !type.sizeBits ||
             !type.alignmentBits || type.isConst || type.isVolatile || type.isRestrict) return std::nullopt;
-        const auto spelling = std::string_view(type.canonicalSpelling);
-        const bool signedType = type.kind == CppTypeKind::SignedInteger &&
+        const CppType* element = &type;
+        std::string dimensions;
+        unsigned depth = 0;
+        while (element->kind == CppTypeKind::Array)
+        {
+            if (++depth > 16 || !element->arrayCount || *element->arrayCount == 0 ||
+                *element->arrayCount > 1024 || element->isIncompleteArray || !element->element ||
+                !element->sizeBits || !element->alignmentBits || element->isConst ||
+                element->isVolatile || element->isRestrict) return std::nullopt;
+            if (!element->element->sizeBits || !element->element->alignmentBits ||
+                *element->element->sizeBits > std::numeric_limits<std::uint64_t>::max() / *element->arrayCount ||
+                *element->element->sizeBits * *element->arrayCount != *element->sizeBits ||
+                element->element->alignmentBits != element->alignmentBits) return std::nullopt;
+            dimensions += "[" + std::to_string(*element->arrayCount) + "]";
+            element = element->element.get();
+        }
+        if (!element->sizeBits || !element->alignmentBits || element->isConst ||
+            element->isVolatile || element->isRestrict) return std::nullopt;
+        const auto spelling = std::string_view(element->canonicalSpelling);
+        const bool signedType = element->kind == CppTypeKind::SignedInteger &&
             (spelling == "signed char" || spelling == "short" || spelling == "int" ||
              spelling == "long" || spelling == "long long");
-        const bool unsignedType = type.kind == CppTypeKind::UnsignedInteger &&
+        const bool unsignedType = element->kind == CppTypeKind::UnsignedInteger &&
             (spelling == "unsigned char" || spelling == "unsigned short" || spelling == "unsigned int" ||
              spelling == "unsigned long" || spelling == "unsigned long long");
-        const bool realType = type.kind == CppTypeKind::Floating && (spelling == "float" || spelling == "double");
+        const bool realType = element->kind == CppTypeKind::Floating && (spelling == "float" || spelling == "double");
         if (!signedType && !unsignedType && !realType) return std::nullopt;
-        result += type.canonicalSpelling + " __nsc_f" + std::to_string(i) + ";\n";
+        result += element->canonicalSpelling + " __nsc_f" + std::to_string(i) + dimensions + ";\n";
     }
     result += "};\n";
     return result;
@@ -54,14 +73,21 @@ inline bool matchesSimpleCRecordAbiReplay(const CppCRecordSnapshot& expected,
         actual.name != tag || actual.kind != expected.kind ||
         actual.sizeBits != expected.sizeBits || actual.alignmentBits != expected.alignmentBits ||
         actual.fields.size() != expected.fields.size()) return false;
+    const auto sameType = [](const auto& self, const CppType& left, const CppType& right, unsigned depth) -> bool {
+        if (depth > 16 || left.kind != right.kind || left.canonicalSpelling != right.canonicalSpelling ||
+            left.sizeBits != right.sizeBits || left.alignmentBits != right.alignmentBits ||
+            left.isConst != right.isConst || left.isVolatile != right.isVolatile || left.isRestrict != right.isRestrict ||
+            left.arrayCount != right.arrayCount || left.isIncompleteArray != right.isIncompleteArray) return false;
+        if (left.kind == CppTypeKind::Array)
+            return left.element && right.element && self(self, *left.element, *right.element, depth + 1);
+        return true;
+    };
     for (std::size_t i = 0; i < expected.fields.size(); ++i)
     {
         const auto& left = expected.fields[i];
         const auto& right = actual.fields[i];
         if (right.name != "__nsc_f" + std::to_string(i) || right.bitWidth || right.isAnonymousCarrier ||
-            left.offsetBits != right.offsetBits || left.type.kind != right.type.kind ||
-            left.type.canonicalSpelling != right.type.canonicalSpelling ||
-            left.type.sizeBits != right.type.sizeBits || left.type.alignmentBits != right.type.alignmentBits)
+            left.offsetBits != right.offsetBits || !sameType(sameType, left.type, right.type, 0))
             return false;
     }
     return true;
