@@ -705,6 +705,54 @@ int main(int argc, char** argv) {
         if (!std::holds_alternative<std::unique_ptr<CppInteropSession>>(result)) return {};
         return std::move(std::get<std::unique_ptr<CppInteropSession>>(result));
     };
+    auto pointerOrigin = openRecordSession(
+        "typedef struct PointerRecord { int x, y, z; } PointerRecord; "
+        "typedef int (__attribute__((sysv_abi)) *PointerFn)(PointerRecord); "
+        "typedef int (__attribute__((sysv_abi)) *PointerVarFn)(int, ...); "
+        "typedef int (*PointerCdeclFn)(PointerRecord); "
+        "typedef struct PointerIncomplete PointerIncomplete; "
+        "typedef int (__attribute__((sysv_abi)) *PointerIncompleteFn)(PointerIncomplete); "
+        "int __attribute__((sysv_abi)) pointer_real(PointerRecord);");
+    if (!pointerOrigin) return 251;
+    const auto pointerAliases = pointerOrigin->typeAliasesSnapshot();
+    const auto pointerFunctions = pointerOrigin->freeFunctionsSnapshot();
+    if (!pointerAliases || !pointerFunctions) return 252;
+    std::string pointerSpelling, variadicPointerSpelling, cdeclPointerSpelling, incompletePointerSpelling, realSpelling;
+    for (const auto& alias : *pointerAliases)
+    {
+        if (alias.name == "PointerFn") pointerSpelling = alias.underlyingType.canonicalSpelling;
+        if (alias.name == "PointerVarFn") variadicPointerSpelling = alias.underlyingType.canonicalSpelling;
+        if (alias.name == "PointerCdeclFn") cdeclPointerSpelling = alias.underlyingType.canonicalSpelling;
+        if (alias.name == "PointerIncompleteFn") incompletePointerSpelling = alias.underlyingType.canonicalSpelling;
+    }
+    for (const auto& function : *pointerFunctions)
+        if (function.name == "pointer_real") realSpelling = function.canonicalFunctionType;
+    if (pointerSpelling.empty() || variadicPointerSpelling.empty() || cdeclPointerSpelling.empty() ||
+        incompletePointerSpelling.empty() || realSpelling.empty()) return 253;
+    const auto indirectPlan = pointerOrigin->cFunctionPointerAbiPlan("PointerFn", pointerSpelling);
+    const auto realPlan = pointerOrigin->cFunctionAbiPlan("pointer_real", realSpelling);
+    if (!indirectPlan || !realPlan || indirectPlan->symbol != "__nsc_pointer_abi_probe" ||
+        indirectPlan->callingConvention != realPlan->callingConvention ||
+        indirectPlan->targetTriple != realPlan->targetTriple || indirectPlan->dataLayout != realPlan->dataLayout ||
+        indirectPlan->physicalReturn.kind != realPlan->physicalReturn.kind ||
+        indirectPlan->physicalReturn.widthOrCount != realPlan->physicalReturn.widthOrCount ||
+        indirectPlan->logicalParameters.size() != 1 || indirectPlan->physicalParameters.size() != 2 ||
+        realPlan->logicalParameters.size() != 1 || realPlan->physicalParameters.size() != 2 ||
+        indirectPlan->logicalParameters[0].physicalCount != realPlan->logicalParameters[0].physicalCount ||
+        indirectPlan->physicalParameters[0].type.widthOrCount != 64 ||
+        indirectPlan->physicalParameters[1].type.widthOrCount != 32 ||
+        indirectPlan->physicalParameters[0].type.kind != realPlan->physicalParameters[0].type.kind ||
+        indirectPlan->physicalParameters[1].type.kind != realPlan->physicalParameters[1].type.kind) return 254;
+    if (pointerOrigin->cFunctionPointerAbiPlan("PointerFn", "different") ||
+        pointerOrigin->cFunctionPointerAbiPlan("Missing", pointerSpelling) ||
+        pointerOrigin->cFunctionPointerAbiPlan("PointerVarFn", variadicPointerSpelling) ||
+        pointerOrigin->cFunctionPointerAbiPlan("PointerCdeclFn", cdeclPointerSpelling) ||
+        pointerOrigin->cFunctionPointerAbiPlan("PointerIncompleteFn", incompletePointerSpelling)) return 255;
+    const auto repeatedPointerPlan = pointerOrigin->cFunctionPointerAbiPlan("PointerFn", pointerSpelling);
+    const auto afterPointerFunctions = pointerOrigin->freeFunctionsSnapshot();
+    if (!repeatedPointerPlan || repeatedPointerPlan->physicalParameters.size() != 2 ||
+        !afterPointerFunctions || afterPointerFunctions->size() != pointerFunctions->size()) return 257;
+    if (!pointerOrigin->close().succeeded || pointerOrigin->cFunctionPointerAbiPlan("PointerFn", pointerSpelling)) return 256;
     auto equivalentOrigin = openRecordSession(
         "struct RF { double x; int y; }; struct R3 { unsigned char x, y, z; };");
     auto incompatibleOrigin = openRecordSession("struct RF { long long x; int y; };");

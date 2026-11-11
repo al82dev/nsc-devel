@@ -1154,6 +1154,21 @@ bytes. `finishDelegateInvoke` conserva la identidad y los argumentos, y el
 emisor indirecto aun no recibe ese plan. El rechazo debe permanecer hasta
 conciliar y probar esas etapas y sus equivalencias de tipos.
 
+La sesion Clang dispone ahora de una consulta experimental para un typedef C
+de puntero SysV no variadico observado, seleccionado por nombre y tipo
+canonico. Crea una declaracion sintetica interna con ese prototipo y copia el
+plan obtenido de Clang; el nombre sintetico no representa un simbolo enlazable
+ni autoriza por si solo una emision. La sonda compara el record de tres enteros
+con una declaracion real equivalente, incluidas piezas `i64`/`i32`, destino y
+convencion. Comprueba tambien consulta repetida sin agregar funciones al
+inventario, y rechaza nombre o tipo equivocados, firmas variadicas o cdecl,
+tipos incompletos y sesiones cerradas (`A:/temp/t09-transport-directed/`).
+La regresion de llamadas indirectas previas paso en estatica y DLL O0–O3 y
+plantilla precompilada (`A:/temp/nsc-t09-sysv-indirecta-matriz-76vyf2w2`).
+La consulta todavia no prueba la procedencia ni todos los atributos de una
+firma almacenada, no se transporta a HIR/MIR/NSMeta y no habilita el record
+indirecto: la reproduccion funcional permanece fallando.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin

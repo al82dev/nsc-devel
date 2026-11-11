@@ -940,6 +940,55 @@ public:
         std::string error;
         return abi_plan::copyPlan(*generator, *match, error);
     }
+    std::optional<abi_plan::Plan> cFunctionPointerAbiPlan(
+        std::string_view name, std::string_view canonicalType) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || name.empty() || canonicalType.empty()) return std::nullopt;
+        auto& context = ast_->getASTContext();
+        if (context.getLangOpts().CPlusPlus) return std::nullopt;
+        const clang::TypedefNameDecl* match = nullptr;
+        for (const auto* declaration : context.getTranslationUnitDecl()->decls())
+        {
+            const auto* candidate = llvm::dyn_cast<clang::TypedefNameDecl>(declaration);
+            if (!candidate || candidate->isImplicit() || candidate->hasAttrs() ||
+                candidate->getNameAsString() != name ||
+                candidate->getUnderlyingType().getCanonicalType().getAsString() != canonicalType) continue;
+            if (match && match->getCanonicalDecl() != candidate->getCanonicalDecl()) return std::nullopt;
+            match = candidate;
+        }
+        if (!match) return std::nullopt;
+        const auto pointer = match->getUnderlyingType().getCanonicalType();
+        if (pointer.hasQualifiers() || !pointer->isPointerType()) return std::nullopt;
+        const auto functionType = pointer->getPointeeType();
+        const auto* prototype = functionType->getAs<clang::FunctionProtoType>();
+        if (!prototype || prototype->isVariadic() || prototype->hasExtParameterInfos() ||
+            prototype->getCallConv() != clang::CC_X86_64SysV) return std::nullopt;
+        const auto resultType = prototype->getReturnType();
+        if (resultType.isNull() || (!resultType->isVoidType() && resultType->isIncompleteType())) return std::nullopt;
+        for (const auto type : prototype->param_types())
+            if (type.isNull() || type->isIncompleteType()) return std::nullopt;
+        auto* declaration = clang::FunctionDecl::Create(context, context.getTranslationUnitDecl(), {}, {},
+            &context.Idents.get("__nsc_pointer_abi_probe"), functionType,
+            context.getTrivialTypeSourceInfo(functionType), clang::SC_Extern);
+        if (!declaration) return std::nullopt;
+        std::vector<clang::ParmVarDecl*> parameters;
+        parameters.reserve(prototype->getNumParams());
+        for (const auto type : prototype->param_types())
+            parameters.push_back(clang::ParmVarDecl::Create(context, declaration, {}, {}, nullptr, type,
+                context.getTrivialTypeSourceInfo(type), clang::SC_None, nullptr));
+        declaration->setParams(parameters);
+        llvm::LLVMContext llvmContext;
+        auto generator = clang::CreateLLVMCodeGen(ast_->getDiagnostics(), "nsc.c.pointer.abi.plan",
+            ast_->getVirtualFileSystemPtr(), ast_->getHeaderSearchOpts(), ast_->getPreprocessorOpts(),
+            ast_->getCodeGenOpts(), llvmContext);
+        if (!generator) return std::nullopt;
+        generator->Initialize(context);
+        std::string error;
+        auto plan = abi_plan::copyPlan(*generator, *declaration, error);
+        if (!plan || !plan->targetTriple.starts_with("x86_64-pc-windows-msvc")) return std::nullopt;
+        return plan;
+    }
     std::optional<abi_plan::VariadicCallPlan> cVariadicCallAbiPlan(
         std::string_view name, std::string_view canonicalType,
         const std::vector<CppType>& optionalArguments) const override

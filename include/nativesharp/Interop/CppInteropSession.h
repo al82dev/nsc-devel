@@ -81,6 +81,10 @@ public:
     // The returned value owns its data; nullopt also covers unsupported ABI plans and closed sessions.
     virtual std::optional<abi_plan::Plan> cFunctionAbiPlan(std::string_view, std::string_view) const
     { return std::nullopt; }
+    // Experimental C-only query for an observed function-pointer typedef.
+    // The plan's synthetic symbol is not a linkable function or an emission authorization.
+    virtual std::optional<abi_plan::Plan> cFunctionPointerAbiPlan(std::string_view, std::string_view) const
+    { return std::nullopt; }
     // Types must come from this session and describe already-promoted optional
     // arguments. Identity and layout checks are not proof of cross-session ODR
     // equivalence. nullopt includes a closed session or unsupported form.
