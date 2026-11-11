@@ -1749,9 +1749,10 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
             if (group == groups.end()) continue;
             bool sawDefinition = false;
             bool plain = true;
+            bool packed = true;
             for (const auto index : group->inventoryIndices)
             {
-                if (index >= inventory.size()) { plain = false; break; }
+                if (index >= inventory.size()) { plain = packed = false; break; }
                 const auto& entry = inventory[index];
                 if (!entry.declaration.complete) continue;
                 sawDefinition = true;
@@ -1759,14 +1760,17 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
                 for (const auto& source : compilation.cppProjectSessions())
                     if (source.projectFile == entry.projectFile && entry.referenceIndex < source.sessions.size())
                     {
-                        if (session) { plain = false; break; }
+                        if (session) { plain = packed = false; break; }
                         session = source.sessions[entry.referenceIndex].get();
                     }
-                if (!plain || !session || entry.declaration.clangUsr != record.clangUsr ||
-                    session->cRecordHasPlainReplaySyntax(entry.declaration.qualifiedName) != true)
-                { plain = false; break; }
+                if (!session || entry.declaration.clangUsr != record.clangUsr)
+                { plain = packed = false; break; }
+                plain = plain && session->cRecordHasPlainReplaySyntax(entry.declaration.qualifiedName) == true;
+                packed = packed && session->cRecordHasPackedReplaySyntax(entry.declaration.qualifiedName) == true;
+                if (!plain && !packed) break;
             }
             record.plainReplaySyntax = sawDefinition && plain;
+            record.packedReplaySyntax = sawDefinition && packed && record.alignmentBits == 8;
         }
         if (!selected.enumIdentityKeys.empty())
             enumSeeds[project].insert(selected.enumIdentityKeys.begin(), selected.enumIdentityKeys.end());

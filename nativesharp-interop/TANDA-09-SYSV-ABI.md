@@ -863,8 +863,8 @@ ABI e identidad y las regresiones de llamadas C y SysV
 `A:/temp/nsc-t09-sysv-prueba-dk0t990b` y
 `A:/temp/nsc-t09-sysv-padded-pair-id-qjkigrcg`).
 
-La reconstruccion admite por ahora records C planos de campos escalares sin
-atributos y las formas escalares y de puntero que se describen despues; rechaza
+En esa etapa la reconstruccion admitia records C planos de campos escalares sin
+atributos y las formas escalares y de puntero que se describen despues; rechazaba
 catalogos ambiguos, records empaquetados o anidados y otras formas que no puede
 comprobar. Exige Clang configurado en el consumidor. No
 acredita callbacks SysV, compatibilidad C++ general ni cierre de T09-003.
@@ -912,8 +912,27 @@ estatica y DLL O0–O3, HIR/MIR, LLVM y cache
 (`A:/temp/nsc-t09-sysv-varargs-tsglggvf`). Pasaron las sondas ABI, identidad y
 transporte y las regresiones C/SysV (`A:/temp/t09-transport-directed/`,
 `A:/temp/nsc-t09-llamadas-hbq7mj6p`, `A:/temp/nsc-t09-sysv-prueba-drplfe1l`,
-`A:/temp/nsc-t09-sysv-padded-pair-id-31xfd4z0`). Records no planos
-precompilados y otras formas siguen pendientes; T09-003 no se cierra.
+`A:/temp/nsc-t09-sysv-padded-pair-id-31xfd4z0`). En ese momento los records
+empaquetados precompilados seguian pendientes.
+
+Se amplio la reconstruccion a records C con el atributo `packed` observado por
+Clang en todas sus definiciones y campos escalares sin otros atributos. Se
+conserva esa observacion en el contrato vigente y se verifica el layout
+reconstruido antes de solicitar el plan; observaciones contradictorias o
+atributos combinados aun no representados se rechazan. La muestra usa un record
+de nueve bytes con `double` desalineado: Clang lo pasa con `byval`, el productor
+altera la copia y el llamador comprueba que el original no cambio. Tambien se
+comprueba lectura y escritura a traves de un puntero a ese record.
+
+El control C y la llamada directa pasaban, pero la plantilla precompilada se
+rechazaba antes del cambio (`A:/temp/nsc-t09-sysv-varargs-nkhpdtcv`). Pasaron
+despues estatica y DLL O0–O3, plantilla sin encabezado, HIR/MIR, LLVM, cache y
+controles negativos para atributos combinados
+(`A:/temp/nsc-t09-sysv-varargs-91crtgf3`). Pasaron las sondas de ABI, identidad,
+transporte y las regresiones C/SysV (`A:/temp/t09-transport-directed/`,
+`A:/temp/nsc-t09-llamadas-64i3ab_r`, `A:/temp/nsc-t09-sysv-prueba-5u2x7j0i`,
+`A:/temp/nsc-t09-sysv-padded-pair-id-t4nwi_td`). Records anidados, atributos
+combinados y otras formas siguen pendientes; T09-003 no se cierra.
 
 ## Retorno indirecto sin argumentos byval
 

@@ -157,6 +157,7 @@ struct CppCRecordSnapshot
     // Observed from every live definition by Clang when publishing this
     // catalogue. This is a syntax observation, not a complete ABI proof.
     bool plainReplaySyntax = false;
+    bool packedReplaySyntax = false;
     std::optional<std::uint64_t> sizeBits;
     std::optional<std::uint64_t> alignmentBits;
     std::vector<CppRecordField> fields;

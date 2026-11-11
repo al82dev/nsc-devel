@@ -453,7 +453,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
             { if (match) return {}; match = &record; }
         const auto expectedKind = imported->origin == frontend::CppImportedTypeOrigin::CStruct ?
             CppRecordKind::Struct : CppRecordKind::Union;
-        if (!match || !match->plainReplaySyntax || match->clangUsr != imported->clangUsr ||
+        if (!match || (!match->plainReplaySyntax && !match->packedReplaySyntax) || match->clangUsr != imported->clangUsr ||
             match->kind != expectedKind || match->name != imported->identity.name() ||
             !match->namespaceSegments.empty() || !match->containingRecords.empty() ||
             !match->sizeBits || !match->alignmentBits || *match->sizeBits / 8 != imported->objectLayout->sizeBytes ||

@@ -1039,6 +1039,28 @@ public:
         }
         return true;
     }
+    std::optional<bool> cRecordHasPackedReplaySyntax(std::string_view name) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || name.empty() || ast_->getASTContext().getLangOpts().CPlusPlus) return std::nullopt;
+        auto& context = ast_->getASTContext();
+        std::set<const clang::TagDecl*> seen;
+        std::vector<const clang::RecordDecl*> records;
+        findComparableRecords(*context.getTranslationUnitDecl(), name, seen, records);
+        if (records.size() != 1) return std::nullopt;
+        const auto* record = records.front();
+        if (!record->hasAttr<clang::PackedAttr>() || record->field_empty()) return false;
+        for (const auto* attribute : record->attrs())
+            if (!llvm::isa<clang::PackedAttr>(attribute)) return false;
+        for (const auto* field : record->fields())
+        {
+            const auto type = field->getType();
+            if (field->hasAttrs() || field->isBitField() || field->isAnonymousStructOrUnion() ||
+                type.isNull() || type.hasQualifiers() || !llvm::isa<clang::BuiltinType>(type.getTypePtr()))
+                return false;
+        }
+        return true;
+    }
     std::optional<std::vector<CppTypeAliasDeclaration>> typeAliasesSnapshot() const override
     {
         std::lock_guard lock(mutex_);

@@ -93,6 +93,8 @@ public:
     // with unqualified builtin fields and no declaration attributes. It is not
     // by itself an ABI-equivalence proof or persisted metadata.
     virtual std::optional<bool> cRecordHasPlainReplaySyntax(std::string_view) const { return std::nullopt; }
+    // As above, for a C record with only Clang's packed attribute.
+    virtual std::optional<bool> cRecordHasPackedReplaySyntax(std::string_view) const { return std::nullopt; }
     // A missing value means this session cannot provide an alias snapshot.
     virtual std::optional<std::vector<CppTypeAliasDeclaration>> typeAliasesSnapshot() const { return std::nullopt; }
     // Includes anonymous enums; this snapshot does not imply semantic import.

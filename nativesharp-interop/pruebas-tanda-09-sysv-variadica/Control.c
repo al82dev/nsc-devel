@@ -29,5 +29,8 @@ int main(void) {
     small.x = 1; optionalValue = 12;
     if (sysv_record_fixed_rptr(&small, mixed, &optionalValue) != &small || small.x != 3 ||
         optionalValue != 13 || mixed.y != 7) return 17;
+    T09VarPackedValue packedValue = {7, 2.25};
+    if (sysv_record_packed(1, packedValue) != 1 || packedValue.tag != 7 || packedValue.value != 2.25) return 18;
+    if (sysv_record_packed_ptr(2, mixed, &packedValue) != 1 || packedValue.tag != 8 || mixed.y != 7) return 19;
     return 0;
 }

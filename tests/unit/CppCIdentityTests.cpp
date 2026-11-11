@@ -1488,10 +1488,15 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
     const auto packedRecord = std::find_if(records.begin(), records.end(), [](const auto& record) {
         return record.name == "CIdPacked";
     });
-    if (!expect(packedRecord != records.end() && !packedRecord->plainReplaySyntax,
-                "producer does not attest a packed C record as plain")) return false;
+    if (!expect(packedRecord != records.end() && !packedRecord->plainReplaySyntax && packedRecord->packedReplaySyntax,
+                "producer captures packed syntax without attesting it as plain")) return false;
+    auto contradictoryRecord = *packedRecord;
+    contradictoryRecord.plainReplaySyntax = true;
+    std::vector<std::uint8_t> rejectedRecord;
+    if (!expect(!metadata_detail::encodeCRecordCatalog(std::span(&contradictoryRecord, 1), rejectedRecord, error),
+                "contradictory plain and packed observations are rejected")) return false;
     auto withoutObservation = records;
-    for (auto& record : withoutObservation) record.plainReplaySyntax = false;
+    for (auto& record : withoutObservation) { record.plainReplaySyntax = false; record.packedReplaySyntax = false; }
     nativesharp::frontend::PrecompiledSyntaxModule observedModule, unobservedModule;
     observedModule.metadataPath = directory / "observed.nsmeta";
     unobservedModule.metadataPath = directory / "unobserved.nsmeta";

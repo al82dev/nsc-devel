@@ -17,10 +17,12 @@ inline std::optional<std::string> makeSimpleCRecordAbiReplay(const CppCRecordSna
 {
     if (!record.complete || !record.valueLayoutUsable || !record.sizeBits || !record.alignmentBits ||
         !record.targetTriple.starts_with("x86_64-pc-windows-msvc") || record.fields.empty() ||
-        record.fields.size() > 256 ||
+        record.fields.size() > 256 || (record.plainReplaySyntax && record.packedReplaySyntax) ||
+        (record.packedReplaySyntax && *record.alignmentBits != 8) ||
         (record.kind != CppRecordKind::Struct && record.kind != CppRecordKind::Union)) return std::nullopt;
     const auto tag = index == 0 ? std::string("__nsc_abi_record") : "__nsc_abi_record_" + std::to_string(index);
-    std::string result = (record.kind == CppRecordKind::Struct ? "struct " : "union ") + tag + " {\n";
+    std::string result = std::string(record.kind == CppRecordKind::Struct ? "struct " : "union ") +
+        (record.packedReplaySyntax ? "__attribute__((packed)) " : "") + tag + " {\n";
     for (std::size_t i = 0; i < record.fields.size(); ++i)
     {
         const auto& field = record.fields[i];

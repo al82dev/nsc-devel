@@ -344,3 +344,42 @@ sysv_record_fixed_rptr:
 fail_record_fixed_rptr:
     xorl %eax, %eax
     ret
+.globl sysv_record_packed
+sysv_record_packed:
+    cmpl $1, %edi
+    jne fail_record_packed
+    cmpb $7, 8(%rsp)
+    jne fail_record_packed
+    movabsq $0x4002000000000000, %r10
+    cmpq %r10, 9(%rsp)
+    jne fail_record_packed
+    movb $0, 8(%rsp)
+    movl $1, %eax
+    ret
+fail_record_packed:
+    xorl %eax, %eax
+    ret
+.globl sysv_record_packed_ptr
+sysv_record_packed_ptr:
+    cmpl $2, %edi
+    jne fail_record_packed_ptr
+    cmpl $7, %esi
+    jne fail_record_packed_ptr
+    testq %rdx, %rdx
+    je fail_record_packed_ptr
+    cmpb $7, (%rdx)
+    jne fail_record_packed_ptr
+    movabsq $0x4002000000000000, %r10
+    cmpq %r10, 1(%rdx)
+    jne fail_record_packed_ptr
+    movq %xmm0, %r8
+    cmpq %r10, %r8
+    jne fail_record_packed_ptr
+    cmpb $1, %al
+    jb fail_record_packed_ptr
+    movb $8, (%rdx)
+    movl $1, %eax
+    ret
+fail_record_packed_ptr:
+    xorl %eax, %eax
+    ret

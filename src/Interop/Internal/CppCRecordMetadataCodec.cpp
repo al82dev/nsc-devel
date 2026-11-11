@@ -300,7 +300,8 @@ bool validateRecords(std::span<const CppCRecordSnapshot> records, std::string& e
         { error = "C record identities are empty, duplicated or not ordered"; return false; }
         if (!record.complete)
         {
-            if (record.valueLayoutUsable || record.plainReplaySyntax || record.sizeBits || record.alignmentBits || !record.fields.empty())
+            if (record.valueLayoutUsable || record.plainReplaySyntax || record.packedReplaySyntax ||
+                record.sizeBits || record.alignmentBits || !record.fields.empty())
             { error = "incomplete C record has a layout"; return false; }
             continue;
         }
@@ -308,7 +309,7 @@ bool validateRecords(std::span<const CppCRecordSnapshot> records, std::string& e
             *record.sizeBits % 8 != 0 || *record.alignmentBits % 8 != 0 ||
             *record.sizeBits % *record.alignmentBits != 0)
         { error = "invalid complete C record dimensions"; return false; }
-        if (record.plainReplaySyntax &&
+        if ((record.plainReplaySyntax || record.packedReplaySyntax) &&
             (!record.clangUsr || record.clangUsr->empty() || !makeSimpleCRecordAbiReplay(record)))
         { error = "invalid plain C record replay observation"; return false; }
         for (const auto& field : record.fields)
@@ -1637,6 +1638,7 @@ bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
         writer.u8(record.microsoftVolatileSemantics ? (*record.microsoftVolatileSemantics ? 2 : 1) : 0);
         writer.u8(static_cast<std::uint8_t>(record.kind)); writer.u8(record.complete); writer.u8(record.valueLayoutUsable);
         writer.u8(record.plainReplaySyntax);
+        writer.u8(record.packedReplaySyntax);
         putOptionalNumber(writer, record.sizeBits); putOptionalNumber(writer, record.alignmentBits);
         writer.u32(static_cast<std::uint32_t>(record.fields.size()));
         for (const auto& field : record.fields)
@@ -1678,7 +1680,9 @@ bool compareCRecordContracts(const CppCRecordSnapshot& left, const CppCRecordSna
     auto normalized = right;
     // This auxiliary observation controls replay eligibility, not C type identity.
     normalizedLeft.plainReplaySyntax = false;
+    normalizedLeft.packedReplaySyntax = false;
     normalized.plainReplaySyntax = false;
+    normalized.packedReplaySyntax = false;
     normalized.moduleName = left.moduleName;
     normalized.identityKey = left.identityKey;
     if (!encodeCRecordCatalog(std::span(&normalizedLeft, 1), leftBytes, error) ||
@@ -1847,6 +1851,7 @@ bool decodeCRecordCatalog(std::span<const std::uint8_t> bytes,
             (kind != static_cast<std::uint8_t>(CppRecordKind::Struct) && kind != static_cast<std::uint8_t>(CppRecordKind::Union)) ||
             !getFlag(reader, record.complete) || !getFlag(reader, record.valueLayoutUsable) ||
             !getFlag(reader, record.plainReplaySyntax) ||
+            !getFlag(reader, record.packedReplaySyntax) ||
             !getOptionalNumber(reader, record.sizeBits) ||
             !getOptionalNumber(reader, record.alignmentBits) || !reader.u32(fields) ||
             fields > maxItems || fields > reader.remaining())
@@ -2517,7 +2522,7 @@ bool reconstructPrecompiledCImportedTypes(std::span<const frontend::PrecompiledS
             std::vector<CppCRecordSnapshot> identityRecords(oneRecord.begin(), oneRecord.end());
             // Replay observations do not change whether two C declarations name
             // the same type. Consumers of the observation must reconcile it separately.
-            for (auto& item : identityRecords) item.plainReplaySyntax = false;
+            for (auto& item : identityRecords) { item.plainReplaySyntax = false; item.packedReplaySyntax = false; }
             const bool hasCarriers = std::any_of(oneRecord.begin(), oneRecord.end(), [](const auto& record) {
                 return std::any_of(record.fields.begin(), record.fields.end(), [](const auto& field) {
                     return field.isAnonymousCarrier;

@@ -713,6 +713,7 @@ int main(int argc, char** argv) {
         "typedef int Number;\n"
         "struct Plain { double x; int y; };\n"
         "struct __attribute__((packed)) Packed { double x; int y; };\n"
+        "struct __attribute__((packed, aligned(2))) PackedAligned { double x; int y; };\n"
         "struct FieldAttribute { double x; int y __attribute__((aligned(8))); };\n"
         "struct AliasField { Number x; };\n"
         "struct QualifiedField { const int x; };\n"
@@ -733,6 +734,11 @@ int main(int argc, char** argv) {
         attributeOrigin->cRecordHasPlainReplaySyntax("ArrayField") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("Forward") ||
         attributeOrigin->cRecordHasPlainReplaySyntax("PragmaPacked") != false ||
+        attributeOrigin->cRecordHasPackedReplaySyntax("Plain") != false ||
+        attributeOrigin->cRecordHasPackedReplaySyntax("Packed") != true ||
+        attributeOrigin->cRecordHasPackedReplaySyntax("PackedAligned") != false ||
+        attributeOrigin->cRecordHasPackedReplaySyntax("FieldAttribute") != false ||
+        attributeOrigin->cRecordHasPackedReplaySyntax("PragmaPacked") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("Missing")) return 209;
     if (!attributeOrigin->close().succeeded || attributeOrigin->cRecordHasPlainReplaySyntax("Plain")) return 210;
     const auto originalRecords = equivalentOrigin->recordsSnapshot();
