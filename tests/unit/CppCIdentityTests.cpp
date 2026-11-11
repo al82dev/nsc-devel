@@ -1819,6 +1819,19 @@ bool checkDependencyTypeCodec()
         abi_plan::isSysVMixedRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
         restoredRecord.declaration.abiPlan->physicalReturn.elements[1].widthOrCount == 32,
         "C dependency function retains a vector and i32 SysV plan");
+    auto twoVectorPlan = std::make_shared<abi_plan::Plan>(*vectorFirstPlan);
+    twoVectorPlan->physicalReturn.elements[1] = vectorType;
+    twoVectorPlan->logicalReturn.coercion = twoVectorPlan->physicalReturn;
+    twoVectorPlan->logicalParameters[0].coercion = twoVectorPlan->physicalReturn;
+    twoVectorPlan->physicalParameters[1].type = vectorType;
+    recordFunction.declaration.abiPlan = twoVectorPlan;
+    recordFunction.declaration.returnType.sizeBits = 128;
+    recordFunction.declaration.parameters[0].type.sizeBits = 128;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVMixedRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->physicalReturn.elements[1].kind == abi_plan::TypeKind::Vector,
+        "C dependency function retains a two-vector SysV plan");
     if (!functionBytes.empty()) functionBytes.pop_back();
     decoded.moduleName = "sentinel";
     ok &= expect(!decodeCDependencyFunction(functionBytes, decoded, error) && decoded.moduleName == "sentinel",
