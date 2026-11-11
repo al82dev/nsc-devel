@@ -23,6 +23,7 @@
 #include "../../src/Interop/Internal/ClangAbiPlan.h"
 #include "nativesharp/Interop/CppClangSessionFactory.h"
 #include "nativesharp/Interop/CppInteropSession.h"
+#include "nativesharp/Interop/CppVariadicAbiReconciliation.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #include "nativesharp/Interop/CppSemanticInventory.h"
@@ -673,6 +674,56 @@ int main(int argc, char** argv) {
         session->cVariadicCallAbiPlan("pvariadic", variadicType, {*narrowActual}) ||
         session->cVariadicCallAbiPlan("pvariadic", "different", {}) ||
         session->cVariadicCallAbiPlan("p3", p3Type, {})) return 144;
+    const auto openRecordSession = [&](const char* text) -> std::unique_ptr<CppInteropSession> {
+        CppSessionOptions recordOptions;
+        recordOptions.language = CppLanguageMode::C;
+        recordOptions.languageStandard = "c11";
+        recordOptions.targetTriple = "x86_64-pc-windows-msvc";
+        recordOptions.driverReferencePath = "clang.exe";
+        recordOptions.resourceDirectory = argv[1];
+        recordOptions.workingDirectory = argv[2];
+        recordOptions.input = CppBufferInput{"variadic-origin.c", text};
+        auto result = factory.open(std::move(recordOptions), {});
+        if (!std::holds_alternative<std::unique_ptr<CppInteropSession>>(result)) return {};
+        return std::move(std::get<std::unique_ptr<CppInteropSession>>(result));
+    };
+    auto equivalentOrigin = openRecordSession(
+        "struct RF { double x; int y; }; struct R3 { unsigned char x, y, z; };");
+    auto incompatibleOrigin = openRecordSession("struct RF { long long x; int y; };");
+    if (!equivalentOrigin || !incompatibleOrigin) return 149;
+    const auto conflictingRecords = incompatibleOrigin->recordsSnapshot();
+    if (!conflictingRecords) return 160;
+    bool sameIdentityAndLayout = false;
+    for (const auto& record : *conflictingRecords)
+        if (record.name == "RF" && record.clangUsr == mixedActual->recordIdentity->clangUsr &&
+            record.sizeBits == mixedActual->sizeBits && record.alignmentBits == mixedActual->alignmentBits)
+            sameIdentityAndLayout = true;
+    if (!sameIdentityAndLayout) return 161;
+    std::vector<CppVariadicArgumentOrigin> origins{{*mixedActual, equivalentOrigin.get()}};
+    auto reconciledPlan = reconcileCppVariadicCallAbiPlan(*session, "pvariadic", variadicType, origins);
+    if (!reconciledPlan || reconciledPlan->arguments.size() != 2 ||
+        reconciledPlan->arguments[1].physicalCount != 2) return 150;
+    std::vector<CppVariadicArgumentOrigin> pointerOrigins{{*pointerActual, equivalentOrigin.get()}};
+    auto reconciledPointer = reconcileCppVariadicCallAbiPlan(*session, "pvariadic", variadicType, pointerOrigins);
+    if (!reconciledPointer || reconciledPointer->physicalParameters[1].type.kind != abi_plan::TypeKind::Pointer) return 156;
+    pointerOrigins[0].origin = nullptr;
+    if (reconcileCppVariadicCallAbiPlan(*session, "pvariadic", variadicType, pointerOrigins)) return 157;
+    origins[0].origin = incompatibleOrigin.get();
+    if (reconcileCppVariadicCallAbiPlan(*session, "pvariadic", variadicType, origins)) return 151;
+    origins[0].origin = nullptr;
+    if (reconcileCppVariadicCallAbiPlan(*session, "pvariadic", variadicType, origins)) return 152;
+    std::vector<CppVariadicArgumentOrigin> invalidOrigin{{wrongSize, session.get()}};
+    if (reconcileCppVariadicCallAbiPlan(*session, "pvariadic", variadicType, invalidOrigin)) return 158;
+    std::vector<CppVariadicArgumentOrigin> scalarOrigin{{*integerActual, nullptr}};
+    if (!reconcileCppVariadicCallAbiPlan(*session, "pvariadic", variadicType, scalarOrigin)) return 159;
+    origins[0].origin = equivalentOrigin.get();
+    if (!equivalentOrigin->close().succeeded ||
+        reconcileCppVariadicCallAbiPlan(*session, "pvariadic", variadicType, origins)) return 153;
+    if (!incompatibleOrigin->close().succeeded) return 154;
+    equivalentOrigin.reset();
+    incompatibleOrigin.reset();
+    if (reconciledPlan->symbol != "pvariadic" || reconciledPlan->physicalParameters.size() != 3 ||
+        reconciledPlan->physicalParameters[1].type.kind != abi_plan::TypeKind::Double) return 155;
     const auto diagnosticsBefore = session->diagnosticsSnapshot().size();
     auto sessionPlan = session->cFunctionAbiPlan("p3", p3Type);
     auto vectorcallPlan = session->cFunctionAbiPlan("pvec", pvecType);

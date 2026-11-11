@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppProjectSessions.h"
+#include "nativesharp/Interop/CppVariadicAbiReconciliation.h"
 #include "nativesharp/Compilation/Project.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 
@@ -99,5 +100,48 @@ CppGraphSessionsResult openCppGraphSessions(
         result.projects.push_back(std::move(std::get<CppProjectSessions>(opened)));
     }
     return result;
+}
+
+namespace
+{
+bool variadicRecordOriginMatches(const CppInteropSession& target, const CppInteropSession* origin,
+                                 const CppType& type, unsigned depth)
+{
+    if (depth > 16) return false;
+    if (type.kind == CppTypeKind::Pointer)
+        return type.element && variadicRecordOriginMatches(target, origin, *type.element, depth + 1);
+    if (type.kind != CppTypeKind::Record) return true;
+    if (!origin || origin->state() != CppSessionState::Ready || !type.recordIdentity ||
+        !type.recordIdentity->clangUsr || !type.sizeBits || !type.alignmentBits ||
+        type.recordIdentity->name.empty() || type.recordIdentity->anonymousContext ||
+        type.recordIdentity->specializationContext || !type.recordIdentity->namespaceSegments.empty() ||
+        !type.recordIdentity->containingRecords.empty()) return false;
+    auto records = origin->recordsSnapshot();
+    if (!records) return false;
+    unsigned matches = 0;
+    for (const auto& record : *records)
+        if (!record.isCxx && record.complete && record.clangUsr == type.recordIdentity->clangUsr &&
+            record.qualifiedName == type.recordIdentity->name && record.sizeBits == type.sizeBits &&
+            record.alignmentBits == type.alignmentBits) ++matches;
+    if (matches != 1) return false;
+    if (origin == &target) return true;
+    const auto equivalent = target.structurallyEquivalentRecord(*origin, type.recordIdentity->name);
+    return equivalent && *equivalent;
+}
+}
+
+std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicCallAbiPlan(
+    const CppInteropSession& functionSession, std::string_view name,
+    std::string_view canonicalType, std::span<const CppVariadicArgumentOrigin> arguments)
+{
+    if (functionSession.state() != CppSessionState::Ready) return std::nullopt;
+    std::vector<CppType> types;
+    types.reserve(arguments.size());
+    for (const auto& argument : arguments)
+    {
+        if (!variadicRecordOriginMatches(functionSession, argument.origin, argument.type, 0)) return std::nullopt;
+        types.push_back(argument.type);
+    }
+    return functionSession.cVariadicCallAbiPlan(name, canonicalType, types);
 }
 }

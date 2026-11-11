@@ -667,6 +667,25 @@ por llamada con la conciliacion de origenes, HIR, MIR, emision y el contrato
 vigente; las pruebas anteriores no demuestran ejecucion de records en la
 elipsis. T09-003 sigue abierto.
 
+### Conciliacion del origen de records variadicos
+
+Se agrego una consulta que recibe la sesion de la funcion y el origen vivo de
+cada argumento. Para records, incluso detras de punteros, comprueba identidad
+y layout en la sesion de origen; si es distinta de la sesion de la funcion,
+exige ademas la comparacion estructural de Clang antes de solicitar el plan.
+La sonda prueba sesiones equivalentes, origen ausente o cerrado, tamaño
+incorrecto y una pareja de records con el mismo nombre, USR, tamaño y
+alineacion pero con campos `double` e `long long` incompatibles. El ultimo
+caso se rechaza por la comprobacion estructural. Tambien verifica punteros y
+que la copia del plan sobreviva al cierre (`A:/temp/t09-planes-clang.log`).
+
+Pasaron la compilacion incremental y las regresiones de variadicas y records
+(`A:/temp/nsc-t09-sysv-varargs-5ihcweqe` y
+`A:/temp/nsc-t09-sysv-padded-pair-id-vxgbukmk`). El llamador debe asociar cada
+tipo a su origen real y mantener vivas las sesiones durante la consulta; esa
+asociacion todavia no esta conectada al analisis de llamadas. Las estructuras
+por valor en la elipsis siguen rechazadas hasta integrar y probar toda la ruta.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin
