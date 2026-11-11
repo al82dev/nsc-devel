@@ -467,6 +467,13 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         {
             return failValue(error, "static call argument override count does not match MIR operands");
         }
+        const frontend::ProjectOopMirFunction* operatorSignature = nullptr;
+        if (memberModel_ != nullptr && node->memberOrdinal.has_value())
+        {
+            const auto members = memberModel_->members();
+            if (*node->memberOrdinal < members.size() && members[*node->memberOrdinal].isUserOperator)
+                operatorSignature = mirModel_.functionForMangledName(node->calleeName);
+        }
         for (std::size_t index = 0; index < node->children.size(); ++index)
         {
             const auto& child = node->children[index];
@@ -480,7 +487,18 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             if (terminated()) return value;
             if (node->returnsAssignedValue && index + 1U == node->children.size())
                 assignedValue = value;
-            value = wrapIndirectArgument(value, child->typeKey, error);
+            const bool hasParameterOrdinal = node->argumentParameterOrdinals.empty() ||
+                index < node->argumentParameterOrdinals.size();
+            const std::size_t parameterOrdinal = node->argumentParameterOrdinals.empty()
+                ? index
+                : hasParameterOrdinal ? node->argumentParameterOrdinals[index] : 0U;
+            const bool operatorInParameter = operatorSignature != nullptr && hasParameterOrdinal &&
+                parameterOrdinal < operatorSignature->parameterPassKinds.size() &&
+                operatorSignature->parameterPassKinds[parameterOrdinal] == frontend::ParameterPassKind::In;
+            // The operand already is the address required by an operator's in parameter.
+            // Wrapping it as a by-value aggregate stores the address into an extra carrier.
+            if (!operatorInParameter)
+                value = wrapIndirectArgument(value, child->typeKey, error);
             if (value == nullptr) return nullptr;
             sourceArguments.push_back(value);
         }

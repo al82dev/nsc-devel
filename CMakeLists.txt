@@ -6904,6 +6904,23 @@ if(NSC_BUILD_TESTS)
             "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDictionaryStringUpdate.cmake")
 
+    set(NSC_OPERATOR_IN_AGGREGATE_PROJECT
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/operator_in_aggregate/OperatorInAggregate.nsproj")
+    add_test(
+        NAME nsc.compiler.operator-in-aggregate
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DPROJECT_FILE=${NSC_OPERATOR_IN_AGGREGATE_PROJECT}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/operator-in-aggregate"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyOperatorInAggregate.cmake")
+    add_test(NAME nsc.compiler.operator-in-aggregate-binary
+        COMMAND "${Python3_EXECUTABLE}" -B
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/operator_in_aggregate_binary.py"
+            "${NSC_TEST_COMPILER}"
+            "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/operator_in_aggregate/PairIn.ns")
+
     set(NSC_DECIMAL_GENERIC_ARRAY_PROJECT
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decimal_generic_array/DecimalGenericArray.nsproj")
     add_test(

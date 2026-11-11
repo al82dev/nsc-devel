@@ -1,0 +1,46 @@
+int Main()
+{
+    PairIn a = new PairIn(1.0, 2.0);
+    PairIn b = new PairIn(3.0, 4.0);
+    if (PairIn.Read(in a) != 3.0 || PairIn.Read(in b) != 7.0) return 1;
+    if (PairIn.Named(second: in b, first: in a) != 1234.0) return 5;
+    if (PairIn.MutateCopy(a) != 92.0 || a.x != 1.0 || a.y != 2.0) return 6;
+    PairIn mutable = new PairIn(1.0, 2.0);
+    PairIn.Mutate(ref mutable);
+    if (mutable.x != 11.0 || mutable.y != 22.0) return 7;
+    PairIn filled = new PairIn(0.0, 0.0);
+    PairIn.Fill(out filled);
+    if (filled.x != 7.0 || filled.y != 8.0) return 8;
+    PairValue va = new PairValue(1.0, 2.0);
+    PairValue vb = new PairValue(3.0, 4.0);
+    PairValue vr = va + vb;
+    if (vr.x != 4.0 || vr.y != 6.0 || va.x != 1.0 || vb.y != 4.0) return 2;
+    SmallIn sa = new SmallIn(4);
+    SmallIn sb = new SmallIn(5);
+    SmallIn sr = sa + sb;
+    if (sr.x != 9) return 3;
+    PairIn result = a + b;
+    if (result.x != 4.0 || result.y != 6.0 || a.x != 1.0 || b.y != 4.0) return 4;
+    PairIn aliasResult = a + a;
+    if (aliasResult.x != 2.0 || aliasResult.y != 4.0 || a.x != 1.0 || a.y != 2.0) return 14;
+    PairIn equal = new PairIn(1.0, 2.0);
+    PairIn different = new PairIn(1.0, 3.0);
+    if (!(a == equal) || !(a != different) || a == different) return 13;
+    PairIn scaleLeft = a * 2.0;
+    PairIn scaleRight = 2.0 * a;
+    if (scaleLeft.x != 2.0 || scaleLeft.y != 4.0) return 11;
+    if (scaleRight.x != 2.0 || scaleRight.y != 4.0) return 12;
+    raii PairInHolder holder = new PairInHolder();
+    holder.left = new PairIn(1.0, 2.0);
+    holder.right = new PairIn(3.0, 4.0);
+    PairIn fieldResult = holder.left + holder.right;
+    if (fieldResult.x != 4.0 || fieldResult.y != 6.0) return 9;
+    PairIn[] values = new PairIn[2];
+    values[0] = new PairIn(1.0, 2.0);
+    values[1] = new PairIn(3.0, 4.0);
+    PairIn arrayResult = values[0] + values[1];
+    bool arrayOk = arrayResult.x == 4.0 && arrayResult.y == 6.0;
+    delete[] values;
+    if (!arrayOk) return 10;
+    return 0;
+}

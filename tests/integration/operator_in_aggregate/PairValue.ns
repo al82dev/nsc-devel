@@ -1,0 +1,7 @@
+public struct PairValue
+{
+    public double x;
+    public double y;
+    public PairValue(double a, double b) { x = a; y = b; }
+    public static PairValue operator +(PairValue a, PairValue b) { return new PairValue(a.x + b.x, a.y + b.y); }
+}
