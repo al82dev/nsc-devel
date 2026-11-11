@@ -968,9 +968,14 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                         LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
                         LLVMValueRef offset = LLVMConstInt(i64, 8, 0);
                         LLVMValueRef secondAddress = LLVMBuildGEP2(builder_, i8, slot, &offset, 1, "sysv.indirect.mixed.pair.second.addr");
-                        LLVMTypeRef secondType = LLVMIntTypeInContext(context_, static_cast<unsigned>(
-                            imported->cppAbiPlan->physicalParameters[logical.firstPhysical + 1].type.widthOrCount));
-                        LLVMTypeRef firstType = physical.kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) : i64;
+                        const auto pieceType = [&](const interop::abi_plan::Type& piece) {
+                            return piece.kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
+                                piece.kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
+                                piece.kind == interop::abi_plan::TypeKind::Vector ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) :
+                                LLVMIntTypeInContext(context_, static_cast<unsigned>(piece.widthOrCount));
+                        };
+                        LLVMTypeRef firstType = pieceType(physical);
+                        LLVMTypeRef secondType = pieceType(imported->cppAbiPlan->physicalParameters[logical.firstPhysical + 1].type);
                         LLVMValueRef firstPiece = LLVMBuildLoad2(builder_, firstType, slot, "sysv.indirect.mixed.pair.first");
                         LLVMValueRef secondPiece = LLVMBuildLoad2(builder_, secondType, secondAddress, "sysv.indirect.mixed.pair.second");
                         LLVMSetAlignment(firstPiece, pieceAlignment);

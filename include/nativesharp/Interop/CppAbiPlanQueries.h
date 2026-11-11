@@ -238,6 +238,39 @@ inline bool isSysVIndirectRecordRoundTrip(const Plan& plan, std::string_view sym
         !argument.structureReturn && !argument.noAlias && !argument.inRegister && !argument.signExtend &&
         !argument.zeroExtend;
 }
+inline bool isSysVDirectPairShape(const Type& type) noexcept
+{
+    if (type.kind != TypeKind::Structure || type.packed || type.elements.size() != 2) return false;
+    const auto& a = type.elements[0];
+    const auto& b = type.elements[1];
+    if (((a.kind == TypeKind::Float || a.kind == TypeKind::Double) && a.widthOrCount != 0) ||
+        ((b.kind == TypeKind::Float || b.kind == TypeKind::Double) && b.widthOrCount != 0)) return false;
+    const auto vec = [](const Type& t) { return t.kind == TypeKind::Vector && t.widthOrCount == 2 &&
+        t.elements.size() == 1 && t.elements[0].kind == TypeKind::Float && t.elements[0].widthOrCount == 0; };
+    const bool ai = a.kind == TypeKind::Integer && a.widthOrCount == 64;
+    const bool bi = b.kind == TypeKind::Integer && b.widthOrCount >= 8 && b.widthOrCount <= 64 && b.widthOrCount % 8 == 0;
+    return (ai && bi) || (a.kind == TypeKind::Double && b.kind == TypeKind::Integer && b.widthOrCount == 32) ||
+        (a.kind == TypeKind::Double && (b.kind == TypeKind::Double || b.kind == TypeKind::Float || vec(b))) ||
+        (a.kind == TypeKind::Float && b.kind == TypeKind::Double) ||
+        (ai && (b.kind == TypeKind::Double || b.kind == TypeKind::Float || vec(b))) ||
+        (vec(a) && (vec(b) || b.kind == TypeKind::Float || b.kind == TypeKind::Double ||
+                    (b.kind == TypeKind::Integer && (b.widthOrCount == 32 || b.widthOrCount == 64))));
+}
+inline bool isSysVDirectPairLayout(const Type& type, std::uint64_t bits, std::uint64_t alignmentBits) noexcept
+{
+    if (!isSysVDirectPairShape(type)) return false;
+    const auto& a = type.elements[0];
+    const auto& b = type.elements[1];
+    if (a.kind == TypeKind::Integer && b.kind == TypeKind::Integer) return bits == 64 + b.widthOrCount;
+    if (a.kind == TypeKind::Vector && b.kind == TypeKind::Integer) return bits == 64 + b.widthOrCount && alignmentBits == 32;
+    if (a.kind == TypeKind::Vector && b.kind == TypeKind::Float) return bits == 96 && alignmentBits == 32;
+    if (a.kind == TypeKind::Integer && b.kind == TypeKind::Float) return bits == 96 && alignmentBits == 32;
+    if ((a.kind == TypeKind::Vector && b.kind == TypeKind::Double) ||
+        (a.kind == TypeKind::Double && b.kind == TypeKind::Vector)) return bits == 128 && alignmentBits == 64;
+    if (a.kind == TypeKind::Vector && b.kind == TypeKind::Vector) return bits == 128 && (alignmentBits == 32 || alignmentBits == 128);
+    if (a.kind == TypeKind::Integer && b.kind == TypeKind::Vector) return bits == 128 && alignmentBits == 32;
+    return bits == 128 && alignmentBits == 64;
+}
 // Indirect record result and by-value records mixed with direct scalars.
 inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view symbol) noexcept
 {
@@ -271,23 +304,18 @@ inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view
             ++physicalIndex;
             continue;
         }
+        if (logical.passing == Passing::Direct && (logical.byValue || logical.signExtend || logical.zeroExtend)) return false;
         if (logical.passing == Passing::Direct && logical.coercion && logical.coercion->kind == TypeKind::Structure)
         {
             const auto& type = *logical.coercion;
-            const bool integerPair = type.elements.size() == 2 &&
-                type.elements[0].kind == TypeKind::Integer && type.elements[0].widthOrCount == 64 &&
-                type.elements[1].kind == TypeKind::Integer && type.elements[1].widthOrCount >= 8 &&
-                type.elements[1].widthOrCount <= 64 && type.elements[1].widthOrCount % 8 == 0;
-            const bool doubleIntegerPair = type.elements.size() == 2 &&
-                type.elements[0].kind == TypeKind::Double && type.elements[0].widthOrCount == 0 &&
-                type.elements[1].kind == TypeKind::Integer && type.elements[1].widthOrCount == 32;
-            if (logical.offset != 0 || logical.physicalCount != 2 || type.packed || type.elements.size() != 2 ||
-                (!integerPair && !doubleIntegerPair) ||
+            if (logical.offset != 0 || logical.physicalCount != 2 || !isSysVDirectPairShape(type) ||
                 physicalIndex + 2 > plan.physicalParameters.size()) return false;
             for (std::size_t piece = 0; piece < 2; ++piece)
             {
                 const auto& p = plan.physicalParameters[physicalIndex + piece];
                 if (p.type.kind != type.elements[piece].kind || p.type.widthOrCount != type.elements[piece].widthOrCount ||
+                    (p.type.kind == TypeKind::Vector && (p.type.elements.size() != 1 || p.type.elements[0].kind != TypeKind::Float ||
+                                                         p.type.elements[0].widthOrCount != 0)) ||
                     p.structureReturn || p.byValue || p.noAlias || p.inRegister || p.signExtend || p.zeroExtend) return false;
             }
             physicalIndex += 2;

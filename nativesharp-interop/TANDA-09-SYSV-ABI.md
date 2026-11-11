@@ -537,6 +537,45 @@ La muestra no acredita todos los layouts ni firmas arbitrarias con records y esc
 varios records indirectos, callbacks u otras clasificaciones. T09-003 permanece
 abierto.
 
+## Clases adicionales de piezas directas con retorno indirecto
+
+Se amplio la validacion de las clases fisicas observadas por Clang para
+records directos de dos piezas que acompanan un retorno y un argumento
+indirectos. La conservacion del plan registra las clases y anchuras fisicas,
+incluido el elemento de los vectores fijos de dos `float`; la decodificacion
+rechaza descriptores invalidos. Los controles C para las primeras muestras
+pasaron y NSC las rechazaba antes del cambio: entero/`double`
+(A:/temp/nsc-t09-sysv-class-id-s56t2dnz), `double`/`double`
+(A:/temp/nsc-t09-sysv-class-dd-oikzn_6k) y vector/`float`
+(A:/temp/nsc-t09-sysv-class-vf-6xbrvxf1).
+
+Cada muestra siguiente paso ocho comparaciones C/NS estatica/DLL O0–O3,
+argumentos nombrados y una plantilla precompilada sin encabezado O0:
+
+- Entero/`double`: A:/temp/nsc-t09-sysv-class-id-1eo_aw9w.
+- `double`/`double`: A:/temp/nsc-t09-sysv-class-dd-v5bkhtd0.
+- Vector/`float`: A:/temp/nsc-t09-sysv-class-vf-bl02ysby.
+- `double`/`float` y `float`/`double`: A:/temp/nsc-t09-sysv-class-df-k4el20im y A:/temp/nsc-t09-sysv-class-fd-_jrcwm0l.
+- Entero/`float` y entero/vector: A:/temp/nsc-t09-sysv-class-if-laupd60g y A:/temp/nsc-t09-sysv-class-iv-pgcs5khm.
+- Vector/entero de 64 y 32 bits: A:/temp/nsc-t09-sysv-class-vi-nirbosd1 y A:/temp/nsc-t09-sysv-class-vs-5i8388el.
+- Vector/vector, incluido alineado a 16: A:/temp/nsc-t09-sysv-class-vv-ovyez3n6 y A:/temp/nsc-t09-sysv-class-vv16-snx7u73a.
+- `double`/vector y vector/`double`: A:/temp/nsc-t09-sysv-class-dv-5_qgdqyb y A:/temp/nsc-t09-sysv-class-vd-mh574f86.
+
+Las muestras verifican los datos de las piezas y que las copias no modifiquen
+los originales. La sonda de Clang y el control de metadatos, incluido el
+rechazo de un descriptor corrupto, pasaron en A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log. Pasaron la regresion `double`/entero y el
+control general con su rechazo aun pendiente
+(A:/temp/nsc-t09-sysv-mixedpair-indirect-go_d9jdw y
+A:/temp/nsc-t09-sysv-prueba-2ezkq4v8). Estos ejemplos no certifican todos los
+layouts, vectores u otras firmas; T09-003 permanece abierto.
+
+Tras reforzar la validacion de atributos directos y del elemento vectorial,
+se repitieron las trece muestras anteriores: todas pasaron las ocho
+combinaciones y la precompilacion. Los registros agrupados por caso estan en
+`A:/temp/t09-clase-agrupada-<caso>.log`; la sonda y los controles de
+metadatos tambien pasaron y rechazan atributos y elementos inconsistentes.
+
 ## Record pequeno seguido de `int`
 
 El control C paso y NSC rechazo inicialmente esta firma en

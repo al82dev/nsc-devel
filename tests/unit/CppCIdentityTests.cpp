@@ -2059,6 +2059,43 @@ bool checkDependencyTypeCodec()
     inconsistentIndirectPlan.physicalParameters[2].type.kind = abi_plan::TypeKind::Float;
     ok &= expect(!abi_plan::isSysVIndirectRecordWithArguments(inconsistentIndirectPlan, recordFunction.linkSymbol),
         "indirect SysV plan rejects inconsistent mixed piece classification");
+    auto integerDoublePlan = std::make_shared<abi_plan::Plan>(*mixedIndirectPlan);
+    integerDoublePlan->logicalParameters[1].coercion->elements = {{abi_plan::TypeKind::Integer, 64}, {abi_plan::TypeKind::Double}};
+    integerDoublePlan->physicalParameters[2].type = integerDoublePlan->logicalParameters[1].coercion->elements[0];
+    integerDoublePlan->physicalParameters[3].type = integerDoublePlan->logicalParameters[1].coercion->elements[1];
+    recordFunction.declaration.abiPlan = integerDoublePlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        restoredRecord.declaration.abiPlan->physicalParameters[2].type.kind == abi_plan::TypeKind::Integer &&
+        restoredRecord.declaration.abiPlan->physicalParameters[3].type.kind == abi_plan::TypeKind::Double,
+        "C dependency function retains integer and double direct pieces with sret");
+    auto vectorFloatWithIndirectPlan = std::make_shared<abi_plan::Plan>(*mixedIndirectPlan);
+    abi_plan::Type vectorPiece{abi_plan::TypeKind::Vector, 2};
+    vectorPiece.elements.push_back(abi_plan::Type{abi_plan::TypeKind::Float});
+    vectorFloatWithIndirectPlan->logicalParameters[1].coercion->elements = {vectorPiece, abi_plan::Type{abi_plan::TypeKind::Float}};
+    vectorFloatWithIndirectPlan->physicalParameters[2].type = vectorPiece;
+    vectorFloatWithIndirectPlan->physicalParameters[3].type = abi_plan::Type{abi_plan::TypeKind::Float};
+    recordFunction.declaration.parameters[1].type.sizeBits = 96;
+    recordFunction.declaration.parameters[1].type.alignmentBits = 32;
+    recordFunction.declaration.abiPlan = vectorFloatWithIndirectPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        restoredRecord.declaration.abiPlan->physicalParameters[2].type.kind == abi_plan::TypeKind::Vector &&
+        restoredRecord.declaration.abiPlan->physicalParameters[3].type.kind == abi_plan::TypeKind::Float,
+        "C dependency function retains vector and float direct pieces with sret");
+    auto corruptedPieceBytes = recordBytes;
+    if (corruptedPieceBytes.size() >= 8) corruptedPieceBytes[corruptedPieceBytes.size() - 6] = 255;
+    ok &= expect(corruptedPieceBytes.size() >= 8 &&
+        !decodeCDependencyFunction(corruptedPieceBytes, restoredRecord, error),
+        "C dependency function rejects an invalid direct piece descriptor");
+    auto inconsistentVectorPlan = *vectorFloatWithIndirectPlan;
+    inconsistentVectorPlan.physicalParameters[2].type.elements[0].widthOrCount = 1;
+    ok &= expect(!abi_plan::isSysVIndirectRecordWithArguments(inconsistentVectorPlan, recordFunction.linkSymbol),
+        "indirect SysV plan rejects an inconsistent vector element");
+    inconsistentVectorPlan = *vectorFloatWithIndirectPlan;
+    inconsistentVectorPlan.logicalParameters[1].byValue = true;
+    ok &= expect(!abi_plan::isSysVIndirectRecordWithArguments(inconsistentVectorPlan, recordFunction.linkSymbol),
+        "indirect SysV plan rejects direct pieces with indirect attributes");
     recordFunction.declaration.returnType.sizeBits = 192;
     recordFunction.declaration.returnType.alignmentBits = 8;
     recordFunction.declaration.parameters.resize(1);

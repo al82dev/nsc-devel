@@ -1,0 +1,6 @@
+int Main() {
+    T09Byte first; T09Wide second; first.x=4294967297L; first.y=2.5; second.x=31; second.y=32; second.z=33; second.w=34;
+    T09Result result=sysv_class_id(1.5f,first,7,second); T09Result named=sysv_class_id(n: 7, second: second, factor: 1.5f, first: first);
+    if (first.x!=4294967297L || first.y!=2.5 || second.x!=31 || second.y!=32 || result.x!=39 || result.y!=46 || result.z!=10 || named.x!=39 || named.y!=46 || named.z!=10) return 1;
+    return 0;
+}

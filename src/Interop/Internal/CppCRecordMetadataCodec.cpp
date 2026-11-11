@@ -458,7 +458,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     const bool indirectDetailed = indirectMixed && std::any_of(f.abiPlan->logicalParameters.begin(), f.abiPlan->logicalParameters.end(),
         [](const auto& logical) { return logical.passing == abi_plan::Passing::Direct && logical.physicalCount == 2 &&
             logical.coercion && logical.coercion->kind == abi_plan::TypeKind::Structure &&
-            logical.coercion->elements[0].kind != abi_plan::TypeKind::Integer; });
+            (logical.coercion->elements[0].kind != abi_plan::TypeKind::Integer ||
+             logical.coercion->elements[1].kind != abi_plan::TypeKind::Integer); });
     const bool mixedRecord = f.abiPlan && abi_plan::isSysVMixedRecordRoundTrip(*f.abiPlan, value.linkSymbol);
     const bool mixedDoubleFirst = mixedRecord && f.abiPlan->physicalReturn.elements[0].kind == abi_plan::TypeKind::Double;
     const bool mixedFloatFirst = mixedRecord && f.abiPlan->physicalReturn.elements[0].kind == abi_plan::TypeKind::Float;
@@ -541,9 +542,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                     }
                     if (!((type.kind == CppTypeKind::Record &&
                            ((logical.physicalCount == 1 && type.sizeBits == physical.widthOrCount && physical.kind == abi_plan::TypeKind::Integer) ||
-                            (logical.physicalCount == 2 &&
-                             ((physical.kind == abi_plan::TypeKind::Integer && type.sizeBits == 64 + f.abiPlan->physicalParameters[logical.firstPhysical + 1].type.widthOrCount) ||
-                              (physical.kind == abi_plan::TypeKind::Double && type.sizeBits == 128 && type.alignmentBits == 64))))) ||
+                            (logical.physicalCount == 2 && logical.coercion && type.sizeBits && type.alignmentBits &&
+                             abi_plan::isSysVDirectPairLayout(*logical.coercion, *type.sizeBits, *type.alignmentBits)))) ||
                           ((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) &&
                            (type.sizeBits == 32 || type.sizeBits == 64) && physical.kind == abi_plan::TypeKind::Integer && type.sizeBits == physical.widthOrCount) ||
                           (type.kind == CppTypeKind::Pointer && physical.kind == abi_plan::TypeKind::Pointer) ||
@@ -577,7 +577,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                 for (std::size_t piece = 0; piece < 2; ++piece)
                 {
                     const auto& physical = f.abiPlan->physicalParameters[logical.firstPhysical + piece].type;
-                    writer.u8(physical.kind == abi_plan::TypeKind::Integer ? 1 : 2);
+                    writer.u8(physical.kind == abi_plan::TypeKind::Integer ? 1 : physical.kind == abi_plan::TypeKind::Double ? 2 :
+                        physical.kind == abi_plan::TypeKind::Float ? 3 : 4);
                     writer.u8(static_cast<std::uint8_t>(physical.widthOrCount));
                 }
             }
@@ -672,10 +673,13 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                         for (unsigned piece = 0; piece < 2; ++piece)
                         {
                             std::uint8_t kind = 0, width = 0;
-                            if (!reader.u8(kind) || !reader.u8(width) || (kind != 1 && kind != 2) ||
-                                (kind == 2 && width != 0))
+                            if (!reader.u8(kind) || !reader.u8(width) || kind < 1 || kind > 4 ||
+                                ((kind == 2 || kind == 3) && width != 0) || (kind == 4 && width != 2))
                             { error = "invalid C dependency indirect piece descriptor"; return false; }
-                            storedPair.elements.push_back(abi_plan::Type{kind == 1 ? abi_plan::TypeKind::Integer : abi_plan::TypeKind::Double, width});
+                            abi_plan::Type value{kind == 1 ? abi_plan::TypeKind::Integer : kind == 2 ? abi_plan::TypeKind::Double :
+                                kind == 3 ? abi_plan::TypeKind::Float : abi_plan::TypeKind::Vector, width};
+                            if (kind == 4) value.elements.push_back(abi_plan::Type{abi_plan::TypeKind::Float});
+                            storedPair.elements.push_back(std::move(value));
                         }
                     }
                 }

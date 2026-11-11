@@ -26,6 +26,7 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                     parameters.push_back(physical.kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
                         physical.kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
                         physical.kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
+                        physical.kind == interop::abi_plan::TypeKind::Vector ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) :
                         LLVMIntTypeInContext(context_, static_cast<unsigned>(physical.widthOrCount)));
                 }
                 return LLVMFunctionType(LLVMVoidTypeInContext(context_), parameters.data(), static_cast<unsigned>(parameters.size()), 0);
