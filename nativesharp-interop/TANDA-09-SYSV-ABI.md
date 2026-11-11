@@ -1538,6 +1538,21 @@ entero y argumentos opcionales entero, puntero y record en pila
 `A:/temp/nsc-t09-sysv-indirecta-record-agotado-pre-eyg5gc1w`). Otros prefijos
 y firmas siguen pendientes; T09-003 no esta cerrado.
 
+**Retorno `int*`:** el control C y productor independiente verifican identidad
+del puntero retornado y escritura por el prefijo; NSC rechazaba la firma
+(`A:/temp/nsc-t09-sysv-indirecta-variadica-retorno-puntero-ru68m35t`). Tras
+emitir y reconstruir el retorno segun Clang pasaron ocho comparaciones C/NS
+estatica/DLL O0-O3 (`A:/temp/nsc-t09-sysv-indirecta-retorno-puntero-matriz-3ho498i0`)
+y plantilla sin encabezado, cache y rechazo de variante
+(`A:/temp/nsc-t09-sysv-indirecta-retorno-puntero-pre-56z6essr`). Pasaron cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones precompiladas de retornos
+`void`, `double` y dos parametros fijos
+(`A:/temp/nsc-t09-sysv-indirecta-retorno-void-pre-2ghrmaex`,
+`A:/temp/nsc-t09-sysv-indirecta-retorno-double-pre-0v55t6i4`,
+`A:/temp/nsc-t09-sysv-indirecta-dos-fijos-pre-q0387ayo`). Otros retornos y
+firmas siguen pendientes; T09-003 no esta cerrado.
+
 **Retorno `void`:** el control C y un productor independiente verifican la
 escritura por un prefijo `int*` junto al record mixto; NSC rechazaba la firma
 (`A:/temp/nsc-t09-sysv-indirecta-variadica-retorno-void-2xcrqyp2`). Tras
