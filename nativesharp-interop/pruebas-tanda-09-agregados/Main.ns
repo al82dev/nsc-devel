@@ -1,4 +1,13 @@
 int Main() {
+    R1 small; small.x = 1;
+    R1 smallResult = pass1(small);
+    if (small.x != 1 || smallResult.x != 11) return 5;
+    R2 medium; medium.x = 2;
+    R2 mediumResult = pass2(medium);
+    if (medium.x != 2 || mediumResult.x != 12) return 6;
+    U4 unionValue; unionValue.x = 3;
+    U4 unionResult = pass_union(unionValue);
+    if (unionValue.x != 3 || unionResult.x != 13) return 7;
     R3 a; a.x = 1; a.y = 2; a.z = 3;
     R3 b = pass3(a);
     if (a.x != 1 || b.x != 11 || b.y != 2 || b.z != 3) return 1;

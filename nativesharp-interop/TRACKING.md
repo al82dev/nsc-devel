@@ -1688,7 +1688,8 @@ las correcciones pendientes. [Evidencia](registro-commits/t08-enum-c-uint-int.md
 
 **Trabajo en curso en la laptop.** La auditoria y su evidencia estan en
 [TANDA-09-AUDITORIA-INICIAL.md](TANDA-09-AUDITORIA-INICIAL.md); el alcance y
-las restricciones estan en [SCOPE-LOCK-TANDA-09.md](SCOPE-LOCK-TANDA-09.md).
+las restricciones estan en [SCOPE-LOCK-TANDA-09.md](SCOPE-LOCK-TANDA-09.md),
+y las instrucciones de prueba en [TANDA-09-VALIDACION.md](TANDA-09-VALIDACION.md).
 
 Se prepararon controles nuevos de [llamadas y globales](pruebas-tanda-09-llamadas/),
 [agregados](pruebas-tanda-09-agregados/), [vectorcall](pruebas-tanda-09-vectorcall/),
@@ -1704,27 +1705,27 @@ la auditoria. La validacion agrupada seleccionada paso 6/6 y la identidad C
 paso por separado. Se conserva pendiente el cierre integral de la tanda y no se
 modificaron las pruebas existentes.
 
-Las 16 casillas originales se conservan: T09-013 y T09-014 estaban marcadas con
-los limites de su evidencia previa; las otras 14 siguen pendientes de revision
-individual para su cierre. Las pruebas nuevas aportan evidencia adicional para
-enlace estatico y DLL, sin extrapolar a todas las formas de metadatos o cache.
+Las 16 casillas originales se conservan. Las pruebas nuevas aportan evidencia
+para enlace estatico y DLL, sin extrapolar a todas las formas de metadatos o
+cache. La tanda sigue en revision de cierre y no certifica interoperabilidad
+general C o C++.
 
-- [ ] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas.
-- [ ] T09-002. Auditar la emisión actual de llamadas C en el generador de código.
-- [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang.
-- [ ] T09-004. Emitir una llamada C sin parámetros y con resultado escalar.
-- [ ] T09-005. Emitir una llamada C con parámetros escalares.
-- [ ] T09-006. Emitir el paso de punteros a una función C.
-- [ ] T09-007. Emitir el paso de agregados por valor conforme al ABI objetivo.
-- [ ] T09-008. Emitir la recepción de agregados devueltos conforme al ABI objetivo.
-- [ ] T09-009. Leer una variable global C importada.
-- [ ] T09-010. Escribir una variable global C importada cuando su declaración lo permita.
-- [ ] T09-011. Diseñar las promociones y el paso de argumentos de funciones C variádicas.
-- [ ] T09-012. Emitir llamadas variádicas con las promociones correctas.
+- [x] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
+- [x] T09-002. Auditar la emisión actual de llamadas C en el generador de código. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
+- [x] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Verificado para cdecl y vectorcall en Windows x64; otras convenciones no se certifican. [Evidencia](TANDA-09-AUDITORIA-INICIAL.md).
+- [x] T09-004. Emitir una llamada C sin parámetros y con resultado escalar. [Prueba y contraste](pruebas-tanda-09-llamadas/).
+- [x] T09-005. Emitir una llamada C con parámetros escalares. [Prueba y contraste](pruebas-tanda-09-llamadas/).
+- [x] T09-006. Emitir el paso de punteros a una función C. [Prueba y contraste](pruebas-tanda-09-llamadas/).
+- [x] T09-007. Emitir el paso de agregados por valor conforme al ABI objetivo. Records de 1, 2, 3, 4, 8 y 24 bytes y union de 4 en Windows x64. [Prueba](pruebas-tanda-09-agregados/).
+- [x] T09-008. Emitir la recepción de agregados devueltos conforme al ABI objetivo. Mismas muestras y limite que T09-007. [Prueba](pruebas-tanda-09-agregados/).
+- [x] T09-009. Leer una variable global C importada. Global mutable escalar en estatica y DLL. [Prueba](pruebas-tanda-09-llamadas/).
+- [x] T09-010. Escribir una variable global C importada cuando su declaración lo permita. Global mutable y rechazo de escritura const. [Pruebas](TANDA-09-AUDITORIA-INICIAL.md).
+- [x] T09-011. Diseñar las promociones y el paso de argumentos de funciones C variádicas. [Reglas y limites auditados](TANDA-09-AUDITORIA-INICIAL.md).
+- [x] T09-012. Emitir llamadas variádicas con las promociones correctas. Llamadas directas e indirectas y tipos registrados en la auditoria, Windows x64. [Pruebas](pruebas-tanda-09-llamadas/).
 - [x] T09-013. Enlazar una llamada contra una biblioteca estática de prueba. Evidencia: [proyecto mixto por consola](SCOPE-LOCK-EJECUCION.md#proyecto-mixto-por-consola); se conserva la limitación de caché.
 - [x] T09-014. Enlazar y ejecutar una llamada contra una DLL de prueba. Evidencia: [proyecto C con DLL](SCOPE-LOCK-EJECUCION.md#presupuesto-función-libre-importada-de-dll); llamada escalar sin caché de artefactos.
-- [ ] T09-015. Comprobar que los errores de enlace indiquen la biblioteca o símbolo faltante.
-- [ ] T09-016. Contrastar los resultados de llamadas y datos con un consumidor C compilado por Clang.
+- [x] T09-015. Comprobar que los errores de enlace indiquen la biblioteca o símbolo faltante. La biblioteca ausente se diagnostica al cargar el proyecto y el simbolo ausente durante el enlace. [Pruebas](TANDA-09-AUDITORIA-INICIAL.md).
+- [x] T09-016. Contrastar los resultados de llamadas y datos con un consumidor C compilado por Clang. [Llamadas](pruebas-tanda-09-llamadas/), [agregados](pruebas-tanda-09-agregados/) y [vectorcall](pruebas-tanda-09-vectorcall/).
 
 ## 10. Nombres y operaciones de C++
 

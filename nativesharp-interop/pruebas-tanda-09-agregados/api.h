@@ -4,10 +4,16 @@
 #else
 #define API_STORAGE
 #endif
+typedef struct R1 { unsigned char x; } R1;
+typedef struct R2 { unsigned short x; } R2;
+typedef union U4 { int x; unsigned int bits; } U4;
 typedef struct R3 { unsigned char x, y, z; } R3;
 typedef struct R4 { int x; } R4;
 typedef struct R8 { int x, y; } R8;
 typedef struct R24 { int a, b, c, d, e, f; } R24;
+API_STORAGE R1 pass1(R1 value);
+API_STORAGE R2 pass2(R2 value);
+API_STORAGE U4 pass_union(U4 value);
 API_STORAGE R3 pass3(R3 value);
 API_STORAGE R4 pass4(R4 value);
 API_STORAGE R8 pass8(R8 value);

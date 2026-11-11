@@ -68,3 +68,35 @@ una llamada variadica con i32, double, puntero y los demas tipos promovidos,
 incluida la copia indirecta del record de 12 bytes; la declaracion DLL conserva
 dllimport. Estos volcados complementan las ejecuciones, sin probar todos los
 tipos, convenciones o destinos.
+
+Revision de cierre T09-001 a T09-006: la auditoria cubre la ruta de proyecto
+ProjectOop, desde las declaraciones importadas hasta la llamada directa o por
+puntero y la emision LLVM, en el destino Windows x64. Las pruebas nuevas
+comprueban cdecl, el simbolo decorado y llamada vectorcall directa, y funciones
+sin parametros, escalares y con puntero, en estatica y DLL O0–O3. Las pruebas
+item344 e item345 complementan vectorcall; no se afirma que otras convenciones
+de Clang esten soportadas. Esta revision no certifica todos los tipos C ni ABI
+de C++ y no modifica las limitaciones de la tanda anterior.
+
+La suite nsc_cpp_session_tests se construyo, pero no se ejecuto: falta
+cpp-fixtures/project/CppProbe.nsproj bajo su raiz de pruebas. Los seis controles
+CTest seleccionados y nsc_cpp_c_identity_tests si se ejecutaron como se indico
+arriba. Tampoco se ejecuto stage48_2; se conserva intacta y su fixture historico
+ausente no se convierte en requisito nuevo.
+
+Revision T09-007 y T09-008: al ampliar la prueba, los records de 1 y 2 bytes y
+una union de 4 bytes se sumaron a los records de 3, 4, 8 y 24 bytes. Los ocho
+contrastes C y NS en estatica y DLL O0–O3 pasaron; logs en
+A:/temp/nsc-t09-agregados-_wrupfy_. Estas muestras verifican paso, resultado y
+que el productor no modifique el original; no prueban todas las formas C ni
+otros destinos. Un primer intento no llego a invocar Clang por restricciones
+del entorno; la repeticion con acceso al repositorio produjo el resultado citado.
+
+Reglas T09-011 observadas en classifyCVariadicPromotion: float pasa a double;
+bool y enteros de menos de 32 bits a int; enum usa su representacion entera,
+promovida a int si es estrecha; double, punteros y punteros de funcion C
+conservan su tipo; records y uniones C completas conservan el tipo y usan el
+portador Win64 del agregado. Los tipos que no se reconocen en esa ruta se
+rechazan. El argumento fijo mantiene su conversion normal. Las pruebas de la
+sesion cubren los tipos concretos registrados arriba, no todas las variaciones
+posibles de enum, union o record ni otros destinos.

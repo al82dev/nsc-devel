@@ -1,5 +1,14 @@
 #include "api.h"
 int main(void) {
+    R1 small; small.x = 1;
+    R1 small_result = pass1(small);
+    if (small.x != 1 || small_result.x != 11) return 5;
+    R2 medium; medium.x = 2;
+    R2 medium_result = pass2(medium);
+    if (medium.x != 2 || medium_result.x != 12) return 6;
+    U4 union_value; union_value.x = 3;
+    U4 union_result = pass_union(union_value);
+    if (union_value.x != 3 || union_result.x != 13) return 7;
     R3 a; a.x = 1; a.y = 2; a.z = 3;
     R3 b = pass3(a);
     if (a.x != 1 || b.x != 11 || b.y != 2 || b.z != 3) return 1;

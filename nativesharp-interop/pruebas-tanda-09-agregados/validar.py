@@ -53,7 +53,8 @@ for mode in ("estatica", "dll"):
             project = "Agregados.nsproj"
         else:
             run(prefix + "-dll", ["lld-link.exe", "/nologo", "/dll", "/noentry",
-                                  "/nodefaultlib", "/export:pass3", "/export:pass4",
+                                  "/nodefaultlib", "/export:pass1", "/export:pass2",
+                                  "/export:pass_union", "/export:pass3", "/export:pass4",
                                   "/export:pass8", "/export:pass24", "/out:" + str(case / "api.dll"),
                                   "/implib:" + str(case / "api-dll.lib"), str(case / "api.obj")], repo)
             control_flags = ["-DAPI_DLL_IMPORT"]
