@@ -1258,7 +1258,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 {
                     if (logical.physicalCount != 1 ||
                         physical != arguments.size() || physical >= plan.physicalParameters.size() ||
-                        layout->size != 20 || layout->alignment != 4 ||
+                        !((layout->size == 20 && layout->alignment == 4) ||
+                          (layout->size == 16 && layout->alignment == 8)) ||
                         !plan.physicalParameters[physical].byValue || plan.physicalParameters[physical].alignment != 8)
                         return failValue(error, "sysv_abi variadic function pointer byval plan is not supported");
                     LLVMValueRef slot = entryBlockAlloca(carrier, 8, "sysv.varptr.byval");
