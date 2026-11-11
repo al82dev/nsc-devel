@@ -1,0 +1,6 @@
+int Main() {
+    T09SysvThreePairs first; T09SysvThreePairs second; first.x=1; second.x=21; first.y=2; second.y=22; first.z=3; second.z=23; first.w=4; second.w=24; first.a=5; second.a=25; first.b=6; second.b=26; first.c=7; second.c=27; first.d=8; second.d=28; first.e=9; second.e=29; first.f=10; second.f=30; first.g=11; second.g=31; first.h=12; second.h=32;
+    T09SysvThreePairs third; third.x=41; third.y=42; third.z=43; third.w=44; third.a=45; third.b=46; third.c=47; third.d=48; third.e=49; third.f=50; third.g=51; third.h=52; T09SysvThreePairs result=sysv_three_pairs(first,second,third,7); T09SysvThreePairs named=sysv_three_pairs(n: 7, third: third, second: second, first: first); if (named.x!=70 || named.h!=52) return 2;
+    if (first.x!=1 || second.x!=21 || result.x!=70 || result.h!=52 || result.g!=11) return 1;
+    return 0;
+}

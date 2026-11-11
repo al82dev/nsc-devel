@@ -1,0 +1,6 @@
+int Main() {
+    T09SysvTwoPairs first; T09SysvTwoPairs second; first.x=1; second.x=21; first.y=2; second.y=22; first.z=3; second.z=23; first.w=4; second.w=24; first.a=5; second.a=25; first.b=6; second.b=26; first.c=7; second.c=27; first.d=8; second.d=28; first.e=9; second.e=29; first.f=10; second.f=30; first.g=11; second.g=31; first.h=12; second.h=32;
+    T09SysvTwoPairs result=sysv_two_pairs(first,second,7); T09SysvTwoPairs named=sysv_two_pairs(n: 7, second: second, first: first); if (named.x!=29 || named.h!=32) return 2;
+    if (first.x!=1 || second.x!=21 || result.x!=29 || result.h!=32 || result.g!=11) return 1;
+    return 0;
+}

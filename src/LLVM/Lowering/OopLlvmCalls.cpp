@@ -1012,7 +1012,24 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 LLVMBuildLoad2(builder_, secondType, second(argumentSlot, "sysv.pair.arg.second"), "sysv.pair.second")};
             LLVMSetAlignment(arguments[0], pieceAlignment);
             LLVMSetAlignment(arguments[1], pieceAlignment);
-            for (std::size_t i = 1; i < count; ++i) arguments.push_back(sourceArguments[order[i]]);
+            for (std::size_t i = 1; i < count; ++i)
+            {
+                if (imported->cppAbiPlan->logicalParameters[i].physicalCount == 2)
+                {
+                    if (node->children[order[i]]->typeKey != node->typeKey)
+                        return failValue(error, "SysV two-piece record argument type is invalid");
+                    LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "sysv.pair.extra.arg");
+                    LLVMValueRef store = LLVMBuildStore(builder_, sourceArguments[order[i]], slot);
+                    LLVMSetAlignment(store, alignment);
+                    LLVMValueRef firstPiece = LLVMBuildLoad2(builder_, firstType, slot, "sysv.pair.extra.first");
+                    LLVMValueRef secondPiece = LLVMBuildLoad2(builder_, secondType, second(slot, "sysv.pair.extra.second.addr"), "sysv.pair.extra.second");
+                    LLVMSetAlignment(firstPiece, pieceAlignment);
+                    LLVMSetAlignment(secondPiece, pieceAlignment);
+                    arguments.push_back(firstPiece);
+                    arguments.push_back(secondPiece);
+                }
+                else arguments.push_back(sourceArguments[order[i]]);
+            }
             releaseTransferredArguments(node);
             LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
                 arguments.data(), static_cast<unsigned>(arguments.size()), "sysv.pair.call", error);

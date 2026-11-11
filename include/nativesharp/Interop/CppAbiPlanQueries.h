@@ -113,7 +113,7 @@ inline bool isSysVTwoI64RecordRoundTrip(const Plan& plan, std::string_view symbo
     return isSysVTwoIntegerRecordRoundTrip(plan, symbol) &&
         plan.physicalReturn.elements[1].widthOrCount == 64;
 }
-// A two-integer record followed by direct scalar arguments; physical indices come from Clang.
+// Two-integer records and direct scalar arguments; physical indices come from Clang.
 inline bool isSysVTwoIntegerRecordWithScalars(const Plan& plan, std::string_view symbol) noexcept
 {
     const auto pair = [](const Type& type) {
@@ -127,30 +127,40 @@ inline bool isSysVTwoIntegerRecordWithScalars(const Plan& plan, std::string_view
         plan.returnSignExtend || plan.returnZeroExtend || !pair(plan.physicalReturn) ||
         plan.logicalReturn.passing != Passing::Direct || !plan.logicalReturn.coercion ||
         !pair(*plan.logicalReturn.coercion) || plan.logicalReturn.offset != 0 ||
-        plan.logicalParameters.size() < 2 || plan.physicalParameters.size() != plan.logicalParameters.size() + 1) return false;
+        plan.logicalParameters.size() < 2) return false;
     const auto bits = plan.physicalReturn.elements[1].widthOrCount;
     const auto& record = plan.logicalParameters[0];
     if (!record.coercion || !pair(*record.coercion) || record.coercion->elements[1].widthOrCount != bits ||
         plan.logicalReturn.coercion->elements[1].widthOrCount != bits || record.passing != Passing::Direct ||
         record.offset != 0 || record.firstPhysical != 0 || record.physicalCount != 2) return false;
-    for (std::size_t i = 0; i < plan.physicalParameters.size(); ++i)
+    std::size_t physicalIndex = 0;
+    for (std::size_t i = 0; i < plan.logicalParameters.size(); ++i)
     {
-        const auto& p = plan.physicalParameters[i];
-        if (p.structureReturn || p.byValue || p.signExtend || p.zeroExtend || p.inRegister || p.noAlias) return false;
-        if (i < 2)
+        const auto& logical = plan.logicalParameters[i];
+        if (logical.passing != Passing::Direct || !logical.coercion || logical.offset != 0 ||
+            logical.firstPhysical != physicalIndex) return false;
+        if (pair(*logical.coercion))
         {
-            if (p.type.kind != TypeKind::Integer || p.type.widthOrCount != (i == 0 ? 64 : bits)) return false;
+            if (logical.coercion->elements[1].widthOrCount != bits || logical.physicalCount != 2 ||
+                physicalIndex + 2 > plan.physicalParameters.size()) return false;
+            for (std::size_t piece = 0; piece < 2; ++piece)
+            {
+                const auto& p = plan.physicalParameters[physicalIndex + piece];
+                if (p.type.kind != TypeKind::Integer || p.type.widthOrCount != (piece == 0 ? 64 : bits) ||
+                    p.structureReturn || p.byValue || p.signExtend || p.zeroExtend || p.inRegister || p.noAlias) return false;
+            }
+            physicalIndex += 2;
             continue;
         }
-        const auto& logical = plan.logicalParameters[i - 1];
-        if (logical.passing != Passing::Direct || !logical.coercion || logical.offset != 0 ||
-            logical.firstPhysical != i || logical.physicalCount != 1 ||
+        if (i == 0 || logical.physicalCount != 1 || physicalIndex >= plan.physicalParameters.size()) return false;
+        const auto& p = plan.physicalParameters[physicalIndex++];
+        if (p.structureReturn || p.byValue || p.signExtend || p.zeroExtend || p.inRegister || p.noAlias ||
             logical.coercion->kind != p.type.kind || logical.coercion->widthOrCount != p.type.widthOrCount) return false;
         if (!((p.type.kind == TypeKind::Integer && (p.type.widthOrCount == 32 || p.type.widthOrCount == 64)) ||
               p.type.kind == TypeKind::Float || p.type.kind == TypeKind::Double ||
               (p.type.kind == TypeKind::Pointer && p.type.widthOrCount == 0))) return false;
     }
-    return true;
+    return physicalIndex == plan.physicalParameters.size();
 }
 inline bool isSysVMixedRecordRoundTrip(const Plan& plan, std::string_view symbol) noexcept
 {

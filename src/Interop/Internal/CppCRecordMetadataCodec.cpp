@@ -504,10 +504,13 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                 for (std::size_t i = 1; i < f.parameters.size(); ++i)
                 {
                     const auto& type = f.parameters[i].type;
-                    const auto kind = f.abiPlan->physicalParameters[i + 1].type.kind;
-                    if (!(((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) &&
+                    const auto physicalIndex = f.abiPlan->logicalParameters[i].firstPhysical;
+                    const auto kind = f.abiPlan->physicalParameters[physicalIndex].type.kind;
+                    if (!((type.kind == CppTypeKind::Record && type.sizeBits == bits &&
+                           f.abiPlan->logicalParameters[i].physicalCount == 2) ||
+                          ((type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) &&
                            (type.sizeBits == 32 || type.sizeBits == 64) && kind == abi_plan::TypeKind::Integer &&
-                           type.sizeBits == f.abiPlan->physicalParameters[i + 1].type.widthOrCount) ||
+                           type.sizeBits == f.abiPlan->physicalParameters[physicalIndex].type.widthOrCount) ||
                           (type.kind == CppTypeKind::Pointer && kind == abi_plan::TypeKind::Pointer) ||
                           (type.kind == CppTypeKind::Floating && ((type.sizeBits == 32 && kind == abi_plan::TypeKind::Float) ||
                                                                  (type.sizeBits == 64 && kind == abi_plan::TypeKind::Double))))) return true;
@@ -683,15 +686,21 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                     if (!type.sizeBits) { error = "invalid C dependency scalar argument"; return false; }
                     abi_plan::LogicalValue scalar;
                     scalar.passing = abi_plan::Passing::Direct;
-                    scalar.firstPhysical = i + 1;
-                    scalar.physicalCount = 1;
-                    scalar.coercion = type.kind == CppTypeKind::Pointer ? abi_plan::Type{abi_plan::TypeKind::Pointer} :
+                    scalar.firstPhysical = plan->physicalParameters.size();
+                    scalar.physicalCount = type.kind == CppTypeKind::Record ? 2 : 1;
+                    scalar.coercion = type.kind == CppTypeKind::Record ? physicalReturn :
+                        type.kind == CppTypeKind::Pointer ? abi_plan::Type{abi_plan::TypeKind::Pointer} :
                         type.kind == CppTypeKind::Floating ? abi_plan::Type{*type.sizeBits == 64 ? abi_plan::TypeKind::Double : abi_plan::TypeKind::Float} :
                         abi_plan::Type{abi_plan::TypeKind::Integer, *type.sizeBits};
                     plan->logicalParameters.push_back(scalar);
                     abi_plan::PhysicalParameter argument;
-                    argument.type = *scalar.coercion;
+                    argument.type = type.kind == CppTypeKind::Record ? physicalReturn.elements[0] : *scalar.coercion;
                     plan->physicalParameters.push_back(argument);
+                    if (type.kind == CppTypeKind::Record)
+                    {
+                        argument.type = physicalReturn.elements[1];
+                        plan->physicalParameters.push_back(argument);
+                    }
                 }
             }
             if (!(recordPlan == 1 ? abi_plan::isSysVSmallRecordRoundTrip(*plan, value.linkSymbol) :

@@ -707,3 +707,27 @@ A:/temp/t09-planes-identity.log, y la regresion del record con `int`/`float`
 en A:/temp/nsc-t09-sysv-pair-mix-0zjk9uli. Otros enteros y clasificaciones
 siguen pendientes; T09-003 no se cierra.
 
+## Varios records de dos piezas enteras
+
+El control C con dos records de doce bytes y un `int` paso mientras NSC
+rechazaba la firma (A:/temp/nsc-t09-sysv-two-pairs-nk0guwpj). Se amplio el
+consumo del plan para varios records del mismo tipo, siempre que Clang
+clasifique cada uno en las dos piezas enteras verificadas; las posiciones
+fisicas se conservan para el generador y el contrato vigente de metadatos.
+
+La muestra de dos records paso las ocho comparaciones estatica/DLL O0–O3,
+llamadas con argumentos nombrados reordenados y plantilla precompilada sin
+encabezado O0 (A:/temp/nsc-t09-sysv-two-pairs-iamulhsl). Una muestra de tres
+records iguales y un `int` agota los seis registros enteros SysV y pasa el
+entero restante por pila; supero las mismas comprobaciones, incluida la
+precompilacion (A:/temp/nsc-t09-sysv-three-pairs-e3p7ep85). La sonda de Clang
+verifico la distribucion fisica y la prueba de metadatos la reconstruccion
+(A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log). Pasaron las
+regresiones del record con `int`/`float` y del record con enteros de 64 bits
+(A:/temp/nsc-t09-sysv-pair-mix-r8b7b1v4 y
+A:/temp/nsc-t09-sysv-pair-ints-xh7dixch).
+
+Las muestras no acreditan records de diferentes tipos o clases fisicas, ni
+records que Clang pase indirectamente cuando faltan registros. T09-003 sigue
+abierto.
+

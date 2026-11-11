@@ -1827,6 +1827,31 @@ bool checkDependencyTypeCodec()
         restoredRecord.declaration.abiPlan->logicalParameters[2].firstPhysical == 3,
         "C dependency function retains a two-piece record and scalar arguments");
     recordFunction.declaration.parameters.resize(1);
+    auto twoPairPlan = std::make_shared<abi_plan::Plan>(*pairPlan);
+    auto secondPair = twoPairPlan->logicalParameters[0];
+    secondPair.firstPhysical = 2;
+    twoPairPlan->logicalParameters.push_back(secondPair);
+    twoPairPlan->physicalParameters.push_back(twoPairPlan->physicalParameters[0]);
+    twoPairPlan->physicalParameters.push_back(twoPairPlan->physicalParameters[1]);
+    abi_plan::LogicalValue trailingInteger;
+    trailingInteger.passing = abi_plan::Passing::Direct;
+    trailingInteger.firstPhysical = 4;
+    trailingInteger.physicalCount = 1;
+    trailingInteger.coercion = abi_plan::Type{abi_plan::TypeKind::Integer, 32};
+    twoPairPlan->logicalParameters.push_back(trailingInteger);
+    abi_plan::PhysicalParameter integerPhysical;
+    integerPhysical.type = *trailingInteger.coercion;
+    twoPairPlan->physicalParameters.push_back(integerPhysical);
+    recordFunction.declaration.parameters.push_back(recordFunction.declaration.parameters[0]);
+    scalarParameter.type.kind = CppTypeKind::SignedInteger;
+    recordFunction.declaration.parameters.push_back(scalarParameter);
+    recordFunction.declaration.abiPlan = twoPairPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVTwoIntegerRecordWithScalars(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->logicalParameters[2].firstPhysical == 4,
+        "C dependency function retains two two-piece records and an integer argument");
+    recordFunction.declaration.parameters.resize(1);
     for (const std::uint64_t bits : {8U, 16U, 24U, 32U, 40U, 48U, 56U})
     {
         auto varied = std::make_shared<abi_plan::Plan>(*pairPlan);
