@@ -60,3 +60,5 @@ T09-003: convertir la sonda de API ABI Clang en una prueba nueva `CppClangAbiPro
 T09-003: extender la sonda para consultar `CGFunctionInfo` de Clang y comprobar clasificacion logica de retorno y argumentos, ademas de la firma fisica, sin conservar objetos de Clang tras su sesion.
 T09-003: prototipar una copia por valor del plan ABI Clang para los casos de la sonda, con tipos fisicos, clases logicas y atributos seleccionados; rechazar formas no representadas. Mantener el prototipo aislado del compilador de produccion y de NSMeta hasta verificar exhaustividad y transporte.
 T09-003: prototipar el mapeo conservador de argumentos logicos a posiciones fisicas, incluyendo retorno oculto, expansion de estructuras y rechazo de padding o formas no verificadas; probar firmas con varios argumentos.
+T09-003: conservar en el prototipo la identidad de destino y data layout efectivos; comprobar que sobreviven al cierre de la sesion de Clang, sin usar aun el plan en produccion.
+T09-003: contrastar el plan copiado de un record SysV empaquetado con campos desalineados, incluidos el alineamiento del retorno y el del argumento byval, sin habilitar aun el caso en NSC.

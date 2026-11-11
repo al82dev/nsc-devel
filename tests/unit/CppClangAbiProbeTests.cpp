@@ -24,6 +24,7 @@ int main() {
         typedef struct R16 { long long x, y; } R16;
         typedef struct R24 { long long x, y, z; } R24;
         typedef struct RF { double x; int y; } RF;
+        typedef struct __attribute__((packed)) RP { char c; double d; } RP;
         typedef float Vec4 __attribute__((vector_size(16)));
         R3 __attribute__((sysv_abi)) p3(R3);
         R16 __attribute__((sysv_abi)) p16(R16);
@@ -33,6 +34,7 @@ int main() {
         Vec4 __attribute__((sysv_abi)) pv(Vec4);
         R24 __attribute__((sysv_abi)) pm(int, RF, R3, R24);
         int __attribute__((sysv_abi)) pvariadic(int, ...);
+        RP __attribute__((sysv_abi)) pp(RP);
     )c";
     auto ast = clang::tooling::buildASTFromCodeWithArgs(source,
         {"-x", "c", "-std=c11", "-target", "x86_64-pc-windows-msvc"}, "probe.c");
@@ -65,7 +67,7 @@ int main() {
             variadicRejected = true;
             continue;
         }
-        if (name != "p3" && name != "p16" && name != "pf" && name != "p24" && name != "ps8" && name != "pm") continue;
+        if (name != "p3" && name != "p16" && name != "pf" && name != "p24" && name != "ps8" && name != "pm" && name != "pp") continue;
         auto* physical = clang::CodeGen::convertFreeFunctionType(generator->CGM(), function);
         clang::CanQual<clang::FunctionProtoType> prototype =
             context.getCanonicalType(function->getType()).getAs<clang::FunctionProtoType>();
@@ -121,10 +123,11 @@ int main() {
         if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
-    if (matched != 6 || copiedPlans.size() != 6 || !unsupportedRejected || !variadicRejected) return 7;
+    if (matched != 7 || copiedPlans.size() != 7 || !unsupportedRejected || !variadicRejected) return 7;
     generator.reset();
     ast.reset();
     const auto& p3 = copiedPlans.at("p3");
+    if (p3.targetTriple.find("x86_64-pc-windows-msvc") != 0 || p3.dataLayout.empty()) return 28;
     if (p3.physicalReturn.kind != t09_probe::TypeKind::Integer || p3.physicalReturn.widthOrCount != 24 ||
         p3.logicalParameters.size() != 1 || p3.logicalParameters[0].passing != t09_probe::Passing::Direct ||
         !p3.logicalParameters[0].coercion || p3.logicalParameters[0].coercion->widthOrCount != 24) return 20;
@@ -151,5 +154,10 @@ int main() {
         pm.logicalParameters[1].physicalCount != 2 || pm.logicalParameters[2].firstPhysical != 4 ||
         pm.logicalParameters[2].physicalCount != 1 || pm.logicalParameters[3].firstPhysical != 5 ||
         pm.logicalParameters[3].physicalCount != 1 || !pm.physicalParameters[5].byValue) return 26;
+    const auto& pp = copiedPlans.at("pp");
+    if (pp.physicalParameters.size() != 2 || !pp.physicalParameters[0].structureReturn ||
+        pp.physicalParameters[0].alignment != 1 || !pp.physicalParameters[1].byValue ||
+        pp.physicalParameters[1].alignment != 8 || !pp.physicalParameters[1].pointee ||
+        !pp.physicalParameters[1].pointee->packed) return 29;
     return 0;
 }

@@ -79,3 +79,10 @@ se rechazan. Una firma mixta con retorno oculto, escalar, record mixto, record
 de 3 bytes y argumento `byval` paso la sonda, junto con los rechazos de vector y
 variadica. CTest paso 1/1 en A:/temp/t09-abi-probe-ctest.log. El mapeo es
 experimental y aun no se usa para generar llamadas ni garantiza toda forma ABI.
+
+El plan copiado ahora conserva el triple y `data layout` de la unidad; la
+prueba los inspecciona despues de destruir la sesion. Se agrego un record SysV
+empaquetado con `char` y `double`: Clang usa retorno `sret` alineado a 1 y
+argumento `byval` alineado a 8. La copia retiene ambas alineaciones y el tipo
+empaquetado; la prueba CTest paso 1/1 en A:/temp/t09-abi-probe-ctest.log.
+El caso sigue sin habilitarse en NSC.
