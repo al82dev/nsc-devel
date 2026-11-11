@@ -493,7 +493,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                           (f.parameters.size() == 2 &&
                            f.parameters[i].type.kind == CppTypeKind::Floating &&
                            ((f.parameters[i].type.sizeBits == 32 && f.abiPlan->physicalParameters[i].type.kind == abi_plan::TypeKind::Float) ||
-                            (i == 1 && f.parameters[i].type.sizeBits == 64 && f.abiPlan->physicalParameters[i].type.kind == abi_plan::TypeKind::Double))))) return true;
+                            (f.parameters[i].type.sizeBits == 64 && f.abiPlan->physicalParameters[i].type.kind == abi_plan::TypeKind::Double))))) return true;
                 }
                 return !hasRecord;
             }()) ||
@@ -630,7 +630,7 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                 if (f.parameters.size() < 2 || !f.parameters[0].type.sizeBits)
                 { error = "invalid C dependency record arguments"; return false; }
                 logical.coercion = f.parameters[0].type.kind == CppTypeKind::Floating ?
-                    abi_plan::Type{abi_plan::TypeKind::Float} :
+                    abi_plan::Type{*f.parameters[0].type.sizeBits == 64 ? abi_plan::TypeKind::Double : abi_plan::TypeKind::Float} :
                     abi_plan::Type{abi_plan::TypeKind::Integer, *f.parameters[0].type.sizeBits};
             }
             logical.physicalCount = recordPlan == 2 || (recordPlan >= 4 && recordPlan <= 11) || (recordPlan >= 15 && recordPlan != 20) ? 2 : 1;

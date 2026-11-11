@@ -1890,7 +1890,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                                    symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Floating &&
                                    ((function.parameterTypeKeys[i] == "builtin:float" &&
                                      symbol.cppAbiPlan->physicalParameters[i].type.kind == interop::abi_plan::TypeKind::Float) ||
-                                    (i == 1 && function.parameterTypeKeys[i] == "builtin:double" &&
+                                    (function.parameterTypeKeys[i] == "builtin:double" &&
                                      symbol.cppAbiPlan->physicalParameters[i].type.kind == interop::abi_plan::TypeKind::Double)))))
                                 return false;
                         }

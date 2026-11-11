@@ -607,3 +607,14 @@ metadatos pasaron en A:/temp/t09-planes-clang.log y
 A:/temp/t09-planes-identity.log. El orden inverso para `double` y otras mezclas
 flotantes siguen pendientes.
 
+La variante `double` seguido de record fue rechazada por NSC antes del cambio,
+con controles C correctos (A:/temp/nsc-t09-sysv-double-record-f_1s1tk5).
+Despues paso las ocho comparaciones estatica/DLL O0–O3 y la plantilla
+precompilada sin encabezado O0 (A:/temp/nsc-t09-sysv-double-record-_o6y_mvl).
+La regresion `float` primero paso en A:/temp/nsc-t09-sysv-float-record-g8nkh7br
+y el control general con rechazo de tres argumentos aun no soportados en
+A:/temp/nsc-t09-sysv-prueba-358_aru0. Sonda Clang y metadatos:
+A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log. Los casos
+probados usan dos argumentos y un record de cuatro bytes; firmas flotantes
+con mas argumentos u otras clasificaciones siguen pendientes.
+
