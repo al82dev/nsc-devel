@@ -17,6 +17,20 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
         std::string& error)
 {
             if (function.cppSysVCall && function.cppAbiPlan &&
+                interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName))
+            {
+                std::vector<LLVMTypeRef> parameters;
+                for (const auto& parameter : function.cppAbiPlan->physicalParameters)
+                {
+                    const auto& physical = parameter.type;
+                    parameters.push_back(physical.kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
+                        physical.kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
+                        physical.kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
+                        LLVMIntTypeInContext(context_, static_cast<unsigned>(physical.widthOrCount)));
+                }
+                return LLVMFunctionType(LLVMVoidTypeInContext(context_), parameters.data(), static_cast<unsigned>(parameters.size()), 0);
+            }
+            if (function.cppSysVCall && function.cppAbiPlan &&
                 (interop::abi_plan::isSysVSmallRecordsRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
                  interop::abi_plan::isSysVSmallRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
                  interop::abi_plan::isSysVSingleVector2FRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||

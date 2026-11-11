@@ -950,7 +950,27 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 const auto& logical = imported->cppAbiPlan->logicalParameters[i];
                 if (logical.passing != interop::abi_plan::Passing::Indirect)
                 {
-                    arguments.push_back(sourceArguments[order[i]]);
+                    const auto& argumentKey = node->children[order[i]]->typeKey;
+                    const auto& physical = imported->cppAbiPlan->physicalParameters[logical.firstPhysical].type;
+                    const bool scalarInteger = argumentKey == "builtin:int" || argumentKey == "builtin:uint" ||
+                        argumentKey == "builtin:long" || argumentKey == "builtin:ulong";
+                    if (physical.kind == interop::abi_plan::TypeKind::Integer && !scalarInteger)
+                    {
+                        if (i >= imported->parameterTypeKeys.size() || argumentKey != imported->parameterTypeKeys[i])
+                            return failValue(error, "SysV direct argument type is invalid");
+                        LLVMTypeRef argumentCarrier = llvmType(argumentKey, error);
+                        if (!argumentCarrier) return nullptr;
+                        const unsigned argumentAlignment = structAlignmentFor(argumentKey);
+                        if (argumentAlignment == 0) return failValue(error, "SysV direct argument has no alignment");
+                        LLVMValueRef slot = entryBlockAlloca(argumentCarrier, argumentAlignment, "sysv.indirect.mixed.direct");
+                        LLVMValueRef store = LLVMBuildStore(builder_, sourceArguments[order[i]], slot);
+                        LLVMSetAlignment(store, argumentAlignment);
+                        LLVMTypeRef integer = LLVMIntTypeInContext(context_, static_cast<unsigned>(physical.widthOrCount));
+                        LLVMValueRef piece = LLVMBuildLoad2(builder_, integer, slot, "sysv.indirect.mixed.direct.piece");
+                        LLVMSetAlignment(piece, argumentAlignment);
+                        arguments.push_back(piece);
+                    }
+                    else arguments.push_back(sourceArguments[order[i]]);
                     continue;
                 }
                 const auto& argumentKey = node->children[order[i]]->typeKey;

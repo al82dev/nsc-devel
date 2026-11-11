@@ -2007,6 +2007,22 @@ bool checkDependencyTypeCodec()
         restoredRecord.declaration.abiPlan->physicalParameters[2].alignment == 8 &&
         restoredRecord.declaration.abiPlan->physicalParameters[4].alignment == 16,
         "C dependency function retains different indirect record sizes and alignments");
+    auto directIndirectPlan = std::make_shared<abi_plan::Plan>(*differentIndirectPlan);
+    directIndirectPlan->logicalParameters[1].passing = abi_plan::Passing::Direct;
+    directIndirectPlan->logicalParameters[1].byValue = false;
+    directIndirectPlan->logicalParameters[1].alignment = 0;
+    directIndirectPlan->logicalParameters[1].coercion = abi_plan::Type{abi_plan::TypeKind::Integer, 32};
+    directIndirectPlan->physicalParameters[2] = {};
+    directIndirectPlan->physicalParameters[2].type = *directIndirectPlan->logicalParameters[1].coercion;
+    recordFunction.declaration.parameters[1].type.sizeBits = 32;
+    recordFunction.declaration.parameters[1].type.alignmentBits = 32;
+    recordFunction.declaration.abiPlan = directIndirectPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVIndirectRecordWithArguments(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->logicalParameters[1].passing == abi_plan::Passing::Direct &&
+        restoredRecord.declaration.abiPlan->physicalParameters[4].byValue,
+        "C dependency function retains direct and indirect record arguments");
     recordFunction.declaration.returnType.sizeBits = 192;
     recordFunction.declaration.returnType.alignmentBits = 8;
     recordFunction.declaration.parameters.resize(1);

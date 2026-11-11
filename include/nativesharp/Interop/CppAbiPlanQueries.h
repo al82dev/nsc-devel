@@ -271,7 +271,7 @@ inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view
         if (logical.passing != Passing::Direct || !logical.coercion || logical.offset != 0 ||
             logical.coercion->kind != physical.type.kind || logical.coercion->widthOrCount != physical.type.widthOrCount ||
             physical.byValue ||
-            !((physical.type.kind == TypeKind::Integer && (physical.type.widthOrCount == 32 || physical.type.widthOrCount == 64)) ||
+            !((physical.type.kind == TypeKind::Integer && physical.type.widthOrCount >= 8 && physical.type.widthOrCount <= 64 && physical.type.widthOrCount % 8 == 0) ||
               physical.type.kind == TypeKind::Float || physical.type.kind == TypeKind::Double ||
               (physical.type.kind == TypeKind::Pointer && physical.type.widthOrCount == 0))) return false;
     }

@@ -833,3 +833,25 @@ A:/temp/nsc-t09-sysv-aligned-mix-5937l44e y
 A:/temp/nsc-t09-sysv-prueba-hu37bgv6. Siguen pendientes mezclas de argumentos
 indirectos con agregados directos u otras clases ABI; T09-003 continua abierto.
 
+## Record directo junto a retorno y argumento indirectos
+
+Una referencia C que devuelve un record de 20 bytes y recibe un record
+directo de cuatro bytes, un record indirecto de 32 bytes, `float` e `int`
+paso en estatica y DLL; NSC rechazaba la firma antes del cambio
+(A:/temp/nsc-t09-sysv-direct-indirect-xf93zgz9). La declaracion LLVM ahora usa
+los tipos fisicos del plan y el generador convierte el record directo a su
+pieza entera, conservando la copia y atributos `byval` del otro argumento.
+
+La muestra de cuatro bytes paso ocho comparaciones estatica/DLL O0–O3,
+argumentos nombrados y plantilla precompilada sin encabezado O0
+(A:/temp/nsc-t09-sysv-direct-indirect-m8e7mhmp). Una variante de tres bytes
+paso las mismas comprobaciones con pieza `i24`
+(A:/temp/nsc-t09-sysv-direct3-indirect-gwqof3xj). La sonda de Clang y el
+control de metadatos verificaron los modos directo e indirecto
+(A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log). Pasaron la
+regresion de records indirectos de diferente alineacion y el control general
+que conserva el rechazo de un record directo de dos piezas aun no admitido
+(A:/temp/nsc-t09-sysv-indirect-diff16-xumzric7 y
+A:/temp/nsc-t09-sysv-prueba-kkuz_ggj). Otras clases de record directo y firmas
+quedan abiertas; T09-003 no se cierra.
+
