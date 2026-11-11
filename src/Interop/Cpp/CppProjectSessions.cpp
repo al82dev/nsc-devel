@@ -366,14 +366,14 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         type.recordIdentity->anonymousContext || type.recordIdentity->specializationContext ||
         !type.recordIdentity->namespaceSegments.empty() || !type.recordIdentity->containingRecords.empty() ||
         type.canonicalSpelling != "struct " + type.recordIdentity->name ||
-        type.sizeBits != 96 || type.alignmentBits != 32) return {};
+        (type.sizeBits != 96 && type.sizeBits != 128) || type.alignmentBits != 32) return {};
     const auto identity = projectCppRecordTypeIdentity(type, moduleName);
     if (!identity) return {};
     const auto ordinal = lookup.typeOrdinalForIdentity(identity->key());
     const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
     if (!imported || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
         !imported->deferredImportError.empty() || !imported->objectLayout ||
-        imported->clangUsr != type.recordIdentity->clangUsr || imported->objectLayout->sizeBytes != 12 ||
+        imported->clangUsr != type.recordIdentity->clangUsr || imported->objectLayout->sizeBytes != *type.sizeBits / 8 ||
         imported->objectLayout->alignmentBytes != 4 || imported->origin != frontend::CppImportedTypeOrigin::CStruct)
         return {};
     std::vector<std::uint8_t> aliasType;
@@ -414,8 +414,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         selectedRecord->clangUsr != type.recordIdentity->clangUsr ||
         selectedRecord->name != type.recordIdentity->name || selectedRecord->kind != CppRecordKind::Struct ||
         selectedRecord->sizeBits != type.sizeBits || selectedRecord->alignmentBits != type.alignmentBits ||
-        selectedRecord->fields.size() != 3) return {};
-    for (std::size_t i = 0; i < 3; ++i)
+        selectedRecord->fields.size() != *type.sizeBits / 32) return {};
+    for (std::size_t i = 0; i < selectedRecord->fields.size(); ++i)
     {
         const auto& field = selectedRecord->fields[i];
         if (field.bitWidth || field.type.kind != CppTypeKind::SignedInteger ||

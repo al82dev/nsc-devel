@@ -1212,12 +1212,13 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 plan.logicalParameters[0].passing != Passing::Direct ||
                 plan.logicalParameters[0].firstPhysical != 0 || plan.logicalParameters[0].physicalCount != 2 ||
                 plan.logicalParameters[0].offset != 0 || !plainInteger(plan.physicalParameters[0], 64) ||
-                !plainInteger(plan.physicalParameters[1], 32) || !layout || layout->size != 12 ||
+                !layout || (layout->size != 12 && layout->size != 16) ||
+                !plainInteger(plan.physicalParameters[1], layout->size == 12 ? 32 : 64) ||
                 layout->alignment != 4 || !imported || imported->isIncomplete ||
                 !imported->deferredImportError.empty() || !imported->objectLayout ||
                 (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
                  imported->origin != frontend::CppImportedTypeOrigin::CUnion) ||
-                imported->objectLayout->sizeBytes != 12 || imported->objectLayout->alignmentBytes != 4)
+                imported->objectLayout->sizeBytes != layout->size || imported->objectLayout->alignmentBytes != 4)
                 return failValue(error, "sysv_abi function pointer record plan is not supported");
             LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[0] :
                 lowerExpression(node->children[1].get(), error);
@@ -1228,7 +1229,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             LLVMValueRef slot = entryBlockAlloca(carrier, 4, "sysv.callback.record");
             LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
             LLVMSetAlignment(store, 4);
-            LLVMTypeRef types[] = {LLVMInt64TypeInContext(context_), LLVMInt32TypeInContext(context_)};
+            LLVMTypeRef types[] = {LLVMInt64TypeInContext(context_),
+                layout->size == 12 ? LLVMInt32TypeInContext(context_) : LLVMInt64TypeInContext(context_)};
             LLVMValueRef pieces[] = {
                 LLVMBuildLoad2(builder_, types[0], slot, "sysv.callback.first"),
                 LLVMBuildLoad2(builder_, types[1], byteOffset(slot, 8, "sysv.callback.second.addr"),

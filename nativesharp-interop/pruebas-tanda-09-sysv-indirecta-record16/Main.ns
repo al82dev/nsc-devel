@@ -1,0 +1,6 @@
+int Main() {
+    T09IndirectRecord16 record; record.x = 1; record.y = 2; record.z = 3; record.w = 4;
+    T09RecordCallback16 callback = t09_get_record_callback16();
+    if (callback(record) != 30 || record.x != 1 || record.y != 2 || record.z != 3 || record.w != 4) return 1;
+    return 0;
+}

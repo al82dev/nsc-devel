@@ -1081,6 +1081,22 @@ identidad (`A:/temp/nsc-t09-sysv-indirecta-record-matriz-foxtfwtz`,
 `A:/temp/t09-transport-directed/`). Esto no cubre otras firmas ni resuelve la
 contradiccion de la prueba negativa anterior.
 
+**Record de cuatro enteros:** el control C ejecuta y Clang clasifica la firma
+como dos piezas `i64`; NSC inicialmente rechazo el plan
+(`A:/temp/nsc-t09-sysv-indirecta-record16-d_xk7r73`). Tras ampliar esa forma
+concreta, pasaron ocho comparaciones C/NativeSharp en estatica y DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-record-matriz-o60x9njl`) y la plantilla
+precompilada sin encabezado, tambien estatica y DLL O0-O3, con un acierto de
+cache y rechazo de un campo no acreditado
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-f3l2qb6h`). Pasaron de nuevo la
+plantilla de tres enteros, las matrices directas del record anterior y de
+escalares, y las pruebas de transporte, ABI e identidad
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-kguy4p2n`,
+`A:/temp/nsc-t09-sysv-indirecta-record-matriz-g7weol_s`,
+`A:/temp/nsc-t09-sysv-indirecta-matriz-gq4tny10`,
+`A:/temp/t09-transport-directed/`). No cubre otras firmas; la prueba negativa
+anterior permanece intacta y su contradiccion sigue pendiente.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor
