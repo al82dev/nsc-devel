@@ -64,3 +64,4 @@ T09-003: conservar en el prototipo la identidad de destino y data layout efectiv
 T09-003: contrastar el plan copiado de un record SysV empaquetado con campos desalineados, incluidos el alineamiento del retorno y el del argumento byval, sin habilitar aun el caso en NSC.
 T09-003: conservar simbolo fisico y convencion elegidos por Clang en el prototipo por valor, y comprobar una funcion vectorcall con nombre decorado despues de cerrar la sesion.
 T09-003: ampliar las firmas SysV a `double*`, `void*` e `int**`; comprobar paso, retorno e identidad de los punteros en las pruebas C/NS y en la muestra precompilada.
+T09-003: probar en el prototipo el caso void sin argumentos y el rechazo de una declaracion C sin prototipo; mantener el prototipo aislado de produccion.

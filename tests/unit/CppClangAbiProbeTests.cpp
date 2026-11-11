@@ -36,6 +36,8 @@ int main() {
         int __attribute__((sysv_abi)) pvariadic(int, ...);
         RP __attribute__((sysv_abi)) pp(RP);
         int __vectorcall pvec(int);
+        void __attribute__((sysv_abi)) pvoid(void);
+        int __attribute__((sysv_abi)) pold();
     )c";
     auto ast = clang::tooling::buildASTFromCodeWithArgs(source,
         {"-x", "c", "-std=c11", "-target", "x86_64-pc-windows-msvc"}, "probe.c");
@@ -50,6 +52,7 @@ int main() {
     unsigned matched = 0;
     bool unsupportedRejected = false;
     bool variadicRejected = false;
+    bool noPrototypeRejected = false;
     std::map<std::string, t09_probe::Plan> copiedPlans;
     for (const auto* decl : context.getTranslationUnitDecl()->decls()) {
         const auto* function = llvm::dyn_cast<clang::FunctionDecl>(decl);
@@ -68,13 +71,19 @@ int main() {
             variadicRejected = true;
             continue;
         }
-        if (name != "p3" && name != "p16" && name != "pf" && name != "p24" && name != "ps8" && name != "pm" && name != "pp" && name != "pvec") continue;
+        if (name == "pold") {
+            std::string error;
+            if (t09_probe::copyPlan(*generator, *function, error) || error != "function prototype unavailable") return 31;
+            noPrototypeRejected = true;
+            continue;
+        }
+        if (name != "p3" && name != "p16" && name != "pf" && name != "p24" && name != "ps8" && name != "pm" && name != "pp" && name != "pvec" && name != "pvoid") continue;
         auto* physical = clang::CodeGen::convertFreeFunctionType(generator->CGM(), function);
         clang::CanQual<clang::FunctionProtoType> prototype =
             context.getCanonicalType(function->getType()).getAs<clang::FunctionProtoType>();
         if (!prototype) return 12;
         const auto& plan = clang::CodeGen::arrangeFreeFunctionType(generator->CGM(), prototype);
-        if (plan.arg_size() != (name == "pm" ? 4U : 1U)) return 13;
+        if (plan.arg_size() != (name == "pm" ? 4U : name == "pvoid" ? 0U : 1U)) return 13;
         std::string copyError;
         auto copied = t09_probe::copyPlan(*generator, *function, copyError);
         if (!copied) { llvm::errs() << copyError << "\n"; return 19; }
@@ -87,7 +96,7 @@ int main() {
             llvmFunction->getCallingConv() != expectedConvention) return 4;
         llvmFunction->print(llvm::outs());
         llvm::outs() << "\n";
-        if (plan.arguments()[0].info.isDirect()) {
+        if (plan.arg_size() != 0 && plan.arguments()[0].info.isDirect()) {
             auto* coercion = plan.arguments()[0].info.getCoerceToType();
             if (!coercion) return 17;
             llvm::outs() << "argumento " << name << ": ";
@@ -126,7 +135,7 @@ int main() {
         if (name == "ps8" && (!plan.getReturnInfo().isExtend() || !plan.arguments()[0].info.isExtend())) return 16;
         ++matched;
     }
-    if (matched != 8 || copiedPlans.size() != 8 || !unsupportedRejected || !variadicRejected) return 7;
+    if (matched != 9 || copiedPlans.size() != 9 || !unsupportedRejected || !variadicRejected || !noPrototypeRejected) return 7;
     generator.reset();
     ast.reset();
     const auto& p3 = copiedPlans.at("p3");
@@ -164,5 +173,9 @@ int main() {
         !pp.physicalParameters[1].pointee->packed) return 29;
     const auto& pvec = copiedPlans.at("pvec");
     if (pvec.symbol != "\1pvec@@8" || pvec.callingConvention != llvm::CallingConv::X86_VectorCall) return 30;
+    const auto& pvoid = copiedPlans.at("pvoid");
+    if (pvoid.physicalReturn.kind != t09_probe::TypeKind::Void ||
+        pvoid.logicalReturn.passing != t09_probe::Passing::Ignore ||
+        !pvoid.logicalParameters.empty() || !pvoid.physicalParameters.empty()) return 32;
     return 0;
 }

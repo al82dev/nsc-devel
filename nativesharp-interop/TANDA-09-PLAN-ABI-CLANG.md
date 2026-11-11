@@ -91,3 +91,9 @@ La copia incorpora el simbolo LLVM y la convencion numerica extraidos de la
 declaracion de Clang. La sonda comprobo despues de cerrar la sesion el marcador
 de escape y el nombre decorado de `pvec@@8`, junto con vectorcall. CTest paso
 1/1; sigue siendo una sonda aislada, no una ruta nueva de llamadas.
+
+La prueba incluye ademas una funcion `void(void)` SysV y comprueba que no
+aparezcan parametros fisicos ni resultado materializado; una declaracion C
+sin prototipo se rechaza en el prototipo. CTest paso 1/1 en
+A:/temp/t09-abi-probe-ctest.log. Esto no establece el soporte de las llamadas
+C sin prototipo en la ruta de produccion.
