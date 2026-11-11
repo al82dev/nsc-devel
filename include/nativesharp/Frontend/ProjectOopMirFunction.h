@@ -56,6 +56,7 @@ struct ProjectOopMirFunction final
     // Imported C function using the x86-64 System V calling convention.
     bool cppSysVCall = false;
     bool cppSysVRecordArguments = false;
+    bool cppSysVDirectRecordReturn = false;
     std::shared_ptr<const interop::abi_plan::Plan> cppAbiPlan;
     bool isTransportedInlineBody = false;
     bool isSyntheticImplicitConstructor = false;

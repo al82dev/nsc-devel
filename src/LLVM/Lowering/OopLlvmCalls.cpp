@@ -917,10 +917,13 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
             (interop::abi_plan::isSysVIndirectRecordWithArguments(*imported->cppAbiPlan, imported->cAbiName) ||
              (imported->cppSysVRecordArguments && (interop::abi_plan::isSysVScalarReturnWithRecordArguments(*imported->cppAbiPlan, imported->cAbiName) ||
-                                                  interop::abi_plan::isSysVDirectPairReturnWithArguments(*imported->cppAbiPlan, imported->cAbiName)))))
+                                                  interop::abi_plan::isSysVDirectPairReturnWithArguments(*imported->cppAbiPlan, imported->cAbiName) ||
+                                                  (imported->cppSysVDirectRecordReturn && interop::abi_plan::isSysVDirectSingleReturnWithArguments(*imported->cppAbiPlan, imported->cAbiName))))))
         {
             const bool indirectReturn = interop::abi_plan::isSysVIndirectRecordWithArguments(*imported->cppAbiPlan, imported->cAbiName);
             const bool directPairReturn = interop::abi_plan::isSysVDirectPairReturnWithArguments(*imported->cppAbiPlan, imported->cAbiName);
+            const bool directSingleReturn = imported->cppSysVDirectRecordReturn &&
+                interop::abi_plan::isSysVDirectSingleReturnWithArguments(*imported->cppAbiPlan, imported->cAbiName);
             const auto count = imported->cppAbiPlan->logicalParameters.size();
             if (node->children.size() != count || node->referenceResult || node->returnsAssignedValue ||
                 (argumentOverrides && argumentOverrides->size() != count))
@@ -946,7 +949,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             unsigned alignment = 0;
             LLVMValueRef resultSlot = nullptr;
             std::vector<LLVMValueRef> arguments;
-            if (indirectReturn || directPairReturn)
+            if (indirectReturn || directPairReturn || directSingleReturn)
             {
                 carrier = llvmType(node->typeKey, error);
                 if (!carrier) return nullptr;
@@ -1072,7 +1075,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     { LLVMAddCallSiteAttribute(call, index, attribute); });
             }
             if (!applyMustTail(node, call, error)) return nullptr;
-            if (!indirectReturn && !directPairReturn) return call;
+            if (!indirectReturn && !directPairReturn && !directSingleReturn) return call;
             if (directPairReturn)
             {
                 resultSlot = entryBlockAlloca(carrier, alignment, "sysv.direct.mixed.result");
@@ -1083,6 +1086,12 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 LLVMValueRef secondStore = LLVMBuildStore(builder_, LLVMBuildExtractValue(builder_, call, 1, "sysv.direct.mixed.r1"), second);
                 LLVMSetAlignment(firstStore, pieceAlignment);
                 LLVMSetAlignment(secondStore, pieceAlignment);
+            }
+            if (directSingleReturn)
+            {
+                resultSlot = entryBlockAlloca(carrier, alignment, "sysv.direct.single.result");
+                LLVMValueRef store = LLVMBuildStore(builder_, call, resultSlot);
+                LLVMSetAlignment(store, alignment);
             }
             LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "sysv.indirect.mixed.value");
             LLVMSetAlignment(result, alignment);

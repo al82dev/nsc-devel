@@ -1753,6 +1753,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
   - Se probaron punteros a record C y a `short` como argumento y retorno junto a records por valor, con identidad, escritura y precompilacion. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probaron enums C de 32 bits con signo y sin signo como argumento y retorno junto a records por valor, incluido consumo precompilado. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Se probaron retornos directos de dos piezas `double`/`i32`, `i64`/`double` y vector/vector, junto a records directos e indirectos, escalares y precompilacion. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
+  - Se probaron retornos directos de record de una pieza `i24`, `i32`, `i64`, `float` y vector de dos `float`, junto a argumentos directos, `byval` y precompilacion. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
 - [ ] T09-004. Emitir una llamada C sin parámetros y con resultado escalar. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-005. Emitir una llamada C con parámetros escalares. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-006. Emitir el paso de punteros a una función C. [Prueba y contraste](pruebas-tanda-09-llamadas/).

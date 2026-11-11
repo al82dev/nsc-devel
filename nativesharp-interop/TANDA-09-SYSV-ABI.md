@@ -934,6 +934,42 @@ A:/temp/nsc-t09-sysv-indirect-diff16-eed8vwvp y
 A:/temp/nsc-t09-sysv-prueba-5voqucsx). No se acreditan todas las clases de
 agregado ni firmas posibles; T09-003 permanece abierto.
 
+## Retorno directo de una pieza con argumentos mixtos
+
+Tres funciones C devuelven records transportados como `i24`, `float` y vector
+de dos `float`, y reciben un record directo mixto, un record `byval` y
+escalares. Los controles C pasaron y NSC rechazaba cada firma antes del cambio:
+A:/temp/nsc-t09-sysv-return-one-i24-mixed-gzr5pqek,
+A:/temp/nsc-t09-sysv-return-one-float-mixed-pgsvn55f y
+A:/temp/nsc-t09-sysv-return-one-vec-mixed-9epphoa8. Clang 23.1.0 confirmo las
+piezas fisicas y el `byval` (A:/temp/t09-retorno-una-*-clang.ll).
+
+El compilador conserva que el retorno logico es un record aun cuando su pieza
+fisica coincide con un escalar, y lo reconstruye despues de la llamada. El
+contrato vigente conserva la pieza observada. Las tres muestras pasaron ocho
+comparaciones C/NS en estatica y DLL O0–O3, argumentos nombrados, comprobacion
+de copia y plantilla precompilada sin encabezado O0:
+A:/temp/nsc-t09-sysv-return-one-i24-mixed-_5ddfz14,
+A:/temp/nsc-t09-sysv-return-one-float-mixed-nxj_fvzu y
+A:/temp/nsc-t09-sysv-return-one-vec-mixed-qvqzx40y.
+
+Se agregaron despues retornos de record `i32` e `i64`, este ultimo con un valor
+fuera del rango de 32 bits. Clang confirmo ambas piezas y las muestras pasaron
+las mismas comparaciones y precompilacion en
+A:/temp/nsc-t09-sysv-return-one-i32-mixed-3tazhc6o y
+A:/temp/nsc-t09-sysv-return-one-i64-mixed-p56s8jhw; no se afirma un rechazo
+previo ejecutado de esas variantes. La sonda y los metadatos pasaron para las
+cinco formas (A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log).
+
+Pasaron las regresiones del retorno directo de dos piezas, record de tres bytes
+previo, retorno escalar con records, retorno escalar `float` y control general:
+A:/temp/nsc-t09-sysv-return-record-mixed-ox8n10d1,
+A:/temp/nsc-t09-sysv-r3-z3coia2b,
+A:/temp/nsc-t09-sysv-scalar-direct-records-vy1yjy88,
+A:/temp/nsc-t09-sysv-return-float-mixed-k_w90kli y
+A:/temp/nsc-t09-sysv-prueba-u4ugupfo. Otras firmas y clases permanecen
+pendientes; T09-003 y la tanda 9 siguen abiertos.
+
 ## Retorno directo de dos piezas con argumentos mixtos
 
 Una funcion C devuelve un record `double`/`i32` y recibe escalares, un record

@@ -280,7 +280,7 @@ inline bool isSysVDirectSingleRecordLayout(const Type& type, std::uint64_t bits,
         type.elements[0].kind == TypeKind::Float && type.elements[0].widthOrCount == 0 && bits == 64 && alignmentBits == 32;
 }
 // Indirect record result and by-value records mixed with direct scalars.
-inline bool isSysVRecordArguments(const Plan& plan, std::string_view symbol, bool indirectReturn, bool pairReturn = false) noexcept
+inline bool isSysVRecordArguments(const Plan& plan, std::string_view symbol, bool indirectReturn, bool pairReturn = false, bool singleReturn = false) noexcept
 {
     const auto alignment = plan.logicalReturn.alignment;
     if (plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
@@ -297,6 +297,19 @@ inline bool isSysVRecordArguments(const Plan& plan, std::string_view symbol, boo
             !result.structureReturn || result.alignment != alignment || result.byValue || result.inRegister ||
             result.signExtend || result.zeroExtend) return false;
         physicalIndex = 1;
+    }
+    else if (singleReturn)
+    {
+        const auto& physical = plan.physicalReturn;
+        const auto valid = [](const Type& type) {
+            return (type.kind == TypeKind::Integer && type.widthOrCount >= 8 && type.widthOrCount <= 64 && type.widthOrCount % 8 == 0) ||
+                   ((type.kind == TypeKind::Float || type.kind == TypeKind::Double) && type.widthOrCount == 0) ||
+                   (type.kind == TypeKind::Vector && type.widthOrCount == 2 && type.elements.size() == 1 &&
+                    type.elements[0].kind == TypeKind::Float && type.elements[0].widthOrCount == 0);
+        };
+        if (plan.returnSignExtend || plan.returnZeroExtend || !valid(physical) || plan.logicalReturn.passing != Passing::Direct ||
+            !plan.logicalReturn.coercion || !valid(*plan.logicalReturn.coercion) || plan.logicalReturn.offset != 0 ||
+            plan.logicalReturn.coercion->kind != physical.kind || plan.logicalReturn.coercion->widthOrCount != physical.widthOrCount) return false;
     }
     else if (pairReturn)
     {
@@ -403,5 +416,9 @@ inline bool isSysVScalarReturnWithRecordArguments(const Plan& plan, std::string_
 inline bool isSysVDirectPairReturnWithArguments(const Plan& plan, std::string_view symbol) noexcept
 {
     return isSysVRecordArguments(plan, symbol, false, true);
+}
+inline bool isSysVDirectSingleReturnWithArguments(const Plan& plan, std::string_view symbol) noexcept
+{
+    return isSysVRecordArguments(plan, symbol, false, false, true);
 }
 }

@@ -61,6 +61,7 @@ struct ProjectOopHirFunction final
     // Imported C function using the x86-64 System V calling convention.
     bool cppSysVCall = false;
     bool cppSysVRecordArguments = false;
+    bool cppSysVDirectRecordReturn = false;
     std::shared_ptr<const interop::abi_plan::Plan> cppAbiPlan;
     bool isTransportedInlineBody = false;
     // Producer-owned callable synthesized for a source class that declares no constructor.

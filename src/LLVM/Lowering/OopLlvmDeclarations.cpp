@@ -19,7 +19,8 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
             if (function.cppSysVCall && function.cppAbiPlan &&
                 (interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName) ||
                  (function.cppSysVRecordArguments && (interop::abi_plan::isSysVScalarReturnWithRecordArguments(*function.cppAbiPlan, function.cAbiName) ||
-                                                      interop::abi_plan::isSysVDirectPairReturnWithArguments(*function.cppAbiPlan, function.cAbiName)))))
+                                                      interop::abi_plan::isSysVDirectPairReturnWithArguments(*function.cppAbiPlan, function.cAbiName) ||
+                                                      (function.cppSysVDirectRecordReturn && interop::abi_plan::isSysVDirectSingleReturnWithArguments(*function.cppAbiPlan, function.cAbiName))))))
             {
                 std::vector<LLVMTypeRef> parameters;
                 for (const auto& parameter : function.cppAbiPlan->physicalParameters)
@@ -47,6 +48,7 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                 LLVMTypeRef result = physicalReturn.kind == interop::abi_plan::TypeKind::Structure ? LLVMStructTypeInContext(context_, pairTypes, 2, 0) :
                     physicalReturn.kind == interop::abi_plan::TypeKind::Void ? LLVMVoidTypeInContext(context_) :
                     physicalReturn.kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
+                    physicalReturn.kind == interop::abi_plan::TypeKind::Vector ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) :
                     physicalReturn.kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
                     physicalReturn.kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
                     LLVMIntTypeInContext(context_, static_cast<unsigned>(physicalReturn.widthOrCount));
@@ -322,7 +324,8 @@ bool OopLlvmImplementation::declareFunction(
             if (function.cppSysVCall && function.cppAbiPlan &&
                 (interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName) ||
                  (function.cppSysVRecordArguments && (interop::abi_plan::isSysVScalarReturnWithRecordArguments(*function.cppAbiPlan, function.cAbiName) ||
-                                                      interop::abi_plan::isSysVDirectPairReturnWithArguments(*function.cppAbiPlan, function.cAbiName)))))
+                                                      interop::abi_plan::isSysVDirectPairReturnWithArguments(*function.cppAbiPlan, function.cAbiName) ||
+                                                      (function.cppSysVDirectRecordReturn && interop::abi_plan::isSysVDirectSingleReturnWithArguments(*function.cppAbiPlan, function.cAbiName))))))
             {
                 for (std::size_t i = 0; i < function.cppAbiPlan->logicalParameters.size(); ++i)
                 {

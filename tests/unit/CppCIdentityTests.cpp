@@ -2085,6 +2085,23 @@ bool checkDependencyTypeCodec()
         restoredRecord.declaration.abiPlan->physicalReturn.elements[0].kind == abi_plan::TypeKind::Vector &&
         restoredRecord.declaration.abiPlan->physicalReturn.elements[1].kind == abi_plan::TypeKind::Vector,
         "C dependency function retains both vector return pieces with indirect argument");
+    for (unsigned variant = 0; variant < 5; ++variant)
+    {
+        auto singleReturnPlan = std::make_shared<abi_plan::Plan>(*directPairReturnPlan);
+        singleReturnPlan->physicalReturn = variant == 0 ? abi_plan::Type{abi_plan::TypeKind::Integer, 24} :
+            variant == 1 ? abi_plan::Type{abi_plan::TypeKind::Float} : variant == 2 ? returnedVector :
+            abi_plan::Type{abi_plan::TypeKind::Integer, variant == 3 ? 32U : 64U};
+        singleReturnPlan->logicalReturn.coercion = singleReturnPlan->physicalReturn;
+        recordFunction.declaration.returnType.sizeBits = variant == 0 ? 24 : variant == 1 || variant == 3 ? 32 : 64;
+        recordFunction.declaration.returnType.alignmentBits = variant == 0 ? 8 : variant == 4 ? 64 : 32;
+        recordFunction.declaration.abiPlan = singleReturnPlan;
+        ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+            decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+            abi_plan::isSysVDirectSingleReturnWithArguments(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+            restoredRecord.declaration.abiPlan->physicalReturn.kind == singleReturnPlan->physicalReturn.kind &&
+            restoredRecord.declaration.abiPlan->physicalReturn.widthOrCount == singleReturnPlan->physicalReturn.widthOrCount,
+            "C dependency function retains a single direct record return with indirect argument");
+    }
     auto invalidPairReturn = *directPairReturnPlan;
     invalidPairReturn.logicalReturn.coercion->elements[1].widthOrCount = 64;
     ok &= expect(!abi_plan::isSysVDirectPairReturnWithArguments(invalidPairReturn, recordFunction.linkSymbol),
