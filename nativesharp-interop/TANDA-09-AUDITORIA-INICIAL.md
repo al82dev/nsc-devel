@@ -69,7 +69,7 @@ incluida la copia indirecta del record de 12 bytes; la declaracion DLL conserva
 dllimport. Estos volcados complementan las ejecuciones, sin probar todos los
 tipos, convenciones o destinos.
 
-Revision de cierre T09-001 a T09-006: la auditoria cubre la ruta de proyecto
+Revision inicial T09-001 a T09-006: la auditoria cubre la ruta de proyecto
 ProjectOop, desde las declaraciones importadas hasta la llamada directa o por
 puntero y la emision LLVM, en el destino Windows x64. Las pruebas nuevas
 comprueban cdecl, el simbolo decorado y llamada vectorcall directa, y funciones
@@ -84,7 +84,7 @@ CTest seleccionados y nsc_cpp_c_identity_tests si se ejecutaron como se indico
 arriba. Tampoco se ejecuto stage48_2; se conserva intacta y su fixture historico
 ausente no se convierte en requisito nuevo.
 
-Revision T09-007 y T09-008: al ampliar la prueba, los records de 1 y 2 bytes y
+Avance T09-007 y T09-008: al ampliar la prueba, los records de 1 y 2 bytes y
 una union de 4 bytes se sumaron a los records de 3, 4, 8 y 24 bytes. Los ocho
 contrastes C y NS en estatica y DLL O0–O3 pasaron; logs en
 A:/temp/nsc-t09-agregados-_wrupfy_. Estas muestras verifican paso, resultado y

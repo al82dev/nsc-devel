@@ -34,8 +34,8 @@ sesion Clang, cuya entrada `cpp-fixtures/project/CppProbe.nsproj` falta en esta
 laptop. `stage48_2` no se ejecuto y permanece intacta; su fixture historico
 ausente no constituye un requisito nuevo de versionamiento o compatibilidad.
 
-La tanda se cierra sobre las muestras y controles aqui enumerados. La ausencia
-de la suite de sesion se mantiene visible: no se presenta como aprobada ni se
-usa para ampliar la cobertura de las pruebas que si se ejecutaron. Se conservan
-los limites de la tanda 8 y las convenciones distintas de cdecl y vectorcall
-no quedan certificadas por esta validacion.
+La declaracion anterior de cierre fue prematura y se retira. La ausencia de la
+suite de sesion se mantiene visible: no se presenta como aprobada ni se usa para
+ampliar la cobertura de las pruebas que si se ejecutaron. Se conservan los
+limites de la tanda 8 y las convenciones distintas de cdecl y vectorcall no
+quedan certificadas por esta validacion.
