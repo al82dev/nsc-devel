@@ -17,3 +17,17 @@
   incremental y pruebas dirigidas únicamente. Sin push, merge ni despliegue.
 - La evidencia distinguirá ejecutable híbrido y compilador integrado. La
   corrección solo se entrega tras validación dirigida y commits revisables.
+
+## Ampliación para artefactos históricos
+
+- Reproducción: biblioteca generada el 10/11 con `Box` y `Box<N>`; al
+  consumir `Wrapper.nested.Echo` se reconstruyen dos métodos en la clase
+  ordinaria y se rechaza una familia duplicada en ocho cruces O0/O2.
+- Ruta causal: `PrecompiledSurfaceReachability::includeTemplate` alcanza el
+  dueño por su nombre sin aridad y deja fuera la plantilla `Box<N>` aunque
+  mantiene sus métodos, cuya identidad completa sí consta en la metadata.
+- Archivos candidatos: `src/Compilation/PrecompiledSurfaceReachability.cpp`,
+  prueba dirigida de clausura y su registro. Se protege el resto del driver,
+  análisis de préstamos y el formato de metadata.
+- Comportamiento requerido: alcanzar el dueño exacto indicado por la clave de
+  método y conservar propietarios ordinarios homónimos, sin adivinar claves.

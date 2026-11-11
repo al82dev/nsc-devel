@@ -363,9 +363,32 @@ void PrecompiledSurfaceReachability::includeTemplate(const Location& location)
         scanTypeKeys(contract.associatedProjectionKey);
         for (const std::string& key : contract.typeConstraintKeys) scanTypeKeys(key);
     }
-    // A generic method is materialized inside partial declarations of its declaring type.
+    // A generic method is materialized inside its declaring type. A generic owner must
+    // retain its arity, since a non-generic type may have the same source name.
     if (!generic.ownerName.empty())
     {
+        if (generic.kind == 3U)
+        {
+            const std::string suffix = "." + generic.name + "``";
+            const std::size_t separator = generic.canonicalKey.rfind(suffix);
+            if (separator != std::string::npos)
+            {
+                const std::string_view ownerKey(generic.canonicalKey.data(), separator);
+                const auto found = templateByKey_.find(ownerKey);
+                if (found != templateByKey_.end() && found->second.first == location.first)
+                {
+                    const auto& owner = metadata.genericTemplates[found->second.second];
+                    const std::string ownerName = owner.ownerName.empty()
+                        ? owner.name : owner.ownerName + "+" + owner.name;
+                    if (owner.kind <= 1U && owner.namespaceName == generic.namespaceName &&
+                        ownerName == generic.ownerName)
+                    {
+                        reachTemplate(ownerKey);
+                        return;
+                    }
+                }
+            }
+        }
         std::string owner = metadata.moduleName + "::";
         if (!generic.namespaceName.empty()) owner += generic.namespaceName + ".";
         owner += generic.ownerName;
