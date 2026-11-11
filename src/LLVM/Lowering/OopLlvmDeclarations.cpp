@@ -175,6 +175,9 @@ bool OopLlvmImplementation::declareFunction(
             applyExternalBoolAbi(context_, &function,
                 [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                 { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); });
+            applySysVIntegerExtension(context_, &function,
+                [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                { LLVMAddAttributeAtIndex(llvmFunction, index, attribute); });
             applyDenormalFloatingPointAttribute(llvmFunction);
             if (function.inliningPolicy == frontend::InliningPolicy::Preferred &&
                 !function.isImportedC && !function.isImportedNative)

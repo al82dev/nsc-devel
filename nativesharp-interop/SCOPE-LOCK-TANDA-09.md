@@ -52,3 +52,5 @@ T09-003: comprobar el uso de la nueva llamada desde una plantilla NativeSharp pr
 T09-003: ampliar las llamadas directas SysV a parametros y retornos `float` y `double`, conservando el rechazo para agregados y callbacks; contrastar llamadas mixtas y retornos con Clang en estatica y DLL O0–O3.
 T09-003: ampliar el mismo caso a paso y retorno de `int*`, con escritura observable y comparacion C/NS en estatica, DLL y precompilado. Mantener rechazados los demas punteros hasta probarlos.
 T09-003: ampliar SysV a enteros sin signo de 32 bits y enteros con y sin signo de 64 bits; comparar argumentos, retornos y llamada mixta con Clang en estatica, DLL y precompilado.
+T09-003: consultar el IR de Clang para `signed char`, `unsigned char`, `short`, `unsigned short` y `_Bool` bajo sysv_abi antes de admitirlos; verificar atributos de extension en retorno y parametros.
+T09-003: transportar signext/zeroext para enteros estrechos SysV en declaraciones y llamadas LLVM; contrastar enteros estrechos y bool contra Clang y mantener rechazo de agregados y callbacks.

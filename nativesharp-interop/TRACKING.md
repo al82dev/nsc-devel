@@ -1716,7 +1716,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [x] T09-001. Auditar las representaciones HIR y MIR que usa NSC para llamadas externas. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [x] T09-002. Auditar la emisión actual de llamadas C en el generador de código. [Auditoria y volcados](TANDA-09-AUDITORIA-INICIAL.md).
 - [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Verificado para cdecl y vectorcall en Windows x64; otras convenciones no se certifican. [Evidencia](TANDA-09-AUDITORIA-INICIAL.md).
-  - Avance parcial: llamadas directas `sysv_abi` con `int`, `uint`, `long`, `ulong`, `float`, `double`, `int*` y retorno `void` o de esos tipos pasaron en estatica y DLL O0–O3. Otras firmas y callbacks SysV siguen pendientes. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
+  - Avance parcial: llamadas directas `sysv_abi` con `sbyte`, `byte`, `short`, `ushort`, `int`, `uint`, `long`, `ulong`, `bool`, `float`, `double`, `int*` y retorno `void` o de esos tipos pasaron en estatica y DLL O0–O3. Otras firmas y callbacks SysV siguen pendientes. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
 - [ ] T09-004. Emitir una llamada C sin parámetros y con resultado escalar. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-005. Emitir una llamada C con parámetros escalares. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-006. Emitir el paso de punteros a una función C. [Prueba y contraste](pruebas-tanda-09-llamadas/).

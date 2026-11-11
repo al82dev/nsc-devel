@@ -1811,7 +1811,8 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 const auto supportedScalar = [](const std::string& type) {
                     return type == "builtin:int" || type == "builtin:uint" || type == "builtin:long" ||
                         type == "builtin:ulong" || type == "builtin:float" || type == "builtin:double" ||
-                        type == "builtin:int*";
+                        type == "builtin:int*" || type == "builtin:sbyte" || type == "builtin:byte" ||
+                        type == "builtin:short" || type == "builtin:ushort" || type == "builtin:bool";
                 };
                 const bool supportedReturn = function.returnTypeKey == "builtin:void" ||
                     supportedScalar(function.returnTypeKey);

@@ -11,3 +11,8 @@ int* __attribute__((sysv_abi)) sysv_pointer(int* value, int delta) { *value += d
 long long __attribute__((sysv_abi)) sysv_wide(long long value, unsigned int delta) { return value + delta; }
 unsigned int __attribute__((sysv_abi)) sysv_unsigned(unsigned int value) { return value + 7; }
 unsigned long long __attribute__((sysv_abi)) sysv_unsigned64(unsigned long long value) { return value + 1; }
+signed char __attribute__((sysv_abi)) sysv_s8(signed char value) { return value + 1; }
+unsigned char __attribute__((sysv_abi)) sysv_u8(unsigned char value) { return value + 1; }
+short __attribute__((sysv_abi)) sysv_s16(short value) { return value + 1; }
+unsigned short __attribute__((sysv_abi)) sysv_u16(unsigned short value) { return value + 1; }
+_Bool __attribute__((sysv_abi)) sysv_bool(_Bool value) { return !value; }

@@ -922,6 +922,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         if (imported != nullptr && imported->cppSysVCall)
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
         if (!applyMustTail(node, call, error)) return nullptr;
+        applySysVIntegerExtension(context_, imported,
+            [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+            { LLVMAddCallSiteAttribute(call, index, attribute); });
         applyExternalBoolAbi(context_, found->second.mirFunction,
             [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
             { LLVMAddCallSiteAttribute(call, index, attribute); });

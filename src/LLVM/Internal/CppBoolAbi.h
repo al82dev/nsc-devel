@@ -2,6 +2,7 @@
 
 #include "../LlvmCApi.h"
 #include "nativesharp/Frontend/ProjectOopMirFunction.h"
+#include <string_view>
 
 namespace nativesharp::llvm_backend
 {
@@ -38,6 +39,34 @@ void applyExternalBoolAbi(llvm_api::LLVMContextRef context,
             index >= function->abi.parameterPhysicalOrdinals.size())
             continue;
         addAttribute(static_cast<unsigned>(function->abi.parameterPhysicalOrdinals[index] + 1), attribute);
+    }
+}
+
+// SysV x86-64 requires the signedness-specific extension on narrow C integers.
+template <typename AddAttribute>
+void applySysVIntegerExtension(llvm_api::LLVMContextRef context,
+                               const frontend::ProjectOopMirFunction* function,
+                               AddAttribute&& addAttribute)
+{
+    if (function == nullptr || !function->cppSysVCall) return;
+    const auto apply = [&](std::string_view type, unsigned index)
+    {
+        const std::string_view name = type == "builtin:sbyte" || type == "builtin:short" ? "signext" :
+            type == "builtin:byte" || type == "builtin:ushort" ? "zeroext" : "";
+        if (name.empty()) return;
+        const unsigned kind = llvm_api::LLVMGetEnumAttributeKindForName(name.data(), name.size());
+        if (kind == 0) return;
+        const auto attribute = llvm_api::LLVMCreateEnumAttribute(context, kind, 0);
+        if (attribute != nullptr) addAttribute(index, attribute);
+    };
+    if (!function->referenceReturn && !function->constructor) apply(function->returnTypeKey, 0);
+    for (std::size_t index = 0; index < function->parameterTypeKeys.size(); ++index)
+    {
+        if ((index < function->parameterPassKinds.size() &&
+             function->parameterPassKinds[index] != frontend::ParameterPassKind::Value) ||
+            index >= function->abi.parameterPhysicalOrdinals.size()) continue;
+        apply(function->parameterTypeKeys[index],
+              static_cast<unsigned>(function->abi.parameterPhysicalOrdinals[index] + 1));
     }
 }
 }

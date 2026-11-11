@@ -10,5 +10,8 @@ int Main() {
     if (sysv_wide(-5000000000L, (uint)7) != -4999999993L) return 6;
     if (sysv_unsigned((uint)4000000000) != (uint)4000000007) return 7;
     if (sysv_unsigned64((ulong)100) != (ulong)101) return 8;
+    if (sysv_s8((sbyte)-7) != (sbyte)-6 || sysv_u8((byte)250) != (byte)251) return 9;
+    if (sysv_s16((short)-1000) != (short)-999 || sysv_u16((ushort)65000) != (ushort)65001) return 10;
+    if (sysv_bool(true) != false || sysv_bool(false) != true) return 11;
     return 0;
 }

@@ -43,6 +43,16 @@ for mode in ('estatica', 'dll'):
             shutil.copyfile(fixture / name, case / name)
         flags = ['-target', 'x86_64-pc-windows-msvc', '-std=c11', '-O' + str(opt)]
         run(prefix + '-productor', ['clang.exe', *flags, '-c', str(case/'api.c'), '-o', str(case/'api.obj')])
+        if opt == 0:
+            run(prefix + '-clang-ir', ['clang.exe', *flags, '-S', '-emit-llvm', str(case/'api.c'),
+                                       '-o', str(case/'api.ll')])
+            clang_ir = (case/'api.ll').read_text(encoding='utf-8')
+            for name, extension, bits in (('sysv_s8', 'signext', 8), ('sysv_u8', 'zeroext', 8),
+                                          ('sysv_s16', 'signext', 16), ('sysv_u16', 'zeroext', 16),
+                                          ('sysv_bool', 'zeroext', 1)):
+                pattern = r'define[^\n]*x86_64_sysvcc ' + extension + r' i' + str(bits) + r' @' + name + r'\(i' + str(bits) + r' [^\n]*' + extension
+                if not re.search(pattern, clang_ir):
+                    raise SystemExit(prefix + ': Clang no coincide en ' + name + '; evidencia: ' + str(root))
         if mode == 'estatica':
             run(prefix + '-archivo', ['llvm-lib.exe', '/nologo', '/out:' + str(case/'api.lib'), str(case/'api.obj')])
             library, project, cflags = 'api.lib', 'Static.nsproj', []
@@ -50,7 +60,8 @@ for mode in ('estatica', 'dll'):
             run(prefix + '-dll', ['lld-link.exe', '/nologo', '/dll', '/noentry', '/nodefaultlib',
                 '/export:sysv_mix', '/export:sysv_set', '/export:sysv_fp', '/export:sysv_float',
                 '/export:sysv_pointer', '/export:sysv_wide', '/export:sysv_unsigned',
-                '/export:sysv_unsigned64', '/export:sysv_value,DATA',
+                '/export:sysv_unsigned64', '/export:sysv_s8', '/export:sysv_u8',
+                '/export:sysv_s16', '/export:sysv_u16', '/export:sysv_bool', '/export:sysv_value,DATA',
                 '/out:' + str(case/'api.dll'), '/implib:' + str(case/'api-dll.lib'), str(case/'api.obj')])
             library, project, cflags = 'api-dll.lib', 'Dll.nsproj', ['-DAPI_DLL_IMPORT']
         run(prefix + '-control-obj', ['clang.exe', *flags, *cflags, '-c', str(case/'Control.c'), '-o', str(case/'control.obj')])
@@ -65,10 +76,18 @@ for mode in ('estatica', 'dll'):
         common = [str(case/project), '--cpp-clang-root=' + args.clang_root, '--library-reference-root', str(case)]
         ir = run(prefix + '-llvm', [args.nsc, '--dump-project-oop-llvm', *common])
         for name in ('sysv_mix', 'sysv_set', 'sysv_fp', 'sysv_float', 'sysv_pointer',
-                     'sysv_wide', 'sysv_unsigned', 'sysv_unsigned64'):
+                     'sysv_wide', 'sysv_unsigned', 'sysv_unsigned64', 'sysv_s8', 'sysv_u8',
+                     'sysv_s16', 'sysv_u16', 'sysv_bool'):
             for kind in ('declare', 'call'):
                 if not re.search(kind + r'[^\n]*x86_64_sysvcc[^\n]*@' + name + r'\(', ir):
                     raise SystemExit(prefix + ': falta convencion en ' + kind + ' ' + name + '; evidencia: ' + str(root))
+        for name, extension, bits in (('sysv_s8', 'signext', 8), ('sysv_u8', 'zeroext', 8),
+                                      ('sysv_s16', 'signext', 16), ('sysv_u16', 'zeroext', 16),
+                                      ('sysv_bool', 'zeroext', 1)):
+            for kind in ('declare', 'call'):
+                pattern = kind + r'[^\n]*' + extension + r' i' + str(bits) + r' @' + name + r'\(i' + str(bits) + r' ' + extension
+                if not re.search(pattern, ir):
+                    raise SystemExit(prefix + ': faltan atributos de ' + kind + ' ' + name + '; evidencia: ' + str(root))
         run(prefix + '-nsc', [args.nsc, '--emit-project-oop-exe', *common,
             '--no-artifact-cache', '-O' + str(opt), '-o', str(output)])
         run(prefix + '-ns-run', [str(output)])
@@ -90,7 +109,10 @@ for name in ('api.h', 'api.lib'):
     'if (result != &value || value != 13 || *result != 13) return 5; '
     'if (sysv_wide(-5000000000L, (uint)7) != -4999999993L) return 6; '
     'if (sysv_unsigned((uint)4000000000) != (uint)4000000007) return 7; '
-    'if (sysv_unsigned64((ulong)100) != (ulong)101) return 8; return 0; } } }', encoding='utf-8')
+    'if (sysv_unsigned64((ulong)100) != (ulong)101) return 8; '
+    'if (sysv_s8((sbyte)-7) != (sbyte)-6 || sysv_u8((byte)250) != (byte)251) return 9; '
+    'if (sysv_s16((short)-1000) != (short)-999 || sysv_u16((ushort)65000) != (ushort)65001) return 10; '
+    'if (sysv_bool(true) != false || sysv_bool(false) != true) return 11; return 0; } } }', encoding='utf-8')
 (producer/'Producer.nsproj').write_text(
     '<Project><PropertyGroup><Name>T09SysvProducer</Name><OutputType>Library</OutputType>'
     '</PropertyGroup><ItemGroup><Compile Include="Producer.ns"/><CppLibraryReference '

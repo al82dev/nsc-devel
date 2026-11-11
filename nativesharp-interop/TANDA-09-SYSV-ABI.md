@@ -6,8 +6,8 @@ del cambio, el control C enlazo y ejecuto una suma, mientras NSC rechazo la
 convencion en HIR. Reproduccion: A:/temp/nsc-t09-sysv-77xbbf6_.
 
 El primer cambio admite llamadas directas no variadicas con parametros `int`,
-`uint`, `long`, `ulong`, `float`, `double` o `int*` y retorno de esos tipos o
-`void`. La convencion se transporta de HIR
+`uint`, `long`, `ulong`, `sbyte`, `byte`, `short`, `ushort`, `bool`, `float`,
+`double` o `int*` y retorno de esos tipos o `void`. La convencion se transporta de HIR
 a MIR y se aplica en la declaracion y llamada LLVM. Las demas firmas y la
 resolucion especial de DLL con alias TLS siguen rechazadas. Convertir la funcion
 a delegado queda rechazado hasta representar correctamente ese puntero; no se
@@ -46,6 +46,15 @@ de -5.000.000.000 y `ulong` de 100 paso en estatica y DLL O0–O3 y en la muestr
 precompilada sin encabezado en estatica O0. Los rechazos anteriores siguen
 pasando. Evidencia A:/temp/nsc-t09-sysv-prueba-u_11ch2e; los valores probados
 no cubren todos los extremos de los tipos.
+
+Enteros estrechos y bool: Clang emite `signext` para signed char y short, y
+`zeroext` para unsigned char, unsigned short y `_Bool`. NSC aplica los mismos
+atributos en declaracion y llamada SysV. El control automatizado contrasta el
+IR de Clang O0 y el de NSC, y ejecuta C y NS en estatica y DLL O0–O3, incluida
+una muestra precompilada sin encabezado en estatica O0. Pasaron tambien los
+rechazos de agregado y callback; evidencia A:/temp/nsc-t09-sysv-prueba-hkwn48zr.
+Las regresiones dirigidas cdecl y vectorcall pasaron 8/8 cada una en
+A:/temp/nsc-t09-llamadas-llazaflq y A:/temp/nsc-t09-vectorcall-2vpltaqh.
 
 No se afirma compatibilidad de SysV con agregados, otros escalares o punteros,
 variadicas, punteros de funcion, aislamiento TLS ni otros destinos. No se han cambiado
