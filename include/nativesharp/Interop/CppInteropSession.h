@@ -90,8 +90,9 @@ public:
     // Initial projection of named, non-dependent records; nullopt means closed.
     virtual std::optional<std::vector<CppRecordDeclaration>> recordsSnapshot() const = 0;
     // Live C AST observation only: true means a unique, complete, plain record
-    // with unqualified builtin or named-record fields or their fixed arrays, and no declaration attributes. It is not
-    // by itself an ABI-equivalence proof or persisted metadata.
+    // with unqualified builtin or named-record fields, fixed arrays or
+    // attribute-free typedefs, and no declaration attributes. This observation
+    // alone is not an ABI-equivalence proof.
     virtual std::optional<bool> cRecordHasPlainReplaySyntax(std::string_view) const { return std::nullopt; }
     // As above, for a C record with only Clang's packed attribute.
     virtual std::optional<bool> cRecordHasPackedReplaySyntax(std::string_view) const { return std::nullopt; }

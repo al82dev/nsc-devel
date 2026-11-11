@@ -15,6 +15,12 @@ typedef struct __attribute__((packed)) T09VarPackedValue { signed char tag; doub
 typedef struct T09VarArray { double values[2]; } T09VarArray;
 typedef struct T09VarNestLeaf { int x; int y; } T09VarNestLeaf;
 typedef struct T09VarNested { double value; struct T09VarNestLeaf leaf; } T09VarNested;
+typedef double T09ScalarAlias;
+typedef T09ScalarAlias T09ScalarAlias2;
+typedef struct T09VarNestLeaf T09LeafAlias;
+typedef struct T09VarAliasFields { T09ScalarAlias2 value; T09LeafAlias leaf; } T09VarAliasFields;
+typedef int T09AlignedInt __attribute__((aligned(8)));
+typedef struct T09BadAliasFields { T09AlignedInt value; } T09BadAliasFields;
 typedef struct T09VarRecordArray { struct T09VarNestLeaf leaves[2]; } T09VarRecordArray;
 typedef struct T09VarRecordArrayLarge { struct T09VarNestLeaf leaves[3]; } T09VarRecordArrayLarge;
 typedef union T09VarChoice { double real; long long integer; } T09VarChoice;

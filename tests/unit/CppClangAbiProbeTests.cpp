@@ -711,11 +711,13 @@ int main(int argc, char** argv) {
     if (!equivalentOrigin || !incompatibleOrigin) return 149;
     auto attributeOrigin = openRecordSession(
         "typedef int Number;\n"
+        "typedef int NumberAligned __attribute__((aligned(8)));\n"
         "struct Plain { double x; int y; };\n"
         "struct __attribute__((packed)) Packed { double x; int y; };\n"
         "struct __attribute__((packed, aligned(2))) PackedAligned { double x; int y; };\n"
         "struct FieldAttribute { double x; int y __attribute__((aligned(8))); };\n"
         "struct AliasField { Number x; };\n"
+        "struct AliasAligned { NumberAligned x; };\n"
         "struct QualifiedField { const int x; };\n"
         "struct Bits { unsigned int x : 1; };\n"
         "struct PointerField { int *x; };\n"
@@ -730,14 +732,15 @@ int main(int argc, char** argv) {
     if (!attributeOrigin || attributeOrigin->cRecordHasPlainReplaySyntax("Plain") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("Packed") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("FieldAttribute") != false ||
-        attributeOrigin->cRecordHasPlainReplaySyntax("AliasField") != false ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("AliasField") != true ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("AliasAligned") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("QualifiedField") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("Bits") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("PointerField") != false ||
         attributeOrigin->cRecordHasPlainReplaySyntax("ArrayField") != true ||
-        attributeOrigin->cRecordHasPlainReplaySyntax("AliasArray") != false ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("AliasArray") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("Parent") != true ||
-        attributeOrigin->cRecordHasPlainReplaySyntax("AliasRecord") != false ||
+        attributeOrigin->cRecordHasPlainReplaySyntax("AliasRecord") != true ||
         attributeOrigin->cRecordHasPlainReplaySyntax("Forward") ||
         attributeOrigin->cRecordHasPlainReplaySyntax("PragmaPacked") != false ||
         attributeOrigin->cRecordHasPackedReplaySyntax("Plain") != false ||

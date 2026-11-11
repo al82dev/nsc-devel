@@ -40,6 +40,8 @@ int Main() {
     if (sysv_record_array(1, array) != 1 || array.values[0] != 2.25 || array.values[1] != 3.5) return 21;
     T09VarNested nested; nested.value = 2.25; nested.leaf.x = 1; nested.leaf.y = 2;
     if (sysv_record_nested(1, nested) != 1 || nested.leaf.x != 1 || nested.leaf.y != 2) return 22;
+    T09VarAliasFields aliasFields; aliasFields.value = 2.25; aliasFields.leaf.x = 1; aliasFields.leaf.y = 2;
+    if (sysv_record_nested(1, aliasFields) != 1 || aliasFields.leaf.x != 1 || aliasFields.leaf.y != 2) return 26;
     T09VarRecordArray recordArray; recordArray.leaves[0].x = 1; recordArray.leaves[0].y = 2;
     recordArray.leaves[1].x = 3; recordArray.leaves[1].y = 4;
     if (sysv_record_record_array(1, recordArray) != 1 || recordArray.leaves[1].y != 4) return 23;

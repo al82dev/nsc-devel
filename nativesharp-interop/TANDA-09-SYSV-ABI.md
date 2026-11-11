@@ -961,8 +961,8 @@ atributos aun no representados (`A:/temp/nsc-t09-sysv-varargs-xp1p031e`,
 `A:/temp/t09-transport-directed/`). Pasaron las regresiones C/SysV
 (`A:/temp/nsc-t09-llamadas-ap4h1n_r`, `A:/temp/nsc-t09-sysv-prueba-dpo4s1rk`,
 `A:/temp/nsc-t09-sysv-padded-pair-id-4gum6931`). La evidencia cubre la muestra
-anidada indicada; aliases, estructuras anonimas y otras combinaciones aun no
-observadas permanecen pendientes. T09-003 no se cierra.
+anidada indicada; en ese momento aliases, estructuras anonimas y otras
+combinaciones aun no observadas permanecian pendientes. T09-003 no se cierra.
 
 Se ampliaron las comprobaciones de la reconstruccion ya implementada con un
 arreglo de dos records interiores, un arreglo de tres records que Clang pasa
@@ -973,6 +973,20 @@ y NativeSharp con estatica y DLL O0–O3, tambien desde plantilla precompilada
 sin encabezado, con inspeccion HIR/MIR y LLVM y cache fria/caliente
 (`A:/temp/nsc-t09-sysv-varargs-ce0tl155`). Esta es evidencia de las tres formas
 indicadas; otras estructuras y atributos siguen pendientes.
+
+La observacion de Clang sigue ahora cadenas `typedef` sin atributos hasta su
+tipo subyacente, manteniendo las comprobaciones de cualificadores, identidad y
+layout. La muestra combina un alias escalar encadenado y un alias de record en
+un mismo argumento variadico. Antes del cambio pasaban C y la llamada directa,
+pero fallaba la plantilla precompilada sin encabezado
+(`A:/temp/nsc-t09-sysv-varargs-aw0r201h`). Despues pasaron estatica y DLL
+O0–O3, HIR/MIR, comparacion de piezas LLVM, cache y rechazo de un alias con
+alineacion explicita (`A:/temp/nsc-t09-sysv-varargs-5s8lne7r`). Tambien
+pasaron las sondas ABI, identidad y transporte y las regresiones C/SysV
+(`A:/temp/t09-transport-directed/`, `A:/temp/nsc-t09-llamadas-wfbej62c`,
+`A:/temp/nsc-t09-sysv-prueba-gt1dt3bv`,
+`A:/temp/nsc-t09-sysv-padded-pair-id-qzcg_kr_`). Aliases con atributos y otras
+formas permanecen pendientes.
 
 ## Retorno indirecto sin argumentos byval
 

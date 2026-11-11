@@ -36,6 +36,8 @@ int main(void) {
     if (sysv_record_array(1, array) != 1 || array.values[0] != 2.25 || array.values[1] != 3.5) return 20;
     T09VarNested nested = {2.25, {1, 2}};
     if (sysv_record_nested(1, nested) != 1 || nested.leaf.x != 1 || nested.leaf.y != 2) return 21;
+    T09VarAliasFields aliasFields = {2.25, {1, 2}};
+    if (sysv_record_nested(1, aliasFields) != 1 || aliasFields.leaf.x != 1 || aliasFields.leaf.y != 2) return 25;
     T09VarRecordArray recordArray = {{{1, 2}, {3, 4}}};
     if (sysv_record_record_array(1, recordArray) != 1 || recordArray.leaves[1].y != 4) return 22;
     T09VarRecordArrayLarge recordArrayLarge = {{{1, 2}, {3, 4}, {5, 6}}};

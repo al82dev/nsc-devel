@@ -75,6 +75,8 @@ for mode in ('estatica', 'dll'):
                              ('sysv_record_union_outer', r'double [^,]+, i64 [^,\)]+')):
             if not re.search(r'call[^\n]*x86_64_sysvcc[^\n]*@'+name+r'\(i32[^,]+, '+pieces, ir):
                 raise SystemExit(prefix+': piezas C inesperadas de '+name+'; evidencia: '+str(root))
+        if len(re.findall(r'call[^\n]*x86_64_sysvcc[^\n]*@sysv_record_nested\(i32[^,]+, double [^,]+, i64 [^,\)]+', ir)) < 2:
+            raise SystemExit(prefix+': falta la llamada C con campos typedef; evidencia: '+str(root))
         for name in ('sysv_record_pressure', 'sysv_record_sse_pressure', 'sysv_record_large', 'sysv_record_packed',
                      'sysv_record_record_array_large'):
             if not re.search(r'call[^\n]*@'+name+r'\([^\n]*byval\([^\n]*\) align 8', ir):
@@ -114,6 +116,8 @@ for mode in ('estatica', 'dll'):
                                 raise SystemExit(prefix+': falta '+expected+' en '+stage+'; evidencia: '+str(root))
                         if dump.count('cpp-variadic-plan=sysv_varargs:4') < 2:
                             raise SystemExit(prefix+': falta plan en la llamada de metodo o Main en '+stage+'; evidencia: '+str(root))
+                        if dump.count('cpp-variadic-plan=sysv_record_nested:2') < 2:
+                            raise SystemExit(prefix+': falta plan para campos typedef en '+stage+'; evidencia: '+str(root))
                         for expected in ('cpp-variadic-plan=sysv_record_small:2', 'cpp-variadic-plan=sysv_record_mixed:2',
                                          'cpp-variadic-plan=sysv_record_two:3', 'cpp-variadic-plan=sysv_record_pressure:7',
                                          'cpp-variadic-plan=sysv_record_sse_pressure:10',
@@ -161,6 +165,8 @@ for mode in ('estatica', 'dll'):
                                  ('sysv_record_union_outer', r'double [^,]+, i64 [^,\)]+')):
                 if not re.search(r'call[^\n]*x86_64_sysvcc[^\n]*@'+name+r'\(i32[^,]+, '+pieces, ns_ir):
                     raise SystemExit(prefix+': piezas NS inesperadas de '+name+'; evidencia: '+str(root))
+            if len(re.findall(r'call[^\n]*x86_64_sysvcc[^\n]*@sysv_record_nested\(i32[^,]+, double [^,]+, i64 [^,\)]+', ns_ir)) < 2:
+                raise SystemExit(prefix+': falta la llamada NS con campos typedef; evidencia: '+str(root))
             run(prefix+'-ns', command)
             run(prefix+'-ns-run', [str(case/'result.exe')])
             print(prefix + ': C y NativeSharp pasaron', flush=True)
@@ -243,6 +249,8 @@ for name in ('api.h', 'api.lib'):
     'if (sysv_record_array(1, array) != 1 || array.values[0] != 2.25 || array.values[1] != 3.5) return 13; '
     'T09VarNested nested; nested.value = 2.25; nested.leaf.x = 1; nested.leaf.y = 2; '
     'if (sysv_record_nested(1, nested) != 1 || nested.leaf.x != 1 || nested.leaf.y != 2) return 14; '
+    'T09VarAliasFields aliasFields; aliasFields.value = 2.25; aliasFields.leaf.x = 1; aliasFields.leaf.y = 2; '
+    'if (sysv_record_nested(1, aliasFields) != 1 || aliasFields.leaf.x != 1 || aliasFields.leaf.y != 2) return 18; '
     'T09VarRecordArray recordArray; recordArray.leaves[0].x = 1; recordArray.leaves[0].y = 2; '
     'recordArray.leaves[1].x = 3; recordArray.leaves[1].y = 4; '
     'if (sysv_record_record_array(1, recordArray) != 1 || recordArray.leaves[1].y != 4) return 15; '
@@ -260,7 +268,9 @@ for name in ('api.h', 'api.lib'):
     'return sysv_record_rptr(2, value, &packed); } } '
     'public class BadNestedBridge { public static int Run<T>(T unused) { '
     'T09BadOuter value; value.value = 2.25; value.inner.x = 1; '
-    'return sysv_record_nested(1, value); } } }', encoding='utf-8')
+    'return sysv_record_nested(1, value); } } '
+    'public class BadAliasBridge { public static int Run<T>(T unused) { '
+    'T09BadAliasFields value; value.value = 1; return sysv_record_nested(1, value); } } }', encoding='utf-8')
 (recordProducer/'Producer.nsproj').write_text(
     '<Project><PropertyGroup><Name>SysvVarRecordProducer</Name><OutputType>Library</OutputType></PropertyGroup>'
     '<ItemGroup><Compile Include="Producer.ns"/><CppLibraryReference Header="api.h" Language="C" '
@@ -288,6 +298,8 @@ for stage in ('hir', 'mir'):
                          'cpp-variadic-plan=sysv_record_record_array_large:2'):
             if expected not in output:
                 raise SystemExit('Falta '+expected+' en plantilla '+stage+'; evidencia: '+str(root))
+        if output.count('cpp-variadic-plan=sysv_record_nested:2') < 2:
+            raise SystemExit('Falta plan para campos typedef en plantilla '+stage+'; evidencia: '+str(root))
 preIr = run('pre-record-llvm', [args.nsc, '--dump-project-oop-llvm', str(recordConsumer/'Consumer.nsproj'),
     '--cpp-clang-root='+args.clang_root])
 for name, pieces in (('sysv_record_small', r'i64 [^,\)]+'),
@@ -299,6 +311,8 @@ for name, pieces in (('sysv_record_small', r'i64 [^,\)]+'),
                      ('sysv_record_union_outer', r'double [^,]+, i64 [^,\)]+')):
     if not re.search(r'call[^\n]*x86_64_sysvcc[^\n]*@'+name+r'\(i32[^,]+, '+pieces, preIr):
         raise SystemExit('Piezas LLVM precompiladas incorrectas: '+name+'; evidencia: '+str(root))
+if len(re.findall(r'call[^\n]*x86_64_sysvcc[^\n]*@sysv_record_nested\(i32[^,]+, double [^,]+, i64 [^,\)]+', preIr)) < 2:
+    raise SystemExit('Falta llamada LLVM precompilada con typedef; evidencia: '+str(root))
 for name in ('sysv_record_pressure', 'sysv_record_sse_pressure', 'sysv_record_large', 'sysv_record_packed',
              'sysv_record_record_array_large'):
     if not re.search(r'call[^\n]*@'+name+r'\([^\n]*byval\([^\n]*\) align 8', preIr):
@@ -345,6 +359,11 @@ badNested = run('pre-record-nested-rechazo', [args.nsc, '--emit-project-oop-exe'
     '--cpp-clang-root='+args.clang_root, '--no-artifact-cache', '-O0', '-o', str(recordConsumer/'BadPacked.exe')], expected=1)
 if 'sysv_abi variadic argument type is not yet supported' not in badNested:
     raise SystemExit('El record anidado no observado no se rechazo correctamente; evidencia: '+str(root))
+(recordConsumer/'BadPacked.ns').write_text('int Main() { return T09.BadAliasBridge.Run<int>(0); }', encoding='utf-8')
+badAlias = run('pre-record-alias-atributo-rechazo', [args.nsc, '--emit-project-oop-exe', str(recordConsumer/'BadPacked.nsproj'),
+    '--cpp-clang-root='+args.clang_root, '--no-artifact-cache', '-O0', '-o', str(recordConsumer/'BadPacked.exe')], expected=1)
+if 'sysv_abi variadic argument type is not yet supported' not in badAlias:
+    raise SystemExit('El alias con atributo no se rechazo correctamente; evidencia: '+str(root))
 for mode in ('estatica', 'dll'):
     for opt in range(4):
         if mode == 'estatica' and opt == 0:
