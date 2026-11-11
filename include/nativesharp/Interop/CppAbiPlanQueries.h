@@ -280,7 +280,7 @@ inline bool isSysVDirectSingleRecordLayout(const Type& type, std::uint64_t bits,
         type.elements[0].kind == TypeKind::Float && type.elements[0].widthOrCount == 0 && bits == 64 && alignmentBits == 32;
 }
 // Indirect record result and by-value records mixed with direct scalars.
-inline bool isSysVRecordArguments(const Plan& plan, std::string_view symbol, bool indirectReturn) noexcept
+inline bool isSysVRecordArguments(const Plan& plan, std::string_view symbol, bool indirectReturn, bool pairReturn = false) noexcept
 {
     const auto alignment = plan.logicalReturn.alignment;
     if (plan.symbol != symbol || plan.callingConvention != 78 || plan.variadic ||
@@ -297,6 +297,18 @@ inline bool isSysVRecordArguments(const Plan& plan, std::string_view symbol, boo
             !result.structureReturn || result.alignment != alignment || result.byValue || result.inRegister ||
             result.signExtend || result.zeroExtend) return false;
         physicalIndex = 1;
+    }
+    else if (pairReturn)
+    {
+        if (plan.returnSignExtend || plan.returnZeroExtend || !isSysVDirectPairShape(plan.physicalReturn) ||
+            plan.logicalReturn.passing != Passing::Direct || !plan.logicalReturn.coercion ||
+            !isSysVDirectPairShape(*plan.logicalReturn.coercion) || plan.logicalReturn.offset != 0) return false;
+        for (std::size_t i = 0; i < 2; ++i)
+        {
+            const auto& a = plan.physicalReturn.elements[i];
+            const auto& b = plan.logicalReturn.coercion->elements[i];
+            if (a.kind != b.kind || a.widthOrCount != b.widthOrCount) return false;
+        }
     }
     else if (plan.physicalReturn.kind == TypeKind::Void)
     {
@@ -387,5 +399,9 @@ inline bool isSysVIndirectRecordWithArguments(const Plan& plan, std::string_view
 inline bool isSysVScalarReturnWithRecordArguments(const Plan& plan, std::string_view symbol) noexcept
 {
     return isSysVRecordArguments(plan, symbol, false);
+}
+inline bool isSysVDirectPairReturnWithArguments(const Plan& plan, std::string_view symbol) noexcept
+{
+    return isSysVRecordArguments(plan, symbol, false, true);
 }
 }

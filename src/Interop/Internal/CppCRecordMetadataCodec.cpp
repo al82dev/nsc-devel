@@ -474,6 +474,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         return false;
     }();
     const bool mixedRecord = f.abiPlan && abi_plan::isSysVMixedRecordRoundTrip(*f.abiPlan, value.linkSymbol);
+    const bool directMixed = f.abiPlan && !pairRecord && !pairWithScalars && !mixedRecord &&
+        f.returnType.kind == CppTypeKind::Record && abi_plan::isSysVDirectPairReturnWithArguments(*f.abiPlan, value.linkSymbol);
     const bool mixedDoubleFirst = mixedRecord && f.abiPlan->physicalReturn.elements[0].kind == abi_plan::TypeKind::Double;
     const bool mixedFloatFirst = mixedRecord && f.abiPlan->physicalReturn.elements[0].kind == abi_plan::TypeKind::Float;
     const bool mixedBothDouble = mixedDoubleFirst && f.abiPlan->physicalReturn.elements[1].kind == abi_plan::TypeKind::Double;
@@ -487,10 +489,10 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
          (mixedVectorSecond && mixedDoubleFirst));
     const bool mixedVectorFirstFloat = mixedVectorFirst && mixedFloatSecond;
     const bool mixedVectorFirstI32 = mixedVectorFirst && f.abiPlan->physicalReturn.elements[1].widthOrCount == 32;
-    writer.u8(scalarMixed ? 24 : indirectDetailed ? 23 : indirectMixed ? 22 : pairWithScalars ? 21 : manyRecords ? 20 : directRecord ? 1 : singleVector ? 12 : singleFloating ? (singleFloat ? 13 : 14) : pairRecord ? 2 : indirectRecord ? 3 :
+    writer.u8(directMixed ? 25 : scalarMixed ? 24 : indirectDetailed ? 23 : indirectMixed ? 22 : pairWithScalars ? 21 : manyRecords ? 20 : directRecord ? 1 : singleVector ? 12 : singleFloating ? (singleFloat ? 13 : 14) : pairRecord ? 2 : indirectRecord ? 3 :
               mixedRecord ? (mixedVectorDouble ? (mixedVectorFirst ? 18 : 19) : mixedFloatFirst ? 17 : mixedBothDouble ? 15 : mixedDoubleFloat ? 16 : mixedDoubleFirst ? 4 : mixedVectorFirstFloat ? 11 : mixedFloatSecond ? 6 : mixedBothVectors ? 10 : mixedVectorSecond ? 7 :
                              mixedVectorFirst ? (mixedVectorFirstI32 ? 9 : 8) : 5) : 0);
-    if (directRecord || manyRecords || singleVector || singleFloating || pairRecord || pairWithScalars || indirectRecord || indirectMixed || scalarMixed || mixedRecord)
+    if (directRecord || manyRecords || singleVector || singleFloating || pairRecord || pairWithScalars || indirectRecord || indirectMixed || scalarMixed || directMixed || mixedRecord)
     {
         const auto secondBits = (pairRecord || pairWithScalars) ? f.abiPlan->physicalReturn.elements[1].widthOrCount : 0;
         const auto bits = singleVector ? 64 : singleFloating ? (singleFloat ? 32 : 64) : mixedRecord ? ((mixedFloatSecond && !mixedDoubleFloat) || mixedVectorFirstI32 ? 96 : 128) : (indirectRecord || indirectMixed) ? f.returnType.sizeBits.value_or(0) :
@@ -513,9 +515,11 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                 (f.returnType.kind == CppTypeKind::Floating &&
                  ((f.returnType.sizeBits == 32 && f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Float) ||
                   (f.returnType.sizeBits == 64 && f.abiPlan->physicalReturn.kind == abi_plan::TypeKind::Double)))) :
+                           directMixed ? (f.returnType.kind != CppTypeKind::Record || !f.returnType.sizeBits || !f.returnType.alignmentBits ||
+                               !abi_plan::isSysVDirectPairLayout(f.abiPlan->physicalReturn, *f.returnType.sizeBits, *f.returnType.alignmentBits)) :
                            (f.returnType.kind != CppTypeKind::Record || f.returnType.sizeBits != bits)) ||
-            f.parameters.size() != ((manyRecords || pairWithScalars || indirectMixed || scalarMixed) ? f.abiPlan->logicalParameters.size() : 1U) ||
-            (!manyRecords && !pairWithScalars && !indirectMixed && !scalarMixed && (f.parameters[0].type.kind != CppTypeKind::Record || f.parameters[0].type.sizeBits != bits)) ||
+            f.parameters.size() != ((manyRecords || pairWithScalars || indirectMixed || scalarMixed || directMixed) ? f.abiPlan->logicalParameters.size() : 1U) ||
+            (!manyRecords && !pairWithScalars && !indirectMixed && !scalarMixed && !directMixed && (f.parameters[0].type.kind != CppTypeKind::Record || f.parameters[0].type.sizeBits != bits)) ||
             (manyRecords && [&] {
                 bool hasRecord = false;
                 for (std::size_t i = 0; i < f.parameters.size(); ++i)
@@ -556,7 +560,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                 }
                 return false;
             }()) ||
-            ((indirectMixed || scalarMixed) && [&] {
+            ((indirectMixed || scalarMixed || directMixed) && [&] {
                 if (indirectMixed && (bits <= 128 || bits % 8 != 0 || f.returnType.alignmentBits != f.abiPlan->logicalReturn.alignment * 8)) return true;
                 for (std::size_t i = 0; i < f.parameters.size(); ++i)
                 {
@@ -602,11 +606,20 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                              f.parameters[0].type.alignmentBits != f.returnType.alignmentBits)))
         { error = "invalid C dependency SysV record ABI"; return false; }
         if (indirectRecord || indirectMixed) writer.u64(f.abiPlan->logicalReturn.alignment);
-        else if (!scalarMixed && !mixedRecord && !singleVector && !singleFloating)
+        else if (!scalarMixed && !directMixed && !mixedRecord && !singleVector && !singleFloating)
             writer.u8(static_cast<std::uint8_t>((pairRecord || pairWithScalars) ? secondBits : bits));
         if (!putText(writer, f.abiPlan->targetTriple) || !putText(writer, f.abiPlan->dataLayout))
         { error = "invalid C dependency ABI target"; return false; }
-        if (indirectDetailed || scalarMixed)
+        if (directMixed)
+        {
+            for (const auto& physical : f.abiPlan->physicalReturn.elements)
+            {
+                writer.u8(physical.kind == abi_plan::TypeKind::Integer ? 1 : physical.kind == abi_plan::TypeKind::Double ? 2 :
+                    physical.kind == abi_plan::TypeKind::Float ? 3 : 4);
+                writer.u8(static_cast<std::uint8_t>(physical.widthOrCount));
+            }
+        }
+        if (indirectDetailed || scalarMixed || directMixed)
         {
             for (std::size_t i = 0; i < f.parameters.size(); ++i)
             {
@@ -673,7 +686,7 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
         f.parameters.push_back(std::move(parameter));
     }
     std::uint8_t recordPlan = 0;
-    if (!reader.u8(recordPlan) || recordPlan > 24) { error = "invalid C dependency ABI marker"; return false; }
+    if (!reader.u8(recordPlan) || recordPlan > 25) { error = "invalid C dependency ABI marker"; return false; }
     if (recordPlan != 0)
     {
         auto plan = std::make_shared<abi_plan::Plan>();
@@ -685,9 +698,26 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
             ((recordPlan < 3 || recordPlan == 20 || recordPlan == 21) && !reader.u8(bits)) ||
             !reader.text(plan->targetTriple) || !reader.text(plan->dataLayout))
         { error = "invalid C dependency ABI target"; return false; }
-        if (recordPlan == 22 || recordPlan == 23 || recordPlan == 24)
+        if (recordPlan == 22 || recordPlan == 23 || recordPlan == 24 || recordPlan == 25)
         {
-            if (recordPlan == 24)
+            if (recordPlan == 25)
+            {
+                plan->physicalReturn.kind = abi_plan::TypeKind::Structure;
+                for (unsigned piece = 0; piece < 2; ++piece)
+                {
+                    std::uint8_t kind = 0, width = 0;
+                    if (!reader.u8(kind) || !reader.u8(width) || kind < 1 || kind > 4 ||
+                        ((kind == 2 || kind == 3) && width != 0) || (kind == 4 && width != 2))
+                    { error = "invalid C dependency return piece descriptor"; return false; }
+                    abi_plan::Type value{kind == 1 ? abi_plan::TypeKind::Integer : kind == 2 ? abi_plan::TypeKind::Double :
+                        kind == 3 ? abi_plan::TypeKind::Float : abi_plan::TypeKind::Vector, width};
+                    if (kind == 4) value.elements.push_back(abi_plan::Type{abi_plan::TypeKind::Float});
+                    plan->physicalReturn.elements.push_back(std::move(value));
+                }
+                plan->logicalReturn.passing = abi_plan::Passing::Direct;
+                plan->logicalReturn.coercion = plan->physicalReturn;
+            }
+            else if (recordPlan == 24)
             {
                 if (f.returnType.kind == CppTypeKind::Void)
                 {
@@ -758,7 +788,7 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                 const bool twoPiece = type.kind == CppTypeKind::Record && *type.sizeBits > 64 && *type.sizeBits <= 128;
                 abi_plan::Type storedPair;
                 std::optional<abi_plan::Type> storedSingle;
-                if (recordPlan == 23 || recordPlan == 24)
+                if (recordPlan == 23 || recordPlan == 24 || recordPlan == 25)
                 {
                     std::uint8_t shape = 0;
                     if (!reader.u8(shape) || shape > 2 || (shape == 1) != twoPiece ||
@@ -805,7 +835,7 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                     if (storedSingle) logical.coercion = *storedSingle;
                     if (twoPiece)
                     {
-                        if (recordPlan == 23 || recordPlan == 24) logical.coercion = storedPair;
+                        if (recordPlan == 23 || recordPlan == 24 || recordPlan == 25) logical.coercion = storedPair;
                         else
                         {
                             logical.coercion = abi_plan::Type{abi_plan::TypeKind::Structure};
@@ -835,7 +865,8 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                     plan->physicalParameters.push_back(physical);
                 }
             }
-            if (!(recordPlan == 24 ? abi_plan::isSysVScalarReturnWithRecordArguments(*plan, value.linkSymbol) :
+            if (!(recordPlan == 25 ? abi_plan::isSysVDirectPairReturnWithArguments(*plan, value.linkSymbol) :
+                  recordPlan == 24 ? abi_plan::isSysVScalarReturnWithRecordArguments(*plan, value.linkSymbol) :
                                      abi_plan::isSysVIndirectRecordWithArguments(*plan, value.linkSymbol)))
             { error = "invalid C dependency indirect ABI plan"; return false; }
             f.abiPlan = std::move(plan);

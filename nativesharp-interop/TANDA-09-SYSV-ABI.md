@@ -934,6 +934,42 @@ A:/temp/nsc-t09-sysv-indirect-diff16-eed8vwvp y
 A:/temp/nsc-t09-sysv-prueba-5voqucsx). No se acreditan todas las clases de
 agregado ni firmas posibles; T09-003 permanece abierto.
 
+## Retorno directo de dos piezas con argumentos mixtos
+
+Una funcion C devuelve un record `double`/`i32` y recibe escalares, un record
+directo mixto y un record diferente por `byval`. El control C paso y NSC
+rechazaba la firma antes del cambio
+(A:/temp/nsc-t09-sysv-return-record-mixed-o35xzxxb). Clang 23.1.0 confirma
+retorno `{ double, i32 }`, piezas directas y un `byval` alineado a ocho
+(A:/temp/t09-retorno-par-di-clang.ll).
+
+NSC valida el plan de retorno y de argumentos, pasa cada copia conforme a Clang
+y reconstruye el record a partir de las dos piezas devueltas. El contrato
+vigente conserva los tipos fisicos del retorno y de los argumentos. La muestra
+paso ocho comparaciones C/NS en estatica y DLL O0–O3, argumentos nombrados y
+plantilla precompilada sin encabezado O0
+(A:/temp/nsc-t09-sysv-return-record-mixed-uszhtcn4).
+
+Se agregaron despues retornos `{ i64, double }` y dos vectores de dos `float`,
+con los mismos argumentos y comprobacion de todos los campos. Clang confirmo
+ambas clasificaciones (A:/temp/t09-retorno-par-id-clang.ll y
+A:/temp/t09-retorno-par-vv-clang.ll); ambas muestras pasaron las mismas ocho
+comparaciones y precompilacion en
+A:/temp/nsc-t09-sysv-return-pair-id-mixed-z4njjxog y
+A:/temp/nsc-t09-sysv-return-pair-vv-mixed-g2blcjyt. No se afirma que se haya
+ejecutado un rechazo previo de estas dos variantes.
+
+La sonda y la prueba de metadatos pasaron, incluidos el retorno vectorial y un retorno inconsistente
+(A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log). Pasaron las
+regresiones del retorno mixto previo, par entero, retorno indirecto con entero
+estrecho, retorno escalar y control general:
+A:/temp/nsc-t09-sysv-mixed-di-9lx4oz_z,
+A:/temp/nsc-t09-sysv-pair-ints-vmro7rbd,
+A:/temp/nsc-t09-sysv-sret-narrow-e8s5l5zn,
+A:/temp/nsc-t09-sysv-scalar-mixed-is1jbj6l y
+A:/temp/nsc-t09-sysv-prueba-xfwqkwjk. Otras clases y firmas quedan abiertas;
+T09-003 y la tanda 9 no se consideran cerrados.
+
 ## Enumeraciones C con records SysV
 
 Dos funciones reciben y devuelven un enum C de 32 bits junto a records entero y

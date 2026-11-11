@@ -1895,7 +1895,10 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                           symbol.cppAbiPlan->returnZeroExtend == (symbol.cppReturnType->kind == interop::CppTypeKind::UnsignedInteger)))) ||
                        (symbol.cppReturnType->kind == interop::CppTypeKind::Floating &&
                         ((symbol.cppReturnType->sizeBits == 32 && symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Float) ||
-                         (symbol.cppReturnType->sizeBits == 64 && symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Double)))))) &&
+                         (symbol.cppReturnType->sizeBits == 64 && symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Double))))) ||
+                     (symbol.cppReturnType->kind == interop::CppTypeKind::Record && symbol.cppReturnType->sizeBits && symbol.cppReturnType->alignmentBits &&
+                      interop::abi_plan::isSysVDirectPairReturnWithArguments(*symbol.cppAbiPlan, symbol.mangledName) &&
+                      interop::abi_plan::isSysVDirectPairLayout(symbol.cppAbiPlan->physicalReturn, *symbol.cppReturnType->sizeBits, *symbol.cppReturnType->alignmentBits))) &&
                     function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
                     symbol.cppParameterTypes.size() == symbol.cppAbiPlan->logicalParameters.size() &&
                     [&] {
@@ -2006,8 +2009,10 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     return false;
                 }
                 function.cppSysVRecordArguments = supportedIndirectWithArguments && symbol.cppAbiPlan &&
-                    interop::abi_plan::isSysVScalarReturnWithRecordArguments(*symbol.cppAbiPlan, symbol.mangledName) &&
-                    std::ranges::any_of(symbol.cppParameterTypes, [](const auto& type) { return type.kind == interop::CppTypeKind::Record; });
+                    ((interop::abi_plan::isSysVScalarReturnWithRecordArguments(*symbol.cppAbiPlan, symbol.mangledName) &&
+                      std::ranges::any_of(symbol.cppParameterTypes, [](const auto& type) { return type.kind == interop::CppTypeKind::Record; })) ||
+                     (interop::abi_plan::isSysVDirectPairReturnWithArguments(*symbol.cppAbiPlan, symbol.mangledName) &&
+                      !supportedRecord && !supportedPairWithScalars));
             }
             if (symbol.cppCallingConvention != "cdecl" && !function.cppVectorCall && !function.cppSysVCall)
             {

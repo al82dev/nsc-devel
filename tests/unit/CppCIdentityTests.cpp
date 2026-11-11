@@ -2055,6 +2055,41 @@ bool checkDependencyTypeCodec()
         restoredRecord.declaration.abiPlan->physicalParameters[2].type.kind == abi_plan::TypeKind::Double &&
         restoredRecord.declaration.abiPlan->physicalParameters[3].type.widthOrCount == 32,
         "C dependency function retains mixed direct pieces and an indirect record");
+    auto directPairReturnPlan = std::make_shared<abi_plan::Plan>(*mixedIndirectPlan);
+    directPairReturnPlan->physicalParameters.erase(directPairReturnPlan->physicalParameters.begin());
+    for (auto& logical : directPairReturnPlan->logicalParameters) --logical.firstPhysical;
+    directPairReturnPlan->physicalReturn = *directPairReturnPlan->logicalParameters[1].coercion;
+    directPairReturnPlan->logicalReturn = {};
+    directPairReturnPlan->logicalReturn.passing = abi_plan::Passing::Direct;
+    directPairReturnPlan->logicalReturn.coercion = directPairReturnPlan->physicalReturn;
+    const auto originalIndirectReturnType = recordFunction.declaration.returnType;
+    recordFunction.declaration.returnType.sizeBits = 128;
+    recordFunction.declaration.returnType.alignmentBits = 64;
+    recordFunction.declaration.abiPlan = directPairReturnPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVDirectPairReturnWithArguments(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+        restoredRecord.declaration.abiPlan->physicalReturn.elements[0].kind == abi_plan::TypeKind::Double &&
+        restoredRecord.declaration.abiPlan->physicalReturn.elements[1].widthOrCount == 32 &&
+        restoredRecord.declaration.abiPlan->physicalParameters[4].byValue,
+        "C dependency function retains a direct mixed pair return and indirect argument");
+    auto vectorPairReturnPlan = std::make_shared<abi_plan::Plan>(*directPairReturnPlan);
+    abi_plan::Type returnedVector{abi_plan::TypeKind::Vector, 2};
+    returnedVector.elements.push_back(abi_plan::Type{abi_plan::TypeKind::Float});
+    vectorPairReturnPlan->physicalReturn.elements = {returnedVector, returnedVector};
+    vectorPairReturnPlan->logicalReturn.coercion = vectorPairReturnPlan->physicalReturn;
+    recordFunction.declaration.returnType.alignmentBits = 32;
+    recordFunction.declaration.abiPlan = vectorPairReturnPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        restoredRecord.declaration.abiPlan->physicalReturn.elements[0].kind == abi_plan::TypeKind::Vector &&
+        restoredRecord.declaration.abiPlan->physicalReturn.elements[1].kind == abi_plan::TypeKind::Vector,
+        "C dependency function retains both vector return pieces with indirect argument");
+    auto invalidPairReturn = *directPairReturnPlan;
+    invalidPairReturn.logicalReturn.coercion->elements[1].widthOrCount = 64;
+    ok &= expect(!abi_plan::isSysVDirectPairReturnWithArguments(invalidPairReturn, recordFunction.linkSymbol),
+        "SysV record plan rejects inconsistent direct return pieces");
+    recordFunction.declaration.returnType = originalIndirectReturnType;
     auto scalarReturnPlan = std::make_shared<abi_plan::Plan>(*mixedIndirectPlan);
     scalarReturnPlan->physicalParameters.erase(scalarReturnPlan->physicalParameters.begin());
     for (auto& logical : scalarReturnPlan->logicalParameters) --logical.firstPhysical;

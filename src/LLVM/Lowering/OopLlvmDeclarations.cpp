@@ -18,7 +18,8 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
 {
             if (function.cppSysVCall && function.cppAbiPlan &&
                 (interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName) ||
-                 (function.cppSysVRecordArguments && interop::abi_plan::isSysVScalarReturnWithRecordArguments(*function.cppAbiPlan, function.cAbiName))))
+                 (function.cppSysVRecordArguments && (interop::abi_plan::isSysVScalarReturnWithRecordArguments(*function.cppAbiPlan, function.cAbiName) ||
+                                                      interop::abi_plan::isSysVDirectPairReturnWithArguments(*function.cppAbiPlan, function.cAbiName)))))
             {
                 std::vector<LLVMTypeRef> parameters;
                 for (const auto& parameter : function.cppAbiPlan->physicalParameters)
@@ -31,7 +32,20 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                         LLVMIntTypeInContext(context_, static_cast<unsigned>(physical.widthOrCount)));
                 }
                 const auto& physicalReturn = function.cppAbiPlan->physicalReturn;
-                LLVMTypeRef result = physicalReturn.kind == interop::abi_plan::TypeKind::Void ? LLVMVoidTypeInContext(context_) :
+                const auto physicalType = [&](const interop::abi_plan::Type& type) {
+                    return type.kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
+                           type.kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
+                           type.kind == interop::abi_plan::TypeKind::Vector ? LLVMVectorType(LLVMFloatTypeInContext(context_), 2) :
+                           LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount));
+                };
+                LLVMTypeRef pairTypes[2];
+                if (physicalReturn.kind == interop::abi_plan::TypeKind::Structure)
+                {
+                    pairTypes[0] = physicalType(physicalReturn.elements[0]);
+                    pairTypes[1] = physicalType(physicalReturn.elements[1]);
+                }
+                LLVMTypeRef result = physicalReturn.kind == interop::abi_plan::TypeKind::Structure ? LLVMStructTypeInContext(context_, pairTypes, 2, 0) :
+                    physicalReturn.kind == interop::abi_plan::TypeKind::Void ? LLVMVoidTypeInContext(context_) :
                     physicalReturn.kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
                     physicalReturn.kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
                     physicalReturn.kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
@@ -307,7 +321,8 @@ bool OopLlvmImplementation::declareFunction(
             }
             if (function.cppSysVCall && function.cppAbiPlan &&
                 (interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName) ||
-                 (function.cppSysVRecordArguments && interop::abi_plan::isSysVScalarReturnWithRecordArguments(*function.cppAbiPlan, function.cAbiName))))
+                 (function.cppSysVRecordArguments && (interop::abi_plan::isSysVScalarReturnWithRecordArguments(*function.cppAbiPlan, function.cAbiName) ||
+                                                      interop::abi_plan::isSysVDirectPairReturnWithArguments(*function.cppAbiPlan, function.cAbiName)))))
             {
                 for (std::size_t i = 0; i < function.cppAbiPlan->logicalParameters.size(); ++i)
                 {
