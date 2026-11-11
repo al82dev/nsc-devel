@@ -204,6 +204,7 @@ std::string linkerProductName(const std::filesystem::path& executable)
 {
     const std::string name = executableName(executable);
     if (name == "llvm-lib" || name == "llvm-lib.exe") return "llvm-lib";
+    if (name == "llvm-objcopy" || name == "llvm-objcopy.exe") return "llvm-objcopy";
     return "NSLink";
 }
 
@@ -1345,6 +1346,68 @@ bool LldLinker::validateAddressSanitizerRuntime(
     if (expectedSize == actualSize && expectedHash == actualHash) return true;
     error = "AddressSanitizer runtime does not match the DLL supplied by the selected Clang";
     return false;
+}
+
+bool LldLinker::adaptAddressSanitizerRuntime(
+    const std::filesystem::path& input,
+    const std::filesystem::path& output,
+    std::string& error)
+{
+    error.clear();
+    if (input == output || containsQuote(input) || containsQuote(output) ||
+        !std::filesystem::is_regular_file(input))
+    {
+        error = "AddressSanitizer runtime adaptation requires distinct valid input and output paths";
+        return false;
+    }
+#ifdef _WIN32
+    const DWORD pathSize = GetEnvironmentVariableW(L"PATH", nullptr, 0);
+    std::vector<wchar_t> searchPath(pathSize);
+    const DWORD pathLength = pathSize == 0 ? 0 :
+        GetEnvironmentVariableW(L"PATH", searchPath.data(), pathSize);
+    if (pathLength == 0 || pathLength >= pathSize)
+    {
+        error = "AddressSanitizer runtime adaptation requires llvm-objcopy.exe in PATH";
+        return false;
+    }
+    const DWORD size = SearchPathW(searchPath.data(), L"llvm-objcopy.exe", nullptr, 0, nullptr, nullptr);
+    if (size == 0)
+    {
+        error = "AddressSanitizer runtime adaptation requires llvm-objcopy.exe in PATH";
+        return false;
+    }
+    std::vector<wchar_t> resolved(size);
+    const DWORD length = SearchPathW(
+        searchPath.data(), L"llvm-objcopy.exe", nullptr, size, resolved.data(), nullptr);
+    if (length == 0 || length >= size)
+    {
+        error = "could not resolve llvm-objcopy.exe for AddressSanitizer runtime adaptation";
+        return false;
+    }
+    const LldLinker objcopy(std::filesystem::path(resolved.data()));
+#else
+    const LldLinker objcopy(std::filesystem::path("llvm-objcopy"));
+#endif
+    std::filesystem::path responsePath = output;
+    std::filesystem::path logPath = output;
+    responsePath += ".rsp";
+    logPath += ".log";
+    const std::vector<std::string> arguments = {
+        "--redefine-sym=HeapAlloc=nsc_asan_heap_alloc",
+        "--redefine-sym=HeapReAlloc=nsc_asan_heap_realloc",
+        "--redefine-sym=HeapFree=nsc_asan_heap_free",
+        responseFileArgument(input), responseFileArgument(output)};
+    if (!writeResponseFile(responsePath, arguments, error)) return false;
+    const bool success = objcopy.runResponseFile(responsePath, logPath, error);
+    std::error_code cleanupError;
+    cleanupLinkerTemporaries(responsePath, logPath, cleanupError);
+    if (!success) return false;
+    if (!std::filesystem::is_regular_file(output))
+    {
+        error = "llvm-objcopy did not produce the AddressSanitizer runtime copy";
+        return false;
+    }
+    return true;
 }
 
 bool LldLinker::linkAddressSanitizedExecutable(

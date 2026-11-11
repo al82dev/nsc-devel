@@ -6449,6 +6449,193 @@ std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildSanitizerE
     return result;
 }
 
+namespace
+{
+enum class SanitizerHeapOperation { Allocate, Reallocate, Free };
+
+// A quarantined ASan allocation is no longer owned, but must still reach ASan's free/realloc
+// interceptor so it can diagnose a repeated release. Unknown pointers remain rejected.
+LLVMValueRef sanitizerKnownAllocation(
+    LLVMContextRef context, LLVMModuleRef module, LLVMBuilderRef builder,
+    LLVMValueRef function, LLVMValueRef memory, LLVMValueRef isOwned, LLVMValueRef isNull)
+{
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef i32 = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(context);
+    LLVMValueRef known = LLVMBuildOr(builder, isOwned, isNull, "owned.or.null");
+    LLVMBasicBlockRef previous = LLVMGetInsertBlock(builder);
+    LLVMBasicBlockRef inspect = LLVMAppendBasicBlockInContext(context, function, "asan.inspect.free");
+    LLVMBasicBlockRef merge = LLVMAppendBasicBlockInContext(context, function, "asan.known.merge");
+    LLVMBuildCondBr(builder, known, merge, inspect);
+    LLVMPositionBuilderAtEnd(builder, inspect);
+    LLVMValueRef trace = LLVMBuildAlloca(builder, ptr, "asan.free.trace");
+    LLVMValueRef thread = LLVMBuildAlloca(builder, i32, "asan.free.thread");
+    LLVMValueRef arguments[] = {memory, trace, LLVMConstInt(i64, 1, 0), thread};
+    LLVMValueRef count = LLVMBuildCall2(builder, functionType(i64, {ptr, ptr, i64, ptr}),
+        LLVMGetNamedFunction(module, "__asan_get_free_stack"), arguments, 4, "asan.free.frames");
+    LLVMValueRef wasFreed = LLVMBuildICmp(builder, LLVMIntNE, count, LLVMConstInt(i64, 0, 0), "asan.was.freed");
+    LLVMBuildBr(builder, merge);
+    LLVMPositionBuilderAtEnd(builder, merge);
+    LLVMValueRef result = LLVMBuildPhi(builder, LLVMInt1TypeInContext(context), "asan.known");
+    LLVMValueRef values[] = {known, wasFreed};
+    LLVMBasicBlockRef blocks[] = {previous, inspect};
+    LLVMAddIncoming(result, values, blocks, 2);
+    return result;
+}
+
+// A runtime may use only the process heap and zero flags; realloc additionally needs a live
+// pointer and a nonzero size so it retains the Windows failure semantics.
+LLVMValueRef sanitizerHeapArgumentsValid(
+    LLVMContextRef context, LLVMModuleRef module, LLVMBuilderRef builder,
+    LLVMValueRef function, SanitizerHeapOperation operation)
+{
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef i32 = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(context);
+    LLVMValueRef processHeap = LLVMBuildCall2(
+        builder, functionType(ptr, {}), LLVMGetNamedFunction(module, "GetProcessHeap"), nullptr, 0, "heap");
+    LLVMValueRef sameHeap = LLVMBuildICmp(builder, LLVMIntEQ, LLVMGetParam(function, 0), processHeap, "same.heap");
+    LLVMValueRef zeroFlags = LLVMBuildICmp(
+        builder, LLVMIntEQ, LLVMGetParam(function, 1), LLVMConstInt(i32, 0, 0), "zero.flags");
+    LLVMValueRef valid = LLVMBuildAnd(builder, sameHeap, zeroFlags, "valid.heap");
+    if (operation == SanitizerHeapOperation::Allocate) return valid;
+    LLVMValueRef memory = LLVMGetParam(function, 2);
+    LLVMValueRef arguments[] = {memory};
+    LLVMValueRef owned = LLVMBuildCall2(builder, functionType(i32, {ptr}),
+        LLVMGetNamedFunction(module, "__sanitizer_get_ownership"), arguments, 1, "ownership");
+    LLVMValueRef isOwned = LLVMBuildICmp(builder, LLVMIntNE, owned, LLVMConstInt(i32, 0, 0), "owned");
+    LLVMValueRef isNull = LLVMBuildICmp(builder, LLVMIntEQ, memory, LLVMConstNull(ptr), "is.null");
+    LLVMValueRef known = sanitizerKnownAllocation(context, module, builder, function, memory, isOwned, isNull);
+    valid = LLVMBuildAnd(builder, valid, known, "valid.owner");
+    if (operation != SanitizerHeapOperation::Reallocate) return valid;
+    LLVMValueRef nonNull = LLVMBuildICmp(
+        builder, LLVMIntNE, LLVMGetParam(function, 2), LLVMConstNull(ptr), "nonnull");
+    LLVMValueRef nonZero = LLVMBuildICmp(
+        builder, LLVMIntNE, LLVMGetParam(function, 3), LLVMConstInt(i64, 0, 0), "nonzero");
+    return LLVMBuildAnd(builder, valid, LLVMBuildAnd(builder, nonNull, nonZero, "valid.realloc"), "valid");
+}
+
+// The adapter's unsupported path cannot safely hand a foreign allocation to the ASan allocator.
+void emitUnsupportedSanitizerHeap(LLVMContextRef context, LLVMModuleRef module, LLVMBuilderRef builder)
+{
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef i32 = LLVMInt32TypeInContext(context);
+    LLVMValueRef message = LLVMBuildGlobalStringPtr(
+        builder, "NativeSharp ASan: unsupported heap, flags, allocation, or realloc arguments", "asan.heap.error");
+    LLVMValueRef messageArgs[] = {message};
+    LLVMBuildCall2(builder, functionType(i32, {ptr}), LLVMGetNamedFunction(module, "puts"), messageArgs, 1, "");
+    LLVMValueRef flushArgs[] = {LLVMConstNull(ptr)};
+    LLVMBuildCall2(builder, functionType(i32, {ptr}), LLVMGetNamedFunction(module, "fflush"), flushArgs, 1, "");
+    LLVMValueRef exitArgs[] = {LLVMConstInt(i32, 87, 0)};
+    LLVMBuildCall2(builder, functionType(LLVMVoidTypeInContext(context), {i32}),
+        LLVMGetNamedFunction(module, "ExitProcess"), exitArgs, 1, "");
+    LLVMBuildUnreachable(builder);
+}
+
+// Emit one process-heap adapter. Unsupported heap handles and flags terminate with a diagnostic
+// instead of passing memory between the Windows heap and the sanitizer allocator.
+void buildSanitizerHeapOperation(
+    LLVMContextRef context, LLVMModuleRef module, SanitizerHeapOperation operation)
+{
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef i32 = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(context);
+    LLVMTypeRef voidType = LLVMVoidTypeInContext(context);
+    const bool allocate = operation == SanitizerHeapOperation::Allocate;
+    const bool reallocate = operation == SanitizerHeapOperation::Reallocate;
+    LLVMTypeRef wrapperType = allocate ? functionType(ptr, {ptr, i32, i64}) :
+        reallocate ? functionType(ptr, {ptr, i32, ptr, i64}) : functionType(i32, {ptr, i32, ptr});
+    const char* name = allocate ? "nsc_asan_heap_alloc" :
+        reallocate ? "nsc_asan_heap_realloc" : "nsc_asan_heap_free";
+    LLVMValueRef function = LLVMAddFunction(module, name, wrapperType);
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
+    LLVMBasicBlockRef supported = LLVMAppendBasicBlockInContext(context, function, "supported");
+    LLVMBasicBlockRef unsupported = LLVMAppendBasicBlockInContext(context, function, "unsupported");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+    LLVMValueRef valid = sanitizerHeapArgumentsValid(context, module, builder, function, operation);
+    LLVMBuildCondBr(builder, valid, supported, unsupported);
+    LLVMPositionBuilderAtEnd(builder, unsupported);
+    emitUnsupportedSanitizerHeap(context, module, builder);
+    LLVMPositionBuilderAtEnd(builder, supported);
+    if (allocate)
+    {
+        LLVMValueRef arguments[] = {LLVMGetParam(function, 2)};
+        LLVMBuildRet(builder, LLVMBuildCall2(
+            builder, functionType(ptr, {i64}), LLVMGetNamedFunction(module, "malloc"), arguments, 1, "memory"));
+    }
+    else if (reallocate)
+    {
+        LLVMValueRef arguments[] = {LLVMGetParam(function, 2), LLVMGetParam(function, 3)};
+        LLVMBuildRet(builder, LLVMBuildCall2(builder, functionType(ptr, {ptr, i64}),
+            LLVMGetNamedFunction(module, "realloc"), arguments, 2, "memory"));
+    }
+    else
+    {
+        LLVMValueRef memory = LLVMGetParam(function, 2);
+        LLVMValueRef arguments[] = {memory};
+        LLVMBuildCall2(builder, functionType(voidType, {ptr}), LLVMGetNamedFunction(module, "free"), arguments, 1, "");
+        LLVMValueRef nonNull = LLVMBuildICmp(builder, LLVMIntNE, memory, LLVMConstNull(ptr), "nonnull");
+        LLVMBuildRet(builder, LLVMBuildZExt(builder, nonNull, i32, "released"));
+    }
+    LLVMDisposeBuilder(builder);
+}
+
+// Preserve the runtime's null-on-allocation-failure contract by default.
+void buildSanitizerDefaultOptions(LLVMContextRef context, LLVMModuleRef module)
+{
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(context, 0);
+    LLVMValueRef function = LLVMAddFunction(module, "__asan_default_options", functionType(ptr, {}));
+    LLVMBasicBlockRef entry = LLVMAppendBasicBlockInContext(context, function, "entry");
+    LLVMBuilderRef builder = LLVMCreateBuilderInContext(context);
+    LLVMPositionBuilderAtEnd(builder, entry);
+    LLVMValueRef options = LLVMBuildGlobalStringPtr(builder, "allocator_may_return_null=1", "asan.options");
+    LLVMBuildRet(builder, options);
+    LLVMDisposeBuilder(builder);
+}
+}
+
+std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildSanitizerHeapAdapter(
+    std::string& error) const
+{
+    error.clear();
+    LLVMContextRef context = LLVMContextCreate();
+    if (context == nullptr) { error = "LLVMContextCreate failed for sanitizer heap adapter"; return nullptr; }
+    LLVMModuleRef module = LLVMModuleCreateWithNameInContext("nativesharp.sanitizer.heap", context);
+    if (module == nullptr)
+    {
+        LLVMContextDispose(context);
+        error = "LLVMModuleCreateWithNameInContext failed for sanitizer heap adapter";
+        return nullptr;
+    }
+    const std::string triple(target::TargetInfo::WindowsX64().llvmTriple());
+    LLVMSetTarget(module, triple.c_str());
+    LLVMTypeRef ptr = LLVMPointerTypeInContext(context, 0);
+    LLVMTypeRef i32 = LLVMInt32TypeInContext(context);
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(context);
+    LLVMAddFunction(module, "GetProcessHeap", functionType(ptr, {}));
+    LLVMAddFunction(module, "puts", functionType(i32, {ptr}));
+    LLVMAddFunction(module, "fflush", functionType(i32, {ptr}));
+    LLVMAddFunction(module, "ExitProcess", functionType(LLVMVoidTypeInContext(context), {i32}));
+    LLVMAddFunction(module, "malloc", functionType(ptr, {i64}));
+    LLVMAddFunction(module, "realloc", functionType(ptr, {ptr, i64}));
+    LLVMAddFunction(module, "free", functionType(LLVMVoidTypeInContext(context), {ptr}));
+    LLVMAddFunction(module, "__sanitizer_get_ownership", functionType(i32, {ptr}));
+    LLVMAddFunction(module, "__asan_get_free_stack", functionType(i64, {ptr, ptr, i64, ptr}));
+    buildSanitizerDefaultOptions(context, module);
+    buildSanitizerHeapOperation(context, module, SanitizerHeapOperation::Allocate);
+    buildSanitizerHeapOperation(context, module, SanitizerHeapOperation::Reallocate);
+    buildSanitizerHeapOperation(context, module, SanitizerHeapOperation::Free);
+    auto result = std::unique_ptr<llvm_backend::LlvmModule>(new llvm_backend::LlvmModule(context, module));
+    std::string verificationError;
+    if (!result->verify(verificationError))
+    {
+        error = "sanitizer heap adapter LLVM verification failed: " + verificationError;
+        return nullptr;
+    }
+    return result;
+}
+
 std::unique_ptr<llvm_backend::LlvmModule> WindowsRuntimeBuilder::buildDynamicLibraryAnchor(
     std::string& error) const
 {

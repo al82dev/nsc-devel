@@ -30,6 +30,12 @@ public:
         const std::filesystem::path& outputPath,
         std::string& error);
 
+    // Writes a separate runtime copy whose heap calls reach the ASan adapter.
+    static bool adaptAddressSanitizerRuntime(
+        const std::filesystem::path& input,
+        const std::filesystem::path& output,
+        std::string& error);
+
     const std::filesystem::path& executablePath() const noexcept;
     std::filesystem::path librarianExecutablePath() const;
 

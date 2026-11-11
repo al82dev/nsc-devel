@@ -27,9 +27,17 @@ int main(int argc, char** argv)
     std::ofstream(root / "Probe.nsproj") <<
         "<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>"
         "<ItemGroup><Compile Include=\"**/*.ns\" /></ItemGroup></Project>";
-    const bool safeFixture = argc >= 3 && std::string(argv[2]) == "safe";
+    const std::string fixture = argc >= 3 ? argv[2] : "stack-bad";
+    const bool safeFixture = fixture == "safe" || fixture == "heap-safe";
+    const bool heapFixture = fixture == "heap-safe" || fixture == "heap-bad";
     std::ofstream(root / "Probe.ns") <<
-        (safeFixture
+        (heapFixture
+            ? (safeFixture
+                ? "public class Probe { public static int Main() { int[] a = new int[4]; int* p = &a[0]; "
+                  "p[3] = 42; int result = p[3]; delete[] a; return result; } }"
+                : "public class Probe { public static int Main() { int[] a = new int[4]; int* p = &a[0]; "
+                  "p[4] = 42; delete[] a; return 0; } }")
+            : safeFixture
             ? "public class Probe { public static int Main() { int* p = stackalloc int[2]; p[0] = 42; return p[0]; } }"
             : "public class Probe { public static int Main() { int* p = stackalloc int[2]; "
               "int index = 3; p[index] = 42; return p[0]; } }");
@@ -48,6 +56,16 @@ int main(int argc, char** argv)
     asan.setAddressSanitizer(true);
     const std::filesystem::path fixtureOutput = argc >= 2 ? std::filesystem::path(argv[1]) : std::filesystem::path{};
     if (!fixtureOutput.empty()) std::filesystem::create_directories(fixtureOutput);
+    runtime::WindowsRuntimeBuilder runtimeBuilder;
+    auto heapAdapter = runtimeBuilder.buildSanitizerHeapAdapter(error);
+    tests.expect(heapAdapter != nullptr, "sanitizer heap adapter verifies: " + error);
+    if (heapAdapter != nullptr && !fixtureOutput.empty())
+    {
+        auto target = LlvmTargetMachine::createWindowsX64(LlvmOptimizationLevel::O0, error);
+        const bool emitted = target != nullptr && target->emit(
+            *heapAdapter, fixtureOutput / "sanitizer-heap.obj", LlvmCodeGenFileType::Object, error);
+        tests.expect(emitted, "sanitizer heap adapter object emitted: " + error);
+    }
     const auto generate = [&](ProjectOopObjectGenerator& generator, LlvmOptimizationLevel level)
     {
         error.clear();

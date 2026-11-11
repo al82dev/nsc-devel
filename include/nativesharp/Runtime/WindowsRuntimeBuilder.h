@@ -29,6 +29,8 @@ public:
         std::string& error) const;
     // Adapter used when the CRT must initialize a sanitizer before NativeSharp starts.
     std::unique_ptr<llvm_backend::LlvmModule> buildSanitizerEntryAdapter(std::string& error) const;
+    // Heap adapter for an explicitly sanitized runtime; ordinary runtime allocation is unchanged.
+    std::unique_ptr<llvm_backend::LlvmModule> buildSanitizerHeapAdapter(std::string& error) const;
     std::unique_ptr<llvm_backend::LlvmModule> buildDynamicLibraryAnchor(
         std::string& error) const;
 
