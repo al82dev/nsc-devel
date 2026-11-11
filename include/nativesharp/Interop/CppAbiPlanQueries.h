@@ -263,7 +263,9 @@ inline bool isSysVDirectPairLayout(const Type& type, std::uint64_t bits, std::ui
     if (!isSysVDirectPairShape(type)) return false;
     const auto& a = type.elements[0];
     const auto& b = type.elements[1];
-    if (a.kind == TypeKind::Integer && b.kind == TypeKind::Integer) return bits == 64 + b.widthOrCount;
+    if (a.kind == TypeKind::Integer && b.kind == TypeKind::Integer)
+        return bits == 64 + b.widthOrCount ||
+            (alignmentBits == 64 && bits == 128 && b.widthOrCount < 64);
     if (a.kind == TypeKind::Vector && b.kind == TypeKind::Integer)
         return alignmentBits == 32 && bits == ((64 + b.widthOrCount + 31) / 32) * 32;
     if ((a.kind == TypeKind::Vector || a.kind == TypeKind::Integer) && b.kind == TypeKind::Float)

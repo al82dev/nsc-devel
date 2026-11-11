@@ -537,6 +537,34 @@ La muestra no acredita todos los layouts ni firmas arbitrarias con records y esc
 varios records indirectos, callbacks u otras clasificaciones. T09-003 permanece
 abierto.
 
+## Records enteros de dos piezas con relleno final (T09-003)
+
+Clang 23.1.0 clasifica los tres records probados, con un `long long` seguido
+de `unsigned char`, `unsigned short` o `unsigned int`, como pares `i64`/`i8`,
+`i64`/`i16` e `i64`/`i32`. Las muestras comprueban en C que cada record mide
+16 bytes y tiene alineacion de 8; el IR de Clang verifica las piezas. Antes
+del cambio el control C pasaba y NSC rechazaba los tres casos:
+`A:/temp/nsc-t09-sysv-padded-integers-i8-mo1p718d`,
+`A:/temp/nsc-t09-sysv-padded-integers-i16-fg77fot2` y
+`A:/temp/nsc-t09-sysv-padded-integers-i32-84493b8k`.
+
+Se admite la disposicion observada preservando el relleno y el plan de Clang.
+Cada muestra pasa el record por valor, comprueba su copia y recibe el retorno,
+junto con otros argumentos directos e indirectos. Pasaron ocho comparaciones
+C/NativeSharp en estatica y DLL O0–O3, argumentos nombrados y plantilla
+precompilada sin encabezado a O0:
+`A:/temp/nsc-t09-sysv-padded-integers-i8-wez1joh_`,
+`A:/temp/nsc-t09-sysv-padded-integers-i16-l0p42b_x` y
+`A:/temp/nsc-t09-sysv-padded-integers-i32-gd3k22sa`.
+Las pruebas de plan y metadatos pasaron (`A:/temp/t09-planes-clang.log` y
+`A:/temp/t09-planes-identity.log`); las regresiones de pares enteros, pares con
+relleno, records empaquetados y SysV general tambien pasaron.
+
+El anterior control negativo usaba un record `i64`/`i32`, ahora admitido; se
+conservo un control negativo para una funcion SysV variadica y se verifica su
+diagnostico especifico (`A:/temp/nsc-t09-sysv-prueba-bwqts869`). La funcion
+variadica y otras formas no probadas siguen pendientes. T09-003 sigue abierto.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin

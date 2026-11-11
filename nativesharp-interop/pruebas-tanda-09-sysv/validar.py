@@ -143,9 +143,9 @@ result = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT, text=True, errors='replace')
 (root/'no-admitido.log').write_text('COMMAND: ' + repr(command) + '\nEXIT: ' +
     str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
-if result.returncode == 0 or 'sysv_abi currently supports only' not in result.stdout:
+if result.returncode == 0 or 'variadic C++ or non-cdecl functions are not yet projected' not in result.stdout:
     raise SystemExit('La firma no soportada no fue rechazada; evidencia: ' + str(root))
-print('OK: agregado sysv_abi rechazado hasta validar su ABI', flush=True)
+print('OK: funcion sysv_abi variadica rechazada mientras no este soportada', flush=True)
 for name in ('BadCallback.ns', 'BadCallback.nsproj'):
     shutil.copyfile(fixture/name, case/name)
 command = [args.nsc, '--dump-project-oop-llvm', str(case/'BadCallback.nsproj'),

@@ -2099,6 +2099,20 @@ bool checkDependencyTypeCodec()
         restoredRecord.declaration.abiPlan->physicalReturn.elements[1].widthOrCount == 32 &&
         restoredRecord.declaration.abiPlan->physicalParameters[4].byValue,
         "C dependency function retains a direct mixed pair return and indirect argument");
+    for (unsigned width : {8u, 16u, 32u})
+    {
+        auto integerPairPlan = std::make_shared<abi_plan::Plan>(*directPairReturnPlan);
+        integerPairPlan->physicalReturn.elements = {
+            abi_plan::Type{abi_plan::TypeKind::Integer, 64}, abi_plan::Type{abi_plan::TypeKind::Integer, width}};
+        integerPairPlan->logicalReturn.coercion = integerPairPlan->physicalReturn;
+        recordFunction.declaration.abiPlan = integerPairPlan;
+        ok &= expect(abi_plan::isSysVDirectPairLayout(integerPairPlan->physicalReturn, 128, 64) &&
+            !abi_plan::isSysVDirectPairLayout(integerPairPlan->physicalReturn, 128, 32) &&
+            encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+            decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+            restoredRecord.declaration.abiPlan->physicalReturn.elements[1].widthOrCount == width,
+            "C dependency function retains a padded integer pair return");
+    }
     auto vectorPairReturnPlan = std::make_shared<abi_plan::Plan>(*directPairReturnPlan);
     abi_plan::Type returnedVector{abi_plan::TypeKind::Vector, 2};
     returnedVector.elements.push_back(abi_plan::Type{abi_plan::TypeKind::Float});
