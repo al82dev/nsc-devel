@@ -143,7 +143,14 @@ bool captureCppTemplateAliasCandidates(const compilation::ProjectGraph& graph,
             const auto& project = graph.projects()[alias.projectOrdinal];
             if (alias.referenceIndex >= project.cppLibraryReferences().size())
             { error = "resolved C alias has no source reference"; return false; }
-            if (project.cppLibraryReferences()[alias.referenceIndex].language != CppLanguageMode::C) continue;
+            const auto language = project.cppLibraryReferences()[alias.referenceIndex].language;
+            if (language != CppLanguageMode::C)
+            {
+                const auto& type = alias.declaration.underlyingType;
+                if (language != CppLanguageMode::Cpp || type.kind != CppTypeKind::Pointer ||
+                    !type.element || type.element->kind != CppTypeKind::Function || !type.element->function)
+                    continue;
+            }
             const auto identity = std::make_tuple(alias.projectOrdinal, alias.referenceIndex,
                                                    alias.declaration.qualifiedName);
             if (!seen.insert(identity).second) continue;

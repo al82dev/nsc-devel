@@ -104,8 +104,8 @@ de firmas `double` y conversiones incompatibles
 de enteros estrechos
 (`A:/temp/nsc-t09-regcall-estrechos-precompilado-zfzwi8eh`), cuatro sondas
 (`A:/temp/t09-test-varptr.log`) y transporte/ABI/identidad
-(`A:/temp/t09-transport-directed/`). La muestra C++ indirecta y otras firmas
-siguen pendientes; T09-003 permanece abierto.
+(`A:/temp/t09-transport-directed/`). Al momento de esta prueba, la muestra C++
+indirecta seguia pendiente; el siguiente apartado documenta su validacion.
 
 ## Funcion libre C++ en namespace
 
@@ -149,6 +149,31 @@ variantes de control y 16 consumidores precompilados, con y sin encabezado,
 en estatica y DLL O0-O3
 (`A:/temp/nsc-t09-cpp-sobrecargas-precompilado-73lootny`). No se cambio
 produccion; otras formas de sobrecarga, tipos y convenciones siguen pendientes.
+T09-003 permanece abierto.
+
+## Alias C++ de puntero regcall precompilado
+
+La funcion C++ en namespace que devuelve un puntero booleano `regcall` paso
+ocho comparaciones C++/NS y atributos LLVM
+(`A:/temp/nsc-t09-regcall-cpp-bool-indirecta-6ig_dm5x`), pero la plantilla
+rechazaba el alias (`A:/temp/nsc-t09-regcall-cpp-bool-indirecta-precompilado-sk7qoixg`).
+El catalogo vigente captura ahora alias C++ de punteros a funcion; pasaron 16
+consumidores con y sin encabezado
+(`A:/temp/nsc-t09-regcall-cpp-bool-indirecta-precompilado-sjaps69z`).
+
+Con el alias dentro del namespace, la llamada directa pasaba
+(`A:/temp/nsc-t09-regcall-cpp-bool-indirecta-9ktdsyvy`), pero la superficie
+de plantilla generada no reconocia el nombre calificado
+(`A:/temp/nsc-t09-regcall-cpp-bool-indirecta-precompilado-0cle3e8q`). Al
+incluir el nombre calificado como pista del parser, pasaron ocho comparaciones
+directas (`A:/temp/nsc-t09-regcall-cpp-alias-calificado-omg_wyp7`) y 16
+consumidores precompilados
+(`A:/temp/nsc-t09-regcall-cpp-alias-calificado-precompilado-py1bis46`).
+Pasaron regresiones del alias C
+(`A:/temp/nsc-t09-regcall-bool-precompilado-2ofdr99t`), sobrecargas C++
+(`A:/temp/nsc-t09-cpp-sobrecargas-precompilado-n9a9thxr`), transporte,
+ABI e identidad (`A:/temp/t09-transport-directed/`) y metadatos
+(`A:/temp/t09-cpp-meta-check.log`). Otros alias y firmas C++ siguen pendientes;
 T09-003 permanece abierto.
 
 ## Float y puntero en regcall

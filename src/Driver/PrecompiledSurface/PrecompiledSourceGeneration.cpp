@@ -136,8 +136,8 @@ bool verifyPrecompiledGenericTemplateSourceText(
         appendKnownType(typeKey);
     if (!metadata.cppCRecordCatalog.empty())
     {
-        // C names used by template bodies (typedefs, tags) only classify casts and declarations.
-        // Los nombres C usados por plantillas (typedef, etiquetas) solo clasifican casts y declaraciones.
+        // C/C++ names used by template bodies only classify casts and declarations.
+        // Los nombres C/C++ usados por plantillas solo clasifican casts y declaraciones.
         std::vector<interop::CppCRecordSnapshot> records;
         std::vector<interop::CppCEnumSnapshot> enums;
         interop::metadata_detail::CDependencyCatalog dependencies;
@@ -148,8 +148,15 @@ bool verifyPrecompiledGenericTemplateSourceText(
             return false;
         }
         for (const interop::metadata_detail::CDependencyAliasSnapshot &alias : dependencies.aliases)
+        {
             if (!alias.declaration.name.empty())
                 knownTypeNames.push_back(alias.declaration.name);
+            auto qualified = alias.declaration.qualifiedName;
+            std::size_t position = 0;
+            while ((position = qualified.find("::", position)) != std::string::npos)
+                qualified.replace(position++, 2, ".");
+            if (!qualified.empty()) knownTypeNames.push_back(std::move(qualified));
+        }
         for (const interop::CppCRecordSnapshot &record : records)
             if (!record.name.empty())
                 knownTypeNames.push_back(record.name);

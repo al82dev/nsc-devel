@@ -1,0 +1,2 @@
+namespace T09 { public class RegBridge { public static int Run<T>(T unused) { T09RegCallback callback = T09Cpp.get_callback(); fn* regcall(bool) -> bool typed = callback;
+return T09Cpp.calculate(true) || !T09Cpp.calculate(false) || typed(true) || !typed(false) ? 1 : 0; } } }
