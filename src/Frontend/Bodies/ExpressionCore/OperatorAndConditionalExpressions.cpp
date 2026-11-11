@@ -233,7 +233,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             {
                 const ast::AstNode* element = expression->children()[index];
                 const ExpressionResult value = analyzeExpression(
-                    element, methodMemberOrdinal, scopeOrdinal, diagnostics);
+                    element, methodMemberOrdinal, scopeOrdinal, diagnostics,
+                    false, false, allowMove && element->kind() == ast::AstNodeKind::MoveExpression);
                 valid = valid && value.valid;
                 if (value.valid && value.addressable && memberModel_ != nullptr &&
                     memberModel_->typeIsMoveOnly(value.typeKey) &&
