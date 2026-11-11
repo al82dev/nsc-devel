@@ -2005,9 +2005,9 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                         }
                         return hasRecord;
                     }();
-                if (function.isVariadic || ((!supportedReturn || !supportedParameters) && !supportedRecord && !supportedSmallRecords && !supportedPairWithScalars && !supportedIndirectWithArguments))
+                if ((!supportedReturn || !supportedParameters) && !supportedRecord && !supportedSmallRecords && !supportedPairWithScalars && !supportedIndirectWithArguments)
                 {
-                    error = "sysv_abi currently supports only selected non-variadic scalar and pointer signatures for " +
+                    error = "sysv_abi currently supports only selected scalar, pointer and record signatures for " +
                         symbol.mangledName;
                     return false;
                 }

@@ -563,7 +563,36 @@ relleno, records empaquetados y SysV general tambien pasaron.
 El anterior control negativo usaba un record `i64`/`i32`, ahora admitido; se
 conservo un control negativo para una funcion SysV variadica y se verifica su
 diagnostico especifico (`A:/temp/nsc-t09-sysv-prueba-bwqts869`). La funcion
-variadica y otras formas no probadas siguen pendientes. T09-003 sigue abierto.
+variadica y otras formas no probadas seguian pendientes en ese momento.
+El avance posterior con variadicas escalares se detalla a continuacion.
+
+## Variadicas SysV escalares: registros y pila (T09-003)
+
+Clang 23.1.0 para Windows rechaza `va_start` dentro de una funcion SysV;
+se reproduce en `A:/temp/t09-sysv-varargs-oracle/ir.log`. Por ello el productor
+de la prueba es ensamblador compilado con Clang: comprueba valores de registros
+enteros y XMM, el limite de registros vectoriales en AL y argumentos en pila.
+El control C verifica las llamadas y el IR de Clang acredita las promociones.
+Los ocho controles C pasaron con enlace estatico y DLL a O0–O3, mientras NSC
+rechazaba la firma antes del cambio (`A:/temp/nsc-t09-sysv-varargs-lf5wfbiw`).
+
+NSC ahora proyecta llamadas C SysV variadicas cuyo prefijo y retorno son
+escalares admitidos; promueve los argumentos variables y emite la convencion
+SysV. Se comprueban `sbyte`, `byte`, `short`, `ushort`, `int`, `uint`, `long`,
+`float` promovido a `double`, `double` y `int*`, incluidos argumentos en pila.
+El productor detecta valores o registros incorrectos. Pasaron ocho
+comparaciones C/NativeSharp, la inspeccion de las llamadas LLVM, el rechazo
+del record variadico y la plantilla precompilada con encabezado oculto
+(`A:/temp/nsc-t09-sysv-varargs-tqxzi7ih`). La compilacion incremental y las
+pruebas de plan y metadatos pasaron; tambien las regresiones C variadica cdecl
+(`A:/temp/nsc-t09-llamadas-30zaqbgi`) y SysV general con control negativo y
+callback rechazado (`A:/temp/nsc-t09-sysv-prueba-2egil0_g`).
+
+El control negativo anterior se mantiene para una firma variadica con prefijo
+de records no admitido; un control nuevo rechaza records en la elipsis. Esas
+formas y otras combinaciones no probadas siguen pendientes. La muestra no
+acredita la implementacion de `va_start` SysV de Clang ni compatibilidad
+general. T09-003 permanece abierto.
 
 ## Retorno indirecto sin argumentos byval
 

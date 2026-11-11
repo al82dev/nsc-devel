@@ -1,0 +1,1 @@
+int Main() { T09VarRecord value; value.x = 1; value.y = 2; return sysv_varargs(1, value); }

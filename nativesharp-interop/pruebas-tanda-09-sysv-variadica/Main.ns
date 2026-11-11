@@ -1,0 +1,7 @@
+int Main() {
+    int value = 123;
+    if (sysv_varargs(3, (sbyte)-2, 2.25f, -5000000000L) != 1) return 1;
+    if (sysv_many(9, (sbyte)-7, (byte)250, (short)-1000, (ushort)65000,
+                  -5000000000L, (uint)4000000000, &value, 2.25f, 3.5) != 1) return 2;
+    return 0;
+}
