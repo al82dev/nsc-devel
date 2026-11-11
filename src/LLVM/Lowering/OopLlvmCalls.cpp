@@ -865,6 +865,13 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 if (!value) return nullptr;
                 if (terminated()) return value;
                 const auto& typeKey = node->children[index]->typeKey;
+                if (typeKey == "builtin:int")
+                {
+                    if (imported->cppAbiPlan->physicalParameters[sourceToParameter[index]].type.widthOrCount != 32)
+                        return failValue(error, "SysV scalar argument has an unexpected physical type");
+                    sourceArguments.push_back(value);
+                    continue;
+                }
                 LLVMTypeRef argumentCarrier = llvmType(typeKey, error);
                 if (!argumentCarrier) return nullptr;
                 const unsigned argumentAlignment = structAlignmentFor(typeKey);

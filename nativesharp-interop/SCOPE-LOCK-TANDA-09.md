@@ -128,5 +128,5 @@ T09-003: conservar la prueba negativa de esta sesion con tres argumentos de reco
 T09-003: generalizar el caso directo a varios argumentos de record pequeno del mismo tipo. Contrastar una llamada de ocho argumentos que supera los registros disponibles, orden y copias, en estatica, DLL y precompilacion; conservar negativa una firma de tipos de record diferentes.
 T09-003: conservar la prueba negativa de esta sesion con dos tipos de record distintos, aun fuera de la forma admitida.
 T09-003: contrastar y generalizar firmas directas con records pequenos de tipos y anchuras distintas. Verificar el orden de parametros, copias y precompilacion con una muestra de 4 y 8 bytes; mantener negativo el caso de record mezclado con escalar aun no admitido.
-T09-003: conservar la prueba negativa de esta sesion con un record y un escalar en la misma firma, aun no admitida.
+T09-003: conservar la prueba negativa de esta sesion con un record y un `float` en la misma firma, aun no admitida.
 T09-003: conservar la prueba negativa de esta sesion con vector fijo seguido de `double`, aun no admitido.

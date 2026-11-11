@@ -1653,6 +1653,15 @@ bool checkDependencyTypeCodec()
         restoredRecord.declaration.abiPlan->physicalParameters[1].type.widthOrCount == 64,
         "C dependency function retains direct record arguments of different sizes");
     recordFunction.declaration.parameters[1].type.sizeBits = 32;
+    const auto savedSecondType = recordFunction.declaration.parameters[1].type;
+    recordFunction.declaration.parameters[1].type.kind = CppTypeKind::SignedInteger;
+    recordFunction.declaration.abiPlan = twoSmallPlan;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        restoredRecord.declaration.parameters[1].type.kind == CppTypeKind::SignedInteger &&
+        abi_plan::isSysVSmallRecordsRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
+        "C dependency function retains a record and an integer argument");
+    recordFunction.declaration.parameters[1].type = savedSecondType;
     auto eightPlan = std::make_shared<abi_plan::Plan>(*twoSmallPlan);
     for (std::size_t i = 2; i < 8; ++i)
     {

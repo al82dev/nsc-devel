@@ -481,8 +481,12 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             f.parameters[0].type.kind != CppTypeKind::Record || (!manyRecords && f.parameters[0].type.sizeBits != bits) ||
             (manyRecords && [&] {
                 for (std::size_t i = 0; i < f.parameters.size(); ++i)
-                    if (f.parameters[i].type.kind != CppTypeKind::Record ||
-                        f.parameters[i].type.sizeBits != f.abiPlan->physicalParameters[i].type.widthOrCount) return true;
+                    if (!((f.parameters[i].type.kind == CppTypeKind::Record &&
+                           f.parameters[i].type.sizeBits == f.abiPlan->physicalParameters[i].type.widthOrCount) ||
+                          (f.parameters[i].type.kind == CppTypeKind::SignedInteger &&
+                           f.parameters.size() == 2 && i == 1 &&
+                           f.parameters[i].type.sizeBits == 32 &&
+                           f.abiPlan->physicalParameters[i].type.widthOrCount == 32))) return true;
                 return false;
             }()) ||
             (indirectRecord && (bits <= 128 || bits % 8 != 0 ||

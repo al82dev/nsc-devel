@@ -533,7 +533,22 @@ A:/temp/t09-planes-identity.log. Pasaron las regresiones de dos y ocho records
 y la prueba general, incluidos los rechazos pendientes
 (A:/temp/nsc-t09-sysv-prueba-58j5cssi).
 
-La muestra no acredita todos los layouts ni firmas con records y escalares,
+La muestra no acredita todos los layouts ni firmas arbitrarias con records y escalares,
 varios records indirectos, callbacks u otras clasificaciones. T09-003 permanece
 abierto.
+
+## Record pequeno seguido de `int`
+
+El control C paso y NSC rechazo inicialmente esta firma en
+A:/temp/nsc-t09-sysv-record-scalar-gutfsm6a. Se amplio el consumo del plan
+directo para una firma de dos argumentos: record pequeno seguido de `int` de
+32 bits, con retorno de record pequeno. La muestra de cuatro bytes compara
+copias y resultado C/NS, comprueba la declaracion y llamada LLVM, y paso en
+estatica y DLL O0–O3 y mediante plantilla precompilada sin encabezado en O0:
+A:/temp/nsc-t09-sysv-record-scalar-hd1m4vq9. La sonda de Clang y la prueba de
+metadatos pasaron en A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log. La regresion general y sus rechazos pasaron
+en A:/temp/nsc-t09-sysv-prueba-znbfi5om; los records de tipos distintos
+pasaron en A:/temp/nsc-t09-sysv-hetero-ci0h0vp_. Otras posiciones, tipos de
+escalar y clasificaciones permanecen pendientes; T09-003 sigue abierto.
 
