@@ -260,3 +260,23 @@ original y cache (A:/temp/nsc-t09-preserve-records34-e11wvs77), y 16
 consumidores precompilados con y sin encabezado
 (A:/temp/nsc-t09-preserve-records34-precompilado-pigtd7cd). No hizo falta
 modificar produccion. Estos controles no certifican todos los layouts.
+
+### Dependencia: record C++ trivial por valor
+
+Una muestra C++ con `T09Cpp::Small`, un alias de puntero y una funcion
+`preserve_most` recibe y devuelve el record de dos enteros por valor. Clang
+23.1.0 genero el simbolo y ABI en A:/temp/t09-preserve-cpp-record-oracle.ll;
+pasaron ocho controles C++ en estatica/DLL O0-O3
+(A:/temp/nsc-t09-preserve-cpp-record-xj4ocsak). NSC no completo la importacion
+de las funciones y rechazo copiar el argumento al puntero de funcion
+(A:/temp/nsc-t09-preserve-cpp-record-0wqp3d4a); el consumidor precompilado
+tampoco paso (A:/temp/nsc-t09-preserve-cpp-record-precompilado-zldwpu8v).
+
+La proyeccion de funciones en `src/Interop/Cpp/CppSemanticFunction.cpp`
+restringe los records por valor a origen C, y la representacion y vida de
+objetos C++ corresponden a T11-002, T11-008 y tareas relacionadas. Esta es una
+dependencia no lineal: hay que resolver esa representacion y validar la muestra
+antes de acreditar este caso. Los scripts en
+`pruebas-tanda-09-preserve-cpp-record` conservan el caso reproducible; las
+pruebas NS y precompilada estan pendientes y no cuentan como soporte. La
+funcionalidad de records C por valor no demuestra el caso C++.
