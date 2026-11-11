@@ -50,3 +50,4 @@ T09-003: incorporar en la interfaz privada `LlvmCApi.h` la constante de convenci
 T09-003: impedir que la conversion de la funcion sysv_abi a un callback cdecl o vectorcall la trate como si fuera cdecl; probar el rechazo mientras no exista representacion segura del puntero SysV.
 T09-003: comprobar el uso de la nueva llamada desde una plantilla NativeSharp precompilada con encabezado C oculto, mediante el contrato NSMeta vigente y sin introducir etiquetas historicas.
 T09-003: ampliar las llamadas directas SysV a parametros y retornos `float` y `double`, conservando el rechazo para agregados y callbacks; contrastar llamadas mixtas y retornos con Clang en estatica y DLL O0–O3.
+T09-003: ampliar el mismo caso a paso y retorno de `int*`, con escritura observable y comparacion C/NS en estatica, DLL y precompilado. Mantener rechazados los demas punteros hasta probarlos.

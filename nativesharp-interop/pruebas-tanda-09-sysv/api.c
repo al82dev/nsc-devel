@@ -7,3 +7,4 @@ int __attribute__((sysv_abi)) sysv_mix(int a, int b, int c, int d, int e, int f)
 void __attribute__((sysv_abi)) sysv_set(int value) { sysv_value = value; }
 double __attribute__((sysv_abi)) sysv_fp(double a, float b, int c, double d) { return a + b + c + d; }
 float __attribute__((sysv_abi)) sysv_float(float value) { return value + 1.0f; }
+int* __attribute__((sysv_abi)) sysv_pointer(int* value, int delta) { *value += delta; return value; }

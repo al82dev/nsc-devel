@@ -6,5 +6,8 @@ int main(void) {
     if (sysv_value != 41) return 2;
     if (sysv_fp(1.5, 2.25f, 3, 4.0) != 10.75) return 3;
     if (sysv_float(2.5f) != 3.5f) return 4;
+    int value = 10;
+    int* result = sysv_pointer(&value, 3);
+    if (result != &value || value != 13 || *result != 13) return 5;
     return 0;
 }

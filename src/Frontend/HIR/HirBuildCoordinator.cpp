@@ -1809,7 +1809,8 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             if (function.cppSysVCall)
             {
                 const auto supportedScalar = [](const std::string& type) {
-                    return type == "builtin:int" || type == "builtin:float" || type == "builtin:double";
+                    return type == "builtin:int" || type == "builtin:float" || type == "builtin:double" ||
+                        type == "builtin:int*";
                 };
                 const bool supportedReturn = function.returnTypeKey == "builtin:void" ||
                     supportedScalar(function.returnTypeKey);
@@ -1817,7 +1818,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     supportedScalar);
                 if (function.isVariadic || !supportedReturn || !supportedParameters)
                 {
-                    error = "sysv_abi currently supports only non-variadic int, float or double parameters and scalar or void return for " +
+                    error = "sysv_abi currently supports only non-variadic int, float, double or int* parameters and matching or void return for " +
                         symbol.mangledName;
                     return false;
                 }

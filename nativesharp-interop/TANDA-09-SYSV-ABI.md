@@ -6,7 +6,7 @@ del cambio, el control C enlazo y ejecuto una suma, mientras NSC rechazo la
 convencion en HIR. Reproduccion: A:/temp/nsc-t09-sysv-77xbbf6_.
 
 El primer cambio admite llamadas directas no variadicas con parametros `int`,
-`float` o `double` y retorno de esos tipos o `void`. La convencion se transporta de HIR
+`float`, `double` o `int*` y retorno de esos tipos o `void`. La convencion se transporta de HIR
 a MIR y se aplica en la declaracion y llamada LLVM. Las demas firmas y la
 resolucion especial de DLL con alias TLS siguen rechazadas. Convertir la funcion
 a delegado queda rechazado hasta representar correctamente ese puntero; no se
@@ -35,6 +35,11 @@ y de la conversion a callback. Evidencia A:/temp/nsc-t09-sysv-prueba-2d2_0r9n.
 Las regresiones de llamadas cdecl y vectorcall pasaron nuevamente 8/8 cada una:
 A:/temp/nsc-t09-llamadas-8eb7x7gp y A:/temp/nsc-t09-vectorcall-hga50l6x.
 
-No se afirma compatibilidad de SysV con agregados, otros escalares, variadicas,
-punteros de funcion, aislamiento TLS ni otros destinos. No se han cambiado
+Ampliacion de punteros: se paso y devolvio `int*`, verificando direccion y
+escritura desde C y NS. Pasaron estatica y DLL O0–O3 y plantilla precompilada
+sin encabezado en estatica O0; tambien se repitieron los rechazos. Evidencia:
+A:/temp/nsc-t09-sysv-prueba-aidhp5lh. No se extrapola a otros tipos de puntero.
+
+No se afirma compatibilidad de SysV con agregados, otros escalares o punteros,
+variadicas, punteros de funcion, aislamiento TLS ni otros destinos. No se han cambiado
 Clang, NSLink ni el contrato de NSMeta.

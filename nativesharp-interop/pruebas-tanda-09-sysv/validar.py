@@ -48,7 +48,8 @@ for mode in ('estatica', 'dll'):
             library, project, cflags = 'api.lib', 'Static.nsproj', []
         else:
             run(prefix + '-dll', ['lld-link.exe', '/nologo', '/dll', '/noentry', '/nodefaultlib',
-                '/export:sysv_mix', '/export:sysv_set', '/export:sysv_fp', '/export:sysv_float', '/export:sysv_value,DATA',
+                '/export:sysv_mix', '/export:sysv_set', '/export:sysv_fp', '/export:sysv_float',
+                '/export:sysv_pointer', '/export:sysv_value,DATA',
                 '/out:' + str(case/'api.dll'), '/implib:' + str(case/'api-dll.lib'), str(case/'api.obj')])
             library, project, cflags = 'api-dll.lib', 'Dll.nsproj', ['-DAPI_DLL_IMPORT']
         run(prefix + '-control-obj', ['clang.exe', *flags, *cflags, '-c', str(case/'Control.c'), '-o', str(case/'control.obj')])
@@ -62,7 +63,7 @@ for mode in ('estatica', 'dll'):
         output.parent.mkdir()
         common = [str(case/project), '--cpp-clang-root=' + args.clang_root, '--library-reference-root', str(case)]
         ir = run(prefix + '-llvm', [args.nsc, '--dump-project-oop-llvm', *common])
-        for name in ('sysv_mix', 'sysv_set', 'sysv_fp', 'sysv_float'):
+        for name in ('sysv_mix', 'sysv_set', 'sysv_fp', 'sysv_float', 'sysv_pointer'):
             for kind in ('declare', 'call'):
                 if not re.search(kind + r'[^\n]*x86_64_sysvcc[^\n]*@' + name + r'\(', ir):
                     raise SystemExit(prefix + ': falta convencion en ' + kind + ' ' + name + '; evidencia: ' + str(root))
@@ -82,7 +83,9 @@ for name in ('api.h', 'api.lib'):
     'namespace T09 { public class Bridge { public static int Run<T>(T unused) { '
     'if (sysv_mix(1, 2, 3, 4, 5, 6) != 91) return 1; sysv_set(41); '
     'if (sysv_value != 41) return 2; if (sysv_fp(1.5, 2.25f, 3, 4.0) != 10.75) return 3; '
-    'if (sysv_float(2.5f) != 3.5f) return 4; return 0; } } }', encoding='utf-8')
+    'if (sysv_float(2.5f) != 3.5f) return 4; int value = 10; '
+    'int* result = sysv_pointer(&value, 3); '
+    'if (result != &value || value != 13 || *result != 13) return 5; return 0; } } }', encoding='utf-8')
 (producer/'Producer.nsproj').write_text(
     '<Project><PropertyGroup><Name>T09SysvProducer</Name><OutputType>Library</OutputType>'
     '</PropertyGroup><ItemGroup><Compile Include="Producer.ns"/><CppLibraryReference '
