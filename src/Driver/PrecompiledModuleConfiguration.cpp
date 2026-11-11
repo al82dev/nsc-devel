@@ -21,6 +21,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <system_error>
 #include <unordered_set>
@@ -533,13 +534,19 @@ bool configurePrecompiledModules(
         if (!compilation.setCppProjectSessions(
                 std::move(std::get<interop::CppGraphSessions>(opened).projects), error))
             return false;
-        if (hasSessions && !compilation.setCppVariadicCallPlanProvider(
-                [&compilation](const frontend::NamespaceFunctionSymbol& function,
+        auto replayMutex = std::make_shared<std::mutex>();
+        auto* replayFactory = activeExecutionScope->cppSessionFactory;
+        if (!compilation.setCppVariadicCallPlanProvider(
+                [&compilation, environment, replayMutex, replayFactory](const frontend::NamespaceFunctionSymbol& function,
                                std::span<const std::string> optionalTypes) {
                     const auto* graph = compilation.projectGraph();
                     const auto* lookup = compilation.nameLookup();
-                    return graph && lookup ? interop::planCppVariadicCall(
-                        *graph, compilation.cppProjectSessions(), *lookup, function, optionalTypes) : nullptr;
+                    if (!graph || !lookup) return std::shared_ptr<const interop::abi_plan::VariadicCallPlan>{};
+                    if (auto plan = interop::planCppVariadicCall(
+                            *graph, compilation.cppProjectSessions(), *lookup, function, optionalTypes)) return plan;
+                    std::lock_guard lock(*replayMutex);
+                    return interop::planPrecompiledCppVariadicCall(*graph, compilation.precompiledModules(),
+                        *lookup, function, optionalTypes, environment, *replayFactory);
                 }, error)) return false;
         if (hasSessions && !compilation.setCppMetadataCatalogProvider(
                 interop::provideCppCRecordMetadataCatalog, error)) return false;

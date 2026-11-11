@@ -1,5 +1,9 @@
 #include "nativesharp/Interop/CppProjectSessions.h"
 #include "nativesharp/Interop/CppVariadicAbiReconciliation.h"
+#include "nativesharp/Interop/CppCRecordAbiReplay.h"
+#include "nativesharp/Interop/CppVariadicAbiCodec.h"
+#include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
+#include "../Internal/CppCRecordMetadataCodec.h"
 #include "nativesharp/Compilation/Project.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
 #include "nativesharp/Frontend/NamespaceFunctionSymbol.h"
@@ -7,6 +11,7 @@
 
 #include <clang/Basic/LangStandard.h>
 
+#include <algorithm>
 #include <utility>
 
 namespace nativesharp::interop
@@ -280,6 +285,168 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
     if (!selected) return {};
     auto plan = reconcileCppVariadicCallAbiPlan(*selected, selectedName, selectedCanonical, arguments);
     if (!plan || plan->symbol != function.mangledName || plan->requiredArguments != function.parameters.size()) return {};
+    return std::make_shared<const abi_plan::VariadicCallPlan>(std::move(*plan));
+}
+
+std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall(
+    const compilation::ProjectGraph& graph, std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const frontend::ProjectNameLookup& lookup, const frontend::NamespaceFunctionSymbol& function,
+    std::span<const std::string> optionalTypeKeys, const CppProjectSessionEnvironment& environment,
+    CppInteropSessionFactory& factory)
+{
+    if (!function.isVariadic || function.cppCallingConvention != "sysv_abi" || !function.cppClangUsr ||
+        !function.cppReturnType || function.projectOrdinal >= graph.projects().size() ||
+        graph.projects()[function.projectOrdinal].moduleName() != function.moduleName ||
+        !graph.projects()[function.projectOrdinal].cppLibraryReferences().empty() ||
+        function.cppParameterTypes.size() != function.parameters.size() ||
+        environment.targetTriple != "x86_64-pc-windows-msvc") return {};
+    const auto builtin = [](const CppType& type) -> std::optional<std::string> {
+        if (type.isConst || type.isVolatile || type.isRestrict) return std::nullopt;
+        const auto& name = type.canonicalSpelling;
+        if (type.kind == CppTypeKind::Void && name == "void") return name;
+        if (type.kind == CppTypeKind::Boolean && name == "_Bool") return name;
+        if (type.kind == CppTypeKind::SignedInteger &&
+            (name == "signed char" || name == "short" || name == "int" || name == "long" || name == "long long")) return name;
+        if (type.kind == CppTypeKind::UnsignedInteger &&
+            (name == "unsigned char" || name == "unsigned short" || name == "unsigned int" ||
+             name == "unsigned long" || name == "unsigned long long")) return name;
+        if (type.kind == CppTypeKind::Floating && (name == "float" || name == "double")) return name;
+        return std::nullopt;
+    };
+    const auto sameType = [](const CppType& a, const CppType& b) {
+        return a.kind == b.kind && a.canonicalSpelling == b.canonicalSpelling && a.sizeBits == b.sizeBits &&
+            a.alignmentBits == b.alignmentBits && a.isConst == b.isConst && a.isVolatile == b.isVolatile &&
+            a.isRestrict == b.isRestrict;
+    };
+    std::optional<metadata_detail::CDependencyFunctionSnapshot> selected;
+    std::vector<CppCRecordSnapshot> records;
+    for (const auto& module : modules)
+    {
+        if (module.cppCTypeCatalog.empty()) continue;
+        std::vector<CppCRecordSnapshot> found;
+        std::vector<CppCEnumSnapshot> enums;
+        metadata_detail::CDependencyCatalog dependencies;
+        std::string error;
+        if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
+                module.cppCTypeCatalogFormatMinor, found, enums, dependencies, error)) return {};
+        for (const auto& candidate : dependencies.functions)
+        {
+            const auto& d = candidate.declaration;
+            if (candidate.moduleName != function.moduleName || candidate.linkSymbol != function.mangledName ||
+                d.name != function.name || d.clangUsr != function.cppClangUsr || !candidate.variadicBasePlan) continue;
+            if (selected) return {};
+            selected = candidate;
+        }
+        records.insert(records.end(), std::make_move_iterator(found.begin()), std::make_move_iterator(found.end()));
+    }
+    if (!selected || selected->declaration.name != selected->linkSymbol ||
+        selected->declaration.parameters.size() != function.parameters.size() ||
+        !sameType(selected->declaration.returnType, *function.cppReturnType)) return {};
+    const auto& name = selected->declaration.name;
+    const auto letter = [](char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_'; };
+    if (name.empty() || !letter(name.front()) || !std::all_of(name.begin(), name.end(), [&](char c) {
+            return letter(c) || (c >= '0' && c <= '9');
+        })) return {};
+    const auto resultType = builtin(selected->declaration.returnType);
+    if (!resultType || selected->declaration.parameters.empty()) return {};
+    std::string parameters;
+    for (std::size_t i = 0; i < selected->declaration.parameters.size(); ++i)
+    {
+        const auto& type = selected->declaration.parameters[i].type;
+        const auto spelling = builtin(type);
+        if (!spelling || *spelling == "void" || !sameType(type, function.cppParameterTypes[i])) return {};
+        if (i) parameters += ", ";
+        parameters += *spelling;
+    }
+    struct ReplayRecord { CppCRecordSnapshot snapshot; std::string key; };
+    std::vector<ReplayRecord> selectedRecords;
+    std::vector<std::optional<std::size_t>> recordForArgument;
+    for (const auto& key : optionalTypeKeys)
+    {
+        if (!key.starts_with("type:") || key.ends_with('*')) { recordForArgument.push_back(std::nullopt); continue; }
+        const auto ordinal = lookup.typeOrdinalForIdentity(std::string_view(key).substr(5));
+        const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+        if (!imported || !imported->fromPrecompiledCatalog || imported->isIncomplete || !imported->objectLayout ||
+            !imported->clangUsr || !imported->deferredImportError.empty() ||
+            (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
+             imported->origin != frontend::CppImportedTypeOrigin::CUnion)) return {};
+        auto previous = std::find_if(selectedRecords.begin(), selectedRecords.end(), [&](const auto& value) { return value.key == key; });
+        if (previous != selectedRecords.end())
+        { recordForArgument.push_back(static_cast<std::size_t>(previous - selectedRecords.begin())); continue; }
+        const CppCRecordSnapshot* match = nullptr;
+        for (const auto& record : records)
+            if (record.identityKey == std::string_view(key).substr(5))
+            { if (match) return {}; match = &record; }
+        const auto expectedKind = imported->origin == frontend::CppImportedTypeOrigin::CStruct ?
+            CppRecordKind::Struct : CppRecordKind::Union;
+        if (!match || !match->plainReplaySyntax || match->clangUsr != imported->clangUsr ||
+            match->kind != expectedKind || match->name != imported->identity.name() ||
+            !match->namespaceSegments.empty() || !match->containingRecords.empty() ||
+            !match->sizeBits || !match->alignmentBits || *match->sizeBits / 8 != imported->objectLayout->sizeBytes ||
+            *match->alignmentBits / 8 != imported->objectLayout->alignmentBytes || !makeSimpleCRecordAbiReplay(*match)) return {};
+        recordForArgument.push_back(selectedRecords.size());
+        selectedRecords.push_back({*match, key});
+    }
+    if (selectedRecords.empty()) return {};
+    std::string source;
+    for (std::size_t i = 0; i < selectedRecords.size(); ++i)
+    {
+        source += *makeSimpleCRecordAbiReplay(selectedRecords[i].snapshot, i);
+        const auto tag = i == 0 ? std::string("__nsc_abi_record") : "__nsc_abi_record_" + std::to_string(i);
+        source += "void __nsc_replay_type_" + std::to_string(i) + "(" +
+            (selectedRecords[i].snapshot.kind == CppRecordKind::Struct ? "struct " : "union ") + tag + ");\n";
+    }
+    source += *resultType + " __attribute__((sysv_abi)) " + name + "(" + parameters + ", ...);\n";
+    CppSessionOptions options;
+    options.language = CppLanguageMode::C;
+    options.languageStandard = "c11";
+    options.targetTriple = environment.targetTriple;
+    options.driverReferencePath = environment.driverReferencePath;
+    options.resourceDirectory = environment.resourceDirectory;
+    options.workingDirectory = environment.workingDirectory;
+    options.input = CppBufferInput{"nsc-variadic-replay.c", std::move(source)};
+    auto opened = factory.open(std::move(options), {});
+    auto* holder = std::get_if<std::unique_ptr<CppInteropSession>>(&opened);
+    if (!holder || !*holder) return {};
+    auto& session = **holder;
+    const auto observedRecords = session.recordsSnapshot();
+    const auto observedFunctions = session.freeFunctionsSnapshot();
+    if (!observedRecords || !observedFunctions) return {};
+    std::vector<CppType> replayTypes(selectedRecords.size());
+    for (std::size_t i = 0; i < selectedRecords.size(); ++i)
+    {
+        const auto tag = i == 0 ? std::string("__nsc_abi_record") : "__nsc_abi_record_" + std::to_string(i);
+        const auto record = std::find_if(observedRecords->begin(), observedRecords->end(), [&](const auto& value) { return value.name == tag; });
+        const auto helper = std::find_if(observedFunctions->begin(), observedFunctions->end(), [&](const auto& value) {
+            return value.name == "__nsc_replay_type_" + std::to_string(i);
+        });
+        if (record == observedRecords->end() || !matchesSimpleCRecordAbiReplay(selectedRecords[i].snapshot, *record, i) ||
+            helper == observedFunctions->end() || helper->parameters.size() != 1) return {};
+        replayTypes[i] = helper->parameters[0].type;
+    }
+    const auto replayFunction = std::find_if(observedFunctions->begin(), observedFunctions->end(),
+        [&](const auto& item) { return item.name == name; });
+    if (replayFunction == observedFunctions->end() || replayFunction->clangUsr != function.cppClangUsr ||
+        replayFunction->canonicalFunctionType != selected->declaration.canonicalFunctionType) return {};
+    const auto base = session.cVariadicCallAbiPlan(name, replayFunction->canonicalFunctionType, {});
+    if (!base || abi_plan::encodeVariadicCallPlanForCache(*base) !=
+                     abi_plan::encodeVariadicCallPlanForCache(*selected->variadicBasePlan)) return {};
+    std::vector<CppType> args;
+    for (std::size_t i = 0; i < optionalTypeKeys.size(); ++i)
+    {
+        if (recordForArgument[i]) { args.push_back(replayTypes[*recordForArgument[i]]); continue; }
+        CppType type;
+        const auto& key = optionalTypeKeys[i];
+        if (key == "builtin:int") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "int"; type.sizeBits = type.alignmentBits = 32; }
+        else if (key == "builtin:uint") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned int"; type.sizeBits = type.alignmentBits = 32; }
+        else if (key == "builtin:long") { type.kind = CppTypeKind::SignedInteger; type.canonicalSpelling = "long long"; type.sizeBits = type.alignmentBits = 64; }
+        else if (key == "builtin:ulong") { type.kind = CppTypeKind::UnsignedInteger; type.canonicalSpelling = "unsigned long long"; type.sizeBits = type.alignmentBits = 64; }
+        else if (key == "builtin:double") { type.kind = CppTypeKind::Floating; type.canonicalSpelling = "double"; type.sizeBits = type.alignmentBits = 64; }
+        else return {};
+        args.push_back(std::move(type));
+    }
+    auto plan = session.cVariadicCallAbiPlan(name, replayFunction->canonicalFunctionType, args);
+    if (!plan || !validateCppVariadicSysVCallPlan(*plan, function.mangledName, function.parameters.size())) return {};
     return std::make_shared<const abi_plan::VariadicCallPlan>(std::move(*plan));
 }
 }

@@ -11,15 +11,16 @@ namespace nativesharp::interop
 // Preliminary reconstruction for asking Clang about a persisted C record.
 // This is not an ABI proof: the caller must also establish that all attributes
 // affecting parameter passing were captured and bind the resulting plan to
-// the original function and type identities. No compiler path uses it yet.
-inline std::optional<std::string> makeSimpleCRecordAbiReplay(const CppCRecordSnapshot& record)
+// the original function and type identities.
+inline std::optional<std::string> makeSimpleCRecordAbiReplay(const CppCRecordSnapshot& record,
+                                                            std::size_t index = 0)
 {
     if (!record.complete || !record.valueLayoutUsable || !record.sizeBits || !record.alignmentBits ||
         !record.targetTriple.starts_with("x86_64-pc-windows-msvc") || record.fields.empty() ||
         record.fields.size() > 256 ||
         (record.kind != CppRecordKind::Struct && record.kind != CppRecordKind::Union)) return std::nullopt;
-    std::string result = record.kind == CppRecordKind::Struct ? "struct __nsc_abi_record {\n" :
-                                                                "union __nsc_abi_record {\n";
+    const auto tag = index == 0 ? std::string("__nsc_abi_record") : "__nsc_abi_record_" + std::to_string(index);
+    std::string result = (record.kind == CppRecordKind::Struct ? "struct " : "union ") + tag + " {\n";
     for (std::size_t i = 0; i < record.fields.size(); ++i)
     {
         const auto& field = record.fields[i];
@@ -44,10 +45,11 @@ inline std::optional<std::string> makeSimpleCRecordAbiReplay(const CppCRecordSna
 // Clang must parse the reconstruction with the original target; this checks
 // every physical field against the persisted data, not merely total size.
 inline bool matchesSimpleCRecordAbiReplay(const CppCRecordSnapshot& expected,
-                                          const CppRecordDeclaration& actual)
+                                          const CppRecordDeclaration& actual, std::size_t index = 0)
 {
-    if (!makeSimpleCRecordAbiReplay(expected) || actual.isCxx || !actual.complete ||
-        actual.name != "__nsc_abi_record" || actual.kind != expected.kind ||
+    const auto tag = index == 0 ? std::string("__nsc_abi_record") : "__nsc_abi_record_" + std::to_string(index);
+    if (!makeSimpleCRecordAbiReplay(expected, index) || actual.isCxx || !actual.complete ||
+        actual.name != tag || actual.kind != expected.kind ||
         actual.sizeBits != expected.sizeBits || actual.alignmentBits != expected.alignmentBits ||
         actual.fields.size() != expected.fields.size()) return false;
     for (std::size_t i = 0; i < expected.fields.size(); ++i)

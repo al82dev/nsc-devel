@@ -9,6 +9,7 @@ API_STORAGE __attribute__((sysv_abi)) int sysv_many(int count, ...);
 typedef struct T09VarRecord { int x; int y; } T09VarRecord;
 typedef struct T09VarMixed { double x; int y; } T09VarMixed;
 typedef struct T09VarLarge { long long x; long long y; long long z; } T09VarLarge;
+typedef struct __attribute__((packed)) T09VarPacked { double x; int y; } T09VarPacked;
 API_STORAGE __attribute__((sysv_abi)) int sysv_ptrs(int count, ...);
 API_STORAGE __attribute__((sysv_abi)) int sysv_empty(int count, ...);
 API_STORAGE __attribute__((sysv_abi)) int sysv_floatspill(int count, ...);

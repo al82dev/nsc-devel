@@ -173,8 +173,18 @@ for name in ('api.h', 'api.lib'):
     shutil.copyfile(case/name, recordProducer/name)
 (recordProducer/'Producer.ns').write_text(
     'namespace T09 { public class RecordBridge { public static int Run<T>(T unused) { '
+    'T09VarRecord small; small.x = 1; small.y = 2; '
     'T09VarMixed record; record.x = 2.25; record.y = 7; '
-    'return sysv_record_mixed(1, record) == 1 ? 0 : 1; } } }', encoding='utf-8')
+    'T09VarLarge large; large.x = 11; large.y = 13; large.z = 17; '
+    'if (sysv_record_small(1, small) != 1 || small.x != 1 || small.y != 2) return 1; '
+    'if (sysv_record_mixed(1, record) != 1 || record.x != 2.25 || record.y != 7) return 2; '
+    'if (sysv_record_two(2, small, record) != 1 || small.x != 1 || record.y != 7) return 3; '
+    'if (sysv_record_pressure(6, 1, 2, 3, 4, 5, record) != 1 || record.y != 7) return 4; '
+    'if (sysv_record_sse_pressure(9, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, record) != 1 || record.y != 7) return 5; '
+    'if (sysv_record_large(1, large) != 1 || large.x != 11 || large.y != 13 || large.z != 17) return 6; '
+    'return 0; } } } '
+    'namespace T09 { public class PackedBridge { public static int Run<T>(T unused) { '
+    'T09VarPacked record; record.x = 2.25; record.y = 7; return sysv_record_mixed(1, record); } } }', encoding='utf-8')
 (recordProducer/'Producer.nsproj').write_text(
     '<Project><PropertyGroup><Name>SysvVarRecordProducer</Name><OutputType>Library</OutputType></PropertyGroup>'
     '<ItemGroup><Compile Include="Producer.ns"/><CppLibraryReference Header="api.h" Language="C" '
@@ -187,9 +197,78 @@ for name in ('api.h', 'api.lib'):
 run('pre-record-producer', [args.nsc, '--emit-project-oop-lib', str(recordProducer/'Producer.nsproj'),
     '--cpp-clang-root='+args.clang_root, '--no-artifact-cache', '-O0', '-o', str(recordProducer/'Producer.lib')])
 (recordProducer/'api.h').rename(recordProducer/'api.h.oculto')
-recordPending = run('pre-record-pendiente', [args.nsc, '--emit-project-oop-exe', str(recordConsumer/'Consumer.nsproj'),
-    '--cpp-clang-root='+args.clang_root, '--no-artifact-cache', '-O0', '-o', str(recordConsumer/'Consumer.exe')], expected=1)
-if 'sysv_abi variadic argument type is not yet supported' not in recordPending:
-    raise SystemExit('El limite de plantilla con record no se detecto correctamente; evidencia: '+str(root))
-print('OK: rechazo de record NativeSharp y plantilla escalar precompilada; record precompilado pendiente; evidencia:', root)
+for stage in ('hir', 'mir'):
+    for jobs in (1, 4):
+        output = run('pre-record-'+stage+'-j'+str(jobs), [args.nsc, '--dump-project-oop-'+stage,
+            str(recordConsumer/'Consumer.nsproj'), '--cpp-clang-root='+args.clang_root, '-j', str(jobs)])
+        for expected in ('cpp-variadic-plan=sysv_record_small:2', 'cpp-variadic-plan=sysv_record_mixed:2',
+                         'cpp-variadic-plan=sysv_record_two:3', 'cpp-variadic-plan=sysv_record_pressure:7',
+                         'cpp-variadic-plan=sysv_record_sse_pressure:10', 'cpp-variadic-plan=sysv_record_large:2'):
+            if expected not in output:
+                raise SystemExit('Falta '+expected+' en plantilla '+stage+'; evidencia: '+str(root))
+preIr = run('pre-record-llvm', [args.nsc, '--dump-project-oop-llvm', str(recordConsumer/'Consumer.nsproj'),
+    '--cpp-clang-root='+args.clang_root])
+for name, pieces in (('sysv_record_small', r'i64 [^,\)]+'),
+                     ('sysv_record_mixed', r'double [^,]+, i32 [^,\)]+'),
+                     ('sysv_record_two', r'i64 [^,]+, double [^,]+, i32 [^,\)]+')):
+    if not re.search(r'call[^\n]*x86_64_sysvcc[^\n]*@'+name+r'\(i32[^,]+, '+pieces, preIr):
+        raise SystemExit('Piezas LLVM precompiladas incorrectas: '+name+'; evidencia: '+str(root))
+for name in ('sysv_record_pressure', 'sysv_record_sse_pressure', 'sysv_record_large'):
+    if not re.search(r'call[^\n]*@'+name+r'\([^\n]*byval\([^\n]*\) align 8', preIr):
+        raise SystemExit('Falta byval LLVM precompilado: '+name+'; evidencia: '+str(root))
+run('pre-record-consumer', [args.nsc, '--emit-project-oop-exe', str(recordConsumer/'Consumer.nsproj'),
+    '--cpp-clang-root='+args.clang_root, '--no-artifact-cache', '-O0', '-o', str(recordConsumer/'Consumer.exe')])
+run('pre-record-run', [str(recordConsumer/'Consumer.exe')])
+cacheExe = recordConsumer/'cached.exe'
+cacheCommand = [args.nsc, '--emit-project-oop-exe', str(recordConsumer/'Consumer.nsproj'),
+    '--cpp-clang-root='+args.clang_root, '--artifact-cache='+str(recordConsumer/'cache'),
+    '--time', '-O0', '-o', str(cacheExe)]
+for label, reason in (('pre-record-cache-fria', 'not-found'), ('pre-record-cache-caliente', 'hit')):
+    cacheExe.unlink(missing_ok=True)
+    output = run(label, cacheCommand)
+    if 'compilation-bundle-cache: '+reason not in output:
+        raise SystemExit(label+': estado inesperado; evidencia: '+str(root))
+    run(label+'-run', [str(cacheExe)])
+(recordConsumer/'BadPacked.ns').write_text('int Main() { return T09.PackedBridge.Run<int>(0); }', encoding='utf-8')
+(recordConsumer/'BadPacked.nsproj').write_text(
+    '<Project><PropertyGroup><Name>SysvPackedConsumer</Name></PropertyGroup><ItemGroup>'
+    '<Compile Include="BadPacked.ns"/><LibraryReference Include="../pre-record-producer/Producer.lib"/>'
+    '</ItemGroup></Project>', encoding='utf-8')
+badPacked = run('pre-record-packed-rechazo', [args.nsc, '--emit-project-oop-exe', str(recordConsumer/'BadPacked.nsproj'),
+    '--cpp-clang-root='+args.clang_root, '--no-artifact-cache', '-O0', '-o', str(recordConsumer/'BadPacked.exe')], expected=1)
+if 'sysv_abi variadic argument type is not yet supported' not in badPacked:
+    raise SystemExit('El record packed no se rechazo correctamente; evidencia: '+str(root))
+for mode in ('estatica', 'dll'):
+    for opt in range(4):
+        if mode == 'estatica' and opt == 0:
+            continue
+        label = 'pre-record-'+mode+'-O'+str(opt)
+        sourceCase = root/(mode+'-O'+str(opt))
+        currentProducer = root/(label+'-producer')
+        currentConsumer = root/(label+'-consumer')
+        currentProducer.mkdir()
+        currentConsumer.mkdir()
+        shutil.copyfile(recordProducer/'Producer.ns', currentProducer/'Producer.ns')
+        for name in (('api.h', 'api.lib') if mode == 'estatica' else ('api.h', 'api-dll.h', 'api-dll.lib', 'api.dll')):
+            shutil.copyfile(sourceCase/name, currentProducer/name)
+        if mode == 'dll':
+            shutil.copyfile(sourceCase/'api.dll', currentConsumer/'api.dll')
+        reference = ('Header="api.h" Language="C" Standard="c11" Library="api.lib"' if mode == 'estatica' else
+                     'Header="api-dll.h" Language="C" Standard="c11" Library="api-dll.lib" Runtime="api.dll"')
+        (currentProducer/'Producer.nsproj').write_text(
+            '<Project><PropertyGroup><Name>SysvVarRecordProducer</Name><OutputType>Library</OutputType></PropertyGroup>'
+            '<ItemGroup><Compile Include="Producer.ns"/><CppLibraryReference '+reference+'/></ItemGroup></Project>', encoding='utf-8')
+        (currentConsumer/'Main.ns').write_text('int Main() { return T09.RecordBridge.Run<int>(0); }', encoding='utf-8')
+        (currentConsumer/'Consumer.nsproj').write_text(
+            '<Project><PropertyGroup><Name>SysvVarRecordConsumer</Name></PropertyGroup><ItemGroup>'
+            '<Compile Include="Main.ns"/><LibraryReference Include="../'+currentProducer.name+'/Producer.lib"/>'
+            '</ItemGroup></Project>', encoding='utf-8')
+        run(label+'-lib', [args.nsc, '--emit-project-oop-lib', str(currentProducer/'Producer.nsproj'),
+            '--cpp-clang-root='+args.clang_root, '--no-artifact-cache', '-O'+str(opt), '-o', str(currentProducer/'Producer.lib')])
+        (currentProducer/'api.h').rename(currentProducer/'api.h.oculto')
+        run(label+'-exe', [args.nsc, '--emit-project-oop-exe', str(currentConsumer/'Consumer.nsproj'),
+            '--cpp-clang-root='+args.clang_root, '--no-artifact-cache', '-O'+str(opt), '-o', str(currentConsumer/'Consumer.exe')])
+        run(label+'-run', [str(currentConsumer/'Consumer.exe')])
+print('OK: rechazo de record NativeSharp y plantillas precompiladas escalar y record; evidencia:', root)
+print('OK: plantilla con seis records, estatica y DLL en O0-O3, sin encabezado')
 print('OK: ocho comparaciones C/NS', root)

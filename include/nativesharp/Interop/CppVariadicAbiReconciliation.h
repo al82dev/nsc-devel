@@ -5,10 +5,12 @@
 #include <span>
 
 namespace nativesharp::compilation { class ProjectGraph; }
-namespace nativesharp::frontend { struct NamespaceFunctionSymbol; class ProjectNameLookup; }
+namespace nativesharp::frontend { struct NamespaceFunctionSymbol; class ProjectNameLookup; struct PrecompiledSyntaxModule; }
 namespace nativesharp::interop
 {
 struct CppProjectSessions;
+struct CppProjectSessionEnvironment;
+class CppInteropSessionFactory;
 // The caller must associate each C type with its actual live origin session.
 // A null origin cannot authorize a record, including through a pointer.
 struct CppVariadicArgumentOrigin
@@ -28,4 +30,12 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
     const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
     const frontend::ProjectNameLookup& lookup, const frontend::NamespaceFunctionSymbol& function,
     std::span<const std::string> optionalTypeKeys);
+
+// Uses only verified producer catalogues and a fresh Clang session; callers
+// serialize factory use and keep the session environment alive for the call.
+std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall(
+    const compilation::ProjectGraph& graph, std::span<const frontend::PrecompiledSyntaxModule> modules,
+    const frontend::ProjectNameLookup& lookup, const frontend::NamespaceFunctionSymbol& function,
+    std::span<const std::string> optionalTypeKeys, const CppProjectSessionEnvironment& environment,
+    CppInteropSessionFactory& factory);
 }

@@ -914,7 +914,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     return failValue(error, "sysv_abi variadic record layout is unavailable");
                 const auto ordinal = nameLookup_.typeOrdinalForIdentity(std::string_view(key).substr(5));
                 const auto* recordType = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
-                if (!recordType || recordType->fromPrecompiledCatalog || recordType->isIncomplete ||
+                if (!recordType || recordType->isIncomplete ||
                     !recordType->deferredImportError.empty() || !recordType->objectLayout ||
                     (recordType->origin != frontend::CppImportedTypeOrigin::CStruct &&
                      recordType->origin != frontend::CppImportedTypeOrigin::CUnion) ||

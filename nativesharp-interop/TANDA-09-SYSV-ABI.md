@@ -844,6 +844,31 @@ records opcionales ni habilita el consumidor: falta reconstruir y comparar la
 declaracion con su origen, reconciliar observaciones y consultar la llamada
 completa. T09-003 permanece abierto.
 
+#### Records planos desde una plantilla precompilada
+
+El consumidor selecciona la funcion y cada record por modulo, simbolo, USR,
+identidad y layout; exige la observacion plana y el plan fijo del productor.
+Reconstruye las declaraciones admitidas en una sesion de Clang en memoria,
+verifica cada campo y compara el plan del prefijo antes de consultar la llamada
+completa. El acceso a la fabrica de sesiones se serializa entre trabajadores.
+La emision utiliza el mismo transporte de piezas o copias `byval` ya validado.
+
+El fixture con encabezado oculto ejecuta records pequeno, mixto y grande,
+dos records en la misma llamada y agotamiento de registros enteros y flotantes.
+Pasaron estatica y DLL O0–O3, HIR y MIR con uno y cuatro trabajadores, piezas y
+alineacion en LLVM, cache fria/caliente y rechazo de record empaquetado
+(`A:/temp/nsc-t09-sysv-varargs-2oqpbfv0`). Pasaron las sondas de transporte,
+ABI e identidad y las regresiones de llamadas C y SysV
+(`A:/temp/t09-transport-directed/`, `A:/temp/nsc-t09-llamadas-yklssfjq`,
+`A:/temp/nsc-t09-sysv-prueba-dk0t990b` y
+`A:/temp/nsc-t09-sysv-padded-pair-id-qjkigrcg`).
+
+La reconstruccion admite por ahora records C planos de campos escalares sin
+atributos y prefijo/retorno escalar; rechaza catalogos ambiguos, records
+empaquetados o anidados, punteros en llamadas que requieren esta ruta y otras
+formas que no puede comprobar. Exige Clang configurado en el consumidor. No
+acredita callbacks SysV, compatibilidad C++ general ni cierre de T09-003.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin
