@@ -22,3 +22,12 @@ Las pruebas se ejecutaron sobre un árbol con otros cambios locales; no prueban
 una revisión limpia. Requieren `NSC_TEST_CORE_BINARY` y se omiten si falta.
 Los controles de limpieza excepcional y otros cambios de cleanup quedan fuera
 de este commit y no se consideran cerrados por él.
+
+Los controles `nsc.sdk.shared-tuple-move-call` y
+`nsc.sdk.shared-tuple-move-call-binary` verifican la entrega por valor a un
+método del mismo proyecto y a uno de una biblioteca estática independiente.
+Ambos cubren las cuatro familias, salida normal y excepcional, O0/O2; el
+observador comprueba caducidad o contador al terminar la llamada. Pasaron 2/2
+sin omisión (`A:/nsc-fixes-evidencia/shared-tuple-call-commit-20261111/test.log`).
+Usan Core binario anterior y un árbol con otros cambios locales. No acreditan
+DLL, cruces de niveles diferentes ni una revisión limpia.

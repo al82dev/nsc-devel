@@ -5611,6 +5611,14 @@ if(NSC_BUILD_TESTS)
                 "${NSC_TEST_COMPILER}")
     set_tests_properties(nsc.sdk.shared-tuple-move-binary nsc.sdk.shared-tuple-move-analysis
         PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME nsc.sdk.shared-tuple-move-call
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_tuple_move_call.py"
+                "${NSC_TEST_COMPILER}")
+    add_test(NAME nsc.sdk.shared-tuple-move-call-binary
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_tuple_move_call_binary.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.sdk.shared-tuple-move-call nsc.sdk.shared-tuple-move-call-binary
+        PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME nsc.sdk.shared-public-pointers
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_public_pointers.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
