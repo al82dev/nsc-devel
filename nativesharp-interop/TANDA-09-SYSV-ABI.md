@@ -1193,6 +1193,20 @@ en estatica y DLL O0–O3 y plantilla precompilada
 invoca desde la resolucion de una llamada real y no habilita su emision; la
 procedencia del caso precompilado y el transporte del plan siguen pendientes.
 
+Para una llamada real cuyo receptor es una variable local de typedef C, HIR
+consulta el enlace de nombre de esa variable y el typedef efectivamente
+expandido; no busca otro alias global con una firma parecida. Si el proveedor
+concilia la sesion y los records, adjunta el plan a la llamada HIR. La muestra
+de tres enteros contiene el plan de dos piezas con `-j 1` y `-j 4`
+(`A:/temp/nsc-t09-sysv-indirecta-record-x4z3j37n/ns-hir-j1.log` y
+`A:/temp/nsc-t09-sysv-indirecta-record-x4z3j37n/ns-hir-j4.log`). Las sondas de
+transporte, ABI e identidad pasaron (`A:/temp/t09-transport-directed/`) y la
+regresion de punteros escalares paso en estatica y DLL O0–O3 y plantilla
+precompilada (`A:/temp/nsc-t09-sysv-indirecta-matriz-r5k9mm9c`). LLVM sigue
+rechazando el record; el plan aun no se transporta a MIR ni a su cache, y el
+proveedor no resuelve el typedef desde el catalogo precompilado. Otros tipos de
+receptor tampoco quedan acreditados.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin

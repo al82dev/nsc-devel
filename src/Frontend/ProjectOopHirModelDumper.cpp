@@ -3,6 +3,7 @@
 #include "HIR/Internal/HirDumpFrame.h"
 
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
+#include "nativesharp/Interop/CppAbiPlan.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
 #include <sstream>
@@ -19,6 +20,8 @@ void dumpNodeIdentityFields(std::ostringstream& output, const ProjectOopHirNode&
     if (!node.typeKey.empty()) output << " type=" << node.typeKey;
     if (node.cppVariadicCallPlan) output << " cpp-variadic-plan=" << node.cppVariadicCallPlan->symbol
         << ":" << node.cppVariadicCallPlan->arguments.size();
+    if (node.cppFunctionPointerPlan) output << " cpp-pointer-plan=" << node.cppFunctionPointerPlan->symbol
+        << ":" << node.cppFunctionPointerPlan->physicalParameters.size();
     if (node.memberOrdinal.has_value()) output << " member=#" << *node.memberOrdinal;
     if (node.namespaceFunctionOrdinal.has_value())
         output << " namespace-function=#" << *node.namespaceFunctionOrdinal;

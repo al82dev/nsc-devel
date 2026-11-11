@@ -1250,6 +1250,32 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::finishDelegateInvoke(
     const MethodDelegateBinding& binding,
     std::unique_ptr<ProjectOopHirNode> node)
 {
+    const auto* providerOwner = lookupSource_ ? lookupSource_ : this;
+    const auto functionType = language::parseFunctionTypeIdentity(binding.delegateTypeKey);
+    const auto recordValue = [](std::string_view key) { return key.starts_with("type:") && !key.ends_with('*'); };
+    const bool hasRecord = functionType && (recordValue(functionType->result) ||
+        std::any_of(functionType->parameters.begin(), functionType->parameters.end(), recordValue));
+    if (hasRecord && functionType->callingConvention == language::CallingConvention::SysV &&
+        !functionType->variadic && providerOwner->cppFunctionPointerPlanProvider_ &&
+        providerOwner->methodBodyModel_ && providerOwner->nameLookup_ && expression && expression->first())
+    {
+        const auto* callee = nameBinding(expression->first());
+        const auto locals = providerOwner->methodBodyModel_->locals();
+        if (callee && callee->localOrdinal && *callee->localOrdinal < locals.size())
+        {
+            const auto& local = locals[*callee->localOrdinal];
+            const auto* typeSyntax = local.syntax ? local.syntax->typeSyntax() : nullptr;
+            const CppImportedTypeAlias* alias = nullptr;
+            for (const auto& typeBinding : providerOwner->nameLookup_->bindings())
+                if (typeSyntax && typeBinding.syntax == typeSyntax && typeBinding.expandedCppAlias)
+                {
+                    if (alias) { alias = nullptr; break; }
+                    alias = typeBinding.expandedCppAlias;
+                }
+            if (alias) node->cppFunctionPointerPlan =
+                providerOwner->cppFunctionPointerPlanProvider_(*alias, binding.delegateTypeKey);
+        }
+    }
     for (std::size_t index = 0; index < binding.selectedDefaultArguments.size(); ++index)
     {
         const std::string& targetTypeKey =

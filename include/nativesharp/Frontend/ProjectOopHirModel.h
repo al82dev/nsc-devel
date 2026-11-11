@@ -102,6 +102,7 @@ public:
     // ES: T08-D05b. Identidades de DLL cuyos alias TLS necesitan dependencias aisladas (ver ProjectCompilation).
     void setCppIsolatedDllIdentities(std::unordered_set<std::string> identities);
     void setCppVariadicCallPlanProvider(CppVariadicCallPlanProvider provider);
+    void setCppFunctionPointerPlanProvider(CppFunctionPointerPlanProvider provider);
     bool cppDllRequiresIsolation(std::string_view identity) const;
 
     bool build(
@@ -4401,6 +4402,7 @@ private:
     std::unordered_map<std::uint32_t, compilation::CppConsumerVolatileMode> cppConsumerVolatileModes_;
     std::unordered_set<std::string> cppIsolatedDllIdentities_;
     CppVariadicCallPlanProvider cppVariadicCallPlanProvider_;
+    CppFunctionPointerPlanProvider cppFunctionPointerPlanProvider_;
     ProjectCompilationIndexes* indexes_ = nullptr;
     driver::CompilationWorkerPool* workerPool_ = nullptr;
     std::vector<ProjectOopHirFunction> functions_;

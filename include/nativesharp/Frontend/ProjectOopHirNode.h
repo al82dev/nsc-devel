@@ -25,7 +25,7 @@
 #include <vector>
 
 
-namespace nativesharp::interop::abi_plan { struct VariadicCallPlan; }
+namespace nativesharp::interop::abi_plan { struct VariadicCallPlan; struct Plan; }
 
 namespace nativesharp::frontend
 {
@@ -185,6 +185,7 @@ struct ProjectOopHirNode final
     std::vector<std::string> argumentTypeKeys;
     // The call-specific plan is owned independently of any live Clang session.
     std::shared_ptr<const interop::abi_plan::VariadicCallPlan> cppVariadicCallPlan;
+    std::shared_ptr<const interop::abi_plan::Plan> cppFunctionPointerPlan;
     // Children remain in source evaluation order.  Calls use this map to place the resulting
     // values in ABI parameter order only after every source expression has been evaluated.
     std::vector<std::size_t> argumentParameterOrdinals;

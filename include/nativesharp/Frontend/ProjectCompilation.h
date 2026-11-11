@@ -116,6 +116,7 @@ public:
     std::span<const CppTemplateDemand> cppTemplateDemands() const noexcept;
     bool setCppImportedFunctions(std::vector<NamespaceFunctionSymbol> functions, std::string& error);
     bool setCppVariadicCallPlanProvider(CppVariadicCallPlanProvider provider, std::string& error);
+    bool setCppFunctionPointerPlanProvider(CppFunctionPointerPlanProvider provider, std::string& error);
     bool setExperimentalCppImportedStates(std::vector<NamespaceStateSymbol> states, std::string& error);
     // Experimental injection for isolated compiler tests. Imported records do not yet have
     // object-layout or lifetime semantics and this must not be enabled by the production driver.
@@ -376,6 +377,7 @@ private:
     bool experimentalCppImportedTypesConfigured_ = false;
     CppFunctionProvider cppFunctionProvider_;
     CppVariadicCallPlanProvider cppVariadicCallPlanProvider_;
+    CppFunctionPointerPlanProvider cppFunctionPointerPlanProvider_;
     CppNamespaceProvider cppNamespaceProvider_;
     CppGlobalProvider cppGlobalProvider_;
     CppRecordObserver cppRecordObserver_;

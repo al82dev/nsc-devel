@@ -17,6 +17,11 @@ void ProjectOopHirModel::setCppVariadicCallPlanProvider(CppVariadicCallPlanProvi
     cppVariadicCallPlanProvider_ = std::move(provider);
 }
 
+void ProjectOopHirModel::setCppFunctionPointerPlanProvider(CppFunctionPointerPlanProvider provider)
+{
+    cppFunctionPointerPlanProvider_ = std::move(provider);
+}
+
 ProjectOopHirNode::~ProjectOopHirNode()
 {
     std::vector<std::unique_ptr<ProjectOopHirNode>> pending;
