@@ -1619,6 +1619,22 @@ sin signo, dos parametros fijos y record en pila
 fijos, identidades no presentes en opcionales y `byval` fijo permanecen
 pendientes; T09-003 no esta cerrado.
 
+**Identidades fija y opcional distintas:** la llamada directa paso con dos
+records mixtos de identidades diferentes, pero la plantilla rechazaba el fijo
+(`A:/temp/nsc-t09-sysv-indirecta-fijo-distinto-pre-c848hc6h`). Se recupera la
+identidad fija desde el catalogo vigente y se contrastan campos y layout con
+Clang. Pasaron ocho comparaciones C/NS estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-fijo-distinto-matriz-dnp_rd90`) y plantilla
+sin encabezado, cache y rechazo de variante solo en el record fijo
+(`A:/temp/nsc-t09-sysv-indirecta-fijo-distinto-pre-t7d3c9b8`). Pasaron cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones precompiladas de identidad
+repetida, dos parametros fijos y record en pila
+(`A:/temp/nsc-t09-sysv-indirecta-record-fijo-pre-lp2gvynw`,
+`A:/temp/nsc-t09-sysv-indirecta-dos-fijos-pre-yskx5gp8`,
+`A:/temp/nsc-t09-sysv-indirecta-record-agotado-pre-t4pu_hsv`). Otros layouts
+y `byval` fijo siguen pendientes; T09-003 no esta cerrado.
+
 **Retorno `int*`:** el control C y productor independiente verifican identidad
 del puntero retornado y escritura por el prefijo; NSC rechazaba la firma
 (`A:/temp/nsc-t09-sysv-indirecta-variadica-retorno-puntero-ru68m35t`). Tras

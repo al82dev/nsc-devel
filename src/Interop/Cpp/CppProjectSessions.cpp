@@ -610,6 +610,28 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         else recordForArgument.push_back(static_cast<std::size_t>(found - selectedRecords.begin()));
     }
     if (selectedRecords.empty()) return {};
+    for (const auto& type : signature.parameterTypes)
+    {
+        if (type.kind != CppTypeKind::Record) continue;
+        if (type.isConst || type.isVolatile || type.isRestrict || type.sizeBits != 128 || type.alignmentBits != 64 ||
+            !type.recordIdentity || !type.recordIdentity->clangUsr || type.recordIdentity->clangUsr->empty() ||
+            type.recordIdentity->anonymousContext || type.recordIdentity->specializationContext ||
+            !type.recordIdentity->namespaceSegments.empty() || !type.recordIdentity->containingRecords.empty() ||
+            type.canonicalSpelling != "struct " + type.recordIdentity->name) return {};
+        const auto identity = projectCppRecordTypeIdentity(type, moduleName);
+        if (!identity) return {};
+        const auto found = std::find_if(selectedRecords.begin(), selectedRecords.end(),
+            [&](const auto& value) { return value.identity == identity->key(); });
+        if (found != selectedRecords.end()) continue;
+        const auto ordinal = lookup.typeOrdinalForIdentity(identity->key());
+        const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+        if (!imported || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
+            !imported->deferredImportError.empty() || !imported->objectLayout ||
+            imported->origin != frontend::CppImportedTypeOrigin::CStruct ||
+            imported->clangUsr != type.recordIdentity->clangUsr ||
+            imported->objectLayout->sizeBytes != 16 || imported->objectLayout->alignmentBytes != 8) return {};
+        selectedRecords.push_back({identity->key(), imported, std::nullopt});
+    }
     std::string fixedSource;
     for (const auto& type : signature.parameterTypes)
     {
