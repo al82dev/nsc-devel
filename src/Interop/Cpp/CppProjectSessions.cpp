@@ -562,20 +562,20 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         return type.kind == CppTypeKind::SignedInteger && type.canonicalSpelling == "int" &&
             !type.isConst && !type.isVolatile && !type.isRestrict;
     };
-    const bool fixedDouble = signature.parameterTypes.size() == 1 &&
-        signature.parameterTypes[0].kind == CppTypeKind::Floating &&
-        signature.parameterTypes[0].canonicalSpelling == "double" && !signature.parameterTypes[0].isConst &&
-        !signature.parameterTypes[0].isVolatile && !signature.parameterTypes[0].isRestrict;
-    const bool fixedPointer = signature.parameterTypes.size() == 1 &&
-        signature.parameterTypes[0].kind == CppTypeKind::Pointer &&
-        signature.parameterTypes[0].canonicalSpelling == "int *" &&
-        signature.parameterTypes[0].sizeBits == 64 && signature.parameterTypes[0].alignmentBits == 64 &&
-        !signature.parameterTypes[0].isConst && !signature.parameterTypes[0].isVolatile &&
-        !signature.parameterTypes[0].isRestrict && signature.parameterTypes[0].element &&
-        isInt(*signature.parameterTypes[0].element);
     if (!signature.hasPrototype || !signature.variadic || signature.callingConvention != "sysv_abi" ||
-        !isInt(signature.returnType) || signature.parameterTypes.size() != 1 ||
-        (!isInt(signature.parameterTypes[0]) && !fixedDouble && !fixedPointer)) return {};
+        !isInt(signature.returnType) || signature.parameterTypes.empty() || signature.parameterTypes.size() > 1024) return {};
+    std::string fixedSource;
+    for (const auto& type : signature.parameterTypes)
+    {
+        const bool fixedDouble = type.kind == CppTypeKind::Floating && type.canonicalSpelling == "double" &&
+            !type.isConst && !type.isVolatile && !type.isRestrict;
+        const bool fixedPointer = type.kind == CppTypeKind::Pointer && type.canonicalSpelling == "int *" &&
+            type.sizeBits == 64 && type.alignmentBits == 64 && !type.isConst && !type.isVolatile &&
+            !type.isRestrict && type.element && isInt(*type.element);
+        if (!isInt(type) && !fixedDouble && !fixedPointer) return {};
+        if (!fixedSource.empty()) fixedSource += ", ";
+        fixedSource += fixedDouble ? "double" : fixedPointer ? "int *" : "int";
+    }
     struct ReplayRecord
     {
         std::string identity;
@@ -688,7 +688,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         "void __nsc_replay_double(double);\n"
         "void __nsc_replay_int_pointer(int *);\n"
         "typedef int (__attribute__((sysv_abi)) *__nsc_replay_pointer)(" +
-        (fixedDouble ? "double" : fixedPointer ? "int *" : "int") + ", ...);\n"};
+        fixedSource + ", ...);\n"};
     auto opened = factory.open(std::move(options), {});
     auto* holder = std::get_if<std::unique_ptr<CppInteropSession>>(&opened);
     if (!holder || !*holder) return {};
@@ -715,7 +715,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
     }
     std::vector<CppType> arguments;
     if (!replayAlias->underlyingType.element || !replayAlias->underlyingType.element->function ||
-        replayAlias->underlyingType.element->function->parameterTypes.size() != 1) return {};
+        replayAlias->underlyingType.element->function->parameterTypes.size() != signature.parameterTypes.size()) return {};
     const auto doubleHelper = std::find_if(functions->begin(), functions->end(),
         [](const auto& value) { return value.name == "__nsc_replay_double"; });
     if (doubleHelper == functions->end() || doubleHelper->parameters.size() != 1 ||
@@ -736,7 +736,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
             optionalTypeKeys[i] == "builtin:double" ? doubleHelper->parameters[0].type : pointerHelper->parameters[0].type);
     auto plan = session.cVariadicFunctionPointerCallAbiPlan(replayAlias->name,
         replayAlias->underlyingType.canonicalSpelling, arguments);
-    if (!plan || !validateCppVariadicSysVCallPlan(*plan, "__nsc_variadic_pointer_abi_probe", 1)) return {};
+    if (!plan || !validateCppVariadicSysVCallPlan(*plan, "__nsc_variadic_pointer_abi_probe", signature.parameterTypes.size())) return {};
     return std::make_shared<const abi_plan::VariadicCallPlan>(std::move(*plan));
 }
 

@@ -1538,6 +1538,22 @@ entero y argumentos opcionales entero, puntero y record en pila
 `A:/temp/nsc-t09-sysv-indirecta-record-agotado-pre-eyg5gc1w`). Otros prefijos
 y firmas siguen pendientes; T09-003 no esta cerrado.
 
+**Dos parametros fijos:** el control C y un productor independiente
+comprobaron `int`, `double`, record mixto e `int` opcional, pero NSC rechazaba
+la firma (`A:/temp/nsc-t09-sysv-indirecta-variadica-dos-fijos-e49rgxk7`). Se
+recorren los parametros fijos escalares segun la firma y el plan, y se
+reconstruyen en orden para precompilacion. Pasaron ocho comparaciones C/NS
+estatica/DLL O0-O3 (`A:/temp/nsc-t09-sysv-indirecta-dos-fijos-matriz-ibzzkz8f`)
+y plantilla sin encabezado, cache y rechazo de variante
+(`A:/temp/nsc-t09-sysv-indirecta-dos-fijos-pre-4zvgeax6`). Pasaron cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones precompiladas de prefijo
+puntero, prefijo `double` y record en pila
+(`A:/temp/nsc-t09-sysv-indirecta-prefijo-puntero-pre-3ust6fbo`,
+`A:/temp/nsc-t09-sysv-indirecta-prefijo-double-pre-pdy_rrs_`,
+`A:/temp/nsc-t09-sysv-indirecta-record-agotado-pre-c2zbwlw5`). Otros prefijos
+y firmas siguen pendientes; T09-003 no esta cerrado.
+
 **Prefijo fijo `int*`:** el control C y el productor independiente verifican
 la escritura por el puntero, el record y el entero opcional; NSC rechazaba la
 firma (`A:/temp/nsc-t09-sysv-indirecta-variadica-prefijo-puntero-h1jhavxa`).
