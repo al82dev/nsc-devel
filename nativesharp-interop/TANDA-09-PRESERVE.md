@@ -280,3 +280,22 @@ antes de acreditar este caso. Los scripts en
 `pruebas-tanda-09-preserve-cpp-record` conservan el caso reproducible; las
 pruebas NS y precompilada estan pendientes y no cuentan como soporte. La
 funcionalidad de records C por valor no demuestra el caso C++.
+
+Como primer paso de esa dependencia, la observacion de records C++ completos
+conserva ahora desde Clang si son trivialmente copiables, tienen layout
+estandar, constructor predeterminado trivial y destructor trivial. Esos datos
+no se aplican aun a la importacion por valor ni se serializan en NSMeta; los
+records incompletos y los records C no reportan esta observacion. La prueba
+independiente cubre un tipo trivial, constructor/copia/destructor no triviales,
+layout no estandar, declaracion incompleta, snapshot tras cierre y record C
+(A:/temp/t09-cpp-record-traits-test.log). Tambien comprueba un tipo con copia
+eliminada que Clang considera trivialmente copiable: ese rasgo por si solo no
+demuestra que la copia sea accesible o valida.
+
+Se recompilaron las sondas afectadas; pasaron las cuatro sondas y los controles
+de transporte/ABI/identidad, junto con 16 consumidores precompilados de records
+C y 16 de funciones C++ escalares (A:/temp/t09-cpp-record-traits-reg-*.log).
+La muestra de record C++ por valor anterior sigue pendiente: faltan reglas de
+seleccion y accesibilidad de operaciones, proyeccion de la firma, transporte
+del contrato vigente y ejecucion comprobada. No se declara compatibilidad por
+la observacion de estos rasgos.

@@ -100,6 +100,17 @@ struct CppImplicitLifetimeMembers
     bool operator==(const CppImplicitLifetimeMembers&) const = default;
 };
 
+// Clang observations about a complete C++ record. They do not by themselves
+// establish a calling convention or make the record safe to pass by value.
+struct CppRecordValueTraits
+{
+    bool triviallyCopyable = false;
+    bool standardLayout = false;
+    bool trivialDefaultConstructor = false;
+    bool trivialDestructor = false;
+    bool operator==(const CppRecordValueTraits&) const = default;
+};
+
 struct CppRecordDeclaration
 {
     struct SourceProvenance
@@ -137,5 +148,7 @@ struct CppRecordDeclaration
     std::optional<std::string> clangUsr;
     std::vector<CppAnonymousCRecord> anonymousCRecords;
     bool isAnonymousCInternal = false;
+    // Absent for incomplete declarations, C records, and unavailable traits.
+    std::optional<CppRecordValueTraits> valueTraits;
 };
 }

@@ -695,6 +695,9 @@ void collectRecords(const clang::DeclContext& context, clang::ASTContext& astCon
             }
             if (const auto* cppRecord = llvm::dyn_cast<clang::CXXRecordDecl>(record))
             {
+                value.valueTraits = CppRecordValueTraits{
+                    cppRecord->isTriviallyCopyable(), cppRecord->isStandardLayout(),
+                    cppRecord->hasTrivialDefaultConstructor(), cppRecord->hasTrivialDestructor()};
                 CppImplicitLifetimeMembers implicit;
                 implicit.defaultConstructor = cppRecord->needsImplicitDefaultConstructor();
                 implicit.copyConstructor = cppRecord->needsImplicitCopyConstructor();
