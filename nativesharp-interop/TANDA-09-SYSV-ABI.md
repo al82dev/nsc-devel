@@ -1429,6 +1429,21 @@ grande (`A:/temp/nsc-t09-sysv-indirecta-record-pre-lxtd7n7q`,
 (`A:/temp/t09-test-varptr.log`) y transporte/ABI/identidad
 (`A:/temp/t09-transport-directed/`). Otras firmas siguen pendientes.
 
+**Record y escalar opcionales:** el control C y el productor independiente
+confirmaron registros y valores, pero NSC rechazaba la llamada
+(`A:/temp/nsc-t09-sysv-indirecta-variadica-record-escalar-s6958ggb`). Tras
+permitir el `int` opcional en el plan y reconstruirlo para precompilacion,
+pasaron ocho comparaciones C/NS estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-record-escalar-matriz-5yqgdgcz`) y la
+plantilla sin encabezado con cache y rechazo de record distinto
+(`A:/temp/nsc-t09-sysv-indirecta-record-escalar-pre-3bx18qyj`). Pasaron cuatro
+sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y las regresiones precompiladas de dos
+records y record mixto con `byval`
+(`A:/temp/nsc-t09-sysv-indirecta-dos-records-pre-are92n5r`,
+`A:/temp/nsc-t09-sysv-indirecta-var-mixto-byval-pre-fh1f64rz`). Otras mezclas
+y firmas siguen abiertas; esta muestra no cierra T09-003.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor

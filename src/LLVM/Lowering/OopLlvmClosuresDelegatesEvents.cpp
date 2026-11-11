@@ -1194,7 +1194,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             (node->argumentCount == 2 || node->argumentCount == 3) &&
             node->argumentTypeKeys.size() == node->argumentCount &&
             node->argumentTypeKeys[0] == "builtin:int" &&
-            std::all_of(node->argumentTypeKeys.begin() + 1, node->argumentTypeKeys.end(), recordArgument))
+            std::any_of(node->argumentTypeKeys.begin() + 1, node->argumentTypeKeys.end(), recordArgument) &&
+            std::all_of(node->argumentTypeKeys.begin() + 1, node->argumentTypeKeys.end(),
+                [&](const auto& key) { return recordArgument(key) || key == "builtin:int"; }))
         {
             using namespace interop::abi_plan;
             const auto& plan = *node->cppVariadicCallPlan;
@@ -1217,11 +1219,25 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             for (std::size_t i = 1; i < node->argumentCount; ++i)
             {
                 const auto& key = node->argumentTypeKeys[i];
+                const auto& logical = plan.arguments[i];
+                const auto physical = logical.firstPhysical;
+                if (key == "builtin:int")
+                {
+                    if (logical.passing != Passing::Direct || logical.physicalCount != 1 ||
+                        physical != arguments.size() || physical >= plan.physicalParameters.size() ||
+                        plan.physicalParameters[physical].type.kind != TypeKind::Integer ||
+                        plan.physicalParameters[physical].type.widthOrCount != 32)
+                        return failValue(error, "sysv_abi variadic function pointer scalar plan is not supported");
+                    LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[i] : lowerExpression(node->children[i + 1].get(), error);
+                    if (!value || terminated()) return value;
+                    if (LLVMTypeOf(value) != LLVMInt32TypeInContext(context_))
+                        return failValue(error, "sysv_abi variadic function pointer scalar does not match its plan");
+                    arguments.push_back(value);
+                    continue;
+                }
                 const auto* layout = findStructLayout(mirModel_, key);
                 const auto ordinal = nameLookup_.typeOrdinalForIdentity(std::string_view(key).substr(5));
                 const auto* imported = ordinal ? nameLookup_.cppImportedType(*ordinal) : nullptr;
-                const auto& logical = plan.arguments[i];
-                const auto physical = logical.firstPhysical;
                 if (!layout || !imported || imported->isIncomplete ||
                     !imported->deferredImportError.empty() || !imported->objectLayout ||
                     (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&

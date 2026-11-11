@@ -572,9 +572,14 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         std::optional<CppCRecordSnapshot> snapshot;
     };
     std::vector<ReplayRecord> selectedRecords;
-    std::vector<std::size_t> recordForArgument;
+    std::vector<std::optional<std::size_t>> recordForArgument;
     for (const auto& key : optionalTypeKeys)
     {
+        if (key == "builtin:int")
+        {
+            recordForArgument.push_back(std::nullopt);
+            continue;
+        }
         if (!key.starts_with("type:") || key.ends_with('*')) return {};
         const auto identity = std::string_view(key).substr(5);
         const auto ordinal = lookup.typeOrdinalForIdentity(identity);
@@ -593,6 +598,7 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         }
         else recordForArgument.push_back(static_cast<std::size_t>(found - selectedRecords.begin()));
     }
+    if (selectedRecords.empty()) return {};
     std::string error;
     std::vector<std::uint8_t> aliasType;
     if (!metadata_detail::encodeCDependencyType(pointer, aliasType, error)) return {};
@@ -693,7 +699,10 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicFunc
         replayTypes.push_back(helper->parameters[0].type);
     }
     std::vector<CppType> arguments;
-    for (const auto index : recordForArgument) arguments.push_back(replayTypes[index]);
+    if (!replayAlias->underlyingType.element || !replayAlias->underlyingType.element->function ||
+        replayAlias->underlyingType.element->function->parameterTypes.size() != 1) return {};
+    for (const auto index : recordForArgument)
+        arguments.push_back(index ? replayTypes[*index] : replayAlias->underlyingType.element->function->parameterTypes[0]);
     auto plan = session.cVariadicFunctionPointerCallAbiPlan(replayAlias->name,
         replayAlias->underlyingType.canonicalSpelling, arguments);
     if (!plan || !validateCppVariadicSysVCallPlan(*plan, "__nsc_variadic_pointer_abi_probe", 1)) return {};
