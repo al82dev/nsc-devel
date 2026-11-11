@@ -1113,6 +1113,19 @@ records enteros y escalares y las pruebas de transporte, ABI e identidad
 otras piezas mixtas ni firmas adicionales. La prueba negativa anterior sigue
 intacta y pendiente de resolucion.
 
+**Consistencia del plan fijo indirecto:** antes de emitir, se contrastan las
+coerciones logicas, indices, clases fisicas, atributos y limite de cantidad con
+el validador ABI existente; esto no sustituye la comprobacion de procedencia.
+Una prueba independiente acepta un plan coherente y rechaza seis alteraciones
+de coercion, indice, atributo, retorno, variadicidad y cantidad
+(`A:/temp/nsc-t09-pointer-plan-rnibv5he`). Pasaron controles C y NS de los
+records de tres enteros, cuatro enteros y `double`/`int`
+(`A:/temp/nsc-t09-sysv-indirecta-record-b40n6ns1`,
+`A:/temp/nsc-t09-sysv-indirecta-record16-mwzmsqn5`,
+`A:/temp/nsc-t09-sysv-indirecta-record-mixto-6hba64ge`) y la matriz
+precompilada mixta (`A:/temp/nsc-t09-sysv-indirecta-record-pre-om0yol1a`).
+El conflicto de la prueba negativa anterior sigue abierto.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor

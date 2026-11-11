@@ -147,4 +147,25 @@ inline bool validateCppVariadicSysVCallPlan(const abi_plan::VariadicCallPlan& pl
     return next == plan.physicalParameters.size();
 }
 
+// Validate the same physical/logical invariants for a fixed function pointer.
+// This checks consistency only; the caller must establish type provenance.
+inline bool validateCppSysVFunctionPointerPlan(const abi_plan::Plan& plan)
+{
+    if (plan.variadic || plan.symbol != "__nsc_pointer_abi_probe" ||
+        plan.logicalParameters.size() > 1024 || plan.physicalParameters.size() > 2049) return false;
+    abi_plan::VariadicCallPlan fixed;
+    fixed.symbol = plan.symbol;
+    fixed.targetTriple = plan.targetTriple;
+    fixed.dataLayout = plan.dataLayout;
+    fixed.callingConvention = plan.callingConvention;
+    fixed.requiredArguments = plan.logicalParameters.size();
+    fixed.result = plan.logicalReturn;
+    fixed.arguments = plan.logicalParameters;
+    fixed.physicalReturn = plan.physicalReturn;
+    fixed.returnSignExtend = plan.returnSignExtend;
+    fixed.returnZeroExtend = plan.returnZeroExtend;
+    fixed.physicalParameters = plan.physicalParameters;
+    return validateCppVariadicSysVCallPlan(fixed, "__nsc_pointer_abi_probe", fixed.requiredArguments);
+}
+
 }

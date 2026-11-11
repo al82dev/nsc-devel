@@ -9,6 +9,7 @@
 
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Interop/CppAbiPlan.h"
+#include "nativesharp/Interop/CppVariadicAbiValidation.h"
 
 namespace nativesharp::llvm_backend
 {
@@ -1210,7 +1211,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             const bool mixedShape = layout && plan.physicalParameters.size() == 2 && layout->size == 16 &&
                 layout->alignment == 8 && plain(plan.physicalParameters[0]) &&
                 plan.physicalParameters[0].type.kind == TypeKind::Double && plainInteger(plan.physicalParameters[1], 32);
-            if (!signature || signature->callingConvention != language::CallingConvention::SysV ||
+            if (!interop::validateCppSysVFunctionPointerPlan(plan) ||
+                !signature || signature->callingConvention != language::CallingConvention::SysV ||
                 signature->variadic || signature->parameters.size() != 1 || plan.variadic ||
                 plan.symbol != "__nsc_pointer_abi_probe" || plan.callingConvention != 78 ||
                 !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
