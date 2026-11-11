@@ -22,30 +22,34 @@ with tempfile.TemporaryDirectory(prefix='nsc-shared-view-output-') as directory:
     for family in ('Rc', 'Arc'):
         for mode in ('ref', 'out'):
             for variant in ('local', 'consumed', 'live', 'local_alias', 'consumed_alias',
-                            'local_conditional', 'consumed_conditional', 'mixed_conditional'):
+                            'local_conditional', 'consumed_conditional', 'mixed_conditional',
+                            'local_echo', 'consumed_echo', 'live_echo'):
                 consumed = variant.startswith('consumed')
                 conditional = variant.endswith('_conditional')
                 alias = variant.endswith('_alias')
-                parameters = ('SharedView<Payload> input, ' if variant in ('live', 'mixed_conditional') else
+                parameters = ('SharedView<Payload> input, ' if variant in ('live', 'live_echo', 'mixed_conditional') else
                               family + '<Payload> input, ' if consumed else '')
                 if conditional:
                     parameters = 'bool choose, ' + parameters
                 owner = (family + '<Payload> local = SharedPointers.Make' + family + '<Payload>(); '
                          if variant.startswith('local') or variant == 'mixed_conditional' else '')
-                view = 'input' if variant == 'live' else 'input.Borrow()' if consumed else 'local.Borrow()'
+                view = 'input' if variant in ('live', 'live_echo') else 'input.Borrow()' if consumed else 'local.Borrow()'
                 if alias:
                     owner += 'SharedView<Payload> saved = ' + view + '; '
                     view = 'saved'
                 elif conditional:
                     view = 'choose ? ' + ('input' if variant == 'mixed_conditional' else view) + ' : ' + view
+                elif variant.endswith('_echo'):
+                    view = 'Echo(' + view + ')'
                 caller_owner = family + '<Payload> owner = SharedPointers.Make' + family + '<Payload>(); '
-                argument = 'owner.Borrow(), ' if variant in ('live', 'mixed_conditional') else 'move(owner), ' if consumed else ''
+                argument = 'owner.Borrow(), ' if variant in ('live', 'live_echo', 'mixed_conditional') else 'move(owner), ' if consumed else ''
                 if conditional:
                     argument = 'true, ' + argument
                 source = ('using NativeSharp.Core; namespace NativeSharp.Core { public class Exception {} '
                           'public trait Send {} public trait Sync {} } '
                           'class Payload { public int Data; public Payload() { Data = 42; } } '
-                          'class Sink { public static void Store(' + parameters + mode +
+                          'class Sink { public static SharedView<Payload> Echo(SharedView<Payload> value) { return value; } '
+                          'public static void Store(' + parameters + mode +
                           ' SharedView<Payload> output) { ' + owner + 'output = ' + view + '; } } '
                           'class Program { public static int Main() { ' + caller_owner +
                           'SharedView<Payload> result = default(SharedView<Payload>); Sink.Store(' + argument +
@@ -56,7 +60,7 @@ with tempfile.TemporaryDirectory(prefix='nsc-shared-view-output-') as directory:
                 print('CASE', family, mode, variant, '\nSOURCE', source, '\nCOMMAND',
                       subprocess.list2cmdline(command), 'EXIT', checked.returncode,
                       checked.stdout + checked.stderr, flush=True)
-                if variant != 'live':
+                if variant not in ('live', 'live_echo'):
                     if checked.returncode == 0 or 'view output cannot outlive its possible owner' not in checked.stdout + checked.stderr:
                         failures.append((family, mode, variant, 'diagnostic'))
                     continue

@@ -29,3 +29,17 @@ completaron ocho ejecuciones O0/O2 con salida 42. El registro está en
 `A:/nsc-fixes-evidencia/shared-tuple-call-commit-20261111/shared-view-output-lifetime.log`.
 La ampliación aún no demuestra un árbol limpio ni cubre todas las formas de
 procedencia de ramas condicionales.
+
+El rastreo se amplió para seguir argumentos de vista en llamadas que devuelven
+una vista, incluidas llamadas a métodos, funciones de namespace e indirectas.
+La regresión añade una función que devuelve la vista recibida: se prueban
+propietarios locales, consumidos y vistas válidas del llamador. La prueba
+dirigida pasó 44 análisis (36 rechazos y ocho controles aceptados) y 16
+ejecuciones seguras O0/O2. La regla es conservadora y puede mantener una
+dependencia aunque el cuerpo no devuelva ese argumento. Una llamada sin
+argumentos de vista conserva su procedencia como desconocida. La evidencia
+se obtuvo con el compilador de trabajo y no certifica un árbol limpio,
+contratos binarios históricos ni todas las formas indirectas de procedencia.
+El archivo del analizador preparado para el commit se compiló por separado
+con las cabeceras y configuración del árbol de trabajo; no se enlazó ni se
+ejecutó un compilador compuesto únicamente por los archivos registrados.

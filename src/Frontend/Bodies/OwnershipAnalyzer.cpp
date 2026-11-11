@@ -76,6 +76,40 @@ void ProjectMethodBodyModel::collectViewSourceFields(
             continue;
         }
         const MethodCallBinding* call = callBinding(expression, callable);
+        const NamespaceFunctionCallBinding* function = namespaceFunctionCall(expression);
+        const bool viewMethod = call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
+            typeKeyIsViewLike(call->resultTypeKey);
+        const bool viewFunction = function != nullptr && function->resolution == MethodCallResolutionKind::Resolved &&
+            typeKeyIsViewLike(function->resultTypeKey);
+        if (viewMethod || viewFunction)
+        {
+            const auto& arguments = viewMethod ? call->selectedArgumentSyntaxes : function->selectedArgumentSyntaxes;
+            bool foundViewArgument = false;
+            for (const ast::AstNode* argument : arguments)
+            {
+                if (argument == nullptr || !typeKeyIsViewLike(recordedExpressionTypeKey(argument, callable))) continue;
+                pending.push_back(argument);
+                foundViewArgument = true;
+            }
+            if (!viewMethod || call->staticCall)
+            {
+                if (!foundViewArgument && std::ranges::find(local.viewSourceFields, "*") == local.viewSourceFields.end())
+                    local.viewSourceFields.push_back("*");
+                continue;
+            }
+        }
+        if (!viewMethod && !viewFunction && expression->kind() == ast::AstNodeKind::CallExpression &&
+            typeKeyIsViewLike(recordedExpressionTypeKey(expression, callable)))
+        {
+            bool foundViewArgument = false;
+            for (const ast::AstNode* argument : expression->children())
+            {
+                if (argument == nullptr || !typeKeyIsViewLike(recordedExpressionTypeKey(argument, callable))) continue;
+                pending.push_back(argument);
+                foundViewArgument = true;
+            }
+            if (foundViewArgument) continue;
+        }
         if (call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
             !call->staticCall && typeKeyIsViewLike(call->resultTypeKey) &&
             (call->implicitThis || (call->receiverSyntax != nullptr &&
