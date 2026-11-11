@@ -1631,6 +1631,30 @@ sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
 `A:/temp/nsc-t09-sysv-indirecta-fijo-tres-pre-duoo1rxa`). Otros retornos y
 firmas siguen pendientes; T09-003 no esta cerrado.
 
+**Record opcional de un `double`:** Clang y el productor independiente
+comprobaron un record fijo mixto y otro opcional flotante, con dos registros
+flotantes y `%al` igual a dos; NSC rechazo el plan
+(`A:/temp/nsc-t09-sysv-indirecta-variadica-opcional-flotante-nizao4e5`). La
+emision indirecta ahora toma una o dos piezas fisicas del plan validado y
+comprueba que sus bytes caben en el layout. Pasaron el control C/NS
+(`A:/temp/nsc-t09-sysv-indirecta-variadica-opcional-flotante-hjery5dm`) y la
+matriz estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-opcional-flotante-matriz-wfh18jjf`). La
+plantilla sin encabezado rechazo inicialmente la reconstruccion
+(`A:/temp/nsc-t09-sysv-indirecta-opcional-flotante-pre-t27mupgi`); tras
+verificar identidad y campo en el catalogo, pasaron ejecucion, cache y
+variantes negativas (`A:/temp/nsc-t09-sysv-indirecta-opcional-flotante-pre-9w_9om66`).
+La primera variante negativa de `float` fallaba antes por conversion de tipos
+(`A:/temp/nsc-t09-sysv-indirecta-opcional-flotante-pre-ieag0uwf`); se sustituyo
+por un segundo `double` para comprobar el rechazo de la forma no reconstruida.
+Pasaron cuatro sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
+(`A:/temp/t09-transport-directed/`) y regresiones precompiladas de records de
+ocho bytes y tres enteros y retorno `short`
+(`A:/temp/nsc-t09-sysv-indirecta-opcional-ocho-pre-qhy2ya3s`,
+`A:/temp/nsc-t09-sysv-indirecta-opcional-tres-pre-as_kxeym`,
+`A:/temp/nsc-t09-sysv-indirecta-retorno-short-pre-a4fta72o`). No se acreditan
+todas las formas de record o firma; T09-003 permanece abierto.
+
 **Record opcional de ocho bytes:** con parametro fijo mixto y record opcional
 de dos `int`, Clang emite una pieza `i64` y el productor independiente verifica
 ambos valores y los registros del parametro fijo. El control C paso pero NSC

@@ -1298,49 +1298,37 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     arguments.push_back(slot);
                     continue;
                 }
-                if (logical.passing == Passing::Direct && logical.physicalCount == 1 &&
-                    physical == arguments.size() && physical < plan.physicalParameters.size() &&
-                    layout->size == 8 && layout->alignment == 4 &&
-                    plan.physicalParameters[physical].type.kind == TypeKind::Integer &&
-                    plan.physicalParameters[physical].type.widthOrCount == 64)
-                {
-                    LLVMValueRef slot = entryBlockAlloca(carrier, 4, "sysv.varptr.record");
-                    LLVMValueRef store = LLVMBuildStore(builder_, record, slot);
-                    LLVMSetAlignment(store, 4);
-                    LLVMValueRef piece = LLVMBuildLoad2(builder_, LLVMInt64TypeInContext(context_), slot, "sysv.varptr.first");
-                    LLVMSetAlignment(piece, 4);
-                    if (fixedRecord) fixedTypes.push_back(LLVMInt64TypeInContext(context_));
-                    arguments.push_back(piece);
-                    continue;
-                }
-                if (logical.passing != Passing::Direct || logical.physicalCount != 2 ||
-                    physical != arguments.size() || physical + 1 >= plan.physicalParameters.size() ||
-                    plan.physicalParameters[physical + 1].type.kind != TypeKind::Integer ||
-                    plan.physicalParameters[physical + 1].type.widthOrCount != 32)
+                if (logical.passing != Passing::Direct || logical.physicalCount < 1 || logical.physicalCount > 2 ||
+                    physical != arguments.size() || physical + logical.physicalCount > plan.physicalParameters.size() ||
+                    layout->alignment == 0 || layout->alignment > (1ULL << 29) ||
+                    (layout->alignment & (layout->alignment - 1)) != 0)
                     return failValue(error, "sysv_abi variadic function pointer record plan is not supported");
-                const bool mixed = layout->size == 16 && layout->alignment == 8 &&
-                    plan.physicalParameters[physical].type.kind == TypeKind::Double;
-                const bool threeIntegers = layout->size == 12 && layout->alignment == 4 &&
-                    plan.physicalParameters[physical].type.kind == TypeKind::Integer &&
-                    plan.physicalParameters[physical].type.widthOrCount == 64;
-                if (!mixed && !threeIntegers)
-                    return failValue(error, "sysv_abi variadic function pointer record pieces are not supported");
                 const auto alignment = static_cast<unsigned>(layout->alignment);
                 LLVMValueRef slot = entryBlockAlloca(carrier, alignment, "sysv.varptr.record");
                 LLVMValueRef store = LLVMBuildStore(builder_, record, slot);
                 LLVMSetAlignment(store, alignment);
-                LLVMValueRef first = LLVMBuildLoad2(builder_, mixed ? LLVMDoubleTypeInContext(context_) : LLVMInt64TypeInContext(context_), slot, "sysv.varptr.first");
-                LLVMValueRef second = LLVMBuildLoad2(builder_, LLVMInt32TypeInContext(context_),
-                    byteOffset(slot, 8, "sysv.varptr.second.addr"), "sysv.varptr.second");
-                LLVMSetAlignment(first, alignment);
-                LLVMSetAlignment(second, alignment);
-                if (fixedRecord)
+                for (std::size_t piece = 0; piece < logical.physicalCount; ++piece)
                 {
-                    fixedTypes.push_back(mixed ? LLVMDoubleTypeInContext(context_) : LLVMInt64TypeInContext(context_));
-                    fixedTypes.push_back(LLVMInt32TypeInContext(context_));
+                    const auto& type = plan.physicalParameters[physical + piece].type;
+                    LLVMTypeRef llvmPiece = nullptr;
+                    std::uint64_t bytes = 0;
+                    if (type.kind == TypeKind::Integer)
+                    {
+                        llvmPiece = LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount));
+                        bytes = (type.widthOrCount + 7) / 8;
+                    }
+                    else if (type.kind == TypeKind::Float) { llvmPiece = LLVMFloatTypeInContext(context_); bytes = 4; }
+                    else if (type.kind == TypeKind::Double) { llvmPiece = LLVMDoubleTypeInContext(context_); bytes = 8; }
+                    else if (type.kind == TypeKind::Vector) { llvmPiece = LLVMVectorType(LLVMFloatTypeInContext(context_), 2); bytes = 8; }
+                    const std::uint64_t offset = piece * 8;
+                    if (!llvmPiece || bytes == 0 || offset > layout->size || bytes > layout->size - offset)
+                        return failValue(error, "sysv_abi variadic function pointer record piece exceeds its layout");
+                    LLVMValueRef address = offset ? byteOffset(slot, offset, "sysv.varptr.piece.addr") : slot;
+                    LLVMValueRef value = LLVMBuildLoad2(builder_, llvmPiece, address, "sysv.varptr.piece");
+                    LLVMSetAlignment(value, alignment < 8 ? alignment : 8);
+                    if (fixedRecord) fixedTypes.push_back(llvmPiece);
+                    arguments.push_back(value);
                 }
-                arguments.push_back(first);
-                arguments.push_back(second);
             }
             if (arguments.size() != plan.physicalParameters.size())
                 return failValue(error, "sysv_abi variadic function pointer physical argument count is invalid");
