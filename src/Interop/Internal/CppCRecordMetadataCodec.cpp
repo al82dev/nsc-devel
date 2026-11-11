@@ -1,6 +1,8 @@
 #include "nativesharp/Interop/CppAbiPlanQueries.h"
 #include "CppCRecordMetadataCodec.h"
 #include "nativesharp/Interop/CppCRecordAbiReplay.h"
+#include "nativesharp/Interop/CppVariadicAbiCodec.h"
+#include "nativesharp/Interop/CppVariadicAbiValidation.h"
 #include "ByteReader.h"
 #include "ByteWriter.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
@@ -428,6 +430,16 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     { error = "invalid C dependency function text"; return false; }
     writer.u8(f.variadic); writer.u8(f.externalLinkage); writer.u8(f.isNonThrowing);
     writer.u8(f.dllImport); writer.u8(f.hasPrototype); writer.u8(f.isCStaticInlineDefinition);
+    std::optional<std::string> variadicBase;
+    if (value.variadicBasePlan)
+    {
+        if (!f.variadic || !f.hasPrototype || !f.externalLinkage || f.callingConvention != "sysv_abi" ||
+            !validateCppVariadicSysVCallPlan(*value.variadicBasePlan, value.linkSymbol, f.parameters.size()) ||
+            value.variadicBasePlan->arguments.size() != f.parameters.size() ||
+            !(variadicBase = abi_plan::encodeVariadicCallPlanForCache(*value.variadicBasePlan)))
+        { error = "invalid C variadic base plan"; return false; }
+    }
+    if (!putOptionalText(writer, variadicBase)) { error = "C variadic base plan is too large"; return false; }
     // EN: T08-D13b. Volatile mode of the reference: 0 unknown, 1 ISO, 2 Microsoft.
     // ES: T08-D13b. Modo volatile de la referencia: 0 desconocido, 1 ISO, 2 Microsoft.
     writer.u8(!value.microsoftVolatileSemantics ? 0 : *value.microsoftVolatileSemantics ? 2 : 1);
@@ -680,6 +692,14 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
         !getFlag(reader, f.dllImport) || !getFlag(reader, f.hasPrototype) ||
         !getFlag(reader, f.isCStaticInlineDefinition))
     { error = "invalid C dependency function"; return false; }
+    std::optional<std::string> variadicBase;
+    if (!getOptionalText(reader, variadicBase)) { error = "invalid C variadic base plan"; return false; }
+    if (variadicBase)
+    {
+        auto decoded = abi_plan::decodeVariadicCallPlanFromCache(*variadicBase);
+        if (!decoded) { error = "invalid C variadic base plan"; return false; }
+        value.variadicBasePlan = std::make_shared<const abi_plan::VariadicCallPlan>(std::move(*decoded));
+    }
     std::uint8_t volatileMode = 0;
     if (!reader.u8(volatileMode) || volatileMode > 2)
     { error = "invalid C dependency function volatile mode"; return false; }

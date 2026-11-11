@@ -79,6 +79,7 @@ const char* const kProbeHeader =
     "typedef int CIdInt;\n"
     "struct CIdRecord { int value; };\n"
     "struct __attribute__((packed)) CIdPacked { int value; };\n"
+    "int __attribute__((sysv_abi)) cid_variadic(int, ...);\n"
     "struct CIdCarriers { int tag; union { int x; float f; struct { short z; }; }; struct { short y; }; unsigned : 1; };\n"
     "typedef struct { int raw; } CIdAnonRecord;\n"
     "union CIdUnion { int whole; unsigned char bytes[4]; };\n"
@@ -1382,7 +1383,8 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
         "public static int Call<T>(T value) { return cid_function(2); } "
         "public static int Global<T>(T value) { return cid_global; } "
         "public static int Record<T>(T value) { CIdRecord record; return 0; } "
-        "public static int Packed<T>(T value) { CIdPacked record; return 0; } } }\n";
+        "public static int Packed<T>(T value) { CIdPacked record; return 0; } "
+        "public static int Variadic<T>(T value) { return cid_variadic(1, 2); } } }\n";
     const auto project = writeProject(directory / "generic-publish", "CGenericPublish", templateSource);
     const auto header = std::filesystem::absolute(directory / "a.h");
     if (project.empty() || !writeText(project,
@@ -1411,7 +1413,7 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
     metadata.formatMinor = 46;
     for (const auto& record : compilation.genericModel()->templates())
         if (record.name == "Test" || record.name == "Call" || record.name == "Global" || record.name == "Record" ||
-            record.name == "Packed")
+            record.name == "Packed" || record.name == "Variadic")
         {
             LibraryMetadataGenericTemplate item;
             item.canonicalKey = record.canonicalKey;
@@ -1423,9 +1425,10 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
     const auto functionCandidates = selectCppPublishedTemplateFunctions(compilation, metadata, *functions);
     std::vector<metadata_detail::CDependencyFunctionSnapshot> capturedFunctions;
     if (!expect(captureCppTemplateFunctionCandidates(*compilation.projectGraph(), functionCandidates,
-            *functions, capturedFunctions, error) && capturedFunctions.size() == 1 &&
-            capturedFunctions.front().declaration.name == "cid_function" &&
-            capturedFunctions.front().linkSymbol == "cid_function",
+            *functions, capturedFunctions, error) && capturedFunctions.size() == 2 &&
+            std::any_of(capturedFunctions.begin(), capturedFunctions.end(), [](const auto& value) {
+                return value.declaration.name == "cid_function" && value.linkSymbol == "cid_function";
+            }),
             "real public template captures the external C function candidate")) return false;
     const auto globalsResult = collectCppSemanticGlobals(*compilation.projectGraph(), compilation.cppProjectSessions());
     const auto* globals = std::get_if<std::vector<CppSemanticGlobalEntry>>(&globalsResult);
@@ -1455,6 +1458,28 @@ bool checkGenericAliasPublication(CppClangSessionFactory& factory, const std::st
         dependencies.aliases.size() == 1 && dependencies.aliases[0].declaration.name == "CIdInt";
     if (!captured) std::cerr << "generic alias publication: " << error << '\n';
     if (!expect(captured, "producer retains a template alias candidate from a real C project reference")) return false;
+    const auto variadicFunction = std::find_if(dependencies.functions.begin(), dependencies.functions.end(),
+        [](const auto& function) { return function.declaration.name == "cid_variadic"; });
+    if (!expect(variadicFunction != dependencies.functions.end() && variadicFunction->variadicBasePlan &&
+                variadicFunction->variadicBasePlan->symbol == "cid_variadic" &&
+                variadicFunction->variadicBasePlan->arguments.size() == 1,
+                "producer publishes the Clang plan for the variadic fixed prefix")) return false;
+    auto mismatchedVariadic = *variadicFunction;
+    auto badBase = *mismatchedVariadic.variadicBasePlan;
+    badBase.symbol = "other_symbol";
+    mismatchedVariadic.variadicBasePlan = std::make_shared<const abi_plan::VariadicCallPlan>(std::move(badBase));
+    std::vector<std::uint8_t> badVariadicBytes;
+    if (!expect(!metadata_detail::encodeCDependencyFunction(mismatchedVariadic, badVariadicBytes, error),
+                "variadic base plan is rejected when bound to another symbol")) return false;
+    std::vector<std::uint8_t> validVariadicBytes;
+    if (!metadata_detail::encodeCDependencyFunction(*variadicFunction, validVariadicBytes, error)) return false;
+    for (std::size_t length = 0; length < validVariadicBytes.size(); ++length)
+    {
+        metadata_detail::CDependencyFunctionSnapshot rejected;
+        if (!expect(!metadata_detail::decodeCDependencyFunction(
+                        std::span(validVariadicBytes).first(length), rejected, error),
+                    "truncated variadic dependency is rejected")) return false;
+    }
     const auto publishedRecord = std::find_if(records.begin(), records.end(), [](const auto& record) {
         return record.name == "CIdRecord";
     });

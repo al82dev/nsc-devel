@@ -28,6 +28,9 @@ struct CDependencyFunctionSnapshot
     std::string referenceIdentity;
     std::string linkSymbol;
     CppFunctionDeclaration declaration;
+    // Clang's plan for the fixed prefix and no optional arguments. It anchors
+    // later reconstructions but does not classify any aggregate by itself.
+    std::shared_ptr<const abi_plan::VariadicCallPlan> variadicBasePlan;
     // EN: T08-D13b. Volatile mode of the producer's reference; it orders accesses through a returned
     //     `volatile T*` in the consumer.
     // ES: T08-D13b. Modo volatile de la referencia del productor; ordena en el consumidor los accesos por un

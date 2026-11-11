@@ -831,6 +831,19 @@ O0–O3 (`A:/temp/nsc-t09-llamadas-8cgzodmp`,
 variadica con record precompilado aun se rechaza: falta vincular la funcion,
 el tipo y la observacion al consultar el plan, y utilizarlo en el consumidor.
 
+El catalogo tambien conserva, cuando Clang puede producirlo desde la referencia
+exacta seleccionada, el plan variadico de la funcion para el prefijo fijo sin
+argumentos opcionales. El codec comprueba simbolo, convencion, aridad y forma
+del plan; no inventa uno si la sesion o la observacion son ambiguas. Una prueba
+con un productor real verifica publicacion y lectura, y rechaza un plan ligado
+a otro simbolo (`A:/temp/t09-transport-directed/`). Pasaron tambien las
+regresiones de llamadas C, SysV y variadicas
+(`A:/temp/nsc-t09-llamadas-1ka10mpk`, `A:/temp/nsc-t09-sysv-prueba-frw0dj7w`,
+`A:/temp/nsc-t09-sysv-varargs-jv7actay`). Este plan base no clasifica los
+records opcionales ni habilita el consumidor: falta reconstruir y comparar la
+declaracion con su origen, reconciliar observaciones y consultar la llamada
+completa. T09-003 permanece abierto.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin

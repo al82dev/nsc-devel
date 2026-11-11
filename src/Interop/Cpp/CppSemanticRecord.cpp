@@ -1448,6 +1448,38 @@ bool provideCppCRecordMetadataCatalog(const frontend::ProjectCompilation& compil
         const auto functionCandidates = selectCppPublishedTemplateFunctions(compilation, metadata, functions);
         if (!captureCppTemplateFunctionCandidates(*graph, functionCandidates, functions, dependencies.functions, error))
             return false;
+        for (auto& dependency : dependencies.functions)
+        {
+            const auto& declaration = dependency.declaration;
+            if (!declaration.variadic || !declaration.externalLinkage || !declaration.hasPrototype ||
+                declaration.callingConvention != "sysv_abi" || !declaration.clangUsr) continue;
+            const CppSemanticInventoryEntry* match = nullptr;
+            for (const auto& entry : functions)
+            {
+                if (entry.projectOrdinal >= graph->projects().size() ||
+                    graph->projects()[entry.projectOrdinal].moduleName() != dependency.moduleName ||
+                    entry.declaration.clangUsr != declaration.clangUsr ||
+                    entry.declaration.externalSymbol != declaration.externalSymbol ||
+                    entry.declaration.canonicalFunctionType != declaration.canonicalFunctionType) continue;
+                const auto reference = "cpp-reference:" + std::to_string(entry.referenceIndex);
+                if (dependency.referenceIdentity != reference &&
+                    !dependency.referenceIdentity.starts_with(reference + "#")) continue;
+                if (match) { match = nullptr; break; }
+                match = &entry;
+            }
+            if (!match) continue;
+            const CppInteropSession* session = nullptr;
+            for (const auto& source : compilation.cppProjectSessions())
+                if (source.projectFile == match->projectFile && match->referenceIndex < source.sessions.size())
+                {
+                    if (session) { session = nullptr; break; }
+                    session = source.sessions[match->referenceIndex].get();
+                }
+            if (!session) continue;
+            auto base = session->cVariadicCallAbiPlan(declaration.name, declaration.canonicalFunctionType, {});
+            if (base && base->symbol == dependency.linkSymbol && base->arguments.size() == declaration.parameters.size())
+                dependency.variadicBasePlan = std::make_shared<const abi_plan::VariadicCallPlan>(std::move(*base));
+        }
         auto globalsResult = collectCppSemanticGlobals(*graph, compilation.cppProjectSessions());
         if (const auto* failure = std::get_if<CppSemanticInventoryFailure>(&globalsResult))
         { error = failure->message; return false; }
