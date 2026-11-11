@@ -19,3 +19,13 @@ de compilar este commit desde un árbol limpio. La regla solo cubre orígenes
 identificables de asignaciones directas; el seguimiento entre llamadas,
 orígenes desconocidos, campos y salidas compuestas se investiga por separado.
 No se ejecutó una batería completa ni se desplegó el SDK.
+
+La regresión se amplió posteriormente con vistas guardadas primero en una
+variable y con expresiones condicionales, tanto para propietarios locales
+como para propietarios consumidos; también se mezcló un origen del llamador
+con otro local en una condicional. En el árbol de trabajo actual se analizaron
+32 casos: 28 rechazos esperados y cuatro controles aceptados; los controles
+completaron ocho ejecuciones O0/O2 con salida 42. El registro está en
+`A:/nsc-fixes-evidencia/shared-tuple-call-commit-20261111/shared-view-output-lifetime.log`.
+La ampliación aún no demuestra un árbol limpio ni cubre todas las formas de
+procedencia de ramas condicionales.

@@ -21,14 +21,27 @@ with tempfile.TemporaryDirectory(prefix='nsc-shared-view-output-') as directory:
                        '<ItemGroup><Compile Include="*.ns"/></ItemGroup></Project>', encoding='utf-8')
     for family in ('Rc', 'Arc'):
         for mode in ('ref', 'out'):
-            for variant in ('local', 'consumed', 'live'):
-                parameters = ('SharedView<Payload> input, ' if variant == 'live' else
-                              family + '<Payload> input, ' if variant == 'consumed' else '')
+            for variant in ('local', 'consumed', 'live', 'local_alias', 'consumed_alias',
+                            'local_conditional', 'consumed_conditional', 'mixed_conditional'):
+                consumed = variant.startswith('consumed')
+                conditional = variant.endswith('_conditional')
+                alias = variant.endswith('_alias')
+                parameters = ('SharedView<Payload> input, ' if variant in ('live', 'mixed_conditional') else
+                              family + '<Payload> input, ' if consumed else '')
+                if conditional:
+                    parameters = 'bool choose, ' + parameters
                 owner = (family + '<Payload> local = SharedPointers.Make' + family + '<Payload>(); '
-                         if variant == 'local' else '')
-                view = 'input' if variant == 'live' else 'input.Borrow()' if variant == 'consumed' else 'local.Borrow()'
+                         if variant.startswith('local') or variant == 'mixed_conditional' else '')
+                view = 'input' if variant == 'live' else 'input.Borrow()' if consumed else 'local.Borrow()'
+                if alias:
+                    owner += 'SharedView<Payload> saved = ' + view + '; '
+                    view = 'saved'
+                elif conditional:
+                    view = 'choose ? ' + ('input' if variant == 'mixed_conditional' else view) + ' : ' + view
                 caller_owner = family + '<Payload> owner = SharedPointers.Make' + family + '<Payload>(); '
-                argument = 'owner.Borrow(), ' if variant == 'live' else 'move(owner), ' if variant == 'consumed' else ''
+                argument = 'owner.Borrow(), ' if variant in ('live', 'mixed_conditional') else 'move(owner), ' if consumed else ''
+                if conditional:
+                    argument = 'true, ' + argument
                 source = ('using NativeSharp.Core; namespace NativeSharp.Core { public class Exception {} '
                           'public trait Send {} public trait Sync {} } '
                           'class Payload { public int Data; public Payload() { Data = 42; } } '
