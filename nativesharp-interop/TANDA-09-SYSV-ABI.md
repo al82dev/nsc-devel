@@ -934,6 +934,39 @@ A:/temp/nsc-t09-sysv-indirect-diff16-eed8vwvp y
 A:/temp/nsc-t09-sysv-prueba-5voqucsx). No se acreditan todas las clases de
 agregado ni firmas posibles; T09-003 permanece abierto.
 
+## Booleanos y punteros con records SysV
+
+Cinco funciones reciben dos records directos, escalares y respectivamente
+`_Bool`, `int*`, `double*`, `void*` o `int**`, y devuelven el mismo tipo. Los
+controles C pasaron y NSC rechazo las firmas antes del cambio:
+A:/temp/nsc-t09-sysv-bool-record-flo1seol,
+A:/temp/nsc-t09-sysv-intp-record-xnscg9lv,
+A:/temp/nsc-t09-sysv-doublep-record-z3uczcr7,
+A:/temp/nsc-t09-sysv-voidp-record-sg1jp12q y
+A:/temp/nsc-t09-sysv-intpp-record-24ltvjjn. Clang 23.1.0 uso `i1 zeroext`
+para el booleano y `ptr` para los punteros, tanto en argumento como retorno
+(archivos A:/temp/t09-*-record-clang.ll).
+
+NSC conserva la distincion entre el tamano semantico booleano y la pieza
+fisica, aplica `zeroext` en declaracion y llamada y reconstruye el plan en el
+contrato vigente. Cada muestra paso ocho comparaciones C/NS, estatica y DLL
+O0–O3, argumentos nombrados y plantilla precompilada sin encabezado O0:
+A:/temp/nsc-t09-sysv-bool-record-ykvkgx9f,
+A:/temp/nsc-t09-sysv-intp-record-5dkzy2mq,
+A:/temp/nsc-t09-sysv-doublep-record-m86v3nh8,
+A:/temp/nsc-t09-sysv-voidp-record-jc3snkx2 y
+A:/temp/nsc-t09-sysv-intpp-record-yl7mazxm. Las pruebas verifican ambos valores
+booleanos, identidad de punteros y, donde corresponde, escrituras indirectas.
+
+La sonda y el control de metadatos pasaron (A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log). Pasaron tambien las regresiones de extensiones
+enteras combinadas, retorno indirecto y llamadas generales:
+A:/temp/nsc-t09-sysv-narrow-mixed-record-tiuhp8ak,
+A:/temp/nsc-t09-sysv-sret-narrow-tji6bu_7 y
+A:/temp/nsc-t09-sysv-prueba-xqeqpls0. Estas muestras no certifican todos los
+punteros, callbacks o combinaciones de firmas; T09-003 y la tanda 9 siguen
+abiertos.
+
 ## Enteros estrechos con records SysV
 
 Cuatro funciones reciben y devuelven respectivamente `sbyte`, `byte`, `short`

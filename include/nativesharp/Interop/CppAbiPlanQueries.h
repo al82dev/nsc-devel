@@ -304,9 +304,10 @@ inline bool isSysVRecordArguments(const Plan& plan, std::string_view symbol, boo
             plan.logicalReturn.coercion) return false;
     }
     else if (plan.physicalReturn.kind == TypeKind::Integer &&
-             (plan.physicalReturn.widthOrCount == 8 || plan.physicalReturn.widthOrCount == 16))
+             (plan.physicalReturn.widthOrCount == 1 || plan.physicalReturn.widthOrCount == 8 || plan.physicalReturn.widthOrCount == 16))
     {
-        if (plan.returnSignExtend == plan.returnZeroExtend || plan.logicalReturn.passing != Passing::Extend ||
+        if (plan.returnSignExtend == plan.returnZeroExtend || (plan.physicalReturn.widthOrCount == 1 && !plan.returnZeroExtend) ||
+            plan.logicalReturn.passing != Passing::Extend ||
             plan.logicalReturn.signExtend != plan.returnSignExtend || plan.logicalReturn.zeroExtend != plan.returnZeroExtend ||
             !plan.logicalReturn.coercion || plan.logicalReturn.coercion->kind != TypeKind::Integer ||
             plan.logicalReturn.coercion->widthOrCount != plan.physicalReturn.widthOrCount || plan.logicalReturn.offset != 0) return false;
@@ -314,7 +315,8 @@ inline bool isSysVRecordArguments(const Plan& plan, std::string_view symbol, boo
     else if (!((plan.physicalReturn.kind == TypeKind::Integer &&
                 (plan.physicalReturn.widthOrCount == 32 || plan.physicalReturn.widthOrCount == 64)) ||
                ((plan.physicalReturn.kind == TypeKind::Float || plan.physicalReturn.kind == TypeKind::Double) &&
-                plan.physicalReturn.widthOrCount == 0)) ||
+                plan.physicalReturn.widthOrCount == 0) ||
+               (plan.physicalReturn.kind == TypeKind::Pointer && plan.physicalReturn.widthOrCount == 0)) ||
              plan.returnSignExtend || plan.returnZeroExtend || plan.logicalReturn.passing != Passing::Direct || !plan.logicalReturn.coercion ||
              plan.logicalReturn.coercion->kind != plan.physicalReturn.kind ||
              plan.logicalReturn.coercion->widthOrCount != plan.physicalReturn.widthOrCount ||
@@ -329,7 +331,8 @@ inline bool isSysVRecordArguments(const Plan& plan, std::string_view symbol, boo
         {
             if (logical.physicalCount != 1 || logical.offset != 0 || logical.byValue || !logical.coercion ||
                 logical.coercion->kind != TypeKind::Integer || physical.type.kind != TypeKind::Integer ||
-                (physical.type.widthOrCount != 8 && physical.type.widthOrCount != 16) ||
+                (physical.type.widthOrCount != 1 && physical.type.widthOrCount != 8 && physical.type.widthOrCount != 16) ||
+                (physical.type.widthOrCount == 1 && !logical.zeroExtend) ||
                 logical.coercion->widthOrCount != physical.type.widthOrCount || logical.signExtend == logical.zeroExtend ||
                 logical.signExtend != physical.signExtend || logical.zeroExtend != physical.zeroExtend || physical.byValue) return false;
             ++physicalIndex;

@@ -2066,6 +2066,7 @@ bool checkDependencyTypeCodec()
     recordFunction.declaration.returnType.kind = CppTypeKind::SignedInteger;
     recordFunction.declaration.returnType.sizeBits = 32;
     recordFunction.declaration.returnType.alignmentBits = 32;
+    const auto scalarReturnType = recordFunction.declaration.returnType;
     recordFunction.declaration.abiPlan = scalarReturnPlan;
     ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
         decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
@@ -2141,6 +2142,46 @@ bool checkDependencyTypeCodec()
         ok &= expect(!abi_plan::isSysVScalarReturnWithRecordArguments(invalidNarrow, recordFunction.linkSymbol),
             "SysV record argument rejects an inconsistent narrow extension");
     }
+    recordFunction.declaration.parameters = savedScalarParameters;
+    for (const bool boolean : {true, false})
+    {
+        auto typedPlan = std::make_shared<abi_plan::Plan>(*scalarReturnPlan);
+        typedPlan->physicalReturn = boolean ? abi_plan::Type{abi_plan::TypeKind::Integer, 1} : abi_plan::Type{abi_plan::TypeKind::Pointer};
+        typedPlan->logicalReturn = {};
+        typedPlan->logicalReturn.passing = boolean ? abi_plan::Passing::Extend : abi_plan::Passing::Direct;
+        typedPlan->logicalReturn.coercion = typedPlan->physicalReturn;
+        typedPlan->returnZeroExtend = typedPlan->logicalReturn.zeroExtend = boolean;
+        auto& logical = typedPlan->logicalParameters[2];
+        auto& physical = typedPlan->physicalParameters[logical.firstPhysical];
+        logical.passing = boolean ? abi_plan::Passing::Extend : abi_plan::Passing::Direct;
+        logical.coercion = typedPlan->physicalReturn;
+        logical.zeroExtend = physical.zeroExtend = boolean;
+        physical.type = typedPlan->physicalReturn;
+        auto semantic = scalarReturnType;
+        semantic.kind = boolean ? CppTypeKind::Boolean : CppTypeKind::Pointer;
+        semantic.sizeBits = boolean ? 8 : 64;
+        semantic.alignmentBits = boolean ? 8 : 64;
+        if (!boolean) semantic.element = std::make_shared<CppType>(scalarReturnType);
+        recordFunction.declaration.returnType = semantic;
+        recordFunction.declaration.parameters[2].type = semantic;
+        recordFunction.declaration.abiPlan = typedPlan;
+        ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+            decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+            abi_plan::isSysVScalarReturnWithRecordArguments(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol) &&
+            restoredRecord.declaration.abiPlan->physicalReturn.kind == typedPlan->physicalReturn.kind &&
+            restoredRecord.declaration.abiPlan->returnZeroExtend == boolean &&
+            restoredRecord.declaration.abiPlan->physicalParameters[3].zeroExtend == boolean,
+            "C dependency function retains boolean or pointer return and argument");
+        if (boolean)
+        {
+            auto invalidBoolean = *typedPlan;
+            invalidBoolean.returnZeroExtend = invalidBoolean.logicalReturn.zeroExtend = false;
+            invalidBoolean.returnSignExtend = invalidBoolean.logicalReturn.signExtend = true;
+            ok &= expect(!abi_plan::isSysVScalarReturnWithRecordArguments(invalidBoolean, recordFunction.linkSymbol),
+                "SysV record plan rejects signed extension of a boolean return");
+        }
+    }
+    recordFunction.declaration.returnType = scalarReturnType;
     recordFunction.declaration.parameters = savedScalarParameters;
     auto invalidScalarPlan = *scalarReturnPlan;
     invalidScalarPlan.physicalParameters[4].byValue = false;

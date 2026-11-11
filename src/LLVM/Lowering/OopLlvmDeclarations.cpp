@@ -32,6 +32,7 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                 }
                 const auto& physicalReturn = function.cppAbiPlan->physicalReturn;
                 LLVMTypeRef result = physicalReturn.kind == interop::abi_plan::TypeKind::Void ? LLVMVoidTypeInContext(context_) :
+                    physicalReturn.kind == interop::abi_plan::TypeKind::Pointer ? LLVMPointerTypeInContext(context_, 0) :
                     physicalReturn.kind == interop::abi_plan::TypeKind::Float ? LLVMFloatTypeInContext(context_) :
                     physicalReturn.kind == interop::abi_plan::TypeKind::Double ? LLVMDoubleTypeInContext(context_) :
                     LLVMIntTypeInContext(context_, static_cast<unsigned>(physicalReturn.widthOrCount));

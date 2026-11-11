@@ -997,8 +997,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                         argumentKey == "builtin:long" || argumentKey == "builtin:ulong" ||
                         argumentKey == "builtin:sbyte" || argumentKey == "builtin:byte" ||
                         argumentKey == "builtin:short" || argumentKey == "builtin:ushort";
-                    const bool scalarArgument = scalarInteger || argumentKey == "builtin:float" ||
-                        argumentKey == "builtin:double" || argumentKey == "builtin:int*";
+                    const bool scalarArgument = scalarInteger || argumentKey == "builtin:bool" || argumentKey == "builtin:float" ||
+                        argumentKey == "builtin:double" || argumentKey == "builtin:int*" || argumentKey == "builtin:double*" ||
+                        argumentKey == "builtin:void*" || argumentKey == "builtin:int**";
                     if (!scalarArgument)
                     {
                         if (i >= imported->parameterTypeKeys.size() || argumentKey != imported->parameterTypeKeys[i])
@@ -1044,6 +1045,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             if (!call) return nullptr;
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
             applySysVIntegerExtension(context_, imported,
+                [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                { LLVMAddCallSiteAttribute(call, index, attribute); });
+            applyExternalBoolAbi(context_, imported,
                 [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                 { LLVMAddCallSiteAttribute(call, index, attribute); });
             if (indirectReturn)

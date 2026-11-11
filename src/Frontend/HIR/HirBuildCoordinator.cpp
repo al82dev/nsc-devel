@@ -1876,6 +1876,11 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                       interop::abi_plan::isSysVIndirectRecordWithArguments(*symbol.cppAbiPlan, symbol.mangledName)) ||
                      (interop::abi_plan::isSysVScalarReturnWithRecordArguments(*symbol.cppAbiPlan, symbol.mangledName) &&
                       ((symbol.cppReturnType->kind == interop::CppTypeKind::Void && symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Void) ||
+                       (symbol.cppReturnType->kind == interop::CppTypeKind::Boolean && symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Integer &&
+                        symbol.cppAbiPlan->physicalReturn.widthOrCount == 1 && symbol.cppAbiPlan->returnZeroExtend) ||
+                       (symbol.cppReturnType->kind == interop::CppTypeKind::Pointer && symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Pointer &&
+                        (function.returnTypeKey == "builtin:int*" || function.returnTypeKey == "builtin:double*" ||
+                         function.returnTypeKey == "builtin:void*" || function.returnTypeKey == "builtin:int**")) ||
                        ((symbol.cppReturnType->kind == interop::CppTypeKind::SignedInteger || symbol.cppReturnType->kind == interop::CppTypeKind::UnsignedInteger) &&
                         symbol.cppAbiPlan->physicalReturn.kind == interop::abi_plan::TypeKind::Integer &&
                         symbol.cppReturnType->sizeBits == symbol.cppAbiPlan->physicalReturn.widthOrCount &&
@@ -1916,7 +1921,10 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                                      logical.zeroExtend == (type.kind == interop::CppTypeKind::UnsignedInteger)))) &&
                                 !(key == "builtin:float" && type.kind == interop::CppTypeKind::Floating && physical.kind == interop::abi_plan::TypeKind::Float) &&
                                 !(key == "builtin:double" && type.kind == interop::CppTypeKind::Floating && physical.kind == interop::abi_plan::TypeKind::Double) &&
-                                !(key == "builtin:int*" && type.kind == interop::CppTypeKind::Pointer && physical.kind == interop::abi_plan::TypeKind::Pointer)) return false;
+                                !(key == "builtin:bool" && type.kind == interop::CppTypeKind::Boolean && physical.kind == interop::abi_plan::TypeKind::Integer &&
+                                  physical.widthOrCount == 1 && logical.passing == interop::abi_plan::Passing::Extend && logical.zeroExtend) &&
+                                !((key == "builtin:int*" || key == "builtin:double*" || key == "builtin:void*" || key == "builtin:int**") &&
+                                  type.kind == interop::CppTypeKind::Pointer && physical.kind == interop::abi_plan::TypeKind::Pointer)) return false;
                         }
                         return true;
                     }();
