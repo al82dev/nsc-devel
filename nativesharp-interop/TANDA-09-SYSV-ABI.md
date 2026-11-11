@@ -171,3 +171,18 @@ pasaron de nuevo en A:/temp/nsc-t09-sysv-r3-ykdnypg7 y
 A:/temp/nsc-t09-sysv-r8-f0edfjzg. La sonda Clang y el control de identidad y
 metadatos pasaron, con registros A:/temp/t09-planes-clang.log y
 A:/temp/t09-planes-identity.log. T09-003 sigue abierto para las demas firmas.
+
+Record de 16 bytes: Clang describe la muestra como dos argumentos `i64` y un
+retorno `{ i64, i64 }` (A:/temp/nsc-t09-sysv-pequenos-sd7q_mpl); el control C
+paso y NSC lo rechazo antes del cambio en A:/temp/nsc-t09-sysv-r16-c2as5kij.
+NSC ahora divide y recompone la muestra cuando el plan confirma exactamente
+esas dos piezas, conserva esa forma en el contrato vigente de dependencias C
+y la rechaza si la evidencia no coincide. Se verificaron declaracion y llamada
+LLVM, copia y retorno en ocho comparaciones estatica/DLL O0–O3 y una plantilla
+precompilada sin encabezado en estatica O0: A:/temp/nsc-t09-sysv-r16-_cjg9wfo.
+La muestra usa dieciseis campos `unsigned char`; no certifica todos los layouts
+ni clases de registro. Los controles de tres y ocho bytes y de escalares SysV
+pasaron en A:/temp/nsc-t09-sysv-r3-m12vqtcd, A:/temp/nsc-t09-sysv-r8-ccbln1vt y
+A:/temp/nsc-t09-sysv-prueba-ij2dqjzw. La sonda del plan y la prueba de metadatos
+se registran en A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log.
+Los agregados de otra forma, firmas multiples y callbacks siguen pendientes.

@@ -31,6 +31,7 @@
 //   nsc_cpp_c_identity_tests --catalogue-version-controls <fixtures-dir> <producer.nsmeta>...
 
 #include "nativesharp/Interop/CppClangSessionFactory.h"
+#include "nativesharp/Interop/CppAbiPlanQueries.h"
 #include "nativesharp/Interop/CppProjectSessions.h"
 #include "nativesharp/Interop/CppSemanticFunctionGroups.h"
 #include "nativesharp/Interop/CppSemanticInventory.h"
@@ -1646,6 +1647,23 @@ bool checkDependencyTypeCodec()
             abi_plan::isSysVSmallRecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
             "C dependency function retains a small SysV record plan");
     }
+    auto pairPlan = std::make_shared<abi_plan::Plan>(*plan4);
+    abi_plan::Type pair;
+    pair.kind = abi_plan::TypeKind::Structure;
+    pair.elements = {{abi_plan::TypeKind::Integer, 64}, {abi_plan::TypeKind::Integer, 64}};
+    pairPlan->physicalReturn = pair;
+    pairPlan->logicalReturn.coercion = pair;
+    pairPlan->logicalParameters[0].coercion = pair;
+    pairPlan->logicalParameters[0].physicalCount = 2;
+    pairPlan->physicalParameters[0].type = pair.elements[0];
+    pairPlan->physicalParameters.push_back(pairPlan->physicalParameters[0]);
+    recordFunction.declaration.abiPlan = pairPlan;
+    recordFunction.declaration.returnType.sizeBits = 128;
+    recordFunction.declaration.parameters[0].type.sizeBits = 128;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        abi_plan::isSysVTwoI64RecordRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
+        "C dependency function retains a two-piece SysV record plan");
     if (!functionBytes.empty()) functionBytes.pop_back();
     decoded.moduleName = "sentinel";
     ok &= expect(!decodeCDependencyFunction(functionBytes, decoded, error) && decoded.moduleName == "sentinel",

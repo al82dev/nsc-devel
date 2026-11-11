@@ -1718,6 +1718,7 @@ validacion; su ausencia no debe confundirse con el fixture historico NSMeta.
 - [ ] T09-003. Conservar el nombre de símbolo y la convención de llamada elegidos por Clang. Verificado para cdecl y vectorcall en Windows x64; otras convenciones no se certifican. [Evidencia](TANDA-09-AUDITORIA-INICIAL.md).
   - Avance parcial: llamadas directas `sysv_abi` con `sbyte`, `byte`, `short`, `ushort`, `int`, `uint`, `long`, `ulong`, `bool`, `float`, `double`, `int*`, `double*`, `void*`, `int**` y retorno `void` o de esos tipos pasaron en estatica y DLL O0–O3. Otras firmas y callbacks SysV siguen pendientes. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
   - Avance adicional: funciones SysV C que reciben y devuelven el mismo record de uno a ocho bytes con el plan directo de Clang pasaron las pruebas indicadas; otras firmas y layouts siguen pendientes. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
+  - Se probo tambien un record de 16 bytes con dos piezas `i64` y retorno compuesto, incluida una plantilla precompilada. No cubre otras clases de registro ni todos los layouts. [Evidencia y limites](TANDA-09-SYSV-ABI.md).
 - [ ] T09-004. Emitir una llamada C sin parámetros y con resultado escalar. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-005. Emitir una llamada C con parámetros escalares. [Prueba y contraste](pruebas-tanda-09-llamadas/).
 - [ ] T09-006. Emitir el paso de punteros a una función C. [Prueba y contraste](pruebas-tanda-09-llamadas/).

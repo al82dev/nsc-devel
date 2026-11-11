@@ -1,3 +1,4 @@
+#include "nativesharp/Interop/CppAbiPlanQueries.h"
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/Decl.h>
 #include <clang/AST/GlobalDecl.h>
@@ -216,6 +217,11 @@ int main(int argc, char** argv) {
         p3.logicalParameters.size() != 1 || p3.logicalParameters[0].passing != t09_probe::Passing::Direct ||
         !p3.logicalParameters[0].coercion || p3.logicalParameters[0].coercion->widthOrCount != 24) return 20;
     const auto& p16 = copiedPlans.at("p16");
+    if (!t09_probe::isSysVTwoI64RecordRoundTrip(p16, "p16") ||
+        t09_probe::isSysVTwoI64RecordRoundTrip(p16, "other")) return 78;
+    auto badPair = p16;
+    badPair.physicalParameters[1].type.kind = t09_probe::TypeKind::Double;
+    if (t09_probe::isSysVTwoI64RecordRoundTrip(badPair, "p16")) return 79;
     if (p16.physicalReturn.kind != t09_probe::TypeKind::Structure || p16.physicalReturn.elements.size() != 2 ||
         p16.physicalParameters.size() != 2 || p16.physicalParameters[0].type.widthOrCount != 64 ||
         p16.physicalParameters[1].type.widthOrCount != 64) return 21;

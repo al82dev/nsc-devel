@@ -1,3 +1,4 @@
+#include "nativesharp/Interop/CppAbiPlanQueries.h"
 #include "nativesharp/Driver/CompilationWorkerPool.h"
 #include "nativesharp/Frontend/ProjectCompilationIndexes.h"
 #include "nativesharp/Frontend/ProjectObjectLayoutModel.h"
@@ -306,12 +307,13 @@ void configureFunctionAbi(
     std::span<const ProjectOopMirStructLayout> layouts)
 {
     if (function.cppSysVCall && function.cppAbiPlan &&
-        interop::abi_plan::isSysVSmallRecordRoundTrip(*function.cppAbiPlan, function.cAbiName))
+        (interop::abi_plan::isSysVSmallRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
+         interop::abi_plan::isSysVTwoI64RecordRoundTrip(*function.cppAbiPlan, function.cAbiName)))
     {
         function.abi.returnPassing = ProjectOopMirAbiPassing::Direct;
         function.abi.parameterPassing.push_back(ProjectOopMirAbiPassing::Direct);
         function.abi.parameterPhysicalOrdinals.push_back(0);
-        function.abi.physicalParameterCount = 1;
+        function.abi.physicalParameterCount = function.cppAbiPlan->physicalParameters.size();
         return;
     }
     function.abi.returnPassing = function.referenceReturn

@@ -1,3 +1,4 @@
+#include "nativesharp/Interop/CppAbiPlanQueries.h"
 #include "../Internal/OopLlvmImplementation.h"
 #include "../Internal/DropCase.h"
 #include "../Internal/LlvmExpressionFrame.h"
@@ -15,13 +16,21 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
         std::string& error)
 {
             if (function.cppSysVCall && function.cppAbiPlan &&
-                interop::abi_plan::isSysVSmallRecordRoundTrip(*function.cppAbiPlan, function.cAbiName))
+                (interop::abi_plan::isSysVSmallRecordRoundTrip(*function.cppAbiPlan, function.cAbiName) ||
+                 interop::abi_plan::isSysVTwoI64RecordRoundTrip(*function.cppAbiPlan, function.cAbiName)))
             {
                 const char* target = LLVMGetTarget(module_);
                 if (!target || !std::string_view(target).starts_with("x86_64-pc-windows-msvc"))
                 {
                     error = "SysV small record requires the validated Windows x64 target";
                     return nullptr;
+                }
+                if (interop::abi_plan::isSysVTwoI64RecordRoundTrip(*function.cppAbiPlan, function.cAbiName))
+                {
+                    LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+                    LLVMTypeRef pieces[] = {i64, i64};
+                    LLVMTypeRef result = LLVMStructTypeInContext(context_, pieces, 2, 0);
+                    return LLVMFunctionType(result, pieces, 2, 0);
                 }
                 LLVMTypeRef integer = LLVMIntTypeInContext(context_,
                     static_cast<unsigned>(function.cppAbiPlan->physicalReturn.widthOrCount));

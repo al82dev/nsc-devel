@@ -1,3 +1,4 @@
+#include "nativesharp/Interop/CppAbiPlanQueries.h"
 #include "CppCRecordMetadataCodec.h"
 #include "ByteReader.h"
 #include "ByteWriter.h"
@@ -446,16 +447,17 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
     // The current contract stores the direct aggregate plans the backend can consume.
     // A missing observation is never interpreted as an ABI classification.
     const bool directRecord = f.abiPlan && abi_plan::isSysVSmallRecordRoundTrip(*f.abiPlan, value.linkSymbol);
-    writer.u8(directRecord ? 1 : 0);
-    if (directRecord)
+    const bool pairRecord = f.abiPlan && abi_plan::isSysVTwoI64RecordRoundTrip(*f.abiPlan, value.linkSymbol);
+    writer.u8(directRecord ? 1 : pairRecord ? 2 : 0);
+    if (directRecord || pairRecord)
     {
-        const auto bits = f.abiPlan->physicalReturn.widthOrCount;
+        const auto bits = pairRecord ? 128 : f.abiPlan->physicalReturn.widthOrCount;
         if (f.callingConvention != "sysv_abi" || f.variadic || !f.hasPrototype ||
             f.externalSymbol != value.linkSymbol || f.returnType.kind != CppTypeKind::Record ||
             f.returnType.sizeBits != bits || f.parameters.size() != 1 ||
             f.parameters[0].type.kind != CppTypeKind::Record || f.parameters[0].type.sizeBits != bits)
         { error = "invalid C dependency SysV record ABI"; return false; }
-        writer.u8(static_cast<std::uint8_t>(bits));
+        if (directRecord) writer.u8(static_cast<std::uint8_t>(bits));
         if (!putText(writer, f.abiPlan->targetTriple) || !putText(writer, f.abiPlan->dataLayout))
         { error = "invalid C dependency ABI target"; return false; }
     }
@@ -505,29 +507,39 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
         { error = "invalid C dependency function parameter"; return false; }
         f.parameters.push_back(std::move(parameter));
     }
-    bool r3 = false;
-    if (!getFlag(reader, r3)) { error = "invalid C dependency ABI marker"; return false; }
-    if (r3)
+    std::uint8_t recordPlan = 0;
+    if (!reader.u8(recordPlan) || recordPlan > 2) { error = "invalid C dependency ABI marker"; return false; }
+    if (recordPlan != 0)
     {
         auto plan = std::make_shared<abi_plan::Plan>();
         plan->symbol = value.linkSymbol;
         plan->callingConvention = 78;
         std::uint8_t bits = 0;
-        if (!reader.u8(bits) || !reader.text(plan->targetTriple) || !reader.text(plan->dataLayout))
+        if ((recordPlan == 1 && !reader.u8(bits)) ||
+            !reader.text(plan->targetTriple) || !reader.text(plan->dataLayout))
         { error = "invalid C dependency ABI target"; return false; }
-        const abi_plan::Type integer{abi_plan::TypeKind::Integer, bits};
-        plan->physicalReturn = integer;
+        const abi_plan::Type integer{abi_plan::TypeKind::Integer, recordPlan == 2 ? 64U : bits};
+        abi_plan::Type physicalReturn = integer;
+        if (recordPlan == 2)
+        {
+            physicalReturn = {};
+            physicalReturn.kind = abi_plan::TypeKind::Structure;
+            physicalReturn.elements = {integer, integer};
+        }
+        plan->physicalReturn = physicalReturn;
         plan->logicalReturn.passing = abi_plan::Passing::Direct;
-        plan->logicalReturn.coercion = integer;
+        plan->logicalReturn.coercion = physicalReturn;
         abi_plan::LogicalValue logical;
         logical.passing = abi_plan::Passing::Direct;
-        logical.coercion = integer;
-        logical.physicalCount = 1;
+        logical.coercion = physicalReturn;
+        logical.physicalCount = recordPlan == 2 ? 2 : 1;
         plan->logicalParameters.push_back(std::move(logical));
         abi_plan::PhysicalParameter physical;
         physical.type = integer;
-        plan->physicalParameters.push_back(std::move(physical));
-        if (!abi_plan::isSysVSmallRecordRoundTrip(*plan, value.linkSymbol))
+        plan->physicalParameters.push_back(physical);
+        if (recordPlan == 2) plan->physicalParameters.push_back(physical);
+        if (!(recordPlan == 1 ? abi_plan::isSysVSmallRecordRoundTrip(*plan, value.linkSymbol) :
+                               abi_plan::isSysVTwoI64RecordRoundTrip(*plan, value.linkSymbol)))
         { error = "invalid C dependency ABI plan"; return false; }
         f.abiPlan = std::move(plan);
     }

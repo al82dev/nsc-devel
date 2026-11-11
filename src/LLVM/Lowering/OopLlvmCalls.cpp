@@ -1,3 +1,4 @@
+#include "nativesharp/Interop/CppAbiPlanQueries.h"
 #include "../Internal/OopLlvmImplementation.h"
 #include "../Internal/CppBoolAbi.h"
 #include "../Internal/DropCase.h"
@@ -831,6 +832,53 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         }
 
         const auto* imported = found->second.mirFunction;
+        if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
+            interop::abi_plan::isSysVTwoI64RecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName))
+        {
+            if (node->children.size() != 1 || node->referenceResult || node->returnsAssignedValue ||
+                node->children[0]->typeKey != node->typeKey ||
+                (argumentOverrides && argumentOverrides->size() != 1))
+                return failValue(error, "SysV two-piece record call has an unexpected argument contract");
+            LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[0] :
+                lowerExpression(node->children[0].get(), error);
+            if (!value) return nullptr;
+            if (terminated()) return value;
+            LLVMTypeRef carrier = llvmType(node->typeKey, error);
+            if (!carrier) return nullptr;
+            const unsigned alignment = structAlignmentFor(node->typeKey);
+            if (alignment == 0) return failValue(error, "SysV two-piece record has no alignment");
+            const unsigned pieceAlignment = alignment < 8 ? alignment : 8;
+            LLVMTypeRef i64 = LLVMInt64TypeInContext(context_);
+            LLVMTypeRef i8 = LLVMInt8TypeInContext(context_);
+            LLVMValueRef offset = LLVMConstInt(i64, 8, 0);
+            const auto second = [&](LLVMValueRef slot, const char* name) {
+                return LLVMBuildGEP2(builder_, i8, slot, &offset, 1, name);
+            };
+            LLVMValueRef argumentSlot = entryBlockAlloca(carrier, alignment, "sysv.pair.arg");
+            LLVMValueRef argumentStore = LLVMBuildStore(builder_, value, argumentSlot);
+            LLVMSetAlignment(argumentStore, alignment);
+            LLVMValueRef arguments[] = {
+                LLVMBuildLoad2(builder_, i64, argumentSlot, "sysv.pair.first"),
+                LLVMBuildLoad2(builder_, i64, second(argumentSlot, "sysv.pair.arg.second"), "sysv.pair.second")};
+            LLVMSetAlignment(arguments[0], pieceAlignment);
+            LLVMSetAlignment(arguments[1], pieceAlignment);
+            releaseTransferredArguments(node);
+            LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
+                arguments, 2, "sysv.pair.call", error);
+            if (!call) return nullptr;
+            LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
+            if (!applyMustTail(node, call, error)) return nullptr;
+            LLVMValueRef resultSlot = entryBlockAlloca(carrier, alignment, "sysv.pair.result");
+            LLVMValueRef firstStore = LLVMBuildStore(builder_, LLVMBuildExtractValue(builder_, call, 0, "sysv.pair.r0"),
+                                                      resultSlot);
+            LLVMValueRef secondStore = LLVMBuildStore(builder_, LLVMBuildExtractValue(builder_, call, 1, "sysv.pair.r1"),
+                                                       second(resultSlot, "sysv.pair.result.second"));
+            LLVMSetAlignment(firstStore, pieceAlignment);
+            LLVMSetAlignment(secondStore, pieceAlignment);
+            LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "sysv.pair.value");
+            LLVMSetAlignment(result, alignment);
+            return result;
+        }
         if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
             interop::abi_plan::isSysVSmallRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName))
         {
