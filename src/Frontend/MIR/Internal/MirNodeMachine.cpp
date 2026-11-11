@@ -419,7 +419,13 @@ int ProjectOopMirModel::MirNodeMachine::lowerRawElementAddress(
         error = "C2.1 raw element lowering requires name lookup and value layouts";
         return -1;
     }
-    const auto layout = model_.elementLayout(node->elementTypeKey);
+    auto layout = model_.elementLayout(node->elementTypeKey);
+    if (!layout.has_value() && node->elementTypeKey == "builtin:decimal")
+    {
+        const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(
+            target::BuiltinLayoutKind::Decimal);
+        layout = {{decimal.size, decimal.alignment}};
+    }
     if (!layout.has_value() || layout->first == 0)
     {
         error = "C2.1 cannot determine raw element layout for '" + node->elementTypeKey + "'";

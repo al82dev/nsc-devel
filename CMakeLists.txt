@@ -6923,6 +6923,17 @@ if(NSC_BUILD_TESTS)
 
     set(NSC_DECIMAL_GENERIC_ARRAY_PROJECT
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decimal_generic_array/DecimalGenericArray.nsproj")
+    set(NSC_DECIMAL_FIXED_ARRAY_PROJECT
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decimal_fixed_array/DecimalFixedArray.nsproj")
+    add_test(
+        NAME nsc.compiler.decimal-fixed-array
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DPROJECT_FILE=${NSC_DECIMAL_FIXED_ARRAY_PROJECT}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/decimal-fixed-array"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDecimalFixedArray.cmake")
     add_test(
         NAME nsc.compiler.decimal-generic-array
         COMMAND "${CMAKE_COMMAND}"
