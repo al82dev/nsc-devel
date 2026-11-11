@@ -70,4 +70,16 @@ dependencias seleccionadas (`A:/temp/t09-cpp-meta-check.log`). El control adicio
 del consumidor y encabezado paso; sin encabezado no expone automaticamente
 la dependencia privada de la plantilla
 (`A:/temp/nsc-t09-regcall-cpp-precompilado-lwtb9ay5`). No se acreditan todos
-los tipos ni las sobrecargas C++; T09-003 sigue abierto.
+los tipos ni todas las sobrecargas C++; T09-003 sigue abierto.
+
+## Sobrecargas C++ en plantilla precompilada
+
+Dos funciones `T09Cpp::calculate`, que difieren en el primer parametro `int`
+o `long long`, tienen simbolos distintos segun Clang
+(`A:/temp/t09-overload-oracle.ll`). El control C++ y la plantilla NativeSharp
+comprueban resultados distintos para ambas sobrecargas. Pasaron las ocho
+variantes de control y 16 consumidores precompilados, con y sin encabezado,
+en estatica y DLL O0-O3
+(`A:/temp/nsc-t09-cpp-sobrecargas-precompilado-73lootny`). No se cambio
+produccion; otras formas de sobrecarga, tipos y convenciones siguen pendientes.
+T09-003 permanece abierto.

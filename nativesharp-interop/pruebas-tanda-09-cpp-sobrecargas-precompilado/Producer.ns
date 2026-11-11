@@ -1,0 +1,6 @@
+namespace T09 { public class RegBridge {
+public static int Run<T>(T unused) {
+    if (T09Cpp.calculate(3, 4, 7) != 347) return 1;
+    return T09Cpp.calculate((long)3, 4, 7) == 3047 ? 0 : 2;
+}
+} }
