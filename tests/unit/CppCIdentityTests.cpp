@@ -1704,6 +1704,20 @@ bool checkDependencyTypeCodec()
         decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
         restoredRecord.declaration.abiPlan->physicalParameters[0].type.kind == abi_plan::TypeKind::Double,
         "C dependency function retains a double and a record argument");
+    firstFloatPlan->logicalParameters[0].coercion = abi_plan::Type{abi_plan::TypeKind::Float};
+    firstFloatPlan->physicalParameters[0].type = abi_plan::Type{abi_plan::TypeKind::Float};
+    auto thirdFloat = firstFloatPlan->logicalParameters[0];
+    thirdFloat.firstPhysical = 2;
+    firstFloatPlan->logicalParameters.push_back(thirdFloat);
+    firstFloatPlan->physicalParameters.push_back(firstFloatPlan->physicalParameters[0]);
+    recordFunction.declaration.parameters[0].type.sizeBits = 32;
+    recordFunction.declaration.parameters.push_back(recordFunction.declaration.parameters[0]);
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        restoredRecord.declaration.abiPlan->physicalParameters.size() == 3 &&
+        restoredRecord.declaration.abiPlan->physicalParameters[2].type.kind == abi_plan::TypeKind::Float,
+        "C dependency function retains two floats and a record argument");
+    recordFunction.declaration.parameters.pop_back();
     recordFunction.declaration.parameters[0].type = savedFirstType;
     recordFunction.declaration.abiPlan = twoSmallPlan;
     auto eightPlan = std::make_shared<abi_plan::Plan>(*twoSmallPlan);

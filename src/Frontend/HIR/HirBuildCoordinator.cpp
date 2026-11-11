@@ -1886,11 +1886,11 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                                    function.parameterTypeKeys[i] == "builtin:int" &&
                                    symbol.cppAbiPlan->physicalParameters[i].type.kind == interop::abi_plan::TypeKind::Integer &&
                                    symbol.cppAbiPlan->physicalParameters[i].type.widthOrCount == 32) ||
-                                  (symbol.cppParameterTypes.size() == 2 &&
+                                  (symbol.cppParameterTypes.size() <= 3 &&
                                    symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Floating &&
                                    ((function.parameterTypeKeys[i] == "builtin:float" &&
                                      symbol.cppAbiPlan->physicalParameters[i].type.kind == interop::abi_plan::TypeKind::Float) ||
-                                    (function.parameterTypeKeys[i] == "builtin:double" &&
+                                    (symbol.cppParameterTypes.size() == 2 && function.parameterTypeKeys[i] == "builtin:double" &&
                                      symbol.cppAbiPlan->physicalParameters[i].type.kind == interop::abi_plan::TypeKind::Double)))))
                                 return false;
                         }

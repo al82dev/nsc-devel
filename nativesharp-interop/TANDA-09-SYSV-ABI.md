@@ -618,3 +618,14 @@ A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log. Los casos
 probados usan dos argumentos y un record de cuatro bytes; firmas flotantes
 con mas argumentos u otras clasificaciones siguen pendientes.
 
+Se amplio despues a tres argumentos directos con la muestra `float`, record de
+cuatro bytes, `float`. Antes del cambio el control C paso y NSC rechazo la
+firma (A:/temp/nsc-t09-sysv-floats-record-sswgin5t); despues pasaron las ocho
+comparaciones estatica/DLL O0–O3 y plantilla precompilada sin encabezado O0
+(A:/temp/nsc-t09-sysv-floats-record-6a9ae422). La regresion de `double` antes
+del record paso en A:/temp/nsc-t09-sysv-double-record-s_e6izqm; el control
+general y el rechazo de cuatro argumentos flotantes pendientes pasaron en
+A:/temp/nsc-t09-sysv-prueba-vu1tz324. La sonda Clang y metadatos pasaron en
+A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log. Siguen
+pendientes otras mezclas, clasificaciones y casos con mas argumentos.
+
