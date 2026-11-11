@@ -23,3 +23,4 @@ API_STORAGE __attribute__((sysv_abi)) int sysv_record_sse_pressure(int count, ..
 API_STORAGE __attribute__((sysv_abi)) int sysv_record_large(int count, ...);
 API_STORAGE __attribute__((sysv_abi)) int sysv_record_ptrs(int *fixed, ...);
 API_STORAGE __attribute__((sysv_abi)) int *sysv_record_return_ptr(int *fixed, ...);
+API_STORAGE __attribute__((sysv_abi)) int sysv_record_rptr(int count, ...);

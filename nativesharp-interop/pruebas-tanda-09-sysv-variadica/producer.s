@@ -293,3 +293,27 @@ sysv_record_return_ptr:
 fail_record_return_ptr:
     xorl %eax, %eax
     ret
+.globl sysv_record_rptr
+sysv_record_rptr:
+    cmpl $2, %edi
+    jne fail_record_rptr
+    cmpl $7, %esi
+    jne fail_record_rptr
+    testq %rdx, %rdx
+    je fail_record_rptr
+    cmpl $1, (%rdx)
+    jne fail_record_rptr
+    cmpl $2, 4(%rdx)
+    jne fail_record_rptr
+    cmpb $1, %al
+    jb fail_record_rptr
+    movq %xmm0, %r8
+    movabsq $0x4002000000000000, %r9
+    cmpq %r9, %r8
+    jne fail_record_rptr
+    movl $3, (%rdx)
+    movl $1, %eax
+    ret
+fail_record_rptr:
+    xorl %eax, %eax
+    ret

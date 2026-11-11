@@ -25,5 +25,6 @@ int main(void) {
     fixedValue = 41; optionalValue = 12;
     if (sysv_record_return_ptr(&fixedValue, mixed, &optionalValue) != &fixedValue || fixedValue != 42 ||
         optionalValue != 13 || mixed.y != 7) return 15;
+    if (sysv_record_rptr(2, mixed, &small) != 1 || small.x != 3 || small.y != 2 || mixed.y != 7) return 16;
     return 0;
 }

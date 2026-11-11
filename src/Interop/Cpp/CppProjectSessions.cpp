@@ -226,9 +226,12 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
     {
         CppType type;
         if (auto simple = simpleVariadicType(key)) type = std::move(*simple);
-        else if (key.starts_with("type:") && !key.ends_with('*'))
+        else if (key.starts_with("type:"))
         {
-            const auto ordinal = lookup.typeOrdinalForIdentity(std::string_view(key).substr(5));
+            const bool pointer = key.ends_with('*');
+            const auto identity = std::string_view(key).substr(5, key.size() - 5 - (pointer ? 1 : 0));
+            if (identity.empty() || identity.ends_with('*')) return {};
+            const auto ordinal = lookup.typeOrdinalForIdentity(identity);
             const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
             if (!imported || imported->fromPrecompiledCatalog || imported->isIncomplete ||
                 !imported->deferredImportError.empty() || !imported->clangUsr || !imported->objectLayout ||
@@ -279,6 +282,15 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planCppVariadicCall(
             type.recordIdentity.emplace();
             type.recordIdentity->name = observed->name;
             type.recordIdentity->clangUsr = observed->clangUsr;
+            if (pointer)
+            {
+                CppType wrapped;
+                wrapped.kind = CppTypeKind::Pointer;
+                wrapped.canonicalSpelling = type.canonicalSpelling + " *";
+                wrapped.sizeBits = wrapped.alignmentBits = 64;
+                wrapped.element = std::make_shared<const CppType>(std::move(type));
+                type = std::move(wrapped);
+            }
             arguments.push_back({std::move(type), origin});
             continue;
         }
@@ -396,22 +408,26 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
     }
     struct ReplayRecord { CppCRecordSnapshot snapshot; std::string key; };
     std::vector<ReplayRecord> selectedRecords;
-    std::vector<std::optional<std::size_t>> recordForArgument;
+    std::vector<std::optional<std::pair<std::size_t, bool>>> recordForArgument;
     for (const auto& key : optionalTypeKeys)
     {
-        if (!key.starts_with("type:") || key.ends_with('*')) { recordForArgument.push_back(std::nullopt); continue; }
-        const auto ordinal = lookup.typeOrdinalForIdentity(std::string_view(key).substr(5));
+        if (!key.starts_with("type:")) { recordForArgument.push_back(std::nullopt); continue; }
+        const bool pointer = key.ends_with('*');
+        const auto identity = std::string_view(key).substr(5, key.size() - 5 - (pointer ? 1 : 0));
+        if (identity.empty() || identity.ends_with('*')) return {};
+        const auto baseKey = "type:" + std::string(identity);
+        const auto ordinal = lookup.typeOrdinalForIdentity(identity);
         const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
         if (!imported || !imported->fromPrecompiledCatalog || imported->isIncomplete || !imported->objectLayout ||
             !imported->clangUsr || !imported->deferredImportError.empty() ||
             (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
              imported->origin != frontend::CppImportedTypeOrigin::CUnion)) return {};
-        auto previous = std::find_if(selectedRecords.begin(), selectedRecords.end(), [&](const auto& value) { return value.key == key; });
+        auto previous = std::find_if(selectedRecords.begin(), selectedRecords.end(), [&](const auto& value) { return value.key == baseKey; });
         if (previous != selectedRecords.end())
-        { recordForArgument.push_back(static_cast<std::size_t>(previous - selectedRecords.begin())); continue; }
+        { recordForArgument.emplace_back(std::make_pair(static_cast<std::size_t>(previous - selectedRecords.begin()), pointer)); continue; }
         const CppCRecordSnapshot* match = nullptr;
         for (const auto& record : records)
-            if (record.identityKey == std::string_view(key).substr(5))
+            if (record.identityKey == identity)
             { if (match) return {}; match = &record; }
         const auto expectedKind = imported->origin == frontend::CppImportedTypeOrigin::CStruct ?
             CppRecordKind::Struct : CppRecordKind::Union;
@@ -420,8 +436,8 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
             !match->namespaceSegments.empty() || !match->containingRecords.empty() ||
             !match->sizeBits || !match->alignmentBits || *match->sizeBits / 8 != imported->objectLayout->sizeBytes ||
             *match->alignmentBits / 8 != imported->objectLayout->alignmentBytes || !makeSimpleCRecordAbiReplay(*match)) return {};
-        recordForArgument.push_back(selectedRecords.size());
-        selectedRecords.push_back({*match, key});
+        recordForArgument.emplace_back(std::make_pair(selectedRecords.size(), pointer));
+        selectedRecords.push_back({*match, baseKey});
     }
     if (selectedRecords.empty()) return {};
     std::string source;
@@ -470,7 +486,21 @@ std::shared_ptr<const abi_plan::VariadicCallPlan> planPrecompiledCppVariadicCall
     std::vector<CppType> args;
     for (std::size_t i = 0; i < optionalTypeKeys.size(); ++i)
     {
-        if (recordForArgument[i]) { args.push_back(replayTypes[*recordForArgument[i]]); continue; }
+        if (recordForArgument[i])
+        {
+            const auto [index, pointer] = *recordForArgument[i];
+            if (!pointer) args.push_back(replayTypes[index]);
+            else
+            {
+                CppType type;
+                type.kind = CppTypeKind::Pointer;
+                type.canonicalSpelling = replayTypes[index].canonicalSpelling + " *";
+                type.sizeBits = type.alignmentBits = 64;
+                type.element = std::make_shared<const CppType>(replayTypes[index]);
+                args.push_back(std::move(type));
+            }
+            continue;
+        }
         auto type = simpleVariadicType(optionalTypeKeys[i]);
         if (!type) return {};
         args.push_back(std::move(*type));

@@ -881,8 +881,25 @@ fria/caliente (`A:/temp/nsc-t09-sysv-varargs-2pi2f5zs`). Tambien pasaron las
 sondas de transporte, ABI e identidad y las regresiones C/SysV
 (`A:/temp/t09-transport-directed/`, `A:/temp/nsc-t09-llamadas-l518teid`,
 `A:/temp/nsc-t09-sysv-prueba-mlzsk3ef`,
-`A:/temp/nsc-t09-sysv-padded-pair-id-fpdt6oxk`). Punteros a records y otras
-combinaciones en esta ruta siguen pendientes de evidencia.
+`A:/temp/nsc-t09-sysv-padded-pair-id-fpdt6oxk`). En ese momento los punteros a
+records en esta ruta seguian pendientes de evidencia.
+
+Se comprobo despues una llamada con record mixto por valor y puntero variadico
+a otro record C plano. El productor verifica los registros, AL y los campos,
+y modifica el record apuntado; el llamador comprueba la escritura y conserva
+el record pasado por valor. El control C paso antes de la correccion, mientras
+NSC rechazaba la llamada (`A:/temp/nsc-t09-sysv-varargs-fu7k40i0`). La ruta
+directa contrasta la identidad y el origen de cada record; la precompilada
+recupera y verifica el record apuntado antes de consultar a Clang. Pasaron
+estatica y DLL O0–O3, plantilla sin encabezado, HIR/MIR con uno y cuatro
+trabajadores, LLVM, cache y rechazos de record empaquetado por valor y por
+puntero (`A:/temp/nsc-t09-sysv-varargs-0w1qmdlb`). Pasaron las sondas ABI,
+transporte e identidad y las regresiones C/SysV
+(`A:/temp/t09-transport-directed/`, `A:/temp/nsc-t09-llamadas-qlbak5x9`,
+`A:/temp/nsc-t09-sysv-prueba-dcr6w22o`,
+`A:/temp/nsc-t09-sysv-padded-pair-id-bk6dhgji`). El puntero fijo o retorno
+de puntero a record en esta combinacion, records no planos precompilados y
+otras formas siguen pendientes; T09-003 no se cierra.
 
 ## Retorno indirecto sin argumentos byval
 
