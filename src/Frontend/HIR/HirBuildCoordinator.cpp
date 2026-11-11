@@ -1876,15 +1876,19 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
                     interop::abi_plan::isSysVSmallRecordsRoundTrip(*symbol.cppAbiPlan, symbol.mangledName) &&
                     [&] {
+                        bool hasRecord = false;
                         for (std::size_t i = 0; i < symbol.cppParameterTypes.size(); ++i)
+                        {
+                            if (symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Record) hasRecord = true;
                             if (!((symbol.cppParameterTypes[i].kind == interop::CppTypeKind::Record &&
                                    symbol.cppParameterTypes[i].sizeBits == symbol.cppAbiPlan->physicalParameters[i].type.widthOrCount) ||
                                   (symbol.cppParameterTypes[i].kind == interop::CppTypeKind::SignedInteger &&
-                                   symbol.cppParameterTypes.size() == 2 && i == 1 &&
+                                   symbol.cppParameterTypes.size() == 2 &&
                                    function.parameterTypeKeys[i] == "builtin:int" &&
                                    symbol.cppAbiPlan->physicalParameters[i].type.widthOrCount == 32)))
                                 return false;
-                        return true;
+                        }
+                        return hasRecord;
                     }();
                 if (function.isVariadic || ((!supportedReturn || !supportedParameters) && !supportedRecord && !supportedSmallRecords))
                 {

@@ -552,3 +552,13 @@ en A:/temp/nsc-t09-sysv-prueba-znbfi5om; los records de tipos distintos
 pasaron en A:/temp/nsc-t09-sysv-hetero-ci0h0vp_. Otras posiciones, tipos de
 escalar y clasificaciones permanecen pendientes; T09-003 sigue abierto.
 
+El orden inverso, `int` seguido del record, tenia controles C correctos y NSC
+lo rechazaba (A:/temp/nsc-t09-sysv-scalar-record-j8b999pu). Se amplio el
+consumo del plan para ese orden, siempre con dos argumentos y al menos un
+record. La muestra paso las ocho comparaciones estatica/DLL O0–O3 y la
+plantilla precompilada sin encabezado O0:
+A:/temp/nsc-t09-sysv-scalar-record-7d9j9daf. La regresion del orden anterior
+paso en A:/temp/nsc-t09-sysv-record-scalar-yljdztd2 y las pruebas de plan y
+metadatos en A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log.
+Otras mezclas, cantidades de argumentos y tipos de escalar siguen pendientes.
+

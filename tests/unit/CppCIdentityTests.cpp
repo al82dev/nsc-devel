@@ -1662,6 +1662,14 @@ bool checkDependencyTypeCodec()
         abi_plan::isSysVSmallRecordsRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
         "C dependency function retains a record and an integer argument");
     recordFunction.declaration.parameters[1].type = savedSecondType;
+    const auto savedFirstType = recordFunction.declaration.parameters[0].type;
+    recordFunction.declaration.parameters[0].type.kind = CppTypeKind::SignedInteger;
+    ok &= expect(encodeCDependencyFunction(recordFunction, recordBytes, error) &&
+        decodeCDependencyFunction(recordBytes, restoredRecord, error) && restoredRecord.declaration.abiPlan &&
+        restoredRecord.declaration.parameters[0].type.kind == CppTypeKind::SignedInteger &&
+        abi_plan::isSysVSmallRecordsRoundTrip(*restoredRecord.declaration.abiPlan, recordFunction.linkSymbol),
+        "C dependency function retains an integer and a record argument");
+    recordFunction.declaration.parameters[0].type = savedFirstType;
     auto eightPlan = std::make_shared<abi_plan::Plan>(*twoSmallPlan);
     for (std::size_t i = 2; i < 8; ++i)
     {

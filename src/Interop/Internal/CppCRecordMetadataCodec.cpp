@@ -478,16 +478,20 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         if (f.callingConvention != "sysv_abi" || f.variadic || !f.hasPrototype ||
             f.externalSymbol != value.linkSymbol || f.returnType.kind != CppTypeKind::Record ||
             f.returnType.sizeBits != bits || f.parameters.size() != (manyRecords ? f.abiPlan->logicalParameters.size() : 1U) ||
-            f.parameters[0].type.kind != CppTypeKind::Record || (!manyRecords && f.parameters[0].type.sizeBits != bits) ||
+            (!manyRecords && (f.parameters[0].type.kind != CppTypeKind::Record || f.parameters[0].type.sizeBits != bits)) ||
             (manyRecords && [&] {
+                bool hasRecord = false;
                 for (std::size_t i = 0; i < f.parameters.size(); ++i)
+                {
+                    if (f.parameters[i].type.kind == CppTypeKind::Record) hasRecord = true;
                     if (!((f.parameters[i].type.kind == CppTypeKind::Record &&
                            f.parameters[i].type.sizeBits == f.abiPlan->physicalParameters[i].type.widthOrCount) ||
                           (f.parameters[i].type.kind == CppTypeKind::SignedInteger &&
-                           f.parameters.size() == 2 && i == 1 &&
+                           f.parameters.size() == 2 &&
                            f.parameters[i].type.sizeBits == 32 &&
                            f.abiPlan->physicalParameters[i].type.widthOrCount == 32))) return true;
-                return false;
+                }
+                return !hasRecord;
             }()) ||
             (indirectRecord && (bits <= 128 || bits % 8 != 0 ||
                 f.returnType.alignmentBits != f.abiPlan->logicalReturn.alignment * 8 ||
