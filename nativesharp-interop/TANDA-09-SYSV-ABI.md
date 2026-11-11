@@ -323,3 +323,15 @@ A:/temp/t09-planes-identity.log. Las regresiones del orden anterior y de
 A:/temp/nsc-t09-sysv-mixed-id-w6idklm8. La prueba negativa de esta sesion
 conserva el rechazo de un vector primero con pieza `i32` y de callback en
 A:/temp/nsc-t09-sysv-prueba-x6h1evqf. Otras anchuras y firmas siguen pendientes.
+
+Vector seguido de `i32`: para `struct { float z, w; short x, y; }`, Clang emite
+`{ <2 x float>, i32 }` (A:/temp/nsc-t09-if-clang-xjrjcky4). El control C paso
+y NSC rechazo el caso antes del cambio en A:/temp/nsc-t09-sysv-mixed-vs-tr2dok_7.
+Despues pasaron las ocho comparaciones estatica/DLL O0–O3, las firmas LLVM y
+una plantilla precompilada sin encabezado O0 en A:/temp/nsc-t09-sysv-mixed-vs-d2khp2vh.
+La sonda y metadatos pasaron en A:/temp/t09-planes-clang.log y
+A:/temp/t09-planes-identity.log. Las regresiones de ambos ordenes con `i64`
+pasaron en A:/temp/nsc-t09-sysv-mixed-vi-6udp84_g y
+A:/temp/nsc-t09-sysv-mixed-iv-0_xsbob0. La prueba negativa de esta sesion
+conserva el rechazo de dos piezas vectoriales y callback en
+A:/temp/nsc-t09-sysv-prueba-m1p9hzpj. Otras formas siguen pendientes.

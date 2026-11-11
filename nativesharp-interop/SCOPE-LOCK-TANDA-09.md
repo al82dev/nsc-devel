@@ -95,3 +95,5 @@ T09-003: investigar un record SysV con dos `int` y dos `float`, cuya segunda pie
 T09-003: conservar la prueba negativa de esta sesion con dos `float` seguidos de dos `int`, cuya pieza vectorial aparece primero y aun no se admite.
 T09-003: contrastar y probar el orden inverso, vector fijo de dos `float` seguido de una pieza `i64`, incluida precompilacion. Mantener la prueba negativa con una segunda pieza entera distinta que aun no se admite.
 T09-003: conservar la prueba negativa de esta sesion con un vector fijo seguido de una pieza `i32`, cuyo ancho aun no se admite.
+T09-003: contrastar y probar la forma vector fijo seguido de `i32`, con un record de dos `float` y dos `short`. Mantener como negativa una forma de vector seguida de otra anchura no admitida.
+T09-003: conservar la prueba negativa de esta sesion con dos piezas vectoriales, todavia no admitidas; ajustar su consumidor para que el diagnostico siga comprobando la firma ABI.
