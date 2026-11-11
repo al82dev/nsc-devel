@@ -70,6 +70,7 @@ int main(int argc, char** argv) {
         typedef struct R20B { unsigned char x[20]; } R20B;
         typedef struct R32B { unsigned char x[32]; } R32B;
         typedef struct RF { double x; int y; } RF;
+        typedef int (__attribute__((sysv_abi)) *RFMixedCallback)(RF);
         typedef struct RID { int x, y; double z; } RID;
         typedef struct RDD { double x, y; } RDD;
         typedef struct RDF { double x; float y; } RDF;
@@ -1288,6 +1289,42 @@ int main(int argc, char** argv) {
             mixedKey = "type:" + imported->identity.key();
     }
     if (mixedKey.empty()) return 188;
+    const auto liveAliases = sessionGroups[0].sessions[0]->typeAliasesSnapshot();
+    if (!liveAliases) return 267;
+    const CppTypeAliasDeclaration* selectedAlias = nullptr;
+    for (const auto& alias : *liveAliases) if (alias.name == "RFMixedCallback") selectedAlias = &alias;
+    if (!selectedAlias || !selectedAlias->clangUsr) return 268;
+    nativesharp::frontend::CppImportedTypeAlias importedAlias{
+        0, projectPath, 0, "x86_64-pc-windows-msvc", *selectedAlias, {}};
+    const auto mappedAlias = projectCppStoredFunctionPointer(importedAlias.declaration.underlyingType, 0, "AbiProbe", &lookup);
+    if (!mappedAlias) return 269;
+    const auto selectedPointerPlan = planCppFunctionPointerForAlias(graph, sessionGroups, lookup, importedAlias,
+        mappedAlias->nativeSharpTypeKey);
+    if (!selectedPointerPlan || selectedPointerPlan->logicalParameters.size() != 1 ||
+        selectedPointerPlan->logicalParameters[0].physicalCount != 2 ||
+        selectedPointerPlan->physicalParameters.size() != 2 ||
+        selectedPointerPlan->physicalParameters[0].type.kind != abi_plan::TypeKind::Double ||
+        selectedPointerPlan->physicalParameters[1].type.widthOrCount != 32) return 270;
+    auto wrongAlias = importedAlias;
+    wrongAlias.referenceIndex = 1;
+    if (planCppFunctionPointerForAlias(graph, sessionGroups, lookup, wrongAlias, mappedAlias->nativeSharpTypeKey) ||
+        planCppFunctionPointerForAlias(graph, sessionGroups, lookup, importedAlias, "wrong-type")) return 271;
+    wrongAlias = importedAlias;
+    wrongAlias.declaration.clangUsr = "wrong-usr";
+    if (planCppFunctionPointerForAlias(graph, sessionGroups, lookup, wrongAlias, mappedAlias->nativeSharpTypeKey)) return 272;
+    wrongAlias = importedAlias;
+    wrongAlias.fromPrecompiledCatalog = true;
+    if (planCppFunctionPointerForAlias(graph, sessionGroups, lookup, wrongAlias, mappedAlias->nativeSharpTypeKey)) return 273;
+    wrongAlias = importedAlias;
+    wrongAlias.projectFile = uniqueDirectory / "different.nsproj";
+    if (planCppFunctionPointerForAlias(graph, sessionGroups, lookup, wrongAlias, mappedAlias->nativeSharpTypeKey)) return 274;
+    wrongAlias = importedAlias;
+    wrongAlias.targetTriple = "x86_64-unknown-linux-gnu";
+    if (planCppFunctionPointerForAlias(graph, sessionGroups, lookup, wrongAlias, mappedAlias->nativeSharpTypeKey)) return 275;
+    sessionGroups.emplace_back();
+    sessionGroups.back().projectFile = projectPath;
+    if (planCppFunctionPointerForAlias(graph, sessionGroups, lookup, importedAlias, mappedAlias->nativeSharpTypeKey)) return 276;
+    sessionGroups.pop_back();
     const std::vector<std::string> recordKeys{"builtin:int", mixedKey};
     auto recordCall = planCppVariadicCall(graph, sessionGroups, lookup, *variadicSymbol, recordKeys);
     if (!recordCall || recordCall->arguments.size() != 3 || recordCall->arguments[2].physicalCount != 2 ||
@@ -1296,7 +1333,8 @@ int main(int argc, char** argv) {
     auto conflictingRecordOrigin = openRecordSession("struct RF { long long x; int y; };");
     if (!conflictingRecordOrigin) return 190;
     sessionGroups[0].sessions.push_back(std::move(conflictingRecordOrigin));
-    if (planCppVariadicCall(graph, sessionGroups, lookup, *variadicSymbol, recordKeys)) return 191;
+    if (planCppVariadicCall(graph, sessionGroups, lookup, *variadicSymbol, recordKeys) ||
+        planCppFunctionPointerForAlias(graph, sessionGroups, lookup, importedAlias, mappedAlias->nativeSharpTypeKey)) return 191;
     sessionGroups[0].sessions.pop_back();
     CppSessionOptions duplicateOptions;
     duplicateOptions.language = CppLanguageMode::C;

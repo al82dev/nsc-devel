@@ -5,7 +5,7 @@
 #include <span>
 
 namespace nativesharp::compilation { class ProjectGraph; }
-namespace nativesharp::frontend { struct NamespaceFunctionSymbol; class ProjectNameLookup; struct PrecompiledSyntaxModule; }
+namespace nativesharp::frontend { struct NamespaceFunctionSymbol; class ProjectNameLookup; struct PrecompiledSyntaxModule; struct CppImportedTypeAlias; }
 namespace nativesharp::interop
 {
 struct CppProjectSessions;
@@ -24,6 +24,12 @@ struct CppVariadicArgumentOrigin
 std::optional<abi_plan::Plan> reconcileCppFunctionPointerAbiPlan(
     const CppInteropSession& aliasSession, std::string_view name, const CppType& expectedPointer,
     const CppVariadicArgumentOrigin& result, std::span<const CppVariadicArgumentOrigin> parameters);
+
+// A resolved live alias is required. This does not authorize lowering or replay.
+std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    const frontend::ProjectNameLookup& lookup, const frontend::CppImportedTypeAlias& alias,
+    std::string_view resolvedTypeKey);
 
 // Resolve against the function's session after checking each record's origin
 // and, when necessary, structural equivalence. The caller retains all sessions.

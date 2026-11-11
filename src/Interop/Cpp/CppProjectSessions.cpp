@@ -2,6 +2,7 @@
 #include "nativesharp/Interop/CppVariadicAbiReconciliation.h"
 #include "nativesharp/Interop/CppCRecordAbiReplay.h"
 #include "nativesharp/Interop/CppVariadicAbiCodec.h"
+#include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
 #include "../Internal/CppCRecordMetadataCodec.h"
 #include "nativesharp/Compilation/Project.h"
@@ -240,6 +241,101 @@ std::optional<abi_plan::Plan> reconcileCppFunctionPointerAbiPlan(
         !plan->targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan->dataLayout.starts_with("e-") ||
         plan->logicalParameters.size() != parameters.size()) return std::nullopt;
     return plan;
+}
+
+std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
+    const compilation::ProjectGraph& graph, std::span<const CppProjectSessions> projects,
+    const frontend::ProjectNameLookup& lookup, const frontend::CppImportedTypeAlias& alias,
+    std::string_view resolvedTypeKey)
+{
+    if (alias.fromPrecompiledCatalog || alias.projectOrdinal >= graph.projects().size() ||
+        alias.projectFile != graph.projects()[alias.projectOrdinal].projectFile() ||
+        alias.targetTriple != "x86_64-pc-windows-msvc" || !alias.declaration.clangUsr ||
+        alias.declaration.clangUsr->empty() || alias.declaration.name.empty() ||
+        alias.declaration.qualifiedName != alias.declaration.name) return {};
+    const auto mapped = projectCppStoredFunctionPointer(alias.declaration.underlyingType, alias.projectOrdinal,
+        graph.projects()[alias.projectOrdinal].moduleName(), &lookup);
+    if (!mapped || mapped->nativeSharpTypeKey != resolvedTypeKey) return {};
+    const CppInteropSession* aliasSession = nullptr;
+    for (const auto& group : projects)
+    {
+        if (group.projectFile != alias.projectFile) continue;
+        if (aliasSession || alias.referenceIndex >= group.sessions.size() || !group.sessions[alias.referenceIndex]) return {};
+        aliasSession = group.sessions[alias.referenceIndex].get();
+    }
+    if (!aliasSession || aliasSession->state() != CppSessionState::Ready ||
+        aliasSession->optionsSnapshot().language != CppLanguageMode::C ||
+        aliasSession->optionsSnapshot().targetTriple != alias.targetTriple) return {};
+    const auto aliases = aliasSession->typeAliasesSnapshot();
+    if (!aliases) return {};
+    unsigned aliasMatches = 0;
+    for (const auto& observed : *aliases)
+        if (observed.name == alias.declaration.name && observed.qualifiedName == alias.declaration.qualifiedName &&
+            observed.clangUsr == alias.declaration.clangUsr &&
+            observed.underlyingType.canonicalSpelling == alias.declaration.underlyingType.canonicalSpelling)
+            ++aliasMatches;
+    if (aliasMatches != 1) return {};
+    const auto& pointer = alias.declaration.underlyingType;
+    if (!pointer.element || !pointer.element->function) return {};
+    const auto& signature = *pointer.element->function;
+    const auto originFor = [&](const CppType& type) -> std::optional<CppVariadicArgumentOrigin> {
+        const CppType* record = &type;
+        unsigned depth = 0;
+        while (record->kind == CppTypeKind::Pointer)
+        {
+            if (++depth > 16 || !record->element) return std::nullopt;
+            record = record->element.get();
+        }
+        if (record->kind != CppTypeKind::Record) return CppVariadicArgumentOrigin{type, nullptr};
+        const auto identity = projectCppRecordTypeIdentity(*record, graph.projects()[alias.projectOrdinal].moduleName());
+        const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
+        const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+        if (!imported || imported->fromPrecompiledCatalog || imported->isIncomplete ||
+            !imported->deferredImportError.empty() || !imported->clangUsr || !imported->objectLayout ||
+            imported->projectOrdinal >= graph.projects().size() || !record->sizeBits || !record->alignmentBits ||
+            imported->objectLayout->sizeBytes > UINT64_MAX / 8 || imported->objectLayout->alignmentBytes > UINT64_MAX / 8 ||
+            *record->sizeBits != imported->objectLayout->sizeBytes * 8 ||
+            *record->alignmentBits != imported->objectLayout->alignmentBytes * 8 || !record->recordIdentity ||
+            record->recordIdentity->clangUsr != imported->clangUsr ||
+            (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
+             imported->origin != frontend::CppImportedTypeOrigin::CUnion)) return std::nullopt;
+        const auto& originFile = graph.projects()[imported->projectOrdinal].projectFile();
+        const CppInteropSession* origin = nullptr;
+        for (const auto& group : projects)
+        {
+            if (group.projectFile != originFile) continue;
+            for (const auto& candidate : group.sessions)
+            {
+                if (!candidate || candidate->state() != CppSessionState::Ready) return std::nullopt;
+                if (candidate->optionsSnapshot().language != CppLanguageMode::C) continue;
+                const auto records = candidate->recordsSnapshot();
+                if (!records) return std::nullopt;
+                for (const auto& item : *records)
+                {
+                    if (!item.complete || item.clangUsr != imported->clangUsr || item.name != imported->identity.name()) continue;
+                    const auto kind = imported->origin == frontend::CppImportedTypeOrigin::CStruct ? CppRecordKind::Struct : CppRecordKind::Union;
+                    if (item.isCxx || item.kind != kind || item.sizeBits != record->sizeBits ||
+                        item.alignmentBits != record->alignmentBits) return std::nullopt;
+                    if (origin && (origin == candidate.get() ||
+                        origin->structurallyEquivalentRecord(*candidate, item.qualifiedName) != true)) return std::nullopt;
+                    origin = candidate.get();
+                }
+            }
+        }
+        if (!origin) return std::nullopt;
+        return CppVariadicArgumentOrigin{type, origin};
+    };
+    const auto result = originFor(signature.returnType);
+    if (!result) return {};
+    std::vector<CppVariadicArgumentOrigin> parameters;
+    for (const auto& type : signature.parameterTypes)
+    {
+        auto origin = originFor(type);
+        if (!origin) return {};
+        parameters.push_back(std::move(*origin));
+    }
+    auto plan = reconcileCppFunctionPointerAbiPlan(*aliasSession, alias.declaration.name, pointer, *result, parameters);
+    return plan ? std::make_shared<const abi_plan::Plan>(std::move(*plan)) : nullptr;
 }
 
 std::optional<abi_plan::VariadicCallPlan> reconcileCppVariadicCallAbiPlan(

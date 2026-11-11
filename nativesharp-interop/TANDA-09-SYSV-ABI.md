@@ -1181,6 +1181,18 @@ estatica y DLL O0–O3 y plantilla precompilada
 una observacion aislada: falta asociarla a la resolucion real del typedef,
 transportar el plan y validar su procedencia precompilada antes de emitir.
 
+Se agrego un proveedor experimental que recibe un typedef ya seleccionado,
+comprueba su proyecto, referencia, USR, sesion viva, destino e identidad de tipo,
+y reconcilia los records importados antes de devolver el plan. La sonda usa
+una sesion Clang real y un record mixto, y rechaza referencia incorrecta,
+tipo o USR incorrectos, proyecto o destino incorrectos, grupos duplicados,
+origen precompilado no conciliado y un record incompatible
+(`A:/temp/t09-transport-directed/`). La regresion de llamadas indirectas paso
+en estatica y DLL O0–O3 y plantilla precompilada
+(`A:/temp/nsc-t09-sysv-indirecta-matriz-4y1z5fje`). El proveedor aun no se
+invoca desde la resolucion de una llamada real y no habilita su emision; la
+procedencia del caso precompilado y el transporte del plan siguen pendientes.
+
 ## Retorno indirecto sin argumentos byval
 
 Dos controles C pasaron mientras NSC rechazaba las firmas: una funcion sin
