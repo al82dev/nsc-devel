@@ -490,6 +490,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                            f.parameters[i].type.sizeBits == 32 &&
                            f.abiPlan->physicalParameters[i].type.kind == abi_plan::TypeKind::Integer &&
                            f.abiPlan->physicalParameters[i].type.widthOrCount == 32) ||
+                          (f.parameters[i].type.kind == CppTypeKind::Pointer &&
+                           f.abiPlan->physicalParameters[i].type.kind == abi_plan::TypeKind::Pointer &&
+                           f.abiPlan->physicalParameters[i].type.widthOrCount == 0) ||
                           (f.parameters[i].type.kind == CppTypeKind::Floating &&
                            ((f.parameters[i].type.sizeBits == 32 && f.abiPlan->physicalParameters[i].type.kind == abi_plan::TypeKind::Float) ||
                             (f.parameters[i].type.sizeBits == 64 && f.abiPlan->physicalParameters[i].type.kind == abi_plan::TypeKind::Double))))) return true;
@@ -628,7 +631,8 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
             {
                 if (f.parameters.size() < 2 || !f.parameters[0].type.sizeBits)
                 { error = "invalid C dependency record arguments"; return false; }
-                logical.coercion = f.parameters[0].type.kind == CppTypeKind::Floating ?
+                logical.coercion = f.parameters[0].type.kind == CppTypeKind::Pointer ?
+                    abi_plan::Type{abi_plan::TypeKind::Pointer} : f.parameters[0].type.kind == CppTypeKind::Floating ?
                     abi_plan::Type{*f.parameters[0].type.sizeBits == 64 ? abi_plan::TypeKind::Double : abi_plan::TypeKind::Float} :
                     abi_plan::Type{abi_plan::TypeKind::Integer, *f.parameters[0].type.sizeBits};
             }
@@ -645,7 +649,8 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
                     if (!f.parameters[i].type.sizeBits) { error = "invalid C dependency record argument"; return false; }
                     auto nextLogical = plan->logicalParameters[0];
                     nextLogical.firstPhysical = i;
-                    nextLogical.coercion = f.parameters[i].type.kind == CppTypeKind::Floating ?
+                    nextLogical.coercion = f.parameters[i].type.kind == CppTypeKind::Pointer ?
+                        abi_plan::Type{abi_plan::TypeKind::Pointer} : f.parameters[i].type.kind == CppTypeKind::Floating ?
                         abi_plan::Type{*f.parameters[i].type.sizeBits == 64 ? abi_plan::TypeKind::Double : abi_plan::TypeKind::Float} :
                         abi_plan::Type{abi_plan::TypeKind::Integer, *f.parameters[i].type.sizeBits};
                     plan->logicalParameters.push_back(std::move(nextLogical));

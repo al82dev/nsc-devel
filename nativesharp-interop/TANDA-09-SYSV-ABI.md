@@ -649,3 +649,18 @@ Esto no acredita combinaciones con records que necesiten multiples piezas,
 argumentos indirectos, punteros u otros escalares en la misma firma, ni todas
 las disposiciones de registros. T09-003 sigue abierto.
 
+## Record pequeno con puntero a entero
+
+El control C de la firma con record de cuatro bytes e `int*` paso en estatica
+y DLL, mientras NSC la rechazo antes del cambio
+(A:/temp/nsc-t09-sysv-record-pointer-1m0dhm__). El plan ahora admite el tipo
+fisico de puntero del espacio de direcciones cero para esta forma, y HIR permite
+el tipo `int*` comprobado. La muestra verifico copia y retorno del record,
+lectura y modificacion del entero apuntado, declaracion y llamada LLVM, ocho
+comparaciones estatica/DLL O0–O3 y plantilla precompilada sin encabezado O0:
+A:/temp/nsc-t09-sysv-record-pointer-4hvlkehu. La sonda Clang verifica ademas
+el rechazo de otro espacio de direcciones y la prueba de metadatos paso en
+A:/temp/t09-planes-clang.log y A:/temp/t09-planes-identity.log; la regresion de
+flotantes en pila paso en A:/temp/nsc-t09-sysv-float-stack-puxxn49a. Otros
+punteros y clasificaciones de records en firmas mixtas siguen pendientes.
+

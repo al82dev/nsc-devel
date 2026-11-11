@@ -865,6 +865,12 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 if (!value) return nullptr;
                 if (terminated()) return value;
                 const auto& typeKey = node->children[index]->typeKey;
+                if (typeKey == "builtin:int*" &&
+                    imported->cppAbiPlan->physicalParameters[sourceToParameter[index]].type.kind == interop::abi_plan::TypeKind::Pointer)
+                {
+                    sourceArguments.push_back(value);
+                    continue;
+                }
                 if ((typeKey == "builtin:float" &&
                     imported->cppAbiPlan->physicalParameters[sourceToParameter[index]].type.kind == interop::abi_plan::TypeKind::Float) ||
                     (typeKey == "builtin:double" &&

@@ -24,10 +24,12 @@ inline bool isSysVSmallRecordsRoundTrip(const Plan& plan, std::string_view symbo
         const bool directFloat = logical.coercion &&
             (logical.coercion->kind == TypeKind::Float || logical.coercion->kind == TypeKind::Double) &&
             physical.type.kind == logical.coercion->kind;
+        const bool directPointer = logical.coercion && logical.coercion->kind == TypeKind::Pointer &&
+            logical.coercion->widthOrCount == 0 && physical.type.kind == TypeKind::Pointer && physical.type.widthOrCount == 0;
         if (logical.passing != Passing::Direct || !logical.coercion ||
-            (!integer(*logical.coercion) && !directFloat) ||
+            (!integer(*logical.coercion) && !directFloat && !directPointer) ||
             logical.offset != 0 || logical.firstPhysical != i || logical.physicalCount != 1 ||
-            (!integer(physical.type) && !directFloat) || logical.coercion->widthOrCount != physical.type.widthOrCount ||
+            (!integer(physical.type) && !directFloat && !directPointer) || logical.coercion->widthOrCount != physical.type.widthOrCount ||
             physical.structureReturn || physical.byValue || physical.signExtend ||
             physical.zeroExtend || physical.inRegister || physical.noAlias) return false;
     }
