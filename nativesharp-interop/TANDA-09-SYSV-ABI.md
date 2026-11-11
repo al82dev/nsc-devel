@@ -1232,6 +1232,25 @@ escalares, junto a transporte, ABI e identidad
 `A:/temp/t09-transport-directed/`). Otras formas de retorno y la prueba
 negativa anterior siguen pendientes.
 
+**Retorno indirecto en memoria:** Clang devolvio el record de cinco enteros
+mediante `sret` alineado a 4 y recibio el argumento mediante `byval` alineado a
+8; el control C paso y NSC inicialmente rechazo la firma
+(`A:/temp/nsc-t09-sysv-indirecta-retorno-byval-tn7ky61s`). La implementacion
+reserva el retorno y aplica ambos atributos en las posiciones del plan
+validado. Pasaron ocho comparaciones directas estatica/DLL O0-O3
+(`A:/temp/nsc-t09-sysv-indirecta-record-matriz-eh_c9ubt`) y la plantilla
+precompilada sin encabezado en las mismas modalidades, con cache y rechazo de
+una variante no acreditada (`A:/temp/nsc-t09-sysv-indirecta-record-pre-zloydx41`).
+Se verificaron todos los campos retornados y el argumento original. Pasaron
+regresiones de retorno directo, argumento `byval`, combinacion mixta y escalares,
+ademas de transporte, ABI e identidad
+(`A:/temp/nsc-t09-sysv-indirecta-record-matriz-uhi6g1sr`,
+`A:/temp/nsc-t09-sysv-indirecta-record-matriz-4b8dzi5_`,
+`A:/temp/nsc-t09-sysv-indirecta-record-matriz-eln1vemq`,
+`A:/temp/nsc-t09-sysv-indirecta-matriz-bo_6mjpl`,
+`A:/temp/t09-transport-directed/`). Otras firmas y la contradiccion de la
+prueba negativa anterior siguen abiertas.
+
 El control `pruebas-tanda-09-sysv-indirecta` obtiene un puntero de
 una biblioteca C y llama seis argumentos enteros en orden, con suma ponderada.
 Clang 23.1.0 emitio `x86_64_sysvcc` para la llamada indirecta y su consumidor

@@ -423,7 +423,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     {
         std::vector<std::uint8_t> encodedReturn;
         if (signature.parameterTypes.size() != 1 || selectedRecords.size() != 1 ||
-            signature.returnType.sizeBits != 96 || signature.returnType.alignmentBits != 32 ||
+            (signature.returnType.sizeBits != 96 && signature.returnType.sizeBits != 160) ||
+            signature.returnType.alignmentBits != 32 ||
             !metadata_detail::encodeCDependencyType(signature.returnType, encodedReturn, error) ||
             encodedReturn != selectedRecords[0].encoded) return {};
     }

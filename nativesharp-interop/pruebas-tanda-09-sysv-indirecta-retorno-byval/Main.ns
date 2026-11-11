@@ -1,0 +1,8 @@
+int Main() {
+    T09LargeReturn input; input.a = 1; input.b = 2; input.c = 3; input.d = 4; input.e = 5;
+    T09LargeReturnCallback callback = t09_get_large_return_callback();
+    T09LargeReturn result = callback(input);
+    if (input.a != 1 || input.b != 2 || input.c != 3 || input.d != 4 || input.e != 5 ||
+        result.a != 11 || result.b != 22 || result.c != 33 || result.d != 44 || result.e != 55) return 1;
+    return 0;
+}

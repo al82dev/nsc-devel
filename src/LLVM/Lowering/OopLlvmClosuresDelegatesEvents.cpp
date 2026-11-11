@@ -1202,25 +1202,32 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 signature->callingConvention != language::CallingConvention::SysV || signature->variadic ||
                 signature->parameters.size() != node->argumentCount ||
                 node->argumentTypeKeys.size() != node->argumentCount ||
-                plan.logicalParameters.size() != node->argumentCount || plan.logicalReturn.passing != Passing::Direct)
+                plan.logicalParameters.size() != node->argumentCount)
                 return failValue(error, "sysv_abi function pointer record plan is not supported");
             LLVMTypeRef returnType = LLVMInt32TypeInContext(context_);
             LLVMTypeRef returnCarrier = nullptr;
+            bool indirectReturn = false;
             if (recordReturn)
             {
                 const auto* returnLayout = findStructLayout(mirModel_, node->typeKey);
                 const auto& physical = plan.physicalReturn;
-                if (!returnLayout || returnLayout->size != 12 || returnLayout->alignment != 4 ||
-                    physical.kind != TypeKind::Structure || physical.packed || physical.elements.size() != 2 ||
-                    physical.elements[0].kind != TypeKind::Integer || physical.elements[0].widthOrCount != 64 ||
-                    physical.elements[1].kind != TypeKind::Integer || physical.elements[1].widthOrCount != 32)
+                if (!returnLayout || returnLayout->alignment != 4)
+                    return failValue(error, "sysv_abi function pointer record return is not supported");
+                indirectReturn = returnLayout->size == 20 && plan.logicalReturn.passing == Passing::Indirect &&
+                    plan.logicalReturn.alignment == 4 && physical.kind == TypeKind::Void;
+                const bool directReturn = returnLayout->size == 12 && plan.logicalReturn.passing == Passing::Direct &&
+                    physical.kind == TypeKind::Structure && !physical.packed && physical.elements.size() == 2 &&
+                    physical.elements[0].kind == TypeKind::Integer && physical.elements[0].widthOrCount == 64 &&
+                    physical.elements[1].kind == TypeKind::Integer && physical.elements[1].widthOrCount == 32;
+                if (!indirectReturn && !directReturn)
                     return failValue(error, "sysv_abi function pointer record return is not supported");
                 returnCarrier = llvmType(node->typeKey, error);
                 if (!returnCarrier) return nullptr;
                 LLVMTypeRef pieces[] = {LLVMInt64TypeInContext(context_), LLVMInt32TypeInContext(context_)};
-                returnType = LLVMStructTypeInContext(context_, pieces, 2, 0);
+                returnType = indirectReturn ? LLVMVoidTypeInContext(context_) : LLVMStructTypeInContext(context_, pieces, 2, 0);
             }
-            else if (plan.physicalReturn.kind != TypeKind::Integer || plan.physicalReturn.widthOrCount != 32)
+            else if (plan.logicalReturn.passing != Passing::Direct || plan.physicalReturn.kind != TypeKind::Integer ||
+                plan.physicalReturn.widthOrCount != 32)
                 return failValue(error, "sysv_abi function pointer return plan is not supported");
             const auto plain = [](const PhysicalParameter& p) {
                 return !p.pointee && !p.structureReturn && !p.byValue && !p.signExtend &&
@@ -1240,6 +1247,13 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             }
             std::vector<LLVMTypeRef> physicalTypes;
             std::vector<LLVMValueRef> physicalArguments;
+            LLVMValueRef returnSlot = nullptr;
+            if (indirectReturn)
+            {
+                returnSlot = entryBlockAlloca(returnCarrier, 4, "sysv.callback.sret");
+                physicalTypes.push_back(LLVMPointerTypeInContext(context_, 0));
+                physicalArguments.push_back(returnSlot);
+            }
             struct ByValueAttribute { unsigned ordinal; LLVMTypeRef carrier; unsigned alignment; };
             std::vector<ByValueAttribute> byValues;
             for (std::size_t i = 0; i < node->argumentCount; ++i)
@@ -1318,13 +1332,22 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             LLVMTypeRef functionType = LLVMFunctionType(returnType, physicalTypes.data(),
                 static_cast<unsigned>(physicalTypes.size()), 0);
             LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, physicalArguments.data(),
-                static_cast<unsigned>(physicalArguments.size()), "sysv.callback.result");
+                static_cast<unsigned>(physicalArguments.size()), indirectReturn ? "" : "sysv.callback.result");
             LLVMSetInstructionCallConv(call, LLVMX8664SysVCallConv);
+            if (indirectReturn)
+                applySretAttributes([&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
+                    { LLVMAddCallSiteAttribute(call, index, attribute); }, 0, node->typeKey);
             for (const auto& value : byValues)
                 applySysVRecordByValue(context_, value.carrier, value.alignment, value.ordinal,
                     [&](LLVMAttributeIndex index, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, index, attribute); });
             if (recordReturn)
             {
+                if (indirectReturn)
+                {
+                    LLVMValueRef result = LLVMBuildLoad2(builder_, returnCarrier, returnSlot, "sysv.callback.sret.value");
+                    LLVMSetAlignment(result, 4);
+                    return result;
+                }
                 LLVMValueRef slot = entryBlockAlloca(returnCarrier, 4, "sysv.callback.return");
                 LLVMValueRef first = LLVMBuildStore(builder_, LLVMBuildExtractValue(builder_, call, 0, "sysv.callback.return.first"), slot);
                 LLVMValueRef second = LLVMBuildStore(builder_, LLVMBuildExtractValue(builder_, call, 1, "sysv.callback.return.second"),
