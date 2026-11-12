@@ -84,3 +84,10 @@ La autorización específica de esas dos rutas para el build aislado se solicit�
 al usuario y está pendiente. No se ha demostrado que se haya escrito en C; el
 destino configurado de esos artefactos es A. Hasta aclarar estas rutas y revisar
 los pasos realmente ejecutados, la conformidad de esos builds no está acreditada.
+
+Una tarea del agente que preparaba la repetición del constructor implícito
+con Core binario fue interrumpida por el filtro automático de la plataforma;
+dos intentos posteriores del mismo agente también terminaron con el mismo
+mensaje. El ejecutor con comprobación estricta de temporales quedó preparado
+pero esa repetición no se completó. Las demás tareas independientes continúan;
+no se atribuye el bloqueo al compilador ni se considera pasada esa repetición.
