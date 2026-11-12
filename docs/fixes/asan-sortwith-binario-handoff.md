@@ -42,6 +42,12 @@ con el integrador antes de editar cualquier archivo compartido.
   las formas cualificadas ya fallan al inferir `Of`.
 - `tests/integration/sort_with_alias.py` cubre `SortWith` por
   `ProjectReference`; no verifica esta llamada mediante `LibraryReference`.
+- `tests/integration/sort_with_binary_original.py` es una regresión dirigida
+  parametrizada para el ejemplo original y dos bibliotecas binarias. Actualmente
+  devuelve 1 porque el ejemplo no compila; un control separado con tipos
+  explícitos pasa. Comandos, hashes y limitaciones se documentan en
+  `asan-sortwith-binario-regresion.md`. Su registro en CMake corresponde al
+  integrador y no se ha realizado en esta rama.
 - El volcado `A:/nsc-asan-sdk-evidencia/collections-api.log` contiene la
   plantilla del alias. Su extracción legible y comando están en
   `extract-sortwith-api.py` y `dump-collections-api.cmd` en la misma carpeta.
