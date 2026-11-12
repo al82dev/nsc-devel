@@ -5582,14 +5582,15 @@ if(NSC_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalControl.ns"
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns")
     add_test(NAME nsc.sdk.shared-destructor-weak-cleanup-asan
-        COMMAND "${CMAKE_COMMAND}" -E env "NSC_SHARED_CLEANUP_ASAN=1"
-                "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_destructor_weak_cleanup.py"
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_destructor_weak_cleanup.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedLocalControl.ns"
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns")
-    set_tests_properties(nsc.sdk.shared-destructor-weak-cleanup-asan PROPERTIES SKIP_RETURN_CODE 77)
+    set_tests_properties(nsc.sdk.shared-destructor-weak-cleanup-asan PROPERTIES
+        SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        ENVIRONMENT "NSC_SHARED_CLEANUP_ASAN=1")
     add_test(NAME nsc.sdk.shared-atomic-last-weak
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_atomic_last_weak.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
@@ -5638,8 +5639,7 @@ if(NSC_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicWeak.ns"
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicFactory.ns")
     add_test(NAME nsc.sdk.shared-implicit-constructor-cleanup-asan
-        COMMAND "${CMAKE_COMMAND}" -E env "NSC_SHARED_CONSTRUCTOR_CLEANUP_ASAN=1"
-                "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_implicit_constructor_cleanup.py"
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_implicit_constructor_cleanup.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedControlStorage.ns"
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
@@ -5652,7 +5652,9 @@ if(NSC_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicHandle.ns"
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicWeak.ns"
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicFactory.ns")
-    set_tests_properties(nsc.sdk.shared-implicit-constructor-cleanup-asan PROPERTIES SKIP_RETURN_CODE 77)
+    set_tests_properties(nsc.sdk.shared-implicit-constructor-cleanup-asan PROPERTIES
+        SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        ENVIRONMENT "NSC_SHARED_CONSTRUCTOR_CLEANUP_ASAN=1")
     add_test(NAME nsc.sdk.shared-static-init-cleanup
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_static_init_cleanup.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
@@ -5849,8 +5851,10 @@ if(NSC_BUILD_TESTS)
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_owner_nested_alias_binary.py"
                     "${NSC_TEST_COMPILER}")
         add_test(NAME nsc.generics.nested-namespace-alias-visibility
-            COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_alias_visibility.py"
+            COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_alias_visibility.py"
                     "${NSC_TEST_COMPILER}")
+        set_tests_properties(nsc.generics.nested-namespace-alias-visibility PROPERTIES
+            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         add_test(NAME nsc.generics.dependent-constraints
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/dependent_generic_constraints.py"
                     "${NSC_TEST_COMPILER}")

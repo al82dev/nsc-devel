@@ -25,3 +25,25 @@ usar esa copia. Las pruebas posteriores deben usar herramientas por nombre,
 salvo las excepciones concretas ya autorizadas por el usuario. Los resultados
 históricos de otras tandas conservan su procedencia y necesitan una revisión
 individual antes de presentarse como evidencia conforme.
+
+Revisión posterior: algunos ejecutores iniciaron procesos hijos con el
+directorio de trabajo en temporales de A, aunque el comando exterior partiera
+del repositorio. Esas ejecuciones se conservan como observaciones no conformes
+con la regla de iniciar cada comando desde la copia autorizada. También se
+detectaron pruebas CTest que invocaron CMake o Python por rutas absolutas de
+configuración, sin autorización específica, y una consulta `where` de la
+ubicación de `nslink`. No se cuentan como validación conforme. Los controles
+de alias, limpieza débil y construcción fallida identificados en sus informes
+se repitieron tras corregir sus ejecutores; el detalle está en
+`A:/nsc-fixes-evidencia/repo-cwd-corrections-20261112.json` y sus logs.
+Las demás pruebas deben revisarse individualmente: un comando exterior iniciado
+desde el repositorio no demuestra por sí solo el directorio de sus hijos.
+El agente que preparó las pruebas de limpieza confirmó además que sus
+comandos exteriores originales se iniciaron desde `A:/`, no desde su copia;
+esas mediciones tampoco se consideran conformes. Sus repeticiones posteriores
+desde el repositorio principal se identifican por separado.
+
+Los registros nuevos de visibilidad y de las dos pruebas ASan de limpieza se
+ajustaron para invocar `python` por nombre y establecer el directorio de
+trabajo del repositorio. Las repeticiones documentadas se ejecutaron
+directamente; la nueva configuración CTest aún no se ha ejecutado.

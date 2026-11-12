@@ -9,6 +9,7 @@ import tempfile
 
 def main():
     compiler = Path(sys.argv[1]).resolve()
+    repo = Path(__file__).resolve().parents[2]
     fixtures = Path(__file__).with_suffix('')
     expected = {
         'visible': None,
@@ -26,7 +27,7 @@ def main():
         for case, missing in expected.items():
             project = root / 'fixtures' / case / 'Probe.nsproj'
             command = [str(compiler), '--check-project-method-bodies', str(project)]
-            result = subprocess.run(command, cwd=root, env=env, capture_output=True,
+            result = subprocess.run(command, cwd=repo, env=env, capture_output=True,
                                     text=True, errors='replace', timeout=120)
             output = result.stdout + result.stderr
             print('COMMAND', subprocess.list2cmdline(command), 'EXIT', result.returncode,

@@ -32,3 +32,17 @@ nombre; no se certifica una revisión limpia.
 La regresión permanente `generic_alias_visibility.py` repitió los cuatro
 controles representables y pasó con el compilador aislado. Comando y salida:
 `A:/nsc-fixes-evidencia/nested-alias-visibility-20261111.cmd` y `.log`.
+
+Corrección de procedencia: las primeras matrices y la regresión de visibilidad
+iniciaron procesos hijos desde carpetas de evidencia o temporales, y la prueba
+unitaria por CTest se inició desde el build. Esas mediciones no son conformes
+con el directorio de trabajo exigido. Con los ejecutores corregidos y comandos
+iniciados desde `A:/nsc-devel-fixes`, se repitieron las ocho combinaciones del
+alias, los cuatro controles de visibilidad y la prueba unitaria (16 checks),
+todas con resultado esperado. Los comandos y salidas están en
+`A:/nsc-fixes-evidencia/repo-cwd-corrections-20261112.json`,
+`repo-cwd-correction-alias-cases-20261112.log`,
+`repo-cwd-correction-alias-visibility-20261112.log` y
+`generic-alias-unit-repo-cwd-20261112.log`. Los controles de visibilidad de la
+base anterior no se repitieron con ese procedimiento y son evidencia
+histórica no conforme, no validación de la base.

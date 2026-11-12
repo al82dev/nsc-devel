@@ -21,3 +21,11 @@ por nombre, `nslink.exe` por nombre y las excepciones de compilador y LLVM
 autorizadas. Las ocho combinaciones devolvieron 42; comando y salida:
 `A:/nsc-fixes-evidencia/shared-cleanup-asan-direct-20261111.cmd` y `.log`.
 Se mantienen los límites de instrumentación y de `detect_leaks=0` anteriores.
+
+Corrección: los ejecutores anteriores iniciaban sus procesos hijos desde el
+temporal y las primeras invocaciones del agente desde `A:/`. Esas mediciones,
+incluida la repetición directa arriba, se conservan como no conformes. Tras
+corregir el ejecutor para usar la raíz de su repositorio, se repitieron los
+ocho controles ASan y los ocho normales con salida 42; comandos y resultados
+en `A:/nsc-fixes-evidencia/repo-cwd-corrections-20261112.json` y logs
+`repo-cwd-correction-weak-{0,1}-20261112.log`.
