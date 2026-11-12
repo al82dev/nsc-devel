@@ -4254,6 +4254,69 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
             recordViewOutputOrigins(viewArguments.syntaxes, arguments, viewArguments.candidate,
                 viewArguments.callable, scopeOrdinal, diagnostics, receiver);
         rejectDelegateNewToOrdinaryParameters(expression, arguments, delegateOrdinal, diagnostics);
+        if (expression->first() != nullptr &&
+            expression->first()->kind() == ast::AstNodeKind::ConditionalExpression)
+        {
+            std::vector<const ast::AstNode*> pending{expression->first()};
+            const ast::AstNode* sharedEnvironment = nullptr;
+            bool knownSameEnvironment = true;
+            while (!pending.empty())
+            {
+                const ast::AstNode* alternative = pending.back();
+                pending.pop_back();
+                if (alternative == nullptr) continue;
+                if (alternative->kind() == ast::AstNodeKind::ConditionalExpression)
+                {
+                    const ast::AstNode* condition = alternative->first();
+                    const MethodExpressionTypeBinding* conditionType = condition != nullptr
+                        ? expressionTypeBinding(condition, methodMemberOrdinal) : nullptr;
+                    if (conditionType != nullptr && conditionType->integerConstant.has_value())
+                        pending.push_back(conditionType->integerConstant->value != 0
+                            ? alternative->second() : alternative->third());
+                    else if (condition != nullptr && condition->kind() == ast::AstNodeKind::BooleanLiteralExpression &&
+                        (condition->tokenKind() == TokenKind::KwTrue || condition->tokenKind() == TokenKind::KwFalse))
+                        pending.push_back(condition->tokenKind() == TokenKind::KwTrue
+                            ? alternative->second() : alternative->third());
+                    else
+                    {
+                        pending.push_back(alternative->second());
+                        pending.push_back(alternative->third());
+                    }
+                    continue;
+                }
+                const MethodNameBinding* name = nameBinding(alternative, methodMemberOrdinal);
+                if (name == nullptr || name->kind != MethodNameBindingKind::Local ||
+                    !name->localOrdinal.has_value())
+                {
+                    knownSameEnvironment = false;
+                    break;
+                }
+                const auto found = fnOnceEnvironments_.find(*name->localOrdinal);
+                if (found == fnOnceEnvironments_.end() || found->second.size() != 1)
+                {
+                    knownSameEnvironment = false;
+                    break;
+                }
+                const ast::AstNode* environment = *found->second.begin();
+                if (sharedEnvironment != nullptr && sharedEnvironment != environment)
+                {
+                    knownSameEnvironment = false;
+                    break;
+                }
+                sharedEnvironment = environment;
+            }
+            if (knownSameEnvironment && sharedEnvironment != nullptr)
+            {
+                if (consumedFnOnceEnvironments_.contains(sharedEnvironment))
+                {
+                    diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error, expression->range(),
+                        "FnOnce closure selected by a conditional was already invoked or may have been invoked");
+                    return result;
+                }
+                consumedFnOnceEnvironments_.insert(sharedEnvironment);
+            }
+        }
         if (!validateCallableTraitInvocation(
                 expression, callee, scopeOrdinal, diagnostics)) return result;
         binding.selectedDefaultArguments = std::move(defaultedSyntaxes);
