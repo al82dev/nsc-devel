@@ -66,6 +66,22 @@ void ProjectMethodBodyModel::collectViewSourceFields(
         if (std::ranges::find(local.viewSourceIdentities, identity) == local.viewSourceIdentities.end())
             local.viewSourceIdentities.push_back(std::move(identity));
     };
+    // An exact reference to a frame local is a possible loan of that
+    // local's storage. Keep all pre-existing Unknown observations as well.
+    const auto addExactReferenceOwner = [&](std::size_t referenceOrdinal)
+    {
+        if (referenceOrdinal >= locals_.size()) return;
+        const MethodLocalSymbol& reference = locals_[referenceOrdinal];
+        const MethodEscapeOrigin& origin = reference.referenceEscapeOrigin;
+        if (!reference.isReference || reference.methodMemberOrdinal != callable ||
+            origin.kind != MethodEscapeOriginKind::CurrentFrameLocal || !origin.ordinal.has_value() ||
+            *origin.ordinal >= locals_.size() ||
+            reference.referencePlaceKey != "L" + std::to_string(*origin.ordinal)) return;
+        const MethodLocalSymbol& owner = locals_[*origin.ordinal];
+        if (owner.methodMemberOrdinal != callable || owner.isReference || owner.isStatic ||
+            !owner.isMoveOnly || !scopeContains(owner.scopeOrdinal, scopeOrdinal)) return;
+        addIdentity({owner.name, ViewSourceIdentityKind::Local, *origin.ordinal});
+    };
     const auto addUnknownRoot = [&](const std::string& root)
     {
         if (root.size() > 1 && root.front() == '@')
@@ -150,6 +166,7 @@ void ProjectMethodBodyModel::collectViewSourceFields(
                             !owner.isStatic && owner.isMoveOnly)
                             addIdentity({call->receiverSyntax->text(), ViewSourceIdentityKind::Local,
                                          *binding->localOrdinal});
+                        else if (owner.isReference) addExactReferenceOwner(*binding->localOrdinal);
                     }
                     if (std::ranges::find(local.viewSourceFields, root) == local.viewSourceFields.end())
                         local.viewSourceFields.push_back(root);
@@ -354,6 +371,7 @@ void ProjectMethodBodyModel::collectViewSourceFields(
                 addIdentity({owner->text(), binding->kind == ScopeNameKind::Local
                     ? ViewSourceIdentityKind::Local : ViewSourceIdentityKind::Parameter,
                     binding->semanticOrdinal});
+                if (binding->kind == ScopeNameKind::Local) addExactReferenceOwner(binding->semanticOrdinal);
                 if (std::ranges::find(local.viewSourceFields, root) == local.viewSourceFields.end())
                     local.viewSourceFields.push_back(root);
             }

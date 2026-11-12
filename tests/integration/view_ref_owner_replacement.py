@@ -79,6 +79,40 @@ CASES = {
         'original = default(Owner); return source.Get();'),
     'direct_owner': (False, OWNER + DIRECT + 'owner = default(Owner); return source.Get();'),
     'receiver_owner': (False, OWNER + RECEIVER + 'owner = default(Owner); return source.Get();'),
+    'ref_receiver_owner': (False, OWNER +
+        'ref Owner original = ref owner; View source = original.Borrow(); '
+        'original = default(Owner); return source.Get();'),
+    'ref_receiver_reborrow': (False, OWNER +
+        'ref Owner first = ref owner; ref Owner second = ref first; ref Owner third = ref second; '
+        'View source = third.Borrow(); third = default(Owner); return source.Get();'),
+    'ref_field_constructor_owner': (False, OWNER +
+        'ref Owner original = ref owner; View source = new View(ref original.Value); '
+        'original = default(Owner); return source.Get();'),
+    'ref_receiver_output_owner': (False, OWNER +
+        'ref Owner original = ref owner; View result = default(View); '
+        '{ View source = original.Borrow(); Sink.Save(source, ref result); } '
+        'original = default(Owner); return result.Get();'),
+    'ref_receiver_reassigned_view': (False, OWNER +
+        'ref Owner original = ref owner; View source = default(View); source = original.Borrow(); '
+        'original = default(Owner); return source.Get();'),
+    'ref_receiver_branch_view': (False, OWNER +
+        'ref Owner original = ref owner; View source = default(View); bool choose = true; '
+        'if (choose) { source = original.Borrow(); } original = default(Owner); return source.Get();'),
+    'ref_receiver_shadow_owner': (False, OWNER +
+        'ref Owner original = ref owner; View source = original.Borrow(); '
+        '{ Owner owner; owner.Value = 7; original = default(Owner); } return source.Get();'),
+    'ref_receiver_distinct_owner': (True,
+        'Owner first; first.Value = 42; Owner second; second.Value = 7; '
+        'ref Owner left = ref first; View source = left.Borrow(); '
+        'ref Owner right = ref second; right = default(Owner); return source.Get();'),
+    'ref_receiver_distinct_shadow': (True, OWNER +
+        'ref Owner outer = ref owner; View source = outer.Borrow(); '
+        '{ Owner owner; owner.Value = 7; ref Owner inner = ref owner; inner = default(Owner); } '
+        'return source.Get();'),
+    'ref_field_different_owner': (True,
+        'Owner first; first.Value = 42; ref int field = ref first.Value; '
+        'View source = new View(ref field); Owner second; second.Value = 7; '
+        'ref Owner other = ref second; other = default(Owner); return source.Get();'),
 }
 for mode, method in (('ref', 'Save'), ('out', 'SaveOut')):
     for origin, initial in (('direct', DIRECT), ('receiver', RECEIVER)):

@@ -2,6 +2,33 @@
 
 ## Protección parcial por identidad local
 
+### Productor de vista a través de referencia local
+
+Al construir una vista desde un receptor o argumento `ref` que apunta de
+forma exacta a un dueño local, el análisis conserva ahora también la identidad
+posible de ese dueño. Solo se aplica cuando el origen es `CurrentFrameLocal`,
+la ubicación canónica coincide con `L<ordinal>` y callable, ámbito y dueño
+move-only por valor coinciden. Las observaciones desconocidas se conservan:
+esta identidad es una posibilidad, no una prueba de procedencia exhaustiva.
+
+Antes del cambio, cuatro reemplazos del dueño por el alias se aceptaban
+inesperadamente. Después, la selección ampliada de 14 expectativas rechazó
+esos casos y pasó sus controles de représtamo, shadowing, rama, reasignación
+y dueño distinto; los programas negativos solo se analizaron. El compilador
+usado tuvo SHA-256
+`8f2409f286c65c282c9b1e87d4b33fe86eab62d8ac837254880220a1b4033bbc`.
+La compilación incremental terminó correctamente y la prueba de regresión
+ampliada de `view_ref_owner_replacement.py` pasó; también pasaron los controles
+dirigidos de shadowing y tuplas, con sus ejecuciones positivas O0/O2. Los
+registros están bajo `A:/nsc-fixes-evidencia/` con prefijos
+`view-alias-producer-after-expanded`, `view-alias-regression-expanded` y
+`view-alias-directed`, respectivamente.
+
+Esto no cubre parámetros `ref`, campos o proyecciones sin identidad exacta,
+ni resuelve la procedencia desconocida o el falso rechazo de salida con
+shadowing. Dos candidatos de reemplazo del mismo parámetro `ref` siguen
+aceptándose; no se ejecutaron y su contrato aún requiere comprobación.
+
 Una selección adicional examinó la salida `ref/out` con dueños homónimos.
 Los dos positivos de una vista del dueño exterior fueron rechazados con
 `NS3020`. Cuatro negativos también fueron rechazados; uno falla ya en una
