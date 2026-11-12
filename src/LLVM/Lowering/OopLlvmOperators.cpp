@@ -625,9 +625,12 @@ bool OopLlvmImplementation::resolveDecimalMultiplyOverflow(
         // policy traps DecimalOverflow; `saturating(expr)` yields MaxValue/MinValue.
         std::uint64_t maskWords[2] = { 0xFFFFFFFFFFFFFFFFull, 0xFFFFFFFFull };
         LLVMTypeRef wide = LLVMIntTypeInContext(context_, 128);
+        LLVMTypeRef productType = LLVMTypeOf(combined);
+        LLVMValueRef productMask96 = LLVMConstIntOfArbitraryPrecision(productType, 2, maskWords);
         LLVMValueRef mask96 = LLVMConstIntOfArbitraryPrecision(wide, 2, maskWords);
         LLVMValueRef overflow = LLVMBuildICmp(
-            builder_, LLVMIntUGT, combined, mask96, "decimal.mul.overflow");
+            builder_, LLVMIntUGT, combined, productMask96, "decimal.mul.overflow");
+        combined = LLVMBuildTrunc(builder_, combined, wide, "decimal.mul.truncated");
         LLVMBasicBlockRef preheader = LLVMGetInsertBlock(builder_);
         LLVMBasicBlockRef okBlock = appendBlock("decimal.mul.ok");
         LLVMBasicBlockRef trapBlock = appendBlock("decimal.mul.trap");
@@ -665,16 +668,59 @@ LLVMValueRef OopLlvmImplementation::applyDecimalMultiply(
         LLVMValueRef& effectiveScale,
         std::string& error)
 {
-        LLVMValueRef combined = LLVMBuildMul(
-            builder_, leftCoefficient, rightCoefficient, "decimal.coeff.mul");
         LLVMValueRef rightScale = LLVMBuildAnd(
             builder_, LLVMBuildLShr(builder_, right, scaleShift, "decimal.right.scale.raw"),
             scaleMask, "decimal.right.scale");
         effectiveScale = LLVMBuildAdd(builder_, leftScale, rightScale, "decimal.scale.add");
         if (!emitDecimalScaleOverflow(effectiveScale, "decimal.mul.scale", error)) return nullptr;
+
+        // Full 96 x 96 unsigned product in at most 96 shift/add steps. This avoids
+        // depending on a target-specific wide multiply runtime helper.
+        LLVMTypeRef productType = LLVMIntTypeInContext(context_, 192);
+        LLVMTypeRef countType = LLVMInt32TypeInContext(context_);
+        LLVMValueRef zero = LLVMConstInt(productType, 0, 0);
+        LLVMValueRef one = LLVMConstInt(productType, 1, 0);
+        LLVMValueRef multiplicand = LLVMBuildZExt(builder_, leftCoefficient, productType, "decimal.mul.left.wide");
+        LLVMValueRef multiplier = LLVMBuildZExt(builder_, rightCoefficient, productType, "decimal.mul.right.wide");
+        LLVMBasicBlockRef entry = LLVMGetInsertBlock(builder_);
+        LLVMBasicBlockRef loop = appendBlock("decimal.mul.loop");
+        LLVMBasicBlockRef done = appendBlock("decimal.mul.done");
+        LLVMBuildBr(builder_, loop);
+        enterBlock(loop);
+        LLVMValueRef sum = LLVMBuildPhi(builder_, productType, "decimal.mul.sum");
+        LLVMValueRef factor = LLVMBuildPhi(builder_, productType, "decimal.mul.factor");
+        LLVMValueRef remaining = LLVMBuildPhi(builder_, productType, "decimal.mul.remaining");
+        LLVMValueRef index = LLVMBuildPhi(builder_, countType, "decimal.mul.index");
+        LLVMValueRef bit = LLVMBuildICmp(builder_, LLVMIntNE,
+            LLVMBuildAnd(builder_, remaining, one, "decimal.mul.lowbit"), zero, "decimal.mul.bit.set");
+        LLVMValueRef addend = LLVMBuildSelect(builder_, bit, factor, zero, "decimal.mul.addend");
+        LLVMValueRef nextSum = LLVMBuildAdd(builder_, sum, addend, "decimal.mul.sum.next");
+        LLVMValueRef nextFactor = LLVMBuildShl(builder_, factor, one, "decimal.mul.factor.next");
+        LLVMValueRef nextRemaining = LLVMBuildLShr(builder_, remaining, one, "decimal.mul.remaining.next");
+        LLVMValueRef nextIndex = LLVMBuildAdd(builder_, index, LLVMConstInt(countType, 1, 0), "decimal.mul.index.next");
+        LLVMValueRef moreBits = LLVMBuildICmp(builder_, LLVMIntNE, nextRemaining, zero, "decimal.mul.more.bits");
+        LLVMValueRef withinWidth = LLVMBuildICmp(builder_, LLVMIntULT, nextIndex,
+            LLVMConstInt(countType, 96, 0), "decimal.mul.within.width");
+        LLVMBuildCondBr(builder_, LLVMBuildAnd(builder_, moreBits, withinWidth, "decimal.mul.more"), loop, done);
+        LLVMBasicBlockRef blocks[] = {entry, loop};
+        LLVMValueRef sums[] = {zero, nextSum};
+        LLVMValueRef factors[] = {multiplicand, nextFactor};
+        LLVMValueRef multipliers[] = {multiplier, nextRemaining};
+        LLVMValueRef indices[] = {LLVMConstInt(countType, 0, 0), nextIndex};
+        LLVMAddIncoming(sum, sums, blocks, 2U);
+        LLVMAddIncoming(factor, factors, blocks, 2U);
+        LLVMAddIncoming(remaining, multipliers, blocks, 2U);
+        LLVMAddIncoming(index, indices, blocks, 2U);
+        enterBlock(done);
+        LLVMValueRef combined = nextSum;
         if (!resolveDecimalMultiplyOverflow(
                 left, right, combined, effectiveScale, error)) return nullptr;
-        return combined;
+        LLVMTypeRef encoded = LLVMIntTypeInContext(context_, 128);
+        LLVMValueRef signBit = LLVMBuildShl(builder_, LLVMConstInt(encoded, 1, 0),
+            LLVMConstInt(encoded, 127, 0), "decimal.mul.sign.bit");
+        LLVMValueRef sign = LLVMBuildAnd(builder_, LLVMBuildXor(builder_, left, right, "decimal.mul.sign.xor"),
+            signBit, "decimal.mul.sign.mask");
+        return LLVMBuildOr(builder_, combined, sign, "decimal.mul.signed");
 }
 
 LLVMValueRef OopLlvmImplementation::applyDecimalDivide(
@@ -799,9 +845,15 @@ LLVMValueRef OopLlvmImplementation::applyDecimalBinaryOperation(
                 operation, left, leftCoefficient, rightCoefficient, leftScale,
                 right, scaleShift, scaleMask, effectiveScale, error);
         else if (operation == lexer::TokenKind::Star)
+        {
+            const std::uint64_t maskWords[2] = {0xFFFFFFFFFFFFFFFFull, 0xFFFFFFFFull};
+            LLVMValueRef fullMask = LLVMConstIntOfArbitraryPrecision(wide, 2, maskWords);
+            LLVMValueRef fullLeft = LLVMBuildAnd(builder_, left, fullMask, "decimal.mul.left.coeff");
+            LLVMValueRef fullRight = LLVMBuildAnd(builder_, right, fullMask, "decimal.mul.right.coeff");
             combined = applyDecimalMultiply(
-                left, right, leftCoefficient, rightCoefficient, leftScale,
+                left, right, fullLeft, fullRight, leftScale,
                 scaleShift, scaleMask, effectiveScale, error);
+        }
         else if (operation == lexer::TokenKind::Slash)
             combined = applyDecimalDivide(
                 right, leftCoefficient, rightCoefficient, leftScale,

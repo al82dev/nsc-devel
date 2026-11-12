@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>MulCoefficientOverflow</Name><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><Compile Include="MulCoefficientOverflow.ns"/></ItemGroup></Project>

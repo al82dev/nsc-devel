@@ -1,0 +1,12 @@
+noinline decimal Multiply(decimal a, decimal b) { return saturating(a * b); }
+int Main()
+{
+    unsafe("inspect negative saturated decimal coefficient")
+    {
+        i128 bits = ((i128)1 << 96) - (i128)1;
+        decimal value = *((decimal*)&bits);
+        decimal result = Multiply(value, -2m);
+        i128 expected = bits | ((i128)1 << 127);
+        return *((i128*)&result) == expected ? 0 : 1;
+    }
+}

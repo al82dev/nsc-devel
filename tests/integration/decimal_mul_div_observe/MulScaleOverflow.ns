@@ -1,0 +1,6 @@
+noinline decimal Multiply(decimal a, decimal b) { return checked(a * b); }
+int Main()
+{
+    decimal value = Multiply(0.0000000000000000000000000001m, 0.1m);
+    return value == 0m ? 1 : 2;
+}

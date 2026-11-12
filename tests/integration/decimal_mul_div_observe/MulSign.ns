@@ -1,0 +1,7 @@
+noinline decimal Multiply(decimal a, decimal b) { return checked(a * b); }
+int Main()
+{
+    if (Multiply(-1m, 2m) != -2m) return 1;
+    if (Multiply(-1m, -2m) != 2m) return 2;
+    return 0;
+}

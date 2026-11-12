@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>MulScaleOverflow</Name><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><Compile Include="MulScaleOverflow.ns"/></ItemGroup></Project>
