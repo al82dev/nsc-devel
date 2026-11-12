@@ -998,13 +998,16 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerAwaitExpression(
     auto await = makeNode(ProjectOopHirNodeKind::AwaitFuture, expression, std::string(*inner));
     await->elementTypeKey = operand->typeKey;
     await->integerValue = loweringAsyncBody_ ? 1 : 0;
+    await->stringValue.clear();
     if (selectedMemberOrdinal.has_value())
     {
         const ClassMemberSymbol& callee = memberModel_->members()[*selectedMemberOrdinal];
-        await->stringValue = mangleCallable(
-            nameLookup_->namedTypes()[callee.declaringTypeOrdinal], callee) + "$poll";
+        // A synchronous factory can return a future produced by another function.
+        // Its actual poll belongs to that future, not to the factory member.
+        if (callee.effects.contains(sema::Effect::Async))
+            await->stringValue = mangleCallable(
+                nameLookup_->namedTypes()[callee.declaringTypeOrdinal], callee) + "$poll";
     }
-    else await->stringValue.clear();
     // EN: Freeze 3.0 C-17: every awaited future hands its error to the enclosing handler.
     // ES: Congelamiento 3.0 C-17: todo future esperado entrega su error al handler envolvente.
     await->cleanupRegionOrdinals = std::move(cleanupRegionOrdinals);
