@@ -1565,7 +1565,7 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                     const auto count = plan ? abi_plan::regCallExpandedRecordCount(*plan) : 0;
                     const bool sameRecords = count && count <= parameters.size() &&
                         std::all_of(parameters.begin(), parameters.begin() + count,
-                            [&](const auto& parameter) { return abi_plan::regCallSameRecord(type, parameter); });
+                            [&](const auto& parameter) { return abi_plan::regCallCompatibleRecordLayout(type, parameter); });
                     if (plan && type.sizeBits && *type.sizeBits % 8 == 0 && type.alignmentBits &&
                         *type.alignmentBits % 8 == 0 && sameRecords && abi_plan::isRegCallWin64FloatRecordSequence(
                             *plan, "__regcall3____nsc_pointer_abi_probe", *type.sizeBits / 8, *type.alignmentBits / 8) &&

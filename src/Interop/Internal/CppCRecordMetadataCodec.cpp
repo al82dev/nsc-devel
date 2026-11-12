@@ -1354,7 +1354,7 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
         const auto count = abi_plan::regCallExpandedRecordCount(*alias.abiPlan);
         const bool sameRecords = count && count <= signature.parameterTypes.size() &&
             std::all_of(signature.parameterTypes.begin(), signature.parameterTypes.begin() + count,
-                [&](const auto& parameter) { return abi_plan::regCallSameRecord(signature.returnType, parameter); });
+                [&](const auto& parameter) { return abi_plan::regCallCompatibleRecordLayout(signature.returnType, parameter); });
         if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
             signature.returnType.kind != CppTypeKind::Record || !sameRecords ||
             signature.parameterTypes[0].kind != CppTypeKind::Record || !signature.returnType.recordIdentity ||

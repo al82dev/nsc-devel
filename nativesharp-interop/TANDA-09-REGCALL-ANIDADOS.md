@@ -446,5 +446,28 @@ atribuir al segundo la identidad del primero. Pasaron el plan, transporte y
 la regresión precompilada de records iguales
 (`A:/temp/nsc-t09-two-records-pre-em6y82v9`).
 
-No se acredita C++, records de tamaños distintos ni otras formas. T09-003
-permanece abierto.
+## Dos registros C++ de tipos distintos
+
+Las muestras C++ emplean un record de retorno y primer argumento, y un
+segundo record distinto con igual forma flotante, tanto anidada como de arreglo.
+Clang ejecutaba el control y NSC rechazaba el alias de puntero
+(`A:/temp/nsc-t09-cpp-distinct-ss1wtqmu`). La conciliación comprueba para
+cada record su identidad, layout, procedencia y condición trivial.
+
+Pasaron las llamadas directas e indirectas C++ frente al control, con símbolo
+y LLVM comprobados, en estática y DLL O0–O3
+(`A:/temp/nsc-t09-cpp-distinct-nlmnwzkn`). Antes de corregir la captura, las
+dos rutas precompiladas fallaban
+(`A:/temp/nsc-t09-cpp-distinct-precompilado-udiz9l7d` y
+`A:/temp/nsc-t09-cpp-distinct-precompilado-5drmwl7x`). Pasaron después 32
+consumidores con y sin encabezado, incluidos los que solo usan puntero
+(`A:/temp/nsc-t09-cpp-distinct-precompilado-coj3lv44` y
+`A:/temp/nsc-t09-cpp-distinct-precompilado-oujgq_2a`). La recuperación
+comprueba cada record en el catálogo vigente. Pasaron el control de plan,
+transporte, la regresión precompilada de records iguales
+(`A:/temp/nsc-t09-cpp-nested-precompilado-uikyl50y`) y los rechazos de
+campos privados y record no trivial
+(`A:/temp/nsc-t09-cpp-distinct-rechazos-67wjszks`).
+
+No se acreditan records de tamaños distintos ni otras formas o registros C++
+no triviales. T09-003 permanece abierto.

@@ -275,7 +275,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
             const auto& signature = *pointer.element->function;
             std::size_t expandedRecords = 0;
             while (expandedRecords < signature.parameterTypes.size() &&
-                   abi_plan::regCallSameRecord(signature.returnType, signature.parameterTypes[expandedRecords])) ++expandedRecords;
+                   abi_plan::regCallCompatibleRecordLayout(signature.returnType, signature.parameterTypes[expandedRecords])) ++expandedRecords;
             const bool tailSupported = std::all_of(signature.parameterTypes.begin() + expandedRecords,
                 signature.parameterTypes.end(), [](const auto& type) {
                     return abi_plan::regCallFloatRecordScalarSupported(type);
@@ -304,6 +304,25 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                     return record.complete && record.isCxx && record.clangUsr == imported->clangUsr &&
                         record.sizeBits == signature.returnType.sizeBits && record.alignmentBits == 32;
                 }) != 1) return {};
+            for (std::size_t i = 0; i < expandedRecords; ++i)
+            {
+                const auto& parameter = signature.parameterTypes[i];
+                const auto parameterIdentity = projectCppRecordTypeIdentity(parameter,
+                    graph.projects()[alias.projectOrdinal].moduleName());
+                const auto parameterOrdinal = parameterIdentity ? lookup.typeOrdinalForIdentity(parameterIdentity->key()) : std::nullopt;
+                const auto* importedParameter = parameterOrdinal ? lookup.cppImportedType(*parameterOrdinal) : nullptr;
+                if (!parameterOrdinal || !lookup.cppTrivialValueEligible(*parameterOrdinal) || !importedParameter ||
+                    importedParameter->fromPrecompiledCatalog || importedParameter->projectOrdinal != alias.projectOrdinal ||
+                    importedParameter->origin != frontend::CppImportedTypeOrigin::CppRecord || importedParameter->isIncomplete ||
+                    !importedParameter->deferredImportError.empty() || !importedParameter->objectLayout ||
+                    importedParameter->objectLayout->sizeBytes != *parameter.sizeBits / 8 ||
+                    importedParameter->objectLayout->alignmentBytes != 4 ||
+                    importedParameter->clangUsr != parameter.recordIdentity->clangUsr ||
+                    std::count_if(records->begin(), records->end(), [&](const auto& record) {
+                        return record.complete && record.isCxx && record.clangUsr == importedParameter->clangUsr &&
+                            record.sizeBits == parameter.sizeBits && record.alignmentBits == parameter.alignmentBits;
+                    }) != 1) return {};
+            }
             auto plan = cppSession->cppFunctionPointerAbiPlan(alias.declaration.qualifiedName,
                 *alias.declaration.clangUsr, pointer.canonicalSpelling);
             if (!plan || abi_plan::regCallExpandedRecordCount(*plan) != expandedRecords ||
@@ -493,10 +512,40 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             const auto count = abi_plan::regCallExpandedRecordCount(*selected->declaration.abiPlan);
             if (!count || count > signature.parameterTypes.size() ||
                 !std::all_of(signature.parameterTypes.begin(), signature.parameterTypes.begin() + count,
-                    [&](const auto& parameter) { return abi_plan::regCallSameRecord(signature.returnType, parameter); }) ||
+                    [&](const auto& parameter) { return abi_plan::regCallCompatibleRecordLayout(signature.returnType, parameter); }) ||
                 !abi_plan::isRegCallWin64FloatRecordSequence(*selected->declaration.abiPlan,
                     "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4) ||
                 !abi_plan::regCallFloatRecordTailMatches(*selected->declaration.abiPlan, signature.parameterTypes, count)) return {};
+            for (std::size_t i = 0; i < count; ++i)
+            {
+                const auto& parameter = signature.parameterTypes[i];
+                const auto parameterIdentity = projectCppRecordTypeIdentity(parameter, moduleName);
+                const auto parameterOrdinal = parameterIdentity ? lookup.typeOrdinalForIdentity(parameterIdentity->key()) : std::nullopt;
+                const auto* parameterImported = parameterOrdinal ? lookup.cppImportedType(*parameterOrdinal) : nullptr;
+                if (!parameterOrdinal || !lookup.cppTrivialValueEligible(*parameterOrdinal) || !parameterImported ||
+                    parameterImported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
+                    !parameterImported->fromPrecompiledCatalog || parameterImported->isIncomplete ||
+                    !parameterImported->deferredImportError.empty() || !parameterImported->objectLayout ||
+                    parameterImported->objectLayout->sizeBytes != *parameter.sizeBits / 8 ||
+                    parameterImported->objectLayout->alignmentBytes != 4 ||
+                    parameterImported->clangUsr != parameter.recordIdentity->clangUsr) return {};
+                unsigned matches = 0;
+                for (const auto& module : modules)
+                {
+                    if (module.cppCTypeCatalog.empty()) continue;
+                    std::vector<CppCRecordSnapshot> records;
+                    std::vector<CppCEnumSnapshot> enums;
+                    metadata_detail::CDependencyCatalog dependencies;
+                    if (!metadata_detail::decodeCTypeCatalogAndDependencies(module.cppCTypeCatalog,
+                            module.cppCTypeCatalogFormatMinor, records, enums, dependencies, error)) return {};
+                    for (const auto& record : records)
+                        if (record.identityKey == parameterIdentity->key() && record.moduleName == moduleName &&
+                            record.clangUsr == parameterImported->clangUsr && record.cppValueObservation && record.complete &&
+                            record.valueLayoutUsable && record.sizeBits == parameter.sizeBits &&
+                            record.alignmentBits == parameter.alignmentBits) ++matches;
+                }
+                if (matches != 1) return {};
+            }
             return selected->declaration.abiPlan;
         }
     }
