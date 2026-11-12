@@ -1,0 +1,5 @@
+int Main() {
+    T09Wide.PairDouble value; value.x=(float)10.25; value.y=(double)20.5;
+    long direct=T09Wide.sum(value,7); T09Wide.SumFn fn=T09Wide.fetch(); long indirect=fn(value,7);
+    return direct==(long)4294967354 && indirect==(long)4294967354 && value.x==(float)10.25 ? 0 : 1;
+}

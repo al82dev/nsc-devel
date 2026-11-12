@@ -1009,6 +1009,35 @@ rechazos de ancho y alineación, transporte e identidad y la regresión C++ de
 ocho bytes (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-nb7g8sd1`).
 Otros tamaños, alineaciones y firmas no se acreditan; T09-003 sigue abierto.
 
+## Registro mixto con retorno entero de 64 bits
+
+Una función C o C++ recibe por copia un registro de `float` y `double` y
+devuelve `long long`. El control Clang funcionaba mientras NSC rechazaba la
+firma (`A:/temp/nsc-t09-regcall-record-mixto-i64-k5dt7ijn` y
+`A:/temp/nsc-t09-cpp-record-mixto-i64-vj1cfsm7`). La validación física admite
+ahora ese retorno con copia indirecta sin exigir un registro expandido, y la
+conciliación comprueba el tipo, la identidad y el layout. La prueba de plan y
+metadatos rechaza una alineación incorrecta o un retorno de ancho alterado.
+
+Pasaron el [control C](pruebas-tanda-09-regcall-record-mixto-i64/) y NSC en
+estática O0–O3, directo y por puntero, con inspección LLVM
+(`A:/temp/nsc-t09-regcall-record-mixto-i64-fj78aeud`); y ocho comparaciones
+[C++](pruebas-tanda-09-regcall-cpp-record-mixto-i64/) en estática y DLL O0–O3
+(`A:/temp/nsc-t09-cpp-record-mixto-i64-gpi6hba0`). Ambas pruebas comprueban un
+valor superior a 32 bits y la copia del argumento.
+
+Pasaron 32 consumidores C precompilados
+(`A:/temp/nsc-t09-record-mixto-i64-pre-mt42v3q3` y
+`A:/temp/nsc-t09-record-mixto-i64-pre-7dg9jn9i`) y 32 C++
+(`A:/temp/nsc-t09-cpp-record-mixto-i64-pre-qmy0ruqh` y
+`A:/temp/nsc-t09-cpp-record-mixto-i64-pre-y_a9b04j`), con estática y DLL,
+O0–O3 y con y sin encabezado. El control sin signo comprueba además el bit más
+alto en C y C++, directo y por puntero, y precompilado por puntero
+(`A:/temp/nsc-t09-mixto-u64-uttekmwh`). Pasaron plan, transporte, ABI,
+identidad y la regresión precompilada C++ de retorno compacto
+(`A:/temp/nsc-t09-cpp-return-compact-pre-8ziftkc6`). La llamada C directa con
+DLL y otras firmas siguen pendientes; T09-003 permanece abierto.
+
 ## Registro mixto con retorno float
 
 El [caso C](pruebas-tanda-09-regcall-record-mixto-float/) combina un registro

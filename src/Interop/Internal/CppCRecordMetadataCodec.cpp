@@ -743,7 +743,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         const bool indirectRecords = abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*f.abiPlan, value.linkSymbol) ||
             abi_plan::isRegCallWin64IndirectRecordsReturningInt(*f.abiPlan, value.linkSymbol) ||
             abi_plan::isRegCallWin64IndirectRecordsReturningVoid(*f.abiPlan, value.linkSymbol) ||
-            abi_plan::isRegCallWin64FloatRecordsReturningFloat(*f.abiPlan, value.linkSymbol);
+            abi_plan::isRegCallWin64FloatRecordsReturningFloat(*f.abiPlan, value.linkSymbol) ||
+            abi_plan::isRegCallWin64FloatRecordsReturningInt64(*f.abiPlan, value.linkSymbol);
         const bool doubleRecordReturn = f.returnType.kind == CppTypeKind::Record && f.returnType.sizeBits &&
             f.returnType.alignmentBits && *f.returnType.sizeBits % 8 == 0 && *f.returnType.alignmentBits % 8 == 0 &&
             abi_plan::isRegCallWin64DoubleRecordInterleaved(*f.abiPlan, value.linkSymbol,
