@@ -20,4 +20,6 @@ def setup(root, repository):
     environment = os.environ.copy()
     environment['TEMP'] = str(temporary)
     environment['TMP'] = str(temporary)
+    environment['APPDATA'] = str(temporary)
+    environment['LOCALAPPDATA'] = str(temporary)
     return environment

@@ -5,6 +5,8 @@ The existing cleanup double-exception guard uses reason 20. This assertion
 therefore depends on linking that runtime, rather than inventing a crash code.
 """
 import os
+import hashlib
+import json
 from contextlib import nullcontext
 from pathlib import Path
 import subprocess
@@ -39,12 +41,29 @@ PROJECT = ('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
 
 
 def main():
-    if os.name != 'nt' or len(sys.argv) != 3:
+    if os.name != 'nt' or len(sys.argv) != 5:
+        print('usage: async_poll_replacement_trap.py <nsc-A> <new-evidence-dir-A> <runtime-lib-A> <imports-dir-A>')
         return 77
     compiler = absolute_a(sys.argv[1])
     evidence = absolute_a(sys.argv[2])
+    runtime = absolute_a(sys.argv[3])
+    imports = absolute_a(sys.argv[4])
+    if not compiler.is_file() or not runtime.is_file() or not imports.is_dir():
+        raise ValueError('compiler, runtime and imports must exist')
+    required = ('KERNEL32.import.lib', 'KERNELBASE.import.lib', 'SHELL32.import.lib', 'UCRTBASE.import.lib')
+    libraries = [absolute_a(imports / name) for name in required]
+    if any(not path.is_file() for path in libraries):
+        raise ValueError('one or more runtime import libraries are missing')
     repository = Path(__file__).resolve().parents[2]
     environment = setup(evidence, repository)
+    environment['NSC_WINDOWS_RUNTIME_LIBRARY'] = str(runtime)
+    environment['NSC_WINDOWS_RUNTIME_IMPORT_LIBRARY_DIRECTORY'] = str(imports)
+    inputs = [compiler, runtime] + libraries
+    def hashes():
+        return {str(path): hashlib.sha256(path.read_bytes()).hexdigest() for path in inputs}
+    before = hashes()
+    (evidence / 'inputs-before.json').write_text(json.dumps(before, indent=2), encoding='utf-8')
+    print('INPUT_SHA256_BEFORE', before, flush=True)
     # src/Runtime/WindowsRuntimeBuilder.cpp buildTrap and cleanup guard reason.
     trap_exit = 128 + 20
     failures = []
@@ -65,14 +84,25 @@ def main():
                 print('COMMAND', subprocess.list2cmdline(command), 'CWD', repository, flush=True)
                 build = subprocess.run(command, cwd=repository, env=environment, capture_output=True, text=True,
                                        errors='replace', timeout=120)
+                (case / (level + '-build.log')).write_text(
+                    'COMMAND ' + subprocess.list2cmdline(command) + '\nCWD ' + str(repository) +
+                    '\nEXIT ' + str(build.returncode) + '\n' + build.stdout + build.stderr, encoding='utf-8')
                 if build.returncode:
                     failures.append((name, level, 'compile', build.returncode, build.stdout + build.stderr))
                     continue
                 result = subprocess.run([str(executable)], cwd=repository, env=environment, capture_output=True, text=True,
                                         errors='replace', timeout=10)
+                (case / (level + '-run.log')).write_text(
+                    'COMMAND ' + subprocess.list2cmdline([str(executable)]) + '\nCWD ' + str(repository) +
+                    '\nEXIT ' + str(result.returncode) + '\n' + result.stdout + result.stderr, encoding='utf-8')
                 print('RUN', name, level, result.returncode, 'EXPECTED', expected, flush=True)
                 if result.returncode != expected:
                     failures.append((name, level, 'run', result.returncode, result.stdout + result.stderr))
+    after = hashes()
+    (evidence / 'inputs-after.json').write_text(json.dumps(after, indent=2), encoding='utf-8')
+    print('INPUT_SHA256_AFTER', after, flush=True)
+    if before != after:
+        failures.append(('inputs', 'changed'))
     for failure in failures:
         print('FAIL', *failure, file=sys.stderr)
     return int(bool(failures))

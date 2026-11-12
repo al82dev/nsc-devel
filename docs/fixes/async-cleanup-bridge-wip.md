@@ -29,3 +29,12 @@ normal con una tercera excepción durante la liberación. Espera 148 porque el
 runtime Windows construye el trap como 128 más la razón 20; aún debe
 confirmarse el runtime enlazado y que el caso alcance esta ruta. El código de
 salida, por sí solo, no identifica el punto exacto del trap. No se ha ejecutado.
+
+El runner recibe cuatro rutas absolutas en A:, en este orden: compilador,
+directorio de evidencia nuevo, biblioteca runtime y carpeta de imports. Fija
+explícitamente el runtime y los imports para el proceso compilador, conserva
+sus SHA-256 y los del compilador antes y después, y guarda comandos y salidas
+por caso. Los temporales y directorios de aplicación del proceso hijo quedan
+en la carpeta de evidencia. La selección explícita no prueba por sí sola que
+el binario tenga exactamente el comportamiento del código fuente de runtime;
+debe comprobarse su procedencia junto con el punto alcanzado del trap.
