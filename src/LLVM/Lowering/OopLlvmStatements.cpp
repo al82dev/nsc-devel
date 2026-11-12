@@ -821,11 +821,67 @@ bool OopLlvmImplementation::lowerYieldBreakStatement(
                 // terminates the generator (state = -1) + return false.
                 if (parameterStorage_.empty())
                     return fail(error, "yield break has no MoveNext self parameter");
+                // This exit is only one generated control-flow path. Restore the lexical
+                // lowering state so sibling paths retain their active cleanup identities.
+                const std::vector<std::size_t> savedActive = activeCleanupRegions_;
+                const std::vector<FuncletContext> savedFunclets = funcletStack_;
+                const std::vector<ActiveCatchBody> catches = activeCatchExceptions_;
+                // A yield break exits every enclosing catch in synchronous generators too.
+                std::size_t catchCount = catches.size();
+                bool cleared = false;
+                const auto restoreState = [&]()
+                {
+                    activeCleanupRegions_ = savedActive;
+                    funcletStack_ = savedFunclets;
+                };
+                const auto releaseCatch = [&]()
+                {
+                    if (!cleared)
+                    {
+                        buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
+                        cleared = true;
+                    }
+                    const ActiveCatchBody& frame = catches[--catchCount];
+                    return frame.ownerSlot == nullptr || emitCaughtExceptionRelease(frame.ownerSlot, error);
+                };
                 for (std::size_t index = node->cleanupRegionOrdinals.size(); index > 0; --index)
                 {
-                    if (!emitOneStructuredCleanup(node->cleanupRegionOrdinals[index - 1], error))
+                    const std::size_t ordinal = node->cleanupRegionOrdinals[index - 1];
+                    const auto depth = activeCleanupIndex(ordinal, savedActive);
+                    if (!depth.has_value())
+                    {
+                        restoreState();
+                        return fail(error, "yield break cleanup region is inactive");
+                    }
+                    // A catch owns its exception until the exit crosses that catch's scope;
+                    // an inner finally therefore runs before an outer catch is released.
+                    while (catchCount > 0 && catches[catchCount - 1].cleanupDepthAtEntry > *depth)
+                    {
+                        if (!releaseCatch()) { restoreState(); return false; }
+                        if (terminated()) { restoreState(); return true; }
+                    }
+                    if (!emitOneStructuredCleanup(ordinal, error))
+                    {
+                        restoreState();
                         return false;
-                    if (terminated()) return true;
+                    }
+                    if (terminated())
+                    {
+                        restoreState();
+                        return true;
+                    }
+                }
+                while (catchCount > 0)
+                {
+                    if (!releaseCatch()) { restoreState(); return false; }
+                    if (terminated()) { restoreState(); return true; }
+                }
+                restoreState();
+                if (coroutine_.active && coroutine_.asyncGenerator)
+                {
+                    if (!markCoroutineFinished(error)) return false;
+                    releaseOwnedCaptureCells();
+                    return publishAsyncGeneratorEnd(error);
                 }
                 LLVMValueRef self = LLVMBuildLoad2(
                     builder_, LLVMPointerTypeInContext(context_, 0), parameterStorage_[0],

@@ -11,6 +11,7 @@
 #include "nativesharp/Frontend/ProjectIntegerEvaluator.h"
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
+#include "nativesharp/Language/IterationSemantics.h"
 
 #include <algorithm>
 #include <cctype>
@@ -27,6 +28,27 @@ namespace nativesharp::frontend
 {
 namespace
 {
+bool containsNamespaceGeneratorYield(const ast::AstNode* body)
+{
+    std::vector<const ast::AstNode*> pending{body};
+    std::unordered_set<const ast::AstNode*> seen;
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || !seen.insert(node).second) continue;
+        if (node->kind() == ast::AstNodeKind::LambdaExpression ||
+            node->kind() == ast::AstNodeKind::FunctionDeclaration) continue;
+        if (node->kind() == ast::AstNodeKind::YieldReturnStatement ||
+            node->kind() == ast::AstNodeKind::YieldBreakStatement) return true;
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+    return false;
+}
+
 // NS304-T08-F06: stable source identity for the extension binding index. Reusing the AST node
 // pointer as a key is a textual cache that goes stale under incremental re-parses; the source
 // location (file + begin offset) is the invalidation-stable identity.
@@ -1702,6 +1724,14 @@ bool ProjectNamespaceFunctionModel::build(
         genericModel,
         symbolByIdentity,
         exportedCByName);
+    // Derive source generator effects after declarations and their definition
+    // are merged. Iterator-returning factories and imported declarations keep
+    // their existing ordinary-call semantics.
+    for (NamespaceFunctionSymbol& function : functions_)
+        if (!function.isPrecompiled && !function.isExternC && function.definitionSyntax != nullptr &&
+            language::asyncIteratorInnerTypeKey(function.declaredTypeKey).has_value() &&
+            containsNamespaceGeneratorYield(function.definitionSyntax->first()))
+            function.effects = function.effects.with(sema::Effect::Generator).with(sema::Effect::Async);
     buildExtensionFunctionIndex();
     collectNamespaceStates(nameLookup, memberModel, diagnostics);
     bindNamespaceReferences(nameLookup, units);
