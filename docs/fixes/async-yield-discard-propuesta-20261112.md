@@ -1,5 +1,16 @@
 # Propuesta: propiedad del resultado de yield al cancelar
 
+## Repetición del modo de item sin guard experimental
+
+Tras retirar el guard experimental de alias que rechazaba un positivo, se
+reconstruyeron incrementalmente `nsc` y el target dirigido de caché. El runner
+`tests/integration/async_yield_cross_process_cache.py` se repitió en
+`A:/nsc-fixes-evidencia/async-yield-itemmode-isolated-20261112`: cold, warm,
+Unknown y cuatro workers devolvieron 0; los 34 registros cold, warm y paralelo
+coincidieron y se observó Unknown. `comparison.log` y los logs por fase
+conservan el resultado. Esto separa esta validación del guard retirado; aún no
+demuestra la clasificación de ownership ni la corrección de cancelación.
+
 ## Reproducción tras reanudar el trabajo
 
 El 12 de noviembre se ejecutó desde `A:/nsc-devel-fixes` el runner
