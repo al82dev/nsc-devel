@@ -685,6 +685,10 @@ bool OopLlvmImplementation::defineTypedCatchFilters(std::string& error)
         std::unordered_set<std::size_t> includedTypes(typedCatchOrdinals.begin(), typedCatchOrdinals.end());
         for (const frontend::ProjectOopMirFunction& function : mirModel_.functions())
         {
+            const std::size_t ordinal = static_cast<std::size_t>(
+                &function - mirModel_.functions().data());
+            if (function.isTransportedInlineBody &&
+                (ordinal >= reachableDefinitions_.size() || reachableDefinitions_[ordinal] == 0U)) continue;
             if (function.body == nullptr || !function.mangledName.ends_with("$poll") ||
                 function.errorTypeKey.empty() || memberModel_ == nullptr) continue;
             const auto typeOrdinal = memberModel_->typeOrdinalForTypeKey(function.errorTypeKey);
