@@ -355,13 +355,13 @@ LLVMValueRef OopLlvmImplementation::tryConvertSpanView(
 }
 
 LLVMValueRef OopLlvmImplementation::convertDecimalToInteger(
-        LLVMValueRef value, LLVMTypeRef destination)
+        LLVMValueRef value, LLVMTypeRef destination, unsigned destinationWidth)
 {
-        // NS304-T15-F06: decimal -> integer = coefficient (low 96 bits) / 10^scale, truncated toward
-        // zero. 10^scale is built with a runtime loop because the scale is dynamic (0..28). The
-        // division is widened through a 64-bit lane (the 128-bit divide would need __udivti3).
+        // Divide the complete 96-bit coefficient by 10 once per scale digit.  Each
+        // division processes three 32-bit limbs, using only 64-bit divisions.
         LLVMTypeRef wide = LLVMIntTypeInContext(context_, 128);
-        LLVMValueRef coefficientMask = LLVMConstInt(wide, 0xFFFFFFFFFFFFFFFFull, 0);
+        std::uint64_t coefficientWords[2] = {0xFFFFFFFFFFFFFFFFull, 0xFFFFFFFFull};
+        LLVMValueRef coefficientMask = LLVMConstIntOfArbitraryPrecision(wide, 2, coefficientWords);
         LLVMValueRef coefficient = LLVMBuildAnd(builder_, value, coefficientMask, "decimal.coeff");
         LLVMValueRef scaleShift = LLVMConstInt(wide, 96, 0);
         LLVMValueRef scaleRaw = LLVMBuildLShr(builder_, value, scaleShift, "decimal.scale.raw");
@@ -374,7 +374,6 @@ LLVMValueRef OopLlvmImplementation::convertDecimalToInteger(
         LLVMValueRef isNegative = LLVMBuildTrunc(
             builder_, signBit, LLVMInt1TypeInContext(context_), "decimal.negative");
         LLVMTypeRef lane = LLVMInt64TypeInContext(context_);
-        LLVMValueRef coefficientLane = LLVMBuildTrunc(builder_, coefficient, lane, "decimal.coeff64");
         LLVMValueRef scaleLane = LLVMBuildTrunc(builder_, scale, lane, "decimal.scale64");
         LLVMBasicBlockRef preheader = LLVMGetInsertBlock(builder_);
         LLVMBasicBlockRef header = LLVMAppendBasicBlockInContext(
@@ -387,22 +386,38 @@ LLVMValueRef OopLlvmImplementation::convertDecimalToInteger(
         LLVMValueRef ten = LLVMConstInt(lane, 10, 0);
         LLVMBuildBr(builder_, header);
         enterBlock(header);
-        LLVMValueRef divisor = LLVMBuildPhi(builder_, lane, "decimal.pow10.div");
+        LLVMValueRef current = LLVMBuildPhi(builder_, wide, "decimal.coeff.current");
         LLVMValueRef remaining = LLVMBuildPhi(builder_, lane, "decimal.pow10.scale");
         LLVMValueRef done = LLVMBuildICmp(
             builder_, LLVMIntEQ, remaining, LLVMConstInt(lane, 0, 0), "decimal.pow10.done");
         LLVMBuildCondBr(builder_, done, exit, body);
         enterBlock(body);
-        LLVMValueRef nextDivisor = LLVMBuildMul(builder_, divisor, ten, "decimal.pow10.mul");
+        LLVMValueRef mask32 = LLVMConstInt(lane, 0xFFFFFFFFull, 0);
+        LLVMValueRef remainder = LLVMConstInt(lane, 0, 0);
+        LLVMValueRef next = LLVMConstNull(wide);
+        for (int shift = 64; shift >= 0; shift -= 32)
+        {
+            LLVMValueRef part = LLVMBuildTrunc(builder_, LLVMBuildLShr(
+                builder_, current, LLVMConstInt(wide, static_cast<unsigned>(shift), 0), "decimal.part.shift"),
+                lane, "decimal.part.low64");
+            part = LLVMBuildAnd(builder_, part, mask32, "decimal.part");
+            LLVMValueRef dividend = LLVMBuildOr(builder_, LLVMBuildShl(
+                builder_, remainder, LLVMConstInt(lane, 32, 0), "decimal.rem.shift"), part, "decimal.dividend");
+            LLVMValueRef quotient = LLVMBuildUDiv(builder_, dividend, ten, "decimal.limb.quotient");
+            remainder = LLVMBuildURem(builder_, dividend, ten, "decimal.limb.remainder");
+            LLVMValueRef extended = LLVMBuildZExt(builder_, quotient, wide, "decimal.limb.wide");
+            next = LLVMBuildOr(builder_, next, LLVMBuildShl(builder_, extended,
+                LLVMConstInt(wide, static_cast<unsigned>(shift), 0), "decimal.limb.shift"), "decimal.next");
+        }
         LLVMValueRef nextRemaining = LLVMBuildSub(builder_, remaining, one, "decimal.pow10.dec");
         LLVMBuildBr(builder_, header);
-        LLVMAddIncoming(divisor, &one, &preheader, 1);
-        LLVMAddIncoming(divisor, &nextDivisor, &body, 1);
+        LLVMAddIncoming(current, &coefficient, &preheader, 1);
+        LLVMAddIncoming(current, &next, &body, 1);
         LLVMAddIncoming(remaining, &scaleLane, &preheader, 1);
         LLVMAddIncoming(remaining, &nextRemaining, &body, 1);
         enterBlock(exit);
-        LLVMValueRef quotient = LLVMBuildUDiv(builder_, coefficientLane, divisor, "decimal.quotient");
-        LLVMValueRef truncated = LLVMBuildTrunc(builder_, quotient, destination, "decimal.trunc");
+        LLVMValueRef truncated = destinationWidth == 128
+            ? current : LLVMBuildTrunc(builder_, current, destination, "decimal.trunc");
         LLVMValueRef negated = LLVMBuildSub(
             builder_, LLVMConstNull(destination), truncated, "decimal.neg");
         return LLVMBuildSelect(builder_, isNegative, negated, truncated, "decimal.toint");
@@ -575,7 +590,7 @@ LLVMValueRef OopLlvmImplementation::convertScalar(
         if (sourceWidth != 0 && targetIsAddress)
             return LLVMBuildIntToPtr(builder_, value, destination, "inttoptr");
         if (source == "builtin:decimal" && targetWidth != 0)
-            return convertDecimalToInteger(value, destination);
+            return convertDecimalToInteger(value, destination, targetWidth);
         if (sourceWidth != 0 && target == "builtin:decimal")
             return convertIntegerToDecimal(value, sourceSigned);
         if (source == "builtin:decimal" && (target == "builtin:float" || target == "builtin:double"))

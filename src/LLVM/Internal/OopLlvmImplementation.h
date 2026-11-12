@@ -2892,7 +2892,8 @@ private:
         std::string& error);
     LLVMValueRef convertDecimalToInteger(
         LLVMValueRef value,
-        LLVMTypeRef destination);
+        LLVMTypeRef destination,
+        unsigned destinationWidth);
     LLVMValueRef convertIntegerToDecimal(
         LLVMValueRef value,
         bool sourceSigned);
