@@ -60,3 +60,27 @@ constructor y fue rechazado en análisis. Se corrigió esa declaración antes de
 la ejecución indicada. Estas pruebas verifican contadores y captura en los
 casos concretos, no todas las formas de inicialización ni la ausencia general
 de fugas; el Core no se regeneró en esta tanda.
+
+## Evidencia histórica adicional con Core binario
+
+El commit `a66e283516b47da4383725feb0ff40d4fd745a46`, de la copia
+`A:\nsc-devel-fixes-agente-2`, documentó otra repetición con un compilador en
+curso y Core binario aislado. Los ocho programas compilaron: las cuatro
+construcciones normales de Rc y Arc en O0/O2 devolvieron 42 y las cuatro
+construcciones fallidas devolvieron 3. Los cuerpos procedían de
+`shared_public_pointers.py`, con `using NativeSharp.Core;` añadido. Fuentes,
+comandos, salidas y hashes antes y después están en
+`A:/nsc-fixes-agente-2-evidencia/default-field-pointer-20261112/run-20261112T041528563716Z/results.json`.
+
+Como contraste, se repitieron los ejemplos con `Part field = new Part(1)`:
+construcción exitosa, fallo antes de inicializar y fallo después de inicializar,
+para Rc y Arc en O0/O2. Las 12 ejecuciones devolvieron 42. La evidencia está en
+`A:/nsc-fixes-agente-2-evidencia/explicit-field-pointer-20261112/run-20261112T041807519599Z/results.json`.
+
+El commit registra el origen de esta evidencia; no identifica una revisión
+limpia y exacta del compilador utilizado. Los resultados se obtuvieron con
+trabajo en curso y no certifican la rama integrada ni el SDK actual. La primera
+matriz confirma el resultado observado, pero no determina cuándo comienza la
+vida de un campo ordinario sin inicializador. El contraste cubre únicamente
+los campos con inicialización explícita y no resuelve la decisión pendiente
+sobre la destrucción de otras estructuras.
