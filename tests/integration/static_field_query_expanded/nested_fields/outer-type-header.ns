@@ -1,0 +1,1 @@
+struct Inner { public int X; } struct Outer { public Inner Child; } int Main() { Outer a=default(Outer); a.Child.X=4; int sum=0; static foreach (field in Fields(Outer)) { field.Type item=field.Get(a); static foreach (inner in Fields(field.Type)) { sum=sum+inner.Get(item); } } return sum==4 ? 0 : 1; }

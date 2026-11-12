@@ -1,0 +1,1 @@
+struct Record { public (int first, long second) Pair; } int Main() { Record value=default(Record); var item=value.Pair; return 0; }

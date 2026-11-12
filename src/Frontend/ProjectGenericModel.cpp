@@ -622,9 +622,39 @@ void ProjectGenericModel::discoverRootDemandsForBuild(
     }
 }
 
+void ProjectGenericModel::addPrecompiledFieldCertificates(
+    std::span<const PrecompiledFieldCertificate> certificates)
+{
+    for (const PrecompiledFieldCertificate& certificate : certificates)
+    {
+        if (duplicatePrecompiledFieldCertificates_.contains(certificate.typeIdentity)) continue;
+        if (!precompiledFieldCertificates_.emplace(certificate.typeIdentity, certificate).second)
+        {
+            precompiledFieldCertificates_.erase(certificate.typeIdentity);
+            duplicatePrecompiledFieldCertificates_.insert(certificate.typeIdentity);
+        }
+    }
+}
+
+void ProjectGenericModel::addPrecompiledTemplateFieldCertificates(
+    std::span<const PrecompiledTemplateFieldCertificate> certificates)
+{
+    for (const auto& certificate : certificates)
+    {
+        if (duplicatePrecompiledTemplateFieldCertificates_.contains(certificate.templateKey)) continue;
+        if (!precompiledTemplateFieldCertificates_.emplace(certificate.templateKey, certificate).second)
+        {
+            precompiledTemplateFieldCertificates_.erase(certificate.templateKey);
+            duplicatePrecompiledTemplateFieldCertificates_.insert(certificate.templateKey);
+        }
+    }
+}
+
 bool ProjectGenericModel::materializePendingDemandsForBuild(
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    for (;;)
+    {
     // NSC305-G08. Apply the body-type demands first (they materialize directly and may collect
     // further type demands), then drain the type-demand waves (the two-pass).
     {
@@ -645,7 +675,26 @@ bool ProjectGenericModel::materializePendingDemandsForBuild(
             return false;
         }
     }
-    return true;
+        if (deferredStaticFieldIterations_.empty()) return true;
+        auto pending = std::move(deferredStaticFieldIterations_);
+        deferredStaticFieldIterations_.clear();
+        for (auto& [unit, node, namespaceName, ownerName, scope] : pending)
+        {
+            if (unit == nullptr || node == nullptr || node->typeSyntax() == nullptr ||
+                !node->typeSyntax()->typeArguments().empty())
+            {
+                if (node != nullptr)
+                    diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error, node->range(),
+                        "static field iteration generic type did not materialize");
+                built_ = true;
+                return false;
+            }
+            processNode(*unit, node, std::move(namespaceName), std::move(ownerName),
+                        std::move(scope), false, diagnostics);
+        }
+        if (diagnostics.hasErrors()) { built_ = true; return false; }
+    }
 }
 
 void ProjectGenericModel::finalizeBuildState(const diagnostics::DiagnosticEngine& diagnostics)
@@ -750,6 +799,12 @@ const ast::AstNode* ProjectGenericModel::constructionCloneSource(const ast::AstN
     return found == constructionCloneSources_.end() ? nullptr : found->second;
 }
 
+const ast::AstNode* ProjectGenericModel::fieldCloneSource(const ast::AstNode* clone) const noexcept
+{
+    const auto found = fieldCloneSources_.find(clone);
+    return found == fieldCloneSources_.end() ? nullptr : found->second;
+}
+
 const ast::TypeSyntax* ProjectGenericModel::substitutedTypeCloneSource(const ast::TypeSyntax* clone) const noexcept
 {
     const auto found = substitutedTypeCloneSources_.find(clone);
@@ -765,6 +820,29 @@ const ast::AstNode* ProjectGenericModel::genericCallCloneSource(const ast::AstNo
 bool ProjectGenericModel::genericCallArgumentsWereInferred(const ast::AstNode* call) const noexcept
 {
     return inferredGenericCalls_.contains(call);
+}
+
+const StaticFieldAccessSelection* ProjectGenericModel::staticFieldAccessSelection(
+    const ast::AstNode* expression) const noexcept
+{
+    // Clone edges are created together with their AST in the owning arena. A bounded
+    // traversal rejects malformed cycles without allocating in this noexcept query.
+    for (std::size_t depth = 0; expression != nullptr && depth < 1024; ++depth)
+    {
+        const auto found = staticFieldAccessSelections_.find(expression);
+        if (found != staticFieldAccessSelections_.end()) return &found->second;
+        const auto origin = memberCloneSources_.find(expression);
+        if (origin == memberCloneSources_.end()) return nullptr;
+        expression = origin->second;
+    }
+    return nullptr;
+}
+
+const StaticFieldIterationSelection* ProjectGenericModel::staticFieldIterationSelection(
+    const ast::AstNode* statement) const noexcept
+{
+    const auto found = staticFieldIterationSelections_.find(statement);
+    return found == staticFieldIterationSelections_.end() ? nullptr : &found->second;
 }
 
 const GenericSpecializationRecord* ProjectGenericModel::specializationForSyntax(

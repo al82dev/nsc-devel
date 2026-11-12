@@ -1,0 +1,10 @@
+static class Inspector
+{
+    public static int Test<T>(T value)
+    {
+        int found = 0;
+        static foreach (field in Fields(T)) { if (field.Name == "Item") found = found + 1; }
+        return found;
+    }
+}
+int Main() { BinaryNominalPrivate.Record value = default(BinaryNominalPrivate.Record); return Inspector.Test<BinaryNominalPrivate.Record>(value) == 1 ? 0 : 1; }

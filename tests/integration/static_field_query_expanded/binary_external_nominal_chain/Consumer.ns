@@ -1,0 +1,1 @@
+int Main() { owned Leaf.Last x=new Leaf.Last(); x.SetBase(); x.SetMid(); x.Same=7; int sum=0; static foreach (field in Fields(Leaf.Last)) { sum=sum+field.Get(x); } return sum==15 ? 0 : 1; }

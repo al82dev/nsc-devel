@@ -1,0 +1,6 @@
+struct Record { public int Value; }
+int Main()
+{
+    static foreach (field in Fields(Record)) { int field = 3; }
+    return 0;
+}

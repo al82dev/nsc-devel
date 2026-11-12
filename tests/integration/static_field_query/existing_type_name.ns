@@ -1,0 +1,23 @@
+namespace Field
+{
+    public struct Type { public int Value; }
+}
+
+struct Record { public int Value; }
+
+int Main()
+{
+    Field.Type before = default(Field.Type);
+    before.Value = 2;
+    Record record = default(Record);
+    record.Value = 3;
+    int total = before.Value;
+    static foreach (Field in Fields(Record))
+    {
+        Field.Type item = Field.Get(record);
+        total = total + item;
+    }
+    Field.Type after = default(Field.Type);
+    after.Value = 4;
+    return total + after.Value == 9 ? 0 : 1;
+}

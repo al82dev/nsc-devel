@@ -381,6 +381,29 @@ void Parser::ParseContinuationCoordinator::startForeach(const Work& work)
     const std::size_t frameIndex = foreachFrames_.size();
     foreachFrames_.push_back({{}, work.resultSlot, 0, 0});
     ForeachFrame& frame = foreachFrames_.back();
+    if (parser_.at(TokenKind::KwStatic) && parser_.peek().kind() == TokenKind::KwForeach)
+    {
+        if (!parser_.parseStaticFieldIterationHeader(frame.state))
+        {
+            complete(frame.resultSlot, nullptr);
+            return;
+        }
+        if (!parser_.at(TokenKind::LeftBrace))
+        {
+            parser_.expect(TokenKind::LeftBrace, "'{' after static foreach clause");
+            complete(frame.resultSlot, parser_.lowerForeachStatement(std::move(frame.state), nullptr));
+            return;
+        }
+        frame.state.descriptorTypeNameInserted =
+            parser_.knownTypeNames_.insert(frame.state.elementName + ".Type").second;
+        Work finish{WorkKind::FinishForeachBody, frame.resultSlot};
+        finish.frameIndex = frameIndex;
+        finish.childSlot = makeResultSlot();
+        const std::size_t childSlot = finish.childSlot;
+        work_.push_back(finish);
+        work_.push_back({WorkKind::Block, childSlot});
+        return;
+    }
     if (!parser_.parseForeachHeaderPrefix(frame.state))
     {
         complete(frame.resultSlot, nullptr);
@@ -435,6 +458,8 @@ void Parser::ParseContinuationCoordinator::finishForeachProbe(const Work& work)
 void Parser::ParseContinuationCoordinator::finishForeachBody(const Work& work)
 {
     ForeachFrame& frame = foreachFrames_[work.frameIndex];
+    if (frame.state.descriptorTypeNameInserted)
+        parser_.knownTypeNames_.erase(frame.state.elementName + ".Type");
     complete(frame.resultSlot, parser_.lowerForeachStatement(
         std::move(frame.state), childValue(work)));
 }

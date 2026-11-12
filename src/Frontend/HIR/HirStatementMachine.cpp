@@ -508,6 +508,8 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStatement(
 
     switch (statement->kind())
     {
+        case ast::AstNodeKind::StaticFieldIterationStatement:
+            return lowerBlock(statement->first(), memberOrdinal, error);
         case ast::AstNodeKind::BlockStatement:
             return lowerBlock(statement, memberOrdinal, error);
 

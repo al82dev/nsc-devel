@@ -1,0 +1,10 @@
+struct Empty { }
+
+int Main()
+{
+    static foreach (field in Fields(Empty))
+    {
+        int value = field.Missing;
+    }
+    return 0;
+}

@@ -118,7 +118,9 @@ Parser::ParseContinuationCoordinator::classifyStatement() const
     if (ordinaryWhileStarts()) return StatementKind::While;
     if (parser_.at(TokenKind::KwDo)) return StatementKind::DoWhile;
     if (parser_.at(TokenKind::KwFor)) return StatementKind::For;
-    if (parser_.at(TokenKind::KwForeach)) return StatementKind::Foreach;
+    if (parser_.at(TokenKind::KwForeach) ||
+        (parser_.at(TokenKind::KwStatic) && parser_.peek().kind() == TokenKind::KwForeach))
+        return StatementKind::Foreach;
     if (parser_.at(TokenKind::KwSwitch)) return StatementKind::Switch;
     if (parser_.startsParenthesizedBlock("match")) return StatementKind::Match;
     if (parser_.at(TokenKind::KwTry)) return StatementKind::Try;

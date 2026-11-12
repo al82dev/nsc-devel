@@ -1,0 +1,22 @@
+struct First { public int Value; }
+struct Second { public long Value; }
+
+int Main()
+{
+    First first = default(First);
+    Second second = default(Second);
+    first.Value = 3;
+    second.Value = 7L;
+    int total = 0;
+    static foreach (field in Fields(First))
+    {
+        field.Type item = field.Get(first);
+        total = total + (int)item;
+    }
+    static foreach (field in Fields(Second))
+    {
+        field.Type item = field.Get(second);
+        total = total + (int)item;
+    }
+    return total == 10 ? 0 : 1;
+}

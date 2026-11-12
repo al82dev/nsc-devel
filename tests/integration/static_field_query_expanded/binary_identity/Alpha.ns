@@ -1,0 +1,1 @@
+namespace Alpha { public struct Box<T> { public T Value; public int Tail; } }

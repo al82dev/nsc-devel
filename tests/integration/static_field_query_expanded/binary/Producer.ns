@@ -1,0 +1,4 @@
+namespace BinaryFields
+{
+    public struct Record { public int Value; public long Count; }
+}

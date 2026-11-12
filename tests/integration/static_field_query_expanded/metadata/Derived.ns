@@ -1,0 +1,10 @@
+class Derived : MetadataFields.Record
+{
+    public int Sum()
+    {
+        int sum = 0;
+        static foreach (field in Fields(MetadataFields.Record)) { sum = sum + field.Get(this); }
+        return sum;
+    }
+}
+int Main() { owned Derived value = new Derived(); value.First = 7; value.Last = 3; return value.Sum() == 10 ? 0 : 1; }

@@ -1,0 +1,1 @@
+int Main() { owned Child.Box value=new Child.Box(); value.Set(3); value.Tail=7; return value.Read()==3 && value.Tail==7 ? 0 : 1; }

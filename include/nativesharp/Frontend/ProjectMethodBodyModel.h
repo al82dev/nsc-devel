@@ -3049,6 +3049,8 @@ private:
         std::size_t scopeOrdinal,
         diagnostics::DiagnosticEngine& diagnostics,
         bool allowMethodGroup);
+    bool memberAccessibleFromCallable(const ClassMemberSymbol& member,
+        std::size_t methodMemberOrdinal, std::optional<std::size_t> receiverTypeOrdinal) const;
     void collectAccessibleMemberCandidates(
         std::vector<std::size_t>& fields,
         std::vector<std::size_t>& events,
@@ -3058,7 +3060,19 @@ private:
         bool typeReceiver,
         std::size_t receiverType,
         std::size_t accessingTypeOrdinal,
+        std::size_t methodMemberOrdinal,
         std::string_view memberName) const;
+    bool resolveStaticFieldSelection(
+        std::vector<std::size_t>& fields,
+        const ast::AstNode* expression,
+        bool typeReceiver,
+        std::size_t receiverType,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
+    bool validateStaticFieldIteration(
+        const ast::AstNode* statement,
+        std::size_t methodMemberOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics) const;
     bool rejectIncompleteMemberReceiver(
         const ast::AstNode* expression,
         const std::vector<std::size_t>& fields,

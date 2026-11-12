@@ -1,0 +1,1 @@
+struct Empty { } int Main() { int sum=0; static foreach (field in Fields(Empty)) { sum=sum+1; break; } return sum==0 ? 0 : 1; }

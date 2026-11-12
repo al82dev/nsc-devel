@@ -1,0 +1,26 @@
+using FieldProducer;
+
+static class Inspector
+{
+    public static int Format(int value) { return value; }
+    public static int Format(long value) { return (int)value; }
+
+    public static int Fold<T>(T value)
+    {
+        int result = 0;
+        static foreach (field in Fields(T))
+        {
+            field.Type item = field.Get(value);
+            result = result + Format(item);
+        }
+        return result;
+    }
+}
+
+int Main()
+{
+    Record value = default(Record);
+    value.Count = 3;
+    value.Balance = 30L;
+    return Inspector.Fold<Record>(value) == 33 ? 0 : 1;
+}

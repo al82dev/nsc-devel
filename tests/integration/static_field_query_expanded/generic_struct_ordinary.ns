@@ -1,0 +1,8 @@
+struct Box<T> { public T Value; public int Count; }
+int Main()
+{
+    Box<int> value = default(Box<int>);
+    value.Value = 7;
+    value.Count = 3;
+    return value.Value + value.Count == 10 ? 0 : 1;
+}

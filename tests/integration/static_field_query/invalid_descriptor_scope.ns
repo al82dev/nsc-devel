@@ -1,0 +1,12 @@
+struct Record { public int Value; }
+
+int Main()
+{
+    Record record = default(Record);
+    static foreach (field in Fields(Record))
+    {
+        field.Type item = field.Get(record);
+    }
+    field.Type escaped;
+    return 0;
+}

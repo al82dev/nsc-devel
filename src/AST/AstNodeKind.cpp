@@ -141,6 +141,7 @@ std::string_view astNodeKindNamePart3(AstNodeKind kind) noexcept
         NS_AST_KIND(SuspendStatement);
         NS_AST_KIND(NameOfExpression);
         NS_AST_KIND(OverflowPolicyExpression);
+        NS_AST_KIND(StaticFieldIterationStatement);
 #undef NS_AST_KIND
         default: break;
     }

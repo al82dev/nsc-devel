@@ -1,0 +1,1 @@
+struct A { public int X; public int Y; } struct B { public int P; public int Q; } int Main() { A a=default(A); B b=default(B); a.X=1; a.Y=2; b.P=3; b.Q=4; int sum=0; int count=0; int ignored=loop outer { count=count+1; if(count==3) break outer: 0; static foreach (field in Fields(A)) { sum=sum+field.Get(a); continue outer; } sum=99; }; return ignored==0 && sum==2 ? 0 : 1; }

@@ -1,0 +1,21 @@
+struct Point { public int X; public int Y; }
+struct Record { public Point Position; public int Count; }
+static class Inspector
+{
+    public static int Format(Point value) { return value.X + value.Y; }
+    public static int Format(int value) { return value; }
+    public static int Fold<T>(T value)
+    {
+        int sum = 0;
+        static foreach (field in Fields(T)) { sum = sum + Format(field.Get(value)); }
+        return sum;
+    }
+}
+int Main()
+{
+    Record value = default(Record);
+    value.Position.X = 2;
+    value.Position.Y = 3;
+    value.Count = 7;
+    return Inspector.Fold<Record>(value) == 12 ? 0 : 1;
+}

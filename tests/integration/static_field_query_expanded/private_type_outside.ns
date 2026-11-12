@@ -1,0 +1,19 @@
+class Outer
+{
+    private struct Hidden { public int Value; }
+    public struct Record { public Hidden Item; }
+}
+static class Inspector
+{
+    public static int Fold<T>(T value)
+    {
+        int sum = 0;
+        static foreach (field in Fields(T)) { field.Type item = field.Get(value); sum = sum + 1; }
+        return sum;
+    }
+}
+int Main()
+{
+    Outer.Record value = default(Outer.Record);
+    return Inspector.Fold<Outer.Record>(value);
+}

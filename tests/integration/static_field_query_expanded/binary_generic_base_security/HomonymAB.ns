@@ -1,0 +1,1 @@
+int Main() { owned Alpha.Box<int> a = new Alpha.Box<int>(); a.SetBase(3); a.Same=7; owned Beta.Box<int> b = new Beta.Box<int>(); b.SetBase(5); b.Same=8; b.Extra=2; int x=0; static foreach (field in Fields(Alpha.Box<int>)) { x=x+field.Get(a); } int y=0; static foreach (field in Fields(Beta.Box<int>)) { y=y+field.Get(b); } return x==10 && y==15 ? 0 : 1; }

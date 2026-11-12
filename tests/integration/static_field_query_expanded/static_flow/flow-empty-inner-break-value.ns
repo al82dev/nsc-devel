@@ -1,0 +1,1 @@
+struct A { public int X; public int Y; } struct B { public int P; public int Q; } struct Empty { } int Main() { A a=default(A); B b=default(B); a.X=1; a.Y=2; b.P=3; b.Q=4; int sum=0; int value=loop outside { static foreach (outer in Fields(A)) { static foreach (inner in Fields(Empty)) { break outside: 0; } } break outside: 1; }; return value; }

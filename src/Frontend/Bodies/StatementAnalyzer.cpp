@@ -2111,6 +2111,10 @@ bool ProjectMethodBodyModel::analyzeStructuredStatement(
 {
     switch (statement->kind())
     {
+        case ast::AstNodeKind::StaticFieldIterationStatement:
+            if (validateStaticFieldIteration(statement, methodMemberOrdinal, diagnostics))
+                analyzeBlock(statement->first(), methodMemberOrdinal, scopeOrdinal, true, diagnostics);
+            return true;
         case ast::AstNodeKind::BlockStatement:
             analyzeBlock(
                 statement,

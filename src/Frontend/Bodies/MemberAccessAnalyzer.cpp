@@ -631,6 +631,27 @@ bool ProjectMethodBodyModel::validateMemberReceiverType(
     return false;
 }
 
+bool ProjectMethodBodyModel::memberAccessibleFromCallable(
+    const ClassMemberSymbol& member, std::size_t methodMemberOrdinal,
+    std::optional<std::size_t> receiverTypeOrdinal) const
+{
+    const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+    if (caller == nullptr || nameLookup_ == nullptr || inheritanceModel_ == nullptr) return false;
+    if (caller->declaringTypeOrdinal < nameLookup_->namedTypes().size())
+        return ProjectMemberAccessibility::isAccessible(member, caller->declaringTypeOrdinal,
+            receiverTypeOrdinal, *nameLookup_, *inheritanceModel_);
+    // Namespace callables have no declaring type. Their project is carried by
+    // the namespace function itself; it must not confer private/protected access.
+    if (member.accessibility == ClassMemberAccessibility::Public) return true;
+    if (member.accessibility != ClassMemberAccessibility::Internal || namespaceFunctionModel_ == nullptr ||
+        methodMemberOrdinal < namespaceCallableBase_ ||
+        member.declaringTypeOrdinal >= nameLookup_->namedTypes().size()) return false;
+    const std::size_t functionOrdinal = methodMemberOrdinal - namespaceCallableBase_;
+    if (functionOrdinal >= namespaceFunctionModel_->functions().size()) return false;
+    return namespaceFunctionModel_->functions()[functionOrdinal].projectOrdinal ==
+        nameLookup_->namedTypes()[member.declaringTypeOrdinal].projectOrdinal;
+}
+
 void ProjectMethodBodyModel::collectAccessibleMemberCandidates(
     std::vector<std::size_t>& fields,
     std::vector<std::size_t>& events,
@@ -640,6 +661,7 @@ void ProjectMethodBodyModel::collectAccessibleMemberCandidates(
     bool typeReceiver,
     std::size_t receiverType,
     std::size_t accessingTypeOrdinal,
+    std::size_t methodMemberOrdinal,
     std::string_view memberName) const
 {
     for (const std::size_t candidate : memberCandidatesForType(receiverType, memberName))
@@ -653,9 +675,8 @@ void ProjectMethodBodyModel::collectAccessibleMemberCandidates(
             ? accessingTypeOrdinal : receiverType;
         const bool interfaceReceiver = interfaceModel_ != nullptr &&
             interfaceModel_->isInterface(receiverType);
-        if ((!interfaceReceiver && !ProjectMemberAccessibility::isAccessible(
-                member, accessingTypeOrdinal, protectedReceiverType,
-                *nameLookup_, *inheritanceModel_)) ||
+        if ((!interfaceReceiver && !memberAccessibleFromCallable(
+                member, methodMemberOrdinal, protectedReceiverType)) ||
             (interfaceReceiver && member.accessibility != ClassMemberAccessibility::Public))
         {
             inaccessibleFound = true;
@@ -665,6 +686,103 @@ void ProjectMethodBodyModel::collectAccessibleMemberCandidates(
         else if (member.kind == ClassMemberKind::Event) events.push_back(candidate);
         else if (member.kind == ClassMemberKind::Method) methods.push_back(candidate);
     }
+}
+
+// A generated field access is identified by its declaration, not by name
+// lookup on the receiver, which could select a hiding field in a derived type.
+bool ProjectMethodBodyModel::resolveStaticFieldSelection(
+    std::vector<std::size_t>& fields,
+    const ast::AstNode* expression,
+    bool typeReceiver,
+    std::size_t receiverType,
+    std::size_t methodMemberOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const StaticFieldAccessSelection* selection =
+        genericModel_->staticFieldAccessSelection(expression);
+    const std::optional<std::size_t> owner =
+        nameLookup_->typeOrdinalForIdentity(selection->declaringTypeIdentity);
+    if (!typeReceiver && owner.has_value() &&
+        (receiverType == *owner || inheritanceModel_->isDerivedFrom(receiverType, *owner)))
+    {
+        for (const std::size_t ordinal : memberModel_->membersOfType(*owner))
+        {
+            if (ordinal >= memberModel_->members().size()) continue;
+            const ClassMemberSymbol& field = memberModel_->members()[ordinal];
+            if (field.syntax != selection->fieldDeclaration || field.kind != ClassMemberKind::Field ||
+                field.isStatic || field.isCompilerGenerated || field.name != expression->text()) continue;
+            if (memberAccessibleFromCallable(field, methodMemberOrdinal, receiverType))
+            {
+                fields.push_back(ordinal);
+                return true;
+            }
+            break;
+        }
+    }
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidMemberAccess,
+        diagnostics::DiagnosticSeverity::Error,
+        expression->range(),
+        "static field selection does not match an accessible field on this receiver");
+    return false;
+}
+
+// Compares the whole provisional list with the semantic model. This check is
+// required even when a loop uses only field names or types and never Get().
+bool ProjectMethodBodyModel::validateStaticFieldIteration(
+    const ast::AstNode* statement,
+    std::size_t methodMemberOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics) const
+{
+    const StaticFieldIterationSelection* selection = genericModel_ != nullptr
+        ? genericModel_->staticFieldIterationSelection(statement) : nullptr;
+    const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+    const std::optional<std::size_t> type = nameLookup_ != nullptr && statement != nullptr
+        ? nameLookup_->resolvedTypeOrdinal(statement->typeSyntax()) : std::nullopt;
+    if (selection != nullptr && caller != nullptr && type.has_value() && memberModel_ != nullptr &&
+        inheritanceModel_ != nullptr && *type < nameLookup_->namedTypes().size() &&
+        nameLookup_->namedTypes()[*type].identity.key() == selection->queriedTypeIdentity)
+    {
+        std::vector<std::size_t> hierarchy;
+        std::optional<std::size_t> current = *type;
+        while (current.has_value() && hierarchy.size() < nameLookup_->namedTypes().size())
+        {
+            hierarchy.push_back(*current);
+            current = inheritanceModel_->baseTypeOrdinal(*current);
+        }
+        if (!current.has_value())
+        {
+            std::size_t selected = 0;
+            bool matches = true;
+            for (auto part = hierarchy.rbegin(); part != hierarchy.rend() && matches; ++part)
+            {
+                for (const std::size_t ordinal : memberModel_->membersOfType(*part))
+                {
+                    if (ordinal >= memberModel_->members().size()) { matches = false; break; }
+                    const ClassMemberSymbol& member = memberModel_->members()[ordinal];
+                    if (member.kind != ClassMemberKind::Field || member.isStatic || member.isCompilerGenerated ||
+                        !memberAccessibleFromCallable(member, methodMemberOrdinal, std::nullopt))
+                        continue;
+                    if (selected >= selection->fields.size() ||
+                        selection->fields[selected].fieldDeclaration != member.syntax ||
+                        selection->fields[selected].declaringTypeIdentity !=
+                            nameLookup_->namedTypes()[*part].identity.key())
+                    {
+                        matches = false;
+                        break;
+                    }
+                    ++selected;
+                }
+            }
+            if (matches && selected == selection->fields.size()) return true;
+        }
+    }
+    diagnostics.report(
+        diagnostics::DiagnosticId::InvalidMemberAccess,
+        diagnostics::DiagnosticSeverity::Error,
+        statement->range(),
+        "static field iteration selection does not match the accessible semantic fields");
+    return false;
 }
 
 bool ProjectMethodBodyModel::rejectIncompleteMemberReceiver(
@@ -1193,7 +1311,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
 {
     ExpressionResult result;
     const bool isProjectionReceiver = partialProjectionReceiverDepth_ != 0;
-    if (analyzeQualifiedNamespaceMember(
+    const bool staticFieldSelection = genericModel_ != nullptr &&
+        genericModel_->staticFieldAccessSelection(expression) != nullptr;
+    if (!staticFieldSelection && analyzeQualifiedNamespaceMember(
             result, expression, methodMemberOrdinal, scopeOrdinal,
             diagnostics, allowMethodGroup)) return result;
     if (expression == nullptr || expression->first() == nullptr || memberModel_ == nullptr ||
@@ -1206,10 +1326,19 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     if (!resolveMemberReceiver(
             receiver, typeReceiver, expression, accessingTypeOrdinal,
             methodMemberOrdinal, scopeOrdinal, diagnostics)) return result;
-    if (analyzeBuiltinMember(
+    if (staticFieldSelection && (typeReceiver || !receiver.receiverTypeOrdinal.has_value()))
+    {
+        diagnostics.report(
+            diagnostics::DiagnosticId::InvalidMemberAccess,
+            diagnostics::DiagnosticSeverity::Error,
+            expression->range(),
+            "static field selection requires an instance of its declaring type");
+        return result;
+    }
+    if (!staticFieldSelection && analyzeBuiltinMember(
             result, receiver, typeReceiver, expression,
             methodMemberOrdinal, scopeOrdinal, allowMethodGroup)) return result;
-    if (analyzeNativeStringFacadeMember(
+    if (!staticFieldSelection && analyzeNativeStringFacadeMember(
             result, receiver, typeReceiver, expression,
             methodMemberOrdinal, scopeOrdinal, diagnostics, allowMethodGroup)) return result;
     if (!validateMemberReceiverType(
@@ -1222,9 +1351,18 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeMember(
     std::vector<std::size_t> events;
     std::vector<std::size_t> methods;
     bool inaccessibleFound = false;
-    collectAccessibleMemberCandidates(
-        fields, events, methods, inaccessibleFound, receiver, typeReceiver,
-        receiverType, accessingTypeOrdinal, expression->text());
+    if (staticFieldSelection)
+    {
+        if (!resolveStaticFieldSelection(
+                fields, expression, typeReceiver, receiverType, methodMemberOrdinal, diagnostics))
+            return result;
+    }
+    else
+    {
+        collectAccessibleMemberCandidates(
+            fields, events, methods, inaccessibleFound, receiver, typeReceiver,
+            receiverType, accessingTypeOrdinal, methodMemberOrdinal, expression->text());
+    }
     if (rejectIncompleteMemberReceiver(
             expression, fields, typeReceiver, scopeOrdinal, diagnostics)) return result;
     if (analyzeEventMember(

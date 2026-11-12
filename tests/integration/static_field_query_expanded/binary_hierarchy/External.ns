@@ -1,0 +1,7 @@
+int Main()
+{
+    owned BinaryHierarchy.Derived value = new BinaryHierarchy.Derived();
+    int result = 0;
+    static foreach (field in Fields(BinaryHierarchy.Derived)) { result = result * 10 + field.Get(value); }
+    return result == 37 ? 0 : 1;
+}

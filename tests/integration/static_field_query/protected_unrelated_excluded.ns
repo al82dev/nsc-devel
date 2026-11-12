@@ -1,0 +1,9 @@
+class Base { protected int Hidden; public int Visible; }
+class Derived : Base { public Derived() { this.Hidden = 3; this.Visible = 7; } }
+int Main()
+{
+    owned Derived value = new Derived();
+    int sum = 0;
+    static foreach (field in Fields(Derived)) { sum = sum + field.Get(value); }
+    return sum == 7 ? 0 : 1;
+}

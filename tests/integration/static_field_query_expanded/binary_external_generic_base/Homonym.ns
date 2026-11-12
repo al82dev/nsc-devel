@@ -1,0 +1,1 @@
+int Main() { owned Child.Box<int> value=new Child.Box<int>(); value.Set(3); value.Tail=7; owned Beta.Base<int> b=new Beta.Base<int>(); b.Set(9); b.Other=4; int sum=0; static foreach (field in Fields(Child.Box<int>)) { sum=sum+field.Get(value); } return sum==10 && b.Read()==9 && b.Other==4 ? 0 : 1; }

@@ -1,0 +1,11 @@
+partial struct Record { public int First; }
+partial struct Record { public int Second; }
+int Main()
+{
+    Record value = default(Record);
+    value.First = 3;
+    value.Second = 7;
+    int sum = 0;
+    static foreach (field in Fields(Record)) { sum = sum + field.Get(value); }
+    return sum == 10 ? 0 : 1;
+}

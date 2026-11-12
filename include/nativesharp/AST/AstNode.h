@@ -11,6 +11,7 @@
 #include "nativesharp/Basic/SourceRange.h"
 #include "nativesharp/Lexer/TokenKind.h"
 
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -94,6 +95,9 @@ public:
 
     void addChild(AstNode* node);
     void prependChild(AstNode* node);
+    // Replaces an existing child while retaining its ordinal. The caller must
+    // supply an index smaller than children().size(); the arena owns both nodes.
+    void replaceChild(std::size_t index, AstNode* node) noexcept;
     const std::vector<AstNode*>& children() const noexcept;
 
     bool flag() const noexcept;

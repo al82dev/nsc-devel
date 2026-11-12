@@ -1,0 +1,3 @@
+class Box<T> { protected int Hidden; public int Visible; }
+class Derived : Box<int> { public int Sum(Box<int> value) { return value.Hidden; } }
+int Main() { return 0; }

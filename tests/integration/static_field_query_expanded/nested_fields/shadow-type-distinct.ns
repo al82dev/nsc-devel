@@ -1,0 +1,1 @@
+struct A { public int X; } struct B { public long Y; } int Main() { A a=default(A); B b=default(B); a.X=3; b.Y=7; long sum=0; static foreach (field in Fields(A)) { field.Type first=field.Get(a); sum=sum+first; static foreach (field in Fields(B)) { field.Type second=field.Get(b); sum=sum+second; } field.Type last=field.Get(a); sum=sum+last; } return sum==13 ? 0 : 1; }

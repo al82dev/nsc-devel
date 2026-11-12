@@ -1,0 +1,1 @@
+struct Box<T> { public T X; } int Main() { Box<int> a=default(Box<int>); a.X=3; int sum=0; int ignored=loop outer { static foreach (field in Fields(Box<int>)) { sum=sum+field.Get(a); break outer: 0; } break outer: 9; }; return ignored==0 && sum==3 ? 0 : 1; }

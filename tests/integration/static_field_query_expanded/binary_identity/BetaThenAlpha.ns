@@ -1,0 +1,11 @@
+int Main()
+{
+    Alpha.Box<int> a = default(Alpha.Box<int>);
+    Beta.Box<int> b = default(Beta.Box<int>);
+    a.Value = 7; a.Tail = 3;
+    b.Value = 8; b.First = 4; b.Last = 6;
+    int left = 0; int right = 0;
+    static foreach (field in Fields(Beta.Box<int>)) { right = right + field.Get(b); }
+    static foreach (field in Fields(Alpha.Box<int>)) { left = left + field.Get(a); }
+    return left == 10 && right == 18 ? 0 : 1;
+}

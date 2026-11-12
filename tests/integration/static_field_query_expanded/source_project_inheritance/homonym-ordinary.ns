@@ -1,0 +1,1 @@
+class Box : Alpha.Base<int> { public int Tail; } int Main() { owned Box value=new Box(); value.Set(3); value.Tail=7; owned Beta.Base<int> other=new Beta.Base<int>(); other.Set(9); return value.Read()==3 && value.Tail==7 && other.Read()==9 && other.Extra==5 ? 0 : 1; }

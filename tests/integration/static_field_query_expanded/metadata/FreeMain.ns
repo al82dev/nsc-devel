@@ -1,0 +1,12 @@
+int Main()
+{
+    owned MetadataFields.Record value = new MetadataFields.Record();
+    value.First = 7;
+    value.Last = 3;
+    value.Automatic = 100;
+    MetadataFields.Extra extra = default(MetadataFields.Extra);
+    MetadataFields.Other other = default(MetadataFields.Other);
+    int sum = 0;
+    static foreach (field in Fields(MetadataFields.Record)) { sum = sum + field.Get(value); }
+    return sum == 10 ? 0 : 1;
+}

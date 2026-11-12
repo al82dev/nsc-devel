@@ -1,0 +1,9 @@
+using FieldProducer;
+int Main()
+{
+    InternalRecord value = default(InternalRecord);
+    value.Visible = 7;
+    int sum = 0;
+    static foreach (field in Fields(InternalRecord)) { sum = sum + field.Get(value); }
+    return sum == 7 ? 0 : 1;
+}

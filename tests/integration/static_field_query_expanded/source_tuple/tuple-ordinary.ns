@@ -1,0 +1,1 @@
+struct Record { public (int, long) Pair; public int X; } struct Other { public (int, long) Pair; public int X; } int Main() { Record value=default(Record); value.X=7; var item=value.Pair; return value.X==7 ? 0 : 1; }

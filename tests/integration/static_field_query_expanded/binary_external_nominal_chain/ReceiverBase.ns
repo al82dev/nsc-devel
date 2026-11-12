@@ -1,0 +1,1 @@
+int Main() { owned Alpha.Base x=new Alpha.Base(); int sum=0; static foreach (field in Fields(Leaf.Last)) { sum=sum+field.Get(x); } return sum; }

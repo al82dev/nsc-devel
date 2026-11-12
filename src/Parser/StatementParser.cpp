@@ -175,7 +175,9 @@ std::optional<ast::AstNode*> Parser::tryParseControlStatement()
     if (at(TokenKind::KwWhile)) return parseWhileStatement();
     if (at(TokenKind::KwDo)) return parseDoWhileStatement();
     if (at(TokenKind::KwFor)) return parseForStatement();
-    if (at(TokenKind::KwForeach)) return parseForeachStatement();
+    if (at(TokenKind::KwForeach) ||
+        (at(TokenKind::KwStatic) && peek().kind() == TokenKind::KwForeach))
+        return parseForeachStatement();
     if (at(TokenKind::KwSwitch)) return parseSwitchStatement();
     if (startsParenthesizedBlock("match"))
         return parseMatchStatement();
@@ -1859,6 +1861,8 @@ bool Parser::parseForeachHeaderPrefix(ForeachParseState& state)
 
 bool Parser::parseForeachHeader(ForeachParseState& state)
 {
+    if (at(TokenKind::KwStatic) && peek().kind() == TokenKind::KwForeach)
+        return parseStaticFieldIterationHeader(state);
     if (!parseForeachHeaderPrefix(state)) return false;
     // P0.2 of the closure review: the collection expression is parsed TWICE from the same token
     // range -- once here (`collection`, embedded in the REAL, semantically-analyzed
@@ -1882,6 +1886,30 @@ bool Parser::parseForeachHeader(ForeachParseState& state)
     return true;
 }
 
+// Parses the descriptor and type without constructing a runtime collection.
+bool Parser::parseStaticFieldIterationHeader(ForeachParseState& state)
+{
+    state.beginIndex = index_;
+    state.staticFieldIteration = true;
+    consume(); // static
+    consume(); // foreach
+    expect(TokenKind::LeftParen, "'(' after static foreach");
+    if (!at(TokenKind::Identifier))
+    {
+        expect(TokenKind::Identifier, "field descriptor name");
+        synchronizeStatement();
+        return false;
+    }
+    state.elementName = std::string(consume().lexeme());
+    expect(TokenKind::KwIn, "'in' after field descriptor");
+    expectContextualKeyword("Fields", "'Fields' in static field iteration");
+    expect(TokenKind::LeftParen, "'(' after Fields");
+    state.elementType = parseType();
+    expect(TokenKind::RightParen, "')' after field type");
+    expect(TokenKind::RightParen, "')' after static foreach clause");
+    return state.elementType != nullptr;
+}
+
 ast::AstNode* Parser::parseForeachStatement()
 {
     return parseStructuredControlStatement();
@@ -1896,6 +1924,15 @@ ast::AstNode* Parser::lowerForeachStatement(ForeachParseState&& state, ast::AstN
     ast::AstNode* collection = state.collection;
     ast::AstNode* collectionProbe = state.collectionProbe;
     const SourceRange range = tokenRangeFrom(beginIndex);
+    if (state.staticFieldIteration)
+    {
+        ast::AstNode* result = arena_.make<ast::AstNode>(
+            ast::AstNodeKind::StaticFieldIterationStatement, range);
+        result->setText(state.elementName);
+        result->setTypeSyntax(state.elementType);
+        result->setFirst(body);
+        return result;
+    }
     if (ast::AstNode* lowered = lowerForeachRange(state, body, range)) return lowered;
 
     // first(): `var $__foreach_<id>_source = <collection>;` -- evaluates the collection expression

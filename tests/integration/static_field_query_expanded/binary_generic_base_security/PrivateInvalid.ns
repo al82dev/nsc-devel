@@ -1,0 +1,1 @@
+int Main() { owned Alpha.Box<int> a = new Alpha.Box<int>(); a.SetBase(3); a.Same=7; return a.Hidden; }

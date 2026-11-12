@@ -1,0 +1,17 @@
+class Base { protected int Hidden; public int Visible; }
+class Derived : Base
+{
+    public Derived() { this.Hidden = 3; this.Visible = 7; }
+    public int Inspect()
+    {
+        int sum = 0;
+        static foreach (field in Fields(Derived))
+        {
+            field.Type item = field.Get(this);
+            if (field.Name == "Hidden") sum = sum + 100;
+            sum = sum + item;
+        }
+        return sum;
+    }
+}
+int Main() { owned Derived value = new Derived(); return value.Inspect() == 110 ? 0 : 1; }

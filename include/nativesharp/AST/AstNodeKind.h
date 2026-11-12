@@ -187,7 +187,10 @@ enum class AstNodeKind
     NameOfExpression,
     // NS304-T15-F05. `checked(expr)` / `saturating(expr)`. first() is the wrapped expression and
     // auxiliaryText() is the policy spelling ("checked" or "saturating").
-    OverflowPolicyExpression
+    OverflowPolicyExpression,
+    // Compile-time field iteration. typeSyntax() selects the type, text() is
+    // the descriptor name, and first() retains the unexpanded source body.
+    StaticFieldIterationStatement
 };
 
 std::string_view astNodeKindName(AstNodeKind kind) noexcept;

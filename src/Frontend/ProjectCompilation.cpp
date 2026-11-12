@@ -764,6 +764,8 @@ bool ProjectCompilation::compileProjectGenerics(
     for (const PrecompiledSyntaxModule& module : precompiledModules_)
     {
         telemetry.templateSourceBytes += module.templateSourceText.size();
+        genericModel_->addPrecompiledFieldCertificates(module.fieldCertificates);
+        genericModel_->addPrecompiledTemplateFieldCertificates(module.templateFieldCertificates);
         precompiledSpecializations.insert(
             precompiledSpecializations.end(),
             module.genericSpecializations.begin(),

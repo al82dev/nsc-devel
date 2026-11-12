@@ -72,6 +72,7 @@ bool Parser::StructuredControlParser::structuredControlAtCursor() const noexcept
             parser_.at(TokenKind::KwTry) || parser_.at(TokenKind::KwUsing) ||
             parser_.atContextualKeyword("defer") ||
             parser_.at(TokenKind::KwForeach) ||
+            (parser_.at(TokenKind::KwStatic) && parser_.peek().kind() == TokenKind::KwForeach) ||
             conditionalPatternAtCursor() ||
             parser_.at(TokenKind::KwSwitch) ||
             parser_.startsParenthesizedBlock("match");
@@ -187,7 +188,8 @@ void Parser::StructuredControlParser::parseControl()
         else if (parser_.at(TokenKind::KwUsing)) work_.push_back({WorkKind::ParseUsing, 0});
         else if (parser_.atContextualKeyword("defer"))
             work_.push_back({WorkKind::ParseDefer, 0});
-        else if (parser_.at(TokenKind::KwForeach))
+        else if (parser_.at(TokenKind::KwForeach) ||
+                 (parser_.at(TokenKind::KwStatic) && parser_.peek().kind() == TokenKind::KwForeach))
             work_.push_back({WorkKind::ParseForeach, 0});
         else if (conditionalPatternAtCursor())
             work_.push_back({WorkKind::ParseConditionalPattern, 0});
@@ -475,12 +477,17 @@ void Parser::StructuredControlParser::parseForeach()
                 std::move(foreachStates_[index]), nullptr));
             return;
         }
+        if (foreachStates_[index].staticFieldIteration)
+            foreachStates_[index].descriptorTypeNameInserted =
+                parser_.knownTypeNames_.insert(foreachStates_[index].elementName + ".Type").second;
         work_.push_back({WorkKind::FinishForeach, index});
         work_.push_back({WorkKind::ParseBlock, 0});
     }
 
 void Parser::StructuredControlParser::finishForeach(std::size_t index, ast::AstNode* body)
 {
+        if (foreachStates_[index].descriptorTypeNameInserted)
+            parser_.knownTypeNames_.erase(foreachStates_[index].elementName + ".Type");
         values_.push_back(parser_.lowerForeachStatement(
             std::move(foreachStates_[index]), body));
     }

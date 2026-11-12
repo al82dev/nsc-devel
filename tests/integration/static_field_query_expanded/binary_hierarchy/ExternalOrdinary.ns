@@ -1,0 +1,5 @@
+int Main()
+{
+    owned BinaryHierarchy.Derived value = new BinaryHierarchy.Derived();
+    return value.ReadBase() == 3 && value.ReadDerived() == 7 && value.ReadProtected() == 4 && value.ReadHidden() == 90 ? 0 : 1;
+}

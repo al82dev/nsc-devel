@@ -1,0 +1,1 @@
+namespace Child { public class Box : Alpha.Base { public int Tail; } }

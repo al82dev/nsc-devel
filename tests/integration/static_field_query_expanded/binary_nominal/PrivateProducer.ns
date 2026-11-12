@@ -1,0 +1,5 @@
+namespace BinaryNominalPrivate
+{
+    internal struct Hidden { public int Value; }
+    public struct Record { public Hidden Item; }
+}

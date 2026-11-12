@@ -1,0 +1,8 @@
+class Box<T>
+{
+    protected int Hidden;
+    public int Visible;
+    public Box() { this.Hidden = 3; this.Visible = 7; }
+    public int Sum() { return this.Hidden + this.Visible; }
+}
+int Main() { owned Box<int> value = new Box<int>(); return value.Sum() == 10 ? 0 : 1; }

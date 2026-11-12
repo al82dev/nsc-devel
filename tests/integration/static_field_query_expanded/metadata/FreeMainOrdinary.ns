@@ -1,0 +1,10 @@
+int Main()
+{
+    owned MetadataFields.Record value = new MetadataFields.Record();
+    value.First = 7;
+    value.Last = 3;
+    value.Automatic = 100;
+    MetadataFields.Extra extra = default(MetadataFields.Extra);
+    MetadataFields.Other other = default(MetadataFields.Other);
+    return value.First + value.Last == 10 && value.Automatic == 100 && value.ReadHidden() == 40 ? 0 : 1;
+}

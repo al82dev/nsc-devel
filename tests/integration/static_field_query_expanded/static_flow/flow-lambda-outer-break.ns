@@ -1,0 +1,1 @@
+delegate int Read(); struct A { public int X; } int Main() { int ignored=loop outer { static foreach (field in Fields(A)) { raii Read read=() => { break outer: 0; return 1; }; } break outer: 0; }; return ignored; }

@@ -1,0 +1,1 @@
+int Main() { owned Leaf.Last x=new Leaf.Last(); x.SetBase(); x.SetMid(); x.Same=7; return x.ReadBase()==3 && x.ReadMid()==5 && x.Same==7 ? 0 : 1; }

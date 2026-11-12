@@ -1,0 +1,1 @@
+namespace Beta { public struct Box<T> { public T Value; public int First; public int Last; } }

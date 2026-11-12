@@ -1,0 +1,1 @@
+namespace Leaf { public class Last : Middle.Mid { public int Same; } }

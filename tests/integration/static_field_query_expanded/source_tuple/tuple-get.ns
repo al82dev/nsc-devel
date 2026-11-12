@@ -1,0 +1,1 @@
+struct Record { public (int, long) Pair; public int X; } struct Other { public (int, long) Pair; public int X; } int Main() { Record value=default(Record); value.X=7; int count=0; static foreach (field in Fields(Record)) { var item=field.Get(value); count=count+1; } return count==2 ? 0 : 1; }

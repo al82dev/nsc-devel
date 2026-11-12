@@ -1,0 +1,1 @@
+struct A { public int X; public int Y; } struct B { public int P; public int Q; } int Main() { A a=default(A); B b=default(B); a.X=1; a.Y=2; b.P=3; b.Q=4; int sum=0; int k=0; while(k<2) { k=k+1; if(k==1) continue; sum=sum+k; } return sum==2 ? 0 : 1; }

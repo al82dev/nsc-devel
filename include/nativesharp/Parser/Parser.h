@@ -1285,6 +1285,8 @@ private:
         bool elementByReference = false;
         bool elementMutableReference = false;
         bool elementIsRaii = false;
+        bool staticFieldIteration = false;
+        bool descriptorTypeNameInserted = false;
         ast::TypeSyntax* elementType = nullptr;
         bool elementDeconstruction = false;
         Pattern elementPattern;
@@ -1483,6 +1485,7 @@ private:
     ast::AstNode* lowerForStatement(const ForParseState& state, ast::AstNode* body);
     ast::AstNode* parseForeachStatement();
     bool parseForeachHeader(ForeachParseState& state);
+    bool parseStaticFieldIterationHeader(ForeachParseState& state);
     bool parseForeachHeaderPrefix(ForeachParseState& state);
     void initializeForeachState(ForeachParseState& state);
     void parseForeachBindingPrefix(ForeachParseState& state);

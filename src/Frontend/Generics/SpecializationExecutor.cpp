@@ -171,12 +171,16 @@ ProjectGenericModel::SpecializationProduct ProjectGenericModel::cloneTypeSpecial
     auto* const previousIdentities = workerResolvedTypeIdentities_;
     auto* const previousOrigins = workerResolvedTypeOrigins_;
     auto* const previousConstructionSources = workerConstructionCloneSources_;
+    auto* const previousFieldSources = workerFieldCloneSources_;
+    auto* const previousMemberSources = workerMemberCloneSources_;
     auto* const previousTypeCloneSources = workerSubstitutedTypeCloneSources_;
     auto* const previousCallCloneSources = workerGenericCallCloneSources_;
     const SpecializationContext* const previousContext = workerSpecializationContext_;
     workerResolvedTypeIdentities_ = &product.resolvedTypeIdentities;
     workerResolvedTypeOrigins_ = &product.resolvedTypeOrigins;
     workerConstructionCloneSources_ = &product.constructionCloneSources;
+    workerFieldCloneSources_ = &product.fieldCloneSources;
+    workerMemberCloneSources_ = &product.memberCloneSources;
     workerSubstitutedTypeCloneSources_ = &product.substitutedTypeCloneSources;
     workerGenericCallCloneSources_ = &product.genericCallCloneSources;
     workerSpecializationContext_ = &callerContext;
@@ -203,6 +207,8 @@ ProjectGenericModel::SpecializationProduct ProjectGenericModel::cloneTypeSpecial
     workerResolvedTypeIdentities_ = previousIdentities;
     workerResolvedTypeOrigins_ = previousOrigins;
     workerConstructionCloneSources_ = previousConstructionSources;
+    workerFieldCloneSources_ = previousFieldSources;
+    workerMemberCloneSources_ = previousMemberSources;
     workerSubstitutedTypeCloneSources_ = previousTypeCloneSources;
     workerGenericCallCloneSources_ = previousCallCloneSources;
     workerSpecializationContext_ = previousContext;
@@ -264,6 +270,10 @@ bool ProjectGenericModel::commitTypeSpecializationProduct(
         resolvedTypeOriginBySyntax_[syntax] = std::move(origin);
     for (const auto& [clone, source] : product.constructionCloneSources)
         constructionCloneSources_.emplace(clone, source);
+    for (const auto& [clone, source] : product.fieldCloneSources)
+        fieldCloneSources_.emplace(clone, source);
+    for (const auto& [clone, source] : product.memberCloneSources)
+        memberCloneSources_.emplace(clone, source);
     for (const auto& [clone, source] : product.substitutedTypeCloneSources)
         substitutedTypeCloneSources_.emplace(clone, source);
     for (const auto& [clone, source] : product.genericCallCloneSources)
@@ -814,6 +824,7 @@ std::string ProjectGenericModel::completeMethodSpecialization(
             closedMethod->setAuxiliaryText(clone->auxiliaryText());
             owner->addChild(closedMethod);
             GenericLookupScope memberScope;
+            memberScope.lexicalTypeSyntax = owner;
             memberScope.importedNamespaces.write() = state.record.declarationImports;
             memberScope.aliases.write().insert(
                 state.record.declarationAliases.begin(), state.record.declarationAliases.end());
@@ -822,6 +833,9 @@ std::string ProjectGenericModel::completeMethodSpecialization(
         }
     }
     GenericLookupScope declarationScope;
+    if (state.parent != nullptr && (state.parent->kind() == ast::AstNodeKind::ClassDeclaration ||
+                                    state.parent->kind() == ast::AstNodeKind::StructDeclaration))
+        declarationScope.lexicalTypeSyntax = state.parent;
     if (!state.declarationImports.empty())
         declarationScope.importedNamespaces.write() = state.declarationImports;
     if (!state.declarationAliases.empty())

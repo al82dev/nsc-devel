@@ -1,0 +1,1 @@
+struct A { public int X; } delegate int F(); int Main() { static foreach (field in Fields(A)) { raii F f=()=>{ while (true) { break; } return 3; }; if (f()!=3) return 1; } return 0; }

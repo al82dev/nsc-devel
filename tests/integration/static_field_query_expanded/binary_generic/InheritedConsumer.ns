@@ -1,0 +1,8 @@
+int Main()
+{
+    owned GenericInheritance.Box<int> value = new GenericInheritance.Box<int>();
+    value.BaseValue = 3; value.Value = 7;
+    int sum = 0;
+    static foreach (field in Fields(GenericInheritance.Box<int>)) { sum = sum + field.Get(value); }
+    return sum == 10 ? 0 : 1;
+}

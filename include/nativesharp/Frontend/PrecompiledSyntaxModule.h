@@ -3,6 +3,8 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
 #include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "nativesharp/Frontend/ProjectNamespaceFunctionModel.h"
+#include "nativesharp/Frontend/PrecompiledFieldCertificate.h"
+#include "nativesharp/Frontend/PrecompiledTemplateFieldCertificate.h"
 
 #include <filesystem>
 #include <string>
@@ -43,5 +45,7 @@ struct PrecompiledSyntaxModule final
     bool surfacePruned = false;
     std::vector<std::string> trivialCleanupRootTypeKeys;
     std::vector<std::string> nonEscapingLifecycleTypeKeys;
+    std::vector<PrecompiledFieldCertificate> fieldCertificates;
+    std::vector<PrecompiledTemplateFieldCertificate> templateFieldCertificates;
 };
 }

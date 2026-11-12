@@ -968,6 +968,34 @@ ast::AstNode* ProjectGenericModel::cloneNodeGeneric(
             ? *workerConstructionCloneSources_ : constructionCloneSources_;
         origins.emplace(result, source);
     }
+    if (source->kind() == ast::AstNodeKind::FieldDeclaration)
+    {
+        auto& fields = workerFieldCloneSources_ != nullptr
+            ? *workerFieldCloneSources_ : fieldCloneSources_;
+        fields.emplace(result, source);
+    }
+    if (source->kind() == ast::AstNodeKind::MemberExpression)
+    {
+        // The scheduler joins the clone workers before serially committing and
+        // processing any product, so the published selections and origins are
+        // read-only here. Follow this worker's own unpublished edges separately.
+        const ast::AstNode* origin = source;
+        bool selected = false;
+        for (std::size_t depth = 0; origin != nullptr && depth < 1024; ++depth)
+        {
+            if (staticFieldAccessSelection(origin) != nullptr) { selected = true; break; }
+            if (workerMemberCloneSources_ == nullptr) break;
+            const auto found = workerMemberCloneSources_->find(origin);
+            if (found == workerMemberCloneSources_->end()) break;
+            origin = found->second;
+        }
+        if (selected)
+        {
+            auto& members = workerMemberCloneSources_ != nullptr
+                ? *workerMemberCloneSources_ : memberCloneSources_;
+            members.emplace(result, source);
+        }
+    }
     // A scalar `new T` inside a generic template allocates one raw storage slot whose element
     // type is T. Preserve the source-level intent before substituting its type.
     if (source->kind() == ast::AstNodeKind::NewExpression && !source->flag() &&
@@ -1101,6 +1129,34 @@ ast::AstNode* ProjectGenericModel::tryCloneSpecialNode(
     return nullptr;
 }
 
+// The descriptor is scoped to the iteration body, not to the queried type. Copy the map only
+// when a shadowed name is present; sibling work retains its original substitutions.
+static std::shared_ptr<const std::unordered_map<std::string, const ast::TypeSyntax*>>
+staticFieldBodySubstitutions(
+    const ast::AstNode* node,
+    const std::unordered_map<std::string, const ast::TypeSyntax*>& active,
+    std::shared_ptr<const std::unordered_map<std::string, const ast::TypeSyntax*>> inherited)
+{
+    if (node->kind() != ast::AstNodeKind::StaticFieldIterationStatement) return inherited;
+    const std::string projectionPrefix = node->text() + ".";
+    bool shadowed = false;
+    for (const auto& [name, type] : active)
+    {
+        (void)type;
+        if (name == node->text() || name.starts_with(projectionPrefix)) { shadowed = true; break; }
+    }
+    if (!shadowed) return inherited;
+    auto scoped = std::make_shared<std::unordered_map<std::string, const ast::TypeSyntax*>>(active);
+    for (auto iterator = scoped->begin(); iterator != scoped->end();)
+    {
+        if (iterator->first == node->text() || iterator->first.starts_with(projectionPrefix))
+            iterator = scoped->erase(iterator);
+        else
+            ++iterator;
+    }
+    return scoped;
+}
+
 void ProjectGenericModel::cloneNodeChildrenIterative(
     ast::AstArena& arena,
     const ast::AstNode* source,
@@ -1112,37 +1168,40 @@ void ProjectGenericModel::cloneNodeChildrenIterative(
     std::vector<ChildWork> work;
     for (auto iterator = source->children().rbegin();
          iterator != source->children().rend(); ++iterator)
-        work.push_back(ChildWork{*iterator, result, 4});
+        work.push_back(ChildWork{*iterator, result, 4, {}});
     if (source->third() != nullptr)
-        work.push_back(ChildWork{source->third(), result, 3});
+        work.push_back(ChildWork{source->third(), result, 3, {}});
     if (source->second() != nullptr)
-        work.push_back(ChildWork{source->second(), result, 2});
+        work.push_back(ChildWork{source->second(), result, 2, {}});
     if (!isLayoutQueryOfSubstitutedParameter(source, substitutions))
-        work.push_back(ChildWork{source->first(), result, 1});
+        work.push_back(ChildWork{source->first(), result, 1,
+            staticFieldBodySubstitutions(source, substitutions, {})});
     while (!work.empty())
     {
         ChildWork item = work.back();
         work.pop_back();
+        const auto& active = item.substitutions != nullptr ? *item.substitutions : substitutions;
         ast::AstNode* child = nullptr;
         if (item.source != nullptr)
         {
             child = tryCloneSpecialNode(
-                arena, item.source, substitutions,
+                arena, item.source, active,
                 rewrittenContainingTypeName, originalContainingTypeName);
             if (child == nullptr)
             {
                 child = cloneNodeGeneric(
-                    arena, item.source, substitutions,
+                    arena, item.source, active,
                     rewrittenContainingTypeName, originalContainingTypeName);
                 for (auto iterator = item.source->children().rbegin();
                      iterator != item.source->children().rend(); ++iterator)
-                    work.push_back(ChildWork{*iterator, child, 4});
+                    work.push_back(ChildWork{*iterator, child, 4, item.substitutions});
                 if (item.source->third() != nullptr)
-                    work.push_back(ChildWork{item.source->third(), child, 3});
+                    work.push_back(ChildWork{item.source->third(), child, 3, item.substitutions});
                 if (item.source->second() != nullptr)
-                    work.push_back(ChildWork{item.source->second(), child, 2});
-                if (!isLayoutQueryOfSubstitutedParameter(item.source, substitutions))
-                    work.push_back(ChildWork{item.source->first(), child, 1});
+                    work.push_back(ChildWork{item.source->second(), child, 2, item.substitutions});
+                if (!isLayoutQueryOfSubstitutedParameter(item.source, active))
+                    work.push_back(ChildWork{item.source->first(), child, 1,
+                        staticFieldBodySubstitutions(item.source, active, item.substitutions)});
             }
         }
         switch (item.slot)

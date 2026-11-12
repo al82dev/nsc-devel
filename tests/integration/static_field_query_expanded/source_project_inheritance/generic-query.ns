@@ -1,0 +1,1 @@
+class Box : Alpha.Base<int> { public int Tail; } int Main() { owned Box value=new Box(); value.Set(3); value.Tail=7; int sum=0; static foreach (field in Fields(Box)) { sum=sum+field.Get(value); } return sum==10 ? 0 : 1; }

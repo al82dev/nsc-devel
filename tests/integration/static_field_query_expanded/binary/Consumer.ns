@@ -1,0 +1,18 @@
+static class Inspector
+{
+    public static int Format(int value) { return value; }
+    public static int Format(long value) { return (int)value; }
+    public static int Fold<T>(T value)
+    {
+        int sum = 0;
+        static foreach (field in Fields(T)) { sum = sum + Format(field.Get(value)); }
+        return sum;
+    }
+}
+int Main()
+{
+    BinaryFields.Record value = default(BinaryFields.Record);
+    value.Value = 7;
+    value.Count = 3L;
+    return Inspector.Fold<BinaryFields.Record>(value) == 10 ? 0 : 1;
+}

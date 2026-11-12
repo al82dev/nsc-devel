@@ -1,0 +1,1 @@
+delegate int F(); int Main() { raii F f=()=>{ while (true) { break; } return 3; }; return f()==3 ? 0 : 1; }

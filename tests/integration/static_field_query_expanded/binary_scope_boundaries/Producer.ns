@@ -1,0 +1,15 @@
+namespace MetadataFields
+{
+    public class Record
+    {
+        public int First;
+        private int Hidden;
+        public int Automatic { get; set; }
+        public int Last;
+        public Record() { this.Hidden = 40; }
+        public int ReadHidden() { return this.Hidden; }
+    }
+    public struct Extra { public long Value; }
+    public struct Other { public int Unused; }
+    public class UnrelatedBase { }
+}

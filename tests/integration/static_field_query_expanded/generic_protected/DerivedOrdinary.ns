@@ -1,0 +1,8 @@
+class Box<T>
+{
+    protected int Hidden;
+    public int Visible;
+    public Box() { this.Hidden = 3; this.Visible = 7; }
+}
+class Derived : Box<int> { public int Sum() { return this.Hidden + this.Visible; } }
+int Main() { owned Derived value = new Derived(); return value.Sum() == 10 ? 0 : 1; }

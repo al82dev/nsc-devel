@@ -1,0 +1,1 @@
+namespace Alpha { public class Base<T> { private int Hidden; public T Same; public void SetBase(T x) { Same=x; Hidden=4; } public T ReadBase() { return Same; } public int ReadHidden() { return Hidden; } } public class Box<T> : Base<T> { public T Same; } public class Lookalike { public int Same; } }

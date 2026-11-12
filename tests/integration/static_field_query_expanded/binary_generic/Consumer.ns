@@ -1,0 +1,9 @@
+int Main()
+{
+    BinaryGeneric.Box<int> value = default(BinaryGeneric.Box<int>);
+    value.Value = 7;
+    value.Count = 3;
+    int sum = 0;
+    static foreach (field in Fields(BinaryGeneric.Box<int>)) { sum = sum + field.Get(value); }
+    return sum == 10 ? 0 : 1;
+}
