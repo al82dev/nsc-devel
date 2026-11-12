@@ -20,6 +20,7 @@
 #include "LLVMComdatSelectionKind.h"
 #include "LLVMInlineAsmDialect.h"
 #include "LLVMFastMathFlags.h"
+#include "LLVMTypeKind.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -629,6 +630,7 @@ LLVMValueRef LLVMConstInBoundsGEP2(
 LLVMValueRef LLVMGetUndef(LLVMTypeRef type);
 LLVMValueRef LLVMConstVector(LLVMValueRef* scalarConstantValues, unsigned size);
 LLVMTypeRef LLVMTypeOf(LLVMValueRef value);
+LLVMTypeKind LLVMGetTypeKind(LLVMTypeRef type);
 
 LLVMValueRef LLVMAddGlobal(LLVMModuleRef module, LLVMTypeRef type, const char* name);
 void LLVMSetInitializer(LLVMValueRef global, LLVMValueRef constantValue);
