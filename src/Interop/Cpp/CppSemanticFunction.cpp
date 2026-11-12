@@ -47,7 +47,7 @@ CppType invocationTypeForC(const CppType& type, bool allowAggregate)
 // ES: T08-D22: un record C pasado o devuelto por valor a traves de un puntero a funcion C: el struct o union C
 //     importado con layout de valor del mismo tamano y alineacion, como lo toma una llamada C directa (T08-D09).
 std::optional<CppScalarTypeMapping> cCallbackRecordValue(const CppType& type, std::string_view moduleName,
-    const frontend::ProjectNameLookup* lookup, std::optional<std::size_t> owner)
+    const frontend::ProjectNameLookup* lookup, std::optional<std::size_t> owner, bool allowCppRecordValue = false)
 {
     if (!lookup || !owner || type.kind != CppTypeKind::Record || type.isConst || type.isVolatile ||
         type.canonicalSpelling.empty() || !type.sizeBits || !type.alignmentBits || *type.sizeBits % 8 != 0 ||
@@ -56,10 +56,13 @@ std::optional<CppScalarTypeMapping> cCallbackRecordValue(const CppType& type, st
     const auto ordinal = identity ? lookup->typeOrdinalForIdentity(identity->key()) : std::nullopt;
     const auto* imported = ordinal ? lookup->cppImportedType(*ordinal) : nullptr;
     const bool reconciled = identity && lookup->isReconciledCppTypeIdentity(identity->key());
+    const bool cRecord = imported && !allowCppRecordValue && (imported->origin == frontend::CppImportedTypeOrigin::CStruct ||
+                                      imported->origin == frontend::CppImportedTypeOrigin::CUnion);
+    const bool cppRecord = imported && allowCppRecordValue && !reconciled && ordinal &&
+        lookup->cppTrivialValueEligible(*ordinal);
     if (!imported || (!reconciled && imported->projectOrdinal != *owner) || !imported->objectLayout ||
         !imported->deferredImportError.empty() || imported->isIncomplete ||
-        (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
-         imported->origin != frontend::CppImportedTypeOrigin::CUnion) ||
+        (!cRecord && !cppRecord) ||
         imported->objectLayout->sizeBytes != *type.sizeBits / 8 ||
         imported->objectLayout->alignmentBytes != *type.alignmentBits / 8 ||
         (type.recordIdentity && type.recordIdentity->clangUsr && imported->clangUsr &&
@@ -206,10 +209,10 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         else if (signature.callingConvention == "preserve_most") function.callingConvention = language::CallingConvention::PreserveMost;
         else if (signature.callingConvention == "preserve_all") function.callingConvention = language::CallingConvention::PreserveAll;
         else return std::nullopt;
-        // EN: T08-D22: only C contexts (direct C calls, C fields and globals) take records by value.
-        // ES: T08-D22: solo los contextos C (llamadas C directas, campos y globales C) toman records por valor.
+        // C records retain T08-D22; C++ records require the verified trivial-value rule.
         const bool cRecordValues = allowCRecordValue || allowCStoredRecordPointer;
-        if (signature.returnType.kind == CppTypeKind::Record && !cRecordValues) return std::nullopt;
+        const bool cppRecordValues = !cRecordValues && signature.callingConvention == "preserve_most";
+        if (signature.returnType.kind == CppTypeKind::Record && !cRecordValues && !cppRecordValues) return std::nullopt;
         // EN: T08-002: the structural identity records `const` and `volatile` pointees per parameter and for
         //     the result, so a pointer to such data is mapped like a direct C call maps it (the carrier
         //     without the qualifier) and the qualifier becomes an identity flag instead of a rejection.
@@ -241,7 +244,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
             return unqualified;
         };
         const auto result = signature.returnType.kind == CppTypeKind::Record
-            ? cCallbackRecordValue(signature.returnType, moduleName, lookup, owner)
+            ? cCallbackRecordValue(signature.returnType, moduleName, lookup, owner, cppRecordValues)
             : mapFunctionType(carrier(signature.returnType), false, records, moduleName, depth + 1,
                               lookup, owner, false, allowCStoredRecordPointer);
         if (!result || result->isConst || result->isVolatile) return std::nullopt;
@@ -250,9 +253,9 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         function.resultPointeeVolatile = pointeeVolatile(signature.returnType);
         for (const auto& parameter : signature.parameterTypes)
         {
-            if (parameter.kind == CppTypeKind::Record && !cRecordValues) return std::nullopt;
+            if (parameter.kind == CppTypeKind::Record && !cRecordValues && !cppRecordValues) return std::nullopt;
             const auto mapped = parameter.kind == CppTypeKind::Record
-                ? cCallbackRecordValue(parameter, moduleName, lookup, owner)
+                ? cCallbackRecordValue(parameter, moduleName, lookup, owner, cppRecordValues)
                 : mapFunctionType(carrier(parameter), true, records, moduleName, depth + 1, lookup,
                                   owner, false, allowCStoredRecordPointer);
             if (!mapped || mapped->isConst || mapped->isVolatile || parameter.kind == CppTypeKind::Void)

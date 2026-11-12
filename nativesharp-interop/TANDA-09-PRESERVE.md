@@ -263,7 +263,7 @@ modificar produccion. Estos controles no certifican todos los layouts.
 
 ### Dependencia: record C++ trivial por valor
 
-Una muestra C++ con `T09Cpp::Small`, un alias de puntero y una funcion
+En el diagnostico inicial, una muestra C++ con `T09Cpp::Small`, un alias de puntero y una funcion
 `preserve_most` recibe y devuelve el record de dos enteros por valor. Clang
 23.1.0 genero el simbolo y ABI en A:/temp/t09-preserve-cpp-record-oracle.ll;
 pasaron ocho controles C++ en estatica/DLL O0-O3
@@ -272,19 +272,20 @@ de las funciones y rechazo copiar el argumento al puntero de funcion
 (A:/temp/nsc-t09-preserve-cpp-record-0wqp3d4a); el consumidor precompilado
 tampoco paso (A:/temp/nsc-t09-preserve-cpp-record-precompilado-zldwpu8v).
 
-La proyeccion de funciones en `src/Interop/Cpp/CppSemanticFunction.cpp`
-restringe los records por valor a origen C, y la representacion y vida de
+En ese momento la proyeccion de funciones en `src/Interop/Cpp/CppSemanticFunction.cpp`
+restringia los records por valor a origen C, y la representacion y vida de
 objetos C++ corresponden a T11-002, T11-008 y tareas relacionadas. Esta es una
 dependencia no lineal: hay que resolver esa representacion y validar la muestra
 antes de acreditar este caso. Los scripts en
 `pruebas-tanda-09-preserve-cpp-record` conservan el caso reproducible; las
-pruebas NS y precompilada estan pendientes y no cuentan como soporte. La
+pruebas NS y precompilada estaban pendientes. Los resultados posteriores estan
+en las secciones siguientes. La
 funcionalidad de records C por valor no demuestra el caso C++.
 
 Como primer paso de esa dependencia, la observacion de records C++ completos
 conserva ahora desde Clang si son trivialmente copiables, tienen layout
 estandar, constructor predeterminado trivial y destructor trivial. Esos datos
-no se aplican aun a la importacion por valor ni se serializan en NSMeta; los
+entonces no se aplicaban a la importacion por valor y no se serializan en NSMeta; los
 records incompletos y los records C no reportan esta observacion. La prueba
 independiente cubre un tipo trivial, constructor/copia/destructor no triviales,
 layout no estandar, declaracion incompleta, snapshot tras cierre y record C
@@ -295,7 +296,7 @@ demuestra que la copia sea accesible o valida.
 Se recompilaron las sondas afectadas; pasaron las cuatro sondas y los controles
 de transporte/ABI/identidad, junto con 16 consumidores precompilados de records
 C y 16 de funciones C++ escalares (A:/temp/t09-cpp-record-traits-reg-*.log).
-La muestra de record C++ por valor anterior sigue pendiente: faltan reglas de
+En esa etapa la muestra de record C++ por valor seguia pendiente: faltaban reglas de
 seleccion y accesibilidad de operaciones, proyeccion de la firma, transporte
 del contrato vigente y ejecucion comprobada. No se declara compatibilidad por
 la observacion de estos rasgos.
@@ -313,7 +314,8 @@ eliminado, nombre ausente, record incompleto, lenguaje C y sesion cerrada
 (A:/temp/t09-copy-ambiguous.log). Pasaron cuatro sondas y controles de
 transporte/ABI/identidad, y 16 consumidores precompilados C y 16 C++
 (A:/temp/t09-cpp-record-operations-reg-*.log). Esta consulta todavia no alimenta
-la proyeccion de funciones ni NSMeta: el record C++ por valor sigue pendiente.
+la proyeccion de funciones ni NSMeta en esa etapa; el resultado posterior se
+documenta mas abajo.
 
 El modelo de tipos seleccionados de una compilacion conserva ahora estas
 observaciones para records C++ con una sola definicion y layout disponible.
@@ -328,9 +330,9 @@ Tambien compila la seleccion de un proyecto real y comprueba que un record
 normal y otro con copia eliminada conservan resultados distintos en el modelo
 (A:/temp/t09-cpp-record-observation-final.log). Pasaron cuatro sondas,
 transporte/ABI/identidad y 16 consumidores precompilados C y 16 C++
-(A:/temp/t09-cpp-record-model-reg-*.log). Falta aplicar reglas de uso y ABI,
+(A:/temp/t09-cpp-record-model-reg-*.log). Entonces faltaba aplicar reglas de uso y ABI,
 proyectar las firmas, transportar el contrato vigente y ejecutar la muestra C++
-por valor; T09-003 permanece abierto.
+por valor; los avances posteriores no cierran T09-003.
 
 ### Llamada directa con record C++ trivial
 
@@ -360,6 +362,32 @@ escalares (A:/temp/t09-cpp-pod-final-*.log).
 
 La prueba precompilada aun falla: el productor informa que el origen del record
 C++ no esta admitido en el contrato de metadatos vigente
-(A:/temp/nsc-t09-preserve-cpp-record-directo-precompilado-ykd4ztzr). La forma
-por puntero a funcion tambien sigue sin proyectarse. No se acredita ninguna de
-esas capacidades ni otros tipos C++ no triviales; T09-003 sigue abierto.
+(A:/temp/nsc-t09-preserve-cpp-record-directo-precompilado-ykd4ztzr). Otros tipos
+C++ no triviales no se acreditan; T09-003 sigue abierto.
+
+### Puntero a funcion C++ con record trivial
+
+La muestra con `T09Cpp::Small` por valor admite ahora un puntero
+`preserve_most` devuelto por C++, su invocacion y la conversion de una funcion
+compatible al mismo tipo. El modelo aplica a los records C++ la regla de
+identidad, layout y operaciones triviales de la llamada directa; la regla para
+records C conserva sus condiciones anteriores. El soporte se limita a la
+forma y convencion comprobadas, no a todos los punteros o records C++.
+
+Pasaron ocho comparaciones con el programa C++ en estatica y DLL O0-O3; se
+comprobaron el resultado, la copia, la identidad del puntero y la convencion
+indirecta en IR (A:/temp/nsc-t09-preserve-cpp-record-j3lpu_gd). Diez muestras
+con operaciones privadas, eliminadas o no triviales y miembros volatiles
+producen el diagnostico esperado de copia indirecta
+(A:/temp/nsc-t09-cpp-record-ptr-rechazos-47g76nxa). Estos rechazos comprueban
+el uso integrado, no de manera aislada cada paso de proyeccion.
+
+La compilacion incremental y cuatro sondas pasaron, asi como los controles de
+transporte, ABI e identidad y el rechazo de conversiones incompatibles de
+punteros escalares C (A:/temp/t09-cpp-ptr-final-*.log). Pasaron ademas ocho
+comparaciones de records C, ocho de llamada C++ directa y 16 consumidores
+precompilados de punteros C++ escalares (A:/temp/t09-cpp-record-ptr-*.log).
+La prueba precompilada con este record C++ sigue fallando en el productor por
+el origen del record en metadatos
+(A:/temp/nsc-t09-preserve-cpp-record-precompilado-h3_su9mc). Esa capacidad y
+T09-003 permanecen pendientes.
