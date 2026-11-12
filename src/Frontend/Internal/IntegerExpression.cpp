@@ -91,6 +91,7 @@ std::optional<std::int64_t> IntegerExpression::parsePrimary(std::string& error)
                 return std::nullopt;
             }
             ++nesting_;
+            if (nesting_ > maximumObservedNesting_) maximumObservedNesting_ = nesting_;
             auto value = parseBitwiseOr(error);
             --nesting_;
             if (!value.has_value() || !take(")"))

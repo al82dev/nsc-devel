@@ -789,7 +789,9 @@ bool ComptimeEngine::evaluateRunExpression(
     // Function results are not cached until cache entries also account for parse memory.
     if (cache_ && !containsFunctionCall(resolvedExpression))
     {
-        if (const auto cached = cache_->find(dependencyDigest); cached.has_value())
+        if (const auto cached = cache_->find(dependencyDigest);
+            cached.has_value() && cached->maximumObservedNesting.has_value() &&
+            *cached->maximumObservedNesting <= limits_.maximumNesting)
         {
             if (cached->executedSteps > limits_.maximumSteps -
                 std::min(result.executedSteps, limits_.maximumSteps))
@@ -821,7 +823,8 @@ bool ComptimeEngine::evaluateRunExpression(
         ++result.cacheMisses;
         if (value.has_value() && cache_ && !containsFunctionCall(resolvedExpression))
             cache_->store(
-                dependencyDigest, {*value, result.executedSteps - stepsBefore});
+                dependencyDigest, {*value, result.executedSteps - stepsBefore,
+                                   evaluator.maximumObservedNesting()});
     }
     if (value.has_value()) return true;
     result.error = error + " (directive at byte " + std::to_string(cursor) + ")";

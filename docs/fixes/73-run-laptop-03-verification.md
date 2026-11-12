@@ -173,3 +173,30 @@ la capacidad real de vectores y entornos no se contabiliza íntegramente en
 Hay más sondeos de cancelación por llamada; no se comparó dinámicamente el
 contador de pasos con un binario anterior usando la misma prueba.
 
+## Límite de anidamiento con caché compartida
+
+Una expresión aritmética con paréntesis se evaluó con límite alto y se guardó
+en la caché. Al repetirla con un límite menor, la caché caliente devolvía éxito
+aunque la caché fría rechazaba el mismo texto por anidamiento. La prueba
+dirigida anterior a la corrección salió 1 y está en
+`A:/nsc-fixes-evidencia/run73-cache-nesting-baseline-20261112.log`.
+
+La entrada en memoria registra ahora la profundidad máxima observada por el
+evaluador. Se reutiliza solo cuando esa profundidad está disponible y cabe
+en el límite actual; en otro caso se evalúa de nuevo, conservando el orden
+real de diagnósticos. El digest público de la dependencia no cambia. La caché
+es un mapa de proceso protegido por mutex; no se modificó metadata persistente.
+La representación interna C++ de `ComptimeCache::Entry` cambia y sus
+consumidores se recompilaron incrementalmente.
+
+Con el cambio, la prueba dirigida cubre límite exacto, límite bajo frío y
+caliente, límite cero, entrada sin profundidad, prioridad con límite de pasos
+y cuatro hilos. Pasaron seis CTest dirigidos:
+`A:/nsc-fixes-evidencia/run73-cache-ctest-0-20261112.log` a
+`run73-cache-ctest-5-20261112.log`. La integración fuente O0/O2 pasó en
+`A:/nsc-fixes-evidencia/run73-cache-integration-20261112.log`. El análisis
+`clang-analyzer-core.*` de los dos archivos modificados salió 0 sin
+diagnósticos en `A:/nsc-fixes-evidencia/run73-cache-tidy-20261112.log`.
+Esta evidencia no demuestra reversión de caché al cancelar una unidad ni
+contabilidad física completa de memoria.
+

@@ -17,6 +17,8 @@ public:
     {
         std::int64_t value = 0;
         std::size_t executedSteps = 0;
+        // Unknown for entries created without evaluator depth information.
+        std::optional<std::size_t> maximumObservedNesting;
     };
 
     std::optional<Entry> find(std::string_view key) const;
