@@ -97,6 +97,73 @@ int main()
     expect(cancelled.evaluations.empty(),
         "early cancellation does not publish an evaluation");
 
+    // Sweep every observed cancellation point of a unit with two completed evaluations.
+    const std::string transactionSource =
+        "int A(int x) { return x + 1; } int Main() { return #run(A(20)) + #run(A(21)); }";
+    std::size_t polls = 0;
+    ComptimeExecutionContext counting;
+    counting.cancellationRequested = [&polls] { ++polls; return false; };
+    const auto completed = ComptimeEngine({}, {}, counting).execute(transactionSource);
+    expect(completed.success && completed.evaluations.size() == 2, "transaction control succeeds");
+    const auto totalPolls = polls;
+    for (std::size_t stop = 1; stop <= totalPolls; ++stop)
+    {
+        polls = 0;
+        ComptimeExecutionContext cutoff;
+        cutoff.cancellationRequested = [&polls, stop] { return ++polls >= stop; };
+        const auto result = ComptimeEngine({}, {}, cutoff).execute(transactionSource);
+        expect(!result.success && result.error == "comptime evaluation cancelled",
+            "every observed cancellation is reported");
+        expect(result.source == transactionSource && result.evaluations.empty() &&
+               result.dependencies.empty() && result.attributes.empty() &&
+               result.macroExpansions.empty() && result.authoredDiagnostics.empty() &&
+               result.declaredCapabilities.empty() && result.reproducibilityDigest.empty(),
+            "cancellation returns no partial unit result");
+    }
+
+    // A cancellation after preprocessing and directive recording must not
+    // publish any of those records or the expanded source.
+    const std::string directiveSource =
+        "#macro make() expression { 40 + 2 } "
+        "#capability(\"env\", \"NSC_DUMMY\") "
+        "#compile_note(\"notice\", \"NOTE-1\") #[Example] "
+        "int x = #expand make(); int Main() { return #run(40 + 2); }";
+    std::size_t directivePolls = 0;
+    ComptimeExecutionContext directiveCounting;
+    directiveCounting.cancellationRequested = [&directivePolls] { ++directivePolls; return false; };
+    const auto directivesComplete = ComptimeEngine({}, {}, directiveCounting).execute(directiveSource);
+    expect(directivesComplete.success && !directivesComplete.macroExpansions.empty() &&
+           !directivesComplete.declaredCapabilities.empty() && !directivesComplete.authoredDiagnostics.empty() &&
+           !directivesComplete.attributes.empty() && directivesComplete.evaluations.size() == 1,
+        "directive transaction control populates each record category");
+    const auto directiveTotalPolls = directivePolls;
+    for (std::size_t stop = 1; stop <= directiveTotalPolls; ++stop)
+    {
+        directivePolls = 0;
+        ComptimeExecutionContext cutoff;
+        cutoff.cancellationRequested = [&directivePolls, stop] { return ++directivePolls >= stop; };
+        const auto result = ComptimeEngine({}, {}, cutoff).execute(directiveSource);
+        expect(!result.success && result.error == "comptime evaluation cancelled" &&
+               result.source == directiveSource && result.evaluations.empty() &&
+               result.dependencies.empty() && result.attributes.empty() && result.macroExpansions.empty() &&
+               result.authoredDiagnostics.empty() && result.declaredCapabilities.empty(),
+            "cancellation discards directive and macro records");
+    }
+    const auto arithmeticCache = std::make_shared<ComptimeCache>();
+    ComptimeExecutionContext cancelAfterStore;
+    cancelAfterStore.cancellationRequested = [arithmeticCache] { return arithmeticCache->size() != 0; };
+    const auto cancelledCached = ComptimeEngine({}, arithmeticCache, cancelAfterStore).execute(directiveSource);
+    expect(!cancelledCached.success && cancelledCached.error == "comptime evaluation cancelled" &&
+           cancelledCached.source == directiveSource && cancelledCached.evaluations.empty() &&
+           cancelledCached.dependencies.empty() && cancelledCached.attributes.empty() &&
+           cancelledCached.macroExpansions.empty() && cancelledCached.authoredDiagnostics.empty() &&
+           cancelledCached.declaredCapabilities.empty(),
+        "cancellation after a cached arithmetic evaluation publishes no unit output");
+    const auto resumedCached = ComptimeEngine({}, arithmeticCache).execute(directiveSource);
+    expect(resumedCached.success && resumedCached.evaluations.size() == 1 &&
+           resumedCached.evaluations[0].value == 42,
+        "later evaluation with the shared cache still produces the correct value");
+
     const auto cache = std::make_shared<ComptimeCache>();
     const auto repeated = ComptimeEngine({}, cache).execute(nestedSource);
     const auto repeatedAgain = ComptimeEngine({}, cache).execute(nestedSource);

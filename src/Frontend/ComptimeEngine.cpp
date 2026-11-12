@@ -889,13 +889,24 @@ bool ComptimeEngine::processRunDirective(
 
 ComptimeResult ComptimeEngine::execute(std::string_view source) const
 {
+    const std::string_view authoredSource = source;
     ComptimeResult result;
-    if (!initializeExecution(source, result)) return result;
+    const auto cancelledResult = [&result, authoredSource]
+    {
+        ComptimeResult cancelled;
+        cancelled.source = authoredSource;
+        cancelled.error = "comptime evaluation cancelled";
+        cancelled.executedSteps = result.executedSteps;
+        cancelled.memoryUsed = result.memoryUsed;
+        return cancelled;
+    };
+    if (!initializeExecution(source, result))
+        return result.error == "comptime evaluation cancelled" ? cancelledResult() : result;
     Scan state = Scan::Code;
     bool escaped = false;
     for (std::size_t cursor = 0; cursor < source.size(); ++cursor)
     {
-        if (cancellationRequested(result)) return result;
+        if (cancellationRequested(result)) return cancelledResult();
         if (advanceScanState(source, cursor, state, escaped)) continue;
         if (startsWord(source, cursor, "comptime"))
         {
@@ -911,8 +922,15 @@ ComptimeResult ComptimeEngine::execute(std::string_view source) const
         if (matched) continue;
         if (!processAttributeDirective(source, cursor, result, matched)) return result;
         if (matched) continue;
-        if (!processRunDirective(source, cursor, result, matched)) return result;
+        if (!processRunDirective(source, cursor, result, matched))
+        {
+            if (result.error == "comptime evaluation cancelled" ||
+                result.error.starts_with("comptime evaluation cancelled (directive at byte "))
+                return cancelledResult();
+            return result;
+        }
     }
+    if (cancellationRequested(result)) return cancelledResult();
     result.success = true;
     result.reproducibilityDigest = reproducibilityDigestOf(result);
     return result;

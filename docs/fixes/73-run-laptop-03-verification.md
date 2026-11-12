@@ -116,3 +116,32 @@ con el compilador aislado SHA-256
 incluyendo ejecuciones O0/O2 y rechazos esperados. Comandos y resultados están
 en `A:/nsc-fixes-evidencia/run-73-integrado-20261112/`.
 
+## Cancelación de la unidad de compilación
+
+El usuario autorizó corregir los pendientes de la campaña. La reproducción
+con dos directivas `#run` mostró que una cancelación tardía podía devolver
+fuente transformada y registros parciales. Se conservó el registro de la
+prueba antes del cambio en
+`A:/nsc-fixes-evidencia/run73-cancellation-baseline-20261112.log` (salida 1).
+
+`ComptimeEngine::execute` devuelve ahora la fuente original y un resultado
+sin registros de la unidad al observar cancelación; conserva los contadores
+de pasos y memoria. La prueba recorre los puntos de sondeo observados para
+dos evaluaciones y para una fuente con macro, capability, nota, atributo y
+evaluación aritmética. También comprueba una ejecución posterior con caché
+compartida. Compilación incremental y prueba dirigida pasaron; el log de la
+selección ampliada es `A:/nsc-fixes-evidencia/run73-cancellation-directives-20261112.log`.
+Las seis unitarias dirigidas de funciones, límites, sandbox, caché y
+reproducibilidad pasaron; sus salidas CTest están en
+`A:/nsc-fixes-evidencia/run73-cancellation-ctest-0-20261112.log` a
+`run73-cancellation-ctest-5-20261112.log`. La prueba real de compilación y
+ejecución de `comptime_calls.py` pasó en O0/O2, con comandos y hash en
+`A:/nsc-fixes-evidencia/run73-cancel-integration-20261112.log`.
+`clang-tidy` con `clang-analyzer-core.*` terminó con salida 0 sin diagnósticos:
+`A:/nsc-fixes-evidencia/run73-cancel-tidy-20261112.log`.
+
+La cancelación no revierte una entrada aritmética ya guardada en la caché
+compartida y la expansión de macros no consulta cancelación durante su propio
+proceso. Esta corrección garantiza el resultado público al observarla; no se
+presenta como transacción de caché ni como cancelación inmediata de macros.
+
