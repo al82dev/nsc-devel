@@ -34,3 +34,21 @@ no se incorporó como solución; su estado está en
 Estos son controles dirigidos de integración, no una batería completa ni
 evidencia de que todas las limitaciones hayan quedado resueltas. No se integró
 la rama de interoperabilidad C/C++, no se hizo push ni despliegue.
+
+## Repetición tras las correcciones
+
+La revisión `14a65343f9f2e77bb4394cdfdece9ea37e2c6049` contiene las
+correcciones de inferencia y de receptor calculado. La compilación incremental
+de `nsc` y la emisión aislada de Core y Collections O0/O2 terminaron con
+salida 0. Los seis consumidores dirigidos de vistas ref/out, ejemplo original
+de SortWith y semántica de SortWith pasaron para ambos pares de bibliotecas.
+El manifiesto registra revisión, comandos y hashes en
+`A:/nsc-fixes-evidencia/sdk-integrado-dirigido/logs/1794523813914838700/manifest.json`.
+
+Con ese compilador pasaron también `operator-computed.log`,
+`operator-throw.log`, `operator-original39.log` y `operator-original70.log`
+en la misma carpeta; el control 39 comprueba análisis y emisión, no ejecución.
+La semántica de cada prueba y los límites de las correcciones se detallan en
+`sortwith-identidad-binaria.md` y `operador-receptor-calculado-identidad.md`.
+Esta repetición valida esos controles dirigidos, no el conjunto completo de
+limitaciones, ni el experimento FnOnce pendiente.
