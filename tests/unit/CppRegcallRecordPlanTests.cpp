@@ -2,6 +2,7 @@
 #include "nativesharp/Interop/CppInteropSession.h"
 #include "nativesharp/Interop/CppVariadicAbiReconciliation.h"
 #include "nativesharp/Interop/CppRegCallAbiValidation.h"
+#include "nativesharp/Interop/CppVariadicAbiCodec.h"
 #include "../../src/Interop/Internal/CppCRecordMetadataCodec.h"
 #include <llvm/IR/CallingConv.h>
 #include <iostream>
@@ -28,12 +29,18 @@ int main(int argc, char** argv)
         typedef struct Small { int x, y; } Small;
         typedef struct Large { int a, b, c, d, e, f; } Large;
         typedef struct Floats { float x, y; } Floats;
+        typedef struct Nested { Floats pair; float z; } Nested;
+        typedef struct FloatArray { float values[3]; } FloatArray;
         typedef Small (__attribute__((regcall)) *SmallFn)(Small);
         typedef Large (__attribute__((regcall)) *LargeFn)(Large);
         typedef Floats (__attribute__((regcall)) *FloatsFn)(Floats);
+        typedef Nested (__attribute__((regcall)) *NestedFn)(Nested);
+        typedef FloatArray (__attribute__((regcall)) *FloatArrayFn)(FloatArray);
         Small __attribute__((regcall)) small(Small);
         Large __attribute__((regcall)) large(Large);
         Floats __attribute__((regcall)) floats(Floats);
+        Nested __attribute__((regcall)) nested(Nested);
+        FloatArray __attribute__((regcall)) float_array(FloatArray);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -55,15 +62,27 @@ int main(int argc, char** argv)
         if (aliasType.empty() || functionType.empty() || !declaration) return 4;
         const auto direct = session->cFunctionAbiPlan(functionName, functionType);
         const auto indirect = session->cFunctionPointerAbiPlan(aliasName, aliasType);
-        // The current plan may not express the expanded HFA. If it becomes
-        // available, both query paths must agree on Clang's physical shape.
         if (std::string_view(aliasName) == "FloatsFn")
         {
-            if (!direct && !indirect) continue;
             if (!direct || !indirect || direct->physicalReturn.kind != abi_plan::TypeKind::Structure ||
                 direct->physicalParameters.size() != 2 ||
                 direct->physicalParameters[0].type.kind != abi_plan::TypeKind::Float ||
-                direct->physicalParameters[1].type.kind != abi_plan::TypeKind::Float) return 9;
+                direct->physicalParameters[1].type.kind != abi_plan::TypeKind::Float ||
+                direct->logicalParameters.size() != 1 || indirect->logicalParameters.size() != 1 ||
+                direct->logicalParameters[0].passing != abi_plan::Passing::Expand ||
+                indirect->logicalParameters[0].passing != abi_plan::Passing::Expand ||
+                direct->logicalParameters[0].expandedOffsets != std::vector<std::uint64_t>{0, 4} ||
+                indirect->logicalParameters[0].expandedOffsets != direct->logicalParameters[0].expandedOffsets) return 9;
+            const auto encoded = abi_plan::encodeFunctionPointerPlanForCache(*indirect);
+            if (!encoded) return 23;
+            const auto decoded = abi_plan::decodeFunctionPointerPlanFromCache(*encoded);
+            if (!decoded || decoded->logicalParameters.size() != 1 ||
+                decoded->logicalParameters[0].passing != abi_plan::Passing::Expand ||
+                decoded->logicalParameters[0].expandedOffsets != std::vector<std::uint64_t>{0, 4} ||
+                abi_plan::decodeFunctionPointerPlanFromCache(encoded->substr(0, encoded->size() - 1))) return 24;
+            auto invalid = *indirect; invalid.logicalParameters[0].expandedOffsets.pop_back();
+            if (abi_plan::encodeFunctionPointerPlanForCache(invalid)) return 25;
+            continue;
         }
         if (!direct || !indirect)
         { std::cerr << aliasName << ": directo=" << bool(direct) << " puntero=" << bool(indirect) << '\n'; return 5; }
@@ -166,6 +185,27 @@ int main(int argc, char** argv)
         if (metadata_detail::encodeCDependencyFunction(wrong, encoded, error)) return 22;
         encoded.pop_back();
         if (metadata_detail::decodeCDependencyFunction(encoded, decoded, error)) return 19;
+    }
+    for (const auto& [aliasName, functionName] : {std::pair{"NestedFn", "nested"},
+                                                  std::pair{"FloatArrayFn", "float_array"}})
+    {
+        std::string aliasType, functionType;
+        for (const auto& alias : *aliases)
+            if (alias.name == aliasName) aliasType = alias.underlyingType.canonicalSpelling;
+        for (const auto& function : *functions)
+            if (function.name == functionName) functionType = function.canonicalFunctionType;
+        const auto direct = session->cFunctionAbiPlan(functionName, functionType);
+        const auto pointer = session->cFunctionPointerAbiPlan(aliasName, aliasType);
+        const std::vector<std::uint64_t> offsets{0, 4, 8};
+        if (!direct || !pointer || direct->logicalParameters.size() != 1 || pointer->logicalParameters.size() != 1 ||
+            direct->logicalParameters[0].passing != abi_plan::Passing::Expand ||
+            pointer->logicalParameters[0].passing != abi_plan::Passing::Expand ||
+            direct->logicalParameters[0].expandedOffsets != offsets ||
+            pointer->logicalParameters[0].expandedOffsets != offsets || direct->physicalParameters.size() != 3 ||
+            pointer->physicalParameters.size() != 3) return 26;
+        for (std::size_t i = 0; i < 3; ++i)
+            if (direct->physicalParameters[i].type.kind != abi_plan::TypeKind::Float ||
+                pointer->physicalParameters[i].type.kind != abi_plan::TypeKind::Float) return 27;
     }
     return 0;
 }

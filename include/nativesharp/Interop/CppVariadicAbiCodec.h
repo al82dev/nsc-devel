@@ -66,20 +66,32 @@ inline bool readType(Reader& r, Type& type, unsigned depth)
 }
 inline bool writeLogical(Writer& w, const LogicalValue& value)
 {
-    if (static_cast<unsigned>(value.passing) > static_cast<unsigned>(Passing::Ignore)) return false;
+    if (static_cast<unsigned>(value.passing) > static_cast<unsigned>(Passing::Expand) ||
+        value.expandedOffsets.size() > maxPhysical ||
+        (value.passing == Passing::Expand ? (value.expandedOffsets.empty() || value.expandedOffsets.size() != value.physicalCount)
+                                         : !value.expandedOffsets.empty())) return false;
     w.u8(static_cast<std::uint8_t>(value.passing)); w.u8(value.coercion.has_value());
     if (value.coercion && !writeType(w, *value.coercion, 0)) return false;
     w.u64(value.offset); w.u64(value.alignment); w.u64(value.firstPhysical); w.u64(value.physicalCount);
-    w.u8(value.flatten); w.u8(value.byValue); w.u8(value.signExtend); w.u8(value.zeroExtend); return w.valid;
+    w.u8(value.flatten); w.u8(value.byValue); w.u8(value.signExtend); w.u8(value.zeroExtend);
+    w.u64(value.expandedOffsets.size());
+    for (const auto offset : value.expandedOffsets) w.u64(offset);
+    return w.valid;
 }
 inline bool readLogical(Reader& r, LogicalValue& value)
 {
     std::uint8_t passing = 0; bool present = false;
-    if (!r.u8(passing) || passing > static_cast<std::uint8_t>(Passing::Ignore) || !r.boolean(present)) return false;
+    if (!r.u8(passing) || passing > static_cast<std::uint8_t>(Passing::Expand) || !r.boolean(present)) return false;
     value.passing = static_cast<Passing>(passing);
     if (present) { value.coercion.emplace(); if (!readType(r, *value.coercion, 0)) return false; }
-    return r.u64(value.offset) && r.u64(value.alignment) && r.u64(value.firstPhysical) && r.u64(value.physicalCount) &&
-        r.boolean(value.flatten) && r.boolean(value.byValue) && r.boolean(value.signExtend) && r.boolean(value.zeroExtend);
+    std::uint64_t count = 0;
+    if (!r.u64(value.offset) || !r.u64(value.alignment) || !r.u64(value.firstPhysical) || !r.u64(value.physicalCount) ||
+        !r.boolean(value.flatten) || !r.boolean(value.byValue) || !r.boolean(value.signExtend) || !r.boolean(value.zeroExtend) ||
+        !r.u64(count) || count > maxPhysical || count > (r.bytes.size() - r.pos) / 8 ||
+        (value.passing == Passing::Expand ? (!count || count != value.physicalCount) : count != 0)) return false;
+    value.expandedOffsets.resize(static_cast<std::size_t>(count));
+    for (auto& offset : value.expandedOffsets) if (!r.u64(offset)) return false;
+    return true;
 }
 inline bool writePhysical(Writer& w, const PhysicalParameter& value)
 {

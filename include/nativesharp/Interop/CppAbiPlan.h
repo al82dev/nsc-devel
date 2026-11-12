@@ -18,7 +18,7 @@ struct Type
     bool packed = false;
     std::vector<Type> elements;
 };
-enum class Passing { Direct, Extend, Indirect, Ignore };
+enum class Passing { Direct, Extend, Indirect, Ignore, Expand };
 struct LogicalValue
 {
     Passing passing = Passing::Ignore;
@@ -31,6 +31,9 @@ struct LogicalValue
     bool byValue = false;
     bool signExtend = false;
     bool zeroExtend = false;
+    // Byte offsets of the physical parameters of an expanded aggregate.
+    // Empty for all other passing kinds.
+    std::vector<std::uint64_t> expandedOffsets;
 };
 struct PhysicalParameter
 {

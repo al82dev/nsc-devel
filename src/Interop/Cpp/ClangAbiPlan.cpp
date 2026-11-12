@@ -3,12 +3,15 @@
 #include <clang/AST/ASTContext.h>
 #include <clang/AST/Decl.h>
 #include <clang/AST/GlobalDecl.h>
+#include <clang/AST/RecordLayout.h>
+#include <clang/AST/DeclCXX.h>
 #include <clang/CodeGen/CodeGenABITypes.h>
 #include <clang/CodeGen/ModuleBuilder.h>
 #include <llvm/IR/Attributes.h>
 #include <llvm/IR/DerivedTypes.h>
 #include <llvm/IR/Function.h>
 #include <llvm/IR/Module.h>
+#include <limits>
 
 namespace nativesharp::interop::abi_plan
 {
@@ -119,8 +122,52 @@ std::optional<LogicalValue> copyLogical(const clang::CodeGen::ABIArgInfo& input)
         result.byValue = input.getIndirectByVal();
     }
     else if (input.isIgnore()) result.passing = Passing::Ignore;
+    else if (input.isExpand()) result.passing = Passing::Expand;
     else return std::nullopt;
     return result;
+}
+
+// Clang's Expand walks scalar fields in source order. Capture the byte offset
+// from the same AST layout, and later require every generated LLVM type to
+// match Clang's physical signature. Unions, bitfields and C++ bases remain
+// unavailable until their expansion rules can be represented and verified.
+bool collectExpandedPieces(clang::CodeGenerator& generator, clang::ASTContext& context,
+    clang::QualType type, std::uint64_t offset,
+    std::vector<std::pair<std::uint64_t, llvm::Type*>>& pieces, unsigned depth)
+{
+    if (type.isNull() || type->isIncompleteType() || depth > 32 || pieces.size() >= 1024) return false;
+    if (const auto* array = context.getAsConstantArrayType(type))
+    {
+        const auto count = array->getSize().getLimitedValue(1025);
+        if (!count || count > 1024) return false;
+        const auto element = array->getElementType();
+        if (element.isNull() || element->isIncompleteType()) return false;
+        const auto stride = static_cast<std::uint64_t>(context.getTypeSizeInChars(element).getQuantity());
+        if (!stride || count > (std::numeric_limits<std::uint64_t>::max() - offset) / stride) return false;
+        for (std::uint64_t index = 0; index < count; ++index)
+            if (!collectExpandedPieces(generator, context, element, offset + index * stride, pieces, depth + 1)) return false;
+        return true;
+    }
+    if (const auto* recordType = type->getAs<clang::RecordType>())
+    {
+        const auto* record = recordType->getDecl()->getDefinition();
+        if (!record || record->isUnion()) return false;
+        if (const auto* cpp = llvm::dyn_cast<clang::CXXRecordDecl>(record); cpp && cpp->getNumBases()) return false;
+        const auto& layout = context.getASTRecordLayout(record);
+        unsigned index = 0;
+        for (const auto* field : record->fields())
+        {
+            const auto bits = layout.getFieldOffset(index++);
+            if (field->isBitField() || bits % 8 || bits / 8 > std::numeric_limits<std::uint64_t>::max() - offset ||
+                !collectExpandedPieces(generator, context, field->getType(), offset + bits / 8, pieces, depth + 1)) return false;
+        }
+        return index != 0;
+    }
+    if (!type->isScalarType()) return false;
+    auto* physical = clang::CodeGen::convertTypeForMemory(generator.CGM(), type);
+    if (!physical || !copyType(physical, 0)) return false;
+    pieces.emplace_back(offset, physical);
+    return true;
 }
 }
 
@@ -207,6 +254,22 @@ std::optional<Plan> copyPlan(clang::CodeGenerator& generator,
         value.firstPhysical = next;
         if (info.getPaddingType()) { error = "argument padding not represented"; return std::nullopt; }
         if (info.isIgnore()) continue;
+        if (info.isExpand())
+        {
+            std::vector<std::pair<std::uint64_t, llvm::Type*>> pieces;
+            if (!collectExpandedPieces(generator, function.getASTContext(),
+                    logical.arguments()[ordinal].type, 0, pieces, 0) || pieces.empty())
+            { error = "expanded argument fields not represented"; return std::nullopt; }
+            for (const auto& [offset, type] : pieces)
+            {
+                if (next >= physical->getNumParams() || physical->getParamType(next) != type)
+                { error = "expanded argument physical type mismatch"; return std::nullopt; }
+                value.expandedOffsets.push_back(offset);
+                ++next;
+                ++value.physicalCount;
+            }
+            continue;
+        }
         if (info.isIndirect())
         {
             if (next >= physical->getNumParams() || !physical->getParamType(next)->isPointerTy() ||

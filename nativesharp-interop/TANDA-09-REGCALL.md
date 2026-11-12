@@ -361,6 +361,26 @@ rechazos de la forma flotante expandida y las pruebas de metadatos y cierre de
 dependencias (A:/temp/t09-regcall-precompiled-reg-*.log y
 A:/temp/t09-cpp-meta-check.log).
 
-La evidencia cubre las firmas comprobadas; la representacion y emision de
-records flotantes expandidos y otras firmas siguen pendientes. T09-003 no se
-cierra con este resultado.
+La evidencia de esta etapa cubre las firmas comprobadas; en ese momento la
+representacion y emision de records flotantes expandidos seguian pendientes.
+T09-003 no se cierra con este resultado.
+
+## Plan de argumentos regcall expandidos
+
+La sesion obtiene de Clang la clasificacion `Expand`, el tipo fisico y el
+desplazamiento en bytes de cada pieza. La correspondencia se comprueba contra
+la firma fisica de Clang antes de aceptar el plan. El contrato vigente de
+cache conserva esos desplazamientos y rechaza datos truncados o inconsistentes.
+La prueba dirigida cubre funciones directas y punteros con dos `float`, un
+record anidado y un arreglo de tres `float` (A:/temp/t09-regcall-plan-test.log).
+La extraccion no admite uniones, bitfields ni clases con bases en esta ruta.
+
+Pasaron las cuatro sondas ABI/punteros (A:/temp/t09-test-varptr.log),
+transporte, ABI e identidad (A:/temp/t09-transport-directed/), comprobaciones
+de metadata (A:/temp/t09-cpp-meta-check.log), 16 consumidores regcall
+precompilados (A:/temp/nsc-t09-regcall-records-precompilado-lff0py7b) y el
+consumidor SysV precompilado (A:/temp/nsc-t09-sysv-indirecta-record-pre-donp4eay).
+La prueba existente confirma el rechazo de llamadas flotantes expandidas
+directas y por puntero (A:/temp/nsc-t09-regcall-hfa-rechazo-nxjedsgb).
+La emision de estas llamadas sigue pendiente; este plan no acredita ejecucion
+ni cierra T09-003.
