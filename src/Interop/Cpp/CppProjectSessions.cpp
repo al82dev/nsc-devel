@@ -280,24 +280,31 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 if (type.kind == CppTypeKind::Record) ++expandedRecords;
                 else if (!abi_plan::regCallFloatRecordScalarSupported(type)) tailSupported = false;
             }
+            const bool recordReturn = signature.returnType.kind == CppTypeKind::Record;
+            const bool intReturn = signature.returnType.kind == CppTypeKind::SignedInteger &&
+                signature.returnType.canonicalSpelling == "int";
             if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
-                signature.returnType.kind != CppTypeKind::Record || !expandedRecords || !tailSupported ||
-                !signature.returnType.recordIdentity || !signature.returnType.recordIdentity->clangUsr ||
+                (!recordReturn && !intReturn) || !expandedRecords || !tailSupported ||
                 !signature.returnType.sizeBits || *signature.returnType.sizeBits % 8 || signature.returnType.alignmentBits != 32) return {};
-            const auto identity = projectCppRecordTypeIdentity(signature.returnType,
-                graph.projects()[alias.projectOrdinal].moduleName());
-            const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
-            const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
-            if (!ordinal || !lookup.cppTrivialValueEligible(*ordinal) || !imported || imported->fromPrecompiledCatalog ||
-                imported->projectOrdinal != alias.projectOrdinal || imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
-                imported->isIncomplete || !imported->deferredImportError.empty() || !imported->objectLayout ||
-                imported->objectLayout->sizeBytes != *signature.returnType.sizeBits / 8 || imported->objectLayout->alignmentBytes != 4 ||
-                imported->clangUsr != signature.returnType.recordIdentity->clangUsr) return {};
             const auto records = cppSession->recordsSnapshot();
-            if (!records || std::count_if(records->begin(), records->end(), [&](const auto& record) {
-                    return record.complete && record.isCxx && record.clangUsr == imported->clangUsr &&
-                        record.sizeBits == signature.returnType.sizeBits && record.alignmentBits == 32;
-                }) != 1) return {};
+            if (!records) return {};
+            if (recordReturn)
+            {
+                if (!signature.returnType.recordIdentity || !signature.returnType.recordIdentity->clangUsr) return {};
+                const auto identity = projectCppRecordTypeIdentity(signature.returnType,
+                    graph.projects()[alias.projectOrdinal].moduleName());
+                const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
+                const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+                if (!ordinal || !lookup.cppTrivialValueEligible(*ordinal) || !imported || imported->fromPrecompiledCatalog ||
+                    imported->projectOrdinal != alias.projectOrdinal || imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
+                    imported->isIncomplete || !imported->deferredImportError.empty() || !imported->objectLayout ||
+                    imported->objectLayout->sizeBytes != *signature.returnType.sizeBits / 8 || imported->objectLayout->alignmentBytes != 4 ||
+                    imported->clangUsr != signature.returnType.recordIdentity->clangUsr ||
+                    std::count_if(records->begin(), records->end(), [&](const auto& record) {
+                        return record.complete && record.isCxx && record.clangUsr == imported->clangUsr &&
+                            record.sizeBits == signature.returnType.sizeBits && record.alignmentBits == 32;
+                    }) != 1) return {};
+            }
             for (std::size_t i = 0; i < signature.parameterTypes.size(); ++i)
             {
                 const auto& parameter = signature.parameterTypes[i];
@@ -323,8 +330,10 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
             }
             auto plan = cppSession->cppFunctionPointerAbiPlan(alias.declaration.qualifiedName,
                 *alias.declaration.clangUsr, pointer.canonicalSpelling);
-            if (!plan || !abi_plan::isRegCallWin64FloatRecordInterleaved(
-                    *plan, "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4) ||
+            if (!plan || !(recordReturn ? abi_plan::isRegCallWin64FloatRecordInterleaved(
+                    *plan, "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4) :
+                    (abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, "__regcall3____nsc_pointer_abi_probe") &&
+                     abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, signature.returnType))) ||
                 !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes)) return {};
             return std::make_shared<const abi_plan::Plan>(std::move(*plan));
         }
@@ -463,16 +472,26 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         const auto identity = projectCppRecordTypeIdentity(signature.returnType, moduleName);
         const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
         const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
-        if (imported && imported->origin == frontend::CppImportedTypeOrigin::CppRecord)
+        const bool intReturn = signature.returnType.kind == CppTypeKind::SignedInteger &&
+            signature.returnType.canonicalSpelling == "int";
+        const bool cppRecordArgument = intReturn && std::any_of(signature.parameterTypes.begin(), signature.parameterTypes.end(),
+            [&](const auto& parameter) {
+                const auto id = projectCppRecordTypeIdentity(parameter, moduleName);
+                const auto n = id ? lookup.typeOrdinalForIdentity(id->key()) : std::nullopt;
+                const auto* type = n ? lookup.cppImportedType(*n) : nullptr;
+                return type && type->origin == frontend::CppImportedTypeOrigin::CppRecord;
+            });
+        if ((imported && imported->origin == frontend::CppImportedTypeOrigin::CppRecord) || cppRecordArgument)
         {
             const auto mappedCpp = projectCppStoredFunctionPointer(cppPointer, alias.projectOrdinal, moduleName, &lookup, true);
-            if (!mappedCpp || mappedCpp->nativeSharpTypeKey != resolvedTypeKey || !ordinal ||
-                !lookup.cppTrivialValueEligible(*ordinal) || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
+            if (!mappedCpp || mappedCpp->nativeSharpTypeKey != resolvedTypeKey) return {};
+            if (!intReturn && (!ordinal || !lookup.cppTrivialValueEligible(*ordinal) || !imported ||
+                !imported->fromPrecompiledCatalog || imported->isIncomplete ||
                 !imported->deferredImportError.empty() || !imported->objectLayout ||
                 !signature.returnType.sizeBits || *signature.returnType.sizeBits % 8 ||
                 imported->objectLayout->sizeBytes != *signature.returnType.sizeBits / 8 || imported->objectLayout->alignmentBytes != 4 ||
                 !signature.returnType.recordIdentity ||
-                signature.returnType.recordIdentity->clangUsr != imported->clangUsr) return {};
+                signature.returnType.recordIdentity->clangUsr != imported->clangUsr)) return {};
             std::vector<std::uint8_t> aliasType;
             std::string error;
             if (!metadata_detail::encodeCDependencyType(cppPointer, aliasType, error)) return {};
@@ -499,14 +518,19 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                     selected = candidate;
                 }
                 for (const auto& record : records)
-                    if (identity && record.identityKey == identity->key() && record.moduleName == moduleName &&
+                    if (imported && identity && record.identityKey == identity->key() && record.moduleName == moduleName &&
                         record.clangUsr == imported->clangUsr && record.cppValueObservation && record.complete &&
                         record.valueLayoutUsable && record.sizeBits == signature.returnType.sizeBits && record.alignmentBits == 32)
                         ++matchingRecords;
             }
-            if (!selected || matchingRecords != 1 || !selected->declaration.abiPlan) return {};
-            if (!abi_plan::isRegCallWin64FloatRecordInterleaved(*selected->declaration.abiPlan,
-                    "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4) ||
+            if (!selected || (!intReturn && matchingRecords != 1) || !selected->declaration.abiPlan) return {};
+            const bool validResult = intReturn ?
+                (abi_plan::isRegCallWin64FloatRecordsReturningInt(*selected->declaration.abiPlan,
+                    "__regcall3____nsc_pointer_abi_probe") &&
+                 abi_plan::regCallFloatRecordScalarMatches(selected->declaration.abiPlan->physicalReturn, signature.returnType)) :
+                abi_plan::isRegCallWin64FloatRecordInterleaved(*selected->declaration.abiPlan,
+                    "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4);
+            if (!validResult ||
                 !abi_plan::regCallFloatRecordArgumentsMatch(*selected->declaration.abiPlan, signature.returnType,
                     signature.parameterTypes)) return {};
             for (std::size_t i = 0; i < signature.parameterTypes.size(); ++i)

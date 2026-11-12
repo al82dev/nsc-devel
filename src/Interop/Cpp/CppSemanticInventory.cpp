@@ -1552,16 +1552,20 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                 if (session->optionsSnapshot().language == CppLanguageMode::Cpp && declaration.clangUsr &&
                     pointer.kind == CppTypeKind::Pointer && pointer.element && pointer.element->function &&
                     pointer.element->function->callingConvention == "regcall" &&
-                    pointer.element->function->returnType.kind == CppTypeKind::Record &&
                     !pointer.element->function->parameterTypes.empty())
                 {
                     auto plan = session->cppFunctionPointerAbiPlan(declaration.qualifiedName,
                         *declaration.clangUsr, pointer.canonicalSpelling);
                     const auto& type = pointer.element->function->returnType;
                     const auto& parameters = pointer.element->function->parameterTypes;
-                    if (plan && type.sizeBits && *type.sizeBits % 8 == 0 && type.alignmentBits &&
-                        *type.alignmentBits % 8 == 0 && abi_plan::isRegCallWin64FloatRecordInterleaved(
-                            *plan, "__regcall3____nsc_pointer_abi_probe", *type.sizeBits / 8, *type.alignmentBits / 8) &&
+                    const bool recordReturn = type.kind == CppTypeKind::Record && type.sizeBits && type.alignmentBits &&
+                        *type.sizeBits % 8 == 0 && *type.alignmentBits % 8 == 0 && plan &&
+                        abi_plan::isRegCallWin64FloatRecordInterleaved(*plan, "__regcall3____nsc_pointer_abi_probe",
+                            *type.sizeBits / 8, *type.alignmentBits / 8);
+                    const bool intReturn = type.kind == CppTypeKind::SignedInteger && plan &&
+                        abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, "__regcall3____nsc_pointer_abi_probe") &&
+                        abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, type);
+                    if (plan && (recordReturn || intReturn) &&
                         abi_plan::regCallFloatRecordArgumentsMatch(*plan, type, parameters))
                         declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
                 }

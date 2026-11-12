@@ -636,5 +636,19 @@ con y sin encabezado, incluidos los que solo usan puntero
 (`A:/temp/nsc-t09-record-ret-int-pre-eva5c6u4` y
 `A:/temp/nsc-t09-record-ret-int-pre-m4l90sxj`). La prueba de metadatos rechaza
 un retorno o plan alterados. Pasaron transporte y la regresión precompilada
-de retorno de record (`A:/temp/nsc-t09-interleaved-pre-7ozqesj6`). C++, otros
-retornos y otras firmas no están acreditados. T09-003 sigue abierto.
+de retorno de record (`A:/temp/nsc-t09-interleaved-pre-7ozqesj6`).
+
+La muestra C++ equivalente inicialmente rechazaba el alias de puntero
+(`A:/temp/nsc-t09-cpp-ret-int-qjkow68n`). La conciliación ahora verifica el
+retorno `int` y cada record trivial por separado. Pasaron llamadas directas
+e indirectas frente a Clang, con símbolo y LLVM comprobados, en estática y
+DLL O0–O3 (`A:/temp/nsc-t09-cpp-ret-int-n59ytgsz`). Las rutas precompiladas
+fallaban inicialmente (`A:/temp/nsc-t09-cpp-ret-int-precompilado-1dx77p16` y
+`A:/temp/nsc-t09-cpp-ret-int-precompilado-4vf9z0sx`); pasaron después 32
+consumidores con y sin encabezado, incluidos los que solo usan puntero
+(`A:/temp/nsc-t09-cpp-ret-int-precompilado-ffumazk_` y
+`A:/temp/nsc-t09-cpp-ret-int-precompilado-0zbhke_a`). La prueba del contrato
+rechaza un retorno físico alterado. Pasaron transporte, las restricciones de
+campos privados y record no trivial (`A:/temp/nsc-t09-cpp-ret-int-rechazos-fkwo303r`)
+y la regresión precompilada C (`A:/temp/nsc-t09-record-ret-int-pre-r2748dqz`).
+Otros retornos y firmas no están acreditados. T09-003 sigue abierto.
