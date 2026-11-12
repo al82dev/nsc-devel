@@ -100,6 +100,8 @@ int main(int argc, char** argv)
         Nested __attribute__((regcall)) nested_const(Nested, const int*,int*);
         Nested __attribute__((regcall)) nested_const_float(Nested, const float*,const double*);
         Nested __attribute__((regcall)) nested_const_void(Nested, const void*,int*);
+        typedef Nested (__attribute__((regcall)) *NestedTwoFn)(Nested,Nested,int);
+        Nested __attribute__((regcall)) nested_two(Nested,Nested,int);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -634,6 +636,39 @@ int main(int argc, char** argv)
         auto pointee = std::make_shared<CppType>(*wrong.element);
         pointee->unqualifiedCanonicalSpelling = "int"; wrong.element = pointee;
         if (abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type, wrong)) return 112;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "nested_two") declaration = &function;
+        if (!declaration) return 113;
+        const auto direct = session->cFunctionAbiPlan("nested_two", declaration->canonicalFunctionType);
+        std::string pointerType;
+        for (const auto& alias : *aliases)
+            if (alias.name == "NestedTwoFn") pointerType = alias.underlyingType.canonicalSpelling;
+        const auto indirect = session->cFunctionPointerAbiPlan("NestedTwoFn", pointerType);
+        if (!direct || !indirect)
+            std::cerr << "nested_two: direct=" << bool(direct) << " indirect=" << bool(indirect) << '\n';
+        for (const auto* plan : {direct ? &*direct : nullptr, indirect ? &*indirect : nullptr})
+        {
+            if (!plan) { std::cerr << "nested_two: plan absent\n"; return 114; }
+            if (!abi_plan::isRegCallWin64FloatRecordRoundTrip(*plan, plan->symbol, 12, 4, 1, true, 2))
+            {
+                std::cerr << "nested_two: logical=" << plan->logicalParameters.size()
+                          << " physical=" << plan->physicalParameters.size() << '\n';
+                for (const auto& p : plan->logicalParameters)
+                    std::cerr << "passing=" << static_cast<int>(p.passing) << " first=" << p.firstPhysical
+                              << " count=" << p.physicalCount << " offsets=" << p.expandedOffsets.size() << '\n';
+                return 114;
+            }
+            auto wrong = *plan;
+            wrong.logicalParameters[1].firstPhysical = 2;
+            if (abi_plan::isRegCallWin64FloatRecordRoundTrip(wrong, wrong.symbol, 12, 4, 1, true, 2)) return 115;
+            wrong = *plan; wrong.logicalParameters[1].expandedOffsets[1] = 8;
+            if (abi_plan::isRegCallWin64FloatRecordRoundTrip(wrong, wrong.symbol, 12, 4, 1, true, 2)) return 116;
+            wrong = *plan; wrong.physicalParameters[5].type.kind = abi_plan::TypeKind::Double;
+            if (abi_plan::isRegCallWin64FloatRecordRoundTrip(wrong, wrong.symbol, 12, 4, 1, true, 2)) return 117;
+        }
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;

@@ -349,3 +349,21 @@ directas e indirectas O0-O3 en estática y DLL
 rechaza un nombre no calificado inconsistente. Esta muestra no acredita todas
 las conversiones o accesos a través de `const void*`; D11/D12, D23 y las
 restricciones sobre `volatile` y records calificados permanecen.
+
+## Dos registros expandidos: plan en preparación
+
+Clang 23.1.0, en Windows x64, expande cada uno de dos registros anidados de
+tres `float` en tres argumentos físicos, seguidos del `int` de la muestra;
+el retorno permanece como estructura. El IR directo e indirecto está en
+`A:/temp/t09-two-hfa-oracle.ll`. El validador del plan ahora puede comprobar
+una secuencia explícita de registros de igual tamaño y alineación; comprueba
+cada offset e índice físico. La prueba consulta a Clang tanto para la función
+como para el alias de puntero y rechaza un índice, offset o tipo alterado.
+Pasó `nsc.cpp-interop.regcall-record-plan`; también pasaron transporte,
+identidad, ABI y la regresión `const void*`
+(`A:/temp/nsc-t09-regcall-mixed-11fkcyrf`).
+
+Esto es infraestructura de validación física, no soporte de la llamada. Faltan
+la reconciliación de identidad de cada record, selección semántica, emisión
+directa e indirecta y consumidores precompilados. La firma y T09-003
+permanecen pendientes.
