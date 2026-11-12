@@ -14,7 +14,7 @@ miss/hit en estatica y DLL. Pasaron las ocho comparaciones C/NativeSharp O0-O3
 (`A:/temp/nsc-t09-regcall-pvsd9fxk`) y 16 consumidores de plantilla con y
 sin encabezado (`A:/temp/nsc-t09-regcall-precompilado-ndl5ojoc`).
 
-Una firma con argumento `double` se rechaza
+En la primera etapa una firma con argumento `double` se rechazaba
 (`A:/temp/nsc-t09-regcall-negativo-9ykay9qz`); no se acreditan otros tipos,
 records, punteros a funcion, DLL con aislamiento TLS ni otras convenciones.
 Pasaron regresiones cdecl (`A:/temp/nsc-t09-llamadas-67a6q_9a`), vectorcall
@@ -230,3 +230,31 @@ cuatro sondas (`A:/temp/t09-test-varptr.log`), transporte/ABI/identidad
 (`A:/temp/t09-transport-directed/`) y metadatos
 (`A:/temp/t09-cpp-meta-check.log`). Otras firmas indirectas quedan pendientes;
 T09-003 permanece abierto.
+
+## Punteros a otros enteros en regcall
+
+El control C con un argumento y retorno `short*` y otra funcion con retorno
+`void` paso en estatica y DLL O0-O3
+(A:/temp/nsc-t09-regcall-short-ptr-w5tyvw5i). Clang usa `x86_regcallcc` con
+punteros en A:/temp/t09-regcall-short-pointer-oracle.ll; NSC rechazaba la
+firma por restringirla a `int*`
+(A:/temp/nsc-t09-regcall-short-ptr-ah5zg4z4).
+
+La validacion de llamadas directas e indirectas admite ahora punteros que NSC
+ya puede representar, sin habilitar escalares adicionales. Pasaron ocho
+comparaciones C/NativeSharp para `short*`, con llamada directa y por puntero,
+convencion y simbolo en IR, identidad y escritura
+(A:/temp/nsc-t09-regcall-short-ptr-6e89t65y); pasaron 16 consumidores
+precompilados con y sin encabezado
+(A:/temp/nsc-t09-regcall-short-ptr-precompilado-ran1ep9y).
+
+Las variantes `signed char*` y `unsigned char*` pasaron las mismas ocho
+comparaciones y 16 consumidores precompilados por variante
+(A:/temp/nsc-t09-regcall-byte-ptr-cy005l62). Se conserva y paso la prueba
+existente que rechaza el `double` por valor no implementado
+(A:/temp/nsc-t09-regcall-negativo-jxreeb45), y pasaron 16 consumidores de la
+variante anterior `int*`
+(A:/temp/nsc-t09-regcall-indirecta-vp-precompilado-mn91xvu2). Estas muestras
+no certifican todas las formas de puntero ni otros tipos o destinos. T09-003
+permanece abierto. Pruebas en
+[pruebas-tanda-09-regcall-short-puntero](pruebas-tanda-09-regcall-short-puntero/).

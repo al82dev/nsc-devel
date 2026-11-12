@@ -1839,12 +1839,12 @@ bool ProjectOopHirModel::buildNamespaceFunction(
             };
             if (function.cppRegCall && (function.isVariadic ||
                 (!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&
-                 function.returnTypeKey != "builtin:int*") ||
+                 !function.returnTypeKey.ends_with('*')) ||
                 !std::ranges::all_of(function.parameterTypeKeys, [&](const auto& type) {
-                    return regCallScalar(type) || type == "builtin:int*";
+                    return regCallScalar(type) || type.ends_with('*');
                 })))
             {
-                error = "regcall currently supports only int scalar signatures or other integer types, bool, float, void and int* for " + symbol.mangledName;
+                error = "regcall currently supports only int scalar signatures or other integer types, bool, float, void and pointers for " + symbol.mangledName;
                 return false;
             }
             if (function.cppSysVCall)

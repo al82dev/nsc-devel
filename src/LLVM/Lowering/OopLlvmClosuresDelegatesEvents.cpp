@@ -1098,9 +1098,9 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
                 key == "builtin:byte" || key == "builtin:short" || key == "builtin:ushort" || key == "builtin:bool";
         };
         if (regCall && (!structuralFunction || structuralFunction->variadic ||
-            (!regCallScalar(returnTypeKey) && returnTypeKey != "builtin:void" && returnTypeKey != "builtin:int*") ||
+            (!regCallScalar(returnTypeKey) && returnTypeKey != "builtin:void" && !returnTypeKey.ends_with('*')) ||
             std::any_of(argumentTypeKeys.begin(), argumentTypeKeys.end(), [&](const std::string& key) {
-                return !regCallScalar(key) && key != "builtin:int*";
+                return !regCallScalar(key) && !key.ends_with('*');
             })))
             return failValue(error, "regcall function pointer signature is not yet supported");
         const auto sysvScalar = [](std::string_view key) {
