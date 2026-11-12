@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>VectorCallDll</Name></PropertyGroup><ItemGroup><Compile Include="Main.ns" /><CppLibraryReference Header="api-dll.h" Language="C++" Standard="c++20" Library="api-dll.lib" Runtime="api.dll" /></ItemGroup></Project>

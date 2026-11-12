@@ -2994,17 +2994,15 @@ precompilados con y sin encabezado
 actual ya soportaba estas muestras; esta prueba no acredita records C++ por
 valor, funciones variádicas C++ ni otras firmas. T09-003 permanece abierto.
 
-La [muestra pendiente de record C++ trivial](pruebas-tanda-09-sysv-cpp-record/)
-comprueba paso y retorno por valor y un alias de función. El control Clang
-compila y ejecuta, pero NSC no resuelve las funciones en esa firma
+La [muestra de record C++ trivial con alias pendiente](pruebas-tanda-09-sysv-cpp-record/)
+comprueba paso y retorno por valor y un alias de función. Inicialmente el control Clang
+compilaba y ejecutaba, pero NSC no resolvía las funciones en esa firma
 (`A:/temp/nsc-t09-sysv-cpp-record-6rv8o9v5`). La proyección actual permite
 records C++ por valor para `cdecl`, `preserve_most` y `regcall`, pero no para
 `sysv_abi`; además, la consulta del plan de función y la conciliación de alias
-SysV existentes están restringidas a C. Será necesario obtener y validar el
-plan de Clang de la función y el alias C++, reconciliando identidad, layout y
-trivialidad antes de habilitar la emisión, y probar también la ruta
-precompilada. El diagnóstico no acredita interoperabilidad; esta forma sigue
-pendiente.
+SysV existentes estaban restringidas a C. La captura del plan y la llamada
+directa se incorporaron después, como se explica abajo. La llamada por alias y
+su precompilación siguen pendientes; el diagnóstico inicial no las acredita.
 
 La sesión de Clang captura ahora el plan físico `sysv_abi` de la declaración
 C++ exacta cuando recibe o devuelve un record, y puede observar el plan de un
@@ -3014,7 +3012,22 @@ comprueba símbolos distintos, convención, plan del alias y rechazo de USR o ti
 incorrectos. Pasaron la compilación incremental, la prueba del plan, transporte,
 ABI e identidad, y las regresiones C++ precompiladas SysV escalar y `regcall`
 (`A:/temp/nsc-t09-sysv-cpp-indirecta-precompilado-b8h3n3rb` y
-`A:/temp/nsc-t09-cpp-triple-double-int-pre-gu7ckceq`). Esta captura no habilita
-la llamada: faltan la proyección, conciliación de identidad y trivialidad,
-emisión y soporte precompilado del record C++ SysV. La muestra sigue pendiente.
+`A:/temp/nsc-t09-cpp-triple-double-int-pre-gu7ckceq`). Esa captura por sí sola
+no habilitaba la llamada.
+
+La proyección de una función directa `sysv_abi` ya admite un record C++ que
+satisface la regla existente de trivialidad y coincide en identidad y layout;
+la emisión usa el plan físico capturado y validado de Clang. La
+[muestra directa](pruebas-tanda-09-sysv-cpp-record-directo/) de dos enteros
+pasó ocho comparaciones en estática y DLL O0–O3, conservando el original y el
+resultado (`A:/temp/nsc-t09-sysv-cpp-record-directo-4tnl2gca`), y 16
+consumidores precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-directo-precompilado-1atojwwa`). La prueba
+de plan, transporte, ABI e identidad pasó, así como la regresión precompilada
+`preserve_most` (`A:/temp/nsc-t09-preserve-cpp-record-directo-precompilado-0lgcbdzf`).
+Diez muestras con operaciones no
+elegibles o miembros volátiles fueron rechazadas al resolver la llamada
+(`A:/temp/nsc-t09-sysv-cpp-record-rechazos-v2c8pkx_`); esos diagnósticos no
+identifican por separado cada causa de inelegibilidad. La llamada por alias y
+otras formas siguen pendientes; T09-003 permanece abierto.
 
