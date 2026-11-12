@@ -1023,7 +1023,7 @@ conservación del argumento e inspección LLVM
 (`A:/temp/nsc-t09-regcall-record-mixto-int-jsch6us5`). También pasaron plan,
 transporte, ABI, identidad y la regresión C++ con retorno `double`
 (`A:/temp/nsc-t09-cpp-record-mixto-real-4c22q0qs`). La muestra desde fuente usa
-estática; la muestra C desde fuente con DLL y la variante C++ siguen pendientes.
+estática; la muestra C desde fuente con DLL sigue pendiente.
 
 El contrato vigente conserva el plan para el retorno entero y la copia
 indirecta. La prueba interna verifica lectura y escritura y rechaza un retorno
@@ -1033,6 +1033,19 @@ físico alterado. Pasaron 16 consumidores precompilados con ambas llamadas y
 `A:/temp/nsc-t09-record-mixto-int-pre-vcjkrpuw`). Pasaron transporte, ABI,
 identidad y la regresión precompilada C con retorno `double`
 (`A:/temp/nsc-t09-record-mixto-real-pre-de2z9cth`).
+
+La [muestra C++](pruebas-tanda-09-regcall-cpp-record-mixto-int/) usa un
+registro trivial y una función en un espacio de nombres. El alias por puntero
+se rechazaba inicialmente (`A:/temp/nsc-t09-cpp-record-mixto-int-arp6l3kh`).
+Tras conservar el plan de retorno entero con copia indirecta, pasaron ocho
+comparaciones con Clang en estática y DLL O0–O3, llamadas directas y por
+puntero y comprobación LLVM (`A:/temp/nsc-t09-cpp-record-mixto-int-0ewlt75w`).
+También pasaron 32 consumidores precompilados, con ambas llamadas o solo
+puntero, con y sin encabezado (`A:/temp/nsc-t09-cpp-record-mixto-int-pre-66o962xr`
+y `A:/temp/nsc-t09-cpp-record-mixto-int-pre-oz3q1t0p`). Pasaron plan,
+transporte, ABI e identidad y los rechazos previos de registros privados y no
+triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-a94sp2zb`). Otras
+formas y registros C++ no triviales siguen sin acreditar.
 
 ## Registro mixto float y double por copia indirecta
 

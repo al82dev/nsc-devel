@@ -354,6 +354,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                     *plan, "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8)) :
                     (voidReturn ? abi_plan::isRegCallWin64FloatRecordsReturningVoid(*plan, "__regcall3____nsc_pointer_abi_probe") :
                     ((abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, "__regcall3____nsc_pointer_abi_probe") ||
+                      abi_plan::isRegCallWin64IndirectRecordsReturningInt(*plan, "__regcall3____nsc_pointer_abi_probe") ||
                       abi_plan::isRegCallWin64FloatRecordsReturningDouble(*plan, "__regcall3____nsc_pointer_abi_probe") ||
                       abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*plan, "__regcall3____nsc_pointer_abi_probe") ||
                       abi_plan::isRegCallWin64FloatRecordsReturningFloat(*plan, "__regcall3____nsc_pointer_abi_probe") ||
@@ -593,6 +594,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                 abi_plan::isRegCallWin64FloatRecordsReturningVoid(*selected->declaration.abiPlan,
                     "__regcall3____nsc_pointer_abi_probe") : scalarReturn ?
                 ((abi_plan::isRegCallWin64FloatRecordsReturningInt(*selected->declaration.abiPlan,
+                    "__regcall3____nsc_pointer_abi_probe") ||
+                  abi_plan::isRegCallWin64IndirectRecordsReturningInt(*selected->declaration.abiPlan,
                     "__regcall3____nsc_pointer_abi_probe") ||
                   abi_plan::isRegCallWin64FloatRecordsReturningDouble(*selected->declaration.abiPlan,
                     "__regcall3____nsc_pointer_abi_probe") ||

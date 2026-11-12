@@ -1567,7 +1567,8 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                          abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*plan, "__regcall3____nsc_pointer_abi_probe",
                             *type.sizeBits / 8, *type.alignmentBits / 8));
                     const bool intReturn = (type.kind == CppTypeKind::SignedInteger || type.kind == CppTypeKind::UnsignedInteger) && plan &&
-                        abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, "__regcall3____nsc_pointer_abi_probe") &&
+                        (abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, "__regcall3____nsc_pointer_abi_probe") ||
+                         abi_plan::isRegCallWin64IndirectRecordsReturningInt(*plan, "__regcall3____nsc_pointer_abi_probe")) &&
                         abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, type);
                     const bool boolReturn = type.kind == CppTypeKind::Boolean && plan &&
                         abi_plan::isRegCallWin64FloatRecordsReturningBool(*plan, "__regcall3____nsc_pointer_abi_probe") &&
