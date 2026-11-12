@@ -61,3 +61,15 @@
   resueltas, sin cambiar la resolución semántica general ni préstamos.
 - Preservar diagnósticos para ambigüedades y no escoger un candidato cuando
   falte información suficiente. Validar fuente, biblioteca y ámbito léxico.
+
+## Const local y diagnóstico ambiguo
+
+- La lectura semántica de un local o parámetro no adjunta `integerConstant`,
+  incluso si se declara `const`. En la reproducción, el control ordinario
+  selecciona `long` sin usar el valor; la llamada directa aún falla.
+- Candidato: `GenericCallInference.cpp`, al clasificar una expresión
+  identificadora cuyo binding está disponible en el ámbito. No calcular ni
+  inventar el valor del local.
+- Para ambigüedad, emitir un diagnóstico de indexador solo cuando todos los
+  candidatos numéricos se hayan clasificado y no exista uno dominante;
+  conservar la ruta anterior ante información o reglas adicionales no probadas.

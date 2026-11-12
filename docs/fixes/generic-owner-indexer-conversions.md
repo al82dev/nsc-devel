@@ -49,6 +49,7 @@ herencia nominal entre argumentos, expresiones constantes no literales o
 sobrecargas con parámetros estructurados y por referencia. Ante información
 insuficiente la fase genérica conserva la ambigüedad; algunos programas
 válidos pueden seguir rechazándose antes del análisis semántico definitivo.
-Por ejemplo, un `const int` local con indexadores `byte`/`long` usa `long` en
-el control ordinario, pero la llamada directa sigue sin cerrar el dueño; el
-detalle está en el mismo `results.json`. Los ejemplos originales no cambiaron.
+En la primera prueba, un `const int` local con indexadores `byte`/`long` usaba
+`long` en el control ordinario, pero la llamada directa no cerraba el dueño.
+La corrección posterior y su evidencia se describen en
+`generic-owner-indexer-local.md`. Los ejemplos originales no cambiaron.

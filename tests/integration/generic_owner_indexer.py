@@ -116,6 +116,15 @@ class Program { public static int Main() { ConstantIndex items = new ConstantInd
         'constant_outside': ('''using Fixture;
 class Program { public static int Main() { ConstantIndex items = new ConstantIndex();
  return items[256].At<20, 42>(); } }''', True),
+        'constant_local': ('''using Fixture;
+class Program { public static int Main() { ConstantIndex items = new ConstantIndex(); const int index = 1;
+ return items[index].At<20, 42>(); } }''', True),
+        'constant_local_negative': ('''using Fixture;
+class Program { public static int Main() { ConstantIndex items = new ConstantIndex(); const int index = -1;
+ return items[index].At<20, 42>(); } }''', True),
+        'numeric_parameter': ('''using Fixture;
+class Program { public static int Run(int index) { ConstantIndex items = new ConstantIndex();
+ return items[index].At<20, 42>(); } public static int Main() { return Run(1); } }''', True),
         'ambiguous_pair_control': ('''using Fixture;
 class Program { public static int Main() { AmbiguousPair items = new AmbiguousPair(); int a = 0; int b = 0;
  Own<0> selected = items[a, b]; return selected.At<42, 0>(); } }''', False),

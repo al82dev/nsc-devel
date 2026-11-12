@@ -1078,7 +1078,10 @@ bool ProjectGenericModel::processGenericCall(
                                     ProjectTypeConversion::classifyImplicit(sourceKey, targetKey, constant);
                                 if (!conversion.exists())
                                 {
-                                    if (!constant.has_value()) numericOnly = false;
+                                    const bool knownValueBinding =
+                                        argumentExpression->kind() == ast::AstNodeKind::IdentifierExpression &&
+                                        scope.findValueType(argumentExpression->text()) != nullptr;
+                                    if (!constant.has_value() && !knownValueBinding) numericOnly = false;
                                     candidateViable = false;
                                     break;
                                 }
