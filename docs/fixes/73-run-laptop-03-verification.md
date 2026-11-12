@@ -101,3 +101,12 @@ No se modificaron `ComptimeEngine`, parser, modelos compartidos ni CMake. No se
 hizo push, merge, rebase, deploy ni acceso de escritura a `C:/native-sharp`.
 La pasada acredita solo las pruebas enumeradas; no certifica todo el compilador,
 el heap real, interoperabilidad, consumo de SDK binario ni compiler-suite.
+# Validación dirigida en la integradora
+
+La prueba unitaria se registró como
+`nsc.comptime-function-contract-verification` y se compiló incrementalmente
+en `A:/nsc-fixes-evidencia/build`. Su ejecución directa y CTest dirigido
+terminaron correctamente (1/1). La prueba cubre la cancelación inicial;
+no acredita la cancelación tardía transaccional ni la corrección propuesta
+para los límites de evaluación documentados por separado.
+

@@ -4493,6 +4493,14 @@ if(NSC_BUILD_TESTS)
     nsc_enable_warnings(nsc_comptime_function_calls_tests)
     add_test(NAME nsc.comptime-function-calls COMMAND nsc_comptime_function_calls_tests)
 
+    add_executable(nsc_comptime_function_contract_verification_tests
+        tests/unit/ComptimeFunctionContractVerificationTests.cpp)
+    target_link_libraries(nsc_comptime_function_contract_verification_tests PRIVATE nsc_frontend)
+    target_compile_features(nsc_comptime_function_contract_verification_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_comptime_function_contract_verification_tests)
+    add_test(NAME nsc.comptime-function-contract-verification
+        COMMAND nsc_comptime_function_contract_verification_tests)
+
     add_executable(nsc_item385_comptime_core_tests tests/unit/Item385ComptimeCoreTests.cpp)
     target_link_libraries(nsc_item385_comptime_core_tests PRIVATE nsc_frontend)
     target_compile_features(nsc_item385_comptime_core_tests PRIVATE cxx_std_20)
