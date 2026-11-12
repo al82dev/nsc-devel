@@ -1883,9 +1883,9 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     for (std::size_t i = 0; i < expandedRecords; ++i)
                     {
                         const auto& parameter = symbol.cppParameterTypes[i];
-                        if (function.parameterTypeKeys[i] != function.returnTypeKey ||
-                            parameter.kind != interop::CppTypeKind::Record ||
-                            parameter.canonicalSpelling != symbol.cppReturnType->canonicalSpelling ||
+                        if (!isStructValueType(function.parameterTypeKeys[i]) ||
+                            parameter.kind != interop::CppTypeKind::Record || !parameter.recordIdentity ||
+                            !parameter.recordIdentity->clangUsr || parameter.recordIdentity->clangUsr->empty() ||
                             parameter.sizeBits != symbol.cppReturnType->sizeBits ||
                             parameter.alignmentBits != symbol.cppReturnType->alignmentBits) return false;
                     }

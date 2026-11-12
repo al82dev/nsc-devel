@@ -60,21 +60,21 @@ for mode in ('estatica', 'dll'):
     run(prefix+'ns-run', [str(case/'out.exe')])
     print(prefix+'control C y NativeSharp correctos', flush=True)
 print('OK: ocho comparaciones estática y DLL', flush=True)
-case = root/'identidad-distinta'
+case = root/'forma-abi-distinta'
 case.mkdir()
 for name in ('api.h', 'Main.ns', 'Probe.nsproj'):
     shutil.copyfile(src/name, case/name)
 shutil.copyfile(root/'estatica-O0'/'api.lib', case/'api.lib')
 header = (case/'api.h').read_text(encoding='utf-8')
 header = header.replace('API Triple __attribute__((regcall)) combine(Triple a, Triple b, int bias);',
-    'typedef struct Other { Pair pair; float z; } Other;\n'
+    'typedef struct Other { Pair pair; int z; } Other;\n'
     'Triple __attribute__((regcall)) combine(Triple a, Other b, int bias);')
 (case/'api.h').write_text(header, encoding='utf-8')
-main = (case/'Main.ns').read_text(encoding='utf-8').replace('Triple b;', 'Other b;')
+main = (case/'Main.ns').read_text(encoding='utf-8').replace('Triple b;', 'Other b;').replace('b.z=(float)3;', 'b.z=3;')
 (case/'Main.ns').write_text(main, encoding='utf-8')
 command = [args.nsc, '--dump-project-oop-llvm', str(case/'Probe.nsproj'), '--cpp-clang-root='+args.clang_root]
 result = subprocess.run(command, cwd=root, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors='replace')
-(root/'identidad-distinta.log').write_text('COMMAND: '+repr(command)+'\nEXIT: '+str(result.returncode)+'\n'+result.stdout, encoding='utf-8')
+(root/'forma-abi-distinta.log').write_text('COMMAND: '+repr(command)+'\nEXIT: '+str(result.returncode)+'\n'+result.stdout, encoding='utf-8')
 if result.returncode == 0 or 'regcall currently supports' not in result.stdout:
-    raise SystemExit('la identidad distinta no se rechazó como se esperaba; evidencia: '+str(root))
-print('OK: identidad de record distinta rechazada', flush=True)
+    raise SystemExit('la forma ABI distinta no se rechazó como se esperaba; evidencia: '+str(root))
+print('OK: forma ABI distinta rechazada', flush=True)

@@ -368,8 +368,10 @@ del mismo tipo de registro, seguidos de escalares que coincidan con el plan.
 Cada argumento se evalúa en orden y se expande por sus propios offsets. La
 muestra de dos registros anidados e `int` pasó frente al control C en enlace
 estático O0–O3, con comprobación del LLVM y de que los originales no cambian
-(`A:/temp/nsc-t09-two-records-5zlvw5v9`). Un segundo record con otra identidad
-pero igual layout se rechaza en esa muestra. Pasaron la prueba de planes,
+(`A:/temp/nsc-t09-two-records-5zlvw5v9`). En esa etapa un segundo record con
+otra identidad se rechazaba; el caso está ampliado en la sección siguiente.
+La prueba negativa conserva ahora un campo entero con forma ABI incompatible.
+Pasaron la prueba de planes,
 transporte, identidad y la regresión `const void*` en estática y DLL
 (`A:/temp/nsc-t09-regcall-mixed-v8a6ybda`).
 
@@ -412,5 +414,26 @@ identidad y la regresión precompilada C++ de `const int*`
 La prueba conservada también rechazó campos privados y el registro con
 destructor no trivial (`A:/temp/nsc-t09-cpp-nested-rechazos-xphrvqh3`).
 
-Faltan registros de distintos tipos y otras formas. La evidencia de C++ se
-limita a registros triviales elegibles. T09-003 permanece pendiente.
+Faltan otras formas. La evidencia de C++ se limita a registros triviales
+elegibles. T09-003 permanece pendiente.
+
+## Dos registros C de tipos distintos
+
+La muestra pasa un `Triple` y un `Other` de identidades diferentes, ambos de
+12 bytes y tres flotantes, y retorna `Triple`. Clang expande ambos en tres
+argumentos físicos cada uno. El control C funcionaba mientras NSC rechazaba
+la firma (`A:/temp/nsc-t09-distinct-records-8_ytipqn`).
+
+La selección comprueba cada tipo proyectado y el plan físico; la emisión
+utiliza el portador propio de cada argumento y comprueba su tipo declarado.
+La llamada C directa pasó frente al control en estática y DLL O0–O3, con
+inspección del LLVM (`A:/temp/nsc-t09-distinct-records-ua32i42f`). Pasaron
+las pruebas del plan, transporte e identidad y la regresión de dos records
+del mismo tipo (`A:/temp/nsc-t09-two-records-_5uqm7hu`). La prueba negativa
+de esa regresión ahora usa un segundo record con un campo entero: conserva la
+verificación de rechazo de una forma no admitida.
+
+La llamada por puntero y la precompilación de esta combinación siguen sin
+funcionar (`A:/temp/nsc-t09-distinct-records-j9xf4j5d` y
+`A:/temp/nsc-t09-distinct-records-pre-ma3g02i0`). Tampoco se acredita C++,
+records de tamaños distintos ni otras formas. T09-003 permanece abierto.

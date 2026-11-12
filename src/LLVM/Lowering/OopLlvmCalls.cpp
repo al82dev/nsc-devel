@@ -1002,7 +1002,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 const auto& actual = node->children[source]->typeKey;
                 const auto& type = imported->cppAbiPlan->physicalParameters[
                     imported->cppAbiPlan->logicalParameters[parameter].firstPhysical].type;
-                const bool compatible = parameter < recordCount ? actual == node->typeKey :
+                const bool compatible = parameter < recordCount ?
+                    parameter < imported->parameterTypeKeys.size() && actual == imported->parameterTypeKeys[parameter] :
                     type.kind == interop::abi_plan::TypeKind::Float ? actual == "builtin:float" :
                     type.kind == interop::abi_plan::TypeKind::Double ? actual == "builtin:double" :
                     type.kind == interop::abi_plan::TypeKind::Pointer ? actual.ends_with('*') :
@@ -1024,7 +1025,9 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             std::vector<LLVMValueRef> arguments;
             for (std::size_t record = 0; record < recordCount; ++record)
             {
-                LLVMValueRef slot = entryBlockAlloca(carrier, 4, "regcall.record.arg");
+                LLVMTypeRef argumentCarrier = llvmType(imported->parameterTypeKeys[record], error);
+                if (!argumentCarrier) return nullptr;
+                LLVMValueRef slot = entryBlockAlloca(argumentCarrier, 4, "regcall.record.arg");
                 LLVMValueRef store = LLVMBuildStore(builder_, logical[record], slot);
                 LLVMSetAlignment(store, 4);
                 for (const auto offset : imported->cppAbiPlan->logicalParameters[record].expandedOffsets)
