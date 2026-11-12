@@ -362,6 +362,8 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         arrayElement->kind == CppTypeKind::Record;
     const bool enumArray = field.type.kind == CppTypeKind::Array && arrayElement &&
         arrayElement->kind == CppTypeKind::Enumeration;
+    const auto ownerOrdinal = lookup ? lookup->typeOrdinalForIdentity(identity->key()) : std::nullopt;
+    const bool cppValueFields = record.isCxx && ownerOrdinal && lookup->cppTrivialValueEligible(*ownerOrdinal);
     const auto pointerArray = frontend::cppAliasArrayType(field.type);
     const bool representablePointerArray = pointerArray && pointerArray->element.pointerDepth > 0 &&
         !pointerArray->element.pointeeConst && pointerArray->element.token != lexer::TokenKind::KwVoid;
@@ -379,7 +381,7 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
     auto mapped = mapCppScalarType(field.type);
     if (!mapped && !record.isCxx)
         mapped = projectCppStoredFunctionPointer(field.type, projectOrdinal, moduleName, lookup);
-    if (!mapped && !record.isCxx && field.type.kind == CppTypeKind::Array)
+    if (!mapped && (!record.isCxx || (cppValueFields && scalarArray)) && field.type.kind == CppTypeKind::Array)
         mapped = projectCArrayField(field.type, projectOrdinal, moduleName, lookup);
     if (!mapped && !record.isCxx && field.type.kind == CppTypeKind::Enumeration)
     {
@@ -405,13 +407,15 @@ std::optional<CppSemanticInstanceField> projectCppSemanticInstanceField(
         mapped = mapCppScalarType(underlying);
         if (mapped) mapped->canonicalCppType = field.type.canonicalSpelling;
     }
-    if (!mapped && !record.isCxx && lookup && field.type.kind == CppTypeKind::Record)
+    if (!mapped && (!record.isCxx || cppValueFields) && lookup && field.type.kind == CppTypeKind::Record)
     {
         const auto target = projectCppRecordTypeIdentity(field.type, moduleName);
         const auto* imported = fieldRecordType(*lookup, target, projectOrdinal);
+        const auto targetOrdinal = target ? lookup->typeOrdinalForIdentity(target->key()) : std::nullopt;
         const auto* layout = imported && imported->objectLayout ? &*imported->objectLayout :
             imported && field.isAnonymousCarrier && imported->memberAccessLayout ? &*imported->memberAccessLayout : nullptr;
-        if (target && imported && layout &&
+        if (target && imported && layout && (!record.isCxx ||
+            (targetOrdinal && lookup->cppTrivialValueEligible(*targetOrdinal))) &&
             (!field.type.recordIdentity || !field.type.recordIdentity->clangUsr || !imported->clangUsr ||
              field.type.recordIdentity->clangUsr == imported->clangUsr) &&
             !imported->isIncomplete && field.type.sizeBits && *field.type.sizeBits % 8 == 0 &&

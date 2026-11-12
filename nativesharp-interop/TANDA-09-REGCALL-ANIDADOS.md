@@ -28,5 +28,21 @@ regresiones precompiladas de registros planos `regcall`, de punteros
 `regcall` y de registros distintos `sysv_abi`, así como los rechazos de
 conversiones incompatibles y las pruebas de transporte e identidad.
 
-**Pendiente:** las muestras C++ anidadas y otras firmas o layouts no están
+Las muestras equivalentes de C++ también pasaron las ocho combinaciones de
+O0-O3 y estática/DLL, con llamadas directas y por puntero, comparadas con el
+control C++ y las formas LLVM de Clang:
+`A:/temp/nsc-t09-cpp-nested-3769ljf_`. Pasaron 16 consumidores
+precompilados con ambas llamadas y otros 16 que solo llaman por puntero,
+con y sin encabezado: `A:/temp/nsc-t09-cpp-nested-precompilado-5qv8j_p3`
+y `A:/temp/nsc-t09-cpp-nested-precompilado-ybdszx6k`.
+
+Para que estas muestras sean accesibles, se proyectan los campos públicos
+de registros C++ con operaciones de valor elegibles cuando son arreglos
+escalares fijos o registros de valor también elegibles, comprobando su
+identidad y layout. La prueba negativa conservó el rechazo de campos privados
+y del arreglo de un registro con destructor no trivial:
+`A:/temp/nsc-t09-cpp-nested-rechazos-1lo8r471`. Pasaron además regresiones
+de registros C, registros planos y metadatos C++.
+
+**Pendiente:** otras firmas, layouts y tipos C++ no triviales no están
 acreditados. Este avance no cierra T09-003 ni la tanda 9.
