@@ -28,7 +28,7 @@ prueba de namespace conservó los dos fallos SEH conocidos.
 
 El control exploratorio con `Future<int, Exception>` no compiló por resolución
 del tipo, así que no acredita propagación de error desde una fábrica. También
-quedan sin verificar el dispatch virtual de métodos async, módulos binarios y el await durante
+quedan sin verificar el dispatch virtual de métodos async y el await durante
 cancelación; la corrección de este caso no implica que esos escenarios pasen.
 
 Se añadieron controles dirigidos con la superficie existente: una llamada async
@@ -47,4 +47,15 @@ Estos controles no ejercitan el transporte de un error dentro de un future
 devuelto por una fábrica síncrona; `Future<T>` es la superficie nombrable sin
 error según la canonicalización actual. El dispatch virtual verificado aquí
 es el de la fábrica que lanza, no el de un método async virtual que devuelve
-distintos futures. Esos límites y la cobertura binaria siguen pendientes.
+distintos futures. Ese límite sigue pendiente.
+
+El fixture `tests/integration/async_future_factory_binary.py` compiló productor
+como biblioteca con metadata y consumidor por separado, ambos en O0/O2. El
+consumidor esperó una fábrica estática y una fábrica virtual sobrescrita, con
+future suspendible; las dos ejecuciones devolvieron 42. Una segunda compilación
+O2 del consumidor con salida nueva informó seis hits y cero misses de caché de
+objetos, y su ejecutable también devolvió 42. El log con comandos completos es
+`A:/nsc-fixes-evidencia/async-finally-20261111/await-factory-binary-regression.log`;
+el compilador informó build hash `9257cf434b544b85`. La validación usa el mismo
+compilador para ambas unidades y no acredita compatibilidad entre compiladores
+distintos ni todos los tipos o rutas excepcionales de biblioteca.
