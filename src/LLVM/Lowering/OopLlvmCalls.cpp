@@ -998,8 +998,10 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
               interop::abi_plan::isRegCallWin64FloatRecordsReturningFloat(*imported->cppAbiPlan, imported->cAbiName)) ||
              (node->typeKey == "builtin:void" &&
               interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(*imported->cppAbiPlan, imported->cAbiName)) ||
-             (regCallRecordLayout && interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*imported->cppAbiPlan,
-                imported->cAbiName, regCallRecordLayout->size, regCallRecordLayout->alignment))))
+             (regCallRecordLayout && (interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*imported->cppAbiPlan,
+                imported->cAbiName, regCallRecordLayout->size, regCallRecordLayout->alignment) ||
+              interop::abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*imported->cppAbiPlan,
+                imported->cAbiName, regCallRecordLayout->size, regCallRecordLayout->alignment)))))
         {
             const auto logicalCount = imported->cppAbiPlan->logicalParameters.size();
             if (node->children.size() != logicalCount || node->referenceResult || node->returnsAssignedValue ||
@@ -1098,11 +1100,12 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                         { LLVMAddCallSiteAttribute(call, index, attribute); });
             if (!applyMustTail(node, call, error)) return nullptr;
             if (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint" || node->typeKey == "builtin:bool" || node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort" || node->typeKey.ends_with('*') || node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong" || node->typeKey == "builtin:double" || node->typeKey == "builtin:float" || node->typeKey == "builtin:void") return call;
-            LLVMValueRef resultSlot = entryBlockAlloca(carrier, 4, "regcall.record.result");
+            const unsigned resultAlignment = static_cast<unsigned>(regCallRecordLayout->alignment);
+            LLVMValueRef resultSlot = entryBlockAlloca(carrier, resultAlignment, "regcall.record.result");
             LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
-            LLVMSetAlignment(resultStore, 4);
+            LLVMSetAlignment(resultStore, resultAlignment);
             LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "regcall.record.value");
-            LLVMSetAlignment(result, 4);
+            LLVMSetAlignment(result, resultAlignment);
             return result;
         }
         if (imported && imported->cppSysVCall && imported->cppAbiPlan &&

@@ -2,6 +2,7 @@
 import argparse
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -35,7 +36,15 @@ run('control-object', ['clang.exe', *flags, '-c', 'Control.c', '-o', 'control.ob
 run('control-link', ['lld-link.exe', '/nologo', '/entry:main', '/subsystem:console', '/nodefaultlib',
                      '/out:control.exe', 'control.obj', 'api.lib'])
 run('control-run', [str(root/'control.exe')])
-run('nsc', [args.nsc, '--emit-project-oop-exe', str(root/'Probe.nsproj'),
-            '--cpp-clang-root='+args.clang_root, '--no-artifact-cache', '-O0', '-o', str(root/'out.exe')])
-run('nsc-run', [str(root/'out.exe')])
-print('OK: control C y NativeSharp, directo y por puntero; evidencia:', root, flush=True)
+ir = run('llvm', [args.nsc, '--dump-project-oop-llvm', str(root/'Probe.nsproj'),
+                  '--cpp-clang-root='+args.clang_root])
+pieces = r',\s*'.join([r'float\s+[^,)]+']*3) + r',\s*i32\s+[^,)]+'
+for target in (r'@(?:"\\01)?__regcall3__combine', r'%[^\s(]+'):
+    if not re.search(r'call\s+x86_regcallcc\s+i64\s+'+target+r'\('+pieces+r'\)', ir):
+        raise SystemExit('No se encontró la llamada física; evidencia: '+str(root/'llvm.log'))
+for opt in range(4):
+    output = root/('out-O'+str(opt)+'.exe')
+    run('nsc-O'+str(opt), [args.nsc, '--emit-project-oop-exe', str(root/'Probe.nsproj'),
+        '--cpp-clang-root='+args.clang_root, '--no-artifact-cache', '-O'+str(opt), '-o', str(output)])
+    run('nsc-run-O'+str(opt), [str(output)])
+print('OK: control C y NativeSharp O0-O3, directo y por puntero; evidencia:', root, flush=True)

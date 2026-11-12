@@ -1919,8 +1919,22 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
                 symbol.cppAbiPlan->logicalParameters.size() == symbol.cppParameterTypes.size() &&
                 isStructValueType(function.returnTypeKey) &&
-                interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*symbol.cppAbiPlan, symbol.mangledName,
-                    *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8) &&
+                (interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*symbol.cppAbiPlan, symbol.mangledName,
+                    *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8) ||
+                 (interop::abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*symbol.cppAbiPlan, symbol.mangledName,
+                    *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8) && [&] {
+                        const auto ordinal = nameLookup_ && function.returnTypeKey.starts_with("type:") ?
+                            nameLookup_->typeOrdinalForIdentity(std::string_view(function.returnTypeKey).substr(5)) : std::nullopt;
+                        const auto* imported = ordinal ? nameLookup_->cppImportedType(*ordinal) : nullptr;
+                        return imported && !imported->isIncomplete && imported->deferredImportError.empty() &&
+                            imported->objectLayout && symbol.cppReturnType->recordIdentity &&
+                            symbol.cppReturnType->recordIdentity->clangUsr &&
+                            !symbol.cppReturnType->recordIdentity->clangUsr->empty() &&
+                            imported->clangUsr == symbol.cppReturnType->recordIdentity->clangUsr &&
+                            imported->objectLayout->sizeBytes * 8 == *symbol.cppReturnType->sizeBits &&
+                            imported->objectLayout->alignmentBytes * 8 == *symbol.cppReturnType->alignmentBits &&
+                            (imported->origin != CppImportedTypeOrigin::CppRecord || nameLookup_->cppTrivialValueEligible(*ordinal));
+                    }())) &&
                 [&] {
                     for (std::size_t i = 0; i < symbol.cppParameterTypes.size(); ++i)
                     {

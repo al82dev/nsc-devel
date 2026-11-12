@@ -477,8 +477,10 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
         if (!signature.returnType.sizeBits || !signature.returnType.alignmentBits ||
             *signature.returnType.sizeBits % 8 || *signature.returnType.alignmentBits % 8 ||
             !signature.returnType.recordIdentity || !signature.returnType.recordIdentity->clangUsr) return {};
-        if (!abi_plan::isRegCallWin64FloatRecordInterleaved(*plan, plan->symbol,
+        if (!(abi_plan::isRegCallWin64FloatRecordInterleaved(*plan, plan->symbol,
                 *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8) ||
+              abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*plan, plan->symbol,
+                *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8)) ||
             !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes, true, true)) return {};
     }
     if (plan && signature.callingConvention == "regcall" && signature.returnType.kind == CppTypeKind::Record &&
@@ -987,6 +989,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
          (abi_plan::isRegCallWin64RecordRoundTrip(*plan, expectedSymbol,
             *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8) ||
           abi_plan::isRegCallWin64FloatRecordInterleaved(*plan, expectedSymbol,
+            *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8) ||
+          abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*plan, expectedSymbol,
             *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8))) ||
           (returnInteger && abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, expectedSymbol) &&
            abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, signature.returnType)) ||

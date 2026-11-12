@@ -1014,21 +1014,23 @@ Otros tamaños, alineaciones y firmas no se acreditan; T09-003 sigue abierto.
 La [muestra C dirigida](pruebas-tanda-09-regcall-retorno-compacto/) devuelve
 un registro de dos enteros y recibe un registro de tres flotantes y un entero.
 El control compilado con Clang 23.1.0 ejecutó correctamente las llamadas
-directa y por puntero. NSC rechazó la firma antes de generar el ejecutable;
-los comandos y resultados están en
-`A:/temp/nsc-t09-regcall-retorno-compacto-0kb6vpak`. El validador está
-preparado para exigir que ambos programas funcionen y actualmente falla en
-el paso de NSC. Este diagnóstico no acredita la interoperabilidad: se requiere
-implementar y verificar el retorno, incluidos los caminos por puntero y
-precompilados, antes de considerar resuelto este caso.
+directa y por puntero; inicialmente NSC rechazaba la firma
+(`A:/temp/nsc-t09-regcall-retorno-compacto-0kb6vpak`). La ruta directa ahora
+concilia la identidad y layout del retorno importado, y ambas rutas reconstruyen
+el registro a partir del entero físico del plan de Clang. Pasaron el control C,
+la ejecución NativeSharp O0–O3 y la comprobación LLVM de las llamadas directa
+y por puntero (`A:/temp/nsc-t09-regcall-retorno-compacto-txyj0kta`).
+Esta prueba usa enlace estático; C++, DLL, consumidores precompilados, otros
+retornos y layouts permanecen pendientes.
 
 Se añadió una comprobación física compartida para retornos compactos de 1, 2,
 4 y 8 bytes junto a argumentos flotantes expandidos. Para el registro de ocho
 bytes, la prueba interna contrasta el plan obtenido de Clang y rechaza un
 tamaño, una alineación y un tipo físico alterados. La compilación incremental,
 la prueba del plan y los controles de transporte, ABI e identidad pasaron.
-Esta comprobación aún no está conectada a la ruta completa de consumo y no
-sustituye la reconciliación de identidad y layout ni demuestra ejecución.
+La comprobación física no sustituye la reconciliación de identidad y layout.
+También pasó la regresión previa C++ de retorno flotante en estática y DLL,
+O0–O3 (`A:/temp/nsc-t09-cpp-return-record-mixed-w6igwtlj`).
 
 ## Retorno de registro con argumento indirecto
 
