@@ -15,7 +15,7 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
                                                bool doubleReturn = false, bool voidReturn = false,
                                                bool floatReturn = false, bool int64Return = false,
                                                bool pointerReturn = false, unsigned narrowReturn = 0,
-                                               bool boolReturn = false) noexcept
+                                               bool boolReturn = false, std::uint64_t indirectAlignment = 0) noexcept
 {
     const auto scalar = [](const Type& type) {
         return type.kind == TypeKind::Float && type.widthOrCount == 0 && !type.packed && type.elements.empty();
@@ -52,7 +52,7 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
     if (symbol.empty() || plan.symbol != symbol || plan.callingConvention != 92 || plan.variadic ||
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
         plan.returnSignExtend || plan.returnZeroExtend != boolReturn ||
-        (voidReturn ? (plan.physicalReturn.kind != TypeKind::Void || plan.physicalReturn.widthOrCount != 0 ||
+        ((voidReturn || indirectAlignment) ? (plan.physicalReturn.kind != TypeKind::Void || plan.physicalReturn.widthOrCount != 0 ||
                        plan.physicalReturn.packed || !plan.physicalReturn.elements.empty()) :
          pointerReturn ? (plan.physicalReturn.kind != TypeKind::Pointer || plan.physicalReturn.widthOrCount != 0 ||
                           plan.physicalReturn.packed || !plan.physicalReturn.elements.empty()) :
@@ -66,12 +66,23 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
         plan.logicalParameters.size() != expandedRecords + trailingInts)
         return false;
     const auto& result = plan.logicalReturn;
-    if ((voidReturn ? (result.passing != Passing::Ignore || result.coercion.has_value()) :
+    if ((indirectAlignment ? (result.passing != Passing::Indirect || result.coercion.has_value() || result.alignment != indirectAlignment) :
+        voidReturn ? (result.passing != Passing::Ignore || result.coercion.has_value()) :
         (result.passing != (boolReturn ? Passing::Extend : Passing::Direct) || !result.coercion ||
          !sameType(sameType, *result.coercion, plan.physicalReturn, 0))) || result.offset ||
         result.byValue || result.signExtend || result.zeroExtend != boolReturn || !result.expandedOffsets.empty())
         return false;
     std::size_t physicalIndex = 0;
+    if (indirectAlignment)
+    {
+        if (plan.physicalParameters.empty()) return false;
+        const auto& hidden = plan.physicalParameters[0];
+        if (hidden.type.kind != TypeKind::Pointer || hidden.type.widthOrCount || hidden.type.packed ||
+            !hidden.type.elements.empty() || !hidden.pointee || hidden.pointee->kind != TypeKind::Structure ||
+            hidden.alignment != indirectAlignment || !hidden.structureReturn || hidden.byValue ||
+            hidden.signExtend || hidden.zeroExtend || hidden.inRegister) return false;
+        physicalIndex = 1;
+    }
     std::size_t seenRecords = 0;
     for (std::size_t index = 0; index < plan.logicalParameters.size(); ++index)
     {
@@ -389,6 +400,21 @@ inline bool isRegCallWin64FloatRecordsReturningCompactRecord(const Plan& plan, s
     if (size == 4) return isRegCallWin64FloatRecordsReturningInt(plan, symbol);
     if (size == 8) return isRegCallWin64FloatRecordsReturningInt64(plan, symbol);
     return isRegCallWin64FloatRecordsReturningNarrowInteger(plan, symbol);
+}
+
+// Checks only the hidden return and argument plan. The caller reconciles the
+// record identity, imported layout and (for C++) its triviality separately.
+inline bool isRegCallWin64FloatRecordsReturningIndirectRecord(const Plan& plan, std::string_view symbol,
+                                                               std::uint64_t size, std::uint64_t alignment) noexcept
+{
+    if (!size || !alignment || (alignment & (alignment - 1)) || size % alignment ||
+        size == 1 || size == 2 || size == 4 || size == 8) return false;
+    std::size_t records = 0;
+    for (const auto& logical : plan.logicalParameters)
+        if (logical.passing == Passing::Expand) ++records;
+    return records && isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4,
+        plan.logicalParameters.size() - records, true, records, true, true,
+        false, false, false, false, false, false, 0, false, alignment);
 }
 
 inline bool regCallFloatRecordArgumentsMatch(const Plan& plan, const CppType& result,

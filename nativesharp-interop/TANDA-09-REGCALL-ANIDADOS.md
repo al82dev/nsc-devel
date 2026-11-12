@@ -1009,6 +1009,23 @@ rechazos de ancho y alineación, transporte e identidad y la regresión C++ de
 ocho bytes (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-nb7g8sd1`).
 Otros tamaños, alineaciones y firmas no se acreditan; T09-003 sigue abierto.
 
+## Retorno indirecto con argumento flotante expandido: pendiente
+
+La [prueba dirigida](pruebas-tanda-09-regcall-retorno-indirecto/) devuelve un
+registro C de seis enteros y recibe un registro de tres flotantes y un entero.
+El control C pasó, mientras NSC rechazó la firma
+(`A:/temp/nsc-t09-regcall-retorno-indirecto-eyb1ts1v`). El LLVM de Clang
+23.1.0 presenta un retorno físico `void`, un parámetro oculto `sret` y tres
+argumentos `float` seguidos de un entero.
+
+Se añadió una comprobación del plan que verifica el parámetro oculto, su
+alineación y la posición de los argumentos expandidos. La prueba interna
+contrastó el plan obtenido de Clang y rechazó un `sret` y un índice alterados;
+pasaron compilación incremental y controles de plan, transporte, ABI e
+identidad. Esta validación física aún debe conectarse a la identidad y layout
+del resultado y a la emisión completa, incluidos punteros y precompilación.
+El caso sigue pendiente; la prueba de ejecución todavía falla en NSC.
+
 ## Retorno compacto con argumento flotante expandido: pendiente
 
 La [muestra C dirigida](pruebas-tanda-09-regcall-retorno-compacto/) devuelve
