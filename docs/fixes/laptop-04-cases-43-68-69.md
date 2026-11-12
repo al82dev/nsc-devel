@@ -74,7 +74,9 @@ El gate binario exacto publica el trait, el struct no genérico y su impl en
 consumidor O0/O2 con salida 42. Cada MIR consumidor contiene dos
 `direct-instance-call` a `Number.Value` y cero
 `interface-instance-call`, `virtual-instance-call` o
-`allocate-and-construct`.
+`allocate-and-construct`. La reproducción quedó versionada en
+`tests/integration/struct_trait_impl_binary.py` y se ejecuta directamente con
+el compilador aislado como argumento.
 
 Como evidencia binaria suplementaria se ejecutó
 `generic_struct_trait_impl.py`: productor 0, consumidores O0/O2 42. Ese test
@@ -83,9 +85,9 @@ campos. Se usó solo como validación de lectura, no se modificó y no se presen
 como sustituto exacto del fixture no genérico.
 
 Evidencia: `A:/nsc-fixes-laptop-04-evidencia/case68-struct.log`,
-`case68-struct-strengthened.log`, `case68-binary-exact.log` y
-`case68-binary-related.log`. Los artefactos exactos quedaron en
-`case68-binary-exact-8cij4tnj`.
+`case68-struct-strengthened.log`, `case68-binary-regression.log`,
+`case68-binary-exact.log` y `case68-binary-related.log`. Los artefactos
+exactos conservados quedaron en `case68-binary-exact-8cij4tnj`.
 
 ## Caso 69: delegado genérico y lambda global
 
@@ -102,7 +104,8 @@ fixtures versionados no han cambiado desde sus correcciones respectivas.
 - El gate binario publica `Reducer<T>` y métodos para `int` y `long` en
   `.lib`/`.nsmeta`. Los consumidores reconstruyen e invocan ambos delegates
   mediante `LibraryReference`. Pasan las cuatro combinaciones productor O0/O2
-  por consumidor O0/O2 con salida 0.
+  por consumidor O0/O2 con salida 0. La reproducción quedó versionada en
+  `tests/integration/generic_delegate_return_binary.py`.
 
 El gate binario sólo valida el round trip; no modifica serialización ni
 reconstrucción de metadata. La lambda global es un callable local sintetizado,
@@ -111,14 +114,16 @@ separado.
 
 Evidencia: `A:/nsc-fixes-laptop-04-evidencia/case69-global-lambda.log`,
 `case69-delegate-baseline.log`, `case69-delegate-o0-o2.log` y
-`case69-delegate-binary.log`. Los artefactos binarios quedaron en
-`case69-delegate-binary-98ln0_tw`.
+`case69-delegate-binary-regression.log` y `case69-delegate-binary.log`. Los
+artefactos binarios conservados quedaron en `case69-delegate-binary-98ln0_tw`.
 
 ## Límites y archivos compartidos
 
 - No se modificaron `CMakeLists.txt`, `DeclarationParser.cpp`,
   `HirBuildCoordinator.cpp`, `MirNodeMachine.cpp`, LLVM, metadata, préstamos ni
   archivos del equipo de campos o del integrador.
+- Las dos regresiones binarias nuevas se ejecutan directamente; no se
+  registraron en `CMakeLists.txt` porque ese archivo pertenece al integrador.
 - No se ejecutó la batería completa; solo build inicial autorizado y pruebas
   dirigidas incrementales.
 - No se usó `C:/native-sharp` como compilador ni SDK, ni se hizo deploy, push,
