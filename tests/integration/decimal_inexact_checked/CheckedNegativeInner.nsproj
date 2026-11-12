@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>CheckedNegativeInner</Name><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><Compile Include="CheckedNegativeInner.ns"/></ItemGroup></Project>
