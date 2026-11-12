@@ -164,6 +164,64 @@ int main()
            resumedCached.evaluations[0].value == 42,
         "later evaluation with the shared cache still produces the correct value");
 
+    ComptimeLimits shallow;
+    shallow.maximumNesting = 2;
+    const auto wide = ComptimeEngine(shallow).execute(
+        "int F(int a,int b,int c,int d,int e,int f,int g,int h,"
+        "int i,int j,int k,int l,int m,int n,int o,int p) { return p; } "
+        "int Main() { return #run(F(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,42)); }");
+    expect(wide.success && wide.evaluations.size() == 1 && wide.evaluations[0].value == 42,
+        "wide shallow call fits depth limit and preserves parameter order");
+    const auto deep = ComptimeEngine(shallow).execute(
+        "int G(int x) { return x; } int F(int x) { return G(x); } int Main() { return #run(F(42)); }");
+    expect(!deep.success && contains(deep.error, "nesting limit"),
+        "actual nested calls remain bounded");
+
+    const auto zeroArgs = engine.execute(
+        "int Z() { return 42; } int Main() { return #run(Z()); }");
+    expect(zeroArgs.success && zeroArgs.evaluations.size() == 1 && zeroArgs.evaluations[0].value == 42,
+        "zero-argument function is evaluated");
+    const auto orderedArgs = engine.execute(
+        "int F(int a,int b,int c) { return a-b-c; } int Main() { return #run(F(20,7,5)); }");
+    expect(orderedArgs.success && orderedArgs.evaluations.size() == 1 &&
+           orderedArgs.evaluations[0].value == 8, "argument values keep their parameter order");
+    const auto nestedArgs = engine.execute(
+        "int G(int x) { return x; } int F(int a,int b,int c) { return a*100+b*10+c; } "
+        "int Main() { return #run(F(3,G(4),5)); }");
+    expect(nestedArgs.success && nestedArgs.evaluations.size() == 1 &&
+           nestedArgs.evaluations[0].value == 345, "nested middle argument preserves sibling values");
+    const std::string wideSource =
+        "int F(int a,int b,int c,int d,int e,int f,int g,int h,"
+        "int i,int j,int k,int l,int m,int n,int o,int p) { return p; } "
+        "int Main() { return #run(F(1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,42)); }";
+    ComptimeLimits exactWide = shallow;
+    exactWide.maximumSteps = wide.executedSteps;
+    expect(ComptimeEngine(exactWide).execute(wideSource).success, "exact wide call step budget succeeds");
+    if (wide.executedSteps != 0)
+    {
+        --exactWide.maximumSteps;
+        const auto exhausted = ComptimeEngine(exactWide).execute(wideSource);
+        expect(!exhausted.success && contains(exhausted.error, "step budget"),
+            "one fewer step still rejects a wide call");
+    }
+    std::size_t widePolls = 0;
+    ComptimeExecutionContext countWide;
+    countWide.cancellationRequested = [&widePolls] { ++widePolls; return false; };
+    const auto countedWide = ComptimeEngine(shallow, {}, countWide).execute(wideSource);
+    expect(countedWide.success && countedWide.evaluations.size() == 1 &&
+           countedWide.evaluations[0].value == 42, "wide call cancellation control succeeds");
+    const std::size_t totalWidePolls = widePolls;
+    for (std::size_t stop = 1; stop <= totalWidePolls; ++stop)
+    {
+        widePolls = 0;
+        ComptimeExecutionContext stopWide;
+        stopWide.cancellationRequested = [&widePolls, stop] { return ++widePolls >= stop; };
+        const auto cancelledWide = ComptimeEngine(shallow, {}, stopWide).execute(wideSource);
+        expect(!cancelledWide.success && cancelledWide.error == "comptime evaluation cancelled" &&
+               cancelledWide.source == wideSource && cancelledWide.evaluations.empty() &&
+               cancelledWide.dependencies.empty(), "wide call cancellation returns no partial result");
+    }
+
     const auto cache = std::make_shared<ComptimeCache>();
     const auto repeated = ComptimeEngine({}, cache).execute(nestedSource);
     const auto repeatedAgain = ComptimeEngine({}, cache).execute(nestedSource);

@@ -145,3 +145,31 @@ compartida y la expansión de macros no consulta cancelación durante su propio
 proceso. Esta corrección garantiza el resultado público al observarla; no se
 presenta como transacción de caché ni como cancelación inmediata de macros.
 
+## Anchura de llamadas y límite de anidamiento
+
+Una llamada poco profunda de 16 argumentos con `maximumNesting = 2` se
+rechazaba porque se apilaban todos sus argumentos a la vez. El control previo
+falló con salida 1 en `A:/nsc-fixes-evidencia/run73-width-baseline-20261112.log`.
+El evaluador ahora programa cada argumento en orden con una continuación por
+llamada, manteniendo el guard de tamaño de worklist y profundidad. Los
+argumentos se consumen una vez y de izquierda a derecha; la transición entre
+hermanos no incrementa el contador de pasos.
+
+Tras compilar incrementalmente, pasaron la regresión original, el control de
+anidamiento realmente excesivo, las llamadas sin argumentos, el orden con
+resta, una llamada anidada en el argumento central, los límites exacto y uno
+menor de pasos y los sondeos de cancelación de la llamada ancha. La selección
+unitaria ampliada terminó con salida 0 en
+`A:/nsc-fixes-evidencia/run73-width-expanded-20261112.log`; seis CTest
+dirigidos pasaron en `run73-width-ctest-0-20261112.log` a
+`run73-width-ctest-5-20261112.log`. La integración O0/O2 de `#run` pasó en
+`A:/nsc-fixes-evidencia/run73-width-integration-20261112.log`. El análisis
+`clang-analyzer-core.*` terminó con salida 0 y sin diagnósticos en
+`A:/nsc-fixes-evidencia/run73-width-tidy-20261112.log`.
+
+El límite de 16 parámetros y la profundidad acotan los valores pendientes;
+la capacidad real de vectores y entornos no se contabiliza íntegramente en
+`maximumMemoryBytes`, una limitación anterior que esta corrección no resuelve.
+Hay más sondeos de cancelación por llamada; no se comparó dinámicamente el
+contador de pasos con un binario anterior usando la misma prueba.
+

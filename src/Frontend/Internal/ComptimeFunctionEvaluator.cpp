@@ -495,9 +495,10 @@ bool schedule(
             error = "comptime sandbox forbids named function arguments";
             return false;
         }
+    // Keep one continuation per active call instead of one per sibling argument.
     work.push_back({node, 1, task.depth, task.environment, task.nameSpace, task.ownerClass});
-    for (auto argument = node->children().rbegin(); argument != node->children().rend(); ++argument)
-        work.push_back({*argument, 0, task.depth, task.environment, task.nameSpace, task.ownerClass});
+    if (!node->children().empty())
+        work.push_back({node->children().front(), 0, task.depth, task.environment, task.nameSpace, task.ownerClass});
     return true;
 }
 
@@ -529,6 +530,13 @@ bool finish(
         std::int32_t result = 0;
         if (!binary(node->tokenKind(), left, right, result, error)) return false;
         values.push_back(result);
+        return true;
+    }
+    if (task.phase < node->children().size())
+    {
+        const auto next = task.phase;
+        work.push_back({node, task.phase + 1U, task.depth, task.environment, task.nameSpace, task.ownerClass});
+        work.push_back({node->children()[next], 0, task.depth, task.environment, task.nameSpace, task.ownerClass});
         return true;
     }
     bool qualified = false;
@@ -566,8 +574,14 @@ std::optional<std::int64_t> execute(
     while (!work.empty())
     {
         if (cancelled && cancelled()) { error = "comptime evaluation cancelled"; return std::nullopt; }
-        if (steps >= limits.maximumSteps) { error = "comptime step budget exceeded"; return std::nullopt; }
-        ++steps;
+        const Task& next = work.back();
+        const bool advanceArgument = next.node != nullptr && next.node->kind() == AstNodeKind::CallExpression &&
+            next.phase != 0 && next.phase < next.node->children().size();
+        if (!advanceArgument)
+        {
+            if (steps >= limits.maximumSteps) { error = "comptime step budget exceeded"; return std::nullopt; }
+            ++steps;
+        }
         if (work.size() > limits.maximumNesting || work.back().depth >= limits.maximumNesting)
         {
             error = "comptime nesting limit exceeded";
