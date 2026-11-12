@@ -107,6 +107,7 @@ int main(int argc, char** argv)
         typedef Nested (__attribute__((regcall)) *NestedVariedFn)(Nested,Floats,int);
         Nested __attribute__((regcall)) nested_varied(Nested,Floats,int);
         Nested __attribute__((regcall)) nested_first(Floats,Nested,int);
+        Nested __attribute__((regcall)) nested_interleaved(Nested,int,Floats);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -773,6 +774,22 @@ int main(int argc, char** argv)
         wrong = saved; wrong.declaration.parameters[0].type.recordIdentity->clangUsr =
             wrong.declaration.returnType.recordIdentity->clangUsr;
         if (metadata_detail::encodeCDependencyFunction(wrong, encoded, error)) return 146;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "nested_interleaved") declaration = &function;
+        if (!declaration) return 151;
+        const auto plan = session->cFunctionAbiPlan("nested_interleaved", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64FloatRecordInterleaved(*plan, plan->symbol, 12, 4) ||
+            plan->logicalParameters[0].physicalCount != 3 || plan->logicalParameters[1].firstPhysical != 3 ||
+            plan->logicalParameters[2].firstPhysical != 4 || plan->logicalParameters[2].physicalCount != 2 ||
+            abi_plan::isRegCallWin64FloatRecordSequence(*plan, plan->symbol, 12, 4)) return 152;
+        auto wrong = *plan; wrong.logicalParameters[2].firstPhysical = 3;
+        if (abi_plan::isRegCallWin64FloatRecordInterleaved(wrong, wrong.symbol, 12, 4)) return 153;
+        wrong = *plan; wrong.physicalParameters[3].type.widthOrCount = 64;
+        if (abi_plan::isRegCallWin64FloatRecordInterleaved(wrong, wrong.symbol, 12, 4) &&
+            abi_plan::regCallFloatRecordScalarMatches(wrong.physicalParameters[3].type, declaration->parameters[1].type)) return 154;
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;

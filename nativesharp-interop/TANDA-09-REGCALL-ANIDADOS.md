@@ -550,3 +550,18 @@ regresión precompilada C++ anterior
 (`A:/temp/nsc-t09-cpp-varied-precompilado-m8usad2a`) y los rechazos de campos
 privados y record no trivial (`A:/temp/nsc-t09-cpp-first-rechazos-36fbvw66`).
 La evidencia cubre los tipos y firmas descritos; T09-003 sigue abierto.
+
+## Escalar entre registros
+
+La muestra C pasa un record de tres flotantes, un `int` y un record de dos
+flotantes. Clang expande las piezas en ese orden; NSC rechazaba inicialmente
+la firma (`A:/temp/nsc-t09-interleaved-y8_peyt7`). La validación y emisión
+directa recorren ahora el plan en orden, verifican cada tipo lógico y colocan
+cada pieza en su posición física.
+
+La llamada directa pasó frente al control C en estática y DLL O0–O3, con
+inspección de LLVM (`A:/temp/nsc-t09-interleaved-stsh3_bo`). Pasaron la
+prueba del plan y las regresiones de transporte y registros consecutivos
+(`A:/temp/nsc-t09-varied-records-um3ipuf_`). La ruta por puntero sigue
+fallando (`A:/temp/nsc-t09-interleaved-gu1sywkl`); precompilación y C++ no
+están acreditados. T09-003 permanece abierto.

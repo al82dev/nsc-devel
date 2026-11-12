@@ -1894,8 +1894,34 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 interop::abi_plan::isRegCallWin64FloatRecordSequence(*symbol.cppAbiPlan, symbol.mangledName,
                     *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8) &&
                 interop::abi_plan::regCallFloatRecordTailMatches(*symbol.cppAbiPlan, symbol.cppParameterTypes, expandedRecords);
+            const bool regCallRecordInterleaved = function.cppRegCall && symbol.cppAbiPlan && symbol.cppReturnType &&
+                symbol.cppReturnType->kind == interop::CppTypeKind::Record && symbol.cppReturnType->sizeBits &&
+                symbol.cppReturnType->alignmentBits && *symbol.cppReturnType->sizeBits % 8 == 0 &&
+                *symbol.cppReturnType->alignmentBits % 8 == 0 &&
+                function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
+                symbol.cppAbiPlan->logicalParameters.size() == symbol.cppParameterTypes.size() &&
+                isStructValueType(function.returnTypeKey) &&
+                interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*symbol.cppAbiPlan, symbol.mangledName,
+                    *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8) &&
+                [&] {
+                    for (std::size_t i = 0; i < symbol.cppParameterTypes.size(); ++i)
+                    {
+                        const auto& logical = symbol.cppAbiPlan->logicalParameters[i];
+                        if (logical.passing == interop::abi_plan::Passing::Expand)
+                        {
+                            if (!isStructValueType(function.parameterTypeKeys[i]) ||
+                                !interop::abi_plan::regCallRecordMatchesExpansion(*symbol.cppReturnType,
+                                    symbol.cppParameterTypes[i], logical)) return false;
+                        }
+                        else if (logical.firstPhysical >= symbol.cppAbiPlan->physicalParameters.size() ||
+                            !interop::abi_plan::regCallFloatRecordScalarMatches(
+                                symbol.cppAbiPlan->physicalParameters[logical.firstPhysical].type,
+                                symbol.cppParameterTypes[i])) return false;
+                    }
+                    return true;
+                }();
             if (function.cppRegCall && (function.isVariadic ||
-                (!regCallRecordRoundTrip && !regCallRecordIntRoundTrip && !regCallRecordSequence && ((!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&
+                (!regCallRecordRoundTrip && !regCallRecordIntRoundTrip && !regCallRecordSequence && !regCallRecordInterleaved && ((!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&
                  !function.returnTypeKey.ends_with('*')) ||
                 !std::ranges::all_of(function.parameterTypeKeys, [&](const auto& type) {
                     return regCallScalar(type) || type.ends_with('*');

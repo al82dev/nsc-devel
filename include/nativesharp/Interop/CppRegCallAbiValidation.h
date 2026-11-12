@@ -10,7 +10,8 @@ namespace nativesharp::interop::abi_plan
 inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_view symbol,
                                                std::uint64_t sizeBytes, std::uint64_t alignment,
                                                std::size_t trailingInts = 0, bool allowScalars = false,
-                                               std::size_t expandedRecords = 1, bool variedRecords = false) noexcept
+                                               std::size_t expandedRecords = 1, bool variedRecords = false,
+                                               bool interleaved = false) noexcept
 {
     const auto scalar = [](const Type& type) {
         return type.kind == TypeKind::Float && type.widthOrCount == 0 && !type.packed && type.elements.empty();
@@ -56,30 +57,33 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
         result.byValue || result.signExtend || result.zeroExtend || !result.expandedOffsets.empty())
         return false;
     std::size_t physicalIndex = 0;
-    for (std::size_t record = 0; record < expandedRecords; ++record)
+    std::size_t seenRecords = 0;
+    for (std::size_t index = 0; index < plan.logicalParameters.size(); ++index)
     {
-        const auto& argument = plan.logicalParameters[record];
-        const auto pieces = variedRecords ? argument.physicalCount : count;
-        if (pieces < 2 || pieces > 4 || physicalIndex > plan.physicalParameters.size() ||
-            pieces > plan.physicalParameters.size() - physicalIndex) return false;
-        if (argument.passing != Passing::Expand || argument.coercion || argument.offset || argument.byValue ||
-            argument.signExtend || argument.zeroExtend || argument.firstPhysical != physicalIndex ||
-            argument.physicalCount != pieces || argument.expandedOffsets.size() != pieces) return false;
-        for (std::size_t i = 0; i < pieces; ++i)
+        const auto& argument = plan.logicalParameters[index];
+        const bool expanded = interleaved ? argument.passing == Passing::Expand : index < expandedRecords;
+        if (expanded)
         {
-            if (argument.expandedOffsets[i] != i * 4) return false;
-            const auto& part = plan.physicalParameters[physicalIndex + i];
-            if (!scalar(part.type) || part.pointee || part.alignment || part.structureReturn || part.byValue ||
-                part.signExtend || part.zeroExtend || part.inRegister || part.noAlias) return false;
+            ++seenRecords;
+            const auto pieces = variedRecords ? argument.physicalCount : count;
+            if (pieces < 2 || pieces > 4 || physicalIndex > plan.physicalParameters.size() ||
+                pieces > plan.physicalParameters.size() - physicalIndex) return false;
+            if (argument.passing != Passing::Expand || argument.coercion || argument.offset || argument.byValue ||
+                argument.signExtend || argument.zeroExtend || argument.firstPhysical != physicalIndex ||
+                argument.physicalCount != pieces || argument.expandedOffsets.size() != pieces) return false;
+            for (std::size_t i = 0; i < pieces; ++i)
+            {
+                if (argument.expandedOffsets[i] != i * 4) return false;
+                const auto& part = plan.physicalParameters[physicalIndex + i];
+                if (!scalar(part.type) || part.pointee || part.alignment || part.structureReturn || part.byValue ||
+                    part.signExtend || part.zeroExtend || part.inRegister || part.noAlias) return false;
+            }
+            physicalIndex += pieces;
+            continue;
         }
-        physicalIndex += pieces;
-    }
-    if (physicalIndex > plan.physicalParameters.size() ||
-        plan.physicalParameters.size() - physicalIndex != trailingInts) return false;
-    for (std::size_t index = 0; index < trailingInts; ++index)
-    {
-        const auto& logical = plan.logicalParameters[index + expandedRecords];
-        const auto& physical = plan.physicalParameters[physicalIndex + index];
+        if (physicalIndex >= plan.physicalParameters.size()) return false;
+        const auto& logical = argument;
+        const auto& physical = plan.physicalParameters[physicalIndex];
         const auto supported = [allowScalars](const Type& type) {
             return !type.packed && type.elements.empty() &&
                 ((type.kind == TypeKind::Integer && (type.widthOrCount == 32 ||
@@ -90,14 +94,15 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
         };
         const bool boolean = physical.type.kind == TypeKind::Integer && physical.type.widthOrCount == 1;
         if (logical.passing != (boolean ? Passing::Extend : Passing::Direct) || !logical.coercion || !supported(*logical.coercion) ||
-            logical.offset || logical.alignment || logical.firstPhysical != physicalIndex + index || logical.physicalCount != 1 ||
+            logical.offset || logical.alignment || logical.firstPhysical != physicalIndex || logical.physicalCount != 1 ||
             logical.byValue || logical.signExtend || logical.zeroExtend != boolean || !logical.expandedOffsets.empty() ||
             !supported(physical.type) || !sameType(sameType, *logical.coercion, physical.type, 0) ||
             physical.pointee || physical.alignment || physical.structureReturn ||
             physical.byValue || physical.signExtend || physical.zeroExtend != boolean || physical.inRegister || physical.noAlias)
             return false;
+        ++physicalIndex;
     }
-    return true;
+    return seenRecords == expandedRecords && physicalIndex == plan.physicalParameters.size();
 }
 
 inline bool regCallFloatRecordScalarMatches(const Type& physical, const CppType& source, unsigned depth = 0) noexcept
@@ -220,6 +225,16 @@ inline bool isRegCallWin64FloatRecordSequence(const Plan& plan, std::string_view
     const auto count = regCallExpandedRecordCount(plan);
     return count && isRegCallWin64FloatRecordRoundTrip(plan, symbol, size, alignment,
         plan.logicalParameters.size() - count, true, count, true);
+}
+
+inline bool isRegCallWin64FloatRecordInterleaved(const Plan& plan, std::string_view symbol,
+                                                 std::uint64_t size, std::uint64_t alignment) noexcept
+{
+    std::size_t records = 0;
+    for (const auto& logical : plan.logicalParameters)
+        if (logical.passing == Passing::Expand) ++records;
+    return records && isRegCallWin64FloatRecordRoundTrip(plan, symbol, size, alignment,
+        plan.logicalParameters.size() - records, true, records, true, true);
 }
 
 inline bool regCallFloatRecordTailMatches(const Plan& plan, std::span<const CppType> parameters,

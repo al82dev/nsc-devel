@@ -982,11 +982,10 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         }
         const auto* regCallRecordLayout = findStructLayout(mirModel_, node->typeKey);
         if (imported && imported->cppRegCall && imported->cppAbiPlan && regCallRecordLayout &&
-            interop::abi_plan::isRegCallWin64FloatRecordSequence(*imported->cppAbiPlan, imported->cAbiName,
+            interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*imported->cppAbiPlan, imported->cAbiName,
                 regCallRecordLayout->size, regCallRecordLayout->alignment))
         {
             const auto logicalCount = imported->cppAbiPlan->logicalParameters.size();
-            const auto recordCount = interop::abi_plan::regCallExpandedRecordCount(*imported->cppAbiPlan);
             if (node->children.size() != logicalCount || node->referenceResult || node->returnsAssignedValue ||
                 (argumentOverrides && argumentOverrides->size() != logicalCount))
                 return failValue(error, "regcall expanded record has an unexpected argument contract");
@@ -1002,7 +1001,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                 const auto& actual = node->children[source]->typeKey;
                 const auto& type = imported->cppAbiPlan->physicalParameters[
                     imported->cppAbiPlan->logicalParameters[parameter].firstPhysical].type;
-                const bool compatible = parameter < recordCount ?
+                const bool compatible = imported->cppAbiPlan->logicalParameters[parameter].passing == interop::abi_plan::Passing::Expand ?
                     parameter < imported->parameterTypeKeys.size() && actual == imported->parameterTypeKeys[parameter] :
                     type.kind == interop::abi_plan::TypeKind::Float ? actual == "builtin:float" :
                     type.kind == interop::abi_plan::TypeKind::Double ? actual == "builtin:double" :
@@ -1023,8 +1022,13 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             if (!carrier) return nullptr;
             LLVMTypeRef partType = LLVMFloatTypeInContext(context_);
             std::vector<LLVMValueRef> arguments;
-            for (std::size_t record = 0; record < recordCount; ++record)
+            for (std::size_t record = 0; record < logicalCount; ++record)
             {
+                if (imported->cppAbiPlan->logicalParameters[record].passing != interop::abi_plan::Passing::Expand)
+                {
+                    arguments.push_back(logical[record]);
+                    continue;
+                }
                 LLVMTypeRef argumentCarrier = llvmType(imported->parameterTypeKeys[record], error);
                 if (!argumentCarrier) return nullptr;
                 LLVMValueRef slot = entryBlockAlloca(argumentCarrier, 4, "regcall.record.arg");
@@ -1038,7 +1042,6 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     arguments.push_back(part);
                 }
             }
-            for (std::size_t i = recordCount; i < logicalCount; ++i) arguments.push_back(logical[i]);
             releaseTransferredArguments(node);
             LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
                 arguments.data(), static_cast<unsigned>(arguments.size()), "regcall.record.call", error);
