@@ -1,0 +1,36 @@
+using NativeSharp.Core;
+int Main()
+{
+    double e0 = DeterministicMath.Exp(0.0);
+    double e1 = DeterministicMath.Exp(1.0);
+    double e709 = DeterministicMath.Exp(709.0);
+    double e7091 = DeterministicMath.Exp(709.1);
+    double e7095 = DeterministicMath.Exp(709.5);
+    double e70978 = DeterministicMath.Exp(709.78);
+    double eMax = DeterministicMath.Exp(709.782712893384);
+    double e710 = DeterministicMath.Exp(710.0);
+    if (e0 != 1.0 || e1 < 2.71828 || e1 > 2.71829) return 1;
+    if (e709 < 8.21e307 || e709 > 8.23e307) return 2;
+    if (e7091 < 9.08e307 || e7091 > 9.09e307) return 3;
+    if (e7095 < 1.35e308 || e7095 > 1.36e308) return 4;
+    if (e70978 < 1.79e308 || e70978 > 1.7976931348623157e308) return 5;
+    if (e710 != 1.7976931348623157e308 || eMax != eMax || eMax > 1.7976931348623157e308 || eMax < 1.797e308) return 6;
+    double minimum = 4.9406564584124654e-324;
+    if (minimum <= 0.0) return 9;
+    if (DeterministicMath.Exp(-744.0) != minimum * 2.0) return 10;
+    if (DeterministicMath.Exp(-744.1) != minimum) return 11;
+    if (DeterministicMath.Exp(-744.5) != minimum) return 12;
+    if (DeterministicMath.Exp(-745.0) != minimum) return 13;
+    if (DeterministicMath.Exp(-745.1) != minimum) return 14;
+    if (DeterministicMath.Exp(-745.2) != 0.0) return 15;
+    double zero = 0.0;
+    double infinity = 1.0 / zero;
+    double l1 = DeterministicMath.Log(1.0);
+    double l2 = DeterministicMath.Log(2.0);
+    double linf = DeterministicMath.Log(infinity);
+    double lzero = DeterministicMath.Log(zero);
+    double lnegative = DeterministicMath.Log(-1.0);
+    if (l1 != 0.0 || l2 < 0.69314718 || l2 > 0.69314719) return 7;
+    if (linf != infinity || lzero != -infinity || lnegative == lnegative) return 8;
+    return 0;
+}

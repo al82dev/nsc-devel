@@ -1,0 +1,4 @@
+<Project>
+  <PropertyGroup><Name>DeterministicMathBoundaries</Name><OutputType>Exe</OutputType></PropertyGroup>
+  <ItemGroup><Compile Include="Program.ns" /><ProjectReference Include="../../../lib/NativeSharp.Core/NativeSharp.Core.nsproj" /></ItemGroup>
+</Project>

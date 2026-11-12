@@ -7136,6 +7136,20 @@ if(NSC_BUILD_TESTS)
     set_tests_properties(nsc.sdk.dictionary-string-update PROPERTIES
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
+    set(NSC_DETERMINISTIC_MATH_BOUNDARIES_PROJECT
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/deterministic_math_boundaries/DeterministicMathBoundaries.nsproj")
+    add_test(
+        NAME nsc.sdk.deterministic-math-boundaries
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DPROJECT_FILE=${NSC_DETERMINISTIC_MATH_BOUNDARIES_PROJECT}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/deterministic-math-boundaries"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DNSLINK_EXECUTABLE=nslink.exe"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDeterministicMathBoundaries.cmake")
+    set_tests_properties(nsc.sdk.deterministic-math-boundaries PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
     set(NSC_OPERATOR_IN_AGGREGATE_PROJECT
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/operator_in_aggregate/OperatorInAggregate.nsproj")
     add_test(

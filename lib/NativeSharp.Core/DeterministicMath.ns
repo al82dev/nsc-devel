@@ -33,8 +33,8 @@ namespace NativeSharp.Core
 
         public static double Exp(double value)
         {
-            if (value > (double)709) { return (double)1.7976931348623157E308; }
-            if (value < (double)(-745)) { return (double)0; }
+            if (value > (double)709.782712893384) { return (double)1.7976931348623157E308; }
+            if (value < (double)(-745.1332191019411)) { return (double)0; }
             double ln2 = (double)0.693147180559945309417232121458176568;
             int exponent = (int)(value / ln2);
             double remainder = value - (double)exponent * ln2;
@@ -47,8 +47,15 @@ namespace NativeSharp.Core
                 result = result + term;
                 i = i + 1;
             }
+            if (exponent < -1022)
+            {
+                // Keep intermediate scaling normal; round only the final subnormal product.
+                while (exponent < -1022) { result = result / (double)2; exponent = exponent + 1; }
+                return result * (double)2.2250738585072014E-308;
+            }
             while (exponent > 0) { result = result * (double)2; exponent = exponent - 1; }
             while (exponent < 0) { result = result / (double)2; exponent = exponent + 1; }
+            if (result > (double)1.7976931348623157E308) { return (double)1.7976931348623157E308; }
             return result;
         }
 
@@ -56,6 +63,7 @@ namespace NativeSharp.Core
         {
             if (value < (double)0) { return (double)0 / (double)0; }
             if (value == (double)0) { return (double)(-1) / (double)0; }
+            if (value > (double)1.7976931348623157E308) { return value; }
             double x = value;
             int exponent = 0;
             while (x >= (double)2) { x = x / (double)2; exponent = exponent + 1; }
