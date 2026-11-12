@@ -115,3 +115,18 @@
   sobrescrito por error al reproducir este caso; el coordinador conserva y
   ejecutará la validación integrada del commit anterior. Los siguientes logs
   se guardarán bajo rutas nuevas.
+
+## Clausura de metadata y this indexado
+
+- Base `819a1312b`. Un productor público genérico con llamada
+  `this[0].At<...>()` se publica si `At` es único globalmente; agregar un
+  método genérico homónimo en otro tipo o namespace causa rechazo de clausura.
+  Cambiar solo el nombre del método adicional restaura la publicación.
+  Reproducciones en `generic-indexer-closure-isolation/` de la evidencia.
+- Candidato causal: `collectCallDependency` no identifica el dueño resultante
+  de `this[index]` y recurre a la búsqueda global. Considerar únicamente un
+  indexador propio único y tipo genérico de retorno resuelto, conservando la
+  vía existente si falta información o existe más de un indexador.
+- Archivo candidato `TemplateDependencyCollector.cpp`, pruebas y registro;
+  no cambiar el formato de metadata, accesibilidad, interoperabilidad ni
+  análisis de préstamos. Validar productores mínimo y amplio y consumidores.

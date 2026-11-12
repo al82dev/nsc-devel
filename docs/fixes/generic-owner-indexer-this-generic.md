@@ -35,6 +35,9 @@ faltante. Los comandos y ejemplos de ese límite independiente están en
 `generic-indexer-this-generic-producer-wide/results.log`; no se ha aislado la
 declaración adicional que lo causa.
 
+La investigación posterior identifica el choque de métodos homónimos y
+corrige el caso acotado; véase `generic-owner-indexer-metadata.md`.
+
 El ejecutable es híbrido: tres objetos de esta rama y bibliotecas copiadas del
 build de campaña. `build.log` conserva comandos y hashes. Falta validar con
 el compilador integrado; esta evidencia no demuestra un build limpio.

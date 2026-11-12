@@ -24,7 +24,8 @@ public class Lookup0 { public Own<0> this[int index] { get { Own<0> value; retur
 public class Lookup1 { public Own<1> this[int index] { get { Own<1> value; return value; } } }
 public class Lookup2 { public Own<2> this[int index] { get { Own<2> value; return value; } } }
 public struct StructLookup { public Own<1> this[int index] { get { Own<1> value; return value; } } }
-public class GenericLookup<const int N> { public Own<N> this[int index] { get { Own<N> value; return value; } } }
+public class GenericLookup<const int N> { public Own<N> this[int index] { get { Own<N> value; return value; } }
+ public int ReadThis() { return this[0].At<20, 42, 7>(); } }
 public struct GenericStruct<const int N> { public Own<N> this[int index] { get { Own<N> value; return value; } } }
 public class PackedLookup<const int N, pack Ts> { public Own<N> this[int index] { get { Own<N> value; return value; } } }
 public class Overloaded {
@@ -82,6 +83,9 @@ class Program { public static int Main() { Holder.AliasLookup items = new Holder
         'generic': ('''using Fixture;
 class Program { public static int Main() { GenericLookup<1> items = new GenericLookup<1>(); Own<2> unused;
  return items[0].At<20, 42>(); } }''', True),
+        'generic_wide_binary': ('''using Fixture;
+class Program { public static int Main() { GenericLookup<1> items = new GenericLookup<1>();
+ return items.ReadThis(); } }''', True),
         'generic_this': ('''using Fixture;
 class GenericSelf<const int N> { public Own<N> this[int index] { get { Own<N> value; return value; } }
  public int ReadThis() { return this[0].At<20, 42>(); } }
@@ -250,6 +254,20 @@ class Program { public static int Main() { GenericLookup<1> items = new GenericL
                                  '--no-artifact-cache', '--no-error-log'], root)
                     if build.returncode or run([exe], root).returncode != 42:
                         failures.append((stem, level, 'generic this producer or execution'))
+        invalid_source = (root / 'Producer.ns').read_text(encoding='utf-8').replace(
+            'public int At<pack const int Ns>()', 'public int Different<pack const int Ns>()')
+        invalid_source += '''\nnamespace Wrong { public struct Own<const int N> {
+ public int At<pack const int Ns>() { return 7; } } }'''
+        (root / 'Producer.ns').write_text(invalid_source, encoding='utf-8')
+        producer.write_text('<Project><PropertyGroup><Name>IndexerProducer</Name><OutputType>'
+                            'StaticLibrary</OutputType></PropertyGroup><ItemGroup>'
+                            '<Compile Include="Producer.ns"/></ItemGroup></Project>', encoding='utf-8')
+        for level in ('O0', 'O2'):
+            build = run([compiler, '--emit-project-oop-lib', producer, '-' + level,
+                         '-o', root / ('missing-target-' + level + '.lib'), '--no-artifact-cache',
+                         '--no-error-log'], root)
+            if not build.returncode or 'missing generic method' not in build.stdout + build.stderr:
+                failures.append((level, 'missing target matched unrelated method'))
     if failures:
         print('FAIL', failures, file=sys.stderr, flush=True)
     return int(bool(failures))

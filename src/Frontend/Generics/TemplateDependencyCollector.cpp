@@ -380,6 +380,52 @@ void ProjectGenericModel::collectCallDependency(
 
     const ast::AstNode* callee = call->first();
     const std::string methodName = methodCalleeName(call);
+    if (callee != nullptr && callee->kind() == ast::AstNodeKind::MemberExpression &&
+        callee->first() != nullptr && callee->first()->kind() == ast::AstNodeKind::IndexExpression &&
+        callee->first()->first() != nullptr &&
+        callee->first()->first()->kind() == ast::AstNodeKind::ThisExpression &&
+        root.syntax != nullptr && root.record.kind != GenericTemplateKind::Method &&
+        ownerName == appendOwner(root.record.ownerName, root.record.name) && root.syntax->typeSyntaxes().empty())
+    {
+        const ast::AstNode* indexer = nullptr;
+        bool multiple = false;
+        for (const ast::AstNode* member : root.syntax->children())
+            if (member != nullptr && member->kind() == ast::AstNodeKind::IndexerDeclaration)
+            {
+                if (indexer != nullptr) { multiple = true; break; }
+                indexer = member;
+            }
+        bool getterMatches = false;
+        if (indexer != nullptr)
+            for (const ast::AstNode* accessor : indexer->children())
+                if (accessor != nullptr && accessor->text() == "get_Item" &&
+                    valueParameterCount(accessor) == callee->first()->children().size()) getterMatches = true;
+        if (!multiple && getterMatches && indexer->typeSyntax() != nullptr &&
+            !indexer->typeSyntax()->typeArguments().empty())
+        {
+            const TypeResolution owner = resolveTypeTemplate(unit, namespaceName, indexer->typeSyntax()->baseName(),
+                indexer->typeSyntax()->typeArguments().size(), scope);
+            if (owner.kind == TypeResolutionKind::Unique && owner.state != nullptr &&
+                owner.state->syntax != nullptr && owner.state->syntax->typeSyntaxes().empty())
+            {
+                const auto methods = methodsByName_.find(methodName);
+                bool found = false;
+                if (methods != methodsByName_.end())
+                    for (const TemplateState* candidate : methods->second)
+                        if (candidate != nullptr && candidate->parent == owner.state->syntax &&
+                            templateVisible(unit.projectOrdinal(), candidate->record) &&
+                            genericArityAccepts(candidate->record, call->typeSyntaxes().size()) &&
+                            valueParameterCount(candidate->syntax) == call->children().size())
+                        {
+                            root.record.dependencies.push_back(candidate->record.canonicalKey);
+                            found = true;
+                        }
+                if (found) return;
+                root.record.unresolvedDependencies.push_back("missing generic method '" + methodName + "<...>'");
+                return;
+            }
+        }
+    }
     std::string requestedOwner = templateSourceSpelling(namespaceName, ownerName);
     if (callee != nullptr && callee->kind() == ast::AstNodeKind::MemberExpression)
     {
