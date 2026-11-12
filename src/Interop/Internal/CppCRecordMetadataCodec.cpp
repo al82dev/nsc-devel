@@ -766,6 +766,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             (abi_plan::isRegCallWin64RecordRoundTrip(*f.abiPlan, value.linkSymbol,
                 *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8) ||
              abi_plan::isRegCallWin64FloatRecordInterleaved(*f.abiPlan, value.linkSymbol,
+                *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8) ||
+             abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*f.abiPlan, value.linkSymbol,
                 *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8));
         const bool validIntReturn = (f.returnType.kind == CppTypeKind::SignedInteger || f.returnType.kind == CppTypeKind::UnsignedInteger) &&
             abi_plan::isRegCallWin64FloatRecordsReturningInt(*f.abiPlan, value.linkSymbol) &&
@@ -1383,9 +1385,12 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
         const auto& signature = *pointer.element->function;
         const auto& result = signature.returnType;
         const bool recordReturn = result.kind == CppTypeKind::Record && result.recordIdentity &&
-            result.recordIdentity->clangUsr && result.sizeBits && *result.sizeBits % 8 == 0 && result.alignmentBits == 32 &&
-            abi_plan::isRegCallWin64FloatRecordInterleaved(*alias.abiPlan,
-                "__regcall3____nsc_pointer_abi_probe", *result.sizeBits / 8, 4);
+            result.recordIdentity->clangUsr && !result.recordIdentity->clangUsr->empty() && result.sizeBits &&
+            *result.sizeBits % 8 == 0 && result.alignmentBits && *result.alignmentBits % 8 == 0 &&
+            (abi_plan::isRegCallWin64FloatRecordInterleaved(*alias.abiPlan,
+                "__regcall3____nsc_pointer_abi_probe", *result.sizeBits / 8, *result.alignmentBits / 8) ||
+             abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*alias.abiPlan,
+                "__regcall3____nsc_pointer_abi_probe", *result.sizeBits / 8, *result.alignmentBits / 8));
         const bool intReturn = (result.kind == CppTypeKind::SignedInteger || result.kind == CppTypeKind::UnsignedInteger) &&
             abi_plan::isRegCallWin64FloatRecordsReturningInt(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
             abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);

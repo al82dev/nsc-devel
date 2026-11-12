@@ -1020,8 +1020,18 @@ concilia la identidad y layout del retorno importado, y ambas rutas reconstruyen
 el registro a partir del entero físico del plan de Clang. Pasaron el control C,
 la ejecución NativeSharp O0–O3 y la comprobación LLVM de las llamadas directa
 y por puntero (`A:/temp/nsc-t09-regcall-retorno-compacto-txyj0kta`).
-Esta prueba usa enlace estático; C++, DLL, consumidores precompilados, otros
-retornos y layouts permanecen pendientes.
+La muestra desde fuente usa enlace estático; C++, la muestra desde fuente con
+DLL y otros retornos y layouts permanecen pendientes.
+
+El contrato vigente de metadatos conserva ahora este plan para la función y
+para el alias de puntero. Una prueba interna verifica su lectura y escritura
+y rechaza un retorno físico alterado. Pasaron 16 consumidores precompilados
+que usan las llamadas directa y por puntero, y otros 16 que solo usan el
+puntero: enlace estático y DLL, O0–O3, con y sin encabezado. Los registros de
+ejecución están en `A:/temp/nsc-t09-return-compact-pre-r3rjy70t` y
+`A:/temp/nsc-t09-return-compact-pre-eayqygrw`. También pasó la regresión
+precompilada C++ anterior con retorno flotante y solo puntero
+(`A:/temp/nsc-t09-cpp-return-record-mixed-precompilado-ukjlur17`).
 
 Se añadió una comprobación física compartida para retornos compactos de 1, 2,
 4 y 8 bytes junto a argumentos flotantes expandidos. Para el registro de ocho

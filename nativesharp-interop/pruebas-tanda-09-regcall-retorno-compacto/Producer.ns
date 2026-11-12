@@ -1,0 +1,6 @@
+namespace T09 { public class NestedBridge { public static int Run<T>(T unused) {
+    Triple value; value.pair.x=(float)10; value.pair.y=(float)20; value.z=(float)30;
+    Result direct=combine(value,7);
+    CombineFn fn=get_combine(); Result indirect=fn(value,7);
+    return direct.x==17 && direct.y==50 && indirect.x==17 && indirect.y==50 && value.pair.x==(float)10 ? 0 : 1;
+} } }

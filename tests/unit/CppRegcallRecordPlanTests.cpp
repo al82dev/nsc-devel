@@ -924,6 +924,17 @@ int main(int argc, char** argv)
         auto wrong = *plan;
         wrong.physicalReturn.kind = abi_plan::TypeKind::Pointer;
         if (abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(wrong, wrong.symbol, 8, 4)) return 45;
+        metadata_detail::CDependencyFunctionSnapshot saved;
+        saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
+        saved.linkSymbol = plan->symbol; saved.declaration = *declaration;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+        metadata_detail::CDependencyFunctionSnapshot restored;
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        if (!metadata_detail::encodeCDependencyFunction(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 46;
+        auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 47;
     }
     {
         const CppFunctionDeclaration* declaration = nullptr;

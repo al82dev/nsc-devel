@@ -1,4 +1,7 @@
 #include "api.h"
+#ifdef API_DLL_BUILD
+int _fltused = 0;
+#endif
 Result __attribute__((regcall)) combine(Triple value, int bias) {
     Result result = {(int)value.pair.x + bias, (int)value.pair.y + (int)value.z};
     value.pair.x = 999.0f;
