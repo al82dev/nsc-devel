@@ -477,10 +477,13 @@ inline bool isRegCallWin64FloatRecordsReturningNarrowInteger(const Plan& plan, s
 inline bool isRegCallWin64FloatRecordsReturningBool(const Plan& plan, std::string_view symbol) noexcept
 {
     std::size_t records = 0;
+    bool indirect = false;
     for (const auto& logical : plan.logicalParameters)
         if (logical.passing == Passing::Expand) ++records;
-    return records && isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4,
-        plan.logicalParameters.size() - records, true, records, true, true, false, false, false, false, false, false, 0, true);
+        else if (logical.passing == Passing::Indirect) indirect = true;
+    return (records || indirect) && isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4,
+        plan.logicalParameters.size() - records, true, records, true, true, false, false, false, false, false, false,
+        0, true, 0, false, !records);
 }
 
 // Physical validation only. The caller must also reconcile the returned

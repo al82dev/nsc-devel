@@ -1053,6 +1053,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
            abi_plan::isRegCallWin64FloatRecordsReturningFloat(*plan, expectedSymbol) ||
            abi_plan::isRegCallWin64FloatRecordsReturningInt64(*plan, expectedSymbol) ||
            abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(*plan, expectedSymbol) ||
+           abi_plan::isRegCallWin64FloatRecordsReturningBool(*plan, expectedSymbol) ||
            (returnRecord && signature.returnType.sizeBits && signature.returnType.alignmentBits &&
             abi_plan::isRegCallWin64DoubleRecordInterleaved(*plan, expectedSymbol,
                 *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8)) ||

@@ -1009,6 +1009,31 @@ rechazos de ancho y alineación, transporte e identidad y la regresión C++ de
 ocho bytes (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-nb7g8sd1`).
 Otros tamaños, alineaciones y firmas no se acreditan; T09-003 sigue abierto.
 
+## Registro mixto con retorno booleano
+
+La función recibe por copia un registro mixto de `float` y `double` y devuelve
+un booleano. El control Clang pasaba mientras NSC rechazaba las firmas C y C++
+(`A:/temp/nsc-t09-regcall-record-mixto-bool-noiv_83_` y
+`A:/temp/nsc-t09-cpp-record-mixto-bool-c8yfbiio`). Se admite el plan sin
+registro expandido conservando la conciliación de identidad, layout y tipo.
+La prueba del plan y los metadatos rechaza tanto una alineación alterada como
+la ausencia de `zeroext` en el retorno.
+
+El [control C](pruebas-tanda-09-regcall-record-mixto-bool/) y NSC pasaron
+O0–O3 con biblioteca estática, con llamadas directas y por puntero, valores
+verdadero y falso, copia del argumento e inspección de `zeroext` en LLVM
+(`A:/temp/nsc-t09-regcall-record-mixto-bool-8l3ri7lq`). La muestra
+[C++](pruebas-tanda-09-regcall-cpp-record-mixto-bool/) pasó ocho comparaciones
+en estática y DLL (`A:/temp/nsc-t09-cpp-record-mixto-bool-5o9og3h9`).
+
+Pasaron 32 consumidores precompilados C
+(`A:/temp/nsc-t09-record-mixto-bool-pre-gtreeiyf` y
+`A:/temp/nsc-t09-record-mixto-bool-pre-z47l180j`) y 32 C++
+(`A:/temp/nsc-t09-cpp-record-mixto-bool-pre-is5imbv7` y
+`A:/temp/nsc-t09-cpp-record-mixto-bool-pre-5s_mr4ms`), en estática y DLL,
+O0–O3, con y sin encabezado. También pasaron plan, transporte, ABI e identidad.
+La llamada C directa con DLL y otras firmas siguen pendientes; T09-003 sigue abierto.
+
 ## Registro mixto con retorno entero estrecho
 
 La función recibe por copia un registro mixto de `float` y `double` y devuelve
