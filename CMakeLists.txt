@@ -7535,6 +7535,31 @@ if(NSC_BUILD_TESTS)
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
     add_test(
+        NAME nsc.compiler.decimal-saturating-inexact
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DFIXTURE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decimal_saturating_inexact"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/decimal-saturating-inexact"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDecimalSaturatingInexact.cmake")
+    set_tests_properties(nsc.compiler.decimal-saturating-inexact PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
+    add_test(
+        NAME nsc.compiler.decimal-multiply-divide
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DNSLINK_EXECUTABLE=nslink.exe"
+            "-DFIXTURE_DIR=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decimal_mul_div_observe"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/decimal-multiply-divide"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DSOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDecimalMulDivObserve.cmake")
+    set_tests_properties(nsc.compiler.decimal-multiply-divide PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
+    add_test(
         NAME nsc.compiler.checked-i128-add
         COMMAND "${CMAKE_COMMAND}"
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
