@@ -3307,3 +3307,29 @@ Diez tipos no elegibles del segundo argumento se rechazaron
 transporte, ABI, identidad y la regresión mixta de flotantes
 (`A:/temp/nsc-t09-sysv-cpp-flotantes-orden-eo71m37a`). Otros layouts,
 alineaciones y convenciones siguen pendientes; T09-003 permanece abierto.
+### Records C++ indirectos alineados a ocho bytes
+
+La [muestra](pruebas-tanda-09-sysv-cpp-record-alineado8/) combina un record
+C++ de seis enteros de 32 bits con otro de tres enteros de 64 bits, alineado a
+ocho bytes. El control C++ pasó y NSC inicialmente rechazó el alias
+(`A:/temp/nsc-t09-sysv-cpp-record-alineado8-04qozims`). El plan valida el
+ancho de campos y la alineación de cada tipo; la emisión respeta la alineación
+del carrier y copia cada argumento.
+
+Pasaron ocho comparaciones C++/NativeSharp en estática y DLL O0–O3
+(`A:/temp/nsc-t09-sysv-cpp-record-alineado8-ml7ayrrb`) y 16 consumidores
+precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record-alineado8-precompilado-dv1po_7a`).
+La muestra verifica un valor superior a 32 bits y la conservación de los
+originales. Una [variante](pruebas-tanda-09-sysv-cpp-record-alineado8/validar-retorno.py)
+devuelve el record alineado a ocho y pasó las mismas modalidades
+(`A:/temp/nsc-t09-sysv-cpp-retorno-alineado8-u3t9esqf`); el IR comprueba
+`sret` con alineación 8 y dos copias `byval`.
+
+La prueba de plan y metadatos rechazó campos y alineaciones alterados. Diez
+tipos no elegibles se rechazaron
+(`A:/temp/nsc-t09-sysv-cpp-record-alineado8-rechazos-4e9aajq_`). Pasaron
+transporte, ABI, identidad, regresión C++ con flotantes
+(`A:/temp/nsc-t09-sysv-cpp-flotantes-orden-suw6zbq_`) y regresión C
+precompilada (`A:/temp/nsc-t09-sysv-indirecta-record-pre-m2uz8lf9`).
+Otros layouts y alineaciones siguen pendientes; T09-003 permanece abierto.

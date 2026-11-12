@@ -1759,6 +1759,9 @@ int main(int argc, char** argv)
                 using SixThreeCallback = Six (__attribute__((sysv_abi)) *)(Six, Six, Six);
                 using SixFloatingCallback = Six (__attribute__((sysv_abi)) *)(Six, float, Six, double, int);
                 using SixFiveCallback = Six (__attribute__((sysv_abi)) *)(Six, int, Five);
+                struct Wide { long long x, y, z; };
+                using SixWideCallback = Six (__attribute__((sysv_abi)) *)(Six, int, Wide);
+                using WideSixCallback = Wide (__attribute__((sysv_abi)) *)(Wide, int, Six);
                 struct Eight { int x, y, z, w, v, u, t, q; };
                 using EightCallback = Eight (__attribute__((sysv_abi)) *)(Eight);
                 Small __attribute__((sysv_abi)) transform(Small);
@@ -2034,6 +2037,30 @@ int main(int argc, char** argv)
         auto badDistinct = *distinct->underlyingType.element->function;
         badDistinct.parameterTypes[2].canonicalSpelling = badDistinct.returnType.canonicalSpelling;
         if (abi_plan::isSysVCppRecordPointerRoundTrip(*distinctPlan, badDistinct)) return 229;
+        for (const auto* name : {"S::SixWideCallback", "S::WideSixCallback"})
+        {
+            const auto wide = std::find_if(aliases->begin(), aliases->end(),
+                [&](const auto& value) { return value.qualifiedName == name; });
+            if (wide == aliases->end() || !wide->clangUsr || !wide->underlyingType.element ||
+                !wide->underlyingType.element->function) return 230;
+            const auto widePlan = observed->cppFunctionPointerAbiPlan(wide->qualifiedName, *wide->clangUsr,
+                wide->underlyingType.canonicalSpelling);
+            if (!widePlan || !abi_plan::isSysVCppRecordPointerRoundTrip(*widePlan,
+                    *wide->underlyingType.element->function)) return 231;
+            saved.declaration = *wide;
+            saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*widePlan);
+            if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+                !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 232;
+            const auto& wideSignature = *wide->underlyingType.element->function;
+            const auto wideArgument = wideSignature.parameterTypes[0].alignmentBits == 64 ? 0U : 2U;
+            wrong = *widePlan;
+            wrong.physicalParameters[wrong.logicalParameters[wideArgument].firstPhysical].pointee->elements[0].widthOrCount = 32;
+            altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+            if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 233;
+            auto wrongAlignment = wideSignature;
+            wrongAlignment.parameterTypes[wideArgument].alignmentBits = 32;
+            if (abi_plan::isSysVCppRecordPointerRoundTrip(*widePlan, wrongAlignment)) return 234;
+        }
     }
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();
     if (!cppFunctions) return 37;

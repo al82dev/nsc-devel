@@ -280,8 +280,10 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 if (!signature.hasPrototype || signature.variadic || signature.parameterTypes.empty() ||
                     result.kind != CppTypeKind::Record || !result.recordIdentity ||
                     !result.recordIdentity->clangUsr || result.recordIdentity->clangUsr->empty() ||
-                    !result.sizeBits || (*result.sizeBits != 64 && *result.sizeBits != 96 && *result.sizeBits != 128 && (*result.sizeBits < 160 || *result.sizeBits % 32 != 0)) || !result.alignmentBits ||
-                    *result.alignmentBits != 32) return {};
+                    !result.sizeBits || !result.alignmentBits ||
+                    !((*result.alignmentBits == 32 && (*result.sizeBits == 64 || *result.sizeBits == 96 ||
+                        *result.sizeBits == 128 || (*result.sizeBits >= 160 && *result.sizeBits % 32 == 0))) ||
+                      (*result.alignmentBits == 64 && *result.sizeBits >= 192 && *result.sizeBits % 64 == 0))) return {};
                 const auto identity = projectCppRecordTypeIdentity(result, graph.projects()[alias.projectOrdinal].moduleName());
                 const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
                 const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
@@ -289,7 +291,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 if (!ordinal || !lookup.cppTrivialValueEligible(*ordinal) || !imported || imported->fromPrecompiledCatalog ||
                     imported->projectOrdinal != alias.projectOrdinal || imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
                     imported->isIncomplete || !imported->deferredImportError.empty() || !imported->objectLayout ||
-                    imported->objectLayout->sizeBytes != *result.sizeBits / 8 || imported->objectLayout->alignmentBytes != 4 ||
+                    imported->objectLayout->sizeBytes != *result.sizeBits / 8 || imported->objectLayout->alignmentBytes != *result.alignmentBits / 8 ||
                     imported->clangUsr != result.recordIdentity->clangUsr || !records ||
                     std::count_if(records->begin(), records->end(), [&](const auto& record) {
                         return record.complete && record.isCxx && record.clangUsr == imported->clangUsr &&
