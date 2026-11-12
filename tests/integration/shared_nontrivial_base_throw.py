@@ -14,7 +14,7 @@ def run(command, cwd):
 def main():
     compiler, *sources = map(Path, sys.argv[1:])
     program = '''using NativeSharp.Core;
-namespace NativeSharp.Core { public class Exception { } }
+namespace NativeSharp.Core { public class Exception { } public trait Send {} public trait Sync {} }
 class Resource { public static int Trace; private int id;
  public Resource(int value) { id = value; } ~Resource() { Trace = Trace * 10 + id; } }
 class Base { public owned Resource baseField;
@@ -160,7 +160,7 @@ class Program { public static int Main() {
             assert path.is_file() and metadata.is_file()
             references = ('<LibraryReference Include="' + path.as_posix() + '" Metadata="' +
                           metadata.as_posix() + '" />')
-            program = program.replace('namespace NativeSharp.Core { public class Exception { } }\n', '')
+            program = program.replace('namespace NativeSharp.Core { public class Exception { } public trait Send {} public trait Sync {} }\n', '')
         else:
             for source in sources:
                 shutil.copyfile(source, root / source.name)
@@ -181,7 +181,8 @@ class Program { public static int Main() {
             print(strong, 'semantic check passed', flush=True)
             for level in ('O0', 'O2'):
                 exe = root / (strong + '-' + level + '.exe')
-                result = run([compiler, '--emit-project-oop-exe', project, '-o', exe, '-' + level], root)
+                result = run([compiler, '--emit-project-oop-exe', project, '-o', exe, '-' + level,
+                              '--no-artifact-cache'], root)
                 assert result.returncode == 0, (strong, level, result.stdout + result.stderr)
                 if os.name == 'nt':
                     result = run([exe], root)
