@@ -510,7 +510,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             found->second.functionType, found->second.function,
             arguments.empty() ? nullptr : arguments.data(),
             static_cast<unsigned>(arguments.size()),
-            node->typeKey == "builtin:void" || sretSlot != nullptr ? "" : "static.call", error);
+            node->typeKey == "builtin:void" || sretSlot != nullptr ? "" : "static.call", error, node);
         if (call == nullptr) return nullptr;
         if (!applyMustTail(node, call, error)) return nullptr;
         if (sretSlot != nullptr)

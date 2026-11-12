@@ -726,7 +726,8 @@ private:
         std::vector<std::size_t>& parentPrefixes,
         std::string& error);
 
-    LLVMBasicBlockRef buildCurrentUnwindDestination(std::string& error);
+    LLVMBasicBlockRef buildCurrentUnwindDestination(
+        std::string& error, const frontend::ProjectOopMirNode* callSite = nullptr);
 
     LLVMValueRef buildPotentiallyThrowingCall(
         LLVMTypeRef functionType,
@@ -734,7 +735,7 @@ private:
         LLVMValueRef* arguments,
         unsigned argumentCount,
         const char* name,
-        std::string& error);
+        std::string& error, const frontend::ProjectOopMirNode* callSite = nullptr);
 
     bool findInterfaceCleanupTarget(
         std::size_t contractMemberOrdinal,
@@ -902,6 +903,13 @@ private:
     bool emitCatchBodyExceptionClear(bool isReturn, std::size_t targetLoopIndex, std::string& error);
     // Freeze 3.0 C-01: destroys and frees the exception held by a catch owner slot, if any.
     bool emitCaughtExceptionRelease(LLVMValueRef ownerSlot, std::string& error);
+    bool emitCaughtExceptionReleaseDuringForeignUnwind(LLVMValueRef ownerSlot, std::string& error);
+    bool emitPendingExceptionReplacement(
+        LLVMValueRef ownerSlot, LLVMValueRef replacementSlot,
+        LLVMBasicBlockRef outerUnwind, std::string& error);
+    bool emitAsyncCleanupReplacementCandidate(
+        std::size_t ordinal, LLVMValueRef ownerSlot, LLVMValueRef matchingFilter,
+        LLVMBasicBlockRef outerUnwind, std::string& error);
     // Freeze 3.0 C-01: before a throw, a catch whose exception is the thrown one hands it over,
     // and a catch the throw leaves releases the exception it still owns.
     bool emitCatchOwnershipOnThrow(LLVMValueRef exception, std::string& error);

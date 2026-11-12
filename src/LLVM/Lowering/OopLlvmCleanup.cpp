@@ -9,6 +9,36 @@ namespace nativesharp::llvm_backend
 {
 using namespace llvm_api;
 
+namespace
+{
+// Narrow experimental subset: plain local-owner destruction and simple
+// finally statements. Unknown node kinds keep the existing unwind path.
+bool supportsAsyncCallCleanup(const frontend::ProjectOopMirNode* cleanup)
+{
+    using K = frontend::ProjectOopMirNodeKind;
+    if (cleanup == nullptr) return false;
+    if (cleanup->kind == K::LocalDeclaration && cleanup->cleanupRegionOrdinal.has_value()) return true;
+    if (cleanup->kind != K::FinallyRegion || cleanup->children.size() != 1 || !cleanup->children.front())
+        return false;
+    std::vector<const frontend::ProjectOopMirNode*> work{cleanup->children.front().get()};
+    while (!work.empty())
+    {
+        const auto* node = work.back(); work.pop_back();
+        if (!node) return false;
+        switch (node->kind)
+        {
+        case K::Block: case K::ExpressionStatement: case K::Store:
+        case K::StaticFieldAddress: case K::StaticFieldLoad: case K::IntegerConstant:
+        case K::Binary: case K::DirectStaticCall: case K::CleanupContinuation:
+            break;
+        default: return false;
+        }
+        for (const auto& child : node->children) work.push_back(child.get());
+    }
+    return true;
+}
+}
+
 void OopLlvmImplementation::emitCleanupGuardBranch(
         LLVMValueRef ownerStorage,
         LLVMValueRef ownerValue,
@@ -365,10 +395,17 @@ bool OopLlvmImplementation::resolveExceptionalCleanupPath(
         return true;
     }
 
-LLVMBasicBlockRef OopLlvmImplementation::buildCurrentUnwindDestination(std::string& error)
+LLVMBasicBlockRef OopLlvmImplementation::buildCurrentUnwindDestination(
+        std::string& error, const frontend::ProjectOopMirNode* callSite)
 {
         std::size_t retainedDepth = 0;
         LLVMBasicBlockRef finalTarget = nullptr;
+
+        // A snapshot is present only for an explicitly identified async call.
+        // A present but empty path is distinct from an unannotated call.
+        std::optional<std::vector<std::size_t>> asyncCallCleanup;
+        if (coroutine_.active && callSite != nullptr)
+            asyncCallCleanup.emplace(activeCleanupRegions_.rbegin(), activeCleanupRegions_.rend());
 
         const bool hasLocalHandler = !exceptionHandlerStack_.empty() &&
             exceptionHandlerStack_.back().funcletDepthAtEntry == funcletStack_.size();
@@ -389,6 +426,111 @@ LLVMBasicBlockRef OopLlvmImplementation::buildCurrentUnwindDestination(std::stri
         else if (staticInitializationFailureUnwindBlock_ != nullptr)
         {
             finalTarget = staticInitializationFailureUnwindBlock_;
+        }
+
+        // Experimental catch-before-cleanup route. A foreign or incompatible
+        // exception enters the unchanged native cleanup chain instead.
+        constexpr std::size_t maxExperimentalCleanupRegions = 8;
+        bool supportedPath = asyncCallCleanup.has_value() && !asyncCallCleanup->empty() &&
+            asyncCallCleanup->size() <= maxExperimentalCleanupRegions &&
+            !hasLocalHandler && finalTarget == nullptr && funcletStack_.empty() &&
+            exceptionHandlerStack_.empty() && activeCatchExceptions_.empty() && ownedCaptureCells_.empty() &&
+            coroutine_.future != nullptr && currentMirFunction_ != nullptr &&
+            !currentMirFunction_->parameterTypeKeys.empty();
+        if (supportedPath)
+            for (const auto ordinal : *asyncCallCleanup)
+            {
+                const auto found = cleanupRegions_.find(ordinal);
+                if (found == cleanupRegions_.end() || !supportsAsyncCallCleanup(found->second) ||
+                    coroutine_.subtreeIds.contains(found->second))
+                { supportedPath = false; break; }
+                const auto* cleanup = found->second;
+                if (cleanup->kind == frontend::ProjectOopMirNodeKind::LocalDeclaration &&
+                    (!cleanup->localOrdinal.has_value() || memberModel_ == nullptr ||
+                     !isClassReferenceType(nameLookup_, cleanup->typeKey) ||
+                     !requiresOwnedDestruction(cleanup->typeKey) ||
+                     isDelegateReferenceType(nameLookup_, cleanup->typeKey) ||
+                     frontend::ProjectTypeConversion::isNativeArray(cleanup->typeKey) ||
+                     cleanup->typeKey == "builtin:string" ||
+                     memberModel_->typeRequiresValueDrop(cleanup->typeKey)))
+                { supportedPath = false; break; }
+            }
+        if (supportedPath)
+        {
+            std::string key = currentMirFunction_->parameterTypeKeys.front();
+            if (key.ends_with('*')) key.pop_back();
+            const auto errorKey = language::futureErrorTypeKey(key);
+            const std::uint64_t offset = errorKey ? futureFieldOffset(key, 4) : 0;
+            LLVMValueRef matchingFilter = nullptr;
+            if (errorKey && memberModel_ != nullptr && isClassReferenceType(nameLookup_, std::string(*errorKey)))
+            {
+                const auto type = memberModel_->typeOrdinalForTypeKey(*errorKey);
+                if (type.has_value())
+                {
+                    const auto filter = typedCatchFilters_.find(*type);
+                    if (filter != typedCatchFilters_.end()) matchingFilter = filter->second;
+                }
+            }
+            if (matchingFilter != nullptr && offset != 0 && ehFilterFunction_ != nullptr &&
+                sehPersonalityFunction_ != nullptr)
+            {
+                LLVMBasicBlockRef source = LLVMGetInsertBlock(builder_);
+                if (source == nullptr) { error = "async cleanup bridge has no insertion block"; return nullptr; }
+                const auto savedActive = activeCleanupRegions_;
+                const auto savedFunclets = funcletStack_;
+                LLVMBasicBlockRef fallback = emitExceptionalCleanupChain(*asyncCallCleanup, nullptr, error);
+                if (!error.empty()) return nullptr;
+                LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+                LLVMBasicBlockRef dispatch = appendBlock("coro.cleanup.bridge.dispatch");
+                LLVMBasicBlockRef padBlock = appendBlock("coro.cleanup.bridge.pad");
+                LLVMBasicBlockRef body = appendBlock("coro.cleanup.bridge.body");
+                enterBlock(dispatch);
+                LLVMValueRef catches = LLVMBuildCatchSwitch(builder_, nullptr, fallback, 1, "coro.cleanup.bridge.switch");
+                LLVMAddHandler(catches, padBlock);
+                enterBlock(padBlock);
+                LLVMValueRef filters[] = {matchingFilter};
+                LLVMValueRef pad = LLVMBuildCatchPad(builder_, catches, filters, 1, "coro.cleanup.bridge.catch");
+                LLVMBuildCatchRet(builder_, pad, body);
+                enterBlock(body);
+                LLVMValueRef ownerSlot = byteOffset(coroutine_.future, offset, "coro.cleanup.bridge.owner");
+                LLVMValueRef caught = buildNoUnwindCall(exceptionCurrentFunctionType_, exceptionCurrentFunction_,
+                    nullptr, 0, "coro.cleanup.bridge.exception");
+                LLVMBuildStore(builder_, caught, ownerSlot);
+                buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
+                for (std::size_t index = 0; index < asyncCallCleanup->size(); ++index)
+                {
+                    std::vector<std::size_t> remaining(asyncCallCleanup->begin() + index + 1, asyncCallCleanup->end());
+                    LLVMBasicBlockRef outer = emitExceptionalCleanupChain(remaining, nullptr, error);
+                    if (!error.empty() || !emitAsyncCleanupReplacementCandidate(
+                            (*asyncCallCleanup)[index], ownerSlot, matchingFilter, outer, error))
+                    {
+                        activeCleanupRegions_ = savedActive; funcletStack_ = savedFunclets;
+                        enterBlock(source); return nullptr;
+                    }
+                    const auto region = activeCleanupIndex((*asyncCallCleanup)[index], activeCleanupRegions_);
+                    if (!region.has_value())
+                    {
+                        activeCleanupRegions_ = savedActive; funcletStack_ = savedFunclets;
+                        enterBlock(source); error = "async cleanup bridge lost its active region"; return nullptr;
+                    }
+                    activeCleanupRegions_.resize(*region);
+                    if (terminated()) break;
+                }
+                if (!terminated())
+                {
+                    if (coroutine_.asyncGenerator && !markCoroutineFinished(error))
+                    {
+                        activeCleanupRegions_ = savedActive; funcletStack_ = savedFunclets;
+                        enterBlock(source); return nullptr;
+                    }
+                    LLVMBuildStore(builder_, LLVMConstInt(LLVMInt32TypeInContext(context_),
+                        static_cast<unsigned long long>(-2), 1), coroutine_.future);
+                    LLVMBuildRetVoid(builder_);
+                }
+                activeCleanupRegions_ = savedActive; funcletStack_ = savedFunclets;
+                enterBlock(source);
+                return dispatch;
+            }
         }
 
         // ISOLATED EXPERIMENT: only a poll with no active handler, cleanup,
@@ -463,7 +605,9 @@ LLVMBasicBlockRef OopLlvmImplementation::buildCurrentUnwindDestination(std::stri
         }
 
         std::vector<std::size_t> path;
-        for (std::size_t index = activeCleanupRegions_.size(); index > retainedDepth; --index)
+        if (asyncCallCleanup.has_value() && retainedDepth == 0)
+            path = *asyncCallCleanup;
+        else for (std::size_t index = activeCleanupRegions_.size(); index > retainedDepth; --index)
         {
             path.push_back(activeCleanupRegions_[index - 1]);
         }
@@ -478,9 +622,9 @@ LLVMValueRef OopLlvmImplementation::buildPotentiallyThrowingCall(
         LLVMValueRef* arguments,
         unsigned argumentCount,
         const char* name,
-        std::string& error)
+        std::string& error, const frontend::ProjectOopMirNode* callSite)
 {
-        LLVMBasicBlockRef unwindBlock = buildCurrentUnwindDestination(error);
+        LLVMBasicBlockRef unwindBlock = buildCurrentUnwindDestination(error, callSite);
         if (!error.empty()) return nullptr;
         if (unwindBlock == nullptr)
         {
@@ -2090,6 +2234,207 @@ bool OopLlvmImplementation::emitCatchBodyExceptionClear(
         }
         return true;
     }
+
+// Emit the ownership handover after a typed replacement has been caught.
+// Unwired candidate for a non-suspending cleanup without direct exits.
+bool OopLlvmImplementation::emitAsyncCleanupReplacementCandidate(
+        std::size_t ordinal, LLVMValueRef ownerSlot, LLVMValueRef matchingFilter,
+        LLVMBasicBlockRef outerUnwind, std::string& error)
+{
+        if (ownerSlot == nullptr || matchingFilter == nullptr || !funcletStack_.empty())
+            return fail(error, "async cleanup replacement requires an owner and a typed filter");
+        const auto regionIndex = activeCleanupIndex(ordinal, activeCleanupRegions_);
+        if (!regionIndex.has_value()) return fail(error, "async cleanup replacement region is inactive");
+        const auto savedActive = activeCleanupRegions_;
+        activeCleanupRegions_.resize(*regionIndex);
+        LLVMBasicBlockRef dispatch = appendBlock("coro.cleanup.replacement.dispatch");
+        LLVMBasicBlockRef padBlock = appendBlock("coro.cleanup.replacement.pad");
+        LLVMBasicBlockRef replacementBody = appendBlock("coro.cleanup.replacement.body");
+        LLVMBasicBlockRef foreign = appendBlock("coro.cleanup.replacement.foreign");
+        LLVMBasicBlockRef done = appendBlock("coro.cleanup.replacement.done");
+        exceptionHandlerStack_.push_back(ExceptionHandlerContext{
+            0, dispatch, activeCleanupRegions_.size(), funcletStack_.size()});
+        const bool cleaned = emitCleanupAction(ordinal, error);
+        exceptionHandlerStack_.pop_back();
+        if (!cleaned) { activeCleanupRegions_ = savedActive; return false; }
+        if (!terminated()) LLVMBuildBr(builder_, done);
+        enterBlock(dispatch);
+        LLVMValueRef catches = LLVMBuildCatchSwitch(builder_, nullptr, foreign, 1,
+            "coro.cleanup.replacement.switch");
+        LLVMAddHandler(catches, padBlock);
+        enterBlock(padBlock);
+        LLVMValueRef filters[] = {matchingFilter};
+        LLVMValueRef pad = LLVMBuildCatchPad(builder_, catches, filters, 1, "coro.cleanup.replacement.catch");
+        LLVMBuildCatchRet(builder_, pad, replacementBody);
+        enterBlock(replacementBody);
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef replacement = buildNoUnwindCall(exceptionCurrentFunctionType_, exceptionCurrentFunction_,
+            nullptr, 0, "coro.cleanup.replacement.exception");
+        LLVMValueRef replacementSlot = entryBlockAlloca(ptr, 8U, "coro.cleanup.replacement.owner");
+        LLVMBuildStore(builder_, replacement, replacementSlot);
+        buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
+        if (!emitPendingExceptionReplacement(ownerSlot, replacementSlot, outerUnwind, error))
+        { activeCleanupRegions_ = savedActive; return false; }
+        if (!terminated()) LLVMBuildBr(builder_, done);
+        enterBlock(foreign);
+        LLVMValueRef foreignPad = LLVMBuildCleanupPad(builder_, nullptr, nullptr, 0,
+            "coro.cleanup.replacement.foreign.pad");
+        if (foreignPad == nullptr)
+        { activeCleanupRegions_ = savedActive; return fail(error, "async cleanup foreign pad is missing"); }
+        funcletStack_.push_back(FuncletContext{
+            foreignPad, FuncletKind::Cleanup, activeCleanupRegions_.size(), nullptr, outerUnwind});
+        buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
+        const bool released = emitCaughtExceptionReleaseDuringForeignUnwind(ownerSlot, error);
+        funcletStack_.pop_back();
+        if (!released) { activeCleanupRegions_ = savedActive; return false; }
+        if (!terminated()) LLVMBuildCleanupRet(builder_, foreignPad, outerUnwind);
+        enterBlock(done);
+        activeCleanupRegions_ = savedActive;
+        return true;
+}
+
+// Unwired WIP; caller guarantees disjoint slots and an owned replacement.
+// A further exception during old-owner release traps.
+bool OopLlvmImplementation::emitPendingExceptionReplacement(
+        LLVMValueRef ownerSlot, LLVMValueRef replacementSlot,
+        LLVMBasicBlockRef outerUnwind, std::string& error)
+{
+        if (ownerSlot == nullptr || replacementSlot == nullptr || ownerSlot == replacementSlot ||
+            !funcletStack_.empty() || ehFilterFunction_ == nullptr || sehPersonalityFunction_ == nullptr ||
+            trapFunction_ == nullptr || trapFunctionType_ == nullptr)
+            return fail(error, "async exception replacement has no owner or replacement");
+        LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMValueRef old = LLVMBuildLoad2(builder_, ptr, ownerSlot, "coro.pending.owner");
+        LLVMValueRef replacement = LLVMBuildLoad2(builder_, ptr, replacementSlot, "coro.replacement.owner");
+        LLVMValueRef same = LLVMBuildICmp(builder_, LLVMIntEQ, old, replacement, "coro.replacement.same");
+        (void)outerUnwind;
+        LLVMBasicBlockRef handover = appendBlock("coro.replacement.handover");
+        LLVMBasicBlockRef release = appendBlock("coro.replacement.release");
+        LLVMBasicBlockRef failure = appendBlock("coro.replacement.release.dispatch");
+        LLVMBasicBlockRef trap = appendBlock("coro.replacement.release.trap");
+        LLVMBuildCondBr(builder_, same, handover, release);
+        enterBlock(release);
+        exceptionHandlerStack_.push_back(ExceptionHandlerContext{
+            0, failure, activeCleanupRegions_.size(), funcletStack_.size()});
+        const bool released = emitCaughtExceptionRelease(ownerSlot, error);
+        exceptionHandlerStack_.pop_back();
+        if (!released) return false;
+        if (!terminated()) LLVMBuildBr(builder_, handover);
+        LLVMValueRef filter = LLVMGetNamedFunction(module_, "__nsc_cleanup_accept_any");
+        if (filter == nullptr)
+        {
+            LLVMTypeRef parameters[] = {ptr, ptr};
+            LLVMTypeRef filterType = LLVMFunctionType(LLVMInt32TypeInContext(context_), parameters, 2, 0);
+            filter = LLVMAddFunction(module_, "__nsc_cleanup_accept_any", filterType);
+            LLVMSetLinkage(filter, LLVMInternalLinkage);
+            LLVMBuilderRef filterBuilder = LLVMCreateBuilderInContext(context_);
+            LLVMPositionBuilderAtEnd(filterBuilder, LLVMAppendBasicBlockInContext(context_, filter, "entry"));
+            LLVMBuildRet(filterBuilder, LLVMConstInt(LLVMInt32TypeInContext(context_), 1, 0));
+            LLVMDisposeBuilder(filterBuilder);
+        }
+        enterBlock(failure);
+        LLVMValueRef catches = LLVMBuildCatchSwitch(builder_, nullptr, nullptr, 1, "coro.replacement.switch");
+        LLVMAddHandler(catches, trap);
+        enterBlock(trap);
+        LLVMValueRef filters[] = {filter};
+        LLVMValueRef pad = LLVMBuildCatchPad(builder_, catches, filters, 1, "coro.replacement.pad");
+        funcletStack_.push_back(FuncletContext{pad, FuncletKind::Catch, 0, nullptr, nullptr});
+        LLVMValueRef reason = LLVMConstInt(LLVMInt32TypeInContext(context_), 20, 0);
+        LLVMValueRef arguments[] = {reason};
+        buildNoUnwindCall(trapFunctionType_, trapFunction_, arguments, 1, "");
+        funcletStack_.pop_back();
+        LLVMBuildUnreachable(builder_);
+        enterBlock(handover);
+        LLVMValueRef value = LLVMBuildLoad2(builder_, ptr, replacementSlot, "coro.replacement.value");
+        LLVMBuildStore(builder_, LLVMConstNull(ptr), replacementSlot);
+        LLVMBuildStore(builder_, value, ownerSlot);
+        return true;
+}
+
+bool OopLlvmImplementation::emitCaughtExceptionReleaseDuringForeignUnwind(
+        LLVMValueRef ownerSlot, std::string& error)
+{
+        if (ownerSlot == nullptr || currentFunction_ == nullptr || trapFunction_ == nullptr ||
+            trapFunctionType_ == nullptr || sehPersonalityFunction_ == nullptr)
+            return fail(error, "foreign unwind exception owner guard has incomplete state");
+        LLVMTypeRef ptr = LLVMPointerTypeInContext(context_, 0);
+        LLVMTypeRef parameters[] = {ptr};
+        LLVMTypeRef guardType = LLVMFunctionType(LLVMVoidTypeInContext(context_), parameters, 1, 0);
+        LLVMValueRef filter = LLVMGetNamedFunction(module_, "__nsc_cleanup_accept_any");
+        if (filter == nullptr)
+        {
+            LLVMTypeRef filterParameters[] = {ptr, ptr};
+            LLVMTypeRef filterType = LLVMFunctionType(LLVMInt32TypeInContext(context_), filterParameters, 2, 0);
+            filter = LLVMAddFunction(module_, "__nsc_cleanup_accept_any", filterType);
+            LLVMSetLinkage(filter, LLVMInternalLinkage);
+            LLVMBuilderRef filterBuilder = LLVMCreateBuilderInContext(context_);
+            LLVMPositionBuilderAtEnd(filterBuilder, LLVMAppendBasicBlockInContext(context_, filter, "entry"));
+            LLVMBuildRet(filterBuilder, LLVMConstInt(LLVMInt32TypeInContext(context_), 1, 0));
+            LLVMDisposeBuilder(filterBuilder);
+        }
+        LLVMValueRef outerFunction = currentFunction_;
+        LLVMBasicBlockRef outerBlock = LLVMGetInsertBlock(builder_);
+        if (outerBlock == nullptr) return fail(error, "foreign unwind exception owner guard has no block");
+        const std::size_t outerCounter = blockCounter_;
+        const auto outerFunclets = funcletStack_;
+        const auto outerHandlers = exceptionHandlerStack_;
+        const auto outerCleanups = activeCleanupRegions_;
+        const auto outerCatches = activeCatchExceptions_;
+        LLVMMetadataRef outerDebugLocation = LLVMGetCurrentDebugLocation2(builder_);
+        LLVMMetadataRef outerDebugSubprogram = currentDebugSubprogram_;
+        LLVMMetadataRef outerDebugScope = currentDebugScope_;
+        std::size_t nameLength = 0;
+        const char* name = LLVMGetValueName2(outerFunction, &nameLength);
+        const std::string guardName = std::string(name, nameLength) +
+            ".foreign.exception.owner.guard." + std::to_string(blockCounter_++);
+        LLVMValueRef guard = LLVMAddFunction(module_, guardName.c_str(), guardType);
+        LLVMSetLinkage(guard, LLVMInternalLinkage);
+        LLVMSetPersonalityFn(guard, sehPersonalityFunction_);
+        currentFunction_ = guard;
+        LLVMSetCurrentDebugLocation2(builder_, nullptr);
+        currentDebugSubprogram_ = nullptr;
+        currentDebugScope_ = nullptr;
+        blockCounter_ = 0;
+        funcletStack_.clear();
+        exceptionHandlerStack_.clear();
+        activeCleanupRegions_.clear();
+        activeCatchExceptions_.clear();
+        LLVMBasicBlockRef entry = appendBlock("foreign.owner.guard.entry");
+        LLVMBasicBlockRef dispatch = appendBlock("foreign.owner.guard.dispatch");
+        enterBlock(entry);
+        exceptionHandlerStack_.push_back(ExceptionHandlerContext{0, dispatch, 0, 0});
+        const bool ok = emitCaughtExceptionRelease(LLVMGetParam(guard, 0), error);
+        exceptionHandlerStack_.pop_back();
+        if (ok && !terminated()) LLVMBuildRetVoid(builder_);
+        enterBlock(dispatch);
+        LLVMValueRef catches = LLVMBuildCatchSwitch(builder_, nullptr, nullptr, 1, "foreign.owner.guard.switch");
+        LLVMBasicBlockRef handler = appendBlock("foreign.owner.guard.handler");
+        LLVMAddHandler(catches, handler);
+        enterBlock(handler);
+        LLVMValueRef filters[] = {filter};
+        LLVMValueRef catchPad = LLVMBuildCatchPad(builder_, catches, filters, 1, "foreign.owner.guard.pad");
+        funcletStack_.push_back(FuncletContext{catchPad, FuncletKind::Catch, 0, nullptr, nullptr});
+        LLVMValueRef reason = LLVMConstInt(LLVMInt32TypeInContext(context_), 20, 0);
+        LLVMValueRef trapArguments[] = {reason};
+        buildNoUnwindCall(trapFunctionType_, trapFunction_, trapArguments, 1, "");
+        funcletStack_.pop_back();
+        LLVMBuildUnreachable(builder_);
+        currentFunction_ = outerFunction;
+        blockCounter_ = outerCounter + 1U;
+        funcletStack_ = outerFunclets;
+        exceptionHandlerStack_ = outerHandlers;
+        activeCleanupRegions_ = outerCleanups;
+        activeCatchExceptions_ = outerCatches;
+        currentDebugSubprogram_ = outerDebugSubprogram;
+        currentDebugScope_ = outerDebugScope;
+        LLVMSetCurrentDebugLocation2(builder_, outerDebugLocation);
+        enterBlock(outerBlock);
+        if (!ok) return false;
+        LLVMValueRef arguments[] = {ownerSlot};
+        buildNoUnwindCall(guardType, guard, arguments, 1, "");
+        return true;
+}
 
 bool OopLlvmImplementation::emitCaughtExceptionRelease(LLVMValueRef ownerSlot, std::string& error)
 {
