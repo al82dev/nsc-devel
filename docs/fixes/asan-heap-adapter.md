@@ -52,3 +52,17 @@ arreglos de estructuras y clases pasaron en O0 y O2 y ASan diagnosticó el
 acceso posterior a la liberación. La prueba comprueba ese recorrido concreto,
 no la ausencia general de fugas. El compilador usado contenía cambios locales;
 no se ha validado el commit con un compilador construido desde un árbol limpio.
+
+Tras integrar los cambios recientes de vistas, metadata y async, la selección
+dirigida de las dos pruebas ASan del driver pasó 2/2 sin omisiones con el
+compilador incremental de la copia principal. El log conserva también los
+rechazos esperados de runtimes incompatibles. Comando y resultados:
+`A:/nsc-fixes-evidencia/asan-after-async-view-20261111.cmd` y `.log`. Se usó
+`detect_leaks=0`; el resultado no demuestra ausencia general de fugas ni
+instrumentación de bibliotecas precompiladas. El árbol mantiene otros cambios
+locales y esta prueba no certifica una revisión limpia.
+Tras los cambios del backend decimal, la selección dirigida de ASan volvió a
+pasar 2/2 sin omisiones (`A:/nsc-fixes-evidencia/asan-after-decimal-20261111.log`).
+Los mensajes de runtimes incompatibles corresponden a rechazos esperados. Se
+usó `detect_leaks=0`, el compilador tenía otros cambios locales y no se acredita
+una revisión limpia ni ausencia general de fugas.

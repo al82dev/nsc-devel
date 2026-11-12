@@ -529,10 +529,18 @@ class H { public static int Run() { return C.F<int>(1); } }
 partial class Box<T> { public T Value; }
 )NS", "partial generic types are deferred beyond Stage 44");
 
-    expectGenericReject("GenericMethodInsideGenericType", R"NS(
+    {
+        const auto directory = root / "GenericMethodInsideGenericType";
+        writeProject(directory, "GenericMethodInsideGenericType");
+        writeFile(directory / "Main.ns", R"NS(
 class Box<T> { public U Convert<U>(U value) { return value; } }
 class H { public static void F() { Box<int> value = null; } }
-)NS", "generic methods declared inside generic types are deliberately deferred beyond Stage 44");
+)NS");
+        ProjectCompilation compilation;
+        std::string error;
+        const bool ok = compilation.compileProjectGenerics(directory / "GenericMethodInsideGenericType.nsproj", error);
+        tests.expect(ok && error.empty(), "a generic owner may declare a generic method");
+    }
 
     expectGenericReject("DuplicateGenericIdentity", R"NS(
 class Box<T> { public T A; }

@@ -511,7 +511,9 @@ std::optional<IterativeExpressionKind> ProjectOopHirModel::iterativeStorageKind(
             operatorCall->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
             callableSymbol(*operatorCall->selectedMemberOrdinal) != nullptr &&
             callableSymbol(*operatorCall->selectedMemberOrdinal)->isUserOperator;
-        if (userOperator) return IterativeExpressionKind::UserUnaryOperator;
+        if (userOperator && syntax->tokenKind() != lexer::TokenKind::PlusPlus &&
+            syntax->tokenKind() != lexer::TokenKind::MinusMinus)
+            return IterativeExpressionKind::UserUnaryOperator;
         if (syntax->tokenKind() == lexer::TokenKind::PlusPlus ||
             syntax->tokenKind() == lexer::TokenKind::MinusMinus)
         {

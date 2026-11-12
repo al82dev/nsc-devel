@@ -96,9 +96,11 @@ ExtensionResolution resolveExtension(bool hasInstanceMember, std::size_t visible
 
 namespace
 {
-constexpr std::array<OperatorTraitContract, 20> kOperatorTraits = {{
+constexpr std::array<OperatorTraitContract, 22> kOperatorTraits = {{
     {"+", 1, "lang:UnaryPlus", "op_UnaryPlus"},
     {"-", 1, "lang:Negate", "op_UnaryNegation"},
+    {"++", 1, "lang:Increment", "op_Increment"},
+    {"--", 1, "lang:Decrement", "op_Decrement"},
     {"!", 1, "lang:LogicalNot", "op_LogicalNot"},
     {"~", 1, "lang:OnesComplement", "op_OnesComplement"},
     {"+", 2, "lang:Add", "op_Addition"},

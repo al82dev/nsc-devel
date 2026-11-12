@@ -1,0 +1,20 @@
+public class Payload { public int Value; public Payload() { Value = 42; } }
+public class Registry {
+ public static Payload Saved;
+ public static void Store(Payload value) { Saved = value; }
+}
+public struct Direct {
+ public owned Payload item;
+ public Direct(int value) { item = new Payload(); }
+ public static int operator +(in Direct a, in Direct b) { Registry.Saved = a.item; return 42; }
+}
+public struct Alias {
+ public owned Payload item;
+ public Alias(int value) { item = new Payload(); }
+ public static int operator +(in Alias a, in Alias b) { Payload local = a.item; Registry.Saved = local; return 42; }
+}
+public struct ViaCall {
+ public owned Payload item;
+ public ViaCall(int value) { item = new Payload(); }
+ public static int operator +(in ViaCall a, in ViaCall b) { Registry.Store(a.item); return 42; }
+}

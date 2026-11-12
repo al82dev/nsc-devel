@@ -188,10 +188,18 @@ decisiones posteriores indicadas explícitamente abajo.
 - Evidencia: `cases/73-run/build.log` informa que el sandbox prohíbe
   identificadores y llamadas; `cases/74-fields` usa una lista explícita de
   campos; `cases/75-derive` produce `GridPoint`, sin nombres ni valores.
-- Decisión: alcance permitido del evaluador y límites de recursos/efectos;
-  superficie de enumeración y visibilidad de campos; formato estable y
-  ubicación de la implementación de `derive(Print)`. Son tres decisiones
-  distintas y no se implementa una API inferida por semejanza.
+- Decisiones: `fc7ea5bb7` integró el alcance acotado de llamadas puras de la
+  misma fuente para `#run`; sus límites están en `73-run-laptop.md`. La
+  selección dirigida actual volvió a pasar en O0/O2
+  (`A:/nsc-fixes-evidencia/73-run-current-probe.log`). Esto no verifica el
+  ejemplo original omitido por autorización ni llamadas arbitrarias. La
+  superficie de enumeración y visibilidad de campos es una cuestión separada.
+  Para `derive(Print)` se
+  mantiene la implementación existente del compilador que devuelve el nombre
+  corto: el ejemplo original exige exactamente `GridPoint`, y se comprobó su
+  ejecución con salida 0 en O0/O2 (`A:/nsc-fixes-evidencia/75-print-contract-*-run.log`).
+  Esta decisión conserva el ejemplo y no afirma soporte para un formateador
+  de campos ni define una API nueva para él.
 
 ## Máscaras SIMD
 
@@ -202,9 +210,14 @@ decisiones posteriores indicadas explícitamente abajo.
   como cero, con una prueba en `NativeSharp3T13PortableSimdTests.cpp`. No se
   localizó una operación `Select` en `lib/NativeSharp.Core`; el helper interno
   no demuestra que exista una conversión pública ni selección lane a lane.
-- Decisión: definir representación de lanes verdaderos y falsos, si existe
-  indexación, y una selección lane a lane mediante operador o API explícita.
-  Las tres construcciones no son necesariamente la misma capacidad.
+- Decisiones implementadas: conversión explícita con bits cero o todos unos;
+  lectura indexada de un lane como `bool`, con comprobación de límites; y
+  selección lane a lane con `?:`, evaluando condición y ambas ramas en orden.
+  El condicional escalar conserva evaluación perezosa. Los commits respectivos
+  son `e7eac1eb9`, `1769a179d` y `fbb5d736b`. Las regresiones dirigidas,
+  incluida la pareja flotante a entero sin signo del ejemplo, volvieron a
+  pasar (`A:/nsc-fixes-evidencia/89-simd-current-*.log`). No se afirma cobertura
+  de otras plataformas ni de conversiones cruzadas no documentadas.
 
 ## Desvirtualización y AddressSanitizer
 
@@ -231,8 +244,11 @@ decisiones posteriores indicadas explícitamente abajo.
   declara `NativeSharp.Core.StringBuilder` y `NativeSharp.Core.Utf8` en
   `lib/NativeSharp.Core`; esto no demuestra que reemplacen toda una API Text.
 - Decisiones: el usuario decidió mantener `NativeSharp.Text` pendiente hasta
-  definir su superficie y tipos; decidir si un proyecto puede incluir
-  archivos fuera de su raíz y bajo qué reglas de resolución y límites.
+  definir su superficie y tipos. Para rutas externas se adoptó inclusión
+  explícita relativa, con globs y sin ampliar la búsqueda implícita; el cambio
+  se integró en `4e034d0a9`. La regresión dirigida volvió a pasar en O0/O2
+  (`A:/nsc-fixes-evidencia/102-verify-current.log`), con los límites y la
+  ausencia del archivo histórico explicados en `integracion-rutas-externas.md`.
 
 ## Ordenación con comparador
 

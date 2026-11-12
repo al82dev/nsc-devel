@@ -1,5 +1,6 @@
 #include "HirLoweringSupport.h"
 
+#include <algorithm>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -263,6 +264,8 @@ bool ProjectOopHirModel::isFreshDroppableTemporary(const ProjectOopHirNode* node
     const bool producer = node->kind == ProjectOopHirNodeKind::InstanceCall ||
         node->kind == ProjectOopHirNodeKind::StaticCall ||
         node->kind == ProjectOopHirNodeKind::DelegateInvoke ||
+        (node->kind == ProjectOopHirNodeKind::CompoundStore && node->booleanValue &&
+         node->memberOrdinal.has_value() && isReferenceType(node->typeKey)) ||
         node->kind == ProjectOopHirNodeKind::StringConcat ||
         node->kind == ProjectOopHirNodeKind::StringSubstring;
     if (!producer) return false;
@@ -360,6 +363,59 @@ void ProjectOopHirModel::ownDroppableTemporaries(ProjectOopHirNode* root)
     }
     extendLentArgumentCleanups(root);
     ownReceiversUntilFullExpression(root);
+
+    // Operator `in` operands materialized in hidden value slots must remain alive
+    // until the enclosing expression completes, including the other side of &&/||.
+    HirParentIndex parents;
+    std::vector<ProjectOopHirNode*> order;
+    indexHirParents(root, parents, order);
+    for (ProjectOopHirNode* wrapper : order)
+    {
+        if (wrapper->kind != ProjectOopHirNodeKind::FullExpressionCleanup ||
+            wrapper->children.size() != 1U || wrapper->children.front() == nullptr)
+            continue;
+        ProjectOopHirNode* call = wrapper->children.front().get();
+        if (call->kind != ProjectOopHirNodeKind::StaticCall) continue;
+        const bool hasValueOperand = std::ranges::any_of(call->children, [](const auto& child) {
+            return child != nullptr && child->kind == ProjectOopHirNodeKind::OwnedTemporaryBorrow &&
+                child->referenceResult && child->automaticDestruction;
+        });
+        if (!hasValueOperand) continue;
+        const auto holderIt = parents.find(wrapper);
+        if (holderIt == parents.end()) continue;
+        ProjectOopHirNode* holder = holderIt->second;
+        std::unique_ptr<ProjectOopHirNode>* slot = hirChildSlot(*holder, wrapper);
+        if (slot == nullptr) continue;
+        ProjectOopHirNode* closingRoot = call;
+        ProjectOopHirNode* enclosing = nullptr;
+        bool crossesBranch = false;
+        for (ProjectOopHirNode* above = holder; above != nullptr; )
+        {
+            if (above->kind == ProjectOopHirNodeKind::FullExpressionCleanup)
+            {
+                enclosing = above;
+                break;
+            }
+            if (hirStatementKind(above->kind)) break;
+            if (hirConditionalEvaluation(*above))
+            {
+                const bool shortCircuit = above->kind == ProjectOopHirNodeKind::Binary &&
+                    (above->operation == lexer::TokenKind::AmpAmp || above->operation == lexer::TokenKind::PipePipe);
+                if (!shortCircuit && above->kind != ProjectOopHirNodeKind::Conditional &&
+                    above->kind != ProjectOopHirNodeKind::NullCoalescing)
+                    break;
+                crossesBranch = true;
+            }
+            if (hirSubtreeSuspends(*above)) break;
+            closingRoot = above;
+            const auto parent = parents.find(above);
+            above = parent == parents.end() ? nullptr : parent->second;
+        }
+        *slot = std::move(wrapper->children.front());
+        parents.erase(wrapper);
+        parents[call] = holder;
+        closeAtFullExpression(closingRoot, enclosing, crossesBranch, parents);
+    }
 }
 
 // EN: Freeze 3.0 (plan item 135a). A call that lends an owned temporary argument (`Id(MakeText())`) came wrapped

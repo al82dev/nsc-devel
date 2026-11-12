@@ -51,6 +51,9 @@ struct ExpressionResult final
     // parametro sin calificador no rastrea la vida del valor, y eso vale igual para uno
     // recien creado que para uno que ya existia. Ver classifyOwnershipArgument.
     bool ownershipFreshOwner = false;
+    // The previous owner extracted by a supported postfix update is an unnamed
+    // full-expression temporary, not an explicit move into the next parameter.
+    bool ownedPostfixTemporary = false;
     std::optional<std::size_t> ownershipSourceLocalOrdinal;
     std::optional<std::size_t> ownershipSourceParameterOrdinal;
     bool ownsStorageDestination = false;

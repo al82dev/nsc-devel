@@ -487,7 +487,8 @@ bool sourceTypeForMetadataKey(const interop::LibraryMetadata &metadata, const st
                 [&](const auto &candidate)
                 {
                     const auto key = metadataSpecializedTypeKey(candidate);
-                    return (candidate.templateKey == "NativeSharpCore::NativeSharp.Core.Arc`1" ||
+                    return (candidate.templateKey == "NativeSharpCore::NativeSharp.Core.SharedView`1" ||
+                            candidate.templateKey == "NativeSharpCore::NativeSharp.Core.Arc`1" ||
                             candidate.templateKey == "NativeSharpCore::NativeSharp.Core.WeakArc`1" ||
                             candidate.templateKey == "NativeSharpCore::NativeSharp.Core.Rc`1" ||
                             candidate.templateKey == "NativeSharpCore::NativeSharp.Core.WeakRc`1") &&

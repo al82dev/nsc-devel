@@ -845,6 +845,28 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::prepareBoundCallArgument(
     std::unique_ptr<ProjectOopHirNode> argument,
     bool& hasOwnedTemporary)
 {
+    const ClassMemberSymbol* target = callableSymbol(selectedMemberOrdinal);
+    if (argument != nullptr && target != nullptr && target->isUserOperator &&
+        argumentIndex < target->parameters.size() &&
+        target->parameters[argumentIndex].passKind == ParameterPassKind::In &&
+        !isNaturallyAddressable(argumentSyntax))
+    {
+        const bool needsDrop = memberModel_ != nullptr && memberModel_->typeRequiresValueDrop(argument->typeKey);
+        auto temporary = makeNode(
+            needsDrop ? ProjectOopHirNodeKind::OwnedTemporaryBorrow : ProjectOopHirNodeKind::TemporaryAddress,
+            argumentSyntax, argument->typeKey);
+        temporary->elementTypeKey = argument->typeKey;
+        if (needsDrop)
+        {
+            temporary->localOrdinal = nextSyntheticLocalOrdinal_++;
+            temporary->cleanupRegionOrdinal = nextSyntheticCleanupRegionOrdinal_++;
+            temporary->referenceResult = true;
+            temporary->automaticDestruction = true;
+            hasOwnedTemporary = true;
+        }
+        temporary->children.push_back(std::move(argument));
+        argument = std::move(temporary);
+    }
     if (argumentIndex < binding.selectedConversions.size() &&
         binding.selectedConversions[argumentIndex].kind != ProjectConversionKind::Identity)
     {
@@ -966,6 +988,11 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBoundCall(
     for (std::size_t index = 0; index < argumentSyntaxes.size(); ++index)
     {
         const ast::AstNode* argumentSyntax = argumentSyntaxes[index];
+        const ClassMemberSymbol* argumentTarget = callableSymbol(selectedMemberOrdinal);
+        const bool temporaryIn = argumentTarget != nullptr && argumentTarget->isUserOperator &&
+            index < argumentTarget->parameters.size() &&
+            argumentTarget->parameters[index].passKind == ParameterPassKind::In &&
+            !isNaturallyAddressable(argumentSyntax);
         auto argument = preloweredArguments != nullptr
             ? std::move((*preloweredArguments)[index])
             : preloweredLast != nullptr && index + 1 == argumentSyntaxes.size()
@@ -973,7 +1000,7 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerBoundCall(
                 : lowerExpression(
                     argumentSyntax,
                     memberOrdinal,
-                    boundCallArgumentNeedsAddress(selectedMemberOrdinal, index),
+                    boundCallArgumentNeedsAddress(selectedMemberOrdinal, index) && !temporaryIn,
                     error);
         if (argument == nullptr) return nullptr;
         arguments.push_back(prepareBoundCallArgument(

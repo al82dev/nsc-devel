@@ -1,0 +1,10 @@
+using NativeSharp.Core;
+namespace NativeSharp.Core { public class Exception { } }
+class Trace { public static int PayloadDrops; public static int ResourceDrops; }
+class Resource { ~Resource() { Trace.ResourceDrops = Trace.ResourceDrops + 1; } }
+class Gate { static Gate() throws Exception { throw new Exception(); } public static int Read() { return 1; } }
+class Payload { private owned Resource item; public Payload() { item = new Resource(); }
+ ~Payload() { Trace.PayloadDrops = Trace.PayloadDrops + 1; int ignored = Gate.Read(); } }
+class Program { public static int Main() { int caught = 0;
+ try { Payload value = new Payload(); } catch (Exception error) { caught = 1; }
+ return caught != 1 ? 2 : Trace.PayloadDrops != 1 ? 3 : Trace.ResourceDrops != 1 ? 4 : 42; } }

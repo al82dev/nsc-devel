@@ -2641,18 +2641,6 @@ ast::AstNode* Parser::parseOperatorTail(
     method->setText(memberOperatorMethodName(operation.kind(), method->children().size()));
 
     validateOperatorArity(method, operation);
-    if (operation.kind() == TokenKind::PlusPlus || operation.kind() == TokenKind::MinusMinus)
-    {
-        diagnostics_.report(
-            diagnostics::DiagnosticId::ExpectedDeclaration,
-            diagnostics::DiagnosticSeverity::Error,
-            operation.range(),
-            "a user-defined 'operator ++'/'operator --' is not supported: the built-in ++/-- now "
-            "update an lvalue in place (ID 79), but calling a user operator and storing its result "
-            "back would evaluate the operand twice, which is the one thing that lowering exists to "
-            "avoid; write an explicit method call and assignment");
-    }
-
     parseOperatorBody(method, allowBodyless);
     finishOperatorMethod(method, beginIndex);
     return method;

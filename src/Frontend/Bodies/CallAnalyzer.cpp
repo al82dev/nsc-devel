@@ -163,6 +163,101 @@ IndirectViewArguments prepareIndirectViewArguments(
     return result;
 }
 
+// Add every owner recorded for an identifier alias; a reassignment may have
+// made any of these owners the source of a field borrowed by the expression.
+void appendAliasBorrowOwners(const ProjectMethodBodyModel& model, const ast::AstNode* root,
+                             std::size_t callableOrdinal, std::vector<std::size_t>& owners)
+{
+    if (root == nullptr || root->kind() != ast::AstNodeKind::IdentifierExpression) return;
+    const MethodNameBinding* binding = model.nameBinding(root, callableOrdinal);
+    if (binding == nullptr || !binding->localOrdinal.has_value() ||
+        *binding->localOrdinal >= model.locals().size()) return;
+    const MethodLocalSymbol& local = model.locals()[*binding->localOrdinal];
+    if (!local.localBorrowBindingOrdinal.has_value() ||
+        *local.localBorrowBindingOrdinal >= model.localBorrowBindings().size()) return;
+    const MethodLocalBorrowBinding& borrow = model.localBorrowBindings()[*local.localBorrowBindingOrdinal];
+    if (borrow.sourceOwnerLocalOrdinal.has_value()) owners.push_back(*borrow.sourceOwnerLocalOrdinal);
+    owners.insert(owners.end(), borrow.possibleSourceOwnerLocalOrdinals.begin(),
+                  borrow.possibleSourceOwnerLocalOrdinals.end());
+}
+
+void retainNestedPrefixBorrowOwners(
+    const ProjectMethodBodyModel& model,
+    const ast::AstNode* argument,
+    std::size_t callableOrdinal,
+    std::vector<std::size_t>& activeOwners)
+{
+    std::vector<const ast::AstNode*> pending{argument};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+        if (node->kind() == ast::AstNodeKind::UnaryExpression &&
+            (node->tokenKind() == TokenKind::PlusPlus || node->tokenKind() == TokenKind::MinusMinus))
+        {
+            const MethodExpressionTypeBinding* binding = model.expressionTypeBinding(node, callableOrdinal);
+            if (binding != nullptr && binding->ownership == sema::OwnershipKind::Borrowed &&
+                binding->ownershipSourceLocalOrdinal.has_value())
+            {
+                activeOwners.push_back(*binding->ownershipSourceLocalOrdinal);
+                if (binding->ownsStorageDestination && node->first() != nullptr &&
+                    node->first()->kind() == ast::AstNodeKind::MemberExpression)
+                    appendAliasBorrowOwners(model, node->first()->first(), callableOrdinal, activeOwners);
+            }
+        }
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+}
+
+void retainNestedPrefixBorrowFields(
+    const ProjectMethodBodyModel& model,
+    const ast::AstNode* expression,
+    std::size_t callableOrdinal,
+    std::vector<std::pair<std::size_t, std::size_t>>& activeFields,
+    std::vector<std::pair<std::size_t, std::size_t>>& activeParameterFields)
+{
+    std::vector<const ast::AstNode*> pending{expression};
+    while (!pending.empty())
+    {
+        const ast::AstNode* node = pending.back();
+        pending.pop_back();
+        if (node == nullptr || node->kind() == ast::AstNodeKind::LambdaExpression) continue;
+        if (node->kind() == ast::AstNodeKind::UnaryExpression &&
+            (node->tokenKind() == TokenKind::PlusPlus || node->tokenKind() == TokenKind::MinusMinus) &&
+            node->first() != nullptr && node->first()->kind() == ast::AstNodeKind::MemberExpression &&
+            node->first()->first() != nullptr &&
+            node->first()->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const MethodExpressionTypeBinding* value = model.expressionTypeBinding(node, callableOrdinal);
+            const MethodNameBinding* field = model.nameBinding(node->first(), callableOrdinal);
+            if (value != nullptr && value->ownership == sema::OwnershipKind::Borrowed &&
+                value->ownsStorageDestination && field != nullptr &&
+                field->kind == MethodNameBindingKind::ExplicitObjectField &&
+                field->candidateMemberOrdinals.size() == 1)
+            {
+                if (value->ownershipSourceLocalOrdinal.has_value())
+                {
+                    std::vector<std::size_t> owners{*value->ownershipSourceLocalOrdinal};
+                    appendAliasBorrowOwners(model, node->first()->first(), callableOrdinal, owners);
+                    for (const std::size_t owner : owners)
+                        activeFields.emplace_back(owner, field->candidateMemberOrdinals[0]);
+                }
+                if (value->ownershipSourceParameterOrdinal.has_value())
+                    activeParameterFields.emplace_back(*value->ownershipSourceParameterOrdinal,
+                                                       field->candidateMemberOrdinals[0]);
+            }
+        }
+        pending.push_back(node->first());
+        pending.push_back(node->second());
+        pending.push_back(node->third());
+        for (const ast::AstNode* child : node->children()) pending.push_back(child);
+    }
+}
+
 NamedArgumentMap mapPositionalArguments(
     std::span<ast::AstNode* const> arguments,
     const ClassMemberSymbol& candidate,
@@ -531,6 +626,70 @@ ProjectMethodBodyModel::bindNamespaceFunctionMethodGroupArgument(
     return analyzed;
 }
 
+void ProjectMethodBodyModel::rememberDirectOwnedFieldArgument(
+    const ast::AstNode* expression, const ExpressionResult& argument,
+    std::size_t methodMemberOrdinal, std::size_t scopeOrdinal)
+{
+    if (!argument.valid || expression == nullptr ||
+        expression->kind() != ast::AstNodeKind::MemberExpression ||
+        expression->first() == nullptr ||
+        expression->first()->kind() != ast::AstNodeKind::IdentifierExpression ||
+        !argument.assignmentMemberOrdinal.has_value() || memberModel_ == nullptr ||
+        *argument.assignmentMemberOrdinal >= memberModel_->members().size() ||
+        !isReferenceTypeKey(argument.typeKey))
+        return;
+    const ClassMemberSymbol& field = memberModel_->members()[*argument.assignmentMemberOrdinal];
+    if (field.kind != ClassMemberKind::Field || field.isStatic ||
+        field.declaredOwnership != sema::OwnershipKind::Owned)
+        return;
+    const auto root = lookupScopeName(scopeOrdinal, expression->first()->text());
+    const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+    if (root.has_value() && root->kind == ScopeNameKind::Parameter && caller != nullptr &&
+        root->semanticOrdinal < caller->parameters.size() &&
+        caller->parameters[root->semanticOrdinal].ownership == sema::OwnershipKind::Borrowed)
+    {
+        activeArgumentParameterOwnedFields_.emplace_back(root->semanticOrdinal, *argument.assignmentMemberOrdinal);
+        return;
+    }
+    if (root.has_value() && root->kind == ScopeNameKind::Local && root->semanticOrdinal < locals_.size() &&
+        caller != nullptr)
+    {
+        const MethodLocalSymbol& local = locals_[root->semanticOrdinal];
+        if (local.localBorrowBindingOrdinal.has_value() &&
+            *local.localBorrowBindingOrdinal < localBorrowBindings_.size())
+        {
+            const MethodLocalBorrowBinding& borrow = localBorrowBindings_[*local.localBorrowBindingOrdinal];
+            const auto parameter = borrow.sourceOwnerParameterOrdinal.has_value()
+                ? borrow.sourceOwnerParameterOrdinal
+                : (borrow.possibleSourceOwnerParameterOrdinals.empty() ? std::nullopt
+                    : std::optional<std::size_t>(borrow.possibleSourceOwnerParameterOrdinals.front()));
+            const bool validLocals = (!borrow.sourceOwnerLocalOrdinal.has_value() ||
+                (*borrow.sourceOwnerLocalOrdinal < locals_.size() && locals_[*borrow.sourceOwnerLocalOrdinal].isRaii)) &&
+                std::ranges::all_of(borrow.possibleSourceOwnerLocalOrdinals,
+                    [&](std::size_t candidate) { return candidate < locals_.size() && locals_[candidate].isRaii; });
+            if (parameter.has_value() && validLocals && *parameter < caller->parameters.size() &&
+                caller->parameters[*parameter].ownership == sema::OwnershipKind::Borrowed &&
+                std::ranges::all_of(borrow.possibleSourceOwnerParameterOrdinals,
+                    [&](std::size_t candidate)
+                    { return candidate < caller->parameters.size() &&
+                        caller->parameters[candidate].ownership == sema::OwnershipKind::Borrowed; }))
+            {
+                activeArgumentParameterOwnedFields_.emplace_back(*parameter, *argument.assignmentMemberOrdinal);
+                if (borrow.sourceOwnerLocalOrdinal.has_value())
+                    activeArgumentOwnedFields_.emplace_back(*borrow.sourceOwnerLocalOrdinal,
+                                                            *argument.assignmentMemberOrdinal);
+                for (const std::size_t possible : borrow.possibleSourceOwnerLocalOrdinals)
+                    activeArgumentOwnedFields_.emplace_back(possible, *argument.assignmentMemberOrdinal);
+                return;
+            }
+        }
+    }
+    if (!root.has_value() || root->kind != ScopeNameKind::Local ||
+        root->semanticOrdinal >= locals_.size() || !locals_[root->semanticOrdinal].isRaii)
+        return;
+    activeArgumentOwnedFields_.emplace_back(root->semanticOrdinal, *argument.assignmentMemberOrdinal);
+}
+
 std::vector<ProjectMethodBodyModel::ExpressionResult>
 ProjectMethodBodyModel::analyzeNamespaceFunctionArguments(
     const ast::AstNode* expression,
@@ -546,6 +705,9 @@ ProjectMethodBodyModel::analyzeNamespaceFunctionArguments(
 {
     std::vector<ExpressionResult> arguments;
     arguments.reserve(argumentSyntaxes.size());
+    const std::size_t prefixBorrowBase = activePrefixArgumentOwnerLocals_.size();
+    const std::size_t fieldBorrowBase = activeArgumentOwnedFields_.size();
+    const std::size_t parameterFieldBorrowBase = activeArgumentParameterOwnedFields_.size();
     if (forwardedReceiver != nullptr)
     {
         ExpressionResult receiverArgument = *forwardedReceiver;
@@ -553,6 +715,18 @@ ProjectMethodBodyModel::analyzeNamespaceFunctionArguments(
         receiverArgument.methodGroup = false;
         receiverArgument.extensionMethodGroup = false;
         receiverArgument.valid = true;
+        const MethodExpressionTypeBinding* receiverType = reference.receiverSyntax != nullptr
+            ? expressionTypeBinding(reference.receiverSyntax, callerCallableOrdinal) : nullptr;
+        if (receiverType != nullptr && receiverType->ownershipSourceLocalOrdinal.has_value() &&
+            (receiverType->ownership == sema::OwnershipKind::Borrowed ||
+             (receiverType->ownership == sema::OwnershipKind::Owned && !receiverType->ownershipTransfer)))
+            activePrefixArgumentOwnerLocals_.push_back(*receiverType->ownershipSourceLocalOrdinal);
+        else if (receiverType != nullptr && receiverType->ownership == sema::OwnershipKind::Borrowed)
+            retainNestedPrefixBorrowOwners(*this, reference.receiverSyntax, callerCallableOrdinal,
+                                          activePrefixArgumentOwnerLocals_);
+        if (receiverType != nullptr && receiverType->ownership == sema::OwnershipKind::Borrowed)
+            retainNestedPrefixBorrowFields(*this, reference.receiverSyntax, callerCallableOrdinal,
+                                          activeArgumentOwnedFields_, activeArgumentParameterOwnedFields_);
         if (receiverArgument.readonlyBorrowedObject)
         {
             diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
@@ -585,8 +759,62 @@ ProjectMethodBodyModel::analyzeNamespaceFunctionArguments(
             argumentsValid = false;
         }
         argumentsValid = argumentsValid && analyzed.valid && !analyzed.methodGroup;
+        if (analyzed.valid && analyzed.ownershipSourceLocalOrdinal.has_value() &&
+            (analyzed.ownership == sema::OwnershipKind::Borrowed ||
+             (analyzed.ownership == sema::OwnershipKind::Owned && !analyzed.ownershipTransfer)))
+            activePrefixArgumentOwnerLocals_.push_back(*analyzed.ownershipSourceLocalOrdinal);
+        if (analyzed.valid && analyzed.ownership == sema::OwnershipKind::Borrowed)
+            retainNestedPrefixBorrowOwners(*this, argument, callerCallableOrdinal, activePrefixArgumentOwnerLocals_);
+        const std::size_t fieldsBefore = activeArgumentOwnedFields_.size();
+        const std::size_t parameterFieldsBefore = activeArgumentParameterOwnedFields_.size();
+        rememberDirectOwnedFieldArgument(argument, analyzed, callerCallableOrdinal, scopeOrdinal);
+        if (activeArgumentOwnedFields_.size() != fieldsBefore ||
+            activeArgumentParameterOwnedFields_.size() != parameterFieldsBefore)
+        {
+            analyzed.ownership = sema::OwnershipKind::Borrowed;
+            analyzed.objectLifetimeOwnership = sema::OwnershipKind::Borrowed;
+            analyzed.storageOwnership = sema::OwnershipKind::Borrowed;
+            if (activeArgumentOwnedFields_.size() != fieldsBefore)
+                analyzed.ownershipSourceLocalOrdinal = activeArgumentOwnedFields_.back().first;
+            if (activeArgumentParameterOwnedFields_.size() != parameterFieldsBefore)
+                analyzed.ownershipSourceParameterOrdinal = activeArgumentParameterOwnedFields_.back().first;
+            recordExpressionType(argument, callerCallableOrdinal, scopeOrdinal, analyzed);
+        }
+        if (analyzed.valid && analyzed.ownership == sema::OwnershipKind::Borrowed)
+            retainNestedPrefixBorrowFields(*this, argument, callerCallableOrdinal, activeArgumentOwnedFields_,
+                                          activeArgumentParameterOwnedFields_);
+        if (analyzed.valid && ProjectTypeConversion::isNativeArray(analyzed.typeKey))
+            for (MethodLocalSymbol& local : locals_)
+                if (local.methodMemberOrdinal == callerCallableOrdinal &&
+                    ProjectTypeConversion::isNativeArray(local.typeKey))
+                    local.mayAliasUnknownReference = true;
         arguments.push_back(std::move(analyzed));
     }
+    for (const ast::AstNode* argument : argumentSyntaxes)
+    {
+        if (argument == nullptr || argument->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+        if (forwardedReceiver != nullptr && argument == reference.receiverSyntax) continue;
+        if ((activeArgumentOwnedFields_.empty() && activeArgumentParameterOwnedFields_.empty()) ||
+            !hasActiveViewOfStorage(argument, callerCallableOrdinal, scopeOrdinal, true)) continue;
+        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error, argument->range(),
+            "cannot pass object with a borrowed field view to a potentially mutating call");
+        argumentsValid = false;
+    }
+    if (forwardedReceiver != nullptr &&
+        (!activeArgumentOwnedFields_.empty() || !activeArgumentParameterOwnedFields_.empty()) &&
+        reference.receiverSyntax != nullptr &&
+        reference.receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression &&
+        hasActiveViewOfStorage(reference.receiverSyntax, callerCallableOrdinal, scopeOrdinal, true))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error, reference.receiverSyntax->range(),
+            "cannot call potentially mutating method while a borrowed field view is alive");
+        argumentsValid = false;
+    }
+    activePrefixArgumentOwnerLocals_.resize(prefixBorrowBase);
+    activeArgumentOwnedFields_.resize(fieldBorrowBase);
+    activeArgumentParameterOwnedFields_.resize(parameterFieldBorrowBase);
     return arguments;
 }
 
@@ -649,7 +877,11 @@ void ProjectMethodBodyModel::validateNamespaceFunctionCandidateArgumentOwnership
         arguments[argumentOrdinal].ownership == sema::OwnershipKind::Owned &&
         arguments[argumentOrdinal].ownershipTransfer &&
         arguments[argumentOrdinal].ownershipFreshOwner;
-    if (freshStringBorrow)
+    const bool postfixBorrow = !packElement && parameter.ownership == sema::OwnershipKind::Borrowed &&
+        arguments[argumentOrdinal].ownedPostfixTemporary &&
+        arguments[argumentOrdinal].ownership == sema::OwnershipKind::Owned &&
+        arguments[argumentOrdinal].ownershipTransfer && arguments[argumentOrdinal].ownershipFreshOwner;
+    if (freshStringBorrow || postfixBorrow)
     {
         evaluated.fullExpressionBorrowArgumentOrdinals.push_back(argumentOrdinal);
     }
@@ -3814,6 +4046,21 @@ void ProjectMethodBodyModel::analyzeCallArguments(
     std::size_t scopeOrdinal,
     diagnostics::DiagnosticEngine& diagnostics)
 {
+    const std::size_t prefixBorrowBase = activePrefixArgumentOwnerLocals_.size();
+    const std::size_t fieldBorrowBase = activeArgumentOwnedFields_.size();
+    const std::size_t parameterFieldBorrowBase = activeArgumentParameterOwnedFields_.size();
+    const MethodExpressionTypeBinding* receiverType = callee.receiverSyntax != nullptr
+        ? expressionTypeBinding(callee.receiverSyntax, methodMemberOrdinal) : nullptr;
+    if (receiverType != nullptr && receiverType->ownershipSourceLocalOrdinal.has_value() &&
+        (receiverType->ownership == sema::OwnershipKind::Borrowed ||
+         (receiverType->ownership == sema::OwnershipKind::Owned && !receiverType->ownershipTransfer)))
+        activePrefixArgumentOwnerLocals_.push_back(*receiverType->ownershipSourceLocalOrdinal);
+    else if (receiverType != nullptr && receiverType->ownership == sema::OwnershipKind::Borrowed)
+        retainNestedPrefixBorrowOwners(*this, callee.receiverSyntax, methodMemberOrdinal,
+                                      activePrefixArgumentOwnerLocals_);
+    if (receiverType != nullptr && receiverType->ownership == sema::OwnershipKind::Borrowed)
+        retainNestedPrefixBorrowFields(*this, callee.receiverSyntax, methodMemberOrdinal,
+                                      activeArgumentOwnedFields_, activeArgumentParameterOwnedFields_);
     for (std::size_t argumentOrdinal = 0;
          argumentOrdinal < expression->children().size(); ++argumentOrdinal)
     {
@@ -3879,8 +4126,60 @@ void ProjectMethodBodyModel::analyzeCallArguments(
             allArgumentsValid = false;
         }
         if (!argumentResult.valid || argumentResult.methodGroup) allArgumentsValid = false;
+        if (argumentResult.valid && argumentResult.ownershipSourceLocalOrdinal.has_value() &&
+            (argumentResult.ownership == sema::OwnershipKind::Borrowed ||
+             (argumentResult.ownership == sema::OwnershipKind::Owned && !argumentResult.ownershipTransfer)))
+            activePrefixArgumentOwnerLocals_.push_back(*argumentResult.ownershipSourceLocalOrdinal);
+        if (argumentResult.valid && argumentResult.ownership == sema::OwnershipKind::Borrowed)
+            retainNestedPrefixBorrowOwners(*this, argument, methodMemberOrdinal, activePrefixArgumentOwnerLocals_);
+        const std::size_t fieldsBefore = activeArgumentOwnedFields_.size();
+        const std::size_t parameterFieldsBefore = activeArgumentParameterOwnedFields_.size();
+        rememberDirectOwnedFieldArgument(argument, argumentResult, methodMemberOrdinal, scopeOrdinal);
+        if (activeArgumentOwnedFields_.size() != fieldsBefore ||
+            activeArgumentParameterOwnedFields_.size() != parameterFieldsBefore)
+        {
+            argumentResult.ownership = sema::OwnershipKind::Borrowed;
+            argumentResult.objectLifetimeOwnership = sema::OwnershipKind::Borrowed;
+            argumentResult.storageOwnership = sema::OwnershipKind::Borrowed;
+            if (activeArgumentOwnedFields_.size() != fieldsBefore)
+                argumentResult.ownershipSourceLocalOrdinal = activeArgumentOwnedFields_.back().first;
+            if (activeArgumentParameterOwnedFields_.size() != parameterFieldsBefore)
+                argumentResult.ownershipSourceParameterOrdinal = activeArgumentParameterOwnedFields_.back().first;
+            recordExpressionType(argument, methodMemberOrdinal, scopeOrdinal, argumentResult);
+        }
+        if (argumentResult.valid && argumentResult.ownership == sema::OwnershipKind::Borrowed)
+            retainNestedPrefixBorrowFields(*this, argument, methodMemberOrdinal, activeArgumentOwnedFields_,
+                                          activeArgumentParameterOwnedFields_);
+        if (argumentResult.valid && ProjectTypeConversion::isNativeArray(argumentResult.typeKey))
+            for (MethodLocalSymbol& local : locals_)
+                if (local.methodMemberOrdinal == methodMemberOrdinal &&
+                    ProjectTypeConversion::isNativeArray(local.typeKey))
+                    local.mayAliasUnknownReference = true;
         arguments.push_back(std::move(argumentResult));
     }
+    for (const ast::AstNode* argument : expression->children())
+    {
+        if (argument == nullptr || argument->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+        if ((activeArgumentOwnedFields_.empty() && activeArgumentParameterOwnedFields_.empty()) ||
+            !hasActiveViewOfStorage(argument, methodMemberOrdinal, scopeOrdinal, true)) continue;
+        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error, argument->range(),
+            "cannot pass object with a borrowed field view to a potentially mutating call");
+        allArgumentsValid = false;
+    }
+    if ((!activeArgumentOwnedFields_.empty() || !activeArgumentParameterOwnedFields_.empty()) &&
+        callee.receiverSyntax != nullptr &&
+        callee.receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression &&
+        hasActiveViewOfStorage(callee.receiverSyntax, methodMemberOrdinal, scopeOrdinal, true))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error, callee.receiverSyntax->range(),
+            "cannot call potentially mutating method while a borrowed field view is alive");
+        allArgumentsValid = false;
+    }
+    activePrefixArgumentOwnerLocals_.resize(prefixBorrowBase);
+    activeArgumentOwnedFields_.resize(fieldBorrowBase);
+    activeArgumentParameterOwnedFields_.resize(parameterFieldBorrowBase);
 }
 
 const ast::AstNode* ProjectMethodBodyModel::resolvedCallArgumentSyntax(
@@ -3904,11 +4203,14 @@ bool ProjectMethodBodyModel::callIsFullExpressionBorrow(
 {
     if (!argument.valid || !argument.ownershipFreshOwner || !argument.ownershipTransfer ||
         argument.ownership != sema::OwnershipKind::Owned ||
-        argumentOrdinal >= candidate.parameters.size() ||
-        candidate.parameters[argumentOrdinal].typeKey != "builtin:string")
+        argumentOrdinal >= candidate.parameters.size())
     {
         return false;
     }
+    if (argument.ownedPostfixTemporary &&
+        candidate.parameters[argumentOrdinal].ownership == sema::OwnershipKind::Borrowed)
+        return true;
+    if (candidate.parameters[argumentOrdinal].typeKey != "builtin:string") return false;
     if (candidate.parameters[argumentOrdinal].ownership == sema::OwnershipKind::Borrowed)
         return true;
     return candidate.parameters[argumentOrdinal].ownership == sema::OwnershipKind::None;
@@ -6875,6 +7177,34 @@ bool ProjectMethodBodyModel::evaluateSyntheticCandidates(
 {
     bool hasMatchingArity = false;
     if (memberModel_ == nullptr) return hasMatchingArity;
+    const auto resultCarriesReference = [&](std::string_view resultType) {
+        std::vector<std::string> pending{std::string(resultType)};
+        std::unordered_set<std::string> visited;
+        while (!pending.empty())
+        {
+            std::string key = std::move(pending.back());
+            pending.pop_back();
+            if (!visited.insert(key).second) continue;
+            if (typeKeyCarriesLifetime(key)) return true;
+            if (auto elements = ProjectTypeConversion::tupleElementTypeKeys(key))
+            {
+                for (std::string& element : *elements) pending.push_back(std::move(element));
+                continue;
+            }
+            const auto ordinal = namedTypeOrdinalForTypeKey(key);
+            const NamedTypeDeclaration* declaration = ordinal.has_value() && nameLookup_ != nullptr
+                ? nameLookup_->typeForOrdinal(*ordinal) : nullptr;
+            if (declaration == nullptr || declaration->kind != NamedTypeDeclarationKind::Struct) continue;
+            for (const std::size_t memberOrdinal : memberModel_->membersOfType(*ordinal))
+            {
+                if (memberOrdinal >= memberModel_->members().size()) continue;
+                const ClassMemberSymbol& member = memberModel_->members()[memberOrdinal];
+                if (member.kind == ClassMemberKind::Field && !member.isStatic)
+                    pending.push_back(member.declaredTypeKey);
+            }
+        }
+        return false;
+    };
     for (const std::size_t candidateOrdinal : call.candidateMemberOrdinals)
     {
         const ClassMemberSymbol* candidatePtr = methodSymbol(candidateOrdinal);
@@ -6903,9 +7233,23 @@ bool ProjectMethodBodyModel::evaluateSyntheticCandidates(
                 conversionTarget,
                 arguments[argumentOrdinal].integerConstant);
             if (!conversion.exists() ||
-                arguments[argumentOrdinal].readonlyBorrowedObject ||
+                (arguments[argumentOrdinal].readonlyBorrowedObject &&
+                 !(implicitOperatorReference && parameter.passKind == ParameterPassKind::In)) ||
                 (implicitOperatorReference && conversion.kind != ProjectConversionKind::Identity) ||
-                (implicitOperatorReference && !arguments[argumentOrdinal].addressable) ||
+                (candidate.isUserOperator && parameter.passKind == ParameterPassKind::In &&
+                 !arguments[argumentOrdinal].addressable &&
+                 (typeKeyIsViewLike(candidate.declaredTypeKey) ||
+                  tupleTypeKeyContainsView(candidate.declaredTypeKey))) ||
+                (candidate.isUserOperator && parameter.passKind == ParameterPassKind::In &&
+                 !arguments[argumentOrdinal].addressable && memberModel_ != nullptr &&
+                 candidate.declaredOwnership != sema::OwnershipKind::Owned &&
+                 resultCarriesReference(candidate.declaredTypeKey) &&
+                 memberModel_->typeTransitivelyOwnsStorage(arguments[argumentOrdinal].typeKey)) ||
+                (candidate.isUserOperator && candidate.isPrecompiled &&
+                 parameter.passKind == ParameterPassKind::In && !arguments[argumentOrdinal].addressable &&
+                 memberModel_->typeTransitivelyOwnsStorage(arguments[argumentOrdinal].typeKey)) ||
+                (implicitOperatorReference && parameter.passKind != ParameterPassKind::In &&
+                 !arguments[argumentOrdinal].addressable) ||
                 (parameter.passKind == ParameterPassKind::Ref &&
                  (!arguments[argumentOrdinal].assignable ||
                   arguments[argumentOrdinal].readonlyReceiver)) ||

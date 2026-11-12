@@ -99,11 +99,160 @@ struct BadValue { public owned Resource item;
         'struct_pattern_chained_view_read': ('''class Program { public static int Work(STRONG<Value> owner) {
  match (owner.Borrow().Get()) { ref item => { return item.Data == 42l ? 42 : 1; } }
  return 2; } public static int Main() { return Work(SharedPointers.MAKE<Value>()); } }''', 'run:42'),
+        'struct_pattern_chained_view_overwrite': ('''class Program { public static int Work(STRONG<Value> owner) {
+ match (owner.Borrow().Get()) { ref item => { owner = SharedPointers.MAKE<Value>(); return (int)item.Data; } }
+ return 0; } public static int Main() { return 0; } }''', 'cannot overwrite owner'),
+        'struct_pattern_chained_view_move': ('''class Program { public static int Work(STRONG<Value> owner) {
+ match (owner.Borrow().Get()) { ref item => { STRONG<Value> other = move(owner); return (int)item.Data; } }
+ return 0; } public static int Main() { return 0; } }''', 'cannot move'),
+        'struct_pattern_chained_view_finished': ('''class Program { public static int Work(STRONG<Value> owner) {
+ match (owner.Borrow().Get()) { ref item => { if (item.Data != 42l) return 1; } }
+ owner = SharedPointers.MAKE<Value>(); return owner.Get().Data == 42l ? 42 : 2;
+ } public static int Main() { return Work(SharedPointers.MAKE<Value>()); } }''', 'run:42'),
+        'struct_pattern_chained_view_temporary_owner': ('''class Program { public static int Main() {
+ match (SharedPointers.MAKE<Value>().Borrow().Get()) { ref item => { return (int)item.Data; } }
+ return 0; } }''', 'view cannot borrow from a temporary receiver'),
         'struct_pattern_field_read': ('''class Holder { public STRONG<Value> value; }
  class Program { public static int Main() { Holder holder = new Holder();
  holder.value = SharedPointers.MAKE<Value>();
  match (holder.value.Get()) { ref item => { return item.Data == 42l ? 42 : 1; } }
  return 2; } }''', 'run:42'),
+        'struct_pattern_nested_field_read': ('''class Holder { public STRONG<Value> value; }
+ class Outer { public Holder inner; public Outer() { inner = new Holder(); } }
+ class Program { public static int Main() { Outer outer = new Outer();
+ outer.inner.value = SharedPointers.MAKE<Value>(); match (outer.inner.value.Get()) { ref item => {
+ return item.Data == 42l ? 42 : 1; } } return 0; } }''', 'run:42'),
+        'struct_pattern_nested_chained_read': ('''class Holder { public STRONG<Value> value; }
+ class Outer { public Holder inner; public Outer() { inner = new Holder(); } }
+ class Program { public static int Main() { Outer outer = new Outer();
+ outer.inner.value = SharedPointers.MAKE<Value>(); match (outer.inner.value.Borrow().Get()) { ref item => {
+ return item.Data == 42l ? 42 : 1; } } return 0; } }''', 'run:42'),
+        'struct_pattern_nested_chained_delete': ('''class Holder { public STRONG<Value> value; }
+ class Outer { public Holder inner; public Outer() { inner = new Holder(); } }
+ class Program { public static int Main() { Outer outer = new Outer();
+ outer.inner.value = SharedPointers.MAKE<Value>(); match (outer.inner.value.Borrow().Get()) { ref item => {
+ delete outer.inner; return (int)item.Data; } } return 0; } }''', 'while a borrowed view is alive'),
+        'struct_pattern_nested_chained_destroy_alias': ('''class Holder { public STRONG<Value> value; }
+ class Outer { public Holder inner; public Outer() { inner = new Holder(); } }
+ class Program { public static int Main() { Outer outer = new Outer(); Holder alias = outer.inner;
+ outer.inner.value = SharedPointers.MAKE<Value>(); match (outer.inner.value.Borrow().Get()) { ref item => {
+ destroy alias; return (int)item.Data; } } return 0; } }''', 'while a borrowed view is alive'),
+        'struct_pattern_indexed_read': ('''class Holder { public STRONG<Value> value; }
+ class Program { public static int Main() { Holder[] holders = new Holder[1]; holders[0] = new Holder();
+ holders[0].value = SharedPointers.MAKE<Value>(); match (holders[0].value.Get()) { ref item => {
+ return item.Data == 42l ? 42 : 1; } } return 0; } }''', 'run:42'),
+        'struct_pattern_indexed_delete': ('''class Holder { public STRONG<Value> value; }
+ class Program { public static int Main() { Holder[] holders = new Holder[1]; holders[0] = new Holder();
+ holders[0].value = SharedPointers.MAKE<Value>(); match (holders[0].value.Get()) { ref item => {
+ delete holders[0]; return (int)item.Data; } } return 0; } }''', 'while a borrowed view is alive'),
+        'struct_pattern_indexed_parameter': ('''class Holder { public STRONG<Value> value; }
+ class Program { static int Work(Holder parameter) { Holder[] holders = new Holder[1]; holders[0] = parameter;
+ holders[0].value = SharedPointers.MAKE<Value>(); match (holders[0].value.Get()) { ref item => {
+ delete parameter; return (int)item.Data; } } return 0; } public static int Main() { return 42; } }''',
+                                          'while a borrowed view is alive'),
+        'struct_pattern_indexed_fill': ('''class Holder { public STRONG<Value> value; }
+ class Program { static void Fill(Holder[] array, Holder value) { array[0] = value; }
+ static int Work(Holder parameter) { Holder[] holders = new Holder[1]; Fill(holders, parameter);
+ holders[0].value = SharedPointers.MAKE<Value>(); match (holders[0].value.Get()) { ref item => {
+ delete parameter; return (int)item.Data; } } return 0; } public static int Main() { return 42; } }''',
+                                          'while a borrowed view is alive'),
+        'struct_pattern_indexed_initializer': ('''class Holder { public STRONG<Value> value; }
+ class Program { static int Work(Holder parameter) { Holder[] holders = new Holder[] { parameter };
+ holders[0].value = SharedPointers.MAKE<Value>(); match (holders[0].value.Get()) { ref item => {
+ delete parameter; return (int)item.Data; } } return 0; } public static int Main() { return 42; } }''',
+                                          'while a borrowed view is alive'),
+        'struct_pattern_indexed_spread': ('''class Holder { public STRONG<Value> value; }
+ class Program { public static int Main() { Holder[] first = new Holder[1]; first[0] = new Holder();
+ Holder[] second = [..first]; first[0].value = SharedPointers.MAKE<Value>();
+ match (first[0].value.Get()) { ref item => { delete second[0]; return (int)item.Data; } }
+ return 0; } }''', 'while a borrowed view is alive'),
+        'struct_pattern_indexed_reassigned_initializer': ('''class Holder { public STRONG<Value> value; }
+ class Program { static int Work(Holder parameter) { Holder[] holders = new Holder[1];
+ holders = new Holder[] { parameter }; holders[0].value = SharedPointers.MAKE<Value>();
+ match (holders[0].value.Get()) { ref item => { delete parameter; return (int)item.Data; } }
+ return 0; } public static int Main() { return 42; } }''', 'while a borrowed view is alive'),
+        'struct_pattern_indexed_reassigned_spread': ('''class Holder { public STRONG<Value> value; }
+ class Program { public static int Main() { Holder[] first = new Holder[1]; first[0] = new Holder();
+ Holder[] second = new Holder[1]; second = [..first]; first[0].value = SharedPointers.MAKE<Value>();
+ match (first[0].value.Get()) { ref item => { delete second[0]; return (int)item.Data; } }
+ return 0; } }''', 'while a borrowed view is alive'),
+        'struct_pattern_indexed_parameter_read': ('''class Holder { public STRONG<Value> value; }
+ class Program { static int Work(Holder[] holders) {
+ match (holders[0].value.Get()) { ref item => { return item.Data == 42l ? 42 : 1; } }
+ return 0; } public static int Main() { Holder[] holders = new Holder[1]; holders[0] = new Holder();
+ holders[0].value = SharedPointers.MAKE<Value>(); int result = Work(holders);
+ delete holders[0]; delete[] holders; return result; } }''', 'run:42'),
+        'struct_pattern_indexed_parameter_delete': ('''class Holder { public STRONG<Value> value; }
+ class Program { static int Work(Holder[] holders, Holder parameter) {
+ match (holders[0].value.Get()) { ref item => { delete parameter; return (int)item.Data; } }
+ return 0; } public static int Main() { return 42; } }''', 'while a borrowed view is alive'),
+        'struct_pattern_indexed_parameter_overwrite': ('''class Holder { public STRONG<Value> value; }
+ class Program { static int Work(Holder[] holders, Holder[] other) {
+ match (holders[0].value.Get()) { ref item => {
+ other[0].value = SharedPointers.MAKE<Value>(); return (int)item.Data; } }
+ return 0; } public static int Main() { return 42; } }''', 'cannot overwrite owner field while a borrowed view is alive'),
+        'struct_pattern_nested_delete': ('''class Holder { public STRONG<Value> value; }
+ class Outer { public Holder inner; public Outer() { inner = new Holder(); } }
+ class Program { public static int Main() { Outer outer = new Outer();
+ outer.inner.value = SharedPointers.MAKE<Value>(); match (outer.inner.value.Get()) { ref item => {
+ delete outer.inner; return (int)item.Data; } } return 0; } }''', 'while a borrowed view is alive'),
+        'struct_pattern_nested_destroy_alias': ('''class Holder { public STRONG<Value> value; }
+ class Outer { public Holder inner; public Outer() { inner = new Holder(); } }
+ class Program { public static int Main() { Outer outer = new Outer(); Holder alias = outer.inner;
+ outer.inner.value = SharedPointers.MAKE<Value>(); match (outer.inner.value.Get()) { ref item => {
+ destroy alias; return (int)item.Data; } } return 0; } }''', 'while a borrowed view is alive'),
+        'struct_pattern_nested_field_other': ('''class Holder { public STRONG<Value> value; public STRONG<Value> other; }
+ class Outer { public Holder inner; public Outer() { inner = new Holder(); } }
+ class Program { public static int Main() { Outer outer = new Outer();
+ outer.inner.value = SharedPointers.MAKE<Value>(); match (outer.inner.value.Get()) { ref item => {
+ outer.inner.other = SharedPointers.MAKE<Value>(); return item.Data == 42l ? 42 : 1; } } return 0; } }''', 'run:42'),
+        'struct_pattern_nested_field_overwrite': ('''class Holder { public STRONG<Value> value; }
+ class Outer { public Holder inner; public Outer() { inner = new Holder(); } }
+ class Program { public static int Main() { Outer outer = new Outer();
+ outer.inner.value = SharedPointers.MAKE<Value>(); match (outer.inner.value.Get()) { ref item => {
+ outer.inner.value = SharedPointers.MAKE<Value>(); return (int)item.Data; } } return 0; } }''', 'cannot overwrite owner field while a borrowed view is alive'),
+        'struct_pattern_nested_field_move': ('''class Holder { public STRONG<Value> value; }
+ class Outer { public Holder inner; public Outer() { inner = new Holder(); } }
+ class Program { public static int Main() { Outer outer = new Outer();
+ outer.inner.value = SharedPointers.MAKE<Value>(); match (outer.inner.value.Get()) { ref item => {
+ STRONG<Value> moved = move(outer.inner.value); return (int)item.Data; } } return 0; } }''', 'cannot partially move owner field while a borrowed view is alive'),
+        'struct_pattern_nested_parent_replace': ('''class Holder { public STRONG<Value> value; }
+ class Outer { public Holder inner; public Outer() { inner = new Holder(); } }
+ class Program { public static int Main() { Outer outer = new Outer();
+ outer.inner.value = SharedPointers.MAKE<Value>(); match (outer.inner.value.Get()) { ref item => {
+ outer.inner = new Holder(); return (int)item.Data; } } return 0; } }''', 'cannot overwrite owner field while a borrowed view is alive'),
+        'struct_pattern_nested_field_call': ('''class Holder { public STRONG<Value> value;
+ public void Reset() { value = SharedPointers.MAKE<Value>(); } }
+ class Outer { public Holder inner; public Outer() { inner = new Holder(); } }
+ class Program { public static int Main() { Outer outer = new Outer();
+ outer.inner.value = SharedPointers.MAKE<Value>(); match (outer.inner.value.Get()) { ref item => {
+ outer.inner.Reset(); return (int)item.Data; } } return 0; } }''', 'cannot call potentially mutating method while a borrowed field view is alive'),
+        'struct_pattern_field_overwrite': ('''class Holder { public STRONG<Value> value; }
+ class Program { public static int Main() { Holder holder = new Holder();
+ holder.value = SharedPointers.MAKE<Value>(); match (holder.value.Get()) { ref item => {
+ holder.value = SharedPointers.MAKE<Value>(); return (int)item.Data; } } return 0; } }''', 'borrow'),
+        'struct_pattern_field_move': ('''class Holder { public STRONG<Value> value; }
+ class Program { public static int Main() { Holder holder = new Holder();
+ holder.value = SharedPointers.MAKE<Value>(); match (holder.value.Get()) { ref item => {
+ STRONG<Value> moved = move(holder.value); return (int)item.Data; } } return 0; } }''', 'borrow'),
+        'struct_pattern_field_alias': ('''class Holder { public STRONG<Value> value; }
+ class Program { public static int Main() { Holder holder = new Holder(); borrowed Holder alias = holder;
+ holder.value = SharedPointers.MAKE<Value>(); match (holder.value.Get()) { ref item => {
+ alias.value = SharedPointers.MAKE<Value>(); return (int)item.Data; } } return 0; } }''', 'borrow'),
+        'struct_pattern_field_call': ('''class Holder { public STRONG<Value> value;
+ public void Reset() { value = SharedPointers.MAKE<Value>(); } }
+ class Program { public static int Main() { Holder holder = new Holder();
+ holder.value = SharedPointers.MAKE<Value>(); match (holder.value.Get()) { ref item => {
+ holder.Reset(); return (int)item.Data; } } return 0; } }''', 'borrow'),
+        'struct_pattern_field_other': ('''class Holder { public STRONG<Value> value; public STRONG<Value> other; }
+ class Program { public static int Main() { Holder holder = new Holder();
+ holder.value = SharedPointers.MAKE<Value>(); match (holder.value.Get()) { ref item => {
+ holder.other = SharedPointers.MAKE<Value>(); return item.Data == 42l ? 42 : 1; } } return 0; } }''', 'run:42'),
+        'struct_pattern_field_finished': ('''class Holder { public STRONG<Value> value; }
+ class Program { public static int Main() { Holder holder = new Holder();
+ holder.value = SharedPointers.MAKE<Value>(); match (holder.value.Get()) { ref item => {
+ if (item.Data != 42l) return 1; } } holder.value = SharedPointers.MAKE<Value>();
+ return holder.value.Get().Data == 42l ? 42 : 2; } }''', 'run:42'),
         'struct_pattern_view_overwrite': ('''class Program { public static int Work(STRONG<Value> owner) {
  SharedView<Value> view = owner.Borrow();
  match (view.Get()) { ref item => { owner = SharedPointers.MAKE<Value>(); return (int)item.Data; } }
@@ -950,6 +1099,16 @@ class Program { public static int Main() { return 42; } }''', 'run:42'),
 class Program { public static int Main() { return 42; } }''', 'run:42'),
         'namespace_tuple_alias_control': ('''using Pair = (int, long);
 namespace Stores { Pair value; } class Program { public static int Main() { return 42; } }''', 'run:42'),
+        'namespace_chained_tuple_alias_control': ('''using Pair = (int, long); using Other = Pair;
+namespace Stores { Other value; } class Program { public static int Main() { return 42; } }''', 'run:42'),
+        'namespace_chained_tuple_alias_access': ('''using Pair = (int, long); using Other = Pair;
+namespace Stores { Other value; class Program { public static int Main() {
+ value = (40, 2l); var (first, second) = value; return first + (int)second; } } }''', 'run:42'),
+        'namespace_chained_tuple_weak_arc_replace': ('''using Pair = (int, WeakArc<Payload>); using Other = Pair;
+namespace Stores { Other value; class Program { public static int Main() {
+ Arc<Payload> owner = SharedPointers.MakeArc<Payload>(); value = (0, owner.Downgrade());
+ if (owner.WeakCount() != 1l) return 1; value = (0, default(WeakArc<Payload>));
+ return owner.WeakCount() == 0l ? 42 : 2; } } }''', 'run:42'),
         'namespace_tuple_alias_atomic': ('''using Pair = (int, WeakArc<Payload>);
 namespace Stores { Pair value; } class Program { public static int Main() { return 42; } }''', 'run:42'),
         'namespace_tuple_alias_local': ('''using Pair = (int, WEAK<Payload>);
@@ -961,6 +1120,17 @@ class Program { public static int Main() { Pair value = (40, 2l);
  var (first, second) = value; return first + (int)second; } }''', 'run:42'),
         'nested_tuple_alias_control': ('''using Pair = (int, (int, long)); using Other = Pair;
 class Holder { public static Other value; } class Program { public static int Main() { return 42; } }''', 'run:42'),
+        'chained_tuple_alias_local_static': ('''using Pair = (int, WEAK<Payload>); using Other = Pair;
+class Holder { public static Other value; } class Program { public static int Main() { return 42; } }''',
+                                             'thread-local shared'),
+        'chained_nested_tuple_alias_local_static': ('''using Pair = (int, (int, WEAK<Payload>));
+using Other = Pair; class Holder { public static Other value; }
+class Program { public static int Main() { return 42; } }''', 'thread-local shared'),
+        'chained_tuple_alias_atomic_static': ('''using Pair = (int, WeakArc<Payload>); using Other = Pair;
+class Holder { public static Other value; } class Program { public static int Main() { return 42; } }''', 'run:42'),
+        'chained_tuple_alias_local_namespace': ('''using Pair = (int, WEAK<Payload>); using Other = Pair;
+namespace Store { Other value; } class Program { public static int Main() { return 42; } }''',
+                                                'thread-local shared'),
         'direct_nested_tuple_alias_control': ('''using Pair = (int, (int, long));
 class Holder { public static Pair value; } class Program { public static int Main() { return 42; } }''', 'run:42'),
         'named_tuple_alias_control': ('''using Pair = (int first, long second);
@@ -1127,37 +1297,154 @@ class Program { public static int Main() { Holder holder = default(Holder);
         'view_tuple_deconstruct_live': ('''class Program { public static int Main() {
  STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); (SharedView<Payload>, int) saved = (owner.Borrow(), 0);
  var (view, number) = saved; return (int)view.Get().Data + number; } }''', 'run:42'),
-        'view_reassigned_direct_live': ('''class Program { public static int Main() {
+        'view_tuple_owner_replaced': ('''class Program { public static int Main() {
+ STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); (SharedView<Payload>, int) saved = (owner.Borrow(), 0);
+ owner = default(STRONG<Payload>); var (view, number) = saved; return (int)view.Get().Data + number; } }''',
+                                      'borrow'),
+        'view_tuple_copy_escape': ('''class Program { public static int Main() {
+ (SharedView<Payload>, int) saved; { STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
+ (SharedView<Payload>, int) first = (owner.Borrow(), 0); saved = first; }
+ var (view, number) = saved; return (int)view.Get().Data + number; } }''', 'borrow'),
+        'view_tuple_return_escape': ('''class Program { static (SharedView<Payload>, int) Make() {
+ STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); return (owner.Borrow(), 0); }
+ public static int Main() { var (view, number) = Make(); return (int)view.Get().Data + number; } }''', 'borrow'),
+        'view_tuple_second_owner_replaced': ('''class Program { public static int Main() {
  STRONG<Payload> first = SharedPointers.MAKE<Payload>(); STRONG<Payload> second = SharedPointers.MAKE<Payload>();
- SharedView<Payload> view = first.Borrow(); view = second.Borrow(); return (int)view.Get().Data; } }''', 'run:42'),
-        'view_reassigned_direct_owner_replace': ('''class Program { public static int Main() {
+ (SharedView<Payload>, SharedView<Payload>) saved = (first.Borrow(), second.Borrow());
+ second = default(STRONG<Payload>); var (a, b) = saved; return (int)a.Get().Data; } }''', 'borrow'),
+        'view_tuple_nested_owner_replaced': ('''class Program { public static int Main() {
+ STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
+ ((SharedView<Payload>, int), int) saved = ((owner.Borrow(), 0), 0);
+ owner = default(STRONG<Payload>); return 0; } }''', 'borrow'),
+        'view_tuple_unrelated_owner': ('''class Program { public static int Main() {
+ STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); STRONG<Payload> other = SharedPointers.MAKE<Payload>();
+ (SharedView<Payload>, int) saved = (owner.Borrow(), 0); other = default(STRONG<Payload>);
+ var (view, number) = saved; return (int)view.Get().Data + number; } }''', 'run:42'),
+        'view_tuple_extracted_outlives_tuple': ('''class Program { public static int Main() {
+ STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); SharedView<Payload> extracted;
+ { (SharedView<Payload>, int) saved = (owner.Borrow(), 0); var (view, number) = saved; extracted = view; }
+ owner = default(STRONG<Payload>); return (int)extracted.Get().Data; } }''', 'borrow'),
+        'view_tuple_copy_owner_replaced': ('''class Program { public static int Main() {
+ STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
+ (SharedView<Payload>, int) first = (owner.Borrow(), 0); (SharedView<Payload>, int) saved = first;
+ owner = default(STRONG<Payload>); var (view, number) = saved; return (int)view.Get().Data + number; } }''',
+                                            'borrow'),
+        'view_tuple_return_alias': ('''class Program { static (SharedView<Payload>, int) Make() {
+ STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
+ (SharedView<Payload>, int) first = (owner.Borrow(), 0); return first; }
+ public static int Main() { var (view, number) = Make(); return (int)view.Get().Data + number; } }''', 'borrow'),
+        'view_tuple_call_second_owner': ('''class Program {
+ static (SharedView<Payload>, SharedView<Payload>) Identity((SharedView<Payload>, SharedView<Payload>) pair) { return pair; }
+ public static int Main() { STRONG<Payload> first = SharedPointers.MAKE<Payload>(); STRONG<Payload> second = SharedPointers.MAKE<Payload>();
+ (SharedView<Payload>, SharedView<Payload>) saved = Identity((first.Borrow(), second.Borrow()));
+ second = default(STRONG<Payload>); var (a, b) = saved; return (int)b.Get().Data; } }''', 'borrow'),
+        'view_tuple_call_live': ('''class Program {
+ static (SharedView<Payload>, SharedView<Payload>) Identity((SharedView<Payload>, SharedView<Payload>) pair) { return pair; }
+ public static int Main() { STRONG<Payload> first = SharedPointers.MAKE<Payload>(); STRONG<Payload> second = SharedPointers.MAKE<Payload>();
+ (SharedView<Payload>, SharedView<Payload>) saved = Identity((first.Borrow(), second.Borrow()));
+ var (a, b) = saved; return (int)b.Get().Data; } }''', 'run:42'),
+        'view_tuple_branch_live': ('''class Program { public static int Main() {
  STRONG<Payload> first = SharedPointers.MAKE<Payload>(); STRONG<Payload> second = SharedPointers.MAKE<Payload>();
- SharedView<Payload> view = first.Borrow(); view = second.Borrow(); second = default(STRONG<Payload>);
- return (int)view.Get().Data; } }''', 'borrow'),
-        'view_reassigned_copy_owner_replace': ('''class Program { public static int Main() {
+ (SharedView<Payload>, int) saved; if (true) { saved = (first.Borrow(), 0); } else { saved = (second.Borrow(), 0); }
+ var (view, number) = saved; return (int)view.Get().Data + number; } }''', 'run:42'),
+        'view_tuple_branch_first_replaced': ('''class Program { public static int Main() {
  STRONG<Payload> first = SharedPointers.MAKE<Payload>(); STRONG<Payload> second = SharedPointers.MAKE<Payload>();
- SharedView<Payload> view = first.Borrow(); view = second.Borrow(); SharedView<Payload> copy = view;
- second = default(STRONG<Payload>); return (int)copy.Get().Data; } }''', 'borrow'),
-        'view_reassigned_conditional_live': ('''class Program { public static int Main() {
+ (SharedView<Payload>, int) saved; if (true) { saved = (first.Borrow(), 0); } else { saved = (second.Borrow(), 0); }
+ first = default(STRONG<Payload>); var (view, number) = saved; return (int)view.Get().Data + number; } }''', 'borrow'),
+        'view_tuple_branch_second_replaced': ('''class Program { public static int Main() {
  STRONG<Payload> first = SharedPointers.MAKE<Payload>(); STRONG<Payload> second = SharedPointers.MAKE<Payload>();
- STRONG<Payload> third = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.Borrow();
- view = false ? second.Borrow() : third.Borrow(); return (int)view.Get().Data; } }''', 'run:42'),
-        'view_reassigned_conditional_owner_replace': ('''class Program { public static int Main() {
- STRONG<Payload> first = SharedPointers.MAKE<Payload>(); STRONG<Payload> second = SharedPointers.MAKE<Payload>();
- STRONG<Payload> third = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.Borrow();
- view = false ? second.Borrow() : third.Borrow(); third = default(STRONG<Payload>); return (int)view.Get().Data; } }''', 'borrow'),
-        'view_reassigned_parameter_live': ('''class Program { static int Read(STRONG<Payload> first) {
- STRONG<Payload> second = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.Borrow();
- view = second.Borrow(); return (int)view.Get().Data; }
- public static int Main() { return Read(SharedPointers.MAKE<Payload>()); } }''', 'run:42'),
-        'view_reassigned_parameter_replace': ('''class Program { static int Read(STRONG<Payload> first) {
- STRONG<Payload> second = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.Borrow();
- view = second.Borrow(); first = default(STRONG<Payload>); return (int)view.Get().Data; }
+ (SharedView<Payload>, int) saved; if (true) { saved = (first.Borrow(), 0); } else { saved = (second.Borrow(), 0); }
+ second = default(STRONG<Payload>); var (view, number) = saved; return (int)view.Get().Data + number; } }''', 'borrow'),
+        'view_tuple_capture_copy': ('''class Program { public delegate void Action(); public static int Main() { Action work;
+ { STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); (SharedView<Payload>, int) saved = (owner.Borrow(), 0);
+ work = [copy saved] () => { var (view, n) = saved; int x = (int)view.Get().Data + n; }; }
+ work(); return 0; } }''', 'cannot be captured by a lambda'),
+        'view_tuple_capture_ref': ('''class Program { public delegate void Action(); public static int Main() { Action work;
+ { STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); (SharedView<Payload>, int) saved = (owner.Borrow(), 0);
+ work = [ref saved] () => { var (view, n) = saved; int x = (int)view.Get().Data + n; }; }
+ work(); return 0; } }''', 'cannot be captured by a lambda'),
+        'view_tuple_capture_parameter': ('''class Program { public delegate void Action();
+ static Action Capture((SharedView<Payload>, int) saved) {
+ return [copy saved] () => { var (view, n) = saved; int x = (int)view.Get().Data + n; }; }
+ public static int Main() { return 0; } }''', 'cannot be captured by a lambda'),
+        'plain_tuple_capture': ('''class Program { public delegate void Action(); public static int Main() {
+ (int, int) saved = (40, 2); Action work = [copy saved] () => { var (a, b) = saved; int x = a + b; };
+ work(); return 42; } }''', 'run:42'),
+        'view_tuple_receiver_field': ('''class Holder { public STRONG<Payload> owner;
+ public Holder() { owner = SharedPointers.MAKE<Payload>(); }
+ public (SharedView<Payload>, int) View() { return (owner.Borrow(), 0); } }
+ class Program { public static int Main() { Holder h = new Holder(); (SharedView<Payload>, int) saved = h.View();
+ h.owner = default(STRONG<Payload>); var (view, n) = saved; return (int)view.Get().Data + n; } }''', 'borrow'),
+        'view_tuple_nested_receiver_field': ('''class Holder { public STRONG<Payload> owner;
+ public Holder() { owner = SharedPointers.MAKE<Payload>(); }
+ public (SharedView<Payload>, int) View() { return (owner.Borrow(), 0); } }
+ class Outer { public Holder inner; public Outer() { inner = new Holder(); } }
+ class Program { public static int Main() { Outer outer = new Outer();
+ (SharedView<Payload>, int) saved = outer.inner.View(); outer.inner.owner = default(STRONG<Payload>);
+ var (view, n) = saved; return (int)view.Get().Data + n; } }''', 'borrow'),
+        'view_tuple_receiver_live': ('''class Holder { public STRONG<Payload> owner;
+ public Holder() { owner = SharedPointers.MAKE<Payload>(); }
+ public (SharedView<Payload>, int) View() { return (owner.Borrow(), 0); } }
+ class Program { public static int Main() { Holder h = new Holder(); (SharedView<Payload>, int) saved = h.View();
+ var (view, n) = saved; return (int)view.Get().Data + n; } }''', 'run:42'),
+        'view_tuple_independent_receiver': ('''class Holder { public STRONG<Payload> owner;
+ public Holder() { owner = SharedPointers.MAKE<Payload>(); }
+ public (SharedView<Payload>, int) View() { return (owner.Borrow(), 0); } }
+ class Program { public static int Main() { Holder h = new Holder(); Holder other = new Holder();
+ (SharedView<Payload>, int) saved = h.View(); other.owner = default(STRONG<Payload>);
+ var (view, n) = saved; return (int)view.Get().Data + n; } }''', 'run:42'),
+        'view_tuple_field_escape': ('''class Holder { public (SharedView<Payload>, int) saved; }
+ class Program { public static int Main() { Holder holder = new Holder();
+ { STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); holder.saved = (owner.Borrow(), 0); }
+ var (view, n) = holder.saved; return (int)view.Get().Data + n; } }''', 'borrow'),
+        'view_tuple_parameter_to_field': ('''class Holder { public (SharedView<Payload>, int) saved; }
+ class Program { public static Holder holder;
+ static void Save((SharedView<Payload>, int) value) { holder.saved = value; }
+ public static int Main() { holder = new Holder(); STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
+ Save((owner.Borrow(), 0)); return 0; } }''', 'borrow'),
+        'view_tuple_parameter_read': ('''class Program {
+ static int Read((SharedView<Payload>, int) value) { var (view, n) = value; return (int)view.Get().Data + n; }
+ public static int Main() { STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); return Read((owner.Borrow(), 0)); } }''',
+                                        'run:42'),
+        'plain_tuple_field': ('''class Holder { public (int, int) saved; }
+ class Program { public static int Main() { Holder holder = new Holder(); holder.saved = (40, 2);
+ var (a, b) = holder.saved; return a + b; } }''', 'run:42'),
+        'view_tuple_struct_return': ('''struct Carrier { public (SharedView<Payload>, int) pair; }
+ class Program { static Carrier Make() { STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
+ Carrier saved = { (owner.Borrow(), 0) }; return saved; }
+ public static int Main() { Carrier saved = Make(); var (view, n) = saved.pair; return (int)view.Get().Data + n; } }''', 'borrow'),
+        'view_tuple_struct_live': ('''struct Carrier { public (SharedView<Payload>, int) pair; }
+ class Program { public static int Main() { STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
+ Carrier saved = { (owner.Borrow(), 0) }; var (view, n) = saved.pair; return (int)view.Get().Data + n; } }''', 'run:42'),
+        'view_tuple_struct_owner_replaced': ('''struct Carrier { public (SharedView<Payload>, int) pair; }
+ class Program { public static int Main() { STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
+ Carrier saved = { (owner.Borrow(), 0) }; owner = default(STRONG<Payload>);
+ var (view, n) = saved.pair; return (int)view.Get().Data + n; } }''', 'borrow'),
+        'view_tuple_struct_copy_escape': ('''struct Carrier { public (SharedView<Payload>, int) pair; }
+ class Program { public static int Main() { Carrier saved; { STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
+ Carrier local = { (owner.Borrow(), 0) }; saved = local; }
+ var (view, n) = saved.pair; return (int)view.Get().Data + n; } }''', 'borrow'),
+        'view_tuple_nested_struct_return': ('''struct Carrier { public (SharedView<Payload>, int) pair; }
+ struct Outer { public Carrier nested; } class Program { static Outer Make() {
+ STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); Outer saved = { { (owner.Borrow(), 0) } }; return saved; }
  public static int Main() { return 0; } }''', 'borrow'),
-        'view_reassigned_shadow_reject': ('''class Program { public static int Main() {
- STRONG<Payload> first = SharedPointers.MAKE<Payload>(); STRONG<Payload> second = SharedPointers.MAKE<Payload>();
- SharedView<Payload> view = first.Borrow(); { STRONG<Payload> first = SharedPointers.MAKE<Payload>();
- view = second.Borrow(); } return (int)view.Get().Data; } }''', 'view reassignment has a different local owner'),
+        'view_tuple_struct_array_escape': ('''struct Carrier { public (SharedView<Payload>, int) pair; }
+ class Program { public static int Main() { Carrier[] values = new Carrier[1];
+ { STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); Carrier value = { (owner.Borrow(), 0) };
+ values[0] = value; } return 0; } }''', 'borrow'),
+        'borrowed_struct_view_return': ('''borrowed struct Carrier { public SharedView<Payload> view; }
+ class Program { static Carrier Make() { STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
+ Carrier value = { owner.Borrow() }; return value; } public static int Main() { return 0; } }''', 'borrow'),
+        'borrowed_struct_view_array_return': ('''borrowed struct Carrier { public SharedView<Payload> view; }
+ class Program { static Carrier[] Make() { STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
+ Carrier[] values = new Carrier[1]; Carrier value = { owner.Borrow() }; values[0] = value; return values; }
+ public static int Main() { return 0; } }''', 'borrow'),
+        'borrowed_struct_view_replace': ('''borrowed struct Carrier { public SharedView<Payload> view; }
+ class Program { public static int Main() { STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
+ Carrier value = { owner.Borrow() }; owner = default(STRONG<Payload>); return 0; } }''', 'borrow'),
+        'borrowed_struct_view_live': ('''borrowed struct Carrier { public SharedView<Payload> view; }
+ class Program { public static int Main() { STRONG<Payload> owner = SharedPointers.MAKE<Payload>();
+ Carrier value = { owner.Borrow() }; return (int)value.view.Get().Data; } }''', 'run:42'),
         'readonly_nested_local_live': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
  class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
  class Program { public static int Main() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
@@ -1292,6 +1579,37 @@ class Program { public static int Main() { Holder holder = default(Holder);
  class Program { static int Read(STRONG<NestedPayload> owner) {
  SharedView<NestedPayload> view = owner.Borrow(); borrowed NestedChild child = view.Get().Item;
  owner = default(STRONG<NestedPayload>); return child.Data; } public static int Main() { return 0; } }''', 'borrow'),
+        'view_reassigned_direct_live': ('''class Program { public static int Main() {
+ STRONG<Payload> first = SharedPointers.MAKE<Payload>(); STRONG<Payload> second = SharedPointers.MAKE<Payload>();
+ SharedView<Payload> view = first.Borrow(); view = second.Borrow(); return (int)view.Get().Data; } }''', 'run:42'),
+        'view_reassigned_direct_owner_replace': ('''class Program { public static int Main() {
+ STRONG<Payload> first = SharedPointers.MAKE<Payload>(); STRONG<Payload> second = SharedPointers.MAKE<Payload>();
+ SharedView<Payload> view = first.Borrow(); view = second.Borrow(); second = default(STRONG<Payload>);
+ return (int)view.Get().Data; } }''', 'borrow'),
+        'view_reassigned_copy_owner_replace': ('''class Program { public static int Main() {
+ STRONG<Payload> first = SharedPointers.MAKE<Payload>(); STRONG<Payload> second = SharedPointers.MAKE<Payload>();
+ SharedView<Payload> view = first.Borrow(); view = second.Borrow(); SharedView<Payload> copy = view;
+ second = default(STRONG<Payload>); return (int)copy.Get().Data; } }''', 'borrow'),
+        'view_reassigned_conditional_live': ('''class Program { public static int Main() {
+ STRONG<Payload> first = SharedPointers.MAKE<Payload>(); STRONG<Payload> second = SharedPointers.MAKE<Payload>();
+ STRONG<Payload> third = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.Borrow();
+ view = false ? second.Borrow() : third.Borrow(); return (int)view.Get().Data; } }''', 'run:42'),
+        'view_reassigned_conditional_owner_replace': ('''class Program { public static int Main() {
+ STRONG<Payload> first = SharedPointers.MAKE<Payload>(); STRONG<Payload> second = SharedPointers.MAKE<Payload>();
+ STRONG<Payload> third = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.Borrow();
+ view = false ? second.Borrow() : third.Borrow(); third = default(STRONG<Payload>); return (int)view.Get().Data; } }''', 'borrow'),
+        'view_reassigned_parameter_live': ('''class Program { static int Read(STRONG<Payload> first) {
+ STRONG<Payload> second = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.Borrow();
+ view = second.Borrow(); return (int)view.Get().Data; }
+ public static int Main() { return Read(SharedPointers.MAKE<Payload>()); } }''', 'run:42'),
+        'view_reassigned_parameter_replace': ('''class Program { static int Read(STRONG<Payload> first) {
+ STRONG<Payload> second = SharedPointers.MAKE<Payload>(); SharedView<Payload> view = first.Borrow();
+ view = second.Borrow(); first = default(STRONG<Payload>); return (int)view.Get().Data; }
+ public static int Main() { return 0; } }''', 'borrow'),
+        'view_reassigned_shadow_reject': ('''class Program { public static int Main() {
+ STRONG<Payload> first = SharedPointers.MAKE<Payload>(); STRONG<Payload> second = SharedPointers.MAKE<Payload>();
+ SharedView<Payload> view = first.Borrow(); { STRONG<Payload> first = SharedPointers.MAKE<Payload>();
+ view = second.Borrow(); } return (int)view.Get().Data; } }''', 'view reassignment has a different local owner'),
         'readonly_nested_view_reassigned_live': ('''class NestedChild { public int Data; public NestedChild() { Data = 42; } }
  class NestedPayload { public NestedChild Item; public NestedPayload() { Item = new NestedChild(); } }
  class Program { public static int Main() { STRONG<NestedPayload> first = SharedPointers.MAKE<NestedPayload>();
@@ -1459,6 +1777,10 @@ class Program { public static int Main() { Holder holder = default(Holder);
  class Program { static borrowed NestedChild Leak() { STRONG<NestedPayload> owner = SharedPointers.MAKE<NestedPayload>();
  borrowed NestedPayload parent = owner.Get(); borrowed NestedChild child = parent.Item; return child; }
  public static int Main() { return 0; } }''', 'borrow'),
+        'plain_array_live': ('''class Program { public static int Main() {
+ int[] values = new int[1]; values[0] = 42; return values[0]; } }''', 'run:42'),
+        'plain_tuple_struct_live': ('''struct Carrier { public (int, int) pair; }
+ class Program { public static int Main() { Carrier saved = { (40, 2) }; var (a, b) = saved.pair; return a + b; } }''', 'run:42'),
         'view_array_escape': ('''class Program { public static int Main() {
  SharedView<Payload>[] saved = new SharedView<Payload>[1];
  { STRONG<Payload> owner = SharedPointers.MAKE<Payload>(); saved[0] = owner.Borrow(); }

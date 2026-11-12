@@ -1,6 +1,7 @@
 #include "HirLoweringSupport.h"
 #include "Internal/HirAggregateFrame.h"
 #include "nativesharp/Frontend/ProjectMetaprogrammingModel.h"
+#include "nativesharp/Target/TargetDataLayout.h"
 
 #include <optional>
 #include <string>
@@ -499,8 +500,14 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerStackAllocationExpre
             error = "CC1 stackalloc requires the object layout model to size it";
             return nullptr;
         }
-        const std::optional<std::pair<std::uint64_t, std::uint64_t>> elementLayout =
+        std::optional<std::pair<std::uint64_t, std::uint64_t>> elementLayout =
             objectLayoutModel_->valueLayoutForTypeKey(*nameLookup_, core->elementTypeKey);
+        if (!elementLayout.has_value() && core->elementTypeKey == "builtin:decimal")
+        {
+            const auto decimal = target::TargetDataLayout::WindowsX64().layoutOf(
+                target::BuiltinLayoutKind::Decimal);
+            elementLayout = {{decimal.size, decimal.alignment}};
+        }
         if (!elementLayout.has_value())
         {
             error = "stackalloc cannot size '" + core->elementTypeKey +

@@ -3,6 +3,7 @@
 #include "Support/OperatorClassification.h"
 #include "Support/IntegralConstantArithmetic.h"
 #include "Support/OwnershipFlowSnapshotQueries.h"
+#include "Support/ViewProducerBodyPrototype.h"
 
 
 #include "MethodBodyInternals.h"
@@ -293,6 +294,55 @@ void ProjectMethodBodyModel::analyzeCallable(
     analyzeConstructorInitializer(callable, callableOrdinal, rootScopeOrdinal, diagnostics);
     analyzeBlock(
         callable.syntax->first(), callableOrdinal, rootScopeOrdinal, false, diagnostics);
+    // Candidate detection only: no verified summary is emitted. Check both the
+    // complete body shape and the semantic binding of intrinsic tuple unpacking.
+    const auto* body = callable.syntax->first();
+    if (callable.isStatic && !callable.isImportedC && !callable.isExternC &&
+        callable.declaredTypeKey == "builtin:void" && callable.parameters.size() == 2 &&
+        callable.parameters[0].passKind == ParameterPassKind::Value &&
+        (callable.parameters[1].passKind == ParameterPassKind::Ref ||
+         callable.parameters[1].passKind == ParameterPassKind::Out) &&
+        tupleTypeKeyContainsView(callable.parameters[0].typeKey) &&
+        typeKeyIsViewLike(callable.parameters[1].pointeeTypeKey) &&
+        view_producer_prototype::directTransferShape(
+            body, callable.parameters[0].name, callable.parameters[1].name) &&
+        calls_.empty() && namespaceFunctionCalls_.empty() && cleanupOrdinals.empty())
+    {
+        const auto* declaration = body->children()[0];
+        const bool intrinsic = std::ranges::any_of(deconstructionBindings_, [&](const auto& binding)
+        {
+            return binding.syntax == declaration && !binding.selectedMemberOrdinal.has_value() &&
+                elementTypeHasTrivialLifetime(binding.tupleTypeKey);
+        });
+        const bool observed = std::ranges::any_of(prototypeViewOutputEdges_, [&](const auto& edge)
+        {
+            return edge.size() == 3 && edge[0] == callableOrdinal && edge[1] == 0 && edge[2] == 1;
+        });
+        const auto* assignment = body->children()[1]->first();
+        const auto* tupleBinding = nameBinding(declaration->first(), callableOrdinal);
+        const auto* outputBinding = nameBinding(assignment->first(), callableOrdinal);
+        const auto* viewBinding = nameBinding(assignment->second(), callableOrdinal);
+        const bool exactBindings = tupleBinding != nullptr && outputBinding != nullptr && viewBinding != nullptr &&
+            tupleBinding->parameterOrdinal == 0 && outputBinding->parameterOrdinal == 1 &&
+            tupleBinding->kind == MethodNameBindingKind::Parameter &&
+            outputBinding->kind == MethodNameBindingKind::Parameter &&
+            viewBinding->kind == MethodNameBindingKind::Local && viewBinding->localOrdinal.has_value() &&
+            *viewBinding->localOrdinal < locals_.size() &&
+            locals_[*viewBinding->localOrdinal].prototypeTupleViewParameter == 0 &&
+            locals_[*viewBinding->localOrdinal].typeKey == callable.parameters[1].pointeeTypeKey;
+        // The general lifetime helper fails open for unresolved types and only
+        // inspects direct members. Restrict this observational experiment to
+        // (resolved view, int) and reject transitive value-drop requirements.
+        const auto tupleElements = ProjectTypeConversion::tupleElementTypeKeys(callable.parameters[0].typeKey);
+        const bool knownTrivialInputs = memberModel_ != nullptr && nameLookup_ != nullptr &&
+            tupleElements.has_value() && tupleElements->size() == 2 &&
+            (*tupleElements)[0] == callable.parameters[1].pointeeTypeKey &&
+            (*tupleElements)[1] == "builtin:int" &&
+            namedTypeForTypeKey((*tupleElements)[0]) != nullptr &&
+            !memberModel_->typeRequiresValueDrop((*tupleElements)[0]);
+        if (intrinsic && observed && exactBindings && knownTrivialInputs)
+            prototypeDirectViewProducerCandidates_.push_back(callableOrdinal);
+    }
     // NS304-T05-F05: a pinned local cannot cross a suspension — its fixed-address identity is not
     // preserved across the poll return (the local moves to the frame and back). A borrowed local
     // IS allowed when its source is re-localizable to a frame slot; the MIR drags the borrow's

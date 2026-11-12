@@ -32,6 +32,48 @@ afirma haber inspeccionado IR optimizado distinto ni mediciones de heap.
 
 ### Investigación de limpieza de bases durante construcción fallida
 
+**Comprobación posterior con el árbol actual.** La reproducción histórica
+`shared_nontrivial_base_throw.py` primero se detuvo durante el análisis porque
+su proyecto mínimo no declaraba `Send` y `Sync`, necesarios para las
+implementaciones condicionales actuales de Arc y WeakArc
+(`A:/nsc-fixes-evidencia/shared-throwing-base-current-{Rc,Arc}.log`). Se
+añadieron esas dos declaraciones de prueba junto a `Exception`; la rama de
+consumo binario elimina las tres para utilizar las del SDK. Se conservaron los
+casos y las expectativas de traza existentes.
+
+Al repetir con el compilador aislado SHA-256
+`f0948d234daf92ecb107c680974db4c5f0294a2d87b23c7e199b288b2739f2b1`,
+Rc y Arc pasaron análisis y ejecutaron con salida 42 en O0 y O2, desde fuentes
+(`shared-throwing-base-traits-{Rc,Arc}.log`) y contra
+`A:/nsc-fixes-evidencia/pointers-sdk-refresh/NativeSharpCore.lib`
+(`shared-throwing-base-binary-{Rc,Arc}.log`). Los comandos están en los
+archivos `shared-throwing-base-current-check.cmd` y
+`shared-throwing-base-binary-current.cmd` de esa misma carpeta de evidencia.
+El SDK binario se generó previamente desde la copia aislada, con otro
+compilador; sus hashes figuran en `pointers-sdk-refresh-scope.md`.
+
+Esta comprobación posterior contradice el rechazo histórico descrito más
+abajo para el fixture completo: con este árbol y estos artefactos las trazas
+esperadas del fixture se alcanzaron. No identifica qué cambio posterior
+eliminó aquel rechazo ni demuestra todas las formas de construcción, la
+liberación física del bloque o el comportamiento de una segunda excepción
+durante cleanup. El ajuste del fixture está sin commit; no se modificó la
+protección del compilador en esta comprobación.
+
+La reproducción se registró después como
+`nsc.sdk.shared-nontrivial-base-throw` y se añadió `--no-artifact-cache` a sus
+emisiones. Tras regenerar la configuración y compilar `nsc` incrementalmente
+(`shared-throwing-base-registered-build.log`), la prueba registrada pasó para
+Rc y Arc en O0/O2 (`shared-throwing-base-registered-ctest.log`). El mismo
+fixture sin caché pasó contra el Core binario aislado previamente generado
+(`shared-throwing-base-binary-no-cache.cmd` y `.log`). El SHA-256 del
+compilador de esta repetición fue
+`0d48e6a9098d9d24a33be2cc1e4a9d909854c7e92906675e32411b517609fe73`.
+Estos registros están en `A:/nsc-fixes-evidencia`; el Core binario no se
+regeneró durante esta repetición. La prueba registrada cubre fuentes y el
+control binario se ejecuta por separado. No cambian los límites de cobertura
+del párrafo anterior.
+
 La selección `shared-constructor-regression-current.cmd` verificó el prototipo
 actual en 17 casos para Rc y Arc en O0/O2: las 68 ejecuciones terminaron con 42
 (`shared-constructor-regression-current.log`). Incluye transferencia y orden
@@ -1153,6 +1195,300 @@ no es una instantánea linealizable.
 
 ## AddressSanitizer
 
+La reproducción original del ejemplo 97 se ejecutó posteriormente con
+`--sanitize-address` y las dependencias aisladas de la campaña, en O0 y O2.
+La copia de `Program.ns` es idéntica al original (`fc /b` sin diferencias).
+Ambos builds terminaron con éxito, pero ambas ejecuciones terminaron con 0 y
+sin diagnóstico de ASan, aunque el programa escribe `pointer[4]` después de
+reservar cuatro enteros. Comandos, salidas y códigos están en
+`A:/nsc-fixes-evidencia/asan-original-97-20261111/`; el compilador informó el
+hash de build `957f80c6905f7c94`. Este resultado reproduce una falta de
+detección del ejemplo concreto; no demuestra por sí mismo cuál de las rutas
+de reserva o instrumentación la causa. El ejemplo y la instalación funcional
+permanecen intactos, y el caso 97 queda abierto.
+
+El IR no optimizado de la reproducción reserva 24 bytes mediante
+`__nativesharp_alloc` y emite la escritura de cuatro bytes al desplazamiento
+24 desde el inicio (`original-llvm.log`). El desensamblado y las relocaciones
+del runtime enlazado muestran que esa función llama a `GetProcessHeap` y
+`HeapAlloc` (`runtime-alloc-relocations.log`). Los dos ejecutables importan la
+DLL de ASan y `__asan_report_store4` (`exe-O0-imports.log` y
+`exe-O2-imports.log`); la presencia de una importación no demuestra por sí sola
+que se haya instrumentado la instrucción concreta. Es coherente con la
+limitación de heap previamente observada, pero aún no prueba cómo ASan marca
+esa reserva ni permite dar por identificada toda la causa raíz.
+
+Inspección adicional del ejecutable O0: la escritura de `42` está en
+`0x140002ba6` y va precedida de una lectura del byte de sombra y una llamada
+condicional al thunk de `__asan_report_store4` en `0x1400739e0`. El thunk
+salta a la entrada `0x140081908`, correspondiente a esa importación. Como
+el proceso terminó con 0, esa comprobación no diagnosticó la dirección en la
+ejecución observada. El desensamblado completo y las importaciones están en
+`exe-O0-disassembly.log` y `exe-O0-imports.log`. Esto confirma la
+instrumentación de esa escritura en O0; no acredita la instrucción O2 ni
+identifica todavía el mecanismo correcto para registrar el bloque ante ASan.
+
+Como contraste se tomó una copia del IR no optimizado del ejemplo, se
+redirigieron sus llamadas de reserva y liberación a `malloc` y `free`, se
+añadió el atributo ASan y un `main` de prueba, y se aplicó el pase ASan con
+LLVM 23.1.0. Ese ejecutable terminó con código 1 y el runtime informó
+`heap-buffer-overflow` al escribir justo después de una reserva de 24 bytes
+(`malloc-experiment.cmd`, `malloc-input.ll`, `malloc-asan.ll`,
+`malloc-compile.log` y `malloc-run.log` en la carpeta de evidencia). Clang
+avisó que reemplazaba el triple de target. El experimento cambia una copia del
+IR y usa un arranque de prueba: demuestra el contraste de ese asignador para
+esta reproducción, no corrige ni valida todavía la integración del driver.
+El runtime también reserva directamente con `HeapAlloc` en servicios que
+entregan memoria a consumidores y usa `HeapReAlloc` y `HeapFree` para la
+lectura de consola. Sustituir solo `__nativesharp_alloc` o solo
+`__nativesharp_free` mezclaría familias de asignación; se debe resolver la
+procedencia y el ciclo de vida de todas esas rutas antes de elegir una
+implementación productiva.
+
+El control válido del mismo experimento modifica en la copia del IR el
+desplazamiento de la escritura de 16 a 12 bytes desde el primer elemento,
+manteniendo la reserva y liberación con `malloc`/`free`. Terminó con 0 y sin
+diagnóstico (`malloc-valid-control.cmd`, `malloc-valid-input.ll` y
+`malloc-valid-run.log`). Clang emitió la misma advertencia de triple. Este
+control no ejercita el runtime productivo ni variantes O2 del experimento.
+
+Se ensayaron además dos alternativas aisladas para emparejar las tres
+operaciones del heap del runtime. La primera modificó una copia del IR del
+runtime generado por el compilador y mantuvo `__nativesharp_start`; la segunda
+aplicó `llvm-objcopy` a una copia de la biblioteca de runtime configurada y
+redirigió sus referencias a un adaptador de prueba. En ambas, el ejemplo
+informó `heap-buffer-overflow` y terminó con 1. La biblioteca de entrada
+conservó el SHA-256 registrado antes del experimento.
+
+Con el runtime generado experimental, un acceso válido terminó con 0; además,
+una cadena devuelta por el servicio de directorio y una lectura de 340 bytes
+que requiere reasignación se liberaron mediante el runtime y devolvieron 42.
+Los mismos dos servicios devolvieron 42 usando la copia de la biblioteca y el
+adaptador. Un último fixture modificó una copia del IR para escribir en el
+último elemento después de liberar el arreglo: con esa biblioteca ASan informó
+`heap-use-after-free` y terminó con 1. Los comandos, fuentes IR y logs están en
+`A:/nsc-fixes-evidencia/asan-original-97-20261111/runtime-experiment-*` y
+`runtime-archive-*`; las compilaciones IR de Clang registraron advertencia de
+triple. Estos experimentos usan arranques o IR de prueba y no demuestran
+compatibilidad con todos los flags del heap, runtimes personalizados,
+bibliotecas externas ni el driver productivo. No se ha implementado todavía
+la transformación en el compilador.
+
+Existe ahora un generador provisional de adaptador en
+`WindowsRuntimeBuilder::buildSanitizerHeapAdapter`, todavía desconectado del
+driver. Emite rutas de `malloc`, `realloc` y `free` para el heap de proceso y
+rechaza flags, heaps y argumentos de realloc no soportados. La construcción
+incremental de su prueba y 19 comprobaciones pasaron. El objeto de una primera
+versión detectó el desbordamiento del ejemplo en un enlace experimental y el
+control de directorio más lectura con reasignación devolvió 42. Un control de
+flags no soportados encontró que `ExitProcess` impedía vaciar el mensaje;
+después de añadir `fflush`, la segunda versión devolvió 87 con el diagnóstico
+visible (`build-heap-adapter-v2.log`, `test-heap-adapter-v2.log` y
+`generated-adapter-unsupported-v2-*.log`).
+
+Una reserva ajena realizada con `HeapAlloc` y entregada al adaptador para
+liberarla terminó con 1 sin diagnóstico visible
+(`generated-adapter-foreign-*.log`). Por ello se añadió una comprobación de
+propiedad mediante la interfaz local `__sanitizer_get_ownership`; ese último
+cambio **aún no se ha compilado ni probado**. La comprobación puede cambiar el
+diagnóstico de una doble liberación y requiere controles explícitos. Tampoco
+se ha resuelto aún la identificación fiable de runtimes personalizados ni la
+integración del archivo de runtime en el driver. El caso continúa abierto.
+
+La comprobación de propiedad se compiló incrementalmente y la prueba del
+generador volvió a pasar 19 comprobaciones (`build-heap-adapter-v3.log` y
+`test-heap-adapter-v3.log`). En enlaces experimentales, el control válido de
+servicios devolvió 42, la memoria ajena fue rechazada con diagnóstico y salida
+87, y el uso después de liberar produjo `heap-use-after-free`. La doble
+liberación se detenía con el mismo diagnóstico genérico de memoria ajena.
+
+Se comprobó entonces que `__asan_get_free_stack` distingue en la configuración
+de prueba una reserva ajena de una reserva ASan liberada. El generador usa ese
+dato para dejar que el interceptor ASan diagnostique la doble liberación. Con
+la cuarta versión, compilada incrementalmente, la prueba del generador pasó
+19 comprobaciones; el control válido devolvió 42, la reserva ajena devolvió
+87 con diagnóstico, y ASan informó `double-free` y `heap-use-after-free` en
+los respectivos procesos. Las salidas están en `build-heap-adapter-v4.log`,
+`test-heap-adapter-v4.log` y `v4-*-run.log` de la carpeta de evidencia.
+
+Con `malloc_context_size=0` también se observó `double-free`; con
+`quarantine_size_mb=0`, el adaptador lo rechazó con el diagnóstico genérico y
+salida 87. Por tanto no se garantiza un diagnóstico específico de doble
+liberación para todas las configuraciones del runtime ASan. El adaptador sigue
+sin conectarse al driver y las comprobaciones anteriores no certifican O2,
+integración completa, runtimes personalizados ni la transformación de la
+biblioteca en producción.
+
+`tests/integration/asan_heap_out_of_bounds` conserva copias idénticas de la
+fuente y el proyecto originales; ambas coincidencias se comprobaron con
+`fc /b`. La regresión `nsc.driver-address-sanitizer-heap-example`, preparada
+en `address_sanitizer_heap.py`, exige un diagnóstico ASan de desbordamiento de
+heap o acceso a memoria envenenada y salida distinta de cero en O0 y O2. Su
+ejecución directa de la versión inicial antes de corregir falló en las dos
+configuraciones por ausencia de diagnóstico, tras compilar y
+ejecutar correctamente los programas (`regression-before.cmd` y `.log` en la
+carpeta de evidencia). No se ha ejecutado todavía a través de CTest ni se ha
+corregido el runtime; el fixture de compilación se creó desde cero y no fue
+incremental. La aceptación posterior de `use-after-poison` evita imponer un
+nombre de diagnóstico único a un posible allocator propio; esa versión del
+ejecutor aún no se ha repetido, y los logs sin diagnóstico tampoco cumplen su
+expectativa.
+
+La prueba dirigida `nsc.driver-address-sanitizer` se repitió con el compilador
+aislado SHA-256
+`8abb9d728847e1fe3e6ed949a85734bbb08bb738397d3643c3d5c453f8e53cf1`.
+Pasó 1/1 sin omisión (`A:/nsc-fixes-evidencia/asan-driver-current-directed.cmd`
+y `.log`): usa proyectos mínimos, Clang y su runtime existentes, comprueba la
+ejecución válida y el desbordamiento de pila en O0/O2, el empaquetado de la DLL
+y los rechazos de opciones y runtime incompatibles. No reconstruye Core ni el
+compilador; los binarios de prueba se generan en temporales aislados de A. El
+compilador contiene cambios locales y la cobertura no incluye el runtime ni las
+bibliotecas precompiladas, que no se instrumentan. La modalidad ASan desactiva
+la caché de artefactos por contrato del driver.
+
+Con el compilador incremental SHA-256
+`0d48e6a9098d9d24a33be2cc1e4a9d909854c7e92906675e32411b517609fe73`,
+`nsc.driver-address-sanitizer` volvió a pasar sin omisión en Windows x64
+(`A:/nsc-fixes-evidencia/asan-driver-after-registered.cmd` y `.log`). El
+registro contiene las ejecuciones válidas, los diagnósticos del acceso fuera
+de límites en O0/O2 y los rechazos de opciones incompatibles y runtimes
+inválidos. Se emplearon Clang y su runtime existentes como dependencias de
+referencia. La cobertura sigue limitada al código instrumentado: esta prueba
+no demuestra instrumentación del runtime ni de bibliotecas precompiladas.
+
+### Integración provisional del adaptador de heap
+
+El 11 de noviembre se conectó el adaptador al enlace ASan. El compilador
+inspecciona las referencias del runtime seleccionado, usa `llvm-objcopy` para
+redirigir las tres operaciones de heap en una copia temporal y comprueba la
+copia antes de enlazarla junto con el adaptador. Los enlaces ordinarios no pasan
+por esa ruta. La biblioteca de entrada conservó el SHA-256
+`3235a612c2dc62bb05c244885bc135ec76bf847f4f9a700badd9017c1f913a53`.
+
+La compilación incremental de `nsc` y la prueba de unidad se registró en
+`A:/nsc-fixes-evidencia/asan-original-97-20261111/integrate-build.log`.
+Con el compilador de SHA-256
+`37aa0810f459e2a5c1216e7992e2cecfa7817de404c68daaa784d7087d5693b3`,
+`ctest -R address-sanitizer -V` pasó 3/3 en
+`A:/nsc-fixes-evidencia/asan-original-97-20261111/integrate-tests.log`.
+El ejemplo original sin cambios informa `heap-buffer-overflow` en O0 y O2;
+un acceso válido devuelve 42 con y sin ASan, y un uso después de liberar
+informa `heap-use-after-free` en ambos niveles. La prueba del driver también cubre
+stackalloc, controles normales y rechazo de opciones incompatibles.
+
+Esta evidencia corresponde al runtime generado en A y al host LLVM estático.
+La presencia de las tres referencias no demuestra que un runtime personalizado
+use únicamente ese heap ni que se conserve su semántica de asignación: esa
+compatibilidad está pendiente y no debe darse por certificada. La comprobación
+posterior `ctest -R address-sanitizer -V` pasó 4/4; su nueva regresión usa el
+constructor de ejecutables directamente con runtime integrado, comprueba el
+acceso válido (42) y el desbordamiento (`heap-buffer-overflow`) en O0/O2. Otra
+comprobación transforma una copia del runtime para eliminar la referencia
+esperada a `HeapReAlloc` y verifica que el driver la rechaza sin generar el
+ejecutable. Comandos y resultados están en el mismo `integrate-tests.log`.
+Un runtime alternativo conservaba las tres referencias de heap, pero sustituía
+`__nativesharp_alloc` por una reserva en un bloque estático. El driver lo aceptó
+y el programa que escribió fuera de límites devolvió 42 sin diagnóstico ASan:
+`A:/nsc-fixes-evidencia/asan-original-97-20261111/custom-runtime-probe.log`.
+Se decidió rechazar explícitamente ese contrato no verificado: para una
+biblioteca independiente, el compilador genera temporalmente su propio runtime
+y compara tamaño y SHA-256 con el configurado; si difieren, no enlaza con ASan.
+El runtime integrado sigue generándose directamente en el mismo compilador.
+Esta decisión también rechaza runtimes distintos que podrían ser compatibles;
+no se afirma compatibilidad de esos runtimes ni se aplica la restricción a
+enlaces normales. La generación añade trabajo a cada enlace ASan y requiere el
+enlazador de la configuración. Una comparación previa encontró idénticos el
+runtime aislado y el regenerado (`canonical-runtime-probe.log`).
+
+Tras la comprobación de identidad, la compilación incremental y las cuatro
+pruebas dirigidas volvieron a pasar (`integrate-build.log`,
+`integrate-tests.log`); el runtime alternativo se rechazó sin producir
+ejecutable. El compilador probado tiene SHA-256
+`3d373c1edd67aa9e771fef3a6be422b531ea3fe2814a17424f104cd708687165`.
+No se han verificado la ausencia de `llvm-objcopy` ni todas las opciones de ASan.
+
+Se reprodujo que una transformación fallida se atribuía erróneamente a
+NSLink: una herramienta de prueba aislada llamada `llvm-objcopy.exe` devolvió
+23 y el driver informó `NSLink failed with process status 23`
+(`failing-objcopy-probe.log`). Se corrigió la identificación de esa herramienta.
+La regresión crea el proceso de prueba en un directorio temporal con espacios,
+comprueba el diagnóstico `llvm-objcopy failed with process status 23` y que no
+se publique el ejecutable. Las cuatro pruebas ASan volvieron a pasar con el
+compilador SHA-256
+`656e40ab66bcc6c3628caf7a8c570837bfee937a72d2bdc5acc0dcc23544d692`,
+según `integrate-tests.log`. Esto verifica una herramienta que falla, no su
+ausencia en `PATH`.
+
+Esa reproducción reveló que la búsqueda de Windows también seleccionaba un
+ejecutable desde el directorio del proyecto. La búsqueda de `llvm-objcopy` se
+restringió posteriormente a las entradas explícitas de `PATH`, sin modificar
+esa variable. La regresión actual deja la herramienta falsa en un directorio
+con espacios, verifica que el compilador utiliza la herramienta configurada y
+ejecuta el ejemplo instrumentado con diagnóstico `heap-buffer-overflow`.
+Las cuatro pruebas dirigidas pasaron con el compilador SHA-256
+`9c9b3c483b4adfabe4b70357e977e874deb43bec75efa5927cb9e6a116116c30`
+(`integrate-tests.log`). La comprobación previa de fallo de la herramienta es
+histórica; la regresión actual verifica la prioridad de búsqueda, y la ausencia
+de la herramienta sigue sin probarse.
+
+La reserva de tamaño `SIZE_MAX` mostró una diferencia adicional: `HeapAlloc`
+devolvía nulo, pero el adaptador ASan terminaba con `allocation-size-too-big`
+(`allocation-failure-run.log`, salida 1). Se añadió al adaptador
+`__asan_default_options` con `allocator_may_return_null=1`; esto aplica a las
+reservas ASan del proceso y puede ser sobrescrito por `ASAN_OPTIONS`. La prueba
+dirigida usa el objeto emitido por el productor real, solicita reservas y
+reasignaciones imposibles, verifica los nulos y que el bloque anterior siga
+válido, y termina 42. ASan imprime avisos de reserva fallida. Las cuatro pruebas
+dirigidas volvieron a pasar con el compilador aislado SHA-256
+`e2b8a6ed5db173a2d8a422005b4fbb875b1471235df3da3b33bbe683b87a1a1e`;
+comandos y salida en `integrate-tests.log`. No se afirma equivalencia para
+fallas de todos los tamaños ni cuando el usuario cambia esa opción.
+El adaptador rechaza argumentos de heap o punteros que no puede emparejar y,
+con la cuarentena desactivada, puede emitir el error genérico 87 en lugar de
+un diagnóstico específico de doble liberación. No se afirma instrumentación de
+bibliotecas precompiladas ni del código del runtime. Cambios sin commit.
+
+Con el compilador aislado SHA-256 `40566c10872f48dd5c12909c68983b1f972493d3639ec65997e3c190502d41bd`,
+se actualizó incrementalmente el ejecutable auxiliar de las pruebas ASan
+(SHA-256 `4d7d31bb74d06b976a2e46ded1023ff91ba072264985a9357dc6ca50c405b08a`)
+y se repitieron las cuatro pruebas dirigidas: 4/4 pasaron sin omisiones.
+`A:/nsc-fixes-evidencia/asan-before-readonly-update.log` registra diagnósticos de
+desbordamiento y uso después de liberar en O0/O2, y el control de reserva
+imposible terminó con 42. El log de compilación incremental del auxiliar es
+`A:/nsc-fixes-evidencia/asan-current-helper-build.log`. Se usó Clang y runtime
+externos ya autorizados y `detect_leaks=0`; no se certifican bibliotecas
+precompiladas, fugas ni el runtime personalizado fuera de las condiciones
+descritas en esta sección.
+
+Después de los cambios de préstamos indexados se repitieron las mismas cuatro
+pruebas dirigidas con el compilador aislado SHA-256
+`5bf7b36a3f6bdc33e5f849ea71168f2cb56030adf920a53c5b7eaefee8cd2344`:
+pasaron 4/4 sin omisiones (`A:/nsc-fixes-evidencia/asan-current-targeted.log`).
+La ejecución conservó `detect_leaks=0` y las limitaciones anteriores; no
+constituye validación completa de ASan ni de bibliotecas precompiladas.
+
+Actualización: el adaptador de heap, sus dos regresiones directas y sus
+fixtures quedaron registrados en el commit local `b5ea18afe`. Después de los
+cambios de tuplas, la selección dirigida de cinco pruebas ASan pasó 5/5 sin
+omisiones (`asan-original-97-20261111/asan-current-20261111.log`). La prueba
+de destructor que lanza usa otros cambios todavía sin commit y no se incluyó
+en ese commit. Se mantuvieron `detect_leaks=0`, el árbol con cambios locales
+y el auxiliar previamente construido; no se acredita una revisión limpia ni
+se amplían los límites de compatibilidad de runtimes personalizados.
+
+Tras los cambios provisionales de limpieza de excepciones, se repitieron con
+el compilador aislado SHA-256
+`f8d6020ee7a69d327a21c7cc339eef43306001d8a67e2f25f542269a5afe8580`
+las dos pruebas dirigidas `nsc.driver-address-sanitizer-heap-example` y
+`nsc.driver-address-sanitizer-throwing-array-release`: pasaron 2/2 sin
+omisiones. El ejemplo original informó `heap-buffer-overflow` en O0 y O2; la
+segunda prueba informó el acceso posterior a liberación introducido a propósito
+tras el destructor que lanza, para elementos struct y clase en O0 y O2. El
+comando y la salida están en `A:/nsc-fixes-evidencia/asan-heap-targeted-20261111.cmd`
+y `asan-heap-targeted-20261111.log`. Se usó `detect_leaks=0`: esta selección no
+verifica fugas, bibliotecas precompiladas ni runtimes personalizados. No se
+reconstruyeron el compilador ni el SDK para esta repetición.
+
 El usuario aprobó exposición explícita y desactivada por defecto. La opción
 debe seleccionar instrumentación de las unidades LLVM y enlazar la DLL y las
 bibliotecas de runtime compatibles suministradas externamente; su ubicación
@@ -1257,3 +1593,11 @@ la prueba de stackalloc no demuestra cobertura de ese heap.
 Las rutas no cubiertas y la compatibilidad entre versiones del runtime deben
 permanecer visibles; una ejecución correcta no demuestra detección completa de
 todo error de memoria.
+Repetición dirigida después de integrar cambios, 2026-11-11:
+`shared-throwing-base-after-integration-20261111.cmd` ejecutó
+`nsc.sdk.shared-nontrivial-base-throw` (1/1) y el fixture contra el Core
+binario aislado preexistente. Rc y Arc pasaron el análisis y ejecutaron 42 en
+O0/O2. Los tres logs `shared-throwing-base-*-after-20261111.log` están en
+`A:/nsc-fixes-evidencia`. Esta prueba conserva los límites documentados abajo:
+el árbol contiene cambios locales, el Core no se regeneró y no se demuestra la
+limpieza de todas las formas ni de una segunda excepción durante cleanup.

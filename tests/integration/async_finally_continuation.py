@@ -7,6 +7,7 @@ import tempfile
 
 def main():
     compiler = Path(sys.argv[1])
+    execution_timeout = float(os.environ.get('NSC_ASYNC_FINALLY_TIMEOUT', '120'))
     prefix = '''using NativeSharp.Core;
 namespace NativeSharp.Core { public class Exception { } }
 class Counter { public static int Log; }
@@ -21,6 +22,22 @@ class Program { public static async int Slow() { yield; return 7; }
 } public static async int Main() { int caught = 0;
  try { int value = await Work(); } catch (Exception error) { caught = 1; }
  return caught == 1 && Counter.Log == 1 ? 42 : 1;
+}''',
+        'child_error_finally_suspend': '''public static async int Fail() throws Exception {
+ yield; throw new Exception();
+} public static async int Work() throws Exception {
+ try { int value = await Fail(); } finally { int value = await Slow(); Counter.Log = 1; } return 0;
+} public static async int Main() { int caught = 0;
+ try { int value = await Work(); } catch (Exception error) { caught = 1; }
+ return caught == 1 && Counter.Log == 1 ? 42 : 10 + caught * 2 + Counter.Log;
+}''',
+        'child_error_finally_ready': '''public static async int Fail() throws Exception {
+ yield; throw new Exception();
+} public static async int Work() throws Exception {
+ try { int value = await Fail(); } finally { int value = await Immediate(); Counter.Log = 1; } return 0;
+} public static async int Main() { int caught = 0;
+ try { int value = await Work(); } catch (Exception error) { caught = 1; }
+ return caught == 1 && Counter.Log == 1 ? 42 : 10 + caught * 2 + Counter.Log;
 }''',
         'nested_exception': '''public static async int Work() throws Exception {
  try { try { throw new Exception(); } finally { int value = await Slow(); Counter.Log = 1; } }
@@ -67,6 +84,20 @@ class Program { public static async int Slow() { yield; return 7; }
    try { break; } finally { int value = await Slow(); Counter.Log = Counter.Log + 1; }
  }
  return iterations == 1 && Counter.Log == 1 ? 42 : 5;
+}''',
+        'break_diagnostic': '''public static async int Main() { int iterations = 0;
+ while (iterations < 2) { iterations = iterations + 1;
+   try { break; } finally { int value = await Slow(); Counter.Log = Counter.Log + 1; }
+ }
+ return iterations == 1 && Counter.Log == 1 ? 42 : 10 + iterations * 3 + Counter.Log;
+}''',
+        'break_trace': '''public static async int Main() { int iterations = 0;
+ while (iterations < 2) { iterations = iterations + 1;
+   try { break; } finally { int value = await Slow(); Counter.Log = Counter.Log * 10 + iterations; }
+ }
+ if (iterations == 1 && Counter.Log == 1) return 42;
+ if (iterations == 2 && Counter.Log == 12) return 52;
+ return 53;
 }''',
         'continue': '''public static async int Main() { int iterations = 0;
  while (iterations < 2) { iterations = iterations + 1;
@@ -149,7 +180,8 @@ class Program { public static async int Slow() { yield; return 7; }
             (root / 'Main.ns').write_text(prefix.replace('BODY', body), encoding='utf-8')
             for level in ('O0', 'O2'):
                 exe = root / (name + '-' + level + '.exe')
-                command = [str(compiler), '--emit-project-oop-exe', str(project), '-o', str(exe), '-' + level]
+                command = [str(compiler), '--emit-project-oop-exe', str(project), '-o', str(exe),
+                           '-' + level, '--no-artifact-cache']
                 build = subprocess.run(command, cwd=root, capture_output=True, text=True, errors='replace', timeout=120)
                 if build.returncode != 0:
                     failures.append((name, level, 'build', build.stdout + build.stderr))
@@ -157,7 +189,13 @@ class Program { public static async int Slow() { yield; return 7; }
                 if os.name != 'nt':
                     print(f'{name} {level}: compiled; execution skipped', flush=True)
                     continue
-                result = subprocess.run([str(exe)], cwd=root, capture_output=True, text=True, errors='replace', timeout=120)
+                try:
+                    result = subprocess.run([str(exe)], cwd=root, capture_output=True, text=True,
+                                            errors='replace', timeout=execution_timeout)
+                except subprocess.TimeoutExpired:
+                    print(f'{name} {level}: timeout after {execution_timeout:g}s', flush=True)
+                    failures.append((name, level, 'timeout', execution_timeout))
+                    continue
                 print(f'{name} {level}: exit={result.returncode}', flush=True)
                 if result.returncode != 42:
                     failures.append((name, level, 'run', result.returncode))

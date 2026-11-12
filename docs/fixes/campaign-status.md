@@ -21,7 +21,7 @@ se detallan en los documentos de `docs/fixes` y registros de la misma carpeta.
 
 | Caso | Resultado inicial y situación |
 | --- | --- |
-| Rc / WeakRc; Arc / WeakArc | `sdk-01`: nombres no encontrados en la base. La reproducción original y controles con clases y structs compilan y ejecutan con Core binario aislado. `0f25b9021` registra las condiciones de Send/Sync de Arc y WeakArc y sus pruebas dirigidas; la invalidación de caché se comprueba en `arc-conditional-cache.md`. La vida del módulo, las vistas compuestas en binarios y otros recorridos siguen pendientes; los resultados usan un árbol con cambios locales y no acreditan el contrato completo. Véanse `arc-conditional-thread-safety.md` y `prestamo-get-punteros.md`. |
+| Rc / WeakRc; Arc / WeakArc | `sdk-01`: nombres no encontrados en la base. La reproducción original y controles con clases y structs compilan y ejecutan con Core binario aislado. `0f25b9021` registra las condiciones de Send/Sync de Arc y WeakArc y sus pruebas dirigidas; la invalidación de caché se comprueba en `arc-conditional-cache.md`. Con Core regenerado desde esta copia, `pointers-sdk-refresh-test.cmd` pasó la prueba dirigida de propietarios, débiles, cleanup, factorías, solo lectura y cambios de productor/base; véase `A:/nsc-fixes-evidencia/pointers-sdk-refresh-scope.md`. La generación intentó reutilizar caché pero informó 0 hits. La vida del módulo, las vistas compuestas en binarios y otros recorridos siguen pendientes; los resultados usan un árbol con cambios locales y no acreditan el contrato completo. |
 | Dictionary string AddOrUpdate | `sdk-02`: termina 3221226356; doble liberación. Corregido en `5127e4d07`, con ejecución de regresión. |
 | SortWith | `sdk-03`: nombre no encontrado. Por decisión del usuario, `SortWith<T>(Span<T>, Comparison<T>)` delega en la sobrecarga existente de `Sort`. La reproducción original compiló y ejecutó con salida 0 en O0/O2 (`sortwith-original/results.json`); `nsc.sdk.sort-with-alias` verifica orden descendente, duplicados, vacío y un elemento, con ejecución 42 en O0/O2 (`sortwith-test.log`). El span vacío requiere tipo explícito en esta prueba. |
 | Saturación: suma y conversiones a short y byte | `comp-01`: `-2147483648`, `-25536`, `34`; corregido para esas operaciones en `a7436961d` y `bb4c18900`. No se afirma cobertura de todas las operaciones saturadas. |
@@ -35,18 +35,50 @@ se detallan en los documentos de `docs/fixes` y registros de la misma carpeta.
 | Restricción entre parámetros genéricos | `69-constraint`: la base rechazaba T. `6022fe794` implementó las restricciones dependientes; la reproducción original volvió a compilar y ejecutar en el árbol actual. La regresión dirigida comprueba relaciones válidas e incompatibles, llamadas al trait y consumo binario; véase `dependent-trait-dispatch.md`. La validación usó un árbol con otros cambios locales y no certifica una revisión limpia. |
 | Lambda sin captura en Main global | `69-lambda`: falla en HIR por ordinal de owner. `f8a05890f` corrige función global sin captura; cierres con captura no están cubiertos. |
 | Matriz dinámica genérica decimal | `70-decimal`: falta layout del elemento. `de6415700` añade el layout en operaciones de arreglo; reproducción y regresión pasan. |
-| Método genérico en matriz genérica | `70-method`: se rechaza deliberadamente como no implementado. Pendiente diseño. |
+| Método genérico en matriz genérica | `70-method`: la base lo rechazaba. El ejemplo original intacto pasa el análisis, compila y devuelve 6 en O0/O2; su `Main` no llama a `Multiply`. La selección dirigida de inferencia y consumo binario pasó 6/6. El ensayo sigue sin commit y no cubre todas las formas de receptor; evidencia y límites en `generic-owner-method.md`. |
 | Función genérica con dimensiones const reenviadas | `70-static`: rechazaba Rows. `690a8ffd3` corrige el caso y verifica multiplicación y argumentos inválidos. No cubre todos los ámbitos o paquetes. |
-| Temporal como argumento in de operador | `70-temporary`: rechazo de argumento. Pendiente decisión de lenguaje y duración. |
-| Llamada a función desde #run | `73-run`: rechazo del evaluador limitado. Pendiente decisión de alcance del evaluador. |
-| Inspección general de campos | `74-fields`: ejecuta un ejemplo explícito, no un inspector universal. No se localizó API general; pendiente diseño. |
-| derive Print | `75-derive`: texto `GridPoint`, sin campos. Pendiente decisión de formato. La igualdad falsa observada en la misma ejecución se corrigió de forma acotada; véase `derive-ignore-equality.md`. |
-| SIMD máscara a vector, indexación y condicional | `89-mask-convert`, `89-mask-index`, `89-mask-select`: rechazos reproducidos. Pendiente definir las operaciones y representación deseadas. |
+| Temporal como argumento in de operador | `70-temporary`: la base rechazaba el argumento. En el árbol provisional actual, el ejemplo original ejecuta 0 en O0/O2 y la regresión de vida termina correctamente; siguen abiertos el retorno prestado de clase y el consumo de operadores binarios con carga `owned`. Evidencia y límites en `temporary-in-operator.md`. |
+| Llamada a función desde #run | `73-run`: la integración `fc7ea5bb7` admite llamadas puras acotadas de la misma fuente. Cuatro controles dirigidos de argumentos, anidamiento, wrapping y división por cero pasaron en O0/O2 con el compilador aislado (`A:/nsc-fixes-evidencia/73-run-current-probe.log`). No es soporte general de llamadas ni comparación con el ejemplo original omitido por autorización; contrato y límites en `73-run-laptop.md` e `integracion-run73.md`. |
+| Inspección general de campos | `74-fields`: el ejemplo explícito ejecuta en O2. Existe un catálogo estático interno del compilador, pero no se identificó API NativeSharp para enumerarlo; superficie de lenguaje pendiente. Evidencia y límite del build en `static-field-introspection.md`. |
+| derive Print | `75-derive`: se conserva la salida existente `GridPoint`, que el propio ejemplo compara exactamente; incluir campos cambiaría ese contrato. El ejemplo original sin cambios compiló y terminó con 0 en O0/O2, con `Text=GridPoint` y las comprobaciones de igualdad y hash aprobadas (`A:/nsc-fixes-evidencia/75-print-contract-*-run.log`). No se afirma que exista un formateador de campos; la corrección acotada de igualdad está en `derive-ignore-equality.md`. |
+| SIMD máscara a vector, indexación y condicional | Los rechazos de `89-mask-convert`, `89-mask-index` y `89-mask-select` se corrigieron en `e7eac1eb9`, `1769a179d` y `fbb5d736b`. Las tres regresiones y el control flotante a entero sin signo volvieron a pasar con el compilador aislado (`A:/nsc-fixes-evidencia/89-simd-current-*.log`). Los ejemplos originales pasaron O0/O2 en la integración previa; contratos y límites en `integracion-conversion-mascara.md`, `integracion-indice-mascara.md` e `integracion-seleccion-mascara.md`. |
 | AddressSanitizer | No se localizó opción en la base. La rama incorpora `--sanitize-address` para ejecutables de proyecto de consola con Clang y DLL externos indicados explícitamente; la ruta utiliza Clang/LLD para el enlace y conserva NSLink para las bibliotecas de importación. Caso válido y desbordamiento pasan en O0/O2; restricciones y cobertura en `diseno-punteros-y-asan.md`. |
-| Operadores ++ / -- | `39-increment`, `39-decrement`: parser rechaza la sobrecarga. Pendiente decisión sobre semántica y evaluación. |
+| Operadores ++ / -- | `39-increment`, `39-decrement`: la base rechazaba la declaración. El prototipo admite usos acotados sobre structs copiables y sobre un local RAII directo de clase con operador fuente o de biblioteca NativeSharp y retorno `owned`; hay pruebas dirigidas O0/O2 de propiedad, descarte y excepción desde fuente, con límites de cobertura. Las demás formas de destino de clase siguen rechazadas; el trabajo está sin commit. Evidencia y límites en `incremento-usuario-investigacion.md`. |
 | NativeSharp.Text | `text-namespace`: namespace no encontrado. El usuario decidió mantenerlo pendiente hasta definir su superficie. |
-| Compile con .. | `102-outside`: proyecto rechaza rutas fuera de su raíz. Pendiente decisión de resolución de proyectos. |
+| Compile con .. | `102-outside`: el rechazo de la base se corrigió con la integración `4e034d0a9`, que admite rutas relativas externas explícitas y globs sin ampliar la búsqueda implícita. La regresión dirigida pasó con archivo y glob en O0/O2; también comprobó exclusiones, errores y límites de enlaces (`A:/nsc-fixes-evidencia/102-verify-current.log`). El archivo fuente del ejemplo histórico falta, por lo que no se afirma su ejecución; véase `integracion-rutas-externas.md`. |
 | Ejemplo 66 | Antecedente ya resuelto en el ejemplo; no se atribuye un defecto vigente al compilador. |
+
+`96c68b2be` permite consultar `Expired()` y `WeakCount()` de referencias
+débiles recibidas mediante `in`. Las regresiones dirigidas desde fuentes y
+con una biblioteca mínima pasaron para ambas familias en O0/O2, incluidos
+los estados vacío, vivo y expirado. La biblioteca mínima no es el SDK
+completo; evidencia y límites en `weak-readonly-observation.md`. Los demás
+recorridos de las cuatro familias siguen pendientes.
+
+El ejemplo original 97 inicialmente devolvía 0 sin diagnóstico en O0/O2 pese
+a su escritura fuera de límites. Con la integración provisional del adaptador
+de heap ahora ASan informa `heap-buffer-overflow` en ambos niveles. También
+pasaron los controles dirigidos de acceso válido y uso después de liberar en
+ambos niveles. La prueba y los comandos están en
+`A:/nsc-fixes-evidencia/asan-original-97-20261111/integrate-tests.log`; el
+ejemplo se conserva sin cambios. La compatibilidad con runtimes personalizados
+y otras configuraciones permanece sin verificar, por lo que ASan no se declara
+terminado; los detalles están en `diseno-punteros-y-asan.md`.
+La comprobación dirigida posterior pasó 4/4: incluye la ruta con runtime
+integrado en O0/O2 y el rechazo de una copia de runtime sin la referencia de
+reasignación esperada. Esto no verifica runtimes personalizados en general.
+Un runtime alternativo reprodujo un falso negativo pese a conservar esas
+referencias; la ruta ASan ahora exige que la biblioteca independiente coincida
+con el runtime generado por el compilador y rechaza explícitamente los demás.
+La regresión dirigida volvió a pasar; evidencia y coste en el documento ASan.
+Se corrigió además el valor predeterminado ante reservas ASan imposibles: la
+prueba dirigida verifica nulo y conserva el bloque previo tras una
+reasignación fallida. El usuario puede sobrescribir esa opción del runtime.
+Tras actualizar incrementalmente el auxiliar ASan, las cuatro pruebas
+dirigidas volvieron a pasar con el compilador aislado actual, sin omisiones:
+incluyen diagnóstico de desbordamiento y uso posterior a liberación en O0/O2.
+El log y los hashes están en `diseno-punteros-y-asan.md`; siguen vigentes sus
+límites de instrumentación y no se probó detección de fugas.
 
 Durante la preparación del consumo binario de las familias se reprodujo una
 limitación adicional de accesibilidad: un consumidor con `ProjectReference`
@@ -134,6 +166,14 @@ fallos antes y después de completar la base, recuperación local, herencia de
 dos niveles y delegación; pasa análisis semántico y falla en la emisión por
 esa restricción. La evidencia y los casos aún no ejecutados están en
 `diseno-punteros-y-asan.md`.
+
+**Actualización posterior:** tras adaptar el proyecto mínimo a los traits
+`Send` y `Sync` actuales, esa regresión pasó para Rc y Arc en O0/O2 tanto con
+Core desde fuentes como con Core binario aislado. Por tanto, el rechazo del
+párrafo anterior es un resultado histórico, no el resultado actual de ese
+fixture. Los hashes, registros y límites se detallan en
+`diseno-punteros-y-asan.md`; no se afirma cobertura de todas las cargas ni de
+la liberación física de los bloques.
 
 La fábrica normal también tiene una ruta de limpieza incompleta: si una
 inicialización estática falla después de construir una base con destructor,
@@ -320,3 +360,78 @@ original, solo en lectura, encontró estos archivos modificados en ambas ramas:
 Es coincidencia por archivo, no una predicción de conflictos de líneas. La
 comparación de cambios registrados sin commit en archivos rastreados no halló
 coincidencias; no evalúa archivos no rastreados. Registro `shared-files.log`.
+
+
+## Contraste NCSS de la rama (2026-11-09)
+
+La auditoria NCSS incorporo pruebas directas decimal[] y decimal[2] ademas del caso generico dinamico documentado arriba. Con el ejecutable preexistente A:/nsc-fixes-evidencia/build/bin/nsc.exe, runtime generado de la campana y SDK instalado C:/native-sharp/lib/NativeSharp.Core, decimal[] pasa O0/O2; decimal[2] aun rechaza el layout raw C2.1 en ambos modos. El codigo actual contiene el fallback decimal en el camino gestionado de MirNodeMachine, no en lowerRawElementAddress. No se ha demostrado la identidad exacta de ese binario con HEAD; no se declara cierre de L-07.
+
+Los casos de operador sobre structs con parametros in, relacionados con NCSS 12/24, reproducen resultado incorrecto en O0/O2; controles por valor y metodo ordinario con in pasan. Este hallazgo es independiente de las decisiones pendientes sobre temporales in y ++/--.
+
+DeterministicMath.Log no progresa para infinito positivo segun el bucle del SDK; la reproduccion previa uso el SDK instalado. El archivo de la rama y el instalado tienen SHA-256 identico, pero no se ejecuto el SDK de la rama como proyecto. Detalles, controles y limitaciones: A:/native-sharp-reference/validation/ncss-auditoria/HALLAZGOS-LENGUAJE-NCSS-2026-11-09.md y verificacion-nsc-devel-fixes-2026-11-09/resultados-configurados.json. No se modifico el compilador ni el SDK.
+
+
+
+## NCSS: Exp con entrada finita representable (2026-11-09)
+
+En el checkout de la rama dd0775e6353c9f096270bae35e645f5cec350624, DeterministicMath.Exp devuelve el maximo double para todo x > 709. Una prueba con el Core de esta rama y nsc del PATH (build hash 4998f7ed435b91d5), sin cache, dio 1.7976931349E+308 para 709.1 en O0/O2, mientras math.exp da 9.082744919406668E+307. El control 709.0 paso en ambos modos. No se construyo nsc de este HEAD; no se ha corregido la biblioteca. Los ejemplos NCSS 21/26/27/29 implementan Exp propio; no se afirma que invoquen este caso del SDK. Fuente, resultados y hashes: A:/native-sharp-reference/validation/ncss-auditoria/sondeo-exp-709-2026-11-09/resultados.json. Clasificacion: defecto de biblioteca con precision/contrato por definir, no ausencia del operador de lenguaje.
+
+
+
+## NCSS: correcciones de Exp y Log en arbol de trabajo (2026-11-09)
+
+DeterministicMath.Exp ya no satura a partir de 709: el cambio conserva saturacion al maximo cerca del limite real de double, incluso ante redondeo de la escala. Log detecta infinito positivo antes de normalizarlo. La prueba incorporada nsc.sdk.deterministic-math-boundaries paso en O0 y O2 sin cache mediante su ejecutor CMake, con nsc del PATH y Core fuente de esta rama. Ver A:/native-sharp-reference/validation/ncss-auditoria/verificacion-correccion-math-2026-11-09/cmake-final-result.json, baseline-log.json y Program.ns de la prueba. El nsc del PATH no se identifica como un binario construido desde HEAD; no se instalo SDK ni se prueba precision para todas las entradas.
+
+Los 29 proyectos originales pasaron O0 sin cache con sus referencias originales: A:/native-sharp-reference/validation/ncss-auditoria/suite-estabilidad-2026-11-09/resultados.json. Esto no prueba que consuman el Core modificado. La correccion es del arbol de trabajo, no commit; L-01 y L-07 arreglo fijo siguen pendientes.
+
+
+## NCSS: subnormales de Exp
+
+Exp(-745) se reprodujo como cero en O0/O2 con controles positivos; el arbol de trabajo ajusta el limite inferior y evita rondas subnormales intermedias. La regresion permanente ampliada paso O0/O2 sin cache. Evidencia: A:/native-sharp-reference/validation/ncss-auditoria/sondeo-exp-subnormal-2026-11-09/resultados.json y verificacion-correccion-math-2026-11-09/cmake-subnormal-result.json. No se certifican todos los modos de denormales.
+
+
+## NCSS: cambio preparado decimal fijo, no verificado
+
+lowerRawElementAddress incluye en el arbol de trabajo el fallback decimal Windows x64 usado en arreglos gestionados. Se agregaron tests/integration/decimal_fixed_array y nsc.compiler.decimal-fixed-array. El nsc del PATH anterior al cambio falla en O0/O2; todavia no se construyo ni ejecuto un compilador desde este checkout. L-07 fijo permanece NO VERIFICADO: A:/native-sharp-reference/validation/ncss-auditoria/decimal-fijo-rama-2026-11-09/baseline-path.json.
+
+La regresion DeterministicMath paso O0-O3 en fp-mode precise y deterministic, con fp-denormal preserve (8 combinaciones, sin cache). Evidencia: A:/native-sharp-reference/validation/ncss-auditoria/verificacion-correccion-math-2026-11-09/cmake-all-modes-result.json; no cubre ftz/daz.
+
+
+## NCSS: regresion de operador in con controles
+
+Se agregaron tests/integration/operator_in_aggregate y nsc.compiler.operator-in-aggregate. En el nsc del PATH el fixture compilo y salio 4 en O0/O2 despues de superar controles por valor, struct pequeno y metodo in; el ejecutor CMake captura la falla. Evidencia en A:/native-sharp-reference/validation/ncss-auditoria/operator-in-rama-2026-11-09/. No se ha modificado el lowering L-01 ni probado un compilador construido de HEAD.
+
+
+La regresion operator_in_aggregate ahora incorpora controles de ref, out, copia por valor y argumentos in nombrados en orden inverso sobre un agregado de 16 bytes. Con nsc del PATH esos controles pasan antes del fallo existente de operador in (salida 4 O0/O2). Evidencia: A:/native-sharp-reference/validation/ncss-auditoria/operadores-in-controles-adicionales/resultados.json y operator-in-rama-2026-11-09/baseline-extended-path.json. No se ha verificado un compilador de esta rama.
+
+Fixture operator_in_aggregate: structs separados por archivo; resultados vigentes O0/O2 en A:/native-sharp-reference/validation/ncss-auditoria/operator-in-rama-2026-11-09/baseline-separated-path.json. El resultado 4 permanece pendiente de correccion.
+
+
+L-01: se reprodujo el error de operador in con struct de dos double en locales, campos y elementos de arreglo; controles equivalentes por valor pasaron en O0/O2 con nsc del PATH. Se ampliaron los casos de la regresion permanente. Evidencia: A:/native-sharp-reference/validation/ncss-auditoria/operadores-in-ubicaciones/resultados.json y operator-in-rama-2026-11-09/baseline-locations-path.json. No demuestra estado del compilador reconstruido.
+
+El cambio preparado en MirNodeMachine.cpp paso comprobacion sintactica clang-cl /Zs por PATH; no se ha validado su comportamiento. A:/native-sharp-reference/validation/ncss-auditoria/decimal-fijo-rama-2026-11-09/syntax-path.json.
+
+
+L-01: las sobrecargas de multiplicacion entre struct de dos double y escalar fallan con parametro struct in en ambos ordenes, mientras los controles por valor pasan O0/O2 con nsc del PATH. Se incorporaron ambas al fixture permanente. Evidencia: A:/native-sharp-reference/validation/ncss-auditoria/operadores-in-escalar/resultados.json; no demuestra estado de compilador reconstruido.
+
+El cambio preparado en MirNodeMachine.cpp compilo a objeto con clang-cl por PATH y fuentes estables; no se enlazo ni ejecuto el compilador. Evidencia A:/native-sharp-reference/validation/ncss-auditoria/decimal-fijo-rama-2026-11-09/object-compile-path.json. L-07 fijo permanece NO VERIFICADO.
+
+
+L-07: controles independientes int[2], double[2] y decimal escalar pasan O0/O2 con nsc del PATH; decimal[2] falla compilacion. Se ampliaron controles de la prueba permanente. MirNodeMachine.cpp modificado compilo a objeto con clang-cl PATH, pero no se enlazo ni probo compilador de la rama. Evidencia A:/native-sharp-reference/validation/ncss-auditoria/decimal-fijo-controles/resultados.json y decimal-fijo-rama-2026-11-09/object-compile-path.json. Estado: NO VERIFICADO.
+
+
+L-01: cambio provisional en llamadas estaticas de operadores de usuario usa parameterPassKinds para evitar copiar direcciones de argumentos in; source OopLlvmCalls.cpp compilo a objeto con clang-cl PATH. No se enlazo ni probo compilador reconstruido; estado NO VERIFICADO. Se agrego control de comparaciones struct de dos double: la prueba conjunta ==/!= falla con in, pasa por valor en O0/O2 de nsc instalado. Evidencias A:/native-sharp-reference/validation/ncss-auditoria/operator-in-rama-2026-11-09/object-compile-path.json y operadores-in-comparacion/resultados.json.
+
+
+L-01: a+a con struct de dos double falla con operador in y pasa por valor O0/O2 en nsc del PATH; caso agregado al fixture. Se trazaron estaticamente la evaluacion fuente de DirectStaticCall, la llamada sintetica de Result sin memberOrdinal y la marca de metadata de operador. Evidencia A:/native-sharp-reference/validation/ncss-auditoria/operadores-in-alias/resultados.json y l01-flujo-operando-rama-2026-11-09.json. El cambio continua NO VERIFICADO.
+
+
+L-08: stackalloc decimal[2] se rechaza por ausencia de value layout con nsc del PATH O0/O2; control double equivalente pasa. Las dos rutas HIR consultan valueLayoutForTypeKey y la ruta MIR de raw storage consulta elementLayout. La correccion provisional de decimal[2] no cubre esas rutas. Se agrego nsc.compiler.decimal-stackalloc; permanece ABIERTO. Evidencia A:/native-sharp-reference/validation/ncss-auditoria/decimal-stackalloc-controles/resultados.json y fixture-baseline.json.
+
+
+L-08: tratamiento provisional decimal localizado en dos rutas HIR y MIR StackAllocation, sin cambiar el servicio compartido. Los tres C++ compilaron a objeto por PATH, sin enlace o ejecucion del compilador; NO VERIFICADO. Reproduccion dinamica con count variable: double pasa, decimal falla CC1 en O0/O2 con nsc instalado. Evidencia A:/native-sharp-reference/validation/ncss-auditoria/decimal-stackalloc-controles/object-compile-path.json y dynamic-baseline.json.
+
+
+## NCSS: validacion con compilador reconstruido
+
+Con nsc reconstruido, build hash 59a1b13ae84a9cc9 y SHA-256 417c7ffe8c7759e8c1fe9659a9b0e3c4845de000de331abecc507a9dd1e3e5eb, pasaron los fixtures decimal fijo, stackalloc decimal, operadores in y DeterministicMath, ademas de 34 combinaciones historicas O0/O2 de L-01/L-07. Los 29 proyectos NCSS originales compilaron y ejecutaron O0/O2 sin cache (58/58), con sus referencias al Core instalado. El fixture matematico utiliza Core fuente de la rama. Evidencia A:/native-sharp-reference/validation/ncss-auditoria/verificacion-nsc-devel-fixes-2026-11-09/current-gates.json, current-historical-gates.json y suite-nsc-fixes-2026-11-09/resultados.json. No se certifica ABI general, metadata precompilada ni otros targets; cambios sin commit.

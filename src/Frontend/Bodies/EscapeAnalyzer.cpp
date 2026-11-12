@@ -147,12 +147,12 @@ void ProjectMethodBodyModel::joinPointerValueOrigin(
 }
 
 bool ProjectMethodBodyModel::parameterMayCarryEscape(
-    const MethodParameterSymbol& parameter) const noexcept
+    const MethodParameterSymbol& parameter) const
 {
     return parameter.passKind != ParameterPassKind::Value ||
         parameter.ownership == sema::OwnershipKind::Borrowed ||
         parameter.typeKey.ends_with("*") || !parameter.lifetimeName.empty() ||
-        typeKeyIsViewLike(parameter.typeKey);
+        typeKeyIsViewLike(parameter.typeKey) || tupleTypeKeyContainsView(parameter.typeKey);
 }
 
 std::vector<language::EscapeClass>*
@@ -178,8 +178,11 @@ void ProjectMethodBodyModel::noteParameterEscape(
         mutableParameterEscapeSummary(callableOrdinal);
     if (summary == nullptr || parameterOrdinal >= summary->size()) return;
     const ClassMemberSymbol* callable = methodSymbol(callableOrdinal);
-    if (callable == nullptr || parameterOrdinal >= callable->parameters.size() ||
-        !parameterMayCarryEscape(callable->parameters[parameterOrdinal]))
+    if (callable == nullptr || parameterOrdinal >= callable->parameters.size())
+        return;
+    const MethodParameterSymbol& parameter = callable->parameters[parameterOrdinal];
+    if (!parameterMayCarryEscape(parameter) &&
+        !(escapeClass == language::EscapeClass::Return && isReferenceTypeKey(parameter.typeKey)))
     {
         return;
     }
@@ -475,7 +478,6 @@ void ProjectMethodBodyModel::validateEscapeCall(
         const std::size_t targetParameter = parameterOrdinals[argumentOrdinal];
         if (targetParameter >= callee.size() || argumentSyntaxes[argumentOrdinal] == nullptr)
             continue;
-        const language::EscapeClass contract = callee[targetParameter];
         const ClassMemberSymbol* calleeSymbol = methodSymbol(calleeOrdinal);
         bool precompiledNative = calleeSymbol != nullptr && calleeSymbol->isPrecompiled &&
             !calleeSymbol->isImportedC && !calleeSymbol->isExternC;
@@ -488,6 +490,21 @@ void ProjectMethodBodyModel::validateEscapeCall(
                 precompiledNative = function.isPrecompiled && !function.isExternC;
             }
         }
+        if (calleeSymbol != nullptr && precompiledNative &&
+            targetParameter < calleeSymbol->parameters.size() &&
+            calleeSymbol->parameters[targetParameter].passKind == ParameterPassKind::Value &&
+            tupleTypeKeyContainsView(calleeSymbol->parameters[targetParameter].typeKey))
+        {
+            diagnostics.report(
+                diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                diagnostics::DiagnosticSeverity::Error,
+                argumentSyntaxes[argumentOrdinal]->range(),
+                "argument " + std::to_string(argumentOrdinal + 1U) + " of '" +
+                    std::string(calleeName) +
+                    "' contains a borrowed view whose non-escaping contract cannot be verified in the precompiled method");
+            continue;
+        }
+        const language::EscapeClass contract = callee[targetParameter];
         const bool forwardedNativeUnknown = calleeOrdinal < parameterUnknownNativeEscape_.size() &&
             targetParameter < parameterUnknownNativeEscape_[calleeOrdinal].size() &&
             parameterUnknownNativeEscape_[calleeOrdinal][targetParameter];

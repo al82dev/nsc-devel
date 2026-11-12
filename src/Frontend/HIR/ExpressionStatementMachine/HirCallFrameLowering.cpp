@@ -135,6 +135,9 @@ bool ProjectOopHirModel::nextBoundCallChild(
     syntax = call.argumentSyntaxes[call.nextArgument];
     addressContext = target != nullptr && target->isUserOperator &&
         boundCallArgumentNeedsAddress(call.target.memberOrdinal, call.nextArgument);
+    if (addressContext && call.nextArgument < target->parameters.size() &&
+        target->parameters[call.nextArgument].passKind == ParameterPassKind::In &&
+        !isNaturallyAddressable(syntax)) addressContext = false;
     return true;
 }
 

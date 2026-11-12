@@ -29,3 +29,10 @@ autorización previa, tal como registra `73-run-laptop.md`. La reserva de memori
 del parser es contable y no demuestra un límite duro del heap. El perfil no
 admite todas las funciones ni efectos del lenguaje; los rechazos documentados
 no deben interpretarse como soporte general de `#run`.
+
+La regresión funcional se repitió con el compilador aislado de la campaña,
+SHA-256 `e486f7786bf580a06b9ec41a41ca92d639666000875bef74ec0f5c1adb07fb27`.
+`A:/nsc-fixes-evidencia/integration-run73-current-test.cmd` terminó con código 0;
+su log conserva compilaciones y ejecuciones O0/O2 y rechazos esperados. El árbol
+de trabajo contiene otros cambios sin commit, por lo que la repetición no es una
+certificación de `fc7ea5bb7` por separado ni de todos los usos de `#run`.

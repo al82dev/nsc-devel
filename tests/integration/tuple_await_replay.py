@@ -72,13 +72,17 @@ class Program {
  return caught == 1 && Counter.Builds == 1 && Counter.Drops == 1 ? 42 : 7;
 }''',
     }
+    requested = set(sys.argv[2:])
+    unknown = requested.difference(cases)
+    if unknown:
+        raise ValueError('unknown tuple await cases: ' + ', '.join(sorted(unknown)))
     with tempfile.TemporaryDirectory(prefix='nsc-tuple-await-replay-') as temporary:
         root = Path(temporary)
         project = root / 'Probe.nsproj'
         project.write_text('<Project><PropertyGroup><Name>Probe</Name><Language>3</Language></PropertyGroup>'
                            '<ItemGroup><Compile Include="*.ns" /></ItemGroup></Project>', encoding='utf-8')
         for name, body in cases.items():
-            if len(sys.argv) > 2 and name not in sys.argv[2:]:
+            if requested and name not in requested:
                 continue
             (root / 'Main.ns').write_text(prefix.replace('BODY', body), encoding='utf-8')
             for level in ('O0', 'O2'):

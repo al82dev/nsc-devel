@@ -43,12 +43,57 @@ struct Payload { public long Value; ~Payload() { } }
  { Payload inner; view = new View<Payload>(ref outer, ref inner); }
  return (int)view.Get().Value; } }
 '''
+    receiver_types = types + '''struct Owner { public int Value;
+ public View<int> Borrow() { return new View<int>(ref Value); }
+ public (View<int>, int) BorrowPair() { return (new View<int>(ref Value), 0); } }
+struct MoveOwner { public int Value; ~MoveOwner() { }
+ public View<int> Borrow() { return new View<int>(ref Value); } }
+'''
+    value_receiver_return = '''class Program { public static View<int> Leak(Owner owner) {
+ return owner.Borrow(); } public static int Main() { return 42; } }
+'''
+    move_receiver_return = '''class Program { public static View<int> Leak(MoveOwner owner) {
+ return owner.Borrow(); } public static int Main() { return 42; } }
+'''
+    ref_receiver_live = '''class Program { public static View<int> Borrow(ref Owner owner) {
+ return owner.Borrow(); } public static int Main() { Owner owner; owner.Value = 42;
+ View<int> view = Borrow(ref owner); return view.Get(); } }
+'''
+    temporary_receiver_return = '''class Program { public static View<int> Leak() {
+ return (default(Owner)).Borrow(); } public static int Main() { return 42; } }
+'''
+    temporary_receiver_local = '''class Program { public static View<int> Leak() {
+ View<int> view = (default(Owner)).Borrow(); return view; } public static int Main() { return 42; } }
+'''
+    value_receiver_local = '''class Program { public static View<int> Leak(Owner owner) {
+ View<int> view = owner.Borrow(); return view; } public static int Main() { return 42; } }
+'''
+    tuple_temporary_default = '''class Program { public static (View<int>, int) Leak() {
+ return (default(Owner)).BorrowPair(); } public static int Main() { return 42; } }
+'''
+    tuple_temporary_call = '''class Program { public static Owner Make() { return default(Owner); }
+ public static (View<int>, int) Leak() { return Make().BorrowPair(); }
+ public static int Main() { return 42; } }
+'''
+    tuple_ref_live = '''class Program { public static (View<int>, int) Borrow(ref Owner owner) {
+ return owner.BorrowPair(); } public static int Main() { Owner owner; owner.Value = 42;
+ var (view, n) = Borrow(ref owner); return view.Get() + n; } }
+'''
     cases = [('safe', types + safe, None),
              ('scope', types + scope, "view borrowed from local 'p' cannot be stored in a longer-lived local"),
              ('return', types + leak, 'ref return cannot expose storage owned by the current stack frame'),
              ('view-return', types + view_return, 'cannot be returned'),
              ('move', types + move, 'cannot move owner'),
-             ('multiple', multi_types + multi, "view borrowed from local 'inner' cannot be stored in a longer-lived local")]
+             ('multiple', multi_types + multi, "view borrowed from local 'inner' cannot be stored in a longer-lived local"),
+             ('value-receiver-return', receiver_types + value_receiver_return, 'cannot be returned'),
+             ('move-receiver-return', receiver_types + move_receiver_return, 'cannot be returned'),
+             ('value-receiver-local', receiver_types + value_receiver_local, 'cannot be returned'),
+             ('temporary-receiver-return', receiver_types + temporary_receiver_return, 'temporary receiver'),
+             ('temporary-receiver-local', receiver_types + temporary_receiver_local, 'temporary receiver'),
+             ('tuple-temporary-default', receiver_types + tuple_temporary_default, 'temporary receiver'),
+             ('tuple-temporary-call', receiver_types + tuple_temporary_call, 'temporary receiver'),
+             ('tuple-ref-live', receiver_types + tuple_ref_live, None),
+             ('ref-receiver-live', receiver_types + ref_receiver_live, None)]
     with tempfile.TemporaryDirectory(prefix='nsc-shared-value-view-') as temporary:
         for name, source, expected_error in cases:
             root = Path(temporary) / name

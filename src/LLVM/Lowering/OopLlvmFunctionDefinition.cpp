@@ -265,7 +265,9 @@ bool OopLlvmImplementation::prepareFunctionCleanupState(
                 return fail(error, "OOP MIR cleanup contract contains a null action");
             cleanupRegions_.emplace(cleanup.ordinal, cleanup.action);
             if (memberModel_ == nullptr || !cleanup.action->automaticDestruction ||
-                !memberModel_->typeTransitivelyHasCustomDestructor(cleanup.typeKey)) continue;
+                (!memberModel_->typeTransitivelyHasCustomDestructor(cleanup.typeKey) &&
+                 !(cleanup.action->kind == frontend::ProjectOopMirNodeKind::OwnedTemporaryBorrow &&
+                   cleanup.action->referenceResult && memberModel_->typeRequiresValueDrop(cleanup.typeKey)))) continue;
             LLVMTypeRef flagType = LLVMInt1TypeInContext(context_);
             if (cleanup.localOrdinal.has_value())
             {

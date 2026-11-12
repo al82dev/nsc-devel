@@ -204,6 +204,215 @@ que esas llamadas se omiten en esa ruta del IR; no se midió la memoria en tiemp
 de ejecución ni se probaron bases o una segunda excepción. La solución y el
 contrato de propagación siguen pendientes de la decisión ya consultada.
 
+Reproducción posterior con el compilador aislado de build hash
+`c0611dacbb48e5c9`: `destructor-release-current.cmd` copia los dos archivos de
+la reproducción a un temporal de A, compila sin caché y ejecuta O0 y O2. En
+ambos casos vuelve a salir 4: se observan el destructor exterior y la captura,
+pero no el destructor del campo. La prueba
+`tests/integration/destructor_throw_owned_field.py` conserva la expectativa
+42 y su fixture contiene copias intactas de la reproducción; sigue fallando y
+no se ha registrado como aprobada. El log es
+`A:/nsc-fixes-evidencia/destructor-release-current.log`.
+
+En el generador actual, `emitObjectDestructionSteps` emite el cuerpo del
+destructor antes de la liberación de campos y `emitReleasingDestructionEntry`
+llama a la liberación del bloque solo después de que retorne esa secuencia.
+Ninguna de esas dos rutas instala una continuación excepcional local para
+completar esos pasos. El cambio debe conservar el primer error mientras limpia
+los campos y libera el bloque, y definir y probar el caso de una segunda
+excepción durante esa limpieza; no se ha cambiado el generador.
+
+La regresión se amplió con un payload que destruye dos campos en orden inverso:
+el destructor del segundo lanza y el del primero debe ejecutarse después. En
+O0 y O2 la excepción se capturó, pero la traza fue `32` en vez de `321`: se
+ejecutaron el destructor exterior y el del segundo campo, sin llegar al primero.
+Un control sin excepción obtuvo `31` y terminó 42 en ambas configuraciones.
+La reproducción original sigue devolviendo 4; los seis resultados constan en
+`destructor-release-current.log` y el resultado anterior separado permanece en
+`destructor-release-original-current.log`. Los controles no miden liberación
+física ni cubren bases, campos de valor, ni una segunda excepción durante el
+desenrollado; el arreglo sigue pendiente.
+
+Se ensayó una cadena de limpiezas excepcionales para los pasos restantes y la
+liberación del bloque. El ensayo hizo pasar en O0/O2 la excepción exterior, la
+del campo, la salida normal, la limpieza de la base y la de un campo de valor
+(`destructor-release-prototype-single.log`); también pasó la selección dirigida
+de Rc y Arc `destructor-shared-regression.log`. Sin embargo, con dos
+excepciones durante la misma destrucción se propagó la segunda y solo se
+observó la destrucción de una de las dos: salida 51 en O0/O2
+(`destructor-double-throw/results.log`). El contador demuestra las destrucciones
+observadas en este fixture, no una medición directa del heap. No se declara una
+política general para sustituir excepciones ni un resultado seguro.
+
+El ensayo se conservó en `destructor-release-prototype.patch` y se retiró del
+código. La compilación incremental restaurada terminó correctamente; su nsc
+tiene SHA-256 `ef1417f5d1d25c98af26ecc8e177aae96e7de19a805c32c4d0db19f0753faf34`.
+La selección restaurada vuelve a fallar los cuatro escenarios excepcionales y
+pasa el control normal en O0/O2 (`destructor-release-current.log`). La siguiente
+solución debe dar una propiedad explícita a la excepción desplazada, comprobar
+el caso de errores externos a NativeSharp y preservar las limpiezas restantes.
+
+Se eligió como contrato propuesto terminar mediante trap identificable si una
+segunda excepción sale de un destructor mientras se desenrolla la primera; una
+sola excepción debe seguir propagándose después de completar la limpieza. El
+primer ensayo de ese contrato colocó un `catchswitch` dentro del `cleanuppad`.
+LLVM rechazó la generación O0 y O2 con `Cleanup funclets for the SEH personality
+cannot contain exceptional actions` (`destructor-double-throw/results.log`);
+ningún ejecutable de esa variante llegó a ejecutarse. El script exploratorio
+devolvió inicialmente éxito pese a los fallos de compilación; se corrigió para
+devolver fallo en ese caso. Se retiró la variante y se restauró incrementalmente
+el compilador SHA-256
+`b5297b7b3ef4c84fd3ee34be21463d8e928459e52724550d0419616c767517c1`.
+Los controles restaurados siguen mostrando el fallo original. Una posible
+alternativa es un helper con frontera excepcional propia llamado desde el
+funclet, pero aún no se ha implementado ni demostrado su validez SEH o su
+tratamiento de excepciones externas. El contrato sigue sin implementación.
+
+El experimento aislado `A:/nsc-fixes-evidencia/seh-double-helper/` usa LLVM IR
+escrito a mano y Clang de referencia para invocar una función con su propio
+`catchswitch` desde un `cleanuppad`. La salida fue 42 si solo ocurre la primera
+excepción y 148 si la función auxiliar genera una segunda y su handler termina
+el proceso. `build.log` registra una advertencia de sustitución del triple y
+`results.log` conserva ambas salidas. El control utiliza excepciones software
+de Windows y `ExitProcess`; no es código emitido por NativeSharp y no demuestra
+el comportamiento ante toda excepción extranjera ni la liberación de recursos.
+
+La regresión del compilador incluye ahora `Double.ns` y exige salida 148 en
+O0/O2 para la decisión de trap. Con el compilador restaurado obtuvo 21 en ambos
+casos: se capturó la primera excepción antes de ejecutar el campo que lanzaría
+la segunda. La prueba completa sigue fallando para las rutas excepcionales
+(`destructor-release-current.log`); el control normal pasa. El experimento de
+LLVM hace viable investigar el helper, pero la integración todavía está
+pendiente y no se ha certificado la solución.
+
+La integración provisional genera la cadena de acciones restantes y ejecuta
+cada acción excepcional mediante un helper con su propia frontera SEH. Una
+sola excepción continúa después de la limpieza; si una acción del helper lanza
+una segunda, el helper termina el proceso con el código 148. La entrada que
+posee el almacenamiento ejecuta su liberación tanto al retornar como al
+desenrollar. Este contrato de segunda excepción es una decisión de la campaña:
+no garantiza que las acciones restantes se ejecuten después del trap.
+
+Con el compilador aislado SHA-256
+`a87a732452050b43c68e27420e9e49fdf6b25f674deb7776e3e33edab04e0647`,
+`nsc.compiler.destructor-throw-owned-field` pasó 1/1 con 14 ejecuciones:
+excepción del destructor exterior, excepción de un campo, salida normal,
+base, campo de valor y doble excepción en O0/O2, más controles normal y doble
+con depuración en O0. Los casos simples devolvieron 42 y los dobles 148
+(`destructor-release-registered.log`). Una selección de ocho casos de
+construcción y limpieza para cada familia Rc/Arc pasó en O0/O2
+(`destructor-shared-regression.log`); también pasó la selección de vistas desde
+fuentes ejecutada antes del último ajuste. No se ejecutó batería completa.
+
+La evidencia corresponde a Windows x64 y al árbol conjunto sin commit. No mide
+directamente la liberación física, no cubre todas las excepciones ajenas a
+NativeSharp, asignadores personalizados, todas las formas de clases importadas
+ni el coste de generación de helpers. Los cambios siguen provisionales hasta
+resolver esos límites pertinentes y separar un commit verificable.
+
+La reproducción `shared_destructor_throw_fields.py` volvió a ejercitar los
+controles de cuenta local y atómica con payload clase y struct desde las fuentes
+actuales de Core. Las cuatro combinaciones de clase devolvieron 42 en O0/O2;
+las cuatro de struct devolvieron 13 porque no se destruyó el campo propietario
+(`shared-destructor-throw-current.log`). El ejecutor crea un proyecto temporal
+en A y no modifica las reproducciones originales. La corrección de clases no
+se extiende todavía a `emitStructValueDropMembers`; la limpieza de struct sigue
+pendiente y la selección completa falla deliberadamente.
+
+El ensayo posterior construye un plan de destrucción para la entrada independiente
+de struct y reutiliza la cadena de limpieza excepcional. Conserva el tratamiento
+especial de arreglos, cadenas y delegates propietarios; una llamada al drop glue
+con destino excepcional se emite como llamada potencialmente lanzadora. La ruta
+inline ya dentro de un funclet o de una región de limpieza conserva su lógica
+anterior y todavía no queda acreditada por esta modificación.
+
+Con el compilador SHA-256
+`b749ab54020017a313cb0db9ba74142c52e8d6b39909129528991b4e2e68b1bf`,
+la prueba `nsc.sdk.shared-destructor-throw-fields` pasó 16 ejecuciones: control
+local y atómico, payload clase y struct, O0/O2, tanto con una excepción como
+con una segunda durante la limpieza. Las primeras devolvieron 42 y las segundas
+148. La selección registrada junto a la regresión de destrucción ordinaria pasó
+2/2 (`shared-destructor-registered.log`); la selección existente de tuplas y
+consumo binario de valores pasó 2/2 (`struct-drop-regression.log`). Los controles
+no miden directamente la liberación del bloque ni cubren todas las rutas inline,
+arreglos de valores, excepciones extranjeras o asignadores. La implementación y
+las pruebas siguen en el árbol conjunto sin commit.
+
+El control `fixed-array-element-throws` reprodujo otra omisión: un arreglo fijo
+de dos valores destruía el elemento 2, cuya excepción se capturaba, pero no
+destruía el elemento 1; la traza fue `2` en O0/O2. El ensayo posterior construye
+la cadena de limpieza en orden inverso para arreglos fijos fuera de funclets y
+conserva el destino excepcional exterior. Con el compilador SHA-256
+`e57744a6f17a832e5db8e9d06bf25e48a570f85c77db70170e85aab553ba1860`,
+la regresión pasó el caso inicial, el campo propietario posterior de una clase,
+el campo posterior de un struct y el trap de segunda excepción en O0/O2
+(`destructor-release-registered.log`). La selección compartida de 16 casos y
+las dos pruebas de tuplas y valores binarios volvieron a pasar
+(`shared-destructor-throw-current.log`, `struct-drop-regression.log`). Esto cubre
+arreglos fijos en esas formas, no arreglos dinámicos ni ejecución inline dentro
+de un funclet o región activa; tampoco mide liberación física.
+
+El control `dynamic-array-element-throws` reproduce el caso equivalente para
+`owned Part[]`: el elemento 2 lanza, la excepción se captura, pero la traza es
+`2` en vez de `21` tanto en O0 como en O2. La regresión registrada vuelve a
+fallar por este caso (`destructor-release-registered.log`). La fuente del
+recorrido usa un índice dinámico y salta a la liberación del bloque solo después
+de completar el bucle; una excepción interrumpe ambas operaciones. Se necesita
+conservar la posición pendiente, evitar repetir el elemento que ya empezó a
+destruirse, limpiar el resto y liberar el bloque antes de propagar. Una segunda
+excepción debe seguir el contrato de trap elegido; el diseño todavía no está
+implementado ni se ha medido la liberación física.
+
+El ensayo posterior marca el elemento como no vivo antes de invocar su drop y,
+cuando esa llamada lanza, recorre los índices restantes en orden inverso,
+omitirá los elementos no vivos y libera el bloque antes de continuar el
+desenrollado. Las llamadas durante esa limpieza pasan por un helper con frontera
+SEH propia: si una segunda excepción escapa, termina con el código 148. Esta
+implementación se aplica a elementos de valor con drop glue disponible fuera de
+funclets y regiones de limpieza activas; las demás rutas conservan su lógica
+anterior.
+
+Con el compilador SHA-256
+`f592f9c7f7c67926791dc40254df204bea9d0a66f1ea8e30b25f1799ac71a76f`,
+la regresión registrada pasó la reproducción dinámica en O0/O2 y los controles
+de un elemento nunca inicializado, un campo exterior pendiente y una segunda
+excepción (`destructor-release-registered.log`). También pasaron la selección
+de 16 casos compartidos y las pruebas dirigidas de tuplas y valores binarios
+(`shared-destructor-throw-current.log`, `struct-drop-regression.log`). La
+evidencia comprueba trazas y códigos de salida; no mide directamente el heap ni
+acredita arreglos de referencias, dimensiones adicionales, asignadores o las
+rutas que no entran en la nueva condición. El ensayo sigue sin commit.
+
+La prueba `dynamic-reference-array-throws` confirmó que un arreglo dinámico de
+clases detenía su recorrido tras el primer destructor que lanzaba: traza `1` en
+vez de `12`, en O0/O2. El ensayo continúa ahora desde el siguiente índice en el
+orden previo de esa ruta, limpia cada slot antes de destruir su objeto y libera
+el bloque antes de propagar; otra excepción durante la limpieza termina con 148.
+Con el compilador SHA-256
+`392aa7ff1e8a85459f776351bd798a39e33b646501f31cee1428442df4a1fd7d`,
+la regresión pasó O0/O2 para el caso original, un slot nulo con campo exterior
+pendiente y una doble excepción (`destructor-release-registered.log`); los dos
+últimos también pasaron O0 con información de depuración. También
+pasaron los controles dirigidos de vistas indexadas, destrucción compartida,
+tuplas y valores binarios (`readonly-indexed-prototype2.log`,
+`shared-destructor-throw-current.log`, `struct-drop-regression.log`). La ruta
+nueva se limita a elementos de clase fuera de funclets y regiones de limpieza
+activas; no mide directamente el heap ni acredita otras categorías de elementos,
+dimensiones o asignadores. Sigue sin commit.
+
+La prueba dirigida `nsc.driver-address-sanitizer-throwing-array-release` añade
+evidencia de liberación física para los dos arreglos dinámicos anteriores. En
+cada uno guarda una dirección dentro del bloque, la lee mientras está vivo,
+deja que falle un destructor y comprueba la traza de limpieza antes de leerla
+deliberadamente otra vez. ASan detectó `heap-use-after-free` y terminó con 1 en
+O0/O2 para elementos struct y de clase; la prueba registrada pasó 1/1
+(`asan-throwing-array-registered.log`). Se usó el compilador SHA-256
+`392aa7ff1e8a85459f776351bd798a39e33b646501f31cee1428442df4a1fd7d`,
+el adaptador de heap ASan, Clang y runtime de referencia, y `detect_leaks=0`.
+La lectura inválida existe solo en este fixture instrumentado. Esto acredita la
+liberación del bloque de esos arreglos en esa configuración, no la ausencia de
+otras fugas, la liberación de cada payload ni los recorridos no probados.
+
 ## Prototipos de las familias
 
 Después de corregir la pérdida de imports en métodos genéricos se probaron, en
@@ -429,6 +638,17 @@ ligada por contrato a la vista temporal; se consultó si debe exigirse una vista
 con nombre o extender la vida del temporal hasta terminar el match. Hasta la
 decisión no se clasifica el rechazo de esa cadena como defecto de contrato.
 Las salidas se observaron directamente, sin log independiente.
+Actualización: la lectura encadenada con dueño local o parámetro move-only y
+vista temporal sin drop pasó para Rc y Arc, junto con controles de reemplazo y
+movimiento (`readonly-chain-families.log`). La decisión, la implementación y
+sus límites se registran en `readonly-pattern-loan.md`; el caso del dueño
+guardado en un campo sigue abierto y detiene la prueba completa de punteros
+(`readonly-chain-pointer-control.log`).
+Actualización posterior: la lectura de un dueño en campo directo de un local
+RAII y los controles de alias, movimiento, llamadas y fin del patrón pasaron
+por separado para Rc y Arc (`readonly-field-pattern-families.log`). El alcance
+y los casos no cubiertos constan en `readonly-pattern-loan.md`; no se volvió a
+ejecutar la prueba completa de punteros tras ese cambio.
 Los controles públicos desde fuentes de una carga struct con un campo de clase
 comprueban el propietario recibido por valor tanto con `Get()` como mediante
 `Borrow().Get()`. Para `Rc` y `Arc`, el análisis rechazó copiar o modificar la
@@ -858,6 +1078,158 @@ mantiene al dueño vivo durante la extracción y lectura, y ejecutó 42 en O0/O2
 para ambas familias (`view-tuple-deconstruct-live.log`). Este contraste muestra
 que rechazar todas las vistas en tuplas también prohibiría un uso hoy funcional.
 
+La repetición con el compilador actual y el SDK binario aislado confirmó para
+Rc y Arc la aceptación semántica de cuatro rutas: salida del ámbito del dueño,
+reemplazo del dueño, copia de la tupla a un local más longevo y devolución de
+la tupla (`A:/nsc-fixes-evidencia/view-tuple-matrix.log`). Ninguna de esas
+rutas se ejecutó. El control con dueño vivo siguió ejecutando 42 en O0/O2 con
+ambas familias (`view-tuple-fixture-view_tuple_deconstruct_live-{Rc,Arc}.log`).
+Las tres nuevas reproducciones se añadieron a `shared_public_pointers.py` y
+fallan porque el análisis acepta cada caso; sus logs individuales empiezan con
+`view-tuple-fixture-view_tuple_`. El fixture mínimo necesita traits Send y Sync
+para los impl provisionales, por lo que el adaptador de evidencia los declara
+solo en memoria; la primera invocación sin esa adaptación no llegó al caso.
+
+La decisión autorizada es conservar la vida de cada vista por su origen y
+rechazar conservadoramente cuando no pueda demostrarse, preservando el uso con
+dueño vivo. El seguimiento existente registra raíces de vistas directas, pero
+la tupla no las conserva; aún no se ha implementado la propagación para copias,
+proyecciones y retornos. El defecto permanece abierto y las nuevas regresiones
+no se presentan como aprobadas. Alcance y siguiente acción:
+`A:/nsc-fixes-evidencia/view-tuple-lifetime-scope.md`.
+
+El prototipo posterior reconoce por separado las tuplas que contienen vistas,
+recoge sus posibles raíces al declarar y asignar un local, y aplica la
+comprobación de retorno. La desestructuración propaga conservadoramente todas
+las raíces de la tupla a cada vista extraída. Tras la compilación incremental,
+la matriz con Core binario rechazó las cuatro rutas inseguras y aceptó la
+lectura válida (`view-tuple-matrix-proto2.log`). Las regresiones dirigidas desde
+fuentes para Rc y Arc también pasaron, incluidas dos raíces, tupla anidada,
+copia, retorno y vista extraída que sobrevive a la tupla; los controles con
+dueño vivo y dueño independiente ejecutaron 42 en O0/O2. Se conservaron los
+logs `view-tuple-fixture-*-proto2.log` en A. Las comprobaciones anteriores de
+escape de vista directa, arreglo y campo también pasaron.
+
+El primer prototipo no propagaba el origen al desestructurar; se reprodujo con
+`view_tuple_extracted_outlives_tuple` y se ajustó antes de la repetición. El
+seguimiento no es por elemento: conserva la unión de orígenes, por lo que puede
+rechazar operaciones que serían seguras con análisis más preciso. Todavía debe
+revisarse la procedencia desconocida, llamadas, capturas y ramificaciones antes
+de registrar el cambio o declarar cerrada la limitación. La compilación usa un
+árbol con otros cambios provisionales; no certifica una revisión limpia.
+
+Una matriz posterior descubrió que la expresión de llamada
+`Identity((first.Borrow(), second.Borrow()))` perdía la segunda raíz y dejaba
+reemplazar `second` en Rc y Arc. El recolector ahora examina conservadoramente
+los argumentos con vistas de las llamadas que devuelven tuplas con vistas. La
+misma matriz también mostró que dos ramas con dueños vivos se rechazaban por
+exigir una sola raíz. Para tuplas, el ensayo retiene la primera raíz y conserva
+las demás en el conjunto existente; la regla de vistas directas no cambia.
+
+Después de compilar incrementalmente, las pruebas dirigidas rechazaron el
+reemplazo de cada dueño posible y ejecutaron con 42 en O0/O2 tanto la llamada
+como las ramas con dueños vivos, para Rc y Arc. También volvió a pasar el caso
+de extracción (`A:/nsc-fixes-evidencia/view-tuple-fixture-*-proto4.log`). Los
+resultados antes y después de la llamada están en
+`view-tuple-call-matrix-before.log` y `view-tuple-call-matrix-after.log`. Un
+intento de prueba de funciones libres con retorno de tupla fue rechazado por
+el parser y no se cuenta como validación de esa ruta
+(`view-tuple-call-matrix-namespace.log`). El prototipo sigue sin commit; faltan
+comprobaciones de capturas, receptores no triviales y procedencias desconocidas.
+
+La matriz `view-tuple-receiver-capture-before.log` mostró dos rutas adicionales
+aceptadas para ambas familias: captura por copia o referencia de la tupla y
+reemplazo del campo dueño de una vista devuelta por un método, con receptor
+directo o anidado. No se ejecutaron los casos inseguros. El prototipo aplica a
+tuplas con vistas la regla existente que rechaza capturas de vistas locales o
+parámetros, y extiende la recolección conservadora del receptor a los métodos
+que devuelven esas tuplas. La matriz posterior rechaza esos casos y acepta el
+receptor vivo (`view-tuple-receiver-capture-after.log`).
+
+Las regresiones `view_tuple_capture_copy`, `view_tuple_capture_ref`,
+`view_tuple_capture_parameter`, `view_tuple_receiver_field` y
+`view_tuple_nested_receiver_field` pasaron para Rc y Arc. Los controles
+`plain_tuple_capture`, `view_tuple_receiver_live` y
+`view_tuple_independent_receiver` ejecutaron 42 en O0/O2 para ambas familias;
+también se repitieron los controles de llamadas y ramas (`view-tuple-fixture-*-proto5.log`).
+El tratamiento del receptor es conservador: puede bloquear campos del mismo
+objeto aunque el método no los preste. Los cambios siguen provisionales y no
+acreditan todas las rutas de procedencia, el escape a través de otros
+contenedores ni el comportamiento de bibliotecas compiladas sin esta regla.
+
+Para comprobar una biblioteca NativeSharp anterior a esa protección se generó
+un productor aislado después de retirar temporalmente solo la comprobación de
+almacenamiento; enseguida se restauraron el código y el compilador, y los
+controles dirigidos volvieron a pasar. El consumidor no llegó al contrato de
+escape: tanto el método que almacena la tupla como el método que solo la lee
+quedaron ausentes del modelo restaurado. Una segunda biblioteca, compilada con
+la protección actual, confirmó que un método `Ping(int)` se restaura y que
+métodos con parámetros `(int,int)` o con vista no se encuentran. Las firmas sí
+aparecen en la metadata; el mapeo de tipos de la API binaria no reconoce la
+clave estructural `tuple:`. Comandos, hashes y límites están en
+`A:/nsc-fixes-evidencia/view-tuple-binary-escape-scope.md`. No se ejecutó la
+posible fuga. La restauración de firmas de tupla y, después, el contrato de
+escape entre módulos quedan pendientes; no se consideran probados por este
+rechazo de resolución.
+
+La matriz `view-tuple-aggregate-matrix-before.log` identificó un escape por
+un inicializador: una estructura por valor contenía la tupla y se devolvía
+después de destruir el dueño. El ensayo recorre estructuras por valor y
+tuplas anidadas para reconocer ese préstamo, sin seguir referencias de clase;
+también recorre los inicializadores de agregados. El retorno, el reemplazo del
+dueño, la copia a un ámbito exterior y el retorno de una estructura anidada se
+rechazaron para Rc y Arc. Un control de estructura con tupla ordinaria ejecutó
+42 en O0/O2 (`view-tuple-aggregate-rejects.log`).
+
+El control válido de estructura con vista ejecutó 42 en O0/O2 para ambas
+familias al consumir el Core binario (`view-tuple-binary-aggregate-live-before.log`).
+Sin embargo, la selección equivalente con Core desde fuentes falló al emitir
+el ejecutable: `tuple field layout could not be computed` para `SharedView`;
+el análisis semántico sí lo había aceptado (`view-tuple-storage-directed-proto7.log`).
+Los controles mínimos de estructuras genéricas, con argumentos incorporados
+o de clase, declaradas en el mismo archivo o en archivos separados, compilaron
+y ejecutaron 42 (`tuple-struct-layout-probe-{generic,separate,nested,class}.log`).
+Esto limita la reproducción al fixture más complejo: no se ha demostrado la
+causa ni modificado el cálculo compartido de layout. El prototipo y la prueba
+dirigida completa siguen pendientes; no se afirma una solución terminada.
+
+Actualización: el fallo de layout se redujo a un elemento de estructura cuyo
+nombre se procesa después de la estructura que contiene la tupla. Se corrigió
+en el commit local `e1b66c188`; la selección de vistas desde fuentes pasó después
+(`view-tuple-storage-directed-restored.log`), y el control válido de estructura
+ejecutó 42 en O0/O2 para Rc y Arc. La prueba unitaria vecina de layout tuvo
+tres fallos que se reprodujeron con y sin ese cambio; después se corrigieron
+sus fixtures y pasaron las 47 comprobaciones. Los detalles están en
+`docs/fixes/tuple-field-layout-dependencies.md`. El seguimiento de vistas y sus
+restantes rutas siguen provisionales.
+
+El fixture aislado de la prueba del proyecto declara ahora los traits Send y
+Sync necesarios para analizar las fuentes provisionales de Arc; las
+reproducciones originales se conservan. La selección dirigida de 28 casos por
+familia pasó mediante `nsc.sdk.shared-public-pointers` (1/1) con Rc y Arc,
+incluidos los controles de ejecución O0/O2 y los rechazos esperados
+(`A:/nsc-fixes-evidencia/view-tuple-directed-ctest.log`). No se ejecutó la
+batería completa. Esta pasada usa el árbol local conjunto y no cierra por sí
+sola la revisión del prototipo.
+
+La matriz `view-tuple-storage-matrix-before.log` también aceptó almacenar la
+tupla con vista en un campo, directamente o dentro de un método que la recibe
+como parámetro. El ejemplo de arreglo fue rechazado por sintaxis, antes del
+análisis de préstamos, y no acredita protección de arreglos. El prototipo
+rechaza conservadoramente asignar una tupla con vista fuera de un local no
+estático rastreado; esto incluye campos y reasignaciones de parámetros, aun
+cuando alguna asignación pudiera ser segura con un contrato de vida más
+preciso. Tras la compilación incremental, ambas rutas de campo se rechazaron
+con Core binario y se aceptó la lectura por parámetro
+(`view-tuple-storage-matrix-after.log`).
+
+La selección `view-tuple-storage-directed.log` pasó 1/1 para Rc y Arc: rechaza
+las dos rutas de campo y ejecuta 42 en O0/O2 para lectura por parámetro, tupla
+ordinaria en un campo y los controles de vista viva, llamada y receptor. El
+recolector no acredita aún métodos precompilados que reciban y almacenen una
+tupla, setters ni inicializadores de agregados; la protección sigue siendo un
+prototipo sin commit.
+
 Una vista de un propietario exterior impedía mover o reemplazar otro local
 distinto con el mismo nombre en un ámbito interior. La reproducción del rechazo
 está en `shadow-owner-before.log`. `hasActiveBorrowOfOwnerLocal` comparaba el
@@ -899,6 +1271,19 @@ compiló y ejecutó con resultado 42 en O0 y O2
 (`metadata-generic-consumer-probe/results.json`). El control demuestra ese
 recorrido binario público; no demuestra que el caso interno esté corregido ni
 que Core pueda distribuirse todavía como binario.
+
+La barrera provisional de llamadas binarias con tuplas que contienen vistas
+omitía las funciones de namespace: con un mapeo temporal de diagnóstico,
+`Helpers.Read` pasaba el análisis mientras el método equivalente `Reader.Read`
+recibía NS3020, tanto con Rc como con Arc. El productor era un lector seguro y
+no se ejecutó ningún consumidor. En el árbol local se consulta ahora el origen
+precompilado de la función de namespace antes de aplicar la misma barrera. Las
+cuatro llamadas recibieron NS3020 en el ensayo; el mapeo temporal se retiró y
+el compilador se reconstruyó incrementalmente. Los controles dirigidos de 13
+escenarios por familia pasaron. Detalles, comandos y limitaciones en
+`A:/nsc-fixes-evidencia/namespace-view-tuple-scope.md`. Esta barrera también
+rechaza lecturas seguras y sigue siendo provisional: las firmas binarias con
+vistas compuestas y un contrato fiable de bibliotecas previas siguen pendientes.
 Se preparó `tests/integration/generic_internal_owner_metadata.py` para exigir
 la producción y consumo binario con helper interno y comprobar que el
 consumidor no pueda nombrarlo. Actualmente falla en la producción de metadata
@@ -1099,6 +1484,93 @@ está vivo. Por tanto, esa prueba no demuestra el requisito de retener el módul
 hasta liberar el último débil. Tampoco se encontró `FreeLibrary` en
 `src/Runtime` ni `lib/NativeSharp.Core` en esta búsqueda; esto no demuestra que
 una descarga externa sea imposible. La verificación de retención sigue abierta.
+### Rc y Arc en finally suspendido durante una excepción
+
+En la revisión `46a58d434`, `A:/nsc-fixes-evidencia/shared-finally-current.cmd`
+compiló desde fuentes Rc y Arc en O0 y O2. El future recibe un clon del dueño;
+su `try` lanza y el `finally` construye una tupla con otro clon y un `await`
+que suspende. Tras esperar el future, la salida codifica
+`10 + 10*caught + StrongCount`. Las cuatro ejecuciones devolvieron 12: la
+excepción no llegó al catch y se observaron dos fuertes en vez de uno. No se
+determinó cuál de los dos clones quedó retenido ni se inspeccionó memoria liberada.
+
+`shared-finally-controls.cmd` repite las mismas familias y optimizaciones.
+Si el await completa inmediatamente durante la excepción, los cuatro casos
+devuelven 21: excepción capturada y un fuerte. Si el try termina normalmente
+y el await suspende, devuelven 11: sin excepción y un fuerte. Comandos,
+fuentes, diagnósticos y resultados están en `shared-finally-current/`,
+`shared-finally-control-ready/` y `shared-finally-control-normal/` dentro de
+`A:/nsc-fixes-evidencia`. La primera versión del control normal no compiló por
+falta de retorno; se agregó un retorno y se repitió antes de registrar los
+resultados anteriores. El compilador usa el build incremental con cambios
+concurrentes; estos ensayos usan fuentes, no el SDK binario.
+
+La reproducción añade evidencia de impacto en los punteros públicos al fallo
+de continuación ya conocido. No demuestra la causa exacta de la retención y
+no se considera una corrección. El intento previo de identificadores de
+reanudación produjo LLVM inválido en finally anidados: se requiere una solución
+que conserve continuaciones y respete los funclets, con sus pruebas dirigidas.
+
+En `shared-finally-counts/`, el contador es 2 antes de construir la tupla y 3
+después de completar su await, en ambas familias y optimizaciones. El contraste
+`shared-finally-no-tuple-clone/` sustituye el clon de la tupla por un entero;
+la excepción sigue sin capturarse y el contador final sigue siendo 2. Esta
+comparación muestra que la retención no necesita el clon de la tupla, pero no
+identifica por sí sola la instrucción de limpieza omitida.
+
+La regresión `tests/integration/shared_async_finally_owner.py` conserva las
+dos formas con excepción y suspensión y los dos controles por familia en O0/O2.
+En `shared-finally-regression-before.log` fallan las ocho ejecuciones con
+excepción suspendida (salida 12 frente a 21 esperada) y pasan las otras ocho.
+La prueba conserva el resultado fallido; aún no está registrada en CTest ni
+acredita la corrección.
+
+La misma prueba se amplió para recibir el SDK binario aislado
+`shared-observer-sdk/NativeSharpCore.lib`. Con un constructor explícitamente
+público en el objeto de prueba, las variantes con excepción y clon en la tupla
+no llegan a ejecutarse: el backend termina con `LLVM ERROR: Cleanup funclets
+for the SEH personality cannot contain exceptional actions`, tanto con await
+listo como suspendido y para ambas familias y optimizaciones. Sin el clon de
+tupla, los cuatro casos de excepción suspendida compilan y devuelven 12 en vez
+de 21; los cuatro controles de salida normal devuelven 11. El registro es
+`shared-finally-regression-binary-public-ctor.log`. La prueba desde fuentes
+con el mismo constructor conserva los ocho fallos y ocho controles aprobados
+(`shared-finally-regression-source-public-ctor.log`). El primer intento binario,
+con constructor implícito, no pasó análisis de accesibilidad y se conserva en
+`shared-finally-regression-binary-before.log`. El SDK binario se reutilizó de
+un build con cambios concurrentes, por lo que esta comparación no certifica
+un SDK reconstruido de un árbol limpio. Se conserva la reproducción y no se
+atribuye todavía el error LLVM a una causa específica.
+
+El contraste `shared-finally-explicit-exception.cmd` sustituyó la excepción
+con constructor implícito por una excepción con constructor explícito vacío,
+conservando el SDK desde fuentes. Las cuatro compilaciones de Rc/Arc en O0/O2
+terminaron con el mismo error de funclet. La regresión dirigida incorpora esa
+variante; en `shared-finally-regression-source-explicit-exception.log` se
+conservan sus cuatro fallos de compilación, los ocho fallos de ejecución
+anteriores y los ocho controles aprobados. Por tanto, el fallo de compilación
+no es exclusivo del SDK binario.
+
+El LLVM de la variante binaria está en `shared-finally-binary-ir/llvm.log`.
+El constructor explícito de excepción se emite como `invoke` con destino de
+unwind a `eh.cleanup.1.12`. Ese bloque crea `eh.cleanuppad1` y baja el cuerpo
+del finally; dentro, la llamada a `Arc.Clone()` se emite como otro `invoke`
+con el bundle de ese funclet y un destino de unwind externo. Esta forma es la
+acción excepcional presente en el funclet que LLVM rechaza. La comparación
+del caso desde fuentes con excepción implícita no genera esa misma ruta para
+su construcción. Evitar sin evidencia el `invoke` o declarar que `Clone` no
+puede lanzar ocultaría el problema de excepciones dentro de la limpieza; la
+solución debe manejar tanto esa salida como la reanudación fuera del funclet.
+
+El LLVM de la variante Arc sin clon de tupla se guardó en
+`shared-finally-no-tuple-clone/llvm.log`. En `Work$poll`, el despacho del estado
+1 entra a `coro.resume.stmt.25`, dentro de la copia normal de `finally`; al
+terminar el await llega a `eh.try.cont.7`, que publica resultado 0 y estado -1
+sin destruir el parámetro propietario. En el `$drop` emitido, la limpieza del
+parámetro solo aparece en la ruta de future no iniciado, estado 0. Esta
+inspección explica la observación de la variante medida y no acredita el resto
+de rutas de liberación del frame ni una solución para excepciones anidadas.
+
 ### Alcance observado de la limpieza de tuplas (investigación)
 
 Actualización de contraste en `3e3d83d30`: el prototipo mencionado a
@@ -1413,3 +1885,467 @@ cuatro procesos terminan con código Windows 3763229441 sin llegar al catch:
 `tuple-partial-await-throw/results.json` y
 `tuple-partial-await-throw-baseline/results.json`. No se puede usar esa prueba
 para acreditar la destrucción del elemento ni atribuir ese fallo al ensayo.
+
+Con el compilador incremental actual se repitieron además seis casos existentes
+de `async_finally_continuation.py` mediante
+`A:/nsc-fixes-evidencia/async-finally-boundaries-current.cmd`. En O0/O2 pasaron
+`continue` a través de un finally suspendido, dos finally anidados con salida
+normal, y la sustitución de un retorno por una excepción lanzada después de
+`await` tanto suspendido como listo. Fallaron el retorno a través de dos
+finally suspendidos (salida 7) y la propagación de una excepción previa a un
+finally con dos await (salida 8). Comandos y salidas están en el `.cmd` y el
+`.log` homónimos; la selección termina con código 1. Estos controles distinguen
+los casos observados, pero no prueban la liberación de propietarios ni el
+tratamiento de una segunda excepción cuando ya había otra pendiente. No se ha
+modificado la implementación de continuaciones ni se considera corregido el
+defecto.
+
+Control adicional de almacenamiento en arreglos: una estructura `Carrier`
+contiene una tupla con `SharedView<Payload>` y se asigna a `Carrier[]` después
+de crear la vista desde un propietario local. El análisis rechaza la asignación
+para `Rc` y `Arc` con el diagnóstico de almacenamiento fuera de un local
+rastreado (`A:/nsc-fixes-evidencia/view-tuple-carrier-array-probe.log`). La
+regresión `view_tuple_struct_array_escape` conserva ese caso; con el dueño
+vivo, `view_tuple_struct_live` devuelve 42 en O0/O2, y `plain_array_live`
+devuelve 42 en O0/O2 para ambas familias. La selección dirigida pasó mediante
+`A:/nsc-fixes-evidencia/view-tuple-carrier-array-regression.cmd`; su salida está
+en el archivo `.log` homónimo. El compilador y SDK de esta prueba incluyen
+cambios locales provisionales. No se ejecutó un acceso inválido ni se demuestra
+que todas las formas de arreglos o agregados estén cubiertas.
+
+Una estructura ordinaria con `SharedView` directamente en un campo se rechazó
+en la declaración, incluso para el control local válido; por eso esa prueba no
+acredita las rutas posteriores (`view-direct-carrier-probe.log`). Al declarar
+la estructura como `borrowed`, los análisis rechazaron devolverla con un dueño
+local, sobrescribir el dueño mientras vive la estructura y devolver un arreglo
+que contiene la estructura. El control con dueño vivo se aceptó para `Rc` y
+`Arc` (`view-borrowed-carrier-array-scope.log`). Se incorporaron estas cuatro
+variantes a `shared_public_pointers.py`: las tres negativas se rechazaron y el
+control válido ejecutó 42 en O0 y O2 para ambas familias
+(`view-borrowed-carrier-regression.log`). Esta evidencia corresponde al árbol
+provisional conjunto y no certifica otros tipos de contenedor ni consumo
+binario de firmas con vistas compuestas.
+
+La regresión binaria `shared_binary_pattern_field.py` se amplió con una
+llamada mutante por alias, asignación de otro campo por alias y llamada sobre
+otra instancia. Con el compilador aislado SHA-256
+`dd8ef173cd74345f8d888052033ec37b7d66dde9ced36fd2cb332d70d0b3785c` y el
+Core binario aislado preexistente SHA-256
+`f91d95c248f477531d38a093605f45343f6be9736d15e2097acd452db4bb54e0`, la
+llamada mutante por alias se rechazó para Rc y Arc; los dos controles válidos
+ejecutaron 42 en O0/O2 para ambas familias. La regresión completa dirigida pasó
+(`A:/nsc-fixes-evidencia/shared-binary-pattern-field-current.log`); no se
+ejecutaron los accesos rechazados. Esto no regenera el SDK ni acredita tuplas
+binarias de vistas, DLL o todas las formas de alias. Cambió solo la prueba y
+continúa sin commit.
+
+La prueba binaria se amplió después a `outer.inner.value.Get()` para lectura,
+reemplazo y movimiento del campo, reemplazo del receptor intermedio, llamada
+mutante y escritura por alias. El control de lectura válido y los demás casos
+se rechazan antes de analizar la protección esperada: el sujeto del patrón no
+se reconoce como préstamo de un dueño identificador directo. La declaración
+del alias de `outer.inner` también se rechaza. Los doce resultados Rc/Arc se
+registraron como fallos de la expectativa en
+`A:/nsc-fixes-evidencia/shared-binary-pattern-field-current.log`; ninguno de
+los casos inseguros se ejecutó. Los controles directos anteriores siguen
+pasando dentro de esa misma prueba. La implementación actual exige raíz
+identificadora inmediata al crear el préstamo del patrón y al registrar campos
+de su procedencia; habilitar la lectura anidada exige proteger tanto el campo
+como cada receptor intermedio y sus alias antes de aceptar la referencia. No
+se ha modificado esa implementación ni se presenta la regresión como aprobada.
+
+Para aislar el alias del diagnóstico anterior, se sustituyó únicamente en el
+fixture la declaración `borrowed Holder alias = outer.inner` por la referencia
+local ordinaria `Holder alias = outer.inner`. Así ya no se diagnostica la
+declaración, pero el patrón anidado sigue rechazado antes de verificar la
+escritura mediante alias, en Rc y Arc
+(`shared-binary-pattern-field-nested-borrowed-alias.log` conserva la versión
+anterior; `shared-binary-pattern-field-current.log` conserva la nueva). La
+regresión sigue teniendo doce fallos; no se ejecutó el caso inseguro ni se
+concluye que el alias esté protegido una vez admitida la vista anidada.
+
+El control válido que actualiza `outer.inner.other` durante el préstamo de
+`outer.inner.value` también se agregó a la prueba. Se rechaza en la misma
+barrera inicial para Rc y Arc; la selección actual contiene catorce fallos y
+se conserva en `shared-binary-pattern-field-current.log`. Este control exige
+que una futura solución distinga campos independientes, pero aún no ejecuta.
+
+Para el ensayo se conservará la raíz de una cadena directa de campos sin
+indexadores ni llamadas intermedias, cuando el `Get()` resuelto devuelve
+referencia ligada a `this` de un campo move-only y la raíz es un local RAII.
+El registro existente ya recopila los nombres de todos los campos y la raíz;
+se aprovechará para rechazar también reemplazos de campos de referencia que
+sean ancestros de la vista, no solo campos declarados propietarios. Esto es
+conservador ante nombres repetidos y alias. La prueba debe rechazar cambios del
+dueño, de `inner` y llamadas mutantes, y ejecutar lecturas y modificaciones del
+campo independiente. La declaración `borrowed Holder alias = outer.inner`
+permanece aparte porque tiene otra barrera; el control de alias ordinario sí
+debe protegerse. No se habilitan indexadores, receptores calculados ni formas
+de origen desconocido. La compilación será incremental y las pruebas dirigidas;
+no se modifica interoperabilidad, el SDK instalado ni el formato de metadata.
+
+El ensayo se implementó en el análisis del patrón y del reemplazo de campos;
+el build incremental pasó (`nested-pattern-field-build.log`), con compilador
+SHA-256 `2e2aed370a4c662bb5d8234360a7f76852e9107111b4a473e027dfeae8bbe9ff`.
+La regresión binaria ampliada pasó para Rc y Arc: lectura anidada y cambio de
+otro campo ejecutaron 42 en O0/O2; reemplazo, movimiento, alias, reemplazo del
+receptor intermedio y llamada mutante se rechazaron con los diagnósticos
+esperados (`shared-binary-pattern-field-current.log`). Los controles directos
+de patrón, retorno prestado y operador local también pasaron
+(`nested-pattern-field-pattern-control.log`, `nested-pattern-field-return-control.log`,
+`nested-pattern-field-operator-control.log`). El Core binario es el artefacto
+preexistente identificado arriba; no se regeneró. No se ejecutaron las variantes
+rechazadas. La comparación por nombres puede rechazar campos distintos de igual
+nombre y no acredita indexadores, alias prestado inicializado desde campo,
+receptores calculados ni todas las cadenas; el ensayo sigue sin commit.
+
+La regresión binaria se amplió a una cadena de tres campos y a reemplazar el
+objeto intermedio después de terminar el patrón. Para Rc y Arc, la lectura
+profunda y el reemplazo posterior ejecutaron 42 en O0/O2; el reemplazo de
+cualquiera de los dos receptores intermedios durante el préstamo se rechazó
+con el diagnóstico esperado. La prueba dirigida completa pasó
+(`shared-binary-pattern-field-current.log`), con el mismo compilador y Core
+binario preexistente indicados arriba. No se modificó el compilador en esta
+ampliación y no se ejecutaron los casos rechazados. La prueba no extiende la
+garantía a indexadores, receptores calculados ni todas las formas de alias.
+
+Se añadieron seis casos equivalentes a `shared_public_pointers.py` para compilar
+las familias desde las fuentes de esta copia. Rc y Arc ejecutaron la lectura
+anidada y la actualización de otro campo en O0/O2; reemplazo, movimiento,
+reemplazo del receptor intermedio y llamada mutante se rechazaron con sus
+diagnósticos específicos. La selección CTest dirigida terminó correctamente
+(`A:/nsc-fixes-evidencia/nested-pattern-field-source-controls.log`). No se
+ejecutaron los casos rechazados ni se reconstruyó el SDK binario; estos
+resultados se suman a la prueba de biblioteca preexistente, sin acreditar las
+formas excluidas arriba. La selección no es la batería completa de punteros.
+
+La prueba dirigida `shared_binary_field_constructor_failure.py` consume Core
+binario preexistente y verifica campos `Rc`, `WeakRc`, `Arc` y `WeakArc` en un
+objeto cuyo constructor falla, tanto después de inicializar el campo mediante
+un método como dentro de ese método. Los recuentos fuertes y débiles esperados
+se comprobaron en O0/O2: las 16 ejecuciones devolvieron 42
+(`A:/nsc-fixes-evidencia/shared-binary-field-constructor-public.cmd` y `.log`).
+El primer fixture utilizó un constructor implícito de `Payload`, no accesible
+desde la plantilla binaria, y las 16 compilaciones se rechazaron antes de probar
+cleanup (`shared-binary-field-constructor-current.log`); se ajustó el fixture
+propio a un constructor público y se conservaron ambos logs.
+
+Se utilizó el compilador aislado SHA-256
+`46b70ba2a898622cb80cda26a94a826f21b5b2b620f5cb9c08e0cc9effd7ecdc` y
+`pointers-sdk-refresh/NativeSharpCore.lib` preexistente, SHA-256
+`f91d95c248f477531d38a093605f45343f6be9736d15e2097acd452db4bb54e0`.
+No se regeneró el SDK. El contenedor y su constructor están en la fuente del
+consumidor; esto no verifica un contenedor precompilado, descarga de módulo,
+otros campos ni liberación directa del bloque. La prueba y el ensayo de
+cleanup permanecen sin commit y no certifican las cuatro APIs completas.
+
+La prueba adicional `shared_binary_owner_constructor_failure.py` compila
+`Payload` y `Holder` con su constructor en una biblioteca separada que consume
+Core, y después compila el consumidor. Las 32 combinaciones de productor y
+consumidor O0/O2 compilaron, pero fallaron en ejecución
+(`A:/nsc-fixes-evidencia/shared-binary-owner-constructor-diagnostic.cmd` y
+`.log`). La codificación del retorno muestra excepción capturada y un contador
+de más: 32 en fuertes (2 en vez de 1) y 31 en débiles (1 en vez de 0), para
+Rc y Arc y para fallo dentro del helper o después de su retorno. La misma
+prueba con el constructor fuente en el consumidor pasó como se documentó
+arriba. No demuestra por sí sola liberación física del bloque.
+
+Inspección inicial: `sharedEmptyDefault` en `OopLlvmStatements.cpp` descarta
+layouts importados antes de comprobar la forma y el destructor; esa condición
+es una posible diferencia entre los escenarios, no una causa raíz demostrada.
+No debe eliminarse sin acreditar que el estado vacío y su destrucción son
+seguros para el tipo importado real y sin conservar el rechazo de homónimos.
+No se ha modificado el backend. La regresión binaria permanece fallida, sin
+commit, y debe diagnosticarse antes de cambiar la política de limpieza.
+
+La inspección dirigida `shared-binary-owner-inspection/dump.cmd` descarta la
+primera hipótesis para la reproducción `WeakRc`: el MIR muestra los layouts
+de la envoltura y su almacenamiento como `imported=false`. El LLVM del
+constructor solo registra cleanup del parámetro movido y no del campo; el
+contador débil queda vivo. En ese mismo MIR no aparece una función de la
+especialización exterior `WeakRc`, aunque sí sus layouts y destructores
+internos. El criterio actual exige encontrar una función exterior para probar
+la identidad de la familia. `HirBuildCoordinator.cpp` obtiene esa identidad
+del texto de especialización de la declaración del tipo. Se ensayará consultar
+la misma identidad de la declaración en el criterio existente, manteniendo
+todas las verificaciones de estructura, destructor nulo y solapamiento; no se
+tratará un nombre como prueba suficiente ni se alterará la regla de structs
+ordinarios. Deben pasar la reproducción binaria y los controles de homónimos
+y de inicialización de campos antes de considerar válida la corrección.
+
+El ajuste en `OopLlvmStatements.cpp` consulta la identidad de especialización
+en la declaración del tipo cuando no hay métodos exteriores emitidos; mantiene
+la comprobación previa de namespace, layout y destructor protegido por null.
+El build incremental pasó (`shared-binary-owner-identity-build.log`), con
+compilador SHA-256
+`1b7d83d0e089fbe073942a63a0035c3de63e382906692709221a865e24ade4cd`.
+Las 32 combinaciones que dejaban un contador de más ejecutaron 42
+(`shared-binary-owner-identity-after.log`). Los 16 controles de homónimos
+directos y anidados ejecutaron 42 (`shared-binary-owner-identity-controls.log`).
+
+La selección dirigida de construcción desde fuentes pasó
+(`shared-binary-owner-identity-source.log`), al igual que los controles
+existentes de consumo de Core binario (`shared-binary-owner-identity-binary.log`).
+El Core consumido es el artefacto preexistente SHA-256
+`f91d95c248f477531d38a093605f45343f6be9736d15e2097acd452db4bb54e0`;
+no se regeneró ni se atribuye al compilador actual. Esta evidencia cubre los
+contadores y los casos listados, no demuestra liberación física del bloque,
+DLL ni todos los layouts. El cambio es provisional y permanece sin commit.
+
+La variante posterior `--dll` de `shared_binary_owner_constructor_failure.py`
+compiló el constructor de `Holder` como DLL y pasó las 32 combinaciones de
+Rc, WeakRc, Arc y WeakArc, fallo en helper o constructor y productor/consumidor
+O0/O2. El control estático de la misma prueba también pasó sus 32 ejecuciones
+tras la ampliación. Comandos y salidas en
+`A:/nsc-fixes-evidencia/shared-binary-owner-constructor-{dll,static}-current.cmd`
+y `.log`. Se utilizó el Core binario preexistente de la campaña y el árbol
+del compilador con cambios locales. La DLL permaneció cargada; no se midió la
+liberación física del bloque ni se verificó la descarga dinámica.
+
+La selección `shared_field_method_borrow.py` se repitió con el compilador
+incremental y el Core binario preexistente (`shared-field-method-current-directed.cmd`
+y `.log`). En Rc y Arc rechazó las formas de reemplazo durante el préstamo
+probadas por receptor, alias, argumento, delegado y evento; las lecturas y
+reemplazos independientes o posteriores al ámbito ejecutaron 42 en O0/O2.
+Esto actualiza los pasajes históricos que describen la llamada indirecta como
+pendiente: esos pasajes reflejan el estado anterior, no una decisión aún por
+pedir. La selección no acredita todas las rutas de alias o de código binario.
+
+La regresión de `finally` asíncrono se repitió con el compilador SHA-256
+`1b7d83d0e089fbe073942a63a0035c3de63e382906692709221a865e24ade4cd`
+y el mismo Core binario preexistente. Los cuatro controles de salida normal
+ejecutaron 11 como se esperaba. Las cuatro variantes con excepción y suspensión
+sin clon de tupla ejecutaron 12 frente a 21: no se observa captura de la
+excepción y queda un fuerte adicional. Las otras doce combinaciones con
+excepción y clon no compilaron por `Cleanup funclets for the SEH personality
+cannot contain exceptional actions`. Comando y log:
+`A:/nsc-fixes-evidencia/shared-finally-binary-current.cmd` y `.log`. Se
+confirman esos resultados, no una causa nueva ni una corrección. Core no se
+reconstruyó y la prueba no acredita liberación física del bloque.
+
+Para el compilador actual se generó además el LLVM del contraste `Arc`, sin
+clon en la tupla, con Core binario y fuente de inspección conservada en
+`A:/nsc-fixes-evidencia/shared-finally-binary-current-ir/`. En `Work$poll`, el
+despacho de estado 1 apunta a `coro.resume.stmt.39`, la copia asociada a
+`eh.finally.normal.8`; la salida de esa copia continúa a la salida normal del
+try. La copia que procesa la salida pendiente contiene por separado la
+destrucción del propietario capturado. El resultado confirma en el build actual
+la divergencia de continuaciones observada en el LLVM anterior. No basta cambiar
+un número de bloque: retornos, excepciones, finally anidados, cleanup y funclets
+requieren conservar qué salida estaba pendiente antes de suspender. No se ha
+modificado la implementación ni probado una solución de ese contrato.
+
+La inspección del lowering identifica el punto donde convergen esas copias:
+`collectCoroutineSuspensions` asigna un identificador al nodo MIR de suspensión,
+y `enterCoroutineResumeTarget` guarda un único bloque por identificador en
+`resumeBlocks`, sustituyendo la asociación anterior al emitir otra copia.
+`lowerTryRegion` emite la limpieza normal por separado y `OopLlvmCleanup.cpp`
+emite acciones de limpieza dentro de un `cleanuppad` para el desenrollado
+excepcional. Esta lectura explica por qué distinguir copias es necesario, pero
+no basta para garantizar dominancia de los funclets ni persistencia de la salida
+pendiente. El siguiente cambio debe resolver ambas restricciones y repetir los
+controles de retorno, excepción y finally anidados; todavía no hay corrección.
+
+El LLVM actual aporta una restricción adicional para el diseño: la copia
+excepcional comienza en `eh.cleanup.1.12`, con `eh.cleanuppad1`. Si su hijo
+queda pendiente, `await.suspend.22` escribe el estado 1 y ejecuta `ret void`;
+si está listo, `await.frame.kept.24` continúa mediante `cleanupret` del mismo
+pad. Una segunda llamada a `Work$poll` es otra activación y no recupera el
+desenrollado nativo abandonado por ese `ret`. Por ello asignar un id distinto
+y apuntar de nuevo a un bloque dentro del pad no conserva por sí solo la
+excepción ni el contexto del sistema de excepciones. La solución debe sacar
+la continuación suspendible del desenrollado nativo y conservar explícitamente
+la excepción y su propiedad; la forma concreta y las excepciones extranjeras
+siguen sin demostrarse. Evidencia: líneas 468–549 del LLVM en
+`shared-finally-binary-current-ir/llvm.log`. No se ejecutó una prueba nueva.
+
+El contraste nuevo `exception_ready_no_clone` utiliza la misma excepción y
+tupla de enteros del caso suspendido, pero `Slow` termina en su primera
+consulta. Con el compilador y Core binario aislados usados en la prueba previa,
+Rc y Arc devolvieron 21 en O0 y O2: la excepción se capturó y solo quedó el
+fuerte original. El caso suspendido equivalente había devuelto 12. El comando
+y resultado están en `A:/nsc-fixes-evidencia/shared-finally-ready-no-clone.cmd`
+y `.log`. La prueba dirigida permite seleccionar el caso mediante
+`NSC_SHARED_FINALLY_CASE`; sin esa variable continúa ejecutando todos sus
+casos. Este contraste no prueba llamadas que lanzan dentro del funclet ni
+resuelve la continuación suspendida.
+
+El control `exception_catch_suspended_clone` sustituye el `finally` del
+fixture por un `catch` que forma la misma tupla con `owner.Clone()`, espera a
+`Slow()` y vuelve a lanzar la excepción. Las cuatro combinaciones de Rc/Arc y
+O0/O2 devolvieron 21 con el mismo compilador y Core binario aislados; comando y
+salida en `A:/nsc-fixes-evidencia/shared-catch-suspended-clone.cmd` y `.log`.
+Esto demuestra el caso concreto de conservar la excepción y los propietarios
+en un catch suspendido, sin la acción excepcional prohibida dentro del
+cleanuppad. Es evidencia para investigar una captura seguida de limpieza en
+código ordinario; no demuestra equivalencia de un finally general, ni cubre
+excepciones extranjeras, salidas no excepcionales o finally anidados.
+
+La inspección del frame limita la reutilización directa de ese mecanismo:
+`appendCoroutineCatchOwners` reserva ocho bytes por nodo MIR `CatchRegion`, y
+`beginCoroutineDispatch` asigna esos espacios a los mismos nodos; un
+`FinallyRegion` sin catch no recibe uno. `emitOneTryCatchBody` guarda ahí el
+objeto antes de bajar el cuerpo, y la salida gestionada libera o transfiere su
+propiedad. En cambio, `lowerStructuredExit` guarda el valor de retorno y
+recorre las limpiezas antes de elegir la continuación; el índice del bucle y
+el recorrido son decisiones de generación de código, no estado persistente
+del frame. Por tanto una transformación que capture la excepción debe
+reservar almacenamiento para su región y conservar también el destino
+estructurado; un único indicador compartido sin demostrar anidamiento no
+acredita el contrato. Aún no se ha implementado esa transformación.
+
+El selector `NSC_SHARED_FINALLY_CASE` ahora rechaza nombres desconocidos en
+vez de terminar con éxito sin ejecutar casos. `shared-finally-unknown-case.cmd`
+salió con código 1 y el diagnóstico esperado; el control válido de catch con
+clon volvió a pasar las cuatro combinaciones en
+`shared-catch-suspended-clone.log`.
+
+El control `exception_catch_nested_finally_clone` conserva una excepción en
+un catch, entra normalmente en un try anidado, clona el propietario y espera
+en el finally de ese try antes de volver a lanzar la excepción exterior. Rc
+y Arc devolvieron 21 en O0/O2; comando y salida en
+`A:/nsc-fixes-evidencia/shared-catch-nested-finally-clone.cmd` y `.log`.
+La prueba demuestra ese anidamiento con salida normal del try interior; no
+demuestra finalmente anidados atravesados por un retorno o una excepción,
+ni sustituye la corrección pendiente.
+
+La regresión `child_error_finally_suspend` distingue un error devuelto por
+un future hijo de un `throw` directo: `Fail()` se suspende y falla, después el
+finally de `Work` espera a otro future que también se suspende. Con el
+compilador aislado, la limpieza se completó (`Counter.Log == 1`), pero el
+catch exterior no se ejecutó: salida 11 frente a 42 en O0 y O2. El comando y
+la salida están en `A:/nsc-fixes-evidencia/async-finally-child-error.cmd` y
+`.log`. El caso se compiló desde fuentes mínimas y no usa los punteros ni el
+Core binario. La primera versión del fixture se rechazó porque faltaba una
+sentencia de retorno para el camino normal; se añadió `return 0` para que el
+contraste pueda ejecutarse. No se ha corregido la propagación de ese error.
+El control `child_error_finally_ready` conserva el mismo future hijo fallido,
+pero el await del finally termina inmediatamente: ejecutó 42 en O0/O2
+(`async-finally-child-error-ready.cmd` y `.log`).
+
+Tras el cambio de despacho de overrides sellados se repitió la regresión
+dirigida `shared_binary_public_pointers.py` con el compilador incremental y
+`pointers-sdk-refresh/NativeSharpCore.lib`. Terminó con código 0: incluyó
+propietarios, factorías y limpieza de constructores de Rc y Arc en O0/O2,
+restricciones de solo lectura y controles de invalidación de caché. Conserva
+rechazos esperados para bases precompiladas; no acredita que esas bases estén
+soportadas ni reconstruyó Core. Comando y salida:
+`A:/nsc-fixes-evidencia/pointers-after-sealed-dispatch.cmd` y `.log`.
+
+Para ese contraste se conservaron fuente, MIR y LLVM en
+`A:/nsc-fixes-evidencia/async-finally-child-error-ir/`. En `Work$poll`, la
+ruta de error del hijo guarda el objeto en el campo de error del future,
+escribe estado -2 y entra a la copia `coro.resume.stmt.36` del finally. Si
+`Slow` se suspende, esa copia escribe estado 2; el dispatch de la siguiente
+llamada envía 2 a `coro.resume.stmt.49`, la copia de salida normal. Esta
+termina el finally y continúa por la salida normal, no por el `ret` de la
+copia de error. Por tanto, para esta reproducción concreta no basta volver a
+marcar error: también hay que recuperar la continuación correcta y sus
+cleanups. La copia de cleanup excepcional nativo es otra vía distinta. El
+volcado es evidencia diagnóstica y no constituye una corrección.
+
+La prueba binaria de patrones incluye ahora un elemento de arreglo:
+`holders[0].value.Get()`. La lectura con el arreglo y el propietario vivos se
+rechaza para Rc y Arc; los intentos de reemplazar el campo o el elemento se
+rechazan en la misma barrera inicial, antes de la comprobación de invalidación
+esperada. La selección termina con seis fallos
+(`A:/nsc-fixes-evidencia/shared-pattern-indexed-current.cmd` y `.log`); no se
+ejecutaron los casos inseguros. El análisis de la vinculación especial exige
+actualmente que la cadena de campos termine en un identificador local RAII;
+el indexador interrumpe esa cadena y un arreglo no satisface esa condición.
+Aceptar la lectura exige registrar el arreglo y proteger tanto su elemento como
+el campo, su vida y posibles alias. No se modificó el compilador ni se considera
+corregido el caso; los diagnósticos específicos exigidos por la prueba son una
+expectativa de la regresión, no evidencia de que la protección ya funcione.
+
+Corrección de alcance de esa expectativa: el arreglo del fixture es plano y no
+posee sus elementos de clase. Reemplazar su referencia no destruye el objeto
+anterior, de modo que no se debe clasificar automáticamente como invalidación.
+La prueba conserva el objeto anterior en un local, reemplaza el elemento y
+espera leer la vista antes de liberar ambos objetos y el arreglo. Añade por
+separado dos negativos que intentan destruir el objeto, directamente y por
+alias, mientras la vista está viva. Estos últimos necesitan un diagnóstico de
+vida verificable y no deben ejecutarse si se aceptan indebidamente.
+La repetición de la selección actual registra diez fallos: cinco variantes
+para cada familia, todas detenidas todavía en la barrera de creación de vista
+(`shared-pattern-indexed-current.log`). No demuestra aún si los controles
+positivos ejecutarán ni si los negativos se rechazarán por la causa correcta.
+
+Se ensayó reconocer la raíz de un arreglo local y comprobar `delete` y
+`destroy` mientras la vista vive. El ensayo pasó los controles directos de
+lectura, sustitución plana, campo independiente y destrucción directa o por
+alias; también pasó los controles anteriores de patrones y llamadas. Sin
+embargo, `Holder alias = Identity(holders[0])` seguido de `delete alias` dentro
+del patrón fue aceptado por el análisis para Rc y Arc. La prueba no ejecutó el
+programa potencialmente inseguro y registra ambos fallos en
+`A:/nsc-fixes-evidencia/shared-pattern-indexed-prototype-test.log`. La búsqueda
+de raíces del ensayo no seguía ese resultado de función.
+
+Por esa vía sin protección se retiraron los cambios del ensayo en el análisis
+del patrón y de destrucción explícita, se reconstruyó `nsc` incrementalmente
+y se repitió la regresión. La barrera inicial vuelve a rechazar la creación de
+la vista, y las 26 expectativas indexadas continúan fallando antes de demostrar
+la protección (`shared-pattern-indexed-current.log`). El código y los cambios
+preexistentes se preservaron; el archivo de destrucción quedó sin diff. Los
+controles dirigidos del ensayo no certifican una solución vigente. Falta seguir
+de forma segura la procedencia a través de llamadas y conservar los casos
+independientes antes de volver a habilitar esta forma.
+
+Un segundo ensayo trató de forma conservadora los alias obtenidos por llamadas
+o campos estáticos y comprobó tanto `delete` como `destroy`. Los controles de
+esas formas llegaron al diagnóstico esperado, pero el ensayo aceptó destruir un
+parámetro cuyo objeto se había guardado antes en `holders[0]`; la vista seguía
+activa. No se ejecutó el programa. La salida está en
+`A:/nsc-fixes-evidencia/shared-pattern-indexed-prototype-test.log`. El arreglo
+no registra todavía las posibles procedencias de sus elementos: seguir solo
+la raíz del arreglo o la procedencia del alias no relaciona ese parámetro con
+el objeto prestado. También habrá que considerar escrituras mediante alias del
+arreglo y conservar la independencia cuando realmente pueda demostrarse.
+
+Se retiró el segundo ensayo y se reconstruyó incrementalmente `nsc`; la
+repetición `shared-pattern-indexed-current.log` vuelve a rechazar el patrón en
+su barrera inicial. Los nuevos controles estáticos se ejecutan solo con Arc:
+un campo estático que contiene Rc está prohibido por decisión del usuario, y
+el fixture anterior declaró ese campo para todos los casos por error. El
+fixture se corrigió para no invalidar la selección completa; el log anterior
+de esa tentativa no demuestra los controles de patrón. Este trabajo no
+constituye una corrección del compilador y no se ejecutaron casos inseguros.
+
+La regresión conserva además tres formas que la siguiente solución debe
+distinguir: guardar el parámetro mediante un alias del arreglo, compartir un
+objeto entre dos arreglos y llenar el arreglo mediante una función antes del
+patrón. El compilador restaurado rechaza estas variantes en la misma barrera
+de creación de la vista, para Rc y Arc
+(`A:/nsc-fixes-evidencia/shared-pattern-indexed-current.log`). Por tanto no
+se demuestra aún la protección de sus operaciones de destrucción. Ninguno de
+los programas inseguros se ejecutó. El seguimiento de contenidos debe tener
+en cuenta escrituras indirectas y llamadas; una tabla limitada únicamente a
+asignaciones directas no bastaría para esos controles.
+
+### Arreglos con limpieza exterior activa
+
+Los controles de `destructor_throw_owned_field.py` reprodujeron una pérdida de
+limpieza al lanzar el destructor de un elemento de un arreglo local `owned`
+cuando había otro recurso activo: el arreglo de estructuras produjo 23 en vez
+de la secuencia 213, y el arreglo de clases produjo 13 en vez de 123, tanto en
+O0 como en O2 (`A:/nsc-fixes-evidencia/dynamic-active-before.log`).
+
+En `OopLlvmCleanup.cpp` se permite usar la limpieza excepcional del arreglo
+cuando hay una limpieza exterior activa, conservando su destino. El generador
+de la función auxiliar para referencias guarda y despeja temporalmente las
+regiones de limpieza de la función llamadora, para no insertar referencias a
+variables de esa función en la auxiliar. La regresión posterior registra salida
+42 para los dos controles en O0/O2 y salida 148 para la segunda excepción en
+ambos tipos de arreglo (`destructor-release-registered.log`, 1/1). Los controles
+de destructores de punteros compartidos pasaron
+(`shared-destructor-throw-current.log`); las pruebas de destrucción de tuplas y
+valores de SDK binario pasaron 2/2 (`struct-drop-regression.log`). La prueba
+dirigida de ASan pasó 1/1 (`asan-throwing-array-registered.log`): demuestra la
+liberación del bloque en los escenarios instrumentados existentes, sin afirmar
+ausencia general de fugas. Compilador incremental aislado SHA-256:
+`1225f90ae8fcc71472212f77b374f582781c8cddf3d0d0b685cf1201df74b0a1`.
+
+Estos resultados no cubren la limpieza dentro de un funclet activo ni todas las
+clases posibles de elementos de arreglo. La batería completa no se ejecutó,
+conforme a la instrucción vigente; la campaña y sus cambios locales siguen
+abiertos.

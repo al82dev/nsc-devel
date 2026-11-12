@@ -58,6 +58,12 @@ void ProjectMethodBodyModelDumper::dump(
 {
     output << "project-method-body-model\n";
     dumpCallables(model, memberModel, nameLookup, output);
+    for (const auto& edge : model.prototypeViewOutputEdges())
+        if (edge.size() == 3)
+            output << "prototype-view-output unknown callable=" << edge[0]
+                   << " source=" << edge[1] << " output=" << edge[2] << "\n";
+    for (const auto callable : model.prototypeDirectViewProducerCandidates())
+        output << "prototype-direct-view-producer unknown callable=" << callable << "\n";
     dumpScopes(model, output);
     dumpLocals(model, output);
     dumpNameBindings(model, output);

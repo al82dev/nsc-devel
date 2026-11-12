@@ -998,6 +998,47 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
             const ExpressionResult operand = analyzeExpression(
                 expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            const MethodNameBinding* deletedName = expression->first() != nullptr
+                ? nameBinding(expression->first(), methodMemberOrdinal) : nullptr;
+            const bool deletesBorrowedFieldObject = operand.valid &&
+                expression->first() != nullptr &&
+                isReferenceTypeKey(operand.typeKey) &&
+                ((expression->first()->kind() == ast::AstNodeKind::MemberExpression &&
+                  hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal)) ||
+                 (expression->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+                  hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal, true)) ||
+                 (expression->first()->kind() == ast::AstNodeKind::IndexExpression &&
+                  hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal, true)) ||
+                 ((expression->first()->kind() == ast::AstNodeKind::CallExpression ||
+                   (deletedName != nullptr && (deletedName->kind == MethodNameBindingKind::StaticField ||
+                                               deletedName->kind == MethodNameBindingKind::NamespaceState))) &&
+                  std::ranges::any_of(locals_, [&](const MethodLocalSymbol& local)
+                  {
+                      return local.methodMemberOrdinal == methodMemberOrdinal &&
+                          scopeContains(local.scopeOrdinal, scopeOrdinal) && !local.viewSourceFields.empty();
+                  })));
+            if (deletesBorrowedFieldObject)
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "cannot delete owner field object while a borrowed view is alive");
+            const bool deletesBorrowedArray = operand.valid && expression->flag() &&
+                ProjectTypeConversion::isNativeArray(operand.typeKey) &&
+                !consumedOwnedArrayLocal.has_value() &&
+                (hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal, true) ||
+                 ((expression->first()->kind() == ast::AstNodeKind::CallExpression ||
+                   (deletedName != nullptr && (deletedName->kind == MethodNameBindingKind::StaticField ||
+                                               deletedName->kind == MethodNameBindingKind::NamespaceState))) &&
+                  std::ranges::any_of(locals_, [&](const MethodLocalSymbol& local)
+                  {
+                      return local.methodMemberOrdinal == methodMemberOrdinal &&
+                          scopeContains(local.scopeOrdinal, scopeOrdinal) && !local.viewSourceFields.empty();
+                  })));
+            if (deletesBorrowedArray)
+                diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error, expression->range(),
+                    "cannot delete[] array while a borrowed view is alive");
             bool deletesBorrowedDelegate = false;
             if (operand.valid && !expression->flag() && isDelegateTypeKey(operand.typeKey) &&
                 !isExternCDelegateTypeKey(operand.typeKey) && expression->first() != nullptr &&
@@ -1147,7 +1188,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
             result.typeKey = "builtin:void";
             result.valid = operand.valid && !deletesCurrentThis && !deletesRaiiLocal && !deletesBorrowedDelegate &&
-                !deletesOwnedField && !consumesBorrowedOwner && parameterConsumable;
+                !deletesOwnedField && !deletesBorrowedFieldObject && !deletesBorrowedArray &&
+                !consumesBorrowedOwner && parameterConsumable;
             break;
         }
         default:
@@ -1262,6 +1304,31 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
 
             const bool validTarget = validateDestroyTarget(expression, operand, diagnostics);
+            const MethodNameBinding* destroyedName = expression->first() != nullptr
+                ? nameBinding(expression->first(), methodMemberOrdinal) : nullptr;
+
+            const bool destroysBorrowedFieldObject = operand.valid &&
+                expression->first() != nullptr && isReferenceTypeKey(operand.typeKey) &&
+                ((expression->first()->kind() == ast::AstNodeKind::MemberExpression &&
+                  hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal)) ||
+                 (expression->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+                  hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal, true)) ||
+                 (expression->first()->kind() == ast::AstNodeKind::IndexExpression &&
+                  hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal, true)) ||
+                 ((expression->first()->kind() == ast::AstNodeKind::CallExpression ||
+                   (destroyedName != nullptr && (destroyedName->kind == MethodNameBindingKind::StaticField ||
+                                                 destroyedName->kind == MethodNameBindingKind::NamespaceState))) &&
+                  std::ranges::any_of(locals_, [&](const MethodLocalSymbol& local)
+                  {
+                      return local.methodMemberOrdinal == methodMemberOrdinal &&
+                          scopeContains(local.scopeOrdinal, scopeOrdinal) && !local.viewSourceFields.empty();
+                  })));
+            if (destroysBorrowedFieldObject)
+                diagnostics.report(
+                    diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error,
+                    expression->range(),
+                    "cannot destroy owner field object while a borrowed view is alive");
 
             bool destroysRaiiLocal = false;
             if (expression->first() != nullptr &&
@@ -1320,7 +1387,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
 
             result.typeKey = "builtin:void";
             result.valid = operand.valid && validTarget && !destroysRaiiLocal &&
-                !destroysCurrentThis && !destroysOwnedValue;
+                !destroysCurrentThis && !destroysOwnedValue && !destroysBorrowedFieldObject;
             break;
         }
         default:

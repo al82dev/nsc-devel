@@ -310,6 +310,12 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeParamete
     const MethodParameterSymbol& parameter = method->parameters[scopeName.semanticOrdinal];
     if (!validateParameterIdentifierRead(expression, scopeName, parameter, diagnostics)) return result;
     initializeParameterIdentifierResult(result, scopeName, parameter);
+    if (method->isUserOperator && parameter.passKind == ParameterPassKind::In &&
+        memberModel_ != nullptr && memberModel_->typeTransitivelyOwnsStorage(result.typeKey))
+    {
+        result.readonlyBorrowedObject = true;
+        result.ownershipSourceParameterOrdinal = scopeName.semanticOrdinal;
+    }
     if (parameter.ownership == sema::OwnershipKind::Borrowed &&
         !applyBorrowedParameterReassignment(
             result, expression, scopeName, methodMemberOrdinal, diagnostics))
@@ -1121,6 +1127,211 @@ ProjectMethodBodyModel::analyzeOverloadedUnary(
     diagnostics::DiagnosticEngine& diagnostics)
 {
     const TokenKind operation = expression->tokenKind();
+    if (operation == TokenKind::PlusPlus || operation == TokenKind::MinusMinus)
+    {
+        const std::string name = stage38OperatorMethodName(operation, 1);
+        const std::string trait = stage38OperatorTraitKey(operation, 1);
+        std::vector<std::size_t> candidates =
+            stage38OperatorCandidates(trait, name, operand.typeKey, std::nullopt);
+        if (candidates.empty()) return std::nullopt;
+        if (!operand.assignable)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "increment/decrement requires a modifiable operand");
+            return ExpressionResult{};
+        }
+        if (memberModel_ != nullptr && operand.assignmentMemberOrdinal.has_value() &&
+            *operand.assignmentMemberOrdinal < memberModel_->members().size())
+        {
+            const ClassMemberSymbol& field = memberModel_->members()[*operand.assignmentMemberOrdinal];
+            bool activeArgumentField = false;
+            const ast::AstNode* target = expression->first();
+            if (target != nullptr && target->kind() == ast::AstNodeKind::MemberExpression &&
+                target->first() != nullptr &&
+                target->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const auto root = lookupScopeName(scopeOrdinal, target->first()->text());
+                if (root.has_value() && root->kind == ScopeNameKind::Local)
+                {
+                    const auto key = std::pair<std::size_t, std::size_t>{
+                        root->semanticOrdinal, *operand.assignmentMemberOrdinal};
+                    activeArgumentField = std::ranges::find(activeArgumentOwnedFields_, key) !=
+                        activeArgumentOwnedFields_.end();
+                }
+            }
+            if (field.kind == ClassMemberKind::Field && !field.isStatic &&
+                field.declaredOwnership == sema::OwnershipKind::Owned &&
+                isReferenceTypeKey(operand.typeKey) &&
+                (activeArgumentField ||
+                    hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal)))
+            {
+                diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error, expression->first()->range(),
+                    "cannot overwrite owner field while a borrowed view is alive");
+                return ExpressionResult{};
+            }
+        }
+        if (isReferenceTypeKey(operand.typeKey) && expression->first() != nullptr &&
+            expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const auto target = lookupScopeName(scopeOrdinal, expression->first()->text());
+            if (target.has_value() && target->kind == ScopeNameKind::Local &&
+                target->semanticOrdinal < locals_.size() && locals_[target->semanticOrdinal].isRaii &&
+                rejectUnavailableAssignmentOwner(expression, target->semanticOrdinal, scopeOrdinal, diagnostics))
+                return ExpressionResult{};
+        }
+        const std::vector<ExpressionResult> arguments = {operand};
+        ExpressionResult selected = resolveSyntheticCall(
+            expression, methodMemberOrdinal, scopeOrdinal, name, std::move(candidates),
+            arguments, nullptr, {}, std::nullopt, false, false, diagnostics, true);
+        if (!selected.valid) return ExpressionResult{};
+        if (!classifyImplicit(selected.typeKey, operand.typeKey, selected.integerConstant).exists())
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidConversion,
+                diagnostics::DiagnosticSeverity::Error, expression->range(),
+                "increment/decrement operator result must be assignable to its operand");
+            return ExpressionResult{};
+        }
+        const MethodCallBinding* binding = callBinding(expression, methodMemberOrdinal);
+        const ClassMemberSymbol* implementation = binding != nullptr &&
+            binding->selectedMemberOrdinal.has_value()
+            ? methodSymbol(*binding->selectedMemberOrdinal) : nullptr;
+        const auto localTarget = expression->first() != nullptr &&
+            expression->first()->kind() == ast::AstNodeKind::IdentifierExpression
+            ? lookupScopeName(scopeOrdinal, expression->first()->text()) : std::nullopt;
+        if (implementation != nullptr && binding->selectedMemberOrdinal.has_value() &&
+            memberModel_ != nullptr && *binding->selectedMemberOrdinal < memberModel_->members().size() &&
+            implementation->isUserOperator &&
+            implementation->parameters.size() == 1 &&
+            implementation->parameters[0].passKind == ParameterPassKind::Value &&
+            implementation->parameters[0].ownership != sema::OwnershipKind::Owned &&
+            implementation->parameters[0].typeKey == operand.typeKey &&
+            implementation->declaredOwnership == sema::OwnershipKind::Owned &&
+            selected.typeKey == operand.typeKey && isReferenceTypeKey(operand.typeKey) &&
+            operand.addressable && localTarget.has_value() && localTarget->kind == ScopeNameKind::Local &&
+            localTarget->semanticOrdinal < locals_.size() && locals_[localTarget->semanticOrdinal].isRaii &&
+            operand.ownershipSourceLocalOrdinal == localTarget->semanticOrdinal)
+        {
+            selected.assignable = false;
+            selected.addressable = false;
+            if (expression->kind() != ast::AstNodeKind::PostfixExpression)
+            {
+                selected.ownership = sema::OwnershipKind::Borrowed;
+                selected.ownershipTransfer = false;
+                selected.ownershipFreshOwner = false;
+                selected.objectLifetimeOwnership = sema::OwnershipKind::Borrowed;
+                selected.storageOwnership = sema::OwnershipKind::Borrowed;
+                selected.ownershipSourceLocalOrdinal = localTarget->semanticOrdinal;
+            }
+            else
+                selected.ownedPostfixTemporary = true;
+            return selected;
+        }
+        if (implementation != nullptr && memberModel_ != nullptr &&
+            implementation->isUserOperator && implementation->parameters.size() == 1 &&
+            implementation->parameters[0].passKind == ParameterPassKind::Value &&
+            implementation->parameters[0].ownership != sema::OwnershipKind::Owned &&
+            implementation->parameters[0].typeKey == operand.typeKey &&
+            implementation->declaredOwnership == sema::OwnershipKind::Owned &&
+            selected.typeKey == operand.typeKey && isReferenceTypeKey(operand.typeKey) &&
+            operand.addressable && operand.assignmentMemberOrdinal.has_value() &&
+            *operand.assignmentMemberOrdinal < memberModel_->members().size() &&
+            expression->first() != nullptr &&
+            expression->first()->kind() == ast::AstNodeKind::MemberExpression &&
+            expression->first()->first() != nullptr &&
+            expression->first()->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const ClassMemberSymbol& field = memberModel_->members()[*operand.assignmentMemberOrdinal];
+            const auto root = lookupScopeName(scopeOrdinal, expression->first()->first()->text());
+            std::optional<std::size_t> owner;
+            std::optional<std::size_t> parameterOwner;
+            const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
+            if (root.has_value() && root->kind == ScopeNameKind::Parameter && caller != nullptr &&
+                root->semanticOrdinal < caller->parameters.size() &&
+                caller->parameters[root->semanticOrdinal].ownership == sema::OwnershipKind::Borrowed)
+                parameterOwner = root->semanticOrdinal;
+            if (root.has_value() && root->kind == ScopeNameKind::Local && root->semanticOrdinal < locals_.size())
+            {
+                const MethodLocalSymbol& local = locals_[root->semanticOrdinal];
+                if (local.isRaii)
+                    owner = root->semanticOrdinal;
+                else if (local.localBorrowBindingOrdinal.has_value() &&
+                         *local.localBorrowBindingOrdinal < localBorrowBindings_.size())
+                {
+                    const MethodLocalBorrowBinding& borrow = localBorrowBindings_[*local.localBorrowBindingOrdinal];
+                    const auto localCandidate = borrow.sourceOwnerLocalOrdinal.has_value()
+                        ? borrow.sourceOwnerLocalOrdinal
+                        : (borrow.possibleSourceOwnerLocalOrdinals.empty() ? std::nullopt
+                            : std::optional<std::size_t>(borrow.possibleSourceOwnerLocalOrdinals.front()));
+                    const auto parameterCandidate = borrow.sourceOwnerParameterOrdinal.has_value()
+                        ? borrow.sourceOwnerParameterOrdinal
+                        : (borrow.possibleSourceOwnerParameterOrdinals.empty() ? std::nullopt
+                            : std::optional<std::size_t>(borrow.possibleSourceOwnerParameterOrdinals.front()));
+                    const bool validLocals = (!localCandidate.has_value() ||
+                        (*localCandidate < locals_.size() && locals_[*localCandidate].isRaii)) &&
+                        std::ranges::all_of(borrow.possibleSourceOwnerLocalOrdinals,
+                            [&](std::size_t candidate)
+                            { return candidate < locals_.size() && locals_[candidate].isRaii; });
+                    const bool validParameters = !parameterCandidate.has_value() || (caller != nullptr &&
+                        *parameterCandidate < caller->parameters.size() &&
+                        caller->parameters[*parameterCandidate].ownership == sema::OwnershipKind::Borrowed &&
+                        std::ranges::all_of(borrow.possibleSourceOwnerParameterOrdinals,
+                            [&](std::size_t candidate)
+                            { return candidate < caller->parameters.size() &&
+                                caller->parameters[candidate].ownership == sema::OwnershipKind::Borrowed; }));
+                    if (validLocals && validParameters)
+                    {
+                        owner = localCandidate;
+                        parameterOwner = parameterCandidate;
+                    }
+                }
+            }
+            if (field.kind == ClassMemberKind::Field && !field.isStatic &&
+                field.declaredOwnership == sema::OwnershipKind::Owned &&
+                (parameterOwner.has_value() ||
+                 (owner.has_value() && *owner < locals_.size() && locals_[*owner].isRaii)))
+            {
+                selected.assignable = false;
+                selected.addressable = false;
+                if (expression->kind() == ast::AstNodeKind::PostfixExpression)
+                    selected.ownedPostfixTemporary = true;
+                else
+                {
+                    selected.ownership = sema::OwnershipKind::Borrowed;
+                    selected.ownershipTransfer = false;
+                    selected.ownershipFreshOwner = false;
+                    selected.objectLifetimeOwnership = sema::OwnershipKind::Borrowed;
+                    selected.storageOwnership = sema::OwnershipKind::Borrowed;
+                    selected.ownershipSourceLocalOrdinal = owner;
+                    selected.ownershipSourceParameterOrdinal = parameterOwner;
+                    selected.ownsStorageDestination = true;
+                }
+                return selected;
+            }
+        }
+        if (implementation != nullptr && binding->selectedMemberOrdinal.has_value() &&
+            memberModel_ != nullptr && *binding->selectedMemberOrdinal < memberModel_->members().size() &&
+            implementation->isUserOperator && implementation->parameters.size() == 1 &&
+            ((implementation->parameters[0].passKind == ParameterPassKind::Value &&
+              implementation->parameters[0].typeKey == operand.typeKey) ||
+             ((implementation->parameters[0].passKind == ParameterPassKind::In ||
+               implementation->parameters[0].passKind == ParameterPassKind::Ref) &&
+              implementation->parameters[0].pointeeTypeKey == operand.typeKey)) &&
+            selected.typeKey == operand.typeKey && operand.addressable &&
+            typeKeyIsStruct(operand.typeKey) &&
+            !memberModel_->typeIsMoveOnly(operand.typeKey))
+        {
+            selected.assignable = false;
+            selected.addressable = false;
+            return selected;
+        }
+        // Do not lower this as an ordinary call: updating the destination must evaluate it once.
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "user-defined increment/decrement update is not implemented");
+        return ExpressionResult{};
+    }
 if (operation != TokenKind::Amp && operation != TokenKind::Star &&
     operation != TokenKind::PlusPlus && operation != TokenKind::MinusMinus)
 {

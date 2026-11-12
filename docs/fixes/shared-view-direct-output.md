@@ -50,3 +50,11 @@ rechazos esperados y 16 controles aceptados; los controles completaron 32
 ejecuciones O0/O2 con salida 42. Los casos inseguros solo se analizaron. Esta
 prueba sigue sin verificar por separado un compilador enlazado exclusivamente
 con la revisión registrada.
+
+Comprobación adicional de la revisión `a56498f05`: se extrajeron de Git las
+cabeceras y los archivos de análisis registrados, y se compilaron únicamente
+`AssignmentAnalyzer.cpp` y `OwnershipAnalyzer.cpp`; ambos terminaron con
+código 0. El registro está en
+`A:/nsc-fixes-evidencia/committed-view-check-a56498f05/compile.log`. La
+configuración y las cabeceras generadas siguen siendo las del build aislado
+existente, y no se enlazó ni ejecutó un compilador completo de esa revisión.

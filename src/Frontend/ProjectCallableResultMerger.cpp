@@ -283,6 +283,15 @@ void ProjectCallableResultMerger::mergeShardState(
     destination.arrayDeleteKeepsElements_.insert(
         source.arrayDeleteKeepsElements_.begin(), source.arrayDeleteKeepsElements_.end());
     destination.analyzedCallableMembers_.insert(result.callableOrdinal());
+    for (auto& edge : source.prototypeViewOutputEdges_)
+    {
+        // The shard owns observations for precisely this callable.
+        if (edge.size() == 3 && edge[0] == result.callableOrdinal())
+            destination.prototypeViewOutputEdges_.push_back(std::move(edge));
+    }
+    for (const auto callable : source.prototypeDirectViewProducerCandidates_)
+        if (callable == result.callableOrdinal())
+            destination.prototypeDirectViewProducerCandidates_.push_back(callable);
     if (source.isolatedCallableOrdinal_.has_value() &&
         *source.isolatedCallableOrdinal_ == result.callableOrdinal() &&
         result.callableOrdinal() < destination.parameterEscapeSummaries_.size())

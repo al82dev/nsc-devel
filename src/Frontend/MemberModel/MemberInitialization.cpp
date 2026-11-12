@@ -163,7 +163,12 @@ void ProjectMemberModel::applyMemberOrigin(
         part.isPrecompiled && memberNode->kind() == ast::AstNodeKind::MethodDeclaration &&
         (memberNode->hasModifier(lexer::TokenKind::KwInline) ||
          memberNode->hasModifier(lexer::TokenKind::KwForceInline));
-    symbol.isPrecompiled = part.isPrecompiled && !transportedInlineBody;
+    const GenericSpecializationRecord* specialization = genericModel_ == nullptr
+        ? nullptr : genericModel_->specializationForSyntax(memberNode);
+    const bool locallySpecialized = specialization != nullptr &&
+        specialization->kind == GenericTemplateKind::Method &&
+        specialization->specializedSyntax == memberNode && memberNode->first() != nullptr;
+    symbol.isPrecompiled = part.isPrecompiled && !transportedInlineBody && !locallySpecialized;
     symbol.isTransportedInlineBody = transportedInlineBody;
     symbol.name = memberNode->text();
 }

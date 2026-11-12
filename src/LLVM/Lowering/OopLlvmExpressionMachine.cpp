@@ -698,8 +698,14 @@ bool OopLlvmImplementation::lowerExpressionFrame008OwnedTemporaryBorrow(
     values.pop_back();
     if (value == nullptr) { values.push_back(nullptr); return true; }
     LLVMBuildStore(builder_, value, frame.lhs);
+    if (current->referenceResult)
+    {
+        const auto flag = localValueDropFlags_.find(*current->localOrdinal);
+        if (flag != localValueDropFlags_.end())
+            LLVMBuildStore(builder_, LLVMConstInt(LLVMInt1TypeInContext(context_), 1, 0), flag->second);
+    }
     activeCleanupRegions_.push_back(*current->cleanupRegionOrdinal);
-    values.push_back(value);
+    values.push_back(current->referenceResult ? frame.lhs : value);
     return true;
 }
 
@@ -1696,6 +1702,46 @@ bool OopLlvmImplementation::lowerExpressionFrame035CompoundStore(
         LLVMValueRef address = values.back();
         values.pop_back();
         if (address == nullptr) { values.push_back(nullptr); return true; }
+        if (!current->calleeName.empty())
+        {
+            LLVMTypeRef targetType = llvmType(current->typeKey, error);
+            if (targetType == nullptr) { values.push_back(nullptr); return true; }
+            LLVMValueRef previous = LLVMBuildLoad2(builder_, targetType, address, "operator.update.previous");
+            if (current->children[0]->volatileAccess) LLVMSetVolatile(previous, 1);
+            frontend::ProjectOopMirNode call;
+            call.kind = frontend::ProjectOopMirNodeKind::DirectStaticCall;
+            call.typeKey = current->typeKey;
+            call.calleeName = current->calleeName;
+            call.memberOrdinal = current->memberOrdinal;
+            auto input = std::make_unique<frontend::ProjectOopMirNode>();
+            const frontend::ProjectOopMirFunction* target = mirModel_.functionForMangledName(current->calleeName);
+            if (target == nullptr || target->parameterPassKinds.empty() || target->parameterTypeKeys.empty())
+            {
+                values.push_back(failValue(error, "user increment/decrement has no parameter ABI"));
+                return true;
+            }
+            const bool byReference = target->parameterPassKinds[0] == frontend::ParameterPassKind::In ||
+                target->parameterPassKinds[0] == frontend::ParameterPassKind::Ref;
+            input->typeKey = byReference ? target->parameterTypeKeys[0] : current->typeKey;
+            call.children.push_back(std::move(input));
+            const LLVMValueRef argument = byReference
+                ? address : previous;
+            const std::vector<LLVMValueRef> arguments{argument};
+            LLVMValueRef updated = lowerStaticCall(&call, error, &arguments);
+            if (updated == nullptr) { values.push_back(nullptr); return true; }
+            if (terminated()) { values.push_back(updated); return true; }
+            LLVMValueRef store = LLVMBuildStore(builder_, updated, address);
+            if (current->children[0]->volatileAccess) LLVMSetVolatile(store, 1);
+            if ((current->localOrdinal.has_value() || current->ownership == sema::OwnershipKind::Owned) &&
+                !current->booleanValue &&
+                !emitOwnedPointerDestroy(previous, current->typeKey, "operator.update.previous", error))
+            {
+                values.push_back(nullptr);
+                return true;
+            }
+            values.push_back(current->booleanValue ? previous : updated);
+            return true;
+        }
         frames.push_back({current, 2, address, 0});
         frames.push_back({current->children[1].get(), 0, nullptr});
         return true;

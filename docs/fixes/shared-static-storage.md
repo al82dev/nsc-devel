@@ -184,6 +184,119 @@ declaraciones. Se investigará si incorporar sus tuplas calculables resuelve el
 caso, conservando la ruta independiente de alias encadenados y sin modificar
 metadata ni interoperabilidad. Los tres logs están en `A:/nsc-fixes-evidencia`.
 
+**Comprobación posterior:** con el compilador aislado actual, el alias
+encadenado de tupla anidada ya ejecuta 42 en O0/O2; el rechazo anterior es
+histórico. La selección dirigida también comprobó alias encadenados con
+`WeakRc`: campos estáticos, tuplas anidadas y estado de namespace se rechazan;
+el control equivalente con `WeakArc` ejecuta 42 en ambos niveles. Comando y
+salida: `A:/nsc-fixes-evidencia/tuple-alias-chain-pointer-check.cmd` y `.log`.
+La corrección de alias figura en `39db316af`; esta repetición usa el árbol con
+cambios locales adicionales.
+
+Con el Core binario preexistente de `pointers-sdk-refresh`, el consumidor
+reprodujo esos tres rechazos de `WeakRc` y aceptó `WeakArc`; este último
+compiló y ejecutó 42 en O0/O2 (`tuple-alias-chain-binary-check.cmd` y `.log`).
+El campo atómico permanece en su valor predeterminado en esta prueba; no
+demuestra destrucción al descargar el módulo ni invalida los demás pendientes.
+No se regeneró Core para esta ejecución: su identidad anterior y límites están
+en `pointers-sdk-refresh-scope.md`.
+
+Una comprobación posterior del alias escalar encadenado como estado de
+namespace (`Pair = (int, long); Other = Pair; Other value`) compiló y ejecutó
+42 en O0 y O2 con el compilador aislado SHA-256
+`f8d6020ee7a69d327a21c7cc339eef43306001d8a67e2f25f542269a5afe8580`.
+Se añadió `namespace_chained_tuple_alias_control` a la prueba dirigida;
+comando y resultado en `namespace-chained-tuple-directed-20261111.cmd` y
+`.log` bajo `A:/nsc-fixes-evidencia`. La prueba declara el estado, pero no lo
+lee ni escribe, y utiliza fuentes del SDK: no acredita acceso al valor ni
+consumo de estado de namespace precompilado.
+
+Dos controles posteriores sí acceden al estado desde el mismo namespace. Con
+el alias escalar encadenado, el programa escribe `(40, 2l)`, desestructura la
+tupla y devuelve 42. Con un alias encadenado de `(int, WeakArc<Payload>)`,
+guarda un débil no vacío, comprueba que el contador del fuerte pasa a uno,
+reemplaza la tupla por un débil vacío y comprueba que vuelve a cero. Ambos
+ejecutaron 42 en O0 y O2 con el mismo compilador y fuentes del SDK. Los casos
+son `namespace_chained_tuple_alias_access` y
+`namespace_chained_tuple_weak_arc_replace`; comandos y salidas en
+`namespace-chained-tuple-access-20261111.cmd`/`.log` y
+`namespace-chained-weak-arc-20261111.cmd`/`.log`, en `A:/nsc-fixes-evidencia`.
+La comprobación cubre sustitución explícita, no descarga del módulo ni
+consumo precompilado.
+
+Se añadió además la regresión `nsc.sdk.namespace-tuple-binary`: un productor
+NativeSharp de biblioteca estática escribe y lee el estado de namespace con un
+alias escalar encadenado; un consumidor independiente llama a la función
+pública del productor y verifica 42. Un productor con estado escalar sencillo
+sirve de control. Ambos pasaron con productor y consumidor en O0, y con ambos
+en O2. La configuración incremental y el resultado 1/1 están en
+`A:/nsc-fixes-evidencia/namespace-tuple-binary-20261111/registered.cmd` y
+`registered.log`; se empleó el mismo compilador aislado del apartado anterior.
+La llamada no expone directamente el estado al consumidor y no prueba cruces
+O0/O2, DLL, `WeakArc`, descarga de módulo ni Core binario regenerado.
+
+Al probar acceso directo desde otro módulo se reprodujo un defecto específico:
+el control de estado escalar público ejecutaba 42 en O0/O2, pero la biblioteca
+que exportaba el estado con alias de tupla fallaba al verificar la interfaz
+generada `public (int, long) value;`. El despacho global del parser no admitía
+un paréntesis al comienzo, aunque `parseType` ya admite tuplas. En
+`Parser::dispatchGlobalFallback` se incorporó esa forma únicamente si
+`canStartTypeAt` reconoce el tipo; no se cambió la metadata. Tras la
+compilación incremental, productor y consumidor separados escribieron y
+leyeron tanto el escalar como la tupla en O0/O2, con salida 42. La regresión
+`nsc.sdk.namespace-tuple-binary` pasó 1/1 e incluye el control sintáctico
+inválido y la ruta por función: `namespace-tuple-binary-20261111/registered.log`.
+El fallo previo se conserva en `direct-before.log`, y el compilador empleado
+tiene SHA-256 `25b5946bd906f16875dd02357b819ce352bf6ba2c5be581b55e02709463395c1`.
+
+La prueba existente `nsc.parser` no pasó: falla una de 23 comprobaciones que
+espera que se rechace el operador ternario. La misma prueba, compilada
+incrementalmente en la base aislada, falla con la misma comprobación y conteo
+(`parser-test.log` y `baseline-parser-test.log` en la misma carpeta). La
+comparación no convierte el test fallido en éxito. Por error se invocó una
+vez la regresión sin el entorno aislado: creó un temporal bajo C:/Windows/Temp
+y buscó un runtime no disponible en C, por lo que falló antes de las pruebas;
+el directorio temporal ya no existe. Se repitió con las variables de A y se
+obtuvo el resultado indicado arriba. No se modificó ni desplegó la instalación
+funcional.
+
+Se reprodujo otro límite al exportar una tupla pública con `WeakArc` real y
+Core binario: el control con `WeakArc` directo ejecutó 42 en O0/O2, pero la
+tupla no permitía producir la biblioteca porque el reconstructor de tipos
+rechazaba ese elemento (`namespace-weakarc-binary-20261111/probe-before.log`).
+El mapeo provisional acepta ahora la especialización exacta de `WeakArc` de
+`NativeSharpCore` cuando su identidad completa figura en la metadata y usa el
+reconstructor genérico existente. No habilita por nombre corto otros tipos.
+
+La regresión `nsc.sdk.namespace-weakarc-binary` pasó 1/1 sin omisión: productor
+y consumidor separados asignaron y reemplazaron un débil no vacío y comprobaron
+que el contador volvía a cero, con y sin tupla, en O0 y O2. Un tipo homónimo
+de otro módulo siguió rechazado por el reconstructor. La prueba de tuplas con
+vistas conservó sus rechazos preventivos y la regresión escalar de namespace
+pasó; resultados en `namespace-weakarc-binary-20261111/registered.log`,
+`views.log` y `tuples.log` bajo `A:/nsc-fixes-evidencia`. El compilador aislado
+tiene SHA-256 `2991ceade7afb0d4e5d8bc757195bb88821b07b0500a547b8ff870a29921f97d`.
+El Core usado es anterior al compilador; no se regeneró. La prueba requiere
+`NSC_TEST_CORE_BINARY` y se omite cuando no está configurado. Esto no demuestra
+seguridad para otras especializaciones, bibliotecas históricas, tuplas de
+vistas ni descarga del módulo. El cambio comparte el mapeo aún sin commit de
+`SharedView` y permanece provisional.
+
+La misma prueba reprodujo que el estado público `Arc` directo pasaba en O0/O2,
+pero una tupla pública con esa especialización fallaba en el reconstructor
+(`namespace-weakarc-binary-20261111/strong-before.log`). El ensayo reconoce
+también la identidad completa de `Arc` real, sin cambiar el formato de
+metadata. Tras compilar incrementalmente, los cuatro recorridos de estado
+directo y tupla para `Arc` y `WeakArc` pasaron en O0/O2 y verificaron que los
+contadores regresan a su valor anterior al reemplazo. Los homónimos de ambos
+tipos en otro módulo se rechazaron. La regresión registrada pasó 1/1 sin
+omisión (`registered.log`), y las pruebas dirigidas de vistas y tuplas escalares
+volvieron a pasar (`views.log`, `tuples.log`). Compilador SHA-256
+`e134cc95ef59a9302196d0576b7a08db0e301dd13e96200abe7879fd0419d1ea`;
+Core binario anterior, sin regenerar. No se acreditan DLL, descarga de módulo,
+especializaciones anidadas arbitrarias ni metadata histórica. Los cambios en
+el mapeo y las pruebas de las familias atómicas siguen sin commit.
+
 El ensayo posterior del importador recoge también las declaraciones de estado
 de namespace con sintaxis y layout de tupla calculable. Con compilación
 incremental, el alias directo de tupla escalar y otro que contiene `WeakArc`
@@ -191,8 +304,9 @@ ejecutaron 42 en O0/O2; el equivalente que contiene `WeakRc` se rechazó por la
 regla de almacenamiento compartido. También pasaron los controles de alias en
 local y campo, tupla anidada y elementos nombrados. Evidencia:
 `A:/nsc-fixes-evidencia/tuple-alias-namespace-directed.log`. No se ha probado
-resolución de nombres de elementos, alias encadenados ni namespace precompilado;
-el caso encadenado conserva su prueba fallida. Los dos ajustes siguen sin commit.
+resolución de nombres de elementos ni namespace precompilado. El fallo histórico
+del alias encadenado es anterior a las comprobaciones posteriores descritas
+arriba. Los dos ajustes siguen sin commit.
 
 Las compilaciones fueron incrementales y usaron temporales en A. El cambio de
 la cabecera del modelo de miembros obligó a recompilar dependencias del propio

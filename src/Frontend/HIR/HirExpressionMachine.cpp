@@ -985,6 +985,22 @@ std::unique_ptr<ProjectOopHirNode> ProjectOopHirModel::lowerIncrementDecrementEx
     if (address == nullptr) return nullptr;
     auto step = makeNode(
         ProjectOopHirNodeKind::CompoundStore, expression, targetType->typeKey);
+    const MethodCallBinding* overload = callBinding(expression);
+    if (overload != nullptr && overload->resolution == MethodCallResolutionKind::Resolved &&
+        overload->selectedMemberOrdinal.has_value())
+    {
+        step->memberOrdinal = *overload->selectedMemberOrdinal;
+        step->operation = expression->tokenKind();
+        step->booleanValue = expression->kind() == ast::AstNodeKind::PostfixExpression;
+        if (expression->first() != nullptr &&
+            expression->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+            isReferenceType(targetType->typeKey) &&
+            targetType->ownership == sema::OwnershipKind::Owned)
+            step->localOrdinal = targetType->ownershipSourceLocalOrdinal;
+        step->children.push_back(std::move(address));
+        step->children.push_back(makeNode(ProjectOopHirNodeKind::DefaultValue, expression, targetType->typeKey));
+        return step;
+    }
     step->operation = expression->tokenKind() == lexer::TokenKind::PlusPlus
         ? lexer::TokenKind::Plus : lexer::TokenKind::Minus;
     // La UNICA diferencia entre postfijo y prefijo.

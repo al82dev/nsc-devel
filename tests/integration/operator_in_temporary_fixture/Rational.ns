@@ -1,0 +1,22 @@
+/// <summary>A minimal fraction with equality taking in parameters.</summary>
+public struct Rational
+{
+    public int Numerator;
+    public int Denominator;
+
+    public Rational(int numerator, int denominator)
+    {
+        Numerator = numerator;
+        Denominator = denominator;
+    }
+
+    public static bool operator ==(in Rational left, in Rational right)
+    {
+        return (long)left.Numerator * right.Denominator == (long)right.Numerator * left.Denominator;
+    }
+
+    public static bool operator !=(in Rational left, in Rational right)
+    {
+        return !(left == right);
+    }
+}

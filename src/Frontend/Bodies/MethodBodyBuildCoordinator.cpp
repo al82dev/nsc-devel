@@ -198,6 +198,8 @@ void ProjectMethodBodyModel::initializeParameterEscapeSummaries(
     const ProjectMemberModel& memberModel)
 {
     parameterEscapeSummaries_.clear();
+    prototypeViewOutputEdges_.clear();
+    prototypeDirectViewProducerCandidates_.clear();
     parameterEscapeSummaries_.resize(
         memberModel.members().size() + namespaceCallableAdapters().size());
     for (std::size_t callableOrdinal = 0;

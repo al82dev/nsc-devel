@@ -1469,6 +1469,17 @@ int ProjectOopMirModel::MirNodeMachine::lowerCompoundStore(
     std::string& error)
 {
     result->kind = ProjectOopMirNodeKind::CompoundStore;
+    if (node->memberOrdinal.has_value())
+    {
+        const ProjectOopHirFunction* target = model_.hirModel_ != nullptr
+            ? model_.hirModel_->functionForMember(*node->memberOrdinal) : nullptr;
+        if (target == nullptr || !target->isStatic)
+        {
+            error = "user increment/decrement has no static operator target";
+            return -1;
+        }
+        result->calleeName = target->mangledName;
+    }
     if (!node->elementTypeKey.empty())
     {
         if (model_.nameLookup_ == nullptr || model_.objectLayoutModel_ == nullptr)

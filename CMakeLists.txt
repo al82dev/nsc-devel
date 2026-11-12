@@ -5493,6 +5493,10 @@ if(NSC_BUILD_TESTS)
                 "${NSC_TEST_COMPILER}")
     set_tests_properties(nsc.compiler.borrowed-tuple-capture-boundary PROPERTIES
         SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME nsc.compiler.borrowed-call-owner-return
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/borrowed_call_owner_return.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.compiler.borrowed-call-owner-return PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(NAME nsc.compiler.borrowed-lambda-owned-view
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/borrowed_lambda_owned_view.py"
                 "${NSC_TEST_COMPILER}")
@@ -5788,11 +5792,13 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.sdk.shared-tuple-move-binary
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_tuple_move_binary.py"
                 "${NSC_TEST_COMPILER}")
+    add_test(NAME nsc.sdk.shared-tuple-move-partial-binary
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_tuple_move_partial_binary.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.sdk.shared-tuple-move-partial-binary PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(NAME nsc.sdk.shared-tuple-move-analysis
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_tuple_move_analysis.py"
                 "${NSC_TEST_COMPILER}")
-    set_tests_properties(nsc.sdk.shared-tuple-move-binary nsc.sdk.shared-tuple-move-analysis
-        PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME nsc.sdk.shared-tuple-move-call
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_tuple_move_call.py"
                 "${NSC_TEST_COMPILER}")
@@ -5815,8 +5821,9 @@ if(NSC_BUILD_TESTS)
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_tuple_discard_conditional.py"
                 "${NSC_TEST_COMPILER}")
     set_tests_properties(nsc.sdk.shared-tuple-discard-conditional PROPERTIES SKIP_RETURN_CODE 77)
-    set_tests_properties(nsc.sdk.shared-tuple-move-call nsc.sdk.shared-tuple-move-call-binary
-        PROPERTIES SKIP_RETURN_CODE 77)
+    set_tests_properties(nsc.sdk.shared-tuple-move-binary nsc.sdk.shared-tuple-move-partial-binary
+        nsc.sdk.shared-tuple-move-analysis nsc.sdk.shared-tuple-move-call
+        nsc.sdk.shared-tuple-move-call-binary PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME nsc.sdk.shared-view-output-lifetime
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_view_output_lifetime.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -5920,6 +5927,26 @@ if(NSC_BUILD_TESTS)
         add_test(NAME nsc.generics.owner-method-inference
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_owner_method_inference.py"
                     "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.compiler.operator-in-temporary
+            COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/operator_in_temporary.py"
+                    "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/operator_in_temporary_fixture")
+        set_tests_properties(nsc.compiler.operator-in-temporary PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        add_test(NAME nsc.compiler.operator-in-temporary-lifetime
+            COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/operator_in_temporary_lifetime.py"
+                    "${NSC_TEST_COMPILER}")
+        set_tests_properties(nsc.compiler.operator-in-temporary-lifetime PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        add_test(NAME nsc.compiler.operator-in-legacy-escape
+            COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/operator_in_legacy_escape.py"
+                    "${NSC_TEST_COMPILER}")
+        set_tests_properties(nsc.compiler.operator-in-legacy-escape PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        add_test(NAME nsc.compiler.destructor-throw-owned-field
+            COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/destructor_throw_owned_field.py"
+                    "${NSC_TEST_COMPILER}")
+        set_tests_properties(nsc.compiler.destructor-throw-owned-field PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+        add_test(NAME nsc.sdk.shared-destructor-throw-fields
+            COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_destructor_throw_fields.py"
+                    "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core")
+        set_tests_properties(nsc.sdk.shared-destructor-throw-fields PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         add_test(NAME nsc.generics.owner-method-binary
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_owner_method_binary.py"
                     "${NSC_TEST_COMPILER}")
@@ -5967,6 +5994,10 @@ if(NSC_BUILD_TESTS)
         add_test(NAME nsc.generics.tuple-metadata-specialization
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tuple_metadata_specialization.py"
                     "${NSC_TEST_COMPILER}")
+        add_test(NAME nsc.generics.tuple-borrow-escape-summary
+            COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/tuple_borrow_escape_summary.py"
+                    "${NSC_TEST_COMPILER}")
+        set_tests_properties(nsc.generics.tuple-borrow-escape-summary PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
         add_test(NAME nsc.generics.binary-alias-isolation
             COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_library_alias_isolation.py"
                     "${NSC_TEST_COMPILER}")
@@ -7167,19 +7198,6 @@ if(NSC_BUILD_TESTS)
             "${NSC_TEST_COMPILER}"
             "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/operator_in_aggregate/PairIn.ns")
 
-    set(NSC_DECIMAL_GENERIC_ARRAY_PROJECT
-        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decimal_generic_array/DecimalGenericArray.nsproj")
-    set(NSC_DECIMAL_FIXED_ARRAY_PROJECT
-        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decimal_fixed_array/DecimalFixedArray.nsproj")
-    add_test(
-        NAME nsc.compiler.decimal-fixed-array
-        COMMAND "${CMAKE_COMMAND}"
-            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
-            "-DPROJECT_FILE=${NSC_DECIMAL_FIXED_ARRAY_PROJECT}"
-            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/decimal-fixed-array"
-            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
-            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
-            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDecimalFixedArray.cmake")
     set(NSC_DECIMAL_STACKALLOC_PROJECT
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decimal_stackalloc/DecimalStackalloc.nsproj")
     add_test(
@@ -7191,6 +7209,21 @@ if(NSC_BUILD_TESTS)
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
             "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDecimalStackalloc.cmake")
+
+    set(NSC_DECIMAL_FIXED_ARRAY_PROJECT
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decimal_fixed_array/DecimalFixedArray.nsproj")
+    add_test(
+        NAME nsc.compiler.decimal-fixed-array
+        COMMAND "${CMAKE_COMMAND}"
+            "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
+            "-DPROJECT_FILE=${NSC_DECIMAL_FIXED_ARRAY_PROJECT}"
+            "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/decimal-fixed-array"
+            "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
+            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
+            -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDecimalFixedArray.cmake")
+
+    set(NSC_DECIMAL_GENERIC_ARRAY_PROJECT
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decimal_generic_array/DecimalGenericArray.nsproj")
     add_test(
         NAME nsc.compiler.decimal-generic-array
         COMMAND "${CMAKE_COMMAND}"

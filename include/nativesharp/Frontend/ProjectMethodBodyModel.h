@@ -289,6 +289,16 @@ class ProjectMethodBodyModel final
     friend class ProjectCallableWaveReducer;
 
 public:
+    // Prototype observations are incomplete and must never be used to permit an escape.
+    // Each entry is {callable ordinal, source parameter ordinal, output parameter ordinal}.
+    std::span<const std::vector<std::size_t>> prototypeViewOutputEdges() const noexcept
+    {
+        return prototypeViewOutputEdges_;
+    }
+    std::span<const std::size_t> prototypeDirectViewProducerCandidates() const noexcept
+    {
+        return prototypeDirectViewProducerCandidates_;
+    }
     // NSC-LIMIT-007, tercera vuelta. El modelo de constraints entra aqui porque la unica fase que
     // puede decidir si una violacion de constraint es un error del programa es esta: la que
     // resuelve sobrecargas conociendo los tipos de los argumentos. Es un puntero y admite null
@@ -4483,6 +4493,9 @@ private:
     bool hasActiveViewOfStorage(
         const ast::AstNode* place, std::size_t methodMemberOrdinal, std::size_t scopeOrdinal,
         bool anyField = false) const;
+    void rememberDirectOwnedFieldArgument(
+        const ast::AstNode* expression, const ExpressionResult& argument,
+        std::size_t methodMemberOrdinal, std::size_t scopeOrdinal);
     bool prepareAssignmentTarget(
         ExpressionResult& left,
         std::optional<std::size_t>& raiiTargetLocal,
@@ -4916,7 +4929,7 @@ private:
         const std::vector<ExpressionResult>& arguments,
         diagnostics::DiagnosticEngine& diagnostics,
         std::span<const std::size_t> parameterOrdinals = {}) const;
-    bool parameterMayCarryEscape(const MethodParameterSymbol& parameter) const noexcept;
+    bool parameterMayCarryEscape(const MethodParameterSymbol& parameter) const;
     std::vector<language::EscapeClass>* mutableParameterEscapeSummary(
         std::size_t callableOrdinal) noexcept;
     void noteParameterEscape(
@@ -5489,6 +5502,11 @@ private:
     std::vector<MethodOwnershipTransferBinding> ownershipTransferBindings_;
     std::vector<MethodBorrowBinding> borrowBindings_;
     std::vector<MethodLocalBorrowBinding> localBorrowBindings_;
+    // Prefix-update results remain borrowed while subsequent call arguments are analyzed.
+    std::vector<std::size_t> activePrefixArgumentOwnerLocals_;
+    // Direct owned class fields already evaluated as call arguments, scoped to the call.
+    std::vector<std::pair<std::size_t, std::size_t>> activeArgumentOwnedFields_;
+    std::vector<std::pair<std::size_t, std::size_t>> activeArgumentParameterOwnedFields_;
     std::vector<MethodBorrowedParameterReassignmentBinding>
         borrowedParameterReassignmentBindings_;
 #include "nativesharp/Frontend/Internal/MethodBody/ActiveIterationBorrow.h"
@@ -5592,6 +5610,8 @@ private:
     std::vector<NamespaceFunctionCallBinding> namespaceFunctionCalls_;
     std::unordered_map<const ast::AstNode*, std::size_t> namespaceFunctionCallBySyntax_;
     std::vector<std::vector<language::EscapeClass>> parameterEscapeSummaries_;
+    std::vector<std::vector<std::size_t>> prototypeViewOutputEdges_;
+    std::vector<std::size_t> prototypeDirectViewProducerCandidates_;
     std::vector<std::vector<bool>> parameterUnknownNativeEscape_;
     std::optional<std::size_t> isolatedCallableOrdinal_;
     std::vector<language::EscapeClass> isolatedParameterEscapeSummary_;

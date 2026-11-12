@@ -31,3 +31,12 @@ observador comprueba caducidad o contador al terminar la llamada. Pasaron 2/2
 sin omisión (`A:/nsc-fixes-evidencia/shared-tuple-call-commit-20261111/test.log`).
 Usan Core binario anterior y un árbol con otros cambios locales. No acreditan
 DLL, cruces de niveles diferentes ni una revisión limpia.
+
+La reproducción dirigida `shared_tuple_move_partial_binary.py` construye una
+biblioteca que mueve un propietario al primer elemento y lanza al construir el
+segundo; un consumidor independiente comprueba el contador tras capturar el
+error. Rc, WeakRc, Arc y WeakArc devolvieron el resultado esperado en O0 y O2
+(8/8, `A:/nsc-fixes-evidencia/shared-tuple-call-commit-20261111/partial.log`).
+La prueba usa el compilador del árbol con cambios locales y el Core binario
+anterior; no identifica cuáles cambios son necesarios, no acredita suspensión,
+DLL ni una revisión limpia y aún no está registrada como prueba permanente.

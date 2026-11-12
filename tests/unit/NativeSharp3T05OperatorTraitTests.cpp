@@ -150,12 +150,16 @@ int main()
     std::unordered_set<std::string> stableIdentities;
     for (const OperatorTraitContract& contract : contracts)
         stableIdentities.insert(std::string(contract.langItem));
-    tests.expect(contracts.size() == 20 && stableIdentities.size() == contracts.size(),
+    tests.expect(contracts.size() == 22 && stableIdentities.size() == contracts.size(),
         "every overloadable unary/binary operator has one stable lang-item identity");
     tests.expect(operatorTrait("+", 1) == "lang:UnaryPlus" &&
             operatorTrait("+", 2) == "lang:Add" &&
             operatorMethodName("+", 2) == "op_Addition" &&
-            operatorTraitContractForMethod("op_Addition", 2) != nullptr,
+            operatorTraitContractForMethod("op_Addition", 2) != nullptr &&
+            operatorTrait("++", 1) == "lang:Increment" &&
+            operatorTrait("--", 1) == "lang:Decrement" &&
+            operatorMethodName("++", 1) == "op_Increment" &&
+            operatorMethodName("--", 1) == "op_Decrement",
         "source spelling, arity, lang-item and ABI method name form one reversible contract");
     tests.expect(!operatorCanBeOverloaded("&&") && !operatorCanBeOverloaded("||") &&
             !operatorCanBeOverloaded("??") && operatorCanBeOverloaded("+") &&
@@ -358,9 +362,8 @@ public class Program
     std::string temporaryError;
     const bool temporaryCompiled =
         temporaryCompilation.compileProjectMethodBodies(temporary, temporaryError);
-    tests.expect(!temporaryCompiled &&
-            diagnosticContains(temporaryCompilation, "no viable Stage 38 overload"),
-        "implicit operator references require real addressable operands and never hide a copy "
+    tests.expect(temporaryCompiled,
+        "an in operator operand may materialize a temporary for the call "
         "(compiled=" + std::string(temporaryCompiled ? "true" : "false") + "; " +
             temporaryError + diagnosticsText(temporaryCompilation) + ")");
 

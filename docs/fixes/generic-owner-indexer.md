@@ -54,3 +54,10 @@ No se demuestra la selección entre sobrecargas que requieren conversiones,
 tipos nominales o inferencia desconocida, ni todas las formas de herencia o
 metadata histórica. En esos casos la selección nueva no inventa una
 coincidencia. Los ejemplos originales del informe no se modificaron.
+
+Después de integrar el cambio en `27af4997c`, la compilación incremental del
+compilador terminó con código 0 y la regresión registrada de indexadores pasó
+sin omisión. Comando y salida:
+`A:/nsc-fixes-evidencia/generic-indexer-integrated-20261111.cmd` y `.log`.
+El compilador contiene otros cambios locales y no acredita una revisión
+limpia. Las variantes con conversión y tipos nominales siguen en investigación.

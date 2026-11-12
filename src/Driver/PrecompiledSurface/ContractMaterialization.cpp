@@ -450,6 +450,10 @@ std::string_view metadataOperatorToken(std::string_view name) noexcept
         return "+";
     if (name == "op_UnaryNegation" || name == "op_Subtraction")
         return "-";
+    if (name == "op_Increment")
+        return "++";
+    if (name == "op_Decrement")
+        return "--";
     if (name == "op_Multiply")
         return "*";
     if (name == "op_Division")

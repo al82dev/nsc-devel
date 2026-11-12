@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 
 #include "MethodBodyInternals.h"
+#include "Support/ViewProvenanceSummaryPrototype.h"
 
 #include "nativesharp/Diagnostics/DiagnosticEngine.h"
 #include "nativesharp/Diagnostics/DiagnosticId.h"
@@ -2069,6 +2070,38 @@ void ProjectMethodBodyModel::updatePlainAssignmentState(
         else
             activeUnionMembers_.erase(*assignedUnionStorage);
     }
+    // Observe this direct deconstruction-to-output form only. Unknown is retained:
+    // aliases, calls and other effects have not been modeled, and this observation
+    // must not influence escape checks or binary metadata.
+    if (expression->first() != nullptr && expression->second() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::IdentifierExpression &&
+        expression->second()->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const auto destination = lookupScopeName(scopeOrdinal, expression->first()->text());
+        const auto source = lookupScopeName(scopeOrdinal, expression->second()->text());
+        const ClassMemberSymbol* method = methodSymbol(methodMemberOrdinal);
+        if (method != nullptr && destination.has_value() && source.has_value() &&
+            destination->kind == ScopeNameKind::Parameter && source->kind == ScopeNameKind::Local &&
+            destination->semanticOrdinal < method->parameters.size() && source->semanticOrdinal < locals_.size() &&
+            locals_[source->semanticOrdinal].prototypeTupleViewParameter.has_value())
+        {
+            const auto pass = method->parameters[destination->semanticOrdinal].passKind;
+            if (pass == ParameterPassKind::Ref || pass == ParameterPassKind::Out)
+            {
+                view_provenance_prototype::Graph graph(method->parameters.size());
+                const auto input = graph.parameter(*locals_[source->semanticOrdinal].prototypeTupleViewParameter);
+                if (input.has_value())
+                {
+                    const auto element = graph.local();
+                    graph.transfer(*input, element);
+                    graph.output(element, {view_provenance_prototype::SinkKind::Output, destination->semanticOrdinal});
+                    const auto partial = graph.finish(false);
+                    for (const auto& edge : partial.edges)
+                        prototypeViewOutputEdges_.push_back({methodMemberOrdinal, edge.sourceParameter, edge.sink.ordinal});
+                }
+            }
+        }
+    }
     const MethodEscapeOrigin sourceEscape =
         referenceEscapeOriginOfExpression(expression->second(), scopeOrdinal);
     if (!sourceEscape.ordinal.has_value() ||
@@ -2235,6 +2268,7 @@ bool ProjectMethodBodyModel::hasActiveViewOfStorage(
                 result.push_back("L" + std::to_string(ordinal));
                 if (!isReferenceTypeKey(candidate.typeKey) && !candidate.typeKey.ends_with("[]")) continue;
                 if (candidate.mayAliasThisField) result.push_back("T");
+                if (candidate.mayAliasUnknownReference) result.push_back("G");
                 pending.insert(pending.end(), candidate.possibleReferenceSourceLocals.begin(),
                                candidate.possibleReferenceSourceLocals.end());
                 for (const std::size_t parameter : candidate.possibleReferenceSourceParameters)
@@ -2247,6 +2281,15 @@ bool ProjectMethodBodyModel::hasActiveViewOfStorage(
                     const ast::AstNode* current = expressions.back();
                     expressions.pop_back();
                     if (current == nullptr) continue;
+                    if (ProjectTypeConversion::isNativeArray(candidate.typeKey) &&
+                        (current->kind() == ast::AstNodeKind::NewExpression ||
+                         current->kind() == ast::AstNodeKind::CollectionExpression) &&
+                        current->auxiliaryText() == "inferred-array-initializer")
+                    {
+                        for (const ast::AstNode* element : current->children())
+                            if (element != nullptr) expressions.push_back(element);
+                        continue;
+                    }
                     if (current->kind() == ast::AstNodeKind::ConditionalExpression)
                     {
                         expressions.push_back(current->second());
@@ -2258,9 +2301,60 @@ bool ProjectMethodBodyModel::hasActiveViewOfStorage(
                         expressions.push_back(current->first());
                         continue;
                     }
+                    if (current->kind() == ast::AstNodeKind::SpreadElementExpression &&
+                        ProjectTypeConversion::isNativeArray(candidate.typeKey))
+                    {
+                        expressions.push_back(current->first());
+                        continue;
+                    }
+                    if (current->kind() == ast::AstNodeKind::CallExpression)
+                    {
+                        const MethodCallBinding* call = callBinding(current, methodMemberOrdinal);
+                        const NamespaceFunctionCallBinding* function = namespaceFunctionCall(current);
+                        bool provenIdentity = false;
+                        if (call != nullptr && call->staticCall &&
+                            call->resolution == MethodCallResolutionKind::Resolved &&
+                            call->selectedMemberOrdinal.has_value() && memberModel_ != nullptr &&
+                            *call->selectedMemberOrdinal < memberModel_->members().size())
+                        {
+                            const ClassMemberSymbol& callee = memberModel_->members()[*call->selectedMemberOrdinal];
+                            const ast::AstNode* body = callee.syntax != nullptr ? callee.syntax->first() : nullptr;
+                            if (!callee.isVirtual && !callee.isExternC && !callee.isCompilerGenerated &&
+                                !callee.isReferenceReturn &&
+                                callee.precompiledMangledName.empty() && body != nullptr &&
+                                body->kind() == ast::AstNodeKind::BlockStatement && body->children().size() == 1U)
+                            {
+                                const ast::AstNode* statement = body->children().front();
+                                const ast::AstNode* value = statement != nullptr ? statement->first() : nullptr;
+                                if (statement != nullptr && statement->kind() == ast::AstNodeKind::ReturnStatement &&
+                                    value != nullptr && value->kind() == ast::AstNodeKind::IdentifierExpression)
+                                    for (const MethodParameterSymbol& parameter : callee.parameters)
+                                        if (parameter.name == value->text() && parameter.passKind == ParameterPassKind::Value &&
+                                            parameter.typeKey == callee.declaredTypeKey)
+                                            provenIdentity = true;
+                            }
+                        }
+                        if (!provenIdentity) result.push_back("G");
+                        if ((call != nullptr && call->resolution == MethodCallResolutionKind::Resolved) ||
+                            (function != nullptr && function->resolution == MethodCallResolutionKind::Resolved))
+                        {
+                            const auto addReference = [&](const ast::AstNode* argument)
+                            {
+                                if (argument != nullptr && isReferenceTypeKey(
+                                        recordedExpressionTypeKey(argument, methodMemberOrdinal)))
+                                    expressions.push_back(argument);
+                            };
+                            for (const ast::AstNode* argument : current->children()) addReference(argument);
+                            if (call != nullptr && !call->staticCall) addReference(call->receiverSyntax);
+                        }
+                        continue;
+                    }
                     const MethodNameBinding* binding = nameBinding(current, methodMemberOrdinal);
                     if (binding == nullptr) continue;
-                    if (binding->kind == MethodNameBindingKind::ImplicitField ||
+                    if (binding->kind == MethodNameBindingKind::StaticField ||
+                        binding->kind == MethodNameBindingKind::NamespaceState)
+                        result.push_back("G");
+                    else if (binding->kind == MethodNameBindingKind::ImplicitField ||
                         binding->kind == MethodNameBindingKind::ExplicitThisField)
                         result.push_back("T");
                     else if (binding->kind == MethodNameBindingKind::Local && binding->localOrdinal.has_value())
@@ -2303,8 +2397,77 @@ bool ProjectMethodBodyModel::hasActiveViewOfStorage(
     if (targetName.has_value() || targetIsThis)
     {
         const auto targetRoots = targetIsThis ? std::vector<std::string>{"T"} : roots(*targetName);
+        const bool mayAliasParameter = std::ranges::any_of(targetRoots, [](const std::string& root)
+        { return root == "T" || root.starts_with("P"); });
+        if (mayAliasParameter && !activeArgumentParameterOwnedFields_.empty())
+        {
+            if (anyField) return true;
+            const MethodNameBinding* fieldBinding = targetField != nullptr
+                ? nameBinding(targetField, methodMemberOrdinal) : nullptr;
+            if (fieldBinding != nullptr)
+                for (const auto& [parameter, field] : activeArgumentParameterOwnedFields_)
+                {
+                    (void)parameter;
+                    if (std::ranges::find(fieldBinding->candidateMemberOrdinals, field) !=
+                        fieldBinding->candidateMemberOrdinals.end()) return true;
+                }
+        }
+        if (anyField && targetField != nullptr &&
+            targetField->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            for (const auto& [owner, field] : activeArgumentOwnedFields_)
+            {
+                (void)field;
+                if (std::ranges::find(targetRoots, "L" + std::to_string(owner)) != targetRoots.end())
+                    return true;
+            }
+        }
+        if (!anyField && targetField != nullptr &&
+            targetField->kind() == ast::AstNodeKind::MemberExpression &&
+            targetField->first() != nullptr &&
+            targetField->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+        {
+            const MethodNameBinding* fieldBinding = nameBinding(targetField, methodMemberOrdinal);
+            if (fieldBinding != nullptr)
+                for (const auto& [owner, field] : activeArgumentOwnedFields_)
+                    if (std::ranges::find(targetRoots, "L" + std::to_string(owner)) != targetRoots.end() &&
+                        std::ranges::find(fieldBinding->candidateMemberOrdinals, field) !=
+                            fieldBinding->candidateMemberOrdinals.end())
+                        return true;
+        }
+        const auto isUnreassignedFieldViewAlias = [&](std::size_t start, const MethodLocalSymbol& view)
+        {
+            std::unordered_set<std::size_t> seen;
+            std::size_t ordinal = start;
+            while (ordinal < locals_.size() && seen.insert(ordinal).second)
+            {
+                const MethodLocalSymbol& local = locals_[ordinal];
+                if (!local.possibleReferenceSourceLocals.empty() ||
+                    !local.possibleReferenceSourceParameters.empty() || local.mayAliasThisField) return false;
+                if (&local == &view)
+                {
+                    const ast::AstNode* initializer = local.syntax != nullptr ? local.syntax->first() : nullptr;
+                    return !local.viewSourceFields.empty() && initializer != nullptr &&
+                        initializer->kind() == ast::AstNodeKind::UnaryExpression &&
+                        (initializer->tokenKind() == TokenKind::PlusPlus ||
+                         initializer->tokenKind() == TokenKind::MinusMinus);
+                }
+                if (!local.localBorrowBindingOrdinal.has_value() ||
+                    *local.localBorrowBindingOrdinal >= localBorrowBindings_.size()) return false;
+                const MethodLocalBorrowBinding& borrow = localBorrowBindings_[*local.localBorrowBindingOrdinal];
+                if (borrow.sourceKind != MethodLocalBorrowSourceKind::BorrowedLocal ||
+                    !borrow.sourceLocalOrdinal.has_value()) return false;
+                ordinal = *borrow.sourceLocalOrdinal;
+            }
+            return false;
+        };
         for (const auto& view : locals_)
         {
+            // A field view and its unreassigned aliases denote the field value,
+            // rather than the enclosing container whose field is protected.
+            if (anyField && targetName.has_value() && targetName->kind == ScopeNameKind::Local &&
+                targetField != nullptr && targetField->kind() == ast::AstNodeKind::IdentifierExpression &&
+                isUnreassignedFieldViewAlias(targetName->semanticOrdinal, view)) continue;
             if (view.methodMemberOrdinal != methodMemberOrdinal ||
                 !scopeContains(view.scopeOrdinal, scopeOrdinal) ||
                 ((targetField == nullptr && !anyField) ||
@@ -2327,7 +2490,9 @@ bool ProjectMethodBodyModel::hasActiveViewOfStorage(
             }
             const bool overlaps = std::ranges::any_of(targetRoots, [&](const std::string& target)
             {
-                return std::ranges::find(viewRoots, target) != viewRoots.end() ||
+                return (!viewRoots.empty() && target == "G") ||
+                    std::ranges::find(viewRoots, "G") != viewRoots.end() ||
+                    std::ranges::find(viewRoots, target) != viewRoots.end() ||
                     (target.starts_with("P") && std::ranges::any_of(viewRoots,
                         [](const std::string& root) { return root == "T" || root.starts_with("P"); })) ||
                     (target == "T" && std::ranges::any_of(viewRoots,
@@ -2379,6 +2544,16 @@ bool ProjectMethodBodyModel::prepareAssignmentTarget(
         left, raiiTargetLocal, arrayElementMoveTarget, methodMemberOrdinal);
     if ((ownedFieldMoveTarget || arrayElementMoveTarget) && memberModel_ != nullptr &&
         (memberModel_->typeIsMoveOnly(left.typeKey) || ownedFieldOwnsStorage) &&
+        hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+            diagnostics::DiagnosticSeverity::Error, expression->first()->range(),
+            "cannot overwrite owner field while a borrowed view is alive");
+        return false;
+    }
+    if (!ownedFieldMoveTarget && !arrayElementMoveTarget && left.assignmentMemberOrdinal.has_value() &&
+        isReferenceTypeKey(left.typeKey) && expression->first() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::MemberExpression &&
         hasActiveViewOfStorage(expression->first(), methodMemberOrdinal, scopeOrdinal))
     {
         diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
@@ -2496,6 +2671,77 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
         if (std::ranges::find(sources, expression->second()) == sources.end())
             sources.push_back(expression->second());
     }
+    // Remember reference values written into a native array: a view of an
+    // element's owner may alias the source even when the array is unowned.
+    if (arrayElementMoveTarget && isReferenceTypeKey(left.typeKey) &&
+        expression->first() != nullptr && expression->second() != nullptr &&
+        expression->first()->kind() == ast::AstNodeKind::IndexExpression &&
+        expression->first()->first() != nullptr &&
+        expression->first()->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const auto array = lookupScopeName(scopeOrdinal, expression->first()->first()->text());
+        if (array.has_value() && array->kind == ScopeNameKind::Local &&
+            array->semanticOrdinal < locals_.size() &&
+            ProjectTypeConversion::isNativeArray(locals_[array->semanticOrdinal].typeKey))
+        {
+            MethodLocalSymbol& storage = locals_[array->semanticOrdinal];
+            std::vector<const ast::AstNode*> pending{expression->second()};
+            while (!pending.empty())
+            {
+                const ast::AstNode* current = pending.back();
+                pending.pop_back();
+                if (current == nullptr) continue;
+                if (current->kind() == ast::AstNodeKind::ConditionalExpression)
+                {
+                    pending.push_back(current->second());
+                    pending.push_back(current->third());
+                    continue;
+                }
+                if (current->kind() == ast::AstNodeKind::IndexExpression)
+                {
+                    pending.push_back(current->first());
+                    continue;
+                }
+                if (current->kind() == ast::AstNodeKind::ObjectCreationExpression ||
+                    current->kind() == ast::AstNodeKind::NullLiteralExpression) continue;
+                const MethodNameBinding* source = nameBinding(current, methodMemberOrdinal);
+                if (source != nullptr && source->kind == MethodNameBindingKind::Local &&
+                    source->localOrdinal.has_value())
+                    appendUniqueOrdinal(storage.possibleReferenceSourceLocals, *source->localOrdinal);
+                else if (source != nullptr && source->kind == MethodNameBindingKind::Parameter &&
+                         source->parameterOrdinal.has_value())
+                    appendUniqueOrdinal(storage.possibleReferenceSourceParameters, *source->parameterOrdinal);
+                else if (source != nullptr && source->kind == MethodNameBindingKind::ExplicitObjectField &&
+                         source->receiverSyntax != nullptr)
+                    pending.push_back(source->receiverSyntax);
+                else storage.mayAliasUnknownReference = true;
+            }
+            const ast::AstNode* initial = storage.syntax != nullptr ? storage.syntax->first() : nullptr;
+            if (initial != nullptr && initial->kind() == ast::AstNodeKind::IdentifierExpression &&
+                expression->second()->kind() != ast::AstNodeKind::ObjectCreationExpression)
+                for (MethodLocalSymbol& local : locals_)
+                    if (local.methodMemberOrdinal == methodMemberOrdinal &&
+                        ProjectTypeConversion::isNativeArray(local.typeKey))
+                        local.mayAliasUnknownReference = true;
+        }
+    }
+    // A published array may later be filled through a field without being
+    // passed to the call that mutates it.
+    if (expression->first() != nullptr && expression->second() != nullptr &&
+        ProjectTypeConversion::isNativeArray(
+            recordedExpressionTypeKey(expression->second(), methodMemberOrdinal)))
+    {
+        const MethodNameBinding* target = nameBinding(expression->first(), methodMemberOrdinal);
+        if (target != nullptr && (target->kind == MethodNameBindingKind::StaticField ||
+                                  target->kind == MethodNameBindingKind::NamespaceState ||
+                                  target->kind == MethodNameBindingKind::ImplicitField ||
+                                  target->kind == MethodNameBindingKind::ExplicitThisField ||
+                                  target->kind == MethodNameBindingKind::ExplicitObjectField))
+            for (MethodLocalSymbol& local : locals_)
+                if (local.methodMemberOrdinal == methodMemberOrdinal &&
+                    ProjectTypeConversion::isNativeArray(local.typeKey))
+                    local.mayAliasUnknownReference = true;
+    }
     if (assignmentTargetLocal.has_value() && *assignmentTargetLocal < locals_.size() &&
         (isReferenceTypeKey(locals_[*assignmentTargetLocal].typeKey) ||
          locals_[*assignmentTargetLocal].typeKey.ends_with("[]") ||
@@ -2509,6 +2755,21 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
             const ast::AstNode* current = sourcesToInspect.back();
             sourcesToInspect.pop_back();
             if (current == nullptr || (pointerTarget && !seenSources.insert(current).second)) continue;
+            if (ProjectTypeConversion::isNativeArray(locals_[*assignmentTargetLocal].typeKey) &&
+                (current->kind() == ast::AstNodeKind::NewExpression ||
+                 current->kind() == ast::AstNodeKind::CollectionExpression) &&
+                current->auxiliaryText() == "inferred-array-initializer")
+            {
+                for (const ast::AstNode* element : current->children())
+                    if (element != nullptr) sourcesToInspect.push_back(element);
+                continue;
+            }
+            if (current->kind() == ast::AstNodeKind::SpreadElementExpression &&
+                ProjectTypeConversion::isNativeArray(locals_[*assignmentTargetLocal].typeKey))
+            {
+                sourcesToInspect.push_back(current->first());
+                continue;
+            }
             if (current->kind() == ast::AstNodeKind::ConditionalExpression)
             {
                 sourcesToInspect.push_back(current->second());
@@ -2521,6 +2782,11 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
                 continue;
             }
             const MethodNameBinding* source = nameBinding(current, methodMemberOrdinal);
+            if (isReferenceTypeKey(locals_[*assignmentTargetLocal].typeKey) &&
+                (current->kind() == ast::AstNodeKind::CallExpression ||
+                 (source != nullptr && (source->kind == MethodNameBindingKind::StaticField ||
+                                        source->kind == MethodNameBindingKind::NamespaceState))))
+                locals_[*assignmentTargetLocal].mayAliasUnknownReference = true;
             if (source != nullptr && (source->kind == MethodNameBindingKind::ImplicitField ||
                                       source->kind == MethodNameBindingKind::ExplicitThisField))
                 locals_[*assignmentTargetLocal].mayAliasThisField = true;

@@ -100,6 +100,8 @@ std::string stage38OperatorMethodName(TokenKind kind, std::size_t arity)
         {
             case TokenKind::Plus: return "+";
             case TokenKind::Minus: return "-";
+            case TokenKind::PlusPlus: return "++";
+            case TokenKind::MinusMinus: return "--";
             case TokenKind::Star: return "*";
             case TokenKind::Slash: return "/";
             case TokenKind::Percent: return "%";
@@ -128,6 +130,8 @@ std::string stage38OperatorTraitKey(TokenKind kind, std::size_t arity)
     {
         case TokenKind::Plus: return std::string(language::operatorTrait("+", arity));
         case TokenKind::Minus: return std::string(language::operatorTrait("-", arity));
+        case TokenKind::PlusPlus: return std::string(language::operatorTrait("++", arity));
+        case TokenKind::MinusMinus: return std::string(language::operatorTrait("--", arity));
         case TokenKind::Star: return std::string(language::operatorTrait("*", arity));
         case TokenKind::Slash: return std::string(language::operatorTrait("/", arity));
         case TokenKind::Percent: return std::string(language::operatorTrait("%", arity));

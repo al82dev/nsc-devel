@@ -1071,6 +1071,12 @@ bool ProjectMethodBodyModel::hasActiveBorrowOfOwnerLocal(
     std::size_t scopeOrdinal,
     std::optional<std::string_view> accessedPlace) const noexcept
 {
+    if (!accessedPlace.has_value() && std::ranges::any_of(activeArgumentOwnedFields_,
+            [localOrdinal](const auto& field) { return field.first == localOrdinal; }))
+        return true;
+    if (std::find(activePrefixArgumentOwnerLocals_.begin(), activePrefixArgumentOwnerLocals_.end(),
+                  localOrdinal) != activePrefixArgumentOwnerLocals_.end())
+        return true;
     for (std::size_t ordinal = 0; ordinal < localBorrowBindings_.size(); ++ordinal)
     {
         const MethodLocalBorrowBinding& borrow = localBorrowBindings_[ordinal];
