@@ -1024,8 +1024,7 @@ inspecciona la llamada física (`A:/temp/nsc-t09-regcall-record-mixto-real-t0kvo
 La prueba interna del plan rechaza una alineación alterada; pasaron transporte,
 ABI, identidad y la regresión C++ de dos `double` expandidos
 (`A:/temp/nsc-t09-cpp-record-double-m67sr12p`). La muestra nueva usa enlace
-estático; la muestra C desde fuente con DLL y la variante C++ aún no se
-acreditan.
+estático; la muestra C desde fuente con DLL aún no se acredita.
 
 El contrato vigente conserva el plan de copia indirecta sin exigir una pieza
 expandida; la prueba interna verifica su lectura y escritura y rechaza una
@@ -1035,6 +1034,19 @@ alineación alterada. Pasaron 16 consumidores precompilados con ambas llamadas y
 `A:/temp/nsc-t09-record-mixto-real-pre-x21fc31y`). Pasaron transporte, ABI,
 identidad y la regresión precompilada C++ de dos `double` expandidos
 (`A:/temp/nsc-t09-cpp-record-double-pre-ee8jl2me`).
+
+La [muestra C++](pruebas-tanda-09-regcall-cpp-record-mixto-real/) emplea un
+registro trivial y una función en un espacio de nombres. Inicialmente se
+rechazaba el alias por puntero (`A:/temp/nsc-t09-cpp-record-mixto-real-0rfifyqd`).
+Tras conservar su plan de copia indirecta, pasaron ocho comparaciones en
+estática y DLL O0–O3, directas y por puntero, con inspección LLVM
+(`A:/temp/nsc-t09-cpp-record-mixto-real-mejv16gh`). Pasaron también 32
+consumidores precompilados en estática y DLL, con y sin encabezado y con ambas
+llamadas o solo puntero (`A:/temp/nsc-t09-cpp-record-mixto-real-pre-jg3drbqy`
+y `A:/temp/nsc-t09-cpp-record-mixto-real-pre-q8d3w_z4`). Pasaron plan,
+transporte, ABI e identidad y los rechazos previos de registros privados y no
+triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-3lfox064`). Otras
+formas y registros C++ no triviales siguen sin acreditar.
 
 ## Argumento de dos double expandidos: pendiente
 
