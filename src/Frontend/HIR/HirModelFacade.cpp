@@ -98,6 +98,13 @@ std::span<const ProjectOopHirFunction> ProjectOopHirModel::functions() const noe
     return functions_;
 }
 
+const MethodExpressionTypeBinding* ProjectOopHirModel::yieldOperandBinding(
+    const ast::AstNode* syntax, std::size_t callableOrdinal) const noexcept
+{
+    return methodBodyModel_ == nullptr || syntax == nullptr ? nullptr :
+        methodBodyModel_->expressionTypeBinding(syntax, callableOrdinal);
+}
+
 std::span<const ProjectOopHirFieldInitializer> ProjectOopHirModel::fieldInitializers() const noexcept
 {
     return fieldInitializers_;

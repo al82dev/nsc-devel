@@ -4,6 +4,7 @@
 #include "nativesharp/Frontend/ProjectOopMirFunctionAbi.h"
 #include "nativesharp/Frontend/ProjectOopMirCleanupRegion.h"
 #include "nativesharp/Frontend/ProjectOopMirExceptionFlow.h"
+#include "nativesharp/Frontend/ProjectOopMirYieldFact.h"
 
 #include "nativesharp/Language/ErrorSemantics.h"
 
@@ -93,6 +94,8 @@ struct ProjectOopMirFunction final
     std::vector<std::size_t> localOrdinals;
     std::vector<ProjectOopMirCleanupRegion> cleanupRegions;
     ProjectOopMirExceptionFlow exceptionFlow;
+    // Rebuilt from current semantic bindings, including after MIR cache restore.
+    std::vector<ProjectOopMirYieldFact> asyncYieldFacts;
     std::unique_ptr<ProjectOopMirNode> body;
 };
 }

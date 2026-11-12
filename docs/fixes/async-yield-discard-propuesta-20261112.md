@@ -243,10 +243,75 @@ ejecución independiente produjo lo mismo en el directorio con sufijo
 `-agent-20261112`. El ejecutable de prueba usado en ambas fue
 `A:\nsc-fixes-evidencia\build\tests\nsc_async_yield_cross_process_cache_tests.exe`,
 SHA-256 `b5c63fbda38c634c3a5b2d180fa7747c5a3668d6b50b72513668d5802e4cfa1a`.
-Tampoco se han
-verificado workers paralelos, cambios de grafo ni invalidación de identidad de
-objeto. Los hechos registrados son evidencia de binding, no una clasificación
+En ese momento no se habían verificado workers paralelos, cambios de grafo ni
+invalidación de identidad de objeto. Los hechos registrados son evidencia de binding, no una clasificación
 de propiedad ni una solución del descarte.
+
+### Infraestructura inicial de hechos
+
+Se añadió un vector lateral por función MIR, con rutas del yield y del nodo
+observado dentro del operando. Se reconstruye después de instalar funciones
+nuevas o restauradas y consulta el binding de la sintaxis con el ordinal del
+callable. Guarda copias de hechos, no punteros a nodos ni a bindings; el campo
+`hasBinding=false` representa ausencia de binding. Son observaciones crudas:
+una entrada también puede representar un argumento o un wrapper, por lo que no
+significa automáticamente que sea propietaria del resultado del yield.
+
+La primera compilación dirigida falló porque se intentó leer `isAsyncPoll`
+desde la función MIR, que no tiene ese campo. Se corrigió usando la función
+HIR correspondiente; la compilación incremental posterior pasó. El runner
+de procesos independientes terminó con salida 0 en ambas fases y comparó 26
+registros iguales: 20 hechos, cuatro productores y dos wrappers. La fase fría
+restauró cero polls y la cálida tres. Evidencia y comandos:
+`A:\nsc-fixes-evidencia\async-yield-facts-20261112\cold.log`, `warm.log` y
+`comparison.log` en la misma carpeta.
+
+Ese fixture no contiene una entrada sin binding: no demuestra por sí solo
+el camino `Unknown`. Tampoco probó todas las especializaciones genéricas,
+`ref`, cambios de grafo, concurrencia, ni la semántica de las conversiones y
+wrappers. La tabla no se usa en el codegen y no modifica el comportamiento de
+cancelación ni la identidad de objetos. Si posteriormente se usa para emitir
+código, la identidad pre-LLVM y sus pruebas deberán actualizarse antes de
+activar ese consumo; este experimento no valida esa futura identidad.
+
+La primera representación guardaba una ruta completa por hecho, lo que
+costaba la suma de profundidades y podía ser cuadrático en un árbol profundo.
+El código se cambió después a una sola pasada preorden con índices por
+función, referencia al hecho padre e índice de hijo. Las raíces comparten el
+índice del yield; no se guardan punteros. Para N nodos visitados, F hechos y B
+bytes copiados de bindings, el coste esperado es O(N+B) tiempo y O(N+F+B)
+espacio máximo incluyendo la pila de trabajo. Los índices identifican el árbol
+de esa función, no constituyen identidades globales. La pasada observa todos
+los descendientes del operando, incluidos argumentos y wrappers; un binding
+observado no clasifica por sí mismo el resultado como propio o prestado.
+
+Se amplió el harness para una fase `unknown` separada que quita la sintaxis
+de un nodo solo en el HIR construido para la prueba, exige un hecho sin binding
+y conserva `Unknown`. Añade fixtures para especializaciones genéricas y un
+item `ref`, además de verificar los enlaces entre padre e hijo. El target
+dirigido compiló incrementalmente y el runner terminó con salida 0 en frío,
+cálido y `unknown`. Las dos primeras fases produjeron 31 registros idénticos;
+la tercera observó una entrada `UNKNOWN`. Cada fase registró dos hechos de la
+especialización `int`, dos de `Payload` y uno del fixture `ref`. Comandos y
+resultados están bajo `A:\nsc-fixes-evidencia\async-yield-linear-20261112`.
+Esta evidencia identifica el operando del fixture `ref`; no demuestra todavía
+que la tabla transporte o interprete su modo de item. Los 26 registros de la
+sección anterior corresponden a la representación previa de rutas completas.
+
+Se ejecutó una ampliación dirigida que compara los registros
+canónicos de una compilación con un worker frente a otra independiente con
+cuatro workers, y conserva las fases fría, cálida y `unknown`. Como
+`ProjectOopMirModel::initializeBuild` declara las instancias de un solo uso,
+el mismo modelo no admite una reconstrucción exitosa: el harness intentó un
+segundo `build`, obtuvo el diagnóstico de single-use y comprobó que todos los
+hechos seguían iguales. Las cuatro fases finalizaron con salida 0; se
+compararon 31 registros idénticos entre uno y cuatro workers, con `Unknown`
+observado en su fase separada. Los cuatro logs confirman el rechazo y la
+conservación de hechos. Evidencia:
+`A:\nsc-fixes-evidencia\async-yield-parallel-20261112\comparison.log` y los
+logs `cold`, `warm`, `unknown` y `parallel` del mismo directorio.
+La reconstrucción aceptada de caché sigue siendo
+la de un modelo nuevo en otro proceso, no una reutilización del mismo objeto.
 
 ## Fixture de wrapper preparado, no ejecutado
 

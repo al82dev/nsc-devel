@@ -1,6 +1,7 @@
 #include "nativesharp/Frontend/ProjectCompilation.h"
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
+#include "nativesharp/Frontend/ProjectOopHirNode.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Frontend/ProjectOopMirNode.h"
 
@@ -8,6 +9,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -37,6 +39,123 @@ struct Pending final
     bool inYieldOperand;
 };
 
+std::vector<const ProjectOopMirNode*> nodesByPreorder(const ProjectOopMirNode* root)
+{
+    std::vector<const ProjectOopMirNode*> result;
+    std::vector<const ProjectOopMirNode*> pending;
+    if (root != nullptr) pending.push_back(root);
+    while (!pending.empty())
+    {
+        const auto* node = pending.back();
+        pending.pop_back();
+        result.push_back(node);
+        for (auto child = node->children.rbegin(); child != node->children.rend(); ++child)
+            if (*child) pending.push_back(child->get());
+    }
+    return result;
+}
+
+bool reportFacts(const ProjectOopMirModel& model, const ProjectMethodBodyModel& bindings, bool expectUnknown)
+{
+    std::size_t count = 0;
+    std::size_t unknown = 0;
+    std::size_t genericInt = 0;
+    std::size_t genericPayload = 0;
+    std::size_t refFacts = 0;
+    for (const auto& function : model.functions())
+    {
+        const auto nodes = nodesByPreorder(function.body.get());
+        for (std::size_t i = 0; i < function.asyncYieldFacts.size(); ++i)
+        {
+            const auto& fact = function.asyncYieldFacts[i];
+            if (fact.yieldPreorder >= nodes.size() || fact.nodePreorder >= nodes.size()) return false;
+            const auto* yield = nodes[fact.yieldPreorder];
+            const auto* node = nodes[fact.nodePreorder];
+            if (yield->kind != ProjectOopMirNodeKind::AsyncYieldValue || node->kind != fact.nodeKind)
+                return false;
+            const ProjectOopMirNode* parent = yield;
+            if (fact.parentFact.has_value())
+            {
+                if (*fact.parentFact >= i) return false;
+                const auto& parentFact = function.asyncYieldFacts[*fact.parentFact];
+                if (parentFact.yieldPreorder != fact.yieldPreorder || parentFact.nodePreorder >= nodes.size())
+                    return false;
+                parent = nodes[parentFact.nodePreorder];
+            }
+            if (fact.childIndex >= parent->children.size() || parent->children[fact.childIndex].get() != node)
+                return false;
+            const auto* binding = node->syntax == nullptr ? nullptr :
+                bindings.expressionTypeBinding(node->syntax, function.memberOrdinal);
+            if (fact.hasBinding != (binding != nullptr)) return false;
+            if (binding != nullptr && (fact.typeKey != binding->typeKey || fact.valueCategory != binding->valueCategory ||
+                fact.ownership != binding->ownership || fact.ownershipTransfer != binding->ownershipTransfer ||
+                fact.ownershipFreshOwner != binding->ownershipFreshOwner ||
+                fact.objectLifetimeOwnership != binding->objectLifetimeOwnership ||
+                fact.storageOwnership != binding->storageOwnership)) return false;
+            ++count;
+            if (function.mangledName.find("GenRef") != std::string::npos) ++refFacts;
+            if (function.mangledName.find("Generator") != std::string::npos && fact.typeKey == "builtin:int")
+                ++genericInt;
+            if (function.mangledName.find("Generator") != std::string::npos &&
+                fact.typeKey.find("Payload") != std::string::npos) ++genericPayload;
+            std::cout << "fact " << function.mangledName << " yield=" << fact.yieldPreorder
+                      << " node=" << fact.nodePreorder << " parent=";
+            if (fact.parentFact) std::cout << *fact.parentFact;
+            else std::cout << "root";
+            std::cout << " child=" << fact.childIndex << " kind=" << static_cast<int>(fact.nodeKind);
+            if (!fact.hasBinding) { ++unknown; std::cout << " UNKNOWN\n"; continue; }
+            std::cout << " type=" << fact.typeKey << " category=" << static_cast<int>(fact.valueCategory)
+                      << " ownership=" << static_cast<int>(fact.ownership) << " transfer=" << fact.ownershipTransfer
+                      << " fresh=" << fact.ownershipFreshOwner << " object="
+                      << static_cast<int>(fact.objectLifetimeOwnership) << " storage="
+                      << static_cast<int>(fact.storageOwnership) << '\n';
+        }
+    }
+    std::cout << "fact-coverage unknown=" << unknown << " generic-int=" << genericInt
+              << " generic-payload=" << genericPayload << " ref=" << refFacts << '\n';
+    return count > 0 && (!expectUnknown || unknown > 0) && genericInt > 0 && genericPayload > 0 && refFacts > 0;
+}
+
+bool removeOneYieldSyntax(const ProjectOopHirModel& hir)
+{
+    for (const auto& function : hir.functions())
+    {
+        if (function.mangledName.find("Program__Gen__") == std::string::npos || !function.body) continue;
+        std::vector<ProjectOopHirNode*> pending{function.body.get()};
+        while (!pending.empty())
+        {
+            auto* node = pending.back();
+            pending.pop_back();
+            if (node->kind == ProjectOopHirNodeKind::AsyncYieldValue && !node->children.empty() &&
+                node->children.front() && node->children.front()->kind != ProjectOopHirNodeKind::Conditional)
+            {
+                node->children.front()->syntax = nullptr;
+                return true;
+            }
+            for (const auto& child : node->children) if (child) pending.push_back(child.get());
+        }
+    }
+    return false;
+}
+
+std::string factSnapshot(const ProjectOopMirModel& model)
+{
+    std::ostringstream out;
+    for (const auto& function : model.functions())
+        for (const auto& fact : function.asyncYieldFacts)
+        {
+            out << function.mangledName.size() << ':' << function.mangledName << ' ' << fact.yieldPreorder << ' '
+                << fact.nodePreorder << ' ' << fact.parentFact.has_value() << ' '
+                << fact.parentFact.value_or(0) << ' ' << fact.childIndex << ' ' << static_cast<int>(fact.nodeKind)
+                << ' ' << fact.hasBinding << ' ' << fact.typeKey.size() << ':' << fact.typeKey << ' '
+                << static_cast<int>(fact.valueCategory) << ' ' << static_cast<int>(fact.ownership) << ' '
+                << fact.ownershipTransfer << ' ' << fact.ownershipFreshOwner << ' '
+                << static_cast<int>(fact.objectLifetimeOwnership) << ' '
+                << static_cast<int>(fact.storageOwnership) << '\n';
+        }
+    return out.str();
+}
+
 bool writeFixture(const std::filesystem::path& directory)
 {
     std::filesystem::create_directories(directory);
@@ -44,6 +163,8 @@ bool writeFixture(const std::filesystem::path& directory)
     source << R"NS(using NativeSharp.Core;
 namespace NativeSharp.Core { public class Exception {} }
 class Payload { ~Payload() {} }
+class Generator<T> { public static AsyncIterator<T, Exception> Gen(T value) {
+ try { yield return value; } finally { yield return value; } } }
 class Program { public static Payload Shared;
  public static owned Payload Make() { return new Payload(); }
  public static bool Choose(bool value) { return value; }
@@ -51,7 +172,10 @@ class Program { public static Payload Shared;
  public static AsyncIterator<Payload, Exception> Gen(bool choose) {
   try { yield return Shared; } finally { yield return Choose(choose) ? Make() : Shared; }
  }
- public static int Main() { return 0; }
+ public static AsyncIterator<ref int, Exception> GenRef() { int value = 5; yield return value; }
+ public static int Main() { AsyncIterator<int, Exception> ints = Generator<int>.Gen(5);
+  owned Payload owner = new Payload(); AsyncIterator<Payload, Exception> objects = Generator<Payload>.Gen(owner);
+  return 0; }
 }
 namespace Helpers {
  public AsyncIterator<Payload, Exception> Gen(bool choose) {
@@ -127,26 +251,44 @@ bool reportProducers(const ProjectOopMirModel& model, const ProjectMethodBodyMod
 
 int main(int argc, char** argv)
 {
-    if (argc != 3) { std::cerr << "usage: test <shared-directory> <cold|warm>\n"; return 2; }
+    if (argc != 4) { std::cerr << "usage: test <shared-directory> <cold|warm|unknown> <1|4>\n"; return 2; }
     const std::filesystem::path root = argv[1];
     const std::string phase = argv[2];
-    if (phase != "cold" && phase != "warm") return 2;
-    if (phase == "cold" && !writeFixture(root)) return 2;
+    const std::string workersText = argv[3];
+    if (workersText != "1" && workersText != "4") return 2;
+    const std::size_t workers = workersText == "1" ? 1U : 4U;
+    if (phase != "cold" && phase != "warm" && phase != "unknown") return 2;
+    if ((phase == "cold" || phase == "unknown") && !writeFixture(root)) return 2;
     ProjectCompilation compilation;
+    compilation.setCompilationJobs(workers);
     std::string error;
     if (!compilation.compileProjectOopHir(root / "Probe.nsproj", error) ||
         !compilation.methodBodyModel() || !compilation.oopHirModel() || !compilation.nameLookup() ||
         !compilation.memberModel() || !compilation.objectLayoutModel() || !compilation.virtualDispatchModel() ||
         !compilation.interfaceModel() || !compilation.destructionModel() || !compilation.namespaceFunctionModel())
     { std::cerr << "HIR failed: " << error << '\n'; return 1; }
+    if (phase == "unknown" && !removeOneYieldSyntax(*compilation.oopHirModel()))
+    { std::cerr << "could not create a synthetic missing-binding case\n"; return 1; }
     ProjectOopMirModel model;
     model.setMirCacheRoot(root / "cache");
     if (!model.build(*compilation.nameLookup(), *compilation.memberModel(), *compilation.objectLayoutModel(),
         *compilation.virtualDispatchModel(), *compilation.interfaceModel(), *compilation.destructionModel(),
-        *compilation.oopHirModel(), *compilation.namespaceFunctionModel(), error, 1))
+        *compilation.oopHirModel(), *compilation.namespaceFunctionModel(), error, workers))
     { std::cerr << "MIR failed: " << error << '\n'; return 1; }
     const std::size_t restored = ProjectOopHirModelTestAccess::restoredPolls(model);
     std::cout << "restored-polls=" << restored << '\n';
-    if ((phase == "cold" && restored != 0) || (phase == "warm" && restored == 0)) return 1;
-    return reportProducers(model, *compilation.methodBodyModel()) ? 0 : 1;
+    if (((phase == "cold" || phase == "unknown") && restored != 0) ||
+        (phase == "warm" && restored == 0)) return 1;
+    const bool observations = reportProducers(model, *compilation.methodBodyModel()) &&
+        reportFacts(model, *compilation.methodBodyModel(), phase == "unknown");
+    const std::string before = factSnapshot(model);
+    std::string secondError;
+    const bool secondBuild = model.build(*compilation.nameLookup(), *compilation.memberModel(),
+        *compilation.objectLayoutModel(), *compilation.virtualDispatchModel(), *compilation.interfaceModel(),
+        *compilation.destructionModel(), *compilation.oopHirModel(), *compilation.namespaceFunctionModel(),
+        secondError, workers);
+    const std::string after = factSnapshot(model);
+    const bool rejected = !secondBuild && secondError == "ProjectOopMirModel instances are single-use";
+    std::cout << "single-use-rebuild-rejected=" << rejected << " facts-preserved=" << (before == after) << '\n';
+    return observations && rejected && before == after ? 0 : 1;
 }

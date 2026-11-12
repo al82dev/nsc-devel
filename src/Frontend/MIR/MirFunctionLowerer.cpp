@@ -1382,6 +1382,70 @@ void ProjectOopMirModel::configureFunctionLowerer(
     lowerer.indexes_ = indexes_;
 }
 
+namespace
+{
+struct YieldFactWork final
+{
+    const ProjectOopMirNode* node;
+    std::optional<std::size_t> yieldPreorder;
+    std::optional<std::size_t> parentFact;
+    std::size_t childIndex;
+};
+
+void appendYieldFact(ProjectOopMirFunction& function, const ProjectOopHirModel& hirModel,
+    const YieldFactWork& item, std::size_t nodePreorder)
+{
+    ProjectOopMirYieldFact fact;
+    fact.yieldPreorder = *item.yieldPreorder;
+    fact.nodePreorder = nodePreorder;
+    fact.parentFact = item.parentFact;
+    fact.childIndex = item.childIndex;
+    fact.nodeKind = item.node->kind;
+    const auto* binding = hirModel.yieldOperandBinding(item.node->syntax, function.memberOrdinal);
+    if (binding != nullptr)
+    {
+        fact.hasBinding = true;
+        fact.typeKey = binding->typeKey;
+        fact.valueCategory = binding->valueCategory;
+        fact.ownership = binding->ownership;
+        fact.ownershipTransfer = binding->ownershipTransfer;
+        fact.ownershipFreshOwner = binding->ownershipFreshOwner;
+        fact.objectLifetimeOwnership = binding->objectLifetimeOwnership;
+        fact.storageOwnership = binding->storageOwnership;
+    }
+    function.asyncYieldFacts.push_back(std::move(fact));
+}
+
+void rebuildYieldFacts(ProjectOopMirFunction& function, const ProjectOopHirModel& hirModel, bool isAsyncPoll)
+{
+    function.asyncYieldFacts.clear();
+    if (function.body == nullptr || !isAsyncPoll ||
+        !function.effects.contains(sema::Effect::Generator)) return;
+    std::vector<YieldFactWork> work{{function.body.get(), std::nullopt, std::nullopt, 0U}};
+    std::size_t preorder = 0;
+    while (!work.empty())
+    {
+        YieldFactWork item = std::move(work.back());
+        work.pop_back();
+        const std::size_t nodePreorder = preorder++;
+        std::optional<std::size_t> parentFact;
+        if (item.yieldPreorder.has_value())
+        {
+            parentFact = function.asyncYieldFacts.size();
+            appendYieldFact(function, hirModel, item, nodePreorder);
+        }
+        for (std::size_t i = item.node->children.size(); i > 0; --i)
+        {
+            if (item.node->children[i - 1] == nullptr) continue;
+            const bool operand = item.node->kind == ProjectOopMirNodeKind::AsyncYieldValue && i == 1;
+            work.push_back({item.node->children[i - 1].get(),
+                operand ? std::optional<std::size_t>(nodePreorder) : item.yieldPreorder,
+                operand ? std::nullopt : parentFact, i - 1});
+        }
+    }
+}
+}
+
 bool ProjectOopMirModel::lowerFunctions(
     const ProjectNameLookup& nameLookup,
     const ProjectMemberModel& memberModel,
@@ -1472,6 +1536,8 @@ bool ProjectOopMirModel::lowerFunctions(
     inheritConstructorFrames(functions_, "$moveNext", 9, false);
     inheritConstructorFrames(functions_, "$moveNext$poll", 14, false);
     inheritConstructorFrames(functions_, "$poll", 5, true);
+    for (std::size_t index = 0; index < functions_.size(); ++index)
+        rebuildYieldFacts(functions_[index], hirModel, hirFunctions[index].isAsyncPoll);
     return true;
 }
 }

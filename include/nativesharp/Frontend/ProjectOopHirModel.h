@@ -116,6 +116,8 @@ public:
         driver::CompilationWorkerPool* workerPool);
 
     std::span<const ProjectOopHirFunction> functions() const noexcept;
+    const MethodExpressionTypeBinding* yieldOperandBinding(
+        const ast::AstNode* syntax, std::size_t callableOrdinal) const noexcept;
     std::span<const ProjectOopHirFieldInitializer> fieldInitializers() const noexcept;
     const ProjectOopHirFunction* functionForMember(std::size_t memberOrdinal) const noexcept;
     const ProjectOopHirFunction* functionForNamespaceFunction(
