@@ -221,7 +221,11 @@ bool hasPublicDefaultConstructor(
         if (member.accessibility == ClassMemberAccessibility::Public && member.parameters.empty())
             return true;
     }
-    return !hasExplicitConstructor;
+    // A precompiled public surface can omit a private constructor. Absence of
+    // published constructors therefore cannot prove an accessible default.
+    // Older metadata may also omit an implicit constructor, so this is a
+    // conservative restriction rather than proof that the type has none.
+    return !hasExplicitConstructor && !declaration->isPrecompiled;
 }
 
 bool hasTrackedLifetime(
