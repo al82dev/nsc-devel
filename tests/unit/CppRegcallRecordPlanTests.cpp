@@ -250,6 +250,7 @@ int main(int argc, char** argv)
     cppOptions.input = CppBufferInput{"regcall-record-plan.cpp", R"cpp(
         namespace A {
         struct Pair { float x, y; };
+        using Callback = Pair (__attribute__((regcall)) *)(Pair);
         Pair __attribute__((regcall)) transform(Pair);
         int __attribute__((regcall)) transform(int);
         struct Incomplete;
@@ -257,6 +258,7 @@ int main(int argc, char** argv)
         }
         namespace B {
         struct Pair { float x, y; };
+        using Callback = Pair (__attribute__((regcall)) *)(Pair);
         Pair __attribute__((regcall)) transform(Pair);
         }
     )cpp"};
@@ -280,5 +282,22 @@ int main(int argc, char** argv)
         (function.qualifiedName == "A::transform" ? firstSymbol : secondSymbol) = *function.externalSymbol;
     }
     if (scalarCount != 1 || !sawIncomplete || firstSymbol.empty() || secondSymbol.empty() || firstSymbol == secondSymbol) return 40;
+    const auto cppAliases = cppSession->typeAliasesSnapshot();
+    if (!cppAliases) return 42;
+    unsigned callbackCount = 0;
+    for (const auto& alias : *cppAliases)
+    {
+        if (alias.qualifiedName != "A::Callback" && alias.qualifiedName != "B::Callback") continue;
+        if (!alias.clangUsr || alias.clangUsr->empty()) return 43;
+        const auto plan = cppSession->cppFunctionPointerAbiPlan(
+            alias.qualifiedName, *alias.clangUsr, alias.underlyingType.canonicalSpelling);
+        if (!plan || !abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(
+                *plan, "__regcall3____nsc_pointer_abi_probe", 8, 4) ||
+            cppSession->cppFunctionPointerAbiPlan(alias.qualifiedName, "wrong-usr", alias.underlyingType.canonicalSpelling) ||
+            cppSession->cppFunctionPointerAbiPlan("missing::Callback", *alias.clangUsr, alias.underlyingType.canonicalSpelling) ||
+            cppSession->cppFunctionPointerAbiPlan(alias.qualifiedName, *alias.clangUsr, "wrong-type")) return 44;
+        ++callbackCount;
+    }
+    if (callbackCount != 2) return 45;
     return 0;
 }

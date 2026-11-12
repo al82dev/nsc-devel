@@ -37,7 +37,8 @@ using CppSemanticFunctionResult =
 // signatures; preserve storage qualifiers and reject unrepresentable prototypes.
 std::optional<CppScalarTypeMapping> projectCppStoredFunctionPointer(
     const CppType& type, std::optional<std::size_t> projectOrdinal = std::nullopt,
-    std::string_view moduleName = {}, const frontend::ProjectNameLookup* lookup = nullptr);
+    std::string_view moduleName = {}, const frontend::ProjectNameLookup* lookup = nullptr,
+    bool cppRecordValues = false);
 
 // Projects externally named free functions using representable scalar types and supported
 // 64-bit pointers, including parameters to const scalars, into the NSC name index. This does

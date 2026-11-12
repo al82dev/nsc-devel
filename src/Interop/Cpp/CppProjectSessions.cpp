@@ -251,6 +251,59 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
     const frontend::ProjectNameLookup& lookup, const frontend::CppImportedTypeAlias& alias,
     std::string_view resolvedTypeKey)
 {
+    if (!alias.fromPrecompiledCatalog && alias.projectOrdinal < graph.projects().size() &&
+        alias.projectFile == graph.projects()[alias.projectOrdinal].projectFile() &&
+        alias.targetTriple == "x86_64-pc-windows-msvc" && alias.declaration.clangUsr &&
+        !alias.declaration.clangUsr->empty())
+    {
+        const CppInteropSession* cppSession = nullptr;
+        for (const auto& group : projects)
+        {
+            if (group.projectFile != alias.projectFile) continue;
+            if (cppSession || alias.referenceIndex >= group.sessions.size() || !group.sessions[alias.referenceIndex]) return {};
+            cppSession = group.sessions[alias.referenceIndex].get();
+        }
+        if (cppSession && cppSession->state() == CppSessionState::Ready &&
+            cppSession->optionsSnapshot().language == CppLanguageMode::Cpp &&
+            cppSession->optionsSnapshot().targetTriple == alias.targetTriple)
+        {
+            const auto mapped = projectCppStoredFunctionPointer(alias.declaration.underlyingType, alias.projectOrdinal,
+                graph.projects()[alias.projectOrdinal].moduleName(), &lookup, true);
+            if (!mapped || mapped->nativeSharpTypeKey != resolvedTypeKey) return {};
+            const auto& pointer = alias.declaration.underlyingType;
+            if (pointer.kind != CppTypeKind::Pointer || !pointer.element || !pointer.element->function) return {};
+            const auto& signature = *pointer.element->function;
+            if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
+                signature.returnType.kind != CppTypeKind::Record || signature.parameterTypes.size() != 1 ||
+                signature.parameterTypes[0].kind != CppTypeKind::Record ||
+                signature.returnType.canonicalSpelling != signature.parameterTypes[0].canonicalSpelling ||
+                !signature.returnType.recordIdentity || !signature.returnType.recordIdentity->clangUsr ||
+                !signature.parameterTypes[0].recordIdentity ||
+                signature.returnType.recordIdentity->clangUsr != signature.parameterTypes[0].recordIdentity->clangUsr ||
+                signature.returnType.sizeBits != 64 || signature.returnType.alignmentBits != 32 ||
+                signature.parameterTypes[0].sizeBits != signature.returnType.sizeBits ||
+                signature.parameterTypes[0].alignmentBits != signature.returnType.alignmentBits) return {};
+            const auto identity = projectCppRecordTypeIdentity(signature.returnType,
+                graph.projects()[alias.projectOrdinal].moduleName());
+            const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
+            const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
+            if (!ordinal || !lookup.cppTrivialValueEligible(*ordinal) || !imported || imported->fromPrecompiledCatalog ||
+                imported->projectOrdinal != alias.projectOrdinal || imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
+                imported->isIncomplete || !imported->deferredImportError.empty() || !imported->objectLayout ||
+                imported->objectLayout->sizeBytes != 8 || imported->objectLayout->alignmentBytes != 4 ||
+                imported->clangUsr != signature.returnType.recordIdentity->clangUsr) return {};
+            const auto records = cppSession->recordsSnapshot();
+            if (!records || std::count_if(records->begin(), records->end(), [&](const auto& record) {
+                    return record.complete && record.isCxx && record.clangUsr == imported->clangUsr &&
+                        record.sizeBits == 64 && record.alignmentBits == 32;
+                }) != 1) return {};
+            auto plan = cppSession->cppFunctionPointerAbiPlan(alias.declaration.qualifiedName,
+                *alias.declaration.clangUsr, pointer.canonicalSpelling);
+            if (!plan || !abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(
+                    *plan, "__regcall3____nsc_pointer_abi_probe", 8, 4)) return {};
+            return std::make_shared<const abi_plan::Plan>(std::move(*plan));
+        }
+    }
     if (alias.fromPrecompiledCatalog || alias.projectOrdinal >= graph.projects().size() ||
         alias.projectFile != graph.projects()[alias.projectOrdinal].projectFile() ||
         alias.targetTriple != "x86_64-pc-windows-msvc" || !alias.declaration.clangUsr ||

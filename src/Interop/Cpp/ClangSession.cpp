@@ -1027,6 +1027,66 @@ public:
         if (!plan || !plan->targetTriple.starts_with("x86_64-pc-windows-msvc")) return std::nullopt;
         return plan;
     }
+    std::optional<abi_plan::Plan> cppFunctionPointerAbiPlan(
+        std::string_view qualifiedName, std::string_view usr, std::string_view canonicalType) const override
+    {
+        std::lock_guard lock(mutex_);
+        if (!ast_ || qualifiedName.empty() || usr.empty() || canonicalType.empty()) return std::nullopt;
+        auto& context = ast_->getASTContext();
+        if (!context.getLangOpts().CPlusPlus) return std::nullopt;
+        const clang::TypedefNameDecl* match = nullptr;
+        bool ambiguous = false;
+        std::function<void(const clang::DeclContext&)> visit = [&](const clang::DeclContext& declarations) {
+            for (const auto* declaration : declarations.decls())
+            {
+                if (const auto* nested = llvm::dyn_cast<clang::NamespaceDecl>(declaration))
+                { visit(*nested); continue; }
+                if (const auto* linkage = llvm::dyn_cast<clang::LinkageSpecDecl>(declaration))
+                { visit(*linkage); continue; }
+                const auto* candidate = llvm::dyn_cast<clang::TypedefNameDecl>(declaration);
+                if (!candidate || candidate->isImplicit() || candidate->hasAttrs() ||
+                    candidate->getQualifiedNameAsString() != qualifiedName ||
+                    candidate->getUnderlyingType().getCanonicalType().getAsString() != canonicalType ||
+                    declarationUsr(candidate) != std::optional<std::string>(std::string(usr))) continue;
+                if (match && match->getCanonicalDecl() != candidate->getCanonicalDecl()) ambiguous = true;
+                match = candidate;
+            }
+        };
+        visit(*context.getTranslationUnitDecl());
+        if (!match || ambiguous) return std::nullopt;
+        const auto pointer = match->getUnderlyingType().getCanonicalType();
+        if (pointer.hasQualifiers() || !pointer->isPointerType()) return std::nullopt;
+        const auto functionType = pointer->getPointeeType();
+        const auto* prototype = functionType->getAs<clang::FunctionProtoType>();
+        if (!prototype || prototype->isVariadic() || prototype->hasExtParameterInfos() ||
+            prototype->getCallConv() != clang::CC_X86RegCall) return std::nullopt;
+        const auto resultType = prototype->getReturnType();
+        if (resultType.isNull() || (!resultType->isVoidType() && resultType->isIncompleteType())) return std::nullopt;
+        for (const auto type : prototype->param_types())
+            if (type.isNull() || type->isIncompleteType()) return std::nullopt;
+        auto* declaration = clang::FunctionDecl::Create(context, context.getTranslationUnitDecl(), {}, {},
+            &context.Idents.get("__nsc_cpp_pointer_abi_probe"), functionType,
+            context.getTrivialTypeSourceInfo(functionType), clang::SC_Extern);
+        if (!declaration) return std::nullopt;
+        std::vector<clang::ParmVarDecl*> parameters;
+        parameters.reserve(prototype->getNumParams());
+        for (const auto type : prototype->param_types())
+            parameters.push_back(clang::ParmVarDecl::Create(context, declaration, {}, {}, nullptr, type,
+                context.getTrivialTypeSourceInfo(type), clang::SC_None, nullptr));
+        declaration->setParams(parameters);
+        llvm::LLVMContext llvmContext;
+        auto generator = clang::CreateLLVMCodeGen(ast_->getDiagnostics(), "nsc.cpp.pointer.abi.plan",
+            ast_->getVirtualFileSystemPtr(), ast_->getHeaderSearchOpts(), ast_->getPreprocessorOpts(),
+            ast_->getCodeGenOpts(), llvmContext);
+        if (!generator) return std::nullopt;
+        generator->Initialize(context);
+        std::string error;
+        auto plan = abi_plan::copyPlan(*generator, *declaration, error);
+        if (!plan || !plan->targetTriple.starts_with("x86_64-pc-windows-msvc")) return std::nullopt;
+        // This identity denotes an ABI probe, never a linkable C++ symbol.
+        plan->symbol = "__regcall3____nsc_pointer_abi_probe";
+        return plan;
+    }
     std::optional<abi_plan::VariadicCallPlan> cVariadicCallAbiPlan(
         std::string_view name, std::string_view canonicalType,
         const std::vector<CppType>& optionalArguments) const override

@@ -212,7 +212,8 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
         // C records retain T08-D22; C++ records require the verified trivial-value rule.
         const bool cRecordValues = allowCRecordValue || allowCStoredRecordPointer;
         const bool cppRecordValues = !cRecordValues &&
-            (signature.callingConvention == "cdecl" || signature.callingConvention == "preserve_most");
+            (signature.callingConvention == "cdecl" || signature.callingConvention == "preserve_most" ||
+             signature.callingConvention == "regcall");
         if (signature.returnType.kind == CppTypeKind::Record && !cRecordValues && !cppRecordValues) return std::nullopt;
         // EN: T08-002: the structural identity records `const` and `volatile` pointees per parameter and for
         //     the result, so a pointer to such data is mapped like a direct C call maps it (the carrier
@@ -286,7 +287,7 @@ std::optional<CppScalarTypeMapping> mapFunctionType(
 
 std::optional<CppScalarTypeMapping> projectCppStoredFunctionPointer(
     const CppType& type, std::optional<std::size_t> projectOrdinal,
-    std::string_view moduleName, const frontend::ProjectNameLookup* lookup)
+    std::string_view moduleName, const frontend::ProjectNameLookup* lookup, bool cppRecordValues)
 {
     if (type.kind != CppTypeKind::Pointer || !type.element ||
         type.element->kind != CppTypeKind::Function) return std::nullopt;
@@ -294,7 +295,7 @@ std::optional<CppScalarTypeMapping> projectCppStoredFunctionPointer(
     unqualified.isConst = false;
     unqualified.isVolatile = false;
     auto mapped = mapFunctionType(unqualified, false, nullptr, moduleName, 0, lookup, projectOrdinal,
-                                  false, true);
+                                  false, !cppRecordValues);
     if (mapped) { mapped->isConst = type.isConst; mapped->isVolatile = type.isVolatile; }
     return mapped;
 }

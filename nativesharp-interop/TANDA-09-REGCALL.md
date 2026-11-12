@@ -462,8 +462,29 @@ firma C de flotantes, su consumo precompilado, `regcall` escalar C++ y record
 C++ `cdecl` (A:/temp/nsc-t09-regcall-hfa-5wlx9x12,
 A:/temp/nsc-t09-hfa-precompilado-jcjrgecs,
 A:/temp/nsc-t09-regcall-cpp-9a7_u_0g y A:/temp/nsc-t09-cpp-record-cdecl-apyq_69r).
-La forma C++ por puntero y desde plantillas precompiladas no queda acreditada.
+En esa etapa la forma C++ por puntero y desde plantillas precompiladas no
+quedaba acreditada.
 Se intento ademas `nsc.cpp-interop.session`; no ejecuto sus comprobaciones por
 falta de `cpp-fixtures/project/CppProbe.nsproj` bajo la raiz configurada
 (A:/temp/t09-hfa-session-check.log), limitacion ya registrada en
 TANDA-09-VALIDACION.md. No se cuenta esa prueba como aprobada.
+
+## Puntero C++ regcall con record flotante
+
+La consulta viva identifica el alias por nombre calificado, USR y tipo
+canonico, y obtiene de Clang un plan de sonda no enlazable. La reconciliacion
+exige que el alias y el record C++ trivial procedan de la misma sesion,
+mantiene identidad, dimensiones y comprobacion del plan fisico; no autoriza
+otros records por semejanza de tamano. La prueba de planes cubre dos espacios
+de nombres y rechaza USR, nombre o tipo alterados
+(A:/temp/t09-regcall-plan-test.log).
+
+La prueba [cpp-hfa-ptr](pruebas-tanda-09-regcall-cpp-hfa-ptr/) compara llamadas
+directas e indirectas con control C++, simbolos, LLVM y valores en estatica y
+DLL, O0-O3 (A:/temp/nsc-t09-cpp-hfa-ptr-2zhzdl8j). Pasaron tambien el caso
+C precompilado, el C++ directo previo, cuatro sondas ABI, transporte,
+identidad y rechazo de tres `float` (A:/temp/nsc-t09-hfa-precompilado-yrorp0dg,
+A:/temp/nsc-t09-cpp-hfa-gnrut_zd, A:/temp/t09-test-varptr.log,
+A:/temp/t09-transport-directed/ y A:/temp/nsc-t09-regcall-hfa-rechazo-o6j4so_y).
+La prueba C++ con plantillas precompiladas aun no esta acreditada; T09-003 sigue
+abierto.
