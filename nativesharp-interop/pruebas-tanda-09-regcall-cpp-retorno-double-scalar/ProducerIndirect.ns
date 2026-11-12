@@ -1,0 +1,6 @@
+namespace T09 { public class NestedBridge { public static int Run<T>(T unused) {
+    T09Compact.CombineFn fn=T09Compact.fetch(); T09Compact.Result indirect=fn(7);
+    return indirect.x==(double)17.25 && indirect.y==(double)50.5 ? 0 : 1;
+} } }
+
+

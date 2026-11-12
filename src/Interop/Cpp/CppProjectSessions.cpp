@@ -297,7 +297,8 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 signature.returnType.canonicalSpelling == "void" && !signature.returnType.isConst &&
                 !signature.returnType.isVolatile && !signature.returnType.isRestrict;
             if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
-                (!recordReturn && !intReturn && !boolReturn && !narrowReturn && !int64Return && !pointerReturn && !doubleReturn && !floatReturn && !voidReturn) || !expandedRecords || !tailSupported ||
+                (!recordReturn && !intReturn && !boolReturn && !narrowReturn && !int64Return && !pointerReturn && !doubleReturn && !floatReturn && !voidReturn) ||
+                (!recordReturn && !expandedRecords) || !tailSupported ||
                 (!voidReturn && (!signature.returnType.sizeBits || *signature.returnType.sizeBits % 8 ||
                 !signature.returnType.alignmentBits || *signature.returnType.alignmentBits % 8 ||
                 (!recordReturn && signature.returnType.alignmentBits != ((narrowReturn || boolReturn) ? *signature.returnType.sizeBits : (doubleReturn || int64Return || pointerReturn) ? 64 : 32))))) return {};

@@ -1023,7 +1023,7 @@ inspección LLVM (`A:/temp/nsc-t09-regcall-retorno-double-scalar-nvdjo4o2`).
 También pasaron plan, transporte, ABI, identidad y la regresión C++ del retorno
 con argumento expandido (`A:/temp/nsc-t09-cpp-return-double-record-g0vakhl8`).
 La muestra nueva desde fuente usa estática; la muestra C desde fuente con DLL
-y la variante C++ siguen pendientes.
+y otras formas siguen pendientes.
 
 El contrato vigente conserva el plan de la función con argumentos escalares y
 la reconstrucción del alias verifica el retorno y cada argumento. Una prueba
@@ -1034,6 +1034,25 @@ puntero, en estática y DLL O0–O3, con y sin encabezado
 `A:/temp/nsc-t09-return-double-scalar-pre-0l9_tvzk`). Pasaron transporte, ABI,
 identidad y la regresión previa con argumento expandido
 (`A:/temp/nsc-t09-return-double-record-pre-8oeovnk4`).
+
+La [muestra C++](pruebas-tanda-09-regcall-cpp-retorno-double-scalar/) usa una
+función en un espacio de nombres. El alias se rechazaba inicialmente por exigir
+un argumento de registro (`A:/temp/nsc-t09-cpp-return-double-scalar-up01spsn`).
+Al aceptar argumentos escalares sujetos al mismo plan, pasaron ocho comparaciones
+en estática y DLL O0–O3 con llamadas directas y por puntero e inspección LLVM
+(`A:/temp/nsc-t09-cpp-return-double-scalar-tdnlw9du`). Pasaron 32 consumidores
+precompilados con ambas llamadas o solo puntero, con y sin encabezado
+(`A:/temp/nsc-t09-cpp-return-double-scalar-pre-1izl_xtc` y
+`A:/temp/nsc-t09-cpp-return-double-scalar-pre-kchdhguo`), además de plan,
+transporte, ABI, identidad y los rechazos previos de registros privados y no
+triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-4_q4ko_4`).
+
+Un primer intento de plantilla incluía un registro C++ local que no participaba
+en la firma; la superficie precompilada no resolvió ese tipo local
+(`A:/temp/nsc-t09-cpp-return-double-scalar-pre-626nz2ec`). Se retiró de la
+muestra específica de la llamada; el cierre de dependencias de ese tipo local
+queda sin acreditar y requiere investigación separada. Otras firmas y tipos
+no triviales también siguen pendientes.
 
 ## Retorno de registro de dos double
 
