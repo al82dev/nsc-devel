@@ -449,3 +449,20 @@ La evidencia cubre el record trivial de dos enteros y `preserve_most` de estas
 muestras, no todos los layouts, convenciones ni tipos C++ con operaciones no
 triviales. T09-003 y el resto de la representacion de objetos de T11 siguen
 abiertos.
+
+### Record C++ trivial de 24 bytes
+
+Una muestra adicional usa un `struct` C++ con seis enteros y modifica el
+primero y el ultimo. Clang 23.1.0 observa retorno indirecto `sret` y argumento
+por puntero en Win64 (A:/temp/t09-cpp-record24-oracle.ll). La llamada directa
+y la llamada por puntero conservaron la convencion, el simbolo, todos los
+campos devueltos y el objeto original en ocho comparaciones C++/NativeSharp,
+con enlace estatico y DLL O0-O3
+(A:/temp/nsc-t09-preserve-cpp-record24-y00xq5zo).
+
+Pasaron ademas 16 consumidores de plantilla precompilada, con y sin encabezado
+en las mismas configuraciones
+(A:/temp/nsc-t09-preserve-cpp-record24-precompilado-9kki8oru). Las pruebas
+reproducibles estan en [pruebas-tanda-09-preserve-cpp-record24](pruebas-tanda-09-preserve-cpp-record24/).
+Esto acredita esa forma concreta, no todos los records C++ ni la convencion
+general; T09-003 permanece abierto.
