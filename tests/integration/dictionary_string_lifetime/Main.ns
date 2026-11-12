@@ -1,0 +1,67 @@
+using NativeSharp.Core;
+using NativeSharp.Core.Collections.Generic;
+
+class DropCounts
+{
+    public static int First;
+    public static int Second;
+    public static int Third;
+}
+
+class TrackedValue
+{
+    public int Id;
+
+    public TrackedValue(int id) { Id = id; }
+
+    ~TrackedValue()
+    {
+        if (Id == 1) { DropCounts.First = DropCounts.First + 1; }
+        if (Id == 2) { DropCounts.Second = DropCounts.Second + 1; }
+        if (Id == 3) { DropCounts.Third = DropCounts.Third + 1; }
+    }
+}
+
+int Main()
+{
+    {
+        owned Dictionary<string, TrackedValue> values = new Dictionary<string, TrackedValue>();
+        values.AddOrUpdate(String.Copy("red"), new TrackedValue(1));
+        if (values.Count() != 1 || values["red"].Id != 1 || DropCounts.First != 0) { return 1; }
+
+        values.AddOrUpdate(String.Copy("red"), new TrackedValue(2));
+        if (values.Count() != 1 || values["red"].Id != 2 || DropCounts.First != 1 || DropCounts.Second != 0) { return 2; }
+
+        values.AddOrUpdate(String.Copy("blue"), new TrackedValue(3));
+        if (values.Count() != 2 || values["red"].Id != 2 || values["blue"].Id != 3) { return 3; }
+        values.Clear();
+        if (values.Count() != 0 || DropCounts.First != 1 || DropCounts.Second != 1 || DropCounts.Third != 1) { return 4; }
+    }
+    if (DropCounts.First != 1 || DropCounts.Second != 1 || DropCounts.Third != 1) { return 5; }
+
+    DropCounts.First = 0;
+    DropCounts.Second = 0;
+    {
+        owned Dictionary<string, TrackedValue> values = new Dictionary<string, TrackedValue>();
+        values.AddOrUpdate(String.Copy("red"), new TrackedValue(1));
+        values.AddOrUpdate(String.Copy("red"), new TrackedValue(2));
+        if (DropCounts.First != 1 || DropCounts.Second != 0 || values["red"].Id != 2) { return 6; }
+    }
+    if (DropCounts.First != 1 || DropCounts.Second != 1) { return 7; }
+
+    // Repeatedly transfer distinct owners of equal strings, then destroy the
+    // retained key. This exercises cleanup; it is not a leak detector.
+    {
+        owned Dictionary<string, int> values = new Dictionary<string, int>();
+        int index = 0;
+        while (index < 4096)
+        {
+            values.AddOrUpdate(String.Copy("red"), index);
+            index = index + 1;
+        }
+        if (values.Count() != 1 || values["red"] != 4095) { return 8; }
+        values.Clear();
+        if (values.Count() != 0) { return 9; }
+    }
+    return 0;
+}
