@@ -99,6 +99,17 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
         if (physicalIndex >= plan.physicalParameters.size()) return false;
         const auto& logical = argument;
         const auto& physical = plan.physicalParameters[physicalIndex];
+        if (logical.passing == Passing::Indirect)
+        {
+            if (logical.coercion || logical.offset || !logical.alignment || logical.firstPhysical != physicalIndex ||
+                logical.physicalCount != 1 || logical.byValue || logical.signExtend || logical.zeroExtend ||
+                !logical.expandedOffsets.empty() || physical.type.kind != TypeKind::Pointer ||
+                physical.type.widthOrCount || physical.type.packed || !physical.type.elements.empty() ||
+                physical.pointee || physical.alignment != logical.alignment || physical.structureReturn ||
+                physical.byValue || physical.signExtend || physical.zeroExtend || physical.inRegister || physical.noAlias) return false;
+            ++physicalIndex;
+            continue;
+        }
         const auto supported = [allowScalars](const Type& type) {
             return !type.packed && type.elements.empty() &&
                 ((type.kind == TypeKind::Integer && (type.widthOrCount == 32 ||
@@ -252,6 +263,19 @@ inline bool regCallDirectIntegerRecordMatches(const CppType& parameter, const Lo
         physical.type.kind == TypeKind::Integer && physical.type.widthOrCount == *parameter.sizeBits;
 }
 
+inline bool regCallIndirectRecordMatches(const CppType& parameter, const LogicalValue& logical,
+                                         const PhysicalParameter& physical) noexcept
+{
+    return parameter.kind == CppTypeKind::Record && !parameter.isConst && !parameter.isVolatile &&
+        !parameter.isRestrict && parameter.sizeBits && *parameter.sizeBits && *parameter.sizeBits % 8 == 0 &&
+        parameter.alignmentBits && *parameter.alignmentBits >= 8 && *parameter.alignmentBits % 8 == 0 &&
+        *parameter.sizeBits % *parameter.alignmentBits == 0 && parameter.recordIdentity &&
+        parameter.recordIdentity->clangUsr && !parameter.recordIdentity->clangUsr->empty() &&
+        !parameter.canonicalSpelling.empty() && logical.passing == Passing::Indirect &&
+        logical.physicalCount == 1 && !logical.byValue && logical.alignment == *parameter.alignmentBits / 8 &&
+        physical.type.kind == TypeKind::Pointer && physical.alignment == logical.alignment && !physical.byValue;
+}
+
 inline bool isRegCallWin64FloatRecordSequence(const Plan& plan, std::string_view symbol,
                                               std::uint64_t size, std::uint64_t alignment) noexcept
 {
@@ -363,7 +387,7 @@ inline bool regCallFloatRecordArgumentsMatch(const Plan& plan, const CppType& re
                 !regCallDirectIntegerRecordMatches(parameters[i], logical,
                     plan.physicalParameters[logical.firstPhysical])) return false;
         }
-        else if (logical.firstPhysical >= plan.physicalParameters.size() ||
+        else if (logical.passing == Passing::Indirect || logical.firstPhysical >= plan.physicalParameters.size() ||
                  !regCallFloatRecordScalarMatches(plan.physicalParameters[logical.firstPhysical].type, parameters[i]))
             return false;
     }
@@ -376,6 +400,7 @@ inline bool regCallFloatRecordTailMatches(const Plan& plan, std::span<const CppT
     if (parameters.empty() || firstScalar > parameters.size() || plan.logicalParameters.size() != parameters.size()) return false;
     for (std::size_t i = firstScalar; i < parameters.size(); ++i)
     {
+        if (plan.logicalParameters[i].passing == Passing::Indirect) return false;
         const auto physical = plan.logicalParameters[i].firstPhysical;
         if (physical >= plan.physicalParameters.size() ||
             !regCallFloatRecordScalarMatches(plan.physicalParameters[physical].type, parameters[i])) return false;

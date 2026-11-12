@@ -753,7 +753,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                     abi_plan::regCallDirectIntegerRecordMatches(f.parameters[i].type, logical,
                         f.abiPlan->physicalParameters[logical.firstPhysical]);
             else
-                tailMatches = logical.firstPhysical < f.abiPlan->physicalParameters.size() &&
+                tailMatches = logical.passing != abi_plan::Passing::Indirect && logical.firstPhysical < f.abiPlan->physicalParameters.size() &&
                     abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalParameters[logical.firstPhysical].type, f.parameters[i].type);
         }
         const bool validRecordReturn = f.returnType.kind == CppTypeKind::Record && f.returnType.sizeBits &&

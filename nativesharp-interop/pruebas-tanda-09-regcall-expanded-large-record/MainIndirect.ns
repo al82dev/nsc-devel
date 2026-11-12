@@ -1,0 +1,8 @@
+int Main() {
+    Triple a; a.pair.x=(float)10; a.pair.y=(float)20; a.z=(float)30;
+    Other b; b.x=1; b.y=2; b.z=3; b.w=4; b.u=5; b.v=6;
+    CombineFn f=get_combine();
+    int c=combine(a,7,b);
+    int d=f(a,7,b);
+    return c==166 && d==166 && a.pair.x==(float)10 && b.x==1 && b.y==2 ? 0 : 1;
+}

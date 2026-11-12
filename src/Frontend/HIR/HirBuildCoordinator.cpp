@@ -1913,7 +1913,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                                 !interop::abi_plan::regCallRecordMatchesExpansion(*symbol.cppReturnType,
                                     symbol.cppParameterTypes[i], logical)) return false;
                         }
-                        else if (logical.firstPhysical >= symbol.cppAbiPlan->physicalParameters.size() ||
+                        else if (logical.passing == interop::abi_plan::Passing::Indirect || logical.firstPhysical >= symbol.cppAbiPlan->physicalParameters.size() ||
                             !interop::abi_plan::regCallFloatRecordScalarMatches(
                                 symbol.cppAbiPlan->physicalParameters[logical.firstPhysical].type,
                                 symbol.cppParameterTypes[i])) return false;
@@ -1963,10 +1963,12 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                                 imported->clangUsr != symbol.cppParameterTypes[i].recordIdentity->clangUsr ||
                                 (imported->origin == CppImportedTypeOrigin::CppRecord && !nameLookup_->cppTrivialValueEligible(*ordinal)) ||
                                 logical.firstPhysical >= symbol.cppAbiPlan->physicalParameters.size() ||
-                                !interop::abi_plan::regCallDirectIntegerRecordMatches(symbol.cppParameterTypes[i], logical,
-                                    symbol.cppAbiPlan->physicalParameters[logical.firstPhysical])) return false;
+                                !(interop::abi_plan::regCallDirectIntegerRecordMatches(symbol.cppParameterTypes[i], logical,
+                                    symbol.cppAbiPlan->physicalParameters[logical.firstPhysical]) ||
+                                  interop::abi_plan::regCallIndirectRecordMatches(symbol.cppParameterTypes[i], logical,
+                                    symbol.cppAbiPlan->physicalParameters[logical.firstPhysical]))) return false;
                         }
-                        else if (logical.firstPhysical >= symbol.cppAbiPlan->physicalParameters.size() ||
+                        else if (logical.passing == interop::abi_plan::Passing::Indirect || logical.firstPhysical >= symbol.cppAbiPlan->physicalParameters.size() ||
                             !interop::abi_plan::regCallFloatRecordScalarMatches(
                                 symbol.cppAbiPlan->physicalParameters[logical.firstPhysical].type,
                                 symbol.cppParameterTypes[i])) return false;

@@ -112,6 +112,8 @@ int main(int argc, char** argv)
         int __attribute__((regcall)) nested_mixed_scalar(Nested,int,MixedScalar);
         typedef struct CompactShort { short x,y; } CompactShort;
         int __attribute__((regcall)) nested_compact_short(Nested,int,CompactShort);
+        typedef struct LargeMixed { int x,y,z,w,u,v; } LargeMixed;
+        int __attribute__((regcall)) nested_large_mixed(Nested,int,LargeMixed);
         int __attribute__((regcall)) nested_return_int(Nested,int,Floats);
         unsigned int __attribute__((regcall)) nested_return_uint(Nested,int,Floats);
         long long __attribute__((regcall)) nested_return_i64(Nested,int,Floats);
@@ -901,6 +903,21 @@ int main(int argc, char** argv)
             !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 208;
         auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 209;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "nested_large_mixed") declaration = &function;
+        if (!declaration) return 241;
+        const auto plan = session->cFunctionAbiPlan("nested_large_mixed", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, plan->symbol) ||
+            plan->logicalParameters.size() != 3) return 242;
+        const auto& logical = plan->logicalParameters[2];
+        if (logical.firstPhysical >= plan->physicalParameters.size() ||
+            !abi_plan::regCallIndirectRecordMatches(declaration->parameters[2].type, logical,
+                plan->physicalParameters[logical.firstPhysical])) return 243;
+        auto bad = plan->physicalParameters[logical.firstPhysical]; bad.alignment = 8;
+        if (abi_plan::regCallIndirectRecordMatches(declaration->parameters[2].type, logical, bad)) return 244;
     }
     {
         const CppFunctionDeclaration* declaration = nullptr;

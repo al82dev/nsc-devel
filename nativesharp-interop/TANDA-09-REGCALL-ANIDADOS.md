@@ -1008,3 +1008,22 @@ llamadas pasaron en `A:/temp/nsc-t09-expanded-compact2-pre-k7czil3g`,
 rechazos de ancho y alineación, transporte e identidad y la regresión C++ de
 ocho bytes (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-nb7g8sd1`).
 Otros tamaños, alineaciones y firmas no se acreditan; T09-003 sigue abierto.
+
+## Registro expandido junto a registro pasado indirectamente
+
+Clang clasifica los registros de tres y 24 bytes observados como punteros a
+copias temporales, con sus alineaciones (`A:/temp/t09-regcall-indirect-record-oracle-20261112.ll`).
+El control C de 24 bytes pasaba pero NSC rechazaba la firma
+(`A:/temp/nsc-t09-expanded-large-4699pxgy`). NSC valida el plan indirecto,
+identidad, tamaño y alineación y pasa una copia local. La muestra C directa
+pasó ocho comparaciones en estática y DLL O0–O3, con inspección LLVM y
+comprobación de que modificar el parámetro no cambia el original
+(`A:/temp/nsc-t09-expanded-large-ryuidfu5`).
+
+La prueba del plan rechaza una alineación física alterada; pasaron transporte,
+ABI, identidad y la regresión precompilada C++ del registro compacto
+(`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-vrj4scyq`). La llamada por
+alias y la precompilación C aún fallan (`A:/temp/nsc-t09-expanded-large-r9okq2_p`
+y `A:/temp/nsc-t09-expanded-large-pre-gtoh9dut`); C++ y el registro de tres
+bytes solo tienen observación de Clang, no interoperabilidad acreditada.
+T09-003 permanece abierto.
