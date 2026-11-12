@@ -383,7 +383,10 @@ int main()
         "raii Box second = new Box(21); Read inner = [move second] () => second.Value; "
         "int value = inner(); delete inner; return value; }; "
         "raii Box third = new Box(1); Read sibling = [move third] () => third.Value; int answer = outer(); return answer; } "
-        "public static int Probe() { return 7; raii Box dead = new Box(1); Read ghost = [move dead] () => dead.Value; } }\n");
+        "public static int Probe() { return 7; raii Box dead = new Box(1); "
+        "Read ghost = [move dead] () => { raii Box innerDead = new Box(1); "
+        "Read hidden = [move innerDead] () => innerDead.Value; int v = hidden(); delete hidden; return v + dead.Value; }; "
+        "if (true) { raii Box frameDead = new Box(1); Read frameGhost = [move frameDead] () => frameDead.Value; } } }\n");
     for (const std::size_t jobs : {1U, 4U})
     {
         ProjectCompilation lambdaCompilation;
@@ -423,6 +426,8 @@ int main()
         std::size_t candidates = 0;
         std::size_t nestedCandidates = 0;
         std::size_t probeCandidates = 0;
+        std::size_t nestedProbeUnknown = 0;
+        std::size_t frameProbeUnknown = 0;
         std::set<std::size_t> innerOwners;
         std::set<std::size_t> siblingOwners;
         for (const auto& candidate : body->fnOnceCreationCandidates())
@@ -438,14 +443,20 @@ int main()
                 body->locals()[candidate.localOrdinal].lambdaOrdinal == candidate.parentLambdaOrdinal;
             tests.expect(correct, "candidate local, scope and parent-lambda ordinals survive shard merge");
             if (candidate.parentLambdaOrdinal) ++nestedCandidates;
-            if (candidate.declarationSyntax && candidate.declarationSyntax->text() == "ghost") ++probeCandidates;
+            if (candidate.declarationSyntax && candidate.declarationSyntax->text() == "ghost" &&
+                candidate.visit == nativesharp::frontend::FnOnceCandidateVisit::DuringDiscardedStatementProbe) ++probeCandidates;
+            if (candidate.declarationSyntax && candidate.declarationSyntax->text() == "hidden" &&
+                candidate.visit == nativesharp::frontend::FnOnceCandidateVisit::Unknown) ++nestedProbeUnknown;
+            if (candidate.declarationSyntax && candidate.declarationSyntax->text() == "frameGhost" &&
+                candidate.visit == nativesharp::frontend::FnOnceCandidateVisit::Unknown) ++frameProbeUnknown;
             if (candidate.declarationSyntax && candidate.declarationSyntax->text() == "inner")
                 innerOwners.insert(candidate.methodMemberOrdinal);
             if (candidate.declarationSyntax && candidate.declarationSyntax->text() == "sibling")
                 siblingOwners.insert(candidate.methodMemberOrdinal);
             ++candidates;
         }
-        tests.expect(candidates == 5 && nestedCandidates == 2 && probeCandidates == 1 &&
+        tests.expect(candidates == 7 && nestedCandidates == 3 && probeCandidates == 1 &&
+            nestedProbeUnknown == 1 && frameProbeUnknown == 1 &&
             innerOwners.size() == 2 && innerOwners == siblingOwners &&
             !body->fnOnceCreationCandidateLimitReached(),
             "normal, nested and unreachable-probe sites remain Unknown under bounded collection");

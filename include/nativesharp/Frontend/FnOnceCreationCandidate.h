@@ -1,5 +1,6 @@
 #pragma once
 #include "nativesharp/Frontend/FnOnceCandidateStatus.h"
+#include "nativesharp/Frontend/FnOnceCandidateVisit.h"
 #include <cstddef>
 #include <optional>
 namespace nativesharp::ast { class AstNode; }
@@ -14,5 +15,6 @@ struct FnOnceCreationCandidate final
     std::size_t localOrdinal = 0;
     std::optional<std::size_t> parentLambdaOrdinal;
     FnOnceCandidateStatus status = FnOnceCandidateStatus::Unknown;
+    FnOnceCandidateVisit visit = FnOnceCandidateVisit::Unknown;
 };
 }

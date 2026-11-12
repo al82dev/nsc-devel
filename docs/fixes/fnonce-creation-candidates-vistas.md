@@ -37,3 +37,20 @@ actual exige las identidades observadas; la evidencia original se conservó en
 el contexto explícito de probes y errores, el flujo y orden de eventos, el
 presupuesto global y las pruebas necesarias antes de usar estos datos para
 diagnóstico o certificación. La interoperabilidad C/C++ queda fuera del alcance.
+
+Una etiqueta de visita separada identifica únicamente candidatas de una
+declaración directa observada durante el análisis de una sentencia en probe
+descartable. Se asigna después de restaurar el snapshot y solo a entradas
+nuevas con idénticos AST de sentencia, callable y lambda envolvente. No afirma
+que la declaración sea inalcanzable ni que se haya ejecutado. Las candidatas de
+frames y lambdas anidados cuya procedencia no se demuestra conservan visita
+Unknown; el estado de seguridad de todas sigue Unknown.
+
+La unidad dirigida comprobó un sitio directo tras return y dos candidatas de
+contextos anidados en uno y cuatro workers. El incremental 73820 terminó 0,
+sin warnings en `A:\nsc-vistas-evidencia\fnonce-candidate-direct-probe-build.log`;
+la unidad pasó 155 checks observados en consola, sin log de ejecución
+persistido. El build contenía además el borrador FnOnce no integrado. El límite
+real de 4096 candidatas durante probe no se probó en un proyecto completo; la
+prueba del límite pequeño solo verifica el helper. Quedan sin clasificar los
+probes que usan frames y los contextos no demostrados.

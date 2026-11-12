@@ -916,8 +916,20 @@ void ProjectMethodBodyModel::processBlockStatement(
             methodMemberOrdinal, std::move(restoreAfterStatement));
         return;
     }
+    const std::size_t firstCandidate = fnOnceCreationCandidates_.size();
+    const auto enclosingLambda = currentLambdaOrdinal_;
     analyzeStatement(statement, methodMemberOrdinal, frame.activeScope, diagnostics);
-    if (restoreAfterStatement.has_value()) restoreOwnershipFlow(*restoreAfterStatement);
+    if (restoreAfterStatement.has_value())
+    {
+        restoreOwnershipFlow(*restoreAfterStatement);
+        for (std::size_t i = firstCandidate; i < fnOnceCreationCandidates_.size(); ++i)
+        {
+            auto& candidate = fnOnceCreationCandidates_[i];
+            if (candidate.declarationSyntax == statement && candidate.methodMemberOrdinal == methodMemberOrdinal &&
+                candidate.parentLambdaOrdinal == enclosingLambda)
+                candidate.visit = FnOnceCandidateVisit::DuringDiscardedStatementProbe;
+        }
+    }
 }
 
 void ProjectMethodBodyModel::validateBlockScopedBorrowExit(
