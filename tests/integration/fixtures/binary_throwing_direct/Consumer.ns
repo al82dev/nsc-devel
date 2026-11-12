@@ -1,0 +1,12 @@
+using NativeSharp.Core;
+class Program {
+ public static int Main() {
+  DirectRoot.Mode = MODE;
+  int caught = 0;
+  try { owned DirectRoot owner = new DirectRoot(); }
+  catch (Exception error) { caught = caught + 1; }
+  if (caught != EXPECTED_CAUGHT || DirectPayload.Drops != EXPECTED_PAYLOADS ||
+      DirectRoot.Drops != EXPECTED_ROOT) return 1;
+  return 42;
+ }
+}
