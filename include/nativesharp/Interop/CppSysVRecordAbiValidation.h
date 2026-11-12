@@ -14,11 +14,11 @@ inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionT
         signature.parameterTypes.size() != 1 || result.kind != CppTypeKind::Record ||
         result.isConst || result.isVolatile || result.isRestrict || !result.recordIdentity ||
         !result.recordIdentity->clangUsr || result.recordIdentity->clangUsr->empty() ||
-        result.canonicalSpelling.empty() || (result.sizeBits != 64 && result.sizeBits != 96 && result.sizeBits != 128 && result.sizeBits != 160) ||
+        result.canonicalSpelling.empty() || (result.sizeBits != 64 && result.sizeBits != 96 && result.sizeBits != 128 && result.sizeBits != 160 && result.sizeBits != 192) ||
         result.alignmentBits != 32) return false;
     const auto& parameter = signature.parameterTypes[0];
-    const auto fiveIntegers = [](const Type& type) {
-        if (type.kind != TypeKind::Structure || type.packed || type.widthOrCount || type.elements.size() != 5) return false;
+    const auto integerFields = [](const Type& type, std::size_t count) {
+        if (type.kind != TypeKind::Structure || type.packed || type.widthOrCount || type.elements.size() != count) return false;
         for (const auto& field : type.elements)
             if (field.kind != TypeKind::Integer || field.widthOrCount != 32 || field.packed || !field.elements.empty()) return false;
         return true;
@@ -33,8 +33,8 @@ inline bool isSysVCppRecordPointerRoundTrip(const Plan& plan, const CppFunctionT
          ((result.sizeBits == 96 || result.sizeBits == 128) &&
           isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
           plan.physicalReturn.elements[1].widthOrCount == (result.sizeBits == 96 ? 32 : 64)) ||
-         (result.sizeBits == 160 && isSysVIndirectRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
-          plan.logicalReturn.alignment == 4 && fiveIntegers(*plan.physicalParameters[0].pointee) &&
-          fiveIntegers(*plan.physicalParameters[1].pointee)));
+         ((result.sizeBits == 160 || result.sizeBits == 192) && isSysVIndirectRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
+          plan.logicalReturn.alignment == 4 && integerFields(*plan.physicalParameters[0].pointee, *result.sizeBits / 32) &&
+          integerFields(*plan.physicalParameters[1].pointee, *result.sizeBits / 32)));
 }
 }

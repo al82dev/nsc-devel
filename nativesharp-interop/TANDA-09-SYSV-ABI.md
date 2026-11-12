@@ -3121,3 +3121,23 @@ y C (`A:/temp/nsc-t09-sysv-cpp-record12-precompilado-kvptutvv` y
 `A:/temp/nsc-t09-sysv-indirecta-record-pre-megjktoj`). Otros layouts,
 argumentos y retornos siguen pendientes; T09-003 permanece abierto.
 
+
+La [muestra C++ de veinticuatro bytes](pruebas-tanda-09-sysv-cpp-record24/)
+recibe y devuelve el mismo record trivial de seis enteros con `sysv_abi`,
+directamente y mediante un alias. Inicialmente NSC rechazaba el alias
+(`A:/temp/nsc-t09-sysv-cpp-record24-w47pw3bo`). El plan valida identidad,
+layout, elegibilidad y seis campos físicos de 32 bits; Clang indica `byval`
+para el argumento y `sret` para el retorno. La llamada copia el argumento.
+
+Pasaron ocho comparaciones con C++ en estática y DLL O0–O3, con inspección LLVM
+y comprobación de los seis campos y del original
+(`A:/temp/nsc-t09-sysv-cpp-record24-r30o2hee`), y 16 consumidores
+precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record24-precompilado-ap1h67dl`). La prueba de
+plan y metadatos rechaza alineación y campo físico alterados; diez tipos no
+elegibles se rechazaron
+(`A:/temp/nsc-t09-sysv-cpp-record24-rechazos-6ab_mngn`). También pasaron
+transporte, ABI, identidad, la regresión precompilada de veinte bytes C++
+(`A:/temp/nsc-t09-sysv-cpp-record20-precompilado-ifphuyk_`) y la regresión C
+(`A:/temp/nsc-t09-sysv-indirecta-record-pre-k2ctz1mr`). Otros layouts y
+firmas siguen pendientes; T09-003 permanece abierto.
