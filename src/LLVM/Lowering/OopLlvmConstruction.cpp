@@ -1079,8 +1079,12 @@ bool OopLlvmImplementation::invokePlacementConstructor(
                         if (const auto* target = mirModel_.functionForMangledName(callee); target != nullptr)
                             pending.emplace_back(target, std::nullopt);
                     for (const auto& [callee, argument] : scan.directArgumentCallees)
-                        if (const auto* target = mirModel_.functionForMangledName(callee); target != nullptr)
-                            pending.emplace_back(target, argument);
+                    {
+                        const auto* target = mirModel_.functionForMangledName(callee);
+                        if (target == nullptr || target->body == nullptr)
+                            return fail(error, "shared payload receiver passed to a callable with unverifiable body");
+                        pending.emplace_back(target, argument);
+                    }
                     for (const auto& [receiverType, slot, argument] : scan.virtualArgumentCallees)
                         for (const auto& candidate : mirModel_.dispatchTables())
                         {
