@@ -957,6 +957,15 @@ en estática y DLL O0–O3, comprobando el plan, resultado y copia
 identidad y el layout del registro en su sesión de origen; la emisión usa
 una copia local para el portador `i64`. La prueba del plan rechaza un tamaño,
 alineación o portador físico alterados. Pasaron transporte, ABI, identidad y
-regresión booleana (`A:/temp/nsc-t09-record-ret-bool-9qlq0i5p`). La
-precompilación aún falla (`A:/temp/nsc-t09-expanded-mixed-pre-qz5preuh`);
-C++, otras alineaciones, retornos y layouts no se acreditan. T09-003 sigue abierto.
+regresión booleana (`A:/temp/nsc-t09-record-ret-bool-9qlq0i5p`).
+
+La precompilación C antes rechazaba el plan de metadatos
+(`A:/temp/nsc-t09-expanded-mixed-pre-qz5preuh`). Se conserva la validación del
+registro compacto y se reconstruyen ambos registros con sus identidades y
+layouts. Pasaron 16 consumidores con ambas llamadas
+(`A:/temp/nsc-t09-expanded-mixed-pre-6pf7z6u0`) y 16 solo por puntero
+(`A:/temp/nsc-t09-expanded-mixed-pre-3412vdsb`), con y sin encabezado,
+estática y DLL O0–O3. La prueba del codec rechaza una alineación alterada;
+pasaron transporte, ABI, identidad y la regresión precompilada de `double`
+(`A:/temp/nsc-t09-record-ret-double-pre-xyvypmcz`). C++, otras alineaciones,
+retornos y layouts no se acreditan. T09-003 sigue abierto.
