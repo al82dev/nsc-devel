@@ -105,8 +105,8 @@ inline bool regCallFloatRecordScalarMatches(const Type& physical, const CppType&
          (source.kind == CppTypeKind::UnsignedInteger && source.canonicalSpelling == "unsigned short")) &&
         source.sizeBits == 16 && source.alignmentBits == 16)
         return physical.kind == TypeKind::Integer && physical.widthOrCount == 16;
-    if (((source.kind == CppTypeKind::SignedInteger && source.canonicalSpelling == "int") ||
-         (source.kind == CppTypeKind::UnsignedInteger && source.canonicalSpelling == "unsigned int")) &&
+    if (((source.kind == CppTypeKind::SignedInteger && (source.canonicalSpelling == "int" || source.canonicalSpelling == "long")) ||
+         (source.kind == CppTypeKind::UnsignedInteger && (source.canonicalSpelling == "unsigned int" || source.canonicalSpelling == "unsigned long"))) &&
         source.sizeBits == 32 && source.alignmentBits == 32)
         return physical.kind == TypeKind::Integer && physical.widthOrCount == 32;
     if (((source.kind == CppTypeKind::SignedInteger && source.canonicalSpelling == "long long") ||

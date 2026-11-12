@@ -180,7 +180,24 @@ precompilados con y sin encabezado, incluidos los que solo usan punteros
 rechaza retirar `zeroext`; también pasaron los controles negativos y las
 regresiones de firmas y metadatos anteriores.
 
-Queda por conciliar `unsigned long` de C: el camino directo lo rechaza en
-esta firma, mientras que el puntero vivo lo proyecta como `uint`; no se
-acredita su comportamiento precompilado. Otras clases de punteros y formas ABI
-siguen pendientes.
+La diferencia observada inicialmente con `unsigned long` quedó resuelta
+para el destino y la firma descritos en la sección siguiente. Otras clases
+de punteros y formas ABI siguen pendientes.
+
+## Long de 32 bits en Win64
+
+Clang 23.1.0 clasifica `long` y `unsigned long` como `i32` en el destino
+Windows x64. La validación ahora los concilia con sus tipos NativeSharp solo
+cuando tamaño y alineación observados son de 32 bits; no los confunde con
+`long long` de 64 bits. La prueba del contrato rechaza un tamaño alterado.
+
+Las muestras C y C++ usan un `long` negativo y el valor máximo de
+`unsigned long`. Pasaron directa y por puntero en O0-O3, estática y DLL
+(`A:/temp/nsc-t09-regcall-mixed-ewddjnxe` y
+`A:/temp/nsc-t09-cpp-mixed-enzkpfq_`). Pasaron 64 consumidores
+precompilados con y sin encabezado, incluidos los que solo usan punteros
+(`A:/temp/nsc-t09-hfa34-precompilado-rd8d3ne2`,
+`A:/temp/nsc-t09-cpp-nested-precompilado-vedmsz6m`,
+`A:/temp/nsc-t09-hfa34-precompilado-6x8o8olm` y
+`A:/temp/nsc-t09-cpp-nested-precompilado-x241nt07`). Pasaron también los
+rechazos de convenciones y la regresión de enteros estrechos y booleanos.

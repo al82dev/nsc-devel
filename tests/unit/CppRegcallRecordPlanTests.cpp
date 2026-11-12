@@ -75,6 +75,7 @@ int main(int argc, char** argv)
         typedef Nested (__attribute__((regcall)) *NestedRealFn)(Nested, int,float,double);
         typedef Nested (__attribute__((regcall)) *NestedWideFn)(Nested, long long,unsigned int,unsigned long long,int*,double);
         typedef Nested (__attribute__((regcall)) *NestedNarrowFn)(Nested, signed char,unsigned char,short,unsigned short,_Bool);
+        typedef Nested (__attribute__((regcall)) *NestedLong32Fn)(Nested, long,unsigned long,double);
         Small __attribute__((regcall)) small(Small);
         Large __attribute__((regcall)) large(Large);
         Floats __attribute__((regcall)) floats(Floats);
@@ -87,6 +88,7 @@ int main(int argc, char** argv)
         Nested __attribute__((regcall)) nested_real(Nested, int,float,double);
         Nested __attribute__((regcall)) nested_wide(Nested, long long,unsigned int,unsigned long long,int*,double);
         Nested __attribute__((regcall)) nested_narrow(Nested, signed char,unsigned char,short,unsigned short,_Bool);
+        Nested __attribute__((regcall)) nested_long32(Nested, long,unsigned long,double);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -471,6 +473,37 @@ int main(int argc, char** argv)
             auto wrong = *plan; wrong.physicalParameters[7].zeroExtend = false;
             if (abi_plan::isRegCallWin64FloatRecordRoundTrip(wrong, wrong.symbol, 12, 4, 5, true)) return 86;
         }
+    }
+    {
+        std::string aliasType, functionType;
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& alias : *aliases)
+            if (alias.name == "NestedLong32Fn") aliasType = alias.underlyingType.canonicalSpelling;
+        for (const auto& function : *functions)
+            if (function.name == "nested_long32") { functionType = function.canonicalFunctionType; declaration = &function; }
+        const auto direct = session->cFunctionAbiPlan("nested_long32", functionType);
+        const auto indirect = session->cFunctionPointerAbiPlan("NestedLong32Fn", aliasType);
+        for (const auto* plan : {direct ? &*direct : nullptr, indirect ? &*indirect : nullptr})
+        {
+            if (!declaration || !plan || !abi_plan::isRegCallWin64FloatRecordRoundTrip(
+                    *plan, plan->symbol, 12, 4, 3, true)) return 87;
+            for (std::size_t i = 1; i < declaration->parameters.size(); ++i)
+                if (!abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[i + 2].type,
+                        declaration->parameters[i].type)) return 88;
+            auto wrong = declaration->parameters[1].type; wrong.sizeBits = 64;
+            if (abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type, wrong)) return 89;
+        }
+        metadata_detail::CDependencyFunctionSnapshot saved;
+        saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
+        saved.linkSymbol = direct->symbol; saved.declaration = *declaration;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*direct);
+        metadata_detail::CDependencyFunctionSnapshot restored;
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        if (!metadata_detail::encodeCDependencyFunction(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 90;
+        saved.declaration.parameters[1].type.sizeBits = 64;
+        if (metadata_detail::encodeCDependencyFunction(saved, encoded, error)) return 91;
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;
