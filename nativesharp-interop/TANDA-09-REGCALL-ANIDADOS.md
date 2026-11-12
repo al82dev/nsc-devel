@@ -1022,8 +1022,16 @@ plan rechaza un tipo o alineación alterados.
 Pasaron el control C y NativeSharp O0–O3, con ambas llamadas y comprobación de
 LLVM (`A:/temp/nsc-t09-regcall-retorno-double-record-z311w262`). También pasaron
 plan, transporte, ABI, identidad y la regresión C++ de argumentos `double`
-(`A:/temp/nsc-t09-cpp-record-double-p7fy0ioq`). La muestra usa estática; DLL,
-C++ y consumidores precompilados para este retorno permanecen pendientes.
+(`A:/temp/nsc-t09-cpp-record-double-p7fy0ioq`). La muestra C desde fuente usa
+estática; la muestra desde fuente con DLL y la variante C++ siguen pendientes.
+
+El contrato vigente conserva el plan de retorno; una prueba interna verifica
+lectura y escritura y rechaza un tipo físico alterado. Pasaron 16 consumidores
+precompilados con ambas llamadas y 16 solo por puntero en estática y DLL O0–O3,
+con y sin encabezado (`A:/temp/nsc-t09-return-double-record-pre-yjhk2ab5` y
+`A:/temp/nsc-t09-return-double-record-pre-dlqten2e`). Pasaron transporte, ABI,
+identidad y la regresión C++ precompilada con argumento de dos `double`
+(`A:/temp/nsc-t09-cpp-record-double-pre-27w2oily`).
 
 ## Registro mixto con retorno entero
 
