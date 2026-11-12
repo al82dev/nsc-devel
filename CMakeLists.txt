@@ -5399,6 +5399,11 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.compiler.async-yield-ownership-binding COMMAND nsc_async_yield_ownership_binding_tests)
     set_tests_properties(nsc.compiler.async-yield-ownership-binding PROPERTIES WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
+    add_executable(nsc_async_yield_cross_process_cache_tests tests/unit/AsyncYieldCrossProcessCacheTests.cpp)
+    target_link_libraries(nsc_async_yield_cross_process_cache_tests PRIVATE nsc_driver nsc_linker nsc_runtime nsc_llvm nsc_frontend nsc_target)
+    target_compile_features(nsc_async_yield_cross_process_cache_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_async_yield_cross_process_cache_tests)
+
     add_executable(nsc_stage50_1_ownership_syntax_tests tests/unit/Stage50_1OwnershipSyntaxTests.cpp)
     target_link_libraries(nsc_stage50_1_ownership_syntax_tests PRIVATE nsc_frontend nsc_target)
     target_compile_features(nsc_stage50_1_ownership_syntax_tests PRIVATE cxx_std_20)
