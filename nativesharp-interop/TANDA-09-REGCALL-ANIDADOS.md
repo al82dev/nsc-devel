@@ -106,5 +106,18 @@ El plan directo y el indirecto de ocho enteros pasaron la prueba de Clang; se
 rechazaron posiciones alteradas. También pasaron las regresiones de la firma
 de un entero, de registros C++ anteriores y de transporte e identidad. Los
 controles negativos conservan ahora una firma con entero y flotante adicional,
-que sigue sin admitirse. La muestra comprueba la posición de cada valor; el
-orden de evaluación con efectos laterales aún requiere una prueba específica.
+que sigue sin admitirse.
+
+Se probó también el orden de evaluación NativeSharp usando ocho incrementos
+del mismo contador en cada llamada, con valores ponderados por posición y
+verificación del contador final. Las llamadas C y C++ directas e indirectas
+pasaron O0-O3 en estática y DLL:
+`A:/temp/nsc-t09-regcall-mixed-1g_psk67` y
+`A:/temp/nsc-t09-cpp-mixed-x60k8r4i`. Pasaron 64 consumidores
+precompilados con y sin encabezado, incluidos los que solo llaman por
+puntero: `A:/temp/nsc-t09-hfa34-precompilado-xpj82mzw`,
+`A:/temp/nsc-t09-cpp-nested-precompilado-rt6jd5hh`,
+`A:/temp/nsc-t09-hfa34-precompilado-5r3kmneh` y
+`A:/temp/nsc-t09-cpp-nested-precompilado-_jq2pq7c`. Este control cubre
+incrementos en argumentos enteros; no acredita todos los efectos laterales ni
+las demás clases de argumentos.

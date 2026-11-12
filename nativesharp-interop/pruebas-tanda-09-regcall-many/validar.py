@@ -12,6 +12,7 @@ parser.add_argument('--nsc')
 parser.add_argument('--clang-root')
 parser.add_argument('--solo-c', action='store_true')
 parser.add_argument('--solo-directo', action='store_true')
+parser.add_argument('--efectos', action='store_true')
 args = parser.parse_args()
 if not args.solo_c and (not args.nsc or not args.clang_root):
     parser.error('--nsc y --clang-root son obligatorios')
@@ -43,6 +44,9 @@ for mode in ('estatica', 'dll'):
             shutil.copyfile(fixture / file, case / file)
         if args.solo_directo:
             shutil.copyfile(fixture/'MainDirect.ns', case/'Main.ns')
+        if args.efectos:
+            if args.solo_directo: parser.error('--efectos requiere llamadas directas e indirectas')
+            shutil.copyfile(fixture/'MainEffects.ns', case/'Main.ns')
         flags = ['-target', 'x86_64-pc-windows-msvc', '-std=c11', '-O' + str(opt)]
         producer_flags = ['-DAPI_DLL_BUILD'] if mode == 'dll' else []
         run(name+'-producer', ['clang.exe', *flags, *producer_flags, '-c', str(case/'api.c'), '-o', str(case/'api.obj')])

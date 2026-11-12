@@ -11,6 +11,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
 parser.add_argument('--solo-puntero', action='store_true')
+parser.add_argument('--efectos', action='store_true')
 args = parser.parse_args()
 fixture = Path(__file__).resolve().parent
 root = Path(tempfile.mkdtemp(prefix='nsc-t09-cpp-nested-precompilado-', dir=r'A:\temp'))
@@ -37,7 +38,8 @@ for mode in ('estatica', 'dll'):
         producer.mkdir(parents=True)
         for name in ('api.h', 'api-dll.h', 'api.cpp'):
             shutil.copyfile(fixture/name, producer/name)
-        shutil.copyfile(fixture/('ProducerIndirect.ns' if args.solo_puntero else 'Producer.ns'), producer/'Producer.ns')
+        producer_name = ('ProducerEffectsIndirect.ns' if args.solo_puntero else 'ProducerEffects.ns') if args.efectos else ('ProducerIndirect.ns' if args.solo_puntero else 'Producer.ns')
+        shutil.copyfile(fixture/producer_name, producer/'Producer.ns')
         flags = ['-target', 'x86_64-pc-windows-msvc', '-std=c++20', '-O'+str(opt)]
         if mode == 'dll': flags.append('-DAPI_DLL_BUILD')
         run(label+'-c', ['clang.exe', *flags, '-c', str(producer/'api.cpp'), '-o', str(producer/'api.obj')])

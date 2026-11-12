@@ -10,6 +10,7 @@ import tempfile
 parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
+parser.add_argument('--efectos', action='store_true')
 args = parser.parse_args()
 fixture = Path(__file__).resolve().parent
 root = Path(tempfile.mkdtemp(prefix='nsc-t09-cpp-mixed-', dir=r'A:\temp'))
@@ -35,6 +36,8 @@ for mode in ('estatica', 'dll'):
         case.mkdir()
         for file in ('api.h', 'api-dll.h', 'api.cpp', 'Control.cpp', 'Main.ns', 'Probe.nsproj', 'ProbeDll.nsproj'):
             shutil.copyfile(fixture/file, case/file)
+        if args.efectos:
+            shutil.copyfile(fixture/'MainEffects.ns', case/'Main.ns')
         flags = ['-target', 'x86_64-pc-windows-msvc', '-std=c++20', '-O'+str(opt)]
         run(name+'-producer', ['clang.exe', *flags, *(['-DAPI_DLL_BUILD'] if mode == 'dll' else []),
                                '-c', str(case/'api.cpp'), '-o', str(case/'api.obj')])
