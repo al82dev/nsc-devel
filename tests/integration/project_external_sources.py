@@ -48,6 +48,24 @@ def main():
         write('<Compile Include="../Shared/Main.ns"/>')
         dump = run([compiler, '--dump-project', descriptor], contains='../Shared/Main.ns')
         assert 'Local.ns' not in dump
+        bundle = root / 'external.nsdiag'
+        run([compiler, '--write-diagnostic-bundle', descriptor, bundle])
+        bundle_text = bundle.read_text(encoding='utf-8')
+        assert 'input="source:Probe:../Shared/Main.ns",' in bundle_text, bundle_text
+        assert 'result=0' in bundle_text, bundle_text
+        dependency = root / 'Dependency'
+        dependency.mkdir()
+        (dependency / 'Dependency.nsproj').write_text(
+            '<Project><PropertyGroup><Name>Dependency</Name><OutputType>Library</OutputType>'
+            '</PropertyGroup><ItemGroup><Compile Include="../Shared/Main.ns"/>'
+            '</ItemGroup></Project>', encoding='utf-8')
+        write('<Compile Include="../Shared/Main.ns"/>'
+              '<ProjectReference Include="../Dependency/Dependency.nsproj"/>')
+        graph = run([compiler, '--dump-project-graph', descriptor], contains='projects: 2')
+        dependency_section = graph.split('[0] Dependency', 1)[1].split('[1] Probe', 1)[0]
+        root_section = graph.split('[1] Probe', 1)[1]
+        assert 'sources: 1' in dependency_section and 'sources: 0' in root_section, graph
+        write('<Compile Include="../Shared/Main.ns"/>')
         for level in ('O0', 'O2'):
             executable = project / (level + '.exe')
             run([compiler, '--emit-project-oop-exe', descriptor, '-o', executable,
@@ -81,9 +99,44 @@ def main():
         write('<Compile Include="../Shared/**/*.ns"/><Compile Remove="../Shared/Nested/**"/>')
         dump = run([compiler, '--dump-project', descriptor], contains='../Shared/Main.ns')
         assert 'Ignored.ns' not in dump
+        write('<Compile Include="../Shared/**/*.ns" Exclude="../Shared/Nested/Ignored.ns"/>')
+        dump = run([compiler, '--dump-project', descriptor], contains='../Shared/Main.ns')
+        assert '../Shared/Nested/Additional.ns' in dump and 'Ignored.ns' not in dump
+        write('<Compile Include="../Shared/**/*.ns" '
+              'Exclude="../Shared/Main.ns;../Shared/Nested/Ignored.ns"/>')
+        dump = run([compiler, '--dump-project', descriptor], contains='../Shared/Nested/Additional.ns')
+        assert '../Shared/Main.ns' not in dump and 'Ignored.ns' not in dump
+        write('<Compile Include="../Shared/**/*.ns"/>'
+              '<Compile Remove="../Shared/Nested/Ignored.ns"/>')
+        dump = run([compiler, '--dump-project', descriptor], contains='../Shared/Main.ns')
+        assert '../Shared/Nested/Additional.ns' in dump and 'Ignored.ns' not in dump
+        write('<Compile Include="../Shared/**/*.ns"/>'
+              '<Compile Remove="../Shared/Main.ns;../Shared/Nested/Ignored.ns"/>')
+        dump = run([compiler, '--dump-project', descriptor], contains='../Shared/Nested/Additional.ns')
+        assert '../Shared/Main.ns' not in dump and 'Ignored.ns' not in dump
         write('<Compile Include="../Shared/Main.ns;../Shared/./Main.ns;../Shared/*.ns"/>')
         dump = run([compiler, '--dump-project', descriptor], contains='../Shared/Main.ns')
         assert dump.count('../Shared/Main.ns') == 1, dump
+        write('<Compile Include="Local.ns"/><Compile Include="./Local.ns"/>'
+              '<Compile Include="../Project/Local.ns"/>'
+              '<Compile Include="../Shared/Main.ns"/><Compile Include="../Shared/*.ns"/>')
+        dump = run([compiler, '--dump-project', descriptor], contains='sources: 2')
+        assert dump.count('Local.ns') == 1 and dump.count('../Shared/Main.ns') == 1, dump
+
+        deep_project = root / 'Deep' / 'NestedProject'
+        deep_project.mkdir(parents=True)
+        deep_descriptor = deep_project / 'Deep.nsproj'
+        deep_descriptor.write_text(
+            '<Project><PropertyGroup><Name>Deep</Name></PropertyGroup><ItemGroup>'
+            '<Compile Include="../../Shared/Main.ns"/></ItemGroup></Project>', encoding='utf-8')
+        run([compiler, '--dump-project', deep_descriptor], contains='../../Shared/Main.ns')
+
+        (shared / 'Alpha.ns').write_text('// alpha', encoding='utf-8')
+        (shared / 'Zeta.ns').write_text('// zeta', encoding='utf-8')
+        write('<Compile Include="../Shared/*.ns"/>')
+        dump = run([compiler, '--dump-project', descriptor], contains='../Shared/Alpha.ns')
+        assert dump.index('../Shared/Alpha.ns') < dump.index('../Shared/Main.ns')
+        assert dump.index('../Shared/Main.ns') < dump.index('../Shared/Zeta.ns'), dump
         write('<Compile Include="../Shared/*/../Main.ns"/>')
         run([compiler, '--check-project', descriptor], expected=1,
             contains="cannot contain '..' after a wildcard segment")
@@ -96,10 +149,36 @@ def main():
         write('<Compile Include="' + '../' * 40 + '*.ns"/>')
         run([compiler, '--check-project', descriptor], expected=1,
             contains='traverses above the filesystem root')
+        write('<Compile Include="Local.ns" Exclude=""/>')
+        run([compiler, '--check-project', descriptor], expected=1,
+            contains='glob list contains an empty pattern')
+        write('<Compile Include="Local.ns" Exclude="C:/outside/*.ns"/>')
+        run([compiler, '--check-project', descriptor], expected=1,
+            contains='glob pattern must be project-relative')
+        write('<Compile Include="Local.ns" Exclude="../Shared/*/../Main.ns"/>')
+        run([compiler, '--check-project', descriptor], expected=1,
+            contains="cannot contain '..' after a wildcard segment")
+        write('<Compile Include="Local.ns"/><Compile Remove=""/>')
+        run([compiler, '--check-project', descriptor], expected=1,
+            contains='glob list contains an empty pattern')
+        write('<Compile Include="Local.ns"/><Compile Remove="C:/outside/*.ns"/>')
+        run([compiler, '--check-project', descriptor], expected=1,
+            contains='glob pattern must be project-relative')
+        write('<Compile Include="Local.ns"/><Compile Remove="../Shared/*/../Main.ns"/>')
+        run([compiler, '--check-project', descriptor], expected=1,
+            contains="cannot contain '..' after a wildcard segment")
+        write('<Compile Include="Local.ns"/><Compile Remove="Local.ns" Exclude="Other.ns"/>')
+        run([compiler, '--check-project', descriptor], expected=1,
+            contains='Compile Remove cannot be combined with Exclude')
         write('<Compile Include="../Missing/*.ns"/>')
         run([compiler, '--check-project', descriptor], expected=1,
             contains='must contain at least one .ns source')
+        write('<Compile Include="../Shared/Main.ns/*.ns"/>')
+        run([compiler, '--check-project', descriptor], expected=1,
+            contains='external source root is not a directory')
         write('<Compile Include="Local.ns"/><Compile Include="../Missing/*.ns"/>')
+        run([compiler, '--check-project', descriptor])
+        write('<Compile Include="Local.ns"/><Compile Include="../Shared/NoMatch*.ns"/>')
         run([compiler, '--check-project', descriptor])
 
         junction_target = root / 'JunctionTarget'
@@ -130,6 +209,19 @@ def main():
             write('<Compile Include="../Shared/Linked.ns"/>')
             run([compiler, '--check-project', descriptor], expected=1,
                 contains='external project source escapes its search root')
+
+        internal_target = shared / 'InternalTarget.ns'
+        internal_target.write_text('// internal target', encoding='utf-8')
+        internal_link = shared / 'InternalAlias.ns'
+        try:
+            os.symlink(internal_target, internal_link)
+        except OSError as error:
+            print('INTERNAL SYMLINK TEST UNAVAILABLE', error, flush=True)
+        else:
+            write('<Compile Include="../Shared/InternalTarget.ns"/>'
+                  '<Compile Include="../Shared/InternalAlias.ns"/>')
+            dump = run([compiler, '--dump-project', descriptor], contains='sources: 1')
+            assert dump.count('../Shared/InternalTarget.ns') == 1, dump
         print('project_external_sources: PASS', flush=True)
 
 
