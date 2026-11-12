@@ -998,6 +998,64 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
             }
             const ExpressionResult operand = analyzeExpression(
                 expression->first(), methodMemberOrdinal, scopeOrdinal, diagnostics);
+            bool deletesBorrowedDelegate = false;
+            if (operand.valid && !expression->flag() && isDelegateTypeKey(operand.typeKey) &&
+                !isExternCDelegateTypeKey(operand.typeKey) && expression->first() != nullptr &&
+                expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const auto target = lookupScopeName(scopeOrdinal, expression->first()->text());
+                if (target.has_value() && target->kind == ScopeNameKind::Local &&
+                    target->semanticOrdinal < locals_.size())
+                {
+                    // Local delegate assignments may alias in either direction. Preserve all
+                    // known source edges and inspect the connected component before destruction.
+                    std::vector<std::vector<std::size_t>> aliases(locals_.size());
+                    for (std::size_t ordinal = 0; ordinal < locals_.size(); ++ordinal)
+                    {
+                        const MethodLocalSymbol& local = locals_[ordinal];
+                        if (local.methodMemberOrdinal != methodMemberOrdinal ||
+                            !isDelegateTypeKey(local.typeKey)) continue;
+                        std::vector<const ast::AstNode*> sources = local.possibleDelegateSources;
+                        if (local.syntax != nullptr) sources.push_back(local.syntax->first());
+                        while (!sources.empty())
+                        {
+                            const ast::AstNode* source = sources.back();
+                            sources.pop_back();
+                            if (source == nullptr) continue;
+                            if (source->kind() == ast::AstNodeKind::ConditionalExpression)
+                            {
+                                sources.push_back(source->second());
+                                sources.push_back(source->third());
+                                continue;
+                            }
+                            const MethodNameBinding* binding = nameBinding(source, methodMemberOrdinal);
+                            if (binding == nullptr || binding->kind != MethodNameBindingKind::Local ||
+                                !binding->localOrdinal.has_value() || *binding->localOrdinal >= locals_.size() ||
+                                !isDelegateTypeKey(locals_[*binding->localOrdinal].typeKey)) continue;
+                            aliases[ordinal].push_back(*binding->localOrdinal);
+                            aliases[*binding->localOrdinal].push_back(ordinal);
+                        }
+                    }
+                    std::vector<std::size_t> pending{target->semanticOrdinal};
+                    std::unordered_set<std::size_t> visited;
+                    while (!pending.empty())
+                    {
+                        const std::size_t ordinal = pending.back();
+                        pending.pop_back();
+                        if (!visited.insert(ordinal).second) continue;
+                        if (hasActiveBorrowOfOwnerLocal(ordinal, scopeOrdinal))
+                        {
+                            deletesBorrowedDelegate = true;
+                            break;
+                        }
+                        pending.insert(pending.end(), aliases[ordinal].begin(), aliases[ordinal].end());
+                    }
+                }
+            }
+            if (deletesBorrowedDelegate)
+                diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                    diagnostics::DiagnosticSeverity::Error, expression->range(),
+                    "cannot delete delegate while a borrowed local is alive");
             const bool parameterConsumable = !operand.valid ||
                 consumeDeletedOwnedParameter(expression, methodMemberOrdinal, scopeOrdinal, diagnostics);
             recordPlainArrayLocalDelete(expression, scopeOrdinal);
@@ -1088,7 +1146,7 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::analyzeExpressi
                 }
             }
             result.typeKey = "builtin:void";
-            result.valid = operand.valid && !deletesCurrentThis && !deletesRaiiLocal &&
+            result.valid = operand.valid && !deletesCurrentThis && !deletesRaiiLocal && !deletesBorrowedDelegate &&
                 !deletesOwnedField && !consumesBorrowedOwner && parameterConsumable;
             break;
         }
