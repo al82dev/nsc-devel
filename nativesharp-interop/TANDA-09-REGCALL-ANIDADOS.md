@@ -673,5 +673,18 @@ precompilados con y sin encabezado, incluidos los que solo usan puntero
 (`A:/temp/nsc-t09-record-ret-double-pre-7znfdhql` y
 `A:/temp/nsc-t09-record-ret-double-pre-ek4f__el`). La prueba de metadatos
 rechaza un retorno alterado; pasaron transporte y la regresión precompilada
-de retorno entero (`A:/temp/nsc-t09-record-ret-int-pre-lmgs6eev`). C++, otros
-retornos y otras firmas no se acreditan. T09-003 permanece abierto.
+de retorno entero (`A:/temp/nsc-t09-record-ret-int-pre-lmgs6eev`).
+
+La muestra C++ equivalente rechazaba el alias de puntero
+(`A:/temp/nsc-t09-cpp-ret-double-830wkkjz`). La conciliación ahora verifica
+el retorno `double` y los records triviales de cada argumento. Pasaron las
+llamadas directas e indirectas frente a Clang en estática y DLL O0–O3, con
+símbolos y LLVM comprobados (`A:/temp/nsc-t09-cpp-ret-double-1cf_e85s`).
+Pasaron 32 consumidores precompilados con y sin encabezado, incluidos los
+que solo usan puntero (`A:/temp/nsc-t09-cpp-ret-double-precompilado-rxr40lk2`
+y `A:/temp/nsc-t09-cpp-ret-double-precompilado-db7zn54l`). La prueba del
+contrato rechaza un retorno físico alterado; también pasaron transporte,
+los rechazos de campos privados y record no trivial
+(`A:/temp/nsc-t09-cpp-ret-double-rechazos-9stkg35v`) y la regresión
+precompilada C (`A:/temp/nsc-t09-record-ret-double-pre-8ru3amey`).
+Otros retornos y firmas no se acreditan. T09-003 permanece abierto.

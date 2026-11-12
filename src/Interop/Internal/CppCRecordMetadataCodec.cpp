@@ -1363,8 +1363,11 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
         const bool intReturn = result.kind == CppTypeKind::SignedInteger &&
             abi_plan::isRegCallWin64FloatRecordsReturningInt(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
             abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
+        const bool doubleReturn = result.kind == CppTypeKind::Floating &&
+            abi_plan::isRegCallWin64FloatRecordsReturningDouble(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
+            abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
         if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
-            signature.parameterTypes.empty() || (!recordReturn && !intReturn) ||
+            signature.parameterTypes.empty() || (!recordReturn && !intReturn && !doubleReturn) ||
             !abi_plan::regCallFloatRecordArgumentsMatch(*alias.abiPlan, signature.returnType, signature.parameterTypes) ||
             !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
         { error = "invalid C++ dependency alias ABI plan"; return false; }
