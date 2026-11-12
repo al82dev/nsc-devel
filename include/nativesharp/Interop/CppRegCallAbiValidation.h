@@ -94,28 +94,34 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
 inline bool regCallFloatRecordScalarMatches(const Type& physical, const CppType& source, unsigned depth = 0) noexcept
 {
     if (depth > 16) return false;
-    if (source.isConst || source.isVolatile || source.isRestrict) return false;
-    if (source.kind == CppTypeKind::Boolean && (source.canonicalSpelling == "_Bool" || source.canonicalSpelling == "bool") &&
+    if (source.isVolatile || source.isRestrict ||
+        (source.isConst && (depth == 0 || source.kind == CppTypeKind::Pointer || source.kind == CppTypeKind::Record ||
+                            source.unqualifiedCanonicalSpelling.empty()))) return false;
+    if (source.isConst && (source.canonicalSpelling.size() != source.unqualifiedCanonicalSpelling.size() + 6 ||
+        !source.canonicalSpelling.starts_with("const ") ||
+        !source.canonicalSpelling.ends_with(source.unqualifiedCanonicalSpelling))) return false;
+    const std::string_view canonical = source.isConst ? source.unqualifiedCanonicalSpelling : source.canonicalSpelling;
+    if (source.kind == CppTypeKind::Boolean && (canonical == "_Bool" || canonical == "bool") &&
         source.sizeBits == 8 && source.alignmentBits == 8)
         return physical.kind == TypeKind::Integer && physical.widthOrCount == 1;
-    if (((source.kind == CppTypeKind::SignedInteger && source.canonicalSpelling == "signed char") ||
-         (source.kind == CppTypeKind::UnsignedInteger && source.canonicalSpelling == "unsigned char")) &&
+    if (((source.kind == CppTypeKind::SignedInteger && canonical == "signed char") ||
+         (source.kind == CppTypeKind::UnsignedInteger && canonical == "unsigned char")) &&
         source.sizeBits == 8 && source.alignmentBits == 8)
         return physical.kind == TypeKind::Integer && physical.widthOrCount == 8;
-    if (((source.kind == CppTypeKind::SignedInteger && source.canonicalSpelling == "short") ||
-         (source.kind == CppTypeKind::UnsignedInteger && source.canonicalSpelling == "unsigned short")) &&
+    if (((source.kind == CppTypeKind::SignedInteger && canonical == "short") ||
+         (source.kind == CppTypeKind::UnsignedInteger && canonical == "unsigned short")) &&
         source.sizeBits == 16 && source.alignmentBits == 16)
         return physical.kind == TypeKind::Integer && physical.widthOrCount == 16;
-    if (((source.kind == CppTypeKind::SignedInteger && (source.canonicalSpelling == "int" || source.canonicalSpelling == "long")) ||
-         (source.kind == CppTypeKind::UnsignedInteger && (source.canonicalSpelling == "unsigned int" || source.canonicalSpelling == "unsigned long"))) &&
+    if (((source.kind == CppTypeKind::SignedInteger && (canonical == "int" || canonical == "long")) ||
+         (source.kind == CppTypeKind::UnsignedInteger && (canonical == "unsigned int" || canonical == "unsigned long"))) &&
         source.sizeBits == 32 && source.alignmentBits == 32)
         return physical.kind == TypeKind::Integer && physical.widthOrCount == 32;
-    if (((source.kind == CppTypeKind::SignedInteger && source.canonicalSpelling == "long long") ||
-         (source.kind == CppTypeKind::UnsignedInteger && source.canonicalSpelling == "unsigned long long")) &&
+    if (((source.kind == CppTypeKind::SignedInteger && canonical == "long long") ||
+         (source.kind == CppTypeKind::UnsignedInteger && canonical == "unsigned long long")) &&
         source.sizeBits == 64 && source.alignmentBits == 64)
         return physical.kind == TypeKind::Integer && physical.widthOrCount == 64;
     if (source.kind == CppTypeKind::Pointer && source.sizeBits == 64 && source.alignmentBits == 64 &&
-        source.element && !source.element->isConst && !source.element->isVolatile && !source.element->isRestrict &&
+        source.element && !source.element->isVolatile && !source.element->isRestrict &&
         physical.kind == TypeKind::Pointer && physical.widthOrCount == 0)
     {
         const auto& element = *source.element;
@@ -147,9 +153,9 @@ inline bool regCallFloatRecordScalarMatches(const Type& physical, const CppType&
         }
         return regCallFloatRecordScalarMatches(candidate, element, depth + 1);
     }
-    if (source.kind == CppTypeKind::Floating && source.canonicalSpelling == "float" &&
+    if (source.kind == CppTypeKind::Floating && canonical == "float" &&
         source.sizeBits == 32 && source.alignmentBits == 32) return physical.kind == TypeKind::Float;
-    if (source.kind == CppTypeKind::Floating && source.canonicalSpelling == "double" &&
+    if (source.kind == CppTypeKind::Floating && canonical == "double" &&
         source.sizeBits == 64 && source.alignmentBits == 64) return physical.kind == TypeKind::Double;
     return false;
 }

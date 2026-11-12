@@ -80,6 +80,7 @@ int main(int argc, char** argv)
         typedef Nested (__attribute__((regcall)) *NestedPointersFn)(Nested, unsigned char*,short*,double*,void*);
         typedef Nested (__attribute__((regcall)) *NestedDoublePtrFn)(Nested, unsigned char**,short**,double**);
         typedef Nested (__attribute__((regcall)) *NestedRecordPtrFn)(Nested, Other*);
+        typedef Nested (__attribute__((regcall)) *NestedConstFn)(Nested, const int*,int*);
         Small __attribute__((regcall)) small(Small);
         Large __attribute__((regcall)) large(Large);
         Floats __attribute__((regcall)) floats(Floats);
@@ -96,6 +97,7 @@ int main(int argc, char** argv)
         Nested __attribute__((regcall)) nested_pointers(Nested, unsigned char*,short*,double*,void*);
         Nested __attribute__((regcall)) nested_doubleptr(Nested, unsigned char**,short**,double**);
         Nested __attribute__((regcall)) nested_recordptr(Nested, Other*);
+        Nested __attribute__((regcall)) nested_const(Nested, const int*,int*);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -582,6 +584,23 @@ int main(int argc, char** argv)
             record->recordIdentity->name = "Forged"; wrong.element = record;
             if (abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type, wrong)) return 101;
         }
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "nested_const") declaration = &function;
+        if (!declaration || declaration->parameters.size() != 3 ||
+            !declaration->parameters[1].type.element) return 102;
+        const auto& pointer = declaration->parameters[1].type;
+        const auto& element = *pointer.element;
+        if (!element.isConst || element.kind != CppTypeKind::SignedInteger) return 103;
+        const auto plan = session->cFunctionAbiPlan("nested_const", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64FloatRecordRoundTrip(*plan, plan->symbol, 12, 4, 2, true) ||
+            !abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type, pointer)) return 104;
+        auto altered = pointer;
+        auto bad = std::make_shared<CppType>(*altered.element);
+        bad->unqualifiedCanonicalSpelling = "double"; altered.element = bad;
+        if (abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type, altered)) return 105;
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;

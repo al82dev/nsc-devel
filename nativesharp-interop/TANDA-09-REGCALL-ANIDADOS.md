@@ -145,8 +145,7 @@ conservados. Otras clases de agregados o firmas permanecen pendientes.
 
 La misma ruta valida y emite una cola con `long long`, `unsigned int`,
 `unsigned long long`, `int*` y `double`. El plan y los metadatos deben
-coincidir con los tipos y atributos admitidos; el puntero se limita al
-punteros sin calificadores a los escalares admitidos y `void`; las muestras
+coincidir con los tipos y atributos admitidos; las muestras de punteros
 concretas se detallan aquí y en la sección siguiente.
 
 Los controles C y C++ y NativeSharp pasaron O0-O3, estática y DLL, en llamadas
@@ -160,8 +159,7 @@ con y sin encabezado, incluidos los que solo usan punteros:
 `A:/temp/nsc-t09-hfa34-precompilado-eolj40gn` y
 `A:/temp/nsc-t09-cpp-nested-precompilado-pi9j6qk1`. El control de plan
 rechaza tipos y atributos alterados; pasaron las regresiones de firmas y
-metadatos anteriores. Los punteros calificados permanecen pendientes en esta
-forma.
+metadatos anteriores. Para el caso `const` ver la sección final.
 
 ## Enteros estrechos y booleanos
 
@@ -222,7 +220,7 @@ precompilados con y sin encabezado, incluidos los de solo puntero
 `A:/temp/nsc-t09-cpp-nested-precompilado-rjde0sh9`). También pasaron los
 controles negativos y las regresiones de transporte.
 
-Permanecen pendientes los punteros calificados en esta firma. D23
+Los demás calificadores siguen pendientes en esta firma. D23
 sigue limitando las direcciones de elementos de arreglos de punteros
 calificados y no se acredita con estas muestras.
 
@@ -244,7 +242,7 @@ precompilados con y sin encabezado, incluidos los de solo puntero
 `A:/temp/nsc-t09-hfa34-precompilado-09xzha3w` y
 `A:/temp/nsc-t09-cpp-nested-precompilado-opw3qou5`). Pasaron controles
 negativos y regresiones de punteros simples y transporte. No se acreditan
-otros niveles ni punteros calificados en esta firma; D23 permanece.
+otros niveles ni calificadores intermedios en esta firma; D23 permanece.
 
 ## Puntero a record en la firma expandida
 
@@ -269,5 +267,29 @@ rechaza un USR ausente y un nombre alterado. Pasaron los controles negativos y
 las regresiones de punteros dobles y transporte, así como los diez rechazos
 de tipos C++ no admitidos en la prueba de valor existente
 (`A:/temp/nsc-t09-cpp-record-cdecl-rechazos-4d2mua_c`). Esta evidencia no acredita
-records incompletos, punteros calificados ni records C++ no triviales; D26 y
+records incompletos, punteros a records calificados ni records C++ no triviales; D26 y
 D23 siguen siendo límites separados.
+
+## Puntero a escalar const
+
+Se admite el calificador `const` en el escalar final apuntado, comprobando
+su identidad y representación canónica. La muestra de `const int*` seguida
+de `int*` lee el primero y escribe por el segundo. Pasaron las llamadas C y
+C++ directas e indirectas frente a sus controles, O0-O3 en estática y DLL:
+`A:/temp/nsc-t09-regcall-mixed-tgmx7cs8` y
+`A:/temp/nsc-t09-cpp-mixed-52yw23sw`.
+
+Pasaron 64 consumidores precompilados con y sin encabezado, incluidos los
+que solo invocan por puntero: `A:/temp/nsc-t09-hfa34-precompilado-3waux3j0`,
+`A:/temp/nsc-t09-cpp-nested-precompilado-q5pe70ha`,
+`A:/temp/nsc-t09-hfa34-precompilado-aw53th7l` y
+`A:/temp/nsc-t09-cpp-nested-precompilado-g5vsu41b`. La prueba de plan
+rechaza una identidad de calificador inconsistente. Tres conversiones
+incompatibles se rechazaron tanto en C como en C++:
+`A:/temp/nsc-t09-regcall-const-rechazos-mxjc61l7` y
+`A:/temp/nsc-t09-regcall-const-rechazos-v6rbi0mh`.
+
+Esta evidencia no acredita `const void*`, records calificados, `volatile`,
+calificadores intermedios ni todas las expresiones afectadas por D11/D12.
+D23 sigue pendiente para arreglos de punteros calificados. T09-003 continúa
+abierto.
