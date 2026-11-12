@@ -1584,12 +1584,15 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             regCallSignature->result == node->typeKey && node->argumentCount == regCallSignature->parameters.size() &&
             node->children.size() == node->argumentCount + 1 && node->argumentTypeKeys.size() == node->argumentCount &&
             std::equal(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), regCallSignature->parameters.begin()) &&
-            std::all_of(regCallSignature->parameters.begin(), regCallSignature->parameters.begin() + regCallRecords,
-                [&](const auto& key) {
-                    const auto* layout = findStructLayout(mirModel_, key);
-                    return layout && regCallLayout && layout->size == regCallLayout->size &&
-                        layout->alignment == regCallLayout->alignment;
-                }) && node->cppFunctionPointerPlan && regCallLayout &&
+            [&] {
+                for (std::size_t i = 0; i < regCallRecords; ++i)
+                {
+                    const auto* layout = findStructLayout(mirModel_, regCallSignature->parameters[i]);
+                    if (!layout || layout->alignment != 4 ||
+                        layout->size != node->cppFunctionPointerPlan->logicalParameters[i].physicalCount * 4) return false;
+                }
+                return true;
+            }() && node->cppFunctionPointerPlan && regCallLayout &&
             interop::abi_plan::isRegCallWin64FloatRecordSequence(*node->cppFunctionPointerPlan,
                 "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment))
         {

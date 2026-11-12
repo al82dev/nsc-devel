@@ -430,10 +430,8 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
         for (std::size_t i = 0; i < count; ++i)
         {
             const auto& parameter = signature.parameterTypes[i];
-            if (parameter.kind != CppTypeKind::Record || !parameter.recordIdentity ||
-                !parameter.recordIdentity->clangUsr || parameter.recordIdentity->clangUsr->empty() ||
-                parameter.sizeBits != signature.returnType.sizeBits ||
-                parameter.alignmentBits != signature.returnType.alignmentBits) return {};
+            if (!abi_plan::regCallRecordMatchesExpansion(signature.returnType, parameter,
+                    plan->logicalParameters[i])) return {};
         }
         if (!abi_plan::isRegCallWin64FloatRecordSequence(*plan, plan->symbol,
                 *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8) ||
@@ -569,7 +567,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     if (regCall)
     {
         while (regCallRecords < signature.parameterTypes.size() &&
-               abi_plan::regCallCompatibleRecordLayout(signature.returnType, signature.parameterTypes[regCallRecords])) ++regCallRecords;
+               signature.parameterTypes[regCallRecords].kind == CppTypeKind::Record) ++regCallRecords;
         if (!returnRecord || !regCallRecords ||
             !std::all_of(signature.parameterTypes.begin() + regCallRecords, signature.parameterTypes.end(),
                 [](const auto& type) { return abi_plan::regCallFloatRecordScalarSupported(type); })) return {};
@@ -873,6 +871,10 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     if (!plan || plan->symbol != expectedSymbol || plan->callingConvention != (regCall ? 92U : 78U) ||
         plan->variadic || !plan->targetTriple.starts_with("x86_64-pc-windows-msvc") ||
         !plan->dataLayout.starts_with("e-") || plan->logicalParameters.size() != signature.parameterTypes.size()) return {};
+    if (regCall && abi_plan::regCallExpandedRecordCount(*plan) == regCallRecords)
+        for (std::size_t i = 0; i < regCallRecords; ++i)
+            if (!abi_plan::regCallRecordMatchesExpansion(signature.returnType, signature.parameterTypes[i],
+                    plan->logicalParameters[i])) return {};
     if (regCall && (!signature.returnType.sizeBits || !signature.returnType.alignmentBits ||
         !(abi_plan::isRegCallWin64RecordRoundTrip(*plan, expectedSymbol,
             *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8) ||

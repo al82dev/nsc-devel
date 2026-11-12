@@ -735,6 +735,20 @@ int main(int argc, char** argv)
             wrong = *plan; wrong.logicalParameters[1].expandedOffsets[1] = 0;
             if (abi_plan::isRegCallWin64FloatRecordSequence(wrong, wrong.symbol, 12, 4)) return 134;
         }
+        metadata_detail::CDependencyFunctionSnapshot saved;
+        saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
+        saved.linkSymbol = direct->symbol; saved.declaration = *declaration;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*direct);
+        metadata_detail::CDependencyFunctionSnapshot restored;
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        if (!metadata_detail::encodeCDependencyFunction(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 135;
+        auto wrong = saved; wrong.declaration.parameters[1].type.sizeBits = 96;
+        if (metadata_detail::encodeCDependencyFunction(wrong, encoded, error)) return 136;
+        wrong = saved; wrong.declaration.parameters[1].type.recordIdentity->clangUsr =
+            wrong.declaration.returnType.recordIdentity->clangUsr;
+        if (metadata_detail::encodeCDependencyFunction(wrong, encoded, error)) return 137;
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;

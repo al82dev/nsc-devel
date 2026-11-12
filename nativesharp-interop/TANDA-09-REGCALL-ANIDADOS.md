@@ -489,6 +489,18 @@ transporte, la regresión de registros de igual tamaño
 (`A:/temp/nsc-t09-distinct-records-9hmtger0`) y el rechazo de una forma ABI
 distinta (`A:/temp/nsc-t09-two-records-v5bt2vtl`).
 
-La ruta por puntero sigue fallando
-(`A:/temp/nsc-t09-varied-records-3roehrmt`); precompilación y C++ no se
-acreditan en esta muestra. T09-003 sigue abierto.
+La ruta por puntero inicialmente fallaba
+(`A:/temp/nsc-t09-varied-records-3roehrmt`). Ahora la llamada directa y por
+puntero pasa en estática y DLL O0–O3
+(`A:/temp/nsc-t09-varied-records-s1txivmp`). Se verifica la identidad y el
+tamaño de cada registro contra sus piezas físicas; la reconstrucción también
+los concilia con el catálogo. Pasaron 32 consumidores precompilados con y
+sin encabezado, incluidos los de solo puntero
+(`A:/temp/nsc-t09-varied-records-pre-ri3k0y_b` y
+`A:/temp/nsc-t09-varied-records-pre-fdccdlyd`). El control de metadatos
+rechaza un tamaño o identidad alterados. Pasaron transporte y la regresión
+precompilada con registros de igual tamaño
+(`A:/temp/nsc-t09-distinct-records-pre-c7n1_7wg`).
+
+C++ y otras combinaciones no se acreditan en esta muestra. T09-003 sigue
+abierto.

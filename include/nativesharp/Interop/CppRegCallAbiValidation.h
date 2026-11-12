@@ -201,6 +201,19 @@ inline bool regCallCompatibleRecordLayout(const CppType& result, const CppType& 
         parameter.sizeBits == result.sizeBits && parameter.alignmentBits == result.alignmentBits;
 }
 
+inline bool regCallRecordMatchesExpansion(const CppType& result, const CppType& parameter,
+                                          const LogicalValue& logical) noexcept
+{
+    return result.kind == CppTypeKind::Record && parameter.kind == CppTypeKind::Record &&
+        result.recordIdentity && result.recordIdentity->clangUsr && !result.recordIdentity->clangUsr->empty() &&
+        parameter.recordIdentity && parameter.recordIdentity->clangUsr && !parameter.recordIdentity->clangUsr->empty() &&
+        !parameter.canonicalSpelling.empty() &&
+        (parameter.canonicalSpelling == result.canonicalSpelling) ==
+            (parameter.recordIdentity->clangUsr == result.recordIdentity->clangUsr) &&
+        logical.passing == Passing::Expand && logical.physicalCount >= 2 && logical.physicalCount <= 4 &&
+        parameter.sizeBits == logical.physicalCount * 32 && parameter.alignmentBits == 32;
+}
+
 inline bool isRegCallWin64FloatRecordSequence(const Plan& plan, std::string_view symbol,
                                               std::uint64_t size, std::uint64_t alignment) noexcept
 {
