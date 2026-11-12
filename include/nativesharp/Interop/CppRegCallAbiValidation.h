@@ -354,6 +354,20 @@ inline bool regCallFloatRecordScalarSupported(const CppType& source) noexcept
         regCallFloatRecordScalarMatches(real, source) || regCallFloatRecordScalarMatches(wide, source);
 }
 
+// Pointer returns to records require separate identity and lifetime reconciliation.
+inline bool regCallFloatRecordScalarPointerReturnSupported(const CppType& source) noexcept
+{
+    if (source.kind != CppTypeKind::Pointer || !regCallFloatRecordScalarSupported(source)) return false;
+    const CppType* element = &source;
+    unsigned depth = 0;
+    while (element->kind == CppTypeKind::Pointer)
+    {
+        if (++depth > 16 || !element->element) return false;
+        element = element->element.get();
+    }
+    return element->kind != CppTypeKind::Record;
+}
+
 // A single C record, passed and returned with exactly the normal Win64
 // carrier. This is a physical-plan check, not a record identity check.
 inline bool isRegCallWin64RecordRoundTrip(const Plan& plan, std::string_view symbol,

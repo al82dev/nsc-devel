@@ -1922,11 +1922,12 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 }();
             const bool regCallRecordsReturningScalar = function.cppRegCall && symbol.cppAbiPlan && symbol.cppReturnType &&
                 (function.returnTypeKey == "builtin:int" || function.returnTypeKey == "builtin:long" || function.returnTypeKey == "builtin:ulong" || function.returnTypeKey == "builtin:double" || function.returnTypeKey == "builtin:float" ||
-                 function.returnTypeKey == "builtin:void" || function.returnTypeKey == "builtin:int*") &&
+                 function.returnTypeKey == "builtin:void" || function.returnTypeKey.ends_with('*')) &&
                 (function.returnTypeKey == "builtin:void" ?
                     symbol.cppReturnType->kind == interop::CppTypeKind::Void && symbol.cppReturnType->canonicalSpelling == "void" &&
                     interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(*symbol.cppAbiPlan, symbol.mangledName) :
                     interop::abi_plan::regCallFloatRecordScalarMatches(symbol.cppAbiPlan->physicalReturn, *symbol.cppReturnType) &&
+                    (!function.returnTypeKey.ends_with('*') || interop::abi_plan::regCallFloatRecordScalarPointerReturnSupported(*symbol.cppReturnType)) &&
                     (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*symbol.cppAbiPlan, symbol.mangledName) ||
                      interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*symbol.cppAbiPlan, symbol.mangledName) ||
                      interop::abi_plan::isRegCallWin64FloatRecordsReturningFloat(*symbol.cppAbiPlan, symbol.mangledName) ||

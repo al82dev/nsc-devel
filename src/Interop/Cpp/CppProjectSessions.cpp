@@ -285,8 +285,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 signature.returnType.canonicalSpelling == "int";
             const bool int64Return = (signature.returnType.kind == CppTypeKind::SignedInteger && signature.returnType.canonicalSpelling == "long long") ||
                 (signature.returnType.kind == CppTypeKind::UnsignedInteger && signature.returnType.canonicalSpelling == "unsigned long long");
-            const bool pointerReturn = signature.returnType.kind == CppTypeKind::Pointer &&
-                signature.returnType.canonicalSpelling == "int *";
+            const bool pointerReturn = abi_plan::regCallFloatRecordScalarPointerReturnSupported(signature.returnType);
             const bool doubleReturn = signature.returnType.kind == CppTypeKind::Floating &&
                 signature.returnType.canonicalSpelling == "double";
             const bool floatReturn = signature.returnType.kind == CppTypeKind::Floating &&
@@ -460,6 +459,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
               abi_plan::isRegCallWin64FloatRecordsReturningFloat(*plan, plan->symbol) ||
               abi_plan::isRegCallWin64FloatRecordsReturningInt64(*plan, plan->symbol) ||
               abi_plan::isRegCallWin64FloatRecordsReturningPointer(*plan, plan->symbol)) ||
+            (signature.returnType.kind == CppTypeKind::Pointer && !abi_plan::regCallFloatRecordScalarPointerReturnSupported(signature.returnType)) ||
             !abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, signature.returnType) ||
             !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes)) return {};
     }
@@ -506,7 +506,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             signature.returnType.canonicalSpelling == "int";
         const bool int64Return = (signature.returnType.kind == CppTypeKind::SignedInteger && signature.returnType.canonicalSpelling == "long long") ||
             (signature.returnType.kind == CppTypeKind::UnsignedInteger && signature.returnType.canonicalSpelling == "unsigned long long");
-        const bool pointerReturn = signature.returnType.kind == CppTypeKind::Pointer && signature.returnType.canonicalSpelling == "int *";
+        const bool pointerReturn = abi_plan::regCallFloatRecordScalarPointerReturnSupported(signature.returnType);
         const bool doubleReturn = signature.returnType.kind == CppTypeKind::Floating &&
             signature.returnType.canonicalSpelling == "double";
         const bool floatReturn = signature.returnType.kind == CppTypeKind::Floating &&
@@ -632,7 +632,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         signature.returnType.canonicalSpelling == "int";
     const bool returnInt64 = (signature.returnType.kind == CppTypeKind::SignedInteger && signature.returnType.canonicalSpelling == "long long") ||
         (signature.returnType.kind == CppTypeKind::UnsignedInteger && signature.returnType.canonicalSpelling == "unsigned long long");
-    const bool returnPointer = signature.returnType.kind == CppTypeKind::Pointer && signature.returnType.canonicalSpelling == "int *";
+    const bool returnPointer = abi_plan::regCallFloatRecordScalarPointerReturnSupported(signature.returnType);
     const bool returnDouble = signature.returnType.kind == CppTypeKind::Floating &&
         signature.returnType.canonicalSpelling == "double";
     const bool returnFloat = signature.returnType.kind == CppTypeKind::Floating &&
@@ -745,7 +745,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     }
     if (selectedRecords.empty()) return {};
     if (signature.parameterTypes.empty()) parameterSource = "void";
-    std::string returnTypeSource = returnVoid ? "void" : returnPointer ? "int *" : returnFloat ? "float" : returnDouble ? "double" :
+    std::string returnTypeSource = returnVoid ? "void" : returnPointer ? signature.returnType.canonicalSpelling : returnFloat ? "float" : returnDouble ? "double" :
         returnInt64 ? signature.returnType.canonicalSpelling : "int";
     if (returnRecord)
     {

@@ -829,3 +829,24 @@ Pasaron 16 consumidores precompilados con ambas llamadas
 También pasaron plan, transporte, ABI, identidad y la regresión precompilada
 de retorno entero sin signo (`A:/temp/nsc-t09-cpp-ret-u64-precompilado-wjbo9se8`).
 Otros tipos de puntero y firmas no se acreditan. T09-003 permanece abierto.
+
+### Retorno de puntero a flotante
+
+Las muestras C y C++ `float*` eran rechazadas por NSC tras pasar sus controles
+nativos (`A:/temp/nsc-t09-record-ret-float-pointer-gmvry28h` y
+`A:/temp/nsc-t09-cpp-ret-float-pointer-ohatkg2i`). Se amplió la conciliación
+de punteros escalares validados contra Clang y se excluyeron punteros a records,
+que requieren comprobaciones adicionales de identidad. Pasaron ocho variantes
+C y ocho C++ directas y por puntero, con escritura e identidad, estática y DLL
+O0–O3 (`A:/temp/nsc-t09-record-ret-float-pointer-et0nxmvi` y
+`A:/temp/nsc-t09-cpp-ret-float-pointer-zzw_3_1i`).
+
+Pasaron 16 consumidores precompilados por cada combinación de C o C++ y ambas
+llamadas o solo puntero, con y sin encabezado:
+`A:/temp/nsc-t09-record-ret-float-pointer-pre-fpfa3czv`,
+`A:/temp/nsc-t09-record-ret-float-pointer-pre-da40o_gs`,
+`A:/temp/nsc-t09-cpp-ret-float-pointer-precompilado-v9kj3ftj` y
+`A:/temp/nsc-t09-cpp-ret-float-pointer-precompilado-irzc2i8r`.
+Pasaron plan, transporte e identidad y la regresión precompilada C++ de `int*`
+(`A:/temp/nsc-t09-cpp-ret-pointer-precompilado-o_tyr3if`). Los demás tipos de
+puntero y firmas requieren pruebas propias; T09-003 sigue abierto.

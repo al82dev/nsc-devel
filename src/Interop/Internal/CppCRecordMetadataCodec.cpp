@@ -766,7 +766,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         const bool validInt64Return = (f.returnType.kind == CppTypeKind::SignedInteger || f.returnType.kind == CppTypeKind::UnsignedInteger) &&
             abi_plan::isRegCallWin64FloatRecordsReturningInt64(*f.abiPlan, value.linkSymbol) &&
             abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
-        const bool validPointerReturn = f.returnType.kind == CppTypeKind::Pointer && f.returnType.canonicalSpelling == "int *" &&
+        const bool validPointerReturn = abi_plan::regCallFloatRecordScalarPointerReturnSupported(f.returnType) &&
             abi_plan::isRegCallWin64FloatRecordsReturningPointer(*f.abiPlan, value.linkSymbol) &&
             abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
         const bool validDoubleReturn = f.returnType.kind == CppTypeKind::Floating &&
@@ -1379,7 +1379,7 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
         const bool int64Return = (result.kind == CppTypeKind::SignedInteger || result.kind == CppTypeKind::UnsignedInteger) &&
             abi_plan::isRegCallWin64FloatRecordsReturningInt64(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
             abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
-        const bool pointerReturn = result.kind == CppTypeKind::Pointer && result.canonicalSpelling == "int *" &&
+        const bool pointerReturn = abi_plan::regCallFloatRecordScalarPointerReturnSupported(result) &&
             abi_plan::isRegCallWin64FloatRecordsReturningPointer(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
             abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
         const bool doubleReturn = result.kind == CppTypeKind::Floating &&

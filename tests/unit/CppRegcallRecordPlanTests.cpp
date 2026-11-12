@@ -114,6 +114,8 @@ int main(int argc, char** argv)
         float __attribute__((regcall)) nested_return_float(Nested,int,Floats);
         void __attribute__((regcall)) nested_return_void(Nested,int,Floats,int*);
         int* __attribute__((regcall)) nested_return_pointer(Nested,int,Floats,int*);
+        float* __attribute__((regcall)) nested_return_float_pointer(Nested,int,Floats,float*);
+        Nested* __attribute__((regcall)) nested_return_record_pointer(Nested,int,Floats,Nested*);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -859,6 +861,17 @@ int main(int argc, char** argv)
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 181;
         altered = saved; altered.declaration.returnType.sizeBits = 32;
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 182;
+    }
+    {
+        const CppFunctionDeclaration* scalar = nullptr;
+        const CppFunctionDeclaration* record = nullptr;
+        for (const auto& function : *functions)
+        {
+            if (function.name == "nested_return_float_pointer") scalar = &function;
+            if (function.name == "nested_return_record_pointer") record = &function;
+        }
+        if (!scalar || !record || !abi_plan::regCallFloatRecordScalarPointerReturnSupported(scalar->returnType) ||
+            abi_plan::regCallFloatRecordScalarPointerReturnSupported(record->returnType)) return 210;
     }
     {
         const CppFunctionDeclaration* declaration = nullptr;
