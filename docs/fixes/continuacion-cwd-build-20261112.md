@@ -18,6 +18,10 @@ pruebas como conformes. No se ha ejecutado la batería completa.
   ejecutarán más builds que dependan de ellas mientras no se aclare. No se
   ha demostrado escritura en C. Los artefactos y temporales previstos están
   en A.
+- Actualización: el usuario autorizó expresamente las tres rutas anteriores
+  para continuar con el build aislado. Procede repetir las comprobaciones
+  dirigidas con temporales en A desde el primer proceso y documentar los
+  resultados posteriores sin borrar las incidencias previas.
 - Varias invocaciones anteriores heredaron el TEMP predeterminado de C o
   iniciaron hijos desde temporales. Sus resultados se conservan como evidencia
   técnica no conforme; las repeticiones y límites están señalados en cada nota.

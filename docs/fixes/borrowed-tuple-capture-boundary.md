@@ -68,6 +68,11 @@ usuario; hasta resolverla, ambas compilaciones y sus resultados dependientes
 son evidencia técnica, no validación conforme. La fuente se restauró con el
 hash comprobado y la regresión pasó en el compilador resultante.
 
+El usuario autorizó después esa ruta existente de CMake para el build aislado,
+así como las rutas del auxiliar y NSLink utilizados por la configuración. La
+autorización no borra las incidencias anteriores; la validación posterior debe
+quedar registrada con entorno en A desde el proceso inicial.
+
 El registro opcional de la regresión usa `python` por nombre, directorio del
 repositorio y omisión explícita cuando faltan Core o temporales en A. La primera
 configuración de CMake tras agregarlo se inició sin fijar explícitamente los
@@ -76,3 +81,10 @@ archivos fuera de A. Se repitió con el entorno controlado y salió 0:
 `A:/nsc-fixes-evidencia/capture-configure-controlled-20261112.cmd` y `.log`.
 La ejecución directa de la regresión fue la documentada en la comparación;
 no se ejecutó CTest para este registro.
+
+Tras la autorización, el compilador se reenlazó incrementalmente y la
+regresión volvió a pasar con Core binario preexistente. Los comandos y hashes
+están en `A:/nsc-fixes-evidencia/authorized-targeted-after-build-20261112.json`
+y `authorized-after-build-capture-20261112.log`. El build reutilizó objetos
+anteriores y el árbol mantiene otros cambios locales; no se certifica HEAD
+limpio ni la procedencia individual de esos objetos.

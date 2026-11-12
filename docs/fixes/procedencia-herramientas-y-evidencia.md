@@ -85,6 +85,29 @@ al usuario y está pendiente. No se ha demostrado que se haya escrito en C; el
 destino configurado de esos artefactos es A. Hasta aclarar estas rutas y revisar
 los pasos realmente ejecutados, la conformidad de esos builds no está acreditada.
 
+Actualización: el usuario autorizó expresamente la ruta de CMake anterior y
+las dos rutas del auxiliar y NSLink para continuar con este build aislado. La
+autorización no cambia el requisito de temporales en A ni borra las incidencias
+previas de directorio o entorno; los builds y pruebas posteriores deben
+registrarse por separado y comprobarse con esas condiciones.
+
+Tras la autorización se ejecutó `authorized-build-20261112.cmd` desde el
+repositorio, con temporales en A. El objetivo incremental `nsc` terminó con
+código 0; el log muestra nueve pasos y reenlace del compilador. Las cinco
+pruebas dirigidas de capturas, emisión del receptor, argumentos ASan, productor
+estático y destructor con débil devolvieron 0 con Python y NSLink por nombre;
+comandos, hashes y resultados en
+`A:/nsc-fixes-evidencia/authorized-targeted-after-build-20261112.json` y logs
+`authorized-after-build-*-20261112.log`. El SHA-256 del compilador fue
+`bfd555f60eeb82d28186d0076e0dc743e78e9ef4ddca79f683b3b1bd65239ffbd5ddd4d91f2cc36c26`.
+
+La compilación incremental reutilizó objetos existentes, incluidos objetos
+producidos antes de la autorización y de la corrección del entorno. No se ha
+reconstruido ni certificado cada objeto desde una revisión limpia. El Core
+binario usado era preexistente y no se regeneró. Estas ejecuciones acreditan
+los recorridos probados con dichos artefactos, no la procedencia conforme
+completa de todos sus componentes ni el cierre de la campaña.
+
 Una tarea del agente que preparaba la repetición del constructor implícito
 con Core binario fue interrumpida por el filtro automático de la plataforma;
 dos intentos posteriores del mismo agente también terminaron con el mismo
