@@ -450,7 +450,7 @@ inline bool isRegCallWin64FloatRecordsReturningInt64(const Plan& plan, std::stri
         else if (logical.passing == Passing::Indirect) indirect = true;
     return (records || indirect) && isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4,
         plan.logicalParameters.size() - records, true, records, true, true, false, false, false, false, true,
-        false, 0, false, 0, false, !records);
+        false, 0, false, 0, true, !records);
 }
 
 inline bool isRegCallWin64FloatRecordsReturningPointer(const Plan& plan, std::string_view symbol) noexcept
@@ -462,7 +462,7 @@ inline bool isRegCallWin64FloatRecordsReturningPointer(const Plan& plan, std::st
         else if (logical.passing == Passing::Indirect) indirect = true;
     return (records || indirect) && isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4,
         plan.logicalParameters.size() - records, true, records, true, true, false, false, false, false, false, true,
-        0, false, 0, false, !records);
+        0, false, 0, true, !records);
 }
 
 inline bool isRegCallWin64FloatRecordsReturningNarrowInteger(const Plan& plan, std::string_view symbol) noexcept
@@ -476,7 +476,7 @@ inline bool isRegCallWin64FloatRecordsReturningNarrowInteger(const Plan& plan, s
         else if (logical.passing == Passing::Indirect) indirect = true;
     return (records || indirect) && isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4,
         plan.logicalParameters.size() - records, true, records, true, true, false, false, false, false, false, false,
-        static_cast<unsigned>(bits), false, 0, false, !records);
+        static_cast<unsigned>(bits), false, 0, true, !records);
 }
 
 inline bool isRegCallWin64FloatRecordsReturningBool(const Plan& plan, std::string_view symbol) noexcept

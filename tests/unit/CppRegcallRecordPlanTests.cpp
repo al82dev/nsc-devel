@@ -126,6 +126,9 @@ int main(int argc, char** argv)
         float __attribute__((regcall)) double_triple_float(DoubleTriple,int);
         _Bool __attribute__((regcall)) double_triple_bool(DoubleTriple,int);
         void __attribute__((regcall)) double_triple_void(DoubleTriple,int*);
+        long long __attribute__((regcall)) double_triple_i64(DoubleTriple,int);
+        short __attribute__((regcall)) double_triple_short(DoubleTriple,int);
+        int* __attribute__((regcall)) double_triple_pointer(DoubleTriple,int*);
         DoublePair __attribute__((regcall)) double_result(Nested,int);
         DoublePair __attribute__((regcall)) double_result_scalar(int);
         typedef struct MixedReal { float x; double y; } MixedReal;
@@ -927,6 +930,37 @@ int main(int argc, char** argv)
             !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 208;
         auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 209;
+    }
+    {
+        for (const auto& [name, validate] : std::vector<std::pair<std::string_view, bool (*)(const abi_plan::Plan&, std::string_view) noexcept>>{
+                {"double_triple_i64", abi_plan::isRegCallWin64FloatRecordsReturningInt64},
+                {"double_triple_short", abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger},
+                {"double_triple_pointer", abi_plan::isRegCallWin64FloatRecordsReturningPointer}})
+        {
+            const CppFunctionDeclaration* declaration = nullptr;
+            for (const auto& function : *functions)
+                if (function.name == name) declaration = &function;
+            if (!declaration) return 158;
+            const auto plan = session->cFunctionAbiPlan(name, declaration->canonicalFunctionType);
+            if (!plan || !validate(*plan, plan->symbol)) return 159;
+            std::vector<CppType> parameters;
+            for (const auto& parameter : declaration->parameters) parameters.push_back(parameter.type);
+            if (!abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters, true, true)) return 160;
+            auto wrong = *plan;
+            wrong.logicalParameters[0].expandedOffsets[1] = 4;
+            if (validate(wrong, wrong.symbol)) return 161;
+            metadata_detail::CDependencyFunctionSnapshot saved;
+            saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
+            saved.linkSymbol = plan->symbol; saved.declaration = *declaration;
+            saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+            metadata_detail::CDependencyFunctionSnapshot restored;
+            std::vector<std::uint8_t> encoded;
+            std::string error;
+            if (!metadata_detail::encodeCDependencyFunction(saved, encoded, error) ||
+                !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 162;
+            auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+            if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 163;
+        }
     }
     {
         const CppFunctionDeclaration* declaration = nullptr;

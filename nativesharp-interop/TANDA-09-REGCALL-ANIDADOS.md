@@ -1368,6 +1368,41 @@ transporte, ABI e identidad y los rechazos previos de registros privados y no
 triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-3lfox064`). Otras
 formas y registros C++ no triviales siguen sin acreditar.
 
+## Tres double expandidos con retornos enteros y de puntero
+
+Clang ejecutaba las firmas C con retorno `long long`, `short` e `int*`, pero
+NSC las rechazaba (`A:/temp/nsc-t09-regcall-triple-double-i64-40pr9178`,
+`A:/temp/nsc-t09-regcall-triple-double-short-12j5spe7` y
+`A:/temp/nsc-t09-regcall-triple-double-pointer-wvtl2b0j`). La validación ahora
+admite piezas `double` en estos planes; concilia tipos e identidad y rechaza
+desplazamientos alterados, incluso en el contrato de metadatos.
+
+Cada muestra pasó O0–O3 en C con estática y en C++ con estática y DLL,
+comparando Clang y NSC, con llamada directa y por puntero e inspección LLVM:
+
+| Retorno | Evidencia C | Evidencia C++ |
+|---|---|---|
+| `long long` | `A:/temp/nsc-t09-regcall-triple-double-i64-9n814bhu` | `A:/temp/nsc-t09-cpp-triple-double-i64-6pqlamvq` |
+| `short` | `A:/temp/nsc-t09-regcall-triple-double-short-yv6pnc9r` | `A:/temp/nsc-t09-cpp-triple-double-short-e1mfgeme` |
+| `int*` | `A:/temp/nsc-t09-regcall-triple-double-pointer-n18vfkej` | `A:/temp/nsc-t09-cpp-triple-double-pointer-j2mjs2c8` |
+
+Se comprobaron un valor mayor de 32 bits, un entero negativo, la identidad y
+escritura del puntero y la copia del argumento. Para cada retorno pasaron 32
+consumidores precompilados C y 32 C++, con estática y DLL, O0–O3, con y sin
+encabezado:
+
+| Retorno | Evidencia precompilada C | Evidencia precompilada C++ |
+|---|---|---|
+| `long long` | `A:/temp/nsc-t09-triple-double-i64-pre-2cdtu83t`, `A:/temp/nsc-t09-triple-double-i64-pre-t8capwpv` | `A:/temp/nsc-t09-cpp-triple-double-i64-pre-82iw6rza`, `A:/temp/nsc-t09-cpp-triple-double-i64-pre-kvts0wab` |
+| `short` | `A:/temp/nsc-t09-triple-double-short-pre-bp_3mser`, `A:/temp/nsc-t09-triple-double-short-pre-a9kph47p` | `A:/temp/nsc-t09-cpp-triple-double-short-pre-tje1z2xq`, `A:/temp/nsc-t09-cpp-triple-double-short-pre-wi9s5ik2` |
+| `int*` | `A:/temp/nsc-t09-triple-double-pointer-pre-8_pi4nl5`, `A:/temp/nsc-t09-triple-double-pointer-pre-m7k4bdv7` | `A:/temp/nsc-t09-cpp-triple-double-pointer-pre-3nj76bv7`, `A:/temp/nsc-t09-cpp-triple-double-pointer-pre-gsas1rj5` |
+
+Pasaron plan, transporte, ABI e identidad y las regresiones C++ precompiladas
+de retorno compacto y puntero mixto
+(`A:/temp/nsc-t09-cpp-return-compact-pre-vho45ytb`,
+`A:/temp/nsc-t09-cpp-record-mixto-pointer-pre-avvglzx1`). La llamada C directa
+con DLL, otras longitudes, valores y firmas siguen pendientes; T09-003 sigue abierto.
+
 ## Tres double expandidos con retorno void
 
 Clang ejecutaba una función C o C++ que recibe tres `double` expandidos,
