@@ -99,7 +99,9 @@ estático y destructor con débil devolvieron 0 con Python y NSLink por nombre;
 comandos, hashes y resultados en
 `A:/nsc-fixes-evidencia/authorized-targeted-after-build-20261112.json` y logs
 `authorized-after-build-*-20261112.log`. El SHA-256 del compilador fue
-`bfd555f60eeb82d28186d0076e0dc743e78e9ef4ddca79f683b3b1bd65239ffbd5ddd4d91f2cc36c26`.
+`bfd555f60eeb82d28186d0076e0dc743e78e9ef4ddca79f683b3e92f73549b98`.
+El valor se cotejó con los registros antes y después del JSON y del log de
+`weak-destructor` indicados arriba; corrige una transcripción anterior errónea.
 
 La compilación incremental reutilizó objetos existentes, incluidos objetos
 producidos antes de la autorización y de la corrección del entorno. No se ha
