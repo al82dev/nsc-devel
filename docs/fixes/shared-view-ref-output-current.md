@@ -37,3 +37,33 @@ del mismo nivel, sin cruzar niveles. Comandos, fuentes, hashes y salidas:
 El Core binario era preexistente y el compilador contenía cambios locales e
 instrumentación experimental. La evidencia no cubre vistas dentro de tuplas,
 entrada `in`, DLL, bibliotecas históricas ni descarga de módulos.
+
+Un control posterior amplió la entrada escalar a `in SharedView` y conservó
+salidas `ref` y `out`. El productor se analizó y publicó en O0/O2 y ambas
+firmas binarias se materializaron en cada nivel. Pasaron 48 análisis de
+consumidores: 16 usos vivos aceptados, 16 escapes y 16 reemplazos rechazados
+con diagnósticos de vida; la mitad de cada grupo usó `Sink` binario. Los 16
+casos vivos ejecutaron 42 y los inseguros solo se analizaron. Evidencia:
+`A:/nsc-fixes-agente-2-evidencia/binary-view-ref-out-20261111/run-20261112T033725649320Z/results.json`.
+Se mantuvieron el Core preexistente y el compilador experimental indicados
+arriba. No se probaron tuplas, DLL, niveles cruzados ni metadata histórica.
+
+Otra matriz examinó dos entradas y el uso del mismo local como entrada `ref` y
+salida. Pasaron 112 comprobaciones semánticas esperadas con Rc/Arc, mitad con
+productor fuente y mitad binario: se aceptaron 32 casos vivos y se rechazaron
+80 escapes o reemplazos con diagnóstico de vida. Se ejecutaron 24 casos vivos
+y devolvieron 42. Los ocho casos vivos con el mismo local como `ref` de entrada
+y `out` de salida se aceptaron semánticamente, pero no se ejecutaron: aún no se
+ha demostrado cómo interactúa la inicialización de `out` con la entrada
+aliasada. Tampoco se ejecutaron los casos inseguros. Evidencia y comandos:
+`A:/nsc-fixes-agente-2-evidencia/binary-view-multiple-20261112/run-20261112T034051540100Z/results.json`.
+El compilador contenía cambios experimentales y Core era binario preexistente;
+no se prueban tuplas, DLL, niveles cruzados ni metadata histórica.
+
+Un control seguro separado con `int` pasó O0/O2 cuando `ref` y `out` apuntan
+al mismo local: en los casos probados la lectura observó el valor inicial hasta
+que el método escribió, y las escrituras posteriores fueron visibles por ambos
+parámetros. Comandos y resultados:
+`A:/nsc-fixes-agente-2-evidencia/ref-out-same-scalar-20261112/run-20261112T034407562284Z/results.json`.
+Esto no establece el contrato general ni la seguridad equivalente para
+`SharedView` o métodos binarios; esa ejecución continúa sin verificarse.
