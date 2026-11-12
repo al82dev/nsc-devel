@@ -24,7 +24,23 @@ consumidores precompilados de records C y 16 de la muestra C++ `preserve_most`
 (A:/temp/t09-cpp-cdecl-final-*.log). Los rechazos verifican el uso integrado,
 no cada paso interno de proyeccion por separado.
 
-El resultado cubre solo la muestra de ocho bytes para Win64; no demuestra
+El resultado inicial cubre la muestra de ocho bytes para Win64; no demuestra
 todos los layouts, tipos C++ o metodos. T09-003 y T11 siguen abiertos. Las
 pruebas reproducibles estan en
 [pruebas-tanda-09-cpp-record-cdecl](pruebas-tanda-09-cpp-record-cdecl/).
+
+## Record trivial de 24 bytes
+
+Una segunda muestra utiliza seis enteros y modifica el primero y el ultimo.
+Clang 23.1.0 clasifica la funcion ordinaria con retorno `sret` y argumento
+por puntero en Win64 (A:/temp/t09-cpp-record24-cdecl-oracle.ll). Pasaron ocho
+comparaciones C++/NativeSharp, directa y por puntero, con estatica y DLL O0-O3;
+se comprueban simbolo, retorno indirecto, todos los campos y el original
+(A:/temp/nsc-t09-cpp-record24-cdecl-uu929nwu).
+
+Pasaron tambien 16 consumidores precompilados con y sin encabezado
+(A:/temp/nsc-t09-cpp-record24-cdecl-precompilado-yllet70k). El tamano y la
+alineacion se exigen en el control C++ mediante `static_assert`. La muestra
+reproducible esta en
+[pruebas-tanda-09-cpp-record24-cdecl](pruebas-tanda-09-cpp-record24-cdecl/).
+Los resultados acreditan esta forma concreta, no todos los records ni metodos.
