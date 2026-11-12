@@ -54,6 +54,24 @@ pruebas como conformes. No se ha ejecutado la batería completa.
   pendiente: `A:/nsc-fixes-agente-2-evidencia/receiver-publication-emission-20261112/run-20261112T045936696066Z/results.json`
   y `A:/nsc-fixes-agente-2-evidencia/receiver-publication-explicit-20261112/run-20261112T050034276971Z/results.json`.
   No se infiere una garantía para todas las llamadas, bases o binarios.
+  Un sondeo posterior con compilador reenlazado tras la autorización identificó
+  una forma indirecta que sí llega a emisión: un helper de biblioteca estática
+  guarda su parámetro en un campo estático y el constructor o destructor del
+  payload le pasa `this`. Los cuatro cruces Rc/Arc y constructor/destructor
+  emitieron en O0, al igual que dos controles sin publicación. Ningún programa
+  se ejecutó. Evidencia:
+  `A:/nsc-fixes-agente-2-evidencia/receiver-publication-external-helper-20261112/run-20261112T051126230771Z/results.json`.
+  El build reutilizó objetos anteriores y Core binario preexistente; la
+  corrección debe tratar efectos binarios no demostrados sin afectar llamadas
+  que no reciben el receptor.
+  `0b6fe8f22` incorpora la guarda conservadora para argumentos derivados del
+  receptor en llamadas directas de cargas de clase shared: un destino sin
+  cuerpo MIR verificable se rechaza. La compilación incremental y 24 casos
+  de emisión O0 pasaron, junto con la regresión de publicación directa; no se
+  ejecutaron los consumidores. Un helper binario benigno con receptor se
+  rechaza también. Receptores implícitos de instancia, despacho virtual o de
+  interfaz, retornos opacos, alias no reconocidos y estructuras no quedan
+  cubiertos por esta guarda; ver `shared-receiver-binary-helper.md`.
 - El caso 74 solicita enumeración de campos; la lectura del ejemplo y del
   pipeline muestra que la API y la expansión tipada no existen actualmente.
   El diseño preliminar está en
@@ -63,7 +81,8 @@ pruebas como conformes. No se ha ejecutado la batería completa.
   por el filtro automático de la plataforma; su repetición con la versión
   estricta de temporales quedó pendiente, sin atribuir el bloqueo a NativeSharp.
 
-Continuar solo con lectura, documentación y trabajo aislado que no dependa de
-las rutas de build pendientes. Tras recibir autorización, verificar la
-configuración y volver a ejecutar únicamente las pruebas dirigidas necesarias;
-conservar las fuentes originales y mantener fuera la interoperabilidad C/C++.
+Tras la autorización ya recibida, se reenlazó incrementalmente el compilador y
+se repitieron cinco pruebas dirigidas; la procedencia y los objetos reutilizados
+se detallan en `procedencia-herramientas-y-evidencia.md`. Continuar con los
+casos abiertos y únicamente las pruebas dirigidas necesarias; conservar los
+originales y mantener fuera la interoperabilidad C/C++.
