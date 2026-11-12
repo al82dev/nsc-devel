@@ -850,3 +850,14 @@ llamadas o solo puntero, con y sin encabezado:
 Pasaron plan, transporte e identidad y la regresión precompilada C++ de `int*`
 (`A:/temp/nsc-t09-cpp-ret-pointer-precompilado-o_tyr3if`). Los demás tipos de
 puntero y firmas requieren pruebas propias; T09-003 sigue abierto.
+
+### Retornos de puntero a short y double
+
+Se contrastaron también retornos `short*` y `double*` con las muestras C y
+C++, en llamadas directas y por puntero, con escritura e identidad verificadas.
+Cada combinación pasó ocho comparaciones en estática y DLL O0–O3 y 16
+consumidores precompilados que usan solo el alias de puntero, con y sin
+encabezado. El [validador reutilizable](pruebas-tanda-09-regcall-records-retorno-float-pointer/validar-otros-punteros.py)
+genera muestras aisladas a partir de las de `float*`; sus ocho registros están
+en `A:/temp/nsc-t09-ret-punteros-escalares-oxk7f_yn`. Otros tipos apuntados,
+calificadores y firmas requieren evidencia propia; T09-003 sigue abierto.
