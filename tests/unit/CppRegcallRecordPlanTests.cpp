@@ -102,6 +102,8 @@ int main(int argc, char** argv)
         Nested __attribute__((regcall)) nested_const_void(Nested, const void*,int*);
         typedef Nested (__attribute__((regcall)) *NestedTwoFn)(Nested,Nested,int);
         Nested __attribute__((regcall)) nested_two(Nested,Nested,int);
+        typedef struct DifferentFloats { float a,b,c; } DifferentFloats;
+        Nested __attribute__((regcall)) nested_distinct(Nested,DifferentFloats,int);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -688,6 +690,27 @@ int main(int argc, char** argv)
         wrongPlan->logicalParameters[1].expandedOffsets[1] = 8;
         wrong.declaration.abiPlan = wrongPlan;
         if (metadata_detail::encodeCDependencyFunction(wrong, encoded, error)) return 121;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "nested_distinct") declaration = &function;
+        if (!declaration) return 126;
+        const auto plan = session->cFunctionAbiPlan("nested_distinct", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64FloatRecordRoundTrip(*plan, plan->symbol, 12, 4, 1, true, 2)) return 127;
+        metadata_detail::CDependencyFunctionSnapshot saved;
+        saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
+        saved.linkSymbol = plan->symbol; saved.declaration = *declaration;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+        metadata_detail::CDependencyFunctionSnapshot restored;
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        if (!metadata_detail::encodeCDependencyFunction(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 128;
+        auto wrong = saved;
+        if (!wrong.declaration.parameters[1].type.recordIdentity || !wrong.declaration.returnType.recordIdentity) return 129;
+        wrong.declaration.parameters[1].type.recordIdentity->clangUsr = wrong.declaration.returnType.recordIdentity->clangUsr;
+        if (metadata_detail::encodeCDependencyFunction(wrong, encoded, error)) return 130;
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;

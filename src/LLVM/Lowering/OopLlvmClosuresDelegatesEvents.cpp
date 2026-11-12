@@ -1585,7 +1585,11 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             node->children.size() == node->argumentCount + 1 && node->argumentTypeKeys.size() == node->argumentCount &&
             std::equal(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), regCallSignature->parameters.begin()) &&
             std::all_of(regCallSignature->parameters.begin(), regCallSignature->parameters.begin() + regCallRecords,
-                [&](const auto& key) { return key == node->typeKey; }) && node->cppFunctionPointerPlan && regCallLayout &&
+                [&](const auto& key) {
+                    const auto* layout = findStructLayout(mirModel_, key);
+                    return layout && regCallLayout && layout->size == regCallLayout->size &&
+                        layout->alignment == regCallLayout->alignment;
+                }) && node->cppFunctionPointerPlan && regCallLayout &&
             interop::abi_plan::isRegCallWin64FloatRecordSequence(*node->cppFunctionPointerPlan,
                 "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment))
         {
@@ -1597,7 +1601,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 const auto& type = node->cppFunctionPointerPlan->physicalParameters[
                     node->cppFunctionPointerPlan->logicalParameters[i].firstPhysical].type;
                 const auto& actual = node->argumentTypeKeys[i];
-                const bool compatible = i < regCallRecords ? actual == node->typeKey :
+                const bool compatible = i < regCallRecords ? actual == regCallSignature->parameters[i] :
                     type.kind == interop::abi_plan::TypeKind::Float ? actual == "builtin:float" :
                     type.kind == interop::abi_plan::TypeKind::Double ? actual == "builtin:double" :
                     type.kind == interop::abi_plan::TypeKind::Pointer ? actual.ends_with('*') :
@@ -1620,7 +1624,9 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             std::vector<LLVMValueRef> physical;
             for (std::size_t record = 0; record < regCallRecords; ++record)
             {
-                LLVMValueRef slot = entryBlockAlloca(carrier, 4, "regcall.callback.arg");
+                LLVMTypeRef argumentCarrier = llvmType(regCallSignature->parameters[record], error);
+                if (!argumentCarrier) return nullptr;
+                LLVMValueRef slot = entryBlockAlloca(argumentCarrier, 4, "regcall.callback.arg");
                 LLVMValueRef store = LLVMBuildStore(builder_, logical[record], slot);
                 LLVMSetAlignment(store, 4);
                 for (const auto offset : node->cppFunctionPointerPlan->logicalParameters[record].expandedOffsets)

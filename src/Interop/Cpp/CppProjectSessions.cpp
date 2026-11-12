@@ -412,8 +412,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
         {
             const auto& parameter = signature.parameterTypes[i];
             if (parameter.kind != CppTypeKind::Record || !parameter.recordIdentity ||
-                parameter.recordIdentity->clangUsr != signature.returnType.recordIdentity->clangUsr ||
-                parameter.canonicalSpelling != signature.returnType.canonicalSpelling ||
+                !parameter.recordIdentity->clangUsr || parameter.recordIdentity->clangUsr->empty() ||
                 parameter.sizeBits != signature.returnType.sizeBits ||
                 parameter.alignmentBits != signature.returnType.alignmentBits) return {};
         }
@@ -521,7 +520,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     if (regCall)
     {
         while (regCallRecords < signature.parameterTypes.size() &&
-               abi_plan::regCallSameRecord(signature.returnType, signature.parameterTypes[regCallRecords])) ++regCallRecords;
+               abi_plan::regCallCompatibleRecordLayout(signature.returnType, signature.parameterTypes[regCallRecords])) ++regCallRecords;
         if (!returnRecord || !regCallRecords ||
             !std::all_of(signature.parameterTypes.begin() + regCallRecords, signature.parameterTypes.end(),
                 [](const auto& type) { return abi_plan::regCallFloatRecordScalarSupported(type); })) return {};

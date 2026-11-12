@@ -743,7 +743,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         bool tailMatches = expandedRecords <= f.parameters.size() &&
             f.parameters.size() == f.abiPlan->logicalParameters.size();
         for (std::size_t i = 0; tailMatches && i < expandedRecords; ++i)
-            tailMatches = abi_plan::regCallSameRecord(f.returnType, f.parameters[i].type);
+            tailMatches = abi_plan::regCallCompatibleRecordLayout(f.returnType, f.parameters[i].type);
         for (std::size_t i = expandedRecords; tailMatches && i < f.parameters.size(); ++i)
         {
             const auto index = f.abiPlan->logicalParameters[i].firstPhysical;

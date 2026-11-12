@@ -184,6 +184,17 @@ inline bool regCallSameRecord(const CppType& result, const CppType& parameter) n
         parameter.sizeBits == result.sizeBits && parameter.alignmentBits == result.alignmentBits;
 }
 
+inline bool regCallCompatibleRecordLayout(const CppType& result, const CppType& parameter) noexcept
+{
+    return result.kind == CppTypeKind::Record && parameter.kind == CppTypeKind::Record &&
+        result.recordIdentity && result.recordIdentity->clangUsr && !result.recordIdentity->clangUsr->empty() &&
+        parameter.recordIdentity && parameter.recordIdentity->clangUsr && !parameter.recordIdentity->clangUsr->empty() &&
+        !parameter.canonicalSpelling.empty() && result.sizeBits && result.alignmentBits &&
+        (parameter.canonicalSpelling == result.canonicalSpelling) ==
+            (parameter.recordIdentity->clangUsr == result.recordIdentity->clangUsr) &&
+        parameter.sizeBits == result.sizeBits && parameter.alignmentBits == result.alignmentBits;
+}
+
 inline bool isRegCallWin64FloatRecordSequence(const Plan& plan, std::string_view symbol,
                                               std::uint64_t size, std::uint64_t alignment) noexcept
 {

@@ -433,7 +433,18 @@ del mismo tipo (`A:/temp/nsc-t09-two-records-_5uqm7hu`). La prueba negativa
 de esa regresión ahora usa un segundo record con un campo entero: conserva la
 verificación de rechazo de una forma no admitida.
 
-La llamada por puntero y la precompilación de esta combinación siguen sin
-funcionar (`A:/temp/nsc-t09-distinct-records-j9xf4j5d` y
-`A:/temp/nsc-t09-distinct-records-pre-ma3g02i0`). Tampoco se acredita C++,
-records de tamaños distintos ni otras formas. T09-003 permanece abierto.
+La llamada por puntero y la precompilación inicialmente fallaban
+(`A:/temp/nsc-t09-distinct-records-j9xf4j5d` y
+`A:/temp/nsc-t09-distinct-records-pre-ma3g02i0`). Ahora pasan las llamadas C
+directas e indirectas en estática y DLL O0–O3, con inspección de LLVM
+(`A:/temp/nsc-t09-distinct-records-s80aniec`), y 32 consumidores
+precompilados con y sin encabezado, incluidos los que solo usan puntero
+(`A:/temp/nsc-t09-distinct-records-pre-ub55mds7` y
+`A:/temp/nsc-t09-distinct-records-pre-d0p93g2d`). La reconstrucción concilia
+cada record con su identidad y el catálogo; una prueba de metadatos rechaza
+atribuir al segundo la identidad del primero. Pasaron el plan, transporte y
+la regresión precompilada de records iguales
+(`A:/temp/nsc-t09-two-records-pre-em6y82v9`).
+
+No se acredita C++, records de tamaños distintos ni otras formas. T09-003
+permanece abierto.
