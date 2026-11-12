@@ -1,0 +1,11 @@
+int Main() {
+    T09HfaCpp.Nested a; a.pair.x=(float)10; a.pair.y=(float)20; a.z=(float)30;
+    T09HfaCpp.Array b; b.values[0]=(float)10; b.values[1]=(float)20; b.values[2]=(float)30;
+    T09HfaCpp.NestedFn fa=T09HfaCpp.fetchNested(); T09HfaCpp.ArrayFn fb=T09HfaCpp.fetchArray();
+    T09HfaCpp.Nested c=T09HfaCpp.nested(a,1); T09HfaCpp.Nested d=fa(a,1);
+    T09HfaCpp.Array e=T09HfaCpp.array(b,1); T09HfaCpp.Array f=fb(b,1);
+    return a.pair.x==(float)10 && a.z==(float)30 && b.values[0]==(float)10 && b.values[2]==(float)30 &&
+           c.pair.x==(float)11 && c.pair.y==(float)22 && c.z==(float)33 && d.pair.x==(float)11 && d.pair.y==(float)22 && d.z==(float)33 &&
+           e.values[0]==(float)11 && e.values[1]==(float)22 && e.values[2]==(float)33 &&
+           f.values[0]==(float)11 && f.values[1]==(float)22 && f.values[2]==(float)33 ? 0 : 1;
+}

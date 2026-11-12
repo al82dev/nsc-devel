@@ -273,8 +273,14 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
             const auto& pointer = alias.declaration.underlyingType;
             if (pointer.kind != CppTypeKind::Pointer || !pointer.element || !pointer.element->function) return {};
             const auto& signature = *pointer.element->function;
+            const bool mixed = signature.parameterTypes.size() == 2 &&
+                signature.parameterTypes[1].kind == CppTypeKind::SignedInteger &&
+                signature.parameterTypes[1].canonicalSpelling == "int" &&
+                signature.parameterTypes[1].sizeBits == 32 && signature.parameterTypes[1].alignmentBits == 32 &&
+                !signature.parameterTypes[1].isConst && !signature.parameterTypes[1].isVolatile &&
+                !signature.parameterTypes[1].isRestrict;
             if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
-                signature.returnType.kind != CppTypeKind::Record || signature.parameterTypes.size() != 1 ||
+                signature.returnType.kind != CppTypeKind::Record || (signature.parameterTypes.size() != 1 && !mixed) ||
                 signature.parameterTypes[0].kind != CppTypeKind::Record ||
                 signature.returnType.canonicalSpelling != signature.parameterTypes[0].canonicalSpelling ||
                 !signature.returnType.recordIdentity || !signature.returnType.recordIdentity->clangUsr ||
@@ -300,7 +306,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
             auto plan = cppSession->cppFunctionPointerAbiPlan(alias.declaration.qualifiedName,
                 *alias.declaration.clangUsr, pointer.canonicalSpelling);
             if (!plan || !abi_plan::isRegCallWin64FloatRecordRoundTrip(
-                    *plan, "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4)) return {};
+                    *plan, "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4, mixed)) return {};
             return std::make_shared<const abi_plan::Plan>(std::move(*plan));
         }
     }
@@ -409,6 +415,12 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     if (cppPointer.kind == CppTypeKind::Pointer && cppPointer.element && cppPointer.element->function)
     {
         const auto& signature = *cppPointer.element->function;
+        const bool mixed = signature.parameterTypes.size() == 2 &&
+            signature.parameterTypes[1].kind == CppTypeKind::SignedInteger &&
+            signature.parameterTypes[1].canonicalSpelling == "int" &&
+            signature.parameterTypes[1].sizeBits == 32 && signature.parameterTypes[1].alignmentBits == 32 &&
+            !signature.parameterTypes[1].isConst && !signature.parameterTypes[1].isVolatile &&
+            !signature.parameterTypes[1].isRestrict;
         const auto identity = projectCppRecordTypeIdentity(signature.returnType, moduleName);
         const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
         const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
@@ -455,7 +467,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             }
             if (!selected || matchingRecords != 1 || !selected->declaration.abiPlan ||
                 !abi_plan::isRegCallWin64FloatRecordRoundTrip(*selected->declaration.abiPlan,
-                    "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4)) return {};
+                    "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4, mixed)) return {};
             return selected->declaration.abiPlan;
         }
     }

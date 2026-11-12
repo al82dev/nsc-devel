@@ -1553,7 +1553,15 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                     pointer.kind == CppTypeKind::Pointer && pointer.element && pointer.element->function &&
                     pointer.element->function->callingConvention == "regcall" &&
                     pointer.element->function->returnType.kind == CppTypeKind::Record &&
-                    pointer.element->function->parameterTypes.size() == 1 &&
+                    (pointer.element->function->parameterTypes.size() == 1 ||
+                     (pointer.element->function->parameterTypes.size() == 2 &&
+                      pointer.element->function->parameterTypes[1].kind == CppTypeKind::SignedInteger &&
+                      pointer.element->function->parameterTypes[1].canonicalSpelling == "int" &&
+                      pointer.element->function->parameterTypes[1].sizeBits == 32 &&
+                      pointer.element->function->parameterTypes[1].alignmentBits == 32 &&
+                      !pointer.element->function->parameterTypes[1].isConst &&
+                      !pointer.element->function->parameterTypes[1].isVolatile &&
+                      !pointer.element->function->parameterTypes[1].isRestrict)) &&
                     pointer.element->function->parameterTypes[0].kind == CppTypeKind::Record &&
                     pointer.element->function->returnType.canonicalSpelling ==
                         pointer.element->function->parameterTypes[0].canonicalSpelling)
@@ -1563,7 +1571,8 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                     const auto& type = pointer.element->function->returnType;
                     if (plan && type.sizeBits && *type.sizeBits % 8 == 0 && type.alignmentBits &&
                         *type.alignmentBits % 8 == 0 && abi_plan::isRegCallWin64FloatRecordRoundTrip(
-                            *plan, "__regcall3____nsc_pointer_abi_probe", *type.sizeBits / 8, *type.alignmentBits / 8))
+                            *plan, "__regcall3____nsc_pointer_abi_probe", *type.sizeBits / 8, *type.alignmentBits / 8,
+                            pointer.element->function->parameterTypes.size() == 2))
                         declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
                 }
                 result.push_back({group.projectFile, index, *owner, target, std::move(declaration)});

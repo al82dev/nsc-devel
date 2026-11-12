@@ -1343,8 +1343,14 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
             !pointer.element || !pointer.element->function)
         { error = "invalid C++ dependency alias ABI identity"; return false; }
         const auto& signature = *pointer.element->function;
+        const bool mixed = signature.parameterTypes.size() == 2 &&
+            signature.parameterTypes[1].kind == CppTypeKind::SignedInteger &&
+            signature.parameterTypes[1].canonicalSpelling == "int" &&
+            signature.parameterTypes[1].sizeBits == 32 && signature.parameterTypes[1].alignmentBits == 32 &&
+            !signature.parameterTypes[1].isConst && !signature.parameterTypes[1].isVolatile &&
+            !signature.parameterTypes[1].isRestrict;
         if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
-            signature.returnType.kind != CppTypeKind::Record || signature.parameterTypes.size() != 1 ||
+            signature.returnType.kind != CppTypeKind::Record || (signature.parameterTypes.size() != 1 && !mixed) ||
             signature.parameterTypes[0].kind != CppTypeKind::Record || !signature.returnType.recordIdentity ||
             !signature.returnType.recordIdentity->clangUsr || !signature.parameterTypes[0].recordIdentity ||
             signature.returnType.recordIdentity->clangUsr != signature.parameterTypes[0].recordIdentity->clangUsr ||
@@ -1352,7 +1358,7 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
             !signature.returnType.sizeBits || *signature.returnType.sizeBits % 8 || signature.returnType.alignmentBits != 32 ||
             signature.parameterTypes[0].sizeBits != signature.returnType.sizeBits || signature.parameterTypes[0].alignmentBits != 32 ||
             !abi_plan::isRegCallWin64FloatRecordRoundTrip(*alias.abiPlan,
-                "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4) ||
+                "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4, mixed) ||
             !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
         { error = "invalid C++ dependency alias ABI plan"; return false; }
     }

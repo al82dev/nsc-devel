@@ -75,5 +75,14 @@ confirma la lectura del plan y el rechazo de un tipo alterado.
 Pasaron las regresiones de transporte, identidad, firmas anteriores y
 rechazos conservados.
 
-**Pendiente:** no se ha comprobado todavía esta firma mixta para C++, ni otras
-combinaciones de argumentos y layouts.
+La muestra C++ equivalente pasó también en las ocho configuraciones con
+llamadas directas e indirectas (`A:/temp/nsc-t09-cpp-mixed-o6sglwcs`).
+Pasaron 16 consumidores precompilados con ambas llamadas y otros 16 solo por
+puntero, con y sin encabezado
+(`A:/temp/nsc-t09-cpp-nested-precompilado-bbg_tme6` y
+`A:/temp/nsc-t09-cpp-nested-precompilado-hjnt6p5d`). La prueba del contrato
+de alias C++ confirma que el plan sobrevive a la serialización y rechaza el
+ancho físico alterado. Se comprobaron también los consumidores C mixtos y los
+casos C++ previos.
+
+**Pendiente:** otras combinaciones de argumentos y layouts no están acreditadas.
