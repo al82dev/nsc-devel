@@ -652,3 +652,19 @@ rechaza un retorno físico alterado. Pasaron transporte, las restricciones de
 campos privados y record no trivial (`A:/temp/nsc-t09-cpp-ret-int-rechazos-fkwo303r`)
 y la regresión precompilada C (`A:/temp/nsc-t09-record-ret-int-pre-r2748dqz`).
 Otros retornos y firmas no están acreditados. T09-003 sigue abierto.
+
+## Registros expandidos con retorno double
+
+La muestra C recibe dos records flotantes y un entero intercalado y devuelve
+un `double` con parte fraccionaria. El control C pasaba y NSC rechazaba la
+firma (`A:/temp/nsc-t09-record-ret-double-fycs44lm`). La validación y emisión
+directa ya aceptan el retorno físico `double`; la muestra pasó en estática y
+DLL O0–O3 frente a C, con inspección LLVM
+(`A:/temp/nsc-t09-record-ret-double-0jkx2eww`). La prueba del plan rechaza un
+retorno físico alterado; pasaron transporte y la regresión de retorno `int`
+(`A:/temp/nsc-t09-record-ret-int-0jsepp70`).
+
+La llamada por puntero y la precompilación siguen fallando
+(`A:/temp/nsc-t09-record-ret-double-y0qbty2m` y
+`A:/temp/nsc-t09-record-ret-double-pre-bbuv0zld`). C++, otros retornos y
+otras firmas no se acreditan. T09-003 permanece abierto.

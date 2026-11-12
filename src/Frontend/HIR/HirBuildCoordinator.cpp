@@ -1920,12 +1920,13 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     }
                     return true;
                 }();
-            const bool regCallRecordsReturningInt = function.cppRegCall && symbol.cppAbiPlan && symbol.cppReturnType &&
-                function.returnTypeKey == "builtin:int" &&
+            const bool regCallRecordsReturningScalar = function.cppRegCall && symbol.cppAbiPlan && symbol.cppReturnType &&
+                (function.returnTypeKey == "builtin:int" || function.returnTypeKey == "builtin:double") &&
                 interop::abi_plan::regCallFloatRecordScalarMatches(symbol.cppAbiPlan->physicalReturn, *symbol.cppReturnType) &&
                 function.parameterTypeKeys.size() == symbol.cppParameterTypes.size() &&
                 symbol.cppAbiPlan->logicalParameters.size() == symbol.cppParameterTypes.size() &&
-                interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*symbol.cppAbiPlan, symbol.mangledName) &&
+                (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*symbol.cppAbiPlan, symbol.mangledName) ||
+                 interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*symbol.cppAbiPlan, symbol.mangledName)) &&
                 [&] {
                     for (std::size_t i = 0; i < symbol.cppParameterTypes.size(); ++i)
                     {
@@ -1944,7 +1945,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     return true;
                 }();
             if (function.cppRegCall && (function.isVariadic ||
-                (!regCallRecordRoundTrip && !regCallRecordIntRoundTrip && !regCallRecordSequence && !regCallRecordInterleaved && !regCallRecordsReturningInt && ((!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&
+                (!regCallRecordRoundTrip && !regCallRecordIntRoundTrip && !regCallRecordSequence && !regCallRecordInterleaved && !regCallRecordsReturningScalar && ((!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&
                  !function.returnTypeKey.ends_with('*')) ||
                 !std::ranges::all_of(function.parameterTypeKeys, [&](const auto& type) {
                     return regCallScalar(type) || type.ends_with('*');
