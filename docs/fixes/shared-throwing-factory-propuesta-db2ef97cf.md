@@ -7,8 +7,11 @@ antes de realizar la validación dirigida.
 
 ## Evidencia previa
 
-El ejemplo original se conserva en
-`tests/integration/fixtures/shared_throwing_four_fields_original.ns`.
+La reproducción del worker se conserva en
+`tests/integration/fixtures/shared_throwing_four_fields_original.ns`. Su texto
+coincide con `A:/nsc-vistas-evidencia/shared-four-fields-failure/Main.ns` según
+`fc`, pero sus bytes difieren por finales de línea; no es un ejemplo original
+del reporte ni una copia binaria idéntica del archivo histórico.
 Con un compilador aislado anterior, las configuraciones O0 y O2 lo rechazaron
 con `shared throwing construction cannot safely clean this payload shape`.
 Esa observación no valida este diff ni el Core binario de esta revisión.
@@ -46,3 +49,8 @@ mismo mecanismo de llamada sin destino local de unwind que la acción anterior;
 no demuestra que el resto de limpiezas continúe si ese destructor lanza.
 La identidad del estado vacío entre particiones y la interacción con SIMD
 necesitan pruebas. El commit base contiene trabajo SIMD en progreso.
+
+El runner `shared_throwing_four_fields_original.py` copia byte a byte el
+fixture versionado y recibe nsc, Core, metadata, runtime, imports y directorio
+de evidencia explícitos en A. El runner se incorporó sin ejecutarse; su copia
+idéntica se refiere al fixture versionado, no al archivo histórico en evidencia.
