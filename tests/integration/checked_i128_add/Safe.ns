@@ -8,5 +8,10 @@ int Main()
     if (checked(maximum + (i128)-1) != maximum - (i128)1) return 3;
     if (checked(minimum + (i128)1) != minimum + (i128)1) return 4;
     if (maximum + (i128)1 != minimum) return 5;
+    i128 limb = (i128)1 << 64;
+    i128 lowMaximum = limb - (i128)1;
+    if (checked(lowMaximum + (i128)1) != limb) return 6;
+    if (checked(-limb + lowMaximum) != (i128)-1) return 7;
+    if (checked(limb + -limb) != (i128)0) return 8;
     return 0;
 }

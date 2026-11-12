@@ -13,3 +13,8 @@ extremos positivo y negativo, sumas válidas en los límites y la suma ordinaria
 pasó (`full-suite-run/checked-tests.log`). El cambio cubre suma firmada i128:
 resta, multiplicación, conversiones y otros anchos no quedan acreditados por
 esta regresión ni se declaran corregidos aquí.
+Control integrado adicional: el acarreo entre mitades de 64 bits y sumas con
+signos opuestos pasaron en O0 y O2; los controles existentes de trap también
+pasaron. Comando `A:/nsc-fixes-evidencia/numeric-targeted-20261111.cmd`, log
+`numeric-i128-20261111.log`. El compilador tenía otros cambios locales y
+NSLink se invocó por nombre como dependencia externa de solo lectura.
