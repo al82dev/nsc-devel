@@ -56,3 +56,15 @@ plataformas distintas de Windows no demuestra que pase allí. La ejecución
 histórica usó `detect_leaks=0`; no demuestra ausencia de fugas ni que `realloc`
 haya movido el bloque. No se ha modificado ninguna otra copia o archivo
 compartido, ni se ha aplicado el fragmento.
+
+## Comprobación aislada del fragmento
+
+Desde la raíz de esta copia se ejecutó
+`call ..\nsc-asan-evidencia\run-a.cmd cmake -P A:/nsc-asan-evidencia/check-registro-realloc.cmake`.
+Terminó con código 0 y `PASS: proposed registration arguments and cwd`. El
+script incluye el fragmento versionado y sustituye `add_test` y
+`set_tests_properties` por funciones que comprueban los argumentos y el
+directorio esperado con rutas de prueba explícitas. Esto comprueba la evaluación
+del fragmento en ese contexto aislado; **no comprueba el descubrimiento real de
+CTest, no ejecuta la prueba y no valida que el integrador haya aplicado el
+registro**. La validación pendiente de la sección anterior se mantiene.
