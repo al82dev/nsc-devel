@@ -5483,6 +5483,11 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.compiler.readonly-pattern-loan
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/readonly_pattern_loan.py"
                 "${NSC_TEST_COMPILER}")
+    add_test(NAME nsc.compiler.borrowed-tuple-capture-boundary
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/borrowed_tuple_capture_boundary.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.compiler.borrowed-tuple-capture-boundary PROPERTIES
+        SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(NAME nsc.compiler.borrowed-lambda-owned-view
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/borrowed_lambda_owned_view.py"
                 "${NSC_TEST_COMPILER}")

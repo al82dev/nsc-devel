@@ -400,7 +400,7 @@ bool ProjectMethodBodyModel::validateLambdaLocalCaptureLifetime(
     // SHR-013: una VISTA capturada por un lambda es el mismo defecto que las dos de
     // abajo llegando por el tipo en vez de por el calificativo. El delegate se puede
     // guardar en un campo, devolver, o llamar horas despues; lo prestado no lo sabe.
-    if (typeKeyIsViewLike(local.typeKey))
+    if (typeKeyIsViewLike(local.typeKey) || tupleTypeKeyContainsView(local.typeKey))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
@@ -551,7 +551,7 @@ bool ProjectMethodBodyModel::validateLambdaParameterCaptureLifetime(
     bool safe = true;
     // SHR-013: y lo mismo para un PARAMETRO de tipo vista. Un parametro sobrevive a la
     // llamada, pero no al delegate que lo captura.
-    if (typeKeyIsViewLike(parameter.typeKey))
+    if (typeKeyIsViewLike(parameter.typeKey) || tupleTypeKeyContainsView(parameter.typeKey))
     {
         diagnostics.report(
             diagnostics::DiagnosticId::InvalidOperand,
