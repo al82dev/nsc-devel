@@ -1009,6 +1009,36 @@ rechazos de ancho y alineación, transporte e identidad y la regresión C++ de
 ocho bytes (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-nb7g8sd1`).
 Otros tamaños, alineaciones y firmas no se acreditan; T09-003 sigue abierto.
 
+## Registro mixto con retorno entero estrecho
+
+La función recibe por copia un registro mixto de `float` y `double` y devuelve
+`short`. El control Clang funcionaba mientras NSC rechazaba las firmas C y C++
+(`A:/temp/nsc-t09-regcall-record-mixto-short-e116cm2d` y
+`A:/temp/nsc-t09-cpp-record-mixto-short-457l8565`). La validación física admite
+una copia indirecta sin registro expandido con retorno de 8 o 16 bits; se
+concilian tipo, identidad y layout. La prueba del plan y los metadatos rechaza
+la alineación o el ancho alterados.
+
+Pasaron control y NSC [C](pruebas-tanda-09-regcall-record-mixto-short/)
+O0–O3, directo y por puntero en estática, verificando el valor negativo, la
+copia y LLVM (`A:/temp/nsc-t09-regcall-record-mixto-short-mxjcdih5`). La
+muestra [C++](pruebas-tanda-09-regcall-cpp-record-mixto-short/) pasó ocho
+comparaciones en estática y DLL (`A:/temp/nsc-t09-cpp-record-mixto-short-h5gghr8_`).
+Pasaron 32 consumidores precompilados C
+(`A:/temp/nsc-t09-record-mixto-short-pre-nw9wy8ma` y
+`A:/temp/nsc-t09-record-mixto-short-pre-udbbipjg`) y 32 C++
+(`A:/temp/nsc-t09-cpp-record-mixto-short-pre-olikxbmd` y
+`A:/temp/nsc-t09-cpp-record-mixto-short-pre-vmwzwqbc`), en estática y DLL,
+O0–O3, con y sin encabezado.
+
+Un [validador de variantes](pruebas-tanda-09-regcall-record-mixto-short/validar-variantes.py)
+también comprobó C y C++ con retornos `signed char`, `unsigned char` y
+`unsigned short`, incluidas llamadas por puntero y desde consumidores
+precompilados por puntero (`A:/temp/nsc-t09-mixto-estrechos-72maw44v`).
+Pasaron plan, transporte, ABI e identidad y la regresión C++ de retorno de
+registro compacto (`A:/temp/nsc-t09-cpp-return-compact-pre-brotdf_t`). La
+llamada C directa con DLL y otras firmas siguen pendientes; T09-003 sigue abierto.
+
 ## Registro mixto con retorno entero de 64 bits
 
 Una función C o C++ recibe por copia un registro de `float` y `double` y

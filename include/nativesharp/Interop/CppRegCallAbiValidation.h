@@ -465,11 +465,13 @@ inline bool isRegCallWin64FloatRecordsReturningNarrowInteger(const Plan& plan, s
     const auto bits = plan.physicalReturn.widthOrCount;
     if (bits != 8 && bits != 16) return false;
     std::size_t records = 0;
+    bool indirect = false;
     for (const auto& logical : plan.logicalParameters)
         if (logical.passing == Passing::Expand) ++records;
-    return records && isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4,
+        else if (logical.passing == Passing::Indirect) indirect = true;
+    return (records || indirect) && isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4,
         plan.logicalParameters.size() - records, true, records, true, true, false, false, false, false, false, false,
-        static_cast<unsigned>(bits));
+        static_cast<unsigned>(bits), false, 0, false, !records);
 }
 
 inline bool isRegCallWin64FloatRecordsReturningBool(const Plan& plan, std::string_view symbol) noexcept
