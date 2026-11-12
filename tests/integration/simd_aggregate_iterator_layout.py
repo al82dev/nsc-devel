@@ -1,18 +1,24 @@
 """Directed SIMD tuple/iterator layout checks; original reproductions stay intact."""
 import ctypes
+from html import escape
 import os
 from pathlib import Path
 import subprocess
 import sys
+from isolated_a_runner import absolute_a, setup
 
-compiler = Path(sys.argv[1]).resolve()
-root = Path(sys.argv[2]).resolve()
+if len(sys.argv) not in (5, 6) or (len(sys.argv) == 6 and sys.argv[5] != '--check-only'):
+    raise SystemExit('expected nsc, Core.lib, Core.nsmeta, new evidence directory and optional --check-only')
+compiler = absolute_a(sys.argv[1])
+core = absolute_a(sys.argv[2])
+metadata = absolute_a(sys.argv[3])
+root = absolute_a(sys.argv[4])
 repository = Path(__file__).resolve().parents[2]
-check_only = len(sys.argv) > 3 and sys.argv[3] == '--check-only'
+check_only = len(sys.argv) == 6
 if os.name != 'nt' or compiler.drive.upper() != 'A:' or root.drive.upper() != 'A:':
     raise SystemExit(2)
 ctypes.windll.kernel32.SetErrorMode(0x0001 | 0x0002 | 0x8000)
-root.mkdir(parents=True, exist_ok=False)
+environment = setup(root, repository)
 failures = []
 for lanes in (4, 8, 16):
     simd = 'simd<int, ' + str(lanes) + '>'
@@ -51,19 +57,22 @@ for lanes in (4, 8, 16):
         (directory / 'Main.ns').write_text(source, encoding='utf-8')
         project = directory / 'Probe.nsproj'
         project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
-                           '<ItemGroup><Compile Include="Main.ns" /></ItemGroup></Project>', encoding='utf-8')
+                           '<ItemGroup><Compile Include="Main.ns" /><LibraryReference Include="' +
+                           escape(core.as_posix(), quote=True) + '" Metadata="' +
+                           escape(metadata.as_posix(), quote=True) + '"/></ItemGroup></Project>',
+                           encoding='utf-8')
         for level in (('MIR',) if check_only else ('O0', 'O2')):
             executable = directory / (level + '.exe')
             command = ([str(compiler), '--check-project-oop-mir', str(project)] if check_only else
                        [str(compiler), '--emit-project-oop-exe', str(project), '-' + level,
                         '-o', str(executable), '--no-artifact-cache'])
-            result = subprocess.run(command, cwd=repository, capture_output=True, text=True,
+            result = subprocess.run(command, cwd=repository, env=environment, capture_output=True, text=True,
                                     errors='replace', timeout=120)
             log = ('COMMAND ' + subprocess.list2cmdline(command) + '\nCWD ' + str(repository) +
                    '\nCOMPILE_EXIT ' + str(result.returncode) + '\n' + result.stdout + result.stderr)
             if result.returncode == 0 and not check_only:
                 try:
-                    run = subprocess.run([str(executable)], cwd=repository, capture_output=True,
+                    run = subprocess.run([str(executable)], cwd=repository, env=environment, capture_output=True,
                                          text=True, errors='replace', timeout=10)
                     log += 'RUN_EXIT ' + str(run.returncode) + '\n' + run.stdout + run.stderr
                     if run.returncode != 42:

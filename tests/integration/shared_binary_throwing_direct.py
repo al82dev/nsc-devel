@@ -5,6 +5,7 @@ import hashlib
 import os
 import subprocess
 import sys
+from isolated_a_runner import absolute_a, setup
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 FIXTURES = Path(__file__).resolve().parent / 'fixtures' / 'binary_throwing_direct'
@@ -41,15 +42,10 @@ def invoke(command, environment, log, timeout):
 def main():
     if len(sys.argv) != 5:
         raise SystemExit('expected nsc, Core.lib, Core.nsmeta and new evidence directory')
-    compiler, core, metadata, root = (Path(value).resolve() for value in sys.argv[1:])
+    compiler, core, metadata, root = (absolute_a(value) for value in sys.argv[1:])
     if any(path.drive.lower() != 'a:' for path in (compiler, core, metadata, root)):
         raise SystemExit('compiler, Core, metadata and evidence must be on A:')
-    root.mkdir(parents=True, exist_ok=False)
-    temporary = root / 'temp'
-    temporary.mkdir()
-    environment = os.environ.copy()
-    environment['TEMP'] = str(temporary)
-    environment['TMP'] = str(temporary)
+    environment = setup(root, REPOSITORY)
     before = {str(path): digest(path) for path in (compiler, core, metadata)}
     (root / 'inputs-before.txt').write_text(repr(before) + '\n', encoding='utf-8')
     producer_source = (FIXTURES / 'Producer.ns').read_text(encoding='utf-8')

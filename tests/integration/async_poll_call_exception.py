@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from isolated_a_runner import absolute_a, setup
 
 PREFIX = '''using NativeSharp.Core;
 namespace NativeSharp.Core { public class Exception { public static int Builds; public static int Drops; public static int DropTrace;
@@ -128,12 +129,14 @@ Exception.Builds == 1 && Exception.Drops == 1 ? 42 : 3; }''',
 
 
 def main():
-    if os.name != 'nt' or len(sys.argv) != 2:
+    if os.name != 'nt' or len(sys.argv) != 3:
         return 77
-    compiler = Path(sys.argv[1]).resolve()
+    compiler = absolute_a(sys.argv[1])
+    evidence = absolute_a(sys.argv[2])
     repository = Path(__file__).resolve().parents[2]
+    environment = setup(evidence, repository)
     failures = []
-    with tempfile.TemporaryDirectory(prefix='nsc-async-poll-call-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='nsc-async-poll-call-', dir=evidence) as temporary:
         root = Path(temporary)
         for name, body in CASES.items():
             case = root / name
@@ -147,12 +150,12 @@ def main():
                 command = [str(compiler), '--emit-project-oop-exe', str(project), '-' + level,
                            '-o', str(executable), '--no-artifact-cache']
                 print('COMMAND', subprocess.list2cmdline(command), 'CWD', repository, flush=True)
-                result = subprocess.run(command, cwd=repository, capture_output=True, text=True,
+                result = subprocess.run(command, cwd=repository, env=environment, capture_output=True, text=True,
                                         errors='replace', timeout=120)
                 if result.returncode:
                     failures.append((name, level, 'compile', result.returncode, result.stdout + result.stderr))
                     continue
-                result = subprocess.run([str(executable)], cwd=repository, capture_output=True, text=True,
+                result = subprocess.run([str(executable)], cwd=repository, env=environment, capture_output=True, text=True,
                                         errors='replace', timeout=10)
                 print('RUN', name, level, result.returncode, flush=True)
                 if result.returncode != 42:

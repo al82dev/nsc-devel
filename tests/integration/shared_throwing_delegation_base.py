@@ -1,9 +1,11 @@
 """Generate isolated lifecycle fixtures; compilation/execution require explicit flags."""
 import hashlib
+from html import escape
 import json
 from pathlib import Path
 import subprocess
 import sys
+from isolated_a_runner import absolute_a, setup
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 
@@ -49,13 +51,13 @@ def main():
     if len(sys.argv) not in (5, 6) or (len(sys.argv) == 6 and sys.argv[5] not in ('--compile', '--execute')):
         raise SystemExit('usage: shared_throwing_delegation_base.py <nsc> <Core.lib> <Core.nsmeta> <new-dir-on-A> [--compile|--execute]')
     global COMPILER, CORE, METADATA
-    COMPILER, CORE, METADATA = (Path(p).resolve() for p in sys.argv[1:4])
+    COMPILER, CORE, METADATA = (absolute_a(p) for p in sys.argv[1:4])
     if any(p.drive.lower() != 'a:' for p in (COMPILER, CORE, METADATA)):
         raise SystemExit('compiler, SDK and metadata must be isolated on A:')
-    root = Path(sys.argv[4]).resolve()
+    root = absolute_a(sys.argv[4])
     if root.drive.lower() != 'a:':
         raise SystemExit('evidence directory must be on A:')
-    root.mkdir(parents=True, exist_ok=False)
+    environment = setup(root, REPOSITORY)
     mode = sys.argv[5] if len(sys.argv) == 6 else ''
     before = {str(path): digest(path) for path in (COMPILER, CORE, METADATA)}
     records = []
@@ -70,8 +72,9 @@ def main():
             (directory / 'Main.ns').write_text(source, encoding='utf-8')
             project = directory / 'Probe.nsproj'
             project.write_text('<Project><PropertyGroup><Name>DelegationBaseProbe</Name></PropertyGroup>'
-                '<ItemGroup><Compile Include="Main.ns"/><LibraryReference Include="' + CORE.as_posix() +
-                '" Metadata="' + METADATA.as_posix() + '"/></ItemGroup></Project>', encoding='utf-8')
+                '<ItemGroup><Compile Include="Main.ns"/><LibraryReference Include="' +
+                escape(CORE.as_posix(), quote=True) + '" Metadata="' +
+                escape(METADATA.as_posix(), quote=True) + '"/></ItemGroup></Project>', encoding='utf-8')
             for level in ('O0', 'O2'):
                 executable = directory / (level + '.exe')
                 command = [str(COMPILER), '--emit-project-oop-exe', str(project), '-' + level,
@@ -80,11 +83,11 @@ def main():
                 records.append(record)
                 if mode:
                     try:
-                        build = subprocess.run(command, cwd=REPOSITORY, capture_output=True, text=True,
+                        build = subprocess.run(command, cwd=REPOSITORY, env=environment, capture_output=True, text=True,
                                                errors='replace', timeout=120)
                         record.update(compile_exit=build.returncode, stdout=build.stdout, stderr=build.stderr)
                         if build.returncode == 0 and mode == '--execute':
-                            run = subprocess.run([str(executable)], cwd=REPOSITORY, capture_output=True, text=True,
+                            run = subprocess.run([str(executable)], cwd=REPOSITORY, env=environment, capture_output=True, text=True,
                                                  errors='replace', timeout=10)
                             record.update(run_exit=run.returncode, run_stdout=run.stdout, run_stderr=run.stderr)
                     except subprocess.TimeoutExpired:

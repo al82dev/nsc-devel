@@ -9,6 +9,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from isolated_a_runner import absolute_a, setup
 
 from foreign_finally_owner import replace_body
 
@@ -68,7 +69,7 @@ failed:
 
 def run(command, cwd, expected):
     print('COMMAND', subprocess.list2cmdline(command), 'CWD', cwd, flush=True)
-    result = subprocess.run(command, cwd=cwd, capture_output=True, text=True, errors='replace', timeout=120)
+    result = subprocess.run(command, cwd=cwd, env=ENVIRONMENT, capture_output=True, text=True, errors='replace', timeout=120)
     print('EXIT', result.returncode, result.stderr, flush=True)
     if result.returncode != expected:
         raise RuntimeError('unexpected exit ' + str(result.returncode))
@@ -76,12 +77,14 @@ def run(command, cwd, expected):
 
 
 def main():
-    if os.name != 'nt' or len(sys.argv) != 4:
+    if os.name != 'nt' or len(sys.argv) != 5:
         return 77
-    compiler, runtime, imports = (Path(value).resolve() for value in sys.argv[1:])
+    compiler, runtime, imports, evidence = (absolute_a(value) for value in sys.argv[1:])
     repository = Path(__file__).resolve().parents[2]
+    global ENVIRONMENT
+    ENVIRONMENT = setup(evidence, repository)
     libraries = [str(imports / (name + '.import.lib')) for name in ('KERNEL32', 'KERNELBASE', 'SHELL32', 'UCRTBASE')]
-    with tempfile.TemporaryDirectory(prefix='nsc-async-foreign-') as temporary:
+    with tempfile.TemporaryDirectory(prefix='nsc-async-foreign-', dir=evidence) as temporary:
         root = Path(temporary)
         project = root / 'Probe.nsproj'
         project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'

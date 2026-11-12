@@ -3,6 +3,7 @@ from html import escape
 from pathlib import Path
 import subprocess
 import sys
+from isolated_a_runner import absolute_a, setup
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 
@@ -42,7 +43,7 @@ def reference(library, metadata):
 
 def run(command):
     command = [str(item) for item in command]
-    result = subprocess.run(command, cwd=REPOSITORY, capture_output=True, text=True,
+    result = subprocess.run(command, cwd=REPOSITORY, env=ENVIRONMENT, capture_output=True, text=True,
                             errors='replace', timeout=120)
     print('COMMAND', subprocess.list2cmdline(command), 'EXIT', result.returncode,
           result.stdout + result.stderr, flush=True)
@@ -51,10 +52,11 @@ def run(command):
 def main():
     if len(sys.argv) != 5:
         raise SystemExit('expected nsc, Core.lib, Core.nsmeta and new evidence directory')
-    compiler, core, metadata, root = (Path(value).resolve() for value in sys.argv[1:])
+    compiler, core, metadata, root = (absolute_a(value) for value in sys.argv[1:])
     if any(value.drive.lower() != 'a:' for value in (compiler, core, metadata, root)):
         raise SystemExit('compiler, SDK, metadata and evidence must be isolated on A:')
-    root.mkdir(parents=True, exist_ok=False)
+    global ENVIRONMENT
+    ENVIRONMENT = setup(root, REPOSITORY)
     (root / 'Producer.ns').write_text(PRODUCER, encoding='utf-8')
     producer = root / 'Producer.nsproj'
     producer.write_text('<Project><PropertyGroup><Name>ImportedRoot</Name>'
@@ -105,7 +107,7 @@ def main():
                                       encoding='utf-8')
         command = [str(compiler), '--emit-project-oop-exe', str(project), '-O0',
                    '-o', str(root / 'reject.exe'), '--no-artifact-cache']
-        result = subprocess.run(command, cwd=REPOSITORY, capture_output=True, text=True,
+        result = subprocess.run(command, cwd=REPOSITORY, env=ENVIRONMENT, capture_output=True, text=True,
                                 errors='replace', timeout=120)
         print('COMMAND', subprocess.list2cmdline(command), 'EXIT', result.returncode,
               result.stdout + result.stderr, flush=True)

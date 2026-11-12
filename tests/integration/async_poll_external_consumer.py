@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+from isolated_a_runner import absolute_a, setup
 from xml.sax.saxutils import quoteattr
 
 PRODUCER = '''using NativeSharp.Core;
@@ -24,18 +25,21 @@ return caught == 7 && Service.Calls == 1 ? 42 : 2; } }
 
 def invoke(command, cwd, expected):
     print('COMMAND', subprocess.list2cmdline(command), 'CWD', cwd, flush=True)
-    result = subprocess.run(command, cwd=cwd, capture_output=True, text=True, errors='replace', timeout=120)
+    result = subprocess.run(command, cwd=cwd, env=ENVIRONMENT, capture_output=True, text=True, errors='replace', timeout=120)
     print('EXIT', result.returncode, result.stdout, result.stderr, flush=True)
     if result.returncode != expected:
         raise RuntimeError('unexpected exit ' + str(result.returncode))
 
 
 def main():
-    if os.name != 'nt' or len(sys.argv) != 2:
+    if os.name != 'nt' or len(sys.argv) != 3:
         return 77
-    compiler = Path(sys.argv[1]).resolve()
+    compiler = absolute_a(sys.argv[1])
+    evidence = absolute_a(sys.argv[2])
     repository = Path(__file__).resolve().parents[2]
-    with tempfile.TemporaryDirectory(prefix='nsc-poll-external-') as temporary:
+    global ENVIRONMENT
+    ENVIRONMENT = setup(evidence, repository)
+    with tempfile.TemporaryDirectory(prefix='nsc-poll-external-', dir=evidence) as temporary:
         root = Path(temporary)
         producer = root / 'producer'
         consumer = root / 'consumer'
