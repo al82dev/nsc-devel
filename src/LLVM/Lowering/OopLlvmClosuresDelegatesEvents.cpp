@@ -1617,16 +1617,19 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             std::vector<LLVMValueRef> logical;
             for (std::size_t i = 0; i < node->argumentCount; ++i)
             {
-                const auto& type = node->cppFunctionPointerPlan->physicalParameters[
-                    node->cppFunctionPointerPlan->logicalParameters[i].firstPhysical].type;
+                const auto& logicalPlan = node->cppFunctionPointerPlan->logicalParameters[i];
+                const auto& physicalPlan = node->cppFunctionPointerPlan->physicalParameters[logicalPlan.firstPhysical];
+                const auto& type = physicalPlan.type;
                 const auto& actual = node->argumentTypeKeys[i];
                 const auto* directRecordLayout = findStructLayout(mirModel_, actual);
                 const bool compatible = node->cppFunctionPointerPlan->logicalParameters[i].passing == interop::abi_plan::Passing::Expand ?
                     actual == regCallSignature->parameters[i] :
                     directRecordLayout ? actual == regCallSignature->parameters[i] &&
-                        (directRecordLayout->size == 1 || directRecordLayout->size == 2 || directRecordLayout->size == 4 || directRecordLayout->size == 8) &&
                         directRecordLayout->alignment && directRecordLayout->alignment <= directRecordLayout->size &&
-                        type.kind == interop::abi_plan::TypeKind::Integer && type.widthOrCount == directRecordLayout->size * 8 :
+                        (logicalPlan.passing == interop::abi_plan::Passing::Indirect ?
+                            type.kind == interop::abi_plan::TypeKind::Pointer && physicalPlan.alignment == directRecordLayout->alignment :
+                            (directRecordLayout->size == 1 || directRecordLayout->size == 2 || directRecordLayout->size == 4 || directRecordLayout->size == 8) &&
+                            type.kind == interop::abi_plan::TypeKind::Integer && type.widthOrCount == directRecordLayout->size * 8) :
                     type.kind == interop::abi_plan::TypeKind::Float ? actual == "builtin:float" :
                     type.kind == interop::abi_plan::TypeKind::Double ? actual == "builtin:double" :
                     type.kind == interop::abi_plan::TypeKind::Pointer ? actual.ends_with('*') :
@@ -1667,9 +1670,14 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                         LLVMValueRef slot = entryBlockAlloca(argumentCarrier, layout->alignment, "regcall.callback.direct.arg");
                         LLVMValueRef store = LLVMBuildStore(builder_, logical[record], slot);
                         LLVMSetAlignment(store, layout->alignment);
-                        LLVMValueRef bits = LLVMBuildLoad2(builder_, LLVMIntTypeInContext(context_, static_cast<unsigned>(layout->size * 8)), slot, "regcall.callback.direct.bits");
-                        LLVMSetAlignment(bits, layout->alignment);
-                        physical.push_back(bits);
+                        if (node->cppFunctionPointerPlan->logicalParameters[record].passing == interop::abi_plan::Passing::Indirect)
+                            physical.push_back(slot);
+                        else
+                        {
+                            LLVMValueRef bits = LLVMBuildLoad2(builder_, LLVMIntTypeInContext(context_, static_cast<unsigned>(layout->size * 8)), slot, "regcall.callback.direct.bits");
+                            LLVMSetAlignment(bits, layout->alignment);
+                            physical.push_back(bits);
+                        }
                     }
                     else physical.push_back(logical[record]);
                     continue;

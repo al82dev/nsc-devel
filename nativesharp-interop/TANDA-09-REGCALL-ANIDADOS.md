@@ -1020,10 +1020,15 @@ pasó ocho comparaciones en estática y DLL O0–O3, con inspección LLVM y
 comprobación de que modificar el parámetro no cambia el original
 (`A:/temp/nsc-t09-expanded-large-ryuidfu5`).
 
-La prueba del plan rechaza una alineación física alterada; pasaron transporte,
-ABI, identidad y la regresión precompilada C++ del registro compacto
-(`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-vrj4scyq`). La llamada por
-alias y la precompilación C aún fallan (`A:/temp/nsc-t09-expanded-large-r9okq2_p`
-y `A:/temp/nsc-t09-expanded-large-pre-gtoh9dut`); C++ y el registro de tres
-bytes solo tienen observación de Clang, no interoperabilidad acreditada.
-T09-003 permanece abierto.
+La llamada por alias y la precompilación C antes fallaban
+(`A:/temp/nsc-t09-expanded-large-r9okq2_p` y
+`A:/temp/nsc-t09-expanded-large-pre-gtoh9dut`). La conciliación comprueba la
+identidad, el layout y el plan indirecto; la emisión pasa una copia con la
+alineación validada. Pasaron ocho comparaciones por alias
+(`A:/temp/nsc-t09-expanded-large-xzzcp5za`), 16 consumidores precompilados con
+ambas llamadas (`A:/temp/nsc-t09-expanded-large-pre-vibacxu4`) y 16 solo por
+alias (`A:/temp/nsc-t09-expanded-large-pre-kzksmkpg`), en estática y DLL O0–O3,
+con y sin encabezado. Las pruebas del plan y del codec rechazan alineaciones
+alteradas; pasaron transporte, ABI, identidad y la regresión precompilada del
+registro compacto (`A:/temp/nsc-t09-expanded-mixed-pre-115xd3aw`). C++ y el
+registro de tres bytes siguen pendientes. T09-003 permanece abierto.

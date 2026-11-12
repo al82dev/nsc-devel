@@ -468,7 +468,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
               abi_plan::isRegCallWin64FloatRecordsReturningPointer(*plan, plan->symbol)) ||
             (signature.returnType.kind == CppTypeKind::Pointer && !abi_plan::regCallFloatRecordScalarPointerReturnSupported(signature.returnType)) ||
             !abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, signature.returnType) ||
-            !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes, true)) return {};
+            !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes, true, true)) return {};
     }
     if (plan && signature.callingConvention == "regcall" && signature.returnType.kind == CppTypeKind::Record &&
         std::any_of(plan->logicalParameters.begin(), plan->logicalParameters.end(),
@@ -1002,7 +1002,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
           (returnVoid && abi_plan::isRegCallWin64FloatRecordsReturningVoid(*plan, expectedSymbol))) ||
          (std::any_of(plan->logicalParameters.begin(), plan->logicalParameters.end(),
               [](const auto& logical) { return logical.passing == abi_plan::Passing::Expand; }) &&
-          !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes, !returnRecord)))) return {};
+          !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes, !returnRecord, !returnRecord)))) return {};
     return std::make_shared<const abi_plan::Plan>(std::move(*plan));
 }
 

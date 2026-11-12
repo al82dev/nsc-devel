@@ -371,7 +371,8 @@ inline bool isRegCallWin64FloatRecordsReturningBool(const Plan& plan, std::strin
 
 inline bool regCallFloatRecordArgumentsMatch(const Plan& plan, const CppType& result,
                                              std::span<const CppType> parameters,
-                                             bool allowDirectRecords = false) noexcept
+                                             bool allowDirectRecords = false,
+                                             bool allowIndirectRecords = false) noexcept
 {
     if (parameters.size() != plan.logicalParameters.size()) return false;
     for (std::size_t i = 0; i < parameters.size(); ++i)
@@ -381,11 +382,13 @@ inline bool regCallFloatRecordArgumentsMatch(const Plan& plan, const CppType& re
         {
             if (!regCallRecordMatchesExpansion(result, parameters[i], logical)) return false;
         }
-        else if (parameters[i].kind == CppTypeKind::Record && allowDirectRecords)
+        else if (parameters[i].kind == CppTypeKind::Record && (allowDirectRecords || allowIndirectRecords))
         {
             if (logical.firstPhysical >= plan.physicalParameters.size() ||
-                !regCallDirectIntegerRecordMatches(parameters[i], logical,
-                    plan.physicalParameters[logical.firstPhysical])) return false;
+                !((allowDirectRecords && regCallDirectIntegerRecordMatches(parameters[i], logical,
+                    plan.physicalParameters[logical.firstPhysical])) ||
+                  (allowIndirectRecords && regCallIndirectRecordMatches(parameters[i], logical,
+                    plan.physicalParameters[logical.firstPhysical])))) return false;
         }
         else if (logical.passing == Passing::Indirect || logical.firstPhysical >= plan.physicalParameters.size() ||
                  !regCallFloatRecordScalarMatches(plan.physicalParameters[logical.firstPhysical].type, parameters[i]))

@@ -918,6 +918,21 @@ int main(int argc, char** argv)
                 plan->physicalParameters[logical.firstPhysical])) return 243;
         auto bad = plan->physicalParameters[logical.firstPhysical]; bad.alignment = 8;
         if (abi_plan::regCallIndirectRecordMatches(declaration->parameters[2].type, logical, bad)) return 244;
+        std::vector<CppType> parameters;
+        for (const auto& parameter : declaration->parameters) parameters.push_back(parameter.type);
+        if (abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters, true) ||
+            !abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters, true, true)) return 245;
+        metadata_detail::CDependencyFunctionSnapshot saved;
+        saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
+        saved.linkSymbol = plan->symbol; saved.declaration = *declaration;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+        metadata_detail::CDependencyFunctionSnapshot restored;
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        if (!metadata_detail::encodeCDependencyFunction(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 246;
+        auto altered = saved; altered.declaration.parameters[2].type.alignmentBits = 64;
+        if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 247;
     }
     {
         const CppFunctionDeclaration* declaration = nullptr;
