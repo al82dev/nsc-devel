@@ -28,5 +28,23 @@ prueba de namespace conservó los dos fallos SEH conocidos.
 
 El control exploratorio con `Future<int, Exception>` no compiló por resolución
 del tipo, así que no acredita propagación de error desde una fábrica. También
-quedan sin verificar el dispatch virtual, módulos binarios y el await durante
+quedan sin verificar el dispatch virtual de métodos async, módulos binarios y el await durante
 cancelación; la corrección de este caso no implica que esos escenarios pasen.
+
+Se añadieron controles dirigidos con la superficie existente: una llamada async
+directa propaga su error después de suspender; fábricas síncronas estática, de
+namespace y virtual lanzan antes de devolver un future y el consumidor recibe
+la excepción. `tests/integration/async_future_factory_errors.py` pasó las ocho
+ejecuciones O0/O2 y comprobó dos diagnósticos esperados: no se puede retornar un
+future con error como `Future<int>` sin error. Comandos, fuentes y diagnóstico
+completo del sondeo están en
+`A:/nsc-fixes-evidencia/async-finally-20261111/await-factory-errors.log`; el
+runner definitivo registró sus diez resultados en
+`A:/nsc-fixes-evidencia/async-finally-20261111/await-factory-errors-regression.log`.
+El compilador del sondeo informó build hash `9257cf434b544b85`.
+
+Estos controles no ejercitan el transporte de un error dentro de un future
+devuelto por una fábrica síncrona; `Future<T>` es la superficie nombrable sin
+error según la canonicalización actual. El dispatch virtual verificado aquí
+es el de la fábrica que lanza, no el de un método async virtual que devuelve
+distintos futures. Esos límites y la cobertura binaria siguen pendientes.
