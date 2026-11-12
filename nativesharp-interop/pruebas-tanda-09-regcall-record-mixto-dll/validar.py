@@ -10,9 +10,10 @@ import tempfile
 parser = argparse.ArgumentParser()
 parser.add_argument('--nsc', required=True)
 parser.add_argument('--clang-root', required=True)
+parser.add_argument('--triple-double', action='store_true', help='comprueba los registros de tres double expandidos')
 args = parser.parse_args()
 base = Path(__file__).resolve().parent.parent
-root = Path(tempfile.mkdtemp(prefix='nsc-t09-mixto-c-dll-', dir=r'A:\temp'))
+root = Path(tempfile.mkdtemp(prefix='nsc-t09-triple-double-c-dll-' if args.triple_double else 'nsc-t09-mixto-c-dll-', dir=r'A:\temp'))
 env = dict(os.environ, TEMP=str(root), TMP=str(root))
 print('Evidencia:', root, flush=True)
 
@@ -36,7 +37,10 @@ cases = (('real', 'double', 'sum_pair', 'get_sum', 'i32'),
          ('void', 'void', 'write_pair', 'get_write', 'ptr'),
          ('pointer', 'ptr', 'sum_pair', 'get_sum', 'ptr'))
 for name, result_type, function, getter, tail in cases:
-    source = base / ('pruebas-tanda-09-regcall-record-mixto-' + name)
+    if args.triple_double and name == 'real':
+        continue
+    prefix = 'pruebas-tanda-09-regcall-triple-double-' if args.triple_double else 'pruebas-tanda-09-regcall-record-mixto-'
+    source = base / (prefix + name)
     for opt in range(4):
         case = root / (name + '-O' + str(opt))
         case.mkdir()
@@ -57,7 +61,8 @@ for name, result_type, function, getter, tail in cases:
         llvm = run(case, 'llvm', [args.nsc, '--dump-project-oop-llvm', str(case / 'Probe.nsproj'),
             '--library-reference-root', str(case), '--cpp-clang-root=' + args.clang_root])
         carrier = r'\s+'.join(result_type.split())
-        arguments = r'ptr\s+[^,)]+,\s*' + tail + r'\s+[^,)]+'
+        record = r',\s*'.join([r'double\s+[^,)]+'] * 3) if args.triple_double else r'ptr\s+[^,)]+'
+        arguments = record + r',\s*' + tail + r'\s+[^,)]+'
         for target in (r'@(?:"\\01)?__regcall3__' + function, r'%[^\s(]+'):
             if not re.search(r'call\s+x86_regcallcc\s+' + carrier + r'\s+' + target + r'\(' + arguments + r'\)', llvm):
                 raise SystemExit(name + ': llamada fisica ausente; evidencia: ' + str(case / 'llvm.log'))
@@ -68,4 +73,4 @@ for name, result_type, function, getter, tail in cases:
             '--no-artifact-cache', '-O' + str(opt), '-o', str(output)])
         run(case, 'nsc-run', [str(output)])
         print(name + '-O' + str(opt) + ': correcto', flush=True)
-print('OK: 32 comparaciones C con DLL; evidencia:', root, flush=True)
+print('OK:', (28 if args.triple_double else 32), 'comparaciones C con DLL; evidencia:', root, flush=True)

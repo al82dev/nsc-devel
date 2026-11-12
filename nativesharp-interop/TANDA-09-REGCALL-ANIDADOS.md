@@ -1368,6 +1368,18 @@ transporte, ABI e identidad y los rechazos previos de registros privados y no
 triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-3lfox064`). Otras
 formas y registros C++ no triviales siguen sin acreditar.
 
+## DLL C desde fuente con tres double expandidos
+
+El [validador conjunto](pruebas-tanda-09-regcall-record-mixto-dll/validar.py)
+con `--triple-double` compiló siete bibliotecas C como DLL con Clang 23.1.0 y
+comparó el control C con NativeSharp O0–O3. Pasaron 28 comparaciones para
+retornos `int`, `float`, `long long`, `short`, booleano, `void` e `int*`,
+directos y por puntero, con inspección de las piezas y retorno en LLVM
+(`A:/temp/nsc-t09-triple-double-c-dll-lt_hbphb`). El modo anterior del mismo
+validador también pasó sus 32 comparaciones
+(`A:/temp/nsc-t09-mixto-c-dll-9fuf3jhn`). La evidencia cubre las muestras
+indicadas; otras longitudes, valores y firmas siguen pendientes.
+
 ## Registros double y float expandidos en la misma llamada
 
 La [muestra C](pruebas-tanda-09-regcall-double-float-expanded/) combina un
@@ -1423,8 +1435,8 @@ encabezado:
 Pasaron plan, transporte, ABI e identidad y las regresiones C++ precompiladas
 de retorno compacto y puntero mixto
 (`A:/temp/nsc-t09-cpp-return-compact-pre-vho45ytb`,
-`A:/temp/nsc-t09-cpp-record-mixto-pointer-pre-avvglzx1`). La llamada C directa
-con DLL, otras longitudes, valores y firmas siguen pendientes; T09-003 sigue abierto.
+`A:/temp/nsc-t09-cpp-record-mixto-pointer-pre-avvglzx1`). Otras longitudes,
+valores y firmas siguen pendientes; T09-003 sigue abierto.
 
 ## Tres double expandidos con retorno void
 
@@ -1450,8 +1462,8 @@ Pasaron 32 consumidores C precompilados
 `A:/temp/nsc-t09-cpp-triple-double-void-pre-kd90eat1`), estática y DLL,
 O0–O3, con y sin encabezado. Pasaron plan, transporte, ABI, identidad y la
 regresión C++ precompilada del registro mixto con retorno `void`
-(`A:/temp/nsc-t09-cpp-record-mixto-void-pre-yk2ig5cv`). La llamada C directa
-con DLL y otras firmas y longitudes siguen pendientes; T09-003 sigue abierto.
+(`A:/temp/nsc-t09-cpp-record-mixto-void-pre-yk2ig5cv`). Otras firmas y
+longitudes siguen pendientes; T09-003 sigue abierto.
 
 ## Tres double expandidos con retorno booleano
 
@@ -1477,8 +1489,8 @@ Pasaron 32 consumidores C precompilados
 `A:/temp/nsc-t09-cpp-triple-double-bool-pre-umn688qq`), estática y DLL,
 O0–O3, con y sin encabezado. Pasaron plan, transporte, ABI, identidad y la
 regresión C++ precompilada del registro mixto booleano
-(`A:/temp/nsc-t09-cpp-record-mixto-bool-pre-ch5m1qt2`). La llamada C directa
-con DLL y otras firmas y longitudes siguen pendientes; T09-003 sigue abierto.
+(`A:/temp/nsc-t09-cpp-record-mixto-bool-pre-ch5m1qt2`). Otras firmas y
+longitudes siguen pendientes; T09-003 sigue abierto.
 
 ## Tres double expandidos con retorno float
 
@@ -1504,8 +1516,8 @@ Pasaron 32 consumidores C precompilados
 `A:/temp/nsc-t09-cpp-triple-double-float-pre-kv_etdlu`), estática y DLL,
 O0–O3, con y sin encabezado. Pasaron plan, transporte, ABI, identidad y la
 regresión C++ precompilada del registro mixto por copia
-(`A:/temp/nsc-t09-cpp-record-mixto-float-pre-16ninddd`). La llamada C directa
-con DLL y otras firmas y longitudes siguen pendientes; T09-003 sigue abierto.
+(`A:/temp/nsc-t09-cpp-record-mixto-float-pre-16ninddd`). Otras firmas y
+longitudes siguen pendientes; T09-003 sigue abierto.
 
 ## Argumentos de double expandidos con retorno entero
 
@@ -1531,7 +1543,7 @@ inspección LLVM; pasaron plan, transporte, ABI e identidad.
 También se comprobaron dos y cuatro componentes en C y C++, llamadas directas
 y por puntero y precompiladas por puntero
 (`A:/temp/nsc-t09-double-int-longitudes-q_wb5d9k`). La llamada C directa con DLL
-y otras firmas y tipos de retorno siguen pendientes; T09-003 permanece abierto.
+para esas dos longitudes y otras firmas siguen pendientes; T09-003 permanece abierto.
 
 ## Argumento de dos double expandidos: pendiente
 
