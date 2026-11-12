@@ -1,0 +1,12 @@
+#pragma once
+#ifdef API_DLL_IMPORT
+#define API __declspec(dllimport)
+#else
+#define API
+#endif
+namespace T09Wide {
+struct PairDouble { double x, y, z; };
+using SumFn = void (__attribute__((regcall)) *)(PairDouble, int*);
+API void __attribute__((regcall)) sum(PairDouble value, int* out);
+API SumFn fetch();
+}

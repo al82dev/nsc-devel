@@ -1368,6 +1368,33 @@ transporte, ABI e identidad y los rechazos previos de registros privados y no
 triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-3lfox064`). Otras
 formas y registros C++ no triviales siguen sin acreditar.
 
+## Tres double expandidos con retorno void
+
+Clang ejecutaba una función C o C++ que recibe tres `double` expandidos,
+devuelve `void` y escribe mediante un puntero; NSC rechazaba la firma
+(`A:/temp/nsc-t09-regcall-triple-double-void-dzsbbmwc` y
+`A:/temp/nsc-t09-cpp-triple-double-void-w_3f5lv9`). La validación admite las
+piezas de ocho bytes y concilia identidad, layout y retorno. La prueba de plan
+y metadatos rechaza un desplazamiento o retorno físico alterados.
+
+El [caso C](pruebas-tanda-09-regcall-triple-double-void/) pasó O0–O3 en
+estática, directo y por puntero
+(`A:/temp/nsc-t09-regcall-triple-double-void-5cyvutvp`). El
+[caso C++](pruebas-tanda-09-regcall-cpp-triple-double-void/) pasó ocho
+comparaciones en estática y DLL
+(`A:/temp/nsc-t09-cpp-triple-double-void-2cvlb0rz`). Se verificaron escritura,
+copia del argumento y la forma física en LLVM.
+
+Pasaron 32 consumidores C precompilados
+(`A:/temp/nsc-t09-triple-double-void-pre-5cykvoqm` y
+`A:/temp/nsc-t09-triple-double-void-pre-9ncdoyjg`) y 32 C++
+(`A:/temp/nsc-t09-cpp-triple-double-void-pre-n4capi_q` y
+`A:/temp/nsc-t09-cpp-triple-double-void-pre-kd90eat1`), estática y DLL,
+O0–O3, con y sin encabezado. Pasaron plan, transporte, ABI, identidad y la
+regresión C++ precompilada del registro mixto con retorno `void`
+(`A:/temp/nsc-t09-cpp-record-mixto-void-pre-yk2ig5cv`). La llamada C directa
+con DLL y otras firmas y longitudes siguen pendientes; T09-003 sigue abierto.
+
 ## Tres double expandidos con retorno booleano
 
 Clang ejecutaba una función C o C++ que recibe tres `double` expandidos y
