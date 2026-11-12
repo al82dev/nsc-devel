@@ -293,3 +293,8 @@ Esta evidencia no acredita `const void*`, records calificados, `volatile`,
 calificadores intermedios ni todas las expresiones afectadas por D11/D12.
 D23 sigue pendiente para arreglos de punteros calificados. T09-003 continúa
 abierto.
+
+La validación física rechaza expresamente un record apuntado `const` hasta
+verificar su identidad y comportamiento: la prueba de plan construye esa
+forma con su nombre canónico y comprueba el rechazo. La compilación
+incremental y `nsc.cpp-interop.regcall-record-plan` pasaron.

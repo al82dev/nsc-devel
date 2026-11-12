@@ -583,6 +583,11 @@ int main(int argc, char** argv)
             record = std::make_shared<CppType>(*wrong.element);
             record->recordIdentity->name = "Forged"; wrong.element = record;
             if (abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type, wrong)) return 101;
+            wrong = declaration->parameters[1].type;
+            record = std::make_shared<CppType>(*wrong.element);
+            record->isConst = true; record->canonicalSpelling = "const " + record->canonicalSpelling;
+            wrong.canonicalSpelling = record->canonicalSpelling + " *"; wrong.element = record;
+            if (abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type, wrong)) return 106;
         }
     }
     {

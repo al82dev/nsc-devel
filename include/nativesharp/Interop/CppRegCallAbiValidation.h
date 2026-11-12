@@ -133,7 +133,7 @@ inline bool regCallFloatRecordScalarMatches(const Type& physical, const CppType&
         // Physical acceptance only: callers must independently reconcile the
         // record identity and its origin before using this pointer plan.
         if (element.kind == CppTypeKind::Record)
-            return element.recordIdentity && element.recordIdentity->clangUsr &&
+            return !element.isConst && element.recordIdentity && element.recordIdentity->clangUsr &&
                 !element.recordIdentity->clangUsr->empty() && !element.recordIdentity->name.empty() &&
                 !element.recordIdentity->anonymousContext && !element.recordIdentity->specializationContext &&
                 element.canonicalSpelling.size() > element.recordIdentity->name.size() &&
