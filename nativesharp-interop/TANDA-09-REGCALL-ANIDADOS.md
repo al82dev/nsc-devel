@@ -764,3 +764,24 @@ con y sin encabezado. La regresión precompilada C++ de retorno `void`
 (`A:/temp/nsc-t09-cpp-ret-void-precompilado-glk70p02`) y las pruebas de plan,
 transporte e identidad pasaron. Otros retornos y firmas siguen pendientes;
 T09-003 permanece abierto.
+
+## Registros expandidos con retorno entero de 64 bits
+
+Las muestras C devuelven `long long` y `unsigned long long` tras recibir dos
+records flotantes y un entero intercalado. El valor comprobado, 4294967462,
+supera 32 bits para detectar truncamiento. El control C firmado pasaba y NSC
+rechazaba la firma (`A:/temp/nsc-t09-record-ret-i64-vijyh2p1`). El plan físico
+se valida como `i64`, se concilia con el tipo fuente y se conserva al emitir
+llamadas y metadatos.
+
+Pasaron ocho comparaciones firmadas directas y ocho por puntero
+(`A:/temp/nsc-t09-record-ret-i64-4bmx059t` y
+`A:/temp/nsc-t09-record-ret-i64-x58wpxv4`), y ocho sin signo con ambas llamadas
+(`A:/temp/nsc-t09-record-ret-u64-nwp2gx1u`), en estática y DLL O0–O3, con
+inspección LLVM. Pasaron 16 consumidores precompilados firmados con ambas
+llamadas (`A:/temp/nsc-t09-record-ret-i64-pre-pa8vpl83`), 16 solo por puntero
+(`A:/temp/nsc-t09-record-ret-i64-pre-5gd68i78`) y 16 sin signo solo por puntero
+(`A:/temp/nsc-t09-record-ret-u64-pre-14pugftw`), con y sin encabezado.
+La prueba del plan y el codec rechazan un retorno físico alterado; pasaron
+transporte, ABI e identidad. No se acreditan el rango completo sin signo,
+otras firmas ni C++. T09-003 permanece abierto.

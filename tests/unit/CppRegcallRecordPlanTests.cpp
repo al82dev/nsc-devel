@@ -109,6 +109,7 @@ int main(int argc, char** argv)
         Nested __attribute__((regcall)) nested_first(Floats,Nested,int);
         Nested __attribute__((regcall)) nested_interleaved(Nested,int,Floats);
         int __attribute__((regcall)) nested_return_int(Nested,int,Floats);
+        long long __attribute__((regcall)) nested_return_i64(Nested,int,Floats);
         double __attribute__((regcall)) nested_return_double(Nested,int,Floats);
         float __attribute__((regcall)) nested_return_float(Nested,int,Floats);
         void __attribute__((regcall)) nested_return_void(Nested,int,Floats,int*);
@@ -857,6 +858,28 @@ int main(int argc, char** argv)
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 181;
         altered = saved; altered.declaration.returnType.sizeBits = 32;
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 182;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "nested_return_i64") declaration = &function;
+        if (!declaration) return 200;
+        const auto plan = session->cFunctionAbiPlan("nested_return_i64", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64FloatRecordsReturningInt64(*plan, plan->symbol) ||
+            !abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, declaration->returnType)) return 201;
+        auto wrong = *plan; wrong.physicalReturn.widthOrCount = 32;
+        if (abi_plan::isRegCallWin64FloatRecordsReturningInt64(wrong, wrong.symbol)) return 202;
+        metadata_detail::CDependencyFunctionSnapshot saved;
+        saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
+        saved.linkSymbol = plan->symbol; saved.declaration = *declaration;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+        metadata_detail::CDependencyFunctionSnapshot restored;
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        if (!metadata_detail::encodeCDependencyFunction(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 203;
+        auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 204;
     }
     {
         const CppFunctionDeclaration* declaration = nullptr;

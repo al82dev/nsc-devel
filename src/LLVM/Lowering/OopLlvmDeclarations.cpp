@@ -21,6 +21,7 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
             const auto* regCallLayout = findStructLayout(mirModel_, function.returnTypeKey);
             const bool regCallScalarReturn = function.cppRegCall && function.cppAbiPlan &&
                 ((function.returnTypeKey == "builtin:int" && interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*function.cppAbiPlan, function.cAbiName)) ||
+                 ((function.returnTypeKey == "builtin:long" || function.returnTypeKey == "builtin:ulong") && interop::abi_plan::isRegCallWin64FloatRecordsReturningInt64(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey == "builtin:double" && interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey == "builtin:float" && interop::abi_plan::isRegCallWin64FloatRecordsReturningFloat(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey == "builtin:void" && interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(*function.cppAbiPlan, function.cAbiName)));
@@ -44,6 +45,7 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                         LLVMIntTypeInContext(context_, static_cast<unsigned>(type.widthOrCount)));
                 }
                 LLVMTypeRef result = regCallScalarReturn ? (function.returnTypeKey == "builtin:void" ? LLVMVoidTypeInContext(context_) :
+                    (function.returnTypeKey == "builtin:long" || function.returnTypeKey == "builtin:ulong") ? LLVMIntTypeInContext(context_, 64) :
                     function.returnTypeKey == "builtin:float" ? LLVMFloatTypeInContext(context_) :
                     function.returnTypeKey == "builtin:double" ? LLVMDoubleTypeInContext(context_) : LLVMIntTypeInContext(context_, 32)) :
                     regCallFloatRecordType(context_, function.cppAbiPlan->physicalReturn);
@@ -322,6 +324,8 @@ bool OopLlvmImplementation::declareFunction(
             const bool expandedRegCall = function.cppRegCall && function.cppAbiPlan &&
                 ((function.returnTypeKey == "builtin:int" &&
                   interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*function.cppAbiPlan, function.cAbiName)) ||
+                 ((function.returnTypeKey == "builtin:long" || function.returnTypeKey == "builtin:ulong") &&
+                  interop::abi_plan::isRegCallWin64FloatRecordsReturningInt64(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey == "builtin:double" &&
                   interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey == "builtin:float" &&
