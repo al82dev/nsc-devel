@@ -56,3 +56,10 @@ registrado. Quedan por comprobar con el compilador integrado de la rama
 principal las mismas pruebas y sus límites: metadata antigua, modificadores
 genéricos que no cubren los fixtures y otras formas de receptor. El código
 provisional no justifica declarar resuelto el caso general sin esa validación.
+
+Tras integrar el cambio en `8046d2223`, la compilación incremental de `nsc`
+terminó con código 0 y la selección registrada de siete pruebas pasó 7/7 sin
+omisiones, incluida la matriz que invoca `Multiply`. Comando y resultados:
+`A:/nsc-fixes-evidencia/generic-owner-integrated-20261111.cmd` y `.log`.
+El compilador incorpora otros cambios locales, por lo que este resultado no
+demuestra un árbol limpio ni las variantes de metadata y receptores no cubiertas.

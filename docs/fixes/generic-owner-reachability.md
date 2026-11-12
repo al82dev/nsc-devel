@@ -59,3 +59,16 @@ CTest recién registrado.
 Queda repetir las pruebas con el compilador integrado. La clausura no inventa
 un dueño para claves antiguas sin identidad inequívoca; esta evidencia no
 certifica todos los artefactos históricos ni otros formatos de receptor.
+
+## Verificación posterior en integración
+
+Con el compilador principal construido incrementalmente, las tres pruebas
+dirigidas de clausura, consumidor binario y alias binario anidado pasaron sin
+omisiones: `A:/nsc-fixes-evidencia/generic-reachability-integrated-20261111.log`.
+Se repitieron además los ocho cruces de los artefactos anteriores con y sin
+archivo auxiliar; todos compilaron y devolvieron 42. Los comandos y hashes
+están en `A:/nsc-fixes-evidencia/integrated-historical-owner.py` y los
+`results.json` de `generic-historical-integrated-sidecar` y
+`generic-historical-integrated-no-sidecar`. El compilador contiene otros
+cambios locales; la evidencia no acredita un árbol limpio ni todas las formas
+de metadata histórica.
