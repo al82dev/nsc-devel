@@ -102,7 +102,7 @@ class Program {
     if local_negative:
         program = program.replace('WeakArc<', 'WeakRc<').replace('Arc<', 'Rc<')
         program = program.replace('MakeArc<', 'MakeRc<')
-    names = ('SharedStorage', 'SharedControlStorage', 'SharedReferenceCounts', 'SharedLocalControl',
+    names = ('Send', 'Sync', 'SharedStorage', 'SharedControlStorage', 'SharedReferenceCounts', 'SharedLocalControl',
              'SharedAtomicControl', 'SharedBorrow', 'SharedLocalHandle', 'SharedLocalWeak',
              'SharedLocalFactory', 'SharedAtomicHandle', 'SharedAtomicWeak', 'SharedAtomicFactory',
              'SharedView', 'Rc', 'WeakRc', 'Arc', 'WeakArc', 'SharedPointers')
