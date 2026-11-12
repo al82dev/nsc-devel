@@ -60,3 +60,11 @@ textuales; las zonas compartidas con vistas requieren revisión y validación
 de conjunto. La evidencia del worker corresponde a su propia copia y no
 certifica estos commits integrados. La tarea de campos continúa abierta por
 los límites anotados en su registro.
+
+Los runners `static_field_source_fields.py` y `static_field_binary_fields.py`
+no están registrados en CTest y requieren invocación dirigida explícita. El
+unitario `NativeSharp3T11TypedIntrospectionTests` puede omitir dos controles
+de certificados si faltan sus proyectos: la opción `--inherited-certificate`
+del runner binario prepara ambos y trata esas omisiones como fallos. Deben
+usarse el compilador, el unitario y los temporales aislados en A; un retorno
+77 es una omisión, no un pase. Esta revisión es estática, sin ejecución.
