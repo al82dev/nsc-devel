@@ -1009,6 +1009,19 @@ rechazos de ancho y alineación, transporte e identidad y la regresión C++ de
 ocho bytes (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-nb7g8sd1`).
 Otros tamaños, alineaciones y firmas no se acreditan; T09-003 sigue abierto.
 
+## Retorno compacto con argumento flotante expandido: pendiente
+
+La [muestra C dirigida](pruebas-tanda-09-regcall-retorno-compacto/) devuelve
+un registro de dos enteros y recibe un registro de tres flotantes y un entero.
+El control compilado con Clang 23.1.0 ejecutó correctamente las llamadas
+directa y por puntero. NSC rechazó la firma antes de generar el ejecutable;
+los comandos y resultados están en
+`A:/temp/nsc-t09-regcall-retorno-compacto-0kb6vpak`. El validador está
+preparado para exigir que ambos programas funcionen y actualmente falla en
+el paso de NSC. Este diagnóstico no acredita la interoperabilidad: se requiere
+implementar y verificar el retorno, incluidos los caminos por puntero y
+precompilados, antes de considerar resuelto este caso.
+
 ## Retorno de registro con argumento indirecto
 
 La prueba derivada sustituye el argumento compacto por un registro de seis
