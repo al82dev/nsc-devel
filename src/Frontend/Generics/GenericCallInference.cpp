@@ -897,21 +897,36 @@ bool ProjectGenericModel::processGenericCall(
                 }
                 auto context = declaredFieldContexts_.find(owner);
                 std::vector<std::pair<const ast::AstNode*, const ast::AstNode*>> indexers;
+                bool completeIndexerSet = true;
                 std::unordered_set<const ast::AstNode*> visitedOwners;
                 while (owner != nullptr && visitedOwners.insert(owner).second &&
                        ((context != declaredFieldContexts_.end() && context->second.unit != nullptr) ||
                         (containerTemplate != nullptr && containerTemplate->unit != nullptr)))
                 {
                     bool hasDeclaredIndexer = false;
+                    if (!owner->typeSyntaxes().empty()) completeIndexerSet = false;
                     for (const ast::AstNode* member : owner->children())
                     {
                         if (member == nullptr || member->kind() != ast::AstNodeKind::IndexerDeclaration ||
                             member->typeSyntax() == nullptr) continue;
                         hasDeclaredIndexer = true;
                         for (const ast::AstNode* accessor : member->children())
-                            if (accessor != nullptr && accessor->text() == "get_Item" &&
-                                valueParameterCount(accessor) == callee->first()->children().size())
-                                indexers.emplace_back(member, accessor);
+                        {
+                            if (accessor == nullptr || accessor->text() != "get_Item") continue;
+                            if (valueParameterCount(accessor) != callee->first()->children().size())
+                            {
+                                completeIndexerSet = false;
+                                continue;
+                            }
+                            if (!accessor->hasModifier(lexer::TokenKind::KwPublic) ||
+                                !accessor->genericConstraints().empty() || accessor->isReference() ||
+                                accessor->hasModifier(lexer::TokenKind::KwReadonly)) completeIndexerSet = false;
+                            for (const ast::AstNode* parameter : accessor->children())
+                                if (parameter != nullptr && parameter->kind() == ast::AstNodeKind::ParameterDeclaration &&
+                                    (parameter->isVariadic() || parameter->isReference() || parameter->first() != nullptr))
+                                    completeIndexerSet = false;
+                            indexers.emplace_back(member, accessor);
+                        }
                     }
                     if (hasDeclaredIndexer || context == declaredFieldContexts_.end() ||
                         context->second.unit == nullptr || owner->kind() != ast::AstNodeKind::ClassDeclaration) break;
@@ -1113,7 +1128,18 @@ bool ProjectGenericModel::processGenericCall(
                                 for (std::size_t j = 0; j < viable.size(); ++j)
                                     if (i != j && better(viable[j], viable[i])) { dominated = true; break; }
                                 if (dominated) continue;
-                                if (indexer != nullptr) { indexer = nullptr; break; }
+                                if (indexer != nullptr)
+                                {
+                                    indexer = nullptr;
+                                    if (completeIndexerSet)
+                                    {
+                                        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+                                            diagnostics::DiagnosticSeverity::Error, callee->first()->range(),
+                                            "ambiguous indexer call to 'get_Item'");
+                                        return false;
+                                    }
+                                    break;
+                                }
                                 indexer = viable[i].member;
                             }
                     }

@@ -52,6 +52,9 @@ public class ConstantIndex {
 public class AmbiguousPair {
  public Own<0> this[int a, long b] { get { Own<0> value; return value; } }
  public Own<1> this[long a, int b] { get { Own<1> value; return value; } } }
+public class PrivateCandidate {
+ public Own<0> this[short index] { get { Own<0> value; return value; } }
+ private Own<1> this[ushort index] { get { Own<1> value; return value; } } }
 }
 namespace Wrong { public struct Own<const int N> { public int At<pack const int Ns>() { return 7; } } }
 namespace Holder { using Pick = Fixture;
@@ -131,6 +134,12 @@ class Program { public static int Main() { AmbiguousPair items = new AmbiguousPa
         'ambiguous_pair_direct': ('''using Fixture;
 class Program { public static int Main() { AmbiguousPair items = new AmbiguousPair(); int a = 0; int b = 0;
  return items[a, b].At<42, 0>(); } }''', False),
+        'private_control': ('''using Fixture;
+class Program { public static int Main() { PrivateCandidate items = new PrivateCandidate(); byte index = 0;
+ Own<0> selected = items[index]; return selected.At<42, 0>(); } }''', True),
+        'private_direct': ('''using Fixture;
+class Program { public static int Main() { PrivateCandidate items = new PrivateCandidate(); byte index = 0;
+ return items[index].At<42, 0>(); } }''', None),
     }
     failures = []
     with tempfile.TemporaryDirectory(prefix='nsc-owner-indexer-') as temporary:
@@ -148,15 +157,21 @@ class Program { public static int Main() { AmbiguousPair items = new AmbiguousPa
                     exe = root / (label + '-' + name + '-' + level + '.exe')
                     build = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', exe,
                                  '--no-artifact-cache', '--no-error-log'], root)
-                    if expected:
+                    if expected is None:
+                        if build.returncode:
+                            if 'ambiguous indexer call' in build.stdout + build.stderr:
+                                failures.append((label, name, level, 'private candidate caused false ambiguity'))
+                        elif run([exe], root).returncode != 42:
+                            failures.append((label, name, level, 'wrong private overload'))
+                    elif expected:
                         if build.returncode or run([exe], root).returncode != 42:
                             failures.append((label, name, level, 'expected execution'))
                     elif name in ('ambiguous_control', 'ambiguous_pair_control'):
                         if not build.returncode or 'ambiguous' not in build.stdout + build.stderr:
                             failures.append((label, name, level, 'expected ambiguous indexer'))
                     elif name in ('ambiguous_direct', 'ambiguous_pair_direct'):
-                        if not build.returncode:
-                            failures.append((label, name, level, 'ambiguous indexer accepted'))
+                        if not build.returncode or 'ambiguous indexer call' not in build.stdout + build.stderr:
+                            failures.append((label, name, level, 'expected ambiguous indexer'))
                     elif not build.returncode or 'outside a pack of length 2' not in build.stdout + build.stderr:
                         failures.append((label, name, level, 'expected invalid index'))
 

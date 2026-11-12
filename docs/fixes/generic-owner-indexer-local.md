@@ -27,6 +27,9 @@ copiadas del build de campaña; el comando y los hashes están en su `build.log`
 No es un build limpio. Falta validar con el compilador integrado. La expresión
 constante no literal y el diagnóstico de ambigüedad no se consideran resueltos
 por esta corrección.
+
+Un cambio posterior diagnostica ciertas ambigüedades demostrables; véase
+`generic-owner-indexer-ambiguity.md`. Las demás condiciones siguen pendientes.
 Verificación integrada, 2026-11-11: la compilación incremental de `nsc`
 terminó correctamente y `ctest --test-dir A:\nsc-fixes-evidencia\build -R
 nsc.generics.owner-method-indexer -V` pasó 1/1 sin omitir la prueba. El log

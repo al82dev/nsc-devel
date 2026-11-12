@@ -31,6 +31,10 @@ diagnostica ambigüedad; la llamada directa todavía se detiene antes con un
 diagnóstico de parámetro genérico. La corrección no escoge silenciosamente un
 indexador, pero la calidad de ese diagnóstico queda pendiente.
 
+Un cambio posterior proporciona un diagnóstico explícito para un subconjunto
+de ambigüedades demostrables. Sus condiciones y evidencia se describen en
+`generic-owner-indexer-ambiguity.md`.
+
 La regresión `generic_owner_indexer.py` cubre fuentes y cuatro cruces de
 productor estático/DLL O0/O2, con consumidor O0/O2. Incluye `Key` homónimos en
 dos namespaces con aliases opuestos, conversión numérica, límites de literal,
