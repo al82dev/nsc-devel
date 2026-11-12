@@ -274,15 +274,74 @@ public struct Own<const int N> { public int At<pack const int Ns>() { return pac
 public class GenericLookup<const int N> {
  public Own<N> this[int index] { get { Own<N> value; return value; } }
  public Wrong.Own<N> this[long index] { get { Wrong.Own<N> value; return value; } }
- public int ReadThis() { return this[0].At<20, 42>(); } } }
+ public int ReadThis() { return this[0].At<20, 42>(); }
+ public int ReadLong() { long index = 0; return this[index].At<20, 42>(); } } }
 namespace Wrong { public struct Own<const int N> { public int At<pack const int Ns>() { return 7; } } }''',
                                          encoding='utf-8')
+        (root / 'Consumer.ns').write_text('''using Fixture;
+class Program { public static int Main() { GenericLookup<1> items = new GenericLookup<1>();
+ return items.ReadThis() + items.ReadLong() - 7; } }''', encoding='utf-8')
+        project.write_text('<Project><PropertyGroup><Name>IndexerProducer</Name></PropertyGroup><ItemGroup>'
+                           '<Compile Include="Producer.ns"/><Compile Include="Consumer.ns"/>'
+                           '</ItemGroup></Project>', encoding='utf-8')
         for level in ('O0', 'O2'):
-            build = run([compiler, '--emit-project-oop-lib', producer, '-' + level,
-                         '-o', root / ('different-target-' + level + '.lib'), '--no-artifact-cache',
-                         '--no-error-log'], root)
-            if not build.returncode or 'missing generic method' not in build.stdout + build.stderr:
-                failures.append((level, 'different returns must remain unresolved'))
+            exe = root / ('different-source-' + level + '.exe')
+            build = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', exe,
+                         '--no-artifact-cache', '--no-error-log'], root)
+            if build.returncode or run([exe], root).returncode != 42:
+                failures.append((level, 'different return source execution'))
+        for dynamic in (False, True):
+            producer.write_text('<Project><PropertyGroup><Name>IndexerProducer</Name><OutputType>' +
+                                ('SharedLibrary' if dynamic else 'StaticLibrary') +
+                                '</OutputType></PropertyGroup><ItemGroup><Compile Include="Producer.ns"/>'
+                                '</ItemGroup></Project>', encoding='utf-8')
+            for producer_level in ('O0', 'O2'):
+                stem = ('different-dynamic-' if dynamic else 'different-static-') + producer_level
+                library = root / (stem + '.lib')
+                output = library.with_suffix('.dll') if dynamic else library
+                emit = '--emit-project-oop-dll' if dynamic else '--emit-project-oop-lib'
+                if run([compiler, emit, producer, '-' + producer_level, '-o', output,
+                        '--no-artifact-cache', '--no-error-log'], root).returncode:
+                    failures.append((stem, 'producer'))
+                    continue
+                project.write_text('<Project><PropertyGroup><Name>Consumer</Name></PropertyGroup><ItemGroup>'
+                                   '<LibraryReference Include="' + library.as_posix() + '" Metadata="' +
+                                   library.with_suffix('.nsmeta').as_posix() + '"/>'
+                                   '<Compile Include="Consumer.ns"/></ItemGroup></Project>', encoding='utf-8')
+                for level in ('O0', 'O2'):
+                    exe = root / (stem + '-' + level + '.exe')
+                    build = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', exe,
+                                 '--no-artifact-cache', '--no-error-log'], root)
+                    if build.returncode or run([exe], root).returncode != 42:
+                        failures.append((stem, level, 'different return execution'))
+        source = (root / 'Producer.ns').read_text(encoding='utf-8').replace(
+            'namespace Wrong { public struct Own<const int N> { public int At<pack const int Ns>()',
+            'namespace Wrong { public struct Own<const int N> { public int Different<pack const int Ns>()')
+        (root / 'Producer.ns').write_text(source, encoding='utf-8')
+        producer.write_text('<Project><PropertyGroup><Name>IndexerProducer</Name><OutputType>'
+                            'StaticLibrary</OutputType></PropertyGroup><ItemGroup>'
+                            '<Compile Include="Producer.ns"/></ItemGroup></Project>', encoding='utf-8')
+        for level in ('O0', 'O2'):
+            library = root / ('partial-return-' + level + '.lib')
+            build = run([compiler, '--emit-project-oop-lib', producer, '-' + level, '-o', library,
+                         '--no-artifact-cache', '--no-error-log'], root)
+            if build.returncode:
+                if 'missing generic method' not in build.stdout + build.stderr:
+                    failures.append((level, 'unexpected partial-return producer error'))
+                continue
+            project.write_text('<Project><PropertyGroup><Name>Consumer</Name></PropertyGroup><ItemGroup>'
+                               '<LibraryReference Include="' + library.as_posix() + '" Metadata="' +
+                               library.with_suffix('.nsmeta').as_posix() + '"/>'
+                               '<Compile Include="Consumer.ns"/></ItemGroup></Project>', encoding='utf-8')
+            for method in ('ReadThis', 'ReadLong'):
+                (root / 'Consumer.ns').write_text('''using Fixture;
+class Program { public static int Main() { GenericLookup<1> items = new GenericLookup<1>();
+ return items.''' + method + '''(); } }''', encoding='utf-8')
+                exe = root / ('partial-return-' + method + '-' + level + '.exe')
+                build = run([compiler, '--emit-project-oop-exe', project, '-' + level, '-o', exe,
+                             '--no-artifact-cache', '--no-error-log'], root)
+                if not build.returncode or 'no visible' not in build.stdout + build.stderr:
+                    failures.append((level, method, 'expected partial-return diagnostic'))
     if failures:
         print('FAIL', failures, file=sys.stderr, flush=True)
     return int(bool(failures))

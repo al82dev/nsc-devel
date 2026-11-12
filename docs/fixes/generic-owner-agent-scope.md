@@ -141,3 +141,16 @@
   misma declaración genérica exacta; registrar sus métodos, sin seleccionar
   indexador. Si un getter no se conoce o devuelve otro tipo, conservar la vía
   anterior. No cambiar resolución semántica ni metadata física.
+
+## Clausura con retornos genéricos distintos
+
+- Base `e8d9f0189`: dos getters devuelven `Fixture.Own<N>` y `Wrong.Own<N>`;
+  dos métodos escogen respectivamente `int` y `long` y ejecutan 42 juntos al
+  compilar desde fuentes O0/O2, pero publicar falla en ambos modos. Evidencia:
+  `A:/nsc-fixes-agente-2-evidencia/indexer-distinct-closure-before/results.json`.
+- Candidato: conservar las dependencias de todos los dueños de retorno
+  inequívocamente resueltos cuando todos tienen métodos correspondientes; no
+  decidir ni reescribir la sobrecarga. Si alguno es desconocido, tiene bases o
+  carece de método, conservar la vía anterior y evitar una selección inventada.
+- Mantener los demás límites y archivos protegidos arriba; validar fuente,
+  consumidores estáticos y DLL, homónimos y ausencia de método aplicable.

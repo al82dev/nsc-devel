@@ -33,6 +33,10 @@ del build de campaña; `build.log` conserva comandos y hashes. No certifica un
 build limpio y falta la validación integrada. No se demuestra selección
 general de sobrecargas, herencia ni publicación cuando los tipos de retorno
 son distintos; la ruta anterior también puede tener otros límites.
+
+Un cambio posterior conserva las dependencias de todos los retornos distintos
+cuando cada uno está resuelto y tiene el método; véase
+`generic-owner-indexer-distinct-metadata.md` para sus pruebas y límites.
 Verificación integrada, 2026-11-11: la compilación incremental y
 `nsc.generics.owner-method-indexer` pasaron; CTest ejecutó 1/1 sin omisión.
 El log `A:\nsc-fixes-evidencia\generic-indexer-overload-metadata-20261111.log`

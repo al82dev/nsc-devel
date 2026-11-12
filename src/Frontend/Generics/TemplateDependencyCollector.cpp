@@ -387,7 +387,7 @@ void ProjectGenericModel::collectCallDependency(
         root.syntax != nullptr && root.record.kind != GenericTemplateKind::Method &&
         ownerName == appendOwner(root.record.ownerName, root.record.name) && root.syntax->typeSyntaxes().empty())
     {
-        TemplateState* returnOwner = nullptr;
+        std::vector<TemplateState*> returnOwners;
         bool unknown = false;
         bool complexGetter = false;
         std::size_t indexerCount = 0;
@@ -415,32 +415,44 @@ void ProjectGenericModel::collectCallDependency(
                     unit, namespaceName, member->typeSyntax()->baseName(),
                     member->typeSyntax()->typeArguments().size(), scope);
                 if (candidate.kind != TypeResolutionKind::Unique || candidate.state == nullptr ||
-                    (returnOwner != nullptr && returnOwner != candidate.state))
+                    candidate.state->syntax == nullptr || !candidate.state->syntax->typeSyntaxes().empty())
                 {
                     unknown = true;
                     break;
                 }
-                returnOwner = candidate.state;
+                if (std::ranges::find(returnOwners, candidate.state) == returnOwners.end())
+                    returnOwners.push_back(candidate.state);
             }
-        if (!unknown && !(indexerCount > 1U && complexGetter) && returnOwner != nullptr &&
-            returnOwner->syntax != nullptr &&
-            returnOwner->syntax->typeSyntaxes().empty())
+        if (!unknown && !(indexerCount > 1U && complexGetter) && !returnOwners.empty())
         {
             const auto methods = methodsByName_.find(methodName);
-            bool found = false;
-            if (methods != methodsByName_.end())
-                for (const TemplateState* candidate : methods->second)
-                    if (candidate != nullptr && candidate->parent == returnOwner->syntax &&
-                        templateVisible(unit.projectOrdinal(), candidate->record) &&
-                        genericArityAccepts(candidate->record, call->typeSyntaxes().size()) &&
-                        valueParameterCount(candidate->syntax) == call->children().size())
-                    {
-                        root.record.dependencies.push_back(candidate->record.canonicalKey);
-                        found = true;
-                    }
-            if (found) return;
-            root.record.unresolvedDependencies.push_back("missing generic method '" + methodName + "<...>'");
-            return;
+            std::vector<std::string> dependencies;
+            bool complete = true;
+            for (const TemplateState* returnOwner : returnOwners)
+            {
+                bool found = false;
+                if (methods != methodsByName_.end())
+                    for (const TemplateState* candidate : methods->second)
+                        if (candidate != nullptr && candidate->parent == returnOwner->syntax &&
+                            templateVisible(unit.projectOrdinal(), candidate->record) &&
+                            genericArityAccepts(candidate->record, call->typeSyntaxes().size()) &&
+                            valueParameterCount(candidate->syntax) == call->children().size())
+                        {
+                            dependencies.push_back(candidate->record.canonicalKey);
+                            found = true;
+                        }
+                if (!found) { complete = false; break; }
+            }
+            if (complete)
+            {
+                root.record.dependencies.insert(root.record.dependencies.end(), dependencies.begin(), dependencies.end());
+                return;
+            }
+            if (returnOwners.size() == 1U)
+            {
+                root.record.unresolvedDependencies.push_back("missing generic method '" + methodName + "<...>'");
+                return;
+            }
         }
     }
     std::string requestedOwner = templateSourceSpelling(namespaceName, ownerName);
