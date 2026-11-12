@@ -1,5 +1,27 @@
 # Construcción compartida fallida con campos compartidos
 
+## Diseño pendiente para delegación
+
+Una llamada `this(...)` llega al MIR como `DirectInstanceCall`, conserva la
+sintaxis `ThisConstructorInitializer` y puede estar envuelta en
+`FullExpressionCleanup`. El constructor exterior no debe considerar vivos los
+campos durante la evaluación de argumentos ni mientras el delegado se ejecuta:
+si el delegado falla, sus propias regiones limpian los campos construidos.
+Después de un retorno normal, esos campos sí están vivos incluso antes de que
+termine la limpieza de temporales de argumentos. Si uno de esos temporales
+lanza, el constructor exterior debe poder limpiar los campos una sola vez.
+
+La frontera candidata es el retorno normal de `lowerCall` dentro de
+`lowerExpressionFrame018DirectInstanceCall`, en sus rutas con y sin argumentos.
+Se propone registrar banderas inicialmente inactivas, habilitarlas justo después
+de la llamada delegada exitosa y antes del cleanup del wrapper, y distinguir la
+delegación mediante sintaxis, receptor y constructor comprobados. Esta es una
+propuesta estática, no una corrección implementada ni validada. Requiere probar
+argumentos que lanzan, fallos del delegado y del cuerpo exterior, un temporal
+cuyo destructor lance tras el retorno, delegaciones anidadas, bases, éxito y
+las cuatro familias en fuente y binario. El timeout observado sigue sin causa
+confirmada; no se atribuye automáticamente a doble destrucción.
+
 ## Reproducción original
 
 El fixture de `A:/nsc-vistas-evidencia/shared-four-fields-failure/Main.ns`
