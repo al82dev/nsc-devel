@@ -57,6 +57,10 @@ runtime e imports proceden del mismo build. NSLink es externo y no se instaló n
 - `final-saturating`: 50 resultados esperados de suma/resta O0/O2. Los runners `final-*`
   de i128/u128 y `final-decimal-checked` terminaron 0. El fixture de matemática determinista
   pasó con Core fuente local; no certifica consumo binario del SDK.
+- `regresiones-finales-20261112T124000Z-a71cbab4cb/results.json`: repetición dirigida de
+  ocho runners de matemática, i128/u128 y decimal checked, todos con salida 0. Conserva
+  comandos, hashes, tiempos, stdout/stderr y una copia `runner.py`; el objetivo fue hacer
+  persistente la evidencia que antes solo constaba en la salida de las herramientas.
 - `originales-ejecucion-20261112T123133Z-8455c910d5/results.json`: ejemplos 48 y 49 con
   resultados esperados O0/O2, en las variantes Core fuente identificadas en el manifiesto.
 

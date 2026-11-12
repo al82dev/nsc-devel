@@ -139,6 +139,10 @@ dirigidos de multiplicación/división y otros dos del exponente máximo, los 50
 60 entradas diferenciales O0/O2, checked decimal, los runners i128/u128, los cuatro ejemplos
 originales preservados o variantes Core local, y matemática determinista con Core fuente.
 Los resultados y limitaciones se detallan en `decimal-division-wide-sign.md`.
+Una repetición dirigida de los ocho runners silenciosos conservó sus códigos, comandos,
+salidas y hashes en `regresiones-finales-20261112T124000Z-a71cbab4cb/results.json`; todos
+terminaron 0. El binario se construyó antes del commit de división, con el mismo contenido
+fuente que quedó en ese commit; el hash del binario no es el identificador Git del commit.
 
 El consumo del SDK como binario sigue sin verificarse en este carril: el fixture de matemática
 usa `ProjectReference` a Core fuente. El productor y gate de SDK binario pertenecen a otro
