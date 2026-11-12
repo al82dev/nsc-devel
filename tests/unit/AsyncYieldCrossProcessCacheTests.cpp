@@ -4,10 +4,12 @@
 #include "nativesharp/Frontend/ProjectOopHirNode.h"
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 #include "nativesharp/Frontend/ProjectOopMirNode.h"
+#include "nativesharp/LLVM/ProjectOopMirCacheIdentity.h"
 
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -341,6 +343,73 @@ std::string factSnapshot(const ProjectOopMirModel& model)
     return out.str();
 }
 
+// Exploratory only: today LLVM does not consume these facts, so an unchanged
+// digest is an observation, not a product failure or a claim about future keys.
+bool probeYieldObjectIdentity(const ProjectOopMirModel& model)
+{
+    using nativesharp::llvm_backend::projectOopMirCacheIdentity;
+    using Fact = ProjectOopMirYieldFact;
+    const auto functions = model.functions();
+    std::size_t classProbes = 0;
+    std::size_t namespaceProbes = 0;
+    for (std::size_t ordinal = 0; ordinal < functions.size(); ++ordinal)
+    {
+        auto& function = const_cast<ProjectOopMirFunction&>(functions[ordinal]);
+        if (function.mangledName.find("Program__Gen__") == std::string::npos &&
+            function.mangledName.find("Helpers__Gen__") == std::string::npos) continue;
+        auto found = std::ranges::find_if(function.asyncYieldFacts, [](const Fact& fact) {
+            return fact.branchEvidence == ProjectOopYieldBranchEvidence::SemanticFreshOwnedTransfer;
+        });
+        if (found == function.asyncYieldFacts.end()) continue;
+        Fact& fact = *found;
+        const Fact original = fact;
+        const std::vector<std::size_t> selected{ordinal};
+        const std::vector<std::size_t> empty;
+        const auto definition = [&] { return projectOopMirCacheIdentity(model, selected, selected); };
+        const auto declaration = [&] { return projectOopMirCacheIdentity(model, empty, selected); };
+        const std::string before = definition();
+        const std::string declarationBefore = declaration();
+        if (before.empty() || declarationBefore.empty()) return false;
+        std::cout << "identity-probe function=" << function.mangledName << " definition=" << before
+                  << " declaration=" << declarationBefore << '\n';
+        const std::vector<std::pair<std::string, std::function<void(Fact&)>>> mutations{
+            {"yield-preorder", [](Fact& value) { ++value.yieldPreorder; }},
+            {"node-preorder", [](Fact& value) { ++value.nodePreorder; }},
+            {"parent", [](Fact& value) { value.parentFact.reset(); }},
+            {"child", [](Fact& value) { ++value.childIndex; }},
+            {"node-kind", [](Fact& value) { value.nodeKind = ProjectOopMirNodeKind::StaticFieldLoad; }},
+            {"item-mode", [](Fact& value) { value.itemMode = ProjectOopYieldItemMode::Unknown; }},
+            {"result-kind", [](Fact& value) { value.resultKind = ProjectOopYieldResultKind::TrivialScalar; }},
+            {"branch-evidence", [](Fact& value) { value.branchEvidence = ProjectOopYieldBranchEvidence::Unknown; }},
+            {"binding", [](Fact& value) { value.hasBinding = false; }},
+            {"type", [](Fact& value) { value.typeKey += "-changed"; }},
+            {"category", [](Fact& value) { value.valueCategory = nativesharp::sema::ValueCategory::Place; }},
+            {"ownership", [](Fact& value) { value.ownership = nativesharp::sema::OwnershipKind::None; }},
+            {"transfer", [](Fact& value) { value.ownershipTransfer = false; }},
+            {"fresh", [](Fact& value) { value.ownershipFreshOwner = false; }},
+            {"object-ownership", [](Fact& value) { value.objectLifetimeOwnership = nativesharp::sema::OwnershipKind::None; }},
+            {"storage-ownership", [](Fact& value) { value.storageOwnership = nativesharp::sema::OwnershipKind::None; }},
+        };
+        for (const auto& [name, mutate] : mutations)
+        {
+            fact = original;
+            mutate(fact);
+            const bool changed = definition() != before;
+            const bool declarationChanged = declaration() != declarationBefore;
+            std::cout << "identity-mutation " << name << " definition-changed=" << changed
+                      << " declaration-changed=" << declarationChanged << '\n';
+        }
+        fact = original;
+        const bool restored = definition() == before && declaration() == declarationBefore;
+        std::cout << "identity-probe-restored=" << restored << '\n';
+        if (!restored) return false;
+        if (function.namespaceFunctionOrdinal) ++namespaceProbes;
+        else ++classProbes;
+    }
+    std::cout << "identity-probe-class=" << classProbes << " namespace=" << namespaceProbes << '\n';
+    return classProbes == 1 && namespaceProbes == 1;
+}
+
 bool writeFixture(const std::filesystem::path& directory)
 {
     std::filesystem::create_directories(directory);
@@ -531,8 +600,8 @@ int main(int argc, char** argv)
     const std::string workersText = argv[3];
     if (workersText != "1" && workersText != "4") return 2;
     const std::size_t workers = workersText == "1" ? 1U : 4U;
-    if (phase != "cold" && phase != "warm" && phase != "unknown") return 2;
-    if ((phase == "cold" || phase == "unknown") && !writeFixture(root)) return 2;
+    if (phase != "cold" && phase != "warm" && phase != "unknown" && phase != "identity-probe") return 2;
+    if ((phase == "cold" || phase == "unknown" || phase == "identity-probe") && !writeFixture(root)) return 2;
     ProjectCompilation compilation;
     compilation.setCompilationJobs(workers);
     std::string error;
@@ -557,6 +626,7 @@ int main(int argc, char** argv)
     std::cout << "restored-polls=" << restored << '\n';
     if (((phase == "cold" || phase == "unknown") && restored != 0) ||
         (phase == "warm" && restored == 0)) return 1;
+    if (phase == "identity-probe") return probeYieldObjectIdentity(model) ? 0 : 1;
     const bool observations = reportProducers(model, *compilation.methodBodyModel(), phase == "unknown") &&
         reportFacts(model, *compilation.oopHirModel(), *compilation.methodBodyModel(), phase == "unknown");
     const std::string before = factSnapshot(model);
