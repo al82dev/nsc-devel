@@ -1024,8 +1024,17 @@ O0–O3, directa y por puntero, con inspección de las piezas en LLVM
 (`A:/temp/nsc-t09-regcall-record-double-9uikx93_`). También pasaron el plan,
 transporte, ABI, identidad y la regresión C++ del retorno indirecto
 (`A:/temp/nsc-t09-cpp-return-indirect-align8-f74q3vyb`). La prueba nueva usa
-enlace estático; DLL, C++ y precompilación siguen pendientes. T09-003 permanece
-abierto.
+enlace estático desde fuente; la muestra C desde fuente con DLL y la variante
+C++ siguen pendientes. T09-003 permanece abierto.
+
+El contrato vigente conserva ahora el plan de la función con piezas `double`;
+una prueba interna verifica lectura y escritura y rechaza una pieza alterada.
+Pasaron 16 consumidores C precompilados con llamadas directa y por puntero y
+otros 16 que solo usan el puntero, en estática y DLL O0–O3, con y sin encabezado
+(`A:/temp/nsc-t09-record-double-pre-e0htt5zw` y
+`A:/temp/nsc-t09-record-double-pre-49_qpqhf`). También pasaron transporte, ABI,
+identidad y la regresión C++ precompilada del retorno indirecto
+(`A:/temp/nsc-t09-cpp-return-indirect-pre-hiax48jb`).
 
 ## Retorno indirecto con argumento flotante expandido: pendiente
 
