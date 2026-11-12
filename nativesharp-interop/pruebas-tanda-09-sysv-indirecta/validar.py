@@ -72,7 +72,7 @@ result = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT, text=True, errors='replace')
 (root/'rechazo-firma.log').write_text('COMMAND: ' + repr(command) + '\nEXIT: ' +
     str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
-if result.returncode == 0 or 'sysv_abi function pointer signature is not yet supported' not in result.stdout:
+if result.returncode == 0 or 'sysv_abi function pointer byval plan is not supported' not in result.stdout:
     raise SystemExit('La firma no verificada no fue rechazada correctamente; evidencia: ' + str(root))
 command = [args.nsc, '--dump-project-oop-llvm', str(root/'BadConversion.nsproj'),
            '--cpp-clang-root=' + args.clang_root, '--library-reference-root', str(root)]
@@ -88,6 +88,6 @@ result = subprocess.run(command, cwd=repo, env=env, stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT, text=True, errors='replace')
 (root/'rechazo-variadico-record.log').write_text('COMMAND: ' + repr(command) + '\nEXIT: ' +
     str(result.returncode) + '\n' + result.stdout, encoding='utf-8')
-if result.returncode == 0 or 'sysv_abi function pointer signature is not yet supported' not in result.stdout:
+if result.returncode == 0 or 'sysv_abi variadic function pointer byval plan is not supported' not in result.stdout:
     raise SystemExit('El record variadico no fue rechazado correctamente; evidencia: ' + str(root))
 print('OK: llamada indirecta C/NativeSharp, estatica O0; evidencia:', root, flush=True)

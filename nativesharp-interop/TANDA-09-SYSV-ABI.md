@@ -1060,7 +1060,18 @@ record y otras formas siguen pendientes. La prueba negativa existente
 `pruebas-tanda-09-sysv-indirecta/validar.py` fallo porque exige rechazar un
 record con la misma firma recien admitida; se conserva intacta
 (`A:/temp/nsc-t09-sysv-indirecta-w8u8ult8/rechazo-firma.log`). Este conflicto
-impide declarar limpia la validacion del bloque. T09-003 sigue abierto.
+impedia declarar limpia la validacion del bloque. Posteriormente, conforme a
+la autorizacion del usuario para conservar las pruebas actualizando casos que
+ya funcionan, se mantuvo la prueba y se cambiaron solo los dos registros
+negativos: uno fijo de seis enteros y uno variadico con un campo de puntero a
+funcion. Ambos comprueban el rechazo ABI concreto aun vigente; los controles
+escalares, de conversion y la ejecucion permanecen en la misma prueba
+(A:/temp/nsc-t09-sysv-indirecta-eolheppa). Las formas positivas de tres
+enteros siguen cubiertas en las matrices fija y variadica
+(A:/temp/nsc-t09-sysv-indirecta-record-matriz-fhrxee1o y
+A:/temp/nsc-t09-sysv-indirecta-opcional-tres-matriz-dompscow). Las menciones
+posteriores de la contradiccion describen su estado en esas etapas anteriores.
+T09-003 sigue abierto por otras firmas y validaciones.
 La prueba nueva de plantilla precompilada construyo la biblioteca productora,
 oculto el header y reprodujo el rechazo en el consumidor: falta recuperar y
 conciliar el plan para ese camino
