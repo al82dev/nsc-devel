@@ -46,3 +46,9 @@ todas con resultado esperado. Los comandos y salidas están en
 `generic-alias-unit-repo-cwd-20261112.log`. Los controles de visibilidad de la
 base anterior no se repitieron con ese procedimiento y son evidencia
 histórica no conforme, no validación de la base.
+
+El ejecutor CMake del alias también invocaba CMake hijo por ruta absoluta.
+Tras corregir esa llamada, la prueba pasó O0/O2 desde el repositorio:
+`A:/nsc-fixes-evidencia/cmake-runner-corrections-20261112.json` y
+`runner-correction-alias-20261112.log`. La comparación histórica de
+visibilidad de la base sigue sin repetición conforme.

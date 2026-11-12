@@ -12,3 +12,9 @@ Se utilizó el compilador autorizado del build aislado, con SHA-256
 runtime generado en A y `nslink.exe` por nombre. El compilador contenía otros
 cambios locales; esta prueba no acredita una revisión limpia ni todas las
 formas de lambda con captura.
+
+Corrección: el ejecutor anterior invocaba un proceso CMake hijo por ruta
+absoluta y esa ejecución es no conforme. El ejecutor corregido pasó desde el
+repositorio en O0/O2 usando herramientas por nombre; comandos y salida en
+`A:/nsc-fixes-evidencia/cmake-runner-corrections-20261112.json` y
+`runner-correction-lambda-20261112.log`.

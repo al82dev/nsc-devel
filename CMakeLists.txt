@@ -7041,13 +7041,15 @@ if(NSC_BUILD_TESTS)
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/dictionary_string_update/DictionaryStringUpdate.nsproj")
     add_test(
         NAME nsc.sdk.dictionary-string-update
-        COMMAND "${CMAKE_COMMAND}"
+        COMMAND cmake
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPROJECT_FILE=${NSC_DICTIONARY_STRING_UPDATE_PROJECT}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/dictionary-string-update"
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
-            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
+            "-DNSLINK_EXECUTABLE=nslink.exe"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyDictionaryStringUpdate.cmake")
+    set_tests_properties(nsc.sdk.dictionary-string-update PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
     set(NSC_OPERATOR_IN_AGGREGATE_PROJECT
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/operator_in_aggregate/OperatorInAggregate.nsproj")
@@ -7124,13 +7126,15 @@ if(NSC_BUILD_TESTS)
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/global_lambda/GlobalLambda.nsproj")
     add_test(
         NAME nsc.compiler.global-lambda
-        COMMAND "${CMAKE_COMMAND}"
+        COMMAND cmake
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPROJECT_FILE=${NSC_GLOBAL_LAMBDA_PROJECT}"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/global-lambda"
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
-            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
+            "-DNSLINK_EXECUTABLE=nslink.exe"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyGlobalLambda.cmake")
+    set_tests_properties(nsc.compiler.global-lambda PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
     set(NSC_DECIMAL_LITERAL_PROJECT
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/decimal_literal_exactness/DecimalLiteralExactness.nsproj")
@@ -7215,13 +7219,15 @@ if(NSC_BUILD_TESTS)
 
     add_test(
         NAME nsc.compiler.generic-nested-namespace-alias
-        COMMAND "${CMAKE_COMMAND}"
+        COMMAND cmake
             "-DNSC_EXECUTABLE=${NSC_TEST_COMPILER}"
             "-DPROJECT_FILE=${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/generic_nested_namespace_alias/Probe.nsproj"
             "-DOUTPUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/generic-nested-namespace-alias"
             "-DRUNTIME_LIBRARY=${NSC_WINDOWS_RUNTIME_LIBRARY}"
-            "-DNSLINK_EXECUTABLE=${NSC_NSLINK_EXECUTABLE}"
+            "-DNSLINK_EXECUTABLE=nslink.exe"
             -P "${CMAKE_CURRENT_SOURCE_DIR}/cmake/VerifyGenericNestedNamespaceAlias.cmake")
+    set_tests_properties(nsc.compiler.generic-nested-namespace-alias PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
 
     add_test(
         NAME nsc.compiler.derive-ignore-equality

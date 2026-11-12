@@ -47,3 +47,15 @@ Los registros nuevos de visibilidad y de las dos pruebas ASan de limpieza se
 ajustaron para invocar `python` por nombre y establecer el directorio de
 trabajo del repositorio. Las repeticiones documentadas se ejecutaron
 directamente; la nueva configuración CTest aún no se ha ejecutado.
+
+Los ejecutores CMake de Dictionary, lambda global y alias anidado usaban
+`CMAKE_COMMAND` como ruta absoluta para un proceso hijo, por lo que sus
+ejecuciones anteriores tampoco cuentan como conformes. Se sustituyó esa llamada
+por variables de entorno locales al proceso CMake, y se repitieron los tres
+ejecutores desde el repositorio con `cmake` y `nslink.exe` por nombre. Pasaron
+las seis compilaciones y ejecuciones O0/O2; comandos y salidas están en
+`A:/nsc-fixes-evidencia/cmake-runner-corrections-20261112.json` y los logs
+`runner-correction-*-20261112.log`. Los registros CTest de esos tres casos se
+ajustaron al mismo directorio y nombres; se comprobó su generación, sin ejecutar
+CTest. El log `cmake-repo-cwd-fixes-configure-20261112.log` fue sobrescrito al
+repetir la configuración y conserva solo la última ejecución.

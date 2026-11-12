@@ -20,3 +20,9 @@ lineamientos; se conserva como ejecución no conforme. Se repitieron ambas desde
 `A:/nsc-devel-fixes` y devolvieron 0. La ejecución inicial del script CMake se
 había iniciado desde el repositorio y su código de salida no se conservó, como
 se indica arriba.
+
+El script CMake original invocaba además un CMake hijo por ruta absoluta; esa
+ejecución es no conforme. Tras corregirlo se repitió desde el repositorio con
+las herramientas por nombre y pasaron O0 y O2. Evidencia:
+`A:/nsc-fixes-evidencia/cmake-runner-corrections-20261112.json` y
+`runner-correction-dictionary-20261112.log`.
