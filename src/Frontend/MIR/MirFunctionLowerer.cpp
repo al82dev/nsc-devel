@@ -7,6 +7,7 @@
 #include "nativesharp/Frontend/ProjectOopMirModel.h"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
@@ -1393,12 +1394,12 @@ struct YieldFactWork final
     std::size_t childIndex;
 };
 
-// Only classify direct leaf results with a binding and no ownership transfer.
+// Only classify leaf results with a binding and no ownership transfer.
 // The classification says nothing about effects or cleanup while evaluating them.
 ProjectOopYieldResultKind classifyYieldResult(
     const ProjectOopMirYieldFact& fact, const ProjectOopMirNode& node)
 {
-    if (fact.parentFact.has_value() || !fact.hasBinding || fact.ownership != sema::OwnershipKind::None ||
+    if (!fact.hasBinding || fact.ownership != sema::OwnershipKind::None ||
         fact.ownershipTransfer || fact.ownershipFreshOwner ||
         fact.objectLifetimeOwnership != sema::OwnershipKind::None ||
         fact.storageOwnership != sema::OwnershipKind::None)
@@ -1440,8 +1441,47 @@ void appendYieldFact(ProjectOopMirFunction& function, const ProjectOopHirModel& 
         fact.objectLifetimeOwnership = binding->objectLifetimeOwnership;
         fact.storageOwnership = binding->storageOwnership;
     }
-    fact.resultKind = classifyYieldResult(fact, *item.node);
     function.asyncYieldFacts.push_back(std::move(fact));
+}
+
+void classifyYieldFacts(ProjectOopMirFunction& function, const std::vector<const ProjectOopMirNode*>& nodes)
+{
+    using Kind = ProjectOopMirNodeKind;
+    using Result = ProjectOopYieldResultKind;
+    const auto count = function.asyncYieldFacts.size();
+    std::vector<std::array<std::optional<std::size_t>, 3>> children(count);
+    std::vector<Result> kinds(count, Result::Unknown);
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        const auto& fact = function.asyncYieldFacts[i];
+        if (fact.parentFact && *fact.parentFact < i && fact.childIndex < 3 &&
+            function.asyncYieldFacts[*fact.parentFact].yieldPreorder == fact.yieldPreorder)
+            children[*fact.parentFact][fact.childIndex] = i;
+    }
+    for (std::size_t i = count; i-- > 0;)
+    {
+        auto& fact = function.asyncYieldFacts[i];
+        const auto& node = *nodes[i];
+        kinds[i] = classifyYieldResult(fact, node);
+        if (fact.nodeKind == Kind::Conditional && node.children.size() == 3 &&
+            children[i][0] && children[i][1] && children[i][2] &&
+            fact.itemMode == ProjectOopYieldItemMode::Value && fact.hasBinding &&
+            fact.ownership == sema::OwnershipKind::None && !fact.ownershipTransfer &&
+            !fact.ownershipFreshOwner && fact.objectLifetimeOwnership == sema::OwnershipKind::None &&
+            fact.storageOwnership == sema::OwnershipKind::None && node.typeKey == fact.typeKey &&
+            (ProjectTypeConversion::isNumeric(fact.typeKey) || fact.typeKey == "builtin:bool"))
+        {
+            const auto c = *children[i][0], a = *children[i][1], b = *children[i][2];
+            const auto& condition = function.asyncYieldFacts[c];
+            if (condition.hasBinding && condition.typeKey == "builtin:bool" &&
+                nodes[c]->typeKey == "builtin:bool" && kinds[a] == Result::TrivialScalar &&
+                kinds[b] == Result::TrivialScalar && function.asyncYieldFacts[a].typeKey == fact.typeKey &&
+                function.asyncYieldFacts[b].typeKey == fact.typeKey)
+                kinds[i] = Result::TrivialScalar;
+        }
+        // Descendant classifications are internal only; they are not facts about a yielded result.
+        if (!fact.parentFact) fact.resultKind = kinds[i];
+    }
 }
 
 void rebuildYieldFacts(ProjectOopMirFunction& function, const ProjectOopHirModel& hirModel,
@@ -1451,6 +1491,7 @@ void rebuildYieldFacts(ProjectOopMirFunction& function, const ProjectOopHirModel
     if (function.body == nullptr || !hirFunction.isAsyncPoll ||
         !function.effects.contains(sema::Effect::Generator)) return;
     std::vector<YieldFactWork> work{{function.body.get(), std::nullopt, std::nullopt, 0U}};
+    std::vector<const ProjectOopMirNode*> factNodes;
     std::size_t preorder = 0;
     while (!work.empty())
     {
@@ -1462,6 +1503,7 @@ void rebuildYieldFacts(ProjectOopMirFunction& function, const ProjectOopHirModel
         {
             parentFact = function.asyncYieldFacts.size();
             appendYieldFact(function, hirModel, item, nodePreorder, hirFunction.asyncYieldItemMode);
+            factNodes.push_back(item.node);
         }
         for (std::size_t i = item.node->children.size(); i > 0; --i)
         {
@@ -1472,6 +1514,7 @@ void rebuildYieldFacts(ProjectOopMirFunction& function, const ProjectOopHirModel
                 operand ? std::nullopt : parentFact, i - 1});
         }
     }
+    classifyYieldFacts(function, factNodes);
 }
 }
 

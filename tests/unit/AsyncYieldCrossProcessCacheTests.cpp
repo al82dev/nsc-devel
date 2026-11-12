@@ -76,6 +76,9 @@ bool reportFacts(const ProjectOopMirModel& model, const ProjectOopHirModel& hir,
     std::size_t localScalar = 0;
     std::size_t borrowedRoots = 0;
     std::size_t unknownConditional = 0;
+    std::size_t scalarConditional = 0;
+    std::size_t mixedConditional = 0;
+    std::size_t simdConditional = 0;
     std::size_t unknownWrapper = 0;
     for (const auto& function : model.functions())
     {
@@ -113,9 +116,11 @@ bool reportFacts(const ProjectOopMirModel& model, const ProjectOopHirModel& hir,
                 fact.nodeKind == ProjectOopMirNodeKind::FloatingConstant;
             const bool localRoot = root && function.mangledName.find("ScalarLocal") != std::string::npos &&
                 fact.nodeKind == ProjectOopMirNodeKind::LocalValue;
+            const bool conditionalRoot = root && function.mangledName.find("ScalarConditional") != std::string::npos &&
+                fact.nodeKind == ProjectOopMirNodeKind::Conditional && !expectUnknown;
             const auto expectedKind = expectedBorrow ? ProjectOopYieldResultKind::BorrowedReference :
                 (genericIntRoot || genericBoolRoot || genericDoubleRoot || literalRoot ||
-                 boolRoot || doubleRoot || localRoot) ?
+                 boolRoot || doubleRoot || localRoot || conditionalRoot) ?
                     ProjectOopYieldResultKind::TrivialScalar :
                 ProjectOopYieldResultKind::Unknown;
             if (fact.resultKind != expectedKind) return false;
@@ -126,6 +131,16 @@ bool reportFacts(const ProjectOopMirModel& model, const ProjectOopHirModel& hir,
             if (fact.resultKind == ProjectOopYieldResultKind::BorrowedReference) ++borrowedRoots;
             if (root && fact.nodeKind == ProjectOopMirNodeKind::Conditional &&
                 fact.resultKind == ProjectOopYieldResultKind::Unknown) ++unknownConditional;
+            if (root && function.mangledName.find("ScalarConditional") != std::string::npos &&
+                fact.nodeKind == ProjectOopMirNodeKind::Conditional && fact.typeKey == "builtin:int" &&
+                fact.resultKind == (expectUnknown ? ProjectOopYieldResultKind::Unknown :
+                    ProjectOopYieldResultKind::TrivialScalar)) ++scalarConditional;
+            if (root && function.mangledName.find("MixedConditional") != std::string::npos &&
+                fact.nodeKind == ProjectOopMirNodeKind::Conditional &&
+                fact.resultKind == ProjectOopYieldResultKind::Unknown) ++mixedConditional;
+            if (root && function.mangledName.find("SimdConditional") != std::string::npos &&
+                fact.nodeKind == ProjectOopMirNodeKind::Conditional &&
+                fact.resultKind == ProjectOopYieldResultKind::Unknown) ++simdConditional;
             if (root && fact.nodeKind == ProjectOopMirNodeKind::FullExpressionCleanup &&
                 fact.resultKind == ProjectOopYieldResultKind::Unknown) ++unknownWrapper;
             if (mode == ProjectOopYieldItemMode::Unknown) ++unknownMode;
@@ -191,28 +206,33 @@ bool reportFacts(const ProjectOopMirModel& model, const ProjectOopHirModel& hir,
               << " scalar-bool-literal=" << boolLiteral << " scalar-double-literal=" << doubleLiteral
               << " scalar-local=" << localScalar
               << " borrowed=" << borrowedRoots << " unknown-conditional=" << unknownConditional
+              << " scalar-conditional=" << scalarConditional << " mixed-conditional-unknown=" << mixedConditional
+              << " simd-conditional-unknown=" << simdConditional
               << " unknown-wrapper=" << unknownWrapper << '\n';
     return count > 0 && (!expectUnknown || (unknown > 0 && unknownMode > 0)) &&
         genericInt > 0 && genericPayload > 0 && genericBool > 0 && genericDouble > 0 && refFacts > 0 &&
         classRef > 0 && namespaceRef > 0 && classMut > 0 && namespaceMut > 0 &&
         scalarRoots > 0 && boolLiteral > 0 && doubleLiteral > 0 && localScalar > 0 &&
-        borrowedRoots > 0 && unknownConditional > 0 && unknownWrapper > 0;
+        borrowedRoots > 0 && unknownConditional > 0 && scalarConditional == 1 && mixedConditional == 1 &&
+        simdConditional == 1 &&
+        unknownWrapper > 0;
 }
 
 bool removeOneYieldSyntax(const ProjectOopHirModel& hir)
 {
     for (const auto& function : hir.functions())
     {
-        if (function.mangledName.find("Program__Gen__") == std::string::npos || !function.body) continue;
+        if (function.mangledName.find("ScalarConditional") == std::string::npos || !function.body) continue;
         std::vector<ProjectOopHirNode*> pending{function.body.get()};
         while (!pending.empty())
         {
             auto* node = pending.back();
             pending.pop_back();
             if (node->kind == ProjectOopHirNodeKind::AsyncYieldValue && !node->children.empty() &&
-                node->children.front() && node->children.front()->kind != ProjectOopHirNodeKind::Conditional)
+                node->children.front() && node->children.front()->kind == ProjectOopHirNodeKind::Conditional &&
+                node->children.front()->children.size() == 3 && node->children.front()->children[1])
             {
-                node->children.front()->syntax = nullptr;
+                node->children.front()->children[1]->syntax = nullptr;
                 return true;
             }
             for (const auto& child : node->children) if (child) pending.push_back(child.get());
@@ -228,6 +248,32 @@ bool removeOneYieldMode(const ProjectOopHirModel& hir)
         if (!function.isAsyncPoll || function.mangledName.find("Wrapped") == std::string::npos) continue;
         const_cast<ProjectOopHirFunction&>(function).asyncYieldItemMode = ProjectOopYieldItemMode::Unknown;
         return true;
+    }
+    return false;
+}
+
+// Synthetic guard check: this deliberately mismatches the condition MIR type and its bool binding.
+// It exercises fail-closed classification without requiring an AsyncIterator<SIMD> frame layout.
+bool setSyntheticSimdCondition(const ProjectOopHirModel& hir)
+{
+    for (const auto& function : hir.functions())
+    {
+        if (!function.isAsyncPoll || function.mangledName.find("SimdConditional") == std::string::npos ||
+            !function.body) continue;
+        std::vector<ProjectOopHirNode*> pending{function.body.get()};
+        while (!pending.empty())
+        {
+            auto* node = pending.back();
+            pending.pop_back();
+            if (node->kind == ProjectOopHirNodeKind::AsyncYieldValue && node->children.size() == 1 &&
+                node->children[0] && node->children[0]->kind == ProjectOopHirNodeKind::Conditional &&
+                node->children[0]->children.size() == 3 && node->children[0]->children[0])
+            {
+                node->children[0]->children[0]->typeKey = "mask<builtin:int,4>";
+                return true;
+            }
+            for (const auto& child : node->children) if (child) pending.push_back(child.get());
+        }
     }
     return false;
 }
@@ -264,6 +310,7 @@ class Generator<T> { public static AsyncIterator<T, Exception> Gen(T value) {
 class Program { public static Payload Shared;
  public static owned Payload Make() { return new Payload(); }
  public static bool Choose(bool value) { return value; }
+ public static int Identity(int value) { return value; }
  public static int InspectString(borrowed string value) { return 0; }
  public static AsyncIterator<Payload, Exception> Gen(bool choose) {
   try { yield return Shared; } finally { yield return Choose(choose) ? Make() : Shared; }
@@ -280,6 +327,15 @@ namespace Helpers {
  public AsyncIterator<bool, Exception> ScalarBool() { yield return true; }
  public AsyncIterator<double, Exception> ScalarDouble() { yield return 1.0; }
  public AsyncIterator<int, Exception> ScalarLocal() { int value = 5; yield return value; }
+ public AsyncIterator<int, Exception> ScalarConditional(bool choose, int first, int second) {
+  yield return Program.Choose(choose) ? first : second;
+ }
+ public AsyncIterator<int, Exception> MixedConditional(bool choose, int first, int second) {
+  yield return choose ? first : Program.Identity(second);
+ }
+ public AsyncIterator<int, Exception> SimdConditional(bool choose, int first, int second) {
+  yield return choose ? first : second;
+ }
  public AsyncIterator<ref int, Exception> GenRef() { int value = 5; yield return value; }
  public AsyncIterator<ref mut int, Exception> GenRefMut() { int value = 5; yield return value; }
  public AsyncIterator<Payload, Exception> Gen(bool choose) {
@@ -297,10 +353,11 @@ namespace Helpers {
     return source.good() && project.good();
 }
 
-bool reportProducers(const ProjectOopMirModel& model, const ProjectMethodBodyModel& bindings)
+bool reportProducers(const ProjectOopMirModel& model, const ProjectMethodBodyModel& bindings, bool expectUnknown)
 {
     std::size_t conditionalCount = 0;
     std::size_t namespaceConditionals = 0;
+    std::size_t scalarConditionals = 0;
     std::size_t wrappers = 0;
     std::size_t temporaries = 0;
     for (const auto& function : model.functions())
@@ -336,13 +393,42 @@ bool reportProducers(const ProjectOopMirModel& model, const ProjectMethodBodyMod
                 return false;
             ++conditionalCount;
             if (function.namespaceFunctionOrdinal.has_value()) ++namespaceConditionals;
+            if (function.mangledName.find("ScalarConditional") != std::string::npos)
+            {
+                const auto* condition = conditional->children[0].get();
+                const auto* binding = condition == nullptr || condition->syntax == nullptr ? nullptr :
+                    bindings.expressionTypeBinding(condition->syntax, function.memberOrdinal);
+                if (condition == nullptr || condition->typeKey != "builtin:bool" || binding == nullptr ||
+                    binding->typeKey != "builtin:bool" || conditional->typeKey != "builtin:int") return false;
+                ++scalarConditionals;
+            }
+            if (function.mangledName.find("SimdConditional") != std::string::npos)
+            {
+                const auto* condition = conditional->children[0].get();
+                const auto* binding = condition == nullptr || condition->syntax == nullptr ? nullptr :
+                    bindings.expressionTypeBinding(condition->syntax, function.memberOrdinal);
+                if (condition == nullptr || condition->typeKey != "mask<builtin:int,4>" || binding == nullptr ||
+                    binding->typeKey != "builtin:bool" || conditional->typeKey != "builtin:int") return false;
+            }
             for (std::size_t branch = 1; branch <= 2; ++branch)
             {
                 const auto* producer = conditional->children[branch].get();
                 const auto* binding = producer->syntax == nullptr ? nullptr :
                     bindings.expressionTypeBinding(producer->syntax, function.memberOrdinal);
                 std::cout << "producer " << function.mangledName << ' ' << item.path << "/0/" << branch;
-                if (binding == nullptr) { std::cout << " UNKNOWN\n"; return false; }
+                if (binding == nullptr)
+                {
+                    std::cout << " UNKNOWN\n";
+                    if (expectUnknown && function.mangledName.find("ScalarConditional") != std::string::npos &&
+                        branch == 1) continue;
+                    return false;
+                }
+                if (function.mangledName.find("ScalarConditional") != std::string::npos &&
+                    (producer->typeKey != "builtin:int" || binding->typeKey != "builtin:int" ||
+                     binding->ownership != nativesharp::sema::OwnershipKind::None || binding->ownershipTransfer ||
+                     binding->ownershipFreshOwner ||
+                     binding->objectLifetimeOwnership != nativesharp::sema::OwnershipKind::None ||
+                     binding->storageOwnership != nativesharp::sema::OwnershipKind::None)) return false;
                 std::cout << " type=" << binding->typeKey << " ownership=" << static_cast<int>(binding->ownership)
                           << " transfer=" << binding->ownershipTransfer << " fresh=" << binding->ownershipFreshOwner
                           << " object=" << static_cast<int>(binding->objectLifetimeOwnership)
@@ -350,7 +436,9 @@ bool reportProducers(const ProjectOopMirModel& model, const ProjectMethodBodyMod
             }
         }
     }
-    return conditionalCount == 2 && namespaceConditionals == 1 && wrappers > 0 && temporaries > 0;
+    std::cout << "scalar-conditional-verified=" << scalarConditionals << '\n';
+    return conditionalCount == 5 && namespaceConditionals == 4 && scalarConditionals == 1 &&
+        wrappers > 0 && temporaries > 0;
 }
 
 int main(int argc, char** argv)
@@ -371,6 +459,8 @@ int main(int argc, char** argv)
         !compilation.memberModel() || !compilation.objectLayoutModel() || !compilation.virtualDispatchModel() ||
         !compilation.interfaceModel() || !compilation.destructionModel() || !compilation.namespaceFunctionModel())
     { std::cerr << "HIR failed: " << error << '\n'; return 1; }
+    if (!setSyntheticSimdCondition(*compilation.oopHirModel()))
+    { std::cerr << "could not create synthetic SIMD condition\n"; return 1; }
     if (phase == "unknown" && (!removeOneYieldSyntax(*compilation.oopHirModel()) ||
         !removeOneYieldMode(*compilation.oopHirModel())))
     { std::cerr << "could not create a synthetic missing-binding case\n"; return 1; }
@@ -384,7 +474,7 @@ int main(int argc, char** argv)
     std::cout << "restored-polls=" << restored << '\n';
     if (((phase == "cold" || phase == "unknown") && restored != 0) ||
         (phase == "warm" && restored == 0)) return 1;
-    const bool observations = reportProducers(model, *compilation.methodBodyModel()) &&
+    const bool observations = reportProducers(model, *compilation.methodBodyModel(), phase == "unknown") &&
         reportFacts(model, *compilation.oopHirModel(), *compilation.methodBodyModel(), phase == "unknown");
     const std::string before = factSnapshot(model);
     std::string secondError;

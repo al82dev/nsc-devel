@@ -418,3 +418,67 @@ del ejecutable de prueba fue
 Esto comprueba la forma observada y la consulta, no demuestra que el binding
 del wrapper describa el ownership del hijo ni resuelve descarte, excepción o
 suspensión.
+
+## Propuesta: transporte conservador de clasificación compuesta
+
+Estado: implementación informativa compilada y verificada con las pruebas
+dirigidas descritas abajo. No activa el descarte ni modifica LLVM.
+
+Para una selección, comprobar primero que el MIR tiene exactamente tres hijos
+no nulos, que la condición y su binding tienen tipo `builtin:bool`, y que el
+resultado y su binding tienen el mismo tipo escalar incorporado. La condición
+puede tener efectos: su tipo no demuestra pureza. Clasificar por separado ambas
+ramas a partir de sus propios nodos y bindings; únicamente si ambas demuestran
+`TrivialScalar`, mismo tipo que el resultado y ausencia de transferencia,
+dueño fresco y ownership, transportar esa categoría al resultado. Un binding
+ausente, conversión o productor no reconocido, tipo discordante o rama con
+ownership conserva `Unknown`. En esta primera ampliación no transportar
+`BorrowedReference`: unir referencias exige evidencia adicional de lifetime y
+mutabilidad. Una condición SIMD no pasa la comprobación de bool escalar. El
+backend actual evalúa ambas ramas para una máscara SIMD y solo la elegida para
+bool; ninguna clasificación sustituye ni altera esos efectos.
+
+Para `FullExpressionCleanup`, estudiar el transporte solo si existe un hijo
+único, se demuestra el mismo tipo y categoría en el hijo y en el wrapper, y
+se preserva la limpieza completa. Su binding compartido por sintaxis no prueba
+por sí mismo que el hijo sea transparente. `OwnedTemporaryBorrow` conserva
+`Unknown`: crea un dueño temporal y su limpieza no puede inferirse de la
+categoría del resultado. Ninguna de estas reglas autoriza omitir evaluación,
+efectos, excepciones o limpieza ni demuestra que sea seguro descartar un valor.
+
+La implementación preparada usa una pasada iterativa posterior sobre los hechos
+en orden inverso, con resultados internos por nodo y sin publicar categorías
+de descendientes. Comprueba los índices `parentFact` y `childIndex`, exige tres
+hijos completos y no mezcla yields. Antes
+de cambiar codegen o usar estos hechos en él debe revisarse la identidad de la
+caché de objetos pre-LLVM. La prueba dirigida preparada incorpora una selección
+escalar con llamada en la condición y ramas int sin ownership; otra tiene una
+llamada en una rama y debe seguir `Unknown`. El caso sintético sin binding de
+una rama también debe quedar `Unknown`; se mantiene el control de wrapper y la
+comparación entre caché fría, cálida y paralela. El control SIMD preparado es
+sintético: cambia a `mask<builtin:int,4>` el tipo MIR de una condición cuyo
+binding sigue siendo bool. Debe conservar `Unknown` ante esa inconsistencia; no
+prueba la ejecución ni la semántica de una selección SIMD válida.
+
+El fixture real anterior, con `AsyncIterator<simd<int, 4>, Exception>` y
+selección por máscara, falló al construir MIR porque el iterador no tiene layout
+físico: `async-iterator:simd<builtin:int,4>|type:Probe::NativeSharp.Core.Exception`.
+El comando, configuración y salida están en
+`A:/nsc-fixes-evidencia/async-yield-conditional-runner-20261112.log`; la fuente y
+proyecto originales se conservan sin modificar en
+`A:/nsc-fixes-evidencia/async-yield-simd-layout-repro-20261112/`. Este fallo
+permanece pendiente de investigación; el control sintético no lo resuelve.
+La compilación incremental del target y la ejecución dirigida posterior con el
+control sintético pasaron: fría, cálida, binding desconocido y paralela
+terminaron con salida 0; fría, cálida y paralela produjeron 61 registros
+idénticos. La fría restauró 0 polls y la cálida 17. La selección escalar con
+llamada en la condición se clasificó `TrivialScalar`; la selección con llamada
+en una rama, el wrapper y el control de condición SIMD sintética quedaron
+`Unknown`. Al retirar sintéticamente el binding de una rama, esa selección pasó
+a `Unknown`. La prueba rechazó reconstruir el objeto de uso único y conservó
+los hechos. Evidencia en
+`A:/nsc-fixes-evidencia/async-yield-conditional-fixed-20261112/`; SHA-256 del
+ejecutable de prueba:
+`3e1b10a1d101435d41d55130582df1e2e34f76292eecef1072b3ea6e27b4a442`.
+Esto verifica los hechos y su reconstrucción en caché, no ejecución de los
+efectos de la condición, descarte ni selección SIMD válida.
