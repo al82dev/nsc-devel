@@ -1,0 +1,7 @@
+int Main() {
+    Triple a; a.pair.x=(float)10; a.pair.y=(float)20; a.z=(float)30;
+    Other b; b.pair.x=(float)1; b.pair.y=(float)2;
+    int c=0; int d=0;
+    int* p=combine(a,7,b,&c);
+    return p==&c && c==166 && a.pair.x==(float)10 && b.pair.x==(float)1 ? 0 : 1;
+}

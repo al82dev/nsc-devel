@@ -1584,6 +1584,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             node->cppFunctionPointerPlan &&
             ((node->typeKey == "builtin:int" && interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
+             (node->typeKey == "builtin:int*" && interop::abi_plan::isRegCallWin64FloatRecordsReturningPointer(
+                *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
              ((node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong") && interop::abi_plan::isRegCallWin64FloatRecordsReturningInt64(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
              (node->typeKey == "builtin:double" && interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(
@@ -1671,6 +1673,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             const auto count = static_cast<unsigned>(parts.size());
             LLVMTypeRef resultType = node->typeKey == "builtin:void" ? LLVMVoidTypeInContext(context_) :
                 node->typeKey == "builtin:int" ? LLVMIntTypeInContext(context_, 32) :
+                node->typeKey == "builtin:int*" ? LLVMPointerTypeInContext(context_, 0) :
                 (node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong") ? LLVMIntTypeInContext(context_, 64) :
                 node->typeKey == "builtin:float" ? LLVMFloatTypeInContext(context_) :
                 node->typeKey == "builtin:double" ? LLVMDoubleTypeInContext(context_) :
@@ -1685,7 +1688,7 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     applyBoolZeroExtension(context_, static_cast<unsigned>(i + 1),
                         [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                         { LLVMAddCallSiteAttribute(call, index, attribute); });
-            if (node->typeKey == "builtin:void" || node->typeKey == "builtin:int" || node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong" || node->typeKey == "builtin:double" || node->typeKey == "builtin:float") return call;
+            if (node->typeKey == "builtin:void" || node->typeKey == "builtin:int" || node->typeKey == "builtin:int*" || node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong" || node->typeKey == "builtin:double" || node->typeKey == "builtin:float") return call;
             LLVMValueRef resultSlot = entryBlockAlloca(carrier, 4, "regcall.callback.return");
             LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
             LLVMSetAlignment(resultStore, 4);

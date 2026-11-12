@@ -766,6 +766,9 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         const bool validInt64Return = (f.returnType.kind == CppTypeKind::SignedInteger || f.returnType.kind == CppTypeKind::UnsignedInteger) &&
             abi_plan::isRegCallWin64FloatRecordsReturningInt64(*f.abiPlan, value.linkSymbol) &&
             abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
+        const bool validPointerReturn = f.returnType.kind == CppTypeKind::Pointer && f.returnType.canonicalSpelling == "int *" &&
+            abi_plan::isRegCallWin64FloatRecordsReturningPointer(*f.abiPlan, value.linkSymbol) &&
+            abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
         const bool validDoubleReturn = f.returnType.kind == CppTypeKind::Floating &&
             abi_plan::isRegCallWin64FloatRecordsReturningDouble(*f.abiPlan, value.linkSymbol) &&
             abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
@@ -777,7 +780,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             !f.returnType.isVolatile && !f.returnType.isRestrict &&
             abi_plan::isRegCallWin64FloatRecordsReturningVoid(*f.abiPlan, value.linkSymbol);
         if (f.variadic || !f.hasPrototype || !f.externalLinkage || f.externalSymbol != value.linkSymbol ||
-            f.parameters.empty() || (!validRecordReturn && !validIntReturn && !validInt64Return && !validDoubleReturn && !validFloatReturn && !validVoidReturn) ||
+            f.parameters.empty() || (!validRecordReturn && !validIntReturn && !validInt64Return && !validPointerReturn && !validDoubleReturn && !validFloatReturn && !validVoidReturn) ||
             !tailMatches ||
             !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
         { error = "invalid C dependency regcall record ABI"; return false; }

@@ -802,3 +802,19 @@ signo y ambas llamadas o solo puntero, con y sin encabezado:
 La prueba del plan y el codec rechazan un retorno físico alterado; pasaron
 transporte, ABI e identidad. Otros valores y firmas no se acreditan; T09-003
 permanece abierto.
+
+## Registros expandidos con retorno de puntero
+
+La muestra C recibe dos records flotantes, un entero y un `int*`, escribe por
+ese puntero y devuelve la misma dirección. El control C pasaba mientras NSC
+rechazaba la firma (`A:/temp/nsc-t09-record-ret-pointer-xt0kx864`). Se valida
+el plan físico `ptr` y se concilia con el tipo fuente `int*`. Pasaron ocho
+comparaciones directas y por puntero, estática y DLL O0–O3, comprobando LLVM,
+escritura e identidad (`A:/temp/nsc-t09-record-ret-pointer-cgumcx2r`).
+
+Pasaron 16 consumidores precompilados con ambas llamadas
+(`A:/temp/nsc-t09-record-ret-pointer-pre-2a09t1ny`) y 16 solo por puntero
+(`A:/temp/nsc-t09-record-ret-pointer-pre-evdv7c8v`), con y sin encabezado.
+La prueba del plan y el codec aceptan el plan válido y rechazan un retorno
+físico alterado; pasaron transporte, ABI e identidad. Otros tipos de puntero,
+C++ y otras firmas no se acreditan. T09-003 permanece abierto.
