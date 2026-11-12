@@ -177,3 +177,10 @@ ABI: esto no ejercitó directamente la validación semántica del importador.
 Fuentes, comandos y resultados están en
 `A:/nsc-fixes-evidencia/simd-metadata-tuple-directed*` y
 `A:/nsc-fixes-evidencia/simd-metadata-invalid-directed*`.
+
+Se añadió además una prueba unitaria independiente del mapeo real, para las
+dos sobrecargas y claves SIMD válidas e inválidas, incluidos anchura excesiva,
+identidad no canónica y conteo que desborda el producto. El target se compiló
+incrementalmente y `nsc.simd-metadata-source-mapping` pasó en CTest dirigido
+(1/1). Esta prueba no demuestra el layout de tuplas SIMD ni sustituye una
+metadata binaria completa con huella ABI válida.

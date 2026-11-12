@@ -6683,6 +6683,15 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.public-surface-emitter
         COMMAND nsc_public_surface_emitter_tests)
 
+    add_executable(nsc_simd_metadata_source_mapping_tests
+        tests/unit/SimdMetadataSourceMappingTests.cpp)
+    target_link_libraries(nsc_simd_metadata_source_mapping_tests PRIVATE
+        nsc_precompiled nsc_frontend nsc_target)
+    target_compile_features(nsc_simd_metadata_source_mapping_tests PRIVATE cxx_std_20)
+    nsc_enable_warnings(nsc_simd_metadata_source_mapping_tests)
+    add_test(NAME nsc.simd-metadata-source-mapping
+        COMMAND nsc_simd_metadata_source_mapping_tests)
+
     add_executable(nsc_project_callable_wave_driver_tests
         tests/unit/ProjectCallableWaveDriverTests.cpp)
     target_link_libraries(nsc_project_callable_wave_driver_tests PRIVATE
