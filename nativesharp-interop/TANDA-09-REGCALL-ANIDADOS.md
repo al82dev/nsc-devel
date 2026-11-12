@@ -1009,6 +1009,16 @@ rechazos de ancho y alineación, transporte e identidad y la regresión C++ de
 ocho bytes (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-nb7g8sd1`).
 Otros tamaños, alineaciones y firmas no se acreditan; T09-003 sigue abierto.
 
+## DLL C desde fuente con registro mixto
+
+El [validador conjunto](pruebas-tanda-09-regcall-record-mixto-dll/validar.py)
+compila ocho bibliotecas C como DLL con Clang 23.1.0 y compara el control C y
+NativeSharp O0–O3. Las 32 ejecuciones pasaron para retornos `double`, `int`,
+`float`, `long long`, `short`, booleano, `void` e `int*`, con llamada directa
+y por puntero, copia del argumento e inspección de la forma física en LLVM
+(`A:/temp/nsc-t09-mixto-c-dll-zgpup3vl`). Este resultado cubre las muestras y
+tipos indicados; no acredita otras firmas ni convenciones.
+
 ## Registro mixto con retorno de puntero
 
 La función recibe por copia un registro mixto de `float` y `double`, escribe
@@ -1032,8 +1042,8 @@ Pasaron 32 consumidores C precompilados
 `A:/temp/nsc-t09-record-mixto-pointer-pre-7i850a6l`) y 32 C++
 (`A:/temp/nsc-t09-cpp-record-mixto-pointer-pre-gtrsd8gi` y
 `A:/temp/nsc-t09-cpp-record-mixto-pointer-pre-maekhutq`), en estática y DLL,
-O0–O3, con y sin encabezado. Pasaron plan, transporte, ABI e identidad. La
-llamada C directa con DLL, otros punteros y firmas siguen pendientes; T09-003
+O0–O3, con y sin encabezado. Pasaron plan, transporte, ABI e identidad. Otros
+punteros y firmas siguen pendientes; T09-003
 permanece abierto.
 
 ## Registro mixto con retorno booleano
@@ -1059,7 +1069,7 @@ Pasaron 32 consumidores precompilados C
 (`A:/temp/nsc-t09-cpp-record-mixto-bool-pre-is5imbv7` y
 `A:/temp/nsc-t09-cpp-record-mixto-bool-pre-5s_mr4ms`), en estática y DLL,
 O0–O3, con y sin encabezado. También pasaron plan, transporte, ABI e identidad.
-La llamada C directa con DLL y otras firmas siguen pendientes; T09-003 sigue abierto.
+Otras firmas siguen pendientes; T09-003 sigue abierto.
 
 ## Registro mixto con retorno entero estrecho
 
@@ -1088,8 +1098,8 @@ también comprobó C y C++ con retornos `signed char`, `unsigned char` y
 `unsigned short`, incluidas llamadas por puntero y desde consumidores
 precompilados por puntero (`A:/temp/nsc-t09-mixto-estrechos-72maw44v`).
 Pasaron plan, transporte, ABI e identidad y la regresión C++ de retorno de
-registro compacto (`A:/temp/nsc-t09-cpp-return-compact-pre-brotdf_t`). La
-llamada C directa con DLL y otras firmas siguen pendientes; T09-003 sigue abierto.
+registro compacto (`A:/temp/nsc-t09-cpp-return-compact-pre-brotdf_t`). Otras
+firmas siguen pendientes; T09-003 sigue abierto.
 
 ## Registro mixto con retorno entero de 64 bits
 
@@ -1117,8 +1127,8 @@ O0–O3 y con y sin encabezado. El control sin signo comprueba además el bit m�
 alto en C y C++, directo y por puntero, y precompilado por puntero
 (`A:/temp/nsc-t09-mixto-u64-uttekmwh`). Pasaron plan, transporte, ABI,
 identidad y la regresión precompilada C++ de retorno compacto
-(`A:/temp/nsc-t09-cpp-return-compact-pre-8ziftkc6`). La llamada C directa con
-DLL y otras firmas siguen pendientes; T09-003 permanece abierto.
+(`A:/temp/nsc-t09-cpp-return-compact-pre-8ziftkc6`). Otras firmas siguen
+pendientes; T09-003 permanece abierto.
 
 ## Registro mixto con retorno float
 
@@ -1143,8 +1153,8 @@ pasó ocho comparaciones en estática y DLL O0–O3
 precompilados (`A:/temp/nsc-t09-cpp-record-mixto-float-pre-y6s0pdb0` y
 `A:/temp/nsc-t09-cpp-record-mixto-float-pre-0q_51skn`). Pasaron plan,
 transporte, ABI, identidad y la regresión C++ precompilada de retorno `void`
-(`A:/temp/nsc-t09-cpp-record-mixto-void-pre-x9wxbvk6`). La muestra C directa
-con DLL y otras firmas permanecen pendientes; T09-003 sigue abierto.
+(`A:/temp/nsc-t09-cpp-record-mixto-void-pre-x9wxbvk6`). Otras firmas
+permanecen pendientes; T09-003 sigue abierto.
 
 ## Registro mixto con retorno void
 
@@ -1295,7 +1305,7 @@ conservación del argumento e inspección LLVM
 (`A:/temp/nsc-t09-regcall-record-mixto-int-jsch6us5`). También pasaron plan,
 transporte, ABI, identidad y la regresión C++ con retorno `double`
 (`A:/temp/nsc-t09-cpp-record-mixto-real-4c22q0qs`). La muestra desde fuente usa
-estática; la muestra C desde fuente con DLL sigue pendiente.
+estática; la prueba adicional con DLL se documenta arriba.
 
 El contrato vigente conserva el plan para el retorno entero y la copia
 indirecta. La prueba interna verifica lectura y escritura y rechaza un retorno
@@ -1334,7 +1344,7 @@ inspecciona la llamada física (`A:/temp/nsc-t09-regcall-record-mixto-real-t0kvo
 La prueba interna del plan rechaza una alineación alterada; pasaron transporte,
 ABI, identidad y la regresión C++ de dos `double` expandidos
 (`A:/temp/nsc-t09-cpp-record-double-m67sr12p`). La muestra nueva usa enlace
-estático; la muestra C desde fuente con DLL aún no se acredita.
+estático; la prueba adicional con DLL se documenta arriba.
 
 El contrato vigente conserva el plan de copia indirecta sin exigir una pieza
 expandida; la prueba interna verifica su lectura y escritura y rechaza una
