@@ -108,3 +108,61 @@ No se ha implementado ni probado este diseño, ni se afirma que el límite de
 ordinales baste para todos los controles. La política estricta falló
 `distinct_shadow_owner`; su diff se conservó en evidencia y se retiró del
 producto. No se debe ignorar `*` para hacer pasar ese control.
+
+### Infraestructura informativa en preparación
+
+La primera tanda conserva por local de vista observaciones de origen
+desconocido: scope de producción y cantidad de locales observada. **No son
+límites de vida ni pruebas de que dos almacenamientos sean disjuntos**. La
+incertidumbre no localizada usa ambos campos vacíos. Las observaciones de una
+copia o asignación se unen conservadoramente, y una salida `ref/out` añade una
+observación de llamada; si el destino es una referencia cuyo local no se
+conoce, marca las vistas visibles del callable. El análisis por ramas conserva
+la unión existente, no demuestra un estado exacto por camino.
+Un vector sin observaciones significa que no se registró evidencia: no
+significa que el valor carezca de raíces desconocidas ni autoriza disyunción.
+
+Cada local mantiene como máximo ocho observaciones distintas. Ocho es una
+decisión de presupuesto para limitar memoria y búsquedas, no un valor medido ni
+un límite semántico del lenguaje. Si llega una novena observación o cualquier
+origen no localizado, toda la historia se sustituye por un único Unknown no
+localizado que subsume las observaciones, y no puede volver a estrecharse por
+una copia o una unión. La búsqueda recorre como máximo ocho entradas. El vector
+vacío ocupa espacio en cada `MethodLocalSymbol` (su tamaño depende de la
+implementación de la STL; no se ha medido el impacto total). Si una llamada
+tiene varios destinos inciertos se recorre el conjunto de locales visibles una
+vez, no una vez por argumento.
+
+El fusionador remapea scope y conteo observado con las bases del shard; el
+Unknown no localizado queda vacío al remapear. La compilación incremental
+conjunta pasó. La prueba dirigida de modelo pasó sus 25 comprobaciones de
+copias, asignación, salidas `ref/out`, referencia alias, dos callables,
+deduplicación y colapso. La ejecución directa desde la raíz del repositorio
+quedó en `A:/nsc-fixes-evidencia/view-unknown-model-repo-cwd-20261112.log`;
+el ejecutable de prueba tuvo SHA-256
+`3db5c6feb1a52b4be35b6f59d9baea309696a53b4a35db0b4c7c3bdc399a911b`.
+La prueba CTest también pasó y su resumen está en
+`A:/nsc-fixes-evidencia/view-unknown-origin-model-20261112.log`.
+
+Con el compilador de SHA-256
+`70569bd4b18d2b563cfdecc907f525bb251b670e95b896aef82b9fbb2166ff78`,
+la prueba de identidad con shadowing conservó sus controles: cuatro programas
+válidos ejecutaron con resultado 42 en O0 y O2, y tres escapes se rechazaron.
+El registro es `A:/nsc-fixes-evidencia/view-shadow-origin-20261112.log`.
+La selección semántica ampliada aceptó los nueve controles válidos y rechazó
+los seis controles directos o de escape; aceptó inesperadamente los siete
+reemplazos por alias que deberían rechazarse. Su registro completo es
+`A:/nsc-fixes-evidencia/view-ref-owner-observation-20261112.log`. Esos siete
+programas no se ejecutaron. La observación confirma que esta tanda informativa
+no corrige la brecha, sin atribuirla a los commits de vistas.
+
+No se ha
+demostrado persistencia entre procesos de este modelo, consumo por MIR ni una
+clave de caché para estas observaciones; tampoco se ha activado ningún guard o
+consulta que las use para cambiar diagnósticos o codegen. Las salidas que no
+se puedan vincular a locales y los efectos interprocedurales no constituyen un
+contrato completo de procedencia.
+
+Esta infraestructura no demuestra la propuesta de disyunción por ordinal, no
+resuelve el reemplazo por alias y no convierte el marcador `*` en una prueba
+de seguridad.

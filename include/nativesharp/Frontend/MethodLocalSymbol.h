@@ -22,6 +22,7 @@
 #include "nativesharp/Frontend/ProjectMethodBodyBuildOptions.h"
 #include "nativesharp/Frontend/ProjectTypeConversion.h"
 #include "nativesharp/Frontend/ViewSourceIdentity.h"
+#include "nativesharp/Frontend/ViewUnknownOrigin.h"
 #include "nativesharp/Language/CallableSemantics.h"
 #include "nativesharp/Sema/ExpressionInfo.h"
 
@@ -191,6 +192,9 @@ struct MethodLocalSymbol final
     // Parallel identity for named roots. Unknown preserves the legacy lookup
     // when a producer has not supplied a semantic identity.
     std::vector<ViewSourceIdentity> viewSourceIdentities;
+    // Observed unknown roots; an empty vector means unrecorded, not proven safe.
+    // The count records analysis timing only, not a lifetime or non-aliasing bound.
+    std::vector<ViewUnknownOrigin> viewUnknownOrigins;
     // Prototype only: direct tuple parameter that supplied a deconstructed view.
     // This is an observed source, not an exhaustive provenance contract.
     std::optional<std::size_t> prototypeTupleViewParameter;

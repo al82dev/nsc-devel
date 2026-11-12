@@ -111,6 +111,11 @@ void remapLocal(
     remapEscapeOrigin(local.pointerValueOrigin, scopeBase, localBase);
     for (ViewSourceIdentity& source : local.viewSourceIdentities)
         if (source.kind == ViewSourceIdentityKind::Local) source.ordinal += localBase;
+    for (ViewUnknownOrigin& origin : local.viewUnknownOrigins)
+    {
+        addBase(origin.producerScopeOrdinal, scopeBase);
+        addBase(origin.observedLocalCount, localBase);
+    }
 }
 
 void remapLambdaCapture(MethodLambdaCapture& capture, std::size_t localBase) noexcept

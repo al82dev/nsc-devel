@@ -3,10 +3,12 @@
 
 #include "../support/TestContext.h"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace
 {
@@ -24,6 +26,19 @@ int main()
     using nativesharp::tests::TestContext;
 
     TestContext tests;
+    {
+        using nativesharp::frontend::ViewUnknownOrigin;
+        using nativesharp::frontend::appendViewUnknownOrigin;
+        std::vector<ViewUnknownOrigin> origins;
+        for (std::size_t i = 0; i < 8; ++i) appendViewUnknownOrigin(origins, {i, i});
+        appendViewUnknownOrigin(origins, {7, 7});
+        tests.expect(origins.size() == 8, "duplicate uncertainty observations do not consume the bound");
+        appendViewUnknownOrigin(origins, {8, 8});
+        appendViewUnknownOrigin(origins, {9, 9});
+        tests.expect(origins.size() == 1 && !origins.front().producerScopeOrdinal.has_value() &&
+                         !origins.front().observedLocalCount.has_value(),
+            "too many uncertainty observations collapse to unlocated Unknown");
+    }
     const std::filesystem::path root =
         std::filesystem::temp_directory_path() / "nativesharp_callable_result_merger_ordinals";
     std::error_code cleanupError;
@@ -97,10 +112,33 @@ int main()
         "public ref[this] int Get() { unsafe(\"view\") { return ref *target; } } } "
         "public struct Owner { public int Value; ~Owner() { } } "
         "class IdentityMerge { "
+        "public static void Write(View input, ref View output) { output = input; } "
+        "public static void WriteOut(View input, out View output) { output = input; } "
         "public static int First(ref int parameter) { Owner owner; owner.Value = 1; "
-        "View view = new View(ref owner.Value, ref parameter); return view.Get(); } "
+        "View view = new View(ref owner.Value, ref parameter); View copy = view; "
+        "View assigned = default(View); assigned = copy; "
+        "View output = default(View); Write(copy, ref output); "
+        "{ ref View indirect = ref output; Write(copy, ref indirect); } "
+        "View output2 = default(View); WriteOut(copy, out output2); return output.Get(); } "
         "public static int Second(ref int parameter) { Owner owner; owner.Value = 2; "
-        "View view = new View(ref owner.Value, ref parameter); return view.Get(); } }\n");
+        "View view = new View(ref owner.Value, ref parameter); View copy = view; "
+        "View assigned = default(View); assigned = copy; "
+        "View output = default(View); Write(copy, ref output); "
+        "{ ref View indirect = ref output; Write(copy, ref indirect); } "
+        "View output2 = default(View); WriteOut(copy, out output2); return output.Get(); } "
+        "public static int Many(ref int parameter) { Owner owner; owner.Value = 3; "
+        "View many = new View(ref owner.Value, ref parameter); "
+        "{ many = new View(ref owner.Value, ref parameter); } "
+        "{ many = new View(ref owner.Value, ref parameter); } "
+        "{ many = new View(ref owner.Value, ref parameter); } "
+        "{ many = new View(ref owner.Value, ref parameter); } "
+        "{ many = new View(ref owner.Value, ref parameter); } "
+        "{ many = new View(ref owner.Value, ref parameter); } "
+        "{ many = new View(ref owner.Value, ref parameter); } "
+        "{ many = new View(ref owner.Value, ref parameter); } "
+        "{ many = new View(ref owner.Value, ref parameter); } "
+        "View copiedMany = many; View outputMany = default(View); "
+        "Write(copiedMany, ref outputMany); return outputMany.Get(); } }\n");
     ProjectCompilation identityCompilation;
     identityCompilation.setCompilationJobs(1);
     error.clear();
@@ -127,9 +165,63 @@ int main()
             }
             tests.expect(ownerMatches, "merged view identity refers to its own callable's owner");
             tests.expect(parameterMatches, "merging preserves the callable-relative parameter ordinal");
+            bool originsMatch = !local.viewUnknownOrigins.empty();
+            for (const auto& origin : local.viewUnknownOrigins)
+            {
+                if (!origin.producerScopeOrdinal.has_value() || !origin.observedLocalCount.has_value() ||
+                    *origin.producerScopeOrdinal >= identityCompilation.methodBodyModel()->scopes().size() ||
+                    identityCompilation.methodBodyModel()->scopes()[*origin.producerScopeOrdinal].methodMemberOrdinal !=
+                        local.methodMemberOrdinal || *origin.observedLocalCount > locals.size())
+                    originsMatch = false;
+            }
+            tests.expect(originsMatch, "unknown producer observations remain in their callable after merge");
+            const nativesharp::frontend::MethodLocalSymbol* copy = nullptr;
+            const nativesharp::frontend::MethodLocalSymbol* output = nullptr;
+            const nativesharp::frontend::MethodLocalSymbol* output2 = nullptr;
+            const nativesharp::frontend::MethodLocalSymbol* assigned = nullptr;
+            for (const auto& candidate : locals)
+                if (candidate.methodMemberOrdinal == local.methodMemberOrdinal)
+                {
+                    if (candidate.name == "copy") copy = &candidate;
+                    if (candidate.name == "output") output = &candidate;
+                    if (candidate.name == "output2") output2 = &candidate;
+                    if (candidate.name == "assigned") assigned = &candidate;
+                }
+            tests.expect(copy != nullptr && copy->viewUnknownOrigins == local.viewUnknownOrigins,
+                "view copy preserves the producer observations exactly");
+            bool outputPreservesInputs = output != nullptr && output->viewUnknownOrigins.size() >= 3;
+            if (output != nullptr)
+                for (const auto& origin : local.viewUnknownOrigins)
+                    if (std::ranges::find(output->viewUnknownOrigins, origin) == output->viewUnknownOrigins.end())
+                        outputPreservesInputs = false;
+            tests.expect(outputPreservesInputs,
+                "ref output and reference-alias output retain input and call uncertainty");
+            bool outPreservesInputs = output2 != nullptr && output2->viewUnknownOrigins.size() >= 2;
+            bool assignmentPreservesInputs = assigned != nullptr;
+            for (const auto& origin : local.viewUnknownOrigins)
+            {
+                if (output2 != nullptr && std::ranges::find(output2->viewUnknownOrigins, origin) ==
+                    output2->viewUnknownOrigins.end()) outPreservesInputs = false;
+                if (assigned != nullptr && std::ranges::find(assigned->viewUnknownOrigins, origin) ==
+                    assigned->viewUnknownOrigins.end()) assignmentPreservesInputs = false;
+            }
+            tests.expect(outPreservesInputs, "out output conservatively retains input and call uncertainty");
+            tests.expect(assignmentPreservesInputs, "view assignment retains producer uncertainty");
             ++viewsChecked;
         }
         tests.expect(viewsChecked == 2, "both callable view identities were checked");
+        bool collapsed = true;
+        std::size_t collapsedChecked = 0;
+        for (const auto& local : locals)
+        {
+            if (local.name != "many" && local.name != "copiedMany" && local.name != "outputMany") continue;
+            ++collapsedChecked;
+            if (local.viewUnknownOrigins.size() != 1 ||
+                local.viewUnknownOrigins.front().producerScopeOrdinal.has_value() ||
+                local.viewUnknownOrigins.front().observedLocalCount.has_value()) collapsed = false;
+        }
+        tests.expect(collapsedChecked == 3 && collapsed,
+            "collapsed uncertainty survives shard merge, copying and ref output");
     }
 
     std::filesystem::remove_all(root, cleanupError);

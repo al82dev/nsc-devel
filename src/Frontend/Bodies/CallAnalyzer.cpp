@@ -1285,6 +1285,7 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
             viewInputs.viewSourceIdentities.push_back({receiverRoot->text(), ViewSourceIdentityKind::Unknown, 0});
         }
     }
+    bool unknownViewOutputTarget = false;
     for (std::size_t i = 0; i < resolvedArguments.size() &&
          i < selected.argumentParameterOrdinals.size() && i < argumentSyntaxes.size(); ++i)
     {
@@ -1324,6 +1325,61 @@ void ProjectMethodBodyModel::recordViewOutputOrigins(
              !tupleTypeKeyContainsView(resolvedArguments[i].typeKey))) continue;
         collectViewSourceFields(viewInputs,
             argumentSyntaxes[i], scopeOrdinal);
+    }
+    // Record uncertain call outputs without changing the existing diagnostics.
+    const auto recordUnknownOutput = [&](MethodLocalSymbol& target)
+    {
+        for (const ViewUnknownOrigin& source : viewInputs.viewUnknownOrigins)
+            appendViewUnknownOrigin(target.viewUnknownOrigins, source);
+        const ViewUnknownOrigin callOrigin{
+            scopeOrdinal < scopes_.size() ? std::optional<std::size_t>(scopeOrdinal) : std::nullopt,
+            locals_.size()};
+        appendViewUnknownOrigin(target.viewUnknownOrigins, callOrigin);
+    };
+    for (std::size_t i = 0; i < resolvedArguments.size() &&
+         i < selected.argumentParameterOrdinals.size() && i < argumentSyntaxes.size(); ++i)
+    {
+        const std::size_t p = selected.argumentParameterOrdinals[i];
+        if (p >= selectedMember.parameters.size()) continue;
+        const MethodParameterSymbol& parameter = selectedMember.parameters[p];
+        if ((parameter.passKind != ParameterPassKind::Ref && parameter.passKind != ParameterPassKind::Out) ||
+            (!typeKeyIsViewLike(parameter.pointeeTypeKey) &&
+             !tupleTypeKeyContainsView(parameter.pointeeTypeKey))) continue;
+        const ast::AstNode* argument = argumentSyntaxes[i];
+        const ast::AstNode* destination = argument != nullptr &&
+            argument->kind() == ast::AstNodeKind::UnaryExpression ? argument->first() : nullptr;
+        if (destination == nullptr || destination->kind() != ast::AstNodeKind::IdentifierExpression)
+        {
+            unknownViewOutputTarget = true;
+            continue;
+        }
+        const auto name = lookupScopeName(scopeOrdinal, destination->text());
+        if (!name.has_value() || name->kind != ScopeNameKind::Local || name->semanticOrdinal >= locals_.size())
+        {
+            unknownViewOutputTarget = true;
+            continue;
+        }
+        MethodLocalSymbol& target = locals_[name->semanticOrdinal];
+        recordUnknownOutput(target);
+        if (!target.isReference) continue;
+        const auto& origin = target.referenceEscapeOrigin;
+        if (origin.kind == MethodEscapeOriginKind::CurrentFrameLocal && origin.ordinal.has_value() &&
+            *origin.ordinal < locals_.size() &&
+            target.referencePlaceKey == "L" + std::to_string(*origin.ordinal))
+        {
+            recordUnknownOutput(locals_[*origin.ordinal]);
+            continue;
+        }
+        unknownViewOutputTarget = true;
+    }
+    if (unknownViewOutputTarget)
+    {
+        const std::size_t callable = scopeOrdinal < scopes_.size()
+            ? scopes_[scopeOrdinal].methodMemberOrdinal : std::numeric_limits<std::size_t>::max();
+        for (MethodLocalSymbol& possible : locals_)
+            if (possible.methodMemberOrdinal == callable && scopeContains(possible.scopeOrdinal, scopeOrdinal) &&
+                (typeKeyIsViewLike(possible.typeKey) || tupleTypeKeyContainsView(possible.typeKey)))
+                recordUnknownOutput(possible);
     }
     for (std::size_t i = 0; i < resolvedArguments.size() &&
          i < selected.argumentParameterOrdinals.size() && i < argumentSyntaxes.size(); ++i)

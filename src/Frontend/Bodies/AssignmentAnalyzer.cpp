@@ -1104,6 +1104,30 @@ bool ProjectMethodBodyModel::recordViewAssignmentRoot(
         }
     }
     collectViewSourceFields(target, expression->second(), scopeOrdinal);
+    if (target.isReference)
+    {
+        const auto mergeUnknown = [&](MethodLocalSymbol& destination)
+        {
+            if (sources.viewUnknownOrigins.empty())
+                appendViewUnknownOrigin(destination.viewUnknownOrigins, {});
+            for (const ViewUnknownOrigin& source : sources.viewUnknownOrigins)
+                appendViewUnknownOrigin(destination.viewUnknownOrigins, source);
+        };
+        const auto& origin = target.referenceEscapeOrigin;
+        if (origin.kind == MethodEscapeOriginKind::CurrentFrameLocal && origin.ordinal.has_value() &&
+            *origin.ordinal < locals_.size() &&
+            target.referencePlaceKey == "L" + std::to_string(*origin.ordinal))
+            mergeUnknown(locals_[*origin.ordinal]);
+        else
+        {
+            const std::size_t callable = scopeOrdinal < scopes_.size()
+                ? scopes_[scopeOrdinal].methodMemberOrdinal : std::numeric_limits<std::size_t>::max();
+            for (MethodLocalSymbol& possible : locals_)
+                if (possible.methodMemberOrdinal == callable && scopeContains(possible.scopeOrdinal, scopeOrdinal) &&
+                    (typeKeyIsViewLike(possible.typeKey) || tupleTypeKeyContainsView(possible.typeKey)))
+                    mergeUnknown(possible);
+        }
+    }
     const std::optional<std::string> root =
         viewRootLocalOfExpression(expression->second(), scopeOrdinal);
     if (!root.has_value()) return true;

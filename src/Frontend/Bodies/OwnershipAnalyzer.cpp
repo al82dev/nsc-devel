@@ -71,6 +71,10 @@ void ProjectMethodBodyModel::collectViewSourceFields(
         if (root.size() > 1 && root.front() == '@')
             addIdentity({root.substr(1), ViewSourceIdentityKind::Unknown, 0});
     };
+    const auto addUnknownOrigin = [&](ViewUnknownOrigin origin)
+    {
+        appendViewUnknownOrigin(local.viewUnknownOrigins, origin);
+    };
     // Each possible value of a conditional can hold a different field loan.
     // Traverse only its value branches without growing the native call stack.
     std::vector<const ast::AstNode*> pending{expression};
@@ -97,6 +101,12 @@ void ProjectMethodBodyModel::collectViewSourceFields(
                     pending.push_back(element);
             }
             continue;
+        }
+        if (expression->kind() != ast::AstNodeKind::IdentifierExpression)
+        {
+            const std::optional<std::size_t> producerScope =
+                scopeOrdinal < scopes_.size() ? std::optional<std::size_t>(scopeOrdinal) : std::nullopt;
+            addUnknownOrigin({producerScope, locals_.size()});
         }
         const MethodCallBinding* call = callBinding(expression, callable);
         const NamespaceFunctionCallBinding* function = namespaceFunctionCall(expression);
@@ -341,6 +351,9 @@ void ProjectMethodBodyModel::collectViewSourceFields(
                 source->semanticOrdinal < locals_.size() &&
                 !locals_[source->semanticOrdinal].viewSourceFields.empty())
             {
+                const auto origins = locals_[source->semanticOrdinal].viewUnknownOrigins;
+                if (origins.empty()) addUnknownOrigin({});
+                for (const ViewUnknownOrigin& origin : origins) addUnknownOrigin(origin);
                 for (const std::string& field : locals_[source->semanticOrdinal].viewSourceFields)
                 {
                     if (std::ranges::find(local.viewSourceFields, field) == local.viewSourceFields.end())
@@ -357,6 +370,7 @@ void ProjectMethodBodyModel::collectViewSourceFields(
                 }
                 continue;
             }
+            addUnknownOrigin({});
         }
         if (std::ranges::find(local.viewSourceFields, "*") == local.viewSourceFields.end())
             local.viewSourceFields.push_back("*");
