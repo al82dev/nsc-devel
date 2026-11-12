@@ -25,3 +25,8 @@ baseline-sat-narrow.log, fixed-sat-narrow.log, sat-narrow-o2/ y cases/comp-01/fi
 clang-tidy con clang-analyzer-* no informo errores y produjo nueve avisos de padding en
 cabeceras no modificadas; no hay linea base comparable del analizador. No se afirman
 verificadas conversiones entre otros tipos ni la bateria completa.
+Control integrado adicional: los límites exactos y sus vecinos inmediatos
+para short y byte pasaron en O0 y O2. El comando dirigido terminó con código 0
+(`A:/nsc-fixes-evidencia/numeric-targeted-20261111.cmd`, log
+`numeric-narrow-20261111.log`). El compilador tenía otros cambios locales y
+NSLink se invocó por nombre como dependencia externa de solo lectura.

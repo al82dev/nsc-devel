@@ -22,5 +22,27 @@ int Main()
     {
         return 4;
     }
+    int shortMinimum = -32768;
+    int belowShortMinimum = -32769;
+    int shortMaximum = 32767;
+    int aboveShortMaximum = 32768;
+    if (saturating((short)shortMinimum) != -32768 ||
+        saturating((short)belowShortMinimum) != -32768 ||
+        saturating((short)shortMaximum) != 32767 ||
+        saturating((short)aboveShortMaximum) != 32767)
+    {
+        return 5;
+    }
+    int byteMinimum = 0;
+    int belowByteMinimum = -1;
+    int byteMaximum = 255;
+    int aboveByteMaximum = 256;
+    if (saturating((byte)byteMinimum) != 0 ||
+        saturating((byte)belowByteMinimum) != 0 ||
+        saturating((byte)byteMaximum) != 255 ||
+        saturating((byte)aboveByteMaximum) != 255)
+    {
+        return 6;
+    }
     return 0;
 }
