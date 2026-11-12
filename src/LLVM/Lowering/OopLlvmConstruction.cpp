@@ -99,6 +99,13 @@ ReceiverPublicationScan scanReceiverPublication(
                 work.push_back(value->children[2].get());
                 continue;
             }
+            // Either operand of a null-coalescing expression can be its result.
+            if (value->kind == Kind::NullCoalescing && value->children.size() == 2U)
+            {
+                work.push_back(value->children[0].get());
+                work.push_back(value->children[1].get());
+                continue;
+            }
             if ((value->kind == Kind::Convert || value->kind == Kind::BorrowValue) &&
                 value->children.size() == 1U)
             {
