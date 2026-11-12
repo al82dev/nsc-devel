@@ -1587,7 +1587,7 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                         !type.isConst && !type.isVolatile && !type.isRestrict && plan &&
                         abi_plan::isRegCallWin64FloatRecordsReturningVoid(*plan, "__regcall3____nsc_pointer_abi_probe");
                     if (plan && (recordReturn || intReturn || boolReturn || narrowReturn || int64Return || pointerReturn || doubleReturn || floatReturn || voidReturn) &&
-                        abi_plan::regCallFloatRecordArgumentsMatch(*plan, type, parameters, !recordReturn))
+                        abi_plan::regCallFloatRecordArgumentsMatch(*plan, type, parameters, !recordReturn, !recordReturn))
                         declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
                 }
                 result.push_back({group.projectFile, index, *owner, target, std::move(declaration)});

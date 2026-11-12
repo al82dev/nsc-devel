@@ -355,7 +355,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                       abi_plan::isRegCallWin64FloatRecordsReturningBool(*plan, "__regcall3____nsc_pointer_abi_probe") ||
                       abi_plan::isRegCallWin64FloatRecordsReturningPointer(*plan, "__regcall3____nsc_pointer_abi_probe")) &&
                      abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, signature.returnType)))) ||
-                !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes, !recordReturn)) return {};
+                !abi_plan::regCallFloatRecordArgumentsMatch(*plan, signature.returnType, signature.parameterTypes, !recordReturn, !recordReturn)) return {};
             return std::make_shared<const abi_plan::Plan>(std::move(*plan));
         }
     }
@@ -597,7 +597,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                     "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4);
             if (!validResult ||
                 !abi_plan::regCallFloatRecordArgumentsMatch(*selected->declaration.abiPlan, signature.returnType,
-                    signature.parameterTypes, scalarReturn)) return {};
+                    signature.parameterTypes, scalarReturn, scalarReturn)) return {};
             for (std::size_t i = 0; i < signature.parameterTypes.size(); ++i)
             {
                 const auto& parameter = signature.parameterTypes[i];
@@ -608,8 +608,10 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                     if (!abi_plan::regCallRecordMatchesExpansion(signature.returnType, parameter, logical)) return {};
                 }
                 else if (!scalarReturn || logical.firstPhysical >= selected->declaration.abiPlan->physicalParameters.size() ||
-                    !abi_plan::regCallDirectIntegerRecordMatches(parameter, logical,
-                        selected->declaration.abiPlan->physicalParameters[logical.firstPhysical])) return {};
+                    !(abi_plan::regCallDirectIntegerRecordMatches(parameter, logical,
+                        selected->declaration.abiPlan->physicalParameters[logical.firstPhysical]) ||
+                      abi_plan::regCallIndirectRecordMatches(parameter, logical,
+                        selected->declaration.abiPlan->physicalParameters[logical.firstPhysical]))) return {};
                 const auto parameterIdentity = projectCppRecordTypeIdentity(parameter, moduleName);
                 const auto parameterOrdinal = parameterIdentity ? lookup.typeOrdinalForIdentity(parameterIdentity->key()) : std::nullopt;
                 const auto* parameterImported = parameterOrdinal ? lookup.cppImportedType(*parameterOrdinal) : nullptr;

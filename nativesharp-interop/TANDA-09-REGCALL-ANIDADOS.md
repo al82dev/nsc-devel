@@ -1030,5 +1030,18 @@ ambas llamadas (`A:/temp/nsc-t09-expanded-large-pre-vibacxu4`) y 16 solo por
 alias (`A:/temp/nsc-t09-expanded-large-pre-kzksmkpg`), en estática y DLL O0–O3,
 con y sin encabezado. Las pruebas del plan y del codec rechazan alineaciones
 alteradas; pasaron transporte, ABI, identidad y la regresión precompilada del
-registro compacto (`A:/temp/nsc-t09-expanded-mixed-pre-115xd3aw`). C++ y el
-registro de tres bytes siguen pendientes. T09-003 permanece abierto.
+registro compacto (`A:/temp/nsc-t09-expanded-mixed-pre-115xd3aw`).
+
+La muestra C++ de records triviales de 24 bytes inicialmente era rechazada
+(`A:/temp/nsc-t09-cpp-expanded-large-9zi3i3xn`). La conciliación comprueba el
+plan, la identidad, el layout y la elegibilidad trivial en vivo y desde el
+catálogo. Pasaron ocho comparaciones directas y por alias en estática y DLL
+O0–O3, verificando resultado y copia (`A:/temp/nsc-t09-cpp-expanded-large-hzjpbs5f`).
+Pasaron 16 consumidores precompilados con ambas llamadas
+(`A:/temp/nsc-t09-cpp-expanded-large-precompilado-mj_yl8jt`) y 16 solo por alias
+(`A:/temp/nsc-t09-cpp-expanded-large-precompilado-dg_nlvj7`), con y sin
+encabezado. Los controles de acceso privado y construcción local no trivial
+siguen rechazados (`A:/temp/nsc-t09-cpp-expanded-large-rechazos-1v3zt7xb`);
+pasaron plan, transporte, identidad y la regresión C precompilada
+(`A:/temp/nsc-t09-expanded-large-pre-1bb5i1_r`). El registro de tres bytes y
+otras firmas siguen pendientes. T09-003 permanece abierto.
