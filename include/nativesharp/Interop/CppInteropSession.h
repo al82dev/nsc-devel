@@ -71,6 +71,24 @@ struct CppRecordValueOperations
     std::optional<std::string> clangUsr;
 };
 
+// Shared by live and reconstructed observations. Identity, origin, target and
+// layout must be verified separately by the caller.
+inline bool cppRecordValueOperationsEligible(const CppRecordValueTraits& traits,
+                                             const CppRecordValueOperations& operations) noexcept
+{
+    if (!traits.plainOldData || traits.hasNonLiteralOrVolatileFieldsOrBases ||
+        !traits.triviallyCopyable || !traits.standardLayout ||
+        !traits.trivialDefaultConstructor || !traits.trivialDestructor) return false;
+    const auto valid = [](const CppSpecialMemberSelection& operation) {
+        return operation.status == CppSpecialMemberSelectionStatus::Selected &&
+            operation.access == CppAccess::Public && operation.isDeleted == false &&
+            operation.isTrivial == true;
+    };
+    return valid(operations.copyFromConst) && valid(operations.copyFromMutable) &&
+        valid(operations.destructor) && valid(operations.defaultConstructor) &&
+        valid(operations.assignFromConst) && valid(operations.assignFromMutable);
+}
+
 struct CppCInlineIRExport
 {
     std::string name;

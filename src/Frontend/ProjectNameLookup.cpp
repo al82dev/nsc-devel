@@ -360,19 +360,7 @@ bool ProjectNameLookup::cppTrivialValueEligible(std::size_t typeOrdinal) const n
         !imported->deferredImportError.empty() || !imported->objectLayout ||
         imported->targetTriple != "x86_64-pc-windows-msvc" || !imported->cppValueTraits ||
         !imported->cppValueOperations) return false;
-    const auto& traits = *imported->cppValueTraits;
-    if (!traits.plainOldData || traits.hasNonLiteralOrVolatileFieldsOrBases ||
-        !traits.triviallyCopyable || !traits.standardLayout ||
-        !traits.trivialDefaultConstructor || !traits.trivialDestructor) return false;
-    const auto valid = [](const interop::CppSpecialMemberSelection& operation) {
-        return operation.status == interop::CppSpecialMemberSelectionStatus::Selected &&
-            operation.access == interop::CppAccess::Public && operation.isDeleted == false &&
-            operation.isTrivial == true;
-    };
-    return valid(imported->cppValueOperations->copyFromConst) &&
-        valid(imported->cppValueOperations->copyFromMutable) && valid(imported->cppValueOperations->destructor) &&
-        valid(imported->cppValueOperations->defaultConstructor) &&
-        valid(imported->cppValueOperations->assignFromConst) && valid(imported->cppValueOperations->assignFromMutable);
+    return interop::cppRecordValueOperationsEligible(*imported->cppValueTraits, *imported->cppValueOperations);
 }
 
 std::span<const std::size_t> ProjectNameLookup::typeOrdinalsForName(

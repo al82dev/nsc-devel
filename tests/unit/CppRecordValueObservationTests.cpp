@@ -48,6 +48,30 @@ int main(int argc, char** argv)
     if (!observed || !observed->traits.triviallyCopyable ||
         observed->operations.copyFromConst.status != CppSpecialMemberSelectionStatus::Selected ||
         observed->operations.copyFromConst.access != CppAccess::Public) return 6;
+    if (!cppRecordValueOperationsEligible(observed->traits, observed->operations)) return 24;
+    for (auto member : {&CppRecordValueOperations::copyFromConst, &CppRecordValueOperations::copyFromMutable,
+                        &CppRecordValueOperations::destructor, &CppRecordValueOperations::defaultConstructor,
+                        &CppRecordValueOperations::assignFromConst, &CppRecordValueOperations::assignFromMutable})
+    {
+        auto operations = observed->operations;
+        (operations.*member).status = CppSpecialMemberSelectionStatus::Ambiguous;
+        if (cppRecordValueOperationsEligible(observed->traits, operations)) return 25;
+        operations = observed->operations; (operations.*member).access.reset();
+        if (cppRecordValueOperationsEligible(observed->traits, operations)) return 26;
+        operations = observed->operations; (operations.*member).isDeleted.reset();
+        if (cppRecordValueOperationsEligible(observed->traits, operations)) return 27;
+        operations = observed->operations; (operations.*member).isTrivial.reset();
+        if (cppRecordValueOperationsEligible(observed->traits, operations)) return 28;
+    }
+    for (auto member : {&CppRecordValueTraits::triviallyCopyable, &CppRecordValueTraits::standardLayout,
+                        &CppRecordValueTraits::trivialDefaultConstructor, &CppRecordValueTraits::trivialDestructor,
+                        &CppRecordValueTraits::plainOldData})
+    {
+        auto traits = observed->traits; traits.*member = false;
+        if (cppRecordValueOperationsEligible(traits, observed->operations)) return 29;
+    }
+    auto volatileTraits = observed->traits; volatileTraits.hasNonLiteralOrVolatileFieldsOrBases = true;
+    if (cppRecordValueOperationsEligible(volatileTraits, observed->operations)) return 30;
     auto bad = entry;
     bad.targetTriple = "wrong-target";
     if (observeCppRecordValueForEntry(bad, groups)) return 7;

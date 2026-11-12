@@ -391,3 +391,24 @@ La prueba precompilada con este record C++ sigue fallando en el productor por
 el origen del record en metadatos
 (A:/temp/nsc-t09-preserve-cpp-record-precompilado-h3_su9mc). Esa capacidad y
 T09-003 permanecen pendientes.
+
+El fallo del productor se localizo en el recorrido de tipos publicados de
+`CppSemanticRecord.cpp`: reconoce records C y enums C, pero rechaza el origen
+`CppRecord` antes de capturar su clausura. El catalogo de records C y su
+reconstruccion actuales exigen origen C y no conservan los rasgos ni las seis
+selecciones de operaciones que `cppTrivialValueEligible` exige para el record
+C++. El siguiente cambio debe transportar y verificar esa evidencia con la
+identidad y el destino dentro del contrato vigente; reinterpretar el record
+C++ como C o suponer trivialidad a partir de sus campos no seria suficiente.
+La prueba precompilada existente requiere ejecucion con y sin encabezado en
+estatica y DLL O0-O3; aun se detiene en el primer productor.
+
+La regla de rasgos y seis operaciones se separo en una funcion compartible para
+que la validacion de metadatos aplique el mismo criterio usado con una sesion
+viva. Su llamador sigue obligado a comprobar origen, identidad, destino y
+layout. La prueba con observaciones reales verifica la aceptacion de un tipo
+trivial y el rechazo al retirar cada dato de operacion o cambiar cada rasgo
+exigido (A:/temp/t09-test-value-rule.log). Tras la compilacion incremental
+pasaron otra vez las ocho comparaciones de la llamada indirecta y diez rechazos
+integrados (A:/temp/t09-rule-final-*.log). Este refactor todavia no serializa
+ni reconstruye records C++; la prueba precompilada sigue pendiente.
