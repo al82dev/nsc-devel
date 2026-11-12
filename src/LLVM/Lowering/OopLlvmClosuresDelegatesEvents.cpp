@@ -1592,8 +1592,10 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
              ((node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong") && interop::abi_plan::isRegCallWin64FloatRecordsReturningInt64(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
-             (node->typeKey == "builtin:double" && interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(
-                *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
+             (node->typeKey == "builtin:double" && (interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(
+                *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe") ||
+              interop::abi_plan::isRegCallWin64IndirectRecordsReturningDouble(
+                *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe"))) ||
              (node->typeKey == "builtin:float" && interop::abi_plan::isRegCallWin64FloatRecordsReturningFloat(
                 *node->cppFunctionPointerPlan, "__regcall3____nsc_pointer_abi_probe")) ||
              (node->typeKey == "builtin:void" && interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(

@@ -121,6 +121,8 @@ int main(int argc, char** argv)
         typedef struct ThreeBytes { unsigned char x,y,z; } ThreeBytes;
         typedef struct DoublePair { double x,y; } DoublePair;
         double __attribute__((regcall)) double_pair(DoublePair,int);
+        typedef struct MixedReal { float x; double y; } MixedReal;
+        double __attribute__((regcall)) mixed_real(MixedReal,int);
         int __attribute__((regcall)) nested_three_bytes(Nested,int,ThreeBytes);
         int __attribute__((regcall)) nested_return_int(Nested,int,Floats);
         unsigned int __attribute__((regcall)) nested_return_uint(Nested,int,Floats);
@@ -911,6 +913,21 @@ int main(int argc, char** argv)
             !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 208;
         auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 209;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "mixed_real") declaration = &function;
+        if (!declaration) return 62;
+        const auto plan = session->cFunctionAbiPlan("mixed_real", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*plan, plan->symbol)) return 63;
+        std::vector<CppType> parameters;
+        for (const auto& parameter : declaration->parameters) parameters.push_back(parameter.type);
+        if (!abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters, true, true)) return 64;
+        auto wrong = *plan;
+        wrong.physicalParameters[0].alignment = 4;
+        if (abi_plan::isRegCallWin64IndirectRecordsReturningDouble(wrong, wrong.symbol) ||
+            abi_plan::regCallFloatRecordArgumentsMatch(wrong, declaration->returnType, parameters, true, true)) return 65;
     }
     {
         const CppFunctionDeclaration* declaration = nullptr;

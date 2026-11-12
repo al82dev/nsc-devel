@@ -1970,6 +1970,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     (!function.returnTypeKey.ends_with('*') || interop::abi_plan::regCallFloatRecordScalarPointerReturnSupported(*symbol.cppReturnType)) &&
                     (interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*symbol.cppAbiPlan, symbol.mangledName) ||
                      interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*symbol.cppAbiPlan, symbol.mangledName) ||
+                     interop::abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*symbol.cppAbiPlan, symbol.mangledName) ||
                      interop::abi_plan::isRegCallWin64FloatRecordsReturningFloat(*symbol.cppAbiPlan, symbol.mangledName) ||
                      interop::abi_plan::isRegCallWin64FloatRecordsReturningInt64(*symbol.cppAbiPlan, symbol.mangledName) ||
                      interop::abi_plan::isRegCallWin64FloatRecordsReturningPointer(*symbol.cppAbiPlan, symbol.mangledName) ||

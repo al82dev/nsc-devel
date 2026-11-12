@@ -993,7 +993,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
              ((node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong") &&
               interop::abi_plan::isRegCallWin64FloatRecordsReturningInt64(*imported->cppAbiPlan, imported->cAbiName)) ||
              (node->typeKey == "builtin:double" &&
-              interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*imported->cppAbiPlan, imported->cAbiName)) ||
+              (interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*imported->cppAbiPlan, imported->cAbiName) ||
+               interop::abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*imported->cppAbiPlan, imported->cAbiName))) ||
              (node->typeKey == "builtin:float" &&
               interop::abi_plan::isRegCallWin64FloatRecordsReturningFloat(*imported->cppAbiPlan, imported->cAbiName)) ||
              (node->typeKey == "builtin:void" &&

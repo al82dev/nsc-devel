@@ -16,14 +16,14 @@ inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_vie
                                                bool floatReturn = false, bool int64Return = false,
                                                bool pointerReturn = false, unsigned narrowReturn = 0,
                                                bool boolReturn = false, std::uint64_t indirectAlignment = 0,
-                                               bool allowDoublePieces = false) noexcept
+                                               bool allowDoublePieces = false, bool allowNoExpandedRecords = false) noexcept
 {
     const auto scalar = [](const Type& type) {
         return type.kind == TypeKind::Float && type.widthOrCount == 0 && !type.packed && type.elements.empty();
     };
     if (sizeBytes < 8 || sizeBytes > 16 || sizeBytes % 4 || alignment != 4) return false;
     const auto count = sizeBytes / 4;
-    if (trailingInts > 1024 || !expandedRecords || expandedRecords > 1024) return false;
+    if (trailingInts > 1024 || (!expandedRecords && !allowNoExpandedRecords) || expandedRecords > 1024) return false;
     const auto countFloats = [&](const auto& self, const Type& type, unsigned depth) -> std::uint64_t {
         if (depth > 16 || type.packed) return 0;
         if (scalar(type)) return 1;
@@ -364,6 +364,19 @@ inline bool isRegCallWin64DoubleRecordsReturningDouble(const Plan& plan, std::st
     return records && isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4,
         plan.logicalParameters.size() - records, true, records, true, true,
         false, true, false, false, false, false, 0, false, 0, true);
+}
+
+inline bool isRegCallWin64IndirectRecordsReturningDouble(const Plan& plan, std::string_view symbol) noexcept
+{
+    bool indirect = false;
+    for (const auto& logical : plan.logicalParameters)
+    {
+        if (logical.passing == Passing::Expand) return false;
+        if (logical.passing == Passing::Indirect) indirect = true;
+    }
+    return indirect && isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4,
+        plan.logicalParameters.size(), true, 0, true, true,
+        false, true, false, false, false, false, 0, false, 0, false, true);
 }
 
 inline bool isRegCallWin64FloatRecordsReturningVoid(const Plan& plan, std::string_view symbol) noexcept

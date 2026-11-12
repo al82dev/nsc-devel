@@ -1009,6 +1009,23 @@ rechazos de ancho y alineación, transporte e identidad y la regresión C++ de
 ocho bytes (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-nb7g8sd1`).
 Otros tamaños, alineaciones y firmas no se acreditan; T09-003 sigue abierto.
 
+## Registro mixto float y double por copia indirecta
+
+La [muestra C](pruebas-tanda-09-regcall-record-mixto-real/) recibe un registro
+de `float` y `double` y retorna `double`. Clang 23.1.0 lo pasa por copia
+indirecta, con alineación ocho; inicialmente NSC rechazaba la firma
+(`A:/temp/nsc-t09-regcall-record-mixto-real-2h35cztv`). La validación del plan
+ahora permite esta forma sin exigir otro registro expandido y comprueba la
+identidad y layout del argumento antes de emitir una copia para cada llamada.
+
+El control C y NativeSharp pasaron O0–O3 con llamadas directas y por puntero;
+el programa comprueba el retorno y la conservación del original y la prueba
+inspecciona la llamada física (`A:/temp/nsc-t09-regcall-record-mixto-real-t0kvo0i_`).
+La prueba interna del plan rechaza una alineación alterada; pasaron transporte,
+ABI, identidad y la regresión C++ de dos `double` expandidos
+(`A:/temp/nsc-t09-cpp-record-double-m67sr12p`). La muestra nueva usa enlace
+estático; DLL, C++ y consumidores precompilados aún no se acreditan.
+
 ## Argumento de dos double expandidos: pendiente
 
 La [muestra C](pruebas-tanda-09-regcall-record-double/) pasa un registro de dos

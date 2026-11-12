@@ -25,7 +25,8 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                  (function.returnTypeKey.ends_with('*') && interop::abi_plan::isRegCallWin64FloatRecordsReturningPointer(*function.cppAbiPlan, function.cAbiName)) ||
                  ((function.returnTypeKey == "builtin:sbyte" || function.returnTypeKey == "builtin:byte" || function.returnTypeKey == "builtin:short" || function.returnTypeKey == "builtin:ushort") && interop::abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(*function.cppAbiPlan, function.cAbiName)) ||
                  ((function.returnTypeKey == "builtin:long" || function.returnTypeKey == "builtin:ulong") && interop::abi_plan::isRegCallWin64FloatRecordsReturningInt64(*function.cppAbiPlan, function.cAbiName)) ||
-                 (function.returnTypeKey == "builtin:double" && interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*function.cppAbiPlan, function.cAbiName)) ||
+                 (function.returnTypeKey == "builtin:double" && (interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*function.cppAbiPlan, function.cAbiName) ||
+                    interop::abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*function.cppAbiPlan, function.cAbiName))) ||
                  (function.returnTypeKey == "builtin:float" && interop::abi_plan::isRegCallWin64FloatRecordsReturningFloat(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey == "builtin:void" && interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(*function.cppAbiPlan, function.cAbiName)));
             if (function.cppRegCall && function.cppAbiPlan && (regCallScalarReturn || (regCallLayout &&
@@ -355,7 +356,8 @@ bool OopLlvmImplementation::declareFunction(
                  ((function.returnTypeKey == "builtin:long" || function.returnTypeKey == "builtin:ulong") &&
                   interop::abi_plan::isRegCallWin64FloatRecordsReturningInt64(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey == "builtin:double" &&
-                  interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*function.cppAbiPlan, function.cAbiName)) ||
+                  (interop::abi_plan::isRegCallWin64FloatRecordsReturningDouble(*function.cppAbiPlan, function.cAbiName) ||
+                   interop::abi_plan::isRegCallWin64IndirectRecordsReturningDouble(*function.cppAbiPlan, function.cAbiName))) ||
                  (function.returnTypeKey == "builtin:float" &&
                   interop::abi_plan::isRegCallWin64FloatRecordsReturningFloat(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey == "builtin:void" &&
