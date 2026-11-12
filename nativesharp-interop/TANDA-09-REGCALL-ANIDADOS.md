@@ -1043,5 +1043,15 @@ Pasaron 16 consumidores precompilados con ambas llamadas
 encabezado. Los controles de acceso privado y construcción local no trivial
 siguen rechazados (`A:/temp/nsc-t09-cpp-expanded-large-rechazos-1v3zt7xb`);
 pasaron plan, transporte, identidad y la regresión C precompilada
-(`A:/temp/nsc-t09-expanded-large-pre-1bb5i1_r`). El registro de tres bytes y
-otras firmas siguen pendientes. T09-003 permanece abierto.
+(`A:/temp/nsc-t09-expanded-large-pre-1bb5i1_r`).
+
+También se contrastó un registro de tres bytes y alineación uno junto al
+registro expandido. El [validador reutilizable](pruebas-tanda-09-regcall-expanded-large-record/validar-registro-tres-bytes.py)
+generó muestras C y C++ aisladas: cada una pasó ocho comparaciones directas
+y por alias en estática y DLL O0–O3, comprobando el resultado y la copia, y
+16 consumidores precompilados que usan solo el alias, con y sin encabezado
+(`A:/temp/nsc-t09-registro-tres-bytes-pbitgr3d`). La prueba del plan rechaza
+una alineación física alterada; pasaron transporte, ABI, identidad y la
+regresión precompilada C++ de 24 bytes
+(`A:/temp/nsc-t09-cpp-expanded-large-precompilado-s8v4sjhv`). Otros layouts y
+firmas siguen pendientes. T09-003 permanece abierto.

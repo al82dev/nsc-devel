@@ -114,6 +114,8 @@ int main(int argc, char** argv)
         int __attribute__((regcall)) nested_compact_short(Nested,int,CompactShort);
         typedef struct LargeMixed { int x,y,z,w,u,v; } LargeMixed;
         int __attribute__((regcall)) nested_large_mixed(Nested,int,LargeMixed);
+        typedef struct ThreeBytes { unsigned char x,y,z; } ThreeBytes;
+        int __attribute__((regcall)) nested_three_bytes(Nested,int,ThreeBytes);
         int __attribute__((regcall)) nested_return_int(Nested,int,Floats);
         unsigned int __attribute__((regcall)) nested_return_uint(Nested,int,Floats);
         long long __attribute__((regcall)) nested_return_i64(Nested,int,Floats);
@@ -903,6 +905,24 @@ int main(int argc, char** argv)
             !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 208;
         auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 209;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "nested_three_bytes") declaration = &function;
+        if (!declaration) return 248;
+        const auto plan = session->cFunctionAbiPlan("nested_three_bytes", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64FloatRecordsReturningInt(*plan, plan->symbol) ||
+            plan->logicalParameters.size() != 3) return 249;
+        const auto& logical = plan->logicalParameters[2];
+        if (logical.firstPhysical >= plan->physicalParameters.size() ||
+            !abi_plan::regCallIndirectRecordMatches(declaration->parameters[2].type, logical,
+                plan->physicalParameters[logical.firstPhysical])) return 250;
+        auto wrong = plan->physicalParameters[logical.firstPhysical]; wrong.alignment = 2;
+        if (abi_plan::regCallIndirectRecordMatches(declaration->parameters[2].type, logical, wrong)) return 251;
+        std::vector<CppType> parameters;
+        for (const auto& parameter : declaration->parameters) parameters.push_back(parameter.type);
+        if (!abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters, true, true)) return 252;
     }
     {
         const CppFunctionDeclaration* declaration = nullptr;
