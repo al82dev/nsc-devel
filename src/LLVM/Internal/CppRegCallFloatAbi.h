@@ -13,6 +13,7 @@ inline llvm_api::LLVMTypeRef regCallFloatRecordType(llvm_api::LLVMContextRef con
     using interop::abi_plan::TypeKind;
     if (depth > 16) return nullptr;
     if (type.kind == TypeKind::Float) return llvm_api::LLVMFloatTypeInContext(context);
+    if (type.kind == TypeKind::Double) return llvm_api::LLVMDoubleTypeInContext(context);
     if (type.kind == TypeKind::Array && type.elements.size() == 1)
     {
         auto* element = regCallFloatRecordType(context, type.elements[0], depth + 1);

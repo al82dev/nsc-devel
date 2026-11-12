@@ -1002,6 +1002,8 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
               interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(*imported->cppAbiPlan, imported->cAbiName)) ||
              (regCallRecordLayout && (interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*imported->cppAbiPlan,
                 imported->cAbiName, regCallRecordLayout->size, regCallRecordLayout->alignment) ||
+              interop::abi_plan::isRegCallWin64DoubleRecordInterleaved(*imported->cppAbiPlan,
+                imported->cAbiName, regCallRecordLayout->size, regCallRecordLayout->alignment) ||
               interop::abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*imported->cppAbiPlan,
                 imported->cAbiName, regCallRecordLayout->size, regCallRecordLayout->alignment) ||
               interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*imported->cppAbiPlan,

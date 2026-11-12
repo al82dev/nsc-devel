@@ -33,6 +33,8 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
             if (function.cppRegCall && function.cppAbiPlan && (regCallScalarReturn || (regCallLayout &&
                 (interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*function.cppAbiPlan, function.cAbiName,
                     regCallLayout->size, regCallLayout->alignment) ||
+                 interop::abi_plan::isRegCallWin64DoubleRecordInterleaved(*function.cppAbiPlan, function.cAbiName,
+                    regCallLayout->size, regCallLayout->alignment) ||
                  interop::abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*function.cppAbiPlan, function.cAbiName,
                     regCallLayout->size, regCallLayout->alignment) ||
                  interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*function.cppAbiPlan, function.cAbiName,
@@ -275,6 +277,8 @@ bool OopLlvmImplementation::declareFunction(
             if (function.cppRegCall && function.cppAbiPlan && regCallLayout &&
                 (interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*function.cppAbiPlan, function.cAbiName,
                     regCallLayout->size, regCallLayout->alignment) ||
+                 interop::abi_plan::isRegCallWin64DoubleRecordInterleaved(*function.cppAbiPlan, function.cAbiName,
+                    regCallLayout->size, regCallLayout->alignment) ||
                  interop::abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*function.cppAbiPlan, function.cAbiName,
                     regCallLayout->size, regCallLayout->alignment))) sretReturn = false;
             std::vector<VectorCallPassing> vectorCallPlan;
@@ -365,6 +369,8 @@ bool OopLlvmImplementation::declareFunction(
                  (function.returnTypeKey == "builtin:void" &&
                   interop::abi_plan::isRegCallWin64FloatRecordsReturningVoid(*function.cppAbiPlan, function.cAbiName)) ||
                  (regCallLayout && (interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*function.cppAbiPlan,
+                    function.cAbiName, regCallLayout->size, regCallLayout->alignment) ||
+                  interop::abi_plan::isRegCallWin64DoubleRecordInterleaved(*function.cppAbiPlan,
                     function.cAbiName, regCallLayout->size, regCallLayout->alignment) ||
                   interop::abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*function.cppAbiPlan,
                     function.cAbiName, regCallLayout->size, regCallLayout->alignment) ||

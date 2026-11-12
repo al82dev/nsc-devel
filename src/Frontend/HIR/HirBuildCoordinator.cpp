@@ -1921,7 +1921,9 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 isStructValueType(function.returnTypeKey) &&
                 (interop::abi_plan::isRegCallWin64FloatRecordInterleaved(*symbol.cppAbiPlan, symbol.mangledName,
                     *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8) ||
-                 ((interop::abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*symbol.cppAbiPlan, symbol.mangledName,
+                 ((interop::abi_plan::isRegCallWin64DoubleRecordInterleaved(*symbol.cppAbiPlan, symbol.mangledName,
+                    *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8) ||
+                   interop::abi_plan::isRegCallWin64FloatRecordsReturningCompactRecord(*symbol.cppAbiPlan, symbol.mangledName,
                     *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8) ||
                    interop::abi_plan::isRegCallWin64FloatRecordsReturningIndirectRecord(*symbol.cppAbiPlan, symbol.mangledName,
                     *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8)) && [&] {

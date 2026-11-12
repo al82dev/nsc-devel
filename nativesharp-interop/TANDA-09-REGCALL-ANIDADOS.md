@@ -1009,6 +1009,22 @@ rechazos de ancho y alineación, transporte e identidad y la regresión C++ de
 ocho bytes (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-nb7g8sd1`).
 Otros tamaños, alineaciones y firmas no se acreditan; T09-003 sigue abierto.
 
+## Retorno de registro de dos double
+
+La [muestra C](pruebas-tanda-09-regcall-retorno-double-record/) devuelve un
+registro de dos `double` y recibe un registro de tres `float` expandido. El
+control de Clang pasaba y NSC rechazaba la firma
+(`A:/temp/nsc-t09-regcall-retorno-double-record-mfzg_t_g`). La validación ahora
+reconoce el retorno físico de dos `double`, coteja identidad y layout y usa el
+tipo de retorno de Clang en las llamadas directa y por puntero. La prueba del
+plan rechaza un tipo o alineación alterados.
+
+Pasaron el control C y NativeSharp O0–O3, con ambas llamadas y comprobación de
+LLVM (`A:/temp/nsc-t09-regcall-retorno-double-record-z311w262`). También pasaron
+plan, transporte, ABI, identidad y la regresión C++ de argumentos `double`
+(`A:/temp/nsc-t09-cpp-record-double-p7fy0ioq`). La muestra usa estática; DLL,
+C++ y consumidores precompilados para este retorno permanecen pendientes.
+
 ## Registro mixto con retorno entero
 
 La [muestra C](pruebas-tanda-09-regcall-record-mixto-int/) pasa por copia un
