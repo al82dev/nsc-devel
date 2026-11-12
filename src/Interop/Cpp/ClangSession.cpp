@@ -430,7 +430,7 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
             // and overload. Do not select a different declaration by unqualified name.
             if (astContext.getLangOpts().CPlusPlus && generator && value.callingConvention == "regcall" &&
                 !value.variadic && value.hasPrototype && value.externalSymbol &&
-                !function->getReturnType()->isIncompleteType() &&
+                (function->getReturnType()->isVoidType() || !function->getReturnType()->isIncompleteType()) &&
                 std::all_of(function->param_begin(), function->param_end(), [](const auto* parameter) {
                     return !parameter->getType()->isIncompleteType();
                 }) &&

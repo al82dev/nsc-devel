@@ -715,5 +715,22 @@ con y sin encabezado, estática y DLL, O0–O3. El plan se reconstruye con
 retorno `void` y el codec comprueba el tipo y el plan físico y lógico; la
 prueba de metadatos acepta el plan válido y rechaza uno alterado y un tipo
 calificado. Pasaron transporte, ABI, identidad y la regresión precompilada
-de retorno `double` (`A:/temp/nsc-t09-record-ret-double-pre-gwhwrpt3`). C++ y
-otras formas no se acreditan. T09-003 permanece abierto.
+de retorno `double` (`A:/temp/nsc-t09-record-ret-double-pre-gwhwrpt3`).
+
+En C++ se probaron records triviales anidados y con arreglos, con dos records,
+entero intercalado y puntero de salida. El control C++ pasaba mientras NSC
+rechazaba la firma (`A:/temp/nsc-t09-cpp-ret-void-1pdel0ig`): la captura del
+plan excluía `void` por ser incompleto para Clang. Se permite ese retorno y se
+valida el plan para la llamada por puntero; pasaron ocho variantes de llamada
+directa e indirecta, con inspección LLVM y comparación de resultados contra C++
+en estática y DLL O0–O3 (`A:/temp/nsc-t09-cpp-ret-void-hiqi59dp`).
+
+Se conservan y validan los planes de alias en metadatos para consumidores
+precompilados. Pasaron 16 variantes con ambas llamadas
+(`A:/temp/nsc-t09-cpp-ret-void-precompilado-1fofodye`) y 16 solo por puntero
+(`A:/temp/nsc-t09-cpp-ret-void-precompilado-klblppg8`), con y sin encabezado,
+en estática y DLL O0–O3. Pasaron la regresión precompilada de `double`
+(`A:/temp/nsc-t09-cpp-ret-double-precompilado-wue44cjj`), los rechazos de
+campos privados y records no triviales
+(`A:/temp/nsc-t09-cpp-ret-double-rechazos-p5v1q3cf`), plan, transporte e
+identidad. Otras formas no se acreditan. T09-003 permanece abierto.

@@ -1568,7 +1568,10 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                     const bool doubleReturn = type.kind == CppTypeKind::Floating && plan &&
                         abi_plan::isRegCallWin64FloatRecordsReturningDouble(*plan, "__regcall3____nsc_pointer_abi_probe") &&
                         abi_plan::regCallFloatRecordScalarMatches(plan->physicalReturn, type);
-                    if (plan && (recordReturn || intReturn || doubleReturn) &&
+                    const bool voidReturn = type.kind == CppTypeKind::Void && type.canonicalSpelling == "void" &&
+                        !type.isConst && !type.isVolatile && !type.isRestrict && plan &&
+                        abi_plan::isRegCallWin64FloatRecordsReturningVoid(*plan, "__regcall3____nsc_pointer_abi_probe");
+                    if (plan && (recordReturn || intReturn || doubleReturn || voidReturn) &&
                         abi_plan::regCallFloatRecordArgumentsMatch(*plan, type, parameters))
                         declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
                 }
