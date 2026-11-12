@@ -3,6 +3,7 @@
 #include "../Internal/LlvmExpressionFrame.h"
 #include "../Internal/MatchValuePop.h"
 #include "OopLlvmSupport.h"
+#include "nativesharp/Language/CoroutineSemantics.h"
 
 namespace nativesharp::llvm_backend
 {
@@ -388,6 +389,67 @@ LLVMBasicBlockRef OopLlvmImplementation::buildCurrentUnwindDestination(std::stri
         else if (staticInitializationFailureUnwindBlock_ != nullptr)
         {
             finalTarget = staticInitializationFailureUnwindBlock_;
+        }
+
+        // ISOLATED EXPERIMENT: only a poll with no active handler, cleanup,
+        // caught owner or capture cells. Broader EH remains the existing path.
+        if (!hasLocalHandler && finalTarget == nullptr && coroutine_.active &&
+            coroutine_.future != nullptr && currentMirFunction_ != nullptr &&
+            !currentMirFunction_->parameterTypeKeys.empty() && activeCleanupRegions_.empty() &&
+            exceptionHandlerStack_.empty() && funcletStack_.empty() && activeCatchExceptions_.empty() &&
+            ownedCaptureCells_.empty())
+        {
+            std::string key = currentMirFunction_->parameterTypeKeys.front();
+            if (key.ends_with('*')) key.pop_back();
+            const auto errorKey = language::futureErrorTypeKey(key);
+            const std::uint64_t errorOffset = errorKey ? futureFieldOffset(key, 4) : 0;
+            LLVMValueRef matchingFilter = nullptr;
+            if (errorKey && memberModel_ != nullptr &&
+                isClassReferenceType(nameLookup_, std::string(*errorKey)))
+            {
+                const auto typeOrdinal = memberModel_->typeOrdinalForTypeKey(*errorKey);
+                if (typeOrdinal.has_value())
+                {
+                    const auto filter = typedCatchFilters_.find(*typeOrdinal);
+                    if (filter != typedCatchFilters_.end()) matchingFilter = filter->second;
+                }
+            }
+            // A missing typed filter leaves the existing unwind path untouched.
+            if (matchingFilter != nullptr && errorOffset != 0)
+            {
+                LLVMBasicBlockRef source = LLVMGetInsertBlock(builder_);
+                if (source == nullptr || ehFilterFunction_ == nullptr || sehPersonalityFunction_ == nullptr)
+                {
+                    error = "experimental coroutine exception bridge is missing EH state";
+                    return nullptr;
+                }
+                LLVMSetPersonalityFn(currentFunction_, sehPersonalityFunction_);
+                LLVMBasicBlockRef dispatch = appendBlock("coro.call.exception.dispatch");
+                LLVMBasicBlockRef padBlock = appendBlock("coro.call.exception.pad");
+                LLVMBasicBlockRef handler = appendBlock("coro.call.exception.handler");
+                enterBlock(dispatch);
+                LLVMValueRef catches = LLVMBuildCatchSwitch(builder_, nullptr, nullptr, 1, "coro.call.switch");
+                LLVMAddHandler(catches, padBlock);
+                enterBlock(padBlock);
+                LLVMValueRef filters[] = {matchingFilter};
+                LLVMValueRef pad = LLVMBuildCatchPad(builder_, catches, filters, 1, "coro.call.pad");
+                LLVMBuildCatchRet(builder_, pad, handler);
+                enterBlock(handler);
+                LLVMValueRef caught = buildNoUnwindCall(exceptionCurrentFunctionType_, exceptionCurrentFunction_,
+                    nullptr, 0, "coro.call.exception");
+                LLVMBuildStore(builder_, caught, byteOffset(coroutine_.future, errorOffset, "coro.call.error.addr"));
+                buildNoUnwindCall(exceptionClearFunctionType_, exceptionClearFunction_, nullptr, 0, "");
+                LLVMBuildStore(builder_, LLVMConstInt(LLVMInt32TypeInContext(context_),
+                    static_cast<unsigned long long>(-2), 1), coroutine_.future);
+                if (coroutine_.asyncGenerator && !markCoroutineFinished(error))
+                {
+                    enterBlock(source);
+                    return nullptr;
+                }
+                LLVMBuildRetVoid(builder_);
+                enterBlock(source);
+                finalTarget = dispatch;
+            }
         }
 
         // A captured local/parameter has one reference owned by the creating activation. If an
