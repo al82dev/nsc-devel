@@ -16,6 +16,10 @@ en sus rutas documentadas en esta laptop. La regresión versionada
 se afirma que sea idéntica al ejemplo histórico. La evidencia histórica atribuye
 el fallo a una doble liberación corregida por `5127e4d07ef4ca9d82c6059cf9669a8f4eeb3789`,
 pero ese diagnóstico histórico no sustituye la ejecución de esta revisión.
+Una búsqueda en la historia local con `git log --all --oneline --name-only
+-SUnexpected -- tests/integration docs/fixes` encontró la referencia en
+`docs/fixes/asan-sdk-binario-aislado.md` y una prueba de punteros compartidos
+distinta; no encontró el ejemplo original del diccionario en esos ámbitos.
 
 ## Entorno
 
@@ -107,6 +111,9 @@ fue rechazado por el compilador con código 2 porque exige una ruta específica
 de Clang y del runtime; no se instrumentó ni ejecutó ese caso. Aun con ASan,
 el antecedente documentado advierte que las bibliotecas binarias no quedan
 instrumentadas y que deshabilitar detección de fugas no prueba su ausencia.
+Como comprobación adicional del mecanismo integrado, `nsc explain
+debug-allocator` devolvió `status=missing` e indicó ausencia de asignador con
+guardas y de detección en runtime de fugas, uso tras liberación y doble drop.
 
 Permanecen sin verificar el ejemplo histórico exacto y la liberación de todas
 las claves con una herramienta de memoria apropiada. No se ejecutó la batería
