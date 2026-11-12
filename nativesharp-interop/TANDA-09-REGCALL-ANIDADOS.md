@@ -1009,6 +1009,23 @@ rechazos de ancho y alineación, transporte e identidad y la regresión C++ de
 ocho bytes (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-nb7g8sd1`).
 Otros tamaños, alineaciones y firmas no se acreditan; T09-003 sigue abierto.
 
+## Retorno de registro con argumento indirecto
+
+La prueba derivada sustituye el argumento compacto por un registro de seis
+enteros y 24 bytes, que Clang pasa mediante una copia indirecta. Las muestras
+C y C++ comprueban el registro flotante retornado y que el argumento original
+no se modifique. En C++ se prueban registros flotantes anidados y con arreglo.
+Se contrastaron llamadas directas y por puntero, bibliotecas estáticas y DLL,
+O0–O3 y consumidores precompilados directos y por puntero; la muestra de
+fuente también verifica la forma física de la llamada en LLVM.
+
+El ejecutable [validar-retorno-registro-grande.py](pruebas-tanda-09-regcall-retorno-record-mixto/validar-retorno-registro-grande.py)
+pasó las seis combinaciones de validación con Clang 23.1.0; los comandos y
+resultados quedaron en `A:/temp/nsc-t09-retorno-record-grande-57qtc7cg`.
+También pasaron la prueba interna del plan `regcall` y los controles de
+transporte, ABI e identidad. Esta evidencia corresponde a estas firmas y
+layouts; T09-003 y las demás formas aún pendientes permanecen abiertos.
+
 ## Retorno de registro flotante con argumento compacto
 
 La muestra C devuelve un record flotante de 12 bytes y recibe otro expandido,
