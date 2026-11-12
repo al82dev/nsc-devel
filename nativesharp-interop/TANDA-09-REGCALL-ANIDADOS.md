@@ -1031,7 +1031,18 @@ estática y DLL, O0–O3, con y sin encabezado: 32 ejecuciones
 verifica al recuperarlo y rechaza un retorno físico alterado. Pasaron las
 pruebas de plan, transporte, ABI e identidad, y la regresión precompilada C++
 de retorno entero (`A:/temp/nsc-t09-cpp-record-mixto-int-pre-3s37lyxd`).
-La firma equivalente C++ y otras formas siguen pendientes; T09-003 sigue abierto.
+La [firma equivalente C++](pruebas-tanda-09-regcall-cpp-record-mixto-void/)
+era aceptada por Clang pero rechazada por NSC al resolver el alias
+(`A:/temp/nsc-t09-cpp-record-mixto-void-t7r3xv_g`). Tras validar el plan y la
+identidad del registro, pasaron las ocho comparaciones C++ y NativeSharp de
+llamada directa y por puntero, con estática y DLL O0–O3
+(`A:/temp/nsc-t09-cpp-record-mixto-void-o7lxegql`). También pasaron las 32
+combinaciones precompiladas con y sin encabezado
+(`A:/temp/nsc-t09-cpp-record-mixto-void-pre-y1lnh2kw` y
+`A:/temp/nsc-t09-cpp-record-mixto-void-pre-hx5i2bdv`). Plan, transporte, ABI,
+identidad y la regresión C precompilada por puntero pasaron
+(`A:/temp/nsc-t09-record-mixto-void-pre-dl5qo1v6`). Otras formas siguen
+pendientes; T09-003 sigue abierto.
 
 ## Retorno de registro de dos double con argumento escalar
 
