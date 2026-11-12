@@ -2670,6 +2670,41 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
         (right.typeKey == "builtin:string" || right.typeKey == "string-literal");
     classifyNamedAssignmentTarget(
         assignmentTargetLocal, assignmentTargetParameter, expression, scopeOrdinal);
+    // Partial protection: match only a recorded exact local source. Unknown
+    // sources remain unresolved and must not be interpreted as disjoint.
+    if (assignmentTargetLocal.has_value())
+    {
+        const MethodLocalSymbol& target = locals_[*assignmentTargetLocal];
+        const MethodEscapeOrigin& origin = target.referenceEscapeOrigin;
+        if (target.isReference && origin.kind == MethodEscapeOriginKind::CurrentFrameLocal &&
+            origin.ordinal.has_value() && *origin.ordinal < locals_.size() &&
+            target.referencePlaceKey == "L" + std::to_string(*origin.ordinal))
+        {
+            const std::size_t ownerOrdinal = *origin.ordinal;
+            const MethodLocalSymbol& owner = locals_[ownerOrdinal];
+            if (!owner.isReference && !owner.isStatic && owner.isMoveOnly &&
+                owner.methodMemberOrdinal == methodMemberOrdinal &&
+                scopeContains(owner.scopeOrdinal, scopeOrdinal))
+            {
+                for (const MethodLocalSymbol& view : locals_)
+                {
+                    if (view.methodMemberOrdinal != methodMemberOrdinal ||
+                        !scopeContains(view.scopeOrdinal, scopeOrdinal)) continue;
+                    const bool matches = std::ranges::any_of(view.viewSourceIdentities,
+                        [ownerOrdinal](const ViewSourceIdentity& source)
+                        {
+                            return source.kind == ViewSourceIdentityKind::Local &&
+                                source.ordinal == ownerOrdinal;
+                        });
+                    if (!matches) continue;
+                    diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,
+                        diagnostics::DiagnosticSeverity::Error, expression->first()->range(),
+                        "cannot overwrite owner '" + owner.name + "' while a borrowed local is alive");
+                    return false;
+                }
+            }
+        }
+    }
     if (delegateTarget && rejectUnavailableAssignmentOwner(
             expression, assignmentTargetLocal, scopeOrdinal, diagnostics)) return false;
     if (assignmentTargetParameter.has_value() && typeKeyIsViewLike(right.typeKey))

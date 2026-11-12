@@ -58,6 +58,25 @@ CASES = {
         'int value = source.Get(); ' + ALIAS + 'original = default(Owner); return value;'),
     'branch_owner_alias': (False, OWNER + DIRECT + ALIAS +
         'bool choose = true; if (choose) { original = default(Owner); } return source.Get();'),
+    # These cases exercise producers and control flow; their semantic validity
+    # and diagnostics must be checked before treating them as regression gates.
+    'branch_distinct_shadow_owner': (True, OWNER + DIRECT +
+        'bool choose = true; if (choose) { Owner owner; owner.Value = 7; '
+        'ref Owner original = ref owner; original = default(Owner); } return source.Get();'),
+    'loop_distinct_shadow_owner': (True, OWNER + DIRECT +
+        'int i = 0; while (i < 2) { Owner owner; owner.Value = 7; '
+        'ref Owner original = ref owner; original = default(Owner); i = i + 1; } return source.Get();'),
+    'loop_live_owner_alias': (False, OWNER + DIRECT + ALIAS +
+        'int i = 0; while (i < 2) { original = default(Owner); i = i + 1; } return source.Get();'),
+    'reassigned_view_alias': (False, OWNER + 'View source = default(View); source = owner.Borrow(); ' +
+        ALIAS + 'original = default(Owner); return source.Get();'),
+    'ref_output_view_alias': (False, OWNER + 'View result = default(View); { ' + DIRECT +
+        'Sink.Save(source, ref result); } ' + ALIAS + 'original = default(Owner); return result.Get();'),
+    'out_output_view_alias': (False, OWNER + 'View result = default(View); { ' + DIRECT +
+        'Sink.SaveOut(source, out result); } ' + ALIAS + 'original = default(Owner); return result.Get();'),
+    'branch_assigned_view_alias': (False, OWNER + 'View source = default(View); bool choose = true; '
+        'if (choose) { source = owner.Borrow(); } ' + ALIAS +
+        'original = default(Owner); return source.Get();'),
     'direct_owner': (False, OWNER + DIRECT + 'owner = default(Owner); return source.Get();'),
     'receiver_owner': (False, OWNER + RECEIVER + 'owner = default(Owner); return source.Get();'),
 }

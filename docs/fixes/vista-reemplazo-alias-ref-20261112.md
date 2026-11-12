@@ -1,5 +1,31 @@
 # Vista activa y reemplazo a través de un alias ref
 
+## Protección parcial por identidad local
+
+Se añadió una comprobación limitada al reemplazo a través de una referencia
+cuyo origen y lugar canónico identifican exactamente un dueño local por valor,
+move-only, en el mismo callable y ámbito. Si una vista visible conserva una
+identidad `Local` con el mismo ordinal, se rechaza el reemplazo. No se usa la
+ausencia de esa identidad, `Unknown` ni `*` como prueba de seguridad; esos
+casos mantienen el comportamiento anterior y siguen pendientes.
+
+Después de ajustar además el callable y el ámbito del dueño, el build
+incremental terminó con salida 0. Con nsc SHA-256
+`bce834afc8c296bb34c7abb89585adfb8334ad9c33217e147a9e7ac031997f7d`,
+`final-exact-view_ref_owner_replacement-20261112.log` registra seis variantes
+de origen conocido rechazadas correctamente y seis variantes de receptor,
+reasignación, salida o rama aún aceptadas inesperadamente. Todos los controles
+positivos de esa selección pasaron. Los runners `final-exact-view_shadow_identity_vistas-20261112.log`
+y `final-exact-tuple_inline_view_lifetime_vistas-20261112.log` pasaron.
+Cuatro pares de pruebas de historia y ramas dieron el mismo diagnóstico tanto
+por alias como por asignación directa; esto compara el contrato observado, no
+demuestra que los ocho casos deban rechazarse ni descarta otros falsos positivos.
+Los programas negativos solo se analizaron, nunca se ejecutaron.
+
+Esta protección es parcial: no cubre orígenes inciertos, receptores, salidas
+`ref/out`, proyecciones ni todas las uniones. La prueba completa de alias
+continúa fallando y la brecha no se declara resuelta.
+
 ## Estado
 
 **Reproducido en análisis semántico; corrección pendiente.** No se conoce un
@@ -51,8 +77,8 @@ estática, sus controles de représtamo y el peligro de contar el propio alias
 como conflicto están en
 `A:/nsc-fixes-evidencia/vistas-shadow-riesgos-20261112/DISENO.md`. Quedan por
 resolver explícitamente procedencia desconocida, proyecciones, parámetros,
-uniones y binarios. No hay solución productiva aplicada ni prueba general de
-seguridad.
+uniones y binarios. La protección parcial posterior descrita arriba no es una
+solución general ni una prueba general de seguridad.
 
 ## Prototipo conservador y regresión
 
@@ -166,3 +192,110 @@ contrato completo de procedencia.
 Esta infraestructura no demuestra la propuesta de disyunción por ordinal, no
 resuelve el reemplazo por alias y no convierte el marcador `*` en una prueba
 de seguridad.
+
+### Evaluación del consumidor tras `71dc280a0`
+
+**Diseño pendiente, no activado.** El contador observado indica cuántos
+locales había al recorrer un productor, no que el conjunto de productores sea
+exhaustivo ni que ese productor se ejecute una sola vez. En particular, un
+backedge puede ejecutar nuevamente un reemplazo después de que otra sentencia
+del mismo bucle haya reasignado la vista. La revisión de sentencias en orden
+léxico no demuestra el estado de esa segunda iteración. Los hechos informativos
+de `collectViewSourceFields`, `recordViewAssignmentRoot` y
+`recordViewOutputOrigins` tampoco certifican por sí mismos todas las escrituras
+por proyecciones, alias indirectos y efectos interprocedurales. Por tanto, un
+consumidor no puede usar la ausencia de un ordinal ni un conteo anterior como
+prueba de ausencia de alias.
+
+Una protección acotada para el reemplazo necesita: resolver la referencia a
+una identidad local de almacenamiento exacta, determinar conservadoramente las
+vistas activas en ese punto, y comprobar todas las procedencias que puedan
+alcanzarlo. El análisis por camino debe unir ramas y alcanzar un punto fijo en
+bucles; asignaciones, copias y salidas `ref/out` deben actualizar el estado
+antes de consultarlo. Un origen desconocido, una escritura no modelada o una
+identidad de almacenamiento no demostrada no pueden descartarse por el nombre,
+el shadowing o el conteo. Para conservar `distinct_shadow_owner` es necesaria
+una prueba independiente de que la vista exterior no puede apuntar al struct
+local interior; las observaciones actuales todavía no acreditan sus
+precondiciones. Parámetros, proyecciones, memoria compartida y ciclos requieren
+tratamiento explícito antes de extender la protección a esos lugares.
+
+Se añadieron al fixture semántico controles para shadowing en rama y bucle,
+reemplazo dentro de un bucle, reasignación, salidas `ref/out` y asignación
+condicional. En `view-ref-owner-expanded-isolated-20261112.log`, el análisis
+semántico acepta los dos controles con dueños homónimos distintos, y acepta
+inesperadamente los cinco casos de reemplazo por alias. Los cinco controles
+equivalentes que sustituyen la misma operación por `owner = default(Owner)`
+se rechazan con `cannot overwrite owner ... while a borrowed local is alive`;
+están en `view-ref-owner-expanded-direct-controls-20261112.log`. Las rutas
+completas de ambos registros comienzan en `A:/nsc-fixes-evidencia/`. En los
+casos `ref/out` la vista de entrada termina su scope antes del reemplazo, por
+lo que la vista de salida queda como el préstamo relevante. No se observaron
+errores de sintaxis o tipado en los siete casos añadidos; el resultado se
+limita al análisis semántico, no certifica ejecución ni seguridad general.
+No se ejecutaron programas negativos. El compilador fue el de SHA-256
+`70569bd4b18d2b563cfdecc907f525bb251b670e95b896aef82b9fbb2166ff78`,
+invocado con `--check-project-method-bodies`, desde la raíz de la copia y
+con temporales en A. La información actual no justifica activar un guard ni
+agregar reglas de diagnóstico.
+
+### Propuesta parcial de coincidencia exacta
+
+Se preparó para revisión, sin aplicar ni compilar,
+`A:/nsc-fixes-evidencia/view-ref-exact-local-proposal-20261112.patch`;
+`git apply --check` comprobó únicamente que encaja sobre la copia actual. La
+propuesta compara la identidad `Local` observada de una vista en scope con el
+ordinal del almacenamiento de un local por valor move-only, cuando el lado
+izquierdo es una referencia resuelta exactamente a `L<ordinal>`. Solo una
+coincidencia provoca rechazo: los marcadores `*`, `Unknown` y su ausencia no
+se usan como prueba de que el reemplazo sea seguro. Se conservan los casos
+inciertos como brecha pendiente; esto no es una solución general de alias.
+
+La colección es acumulativa y registra posibles fuentes, no necesariamente
+el valor concreto en cada camino. Antes de aplicar deben revisarse posibles
+falsos rechazos por reasignaciones y ciclos, referencias de clase, identidad de
+los représtamos y propagación por `ref/out`. La selección dirigida incluye
+controles válidos con shadowing, ausencia de vista y vida terminada, junto con
+negativos directos, reasignados, ramificados, en bucle y con salida `ref/out`.
+El diff no se ha construido ni se han ejecutado las pruebas contra él; no se
+afirma que cubra receptores o salidas heredadas con identidad desconocida.
+
+### Evaluación del prototipo aplicado
+
+Posteriormente se aplicó el diff en la copia de integración y pasó una
+compilación incremental conjunta. Con el compilador SHA-256
+`99e04902488bce2b8b213714aa5e2a1128805a68fe11a6d84b1df8b4d1c8c1f4`,
+`A:/nsc-fixes-evidencia/view-ref-exact-local-20261112.log` registra el rechazo
+esperado de los seis reemplazos por alias de raíz directa, représtamo, último
+uso léxico, rama o bucle; los controles positivos de esa selección pasaron.
+Seis casos de receptor, reasignación, `ref/out` y asignación en rama siguen
+aceptados inesperadamente. No se ejecutaron esos negativos. Este resultado es
+parcial: la selección completa no pasa y no demuestra seguridad general.
+
+**Riesgo por verificar:** `recordViewAssignmentRoot` incorpora identidades a
+la colección existente del local, y el prototipo consulta esa colección sin
+representar el valor actual, caminos excluyentes ni iteraciones. Una identidad
+histórica puede, por tanto, activar el rechazo incluso después de reasignar
+una vista o cuando el productor y el reemplazo ocurren en ramas distintas. La
+inspección establece el mecanismo, no demuestra que el contrato aplicable
+exija aceptar esos programas. Los controles candidatos pareados se prepararon en
+`A:/nsc-fixes-evidencia/view-ref-historical-branches-20261112.py`: reset,
+ramas excluyentes, copias reseteadas y reset en bucle. El análisis semántico
+de los ocho ejemplos, con el compilador del hash indicado arriba, rechazó cada
+variante por alias y su variante de dueño directo con el mismo mensaje
+`cannot overwrite owner 'owner' while a borrowed local is alive`; en cada caso
+el subrayado señala la operación de reemplazo correspondiente. El registro
+completo, con comandos y fuentes, está en
+`A:/nsc-fixes-evidencia/view-ref-historical-branches-20261112.log`. El runner
+marcó los ocho como fallidos porque los controles se formularon como posibles
+aceptaciones; no hubo un diagnóstico de sintaxis o tipos que explique esos
+resultados. No se ejecutaron los programas.
+
+Los pares son comparables para el mensaje de préstamo: la versión directa
+omite la declaración del alias y escribe en `owner`, mientras la otra escribe
+por `original`. No demuestran que ambos análisis empleen la misma ruta interna
+ni que el lenguaje deba aceptar o rechazar los cuatro programas; tampoco
+establecen que ningún otro caso válido quede rechazado. Hasta resolver esas
+preguntas es razonable conservar el prototipo solo como protección parcial
+en evaluación, sujeto a pruebas dirigidas adicionales. La aceptación previa
+de los controles existentes no demuestra ausencia general de regresiones.
