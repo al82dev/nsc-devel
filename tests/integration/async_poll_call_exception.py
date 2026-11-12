@@ -1,10 +1,10 @@
 """Check calls which raise through an async poll, including cleanup ordering."""
 
 import os
+from contextlib import nullcontext
 from pathlib import Path
 import subprocess
 import sys
-import tempfile
 from isolated_a_runner import absolute_a, setup
 
 PREFIX = '''using NativeSharp.Core;
@@ -136,8 +136,8 @@ def main():
     repository = Path(__file__).resolve().parents[2]
     environment = setup(evidence, repository)
     failures = []
-    with tempfile.TemporaryDirectory(prefix='nsc-async-poll-call-', dir=evidence) as temporary:
-        root = Path(temporary)
+    with nullcontext(evidence / 'cases') as root:
+        root.mkdir()
         for name, body in CASES.items():
             case = root / name
             case.mkdir()

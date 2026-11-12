@@ -27,9 +27,9 @@ Argumentos después del nombre de cada script:
 - Llamada async y consumidor externo: `nsc evidencia`.
 - Excepción extranjera: `nsc runtime imports evidencia`.
 
-Las rutas deben ser absolutas en A. Los tres controles async conservan su
-comportamiento previo de eliminar sus carpetas temporales internas; su salida
-se debe capturar en un log en A al ejecutarlos. Añadir la biblioteca Core al
+Las rutas deben ser absolutas en A. Los tres controles async conservan sus
+fuentes y productos en la carpeta `cases`; su salida se debe capturar en un
+log en A al ejecutarlos. Añadir la biblioteca Core al
 proyecto SIMD cambia su configuración y necesita validación dirigida. La
 revisión de argumentos, asignación de entorno y salida de cada runner también
 queda pendiente de ejecución; esta nota no constituye resultado de pruebas.

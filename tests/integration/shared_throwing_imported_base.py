@@ -58,6 +58,7 @@ def main():
     global ENVIRONMENT
     ENVIRONMENT = setup(root, REPOSITORY)
     (root / 'Producer.ns').write_text(PRODUCER, encoding='utf-8')
+    (root / 'Producer-base.ns').write_text(PRODUCER, encoding='utf-8')
     producer = root / 'Producer.nsproj'
     producer.write_text('<Project><PropertyGroup><Name>ImportedRoot</Name>'
         '<OutputType>StaticLibrary</OutputType></PropertyGroup><ItemGroup>'
@@ -79,6 +80,8 @@ def main():
             for mode in (0, 1):
                 source = CONSUMER.replace('HANDLE', handle).replace('FACTORY', factory)
                 source = source.replace('MODE', str(mode)).replace('EXPECTED', str(1 - mode))
+                (root / (handle + '-' + str(mode) + '-' + producer_level + '.ns')).write_text(
+                    source, encoding='utf-8')
                 (root / 'Main.ns').write_text(source, encoding='utf-8')
                 for level in ('O0', 'O2'):
                     name = handle + '-' + str(mode) + '-' + producer_level + '-' + level
@@ -92,6 +95,8 @@ def main():
     # non-escape metadata does not prove partial-construction cleanup.
     (root / 'Producer.ns').write_text(
         PRODUCER.replace('public Root()', 'public Root() throws Exception'), encoding='utf-8')
+    (root / 'Producer-throws.ns').write_text(
+        PRODUCER.replace('public Root()', 'public Root() throws Exception'), encoding='utf-8')
     library = root / 'Root-throws.lib'
     if run([compiler, '--emit-project-oop-lib', producer, '-O0', '-o', library,
             '--no-artifact-cache']):
@@ -103,8 +108,9 @@ def main():
             reference(library, library.with_suffix('.nsmeta')) + '</ItemGroup></Project>',
             encoding='utf-8')
         source = CONSUMER.replace('HANDLE', 'Rc').replace('FACTORY', 'MakeRcThrowing')
-        (root / 'Main.ns').write_text(source.replace('MODE', '1').replace('EXPECTED', '0'),
-                                      encoding='utf-8')
+        source = source.replace('MODE', '1').replace('EXPECTED', '0')
+        (root / 'Main.ns').write_text(source, encoding='utf-8')
+        (root / 'Main-throws.ns').write_text(source, encoding='utf-8')
         command = [str(compiler), '--emit-project-oop-exe', str(project), '-O0',
                    '-o', str(root / 'reject.exe'), '--no-artifact-cache']
         result = subprocess.run(command, cwd=REPOSITORY, env=ENVIRONMENT, capture_output=True, text=True,

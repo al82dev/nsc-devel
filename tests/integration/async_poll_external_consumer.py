@@ -1,10 +1,10 @@
 """A producer poll needs its error filter even when its source has no catch."""
 
 import os
+from contextlib import nullcontext
 from pathlib import Path
 import subprocess
 import sys
-import tempfile
 from isolated_a_runner import absolute_a, setup
 from xml.sax.saxutils import quoteattr
 
@@ -39,8 +39,8 @@ def main():
     repository = Path(__file__).resolve().parents[2]
     global ENVIRONMENT
     ENVIRONMENT = setup(evidence, repository)
-    with tempfile.TemporaryDirectory(prefix='nsc-poll-external-', dir=evidence) as temporary:
-        root = Path(temporary)
+    with nullcontext(evidence / 'cases') as root:
+        root.mkdir()
         producer = root / 'producer'
         consumer = root / 'consumer'
         producer.mkdir()

@@ -5,10 +5,10 @@ its cleanup remain exactly as emitted by NSC. This is a hybrid ABI test.
 """
 
 import os
+from contextlib import nullcontext
 from pathlib import Path
 import subprocess
 import sys
-import tempfile
 from isolated_a_runner import absolute_a, setup
 
 from foreign_finally_owner import replace_body
@@ -84,8 +84,8 @@ def main():
     global ENVIRONMENT
     ENVIRONMENT = setup(evidence, repository)
     libraries = [str(imports / (name + '.import.lib')) for name in ('KERNEL32', 'KERNELBASE', 'SHELL32', 'UCRTBASE')]
-    with tempfile.TemporaryDirectory(prefix='nsc-async-foreign-', dir=evidence) as temporary:
-        root = Path(temporary)
+    with nullcontext(evidence / 'cases') as root:
+        root.mkdir()
         project = root / 'Probe.nsproj'
         project.write_text('<Project><PropertyGroup><Name>Probe</Name></PropertyGroup>'
                            '<ItemGroup><Compile Include="Main.ns" /></ItemGroup></Project>', encoding='utf-8')
