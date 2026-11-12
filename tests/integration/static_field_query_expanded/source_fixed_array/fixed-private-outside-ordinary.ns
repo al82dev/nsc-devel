@@ -1,0 +1,1 @@
+class Record { private int[4] Hidden; public int[4] Visible; } int Main() { owned Record value=new Record(); return value.Hidden[0]; }

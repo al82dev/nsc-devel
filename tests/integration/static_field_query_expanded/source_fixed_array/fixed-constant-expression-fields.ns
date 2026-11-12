@@ -1,0 +1,1 @@
+struct C { public int[2+2] Values; } int Main() { C c=default(C); c.Values[3]=7; int n=0; static foreach(field in Fields(C)) { field.Type item=field.Get(c); n=item[3]; } return n==7 ? 0 : 1; }

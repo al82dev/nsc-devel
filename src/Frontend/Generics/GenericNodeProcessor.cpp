@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectGenericModel.h"
+#include "nativesharp/Frontend/ProjectMemberModel.h"
 #include "../Internal/CloneDepthGuard.h"
 #include "../Cache/CachePayloadReader.h"
 #include "../Internal/EnumConstResolver.h"
@@ -485,6 +486,38 @@ static bool verifiedSourceBuiltinTuple(const ast::TypeSyntax* type)
         for (const ast::TypeSyntax* argument : current->typeArguments()) pending.push_back(argument);
     }
     return true;
+}
+
+static bool verifiedSourceConstantIntArray(const ast::TypeSyntax* type)
+{
+    if (type == nullptr || type->baseTokenKind() != lexer::TokenKind::KwInt ||
+        type->isTuple() || type->isFunction() || type->isDynamicTrait() || type->isOpaqueResult() ||
+        type->isPackExpansion() || type->isPointeeConst() || type->isExplicitTraitImplementation() ||
+        type->constExpression() != nullptr || !type->lifetimeName().empty() || !type->typeArguments().empty() ||
+        type->ownershipQualifier() != ast::OwnershipQualifierSyntaxKind::None ||
+        type->referenceQualifier() != ast::ReferenceQualifierSyntaxKind::None || type->modifiers().size() != 1)
+        return false;
+    const ast::TypeModifierSyntax& modifier = type->modifiers()[0];
+    if (modifier.kind != ast::TypeModifierSyntaxKind::Array || modifier.arrayCount == nullptr) return false;
+    std::vector<std::pair<const ast::AstNode*, std::size_t>> work{{modifier.arrayCount, 0}};
+    std::size_t visits = 0;
+    while (!work.empty())
+    {
+        const auto [node, depth] = work.back();
+        work.pop_back();
+        if (node == nullptr || depth >= 64 || ++visits > 1024) return false;
+        using K = ast::AstNodeKind;
+        if (node->kind() == K::IntegerLiteralExpression || node->kind() == K::CharacterLiteralExpression) continue;
+        if (node->kind() == K::UnaryExpression) work.emplace_back(node->first(), depth + 1);
+        else if (node->kind() == K::BinaryExpression)
+        {
+            work.emplace_back(node->first(), depth + 1);
+            work.emplace_back(node->second(), depth + 1);
+        }
+        else return false;
+    }
+    const auto count = ProjectMemberModel::evaluateConstantArrayCount(modifier.arrayCount);
+    return count.has_value() && *count > 0;
 }
 
 // Reparse the verified metadata slice independently. Only simple field shapes
@@ -1383,7 +1416,8 @@ bool ProjectGenericModel::collectStaticFieldCandidates(
                     verifiedType = true;
             }
         }
-        if (!verifiedType || !fieldType->modifiers().empty() ||
+        const bool verifiedArray = binaryCertificate == nullptr && verifiedSourceConstantIntArray(fieldType);
+        if (!verifiedType || (!fieldType->modifiers().empty() && !verifiedArray) ||
             (binaryCertificate == nullptr && !field->auxiliaryText().empty()))
         {
             diagnostics.report(diagnostics::DiagnosticId::InvalidOperand,

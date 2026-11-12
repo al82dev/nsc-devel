@@ -250,6 +250,23 @@ una batería completa ni certifican todo el lenguaje.
   certificados pasaron 85 checks sin SKIP:
   `A:/nsc-limitaciones-campos-evidencia/temp/nsc-binary-fields-8cym7fw0/results.json`.
 
+- Arreglos fijos `int[N]` fuente: indexación, copia y declaración ordinarias
+  ejecutaban O0/O2 y Fields rechazaba Name/Get/Type antes del cambio:
+  `A:/nsc-limitaciones-campos-evidencia/fixed-array-fields-20261112T212024471955Z/results.json`.
+  El runner posterior pasó O0/O2 para N=4/5, sobrecargas que discriminan la
+  longitud, privacidad, receptor incompatible y N=`2+2`; `4/0` se rechazó
+  tanto en el control ordinario como en Fields:
+  `A:/nsc-limitaciones-campos-evidencia/temp/nsc-source-fields-n06yh44b/results.json`.
+  Las longitudes usan el evaluador canónico, tras limitar el recorrido y excluir
+  nombres y expresiones no admitidas. No se acreditan otros elementos, arreglos
+  binarios ni constantes con nombre; el intento de constante nombrada también
+  falló en el control ordinario.
+- Un arreglo enorme `int[2147483647+1]` agotó el timeout de compilación de 30 s
+  al copiarlo, tanto en Fields como en el control ordinario equivalente; Fields
+  con solo Name compiló. No se ejecutaron esos binarios en la comparación final
+  ni se demuestra que los dos timeouts tengan la misma causa interna:
+  `A:/nsc-limitaciones-campos-evidencia/fixed-array-fields-20261112T213656230241Z/results.json`.
+
 Los scripts aíslan temporales, cachés y artefactos en A:, comprueban imports
 antes de ejecutar y conservan comandos, diagnósticos y hashes en los JSON.
 La implementación conserva rechazos ante información insuficiente; los límites

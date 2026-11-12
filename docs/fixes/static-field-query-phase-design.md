@@ -44,6 +44,17 @@ binario es el segundo trabajo del archivo de tareas y se evalúa por separado.
 
 ## Actualización de las primeras pruebas
 
+La ruta fuente acotada de `int[N]` admite longitudes positivas evaluables por
+el evaluador canónico de arrays tras una comprobación estructural limitada y
+sin nombres. El runner O0/O2 verificó Name/Get/Type, N=4/5, `2+2`, privacidad,
+receptor incompatible y rechazo de `4/0`:
+`A:/nsc-limitaciones-campos-evidencia/temp/nsc-source-fields-n06yh44b/results.json`.
+Expresiones con nombres, otros tipos de elemento y metadata binaria no quedan
+acreditados. Una copia de arreglo gigantesco agotó el timeout tanto ordinaria
+como Fields; Fields que solo consultaba Name compiló, sin establecer causa
+interna común ni ejecutar binarios grandes en esa comparación:
+`A:/nsc-limitaciones-campos-evidencia/fixed-array-fields-20261112T213656230241Z/results.json`.
+
 Las hojas nominales fuente en una tupla se resuelven en el contexto del campo,
 se contrastan por identidad y visibilidad desde el consumidor y se proyectan
 en una copia estructural de la arena de la unidad. El runner pasó O0/O2 con
