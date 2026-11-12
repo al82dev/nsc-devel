@@ -2,6 +2,27 @@
 
 ## Protección parcial por identidad local
 
+Una selección adicional examinó la salida `ref/out` con dueños homónimos.
+Los dos positivos de una vista del dueño exterior fueron rechazados con
+`NS3020`. Cuatro negativos también fueron rechazados; uno falla ya en una
+transferencia previa y no comprueba la invalidación posterior. En los casos
+con dos dueños homónimos el diagnóstico no identifica cuál motivó el rechazo,
+por lo que tampoco demuestra que se haya seguido la raíz interior.
+`A:/nsc-fixes-evidencia/view-output-narrow-guard-candidates-20261112.log`
+conserva fuentes, comandos y diagnósticos del análisis semántico; no se
+ejecutaron los programas. El compilador tuvo SHA-256
+`cd8ac03cd68262e604cad9bf6319552c886ae5ce2421a14313103bcf59bb1154`.
+
+La ruta de salida en `CallAnalyzer.cpp` vuelve a resolver el nombre del dueño
+en el ámbito de llamada y en el de destino: en el positivo puede encontrar
+dos locales distintos con el mismo nombre. Sin embargo, sustituir la búsqueda
+por cualquier identidad exterior conocida no es seguro: otra entrada o una
+rama puede aportar una vista del dueño interior. El diseño y los
+contraejemplos están en
+`A:/nsc-fixes-evidencia/view-output-root-binding-analysis-20261112.md`.
+La completitud de productores y escrituras sigue pendiente; no se ha cambiado
+el diagnóstico ni se afirma resuelta la brecha.
+
 Se añadió una comprobación limitada al reemplazo a través de una referencia
 cuyo origen y lugar canónico identifican exactamente un dueño local por valor,
 move-only, en el mismo callable y ámbito. Si una vista visible conserva una
