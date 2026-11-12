@@ -982,7 +982,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         }
         const auto* regCallRecordLayout = findStructLayout(mirModel_, node->typeKey);
         if (imported && imported->cppRegCall && imported->cppAbiPlan &&
-            ((node->typeKey == "builtin:int" &&
+            (((node->typeKey == "builtin:int" || node->typeKey == "builtin:uint") &&
               interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*imported->cppAbiPlan, imported->cAbiName)) ||
              (node->typeKey == "builtin:bool" &&
               interop::abi_plan::isRegCallWin64FloatRecordsReturningBool(*imported->cppAbiPlan, imported->cAbiName)) ||
@@ -1072,7 +1072,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                         [&](LLVMAttributeIndex index, LLVMAttributeRef attribute)
                         { LLVMAddCallSiteAttribute(call, index, attribute); });
             if (!applyMustTail(node, call, error)) return nullptr;
-            if (node->typeKey == "builtin:int" || node->typeKey == "builtin:bool" || node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort" || node->typeKey.ends_with('*') || node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong" || node->typeKey == "builtin:double" || node->typeKey == "builtin:float" || node->typeKey == "builtin:void") return call;
+            if (node->typeKey == "builtin:int" || node->typeKey == "builtin:uint" || node->typeKey == "builtin:bool" || node->typeKey == "builtin:sbyte" || node->typeKey == "builtin:byte" || node->typeKey == "builtin:short" || node->typeKey == "builtin:ushort" || node->typeKey.ends_with('*') || node->typeKey == "builtin:long" || node->typeKey == "builtin:ulong" || node->typeKey == "builtin:double" || node->typeKey == "builtin:float" || node->typeKey == "builtin:void") return call;
             LLVMValueRef resultSlot = entryBlockAlloca(carrier, 4, "regcall.record.result");
             LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
             LLVMSetAlignment(resultStore, 4);

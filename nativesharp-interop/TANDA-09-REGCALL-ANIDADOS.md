@@ -912,3 +912,26 @@ llamadas o solo puntero, con y sin encabezado:
 codec rechazan la ausencia del atributo; pasaron transporte, ABI, identidad y
 la regresión de retorno entero estrecho (`A:/temp/nsc-t09-retornos-estrechos-t42wqnr8`).
 Otras firmas siguen pendientes; T09-003 permanece abierto.
+
+## Registros expandidos con retorno entero de 32 bits sin signo
+
+El control C con `unsigned int` pasaba mientras NSC rechazaba la firma
+(`A:/temp/nsc-t09-record-ret-u32-4fwcxz_9`). El plan físico `i32` se concilia
+con el tipo fuente sin signo y se conserva en llamadas y metadatos. Pasaron
+ocho comparaciones C y ocho C++ directas y por puntero, en estática y DLL
+O0–O3, con inspección LLVM y el valor 2147483814, que tiene el bit alto
+encendido (`A:/temp/nsc-t09-record-ret-u32-sgljwa4s` y
+`A:/temp/nsc-t09-cpp-ret-u32-_x52g3ze`).
+
+Pasaron 16 consumidores precompilados por cada combinación de C o C++ y ambas
+llamadas o solo alias, con y sin encabezado:
+`A:/temp/nsc-t09-record-ret-u32-pre-_p_ytv2o`,
+`A:/temp/nsc-t09-record-ret-u32-pre-ocfay8eq`,
+`A:/temp/nsc-t09-cpp-ret-u32-precompilado-vuvxfs4t` y
+`A:/temp/nsc-t09-cpp-ret-u32-precompilado-nm2prks4`. Un
+[validador adicional](pruebas-tanda-09-regcall-records-retorno-u32/validar-long-win64.py)
+contrastó también `long` y `unsigned long` de 32 bits en Win64, C y C++, con
+llamadas directas, indirectas y precompiladas (`A:/temp/nsc-t09-ret-long-win64-gfmau448`).
+La prueba de metadatos rechaza signo inconsistente; pasaron plan, transporte,
+identidad y la regresión booleana (`A:/temp/nsc-t09-record-ret-bool-d7gh9x7m`).
+Otras firmas y valores siguen pendientes; T09-003 permanece abierto.

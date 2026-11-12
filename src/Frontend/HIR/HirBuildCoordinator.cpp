@@ -1921,7 +1921,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     return true;
                 }();
             const bool regCallRecordsReturningScalar = function.cppRegCall && symbol.cppAbiPlan && symbol.cppReturnType &&
-                (function.returnTypeKey == "builtin:int" || function.returnTypeKey == "builtin:bool" || function.returnTypeKey == "builtin:sbyte" || function.returnTypeKey == "builtin:byte" || function.returnTypeKey == "builtin:short" || function.returnTypeKey == "builtin:ushort" || function.returnTypeKey == "builtin:long" || function.returnTypeKey == "builtin:ulong" || function.returnTypeKey == "builtin:double" || function.returnTypeKey == "builtin:float" ||
+                (function.returnTypeKey == "builtin:int" || function.returnTypeKey == "builtin:uint" || function.returnTypeKey == "builtin:bool" || function.returnTypeKey == "builtin:sbyte" || function.returnTypeKey == "builtin:byte" || function.returnTypeKey == "builtin:short" || function.returnTypeKey == "builtin:ushort" || function.returnTypeKey == "builtin:long" || function.returnTypeKey == "builtin:ulong" || function.returnTypeKey == "builtin:double" || function.returnTypeKey == "builtin:float" ||
                  function.returnTypeKey == "builtin:void" || function.returnTypeKey.ends_with('*')) &&
                 (function.returnTypeKey == "builtin:void" ?
                     symbol.cppReturnType->kind == interop::CppTypeKind::Void && symbol.cppReturnType->canonicalSpelling == "void" &&

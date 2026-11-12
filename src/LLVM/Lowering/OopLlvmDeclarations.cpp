@@ -20,7 +20,7 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
 {
             const auto* regCallLayout = findStructLayout(mirModel_, function.returnTypeKey);
             const bool regCallScalarReturn = function.cppRegCall && function.cppAbiPlan &&
-                ((function.returnTypeKey == "builtin:int" && interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*function.cppAbiPlan, function.cAbiName)) ||
+                (((function.returnTypeKey == "builtin:int" || function.returnTypeKey == "builtin:uint") && interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey == "builtin:bool" && interop::abi_plan::isRegCallWin64FloatRecordsReturningBool(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey.ends_with('*') && interop::abi_plan::isRegCallWin64FloatRecordsReturningPointer(*function.cppAbiPlan, function.cAbiName)) ||
                  ((function.returnTypeKey == "builtin:sbyte" || function.returnTypeKey == "builtin:byte" || function.returnTypeKey == "builtin:short" || function.returnTypeKey == "builtin:ushort") && interop::abi_plan::isRegCallWin64FloatRecordsReturningNarrowInteger(*function.cppAbiPlan, function.cAbiName)) ||
@@ -329,7 +329,7 @@ bool OopLlvmImplementation::declareFunction(
             }
             applyUwtableAttribute(llvmFunction);
             const bool expandedRegCall = function.cppRegCall && function.cppAbiPlan &&
-                ((function.returnTypeKey == "builtin:int" &&
+                (((function.returnTypeKey == "builtin:int" || function.returnTypeKey == "builtin:uint") &&
                   interop::abi_plan::isRegCallWin64FloatRecordsReturningInt(*function.cppAbiPlan, function.cAbiName)) ||
                  (function.returnTypeKey == "builtin:bool" &&
                   interop::abi_plan::isRegCallWin64FloatRecordsReturningBool(*function.cppAbiPlan, function.cAbiName)) ||

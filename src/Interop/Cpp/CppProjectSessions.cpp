@@ -281,8 +281,8 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 else if (!abi_plan::regCallFloatRecordScalarSupported(type)) tailSupported = false;
             }
             const bool recordReturn = signature.returnType.kind == CppTypeKind::Record;
-            const bool intReturn = signature.returnType.kind == CppTypeKind::SignedInteger &&
-                signature.returnType.canonicalSpelling == "int";
+            const bool intReturn = (signature.returnType.kind == CppTypeKind::SignedInteger || signature.returnType.kind == CppTypeKind::UnsignedInteger) &&
+                signature.returnType.sizeBits == 32 && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
             const bool boolReturn = signature.returnType.kind == CppTypeKind::Boolean && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
             const bool narrowReturn = (signature.returnType.kind == CppTypeKind::SignedInteger || signature.returnType.kind == CppTypeKind::UnsignedInteger) &&
                 (signature.returnType.sizeBits == 8 || signature.returnType.sizeBits == 16) && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
@@ -509,8 +509,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         const auto identity = projectCppRecordTypeIdentity(signature.returnType, moduleName);
         const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;
         const auto* imported = ordinal ? lookup.cppImportedType(*ordinal) : nullptr;
-        const bool intReturn = signature.returnType.kind == CppTypeKind::SignedInteger &&
-            signature.returnType.canonicalSpelling == "int";
+        const bool intReturn = (signature.returnType.kind == CppTypeKind::SignedInteger || signature.returnType.kind == CppTypeKind::UnsignedInteger) &&
+            signature.returnType.sizeBits == 32 && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
         const bool boolReturn = signature.returnType.kind == CppTypeKind::Boolean && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
         const bool narrowReturn = (signature.returnType.kind == CppTypeKind::SignedInteger || signature.returnType.kind == CppTypeKind::UnsignedInteger) &&
             (signature.returnType.sizeBits == 8 || signature.returnType.sizeBits == 16) && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
@@ -642,8 +642,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         pointer.sizeBits != 64 || pointer.alignmentBits != 64 || !pointer.element ||
         pointer.element->kind != CppTypeKind::Function || !pointer.element->function) return {};
     const auto& signature = *pointer.element->function;
-    const bool returnInteger = signature.returnType.kind == CppTypeKind::SignedInteger &&
-        signature.returnType.canonicalSpelling == "int";
+    const bool returnInteger = (signature.returnType.kind == CppTypeKind::SignedInteger || signature.returnType.kind == CppTypeKind::UnsignedInteger) &&
+        signature.returnType.sizeBits == 32 && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
     const bool returnBool = signature.returnType.kind == CppTypeKind::Boolean && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
     const bool returnNarrow = (signature.returnType.kind == CppTypeKind::SignedInteger || signature.returnType.kind == CppTypeKind::UnsignedInteger) &&
         (signature.returnType.sizeBits == 8 || signature.returnType.sizeBits == 16) && abi_plan::regCallFloatRecordScalarSupported(signature.returnType);
@@ -763,7 +763,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     if (selectedRecords.empty()) return {};
     if (signature.parameterTypes.empty()) parameterSource = "void";
     std::string returnTypeSource = returnVoid ? "void" : returnPointer ? signature.returnType.canonicalSpelling : returnFloat ? "float" : returnDouble ? "double" :
-        (returnBool || returnInt64 || returnNarrow) ? signature.returnType.canonicalSpelling : "int";
+        (returnBool || returnInteger || returnInt64 || returnNarrow) ? signature.returnType.canonicalSpelling : "int";
     if (returnRecord)
     {
         std::vector<std::uint8_t> encodedReturn;

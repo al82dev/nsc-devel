@@ -760,7 +760,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
                 *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8) ||
              abi_plan::isRegCallWin64FloatRecordInterleaved(*f.abiPlan, value.linkSymbol,
                 *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8));
-        const bool validIntReturn = f.returnType.kind == CppTypeKind::SignedInteger &&
+        const bool validIntReturn = (f.returnType.kind == CppTypeKind::SignedInteger || f.returnType.kind == CppTypeKind::UnsignedInteger) &&
             abi_plan::isRegCallWin64FloatRecordsReturningInt(*f.abiPlan, value.linkSymbol) &&
             abi_plan::regCallFloatRecordScalarMatches(f.abiPlan->physicalReturn, f.returnType);
         const bool validBoolReturn = f.returnType.kind == CppTypeKind::Boolean &&
@@ -1379,7 +1379,7 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
             result.recordIdentity->clangUsr && result.sizeBits && *result.sizeBits % 8 == 0 && result.alignmentBits == 32 &&
             abi_plan::isRegCallWin64FloatRecordInterleaved(*alias.abiPlan,
                 "__regcall3____nsc_pointer_abi_probe", *result.sizeBits / 8, 4);
-        const bool intReturn = result.kind == CppTypeKind::SignedInteger &&
+        const bool intReturn = (result.kind == CppTypeKind::SignedInteger || result.kind == CppTypeKind::UnsignedInteger) &&
             abi_plan::isRegCallWin64FloatRecordsReturningInt(*alias.abiPlan, "__regcall3____nsc_pointer_abi_probe") &&
             abi_plan::regCallFloatRecordScalarMatches(alias.abiPlan->physicalReturn, result);
         const bool boolReturn = result.kind == CppTypeKind::Boolean &&
