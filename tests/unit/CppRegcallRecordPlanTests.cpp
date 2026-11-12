@@ -1,5 +1,6 @@
 #include "nativesharp/Interop/CppClangSessionFactory.h"
 #include "nativesharp/Interop/CppInteropSession.h"
+#include "nativesharp/Interop/CppVariadicAbiReconciliation.h"
 #include <llvm/IR/CallingConv.h>
 #include <iostream>
 #include <memory>
@@ -7,6 +8,7 @@
 #include <string_view>
 #include <utility>
 #include <variant>
+#include <vector>
 
 using namespace nativesharp::interop;
 
@@ -42,8 +44,9 @@ int main(int argc, char** argv)
             std::pair{"LargeFn", "large"}, std::pair{"FloatsFn", "floats"}})
     {
         std::string aliasType, functionType;
+        const CppType* aliasPointer = nullptr;
         for (const auto& alias : *aliases)
-            if (alias.name == aliasName) aliasType = alias.underlyingType.canonicalSpelling;
+            if (alias.name == aliasName) { aliasType = alias.underlyingType.canonicalSpelling; aliasPointer = &alias.underlyingType; }
         for (const auto& function : *functions)
             if (function.name == functionName) functionType = function.canonicalFunctionType;
         if (aliasType.empty() || functionType.empty()) return 4;
@@ -61,6 +64,32 @@ int main(int argc, char** argv)
         }
         if (!direct || !indirect)
         { std::cerr << aliasName << ": directo=" << bool(direct) << " puntero=" << bool(indirect) << '\n'; return 5; }
+        if (!aliasPointer || !aliasPointer->element || !aliasPointer->element->function ||
+            aliasPointer->element->function->parameterTypes.size() != 1) return 10;
+        const auto& signature = *aliasPointer->element->function;
+        CppVariadicArgumentOrigin result{signature.returnType, session.get()};
+        const std::vector<CppVariadicArgumentOrigin> arguments{{signature.parameterTypes[0], session.get()}};
+        if (!reconcileCppFunctionPointerAbiPlan(*session, aliasName, *aliasPointer, result, arguments) ||
+            reconcileCppFunctionPointerAbiPlan(*session, "missing", *aliasPointer, result, arguments)) return 11;
+        auto wrongResult = result;
+        wrongResult.type.sizeBits = 1;
+        if (reconcileCppFunctionPointerAbiPlan(*session, aliasName, *aliasPointer, wrongResult, arguments)) return 12;
+        if (std::string_view(aliasName) == "SmallFn")
+        {
+            CppSessionOptions otherOptions;
+            otherOptions.language = CppLanguageMode::C;
+            otherOptions.languageStandard = "c11";
+            otherOptions.targetTriple = "x86_64-pc-windows-msvc";
+            otherOptions.driverReferencePath = "clang.exe";
+            otherOptions.resourceDirectory = argv[1];
+            otherOptions.workingDirectory = argv[2];
+            otherOptions.input = CppBufferInput{"regcall-other.c", "struct Small { unsigned x, y; };"};
+            auto otherOpened = factory.open(std::move(otherOptions), {});
+            if (!std::holds_alternative<std::unique_ptr<CppInteropSession>>(otherOpened)) return 13;
+            auto other = std::move(std::get<std::unique_ptr<CppInteropSession>>(otherOpened));
+            wrongResult = result; wrongResult.origin = other.get();
+            if (reconcileCppFunctionPointerAbiPlan(*session, aliasName, *aliasPointer, wrongResult, arguments)) return 14;
+        }
         if (direct->callingConvention != llvm::CallingConv::X86_RegCall ||
             indirect->callingConvention != direct->callingConvention ||
             indirect->physicalReturn.kind != direct->physicalReturn.kind ||
@@ -70,6 +99,7 @@ int main(int argc, char** argv)
             indirect->logicalParameters[0].physicalCount != direct->logicalParameters[0].physicalCount)
         { std::cerr << "plan no disponible o incompatible para " << aliasName << '\n'; return 5; }
         std::cout << aliasName << ": cc=" << direct->callingConvention
+                  << " simbolo-puntero=" << indirect->symbol
                   << " retorno=" << static_cast<int>(direct->physicalReturn.kind)
                   << " bits=" << direct->physicalReturn.widthOrCount
                   << " paso=" << static_cast<int>(direct->logicalParameters[0].passing)

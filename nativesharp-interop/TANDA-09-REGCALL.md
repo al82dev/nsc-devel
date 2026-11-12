@@ -299,3 +299,13 @@ Pasaron cuatro sondas de ABI/punteros, transporte/ABI/identidad, 16
 consumidores precompilados de punteros regcall y la prueba negativa de
 `double` por valor (A:/temp/t09-regcall-plan-final-*.log). T09-003 sigue
 abierto.
+
+La reconciliacion de planes de puntero admite tambien `regcall`: comprueba la
+convencion y el simbolo sintetico que Clang genera, la firma, identidad y
+origen de los records. La prueba contrasta los records de enteros de ocho y
+24 bytes con la funcion directa y rechaza nombre, tamano y procedencia
+incompatibles (A:/temp/t09-regcall-plan-test.log). Pasaron las cuatro sondas
+de ABI/punteros y controles de transporte, ABI e identidad
+(A:/temp/t09-regcall-reconcile-*.log). El record de dos `float` usa la forma
+`Expand` de Clang, que el plan aun no representa. Estas comprobaciones no
+habilitan la llamada por valor; faltan transporte y emision verificados.

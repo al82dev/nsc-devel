@@ -223,7 +223,8 @@ std::optional<abi_plan::Plan> reconcileCppFunctionPointerAbiPlan(
         observed->element->isRestrict != expectedPointer.element->isRestrict) return std::nullopt;
     const auto& signature = *observed->element->function;
     const auto& expectedSignature = *expectedPointer.element->function;
-    if (signature.callingConvention != "sysv_abi" || !signature.hasPrototype || signature.variadic ||
+    const bool regCall = signature.callingConvention == "regcall";
+    if ((signature.callingConvention != "sysv_abi" && !regCall) || !signature.hasPrototype || signature.variadic ||
         expectedSignature.callingConvention != signature.callingConvention ||
         expectedSignature.hasPrototype != signature.hasPrototype || expectedSignature.variadic != signature.variadic ||
         signature.parameterTypes.size() != parameters.size() ||
@@ -237,7 +238,8 @@ std::optional<abi_plan::Plan> reconcileCppFunctionPointerAbiPlan(
             !variadicRecordOriginMatches(aliasSession, parameters[index].origin, parameters[index].type, 0))
             return std::nullopt;
     auto plan = aliasSession.cFunctionPointerAbiPlan(name, expectedPointer.canonicalSpelling);
-    if (!plan || plan->symbol != "__nsc_pointer_abi_probe" || plan->callingConvention != 78 || plan->variadic ||
+    const std::string_view expectedSymbol = regCall ? "__regcall3____nsc_pointer_abi_probe" : "__nsc_pointer_abi_probe";
+    if (!plan || plan->symbol != expectedSymbol || plan->callingConvention != (regCall ? 92U : 78U) || plan->variadic ||
         !plan->targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan->dataLayout.starts_with("e-") ||
         plan->logicalParameters.size() != parameters.size()) return std::nullopt;
     return plan;
