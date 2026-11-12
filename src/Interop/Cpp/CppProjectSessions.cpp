@@ -2,6 +2,7 @@
 #include "nativesharp/Interop/CppVariadicAbiReconciliation.h"
 #include "nativesharp/Interop/CppCRecordAbiReplay.h"
 #include "nativesharp/Interop/CppVariadicAbiCodec.h"
+#include "nativesharp/Interop/CppRegCallAbiValidation.h"
 #include "nativesharp/Interop/CppSemanticFunction.h"
 #include "nativesharp/Frontend/PrecompiledSyntaxModule.h"
 #include "../Internal/CppCRecordMetadataCodec.h"
@@ -362,9 +363,13 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     const bool returnInteger = signature.returnType.kind == CppTypeKind::SignedInteger &&
         signature.returnType.canonicalSpelling == "int";
     const bool returnRecord = signature.returnType.kind == CppTypeKind::Record;
-    if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "sysv_abi" ||
+    const bool regCall = signature.callingConvention == "regcall";
+    if (!signature.hasPrototype || signature.variadic ||
+        (signature.callingConvention != "sysv_abi" && !regCall) ||
         (!returnInteger && !returnRecord) ||
         (signature.parameterTypes.empty() && !returnRecord) || signature.parameterTypes.size() > 1024) return {};
+    if (regCall && (!returnRecord || signature.parameterTypes.size() != 1 ||
+                    signature.parameterTypes[0].kind != CppTypeKind::Record)) return {};
     struct ReplayRecord
     {
         const CppType* type;
@@ -389,9 +394,11 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                 type.recordIdentity->anonymousContext || type.recordIdentity->specializationContext ||
                 !type.recordIdentity->namespaceSegments.empty() || !type.recordIdentity->containingRecords.empty() ||
                 type.canonicalSpelling != "struct " + type.recordIdentity->name ||
-                !((type.sizeBits == 96 && type.alignmentBits == 32) ||
+                !(regCall ? (type.sizeBits && *type.sizeBits && *type.sizeBits % 8 == 0 &&
+                             type.alignmentBits && *type.alignmentBits && *type.alignmentBits % 8 == 0) :
+                 ((type.sizeBits == 96 && type.alignmentBits == 32) ||
                   (type.sizeBits == 160 && type.alignmentBits == 32) ||
-                  (type.sizeBits == 128 && (type.alignmentBits == 32 || type.alignmentBits == 64)))) return {};
+                  (type.sizeBits == 128 && (type.alignmentBits == 32 || type.alignmentBits == 64))))) return {};
             const auto identity = projectCppRecordTypeIdentity(type, moduleName);
             if (!identity) return {};
             const auto ordinal = lookup.typeOrdinalForIdentity(identity->key());
@@ -430,8 +437,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     if (returnRecord)
     {
         std::vector<std::uint8_t> encodedReturn;
-        if ((signature.returnType.sizeBits != 96 && signature.returnType.sizeBits != 160) ||
-            signature.returnType.alignmentBits != 32 ||
+        if ((!regCall && ((signature.returnType.sizeBits != 96 && signature.returnType.sizeBits != 160) ||
+                          signature.returnType.alignmentBits != 32)) ||
             !metadata_detail::encodeCDependencyType(signature.returnType, encodedReturn, error)) return {};
         const auto match = std::find_if(selectedRecords.begin(), selectedRecords.end(),
             [&](const auto& record) { return record.encoded == encodedReturn; });
@@ -482,7 +489,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             !record.containingRecords.empty() || record.clangUsr != type.recordIdentity->clangUsr ||
             record.name != type.recordIdentity->name || record.kind != CppRecordKind::Struct ||
             record.sizeBits != type.sizeBits || record.alignmentBits != type.alignmentBits) return {};
-        if (type.alignmentBits == 64)
+        if (!regCall && type.alignmentBits == 64)
         {
             if (record.fields.size() != 2) return {};
             const auto& first = record.fields[0];
@@ -491,7 +498,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                 first.offsetBits != 0 || second.bitWidth || second.type.kind != CppTypeKind::SignedInteger ||
                 second.type.canonicalSpelling != "int" || second.offsetBits != 64) return {};
         }
-        else
+        else if (!regCall)
         {
             if (record.fields.size() != *type.sizeBits / 32) return {};
             for (std::size_t i = 0; i < record.fields.size(); ++i)
@@ -514,7 +521,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     options.workingDirectory = environment.workingDirectory;
     options.input = CppBufferInput{"nsc-pointer-replay.c", recordSource +
         "typedef " + returnTypeSource +
-        " (__attribute__((sysv_abi)) *__nsc_replay_pointer)(" + parameterSource + ");\n"};
+        " (__attribute__((" + std::string(regCall ? "regcall" : "sysv_abi") + ")) *__nsc_replay_pointer)(" + parameterSource + ");\n"};
     auto opened = factory.open(std::move(options), {});
     auto* holder = std::get_if<std::unique_ptr<CppInteropSession>>(&opened);
     if (!holder || !*holder) return {};
@@ -534,9 +541,13 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         [](const auto& value) { return value.name == "__nsc_replay_pointer"; });
     if (replayAlias == aliases->end()) return {};
     auto plan = session.cFunctionPointerAbiPlan(replayAlias->name, replayAlias->underlyingType.canonicalSpelling);
-    if (!plan || plan->symbol != "__nsc_pointer_abi_probe" || plan->callingConvention != 78 ||
+    const std::string_view expectedSymbol = regCall ? "__regcall3____nsc_pointer_abi_probe" : "__nsc_pointer_abi_probe";
+    if (!plan || plan->symbol != expectedSymbol || plan->callingConvention != (regCall ? 92U : 78U) ||
         plan->variadic || !plan->targetTriple.starts_with("x86_64-pc-windows-msvc") ||
         !plan->dataLayout.starts_with("e-") || plan->logicalParameters.size() != signature.parameterTypes.size()) return {};
+    if (regCall && (!signature.returnType.sizeBits || !signature.returnType.alignmentBits ||
+        !abi_plan::isRegCallWin64RecordRoundTrip(*plan, expectedSymbol,
+            *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8))) return {};
     return std::make_shared<const abi_plan::Plan>(std::move(*plan));
 }
 

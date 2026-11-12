@@ -3,6 +3,7 @@
 #include "nativesharp/Interop/CppCRecordAbiReplay.h"
 #include "nativesharp/Interop/CppVariadicAbiCodec.h"
 #include "nativesharp/Interop/CppVariadicAbiValidation.h"
+#include "nativesharp/Interop/CppRegCallAbiValidation.h"
 #include "ByteReader.h"
 #include "ByteWriter.h"
 #include "nativesharp/Compilation/ProjectGraph.h"
@@ -734,6 +735,25 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             }
         }
     }
+    std::optional<std::string> regCallPlan;
+    if (f.abiPlan && f.callingConvention == "regcall")
+    {
+        if (f.variadic || !f.hasPrototype || !f.externalLinkage || f.externalSymbol != value.linkSymbol ||
+            f.returnType.kind != CppTypeKind::Record || !f.returnType.sizeBits || !f.returnType.alignmentBits ||
+            *f.returnType.sizeBits % 8 || *f.returnType.alignmentBits % 8 || f.parameters.size() != 1 ||
+            f.parameters[0].type.kind != CppTypeKind::Record ||
+            f.parameters[0].type.canonicalSpelling != f.returnType.canonicalSpelling ||
+            f.parameters[0].type.sizeBits != f.returnType.sizeBits ||
+            f.parameters[0].type.alignmentBits != f.returnType.alignmentBits ||
+            !f.returnType.recordIdentity || !f.returnType.recordIdentity->clangUsr ||
+            f.returnType.recordIdentity->clangUsr->empty() || !f.parameters[0].type.recordIdentity ||
+            f.parameters[0].type.recordIdentity->clangUsr != f.returnType.recordIdentity->clangUsr ||
+            !abi_plan::isRegCallWin64RecordRoundTrip(*f.abiPlan, value.linkSymbol,
+                *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8) ||
+            !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
+        { error = "invalid C dependency regcall record ABI"; return false; }
+    }
+    if (!putOptionalText(writer, regCallPlan)) { error = "C dependency regcall plan is too large"; return false; }
     output = writer.takeBytes();
     error.clear();
     return true;
@@ -1127,6 +1147,14 @@ bool decodeCDependencyFunction(std::span<const std::uint8_t> bytes,
             { error = "invalid C dependency ABI plan"; return false; }
             f.abiPlan = std::move(plan);
         }
+    }
+    std::optional<std::string> regCallPlan;
+    if (!getOptionalText(reader, regCallPlan)) { error = "invalid C dependency regcall plan"; return false; }
+    if (regCallPlan)
+    {
+        auto decoded = abi_plan::decodeFunctionPointerPlanFromCache(*regCallPlan);
+        if (!decoded || f.abiPlan) { error = "invalid C dependency regcall plan"; return false; }
+        f.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*decoded));
     }
     std::vector<std::uint8_t> canonical;
     if (!reader.atEnd() || !encodeCDependencyFunction(value, canonical, error) ||

@@ -307,8 +307,8 @@ origen de los records. La prueba contrasta los records de enteros de ocho y
 incompatibles (A:/temp/t09-regcall-plan-test.log). Pasaron las cuatro sondas
 de ABI/punteros y controles de transporte, ABI e identidad
 (A:/temp/t09-regcall-reconcile-*.log). El record de dos `float` usa la forma
-`Expand` de Clang, que el plan aun no representa. Estas comprobaciones no
-por si solas habilitaban la llamada por valor; el avance posterior figura abajo.
+`Expand` de Clang, que el plan aun no representa. Estas comprobaciones por si
+solas no habilitaban la llamada por valor; el avance posterior figura abajo.
 
 Para alias C vivos, HIR solicita ahora el plan reconciliado `regcall` cuando
 la firma contiene records; MIR lo conserva. Una prueba dirigida con records
@@ -317,8 +317,8 @@ de ocho y 24 bytes comprueba ambos planes en los dos modelos
 planes no aparecian (A:/temp/nsc-t09-regcall-record-plan-hir-8ltxu_et).
 Pasaron la prueba de consulta y las regresiones precompiladas SysV y regcall
 (A:/temp/t09-regcall-plan-test.log, A:/temp/t09-regcall-hir-reg-*.log).
-Esto solo acreditaba el transporte vivo; el plan de un alias restaurado sin
-encabezado sigue pendiente.
+Esto solo acreditaba el transporte vivo; el resultado posterior del alias
+restaurado figura abajo.
 
 ## Records C por valor en regcall
 
@@ -339,8 +339,28 @@ ambas rutas porque su ABI expandido aun no esta representado
 de `double` por valor (A:/temp/nsc-t09-regcall-negativo-gkcdwerd).
 
 Pasaron cuatro sondas ABI, transporte/identidad y las regresiones
-precompiladas SysV y preserve (A:/temp/t09-regcall-records-reg-*.log). La
-muestra precompilada de estos records `regcall` aun falla al consumir el plan
-de una funcion (A:/temp/nsc-t09-regcall-records-precompilado-2xqyrxyq).
-No se acreditan otras firmas, records expandidos o precompilacion; T09-003
-sigue abierto.
+precompiladas SysV y preserve (A:/temp/t09-regcall-records-reg-*.log). En esa
+etapa la muestra precompilada fallaba al consumir el plan de una funcion
+(A:/temp/nsc-t09-regcall-records-precompilado-2xqyrxyq).
+No se acreditan otras firmas ni records expandidos; T09-003 sigue abierto.
+
+## Records C regcall precompilados
+
+El contrato vigente conserva el plan completo de la funcion `regcall` cuando
+su simbolo, record y clasificacion coinciden con la regla de emision. El
+consumidor reconstruye la declaracion y vuelve a consultar a Clang por el
+plan del alias, despues de comprobar identidad, campos y layout del record
+del catalogo. Una prueba verifica ida y vuelta y rechazo de convencion,
+identidad, dimensiones o datos truncados (A:/temp/t09-regcall-plan-test.log).
+
+Pasaron 16 consumidores precompilados de la muestra de records de ocho y 24
+bytes, con y sin encabezado, en estatica y DLL O0-O3
+(A:/temp/nsc-t09-regcall-records-precompilado-4fw_4s2h). Pasaron tambien las
+regresiones precompiladas SysV, C++ ordinaria y punteros `regcall`, los
+rechazos de la forma flotante expandida y las pruebas de metadatos y cierre de
+dependencias (A:/temp/t09-regcall-precompiled-reg-*.log y
+A:/temp/t09-cpp-meta-check.log).
+
+La evidencia cubre las firmas comprobadas; la representacion y emision de
+records flotantes expandidos y otras firmas siguen pendientes. T09-003 no se
+cierra con este resultado.

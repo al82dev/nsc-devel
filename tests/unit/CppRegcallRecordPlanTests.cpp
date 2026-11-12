@@ -2,6 +2,7 @@
 #include "nativesharp/Interop/CppInteropSession.h"
 #include "nativesharp/Interop/CppVariadicAbiReconciliation.h"
 #include "nativesharp/Interop/CppRegCallAbiValidation.h"
+#include "../../src/Interop/Internal/CppCRecordMetadataCodec.h"
 #include <llvm/IR/CallingConv.h>
 #include <iostream>
 #include <memory>
@@ -46,11 +47,12 @@ int main(int argc, char** argv)
     {
         std::string aliasType, functionType;
         const CppType* aliasPointer = nullptr;
+        const CppFunctionDeclaration* declaration = nullptr;
         for (const auto& alias : *aliases)
             if (alias.name == aliasName) { aliasType = alias.underlyingType.canonicalSpelling; aliasPointer = &alias.underlyingType; }
         for (const auto& function : *functions)
-            if (function.name == functionName) functionType = function.canonicalFunctionType;
-        if (aliasType.empty() || functionType.empty()) return 4;
+            if (function.name == functionName) { functionType = function.canonicalFunctionType; declaration = &function; }
+        if (aliasType.empty() || functionType.empty() || !declaration) return 4;
         const auto direct = session->cFunctionAbiPlan(functionName, functionType);
         const auto indirect = session->cFunctionPointerAbiPlan(aliasName, aliasType);
         // The current plan may not express the expanded HFA. If it becomes
@@ -140,6 +142,30 @@ int main(int argc, char** argv)
             abi_plan::isRegCallWin64RecordRoundTrip(*direct, "wrong-symbol", bytes, 4) ||
             (bytes == 24 && abi_plan::isRegCallWin64RecordRoundTrip(*direct, direct->symbol, bytes, 8)))
         { std::cerr << "plan alterado aceptado para " << aliasName << '\n'; return 16; }
+        metadata_detail::CDependencyFunctionSnapshot snapshot;
+        snapshot.moduleName = "PlanProbe"; snapshot.referenceIdentity = "reference:0";
+        snapshot.linkSymbol = direct->symbol; snapshot.declaration = *declaration;
+        snapshot.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*direct);
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        metadata_detail::CDependencyFunctionSnapshot decoded;
+        if (!metadata_detail::encodeCDependencyFunction(snapshot, encoded, error) ||
+            !metadata_detail::decodeCDependencyFunction(encoded, decoded, error) || !decoded.declaration.abiPlan ||
+            !abi_plan::isRegCallWin64RecordRoundTrip(*decoded.declaration.abiPlan, snapshot.linkSymbol, bytes, 4))
+        { std::cerr << "contrato regcall: " << error << '\n'; return 17; }
+        auto wrong = snapshot;
+        auto wrongPlan = std::make_shared<abi_plan::Plan>(*direct);
+        wrongPlan->callingConvention = 78;
+        wrong.declaration.abiPlan = wrongPlan;
+        if (metadata_detail::encodeCDependencyFunction(wrong, encoded, error)) return 18;
+        wrong = snapshot;
+        if (!wrong.declaration.parameters[0].type.recordIdentity) return 20;
+        wrong.declaration.parameters[0].type.recordIdentity->clangUsr = "different-record";
+        if (metadata_detail::encodeCDependencyFunction(wrong, encoded, error)) return 21;
+        wrong = snapshot; wrong.declaration.parameters[0].type.sizeBits = 8;
+        if (metadata_detail::encodeCDependencyFunction(wrong, encoded, error)) return 22;
+        encoded.pop_back();
+        if (metadata_detail::decodeCDependencyFunction(encoded, decoded, error)) return 19;
     }
     return 0;
 }
