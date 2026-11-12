@@ -395,7 +395,8 @@ LLVMValueRef OopLlvmImplementation::applyDecimalAddOrSubtract(
         LLVMValueRef right,
         LLVMValueRef scaleShift,
         LLVMValueRef scaleMask,
-        LLVMValueRef& effectiveScale)
+        LLVMValueRef& effectiveScale,
+        std::string& error)
 {
         // NS304-T15-F04 mixed scales: align both coefficients to the max scale by multiplying
         // each by 10^(max - its scale), then add/sub the aligned coefficients.
@@ -540,6 +541,16 @@ LLVMValueRef OopLlvmImplementation::applyDecimalAddOrSubtract(
         LLVMAddIncoming(reduced, reductionValues, reductionBlocks, 2U);
         LLVMAddIncoming(reducedScale, reductionScales, reductionBlocks, 2U);
         LLVMValueRef fits = LLVMBuildICmp(builder_, LLVMIntULE, reduced, wideMask, "decimal.add.wide.fits");
+        if (currentOverflowPolicy_.empty() || currentOverflowPolicy_ == "checked")
+        {
+            // At scale zero an out-of-range exact integer cannot be rescued by
+            // scale reduction or a rounding decision.
+            LLVMValueRef nonzeroScale = LLVMBuildICmp(builder_, LLVMIntNE, maxScale,
+                LLVMConstInt(encoded, 0, 0), "decimal.add.overflow.nonzero.scale");
+            LLVMValueRef valid = LLVMBuildOr(builder_, fits, nonzeroScale, "decimal.add.overflow.valid");
+            if (!emitGuard(valid, LlvmTrapReason::DecimalOverflow, "decimal.add.overflow", error))
+                return nullptr;
+        }
         effectiveScale = LLVMBuildSelect(builder_, fits, reducedScale, maxScale, "decimal.add.final.scale");
         LLVMValueRef exactCoefficient = LLVMBuildTrunc(builder_, reduced, encoded, "decimal.add.exact.coeff");
         LLVMValueRef exactSign = LLVMBuildShl(builder_, LLVMBuildZExt(builder_, wideNegative, encoded,
@@ -772,7 +783,7 @@ LLVMValueRef OopLlvmImplementation::applyDecimalBinaryOperation(
         if (operation == lexer::TokenKind::Plus || operation == lexer::TokenKind::Minus)
             combined = applyDecimalAddOrSubtract(
                 operation, left, leftCoefficient, rightCoefficient, leftScale,
-                right, scaleShift, scaleMask, effectiveScale);
+                right, scaleShift, scaleMask, effectiveScale, error);
         else if (operation == lexer::TokenKind::Star)
             combined = applyDecimalMultiply(
                 left, right, leftCoefficient, rightCoefficient, leftScale,

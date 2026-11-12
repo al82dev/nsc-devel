@@ -2359,7 +2359,8 @@ private:
         LLVMValueRef right,
         LLVMValueRef scaleShift,
         LLVMValueRef scaleMask,
-        LLVMValueRef& effectiveScale);
+        LLVMValueRef& effectiveScale,
+        std::string& error);
     LLVMValueRef buildSaturatedDecimalMultiply(
         LLVMValueRef left,
         LLVMValueRef right,

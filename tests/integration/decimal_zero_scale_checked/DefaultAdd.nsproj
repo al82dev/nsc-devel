@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>DecimalDefaultAdd</Name><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><Compile Include="DefaultAdd.ns"/></ItemGroup></Project>
