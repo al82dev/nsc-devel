@@ -1,0 +1,1 @@
+<Project><PropertyGroup><Name>UnsignedRemainderZero</Name><OutputType>Exe</OutputType></PropertyGroup><ItemGroup><Compile Include="Zero.ns"/></ItemGroup></Project>

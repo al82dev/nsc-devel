@@ -860,6 +860,12 @@ LLVMValueRef OopLlvmImplementation::applyIntegerDivision(
 
         if (!isSignedInteger(operandType))
         {
+            if (remainder && operandType == "builtin:u128")
+            {
+                LLVMValueRef quotient = emitUnsignedI128Division(left, right);
+                return LLVMBuildSub(builder_, left,
+                    LLVMBuildMul(builder_, quotient, right, "u128.rem.product"), "u128.rem");
+            }
             if (!remainder && operandType == "builtin:u128")
                 return emitUnsignedI128Division(left, right);
             return remainder
