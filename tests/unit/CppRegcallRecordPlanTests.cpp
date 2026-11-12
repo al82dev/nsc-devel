@@ -98,6 +98,7 @@ int main(int argc, char** argv)
         Nested __attribute__((regcall)) nested_doubleptr(Nested, unsigned char**,short**,double**);
         Nested __attribute__((regcall)) nested_recordptr(Nested, Other*);
         Nested __attribute__((regcall)) nested_const(Nested, const int*,int*);
+        Nested __attribute__((regcall)) nested_const_float(Nested, const float*,const double*);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -606,6 +607,17 @@ int main(int argc, char** argv)
         auto bad = std::make_shared<CppType>(*altered.element);
         bad->unqualifiedCanonicalSpelling = "double"; altered.element = bad;
         if (abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type, altered)) return 105;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "nested_const_float") declaration = &function;
+        if (!declaration || declaration->parameters.size() != 3) return 107;
+        const auto plan = session->cFunctionAbiPlan("nested_const_float", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64FloatRecordRoundTrip(*plan, plan->symbol, 12, 4, 2, true)) return 108;
+        for (std::size_t i = 1; i < 3; ++i)
+            if (!abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[i + 2].type,
+                    declaration->parameters[i].type)) return 109;
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;

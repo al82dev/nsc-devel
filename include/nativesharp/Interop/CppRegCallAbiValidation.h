@@ -145,7 +145,8 @@ inline bool regCallFloatRecordScalarMatches(const Type& physical, const CppType&
         if (element.kind == CppTypeKind::Pointer)
             candidate.kind = TypeKind::Pointer;
         else if (element.kind == CppTypeKind::Floating)
-            candidate.kind = element.canonicalSpelling == "float" ? TypeKind::Float : TypeKind::Double;
+            candidate.kind = (element.isConst ? element.unqualifiedCanonicalSpelling : element.canonicalSpelling) == "float"
+                ? TypeKind::Float : TypeKind::Double;
         else
         {
             candidate.kind = TypeKind::Integer;

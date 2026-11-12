@@ -298,3 +298,25 @@ La validación física rechaza expresamente un record apuntado `const` hasta
 verificar su identidad y comportamiento: la prueba de plan construye esa
 forma con su nombre canónico y comprueba el rechazo. La compilación
 incremental y `nsc.cpp-interop.regcall-record-plan` pasaron.
+
+## Puntero a float const
+
+La clasificación del tipo apuntado usaba el nombre calificado al elegir
+entre `float` y `double`, y rechazaba `const float*`. El fallo se reprodujo
+en C y C++ (`A:/temp/nsc-t09-regcall-mixed-1fs5rm4s` y
+`A:/temp/nsc-t09-cpp-mixed-c8pni1s_`). Ahora usa el nombre canónico sin
+calificador para esa elección, conservando las comprobaciones de identidad.
+
+La muestra `const float*` pasó frente a Clang en llamadas directas e
+indirectas, O0-O3, estática y DLL en C y C++
+(`A:/temp/nsc-t09-regcall-mixed-tw3c85fy` y
+`A:/temp/nsc-t09-cpp-mixed-_gw9l295`). Pasaron 64 consumidores
+precompilados con y sin encabezado, incluidos los de solo puntero:
+`A:/temp/nsc-t09-hfa34-precompilado-rruqdur8`,
+`A:/temp/nsc-t09-hfa34-precompilado-ja62hl2m`,
+`A:/temp/nsc-t09-cpp-nested-precompilado-zu6vtc1f` y
+`A:/temp/nsc-t09-cpp-nested-precompilado-likcotuj`. También pasaron la
+regresión precompilada `const int*` y la prueba de plan, que comprueba tanto
+`const float*` como `const double*`; esta última forma todavía no tiene una
+prueba de ejecución propia. Los demás límites de la sección anterior siguen
+vigentes y T09-003 permanece abierto.
