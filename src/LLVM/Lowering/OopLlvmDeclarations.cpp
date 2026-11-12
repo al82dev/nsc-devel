@@ -23,9 +23,10 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
                 interop::abi_plan::isRegCallWin64FloatRecordSequence(*function.cppAbiPlan, function.cAbiName,
                     regCallLayout->size, regCallLayout->alignment))
             {
-                const auto count = static_cast<unsigned>(regCallLayout->size / 4);
                 const auto records = interop::abi_plan::regCallExpandedRecordCount(*function.cppAbiPlan);
-                std::vector<LLVMTypeRef> parts(count * records, LLVMFloatTypeInContext(context_));
+                std::vector<LLVMTypeRef> parts;
+                for (std::size_t i = 0; i < records; ++i)
+                    parts.insert(parts.end(), function.cppAbiPlan->logicalParameters[i].physicalCount, LLVMFloatTypeInContext(context_));
                 for (std::size_t i = records; i < function.cppAbiPlan->logicalParameters.size(); ++i)
                 {
                     const auto& type = function.cppAbiPlan->physicalParameters[function.cppAbiPlan->logicalParameters[i].firstPhysical].type;

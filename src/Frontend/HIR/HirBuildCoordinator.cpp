@@ -1886,8 +1886,8 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                         if (!isStructValueType(function.parameterTypeKeys[i]) ||
                             parameter.kind != interop::CppTypeKind::Record || !parameter.recordIdentity ||
                             !parameter.recordIdentity->clangUsr || parameter.recordIdentity->clangUsr->empty() ||
-                            parameter.sizeBits != symbol.cppReturnType->sizeBits ||
-                            parameter.alignmentBits != symbol.cppReturnType->alignmentBits) return false;
+                            !parameter.sizeBits || parameter.alignmentBits != 32 ||
+                            *parameter.sizeBits != symbol.cppAbiPlan->logicalParameters[i].physicalCount * 32) return false;
                     }
                     return true;
                 }() &&

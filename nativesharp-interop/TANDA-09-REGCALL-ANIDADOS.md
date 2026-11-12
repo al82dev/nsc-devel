@@ -469,5 +469,26 @@ transporte, la regresión precompilada de records iguales
 campos privados y record no trivial
 (`A:/temp/nsc-t09-cpp-distinct-rechazos-67wjszks`).
 
-No se acreditan records de tamaños distintos ni otras formas o registros C++
-no triviales. T09-003 permanece abierto.
+No se acreditan aquí records C++ de tamaños distintos, otras formas o
+registros C++ no triviales. T09-003 permanece abierto.
+
+## Registros C de tamaños distintos
+
+La muestra usa un record anidado de 12 bytes y otro de 8 bytes. Clang expande
+sus argumentos en tres y dos `float`, respectivamente, seguidos de `int`.
+El plan directo y el alias de puntero se contrastaron con Clang; el control
+rechaza offsets e índices alterados. NSC inicialmente rechazó la llamada
+(`A:/temp/nsc-t09-varied-records-v6yvguxb`).
+
+La validación física cuenta las piezas de cada argumento por separado. La
+selección coteja tamaño y alineación de cada tipo con su expansión y la
+declaración LLVM usa el número real de piezas. La muestra C directa pasó
+frente a Clang en estática y DLL O0–O3, con inspección LLVM
+(`A:/temp/nsc-t09-varied-records-h1hrecun`). Pasaron la prueba de plan,
+transporte, la regresión de registros de igual tamaño
+(`A:/temp/nsc-t09-distinct-records-9hmtger0`) y el rechazo de una forma ABI
+distinta (`A:/temp/nsc-t09-two-records-v5bt2vtl`).
+
+La ruta por puntero sigue fallando
+(`A:/temp/nsc-t09-varied-records-3roehrmt`); precompilación y C++ no se
+acreditan en esta muestra. T09-003 sigue abierto.

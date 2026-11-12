@@ -104,6 +104,8 @@ int main(int argc, char** argv)
         Nested __attribute__((regcall)) nested_two(Nested,Nested,int);
         typedef struct DifferentFloats { float a,b,c; } DifferentFloats;
         Nested __attribute__((regcall)) nested_distinct(Nested,DifferentFloats,int);
+        typedef Nested (__attribute__((regcall)) *NestedVariedFn)(Nested,Floats,int);
+        Nested __attribute__((regcall)) nested_varied(Nested,Floats,int);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -711,6 +713,28 @@ int main(int argc, char** argv)
         if (!wrong.declaration.parameters[1].type.recordIdentity || !wrong.declaration.returnType.recordIdentity) return 129;
         wrong.declaration.parameters[1].type.recordIdentity->clangUsr = wrong.declaration.returnType.recordIdentity->clangUsr;
         if (metadata_detail::encodeCDependencyFunction(wrong, encoded, error)) return 130;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        std::string aliasType;
+        for (const auto& function : *functions)
+            if (function.name == "nested_varied") declaration = &function;
+        for (const auto& alias : *aliases)
+            if (alias.name == "NestedVariedFn") aliasType = alias.underlyingType.canonicalSpelling;
+        if (!declaration || aliasType.empty()) return 131;
+        const auto direct = session->cFunctionAbiPlan("nested_varied", declaration->canonicalFunctionType);
+        const auto indirect = session->cFunctionPointerAbiPlan("NestedVariedFn", aliasType);
+        for (const auto* plan : {direct ? &*direct : nullptr, indirect ? &*indirect : nullptr})
+        {
+            if (!plan || !abi_plan::isRegCallWin64FloatRecordSequence(*plan, plan->symbol, 12, 4) ||
+                plan->logicalParameters[0].physicalCount != 3 || plan->logicalParameters[1].physicalCount != 2 ||
+                plan->logicalParameters[2].firstPhysical != 5 ||
+                abi_plan::isRegCallWin64FloatRecordRoundTrip(*plan, plan->symbol, 12, 4, 1, true, 2)) return 132;
+            auto wrong = *plan; wrong.logicalParameters[1].firstPhysical = 4;
+            if (abi_plan::isRegCallWin64FloatRecordSequence(wrong, wrong.symbol, 12, 4)) return 133;
+            wrong = *plan; wrong.logicalParameters[1].expandedOffsets[1] = 0;
+            if (abi_plan::isRegCallWin64FloatRecordSequence(wrong, wrong.symbol, 12, 4)) return 134;
+        }
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;
