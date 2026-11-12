@@ -206,7 +206,8 @@ ReceiverPublicationScan scanReceiverPublication(
             !node->children.empty()) directCalls.push_back(node);
         if (node->kind == Kind::Return && !node->children.empty())
             returnValues.push_back(node->children.front().get());
-        if (node->kind == Kind::Store && node->children.size() >= 2U && node->children[0] != nullptr)
+        if ((node->kind == Kind::Store || node->kind == Kind::NullCoalescingStore) &&
+            node->children.size() >= 2U && node->children[0] != nullptr)
         {
             const auto* target = node->children[0].get();
             if (target->kind == Kind::LocalAddress && target->localOrdinal.has_value())

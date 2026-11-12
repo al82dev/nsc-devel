@@ -5604,6 +5604,11 @@ if(NSC_BUILD_TESTS)
                 "${NSC_TEST_COMPILER}")
     set_tests_properties(nsc.sdk.shared-receiver-dispatch-regression PROPERTIES
         SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+    add_test(NAME nsc.sdk.shared-receiver-coalescing-store-regression
+        COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_receiver_coalescing_store_regression.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.sdk.shared-receiver-coalescing-store-regression PROPERTIES
+        SKIP_RETURN_CODE 77 WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
     add_test(NAME nsc.sdk.shared-receiver-coalescing-regression
         COMMAND python -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_receiver_coalescing_regression.py"
                 "${NSC_TEST_COMPILER}")
