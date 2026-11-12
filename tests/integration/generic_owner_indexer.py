@@ -56,7 +56,7 @@ public class PrivateCandidate {
  public Own<0> this[short index] { get { Own<0> value; return value; } }
  private Own<1> this[ushort index] { get { Own<1> value; return value; } }
  public int PrivateControl() { ushort index = 0; Own<1> value = this[index]; return value.At<0, 42>(); }
- public int PrivateDirect() { PrivateCandidate self = this; ushort index = 0; return self[index].At<0, 42>(); } }
+ public int PrivateDirect() { ushort index = 0; return this[index].At<0, 42>(); } }
 public class PrivateOnly { private Own<1> this[ushort index] { get { Own<1> value; return value; } } }
 }
 namespace Wrong { public struct Own<const int N> { public int At<pack const int Ns>() { return 7; } } }
@@ -156,6 +156,11 @@ class Program { public static int Main() { PrivateCandidate items = new PrivateC
 namespace Other { class PrivateCandidate { public static int Main() {
  Fixture.PrivateCandidate items = new Fixture.PrivateCandidate(); byte index = 0;
  return items[index].At<42, 0>(); } } }''', True),
+        'this_ambiguous': ('''using Fixture;
+class Local { public Own<0> this[short index] { get { Own<0> value; return value; } }
+ public Own<1> this[ushort index] { get { Own<1> value; return value; } }
+ public int Run() { byte index = 0; return this[index].At<42, 0>(); } }
+class Program { public static int Main() { Local items = new Local(); return items.Run(); } }''', False),
     }
     failures = []
     with tempfile.TemporaryDirectory(prefix='nsc-owner-indexer-') as temporary:
@@ -182,7 +187,7 @@ namespace Other { class PrivateCandidate { public static int Main() {
                     elif name in ('ambiguous_control', 'ambiguous_pair_control'):
                         if not build.returncode or 'ambiguous' not in build.stdout + build.stderr:
                             failures.append((label, name, level, 'expected ambiguous indexer'))
-                    elif name in ('ambiguous_direct', 'ambiguous_pair_direct'):
+                    elif name in ('ambiguous_direct', 'ambiguous_pair_direct', 'this_ambiguous'):
                         if not build.returncode or 'ambiguous indexer call' not in build.stdout + build.stderr:
                             failures.append((label, name, level, 'expected ambiguous indexer'))
                     elif not build.returncode or 'outside a pack of length 2' not in build.stdout + build.stderr:

@@ -862,6 +862,18 @@ bool ProjectGenericModel::processGenericCall(
             callee->first()->kind() == ast::AstNodeKind::IndexExpression)
         {
             ast::TypeSyntax* collection = inferExpressionType(unit, callee->first()->first(), scope);
+            if (collection == nullptr && callee->first()->first() != nullptr && !ownerName.empty() &&
+                callee->first()->first()->kind() == ast::AstNodeKind::ThisExpression)
+            {
+                std::string name = qualifiedName(namespaceName, ownerName);
+                std::replace(name.begin(), name.end(), '+', '.');
+                const std::string identity = std::string(unit.moduleName()) + "::" + name;
+                const DeclaredTypeIdentity* declaration =
+                    resolveModuleQualifiedDeclaredTypeIdentity(identity, unit.projectOrdinal());
+                if (declaration != nullptr && declaration->projectOrdinal == unit.projectOrdinal())
+                    collection = unit.arena().make<ast::TypeSyntax>(
+                        callee->first()->first()->range(), lexer::TokenKind::Identifier, identity);
+            }
             if (collection != nullptr && !collection->modifiers().empty() &&
                 collection->modifiers().back().kind == ast::TypeModifierSyntaxKind::DynamicArray)
                 actual = cloneType(unit.arena(), collection, {}, collection->modifiers().size() - 1U);

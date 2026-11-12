@@ -90,3 +90,15 @@
 - Siguen protegidos préstamos, interoperabilidad C/C++, Daikon, fuentes
   externas, la copia principal y sus builds; solo build incremental y pruebas
   dirigidas en rutas independientes de A. Sin push, merge ni despliegue.
+
+## Receptor this indexado
+
+- Base: `07319020e`. Dentro de `PrivateCandidate`, `this[index].At<0, 42>()`
+  falla antes de encontrar el método genérico, aunque almacenar `this` en un
+  local de tipo `PrivateCandidate` y llamar sobre `local[index]` funciona.
+- El punto causal es el tipo de la colección en `processGenericCall`: la
+  inferencia de expresiones no da un tipo para `ThisExpression`. Candidato:
+  resolver el dueño léxico exacto únicamente en esta ruta de indexador; no
+  modificar inferencia global ni tratar el nombre simple como identidad.
+- Reutilizar pruebas de fuente, bibliotecas, visibilidad y regresiones del
+  indexador. Mantener restricciones y archivos protegidos indicados arriba.
