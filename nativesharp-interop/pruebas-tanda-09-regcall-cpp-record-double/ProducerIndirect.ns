@@ -1,0 +1,5 @@
+namespace T09 { public class NestedBridge { public static int Run<T>(T unused) {
+    T09Wide.PairDouble value; value.x=(double)10.25; value.y=(double)20.5;
+    T09Wide.SumFn fn=T09Wide.fetch(); double indirect=fn(value,7);
+    return indirect==(double)58.25 && value.x==(double)10.25 ? 0 : 1;
+} } }

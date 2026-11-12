@@ -622,7 +622,9 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                 const auto& logical = selected->declaration.abiPlan->logicalParameters[i];
                 if (logical.passing == abi_plan::Passing::Expand)
                 {
-                    if (!abi_plan::regCallRecordMatchesExpansion(signature.returnType, parameter, logical)) return {};
+                    if (!abi_plan::regCallRecordMatchesExpansion(signature.returnType, parameter, logical) &&
+                        !abi_plan::regCallRecordMatchesDoubleExpansion(*selected->declaration.abiPlan,
+                            signature.returnType, parameter, logical)) return {};
                 }
                 else if (logical.firstPhysical >= selected->declaration.abiPlan->physicalParameters.size() ||
                     !(abi_plan::regCallDirectIntegerRecordMatches(parameter, logical,

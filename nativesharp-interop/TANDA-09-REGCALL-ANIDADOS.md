@@ -1024,8 +1024,8 @@ O0–O3, directa y por puntero, con inspección de las piezas en LLVM
 (`A:/temp/nsc-t09-regcall-record-double-9uikx93_`). También pasaron el plan,
 transporte, ABI, identidad y la regresión C++ del retorno indirecto
 (`A:/temp/nsc-t09-cpp-return-indirect-align8-f74q3vyb`). La prueba nueva usa
-enlace estático desde fuente; la muestra C desde fuente con DLL y la variante
-C++ siguen pendientes. T09-003 permanece abierto.
+enlace estático desde fuente; la muestra C desde fuente con DLL sigue
+pendiente. T09-003 permanece abierto.
 
 El contrato vigente conserva ahora el plan de la función con piezas `double`;
 una prueba interna verifica lectura y escritura y rechaza una pieza alterada.
@@ -1035,6 +1035,20 @@ otros 16 que solo usan el puntero, en estática y DLL O0–O3, con y sin encabez
 `A:/temp/nsc-t09-record-double-pre-49_qpqhf`). También pasaron transporte, ABI,
 identidad y la regresión C++ precompilada del retorno indirecto
 (`A:/temp/nsc-t09-cpp-return-indirect-pre-hiax48jb`).
+
+La [muestra C++](pruebas-tanda-09-regcall-cpp-record-double/) usa un registro
+trivial de dos `double` y una función en un espacio de nombres. Pasaron ocho
+comparaciones directas y por puntero con Clang, en estática y DLL O0–O3, con
+inspección de las piezas LLVM (`A:/temp/nsc-t09-cpp-record-double-ycveqb4l`).
+Los consumidores precompilados rechazaban inicialmente el alias por asumir
+piezas de `float` (`A:/temp/nsc-t09-cpp-record-double-pre-3neb2bbf`). Tras
+conciliar sus piezas con el plan, pasaron 16 consumidores con ambas llamadas y
+16 que usan solo el puntero, en estática y DLL, con y sin encabezado
+(`A:/temp/nsc-t09-cpp-record-double-pre-f6svlg9d` y
+`A:/temp/nsc-t09-cpp-record-double-pre-nnwrx__9`). Pasaron además plan,
+transporte, ABI e identidad y los rechazos previos de registros privados y no
+triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-5nata8vf`). Esta
+evidencia no acredita otros registros o firmas.
 
 ## Retorno indirecto con argumento flotante expandido: pendiente
 
