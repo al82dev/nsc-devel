@@ -525,3 +525,28 @@ y la regresión precompilada de records de igual tamaño
 
 Otras combinaciones y records C++ no triviales no se acreditan. T09-003 sigue
 abierto.
+
+## Primer registro distinto del retorno
+
+Se invirtió el orden de los argumentos de las muestras de 12 y 8 bytes: el
+primero tiene 8 bytes y el retorno es un record de 12. En C ya pasaban las
+llamadas directas y por puntero O0–O3 con estática y DLL
+(`A:/temp/nsc-t09-first-distinct-vffoe9vx`), pero la producción de metadatos
+fallaba (`A:/temp/nsc-t09-first-distinct-pre-faqeb0d7`). Se amplió la
+validación del contrato para contrastar cada argumento con su propia pieza
+del plan. Pasaron 32 consumidores C precompilados con y sin encabezado,
+incluidos los que solo usan puntero
+(`A:/temp/nsc-t09-first-distinct-pre-70fn33ff` y
+`A:/temp/nsc-t09-first-distinct-pre-hgy3kw8t`).
+
+En C++ se rechazaba el alias de puntero
+(`A:/temp/nsc-t09-cpp-first-0nakr9vv`). Ahora pasan llamadas directas e
+indirectas en estática y DLL O0–O3
+(`A:/temp/nsc-t09-cpp-first-1m4wz0it`) y 32 consumidores precompilados
+(`A:/temp/nsc-t09-cpp-first-precompilado-jckhuc34` y
+`A:/temp/nsc-t09-cpp-first-precompilado-bad7604y`). Las pruebas de metadatos
+rechazan tamaños, identidades y offsets alterados; pasaron transporte, la
+regresión precompilada C++ anterior
+(`A:/temp/nsc-t09-cpp-varied-precompilado-m8usad2a`) y los rechazos de campos
+privados y record no trivial (`A:/temp/nsc-t09-cpp-first-rechazos-36fbvw66`).
+La evidencia cubre los tipos y firmas descritos; T09-003 sigue abierto.

@@ -282,14 +282,8 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 });
             if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
                 signature.returnType.kind != CppTypeKind::Record || !expandedRecords || !tailSupported ||
-                signature.parameterTypes[0].kind != CppTypeKind::Record ||
-                signature.returnType.canonicalSpelling != signature.parameterTypes[0].canonicalSpelling ||
                 !signature.returnType.recordIdentity || !signature.returnType.recordIdentity->clangUsr ||
-                !signature.parameterTypes[0].recordIdentity ||
-                signature.returnType.recordIdentity->clangUsr != signature.parameterTypes[0].recordIdentity->clangUsr ||
-                !signature.returnType.sizeBits || *signature.returnType.sizeBits % 8 || signature.returnType.alignmentBits != 32 ||
-                signature.parameterTypes[0].sizeBits != signature.returnType.sizeBits ||
-                signature.parameterTypes[0].alignmentBits != signature.returnType.alignmentBits) return {};
+                !signature.returnType.sizeBits || *signature.returnType.sizeBits % 8 || signature.returnType.alignmentBits != 32) return {};
             const auto identity = projectCppRecordTypeIdentity(signature.returnType,
                 graph.projects()[alias.projectOrdinal].moduleName());
             const auto ordinal = identity ? lookup.typeOrdinalForIdentity(identity->key()) : std::nullopt;

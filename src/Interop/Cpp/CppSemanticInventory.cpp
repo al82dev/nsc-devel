@@ -1554,9 +1554,7 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                     pointer.element->function->callingConvention == "regcall" &&
                     pointer.element->function->returnType.kind == CppTypeKind::Record &&
                     !pointer.element->function->parameterTypes.empty() &&
-                    pointer.element->function->parameterTypes[0].kind == CppTypeKind::Record &&
-                    pointer.element->function->returnType.canonicalSpelling ==
-                        pointer.element->function->parameterTypes[0].canonicalSpelling)
+                    pointer.element->function->parameterTypes[0].kind == CppTypeKind::Record)
                 {
                     auto plan = session->cppFunctionPointerAbiPlan(declaration.qualifiedName,
                         *declaration.clangUsr, pointer.canonicalSpelling);

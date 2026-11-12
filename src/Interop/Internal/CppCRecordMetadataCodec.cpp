@@ -754,13 +754,8 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
         if (f.variadic || !f.hasPrototype || !f.externalLinkage || f.externalSymbol != value.linkSymbol ||
             f.returnType.kind != CppTypeKind::Record || !f.returnType.sizeBits || !f.returnType.alignmentBits ||
             *f.returnType.sizeBits % 8 || *f.returnType.alignmentBits % 8 || f.parameters.empty() ||
-            f.parameters[0].type.kind != CppTypeKind::Record ||
-            f.parameters[0].type.canonicalSpelling != f.returnType.canonicalSpelling ||
-            f.parameters[0].type.sizeBits != f.returnType.sizeBits ||
-            f.parameters[0].type.alignmentBits != f.returnType.alignmentBits ||
             !f.returnType.recordIdentity || !f.returnType.recordIdentity->clangUsr ||
-            f.returnType.recordIdentity->clangUsr->empty() || !f.parameters[0].type.recordIdentity ||
-            f.parameters[0].type.recordIdentity->clangUsr != f.returnType.recordIdentity->clangUsr ||
+            f.returnType.recordIdentity->clangUsr->empty() ||
             !(abi_plan::isRegCallWin64RecordRoundTrip(*f.abiPlan, value.linkSymbol,
                 *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8) ||
               abi_plan::isRegCallWin64FloatRecordSequence(*f.abiPlan, value.linkSymbol,
@@ -1360,11 +1355,8 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
         if (!signature.hasPrototype || signature.variadic || signature.callingConvention != "regcall" ||
             signature.returnType.kind != CppTypeKind::Record || !sameRecords ||
             signature.parameterTypes[0].kind != CppTypeKind::Record || !signature.returnType.recordIdentity ||
-            !signature.returnType.recordIdentity->clangUsr || !signature.parameterTypes[0].recordIdentity ||
-            signature.returnType.recordIdentity->clangUsr != signature.parameterTypes[0].recordIdentity->clangUsr ||
-            signature.returnType.canonicalSpelling != signature.parameterTypes[0].canonicalSpelling ||
+            !signature.returnType.recordIdentity->clangUsr ||
             !signature.returnType.sizeBits || *signature.returnType.sizeBits % 8 || signature.returnType.alignmentBits != 32 ||
-            signature.parameterTypes[0].sizeBits != signature.returnType.sizeBits || signature.parameterTypes[0].alignmentBits != 32 ||
             !abi_plan::isRegCallWin64FloatRecordSequence(*alias.abiPlan,
                 "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4) ||
             !abi_plan::regCallFloatRecordTailMatches(*alias.abiPlan, signature.parameterTypes, count) ||
