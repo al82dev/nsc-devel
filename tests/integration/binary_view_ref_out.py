@@ -18,6 +18,7 @@ def main():
         print('SKIP: NSC_TEST_TEMP_ROOT or TEMP must name an existing directory on A:')
         return 77
     core = Path(core_name).resolve()
+    include_in = os.environ.get('NSC_VIEW_TEST_INCLUDE_IN') == '1'
     failures = []
     with tempfile.TemporaryDirectory(prefix='nsc-binary-view-ref-out-', dir=temp_name) as temporary:
         root = Path(temporary)
@@ -43,14 +44,19 @@ def main():
                     ''.join('<Compile Include="' + item + '"/>' for item in files) +
                     ''.join(reference(item) for item in libraries) + '</ItemGroup></Project>')
 
-        (root / 'Producer.ns').write_text('''using NativeSharp.Core;
+        producer_source = '''using NativeSharp.Core;
 public class Payload { public int Data; public Payload() { Data = 42; } }
 public class Sink {
  public static void SaveRef(SharedView<Payload> input, ref SharedView<Payload> output) { output = input; }
  public static void SaveOut(SharedView<Payload> input, out SharedView<Payload> output) { output = input; }
  public static void ForwardRef(ref SharedView<Payload> input, ref SharedView<Payload> output) { output = input; }
  public static void ForwardOut(ref SharedView<Payload> input, out SharedView<Payload> output) { output = input; }
-}''', encoding='utf-8')
+'''
+        if include_in:
+            producer_source += ''' public static void ForwardInRef(in SharedView<Payload> input, ref SharedView<Payload> output) { output = input; }
+ public static void ForwardInOut(in SharedView<Payload> input, out SharedView<Payload> output) { output = input; }
+'''
+        (root / 'Producer.ns').write_text(producer_source + '}', encoding='utf-8')
         producer = root / 'Producer.nsproj'
         producer.write_text(project('ViewOutputProducer', ['Producer.ns'], [core], 'StaticLibrary'), encoding='utf-8')
         if invoke([compiler, '--check-project-method-bodies', producer]).returncode:
@@ -61,13 +67,16 @@ public class Sink {
                        '--no-artifact-cache']).returncode:
                 failures.append((level, 'producer'))
                 continue
-            (root / 'Signature.ns').write_text('''using NativeSharp.Core;
+            signature_source = '''using NativeSharp.Core;
 class Program { public static int Main() {
  SharedView<Payload> input = default(SharedView<Payload>);
  SharedView<Payload> output = default(SharedView<Payload>);
  Sink.SaveRef(input, ref output); Sink.SaveOut(input, out output);
  Sink.ForwardRef(ref input, ref output); Sink.ForwardOut(ref input, out output);
- return 0; } }''', encoding='utf-8')
+'''
+            if include_in:
+                signature_source += ' Sink.ForwardInRef(in input, ref output); Sink.ForwardInOut(in input, out output);\n'
+            (root / 'Signature.ns').write_text(signature_source + ' return 0; } }', encoding='utf-8')
             signature = root / 'Signature.nsproj'
             signature.write_text(project('ViewOutputSignature', ['Signature.ns'], [core, library]), encoding='utf-8')
             if invoke([compiler, '--check-project-method-bodies', signature]).returncode:
@@ -75,14 +84,14 @@ class Program { public static int Main() {
                 continue
             for family in ('Rc', 'Arc'):
                 for mode in ('ref', 'out'):
-                    for route in ('value', 'ref'):
+                    for route in (('value', 'ref', 'in') if include_in else ('value', 'ref')):
                         for variant in ('live', 'escape', 'replace'):
                             owner = family + '<Payload> owner = SharedPointers.Make' + family + '<Payload>(); '
                             result = 'SharedView<Payload> result = default(SharedView<Payload>); '
-                            method = ('Forward' if route == 'ref' else 'Save') + ('Ref' if mode == 'ref' else 'Out')
-                            argument = 'ref input' if route == 'ref' else 'owner.Borrow()'
+                            method = ('ForwardIn' if route == 'in' else 'Forward' if route == 'ref' else 'Save') + ('Ref' if mode == 'ref' else 'Out')
+                            argument = route + ' input' if route in ('ref', 'in') else 'owner.Borrow()'
                             call = 'Sink.' + method + '(' + argument + ', ' + mode + ' result); '
-                            if route == 'ref':
+                            if route in ('ref', 'in'):
                                 call = '{ SharedView<Payload> input = owner.Borrow(); ' + call + '} '
                             read = 'return result.Get().Data;'
                             body = (result + '{ ' + owner + call + '} ' + read if variant == 'escape' else
