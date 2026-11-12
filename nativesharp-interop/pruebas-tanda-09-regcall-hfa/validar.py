@@ -2,6 +2,7 @@
 import argparse
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -55,11 +56,28 @@ for mode in ('estatica', 'dll'):
                                  '/out:'+str(case/'control.exe'), str(case/'control.obj'), str(case/library)])
         run(name+'-control-run', [str(case/'control.exe')])
         if not args.solo_c:
+            llvm_ir = run(name+'-llvm', [args.nsc, '--dump-project-oop-llvm', str(case/project),
+                          '--library-reference-root', str(case), '--cpp-clang-root='+args.clang_root])
+            for target in (r'@(?:"\\01)?__regcall3__t09_hfa_transform', r'%[^\s(]+'):
+                if not re.search(r'call\s+x86_regcallcc\s+\{\s*float,\s*float\s*\}\s+' + target +
+                                 r'\(float\s+[^,]+,\s*float\s+[^)]+\)', llvm_ir):
+                    raise SystemExit(name+': falta llamada regcall directa o indirecta esperada; evidencia: '+str(root))
             out = case/'out'/'VectorCall.exe'
             out.parent.mkdir()
             run(name+'-nsc', [args.nsc, '--emit-project-oop-exe', str(case/project),
                              '--library-reference-root', str(case), '--cpp-clang-root='+args.clang_root,
                              '-O'+str(opt), '--no-artifact-cache', '-o', str(out)])
             run(name+'-nsc-run', [str(out)])
+            if opt == 0:
+                cache = case/'artifact-cache'
+                cache_command = [args.nsc, '--emit-project-oop-exe', str(case/project),
+                    '--library-reference-root', str(case), '--cpp-clang-root='+args.clang_root,
+                    '--artifact-cache='+str(cache), '--time', '-O0', '-o', str(out)]
+                for expected in ('not-found', 'hit'):
+                    out.unlink(missing_ok=True)
+                    log = run(name+'-cache-'+expected, cache_command)
+                    if 'compilation-bundle-cache: '+expected not in log:
+                        raise SystemExit(name+': estado de cache inesperado; evidencia: '+str(root))
+                    run(name+'-cache-run-'+expected, [str(out)])
         print(name + (': control C y NativeSharp correctos' if not args.solo_c else ': control C correcto'), flush=True)
 print('OK:', root, flush=True)

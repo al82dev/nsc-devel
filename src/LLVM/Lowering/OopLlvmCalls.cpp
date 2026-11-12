@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppAbiPlanQueries.h"
+#include "nativesharp/Interop/CppRegCallAbiValidation.h"
 #include "nativesharp/Interop/CppVariadicAbiValidation.h"
 #include "../Internal/CppSysVRecordAbi.h"
 #include "../Internal/OopLlvmImplementation.h"
@@ -978,6 +979,41 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     [&](LLVMAttributeIndex ordinal, LLVMAttributeRef attribute) { LLVMAddCallSiteAttribute(call, ordinal, attribute); });
             if (!applyMustTail(node, call, error)) return nullptr;
             return call;
+        }
+        const auto* regCallRecordLayout = findStructLayout(mirModel_, node->typeKey);
+        if (imported && imported->cppRegCall && imported->cppAbiPlan && regCallRecordLayout &&
+            interop::abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName,
+                regCallRecordLayout->size, regCallRecordLayout->alignment))
+        {
+            if (node->children.size() != 1 || node->referenceResult || node->returnsAssignedValue ||
+                node->children[0]->typeKey != node->typeKey || (argumentOverrides && argumentOverrides->size() != 1))
+                return failValue(error, "regcall expanded record has an unexpected argument contract");
+            LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[0] : lowerExpression(node->children[0].get(), error);
+            if (!value) return nullptr;
+            if (terminated()) return value;
+            LLVMTypeRef carrier = llvmType(node->typeKey, error);
+            if (!carrier) return nullptr;
+            LLVMValueRef slot = entryBlockAlloca(carrier, 4, "regcall.record.arg");
+            LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+            LLVMSetAlignment(store, 4);
+            LLVMTypeRef partType = LLVMFloatTypeInContext(context_);
+            LLVMValueRef arguments[] = {
+                LLVMBuildLoad2(builder_, partType, slot, "regcall.record.first"),
+                LLVMBuildLoad2(builder_, partType, byteOffset(slot, 4, "regcall.record.second.addr"), "regcall.record.second")};
+            LLVMSetAlignment(arguments[0], 4);
+            LLVMSetAlignment(arguments[1], 4);
+            releaseTransferredArguments(node);
+            LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
+                arguments, 2, "regcall.record.call", error);
+            if (!call) return nullptr;
+            LLVMSetInstructionCallConv(call, LLVMX86RegCallCallConv);
+            if (!applyMustTail(node, call, error)) return nullptr;
+            LLVMValueRef resultSlot = entryBlockAlloca(carrier, 4, "regcall.record.result");
+            LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
+            LLVMSetAlignment(resultStore, 4);
+            LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "regcall.record.value");
+            LLVMSetAlignment(result, 4);
+            return result;
         }
         if (imported && imported->cppSysVCall && imported->cppAbiPlan &&
             interop::abi_plan::isSysVSmallRecordsRoundTrip(*imported->cppAbiPlan, imported->cAbiName))

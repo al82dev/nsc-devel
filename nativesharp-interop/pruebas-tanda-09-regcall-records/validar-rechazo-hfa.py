@@ -19,7 +19,7 @@ for label in ('directo', 'puntero'):
     case = root / label
     case.mkdir()
     shutil.copyfile(fixture / 'VectorCall.nsproj', case / 'VectorCall.nsproj')
-    header = ('typedef struct Hfa { float x,y; } Hfa;\n'
+    header = ('typedef struct Hfa { float x,y,z; } Hfa;\n'
               'typedef Hfa (__attribute__((regcall)) *HfaFn)(Hfa);\n')
     header += ('Hfa __attribute__((regcall)) t09_hfa(Hfa);\n' if label == 'directo'
                else 'HfaFn t09_get_hfa(void);\n')

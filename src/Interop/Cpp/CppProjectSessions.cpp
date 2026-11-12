@@ -546,8 +546,10 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
         plan->variadic || !plan->targetTriple.starts_with("x86_64-pc-windows-msvc") ||
         !plan->dataLayout.starts_with("e-") || plan->logicalParameters.size() != signature.parameterTypes.size()) return {};
     if (regCall && (!signature.returnType.sizeBits || !signature.returnType.alignmentBits ||
-        !abi_plan::isRegCallWin64RecordRoundTrip(*plan, expectedSymbol,
-            *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8))) return {};
+        !(abi_plan::isRegCallWin64RecordRoundTrip(*plan, expectedSymbol,
+            *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8) ||
+          abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*plan, expectedSymbol,
+            *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8)))) return {};
     return std::make_shared<const abi_plan::Plan>(std::move(*plan));
 }
 

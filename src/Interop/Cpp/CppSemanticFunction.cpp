@@ -324,7 +324,8 @@ CppSemanticFunctionResult projectFunction(
         ? invocationTypeForC(function.returnType, true) : function.returnType;
     const bool cRecordValues = cLanguage;
     const bool cppRecordValues = !cLanguage &&
-        (function.callingConvention == "cdecl" || function.callingConvention == "preserve_most");
+        (function.callingConvention == "cdecl" || function.callingConvention == "preserve_most" ||
+         function.callingConvention == "regcall");
     const auto resultType = mapFunctionType(mappedReturn, true, records, moduleName, 0, lookup, projectOrdinal,
                                             cRecordValues, false, cppRecordValues);
     if (!resultType) return failure("C/C++ return type is not yet mapped");

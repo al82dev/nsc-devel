@@ -426,6 +426,24 @@ void collectFreeFunctions(const clang::DeclContext& context, clang::ASTContext& 
             }
             else
                 value.externalSymbol = value.name;
+            // The generator observes this exact C++ declaration, including its namespace
+            // and overload. Do not select a different declaration by unqualified name.
+            if (astContext.getLangOpts().CPlusPlus && generator && value.callingConvention == "regcall" &&
+                !value.variadic && value.hasPrototype && value.externalSymbol &&
+                !function->getReturnType()->isIncompleteType() &&
+                std::all_of(function->param_begin(), function->param_end(), [](const auto* parameter) {
+                    return !parameter->getType()->isIncompleteType();
+                }) &&
+                (function->getReturnType()->isRecordType() ||
+                 std::any_of(function->param_begin(), function->param_end(), [](const auto* parameter) {
+                     return parameter->getType()->isRecordType();
+                 })))
+            {
+                std::string error;
+                auto plan = abi_plan::copyPlan(*generator, *function, error);
+                if (plan && plan->symbol == *value.externalSymbol)
+                    value.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
+            }
         }
         const auto location = astContext.getSourceManager().getPresumedLoc(function->getLocation());
         if (location.isValid())

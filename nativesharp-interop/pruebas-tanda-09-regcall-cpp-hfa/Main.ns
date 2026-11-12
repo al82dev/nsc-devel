@@ -1,0 +1,5 @@
+int Main() {
+    T09HfaCpp.Pair a; a.x=(float)11; a.y=(float)23;
+    T09HfaCpp.Pair b=T09HfaCpp.transform(a);
+    return a.x==(float)11 && a.y==(float)23 && b.x==(float)14 && b.y==(float)18 ? 0 : 1;
+}

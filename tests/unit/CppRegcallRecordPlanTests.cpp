@@ -92,6 +92,27 @@ int main(int argc, char** argv)
             auto wrongIndex = *direct; wrongIndex.logicalParameters[0].firstPhysical = 1;
             for (const auto* wrong : {&wrongOffset, &wrongType, &wrongReturn, &wrongAttribute, &wrongConvention, &wrongIndex})
                 if (abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*wrong, wrong->symbol, 8, 4)) return 29;
+            metadata_detail::CDependencyFunctionSnapshot snapshot;
+            snapshot.moduleName = "PlanProbe"; snapshot.referenceIdentity = "reference:0";
+            snapshot.linkSymbol = direct->symbol; snapshot.declaration = *declaration;
+            snapshot.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*direct);
+            std::vector<std::uint8_t> metadata;
+            std::string error;
+            metadata_detail::CDependencyFunctionSnapshot restored;
+            if (!metadata_detail::encodeCDependencyFunction(snapshot, metadata, error) ||
+                !metadata_detail::decodeCDependencyFunction(metadata, restored, error) || !restored.declaration.abiPlan ||
+                !abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*restored.declaration.abiPlan, direct->symbol, 8, 4))
+            { std::cerr << "metadata de record flotante: " << error << '\n'; return 30; }
+            auto truncated = metadata; truncated.pop_back();
+            if (metadata_detail::decodeCDependencyFunction(truncated, restored, error)) return 32;
+            auto mismatched = snapshot;
+            if (!mismatched.declaration.parameters[0].type.recordIdentity) return 33;
+            mismatched.declaration.parameters[0].type.recordIdentity->clangUsr = "other-record";
+            if (metadata_detail::encodeCDependencyFunction(mismatched, metadata, error)) return 34;
+            mismatched = snapshot; mismatched.declaration.parameters[0].type.sizeBits = 32;
+            if (metadata_detail::encodeCDependencyFunction(mismatched, metadata, error)) return 35;
+            snapshot.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrongOffset);
+            if (metadata_detail::encodeCDependencyFunction(snapshot, metadata, error)) return 31;
             auto invalid = *indirect; invalid.logicalParameters[0].expandedOffsets.pop_back();
             if (abi_plan::encodeFunctionPointerPlanForCache(invalid)) return 25;
             continue;
@@ -219,5 +240,45 @@ int main(int argc, char** argv)
             if (direct->physicalParameters[i].type.kind != abi_plan::TypeKind::Float ||
                 pointer->physicalParameters[i].type.kind != abi_plan::TypeKind::Float) return 27;
     }
+    CppSessionOptions cppOptions;
+    cppOptions.language = CppLanguageMode::Cpp;
+    cppOptions.languageStandard = "c++20";
+    cppOptions.targetTriple = "x86_64-pc-windows-msvc";
+    cppOptions.driverReferencePath = "clang.exe";
+    cppOptions.resourceDirectory = argv[1];
+    cppOptions.workingDirectory = argv[2];
+    cppOptions.input = CppBufferInput{"regcall-record-plan.cpp", R"cpp(
+        namespace A {
+        struct Pair { float x, y; };
+        Pair __attribute__((regcall)) transform(Pair);
+        int __attribute__((regcall)) transform(int);
+        struct Incomplete;
+        Incomplete __attribute__((regcall)) unavailable(Incomplete);
+        }
+        namespace B {
+        struct Pair { float x, y; };
+        Pair __attribute__((regcall)) transform(Pair);
+        }
+    )cpp"};
+    auto cppOpened = factory.open(std::move(cppOptions), {});
+    if (!std::holds_alternative<std::unique_ptr<CppInteropSession>>(cppOpened)) return 36;
+    auto cppSession = std::move(std::get<std::unique_ptr<CppInteropSession>>(cppOpened));
+    const auto cppFunctions = cppSession->freeFunctionsSnapshot();
+    if (!cppFunctions) return 37;
+    std::string firstSymbol, secondSymbol;
+    unsigned scalarCount = 0;
+    bool sawIncomplete = false;
+    for (const auto& function : *cppFunctions)
+    {
+        if (function.qualifiedName == "A::unavailable")
+        { if (function.abiPlan) return 41; sawIncomplete = true; continue; }
+        if (function.qualifiedName != "A::transform" && function.qualifiedName != "B::transform") continue;
+        if (function.returnType.kind != CppTypeKind::Record)
+        { if (function.abiPlan) return 38; ++scalarCount; continue; }
+        if (!function.externalSymbol || !function.abiPlan ||
+            !abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*function.abiPlan, *function.externalSymbol, 8, 4)) return 39;
+        (function.qualifiedName == "A::transform" ? firstSymbol : secondSymbol) = *function.externalSymbol;
+    }
+    if (scalarCount != 1 || !sawIncomplete || firstSymbol.empty() || secondSymbol.empty() || firstSymbol == secondSymbol) return 40;
     return 0;
 }

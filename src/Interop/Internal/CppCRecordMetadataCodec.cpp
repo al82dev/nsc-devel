@@ -748,8 +748,10 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             !f.returnType.recordIdentity || !f.returnType.recordIdentity->clangUsr ||
             f.returnType.recordIdentity->clangUsr->empty() || !f.parameters[0].type.recordIdentity ||
             f.parameters[0].type.recordIdentity->clangUsr != f.returnType.recordIdentity->clangUsr ||
-            !abi_plan::isRegCallWin64RecordRoundTrip(*f.abiPlan, value.linkSymbol,
+            !(abi_plan::isRegCallWin64RecordRoundTrip(*f.abiPlan, value.linkSymbol,
                 *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8) ||
+              abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*f.abiPlan, value.linkSymbol,
+                *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8)) ||
             !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
         { error = "invalid C dependency regcall record ABI"; return false; }
     }

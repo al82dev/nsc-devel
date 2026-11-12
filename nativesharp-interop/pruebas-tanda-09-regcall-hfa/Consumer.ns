@@ -1,0 +1,1 @@
+int Main() { return T09.HfaBridge.Run<int>(0); }

@@ -400,3 +400,70 @@ controles C con Clang 23.1.0 pasaron en estatica y DLL, O0-O3
 rechazado en la barrera de `regcall`
 (A:/temp/nsc-t09-regcall-hfa-0hxs8f2d/estatica-O0-nsc.log); no se acredita
 ejecucion de NS ni se cierra el item.
+
+## Ejecucion del record de dos flotantes
+
+El plan fisico validado ahora se aplica a la declaracion y a llamadas directas
+e indirectas; el argumento se copia en piezas de `float` y el retorno se vuelve
+a transportar al record de NS. En el contrato vigente se valida la identidad
+del record y se conserva el plan de la funcion; el plan del alias precompilado
+se reconstruye y contrasta con Clang. Las ocho comparaciones de la muestra viva
+pasaron (A:/temp/nsc-t09-regcall-hfa-96ny3gzx) y los 16 consumidores
+precompilados, con y sin encabezado, pasaron
+(A:/temp/nsc-t09-hfa-precompilado-yjglukn_). La prueba de planes y metadata,
+cuatro sondas ABI, transporte/ABI/identidad, metadata y 16 consumidores de
+records enteros tambien pasaron (A:/temp/t09-regcall-plan-test.log,
+A:/temp/t09-test-varptr.log, A:/temp/t09-transport-directed/,
+A:/temp/t09-cpp-meta-check.log y A:/temp/nsc-t09-regcall-records-precompilado-hctrnjqg).
+La comprobacion de LLVM y ejecucion repetida pasa en las ocho configuraciones;
+en O0 tambien pasan la cache vacia y su reutilizacion para estatica y DLL
+(A:/temp/nsc-t09-regcall-hfa-3862aeck).
+La prueba del plan comprueba ademas que la metadata truncada, la identidad
+alterada y el tamano incompatible se rechazan (A:/temp/t09-regcall-plan-test.log).
+
+La prueba previa `validar-rechazo-hfa.py` exigia rechazar exactamente la forma
+de dos `float` y fallo al habilitarse
+(A:/temp/nsc-t09-regcall-hfa-rechazo-1d_606oa/directo/nsc.log). Con autorizacion
+del usuario se conserva la prueba y sus dos comprobaciones de rechazo, cambiando
+su entrada a un record de tres `float` aun no implementado: ambas pasan
+(A:/temp/nsc-t09-regcall-hfa-rechazo-l6_h8phx). La forma de dos `float` queda
+comprobada mediante las pruebas de ejecucion descritas arriba. No se acredita
+soporte general de records expandidos y T09-003 sigue abierto.
+
+## Sonda C++ de dos flotantes
+
+Una sonda aislada de `T09HfaCpp::Pair` trivial confirma que Clang 23.1.0 usa
+`x86_regcallcc`, retorno en estructura y dos argumentos `float`; el control
+C++ enlazado y ejecutado devuelve cero. El simbolo observado es
+`?transform@T09HfaCpp@@Yw?AUPair@1@U21@@Z`
+(A:/temp/t09-cpp-hfa-probe/api.ll y A:/temp/t09-cpp-hfa-probe/symbols.log).
+El consumidor NativeSharp todavia no encuentra la funcion en la expresion
+(A:/temp/t09-cpp-hfa-probe/nsc.log). Este resultado no acredita consumo C++;
+queda pendiente investigar la proyeccion de esa firma y probarla de extremo a
+extremo sin extrapolar desde el caso C.
+
+La inspeccion identifica dos barreras que requieren trabajo: la proyeccion de
+funciones C++ con registros triviales admite `cdecl` y `preserve_most`, pero
+no `regcall` (CppSemanticFunction.cpp); y la consulta de planes de funcion
+existente solo acepta sesiones C y busca en el contexto global
+(ClangSession.cpp y CppSemanticInventory.cpp). El plan C no se puede
+reutilizar para una sobrecarga C++ sin reconciliar nombre calificado, tipo y
+simbolo de Clang.
+
+La sesion ahora obtiene el plan de la declaracion C++ exacta en el inventario y
+comprueba el simbolo, sin seleccionar por nombre simple. La prueba de planes
+cubre espacios de nombres, sobrecarga escalar y un tipo incompleto
+(A:/temp/t09-regcall-plan-test.log). Se habilito la proyeccion directa del
+record trivial, manteniendo la comprobacion de trivialidad e identidad y el
+plan ABI de Clang. La muestra directa pasa en biblioteca estatica y DLL,
+O0-O3, contra el control C++ y con inspeccion del LLVM
+(A:/temp/nsc-t09-cpp-hfa-1ik7nxag). Pasaron tambien las regresiones de la
+firma C de flotantes, su consumo precompilado, `regcall` escalar C++ y record
+C++ `cdecl` (A:/temp/nsc-t09-regcall-hfa-5wlx9x12,
+A:/temp/nsc-t09-hfa-precompilado-jcjrgecs,
+A:/temp/nsc-t09-regcall-cpp-9a7_u_0g y A:/temp/nsc-t09-cpp-record-cdecl-apyq_69r).
+La forma C++ por puntero y desde plantillas precompiladas no queda acreditada.
+Se intento ademas `nsc.cpp-interop.session`; no ejecuto sus comprobaciones por
+falta de `cpp-fixtures/project/CppProbe.nsproj` bajo la raiz configurada
+(A:/temp/t09-hfa-session-check.log), limitacion ya registrada en
+TANDA-09-VALIDACION.md. No se cuenta esa prueba como aprobada.

@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppAbiPlanQueries.h"
+#include "nativesharp/Interop/CppRegCallAbiValidation.h"
 #include "../Internal/CppSysVRecordAbi.h"
 #include "../Internal/OopLlvmImplementation.h"
 #include "../Internal/DropCase.h"
@@ -16,6 +17,15 @@ LLVMTypeRef OopLlvmImplementation::createDeclaredFunctionType(
         bool sretReturn,
         std::string& error)
 {
+            const auto* regCallLayout = findStructLayout(mirModel_, function.returnTypeKey);
+            if (function.cppRegCall && function.cppAbiPlan && regCallLayout &&
+                interop::abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*function.cppAbiPlan, function.cAbiName,
+                    regCallLayout->size, regCallLayout->alignment))
+            {
+                LLVMTypeRef parts[] = {LLVMFloatTypeInContext(context_), LLVMFloatTypeInContext(context_)};
+                LLVMTypeRef result = LLVMStructTypeInContext(context_, parts, 2, false);
+                return LLVMFunctionType(result, parts, 2, false);
+            }
             if (function.cppSysVCall && function.cppAbiPlan &&
                 (interop::abi_plan::isSysVIndirectRecordWithArguments(*function.cppAbiPlan, function.cAbiName) ||
                  (function.cppSysVRecordArguments && (interop::abi_plan::isSysVScalarReturnWithRecordArguments(*function.cppAbiPlan, function.cAbiName) ||

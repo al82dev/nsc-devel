@@ -1573,6 +1573,48 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
             }
             return call;
         }
+        const auto regCallSignature = language::parseFunctionTypeIdentity(node->elementTypeKey);
+        const auto* regCallLayout = findStructLayout(mirModel_, node->typeKey);
+        if (externC && regCallSignature &&
+            regCallSignature->callingConvention == language::CallingConvention::RegCall && !regCallSignature->variadic &&
+            regCallSignature->parameters.size() == 1 && regCallSignature->result == node->typeKey &&
+            regCallSignature->parameters[0] == node->typeKey && node->argumentCount == 1 &&
+            node->children.size() == 2 && node->argumentTypeKeys.size() == 1 &&
+            node->argumentTypeKeys[0] == node->typeKey && node->cppFunctionPointerPlan && regCallLayout &&
+            interop::abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*node->cppFunctionPointerPlan,
+                "__regcall3____nsc_pointer_abi_probe", regCallLayout->size, regCallLayout->alignment))
+        {
+            if (argumentOverrides && argumentOverrides->size() != 1)
+                return failValue(error, "regcall expanded function pointer has an invalid argument contract");
+            LLVMValueRef value = argumentOverrides ? (*argumentOverrides)[0] : lowerExpression(node->children[1].get(), error);
+            if (!value) return nullptr;
+            if (terminated()) return value;
+            LLVMTypeRef carrier = llvmType(node->typeKey, error);
+            if (!carrier) return nullptr;
+            LLVMValueRef slot = entryBlockAlloca(carrier, 4, "regcall.callback.arg");
+            LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
+            LLVMSetAlignment(store, 4);
+            LLVMTypeRef partType = LLVMFloatTypeInContext(context_);
+            LLVMTypeRef parts[] = {partType, partType};
+            LLVMValueRef physical[] = {
+                LLVMBuildLoad2(builder_, partType, slot, "regcall.callback.first"),
+                LLVMBuildLoad2(builder_, partType, byteOffset(slot, 4, "regcall.callback.second.addr"), "regcall.callback.second")};
+            LLVMSetAlignment(physical[0], 4);
+            LLVMSetAlignment(physical[1], 4);
+            releaseTransferredArguments(node);
+            delegateValue = checkedReceiver(delegateValue, error);
+            if (!delegateValue) return nullptr;
+            LLVMTypeRef resultType = LLVMStructTypeInContext(context_, parts, 2, false);
+            LLVMTypeRef functionType = LLVMFunctionType(resultType, parts, 2, false);
+            LLVMValueRef call = LLVMBuildCall2(builder_, functionType, delegateValue, physical, 2, "regcall.callback.result");
+            LLVMSetInstructionCallConv(call, LLVMX86RegCallCallConv);
+            LLVMValueRef resultSlot = entryBlockAlloca(carrier, 4, "regcall.callback.return");
+            LLVMValueRef resultStore = LLVMBuildStore(builder_, call, resultSlot);
+            LLVMSetAlignment(resultStore, 4);
+            LLVMValueRef result = LLVMBuildLoad2(builder_, carrier, resultSlot, "regcall.callback.value");
+            LLVMSetAlignment(result, 4);
+            return result;
+        }
         std::vector<LLVMValueRef> arguments;
         arguments.reserve(node->argumentCount);
         for (std::size_t index = 1; index < node->children.size(); ++index)
