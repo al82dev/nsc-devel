@@ -258,3 +258,18 @@ variante anterior `int*`
 no certifican todas las formas de puntero ni otros tipos o destinos. T09-003
 permanece abierto. Pruebas en
 [pruebas-tanda-09-regcall-short-puntero](pruebas-tanda-09-regcall-short-puntero/).
+
+## Punteros a record y punteros dobles en regcall
+
+Una muestra C usa punteros a un record de dos enteros e `int**` como
+argumentos y retornos, junto con funciones de retorno `void`. Las llamadas
+directas y por puntero verifican convencion y simbolo, identidad y escritura
+sobre el record y el dato apuntado. Pasaron ocho comparaciones C/NativeSharp
+en estatica y DLL O0-O3 (A:/temp/nsc-t09-regcall-recordptr-akdiakwu), y 16
+consumidores precompilados con y sin encabezado
+(A:/temp/nsc-t09-regcall-recordptr-precompilado-2y7i43fp).
+
+No se requirio cambiar produccion para estas muestras. No se acreditan todas
+las formas de puntero ni se alteran los limites D23/D26; T09-003 permanece
+abierto. Pruebas en
+[pruebas-tanda-09-regcall-recordptr](pruebas-tanda-09-regcall-recordptr/).
