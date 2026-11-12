@@ -1368,6 +1368,33 @@ transporte, ABI e identidad y los rechazos previos de registros privados y no
 triviales (`A:/temp/nsc-t09-cpp-expanded-mixed-rechazos-3lfox064`). Otras
 formas y registros C++ no triviales siguen sin acreditar.
 
+## Tres double expandidos con retorno booleano
+
+Clang ejecutaba una función C o C++ que recibe tres `double` expandidos y
+devuelve booleano; NSC rechazaba la firma
+(`A:/temp/nsc-t09-regcall-triple-double-bool-50y3ohbu` y
+`A:/temp/nsc-t09-cpp-triple-double-bool-y67p54k2`). La validación admite las
+piezas de ocho bytes y concilia identidad, layout y retorno. La prueba de plan
+y metadatos rechaza un desplazamiento alterado o la falta de `zeroext`.
+
+El [caso C](pruebas-tanda-09-regcall-triple-double-bool/) pasó O0–O3 en
+estática, directo y por puntero
+(`A:/temp/nsc-t09-regcall-triple-double-bool-z1f_j40b`). El
+[caso C++](pruebas-tanda-09-regcall-cpp-triple-double-bool/) pasó ocho
+comparaciones en estática y DLL
+(`A:/temp/nsc-t09-cpp-triple-double-bool-qnf3lw0y`). Se verificaron verdadero,
+falso, copia del argumento y la forma física con `zeroext` en LLVM.
+
+Pasaron 32 consumidores C precompilados
+(`A:/temp/nsc-t09-triple-double-bool-pre-yrp43bjt` y
+`A:/temp/nsc-t09-triple-double-bool-pre-cze0kib7`) y 32 C++
+(`A:/temp/nsc-t09-cpp-triple-double-bool-pre-evphme4z` y
+`A:/temp/nsc-t09-cpp-triple-double-bool-pre-umn688qq`), estática y DLL,
+O0–O3, con y sin encabezado. Pasaron plan, transporte, ABI, identidad y la
+regresión C++ precompilada del registro mixto booleano
+(`A:/temp/nsc-t09-cpp-record-mixto-bool-pre-ch5m1qt2`). La llamada C directa
+con DLL y otras firmas y longitudes siguen pendientes; T09-003 sigue abierto.
+
 ## Tres double expandidos con retorno float
 
 Clang ejecutaba una función C o C++ que recibe tres `double` expandidos y
