@@ -52,3 +52,11 @@ incremental y las pruebas dirigidas se aplazaron hasta integrar el conjunto.
 La construcción binaria de base que puede lanzar y los cleanups async con
 excepción siguen abiertos. Los árboles de campos y vistas conservan cambios
 locales sin registrar que aún no se han incorporado.
+
+Posteriormente se incorporó el trabajo de campos: `f50e695a1` como
+`2c96b2ad4` (construcción genérica binaria) y `c6357603d` como `94d35b132`
+(`Fields`, sus pruebas y registro). Este último se aplicó sin conflictos
+textuales; las zonas compartidas con vistas requieren revisión y validación
+de conjunto. La evidencia del worker corresponde a su propia copia y no
+certifica estos commits integrados. La tarea de campos continúa abierta por
+los límites anotados en su registro.
