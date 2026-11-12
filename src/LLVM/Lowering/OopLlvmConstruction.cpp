@@ -83,9 +83,9 @@ ReceiverPublicationScan scanReceiverPublication(
         }
         return entry->second;
     };
+    enum class OriginKind { Value, LocalRead, ThisFieldRead };
     const auto origins = [&](const frontend::ProjectOopMirNode* value) {
-        // The boolean marks a local address read as the existing value of ??=.
-        std::vector<std::pair<const frontend::ProjectOopMirNode*, bool>> leaves;
+        std::vector<std::pair<const frontend::ProjectOopMirNode*, OriginKind>> leaves;
         std::vector<const frontend::ProjectOopMirNode*> work{value};
         while (!work.empty())
         {
@@ -111,7 +111,12 @@ ReceiverPublicationScan scanReceiverPublication(
             {
                 const auto* address = value->children[0].get();
                 if (address != nullptr && address->kind == Kind::LocalAddress)
-                    leaves.emplace_back(address, true);
+                    leaves.emplace_back(address, OriginKind::LocalRead);
+                else if (address != nullptr && address->kind == Kind::FieldAddress &&
+                         address->memberOrdinal.has_value() && address->children.size() == 1U &&
+                         address->children.front() != nullptr &&
+                         address->children.front()->kind == Kind::ThisValue)
+                    leaves.emplace_back(address, OriginKind::ThisFieldRead);
                 work.push_back(value->children[1].get());
                 continue;
             }
@@ -149,11 +154,16 @@ ReceiverPublicationScan scanReceiverPublication(
                 }
                 if (hasSummary) continue;
             }
-            leaves.emplace_back(value, false);
+            leaves.emplace_back(value, OriginKind::Value);
         }
         return leaves;
     };
     std::unordered_map<std::size_t, std::vector<std::size_t>> localCopies;
+    std::unordered_map<std::size_t, std::vector<std::size_t>> fieldToLocal;
+    std::unordered_map<std::size_t, std::vector<std::size_t>> localToField;
+    std::unordered_map<std::size_t, std::vector<std::size_t>> fieldToField;
+    std::vector<std::pair<std::size_t, const frontend::ProjectOopMirNode*>> receiverFieldWrites;
+    std::vector<std::size_t> receiverFields;
     std::unordered_map<std::size_t, std::vector<std::size_t>> globalCopies;
     std::vector<std::size_t> receiverLocals;
     std::vector<std::size_t> globalLocals;
@@ -186,11 +196,13 @@ ReceiverPublicationScan scanReceiverPublication(
             root->kind == Kind::VirtualInstanceCall || root->kind == Kind::InterfaceInstanceCall);
     };
     const auto recordCopy = [&](std::size_t destination, const frontend::ProjectOopMirNode* value) {
-        for (const auto& [origin, localAddressValue] : origins(value))
+        for (const auto& [origin, originKind] : origins(value))
         {
             if (isOrigin(origin)) receiverLocals.push_back(destination);
-            else if ((origin->kind == Kind::LocalValue || localAddressValue) && origin->localOrdinal.has_value())
+            else if ((origin->kind == Kind::LocalValue || originKind == OriginKind::LocalRead) && origin->localOrdinal.has_value())
                 localCopies[*origin->localOrdinal].push_back(destination);
+            else if (originKind == OriginKind::ThisFieldRead && origin->memberOrdinal.has_value())
+                fieldToLocal[*origin->memberOrdinal].push_back(destination);
         }
         const auto* root = containerRoot(value);
         if (mayBeGlobalContainer(root))
@@ -219,6 +231,10 @@ ReceiverPublicationScan scanReceiverPublication(
             node->children.size() >= 2U && node->children[0] != nullptr)
         {
             const auto* target = node->children[0].get();
+            if (target->kind == Kind::FieldAddress && target->memberOrdinal.has_value() &&
+                target->children.size() == 1U && target->children.front() != nullptr &&
+                target->children.front()->kind == Kind::ThisValue)
+                receiverFieldWrites.emplace_back(*target->memberOrdinal, node->children[1].get());
             if (target->kind == Kind::LocalAddress && target->localOrdinal.has_value())
                 recordCopy(*target->localOrdinal, node->children[1].get());
             else if (target->kind == Kind::StaticFieldAddress || target->kind == Kind::NamespaceStateAddress)
@@ -230,15 +246,38 @@ ReceiverPublicationScan scanReceiverPublication(
         }
         for (const auto& child : node->children) pending.push_back(child.get());
     }
+    for (const auto& [field, value] : receiverFieldWrites)
+        for (const auto& [origin, originKind] : origins(value))
+        {
+            if (isOrigin(origin)) receiverFields.push_back(field);
+            else if ((origin->kind == Kind::LocalValue || originKind == OriginKind::LocalRead) && origin->localOrdinal.has_value())
+                localToField[*origin->localOrdinal].push_back(field);
+            else if (originKind == OriginKind::ThisFieldRead && origin->memberOrdinal.has_value())
+                fieldToField[*origin->memberOrdinal].push_back(field);
+        }
     std::unordered_set<std::size_t> reached;
-    while (!receiverLocals.empty())
+    std::unordered_set<std::size_t> reachedFields;
+    while (!receiverLocals.empty() || !receiverFields.empty())
     {
+        if (!receiverFields.empty())
+        {
+            const std::size_t field = receiverFields.back();
+            receiverFields.pop_back();
+            if (!reachedFields.insert(field).second) continue;
+            if (const auto copies = fieldToLocal.find(field); copies != fieldToLocal.end())
+                receiverLocals.insert(receiverLocals.end(), copies->second.begin(), copies->second.end());
+            if (const auto copies = fieldToField.find(field); copies != fieldToField.end())
+                receiverFields.insert(receiverFields.end(), copies->second.begin(), copies->second.end());
+            continue;
+        }
         const std::size_t local = receiverLocals.back();
         receiverLocals.pop_back();
         if (!reached.insert(local).second) continue;
         const auto copies = localCopies.find(local);
         if (copies != localCopies.end())
             receiverLocals.insert(receiverLocals.end(), copies->second.begin(), copies->second.end());
+        if (const auto fields = localToField.find(local); fields != localToField.end())
+            receiverFields.insert(receiverFields.end(), fields->second.begin(), fields->second.end());
     }
     // A local container published into global state is also globally reachable.
     for (const auto* value : globalValues)
@@ -269,9 +308,11 @@ ReceiverPublicationScan scanReceiverPublication(
             globalLocals.insert(globalLocals.end(), copies->second.begin(), copies->second.end());
     }
     const auto isReceiver = [&](const frontend::ProjectOopMirNode* value) {
-        for (const auto& [origin, localAddressValue] : origins(value))
-            if (isOrigin(origin) || ((origin->kind == Kind::LocalValue || localAddressValue) && origin->localOrdinal.has_value() &&
-                reached.contains(*origin->localOrdinal))) return true;
+        for (const auto& [origin, originKind] : origins(value))
+            if (isOrigin(origin) || ((origin->kind == Kind::LocalValue || originKind == OriginKind::LocalRead) && origin->localOrdinal.has_value() &&
+                reached.contains(*origin->localOrdinal)) ||
+                (originKind == OriginKind::ThisFieldRead && origin->memberOrdinal.has_value() &&
+                 reachedFields.contains(*origin->memberOrdinal))) return true;
         return false;
     };
     ReceiverPublicationScan result;
