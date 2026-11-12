@@ -5542,6 +5542,10 @@ if(NSC_BUILD_TESTS)
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedReferenceCounts.ns"
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedAtomicControl.ns"
                 "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core.Threading/Thread.ns")
+    add_test(NAME nsc.sdk.shared-arc-public-last-weak
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_arc_public_last_weak.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.sdk.shared-arc-public-last-weak PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME nsc.sdk.shared-atomic-control-concurrency
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/shared_atomic_control_concurrency.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
