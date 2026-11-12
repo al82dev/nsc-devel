@@ -821,6 +821,14 @@ LLVMValueRef OopLlvmImplementation::applyIntegerDivision(
                 : LLVMBuildUDiv(builder_, left, right, "udiv");
         }
 
+        if (remainder && operandType == "builtin:i128")
+        {
+            LLVMValueRef quotient = emitSignedI128Division(left, right);
+            // The quotient loop and these plain i128 operations use modulo 2^128;
+            // MinValue % -1 is therefore zero without signed division poison.
+            return LLVMBuildSub(builder_, left,
+                LLVMBuildMul(builder_, quotient, right, "i128.rem.product"), "i128.rem");
+        }
         if (!remainder && operandType == "builtin:i128")
             return emitSignedI128Division(left, right);
         LLVMValueRef divisor = correctedSignedDivisor(

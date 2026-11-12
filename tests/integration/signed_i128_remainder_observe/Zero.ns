@@ -1,0 +1,7 @@
+i128 Rem(i128 a, i128 b) { return a % b; }
+int Main()
+{
+    i128 value = (i128)19;
+    i128 zero = (i128)0;
+    return (int)Rem(value, zero);
+}
