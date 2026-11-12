@@ -1009,6 +1009,32 @@ rechazos de ancho y alineación, transporte e identidad y la regresión C++ de
 ocho bytes (`A:/temp/nsc-t09-cpp-expanded-mixed-precompilado-nb7g8sd1`).
 Otros tamaños, alineaciones y firmas no se acreditan; T09-003 sigue abierto.
 
+## Registro mixto con retorno float
+
+El [caso C](pruebas-tanda-09-regcall-record-mixto-float/) combina un registro
+de `float` y `double` pasado por copia con retorno `float`. Clang lo ejecutaba
+y NSC lo rechazaba (`A:/temp/nsc-t09-regcall-record-mixto-float-u5xl86ng`).
+Se amplió la validación física existente para admitir una copia indirecta sin
+registro expandido, conservando la conciliación de tipos, identidad y layout.
+La prueba de plan rechaza una alineación incorrecta o retorno alterado, y
+comprueba la conservación y el rechazo de metadatos alterados.
+
+Pasaron control C y NativeSharp en estática O0–O3, llamada directa y por
+puntero, con inspección LLVM y conservación del argumento
+(`A:/temp/nsc-t09-regcall-record-mixto-float-66aslu0z`). También pasaron 32
+consumidores C precompilados, estática y DLL, con y sin encabezado
+(`A:/temp/nsc-t09-record-mixto-float-pre-_a8x0vix` y
+`A:/temp/nsc-t09-record-mixto-float-pre-qxheml8b`).
+
+El [caso C++ trivial](pruebas-tanda-09-regcall-cpp-record-mixto-float/)
+pasó ocho comparaciones en estática y DLL O0–O3
+(`A:/temp/nsc-t09-cpp-record-mixto-float-0s32i0yv`) y 32 consumidores
+precompilados (`A:/temp/nsc-t09-cpp-record-mixto-float-pre-y6s0pdb0` y
+`A:/temp/nsc-t09-cpp-record-mixto-float-pre-0q_51skn`). Pasaron plan,
+transporte, ABI, identidad y la regresión C++ precompilada de retorno `void`
+(`A:/temp/nsc-t09-cpp-record-mixto-void-pre-x9wxbvk6`). La muestra C directa
+con DLL y otras firmas permanecen pendientes; T09-003 sigue abierto.
+
 ## Registro mixto con retorno void
 
 La [muestra C](pruebas-tanda-09-regcall-record-mixto-void/) pasa un registro

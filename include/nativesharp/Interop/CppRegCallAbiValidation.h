@@ -430,10 +430,13 @@ inline bool isRegCallWin64FloatRecordsReturningVoid(const Plan& plan, std::strin
 inline bool isRegCallWin64FloatRecordsReturningFloat(const Plan& plan, std::string_view symbol) noexcept
 {
     std::size_t records = 0;
+    bool indirect = false;
     for (const auto& logical : plan.logicalParameters)
         if (logical.passing == Passing::Expand) ++records;
-    return records && isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4,
-        plan.logicalParameters.size() - records, true, records, true, true, false, false, false, true);
+        else if (logical.passing == Passing::Indirect) indirect = true;
+    return (records || indirect) && isRegCallWin64FloatRecordRoundTrip(plan, symbol, 8, 4,
+        plan.logicalParameters.size() - records, true, records, true, true, false, false, false, true,
+        false, false, 0, false, 0, false, !records);
 }
 
 inline bool isRegCallWin64FloatRecordsReturningInt64(const Plan& plan, std::string_view symbol) noexcept

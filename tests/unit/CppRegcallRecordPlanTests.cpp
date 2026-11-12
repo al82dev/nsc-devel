@@ -127,6 +127,7 @@ int main(int argc, char** argv)
         double __attribute__((regcall)) mixed_real(MixedReal,int);
         int __attribute__((regcall)) mixed_real_int(MixedReal,int);
         void __attribute__((regcall)) mixed_real_void(MixedReal,int*);
+        float __attribute__((regcall)) mixed_real_float(MixedReal,int);
         int __attribute__((regcall)) nested_three_bytes(Nested,int,ThreeBytes);
         int __attribute__((regcall)) nested_return_int(Nested,int,Floats);
         unsigned int __attribute__((regcall)) nested_return_uint(Nested,int,Floats);
@@ -917,6 +918,34 @@ int main(int argc, char** argv)
             !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 208;
         auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 209;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "mixed_real_float") declaration = &function;
+        if (!declaration) return 95;
+        const auto plan = session->cFunctionAbiPlan("mixed_real_float", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64FloatRecordsReturningFloat(*plan, plan->symbol)) return 96;
+        std::vector<CppType> parameters;
+        for (const auto& parameter : declaration->parameters) parameters.push_back(parameter.type);
+        if (!abi_plan::regCallFloatRecordArgumentsMatch(*plan, declaration->returnType, parameters, true, true)) return 97;
+        auto wrong = *plan;
+        wrong.physicalParameters[0].alignment = 4;
+        if (abi_plan::isRegCallWin64FloatRecordsReturningFloat(wrong, wrong.symbol)) return 98;
+        wrong = *plan;
+        wrong.physicalReturn.kind = abi_plan::TypeKind::Double;
+        if (abi_plan::isRegCallWin64FloatRecordsReturningFloat(wrong, wrong.symbol)) return 99;
+        metadata_detail::CDependencyFunctionSnapshot saved;
+        saved.moduleName = "PlanProbe"; saved.referenceIdentity = "reference:0";
+        saved.linkSymbol = plan->symbol; saved.declaration = *declaration;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*plan);
+        metadata_detail::CDependencyFunctionSnapshot restored;
+        std::vector<std::uint8_t> encoded;
+        std::string error;
+        if (!metadata_detail::encodeCDependencyFunction(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyFunction(encoded, restored, error)) return 100;
+        auto altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyFunction(altered, encoded, error)) return 101;
     }
     {
         const CppFunctionDeclaration* declaration = nullptr;
