@@ -80,6 +80,18 @@ int main(int argc, char** argv)
                 decoded->logicalParameters[0].passing != abi_plan::Passing::Expand ||
                 decoded->logicalParameters[0].expandedOffsets != std::vector<std::uint64_t>{0, 4} ||
                 abi_plan::decodeFunctionPointerPlanFromCache(encoded->substr(0, encoded->size() - 1))) return 24;
+            if (!abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*direct, direct->symbol, 8, 4) ||
+                !abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*decoded, decoded->symbol, 8, 4) ||
+                abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*direct, "incorrect", 8, 4) ||
+                abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*direct, direct->symbol, 8, 8)) return 28;
+            auto wrongOffset = *direct; wrongOffset.logicalParameters[0].expandedOffsets[1] = 0;
+            auto wrongType = *direct; wrongType.physicalParameters[1].type.kind = abi_plan::TypeKind::Integer;
+            auto wrongReturn = *direct; wrongReturn.physicalReturn.elements[1].kind = abi_plan::TypeKind::Double;
+            auto wrongAttribute = *direct; wrongAttribute.physicalParameters[0].inRegister = true;
+            auto wrongConvention = *direct; wrongConvention.callingConvention = 78;
+            auto wrongIndex = *direct; wrongIndex.logicalParameters[0].firstPhysical = 1;
+            for (const auto* wrong : {&wrongOffset, &wrongType, &wrongReturn, &wrongAttribute, &wrongConvention, &wrongIndex})
+                if (abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*wrong, wrong->symbol, 8, 4)) return 29;
             auto invalid = *indirect; invalid.logicalParameters[0].expandedOffsets.pop_back();
             if (abi_plan::encodeFunctionPointerPlanForCache(invalid)) return 25;
             continue;

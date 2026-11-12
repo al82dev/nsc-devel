@@ -384,3 +384,11 @@ La prueba existente confirma el rechazo de llamadas flotantes expandidas
 directas y por puntero (A:/temp/nsc-t09-regcall-hfa-rechazo-nxjedsgb).
 La emision de estas llamadas sigue pendiente; este plan no acredita ejecucion
 ni cierra T09-003.
+
+El validador distingue la forma fisica comprobada de dos `float`: retorno
+directo en estructura y argumento `Expand` en posiciones 0 y 4. La prueba
+consulta planes directos y por puntero, verifica la recuperacion desde cache y
+rechaza alteraciones del simbolo, alineacion, desplazamiento, tipo, retorno,
+atributos, convencion e indice (A:/temp/t09-regcall-plan-test.log). Esta
+validacion no sustituye la comprobacion de identidad del record ni habilita
+todavia la emision.
