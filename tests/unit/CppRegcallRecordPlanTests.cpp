@@ -1747,6 +1747,8 @@ int main(int argc, char** argv)
                 using TripleCallback = Triple (__attribute__((sysv_abi)) *)(Triple);
                 struct Quad { int x, y, z, w; };
                 using QuadCallback = Quad (__attribute__((sysv_abi)) *)(Quad);
+                struct Five { int x, y, z, w, v; };
+                using FiveCallback = Five (__attribute__((sysv_abi)) *)(Five);
                 Small __attribute__((sysv_abi)) transform(Small);
                 int __attribute__((sysv_abi)) transform(int);
                 struct Incomplete;
@@ -1839,6 +1841,26 @@ int main(int argc, char** argv)
         wrong.physicalParameters[1].type.widthOrCount = 32;
         altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
         if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 184;
+        const auto five = std::find_if(aliases->begin(), aliases->end(),
+            [](const auto& value) { return value.qualifiedName == "S::FiveCallback"; });
+        if (five == aliases->end() || !five->clangUsr || !five->underlyingType.element ||
+            !five->underlyingType.element->function) return 185;
+        const auto fivePlan = observed->cppFunctionPointerAbiPlan(five->qualifiedName, *five->clangUsr,
+            five->underlyingType.canonicalSpelling);
+        if (!fivePlan || !abi_plan::isSysVCppRecordPointerRoundTrip(*fivePlan,
+                *five->underlyingType.element->function)) return 186;
+        saved.declaration = *five;
+        saved.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(*fivePlan);
+        if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
+            !metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 187;
+        wrong = *fivePlan;
+        wrong.physicalParameters[1].alignment = 4;
+        altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 188;
+        wrong = *fivePlan;
+        wrong.physicalParameters[1].pointee->elements[4].widthOrCount = 16;
+        altered = saved; altered.declaration.abiPlan = std::make_shared<const abi_plan::Plan>(wrong);
+        if (metadata_detail::encodeCDependencyAlias(altered, encoded, error)) return 189;
     }
     const auto cppFunctions = cppSession->freeFunctionsSnapshot();
     if (!cppFunctions) return 37;

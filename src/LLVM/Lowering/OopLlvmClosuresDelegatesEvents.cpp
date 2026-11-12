@@ -1466,10 +1466,11 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
                      imported->origin != frontend::CppImportedTypeOrigin::CUnion &&
                      !(imported->origin == frontend::CppImportedTypeOrigin::CppRecord && ordinal &&
-                       nameLookup_.cppTrivialValueEligible(*ordinal) && (returnLayout->size == 12 || returnLayout->size == 16) &&
+                       nameLookup_.cppTrivialValueEligible(*ordinal) && (returnLayout->size == 12 || returnLayout->size == 16 || returnLayout->size == 20) &&
                        node->argumentCount == 1 && node->argumentTypeKeys[0] == node->typeKey &&
-                       isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
-                       plan.physicalReturn.elements[1].widthOrCount == (returnLayout->size == 12 ? 32 : 64))) ||
+                       ((returnLayout->size == 20 && isSysVIndirectRecordRoundTrip(plan, "__nsc_pointer_abi_probe")) ||
+                        (returnLayout->size != 20 && isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
+                         plan.physicalReturn.elements[1].widthOrCount == (returnLayout->size == 12 ? 32 : 64))))) ||
                     imported->objectLayout->sizeBytes != returnLayout->size ||
                     imported->objectLayout->alignmentBytes != returnLayout->alignment)
                     return failValue(error, "sysv_abi function pointer record return is not supported");
@@ -1541,10 +1542,11 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
                     (imported->origin != frontend::CppImportedTypeOrigin::CStruct &&
                      imported->origin != frontend::CppImportedTypeOrigin::CUnion &&
                      !(imported->origin == frontend::CppImportedTypeOrigin::CppRecord && ordinal &&
-                       nameLookup_.cppTrivialValueEligible(*ordinal) && (layout->size == 12 || layout->size == 16) &&
+                       nameLookup_.cppTrivialValueEligible(*ordinal) && (layout->size == 12 || layout->size == 16 || layout->size == 20) &&
                        node->argumentCount == 1 && key == node->typeKey &&
-                       isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
-                       plan.physicalReturn.elements[1].widthOrCount == (layout->size == 12 ? 32 : 64))) ||
+                       ((layout->size == 20 && isSysVIndirectRecordRoundTrip(plan, "__nsc_pointer_abi_probe")) ||
+                        (layout->size != 20 && isSysVTwoIntegerRecordRoundTrip(plan, "__nsc_pointer_abi_probe") &&
+                         plan.physicalReturn.elements[1].widthOrCount == (layout->size == 12 ? 32 : 64))))) ||
                     imported->objectLayout->sizeBytes != layout->size ||
                     imported->objectLayout->alignmentBytes != layout->alignment)
                     return failValue(error, "sysv_abi function pointer record provenance is invalid");

@@ -3065,6 +3065,27 @@ del record C de doce bytes (`A:/temp/nsc-t09-sysv-cpp-record-precompilado-onm09j
 y `A:/temp/nsc-t09-sysv-indirecta-record-pre-i33zs4dc`). Otros layouts,
 argumentos y retornos siguen pendientes; T09-003 permanece abierto.
 
+La [muestra de veinte bytes](pruebas-tanda-09-sysv-cpp-record20/) usa cinco
+enteros. Clang pasa el argumento mediante `byval` y el retorno mediante
+`sret`; NSC inicialmente rechazaba el alias
+(`A:/temp/nsc-t09-sysv-cpp-record20-u9knyw1v`). El plan y el contrato vigente
+admiten esta forma al conciliar identidad, layout y trivialidad y al validar
+ambas alineaciones y los cinco campos físicos. La emisión realiza una copia y
+usa el retorno en memoria.
+
+Pasaron ocho comparaciones directas y por alias en estática y DLL O0–O3,
+con inspección LLVM y conservación de los cinco campos y del original
+(`A:/temp/nsc-t09-sysv-cpp-record20-h345eibe`), y 16 consumidores
+precompilados con y sin encabezado
+(`A:/temp/nsc-t09-sysv-cpp-record20-precompilado-u2qbfsoo`). La prueba de plan
+y metadatos rechaza una alineación o campo físico alterados; diez records no
+elegibles rechazaron la copia indirecta
+(`A:/temp/nsc-t09-sysv-cpp-record20-rechazos-zx68nf2u`). Pasaron transporte,
+ABI, identidad y las regresiones precompiladas C++ de dieciséis bytes y C con
+`byval` (`A:/temp/nsc-t09-sysv-cpp-record16-precompilado-tolwo8te` y
+`A:/temp/nsc-t09-sysv-indirecta-record-pre-1m4_n0ox`). Otros layouts,
+argumentos y retornos siguen pendientes; T09-003 permanece abierto.
+
 La [muestra C de dieciséis bytes](pruebas-tanda-09-sysv-indirecta-retorno-record16/)
 recibe y devuelve cuatro enteros por un puntero `sysv_abi`. La emisión compartida
 del caso C++ ya permitía la llamada desde fuente, pero la reconstrucción
