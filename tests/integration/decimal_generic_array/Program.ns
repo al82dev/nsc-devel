@@ -10,5 +10,19 @@ int Main()
     {
         return 1;
     }
+    matrix.Set(0, 0, 0.1m);
+    matrix.Set(0, 1, 2.50m);
+    matrix.Set(1, 0, -0.3m);
+    matrix.Set(1, 1, 7.125m);
+    if (matrix.Get(0, 0) != 0.1m || matrix.Get(0, 1) != 2.50m ||
+        matrix.Get(1, 0) != -0.3m || matrix.Get(1, 1) != 7.125m)
+    {
+        return 2;
+    }
+    matrix.Set(0, 1, 0.75m);
+    if (matrix.Get(0, 1) != 0.75m || matrix.Get(1, 1) != 7.125m)
+    {
+        return 3;
+    }
     return 0;
 }
