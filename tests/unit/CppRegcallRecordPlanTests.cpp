@@ -99,6 +99,7 @@ int main(int argc, char** argv)
         Nested __attribute__((regcall)) nested_recordptr(Nested, Other*);
         Nested __attribute__((regcall)) nested_const(Nested, const int*,int*);
         Nested __attribute__((regcall)) nested_const_float(Nested, const float*,const double*);
+        Nested __attribute__((regcall)) nested_const_void(Nested, const void*,int*);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -618,6 +619,21 @@ int main(int argc, char** argv)
         for (std::size_t i = 1; i < 3; ++i)
             if (!abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[i + 2].type,
                     declaration->parameters[i].type)) return 109;
+    }
+    {
+        const CppFunctionDeclaration* declaration = nullptr;
+        for (const auto& function : *functions)
+            if (function.name == "nested_const_void") declaration = &function;
+        if (!declaration || declaration->parameters.size() != 3 ||
+            !declaration->parameters[1].type.element) return 110;
+        const auto plan = session->cFunctionAbiPlan("nested_const_void", declaration->canonicalFunctionType);
+        if (!plan || !abi_plan::isRegCallWin64FloatRecordRoundTrip(*plan, plan->symbol, 12, 4, 2, true) ||
+            !abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type,
+                declaration->parameters[1].type)) return 111;
+        auto wrong = declaration->parameters[1].type;
+        auto pointee = std::make_shared<CppType>(*wrong.element);
+        pointee->unqualifiedCanonicalSpelling = "int"; wrong.element = pointee;
+        if (abi_plan::regCallFloatRecordScalarMatches(plan->physicalParameters[3].type, wrong)) return 112;
     }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;

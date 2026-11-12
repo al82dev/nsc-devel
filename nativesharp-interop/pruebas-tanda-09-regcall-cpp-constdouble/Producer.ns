@@ -1,0 +1,9 @@
+namespace T09 { public class NestedCppBridge { public static int Run<T>(T unused) {
+    double input=(double)14; int out=0;
+    T09HfaCpp.Nested a; a.pair.x=(float)10; a.pair.y=(float)20; a.z=(float)30;
+    T09HfaCpp.Array b; b.values[0]=(float)10; b.values[1]=(float)20; b.values[2]=(float)30;
+    T09HfaCpp.NestedFn fa=T09HfaCpp.fetchNested(); T09HfaCpp.ArrayFn fb=T09HfaCpp.fetchArray();
+    T09HfaCpp.Nested c=T09HfaCpp.nested(a,&input,&out); T09HfaCpp.Nested d=fa(a,&input,&out);
+    T09HfaCpp.Array e=T09HfaCpp.array(b,&input,&out); T09HfaCpp.Array f=fb(b,&input,&out);
+    return input==14 && out==4 && c.pair.x==(float)24 && d.pair.x==(float)24 && e.values[0]==(float)24 && f.values[0]==(float)24 && a.pair.x==(float)10 && b.values[0]==(float)10 ? 0 : 1;
+} } }

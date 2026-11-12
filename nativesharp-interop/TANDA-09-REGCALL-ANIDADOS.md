@@ -289,7 +289,7 @@ incompatibles se rechazaron tanto en C como en C++:
 `A:/temp/nsc-t09-regcall-const-rechazos-mxjc61l7` y
 `A:/temp/nsc-t09-regcall-const-rechazos-v6rbi0mh`.
 
-Esta evidencia no acredita `const void*`, records calificados, `volatile`,
+Esta evidencia no acredita records calificados, `volatile`,
 calificadores intermedios ni todas las expresiones afectadas por D11/D12.
 D23 sigue pendiente para arreglos de punteros calificados. T09-003 continúa
 abierto.
@@ -317,6 +317,35 @@ precompilados con y sin encabezado, incluidos los de solo puntero:
 `A:/temp/nsc-t09-cpp-nested-precompilado-zu6vtc1f` y
 `A:/temp/nsc-t09-cpp-nested-precompilado-likcotuj`. También pasaron la
 regresión precompilada `const int*` y la prueba de plan, que comprueba tanto
-`const float*` como `const double*`; esta última forma todavía no tiene una
-prueba de ejecución propia. Los demás límites de la sección anterior siguen
+`const float*` como `const double*`; la ejecución de esta última se documenta
+abajo. Los demás límites de la sección anterior siguen
 vigentes y T09-003 permanece abierto.
+
+## Punteros const double y const void
+
+La misma muestra con `const double*` pasó frente a los controles C y C++, en
+llamadas directas e indirectas, estática y DLL O0-O3
+(`A:/temp/nsc-t09-regcall-mixed-iar6_l2v` y
+`A:/temp/nsc-t09-cpp-mixed-lwpd80u1`). Pasaron 64 consumidores
+precompilados con y sin encabezado, incluidos los que solo llaman por puntero:
+`A:/temp/nsc-t09-hfa34-precompilado-bp0ve361`,
+`A:/temp/nsc-t09-hfa34-precompilado-vrkc4io0`,
+`A:/temp/nsc-t09-cpp-nested-precompilado-b_yn1tc1` y
+`A:/temp/nsc-t09-cpp-nested-precompilado-dwykle1h`.
+
+Las muestras `const void*` se rechazaban en la validación del plan
+(`A:/temp/nsc-t09-regcall-mixed-d69lhdak` y
+`A:/temp/nsc-t09-cpp-mixed-329v4a4i`). Ahora se admite esa forma cuando su
+nombre canónico y calificación concuerdan. La biblioteca C o C++ convierte
+el puntero a `const float*` para leer el dato; el consumidor verifica que no
+se modificó y que la salida por otro puntero es correcta. Pasaron llamadas
+directas e indirectas O0-O3 en estática y DLL
+(`A:/temp/nsc-t09-regcall-mixed-tilzzj2i` y
+`A:/temp/nsc-t09-cpp-mixed-0_amnwew`), y 64 consumidores precompilados:
+`A:/temp/nsc-t09-hfa34-precompilado-10md_jmi`,
+`A:/temp/nsc-t09-hfa34-precompilado-alad8l_9`,
+`A:/temp/nsc-t09-cpp-nested-precompilado-7m6ydpkn` y
+`A:/temp/nsc-t09-cpp-nested-precompilado-g7nmu__w`. La prueba de plan
+rechaza un nombre no calificado inconsistente. Esta muestra no acredita todas
+las conversiones o accesos a través de `const void*`; D11/D12, D23 y las
+restricciones sobre `volatile` y records calificados permanecen.

@@ -129,7 +129,10 @@ inline bool regCallFloatRecordScalarMatches(const Type& physical, const CppType&
         if (source.canonicalSpelling.size() != element.canonicalSpelling.size() + suffix.size() ||
             !source.canonicalSpelling.starts_with(element.canonicalSpelling) ||
             !source.canonicalSpelling.ends_with(suffix)) return false;
-        if (element.kind == CppTypeKind::Void && element.canonicalSpelling == "void") return true;
+        if (element.kind == CppTypeKind::Void)
+            return (!element.isConst && element.canonicalSpelling == "void") ||
+                (element.isConst && element.canonicalSpelling == "const void" &&
+                 element.unqualifiedCanonicalSpelling == "void");
         // Physical acceptance only: callers must independently reconcile the
         // record identity and its origin before using this pointer plan.
         if (element.kind == CppTypeKind::Record)
