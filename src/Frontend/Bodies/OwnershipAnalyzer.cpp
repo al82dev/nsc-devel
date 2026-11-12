@@ -75,21 +75,50 @@ void ProjectMethodBodyModel::collectViewSourceFields(
             pending.push_back(expression->second());
             continue;
         }
+        if (expression->kind() == ast::AstNodeKind::TupleExpression ||
+            expression->kind() == ast::AstNodeKind::AggregateInitializerExpression)
+        {
+            for (const ast::AstNode* element : expression->children())
+            {
+                if (element == nullptr) continue;
+                const std::string_view type = recordedExpressionTypeKey(element, callable);
+                if (typeKeyIsViewLike(type) || tupleTypeKeyContainsView(type) ||
+                    element->kind() == ast::AstNodeKind::AggregateInitializerExpression)
+                    pending.push_back(element);
+            }
+            continue;
+        }
         const MethodCallBinding* call = callBinding(expression, callable);
         const NamespaceFunctionCallBinding* function = namespaceFunctionCall(expression);
         const bool viewMethod = call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
-            typeKeyIsViewLike(call->resultTypeKey);
+            (typeKeyIsViewLike(call->resultTypeKey) || tupleTypeKeyContainsView(call->resultTypeKey));
         const bool viewFunction = function != nullptr && function->resolution == MethodCallResolutionKind::Resolved &&
-            typeKeyIsViewLike(function->resultTypeKey);
+            (typeKeyIsViewLike(function->resultTypeKey) || tupleTypeKeyContainsView(function->resultTypeKey));
         if (viewMethod || viewFunction)
         {
             const auto& arguments = viewMethod ? call->selectedArgumentSyntaxes : function->selectedArgumentSyntaxes;
             bool foundViewArgument = false;
             for (const ast::AstNode* argument : arguments)
             {
-                if (argument == nullptr || !typeKeyIsViewLike(recordedExpressionTypeKey(argument, callable))) continue;
-                pending.push_back(argument);
-                foundViewArgument = true;
+                if (argument == nullptr) continue;
+                const std::string_view type = recordedExpressionTypeKey(argument, callable);
+                if (typeKeyIsViewLike(type) || tupleTypeKeyContainsView(type))
+                {
+                    pending.push_back(argument);
+                    foundViewArgument = true;
+                }
+            }
+            if (viewMethod && !call->staticCall && call->receiverSyntax != nullptr &&
+                call->receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const auto receiver = lookupScopeName(scopeOrdinal, call->receiverSyntax->text());
+                if (receiver.has_value() && (receiver->kind == ScopeNameKind::Local ||
+                                             receiver->kind == ScopeNameKind::Parameter))
+                {
+                    const std::string root = "@" + call->receiverSyntax->text();
+                    if (std::ranges::find(local.viewSourceFields, root) == local.viewSourceFields.end())
+                        local.viewSourceFields.push_back(root);
+                }
             }
             if (!viewMethod || call->staticCall)
             {
@@ -98,20 +127,26 @@ void ProjectMethodBodyModel::collectViewSourceFields(
                 continue;
             }
         }
+        // Indirect call results can also carry a view supplied as an argument.
+        // Their callable binding is not a method or namespace-function binding.
         if (!viewMethod && !viewFunction && expression->kind() == ast::AstNodeKind::CallExpression &&
-            typeKeyIsViewLike(recordedExpressionTypeKey(expression, callable)))
+            (typeKeyIsViewLike(recordedExpressionTypeKey(expression, callable)) ||
+             tupleTypeKeyContainsView(recordedExpressionTypeKey(expression, callable))))
         {
             bool foundViewArgument = false;
             for (const ast::AstNode* argument : expression->children())
             {
-                if (argument == nullptr || !typeKeyIsViewLike(recordedExpressionTypeKey(argument, callable))) continue;
+                if (argument == nullptr) continue;
+                const std::string_view type = recordedExpressionTypeKey(argument, callable);
+                if (!typeKeyIsViewLike(type) && !tupleTypeKeyContainsView(type)) continue;
                 pending.push_back(argument);
                 foundViewArgument = true;
             }
             if (foundViewArgument) continue;
         }
         if (call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
-            !call->staticCall && typeKeyIsViewLike(call->resultTypeKey) &&
+            !call->staticCall && (typeKeyIsViewLike(call->resultTypeKey) ||
+                                  tupleTypeKeyContainsView(call->resultTypeKey)) &&
             (call->implicitThis || (call->receiverSyntax != nullptr &&
              call->receiverSyntax->kind() == ast::AstNodeKind::ThisExpression)))
         {
@@ -122,7 +157,8 @@ void ProjectMethodBodyModel::collectViewSourceFields(
             continue;
         }
         if (call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
-            !call->staticCall && typeKeyIsViewLike(call->resultTypeKey) &&
+            !call->staticCall && (typeKeyIsViewLike(call->resultTypeKey) ||
+                                  tupleTypeKeyContainsView(call->resultTypeKey)) &&
             call->receiverSyntax != nullptr &&
             call->receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression)
         {
@@ -140,7 +176,8 @@ void ProjectMethodBodyModel::collectViewSourceFields(
             }
         }
         if (call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
-            !call->staticCall && typeKeyIsViewLike(call->resultTypeKey) &&
+            !call->staticCall && (typeKeyIsViewLike(call->resultTypeKey) ||
+                                  tupleTypeKeyContainsView(call->resultTypeKey)) &&
             call->receiverSyntax != nullptr &&
             call->receiverSyntax->kind() == ast::AstNodeKind::IdentifierExpression && memberModel_ != nullptr)
         {
@@ -201,7 +238,7 @@ void ProjectMethodBodyModel::collectViewSourceFields(
             }
             // A method on a field that is not itself the move-only owner can
             // return a view of any nested field; preserve that uncertainty.
-            if (typeKeyIsViewLike(call->resultTypeKey) &&
+            if ((typeKeyIsViewLike(call->resultTypeKey) || tupleTypeKeyContainsView(call->resultTypeKey)) &&
                 (memberModel_ == nullptr || !memberModel_->typeIsMoveOnly(
                     recordedExpressionTypeKey(call->receiverSyntax, callable))) &&
                 std::ranges::find(local.viewSourceFields, "*") == local.viewSourceFields.end())
@@ -324,7 +361,8 @@ std::optional<std::string> ProjectMethodBodyModel::viewRootLocalOfExpression(
         }
         const MethodCallBinding* call = callBinding(current, callable);
         if (call != nullptr && call->resolution == MethodCallResolutionKind::Resolved &&
-            !call->staticCall && call->receiverSyntax != nullptr && typeKeyIsViewLike(call->resultTypeKey))
+            !call->staticCall && call->receiverSyntax != nullptr &&
+            (typeKeyIsViewLike(call->resultTypeKey) || tupleTypeKeyContainsView(call->resultTypeKey)))
         {
             const ast::AstNode* receiver = call->receiverSyntax;
             while (receiver != nullptr && (receiver->kind() == ast::AstNodeKind::MemberExpression ||
@@ -364,7 +402,7 @@ std::optional<std::string> ProjectMethodBodyModel::viewRootLocalOfExpression(
                 name->semanticOrdinal < locals_.size())
             {
                 const MethodLocalSymbol& local = locals_[name->semanticOrdinal];
-                if (typeKeyIsViewLike(local.typeKey))
+                if (typeKeyIsViewLike(local.typeKey) || tupleTypeKeyContainsView(local.typeKey))
                 {
                     if (!local.viewRootLocalName.empty()) return local.viewRootLocalName;
                 }

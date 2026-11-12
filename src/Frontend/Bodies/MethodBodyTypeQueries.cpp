@@ -77,6 +77,38 @@ bool ProjectMethodBodyModel::typeKeyIsViewLike(std::string_view typeKey) const n
     return aggregateIsBorrowedView(key);
 }
 
+bool ProjectMethodBodyModel::tupleTypeKeyContainsView(std::string_view typeKey) const
+{
+    struct Item { std::string type; bool insideTuple; };
+    std::vector<Item> pending{{std::string(typeKey), false}};
+    std::unordered_set<std::string> visitedOutside;
+    std::unordered_set<std::string> visitedInside;
+    while (!pending.empty())
+    {
+        Item current = std::move(pending.back());
+        pending.pop_back();
+        if (!(current.insideTuple ? visitedInside : visitedOutside).insert(current.type).second) continue;
+        if (current.insideTuple && typeKeyIsViewLike(current.type)) return true;
+        if (auto elements = ProjectTypeConversion::tupleElementTypeKeys(current.type); elements.has_value())
+        {
+            for (std::string& element : *elements) pending.push_back({std::move(element), true});
+            continue;
+        }
+        const auto ordinal = namedTypeOrdinalForTypeKey(current.type);
+        const NamedTypeDeclaration* type = ordinal.has_value() && nameLookup_ != nullptr
+            ? nameLookup_->typeForOrdinal(*ordinal) : nullptr;
+        if (type == nullptr || type->kind != NamedTypeDeclarationKind::Struct || memberModel_ == nullptr) continue;
+        for (const std::size_t index : memberModel_->membersOfType(*ordinal))
+            if (index < memberModel_->members().size())
+            {
+                const ClassMemberSymbol& member = memberModel_->members()[index];
+                if (member.kind == ClassMemberKind::Field && !member.isStatic)
+                    pending.push_back({member.declaredTypeKey, current.insideTuple});
+            }
+    }
+    return false;
+}
+
 bool ProjectMethodBodyModel::typeKeyCarriesLifetime(std::string_view typeKey) const noexcept
 {
     if (typeKey.empty() || typeKey == "<error>") return false;

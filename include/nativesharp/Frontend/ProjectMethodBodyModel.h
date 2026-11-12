@@ -3489,6 +3489,14 @@ private:
         bool coreStringForwarding,
         std::size_t methodMemberOrdinal,
         std::size_t scopeOrdinal);
+    void recordViewOutputOrigins(
+        std::span<const ast::AstNode* const> argumentSyntaxes,
+        std::span<const ExpressionResult> resolvedArguments,
+        const MethodCallCandidate& selected,
+        const ClassMemberSymbol& selectedMember,
+        std::size_t scopeOrdinal,
+        diagnostics::DiagnosticEngine& diagnostics,
+        const ast::AstNode* receiverSyntax = nullptr);
     void recordSelectedBorrows(
         const ast::AstNode* expression,
         const ExpressionResult& callee,
@@ -5071,6 +5079,7 @@ private:
         const MethodEscapeOrigin& source) noexcept;
     bool aggregateIsBorrowedView(std::string_view typeKey) const noexcept;
     bool typeKeyIsViewLike(std::string_view typeKey) const noexcept;
+    bool tupleTypeKeyContainsView(std::string_view typeKey) const;
     bool typeKeyCarriesLifetime(std::string_view typeKey) const noexcept;
     const ast::AstNode* definiteAssignmentTargetRoot(const ast::AstNode* target) const noexcept;
     void markAssignmentTarget(const ast::AstNode* target, std::size_t scopeOrdinal);

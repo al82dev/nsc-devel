@@ -1063,6 +1063,24 @@ if (!operand.valid)
     return std::nullopt;
 }
 
+// Passing a delegate by mutable reference can replace its captured owner.
+if (expression->tokenKind() == TokenKind::Amp &&
+    (expression->auxiliaryText() == "pass:ref" || expression->auxiliaryText() == "pass:out") &&
+    expression->first() != nullptr &&
+    expression->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+{
+    const auto local = lookupScopeName(scopeOrdinal, expression->first()->text());
+    if (local.has_value() && local->kind == ScopeNameKind::Local && local->semanticOrdinal < locals_.size() &&
+        isDelegateTypeKey(locals_[local->semanticOrdinal].typeKey) &&
+        hasActiveBorrowOfOwnerLocal(local->semanticOrdinal, scopeOrdinal))
+    {
+        diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+            diagnostics::DiagnosticSeverity::Error, expression->range(),
+            "cannot pass delegate for replacement while a borrowed local is alive");
+        return std::nullopt;
+    }
+}
+
 // EL MENOS UNARIO SOBRE UN LITERAL SE TIPA JUNTO CON EL, y es la unica forma de escribir el
 // minimo de un ancho: `int.MinValue` vale 2147483648 en magnitud, uno mas que el maximo de
 // `int`, asi que tipar el literal por su cuenta lo hace `long` y arrastra a toda la expresion.

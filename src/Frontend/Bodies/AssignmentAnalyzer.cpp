@@ -1062,10 +1062,12 @@ bool ProjectMethodBodyModel::recordViewAssignmentRoot(
         lookupScopeName(scopeOrdinal, viewAssignmentRoot->text());
     if (!viewTarget.has_value() || viewTarget->kind != ScopeNameKind::Local ||
         viewTarget->semanticOrdinal >= locals_.size() ||
-        !typeKeyIsViewLike(locals_[viewTarget->semanticOrdinal].typeKey)) return true;
+        (!typeKeyIsViewLike(locals_[viewTarget->semanticOrdinal].typeKey) &&
+         !tupleTypeKeyContainsView(locals_[viewTarget->semanticOrdinal].typeKey))) return true;
     MethodLocalSymbol& target = locals_[viewTarget->semanticOrdinal];
     if (expression->second() != nullptr &&
-        expression->second()->kind() == ast::AstNodeKind::ConditionalExpression)
+        (expression->second()->kind() == ast::AstNodeKind::ConditionalExpression ||
+         tupleTypeKeyContainsView(target.typeKey)))
     {
         MethodLocalSymbol sources;
         collectViewSourceFields(sources, expression->second(), scopeOrdinal);
@@ -1097,7 +1099,8 @@ bool ProjectMethodBodyModel::recordViewAssignmentRoot(
             "view borrowed from local '" + *root + "' cannot be stored in a longer-lived local");
         return false;
     }
-    if (!target.viewRootLocalName.empty() && target.viewRootLocalName != *root)
+    if (!target.viewRootLocalName.empty() && target.viewRootLocalName != *root &&
+        !tupleTypeKeyContainsView(target.typeKey))
     {
         // Permit a different owner only when every recorded origin resolves to
         // the same move-only local or by-value parameter at the view's scope.
@@ -2439,6 +2442,8 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
         (right.typeKey == "builtin:string" || right.typeKey == "string-literal");
     classifyNamedAssignmentTarget(
         assignmentTargetLocal, assignmentTargetParameter, expression, scopeOrdinal);
+    if (delegateTarget && rejectUnavailableAssignmentOwner(
+            expression, assignmentTargetLocal, scopeOrdinal, diagnostics)) return false;
     if (assignmentTargetParameter.has_value() && typeKeyIsViewLike(right.typeKey))
     {
         const ClassMemberSymbol* caller = methodSymbol(methodMemberOrdinal);
@@ -2466,6 +2471,18 @@ bool ProjectMethodBodyModel::prepareAssignmentValue(
                     "view output cannot outlive its possible owner '" + std::string(rootName) + "'");
                 return false;
             }
+        }
+    }
+    if (tupleTypeKeyContainsView(right.typeKey))
+    {
+        const bool localDestination = assignmentTargetLocal.has_value() &&
+            *assignmentTargetLocal < locals_.size() && !locals_[*assignmentTargetLocal].isStatic;
+        if (!localDestination)
+        {
+            diagnostics.report(diagnostics::DiagnosticId::InvalidAssignmentTarget,
+                diagnostics::DiagnosticSeverity::Error, expression->first()->range(),
+                "tuple containing a borrowed view cannot be stored outside a tracked local");
+            return false;
         }
     }
     if (!validateAssignmentTargetStorage(

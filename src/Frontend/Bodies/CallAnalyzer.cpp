@@ -50,6 +50,43 @@ constexpr const char* kStructRootFacadeTypeKey = "<struct-root-facade>";
 constexpr const char* kEnumRootFacadeTypeKey = "<enum-root-facade>";
 constexpr const char* kIteratorFacadeTypeKey = "<iterator-facade>";
 
+struct IndirectViewArguments final
+{
+    ClassMemberSymbol callable;
+    MethodCallCandidate candidate;
+    std::vector<const ast::AstNode*> syntaxes;
+};
+
+template <typename Arguments, typename LocalTypeLookup>
+IndirectViewArguments prepareIndirectViewArguments(
+    const ast::AstNode* expression, const Arguments& arguments, LocalTypeLookup&& localType)
+{
+    IndirectViewArguments result;
+    for (std::size_t i = 0; i < arguments.size() && i < expression->children().size(); ++i)
+    {
+        MethodParameterSymbol parameter;
+        parameter.passKind = arguments[i].argumentPassKind;
+        parameter.typeKey = arguments[i].typeKey;
+        parameter.pointeeTypeKey = arguments[i].typeKey;
+        const ast::AstNode* syntax = expression->children()[i];
+        if (syntax != nullptr && syntax->kind() == ast::AstNodeKind::UnaryExpression &&
+            (syntax->auxiliaryText() == "pass:ref" || syntax->auxiliaryText() == "pass:out"))
+        {
+            parameter.passKind = syntax->auxiliaryText() == "pass:ref"
+                ? ParameterPassKind::Ref : ParameterPassKind::Out;
+            if (syntax->first() != nullptr && syntax->first()->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                if (const auto type = localType(syntax->first()->text()); type.has_value())
+                    parameter.pointeeTypeKey = *type;
+            }
+        }
+        result.callable.parameters.push_back(std::move(parameter));
+        result.candidate.argumentParameterOrdinals.push_back(i);
+        result.syntaxes.push_back(syntax);
+    }
+    return result;
+}
+
 NamedArgumentMap mapPositionalArguments(
     std::span<ast::AstNode* const> arguments,
     const ClassMemberSymbol& candidate,
@@ -914,6 +951,137 @@ void ProjectMethodBodyModel::recordNamespaceFunctionDefaults(
     }
 }
 
+void ProjectMethodBodyModel::recordViewOutputOrigins(
+    std::span<const ast::AstNode* const> argumentSyntaxes,
+    std::span<const ExpressionResult> resolvedArguments,
+    const MethodCallCandidate& selected,
+    const ClassMemberSymbol& selectedMember,
+    std::size_t scopeOrdinal,
+    diagnostics::DiagnosticEngine& diagnostics,
+    const ast::AstNode* receiverSyntax)
+{
+    // A mutable view argument may receive any view supplied by value in the
+    // same call. Preserve each known owner on the destination local; escape
+    // summaries currently do not encode a relation between two parameters.
+    MethodLocalSymbol viewInputs;
+    const ast::AstNode* receiverRoot = receiverSyntax;
+    while (receiverRoot != nullptr && (receiverRoot->kind() == ast::AstNodeKind::MemberExpression ||
+                                       receiverRoot->kind() == ast::AstNodeKind::IndexExpression))
+        receiverRoot = receiverRoot->first();
+    if (receiverRoot != nullptr && receiverRoot->kind() == ast::AstNodeKind::IdentifierExpression)
+    {
+        const auto root = lookupScopeName(scopeOrdinal, receiverRoot->text());
+        if (root.has_value() && (root->kind == ScopeNameKind::Local || root->kind == ScopeNameKind::Parameter))
+            viewInputs.viewSourceFields.push_back("@" + receiverRoot->text());
+    }
+    for (std::size_t i = 0; i < resolvedArguments.size() &&
+         i < selected.argumentParameterOrdinals.size() && i < argumentSyntaxes.size(); ++i)
+    {
+        const std::size_t p = selected.argumentParameterOrdinals[i];
+        if (p >= selectedMember.parameters.size()) continue;
+        const MethodParameterSymbol& parameter = selectedMember.parameters[p];
+        if ((parameter.passKind == ParameterPassKind::Ref || parameter.passKind == ParameterPassKind::In) &&
+            (typeKeyIsViewLike(parameter.pointeeTypeKey) || tupleTypeKeyContainsView(parameter.pointeeTypeKey)))
+        {
+            const ast::AstNode* argument = argumentSyntaxes[i];
+            if (argument != nullptr && argument->kind() == ast::AstNodeKind::UnaryExpression)
+                collectViewSourceFields(viewInputs, argument->first(), scopeOrdinal);
+        }
+        if ((parameter.passKind == ParameterPassKind::Ref || parameter.passKind == ParameterPassKind::In) &&
+            memberModel_ != nullptr && memberModel_->typeIsMoveOnly(parameter.pointeeTypeKey))
+        {
+            const ast::AstNode* argument = argumentSyntaxes[i];
+            const ast::AstNode* owner = argument != nullptr &&
+                argument->kind() == ast::AstNodeKind::UnaryExpression ? argument->first() : nullptr;
+            while (owner != nullptr && (owner->kind() == ast::AstNodeKind::MemberExpression ||
+                                        owner->kind() == ast::AstNodeKind::IndexExpression))
+                owner = owner->first();
+            if (owner != nullptr && owner->kind() == ast::AstNodeKind::IdentifierExpression)
+            {
+                const auto root = lookupScopeName(scopeOrdinal, owner->text());
+                if (root.has_value() && (root->kind == ScopeNameKind::Local || root->kind == ScopeNameKind::Parameter))
+                {
+                    const std::string source = "@" + owner->text();
+                    if (std::ranges::find(viewInputs.viewSourceFields, source) == viewInputs.viewSourceFields.end())
+                        viewInputs.viewSourceFields.push_back(source);
+                }
+            }
+        }
+        if (parameter.passKind != ParameterPassKind::Value ||
+            (!typeKeyIsViewLike(resolvedArguments[i].typeKey) &&
+             !tupleTypeKeyContainsView(resolvedArguments[i].typeKey))) continue;
+        collectViewSourceFields(viewInputs,
+            argumentSyntaxes[i], scopeOrdinal);
+    }
+    for (std::size_t i = 0; i < resolvedArguments.size() &&
+         i < selected.argumentParameterOrdinals.size() && i < argumentSyntaxes.size(); ++i)
+    {
+        const std::size_t p = selected.argumentParameterOrdinals[i];
+        if (p >= selectedMember.parameters.size() ||
+            (selectedMember.parameters[p].passKind != ParameterPassKind::Ref &&
+             selectedMember.parameters[p].passKind != ParameterPassKind::Out) ||
+            !typeKeyIsViewLike(selectedMember.parameters[p].pointeeTypeKey)) continue;
+        const ast::AstNode* argument = argumentSyntaxes[i];
+        const ast::AstNode* destination = argument != nullptr &&
+            argument->kind() == ast::AstNodeKind::UnaryExpression &&
+            (argument->auxiliaryText() == "pass:ref" || argument->auxiliaryText() == "pass:out")
+            ? argument->first() : nullptr;
+        if (destination == nullptr || destination->kind() != ast::AstNodeKind::IdentifierExpression) continue;
+        const auto targetName = lookupScopeName(scopeOrdinal, destination->text());
+        if (targetName.has_value() && targetName->kind == ScopeNameKind::Parameter)
+        {
+            const ClassMemberSymbol* caller = scopeOrdinal < scopes_.size()
+                ? methodSymbol(scopes_[scopeOrdinal].methodMemberOrdinal) : nullptr;
+            if (caller != nullptr && targetName->semanticOrdinal < caller->parameters.size() &&
+                (caller->parameters[targetName->semanticOrdinal].passKind == ParameterPassKind::Ref ||
+                 caller->parameters[targetName->semanticOrdinal].passKind == ParameterPassKind::Out))
+            {
+                for (const std::string& source : viewInputs.viewSourceFields)
+                {
+                    if (source.size() <= 1 || source.front() != '@') continue;
+                    const std::string_view rootName = std::string_view(source).substr(1);
+                    const auto root = lookupScopeName(scopeOrdinal, rootName);
+                    if (!root.has_value()) continue;
+                    const bool localOwner = root->kind == ScopeNameKind::Local &&
+                        root->semanticOrdinal < locals_.size() && !locals_[root->semanticOrdinal].isStatic;
+                    const bool consumedParameter = root->kind == ScopeNameKind::Parameter &&
+                        root->semanticOrdinal < caller->parameters.size() && memberModel_ != nullptr &&
+                        caller->parameters[root->semanticOrdinal].passKind == ParameterPassKind::Value &&
+                        memberModel_->typeIsMoveOnly(caller->parameters[root->semanticOrdinal].typeKey);
+                    if (!localOwner && !consumedParameter) continue;
+                    diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                        diagnostics::DiagnosticSeverity::Error, destination->range(),
+                        "view output cannot outlive its possible owner '" + std::string(rootName) + "'");
+                }
+            }
+            continue;
+        }
+        if (!targetName.has_value() || targetName->kind != ScopeNameKind::Local ||
+            targetName->semanticOrdinal >= locals_.size()) continue;
+        MethodLocalSymbol& target = locals_[targetName->semanticOrdinal];
+        for (const std::string& source : viewInputs.viewSourceFields)
+        {
+            if (source.size() <= 1 || source.front() != '@') continue;
+            const std::string_view rootName = std::string_view(source).substr(1);
+            const auto root = lookupScopeName(scopeOrdinal, rootName);
+            const auto visibleRoot = lookupScopeName(target.scopeOrdinal, rootName);
+            if (target.isStatic || !root.has_value() || !visibleRoot.has_value() || root->kind != visibleRoot->kind ||
+                root->semanticOrdinal != visibleRoot->semanticOrdinal ||
+                (root->kind == ScopeNameKind::Local && root->semanticOrdinal < locals_.size() &&
+                 !scopeContains(locals_[root->semanticOrdinal].scopeOrdinal, target.scopeOrdinal)))
+            {
+                diagnostics.report(diagnostics::DiagnosticId::NS3020InvalidValueCategory,
+                    diagnostics::DiagnosticSeverity::Error, destination->range(),
+                    "view output cannot outlive its possible owner '" + std::string(rootName) + "'");
+                continue;
+            }
+            if (std::ranges::find(target.viewSourceFields, source) == target.viewSourceFields.end())
+                target.viewSourceFields.push_back(source);
+            if (target.viewRootLocalName.empty()) target.viewRootLocalName = rootName;
+        }
+    }
+}
+
 ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespaceFunctionCall(
     const ast::AstNode* expression,
     std::size_t callerCallableOrdinal,
@@ -942,6 +1110,8 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeNamespa
     recordNamespaceFunctionBorrows(
         expression, callerCallableOrdinal, scopeOrdinal, functionOrdinal,
         argumentSyntaxes, arguments, selected);
+    recordViewOutputOrigins(call.selectedArgumentSyntaxes, arguments,
+        selected, callable, scopeOrdinal, diagnostics);
     rejectNamespaceNewToOrdinaryParameters(callable, argumentSyntaxes, arguments, selected, diagnostics);
     recordNamespaceFunctionDefaults(callable, selected, call);
     call.resultTypeKey = callable.declaredTypeKey;
@@ -3799,6 +3969,16 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         binding.resultTypeKey = returnType;
         if (!bindEventInvocationArguments(
                 expression, arguments, parameterTypes, binding, diagnostics)) return result;
+        const auto viewArguments = prepareIndirectViewArguments(expression, arguments,
+            [&](std::string_view name) -> std::optional<std::string>
+            {
+                const auto target = lookupScopeName(scopeOrdinal, name);
+                if (!target.has_value() || target->kind != ScopeNameKind::Local ||
+                    target->semanticOrdinal >= locals_.size()) return std::nullopt;
+                return locals_[target->semanticOrdinal].typeKey;
+            });
+        recordViewOutputOrigins(viewArguments.syntaxes, arguments, viewArguments.candidate,
+            viewArguments.callable, scopeOrdinal, diagnostics);
         for (std::size_t index = 0;
              index < arguments.size() && index < expression->children().size(); ++index)
         {
@@ -3898,6 +4078,7 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
         binding.resultTypeKey = returnType;
         if (!bindDelegateInvocationArguments(
                 expression, arguments, parameterTypes, binding, diagnostics)) return result;
+        std::vector<const ast::AstNode*> possibleViewReceivers;
         if (!structuralFunction.has_value() && !isExternCDelegateTypeKey(callee.typeKey))
         {
             if (expression->first() != nullptr &&
@@ -3937,6 +4118,24 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                                 pendingLocals.push_back(*sourceBinding->localOrdinal);
                         }
                     }
+                    for (const MethodLambdaBinding& lambda : lambdaBindings_)
+                    {
+                        if (lambda.ownerMemberOrdinal != methodMemberOrdinal ||
+                            std::ranges::find(possibleSources, lambda.syntax) == possibleSources.end()) continue;
+                        if (std::ranges::any_of(lambda.captures, [](const MethodLambdaCapture& capture)
+                            { return capture.ownsCapturedValue; }))
+                        {
+                            for (const std::size_t ordinal : visitedLocals)
+                            {
+                                if (!hasActiveBorrowOfOwnerLocal(ordinal, scopeOrdinal)) continue;
+                                diagnostics.report(diagnostics::DiagnosticId::InvalidCall,
+                                    diagnostics::DiagnosticSeverity::Error, expression->range(),
+                                    "cannot invoke delegate while a borrowed local is alive");
+                                return result;
+                            }
+                            possibleViewReceivers.push_back(expression->first());
+                        }
+                    }
                     for (const MethodDelegateBinding& created : delegateBindings_)
                     {
                         if (created.kind != MethodDelegateOperationKind::Create ||
@@ -3944,6 +4143,7 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                             std::ranges::find(possibleSources, created.syntax) == possibleSources.end() ||
                             created.staticTarget || created.receiverSyntax == nullptr)
                             continue;
+                        possibleViewReceivers.push_back(created.receiverSyntax);
                         bool activeView = hasActiveViewOfStorage(
                             created.receiverSyntax, methodMemberOrdinal, scopeOrdinal, true);
                         const ast::AstNode* root = created.receiverSyntax;
@@ -3994,6 +4194,22 @@ std::optional<ProjectMethodBodyModel::ExpressionResult> ProjectMethodBodyModel::
                 return result;
             }
         }
+        // Delegate targets may write an input view to a mutable output just as
+        // ordinary calls do. The invocation arguments already carry pass kind
+        // and resolved type, including for structural callable signatures.
+        const auto viewArguments = prepareIndirectViewArguments(expression, arguments,
+            [&](std::string_view name) -> std::optional<std::string>
+            {
+                const auto target = lookupScopeName(scopeOrdinal, name);
+                if (!target.has_value() || target->kind != ScopeNameKind::Local ||
+                    target->semanticOrdinal >= locals_.size()) return std::nullopt;
+                return locals_[target->semanticOrdinal].typeKey;
+            });
+        recordViewOutputOrigins(viewArguments.syntaxes, arguments, viewArguments.candidate,
+            viewArguments.callable, scopeOrdinal, diagnostics);
+        for (const ast::AstNode* receiver : possibleViewReceivers)
+            recordViewOutputOrigins(viewArguments.syntaxes, arguments, viewArguments.candidate,
+                viewArguments.callable, scopeOrdinal, diagnostics, receiver);
         rejectDelegateNewToOrdinaryParameters(expression, arguments, delegateOrdinal, diagnostics);
         if (!validateCallableTraitInvocation(
                 expression, callee, scopeOrdinal, diagnostics)) return result;
@@ -4849,6 +5065,9 @@ ProjectMethodBodyModel::ExpressionResult ProjectMethodBodyModel::completeSelecte
     if (memberModel_ != nullptr && selected.memberOrdinal < memberModel_->members().size())
     {
         const ClassMemberSymbol& selectedMember = memberModel_->members()[selected.memberOrdinal];
+        recordViewOutputOrigins(call.selectedArgumentSyntaxes, resolvedArguments,
+            selected, selectedMember, scopeOrdinal, diagnostics,
+            !selectedMember.isStatic && !coreStringForwarding ? callee.receiverSyntax : nullptr);
         recordSelectedOutArguments(
             expression, callee, resolvedArguments, selected, selectedMember,
             coreStringForwarding, methodMemberOrdinal, scopeOrdinal);
@@ -5997,7 +6216,7 @@ void ProjectMethodBodyModel::finalizeSelectedCallResult(
         defaultValueReceiver = receiver != nullptr && receiver->kind == NamedTypeDeclarationKind::Struct;
     }
     if (result.valid && !call.staticCall && call.receiverSyntax != nullptr &&
-        typeKeyIsViewLike(result.typeKey) &&
+        (typeKeyIsViewLike(result.typeKey) || tupleTypeKeyContainsView(result.typeKey)) &&
         (defaultValueReceiver || call.receiverSyntax->kind() == ast::AstNodeKind::NewExpression ||
          call.receiverSyntax->kind() == ast::AstNodeKind::ObjectCreationExpression ||
          (call.receiverSyntax->kind() == ast::AstNodeKind::CallExpression &&
