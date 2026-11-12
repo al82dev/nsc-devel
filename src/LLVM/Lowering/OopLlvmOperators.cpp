@@ -195,6 +195,51 @@ LLVMValueRef OopLlvmImplementation::applyComparisonOperation(
         if (operandType == "builtin:decimal" &&
             (operation == lexer::TokenKind::EqualEqual || operation == lexer::TokenKind::BangEqual))
             return applyDecimalEquality(operation, left, right);
+        if (operandType == "builtin:decimal" &&
+            (operation == lexer::TokenKind::Less || operation == lexer::TokenKind::LessEqual ||
+             operation == lexer::TokenKind::Greater || operation == lexer::TokenKind::GreaterEqual))
+        {
+            LLVMTypeRef encoded = LLVMIntTypeInContext(context_, 128);
+            LLVMTypeRef countType = LLVMInt32TypeInContext(context_);
+            std::uint64_t coefficientWords[2] = {0xFFFFFFFFFFFFFFFFull, 0xFFFFFFFFull};
+            LLVMValueRef mask = LLVMConstIntOfArbitraryPrecision(encoded, 2, coefficientWords);
+            LLVMValueRef leftCoeff = LLVMBuildAnd(builder_, left, mask, "decimal.order.left.coeff");
+            LLVMValueRef rightCoeff = LLVMBuildAnd(builder_, right, mask, "decimal.order.right.coeff");
+            LLVMValueRef shift = LLVMConstInt(encoded, 96, 0);
+            LLVMValueRef scaleMask = LLVMConstInt(encoded, 63, 0);
+            LLVMValueRef leftScale = LLVMBuildTrunc(builder_, LLVMBuildAnd(builder_,
+                LLVMBuildLShr(builder_, left, shift, "decimal.order.left.scale.raw"), scaleMask,
+                "decimal.order.left.scale.mask"), countType, "decimal.order.left.scale");
+            LLVMValueRef rightScale = LLVMBuildTrunc(builder_, LLVMBuildAnd(builder_,
+                LLVMBuildLShr(builder_, right, shift, "decimal.order.right.scale.raw"), scaleMask,
+                "decimal.order.right.scale.mask"), countType, "decimal.order.right.scale");
+            LLVMValueRef scaleLess = LLVMBuildICmp(builder_, LLVMIntULT, leftScale, rightScale, "decimal.order.scale.lt");
+            LLVMValueRef maximum = LLVMBuildSelect(builder_, scaleLess, rightScale, leftScale, "decimal.order.scale.max");
+            LLVMValueRef alignedLeft = alignDecimalCoefficient(leftCoeff,
+                LLVMBuildSub(builder_, maximum, leftScale, "decimal.order.left.diff"));
+            LLVMValueRef alignedRight = alignDecimalCoefficient(rightCoeff,
+                LLVMBuildSub(builder_, maximum, rightScale, "decimal.order.right.diff"));
+            LLVMValueRef magnitudeLess = LLVMBuildICmp(builder_, LLVMIntULT, alignedLeft, alignedRight, "decimal.order.mag.lt");
+            LLVMValueRef magnitudeGreater = LLVMBuildICmp(builder_, LLVMIntUGT, alignedLeft, alignedRight, "decimal.order.mag.gt");
+            LLVMValueRef magnitudeEqual = LLVMBuildICmp(builder_, LLVMIntEQ, alignedLeft, alignedRight, "decimal.order.mag.eq");
+            LLVMValueRef zero = LLVMConstInt(encoded, 0, 0);
+            LLVMValueRef signShift = LLVMConstInt(encoded, 127, 0);
+            LLVMValueRef leftNegative = LLVMBuildAnd(builder_,
+                LLVMBuildICmp(builder_, LLVMIntNE, LLVMBuildLShr(builder_, left, signShift, "decimal.order.left.sign"), zero, "decimal.order.left.signed"),
+                LLVMBuildICmp(builder_, LLVMIntNE, leftCoeff, zero, "decimal.order.left.nonzero"), "decimal.order.left.negative");
+            LLVMValueRef rightNegative = LLVMBuildAnd(builder_,
+                LLVMBuildICmp(builder_, LLVMIntNE, LLVMBuildLShr(builder_, right, signShift, "decimal.order.right.sign"), zero, "decimal.order.right.signed"),
+                LLVMBuildICmp(builder_, LLVMIntNE, rightCoeff, zero, "decimal.order.right.nonzero"), "decimal.order.right.negative");
+            LLVMValueRef differentSigns = LLVMBuildXor(builder_, leftNegative, rightNegative, "decimal.order.signs.differ");
+            LLVMValueRef sameSignLess = LLVMBuildSelect(builder_, leftNegative, magnitudeGreater, magnitudeLess, "decimal.order.same.sign.lt");
+            LLVMValueRef less = LLVMBuildSelect(builder_, differentSigns, leftNegative, sameSignLess, "decimal.order.lt");
+            LLVMValueRef equal = LLVMBuildAnd(builder_, magnitudeEqual,
+                LLVMBuildNot(builder_, differentSigns, "decimal.order.signs.same"), "decimal.order.eq");
+            if (operation == lexer::TokenKind::Less) return less;
+            if (operation == lexer::TokenKind::LessEqual) return LLVMBuildOr(builder_, less, equal, "decimal.order.le");
+            if (operation == lexer::TokenKind::GreaterEqual) return LLVMBuildNot(builder_, less, "decimal.order.ge");
+            return LLVMBuildNot(builder_, LLVMBuildOr(builder_, less, equal, "decimal.order.le.for.gt"), "decimal.order.gt");
+        }
         if (floating)
         {
             return applyFloatingPointMode(LLVMBuildFCmp(
