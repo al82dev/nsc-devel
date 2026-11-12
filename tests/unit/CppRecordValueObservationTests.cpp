@@ -1,6 +1,8 @@
 #include "nativesharp/Interop/CppClangSessionFactory.h"
 #include "nativesharp/Interop/CppSemanticRecord.h"
 #include "nativesharp/Frontend/ProjectCompilation.h"
+#include "../../src/Interop/Internal/CppCRecordMetadataCodec.h"
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -72,6 +74,53 @@ int main(int argc, char** argv)
     }
     auto volatileTraits = observed->traits; volatileTraits.hasNonLiteralOrVolatileFieldsOrBases = true;
     if (cppRecordValueOperationsEligible(volatileTraits, observed->operations)) return 30;
+    CppCRecordSnapshot snapshot;
+    snapshot.identityKey = entry.identity->key(); snapshot.moduleName = "Observation";
+    snapshot.namespaceSegments = {"N"}; snapshot.name = "Plain";
+    snapshot.targetTriple = entry.targetTriple; snapshot.clangUsr = plain->clangUsr;
+    snapshot.complete = snapshot.valueLayoutUsable = true;
+    snapshot.sizeBits = plain->sizeBits; snapshot.alignmentBits = plain->alignmentBits;
+    snapshot.fields = plain->fields; snapshot.cppValueObservation = observed;
+    std::string codecError;
+    std::vector<std::uint8_t> encoded, reencoded;
+    std::vector<CppCRecordSnapshot> restored;
+    if (!metadata_detail::encodeCRecordCatalog(std::span(&snapshot, 1), encoded, codecError) ||
+        !metadata_detail::decodeCRecordCatalog(encoded, restored, codecError) || restored.size() != 1 ||
+        !restored[0].cppValueObservation || restored[0].clangUsr != snapshot.clangUsr ||
+        restored[0].cppValueObservation->traits != observed->traits ||
+        !cppRecordValueOperationsEligible(restored[0].cppValueObservation->traits,
+                                          restored[0].cppValueObservation->operations) ||
+        !metadata_detail::encodeCRecordCatalog(restored, reencoded, codecError) || reencoded != encoded) return 31;
+    std::vector<nativesharp::frontend::CppImportedTypeDeclaration> reconstructed;
+    if (!metadata_detail::reconstructCImportedTypes(restored, {}, 0, "Observation", entry.targetTriple,
+                                                    "producer.nsmeta", reconstructed, codecError) ||
+        reconstructed.size() != 1 || reconstructed[0].origin != nativesharp::frontend::CppImportedTypeOrigin::CppRecord ||
+        reconstructed[0].identity.key() != snapshot.identityKey || reconstructed[0].clangUsr != snapshot.clangUsr ||
+        !reconstructed[0].objectLayout || !reconstructed[0].cppValueTraits || !reconstructed[0].cppValueOperations ||
+        !cppRecordValueOperationsEligible(*reconstructed[0].cppValueTraits, *reconstructed[0].cppValueOperations)) return 36;
+    auto cOrigin = snapshot; cOrigin.cppValueObservation.reset();
+    auto comparison = metadata_detail::CRecordContractComparison::Matching;
+    if (!metadata_detail::compareCRecordContracts(snapshot, cOrigin, comparison, codecError) ||
+        comparison != metadata_detail::CRecordContractComparison::Different) return 39;
+    auto invalid = snapshot;
+    invalid.cppValueObservation->operations.clangUsr = "wrong-identity";
+    if (metadata_detail::encodeCRecordCatalog(std::span(&invalid, 1), reencoded, codecError)) return 32;
+    invalid = snapshot; invalid.cppValueObservation->operations.assignFromMutable.isTrivial.reset();
+    if (metadata_detail::encodeCRecordCatalog(std::span(&invalid, 1), reencoded, codecError)) return 33;
+    invalid = snapshot; invalid.cppValueObservation->traits.hasNonLiteralOrVolatileFieldsOrBases = true;
+    if (metadata_detail::encodeCRecordCatalog(std::span(&invalid, 1), reencoded, codecError)) return 34;
+    auto corrupted = encoded;
+    const auto& usr = *snapshot.clangUsr;
+    const auto usrPos = std::search(corrupted.begin(), corrupted.end(), usr.begin(), usr.end());
+    if (usrPos == corrupted.end() || static_cast<std::size_t>(corrupted.end() - usrPos) <= usr.size() + 7) return 37;
+    // After the first USR: volatile mode, kind, completeness, value layout,
+    // two replay flags, observation presence, then the first boolean trait.
+    *(usrPos + static_cast<std::ptrdiff_t>(usr.size() + 7)) = 2;
+    if (metadata_detail::decodeCRecordCatalog(corrupted, restored, codecError) || restored.size() != 1 ||
+        !restored[0].cppValueObservation) return 38;
+    encoded.pop_back();
+    if (metadata_detail::decodeCRecordCatalog(encoded, restored, codecError) || restored.size() != 1 ||
+        !restored[0].cppValueObservation) return 35;
     auto bad = entry;
     bad.targetTriple = "wrong-target";
     if (observeCppRecordValueForEntry(bad, groups)) return 7;

@@ -168,6 +168,9 @@ struct CppCRecordSnapshot
     // catalogue. This is a syntax observation, not a complete ABI proof.
     bool plainReplaySyntax = false;
     bool packedReplaySyntax = false;
+    // Present only for a C++ record with an observed, eligible value contract.
+    // Its identity must agree with clangUsr; dimensions and fields remain below.
+    std::optional<CppRecordValueObservation> cppValueObservation;
     std::optional<std::uint64_t> sizeBits;
     std::optional<std::uint64_t> alignmentBits;
     std::vector<CppRecordField> fields;

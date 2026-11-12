@@ -298,6 +298,13 @@ bool validateRecords(std::span<const CppCRecordSnapshot> records, std::string& e
             !identity.isValid() || identity.key() != record.identityKey ||
             (i && records[i - 1].identityKey >= record.identityKey))
         { error = "C record identities are empty, duplicated or not ordered"; return false; }
+        if (record.cppValueObservation &&
+            (!record.complete || !record.valueLayoutUsable || record.plainReplaySyntax || record.packedReplaySyntax ||
+             record.targetTriple != "x86_64-pc-windows-msvc" || !record.clangUsr || record.clangUsr->empty() ||
+             record.cppValueObservation->operations.clangUsr != record.clangUsr ||
+             !cppRecordValueOperationsEligible(record.cppValueObservation->traits,
+                                               record.cppValueObservation->operations)))
+        { error = "invalid C++ record value observation"; return false; }
         if (!record.complete)
         {
             if (record.valueLayoutUsable || record.plainReplaySyntax || record.packedReplaySyntax ||
@@ -321,6 +328,60 @@ bool validateRecords(std::span<const CppCRecordSnapshot> records, std::string& e
             { error = "C record field is outside its layout"; return false; }
         }
     }
+    return true;
+}
+}
+
+namespace
+{
+bool putCppValueObservation(ByteWriter& writer, const std::optional<CppRecordValueObservation>& value)
+{
+    writer.u8(value.has_value());
+    if (!value) return true;
+    const auto& traits = value->traits;
+    writer.u8(traits.triviallyCopyable); writer.u8(traits.standardLayout);
+    writer.u8(traits.trivialDefaultConstructor); writer.u8(traits.trivialDestructor);
+    writer.u8(traits.plainOldData); writer.u8(traits.hasNonLiteralOrVolatileFieldsOrBases);
+    const auto putSelection = [&](const CppSpecialMemberSelection& member) {
+        writer.u8(static_cast<std::uint8_t>(member.status));
+        writer.u8(member.access ? static_cast<std::uint8_t>(*member.access) + 1 : 0);
+        writer.u8(member.isDeleted ? (*member.isDeleted ? 2 : 1) : 0);
+        writer.u8(member.isTrivial ? (*member.isTrivial ? 2 : 1) : 0);
+    };
+    const auto& operations = value->operations;
+    putSelection(operations.copyFromConst); putSelection(operations.copyFromMutable);
+    putSelection(operations.destructor); putSelection(operations.defaultConstructor);
+    putSelection(operations.assignFromConst); putSelection(operations.assignFromMutable);
+    return putOptionalText(writer, operations.clangUsr);
+}
+
+bool getCppValueObservation(ByteReader& reader, std::optional<CppRecordValueObservation>& value)
+{
+    bool present = false;
+    if (!getFlag(reader, present)) return false;
+    if (!present) { value.reset(); return true; }
+    CppRecordValueObservation decoded;
+    auto& traits = decoded.traits;
+    if (!getFlag(reader, traits.triviallyCopyable) || !getFlag(reader, traits.standardLayout) ||
+        !getFlag(reader, traits.trivialDefaultConstructor) || !getFlag(reader, traits.trivialDestructor) ||
+        !getFlag(reader, traits.plainOldData) || !getFlag(reader, traits.hasNonLiteralOrVolatileFieldsOrBases)) return false;
+    const auto getSelection = [&](CppSpecialMemberSelection& member) {
+        std::uint8_t status = 0, access = 0, deleted = 0, trivial = 0;
+        if (!reader.u8(status) || status > static_cast<std::uint8_t>(CppSpecialMemberSelectionStatus::Ambiguous) ||
+            !reader.u8(access) || access > static_cast<std::uint8_t>(CppAccess::None) + 1 ||
+            !reader.u8(deleted) || deleted > 2 || !reader.u8(trivial) || trivial > 2) return false;
+        member.status = static_cast<CppSpecialMemberSelectionStatus>(status);
+        if (access) member.access = static_cast<CppAccess>(access - 1);
+        if (deleted) member.isDeleted = deleted == 2;
+        if (trivial) member.isTrivial = trivial == 2;
+        return true;
+    };
+    auto& operations = decoded.operations;
+    if (!getSelection(operations.copyFromConst) || !getSelection(operations.copyFromMutable) ||
+        !getSelection(operations.destructor) || !getSelection(operations.defaultConstructor) ||
+        !getSelection(operations.assignFromConst) || !getSelection(operations.assignFromMutable) ||
+        !getOptionalText(reader, operations.clangUsr)) return false;
+    value = std::move(decoded);
     return true;
 }
 }
@@ -1645,6 +1706,8 @@ bool encodeCRecordCatalog(std::span<const CppCRecordSnapshot> records,
         writer.u8(static_cast<std::uint8_t>(record.kind)); writer.u8(record.complete); writer.u8(record.valueLayoutUsable);
         writer.u8(record.plainReplaySyntax);
         writer.u8(record.packedReplaySyntax);
+        if (!putCppValueObservation(writer, record.cppValueObservation))
+        { error = "invalid C++ record observation identity"; return false; }
         putOptionalNumber(writer, record.sizeBits); putOptionalNumber(writer, record.alignmentBits);
         writer.u32(static_cast<std::uint32_t>(record.fields.size()));
         for (const auto& field : record.fields)
@@ -1858,6 +1921,7 @@ bool decodeCRecordCatalog(std::span<const std::uint8_t> bytes,
             !getFlag(reader, record.complete) || !getFlag(reader, record.valueLayoutUsable) ||
             !getFlag(reader, record.plainReplaySyntax) ||
             !getFlag(reader, record.packedReplaySyntax) ||
+            !getCppValueObservation(reader, record.cppValueObservation) ||
             !getOptionalNumber(reader, record.sizeBits) ||
             !getOptionalNumber(reader, record.alignmentBits) || !reader.u32(fields) ||
             fields > maxItems || fields > reader.remaining())
@@ -2343,8 +2407,14 @@ bool reconstructCImportedTypes(std::span<const CppCRecordSnapshot> records,
         compilation::TypeIdentity identity(record.moduleName, record.namespaceSegments, std::move(containers), record.name);
         frontend::CppImportedTypeDeclaration type{std::move(identity), frontend::NamedTypeDeclarationKind::Struct,
             frontend::NamedTypeAccessibility::Public, projectOrdinal, std::string(sourcePath)};
-        type.origin = record.kind == CppRecordKind::Union ? frontend::CppImportedTypeOrigin::CUnion :
-                                                          frontend::CppImportedTypeOrigin::CStruct;
+        type.origin = record.cppValueObservation ? frontend::CppImportedTypeOrigin::CppRecord :
+            record.kind == CppRecordKind::Union ? frontend::CppImportedTypeOrigin::CUnion :
+                                                 frontend::CppImportedTypeOrigin::CStruct;
+        if (record.cppValueObservation)
+        {
+            type.cppValueTraits = std::make_shared<const CppRecordValueTraits>(record.cppValueObservation->traits);
+            type.cppValueOperations = std::make_shared<const CppRecordValueOperations>(record.cppValueObservation->operations);
+        }
         type.targetTriple = record.targetTriple;
         type.clangUsr = record.clangUsr;
         type.isIncomplete = !record.complete;

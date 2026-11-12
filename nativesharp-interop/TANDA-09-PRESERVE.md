@@ -412,3 +412,18 @@ exigido (A:/temp/t09-test-value-rule.log). Tras la compilacion incremental
 pasaron otra vez las ocho comparaciones de la llamada indirecta y diez rechazos
 integrados (A:/temp/t09-rule-final-*.log). Este refactor todavia no serializa
 ni reconstruye records C++; la prueba precompilada sigue pendiente.
+
+El catalogo vigente puede ahora codificar las observaciones de valor de un
+record C++ elegible y reconstruir su origen, rasgos y operaciones. Exige USR
+coincidente, destino Win64, layout completo y la regla de valor compartida;
+rechaza datos incompletos, inconsistentes o corruptos. La comparacion de
+contratos distingue un record C++ de uno C con la misma forma. La prueba
+aislada comprueba ida y vuelta canonica, reconstruccion y rechazos
+(A:/temp/t09-test-value-rule.log). En regresion pasaron 16 consumidores
+precompilados de records C y 16 de funciones C++ escalares
+(A:/temp/t09-codec-current-*.log).
+
+Este paso todavia no captura el record C++ desde el productor real ni conecta
+todas las rutas de seleccion y campos del consumidor; no demuestra la muestra
+precompilada solicitada. No se ha introducido un segundo contrato ni un esquema
+de compatibilidad historica. T09-003 permanece abierto.
