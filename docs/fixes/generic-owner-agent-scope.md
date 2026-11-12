@@ -130,3 +130,14 @@
 - Archivo candidato `TemplateDependencyCollector.cpp`, pruebas y registro;
   no cambiar el formato de metadata, accesibilidad, interoperabilidad ni
   análisis de préstamos. Validar productores mínimo y amplio y consumidores.
+
+## Clausura con indexadores sobrecargados
+
+- Base `12c3975b9`: indexadores `int` y `long` de `GenericLookup<N>` devuelven
+  `Fixture.Own<N>`; con un `At` homónimo en otro tipo, publicar la biblioteca
+  falla en O0/O2. Registro `indexer-overload-closure-before/results.log` en
+  la carpeta de evidencia independiente.
+- Candidato: reconocer que todos los getters de aridad pertinente devuelven la
+  misma declaración genérica exacta; registrar sus métodos, sin seleccionar
+  indexador. Si un getter no se conoce o devuelve otro tipo, conservar la vía
+  anterior. No cambiar resolución semántica ni metadata física.

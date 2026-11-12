@@ -387,43 +387,60 @@ void ProjectGenericModel::collectCallDependency(
         root.syntax != nullptr && root.record.kind != GenericTemplateKind::Method &&
         ownerName == appendOwner(root.record.ownerName, root.record.name) && root.syntax->typeSyntaxes().empty())
     {
-        const ast::AstNode* indexer = nullptr;
-        bool multiple = false;
+        TemplateState* returnOwner = nullptr;
+        bool unknown = false;
+        bool complexGetter = false;
+        std::size_t indexerCount = 0;
         for (const ast::AstNode* member : root.syntax->children())
             if (member != nullptr && member->kind() == ast::AstNodeKind::IndexerDeclaration)
             {
-                if (indexer != nullptr) { multiple = true; break; }
-                indexer = member;
+                ++indexerCount;
+                bool getterMatches = false;
+                for (const ast::AstNode* accessor : member->children())
+                {
+                    if (accessor == nullptr || accessor->text() != "get_Item") continue;
+                    for (const ast::AstNode* parameter : accessor->children())
+                        if (parameter != nullptr && parameter->kind() == ast::AstNodeKind::ParameterDeclaration &&
+                            (parameter->isVariadic() || parameter->isReference() || parameter->first() != nullptr))
+                            complexGetter = true;
+                    if (valueParameterCount(accessor) == callee->first()->children().size()) getterMatches = true;
+                }
+                if (!getterMatches) continue;
+                if (member->typeSyntax() == nullptr || member->typeSyntax()->typeArguments().empty())
+                {
+                    unknown = true;
+                    break;
+                }
+                const TypeResolution candidate = resolveTypeTemplate(
+                    unit, namespaceName, member->typeSyntax()->baseName(),
+                    member->typeSyntax()->typeArguments().size(), scope);
+                if (candidate.kind != TypeResolutionKind::Unique || candidate.state == nullptr ||
+                    (returnOwner != nullptr && returnOwner != candidate.state))
+                {
+                    unknown = true;
+                    break;
+                }
+                returnOwner = candidate.state;
             }
-        bool getterMatches = false;
-        if (indexer != nullptr)
-            for (const ast::AstNode* accessor : indexer->children())
-                if (accessor != nullptr && accessor->text() == "get_Item" &&
-                    valueParameterCount(accessor) == callee->first()->children().size()) getterMatches = true;
-        if (!multiple && getterMatches && indexer->typeSyntax() != nullptr &&
-            !indexer->typeSyntax()->typeArguments().empty())
+        if (!unknown && !(indexerCount > 1U && complexGetter) && returnOwner != nullptr &&
+            returnOwner->syntax != nullptr &&
+            returnOwner->syntax->typeSyntaxes().empty())
         {
-            const TypeResolution owner = resolveTypeTemplate(unit, namespaceName, indexer->typeSyntax()->baseName(),
-                indexer->typeSyntax()->typeArguments().size(), scope);
-            if (owner.kind == TypeResolutionKind::Unique && owner.state != nullptr &&
-                owner.state->syntax != nullptr && owner.state->syntax->typeSyntaxes().empty())
-            {
-                const auto methods = methodsByName_.find(methodName);
-                bool found = false;
-                if (methods != methodsByName_.end())
-                    for (const TemplateState* candidate : methods->second)
-                        if (candidate != nullptr && candidate->parent == owner.state->syntax &&
-                            templateVisible(unit.projectOrdinal(), candidate->record) &&
-                            genericArityAccepts(candidate->record, call->typeSyntaxes().size()) &&
-                            valueParameterCount(candidate->syntax) == call->children().size())
-                        {
-                            root.record.dependencies.push_back(candidate->record.canonicalKey);
-                            found = true;
-                        }
-                if (found) return;
-                root.record.unresolvedDependencies.push_back("missing generic method '" + methodName + "<...>'");
-                return;
-            }
+            const auto methods = methodsByName_.find(methodName);
+            bool found = false;
+            if (methods != methodsByName_.end())
+                for (const TemplateState* candidate : methods->second)
+                    if (candidate != nullptr && candidate->parent == returnOwner->syntax &&
+                        templateVisible(unit.projectOrdinal(), candidate->record) &&
+                        genericArityAccepts(candidate->record, call->typeSyntaxes().size()) &&
+                        valueParameterCount(candidate->syntax) == call->children().size())
+                    {
+                        root.record.dependencies.push_back(candidate->record.canonicalKey);
+                        found = true;
+                    }
+            if (found) return;
+            root.record.unresolvedDependencies.push_back("missing generic method '" + methodName + "<...>'");
+            return;
         }
     }
     std::string requestedOwner = templateSourceSpelling(namespaceName, ownerName);

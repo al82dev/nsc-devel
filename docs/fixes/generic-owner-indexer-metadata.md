@@ -43,6 +43,9 @@ El ejecutable experimental combina tres objetos de esta rama con bibliotecas
 copiadas del build de campaña; `build.log` conserva comandos y hashes. Falta
 repetir las pruebas con el compilador integrado. No se afirma soporte general
 para indexadores sobrecargados o tipos de retorno con herencia.
+
+Un ajuste posterior cubre indexadores sobrecargados con la misma declaración
+genérica de retorno; véase `generic-owner-indexer-overload-metadata.md`.
 Verificación integrada, 2026-11-11: la compilación incremental y
 `nsc.generics.owner-method-indexer` pasaron, con CTest 1/1 sin omisión. El
 log `A:\nsc-fixes-evidencia\generic-indexer-metadata-20261111.log` conserva

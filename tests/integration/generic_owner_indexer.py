@@ -25,6 +25,7 @@ public class Lookup1 { public Own<1> this[int index] { get { Own<1> value; retur
 public class Lookup2 { public Own<2> this[int index] { get { Own<2> value; return value; } } }
 public struct StructLookup { public Own<1> this[int index] { get { Own<1> value; return value; } } }
 public class GenericLookup<const int N> { public Own<N> this[int index] { get { Own<N> value; return value; } }
+ public Own<N> this[long index] { get { Own<N> value; return value; } }
  public int ReadThis() { return this[0].At<20, 42, 7>(); } }
 public struct GenericStruct<const int N> { public Own<N> this[int index] { get { Own<N> value; return value; } } }
 public class PackedLookup<const int N, pack Ts> { public Own<N> this[int index] { get { Own<N> value; return value; } } }
@@ -268,6 +269,20 @@ class Program { public static int Main() { GenericLookup<1> items = new GenericL
                          '--no-error-log'], root)
             if not build.returncode or 'missing generic method' not in build.stdout + build.stderr:
                 failures.append((level, 'missing target matched unrelated method'))
+        (root / 'Producer.ns').write_text('''namespace Fixture {
+public struct Own<const int N> { public int At<pack const int Ns>() { return packat(Ns, N); } }
+public class GenericLookup<const int N> {
+ public Own<N> this[int index] { get { Own<N> value; return value; } }
+ public Wrong.Own<N> this[long index] { get { Wrong.Own<N> value; return value; } }
+ public int ReadThis() { return this[0].At<20, 42>(); } } }
+namespace Wrong { public struct Own<const int N> { public int At<pack const int Ns>() { return 7; } } }''',
+                                         encoding='utf-8')
+        for level in ('O0', 'O2'):
+            build = run([compiler, '--emit-project-oop-lib', producer, '-' + level,
+                         '-o', root / ('different-target-' + level + '.lib'), '--no-artifact-cache',
+                         '--no-error-log'], root)
+            if not build.returncode or 'missing generic method' not in build.stdout + build.stderr:
+                failures.append((level, 'different returns must remain unresolved'))
     if failures:
         print('FAIL', failures, file=sys.stderr, flush=True)
     return int(bool(failures))
