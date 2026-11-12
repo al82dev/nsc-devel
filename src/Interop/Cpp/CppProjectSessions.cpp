@@ -280,7 +280,7 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
                 !signature.returnType.recordIdentity || !signature.returnType.recordIdentity->clangUsr ||
                 !signature.parameterTypes[0].recordIdentity ||
                 signature.returnType.recordIdentity->clangUsr != signature.parameterTypes[0].recordIdentity->clangUsr ||
-                signature.returnType.sizeBits != 64 || signature.returnType.alignmentBits != 32 ||
+                !signature.returnType.sizeBits || *signature.returnType.sizeBits % 8 || signature.returnType.alignmentBits != 32 ||
                 signature.parameterTypes[0].sizeBits != signature.returnType.sizeBits ||
                 signature.parameterTypes[0].alignmentBits != signature.returnType.alignmentBits) return {};
             const auto identity = projectCppRecordTypeIdentity(signature.returnType,
@@ -290,17 +290,17 @@ std::shared_ptr<const abi_plan::Plan> planCppFunctionPointerForAlias(
             if (!ordinal || !lookup.cppTrivialValueEligible(*ordinal) || !imported || imported->fromPrecompiledCatalog ||
                 imported->projectOrdinal != alias.projectOrdinal || imported->origin != frontend::CppImportedTypeOrigin::CppRecord ||
                 imported->isIncomplete || !imported->deferredImportError.empty() || !imported->objectLayout ||
-                imported->objectLayout->sizeBytes != 8 || imported->objectLayout->alignmentBytes != 4 ||
+                imported->objectLayout->sizeBytes != *signature.returnType.sizeBits / 8 || imported->objectLayout->alignmentBytes != 4 ||
                 imported->clangUsr != signature.returnType.recordIdentity->clangUsr) return {};
             const auto records = cppSession->recordsSnapshot();
             if (!records || std::count_if(records->begin(), records->end(), [&](const auto& record) {
                     return record.complete && record.isCxx && record.clangUsr == imported->clangUsr &&
-                        record.sizeBits == 64 && record.alignmentBits == 32;
+                        record.sizeBits == signature.returnType.sizeBits && record.alignmentBits == 32;
                 }) != 1) return {};
             auto plan = cppSession->cppFunctionPointerAbiPlan(alias.declaration.qualifiedName,
                 *alias.declaration.clangUsr, pointer.canonicalSpelling);
-            if (!plan || !abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(
-                    *plan, "__regcall3____nsc_pointer_abi_probe", 8, 4)) return {};
+            if (!plan || !abi_plan::isRegCallWin64FloatRecordRoundTrip(
+                    *plan, "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4)) return {};
             return std::make_shared<const abi_plan::Plan>(std::move(*plan));
         }
     }
@@ -418,7 +418,8 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
             if (!mappedCpp || mappedCpp->nativeSharpTypeKey != resolvedTypeKey || !ordinal ||
                 !lookup.cppTrivialValueEligible(*ordinal) || !imported->fromPrecompiledCatalog || imported->isIncomplete ||
                 !imported->deferredImportError.empty() || !imported->objectLayout ||
-                imported->objectLayout->sizeBytes != 8 || imported->objectLayout->alignmentBytes != 4 ||
+                !signature.returnType.sizeBits || *signature.returnType.sizeBits % 8 ||
+                imported->objectLayout->sizeBytes != *signature.returnType.sizeBits / 8 || imported->objectLayout->alignmentBytes != 4 ||
                 !signature.returnType.recordIdentity ||
                 signature.returnType.recordIdentity->clangUsr != imported->clangUsr) return {};
             std::vector<std::uint8_t> aliasType;
@@ -449,12 +450,12 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
                 for (const auto& record : records)
                     if (identity && record.identityKey == identity->key() && record.moduleName == moduleName &&
                         record.clangUsr == imported->clangUsr && record.cppValueObservation && record.complete &&
-                        record.valueLayoutUsable && record.sizeBits == 64 && record.alignmentBits == 32)
+                        record.valueLayoutUsable && record.sizeBits == signature.returnType.sizeBits && record.alignmentBits == 32)
                         ++matchingRecords;
             }
             if (!selected || matchingRecords != 1 || !selected->declaration.abiPlan ||
-                !abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*selected->declaration.abiPlan,
-                    "__regcall3____nsc_pointer_abi_probe", 8, 4)) return {};
+                !abi_plan::isRegCallWin64FloatRecordRoundTrip(*selected->declaration.abiPlan,
+                    "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4)) return {};
             return selected->declaration.abiPlan;
         }
     }
@@ -654,7 +655,7 @@ std::shared_ptr<const abi_plan::Plan> planPrecompiledCppFunctionPointerForAlias(
     if (regCall && (!signature.returnType.sizeBits || !signature.returnType.alignmentBits ||
         !(abi_plan::isRegCallWin64RecordRoundTrip(*plan, expectedSymbol,
             *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8) ||
-          abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*plan, expectedSymbol,
+          abi_plan::isRegCallWin64FloatRecordRoundTrip(*plan, expectedSymbol,
             *signature.returnType.sizeBits / 8, *signature.returnType.alignmentBits / 8)))) return {};
     return std::make_shared<const abi_plan::Plan>(std::move(*plan));
 }

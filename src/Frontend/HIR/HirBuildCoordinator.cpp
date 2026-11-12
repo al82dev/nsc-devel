@@ -1849,7 +1849,7 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                 isStructValueType(function.returnTypeKey) &&
                 (interop::abi_plan::isRegCallWin64RecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName,
                     *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8) ||
-                 interop::abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName,
+                 interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName,
                     *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8));
             if (function.cppRegCall && (function.isVariadic ||
                 (!regCallRecordRoundTrip && ((!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&

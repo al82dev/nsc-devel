@@ -11,6 +11,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -60,16 +61,22 @@ int main(int argc, char** argv)
         typedef struct Floats { float x, y; } Floats;
         typedef struct Nested { Floats pair; float z; } Nested;
         typedef struct FloatArray { float values[3]; } FloatArray;
+        typedef struct Three { float x, y, z; } Three;
+        typedef struct Four { float x, y, z, w; } Four;
         typedef Small (__attribute__((regcall)) *SmallFn)(Small);
         typedef Large (__attribute__((regcall)) *LargeFn)(Large);
         typedef Floats (__attribute__((regcall)) *FloatsFn)(Floats);
         typedef Nested (__attribute__((regcall)) *NestedFn)(Nested);
         typedef FloatArray (__attribute__((regcall)) *FloatArrayFn)(FloatArray);
+        typedef Three (__attribute__((regcall)) *ThreeFn)(Three);
+        typedef Four (__attribute__((regcall)) *FourFn)(Four);
         Small __attribute__((regcall)) small(Small);
         Large __attribute__((regcall)) large(Large);
         Floats __attribute__((regcall)) floats(Floats);
         Nested __attribute__((regcall)) nested(Nested);
         FloatArray __attribute__((regcall)) float_array(FloatArray);
+        Three __attribute__((regcall)) three(Three);
+        Four __attribute__((regcall)) four(Four);
     )c"};
     CppClangSessionFactory factory;
     auto opened = factory.open(std::move(options), {});
@@ -109,10 +116,10 @@ int main(int argc, char** argv)
                 decoded->logicalParameters[0].passing != abi_plan::Passing::Expand ||
                 decoded->logicalParameters[0].expandedOffsets != std::vector<std::uint64_t>{0, 4} ||
                 abi_plan::decodeFunctionPointerPlanFromCache(encoded->substr(0, encoded->size() - 1))) return 24;
-            if (!abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*direct, direct->symbol, 8, 4) ||
-                !abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*decoded, decoded->symbol, 8, 4) ||
-                abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*direct, "incorrect", 8, 4) ||
-                abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*direct, direct->symbol, 8, 8)) return 28;
+            if (!abi_plan::isRegCallWin64FloatRecordRoundTrip(*direct, direct->symbol, 8, 4) ||
+                !abi_plan::isRegCallWin64FloatRecordRoundTrip(*decoded, decoded->symbol, 8, 4) ||
+                abi_plan::isRegCallWin64FloatRecordRoundTrip(*direct, "incorrect", 8, 4) ||
+                abi_plan::isRegCallWin64FloatRecordRoundTrip(*direct, direct->symbol, 8, 8)) return 28;
             auto wrongOffset = *direct; wrongOffset.logicalParameters[0].expandedOffsets[1] = 0;
             auto wrongType = *direct; wrongType.physicalParameters[1].type.kind = abi_plan::TypeKind::Integer;
             auto wrongReturn = *direct; wrongReturn.physicalReturn.elements[1].kind = abi_plan::TypeKind::Double;
@@ -120,7 +127,7 @@ int main(int argc, char** argv)
             auto wrongConvention = *direct; wrongConvention.callingConvention = 78;
             auto wrongIndex = *direct; wrongIndex.logicalParameters[0].firstPhysical = 1;
             for (const auto* wrong : {&wrongOffset, &wrongType, &wrongReturn, &wrongAttribute, &wrongConvention, &wrongIndex})
-                if (abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*wrong, wrong->symbol, 8, 4)) return 29;
+                if (abi_plan::isRegCallWin64FloatRecordRoundTrip(*wrong, wrong->symbol, 8, 4)) return 29;
             metadata_detail::CDependencyFunctionSnapshot snapshot;
             snapshot.moduleName = "PlanProbe"; snapshot.referenceIdentity = "reference:0";
             snapshot.linkSymbol = direct->symbol; snapshot.declaration = *declaration;
@@ -130,7 +137,7 @@ int main(int argc, char** argv)
             metadata_detail::CDependencyFunctionSnapshot restored;
             if (!metadata_detail::encodeCDependencyFunction(snapshot, metadata, error) ||
                 !metadata_detail::decodeCDependencyFunction(metadata, restored, error) || !restored.declaration.abiPlan ||
-                !abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*restored.declaration.abiPlan, direct->symbol, 8, 4))
+                !abi_plan::isRegCallWin64FloatRecordRoundTrip(*restored.declaration.abiPlan, direct->symbol, 8, 4))
             { std::cerr << "metadata de record flotante: " << error << '\n'; return 30; }
             auto truncated = metadata; truncated.pop_back();
             if (metadata_detail::decodeCDependencyFunction(truncated, restored, error)) return 32;
@@ -269,6 +276,21 @@ int main(int argc, char** argv)
             if (direct->physicalParameters[i].type.kind != abi_plan::TypeKind::Float ||
                 pointer->physicalParameters[i].type.kind != abi_plan::TypeKind::Float) return 27;
     }
+    for (const auto& [aliasName, functionName, bytes] : {std::tuple{"ThreeFn", "three", 12U},
+                                                         std::tuple{"FourFn", "four", 16U}})
+    {
+        std::string aliasType, functionType;
+        for (const auto& alias : *aliases)
+            if (alias.name == aliasName) aliasType = alias.underlyingType.canonicalSpelling;
+        for (const auto& function : *functions)
+            if (function.name == functionName) functionType = function.canonicalFunctionType;
+        const auto direct = session->cFunctionAbiPlan(functionName, functionType);
+        const auto pointer = session->cFunctionPointerAbiPlan(aliasName, aliasType);
+        if (!direct || !pointer || !abi_plan::isRegCallWin64FloatRecordRoundTrip(*direct, direct->symbol, bytes, 4) ||
+            !abi_plan::isRegCallWin64FloatRecordRoundTrip(*pointer, pointer->symbol, bytes, 4)) return 51;
+        auto wrong = *direct; wrong.logicalParameters[0].expandedOffsets.back() = 0;
+        if (abi_plan::isRegCallWin64FloatRecordRoundTrip(wrong, wrong.symbol, bytes, 4)) return 52;
+    }
     CppSessionOptions cppOptions;
     cppOptions.language = CppLanguageMode::Cpp;
     cppOptions.languageStandard = "c++20";
@@ -307,7 +329,7 @@ int main(int argc, char** argv)
         if (function.returnType.kind != CppTypeKind::Record)
         { if (function.abiPlan) return 38; ++scalarCount; continue; }
         if (!function.externalSymbol || !function.abiPlan ||
-            !abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*function.abiPlan, *function.externalSymbol, 8, 4)) return 39;
+            !abi_plan::isRegCallWin64FloatRecordRoundTrip(*function.abiPlan, *function.externalSymbol, 8, 4)) return 39;
         (function.qualifiedName == "A::transform" ? firstSymbol : secondSymbol) = *function.externalSymbol;
     }
     if (scalarCount != 1 || !sawIncomplete || firstSymbol.empty() || secondSymbol.empty() || firstSymbol == secondSymbol) return 40;
@@ -320,7 +342,7 @@ int main(int argc, char** argv)
         if (!alias.clangUsr || alias.clangUsr->empty()) return 43;
         const auto plan = cppSession->cppFunctionPointerAbiPlan(
             alias.qualifiedName, *alias.clangUsr, alias.underlyingType.canonicalSpelling);
-        if (!plan || !abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(
+        if (!plan || !abi_plan::isRegCallWin64FloatRecordRoundTrip(
                 *plan, "__regcall3____nsc_pointer_abi_probe", 8, 4) ||
             cppSession->cppFunctionPointerAbiPlan(alias.qualifiedName, "wrong-usr", alias.underlyingType.canonicalSpelling) ||
             cppSession->cppFunctionPointerAbiPlan("missing::Callback", *alias.clangUsr, alias.underlyingType.canonicalSpelling) ||
@@ -333,7 +355,7 @@ int main(int argc, char** argv)
         metadata_detail::CDependencyAliasSnapshot restored;
         if (!metadata_detail::encodeCDependencyAlias(saved, encoded, error) ||
             !metadata_detail::decodeCDependencyAlias(encoded, restored, error) || !restored.declaration.abiPlan ||
-            !abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*restored.declaration.abiPlan,
+            !abi_plan::isRegCallWin64FloatRecordRoundTrip(*restored.declaration.abiPlan,
                 "__regcall3____nsc_pointer_abi_probe", 8, 4)) return 48;
         encoded.pop_back();
         if (metadata_detail::decodeCDependencyAlias(encoded, restored, error)) return 49;

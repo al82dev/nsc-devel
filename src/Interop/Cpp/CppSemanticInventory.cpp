@@ -1560,8 +1560,10 @@ CppSemanticTypeAliasInventoryResult collectCppSemanticTypeAliases(
                 {
                     auto plan = session->cppFunctionPointerAbiPlan(declaration.qualifiedName,
                         *declaration.clangUsr, pointer.canonicalSpelling);
-                    if (plan && abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(
-                            *plan, "__regcall3____nsc_pointer_abi_probe", 8, 4))
+                    const auto& type = pointer.element->function->returnType;
+                    if (plan && type.sizeBits && *type.sizeBits % 8 == 0 && type.alignmentBits &&
+                        *type.alignmentBits % 8 == 0 && abi_plan::isRegCallWin64FloatRecordRoundTrip(
+                            *plan, "__regcall3____nsc_pointer_abi_probe", *type.sizeBits / 8, *type.alignmentBits / 8))
                         declaration.abiPlan = std::make_shared<const abi_plan::Plan>(std::move(*plan));
                 }
                 result.push_back({group.projectFile, index, *owner, target, std::move(declaration)});

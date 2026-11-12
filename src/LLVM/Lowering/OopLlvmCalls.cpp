@@ -982,7 +982,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
         }
         const auto* regCallRecordLayout = findStructLayout(mirModel_, node->typeKey);
         if (imported && imported->cppRegCall && imported->cppAbiPlan && regCallRecordLayout &&
-            interop::abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName,
+            interop::abi_plan::isRegCallWin64FloatRecordRoundTrip(*imported->cppAbiPlan, imported->cAbiName,
                 regCallRecordLayout->size, regCallRecordLayout->alignment))
         {
             if (node->children.size() != 1 || node->referenceResult || node->returnsAssignedValue ||
@@ -997,14 +997,17 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
             LLVMValueRef store = LLVMBuildStore(builder_, value, slot);
             LLVMSetAlignment(store, 4);
             LLVMTypeRef partType = LLVMFloatTypeInContext(context_);
-            LLVMValueRef arguments[] = {
-                LLVMBuildLoad2(builder_, partType, slot, "regcall.record.first"),
-                LLVMBuildLoad2(builder_, partType, byteOffset(slot, 4, "regcall.record.second.addr"), "regcall.record.second")};
-            LLVMSetAlignment(arguments[0], 4);
-            LLVMSetAlignment(arguments[1], 4);
+            std::vector<LLVMValueRef> arguments;
+            for (const auto offset : imported->cppAbiPlan->logicalParameters[0].expandedOffsets)
+            {
+                LLVMValueRef address = offset ? byteOffset(slot, offset, "regcall.record.part.addr") : slot;
+                LLVMValueRef part = LLVMBuildLoad2(builder_, partType, address, "regcall.record.part");
+                LLVMSetAlignment(part, 4);
+                arguments.push_back(part);
+            }
             releaseTransferredArguments(node);
             LLVMValueRef call = buildPotentiallyThrowingCall(found->second.functionType, found->second.function,
-                arguments, 2, "regcall.record.call", error);
+                arguments.data(), static_cast<unsigned>(arguments.size()), "regcall.record.call", error);
             if (!call) return nullptr;
             LLVMSetInstructionCallConv(call, LLVMX86RegCallCallConv);
             if (!applyMustTail(node, call, error)) return nullptr;

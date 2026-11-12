@@ -1,0 +1,11 @@
+int Main() {
+    T09HfaCpp.Three a; a.x=(float)10; a.y=(float)20; a.z=(float)30;
+    T09HfaCpp.Four b; b.x=(float)10; b.y=(float)20; b.z=(float)30; b.w=(float)40;
+    T09HfaCpp.ThreeFn fa=T09HfaCpp.fetchThree(); T09HfaCpp.FourFn fb=T09HfaCpp.fetchFour();
+    T09HfaCpp.Three c=T09HfaCpp.three(a); T09HfaCpp.Three d=fa(a);
+    T09HfaCpp.Four e=T09HfaCpp.four(b); T09HfaCpp.Four f=fb(b);
+    return a.x==(float)10 && a.z==(float)30 && b.x==(float)10 && b.w==(float)40 &&
+           c.x==(float)11 && c.y==(float)22 && c.z==(float)33 && d.x==(float)11 && d.y==(float)22 && d.z==(float)33 &&
+           e.x==(float)11 && e.y==(float)22 && e.z==(float)33 && e.w==(float)44 &&
+           f.x==(float)11 && f.y==(float)22 && f.z==(float)33 && f.w==(float)44 ? 0 : 1;
+}

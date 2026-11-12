@@ -5,29 +5,35 @@
 namespace nativesharp::interop::abi_plan
 {
 // This check describes a physical plan; callers must separately verify record identity.
-inline bool isRegCallWin64TwoFloatRecordRoundTrip(const Plan& plan, std::string_view symbol,
-                                                  std::uint64_t sizeBytes, std::uint64_t alignment) noexcept
+inline bool isRegCallWin64FloatRecordRoundTrip(const Plan& plan, std::string_view symbol,
+                                               std::uint64_t sizeBytes, std::uint64_t alignment) noexcept
 {
     const auto scalar = [](const Type& type) {
         return type.kind == TypeKind::Float && type.widthOrCount == 0 && !type.packed && type.elements.empty();
     };
-    const auto pair = [&](const Type& type) {
-        return type.kind == TypeKind::Structure && !type.packed && type.widthOrCount == 0 &&
-            type.elements.size() == 2 && scalar(type.elements[0]) && scalar(type.elements[1]);
+    if (sizeBytes < 8 || sizeBytes > 16 || sizeBytes % 4 || alignment != 4) return false;
+    const auto count = sizeBytes / 4;
+    const auto aggregate = [&](const Type& type) {
+        if (type.kind != TypeKind::Structure || type.packed || type.widthOrCount != 0 ||
+            type.elements.size() != count) return false;
+        for (const auto& element : type.elements) if (!scalar(element)) return false;
+        return true;
     };
     if (symbol.empty() || plan.symbol != symbol || plan.callingConvention != 92 || plan.variadic ||
         !plan.targetTriple.starts_with("x86_64-pc-windows-msvc") || !plan.dataLayout.starts_with("e-") ||
-        sizeBytes != 8 || alignment != 4 || plan.returnSignExtend || plan.returnZeroExtend ||
-        !pair(plan.physicalReturn) || plan.logicalParameters.size() != 1 || plan.physicalParameters.size() != 2)
+        plan.returnSignExtend || plan.returnZeroExtend ||
+        !aggregate(plan.physicalReturn) || plan.logicalParameters.size() != 1 || plan.physicalParameters.size() != count)
         return false;
     const auto& result = plan.logicalReturn;
     const auto& argument = plan.logicalParameters[0];
-    if (result.passing != Passing::Direct || !result.coercion || !pair(*result.coercion) || result.offset ||
+    if (result.passing != Passing::Direct || !result.coercion || !aggregate(*result.coercion) || result.offset ||
         result.byValue || result.signExtend || result.zeroExtend || !result.expandedOffsets.empty() ||
         argument.passing != Passing::Expand || argument.coercion || argument.offset || argument.byValue ||
-        argument.signExtend || argument.zeroExtend || argument.firstPhysical != 0 || argument.physicalCount != 2 ||
-        argument.expandedOffsets.size() != 2 || argument.expandedOffsets[0] != 0 || argument.expandedOffsets[1] != 4)
+        argument.signExtend || argument.zeroExtend || argument.firstPhysical != 0 || argument.physicalCount != count ||
+        argument.expandedOffsets.size() != count)
         return false;
+    for (std::size_t i = 0; i < count; ++i)
+        if (argument.expandedOffsets[i] != i * 4) return false;
     for (const auto& part : plan.physicalParameters)
         if (!scalar(part.type) || part.pointee || part.alignment || part.structureReturn || part.byValue ||
             part.signExtend || part.zeroExtend || part.inRegister || part.noAlias) return false;

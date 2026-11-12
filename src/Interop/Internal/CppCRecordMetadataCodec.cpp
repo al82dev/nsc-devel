@@ -750,7 +750,7 @@ bool encodeCDependencyFunction(const CDependencyFunctionSnapshot& value,
             f.parameters[0].type.recordIdentity->clangUsr != f.returnType.recordIdentity->clangUsr ||
             !(abi_plan::isRegCallWin64RecordRoundTrip(*f.abiPlan, value.linkSymbol,
                 *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8) ||
-              abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*f.abiPlan, value.linkSymbol,
+              abi_plan::isRegCallWin64FloatRecordRoundTrip(*f.abiPlan, value.linkSymbol,
                 *f.returnType.sizeBits / 8, *f.returnType.alignmentBits / 8)) ||
             !(regCallPlan = abi_plan::encodeFunctionPointerPlanForCache(*f.abiPlan)))
         { error = "invalid C dependency regcall record ABI"; return false; }
@@ -1344,10 +1344,10 @@ bool encodeCDependencyAlias(const CDependencyAliasSnapshot& value,
             !signature.returnType.recordIdentity->clangUsr || !signature.parameterTypes[0].recordIdentity ||
             signature.returnType.recordIdentity->clangUsr != signature.parameterTypes[0].recordIdentity->clangUsr ||
             signature.returnType.canonicalSpelling != signature.parameterTypes[0].canonicalSpelling ||
-            signature.returnType.sizeBits != 64 || signature.returnType.alignmentBits != 32 ||
-            signature.parameterTypes[0].sizeBits != 64 || signature.parameterTypes[0].alignmentBits != 32 ||
-            !abi_plan::isRegCallWin64TwoFloatRecordRoundTrip(*alias.abiPlan,
-                "__regcall3____nsc_pointer_abi_probe", 8, 4) ||
+            !signature.returnType.sizeBits || *signature.returnType.sizeBits % 8 || signature.returnType.alignmentBits != 32 ||
+            signature.parameterTypes[0].sizeBits != signature.returnType.sizeBits || signature.parameterTypes[0].alignmentBits != 32 ||
+            !abi_plan::isRegCallWin64FloatRecordRoundTrip(*alias.abiPlan,
+                "__regcall3____nsc_pointer_abi_probe", *signature.returnType.sizeBits / 8, 4) ||
             !(pointerPlan = abi_plan::encodeFunctionPointerPlanForCache(*alias.abiPlan)))
         { error = "invalid C++ dependency alias ABI plan"; return false; }
     }

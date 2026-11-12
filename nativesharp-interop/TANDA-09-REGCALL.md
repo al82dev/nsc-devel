@@ -536,3 +536,33 @@ A:/temp/nsc-t09-regcall-float-puntero-4rezdd8g,
 A:/temp/nsc-t09-cpp-hfa-ptr-precompilado-0p86sfcs y
 A:/temp/nsc-t09-sysv-indirecta-0h7oivtv). Esta evidencia cubre las firmas
 comprobadas; otras firmas y T09-003 siguen pendientes.
+
+## Records planos de tres y cuatro flotantes
+
+Clang 23.1.0 clasifica los registros planos de tres y cuatro `float` con una
+pieza por argumento y retorno directo en estructura, tanto en C como en C++
+(A:/temp/t09-regcall-hfa34-oracle-c.ll y A:/temp/t09-regcall-hfa34-oracle-cpp.ll).
+La validacion coteja piezas, offsets, retorno y atributos; la emision usa esas
+piezas y conserva la identidad y el plan desde NSMeta para aliases C++.
+
+Pasaron ocho comparaciones C y ocho C++ en estatica y DLL O0-O3, con llamadas
+directas e indirectas, valores y copia
+(A:/temp/nsc-t09-regcall-hfa34-ll5bwio_ y A:/temp/nsc-t09-cpp-hfa34-bd3dz0bw).
+Pasaron 16 consumidores C precompilados y 32 C++, incluidos los que usan solo
+punteros, con y sin encabezado (A:/temp/nsc-t09-hfa34-precompilado-nxrqnywt,
+A:/temp/nsc-t09-cpp-hfa34-precompilado-pagom9ya y
+A:/temp/nsc-t09-cpp-hfa34-precompilado-qevhioik).
+
+Las pruebas negativas anteriores se conservan con un parametro adicional no
+admitido y mantienen los controles directa, indirecta y de conversion
+(A:/temp/nsc-t09-regcall-hfa-rechazo-_m05al4f,
+A:/temp/nsc-t09-regcall-conversiones-p9ih0uum y
+A:/temp/nsc-t09-regcall-negativo-oygnfgke). Pasaron tambien el record previo
+de dos flotantes, los planes, cuatro sondas ABI, transporte, identidad,
+metadata, `double` precompilado y record C++ precompilado
+(A:/temp/nsc-t09-regcall-hfa-uv9qtzgh, A:/temp/t09-regcall-plan-test.log,
+A:/temp/t09-test-varptr.log, A:/temp/t09-transport-directed/,
+A:/temp/t09-cpp-meta-check.log, A:/temp/nsc-t09-double-precompilado-17gfp06h y
+A:/temp/nsc-t09-cpp-hfa-ptr-precompilado-iwypj9sk). Las formas anidadas,
+atributos, registros de otras clases y firmas mixtas no se acreditan por esta
+muestra. T09-003 sigue abierto.

@@ -1,0 +1,1 @@
+int Main() { return T09.Hfa34CppBridge.Run<int>(0); }
