@@ -58,7 +58,7 @@ struct MethodNameBinding final
     bool baseReceiver = false;
     // Capture is provisional until the callable shard validates it at merge.
     MethodNameBindingContext analysisContext = MethodNameBindingContext::Unknown;
-    std::optional<std::size_t> recordedLambdaOrdinal;
+    std::optional<std::size_t> recordedLambdaOrdinal = std::nullopt;
     bool analysisContextRecorded = false;
 };
 }

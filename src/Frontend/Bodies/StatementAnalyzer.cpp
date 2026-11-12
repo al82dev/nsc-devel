@@ -1,4 +1,5 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
+#include "Support/FnOnceCreationCandidateStorage.h"
 #include "MethodBodyInternals.h"
 #include "Internal/BlockFrame.h"
 #include "Internal/IfStage.h"
@@ -5484,6 +5485,16 @@ void ProjectMethodBodyModel::finishVariableAnalysis(
     finalizeVariableLocal(
         pendingLocalBorrow, variable, methodMemberOrdinal, scopeOrdinal, localOrdinal,
         isStaticLocal, isRaii, isScope, isMoveOnly);
+    // Analysis-site observation only. Probe, failure and runtime execution are
+    // deliberately not inferred; every published candidate remains Unknown.
+    if (pendingCallableTrait == language::CallableTrait::FnOnce && variable->first() &&
+        variable->first()->kind() == ast::AstNodeKind::LambdaExpression)
+    {
+        constexpr std::size_t candidateLimit = 4096;
+        detail::appendFnOnceCreationCandidate(fnOnceCreationCandidates_, fnOnceCreationCandidateLimitReached_,
+            {variable, variable->first(), methodMemberOrdinal, scopeOrdinal, localOrdinal,
+                currentLambdaOrdinal_, FnOnceCandidateStatus::Unknown}, candidateLimit);
+    }
 }
 
 void ProjectMethodBodyModel::analyzeVariable(

@@ -4,6 +4,7 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 #include "Bodies/Support/NameBindingContextConflicts.h"
 #include "Bodies/Support/NameBindingCrossShardConflicts.h"
+#include "Bodies/Support/FnOnceCreationCandidateStorage.h"
 
 #include <algorithm>
 #include <limits>
@@ -234,6 +235,7 @@ void ProjectCallableResultMerger::appendShardCollections(
     NSC_APPEND(scopes_);
     NSC_APPEND(locals_);
     NSC_APPEND(nameBindings_);
+    NSC_APPEND(fnOnceCreationCandidates_);
     NSC_APPEND(shadowingEvents_);
     NSC_APPEND(expressionTypes_);
     NSC_APPEND(constructionSites_);
@@ -273,6 +275,8 @@ void ProjectCallableResultMerger::mergeShardState(
     ProjectMethodBodyModel& source,
     ProjectCallableAnalysisResult& result)
 {
+    detail::mergeFnOnceCandidateLimit(destination.fnOnceCreationCandidateLimitReached_,
+        source.fnOnceCreationCandidateLimitReached_);
     for (auto& [syntax, value] : source.staticInterpolationValues_)
         destination.staticInterpolationValues_.insert_or_assign(syntax, std::move(value));
     destination.assignedOutParameters_.insert(

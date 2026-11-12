@@ -19,6 +19,7 @@
 #include "nativesharp/Frontend/MethodLocalSymbol.h"
 #include "nativesharp/Frontend/MethodNameBindingKind.h"
 #include "nativesharp/Frontend/MethodNameBinding.h"
+#include "nativesharp/Frontend/FnOnceCreationCandidate.h"
 #include "nativesharp/Frontend/MethodShadowingKind.h"
 #include "nativesharp/Frontend/MethodShadowingEvent.h"
 #include "nativesharp/Frontend/OwnershipArgumentFit.h"
@@ -320,6 +321,8 @@ public:
     std::span<const MethodLocalSymbol> locals() const noexcept;
     const std::vector<const ast::AstNode*>& awaitExpressions() const noexcept;
     std::span<const MethodNameBinding> nameBindings() const noexcept;
+    std::span<const FnOnceCreationCandidate> fnOnceCreationCandidates() const noexcept;
+    bool fnOnceCreationCandidateLimitReached() const noexcept;
     const MethodNameBinding* nameBinding(
         const ast::AstNode* syntax,
         std::size_t callableOrdinal) const noexcept;
@@ -5473,6 +5476,8 @@ private:
     // el lowering de state machine (HIR/MIR) y buildAsyncFunctionPlan.
     std::vector<const ast::AstNode*> awaitExpressions_;
     std::vector<MethodNameBinding> nameBindings_;
+    std::vector<FnOnceCreationCandidate> fnOnceCreationCandidates_;
+    bool fnOnceCreationCandidateLimitReached_ = false;
     ProjectCallableBindingIndex nameBindingIndex_;
     std::vector<MethodShadowingEvent> shadowingEvents_;
     std::vector<MethodExpressionTypeBinding> expressionTypes_;

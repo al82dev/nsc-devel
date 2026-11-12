@@ -77,6 +77,16 @@ std::span<const MethodNameBinding> ProjectMethodBodyModel::nameBindings() const 
     return nameBindings_;
 }
 
+std::span<const FnOnceCreationCandidate> ProjectMethodBodyModel::fnOnceCreationCandidates() const noexcept
+{
+    return fnOnceCreationCandidates_;
+}
+
+bool ProjectMethodBodyModel::fnOnceCreationCandidateLimitReached() const noexcept
+{
+    return fnOnceCreationCandidateLimitReached_;
+}
+
 const MethodNameBinding* ProjectMethodBodyModel::nameBinding(
     const ast::AstNode* syntax,
     std::size_t callableOrdinal) const noexcept

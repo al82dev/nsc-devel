@@ -2,12 +2,14 @@
 #include "nativesharp/Frontend/ProjectMethodBodyModel.h"
 #include "../../src/Frontend/Bodies/Support/NameBindingContextConflicts.h"
 #include "../../src/Frontend/Bodies/Support/NameBindingCrossShardConflicts.h"
+#include "../../src/Frontend/Bodies/Support/FnOnceCreationCandidateStorage.h"
 
 #include "../support/TestContext.h"
 
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <string>
 #include <string_view>
 #include <unordered_set>
@@ -42,6 +44,22 @@ int main()
                          !origins.front().observedLocalCount.has_value(),
             "too many uncertainty observations collapse to unlocated Unknown");
     }
+    std::vector<nativesharp::frontend::FnOnceCreationCandidate> boundedCandidates;
+    bool reached = false;
+    for (std::size_t i = 0; i < 3; ++i)
+    {
+        nativesharp::frontend::FnOnceCreationCandidate candidate;
+        candidate.localOrdinal = i;
+        nativesharp::frontend::detail::appendFnOnceCreationCandidate(boundedCandidates, reached, candidate, 2);
+    }
+    tests.expect(reached && boundedCandidates.size() == 2 && boundedCandidates[0].localOrdinal == 0 &&
+        boundedCandidates[1].localOrdinal == 1, "candidate cap truncates and preserves earlier entries");
+    bool mergedLimit = false;
+    nativesharp::frontend::detail::mergeFnOnceCandidateLimit(mergedLimit, false);
+    tests.expect(!mergedLimit, "unexhausted shard preserves false limit state");
+    nativesharp::frontend::detail::mergeFnOnceCandidateLimit(mergedLimit, reached);
+    nativesharp::frontend::detail::mergeFnOnceCandidateLimit(mergedLimit, false);
+    tests.expect(mergedLimit, "candidate limit is sticky across merged shards");
     const std::filesystem::path root =
         std::filesystem::temp_directory_path() / "nativesharp_callable_result_merger_ordinals";
     std::error_code cleanupError;
@@ -364,7 +382,8 @@ int main()
         "public static int Second() { raii Box first = new Box(21); Read outer = [move first] () => { "
         "raii Box second = new Box(21); Read inner = [move second] () => second.Value; "
         "int value = inner(); delete inner; return value; }; "
-        "raii Box third = new Box(1); Read sibling = [move third] () => third.Value; int answer = outer(); return answer; } }\n");
+        "raii Box third = new Box(1); Read sibling = [move third] () => third.Value; int answer = outer(); return answer; } "
+        "public static int Probe() { return 7; raii Box dead = new Box(1); Read ghost = [move dead] () => dead.Value; } }\n");
     for (const std::size_t jobs : {1U, 4U})
     {
         ProjectCompilation lambdaCompilation;
@@ -401,6 +420,35 @@ int main()
         }
         tests.expect(top > 0 && topOuter >= 2 && outer >= 2 && nested >= 2 && sibling >= 2,
             "canonical bindings retain top-level, outer, nested and sibling lambda contexts in both callables");
+        std::size_t candidates = 0;
+        std::size_t nestedCandidates = 0;
+        std::size_t probeCandidates = 0;
+        std::set<std::size_t> innerOwners;
+        std::set<std::size_t> siblingOwners;
+        for (const auto& candidate : body->fnOnceCreationCandidates())
+        {
+            tests.expect(candidate.status == nativesharp::frontend::FnOnceCandidateStatus::Unknown,
+                "creation site is always Unknown, including probes");
+            const bool correct = candidate.localOrdinal < body->locals().size() &&
+                candidate.scopeOrdinal < body->scopes().size() && candidate.declarationSyntax &&
+                candidate.initializerSyntax == candidate.declarationSyntax->first() &&
+                body->locals()[candidate.localOrdinal].syntax == candidate.declarationSyntax &&
+                body->locals()[candidate.localOrdinal].scopeOrdinal == candidate.scopeOrdinal &&
+                body->locals()[candidate.localOrdinal].methodMemberOrdinal == candidate.methodMemberOrdinal &&
+                body->locals()[candidate.localOrdinal].lambdaOrdinal == candidate.parentLambdaOrdinal;
+            tests.expect(correct, "candidate local, scope and parent-lambda ordinals survive shard merge");
+            if (candidate.parentLambdaOrdinal) ++nestedCandidates;
+            if (candidate.declarationSyntax && candidate.declarationSyntax->text() == "ghost") ++probeCandidates;
+            if (candidate.declarationSyntax && candidate.declarationSyntax->text() == "inner")
+                innerOwners.insert(candidate.methodMemberOrdinal);
+            if (candidate.declarationSyntax && candidate.declarationSyntax->text() == "sibling")
+                siblingOwners.insert(candidate.methodMemberOrdinal);
+            ++candidates;
+        }
+        tests.expect(candidates == 5 && nestedCandidates == 2 && probeCandidates == 1 &&
+            innerOwners.size() == 2 && innerOwners == siblingOwners &&
+            !body->fnOnceCreationCandidateLimitReached(),
+            "normal, nested and unreachable-probe sites remain Unknown under bounded collection");
     }
     writeFile(root / "Main.ns", "class ErrorMerge { public static int Broken() { "
         "int known = 1; int used = known; return missing; } }\n");
