@@ -86,3 +86,17 @@ se repitieron cinco pruebas dirigidas; la procedencia y los objetos reutilizados
 se detallan en `procedencia-herramientas-y-evidencia.md`. Continuar con los
 casos abiertos y únicamente las pruebas dirigidas necesarias; conservar los
 originales y mantener fuera la interoperabilidad C/C++.
+
+Actualización posterior: `a001a6ca7` rechaza de forma conservadora llamadas
+directas de instancia cuyo receptor compartido alcanza un cuerpo binario no
+verificable. La excepción de constructor de base requiere identidad MIR y
+certificado; 26 emisiones dirigidas de instancia, 24 de argumentos y 16 de
+despacho fuente pasaron en O0, sin ejecutar consumidores. El control con base
+certificada emite, pero no se instrumentó la rama interna. Los detalles y
+límites están en `shared-receiver-binary-instance.md`. El commit `38e559c30`
+registra la regresión de despacho; solo dos variantes tienen MIR individual.
+La observación dirigida de doble liberación ASan quedó en `32b157535` y no
+demostró un defecto nuevo. La segunda revisión independiente del candidato
+de instancia fue interrumpida por el filtro automático de la plataforma; una
+revisión independiente anterior sí se completó. No se repitió la acción
+interrumpida ni se presenta como realizada.
