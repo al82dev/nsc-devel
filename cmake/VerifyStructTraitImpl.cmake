@@ -18,7 +18,8 @@ endforeach()
 execute_process(COMMAND "${NSC_EXECUTABLE}" --dump-project-oop-mir "${FIXTURE_DIR}/Static.nsproj"
     RESULT_VARIABLE mir_result OUTPUT_VARIABLE mir ERROR_VARIABLE mir_error)
 if(NOT mir_result EQUAL 0 OR NOT mir MATCHES "direct-instance-call.*Number__Value" OR
-   mir MATCHES "allocate-and-construct" OR mir MATCHES "interface-call")
+   mir MATCHES "allocate-and-construct" OR mir MATCHES "interface-instance-call" OR
+   mir MATCHES "virtual-instance-call")
     message(FATAL_ERROR "Struct implementation did not use direct non-boxing dispatch: ${mir_error}\n${mir}")
 endif()
 execute_process(COMMAND "${NSC_EXECUTABLE}" --check-project-method-bodies "${FIXTURE_DIR}/Dynamic.nsproj"

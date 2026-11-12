@@ -28,9 +28,9 @@ delegado genérico y lambda global. Operación: compilar y ejecutar en O0/O2 y,
 cuando existe un test binario aplicable, comprobar productor y consumidor.
 Invariantes: no cambiar semántica, parser, HIR, metadata, préstamos ni archivos
 del equipo de campos. Archivos protegidos: `CMakeLists.txt`, frontend compartido,
-analizadores de préstamos y productores/consumidores de metadata. Única edición
-autorizada: el runner localizado
-`cmake/VerifyGenericDelegateReturn.cmake`, porque su cobertura era solo O0.
+analizadores de préstamos y productores/consumidores de metadata. Las únicas
+ediciones de implementación son runners localizados de estos casos. No se modifica ninguna
+ruta semántica ni de metadata.
 
 ## Caso 43: override sellado
 
@@ -60,8 +60,21 @@ ejecución 42, llamada directa al método de `Number`, ausencia en ese trayecto 
 asignación/construcción de objeto y de llamada de interfaz, y rechazo de la
 conversión dinámica negativa.
 
+La auditoría del runner detectó que su control negativo buscaba
+`interface-call`, mientras que el nombre MIR real es
+`interface-instance-call`. Se corrigió esa aserción y el runner ahora también
+rechaza `virtual-instance-call`; la prueba completa volvió a pasar.
+
 Esta es evidencia estructural de despacho estático y ausencia de boxing en el
 trayecto probado; no es una medición general de asignaciones del runtime.
+
+El gate binario exacto publica el trait, el struct no genérico y su impl en
+`Producer.lib`/`Producer.nsmeta`; el consumidor sólo usa
+`LibraryReference`. Pasan las cuatro combinaciones productor O0/O2 por
+consumidor O0/O2 con salida 42. Cada MIR consumidor contiene dos
+`direct-instance-call` a `Number.Value` y cero
+`interface-instance-call`, `virtual-instance-call` o
+`allocate-and-construct`.
 
 Como evidencia binaria suplementaria se ejecutó
 `generic_struct_trait_impl.py`: productor 0, consumidores O0/O2 42. Ese test
@@ -69,8 +82,10 @@ también contiene impls genéricos y restricciones, propiedad del equipo de
 campos. Se usó solo como validación de lectura, no se modificó y no se presenta
 como sustituto exacto del fixture no genérico.
 
-Evidencia: `A:/nsc-fixes-laptop-04-evidencia/case68-struct.log` y
-`case68-binary-related.log`.
+Evidencia: `A:/nsc-fixes-laptop-04-evidencia/case68-struct.log`,
+`case68-struct-strengthened.log`, `case68-binary-exact.log` y
+`case68-binary-related.log`. Los artefactos exactos quedaron en
+`case68-binary-exact-8cij4tnj`.
 
 ## Caso 69: delegado genérico y lambda global
 
@@ -84,14 +99,20 @@ fixtures versionados no han cambiado desde sus correcciones respectivas.
   documentación histórica declaraba ambas optimizaciones.
 - El runner ahora itera O0/O2, usa ejecutables distintos y reporta el nivel en
   cualquier error. Ambos niveles compilan y ejecutan con salida 0.
+- El gate binario publica `Reducer<T>` y métodos para `int` y `long` en
+  `.lib`/`.nsmeta`. Los consumidores reconstruyen e invocan ambos delegates
+  mediante `LibraryReference`. Pasan las cuatro combinaciones productor O0/O2
+  por consumidor O0/O2 con salida 0.
 
-No se añadió un productor/consumidor binario nuevo para el delegado: hacerlo
-ampliaría esta tarea hacia serialización/importación de metadata, área reservada.
-La lambda global es un escenario ejecutable local y no tiene contrato binario
-separado en este fixture.
+El gate binario sólo valida el round trip; no modifica serialización ni
+reconstrucción de metadata. La lambda global es un callable local sintetizado,
+no una API publicada, y por eso no tiene contrato productor/consumidor
+separado.
 
 Evidencia: `A:/nsc-fixes-laptop-04-evidencia/case69-global-lambda.log`,
-`case69-delegate-baseline.log` y `case69-delegate-o0-o2.log`.
+`case69-delegate-baseline.log`, `case69-delegate-o0-o2.log` y
+`case69-delegate-binary.log`. Los artefactos binarios quedaron en
+`case69-delegate-binary-98ln0_tw`.
 
 ## Límites y archivos compartidos
 
