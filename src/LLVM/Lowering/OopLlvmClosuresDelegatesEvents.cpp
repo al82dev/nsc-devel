@@ -298,6 +298,18 @@ LLVMValueRef OopLlvmImplementation::createClosureContextDestroyFunction(
             subprogram = createSynthesizedDebugSubprogram(
                 debugRange, displayName, name, "builtin:void", debugParameters, true, false);
         }
+        else if (origin.isLambda && memberModel_ != nullptr &&
+                 origin.memberOrdinal >= memberModel_->members().size() &&
+                 origin.declaringTypeOrdinal == nameLookup_.namedTypes().size() &&
+                 origin.body != nullptr && origin.body->syntax != nullptr &&
+                 origin.body->syntax->range().isValid())
+        {
+            debugRange = origin.body->syntax->range();
+            const std::string displayName = origin.mangledName + " [generated: closure context destroy]";
+            const std::vector<std::string> debugParameters = {"builtin:void*"};
+            subprogram = createSynthesizedDebugSubprogram(
+                debugRange, displayName, name, "builtin:void", debugParameters, true, false);
+        }
         if (debugBuilder_ != nullptr && subprogram == nullptr)
         {
             return failValue(

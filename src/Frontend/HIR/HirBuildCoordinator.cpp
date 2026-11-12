@@ -1936,8 +1936,7 @@ bool ProjectOopHirModel::buildLambdaFunction(
     const std::size_t memberCount = memberModel_->members().size();
     const bool globalOwner = lambda.ownerMemberOrdinal >= memberCount &&
         namespaceFunctionModel_ != nullptr &&
-        lambda.ownerMemberOrdinal - memberCount < namespaceFunctionModel_->functions().size() &&
-        lambda.captures.empty();
+        lambda.ownerMemberOrdinal - memberCount < namespaceFunctionModel_->functions().size();
     if (lambda.ownerMemberOrdinal >= memberCount && !globalOwner)
     {
         error = "Stage 43 lambda owner member ordinal is invalid";
@@ -2038,6 +2037,14 @@ bool ProjectOopHirModel::markLambdaClosureCells(std::string& error)
                  functionByMember_[lambda.ownerMemberOrdinal].has_value())
         {
             creator = &functions_[*functionByMember_[lambda.ownerMemberOrdinal]];
+        }
+        else if (lambda.ownerMemberOrdinal >= memberModel_->members().size())
+        {
+            const std::size_t functionOrdinal = lambda.ownerMemberOrdinal - memberModel_->members().size();
+            if (functionOrdinal < functionByNamespaceFunction_.size() &&
+                functionByNamespaceFunction_[functionOrdinal].has_value() &&
+                *functionByNamespaceFunction_[functionOrdinal] < functions_.size())
+                creator = &functions_[*functionByNamespaceFunction_[functionOrdinal]];
         }
         if (creator == nullptr)
         {

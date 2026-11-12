@@ -5509,6 +5509,13 @@ if(NSC_BUILD_TESTS)
     add_test(NAME nsc.compiler.fnonce-ref-replacement
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/fnonce_ref_replacement.py"
                 "${NSC_TEST_COMPILER}")
+    add_test(NAME nsc.compiler.namespace-lambda-capture
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/namespace_lambda_capture.py"
+                "${NSC_TEST_COMPILER}")
+    add_test(NAME nsc.compiler.namespace-lambda-codeview
+        COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/namespace_lambda_debug_metadata.py"
+                "${NSC_TEST_COMPILER}")
+    set_tests_properties(nsc.compiler.namespace-lambda-codeview PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME nsc.compiler.readonly-borrowed-array
         COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_CURRENT_SOURCE_DIR}/tests/integration/readonly_borrowed_array.py"
                 "${NSC_TEST_COMPILER}" "${CMAKE_CURRENT_SOURCE_DIR}/lib/NativeSharp.Core/SharedStorage.ns"
