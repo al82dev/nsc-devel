@@ -1,4 +1,5 @@
 #include "nativesharp/Interop/CppAbiPlanQueries.h"
+#include "nativesharp/Interop/CppRegCallAbiValidation.h"
 #include "nativesharp/Compilation/TypeIdentity.h"
 #include "nativesharp/Frontend/EnumUnderlyingType.h"
 #include "nativesharp/Frontend/ProjectOopHirModel.h"
@@ -1837,12 +1838,23 @@ bool ProjectOopHirModel::buildNamespaceFunction(
                     type == "builtin:sbyte" || type == "builtin:byte" ||
                     type == "builtin:short" || type == "builtin:ushort" || type == "builtin:bool";
             };
+            const bool regCallRecordRoundTrip = function.cppRegCall && symbol.cppAbiPlan && symbol.cppReturnType &&
+                symbol.cppReturnType->kind == interop::CppTypeKind::Record && symbol.cppReturnType->sizeBits &&
+                symbol.cppReturnType->alignmentBits && *symbol.cppReturnType->sizeBits % 8 == 0 &&
+                *symbol.cppReturnType->alignmentBits % 8 == 0 && symbol.cppParameterTypes.size() == 1 &&
+                symbol.cppParameterTypes[0].kind == interop::CppTypeKind::Record &&
+                symbol.cppParameterTypes[0].sizeBits == symbol.cppReturnType->sizeBits &&
+                symbol.cppParameterTypes[0].alignmentBits == symbol.cppReturnType->alignmentBits &&
+                function.parameterTypeKeys.size() == 1 && function.parameterTypeKeys[0] == function.returnTypeKey &&
+                isStructValueType(function.returnTypeKey) &&
+                interop::abi_plan::isRegCallWin64RecordRoundTrip(*symbol.cppAbiPlan, symbol.mangledName,
+                    *symbol.cppReturnType->sizeBits / 8, *symbol.cppReturnType->alignmentBits / 8);
             if (function.cppRegCall && (function.isVariadic ||
-                (!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&
+                (!regCallRecordRoundTrip && ((!regCallScalar(function.returnTypeKey) && function.returnTypeKey != "builtin:void" &&
                  !function.returnTypeKey.ends_with('*')) ||
                 !std::ranges::all_of(function.parameterTypeKeys, [&](const auto& type) {
                     return regCallScalar(type) || type.ends_with('*');
-                })))
+                })))))
             {
                 error = "regcall currently supports only int scalar signatures or other integer types, bool, float, void and pointers for " + symbol.mangledName;
                 return false;

@@ -1942,6 +1942,7 @@ private:
         std::string_view returnTypeKey,
         std::string_view delegateTypeKey,
         bool vectorCall,
+        bool regCallRecordRoundTrip,
         std::string& error);
 
     // EN: T08-D22: the x64 vectorcall homogeneous aggregate, as Clang classifies it (WinX86_64ABIInfo):

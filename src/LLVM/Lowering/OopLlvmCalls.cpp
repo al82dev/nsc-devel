@@ -1509,7 +1509,7 @@ LLVMValueRef OopLlvmImplementation::lowerStaticCall(
                     ? rawVectorCallArguments.at(source)
                     : sourceArguments.at(source));
             }
-            return emitExternCDelegateCall(target, vectorArguments, argumentTypeKeys, node->typeKey, "", true,
+            return emitExternCDelegateCall(target, vectorArguments, argumentTypeKeys, node->typeKey, "", true, false,
                                            error);
         }
         LLVMValueRef call = buildPotentiallyThrowingCall(

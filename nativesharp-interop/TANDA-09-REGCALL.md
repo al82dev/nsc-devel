@@ -290,8 +290,8 @@ se habilita por ello (A:/temp/t09-regcall-plan-final-plan.log). La comparacion
 de consultas no es una prueba de ejecucion ni autoriza por si sola llamadas.
 
 El control C de la muestra de records por valor paso en estatica y DLL O0-O3
-(A:/temp/nsc-t09-regcall-records-1nk18nq5), pero NSC sigue rechazandola
-(A:/temp/nsc-t09-regcall-records-jpdvbp6d). Falta reconciliar y transportar
+(A:/temp/nsc-t09-regcall-records-1nk18nq5), pero en esa etapa NSC la rechazaba
+(A:/temp/nsc-t09-regcall-records-jpdvbp6d). En esa etapa faltaba reconciliar y transportar
 el plan hasta la emision directa e indirecta y la precompilacion; la prueba
 reproducible esta en
 [pruebas-tanda-09-regcall-records](pruebas-tanda-09-regcall-records/).
@@ -308,7 +308,7 @@ incompatibles (A:/temp/t09-regcall-plan-test.log). Pasaron las cuatro sondas
 de ABI/punteros y controles de transporte, ABI e identidad
 (A:/temp/t09-regcall-reconcile-*.log). El record de dos `float` usa la forma
 `Expand` de Clang, que el plan aun no representa. Estas comprobaciones no
-habilitan la llamada por valor; faltan transporte y emision verificados.
+por si solas habilitaban la llamada por valor; el avance posterior figura abajo.
 
 Para alias C vivos, HIR solicita ahora el plan reconciliado `regcall` cuando
 la firma contiene records; MIR lo conserva. Una prueba dirigida con records
@@ -317,5 +317,30 @@ de ocho y 24 bytes comprueba ambos planes en los dos modelos
 planes no aparecian (A:/temp/nsc-t09-regcall-record-plan-hir-8ltxu_et).
 Pasaron la prueba de consulta y las regresiones precompiladas SysV y regcall
 (A:/temp/t09-regcall-plan-test.log, A:/temp/t09-regcall-hir-reg-*.log).
-Esto solo acredita el transporte vivo: la emision de records por valor y el
-plan de un alias restaurado sin encabezado siguen pendientes.
+Esto solo acreditaba el transporte vivo; el plan de un alias restaurado sin
+encabezado sigue pendiente.
+
+## Records C por valor en regcall
+
+Las llamadas que reciben y devuelven el mismo record C por valor se habilitan
+cuando el plan de Clang coincide con la representacion fisica Win64 usada por
+NSC. La comprobacion contrasta destino, convencion, simbolo, forma fisica,
+identidad de la firma y dimensiones; no autoriza una forma expandida solo por
+su tamano. Para punteros a funcion exige ademas el plan reconciliado y el
+simbolo sintetico esperado.
+
+Una muestra de records de ocho y 24 bytes paso ocho comparaciones C/NativeSharp
+en llamadas directas y por puntero, estatica y DLL O0-O3; comprobo copia,
+resultado, simbolo, IR y cache (A:/temp/nsc-t09-regcall-records-6cb0maai).
+Pasaron los controles de planes reales y alterados
+(A:/temp/t09-regcall-plan-test.log). Los casos de dos `float` se rechazaron en
+ambas rutas porque su ABI expandido aun no esta representado
+(A:/temp/nsc-t09-regcall-hfa-rechazo-s4ychlo6); se mantuvo el rechazo anterior
+de `double` por valor (A:/temp/nsc-t09-regcall-negativo-gkcdwerd).
+
+Pasaron cuatro sondas ABI, transporte/identidad y las regresiones
+precompiladas SysV y preserve (A:/temp/t09-regcall-records-reg-*.log). La
+muestra precompilada de estos records `regcall` aun falla al consumir el plan
+de una funcion (A:/temp/nsc-t09-regcall-records-precompilado-2xqyrxyq).
+No se acreditan otras firmas, records expandidos o precompilacion; T09-003
+sigue abierto.

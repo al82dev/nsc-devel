@@ -1,6 +1,7 @@
 #include "nativesharp/Interop/CppClangSessionFactory.h"
 #include "nativesharp/Interop/CppInteropSession.h"
 #include "nativesharp/Interop/CppVariadicAbiReconciliation.h"
+#include "nativesharp/Interop/CppRegCallAbiValidation.h"
 #include <llvm/IR/CallingConv.h>
 #include <iostream>
 #include <memory>
@@ -99,6 +100,8 @@ int main(int argc, char** argv)
             indirect->logicalParameters[0].physicalCount != direct->logicalParameters[0].physicalCount)
         { std::cerr << "plan no disponible o incompatible para " << aliasName << '\n'; return 5; }
         std::cout << aliasName << ": cc=" << direct->callingConvention
+                  << " destino=" << direct->targetTriple
+                  << " datos=" << direct->dataLayout
                   << " simbolo-puntero=" << indirect->symbol
                   << " retorno=" << static_cast<int>(direct->physicalReturn.kind)
                   << " bits=" << direct->physicalReturn.widthOrCount
@@ -106,6 +109,16 @@ int main(int argc, char** argv)
                   << " alineacion-retorno=" << direct->logicalReturn.alignment
                   << " alineacion-argumento=" << direct->logicalParameters[0].alignment
                   << " byval=" << direct->logicalParameters[0].byValue
+                  << " retorno-paso=" << static_cast<int>(direct->logicalReturn.passing)
+                  << " retorno-coercion=" << bool(direct->logicalReturn.coercion)
+                  << " argumento-coercion=" << bool(direct->logicalParameters[0].coercion)
+                  << " primero=" << direct->logicalParameters[0].firstPhysical
+                  << " retorno-offset=" << direct->logicalReturn.offset
+                  << " argumento-offset=" << direct->logicalParameters[0].offset
+                  << " cuenta=" << direct->logicalParameters[0].physicalCount
+                  << " inreg=" << direct->physicalParameters[0].inRegister
+                  << " tipo-argumento=" << static_cast<int>(direct->physicalParameters[0].type.kind)
+                  << " bits-argumento=" << direct->physicalParameters[0].type.widthOrCount
                   << " fisicos=" << direct->physicalParameters.size() << '\n';
         for (std::size_t i = 0; i < direct->physicalParameters.size(); ++i)
             if (indirect->physicalParameters[i].type.kind != direct->physicalParameters[i].type.kind ||
@@ -117,6 +130,16 @@ int main(int argc, char** argv)
         if (std::string_view(aliasName) == "LargeFn" &&
             (direct->physicalReturn.kind != abi_plan::TypeKind::Void || direct->physicalParameters.size() != 2 ||
              !direct->physicalParameters[0].structureReturn)) return 8;
+        const auto bytes = std::string_view(aliasName) == "SmallFn" ? 8U : 24U;
+        if (!abi_plan::isRegCallWin64RecordRoundTrip(*direct, direct->symbol, bytes, 4) ||
+            !abi_plan::isRegCallWin64RecordRoundTrip(*indirect, indirect->symbol, bytes, 4))
+        { std::cerr << "rechazo de plan directo=" << abi_plan::isRegCallWin64RecordRoundTrip(*direct, direct->symbol, bytes, 4)
+                    << " puntero=" << abi_plan::isRegCallWin64RecordRoundTrip(*indirect, indirect->symbol, bytes, 4) << '\n'; return 15; }
+        auto invalidPlan = *direct; invalidPlan.callingConvention = 78;
+        if (abi_plan::isRegCallWin64RecordRoundTrip(invalidPlan, direct->symbol, bytes, 4) ||
+            abi_plan::isRegCallWin64RecordRoundTrip(*direct, "wrong-symbol", bytes, 4) ||
+            (bytes == 24 && abi_plan::isRegCallWin64RecordRoundTrip(*direct, direct->symbol, bytes, 8)))
+        { std::cerr << "plan alterado aceptado para " << aliasName << '\n'; return 16; }
     }
     return 0;
 }

@@ -10,6 +10,7 @@
 
 #include "nativesharp/Interop/LibraryMetadata.h"
 #include "nativesharp/Interop/CppAbiPlan.h"
+#include "nativesharp/Interop/CppRegCallAbiValidation.h"
 #include "nativesharp/Interop/CppVariadicAbiValidation.h"
 
 namespace nativesharp::llvm_backend
@@ -1045,6 +1046,7 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
         std::string_view returnTypeKey,
         std::string_view delegateTypeKey,
         bool vectorCall,
+        bool regCallRecordRoundTrip,
         std::string& error)
 {
         if (argumentValues.size() != argumentTypeKeys.size())
@@ -1097,11 +1099,11 @@ LLVMValueRef OopLlvmImplementation::emitExternCDelegateCall(
                 key == "builtin:ulong" || key == "builtin:float" || key == "builtin:sbyte" ||
                 key == "builtin:byte" || key == "builtin:short" || key == "builtin:ushort" || key == "builtin:bool";
         };
-        if (regCall && (!structuralFunction || structuralFunction->variadic ||
-            (!regCallScalar(returnTypeKey) && returnTypeKey != "builtin:void" && !returnTypeKey.ends_with('*')) ||
-            std::any_of(argumentTypeKeys.begin(), argumentTypeKeys.end(), [&](const std::string& key) {
-                return !regCallScalar(key) && !key.ends_with('*');
-            })))
+        if (regCall && (!structuralFunction || structuralFunction->variadic || (!regCallRecordRoundTrip &&
+            ((!regCallScalar(returnTypeKey) && returnTypeKey != "builtin:void" && !returnTypeKey.ends_with('*')) ||
+             std::any_of(argumentTypeKeys.begin(), argumentTypeKeys.end(), [&](const std::string& key) {
+                 return !regCallScalar(key) && !key.ends_with('*');
+             })))))
             return failValue(error, "regcall function pointer signature is not yet supported");
         const auto sysvScalar = [](std::string_view key) {
             return key == "builtin:int" || key == "builtin:uint" || key == "builtin:long" ||
@@ -1396,7 +1398,8 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         }
         const bool hasRecord = std::any_of(node->argumentTypeKeys.begin(), node->argumentTypeKeys.end(), recordArgument);
         const bool recordReturn = recordArgument(node->typeKey);
-        if (externC && node->cppFunctionPointerPlan && (hasRecord || recordReturn) && (node->typeKey == "builtin:int" || recordReturn))
+        if (externC && node->cppFunctionPointerPlan && node->cppFunctionPointerPlan->callingConvention != 92 &&
+            (hasRecord || recordReturn) && (node->typeKey == "builtin:int" || recordReturn))
         {
             using namespace interop::abi_plan;
             const auto& plan = *node->cppFunctionPointerPlan;
@@ -1598,9 +1601,19 @@ LLVMValueRef OopLlvmImplementation::lowerDelegateInvoke(
         releaseTransferredArguments(node);
         if (externC)
         {
+            const auto signature = language::parseFunctionTypeIdentity(node->elementTypeKey);
+            const auto* recordLayout = findStructLayout(mirModel_, node->typeKey);
+            const bool regCallRecordRoundTrip = signature &&
+                signature->callingConvention == language::CallingConvention::RegCall && !signature->variadic &&
+                signature->parameters.size() == 1 && signature->result == node->typeKey &&
+                signature->parameters[0] == node->typeKey &&
+                node->argumentCount == 1 && node->argumentTypeKeys.size() == 1 &&
+                node->argumentTypeKeys[0] == node->typeKey && node->cppFunctionPointerPlan && recordLayout &&
+                interop::abi_plan::isRegCallWin64RecordRoundTrip(*node->cppFunctionPointerPlan,
+                    "__regcall3____nsc_pointer_abi_probe", recordLayout->size, recordLayout->alignment);
             return emitExternCDelegateCall(
                 delegateValue, arguments, node->argumentTypeKeys, node->typeKey,
-                node->elementTypeKey, vectorCall, error);
+                node->elementTypeKey, vectorCall, regCallRecordRoundTrip, error);
         }
         return emitDelegateCall(delegateValue, arguments, node->argumentTypeKeys, node->typeKey, error);
     }
