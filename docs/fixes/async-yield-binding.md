@@ -26,3 +26,13 @@ el build y la ejecución dirigidos volvieron a pasar con salida 0
 misma carpeta). Este test comprueba representación y bindings; no
 ejecuta los iteradores ni acredita destrucción, cancelación, suspensión ni el
 descarte seguro del resultado de un yield.
+
+Una ampliación posterior consulta los bindings de operandos MIR, incluye un
+condicional de propiedad mixta y comprueba que un poll se restaure de caché en
+el mismo proceso y proyecto. Un fixture adicional observa
+`FullExpressionCleanup` y `OwnedTemporaryBorrow`; en ese fixture ambos tienen
+binding conocido. Un nodo sintético sin sintaxis se usa únicamente para
+probar que la consulta diagnóstica lo marca `UNKNOWN`; esto no demuestra una
+política de Unknown en el compilador. Build y ejecución dirigidos con salida 0:
+`A:/nsc-fixes-evidencia/async-yield-wrapper-20261112.log`. Esta comprobación no
+ejecuta el descarte ni demuestra restauración entre procesos.
